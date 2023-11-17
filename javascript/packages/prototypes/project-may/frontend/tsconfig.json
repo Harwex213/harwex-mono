@@ -1,0 +1,6 @@
+{
+  "extends": "@hw/typescript-config/preact.json",
+  "include": [
+    "./src/**/*"
+  ]
+}

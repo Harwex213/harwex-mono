@@ -1,0 +1,15 @@
+{
+  "name": "@hw/fantasy-map",
+  "description": "Practice with render engine and as result fantasy interactive map",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "browserslist": [
+    "> 1%",
+    "last 2 versions",
+    "not dead"
+  ],
+  "dependencies": {
+    "@hw/utils": "1.0.0"
+  }
+}

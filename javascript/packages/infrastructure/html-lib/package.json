@@ -1,0 +1,11 @@
+{
+  "name": "@hw/html-lib",
+  "description": "Library for creating SPA",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "main": "index.js",
+  "dependencies": {
+    "@hw/signals": "1.0.0"
+  }
+}

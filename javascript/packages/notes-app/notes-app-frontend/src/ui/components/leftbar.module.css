@@ -1,0 +1,17 @@
+.layout {
+    display: grid;
+    grid-template-columns: 200px minmax(0, 1fr);
+    gap: 8px;
+}
+
+.left-bar {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.title {
+    color: var(--light-text);
+    font-size: 20px;
+    font-weight: 500;
+}

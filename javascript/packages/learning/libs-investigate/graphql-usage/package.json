@@ -1,0 +1,12 @@
+{
+  "name": "@hw/graphql-usage",
+  "description": "graphql js library investigation usage",
+  "private": true,
+  "version": "1.0.0",
+  "dependencies": {
+    "graphql": "16.10.0"
+  },
+  "devDependencies": {
+    "typescript": "5.8.3"
+  }
+}

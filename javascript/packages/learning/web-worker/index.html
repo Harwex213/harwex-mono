@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <title>Web worker sudya!</title>
+    <style>
+        html {
+            background-color: rgb(230, 230, 230);
+            font-family: sans-serif;
+        }
+
+        p {
+            margin: 0 0 1rem 0;
+        }
+
+        .controls {
+            padding: 4vw;
+            width: 75%;
+            margin: 3vw auto;
+            border: 2px solid;
+            border-radius: 6px;
+        }
+
+        .controls label,
+        .controls p,
+        .controls input {
+            font-size: 3vw;
+        }
+
+        .controls div {
+            padding-bottom: 1rem;
+        }
+    </style>
+</head>
+<body>
+<h1>Web<br />Workers<br />basic<br />example</h1>
+
+<div class="controls" tabindex="0">
+    <form>
+        <div>
+            <label for="number1">Multiply number 1: </label>
+            <input type="text" id="number1" value="0" />
+        </div>
+        <div>
+            <label for="number2">Multiply number 2: </label>
+            <input type="text" id="number2" value="0" />
+        </div>
+    </form>
+
+    <p class="result">Result: 0</p>
+</div>
+<script type="module" src="index.js"></script>
+</body>
+</html>

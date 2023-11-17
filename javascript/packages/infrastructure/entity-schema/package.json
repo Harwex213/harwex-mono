@@ -1,0 +1,8 @@
+{
+  "name": "@hw/entity-schema",
+  "description": "Library for creating entity schemas",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "main": "index.js"
+}

@@ -1,0 +1,23 @@
+{
+  "name": "to-the-frontend-moon",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "force": "yarn :rr **/node_modules && yarn",
+    ":rr": "npx rimraf@4.4.1"
+  },
+  "devDependencies": {
+    "process": "^0.11.10"
+  },
+  "workspaces": {
+    "packages": [
+      "packages/**/*"
+    ]
+  },
+  "resolutions": {
+    "@types/react": "npm:@types/react@18.3.3",
+    "@types/react-dom": "npm:@types/react-dom@18.3.0",
+    "@types/pixi.js": "npm:@types/pixi.js@5.0.0"
+  },
+  "packageManager": "yarn@4.1.1"
+}

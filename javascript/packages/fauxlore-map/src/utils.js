@@ -1,0 +1,1 @@
+export const voidFn = () => void 0;

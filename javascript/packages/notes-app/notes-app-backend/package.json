@@ -1,0 +1,10 @@
+{
+  "name": "@hw/notes-app-backend",
+  "description": "App to management flow of information",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "dependencies": {
+    "@hw/utils": "1.0.0"
+  }
+}

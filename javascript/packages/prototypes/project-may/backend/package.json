@@ -1,0 +1,13 @@
+{
+  "name": "@hw/project-may-backend",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "lint": "eslint . --ext .ts"
+  },
+  "dependencies": {
+    "@hw/typescript-config": "workspace:*",
+    "typescript": "5.8.3"
+  }
+}

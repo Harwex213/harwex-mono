@@ -1,0 +1,11 @@
+{
+  "name": "@hw/notes-app-shared",
+  "description": "Shared",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "main": "index.js",
+  "dependencies": {
+    "@hw/utils": "1.0.0"
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "name": "@hw/project-may-frontend",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "browserslist": [
+    "> 1%",
+    "last 2 versions",
+    "not dead"
+  ],
+  "scripts": {
+    "start": "webpack serve --mode development",
+    "build": "webpack --mode production"
+  },
+  "dependencies": {
+    "@hw/project-may-game-model": "workspace:*",
+    "@preact/signals": "2.0.4",
+    "preact": "10.26.6"
+  },
+  "devDependencies": {
+    "@hw/typescript-config": "workspace:*",
+    "@hw/webpack-config": "workspace:*",
+    "webpack": "5.99.9"
+  }
+}

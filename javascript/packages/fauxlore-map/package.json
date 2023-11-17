@@ -1,0 +1,22 @@
+{
+  "name": "@hw/fauxlore-map",
+  "description": "Map of Fauxlore game (Vkontakte)",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "browserslist": [
+    "> 1%",
+    "last 2 versions",
+    "not dead"
+  ],
+  "scripts": {
+    "start": "npx parcel src/index.html"
+  },
+  "dependencies": {
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
+  },
+  "devDependencies": {
+    "oxlint": "0.7.0"
+  }
+}

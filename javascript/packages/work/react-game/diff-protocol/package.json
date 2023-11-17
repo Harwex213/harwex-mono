@@ -1,0 +1,11 @@
+{
+  "name": "@hw/react-game-diff-protocol",
+  "description": "Game with react",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "start": "node src/storage.js",
+    "test": "node --test"
+  }
+}

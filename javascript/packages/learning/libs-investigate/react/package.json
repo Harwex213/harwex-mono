@@ -1,0 +1,13 @@
+{
+  "name": "@hw/react",
+  "description": "Practice with react",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "dependencies": {
+    "@types/react": "18.3.3",
+    "@types/react-dom": "18.3.0",
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
+  }
+}

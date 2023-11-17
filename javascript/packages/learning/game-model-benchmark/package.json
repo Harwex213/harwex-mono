@@ -1,0 +1,10 @@
+{
+  "name": "@hw/game-model-benchmark",
+  "description": "Benchmarking plain js objects versus typed array",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "dependencies": {
+    "tinybench": "4.0.1"
+  }
+}

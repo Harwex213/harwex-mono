@@ -1,0 +1,18 @@
+.colors {
+    --primary-200: #2f52e0ff;
+
+    --steel-pink-300: #c04abcff;
+
+    --light-yellow-100: #fffbdbff;
+
+    --black-1900: #111111;
+    --black-2000: #000000ff;
+
+    --reseda-green-500: #857e61ff;
+}
+
+.variables {
+    --light-text: var(--light-yellow-100);
+    --dark-text: var(--black-1900);
+    --background: var(--light-yellow-100);
+}

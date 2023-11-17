@@ -1,0 +1,16 @@
+{
+  "name": "@hw/typescript-config",
+  "version": "1.0.0",
+  "description": "Shared TypeScript configuration for Harwex monorepo",
+  "main": "base.json",
+  "files": [
+    "base.json",
+    "react.json",
+    "preact.json",
+    "node.json"
+  ],
+  "peerDependencies": {
+    "@types/webpack-env": "^1.18.0",
+    "typescript": "5.8.3"
+  }
+}

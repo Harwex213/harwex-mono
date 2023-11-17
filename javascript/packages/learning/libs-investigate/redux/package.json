@@ -1,0 +1,10 @@
+{
+  "name": "@hw/redux",
+  "description": "Practice with redux",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "dependencies": {
+    "redux": "5.0.1"
+  }
+}

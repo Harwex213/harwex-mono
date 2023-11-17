@@ -1,0 +1,22 @@
+{
+  "name": "@hw/eslint-config",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "exports": {
+    ".": "./create-eslint-config.js"
+  },
+  "devDependencies": {
+    "@stylistic/eslint-plugin-js": "4.2.0",
+    "@stylistic/eslint-plugin-ts": "4.2.0",
+    "@typescript-eslint/eslint-plugin": "8.31.1",
+    "@typescript-eslint/parser": "8.31.1",
+    "@typescript-eslint/type-utils": "8.31.1",
+    "@typescript-eslint/utils": "8.31.1",
+    "eslint": "9.25.1",
+    "eslint-plugin-import": "2.31.0",
+    "eslint-plugin-react": "7.37.5",
+    "eslint-plugin-react-hooks": "5.2.0",
+    "ts-api-utils": "2.1.0"
+  }
+}

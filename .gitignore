@@ -1,0 +1,9 @@
+.vs
+.idea
+node_modules
+dist
+.parcel-cache/
+out
+.env.local
+
+*.db

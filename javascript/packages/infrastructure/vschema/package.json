@@ -1,0 +1,12 @@
+{
+  "name": "@hw/vschema",
+  "description": "Schema validation library",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "exports": "./exports.ts",
+  "devDependencies": {
+    "@hw/eslint-config": "workspace:*",
+    "@hw/typescript-config": "workspace:*"
+  }
+}

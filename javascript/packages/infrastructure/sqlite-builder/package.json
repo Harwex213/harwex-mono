@@ -1,0 +1,11 @@
+{
+  "name": "@hw/sqlite-builder",
+  "description": "Library for creating sql queries",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "main": "index.js",
+  "dependencies": {
+    "@hw/utils": "1.0.0"
+  }
+}

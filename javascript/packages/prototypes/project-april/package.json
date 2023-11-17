@@ -1,0 +1,29 @@
+{
+  "name": "@hw/project-april",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "browserslist": [
+    "> 1%",
+    "last 2 versions",
+    "not dead"
+  ],
+  "scripts": {
+    "start": "yarn vite"
+  },
+  "dependencies": {
+    "@hw/utils": "1.0.0",
+    "@preact/signals-react": "3.0.1",
+    "@types/pixi.js": "5.0.0",
+    "pixi-viewport": "6.0.3",
+    "pixi.js": "8.8.0",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "redux": "5.0.1",
+    "rxjs": "7.8.2"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react-swc": "3.8.1",
+    "vite": "6.3.5"
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "name": "@hw/webgl-fundamentals",
+  "description": "These projects stores my practice with WebGL during reading & learning webglfundamentals.org articles",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module"
+}

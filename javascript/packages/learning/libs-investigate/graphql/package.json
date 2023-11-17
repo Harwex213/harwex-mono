@@ -1,0 +1,9 @@
+{
+  "name": "@hw/graphql",
+  "description": "graphql js library investigation",
+  "private": true,
+  "version": "1.0.0",
+  "devDependencies": {
+    "typescript": "5.8.3"
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "name": "@hw/structures",
+  "description": "Data structures (CS)",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "main": "index.js"
+}

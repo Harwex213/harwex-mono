@@ -1,0 +1,7 @@
+{
+  "extends": "@hw/typescript-config/base.json",
+  "include": [
+    "./src/**/*",
+    "exports.ts"
+  ]
+} 

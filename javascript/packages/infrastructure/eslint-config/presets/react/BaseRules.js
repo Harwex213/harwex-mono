@@ -1,0 +1,52 @@
+const baseReactRules = {
+  "react/prop-types": "off",
+  "react/display-name": "off",
+  "react/jsx-uses-react": "off",
+  "react/react-in-jsx-scope": "off",
+  "react/jsx-closing-tag-location": "error",
+  "react/jsx-closing-bracket-location": "error",
+  "react/jsx-no-comment-textnodes": "error",
+  "react/jsx-no-duplicate-props": "error",
+  "react/jsx-props-no-multi-spaces": "error",
+  "react/jsx-wrap-multilines": [
+    "error",
+    {
+      declaration: "parens-new-line",
+      assignment: "parens-new-line",
+      return: "parens-new-line",
+      arrow: "parens-new-line",
+      condition: "parens-new-line",
+      logical: "parens-new-line",
+      prop: "parens-new-line",
+    },
+  ],
+  "react/jsx-tag-spacing": [
+    "error",
+    {
+      closingSlash: "never",
+      beforeSelfClosing: "always",
+      afterOpening: "never",
+      beforeClosing: "never",
+    },
+  ],
+  "react/jsx-curly-brace-presence": ["error", { props: "always", children: "always" }],
+  "react/jsx-curly-newline": ["error", { singleline: "forbid", multiline: "require" }],
+  "react/jsx-curly-spacing": ["error", { when: "never", children: true }],
+  "react/jsx-equals-spacing": ["error", "never"],
+  "react/jsx-max-depth": ["error", { max: 10 }],
+  "react/jsx-newline": ["error", { prevent: false }],
+  "react/jsx-no-useless-fragment": ["error", { allowExpressions: true }],
+  "react/self-closing-comp": "error",
+  "react-hooks/rules-of-hooks": "error",
+
+  // "rulesdir/memo-component": "error",
+  // "rulesdir/jsx-no-reference-prop": "error",
+  // "rulesdir/component-display-name": "error",
+  // "rulesdir/jsx-element-max-length": "error",
+  // "rulesdir/jsx-children-spacing": "error",
+  // "rulesdir/jsx-no-multiline-prop": "error",
+  // "rulesdir/jsx-prop-new-line": "error",
+  // "rulesdir/jsx-key-after-spread": "error",
+}
+
+export { baseReactRules }
