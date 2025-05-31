@@ -4,8 +4,9 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "start": "dotenvx run -f .env.local -- node src/index.js",
-    "dev": "node --watch src/index.js"
+    "start": "dotenvx run -f .env.local -- node --import=tsx src/index",
+    "dev": "node --watch src/index.js",
+    "test": "tsx --test src/tests/**/*.test.ts"
   },
   "dependencies": {
     "@dotenvx/dotenvx": "1.44.1",
@@ -13,12 +14,12 @@
     "node-cron": "4.0.7",
     "node-telegram-bot-api": "0.66.0",
     "sqlite": "5.1.1",
-    "sqlite3": "5.1.7",
-    "uuid": "11.1.0"
+    "sqlite3": "5.1.7"
   },
   "devDependencies": {
     "@hw/eslint-config": "workspace:*",
     "@hw/typescript-config": "workspace:*",
-    "@types/node-telegram-bot-api": "0.64.8"
+    "@types/node-telegram-bot-api": "0.64.8",
+    "tsx": "4.19.4"
   }
 }

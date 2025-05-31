@@ -1,30 +1,23 @@
 import { format, isValid as isDateValid, parse } from "date-fns";
-import { EReminderError } from "../errors";
 import { schema } from "../schema";
-
-type TReminder = {
-  id: number;
-  user_id: string;
-  content: string;
-  target_date: string;
-  created_at: string;
-  updated_at: string;
-}
+import type { TReminder, TReminderWithChatId } from "../db/types";
+import { EReminderError } from "../errors";
 
 schema.declare(
   "addreminder",
   "Add a new reminder",
   async (input, ctx) => {
-    const { userId, chatId, db, sendMessage } = ctx;
-    const dateMatch = input.match(/(\d{2}\.\d{2}\.\d{4})/);
-    if (!dateMatch) {
-      throw new Error(EReminderError.ADD_REMINDER_INVALID_DATE_MATCH);
+    if (!input) {
+      throw new Error(EReminderError.ADD_REMINDER_EMPTY_INPUT);
     }
+
+    const { userId, db } = ctx;
+    const dateMatch = input.match(/(\d{2}\.\d{2}\.\d{4})/);
 
     let targetDate: Date | null = null;
     let content = input;
 
-    const dateStr = dateMatch[1];
+    const dateStr = dateMatch?.[1] || "";
     const parsedDate = parse(dateStr, "dd.MM.yyyy", new Date());
     if (isDateValid(parsedDate)) {
       targetDate = parsedDate;
@@ -40,7 +33,7 @@ schema.declare(
       ? `Reminder set for ${format(targetDate, "dd.MM.yyyy")}: ${content}`
       : `Daily reminder set: ${content}`;
 
-    await sendMessage(chatId, response);
+    return response;
   },
 );
 
@@ -48,7 +41,7 @@ schema.declare(
   "dailies",
   "View all your daily reminders",
   async (_, ctx) => {
-    const { userId, chatId, db, sendMessage } = ctx;
+    const { userId, db } = ctx;
 
     const reminders = await db.all<TReminder[]>(
       "SELECT * FROM reminders WHERE user_id = ? AND target_date IS NULL",
@@ -56,14 +49,12 @@ schema.declare(
     );
 
     if (reminders.length === 0) {
-      await sendMessage(chatId, "You have no daily reminders set.");
-
-      return;
+      return "You have no daily reminders set.";
     }
 
     const reminderList = reminders.map((r) => `ID: ${r.id} - ${r.content}`).join("\n");
 
-    await sendMessage(chatId, `Your daily reminders:\n${reminderList}`);
+    return `Your daily reminders:\n${reminderList}`;
   },
 );
 
@@ -71,7 +62,7 @@ schema.declare(
   "monthly",
   "View all your reminders for the current month",
   async (_, ctx) => {
-    const { userId, chatId, db, sendMessage } = ctx;
+    const { userId, db } = ctx;
 
     const now = new Date();
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -83,16 +74,14 @@ schema.declare(
     );
 
     if (reminders.length === 0) {
-      await sendMessage(chatId, "You have no reminders for this month.");
-
-      return;
+      return "You have no reminders for this month.";
     }
 
     const reminderList = reminders.map((r) =>
       `ID: ${r.id} - ${format(new Date(r.target_date), "dd.MM.yyyy")}: ${r.content}`,
     ).join("\n");
 
-    await sendMessage(chatId, `Your reminders for ${format(now, "MMMM yyyy")}:\n${reminderList}`);
+    return `Your reminders for ${format(now, "MMMM yyyy")}:\n${reminderList}`;
   },
 );
 
@@ -100,7 +89,7 @@ schema.declare(
   "deletereminder",
   "Delete a reminder by its ID",
   async (input, ctx) => {
-    const { userId, chatId, db, sendMessage } = ctx;
+    const { userId, db } = ctx;
 
     const reminderId = input;
 
@@ -110,11 +99,48 @@ schema.declare(
     );
 
     if (result.changes === 0) {
-      await sendMessage(chatId, "Reminder not found or you don't have permission to delete it.");
-
-      return;
+      return "Reminder not found or you don't have permission to delete it.";
     }
 
-    await sendMessage(chatId, "Reminder deleted successfully.");
+    return "Reminder deleted successfully.";
+  },
+);
+
+const notificationTimes: [string, string][] = [["00", "09"], ["00", "15"], ["00", "18"], ["00", "21"]];
+
+schema.cron(
+  notificationTimes.map(([minute, hour]) => `0 ${minute} ${hour} * * *`),
+  false,
+  async ({ db }) => {
+    const reminders = await db.all<TReminderWithChatId[]>(`
+        SELECT reminders.id         as id,
+               user_id,
+               chat_id,
+               content,
+               target_date,
+               reminders.created_at as created_at,
+               reminders.updated_at as created_at
+        FROM reminders
+                 JOIN users u on reminders.user_id = u.id
+    `);
+
+    const reminderGroups: Record<string, TReminder[]> = {}; // chatId, TReminder[]
+
+    for (const reminder of reminders) {
+      const chatId = reminder.chat_id;
+
+      let reminders = reminderGroups[chatId];
+      if (!reminders) {
+        reminders = [];
+        reminderGroups[chatId] = reminders;
+      }
+
+      reminders.push(reminder);
+    }
+
+    return Object.entries(reminderGroups).map(([chatId, reminders]) => {
+      const message = `Your daily reminders:\n${reminders.map((r) => r.content).join("\n")}`;
+      return [chatId, message];
+    });
   },
 );

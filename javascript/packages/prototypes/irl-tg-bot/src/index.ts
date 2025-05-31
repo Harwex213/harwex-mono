@@ -1,49 +1,9 @@
 import TelegramBot from "node-telegram-bot-api";
-import { open } from "sqlite";
-import sqlite3 from "sqlite3";
 import { config } from "@dotenvx/dotenvx";
 import cron from "node-cron";
-import { schema } from "./schema";
-
-async function initializeDatabase() {
-  const db = await open({
-    filename: "reminders.db",
-    driver: sqlite3.Database,
-  });
-
-  await db.exec(`
-      CREATE TABLE IF NOT EXISTS reminders
-      (
-          id
-              INTEGER
-              PRIMARY
-                  KEY
-              AUTOINCREMENT,
-          user_id
-              TEXT
-              NOT
-                  NULL,
-          content
-              TEXT
-              NOT
-                  NULL,
-          target_date
-              DATETIME,
-          created_at
-              DATETIME
-              DEFAULT
-                  CURRENT_TIMESTAMP,
-          updated_at
-              DATETIME
-              DEFAULT
-                  CURRENT_TIMESTAMP
-      );
-      CREATE INDEX IF NOT EXISTS idx_user_id ON reminders (user_id);
-      CREATE INDEX IF NOT EXISTS idx_target_date ON reminders (target_date);
-  `);
-
-  return db;
-}
+import { schema, type TCronService } from "./schema";
+import { initializeDatabase } from "./db/init";
+import "./services/index";
 
 async function main() {
   config();
@@ -71,19 +31,15 @@ async function main() {
 
   console.log("Bot is running...");
 
-  const sendMessage = async (chatId: number, input: string) => {
-    await bot.sendMessage(chatId, input);
-  };
-
-  bot.onText(/\/(.+) (.+)/, async (msg, match) => {
+  const handleMessage = async (msg: TelegramBot.Message, match: RegExpExecArray | null) => {
     if (!match || !msg.from) {
       return;
     }
 
     const chatId = msg.chat.id;
     const userId = msg.from.id.toString();
-    const command = match[0].trim();
-    const input = match[1].trim();
+    const command = match[1]?.trim() || "";
+    const input = match[2]?.trim() || "";
 
     const service = schema.services[command];
     if (!service) {
@@ -91,42 +47,47 @@ async function main() {
     }
 
     try {
-      await service.service(input, {
-        chatId,
+      const response = await service.service(input, {
         userId,
+        chatId,
         db,
-        sendMessage,
+        jsonStringify: JSON.stringify,
       });
+      await bot.sendMessage(chatId, response);
     } catch (e) {
       await bot.sendMessage(chatId, "Cannot handle command with such parameters. Check your inputs");
     }
-  });
+  };
 
-  const notificationTimes = ["09:00", "15:00", "21:00"];
+  bot.onText(/\/(\S+) (.+)/, handleMessage);
+  bot.onText(/\/(\S+)$/, handleMessage);
 
-  notificationTimes.forEach((time) => {
-    cron.schedule(`0 ${time.split(":")[1]} ${time.split(":")[0]} * * *`, async () => {
-      try {
-        const users = await db.all(
-          "SELECT DISTINCT user_id FROM reminders WHERE target_date IS NULL",
-        );
+  const handleCronFactory = (cronService: TCronService) => async () => {
+    try {
+      const results = await cronService({
+        db,
+        jsonStringify: JSON.stringify,
+      });
 
-        for (const user of users) {
-          const reminders = await db.all(
-            "SELECT * FROM reminders WHERE user_id = ? AND target_date IS NULL",
-            [user.user_id],
-          );
-
-          if (reminders.length > 0) {
-            const message = `Your daily reminders:\n${reminders.map((r) => r.content).join("\n")}`;
-            void bot.sendMessage(user.user_id, message);
-          }
-        }
-      } catch (error) {
-        console.error("Error in daily notification:", error);
+      for (const [chatId, response] of results) {
+        void bot.sendMessage(chatId, response);
       }
-    });
-  });
+    } catch (error) {
+      console.error("Error during processing cron", error);
+    }
+  };
+
+  for (const cronService of schema.cronServices) {
+    const handleCron = handleCronFactory(cronService.service);
+
+    if (cronService.executeOnStart) {
+      void handleCron();
+    }
+
+    for (const cronTime of cronService.cron) {
+      cron.schedule(cronTime, handleCron);
+    }
+  }
 }
 
 main().catch((error) => {
