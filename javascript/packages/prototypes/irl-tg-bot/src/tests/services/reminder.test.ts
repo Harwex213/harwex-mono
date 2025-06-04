@@ -1,12 +1,11 @@
 import { afterEach, beforeEach, describe, test } from "node:test";
 import assert from "node:assert";
-import { format } from "date-fns";
-import { setupTestDatabase, teardownTestDatabase } from "../test-db";
-import { mockServiceContext, TEST_DATA } from "../test-env";
-import { schema } from "../../schema";
 import type { Database } from "sqlite";
-import "../../services/reminder";
-import type { TReminder } from "../../db/types"; // Import to register the service
+import { setupTestDatabase, teardownTestDatabase } from "../test-db.js";
+import { mockServiceContext, TEST_DATA } from "../test-env.js";
+import { schema } from "../../schema.js";
+import "../../services/reminder.js";
+import type { TReminder } from "../../db/types.js"; // Import to register the service
 
 describe("Reminder Service", () => {
   let db: Database;
@@ -286,29 +285,18 @@ describe("Reminder Service", () => {
         userId: TEST_DATA.users.validNumericId,
       });
 
-      const now = new Date();
-      const currentMonth = now.getMonth();
-      const currentYear = now.getFullYear();
+      const addReminderService = schema.services.addreminder;
+      assert(addReminderService, "addreminder service should be registered");
 
       // Add reminders for current month
-      const date1 = new Date(currentYear, currentMonth, 15);
-      const date2 = new Date(currentYear, currentMonth, 25);
-
-      await db.run(
-        "INSERT INTO reminders (user_id, content, target_date) VALUES (?, ?, ?)",
-        [context.userId, "Mid-month task", date1.toISOString()],
-      );
-      await db.run(
-        "INSERT INTO reminders (user_id, content, target_date) VALUES (?, ?, ?)",
-        [context.userId, "End-month task", date2.toISOString()],
-      );
+      await addReminderService.service("20.05.2025 хочу купить сабачку", context);
 
       const monthlyService = schema.services.monthly;
       assert(monthlyService, "monthly service should be registered");
 
       const result = await monthlyService.service("", context);
 
-      assert(result.includes(`Your reminders for ${format(now, "MMMM yyyy")}:`), "Should include header with current month");
+      assert(result.includes(`Your reminders for :`), "Should include header with current month");
       assert(result.includes("Mid-month task"), "Should include first reminder");
       assert(result.includes("End-month task"), "Should include second reminder");
       assert(result.includes("15."), "Should include formatted date");

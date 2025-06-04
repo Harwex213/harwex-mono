@@ -1,6 +1,6 @@
 import { open } from "sqlite";
 import sqlite3 from "sqlite3";
-import { applyDatabaseSchema } from "./schema";
+import { applyDatabaseSchema } from "./schema.js";
 
 async function initializeDatabase() {
   const db = await open({
