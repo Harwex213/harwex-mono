@@ -1,5 +1,5 @@
 {
-  "extends": "@hw/typescript-config/base.json",
+  "extends": "@hw/typescript-config/node.json",
   "include": [
     "./src/**/*"
   ]

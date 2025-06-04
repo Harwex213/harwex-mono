@@ -1,7 +1,7 @@
 import type { Database } from "sqlite";
 import { open } from "sqlite";
 import sqlite3 from "sqlite3";
-import { applyDatabaseSchema } from "../db/schema";
+import { applyDatabaseSchema } from "../db/schema.js";
 
 /**
  * Creates a clean test database for each test.
