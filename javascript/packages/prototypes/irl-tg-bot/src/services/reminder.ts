@@ -1,7 +1,8 @@
 import { format, isValid as isDateValid, parse } from "date-fns";
-import { schema } from "../schema";
-import type { TReminder, TReminderWithChatId } from "../db/types";
-import { EReminderError } from "../errors";
+import { schema } from "../schema.js";
+import type { TReminder, TReminderWithChatId } from "../db/types.js";
+import { EReminderError } from "../errors.js";
+import { logger } from "../logger.js";
 
 schema.declare(
   "addreminder",
@@ -65,12 +66,14 @@ schema.declare(
     const { userId, db } = ctx;
 
     const now = new Date();
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-    const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+    const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString();
+
+    logger.info(`Fetching monthly reminders for user ${userId} with params [${startOfMonth}, ${endOfMonth}]`);
 
     const reminders = await db.all<TReminder[]>(
       "SELECT * FROM reminders WHERE user_id = ? AND target_date BETWEEN ? AND ?",
-      [userId, startOfMonth.toISOString(), endOfMonth.toISOString()],
+      [userId, startOfMonth, endOfMonth],
     );
 
     if (reminders.length === 0) {

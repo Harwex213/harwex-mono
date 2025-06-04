@@ -1,5 +1,5 @@
-import { schema } from "../schema";
-import type { TUser } from "../db/types";
+import { schema } from "../schema.js";
+import type { TUser } from "../db/types.js";
 
 schema.cron(
   [],

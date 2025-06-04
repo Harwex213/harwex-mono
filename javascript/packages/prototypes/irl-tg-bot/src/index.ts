@@ -1,16 +1,17 @@
 import TelegramBot from "node-telegram-bot-api";
 import { config } from "@dotenvx/dotenvx";
 import cron from "node-cron";
-import { schema, type TCronService } from "./schema";
-import { initializeDatabase } from "./db/init";
-import "./services/index";
+import { schema, type TCronService } from "./schema.js";
+import { initializeDatabase } from "./db/init.js";
+import { logger } from "./logger.js";
+import "./services/index.js";
 
 async function main() {
   config();
 
   const botToken = process.env.TELEGRAM_BOT_TOKEN;
 
-  console.log("token", botToken);
+  logger.debug("token", botToken);
 
   if (!botToken) {
     throw new Error("No bot token provided");
@@ -18,7 +19,7 @@ async function main() {
 
   const db = await initializeDatabase();
 
-  console.log("Database initialized successfully");
+  logger.info("Database initialized successfully");
 
   const bot = new TelegramBot(botToken, { polling: true });
 
@@ -29,7 +30,7 @@ async function main() {
 
   await bot.setMyCommands(commands);
 
-  console.log("Bot is running...");
+  logger.info("Bot is running...");
 
   const handleMessage = async (msg: TelegramBot.Message, match: RegExpExecArray | null) => {
     if (!match || !msg.from) {
@@ -73,7 +74,7 @@ async function main() {
         void bot.sendMessage(chatId, response);
       }
     } catch (error) {
-      console.error("Error during processing cron", error);
+      logger.error("Error during processing cron", error);
     }
   };
 
@@ -91,5 +92,5 @@ async function main() {
 }
 
 main().catch((error) => {
-  console.error(error);
+  logger.error(error);
 });
