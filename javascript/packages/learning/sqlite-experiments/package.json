@@ -1,0 +1,10 @@
+{
+  "name": "@hw/sqlite-experiments",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "dependencies": {
+    "sqlite": "5.1.1",
+    "sqlite3": "5.1.7"
+  }
+}
