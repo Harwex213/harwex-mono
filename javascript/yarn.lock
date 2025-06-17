@@ -845,6 +845,15 @@ __metadata:
   languageName: unknown
   linkType: soft
 
+"@hw/sqlite-experiments@workspace:packages/learning/sqlite-experiments":
+  version: 0.0.0-use.local
+  resolution: "@hw/sqlite-experiments@workspace:packages/learning/sqlite-experiments"
+  dependencies:
+    sqlite: "npm:5.1.1"
+    sqlite3: "npm:5.1.7"
+  languageName: unknown
+  linkType: soft
+
 "@hw/structures@workspace:packages/infrastructure/structures":
   version: 0.0.0-use.local
   resolution: "@hw/structures@workspace:packages/infrastructure/structures"
