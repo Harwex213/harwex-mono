@@ -1,7 +1,7 @@
 import type { Database } from "sqlite";
 import { open } from "sqlite";
 import sqlite3 from "sqlite3";
-import { applyDatabaseSchema } from "../db/schema.js";
+import { execStartSql } from "../db/init.js";
 
 /**
  * Creates a clean test database for each test.
@@ -13,8 +13,9 @@ async function setupTestDatabase(): Promise<Database> {
     driver: sqlite3.Database,
   });
 
-  // Apply the same schema as production
-  await applyDatabaseSchema(db);
+  await db.migrate();
+
+  await execStartSql(db);
 
   return db;
 }
