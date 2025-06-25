@@ -1,6 +1,7 @@
 {
   "extends": "@hw/typescript-config/node.json",
   "include": [
-    "./src/**/*"
+    "./src/**/*",
+    "./scripts/**/*"
   ]
 } 

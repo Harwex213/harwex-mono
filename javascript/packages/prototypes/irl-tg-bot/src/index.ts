@@ -1,8 +1,8 @@
 import TelegramBot from "node-telegram-bot-api";
 import { config } from "@dotenvx/dotenvx";
 import cron from "node-cron";
-import { schema, type TCronService } from "./schema.js";
-import { initializeDatabase } from "./db/init.js";
+import { schema, type TCronService } from "./services/definition/schema.js";
+import { initializeFileDatabase } from "./db/init.js";
 import { logger } from "./logger.js";
 import "./services/index.js";
 
@@ -17,7 +17,7 @@ async function main() {
     throw new Error("No bot token provided");
   }
 
-  const db = await initializeDatabase();
+  const db = await initializeFileDatabase();
 
   logger.info("Database initialized successfully");
 

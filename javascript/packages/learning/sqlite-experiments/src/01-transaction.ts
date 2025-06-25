@@ -61,4 +61,6 @@ import sqlite3 from "sqlite3";
               DEFAULT CURRENT_TIMESTAMP
       );
   `);
-})();
+})().catch((err) => {
+  console.error(err);
+});

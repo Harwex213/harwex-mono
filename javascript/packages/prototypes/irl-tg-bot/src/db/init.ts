@@ -1,17 +1,24 @@
-import { open } from "sqlite";
+import { type Database, open } from "sqlite";
 import sqlite3 from "sqlite3";
-import { applyDatabaseSchema } from "./schema.js";
 
-async function initializeDatabase() {
+async function execStartSql(db: Database) {
+  await db.exec(`
+    PRAGMA foreign_keys = ON;
+  `);
+}
+
+async function initializeFileDatabase() {
   const db = await open({
     filename: "reminders.db",
     driver: sqlite3.Database,
   });
 
-  // Apply the shared database schema
-  await applyDatabaseSchema(db);
+  await execStartSql(db);
 
   return db;
 }
 
-export { initializeDatabase };
+export {
+  initializeFileDatabase,
+  execStartSql,
+};

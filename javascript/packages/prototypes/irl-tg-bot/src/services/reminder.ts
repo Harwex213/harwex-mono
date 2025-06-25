@@ -1,12 +1,16 @@
 import { format, isValid as isDateValid, parse } from "date-fns";
-import { schema } from "../schema.js";
+import { schema } from "./definition/schema.js";
+import { CRON_JOB_IDS, SERVICE_IDS } from "./definition/service-ids.js";
 import type { TReminder, TReminderWithChatId } from "../db/types.js";
 import { EReminderError } from "../errors.js";
 import { logger } from "../logger.js";
 
 schema.declare(
-  "addreminder",
-  "Add a new reminder",
+  {
+    id: SERVICE_IDS.REMINDER_ADD,
+    command: "addreminder",
+    description: "Add a new reminder",
+  },
   async (input, ctx) => {
     if (!input) {
       throw new Error(EReminderError.ADD_REMINDER_EMPTY_INPUT);
@@ -39,8 +43,11 @@ schema.declare(
 );
 
 schema.declare(
-  "dailies",
-  "View all your daily reminders",
+  {
+    id: SERVICE_IDS.REMINDER_DAILIES,
+    command: "dailies",
+    description: "View all your daily reminders",
+  },
   async (_, ctx) => {
     const { userId, db } = ctx;
 
@@ -60,8 +67,11 @@ schema.declare(
 );
 
 schema.declare(
-  "monthly",
-  "View all your reminders for the current month",
+  {
+    id: SERVICE_IDS.REMINDER_MONTHLY,
+    command: "monthly",
+    description: "View all your reminders for the current month",
+  },
   async (_, ctx) => {
     const { userId, db } = ctx;
 
@@ -89,8 +99,11 @@ schema.declare(
 );
 
 schema.declare(
-  "deletereminder",
-  "Delete a reminder by its ID",
+  {
+    id: SERVICE_IDS.REMINDER_DELETE,
+    command: "deletereminder",
+    description: "Delete a reminder by its ID",
+  },
   async (input, ctx) => {
     const { userId, db } = ctx;
 
@@ -113,7 +126,7 @@ const notificationTimes: [string, string][] = [["00", "09"], ["00", "15"], ["00"
 
 schema.cron(
   notificationTimes.map(([minute, hour]) => `0 ${minute} ${hour} * * *`),
-  false,
+  { id: CRON_JOB_IDS.REMINDER_DAILY, executeOnStart: false },
   async ({ db }) => {
     const reminders = await db.all<TReminderWithChatId[]>(`
         SELECT reminders.id         as id,

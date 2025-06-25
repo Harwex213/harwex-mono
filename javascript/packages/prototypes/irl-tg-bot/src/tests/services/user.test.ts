@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, test } from "node:test";
 import assert from "node:assert";
 import type { Database } from "sqlite";
-import { schema } from "../../schema.js";
+import { schema } from "../../services/definition/schema.js";
 import { setupTestDatabase, teardownTestDatabase } from "../test-db.js";
 import { mockServiceContext, TEST_DATA } from "../test-env.js";
 import "../../services/user"; // Import to register the service

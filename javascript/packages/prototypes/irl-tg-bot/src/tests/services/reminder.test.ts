@@ -3,7 +3,7 @@ import assert from "node:assert";
 import type { Database } from "sqlite";
 import { setupTestDatabase, teardownTestDatabase } from "../test-db.js";
 import { mockServiceContext, TEST_DATA } from "../test-env.js";
-import { schema } from "../../schema.js";
+import { schema } from "../../services/definition/schema.js";
 import "../../services/reminder.js";
 import type { TReminder } from "../../db/types.js"; // Import to register the service
 
