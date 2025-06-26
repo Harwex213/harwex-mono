@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CSS Color Palette Viewer</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            height: 100vh;
+            background: #f5f5f5;
+        }
+
+        .container {
+            display: flex;
+            height: 100vh;
+        }
+
+        .left-panel {
+            flex: 1;
+            background: #ffffff;
+            border-right: 2px solid #e0e0e0;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .right-panel {
+            flex: 1;
+            background: #fafafa;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .panel-header {
+            padding: 16px 20px;
+            background: #2c3e50;
+            color: white;
+            font-weight: 600;
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .editor {
+            flex: 1;
+            resize: none;
+            border: none;
+            outline: none;
+            padding: 20px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            line-height: 1.5;
+            background: #ffffff;
+        }
+
+        .colors-container {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+        }
+
+        .color-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 12px;
+            padding: 12px;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            transition: transform 0.2s ease;
+        }
+
+        .color-item:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+        }
+
+        .color-swatch {
+            width: 50px;
+            height: 50px;
+            border-radius: 6px;
+            margin-right: 16px;
+            border: 2px solid #e0e0e0;
+            box-shadow: inset 0 1px 3px rgba(0,0,0,0.1);
+        }
+
+        .color-info {
+            flex: 1;
+        }
+
+        .color-name {
+            font-weight: 600;
+            color: #2c3e50;
+            margin-bottom: 4px;
+            font-size: 14px;
+        }
+
+        .comment {
+            font-weight: 400;
+            color: #95a5a6;
+            font-style: italic;
+            font-size: 13px;
+            margin-left: 4px;
+        }
+
+        .color-value {
+            color: #7f8c8d;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+        }
+
+        .no-colors {
+            text-align: center;
+            color: #95a5a6;
+            font-style: italic;
+            margin-top: 40px;
+        }
+
+        .error-message {
+            background: #e74c3c;
+            color: white;
+            padding: 12px 20px;
+            font-size: 14px;
+        }
+
+        .stats {
+            padding: 16px 20px;
+            background: #ecf0f1;
+            border-top: 1px solid #bdc3c7;
+            font-size: 12px;
+            color: #7f8c8d;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="left-panel">
+            <div class="panel-header">CSS Custom Properties Editor</div>
+            <textarea 
+                class="editor" 
+                id="cssInput" 
+                placeholder="Enter your CSS custom properties here...
+
+Example:
+* {
+  --catskill-white: #ECF0F5;
+  --crayola: #B0B7C5;
+  --primary-blue: #3498db;
+  --danger-red: rgb(231, 76, 60);
+  --success-green: hsl(145, 63%, 42%);
+}"
+            ></textarea>
+        </div>
+        
+        <div class="right-panel">
+            <div class="panel-header">Color Palette Display</div>
+            <div id="errorContainer"></div>
+            <div class="colors-container" id="colorsContainer">
+                <div class="no-colors">
+                    Enter CSS custom properties on the left to see colors here
+                </div>
+            </div>
+            <div class="stats" id="stats">
+                Ready to parse colors
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const cssInput = document.getElementById('cssInput');
+        const colorsContainer = document.getElementById('colorsContainer');
+        const errorContainer = document.getElementById('errorContainer');
+        const stats = document.getElementById('stats');
+
+        function isValidColor(color) {
+            const s = new Option().style;
+            s.color = color;
+            return s.color !== '';
+        }
+
+        function formatColorName(varName) {
+            return varName
+                .replace(/^--/, '')
+                .replace(/-/g, ' ')
+                .replace(/\b\w/g, l => l.toUpperCase());
+        }
+
+        function parseColors(cssText) {
+            const colors = [];
+            const errors = [];
+            
+            // Match CSS custom properties with color values and optional comments
+            const cssVarRegex = /--([a-zA-Z0-9-_]+)\s*:\s*([^;]+);\s*(\s*\/\*.+\*\/)*\n/g;
+            let match;
+            
+            while ((match = cssVarRegex.exec(cssText)) !== null) {
+                const varName = `--${match[1]}`;
+                const colorValue = match[2].trim();
+                const commentValue = match[3]?.trim() || '';
+
+                console.log('Color:', varName, 'Color Value:', colorValue, 'Comment Value:', commentValue);
+
+                let comment = '';
+                
+                // Look for comment pattern /* comment */
+                const commentMatch = commentValue.match(/^\/\*(.+)\*\/$/);
+                if (commentMatch) {
+                    comment = commentMatch[1].trim();
+                }
+                
+                if (isValidColor(colorValue)) {
+                    colors.push({
+                        name: varName,
+                        value: colorValue,
+                        displayName: formatColorName(varName),
+                        comment: comment
+                    });
+                } else {
+                    errors.push(`Invalid color value: ${colorValue} for ${varName}`);
+                }
+            }
+            
+            return { colors, errors };
+        }
+
+        function displayColors(colors) {
+            if (colors.length === 0) {
+                colorsContainer.innerHTML = '<div class="no-colors">No valid colors found</div>';
+                return;
+            }
+
+            colorsContainer.innerHTML = colors.map(color => {
+                const displayName = color.comment && color.comment.length > 0
+                    ? `${color.displayName} <span class="comment">(${color.comment})</span>`
+                    : color.displayName;
+                
+                return `
+                    <div class="color-item">
+                        <div class="color-swatch" style="background-color: ${color.value}"></div>
+                        <div class="color-info">
+                            <div class="color-name">${displayName}</div>
+                            <div class="color-value">${color.name}: ${color.value}</div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function displayErrors(errors) {
+            if (errors.length === 0) {
+                errorContainer.innerHTML = '';
+                return;
+            }
+
+            errorContainer.innerHTML = `
+                <div class="error-message">
+                    ${errors.join('<br>')}
+                </div>
+            `;
+        }
+
+        function updateStats(colors, errors) {
+            const colorCount = colors.length;
+            const errorCount = errors.length;
+            
+            let statsText = `Found ${colorCount} valid color${colorCount !== 1 ? 's' : ''}`;
+            if (errorCount > 0) {
+                statsText += `, ${errorCount} error${errorCount !== 1 ? 's' : ''}`;
+            }
+            
+            stats.textContent = statsText;
+        }
+
+        function updateDisplay() {
+            const cssText = cssInput.value;
+            const { colors, errors } = parseColors(cssText);
+            
+            displayColors(colors);
+            displayErrors(errors);
+            updateStats(colors, errors);
+        }
+
+        function saveToLocalStorage() {
+            localStorage.setItem('cssColorPaletteInput', cssInput.value);
+        }
+
+        function loadFromLocalStorage() {
+            const savedInput = localStorage.getItem('cssColorPaletteInput');
+            return savedInput;
+        }
+
+        // Update display and save to localStorage on input
+        cssInput.addEventListener('input', () => {
+            updateDisplay();
+            saveToLocalStorage();
+        });
+
+        // Load saved content or use sample content as fallback
+        function initializeEditor() {
+            const savedContent = loadFromLocalStorage();
+            
+            if (savedContent) {
+                cssInput.value = savedContent;
+            } else {
+                // Add sample content for demonstration if no saved content
+                cssInput.value = `* {
+  --catskill-white: #ECF0F5; /* neutral-100 */
+  --crayola: #B0B7C5; /* neutral-200 */
+  --raven: #797F8B; /* neutral-300 */
+  --background: #14171F;
+  --independence: #465069;
+  --grey-background: #2F394C;
+  --onyx: #34373F; /* dark theme */
+  --dark-grey: #20242E;
+  --dark-gunmetal2: #23242B;
+  --grey-text: #65738d; /* muted text */
+  --eerie-black: #1A1B1E;
+  --cadet-grey: #8B9EA7;
+  --outer-space: #2E3442; /* card background */
+}`;
+            }
+            
+            // Initial display
+            updateDisplay();
+        }
+
+        // Initialize the editor and display
+        initializeEditor();
+    </script>
+</body>
+</html>
