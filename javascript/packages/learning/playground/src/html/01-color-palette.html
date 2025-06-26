@@ -196,7 +196,7 @@ Example:
             const errors = [];
             
             // Match CSS custom properties with color values and optional comments
-            const cssVarRegex = /--([a-zA-Z0-9-_]+)\s*:\s*([^;]+);(\s*\/\*.+\*\/)*\n/g;
+            const cssVarRegex = /--([a-zA-Z0-9-_]+)\s*:\s*([^;]+);\s*(\s*\/\*.+\*\/)*\n/g;
             let match;
             
             while ((match = cssVarRegex.exec(cssText)) !== null) {
@@ -286,11 +286,30 @@ Example:
             updateStats(colors, errors);
         }
 
-        // Update display on input
-        cssInput.addEventListener('input', updateDisplay);
+        function saveToLocalStorage() {
+            localStorage.setItem('cssColorPaletteInput', cssInput.value);
+        }
 
-        // Add some sample content for demonstration
-        cssInput.value = `* {
+        function loadFromLocalStorage() {
+            const savedInput = localStorage.getItem('cssColorPaletteInput');
+            return savedInput;
+        }
+
+        // Update display and save to localStorage on input
+        cssInput.addEventListener('input', () => {
+            updateDisplay();
+            saveToLocalStorage();
+        });
+
+        // Load saved content or use sample content as fallback
+        function initializeEditor() {
+            const savedContent = loadFromLocalStorage();
+            
+            if (savedContent) {
+                cssInput.value = savedContent;
+            } else {
+                // Add sample content for demonstration if no saved content
+                cssInput.value = `* {
   --catskill-white: #ECF0F5; /* neutral-100 */
   --crayola: #B0B7C5; /* neutral-200 */
   --raven: #797F8B; /* neutral-300 */
@@ -305,9 +324,14 @@ Example:
   --cadet-grey: #8B9EA7;
   --outer-space: #2E3442; /* card background */
 }`;
+            }
+            
+            // Initial display
+            updateDisplay();
+        }
 
-        // Initial display
-        updateDisplay();
+        // Initialize the editor and display
+        initializeEditor();
     </script>
 </body>
 </html>
