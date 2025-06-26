@@ -101,6 +101,14 @@
             font-size: 14px;
         }
 
+        .comment {
+            font-weight: 400;
+            color: #95a5a6;
+            font-style: italic;
+            font-size: 13px;
+            margin-left: 4px;
+        }
+
         .color-value {
             color: #7f8c8d;
             font-family: 'Courier New', monospace;
@@ -187,19 +195,31 @@ Example:
             const colors = [];
             const errors = [];
             
-            // Match CSS custom properties with color values
-            const cssVarRegex = /--([a-zA-Z0-9-_]+)\s*:\s*([^;]+);/g;
+            // Match CSS custom properties with color values and optional comments
+            const cssVarRegex = /--([a-zA-Z0-9-_]+)\s*:\s*([^;]+);(\s*\/\*.+\*\/)*\n/g;
             let match;
             
             while ((match = cssVarRegex.exec(cssText)) !== null) {
                 const varName = `--${match[1]}`;
                 const colorValue = match[2].trim();
+                const commentValue = match[3]?.trim() || '';
+
+                console.log('Color:', varName, 'Color Value:', colorValue, 'Comment Value:', commentValue);
+
+                let comment = '';
+                
+                // Look for comment pattern /* comment */
+                const commentMatch = commentValue.match(/^\/\*(.+)\*\/$/);
+                if (commentMatch) {
+                    comment = commentMatch[1].trim();
+                }
                 
                 if (isValidColor(colorValue)) {
                     colors.push({
                         name: varName,
                         value: colorValue,
-                        displayName: formatColorName(varName)
+                        displayName: formatColorName(varName),
+                        comment: comment
                     });
                 } else {
                     errors.push(`Invalid color value: ${colorValue} for ${varName}`);
@@ -215,15 +235,21 @@ Example:
                 return;
             }
 
-            colorsContainer.innerHTML = colors.map(color => `
-                <div class="color-item">
-                    <div class="color-swatch" style="background-color: ${color.value}"></div>
-                    <div class="color-info">
-                        <div class="color-name">${color.displayName}</div>
-                        <div class="color-value">${color.name}: ${color.value}</div>
+            colorsContainer.innerHTML = colors.map(color => {
+                const displayName = color.comment && color.comment.length > 0
+                    ? `${color.displayName} <span class="comment">(${color.comment})</span>`
+                    : color.displayName;
+                
+                return `
+                    <div class="color-item">
+                        <div class="color-swatch" style="background-color: ${color.value}"></div>
+                        <div class="color-info">
+                            <div class="color-name">${displayName}</div>
+                            <div class="color-value">${color.name}: ${color.value}</div>
+                        </div>
                     </div>
-                </div>
-            `).join('');
+                `;
+            }).join('');
         }
 
         function displayErrors(errors) {
@@ -265,14 +291,19 @@ Example:
 
         // Add some sample content for demonstration
         cssInput.value = `* {
-  --catskill-white: #ECF0F5;
-  --crayola: #B0B7C5;
-  --primary-blue: #3498db;
-  --secondary-green: #2ecc71;
-  --warning-orange: #f39c12;
-  --danger-red: #e74c3c;
-  --dark-gray: #34495e;
-  --light-gray: #ecf0f1;
+  --catskill-white: #ECF0F5; /* neutral-100 */
+  --crayola: #B0B7C5; /* neutral-200 */
+  --raven: #797F8B; /* neutral-300 */
+  --background: #14171F;
+  --independence: #465069;
+  --grey-background: #2F394C;
+  --onyx: #34373F; /* dark theme */
+  --dark-grey: #20242E;
+  --dark-gunmetal2: #23242B;
+  --grey-text: #65738d; /* muted text */
+  --eerie-black: #1A1B1E;
+  --cadet-grey: #8B9EA7;
+  --outer-space: #2E3442; /* card background */
 }`;
 
         // Initial display
