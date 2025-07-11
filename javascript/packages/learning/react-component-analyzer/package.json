@@ -1,0 +1,16 @@
+{
+  "name": "@hw/react-component-analyzer",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "dependencies": {
+    "@typescript-eslint/parser": "8.36.0",
+    "@typescript-eslint/types": "8.36.0",
+    "typescript": "5.8.3"
+  },
+  "devDependencies": {
+    "@hw/eslint-config": "workspace:*",
+    "@hw/typescript-config": "workspace:*",
+    "tsx": "4.19.4"
+  }
+}
