@@ -599,6 +599,19 @@ __metadata:
   languageName: unknown
   linkType: soft
 
+"@hw/exports-imports-analyzer@workspace:packages/learning/exports-imports-analyzer":
+  version: 0.0.0-use.local
+  resolution: "@hw/exports-imports-analyzer@workspace:packages/learning/exports-imports-analyzer"
+  dependencies:
+    "@hw/eslint-config": "workspace:*"
+    "@hw/typescript-config": "workspace:*"
+    "@typescript-eslint/parser": "npm:8.36.0"
+    "@typescript-eslint/types": "npm:8.36.0"
+    tsx: "npm:4.19.4"
+    typescript: "npm:5.8.3"
+  languageName: unknown
+  linkType: soft
+
 "@hw/fantasy-map@workspace:packages/prototypes/fantasy-map":
   version: 0.0.0-use.local
   resolution: "@hw/fantasy-map@workspace:packages/prototypes/fantasy-map"

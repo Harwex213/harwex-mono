@@ -1,0 +1,28 @@
+{
+  "name": "@hw/exports-imports-analyzer",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "main": "./src/index.ts",
+  "bin": {
+    "exports-imports-analyzer": "./src/index.ts"
+  },
+  "scripts": {
+    "build": "tsc",
+    "extract-exports": "tsx src/index.ts extract-exports",
+    "analyze-usage": "tsx src/index.ts analyze-usage",
+    "generate-report": "tsx src/index.ts generate-report",
+    "full-analysis": "tsx src/index.ts full-analysis",
+    "test": "tsx src/test-example.ts"
+  },
+  "dependencies": {
+    "@typescript-eslint/parser": "8.36.0",
+    "@typescript-eslint/types": "8.36.0",
+    "typescript": "5.8.3"
+  },
+  "devDependencies": {
+    "@hw/eslint-config": "workspace:*",
+    "@hw/typescript-config": "workspace:*",
+    "tsx": "4.19.4"
+  }
+}
