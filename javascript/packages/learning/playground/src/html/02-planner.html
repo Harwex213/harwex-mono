@@ -42,7 +42,7 @@
 
       .sidebar {
         border-right: 1px solid var(--border);
-        background: linear-gradient(180deg, rgba(17,24,39,0.9), rgba(11,18,32,0.9));
+        background: var(--panel);
         padding: 14px 14px 24px 14px;
         overflow: auto;
       }
@@ -55,7 +55,7 @@
       }
 
       .panel {
-        background: linear-gradient(180deg, rgba(17,24,39,0.7), rgba(11,18,32,0.7));
+        background: var(--panel);
         border: 1px solid var(--border);
         border-radius: 14px;
         box-shadow: 0 10px 30px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.03);
@@ -83,7 +83,7 @@
       .controls { display: flex; gap: 8px; align-items: center; }
       .btn {
         border: 1px solid var(--border);
-        background: linear-gradient(180deg, rgba(17,24,39,0.8), rgba(17,24,39,0.6));
+        background: var(--panel);
         color: var(--text);
         padding: 6px 10px;
         border-radius: 10px;
@@ -94,14 +94,8 @@
         border-color: rgba(96,165,250,0.5);
         box-shadow: 0 0 0 3px rgba(96,165,250,0.15) inset;
       }
-      .btn.primary {
-        border-color: rgba(34,211,238,0.35);
-        background: linear-gradient(180deg, rgba(34,211,238,0.15), rgba(34,211,238,0.05));
-      }
-      .btn.danger {
-        border-color: rgba(248,113,113,0.35);
-        background: linear-gradient(180deg, rgba(248,113,113,0.15), rgba(248,113,113,0.05));
-      }
+      .btn.primary { border-color: rgba(34,211,238,0.55); }
+      .btn.danger { border-color: rgba(248,113,113,0.55); }
 
       /* Months chooser */
       .year-nav { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
@@ -116,7 +110,7 @@
         padding: 10px 8px;
         border-radius: 12px;
         border: 1px solid var(--border);
-        background: linear-gradient(180deg, rgba(17,24,39,0.6), rgba(17,24,39,0.4));
+        background: var(--panel);
         color: var(--text);
         text-align: center;
         cursor: pointer;
@@ -124,7 +118,7 @@
         user-select: none;
       }
       .month-btn:hover { border-color: rgba(34,211,238,0.35); box-shadow: 0 0 0 3px rgba(34,211,238,0.12) inset; }
-      .month-btn.active { border-color: var(--accent-2); background: linear-gradient(180deg, rgba(96,165,250,0.25), rgba(96,165,250,0.08)); }
+      .month-btn.active { border-color: var(--accent-2); }
       .month-btn .month-badge {
         position: absolute;
         top: -7px;
@@ -134,8 +128,8 @@
         padding: 0 6px;
         border-radius: 999px;
         border: 1px solid var(--note-pill-border);
-        background: linear-gradient(180deg, rgba(34,211,238,0.18), rgba(34,211,238,0.06));
-        color: var(--text);
+        background: var(--accent-2);
+        color: #07121e;
         font-size: 11px;
         display: flex;
         align-items: center;
@@ -160,7 +154,7 @@
         padding: 8px 8px 6px 8px;
         border-radius: 12px;
         border: 1px solid var(--border);
-        background: linear-gradient(180deg, rgba(17,24,39,0.55), rgba(11,18,32,0.45));
+        background: var(--panel);
         user-select: none;
         cursor: default;
         overflow: hidden;
@@ -175,7 +169,7 @@
         font-size: 12px;
         line-height: 1.35;
         color: var(--text);
-        background: var(--note-pill);
+        background: var(--panel-2);
         border: 1px solid var(--note-pill-border);
         border-radius: 8px;
         padding: 6px 8px;
@@ -202,7 +196,7 @@
       .modal-backdrop.show { display: flex; }
       .modal {
         width: min(680px, 92vw);
-        background: linear-gradient(180deg, rgba(17,24,39,0.95), rgba(11,18,32,0.95));
+        background: var(--panel);
         border: 1px solid var(--border);
         border-radius: 14px;
         box-shadow: 0 15px 45px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.04);
@@ -217,14 +211,14 @@
         padding: 10px 12px;
         border-radius: 10px;
         color: var(--text);
-        background: rgba(15,23,42,0.65);
+        background: var(--panel-2);
         border: 1px solid var(--border);
         outline: none;
       }
       .modal .foot { padding: 12px 14px; border-top: 1px solid var(--border); display: flex; gap: 8px; justify-content: flex-end; }
 
       .legend { display: flex; gap: 10px; align-items: center; padding: 0 14px 8px 14px; color: var(--muted); font-size: 12px; }
-      .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; margin-right: 6px; background: var(--note-pill-border); }
+      .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; margin-right: 6px; background: var(--accent-2); }
 
       @media (max-width: 920px) {
         .app { grid-template-columns: 1fr; }
