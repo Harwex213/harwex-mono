@@ -112,6 +112,7 @@
         gap: 10px;
       }
       .month-btn {
+        position: relative;
         padding: 10px 8px;
         border-radius: 12px;
         border: 1px solid var(--border);
@@ -124,6 +125,23 @@
       }
       .month-btn:hover { border-color: rgba(34,211,238,0.35); box-shadow: 0 0 0 3px rgba(34,211,238,0.12) inset; }
       .month-btn.active { border-color: var(--accent-2); background: linear-gradient(180deg, rgba(96,165,250,0.25), rgba(96,165,250,0.08)); }
+      .month-btn .month-badge {
+        position: absolute;
+        top: -7px;
+        right: -7px;
+        min-width: 22px;
+        height: 22px;
+        padding: 0 6px;
+        border-radius: 999px;
+        border: 1px solid var(--note-pill-border);
+        background: linear-gradient(180deg, rgba(34,211,238,0.18), rgba(34,211,238,0.06));
+        color: var(--text);
+        font-size: 11px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 4px 14px rgba(0,0,0,0.35);
+      }
 
       /* Calendar */
       .calendar {
@@ -420,6 +438,12 @@
             btn.className = 'month-btn' + (i === viewMonthIndex ? ' active' : '');
             btn.textContent = monthsShort[i];
             btn.dataset.month = String(i);
+            const free = countFreeDays(viewYear, i);
+            const badge = document.createElement('span');
+            badge.className = 'month-badge';
+            badge.textContent = String(free);
+            badge.title = `${free} free day${free === 1 ? '' : 's'}`;
+            btn.appendChild(badge);
             btn.addEventListener('click', () => {
               viewMonthIndex = i;
               persistLastView();
@@ -574,6 +598,7 @@
           }
           saveNotes();
           renderCalendar();
+          renderMonthsChooser();
         }
 
         function getDaysInMonth(year, monthIndex, forcedYear) {
@@ -614,6 +639,17 @@
             cursor.setDate(cursor.getDate() + 1);
           }
           return keys;
+        }
+
+        function countFreeDays(year, monthIndex) {
+          const days = getDaysInMonth(year, monthIndex);
+          let free = 0;
+          for (let d = 1; d <= days; d++) {
+            const key = `${year}-${String(monthIndex + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+            const val = notesMap[key];
+            if (!val || val.trim().length === 0) free++;
+          }
+          return free;
         }
       })();
     </script>
