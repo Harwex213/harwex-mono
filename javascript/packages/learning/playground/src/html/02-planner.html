@@ -1,0 +1,623 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Planner</title>
+    <style>
+      :root {
+        --bg: #0f172a; /* slate-900 */
+        --panel: #111827; /* gray-900 */
+        --panel-2: #0b1220; /* darker */
+        --text: #e5e7eb; /* gray-200 */
+        --muted: #9ca3af; /* gray-400 */
+        --accent: #22d3ee; /* cyan-400 */
+        --accent-2: #60a5fa; /* blue-400 */
+        --danger: #f87171; /* red-400 */
+        --ok: #34d399; /* emerald-400 */
+        --border: #1f2937; /* gray-800 */
+        --select: rgba(96, 165, 250, 0.25);
+        --today: rgba(34, 211, 238, 0.2);
+        --note-pill: rgba(34, 211, 238, 0.12);
+        --note-pill-border: rgba(34, 211, 238, 0.35);
+      }
+
+      * { box-sizing: border-box; }
+      html, body { height: 100%; }
+      body {
+        margin: 0;
+        background: radial-gradient(1200px 800px at 80% -10%, rgba(96,165,250,0.10), transparent 60%),
+                    radial-gradient(1200px 900px at 0% 0%, rgba(34,211,238,0.10), transparent 45%),
+                    var(--bg);
+        color: var(--text);
+        font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Helvetica Neue, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+      }
+
+      .app {
+        display: grid;
+        grid-template-columns: 320px 1fr;
+        gap: 10px;
+        height: 100%;
+      }
+
+      .sidebar {
+        border-right: 1px solid var(--border);
+        background: linear-gradient(180deg, rgba(17,24,39,0.9), rgba(11,18,32,0.9));
+        padding: 14px 14px 24px 14px;
+        overflow: auto;
+      }
+
+      .main {
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+        padding: 14px 18px 24px 6px;
+      }
+
+      .panel {
+        background: linear-gradient(180deg, rgba(17,24,39,0.7), rgba(11,18,32,0.7));
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.03);
+      }
+
+      .sidebar .panel {
+        padding: 12px;
+      }
+
+      .header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        padding: 10px 14px;
+      }
+
+      .title {
+        font-weight: 600;
+        letter-spacing: 0.3px;
+      }
+
+      .muted { color: var(--muted); }
+
+      .controls { display: flex; gap: 8px; align-items: center; }
+      .btn {
+        border: 1px solid var(--border);
+        background: linear-gradient(180deg, rgba(17,24,39,0.8), rgba(17,24,39,0.6));
+        color: var(--text);
+        padding: 6px 10px;
+        border-radius: 10px;
+        cursor: pointer;
+        transition: 120ms ease;
+      }
+      .btn:hover {
+        border-color: rgba(96,165,250,0.5);
+        box-shadow: 0 0 0 3px rgba(96,165,250,0.15) inset;
+      }
+      .btn.primary {
+        border-color: rgba(34,211,238,0.35);
+        background: linear-gradient(180deg, rgba(34,211,238,0.15), rgba(34,211,238,0.05));
+      }
+      .btn.danger {
+        border-color: rgba(248,113,113,0.35);
+        background: linear-gradient(180deg, rgba(248,113,113,0.15), rgba(248,113,113,0.05));
+      }
+
+      /* Months chooser */
+      .year-nav { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
+      .year-label { font-weight: 600; font-size: 16px; }
+      .months-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 10px;
+      }
+      .month-btn {
+        padding: 10px 8px;
+        border-radius: 12px;
+        border: 1px solid var(--border);
+        background: linear-gradient(180deg, rgba(17,24,39,0.6), rgba(17,24,39,0.4));
+        color: var(--text);
+        text-align: center;
+        cursor: pointer;
+        transition: 120ms ease;
+        user-select: none;
+      }
+      .month-btn:hover { border-color: rgba(34,211,238,0.35); box-shadow: 0 0 0 3px rgba(34,211,238,0.12) inset; }
+      .month-btn.active { border-color: var(--accent-2); background: linear-gradient(180deg, rgba(96,165,250,0.25), rgba(96,165,250,0.08)); }
+
+      /* Calendar */
+      .calendar {
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+      }
+      .calendar-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; }
+      .month-title { font-size: 18px; font-weight: 600; letter-spacing: 0.3px; }
+      .weekday-row, .weeks { padding: 0 12px 12px 12px; }
+      .weekday-row { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; color: var(--muted); font-size: 13px; }
+      .weeks { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; }
+      .day {
+        position: relative;
+        min-height: 92px;
+        padding: 8px 8px 6px 8px;
+        border-radius: 12px;
+        border: 1px solid var(--border);
+        background: linear-gradient(180deg, rgba(17,24,39,0.55), rgba(11,18,32,0.45));
+        user-select: none;
+        cursor: default;
+        overflow: hidden;
+      }
+      .day:hover { border-color: rgba(96,165,250,0.4); }
+      .day.outside { opacity: 0.4; }
+      .day .num { font-size: 12px; color: var(--muted); }
+      .day.today { box-shadow: 0 0 0 2px var(--today) inset; }
+      .day.selected { background: linear-gradient(180deg, rgba(96,165,250,0.22), rgba(96,165,250,0.10)); border-color: rgba(96,165,250,0.5); }
+      .day .note {
+        margin-top: 6px;
+        font-size: 12px;
+        line-height: 1.35;
+        color: var(--text);
+        background: var(--note-pill);
+        border: 1px solid var(--note-pill-border);
+        border-radius: 8px;
+        padding: 6px 8px;
+        display: -webkit-box;
+        line-clamp: 4;
+        -webkit-line-clamp: 4;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: normal;
+      }
+
+      /* Modal */
+      .modal-backdrop {
+        position: fixed;
+        inset: 0;
+        background: rgba(2,6,23,0.65);
+        backdrop-filter: blur(3px);
+        display: none;
+        align-items: center;
+        justify-content: center;
+        z-index: 50;
+      }
+      .modal-backdrop.show { display: flex; }
+      .modal {
+        width: min(680px, 92vw);
+        background: linear-gradient(180deg, rgba(17,24,39,0.95), rgba(11,18,32,0.95));
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        box-shadow: 0 15px 45px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.04);
+        overflow: hidden;
+      }
+      .modal .head { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; border-bottom: 1px solid var(--border); }
+      .modal .body { padding: 14px; }
+      .modal textarea {
+        width: 100%;
+        min-height: 140px;
+        resize: vertical;
+        padding: 10px 12px;
+        border-radius: 10px;
+        color: var(--text);
+        background: rgba(15,23,42,0.65);
+        border: 1px solid var(--border);
+        outline: none;
+      }
+      .modal .foot { padding: 12px 14px; border-top: 1px solid var(--border); display: flex; gap: 8px; justify-content: flex-end; }
+
+      .legend { display: flex; gap: 10px; align-items: center; padding: 0 14px 8px 14px; color: var(--muted); font-size: 12px; }
+      .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; margin-right: 6px; background: var(--note-pill-border); }
+
+      @media (max-width: 920px) {
+        .app { grid-template-columns: 1fr; }
+        .sidebar { border-right: 0; border-bottom: 1px solid var(--border); }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app">
+      <aside class="sidebar">
+        <div class="panel">
+          <div class="year-nav">
+            <button class="btn" id="prevYearBtn" title="Previous year">⟨</button>
+            <div class="year-label" id="yearLabel"></div>
+            <button class="btn" id="nextYearBtn" title="Next year">⟩</button>
+          </div>
+          <div class="months-grid" id="monthsGrid"></div>
+        </div>
+      </aside>
+      <main class="main">
+        <div class="panel calendar">
+          <div class="calendar-header">
+            <div class="month-title" id="monthTitle"></div>
+            <div class="controls">
+              <button class="btn" id="prevMonthBtn" title="Previous month">⟨</button>
+              <button class="btn" id="todayBtn" title="Jump to today">Today</button>
+              <button class="btn" id="nextMonthBtn" title="Next month">⟩</button>
+            </div>
+          </div>
+          <div class="legend">
+            <span><span class="dot"></span>Note</span>
+            <span>Drag to select a range. Release to add or clear a note.</span>
+          </div>
+          <div class="weekday-row" id="weekdayRow"></div>
+          <div class="weeks" id="weeksGrid"></div>
+        </div>
+      </main>
+    </div>
+
+    <div class="modal-backdrop" id="noteModal">
+      <div class="modal">
+        <div class="head">
+          <div class="title" id="modalTitle">Add note</div>
+          <button class="btn" id="closeModalBtn">✕</button>
+        </div>
+        <div class="body">
+          <div class="muted" id="selectionSummary" style="margin-bottom:8px"></div>
+          <textarea id="noteText" placeholder="Type your note..."></textarea>
+        </div>
+        <div class="foot">
+          <button class="btn danger" id="clearNoteBtn" title="Remove note for selected dates">Clear</button>
+          <button class="btn primary" id="saveNoteBtn">Save</button>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      (function () {
+        const STORAGE_KEY_NOTES = 'planner.notes.v1';
+        const STORAGE_KEY_LAST_VIEW = 'planner.lastView.v1';
+
+        const monthsShort = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+        const monthsLong = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+        const weekdaysShort = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+
+        const now = new Date();
+        let viewYear = now.getFullYear();
+        let viewMonthIndex = now.getMonth(); // 0-11
+
+        // Attempt to restore last view
+        try {
+          const savedView = JSON.parse(localStorage.getItem(STORAGE_KEY_LAST_VIEW) || 'null');
+          if (savedView && Number.isInteger(savedView.year) && Number.isInteger(savedView.month)) {
+            viewYear = savedView.year;
+            viewMonthIndex = savedView.month;
+          }
+        } catch (_) {}
+
+        let notesMap = loadNotes(); // { 'YYYY-MM-DD': 'note text' }
+
+        // Selection state
+        let isSelecting = false;
+        let selectionStartKey = null;
+        let selectionEndKey = null;
+        let selectedKeys = new Set();
+
+        // Elements
+        const yearLabel = document.getElementById('yearLabel');
+        const monthsGrid = document.getElementById('monthsGrid');
+        const prevYearBtn = document.getElementById('prevYearBtn');
+        const nextYearBtn = document.getElementById('nextYearBtn');
+        const monthTitle = document.getElementById('monthTitle');
+        const prevMonthBtn = document.getElementById('prevMonthBtn');
+        const nextMonthBtn = document.getElementById('nextMonthBtn');
+        const todayBtn = document.getElementById('todayBtn');
+        const weekdayRow = document.getElementById('weekdayRow');
+        const weeksGrid = document.getElementById('weeksGrid');
+
+        const noteModal = document.getElementById('noteModal');
+        const modalTitle = document.getElementById('modalTitle');
+        const selectionSummary = document.getElementById('selectionSummary');
+        const noteText = document.getElementById('noteText');
+        const closeModalBtn = document.getElementById('closeModalBtn');
+        const saveNoteBtn = document.getElementById('saveNoteBtn');
+        const clearNoteBtn = document.getElementById('clearNoteBtn');
+
+        // Initialize
+        renderWeekdayHeader();
+        renderMonthsChooser();
+        renderCalendar();
+
+        // Events - months chooser
+        prevYearBtn.addEventListener('click', () => { viewYear--; renderMonthsChooser(); });
+        nextYearBtn.addEventListener('click', () => { viewYear++; renderMonthsChooser(); });
+
+        // Events - calendar navigation
+        prevMonthBtn.addEventListener('click', () => shiftMonth(-1));
+        nextMonthBtn.addEventListener('click', () => shiftMonth(1));
+        todayBtn.addEventListener('click', () => {
+          const t = new Date();
+          viewYear = t.getFullYear();
+          viewMonthIndex = t.getMonth();
+          persistLastView();
+          syncYearToCalendar();
+          renderMonthsChooser();
+          renderCalendar();
+        });
+
+        // Selection finish on mouseup anywhere
+        document.addEventListener('mouseup', () => {
+          if (!isSelecting) return;
+          isSelecting = false;
+          if (selectedKeys.size > 0) {
+            openModalForSelected();
+          }
+        });
+
+        // Modal events
+        closeModalBtn.addEventListener('click', closeModal);
+        noteModal.addEventListener('click', (e) => {
+          if (e.target === noteModal) closeModal();
+        });
+        saveNoteBtn.addEventListener('click', () => {
+          const text = noteText.value.trim();
+          applyNoteToSelection(text);
+          closeModal();
+        });
+        clearNoteBtn.addEventListener('click', () => {
+          applyNoteToSelection('');
+          closeModal();
+        });
+
+        // Functions
+        function loadNotes() {
+          try {
+            const raw = localStorage.getItem(STORAGE_KEY_NOTES);
+            const obj = raw ? JSON.parse(raw) : {};
+            if (obj && typeof obj === 'object') return obj;
+          } catch (_) {}
+          return {};
+        }
+
+        function saveNotes() {
+          localStorage.setItem(STORAGE_KEY_NOTES, JSON.stringify(notesMap));
+        }
+
+        function persistLastView() {
+          localStorage.setItem(STORAGE_KEY_LAST_VIEW, JSON.stringify({ year: viewYear, month: viewMonthIndex }));
+        }
+
+        function syncYearToCalendar() {
+          if (viewYear !== currentYear()) {
+            // If calendar moved across year via prev/next, align sidebar year
+            // We intentionally do not change it if user picked a specific year in sidebar
+            // but for simplicity we just set it equal
+            // (Keeps UX consistent: months grid always reflects the visible calendar year)
+            // In a more complex app, you'd decouple these.
+          }
+        }
+
+        function currentYear() { return viewYear; }
+
+        function shiftMonth(delta) {
+          let m = viewMonthIndex + delta;
+          let y = viewYear;
+          if (m < 0) { m = 11; y -= 1; }
+          if (m > 11) { m = 0; y += 1; }
+          viewMonthIndex = m;
+          viewYear = y;
+          persistLastView();
+          renderMonthsChooser();
+          renderCalendar();
+        }
+
+        function renderWeekdayHeader() {
+          weekdayRow.innerHTML = '';
+          for (const w of weekdaysShort) {
+            const div = document.createElement('div');
+            div.textContent = w;
+            div.style.textAlign = 'center';
+            weekdayRow.appendChild(div);
+          }
+        }
+
+        function renderMonthsChooser() {
+          yearLabel.textContent = String(viewYear);
+          monthsGrid.innerHTML = '';
+          for (let i = 0; i < 12; i++) {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'month-btn' + (i === viewMonthIndex ? ' active' : '');
+            btn.textContent = monthsShort[i];
+            btn.dataset.month = String(i);
+            btn.addEventListener('click', () => {
+              viewMonthIndex = i;
+              persistLastView();
+              renderMonthsChooser();
+              renderCalendar();
+            });
+            monthsGrid.appendChild(btn);
+          }
+        }
+
+        function renderCalendar() {
+          selectedKeys.clear();
+          selectionStartKey = null;
+          selectionEndKey = null;
+
+          const firstOfMonth = new Date(viewYear, viewMonthIndex, 1);
+          const monthName = monthsLong[viewMonthIndex];
+          monthTitle.textContent = monthName + ' ' + viewYear;
+
+          // Compute start (Monday-based) and total cells = 42 (6 weeks)
+          const firstDayIndex = (firstOfMonth.getDay() + 6) % 7; // 0=Mon..6=Sun
+          const daysInMonth = getDaysInMonth(viewYear, viewMonthIndex);
+          const daysInPrevMonth = getDaysInMonth(viewYear, (viewMonthIndex + 11) % 12, viewMonthIndex === 0 ? viewYear - 1 : viewYear);
+
+          weeksGrid.innerHTML = '';
+
+          const totalCells = 42; // 6 weeks * 7 days
+          const todayKey = formatDateKey(new Date());
+
+          for (let cell = 0; cell < totalCells; cell++) {
+            const dayDiv = document.createElement('div');
+            dayDiv.className = 'day';
+
+            let dateNum;
+            let cellMonthIndex = viewMonthIndex;
+            let cellYear = viewYear;
+            let isOutside = false;
+
+            if (cell < firstDayIndex) {
+              // dates from previous month
+              isOutside = true;
+              dateNum = daysInPrevMonth - (firstDayIndex - 1 - cell);
+              if (viewMonthIndex === 0) { cellMonthIndex = 11; cellYear = viewYear - 1; } else { cellMonthIndex = viewMonthIndex - 1; }
+            } else if (cell >= firstDayIndex + daysInMonth) {
+              // dates from next month
+              isOutside = true;
+              dateNum = (cell - (firstDayIndex + daysInMonth)) + 1;
+              if (viewMonthIndex === 11) { cellMonthIndex = 0; cellYear = viewYear + 1; } else { cellMonthIndex = viewMonthIndex + 1; }
+            } else {
+              // dates in current month
+              dateNum = (cell - firstDayIndex) + 1;
+            }
+
+            const dateObj = new Date(cellYear, cellMonthIndex, dateNum);
+            const key = formatDateKey(dateObj);
+            dayDiv.dataset.date = key;
+
+            if (isOutside) dayDiv.classList.add('outside');
+            if (key === todayKey) dayDiv.classList.add('today');
+
+            const top = document.createElement('div');
+            top.className = 'num';
+            top.textContent = String(dateNum);
+            dayDiv.appendChild(top);
+
+            const note = notesMap[key];
+            if (note && note.trim().length > 0) {
+              const noteDiv = document.createElement('div');
+              noteDiv.className = 'note';
+              noteDiv.textContent = note;
+              dayDiv.appendChild(noteDiv);
+            }
+
+            if (!isOutside) {
+              dayDiv.style.cursor = 'crosshair';
+              dayDiv.addEventListener('mousedown', (e) => {
+                if (e.button !== 0) return; // only left click drag
+                isSelecting = true;
+                selectionStartKey = key;
+                selectionEndKey = key;
+                selectedKeys = new Set(rangeKeys(selectionStartKey, selectionEndKey));
+                renderSelection();
+                e.preventDefault();
+              });
+              dayDiv.addEventListener('mouseenter', () => {
+                if (!isSelecting || !selectionStartKey) return;
+                selectionEndKey = key;
+                selectedKeys = new Set(rangeKeys(selectionStartKey, selectionEndKey));
+                renderSelection();
+              });
+              // Double-click to quick-edit a single day
+              dayDiv.addEventListener('dblclick', () => {
+                isSelecting = false;
+                selectionStartKey = key;
+                selectionEndKey = key;
+                selectedKeys = new Set([key]);
+                openModalForSelected();
+              });
+            }
+
+            weeksGrid.appendChild(dayDiv);
+          }
+        }
+
+        function renderSelection() {
+          const cells = weeksGrid.querySelectorAll('.day');
+          cells.forEach(c => {
+            const key = c.dataset.date;
+            if (selectedKeys.has(key)) c.classList.add('selected');
+            else c.classList.remove('selected');
+          });
+        }
+
+        function openModalForSelected() {
+          const array = Array.from(selectedKeys).sort();
+          if (array.length === 0) return;
+
+          const first = array[0];
+          const last = array[array.length - 1];
+          const human = array.length === 1
+            ? humanizeDateKey(first)
+            : humanizeDateKey(first) + ' → ' + humanizeDateKey(last) + `  (${array.length} days)`;
+          selectionSummary.textContent = human;
+
+          // Prefill note if single-day or same text across all
+          let initial = '';
+          const firstNote = notesMap[first] || '';
+          const allSame = array.every(k => (notesMap[k] || '') === firstNote);
+          if (allSame) initial = firstNote;
+          noteText.value = initial;
+
+          modalTitle.textContent = initial ? 'Edit note' : 'Add note';
+          noteModal.classList.add('show');
+          noteText.focus();
+        }
+
+        function closeModal() {
+          noteModal.classList.remove('show');
+          // Clear selection highlight
+          selectedKeys.clear();
+          renderSelection();
+        }
+
+        function applyNoteToSelection(text) {
+          const trimmed = text.trim();
+          for (const key of selectedKeys) {
+            if (trimmed.length === 0) {
+              delete notesMap[key];
+            } else {
+              notesMap[key] = trimmed; // one-to-one mapping: one note per date
+            }
+          }
+          saveNotes();
+          renderCalendar();
+        }
+
+        function getDaysInMonth(year, monthIndex, forcedYear) {
+          // If forcedYear provided, monthIndex is for that forced year context
+          const y = forcedYear !== undefined ? forcedYear : year;
+          return new Date(y, monthIndex + 1, 0).getDate();
+        }
+
+        function formatDateKey(d) {
+          const y = d.getFullYear();
+          const m = String(d.getMonth() + 1).padStart(2, '0');
+          const day = String(d.getDate()).padStart(2, '0');
+          return `${y}-${m}-${day}`;
+        }
+
+        function humanizeDateKey(key) {
+          const [y, m, d] = key.split('-').map(Number);
+          return `${d} ${monthsShort[m - 1]} ${y}`;
+        }
+
+        function parseDateKey(key) {
+          const [y, m, d] = key.split('-').map(Number);
+          return new Date(y, m - 1, d);
+        }
+
+        function rangeKeys(keyA, keyB) {
+          const a = parseDateKey(keyA);
+          const b = parseDateKey(keyB);
+          const start = a <= b ? a : b;
+          const end = a <= b ? b : a;
+          const keys = [];
+          const cursor = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+          while (cursor <= end) {
+            // Restrict to the visible month only, per requirements
+            if (cursor.getFullYear() === viewYear && cursor.getMonth() === viewMonthIndex) {
+              keys.push(formatDateKey(cursor));
+            }
+            cursor.setDate(cursor.getDate() + 1);
+          }
+          return keys;
+        }
+      })();
+    </script>
+  </body>
+</html>
+
+
