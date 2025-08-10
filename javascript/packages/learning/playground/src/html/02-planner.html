@@ -636,9 +636,21 @@
         }
 
         function countFreeDays(year, monthIndex) {
+          const today = new Date();
+          const ty = today.getFullYear();
+          const tm = today.getMonth();
+          const td = today.getDate();
+
+          // If the whole month is in the past, no free days left
+          if (year < ty || (year === ty && monthIndex < tm)) return 0;
+
           const days = getDaysInMonth(year, monthIndex);
+          // In the current month, start counting after today; otherwise from 1
+          const startDay = (year === ty && monthIndex === tm) ? Math.min(td + 1, days + 1) : 1;
+          if (startDay > days) return 0;
+
           let free = 0;
-          for (let d = 1; d <= days; d++) {
+          for (let d = startDay; d <= days; d++) {
             const key = `${year}-${String(monthIndex + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
             const val = notesMap[key];
             if (!val || val.trim().length === 0) free++;
