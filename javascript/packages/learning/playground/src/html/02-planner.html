@@ -65,6 +65,8 @@
         padding: 12px;
       }
 
+      .sidebar .panel + .panel { margin-top: 12px; }
+
       .header {
         display: flex;
         align-items: center;
@@ -220,6 +222,37 @@
       .legend { display: flex; gap: 10px; align-items: center; padding: 0 14px 8px 14px; color: var(--muted); font-size: 12px; }
       .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; margin-right: 6px; background: var(--accent-2); }
 
+      /* Stats */
+      .stats-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 6px 10px 6px; }
+      .stats-title { font-weight: 600; }
+      .stats-month { color: var(--muted); font-size: 12px; }
+      .stats-list { display: flex; flex-direction: column; gap: 8px; }
+      .stat-item {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 10px;
+        align-items: center;
+        padding: 8px 10px;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        background: var(--panel-2);
+      }
+      .stat-note {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .stat-count {
+        padding: 2px 8px;
+        border-radius: 999px;
+        border: 1px solid var(--note-pill-border);
+        background: var(--accent-2);
+        color: #07121e;
+        font-weight: 600;
+        font-size: 12px;
+      }
+
       @media (max-width: 920px) {
         .app { grid-template-columns: 1fr; }
         .sidebar { border-right: 0; border-bottom: 1px solid var(--border); }
@@ -236,6 +269,13 @@
             <button class="btn" id="nextYearBtn" title="Next year">⟩</button>
           </div>
           <div class="months-grid" id="monthsGrid"></div>
+        </div>
+        <div class="panel" id="statsPanel">
+          <div class="stats-header">
+            <div class="stats-title">Notes stats</div>
+            <div class="stats-month" id="statsMonth"></div>
+          </div>
+          <div class="stats-list" id="statsList"></div>
         </div>
       </aside>
       <main class="main">
@@ -325,10 +365,14 @@
         const saveNoteBtn = document.getElementById('saveNoteBtn');
         const clearNoteBtn = document.getElementById('clearNoteBtn');
 
+        const statsMonth = document.getElementById('statsMonth');
+        const statsList = document.getElementById('statsList');
+
         // Initialize
         renderWeekdayHeader();
         renderMonthsChooser();
         renderCalendar();
+        renderStats();
 
         // Events - months chooser
         prevYearBtn.addEventListener('click', () => { viewYear--; renderMonthsChooser(); });
@@ -345,6 +389,7 @@
           syncYearToCalendar();
           renderMonthsChooser();
           renderCalendar();
+          renderStats();
         });
 
         // Selection finish on mouseup anywhere
@@ -411,6 +456,7 @@
           persistLastView();
           renderMonthsChooser();
           renderCalendar();
+          renderStats();
         }
 
         function renderWeekdayHeader() {
@@ -443,6 +489,7 @@
               persistLastView();
               renderMonthsChooser();
               renderCalendar();
+              renderStats();
             });
             monthsGrid.appendChild(btn);
           }
@@ -593,6 +640,7 @@
           saveNotes();
           renderCalendar();
           renderMonthsChooser();
+          renderStats();
         }
 
         function getDaysInMonth(year, monthIndex, forcedYear) {
@@ -656,6 +704,45 @@
             if (!val || val.trim().length === 0) free++;
           }
           return free;
+        }
+
+        function renderStats() {
+          statsMonth.textContent = monthsShort[viewMonthIndex] + ' ' + viewYear;
+          const counts = new Map();
+          const totalDays = getDaysInMonth(viewYear, viewMonthIndex);
+          for (let d = 1; d <= totalDays; d++) {
+            const key = `${viewYear}-${String(viewMonthIndex + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+            const note = (notesMap[key] || '').trim();
+            if (!note) continue; // only count assigned notes
+            counts.set(note, (counts.get(note) || 0) + 1);
+          }
+
+          // Render
+          statsList.innerHTML = '';
+          if (counts.size === 0) {
+            const empty = document.createElement('div');
+            empty.className = 'muted';
+            empty.style.padding = '0 6px 10px 6px';
+            empty.textContent = 'No notes in this month';
+            statsList.appendChild(empty);
+            return;
+          }
+
+          // Sort by count desc then by name
+          const items = Array.from(counts.entries()).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+          for (const [note, count] of items) {
+            const item = document.createElement('div');
+            item.className = 'stat-item';
+            const name = document.createElement('div');
+            name.className = 'stat-note';
+            name.textContent = note;
+            const value = document.createElement('div');
+            value.className = 'stat-count';
+            value.textContent = String(count);
+            item.appendChild(name);
+            item.appendChild(value);
+            statsList.appendChild(item);
+          }
         }
       })();
     </script>
