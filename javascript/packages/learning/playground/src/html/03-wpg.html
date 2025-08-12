@@ -159,7 +159,16 @@
         const layer = document.getElementById('map-layer');
 
         const HEX_SIZE = 24; // radius of hex in px
-        const MAP_RADIUS = 14; // hex radius (controls total map size)
+        const MAP_RADIUS = 20; // hex radius (controls total map size)
+
+        // Seeds for deterministic noise
+        const SEED_ELEVATION = 1337.123;
+        const SEED_MOISTURE = 987.321;
+        const SEED_CONTINENTS = 4242.777;
+
+        // Continents config
+        const NUM_CONTINENTS = 4; // how many landmasses
+        const CONTINENT_RADIUS = MAP_RADIUS * 0.55; // hexes
 
         // Camera transform state
         const camera = {
@@ -210,17 +219,108 @@
           return s - Math.floor(s);
         }
 
-        function pickTerrain(q, r) {
-          // Bias water near lower elevations using a simple radial + noise blend
-          const noise = prng2(q, r);
-          const distance = Math.sqrt(q * q + r * r);
-          const seaInfluence = Math.max(0, 1 - distance / (MAP_RADIUS + 1));
-          const waterThreshold = 0.18 + seaInfluence * 0.25; // more water toward the center
+        // --- Coherent noise utilities (value noise + fbm) ---
+        function hash2(ix, iy, seed = 0) {
+          const s = Math.sin(ix * 127.1 + iy * 311.7 + seed * 17.371) * 43758.5453;
+          return s - Math.floor(s);
+        }
 
-          if (noise < waterThreshold) return 'water';
-          if (noise < waterThreshold + 0.28) return 'desert';
-          if (noise < waterThreshold + 0.62) return 'grass';
-          return 'snow';
+        function lerp(a, b, t) { return a + (b - a) * t; }
+        function smoothstep(t) { return t * t * (3 - 2 * t); }
+
+        function valueNoise(x, y, seed = 0) {
+          const ix = Math.floor(x); const fx = x - ix;
+          const iy = Math.floor(y); const fy = y - iy;
+          const v00 = hash2(ix + 0, iy + 0, seed);
+          const v10 = hash2(ix + 1, iy + 0, seed);
+          const v01 = hash2(ix + 0, iy + 1, seed);
+          const v11 = hash2(ix + 1, iy + 1, seed);
+          const ux = smoothstep(fx); const uy = smoothstep(fy);
+          const a = lerp(v00, v10, ux);
+          const b = lerp(v01, v11, ux);
+          return lerp(a, b, uy);
+        }
+
+        function fbm(x, y, octaves = 5, gain = 0.5, lacunarity = 2.0, seed = 0) {
+          let sum = 0;
+          let amp = 0.5;
+          let freq = 1.0;
+          for (let i = 0; i < octaves; i++) {
+            sum += amp * valueNoise(x * freq, y * freq, seed + i * 13.37);
+            amp *= gain;
+            freq *= lacunarity;
+          }
+          return sum;
+        }
+
+        function axialDistance(q1, r1, q2, r2) {
+          const s1 = -q1 - r1;
+          const s2 = -q2 - r2;
+          return (
+            Math.abs(q1 - q2) + Math.abs(r1 - r2) + Math.abs(s1 - s2)
+          ) / 2;
+        }
+
+        function clamp01(v) { return Math.max(0, Math.min(1, v)); }
+        function easeIn(v, p = 1.6) { return Math.pow(clamp01(v), p); }
+
+        function generateContinentCenters(num, radius, seed) {
+          const centers = [];
+          for (let i = 0; i < num; i++) {
+            let q = (prng2(i * 3 + 1, i * 5 + 7, seed) * 2 - 1) * radius * 0.9;
+            let r = (prng2(i * 11 + 3, i * 13 + 9, seed) * 2 - 1) * radius * 0.9;
+            q = Math.round(q); r = Math.round(r);
+            // Keep inside map bounds
+            const dist = axialDistance(0, 0, q, r);
+            if (dist > MAP_RADIUS - 2) {
+              const scale = (MAP_RADIUS - 2) / dist;
+              q = Math.round(q * scale);
+              r = Math.round(r * scale);
+            }
+            centers.push({ q, r });
+          }
+          return centers;
+        }
+
+        const CONTINENT_CENTERS = generateContinentCenters(
+          NUM_CONTINENTS,
+          MAP_RADIUS * 0.8,
+          SEED_CONTINENTS
+        );
+
+        function pickTerrain(q, r) {
+          // Convert axial to a stable 2D sampling domain
+          const p = axialToPixel(q, r, 1);
+
+          // Base continental field: nearest continent center influence
+          let minD = Infinity;
+          for (const c of CONTINENT_CENTERS) {
+            const d = axialDistance(q, r, c.q, c.r);
+            if (d < minD) minD = d;
+          }
+          const continental = easeIn(1 - minD / CONTINENT_RADIUS, 1.6);
+
+          // Boundary falloff to ensure oceans near outer edge
+          const edge = 1 - Math.pow(axialDistance(0, 0, q, r) / (MAP_RADIUS + 0.01), 1.4);
+
+          // Fine detail from fbm
+          const base = fbm(p.x * 0.08, p.y * 0.08, 5, 0.5, 2.0, SEED_ELEVATION);
+
+          // Combined elevation
+          const elevation = 0.50 * continental + 0.30 * base + 0.20 * edge;
+
+          if (elevation < 0.48) return 'water';
+
+          // Climate: temperature from latitude and elevation; moisture from fbm
+          const lat = Math.abs(r) / (MAP_RADIUS + 0.01); // 0..1 (cold at poles)
+          const moisture = fbm(p.x * 0.12, p.y * 0.12, 4, 0.5, 2.1, SEED_MOISTURE);
+          const temperature = (1 - lat) * (1 - 0.25 * (elevation - 0.48));
+
+          if (temperature < 0.34 || (elevation > 0.82 && temperature < 0.58)) {
+            return 'snow';
+          }
+          if (moisture < 0.33) return 'desert';
+          return 'grass';
         }
 
         function hasCity(q, r) {
@@ -228,7 +328,7 @@
           return prng2(q, r, 9876.5) > 0.95;
         }
 
-        function createHexTile(q, r, cx, cy) {
+        function createHexTile(q, r, cx, cy, terrain) {
           const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
           g.classList.add('hex');
           g.dataset.q = String(q);
@@ -236,35 +336,60 @@
 
           const poly = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
           poly.setAttribute('points', hexPolygonPoints(cx, cy, HEX_SIZE));
-          const terrain = pickTerrain(q, r);
           poly.classList.add('tile', terrain);
           g.appendChild(poly);
-
-          // Optional city
-          if (hasCity(q, r)) {
-            const city = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-            city.setAttribute('cx', cx);
-            city.setAttribute('cy', cy);
-            city.setAttribute('r', String(Math.max(2.5, HEX_SIZE * 0.18)));
-            city.setAttribute('class', 'city');
-            g.appendChild(city);
-          }
 
           return g;
         }
 
         function buildHexMap(radius) {
+          const tiles = new Map(); // key: "q,r" → data
           const frag = document.createDocumentFragment();
           for (let q = -radius; q <= radius; q++) {
             const rMin = Math.max(-radius, -q - radius);
             const rMax = Math.min(radius, -q + radius);
             for (let r = rMin; r <= rMax; r++) {
               const { x, y } = axialToPixel(q, r, HEX_SIZE);
-              const tile = createHexTile(q, r, x, y);
-              frag.appendChild(tile);
+              const terrain = pickTerrain(q, r);
+              const g = createHexTile(q, r, x, y, terrain);
+              frag.appendChild(g);
+              tiles.set(`${q},${r}`, { q, r, cx: x, cy: y, terrain, g });
             }
           }
           layer.appendChild(frag);
+          placeCities(tiles);
+        }
+
+        function placeCities(tiles) {
+          const cities = [];
+          const minDistance = 3; // in hexes
+          for (const tile of tiles.values()) {
+            if (tile.terrain === 'water') continue; // never place on water
+            // Terrain-biased spawn chance
+            let p = 0.012; // base
+            if (tile.terrain === 'grass') p *= 1.8;
+            if (tile.terrain === 'desert') p *= 0.9;
+            if (tile.terrain === 'snow') p *= 0.6;
+            const roll = prng2(tile.q, tile.r, 9876.5);
+            if (roll < 1 - p) continue;
+
+            // Keep cities apart
+            let tooClose = false;
+            for (const c of cities) {
+              if (axialDistance(tile.q, tile.r, c.q, c.r) < minDistance) {
+                tooClose = true; break;
+              }
+            }
+            if (tooClose) continue;
+
+            const city = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+            city.setAttribute('cx', tile.cx);
+            city.setAttribute('cy', tile.cy);
+            city.setAttribute('r', String(Math.max(2.5, HEX_SIZE * 0.18)));
+            city.setAttribute('class', 'city');
+            tile.g.appendChild(city);
+            cities.push({ q: tile.q, r: tile.r });
+          }
         }
 
         // Interaction: selection via event delegation
