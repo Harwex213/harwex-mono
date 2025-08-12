@@ -70,6 +70,18 @@
         width: 160px;
       }
 
+      /* Editor buttons */
+      .chip.button {
+        cursor: pointer;
+        user-select: none;
+        transition: filter 120ms ease, outline-color 120ms ease;
+      }
+      .chip.button:hover { filter: brightness(1.12); }
+      .chip.button.active {
+        outline: 2px solid #6ee776;
+        outline-offset: 1px;
+      }
+
       .chip {
         display: inline-flex;
         align-items: center;
@@ -198,6 +210,18 @@
         <input type="range" id="num-continents" min="1" max="12" step="1" />
         <span class="value" id="num-continents-value"></span>
       </label>
+
+      <div class="section-title">Editor</div>
+      <label class="control" for="paint-mode">
+        <input type="checkbox" id="paint-mode" /> Paint mode
+      </label>
+      <div id="brushes" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">
+        <span class="chip button" data-brush="water"><span class="swatch" style="background:#67b5ff"></span> Water</span>
+        <span class="chip button" data-brush="desert"><span class="swatch" style="background:#e4c580"></span> Desert</span>
+        <span class="chip button" data-brush="grass"><span class="swatch" style="background:#7ec850"></span> Grass</span>
+        <span class="chip button" data-brush="snow"><span class="swatch" style="background:#e9f4ff"></span> Snow</span>
+        <span class="chip button" data-brush="erase">Erase</span>
+      </div>
     </div>
     <div id="app">
       <svg id="map" xmlns="http://www.w3.org/2000/svg">
@@ -215,6 +239,9 @@
 
         // Seeds for deterministic noise (persisted in localStorage)
         const STORAGE_KEY_SEEDS = 'wpgSeeds';
+        const STORAGE_KEY_PARAMS = 'wpgParams';
+        const STORAGE_KEY_OVERRIDES = 'wpgOverrides';
+        const STORAGE_KEY_EDITOR = 'wpgEditor';
         function loadSeeds() {
           try {
             const raw = localStorage.getItem(STORAGE_KEY_SEEDS);
@@ -237,7 +264,6 @@
         let { elevation: SEED_ELEVATION, moisture: SEED_MOISTURE, continents: SEED_CONTINENTS } = loadSeeds();
 
         // Map params (persisted in localStorage)
-        const STORAGE_KEY_PARAMS = 'wpgParams';
         function loadParams() {
           try {
             const raw = localStorage.getItem(STORAGE_KEY_PARAMS);
@@ -380,6 +406,33 @@
 
         let CONTINENT_CENTERS = [];
 
+        // --- Editor state & overrides ---
+        function loadOverrides() {
+          try {
+            const raw = localStorage.getItem(STORAGE_KEY_OVERRIDES);
+            const obj = raw ? JSON.parse(raw) : null;
+            if (obj && typeof obj === 'object') return obj;
+          } catch (_) {}
+          return {};
+        }
+        function saveOverrides(map) {
+          try { localStorage.setItem(STORAGE_KEY_OVERRIDES, JSON.stringify(map)); } catch (_) {}
+        }
+        let overridesMap = loadOverrides(); // key: "q,r" -> terrain
+
+        function loadEditor() {
+          try {
+            const raw = localStorage.getItem(STORAGE_KEY_EDITOR);
+            const obj = raw ? JSON.parse(raw) : null;
+            if (obj && typeof obj === 'object') return obj;
+          } catch (_) {}
+          return { paintMode: false, brush: 'grass' };
+        }
+        function saveEditor(state) {
+          try { localStorage.setItem(STORAGE_KEY_EDITOR, JSON.stringify(state)); } catch (_) {}
+        }
+        const editorState = loadEditor();
+
         function pickTerrain(q, r) {
           // Convert axial to a stable 2D sampling domain
           const p = axialToPixel(q, r, 1);
@@ -429,6 +482,7 @@
           const poly = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
           poly.setAttribute('points', hexPolygonPoints(cx, cy, HEX_SIZE));
           poly.classList.add('tile', terrain);
+          poly.dataset.terrain = terrain;
           g.appendChild(poly);
 
           return g;
@@ -442,7 +496,9 @@
             const rMax = Math.min(radius, -q + radius);
             for (let r = rMin; r <= rMax; r++) {
               const { x, y } = axialToPixel(q, r, HEX_SIZE);
-              const terrain = pickTerrain(q, r);
+              let terrain = pickTerrain(q, r);
+              const key = `${q},${r}`;
+              if (overridesMap[key]) terrain = overridesMap[key];
               const g = createHexTile(q, r, x, y, terrain);
               frag.appendChild(g);
               tiles.set(`${q},${r}`, { q, r, cx: x, cy: y, terrain, g });
@@ -501,8 +557,34 @@
           }
         }
 
-        // Interaction: selection via event delegation
+        // Helpers for painting
+        const TERRAIN_CLASSES = ['water','desert','grass','snow'];
+        function setPolygonTerrain(poly, terrain) {
+          for (const cls of TERRAIN_CLASSES) poly.classList.remove(cls);
+          if (TERRAIN_CLASSES.includes(terrain)) poly.classList.add(terrain);
+          poly.dataset.terrain = terrain;
+        }
+
+        function paintTile(poly, brush) {
+          if (!poly) return;
+          const g = poly.parentNode;
+          const q = Number(g.dataset.q);
+          const r = Number(g.dataset.r);
+          const key = `${q},${r}`;
+          if (brush === 'erase') {
+            delete overridesMap[key];
+            const base = pickTerrain(q, r);
+            setPolygonTerrain(poly, base);
+          } else if (TERRAIN_CLASSES.includes(brush)) {
+            overridesMap[key] = brush;
+            setPolygonTerrain(poly, brush);
+          }
+          saveOverrides(overridesMap);
+        }
+
+        // Interaction: selection via event delegation (disabled in paint mode)
         layer.addEventListener('click', (evt) => {
+          if (editorState.paintMode) return;
           const poly = evt.target.closest('polygon.tile');
           if (!poly) return;
           poly.classList.toggle('selected');
@@ -510,12 +592,23 @@
 
         // Interaction: pan
         let isPanning = false;
+        let isPainting = false;
+        let currentBrush = editorState.brush || 'grass';
         let panStart = { x: 0, y: 0 };
         let camStart = { x: camera.x, y: camera.y };
 
         svg.addEventListener('pointerdown', (evt) => {
-          // Only start panning if background or layer is dragged, not when clicking on UI
           if (evt.button !== 0) return;
+          const poly = evt.target.closest && evt.target.closest('polygon.tile');
+          if (editorState.paintMode && poly) {
+            // Start painting
+            isPainting = true;
+            svg.setPointerCapture(evt.pointerId);
+            paintTile(poly, currentBrush);
+            evt.preventDefault();
+            return;
+          }
+          // Panning
           isPanning = true;
           svg.setPointerCapture(evt.pointerId);
           panStart = clientPointInSvg(evt);
@@ -523,6 +616,11 @@
         });
 
         svg.addEventListener('pointermove', (evt) => {
+          if (isPainting) {
+            const poly = evt.target.closest && evt.target.closest('polygon.tile');
+            if (poly) paintTile(poly, currentBrush);
+            return;
+          }
           if (!isPanning) return;
           const p = clientPointInSvg(evt);
           camera.x = camStart.x + (p.x - panStart.x);
@@ -531,6 +629,11 @@
         });
 
         svg.addEventListener('pointerup', (evt) => {
+          if (isPainting) {
+            isPainting = false;
+            try { svg.releasePointerCapture(evt.pointerId); } catch (_) {}
+            return;
+          }
           if (!isPanning) return;
           isPanning = false;
           try { svg.releasePointerCapture(evt.pointerId); } catch (_) {}
@@ -538,6 +641,7 @@
 
         svg.addEventListener('pointerleave', () => {
           isPanning = false;
+          isPainting = false;
         });
 
         // Interaction: zoom (keep cursor position stable in world space)
@@ -586,6 +690,10 @@
         const elNumContinents = document.getElementById('num-continents');
         const elNumContinentsValue = document.getElementById('num-continents-value');
 
+        // Editor UI wiring
+        const elPaintMode = document.getElementById('paint-mode');
+        const elBrushes = document.getElementById('brushes');
+
         function setSeedInputsFromState() {
           elSeedElevation.value = String(Math.round(SEED_ELEVATION));
           elSeedMoisture.value = String(Math.round(SEED_MOISTURE));
@@ -600,6 +708,14 @@
           elNumContinents.value = String(NUM_CONTINENTS);
           elMapRadiusValue.textContent = String(MAP_RADIUS);
           elNumContinentsValue.textContent = String(NUM_CONTINENTS);
+        }
+
+        function setEditorInputsFromState() {
+          elPaintMode.checked = !!editorState.paintMode;
+          // Update brush UI
+          for (const btn of elBrushes.querySelectorAll('.button')) btn.classList.remove('active');
+          const active = elBrushes.querySelector(`[data-brush="${currentBrush}"]`);
+          if (active) active.classList.add('active');
         }
 
         let rebuildTimer = null;
@@ -644,9 +760,25 @@
         elMapRadius.addEventListener('input', (e) => onParamChange('mapRadius', e.target.value));
         elNumContinents.addEventListener('input', (e) => onParamChange('numContinents', e.target.value));
 
+        elPaintMode.addEventListener('change', () => {
+          editorState.paintMode = elPaintMode.checked;
+          saveEditor(editorState);
+        });
+        elBrushes.addEventListener('click', (e) => {
+          const btn = e.target.closest('.button');
+          if (!btn) return;
+          const brush = btn.dataset.brush;
+          if (!brush) return;
+          currentBrush = brush;
+          editorState.brush = brush;
+          saveEditor(editorState);
+          setEditorInputsFromState();
+        });
+
         // Init
         setSeedInputsFromState();
         setParamInputsFromState();
+        setEditorInputsFromState();
         rebuildMap();
 
         // Keep map centered at the origin. No heuristic nudge is necessary
