@@ -107,6 +107,9 @@
       }
 
       /* Terrain fills */
+      .water {
+        fill: #67b5ff;
+      }
       .desert {
         fill: #e4c580;
       }
@@ -136,6 +139,7 @@
     <div id="ui">
       <h3>Hex Map</h3>
       <div id="legend">
+        <span class="chip"><span class="swatch" style="background:#67b5ff"></span> Water</span>
         <span class="chip"><span class="swatch" style="background:#e4c580"></span> Desert</span>
         <span class="chip"><span class="swatch" style="background:#7ec850"></span> Grass</span>
         <span class="chip"><span class="swatch" style="background:#e9f4ff"></span> Snow</span>
@@ -207,9 +211,15 @@
         }
 
         function pickTerrain(q, r) {
-          const n = prng2(q, r);
-          if (n < 0.33) return 'desert';
-          if (n < 0.66) return 'grass';
+          // Bias water near lower elevations using a simple radial + noise blend
+          const noise = prng2(q, r);
+          const distance = Math.sqrt(q * q + r * r);
+          const seaInfluence = Math.max(0, 1 - distance / (MAP_RADIUS + 1));
+          const waterThreshold = 0.18 + seaInfluence * 0.25; // more water toward the center
+
+          if (noise < waterThreshold) return 'water';
+          if (noise < waterThreshold + 0.28) return 'desert';
+          if (noise < waterThreshold + 0.62) return 'grass';
           return 'snow';
         }
 
