@@ -87,6 +87,11 @@
         stroke: #11151d;
         stroke-opacity: 0.9;
         stroke-width: 1.25;
+        /* Avoid hairline gaps between adjacent polygons when zoomed */
+        vector-effect: non-scaling-stroke;
+        paint-order: stroke fill;
+        shape-rendering: geometricPrecision;
+        stroke-linejoin: round;
         transition: fill 120ms ease, stroke 120ms ease, opacity 120ms ease;
         pointer-events: all;
       }
@@ -175,8 +180,11 @@
         // Hex math (pointy-top axial)
         const SQRT3 = Math.sqrt(3);
         function axialToPixel(q, r, size) {
-          const x = size * (1.5 * q);
-          const y = size * (SQRT3 * (r + q / 2));
+          // Standard pointy-top axial → pixel conversion
+          // x = size * sqrt(3) * (q + r/2)
+          // y = size * 3/2 * r
+          const x = size * SQRT3 * (q + r / 2);
+          const y = size * 1.5 * r;
           return { x, y };
         }
 
@@ -186,7 +194,8 @@
             const angle = ((60 * i - 30) * Math.PI) / 180; // pointy-top
             const px = cx + size * Math.cos(angle);
             const py = cy + size * Math.sin(angle);
-            pts.push(`${px.toFixed(2)},${py.toFixed(2)}`);
+            // Keep full precision to prevent tiny gaps due to rounding
+            pts.push(`${px},${py}`);
           }
           return pts.join(' ');
         }
@@ -323,12 +332,8 @@
         buildHexMap(MAP_RADIUS);
         applyTransform();
 
-        // Center the map by roughly offsetting the hex mass center (heuristic)
-        // After initial draw, nudge camera slightly so the map center is in view
-        const centerNudge = HEX_SIZE * 0.5;
-        camera.x += centerNudge;
-        camera.y += centerNudge;
-        applyTransform();
+        // Keep map centered at the origin. No heuristic nudge is necessary
+        // because our axial-to-pixel conversion is symmetric around (0,0).
 
         // Double click to reset camera
         svg.addEventListener('dblclick', () => {
