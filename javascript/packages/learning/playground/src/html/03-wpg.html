@@ -45,6 +45,31 @@
         font-size: 12px;
       }
 
+      /* Controls */
+      #ui .section-title {
+        margin-top: 10px;
+        font-size: 12px;
+        color: #9fb0c3;
+        font-weight: 600;
+      }
+      #ui .control {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 12px;
+        margin-top: 6px;
+        color: #c8d2e0;
+      }
+      #ui .control .value {
+        min-width: 40px;
+        text-align: right;
+        color: #c8d2e0;
+        opacity: 0.9;
+      }
+      #ui .control input[type='range'] {
+        width: 160px;
+      }
+
       .chip {
         display: inline-flex;
         align-items: center;
@@ -146,6 +171,33 @@
         <span class="chip">City: <span style="display:inline-block;width:10px;height:10px;background:#ff3b3b;border-radius:50%;margin-left:6px;border:1px solid #0e0e12"></span></span>
       </div>
       <div id="help">Wheel to zoom. Drag to pan. Click hex to select.</div>
+      <div class="section-title">Seeds</div>
+      <label class="control" for="seed-elevation">
+        Elevation
+        <input type="range" id="seed-elevation" min="0" max="9999" step="1" />
+        <span class="value" id="seed-elevation-value"></span>
+      </label>
+      <label class="control" for="seed-moisture">
+        Moisture
+        <input type="range" id="seed-moisture" min="0" max="9999" step="1" />
+        <span class="value" id="seed-moisture-value"></span>
+      </label>
+      <label class="control" for="seed-continents">
+        Continents
+        <input type="range" id="seed-continents" min="0" max="9999" step="1" />
+        <span class="value" id="seed-continents-value"></span>
+      </label>
+      <div class="section-title">Map</div>
+      <label class="control" for="map-radius">
+        Map radius
+        <input type="range" id="map-radius" min="6" max="45" step="1" />
+        <span class="value" id="map-radius-value"></span>
+      </label>
+      <label class="control" for="num-continents">
+        Continents count
+        <input type="range" id="num-continents" min="1" max="12" step="1" />
+        <span class="value" id="num-continents-value"></span>
+      </label>
     </div>
     <div id="app">
       <svg id="map" xmlns="http://www.w3.org/2000/svg">
@@ -159,16 +211,60 @@
         const layer = document.getElementById('map-layer');
 
         const HEX_SIZE = 24; // radius of hex in px
-        const MAP_RADIUS = 20; // hex radius (controls total map size)
+        let MAP_RADIUS = 20; // hex radius (controls total map size)
 
-        // Seeds for deterministic noise
-        const SEED_ELEVATION = 1337.123;
-        const SEED_MOISTURE = 987.321;
-        const SEED_CONTINENTS = 4242.777;
+        // Seeds for deterministic noise (persisted in localStorage)
+        const STORAGE_KEY_SEEDS = 'wpgSeeds';
+        function loadSeeds() {
+          try {
+            const raw = localStorage.getItem(STORAGE_KEY_SEEDS);
+            const obj = raw ? JSON.parse(raw) : null;
+            if (
+              obj &&
+              Number.isFinite(obj.elevation) &&
+              Number.isFinite(obj.moisture) &&
+              Number.isFinite(obj.continents)
+            ) {
+              return obj;
+            }
+          } catch (_) {}
+          // Defaults
+          return { elevation: 1337, moisture: 987, continents: 4242 };
+        }
+        function saveSeeds(seeds) {
+          try { localStorage.setItem(STORAGE_KEY_SEEDS, JSON.stringify(seeds)); } catch (_) {}
+        }
+        let { elevation: SEED_ELEVATION, moisture: SEED_MOISTURE, continents: SEED_CONTINENTS } = loadSeeds();
 
-        // Continents config
-        const NUM_CONTINENTS = 4; // how many landmasses
-        const CONTINENT_RADIUS = MAP_RADIUS * 0.55; // hexes
+        // Map params (persisted in localStorage)
+        const STORAGE_KEY_PARAMS = 'wpgParams';
+        function loadParams() {
+          try {
+            const raw = localStorage.getItem(STORAGE_KEY_PARAMS);
+            const obj = raw ? JSON.parse(raw) : null;
+            if (
+              obj &&
+              Number.isInteger(obj.mapRadius) &&
+              Number.isInteger(obj.numContinents)
+            ) {
+              return obj;
+            }
+          } catch (_) {}
+          return { mapRadius: 20, numContinents: 4 };
+        }
+        function saveParams(params) {
+          try { localStorage.setItem(STORAGE_KEY_PARAMS, JSON.stringify(params)); } catch (_) {}
+        }
+
+        // Continents config (runtime-adjustable)
+        let NUM_CONTINENTS = 4; // how many landmasses
+        let CONTINENT_RADIUS = MAP_RADIUS * 0.55; // hexes
+
+        // Initialize params from storage
+        const { mapRadius: __initMapRadius, numContinents: __initNumContinents } = loadParams();
+        MAP_RADIUS = __initMapRadius;
+        NUM_CONTINENTS = __initNumContinents;
+        CONTINENT_RADIUS = MAP_RADIUS * 0.55;
 
         // Camera transform state
         const camera = {
@@ -282,11 +378,7 @@
           return centers;
         }
 
-        const CONTINENT_CENTERS = generateContinentCenters(
-          NUM_CONTINENTS,
-          MAP_RADIUS * 0.8,
-          SEED_CONTINENTS
-        );
+        let CONTINENT_CENTERS = [];
 
         function pickTerrain(q, r) {
           // Convert axial to a stable 2D sampling domain
@@ -358,6 +450,23 @@
           }
           layer.appendChild(frag);
           placeCities(tiles);
+        }
+
+        // Rebuild map with current seeds
+        function rebuildMap() {
+          // Recompute continent centers based on seed and params
+          CONTINENT_CENTERS = generateContinentCenters(
+            NUM_CONTINENTS,
+            MAP_RADIUS * 0.8,
+            SEED_CONTINENTS
+          );
+          CONTINENT_RADIUS = MAP_RADIUS * 0.55;
+
+          // Clear layer and rebuild
+          while (layer.firstChild) layer.removeChild(layer.firstChild);
+          buildHexMap(MAP_RADIUS);
+          // Keep current camera transform
+          applyTransform();
         }
 
         function placeCities(tiles) {
@@ -463,9 +572,82 @@
           applyTransform();
         });
 
+        // Seeds UI wiring
+        const elSeedElevation = document.getElementById('seed-elevation');
+        const elSeedMoisture = document.getElementById('seed-moisture');
+        const elSeedContinents = document.getElementById('seed-continents');
+        const elSeedElevationValue = document.getElementById('seed-elevation-value');
+        const elSeedMoistureValue = document.getElementById('seed-moisture-value');
+        const elSeedContinentsValue = document.getElementById('seed-continents-value');
+
+        // Params UI wiring
+        const elMapRadius = document.getElementById('map-radius');
+        const elMapRadiusValue = document.getElementById('map-radius-value');
+        const elNumContinents = document.getElementById('num-continents');
+        const elNumContinentsValue = document.getElementById('num-continents-value');
+
+        function setSeedInputsFromState() {
+          elSeedElevation.value = String(Math.round(SEED_ELEVATION));
+          elSeedMoisture.value = String(Math.round(SEED_MOISTURE));
+          elSeedContinents.value = String(Math.round(SEED_CONTINENTS));
+          elSeedElevationValue.textContent = String(Math.round(SEED_ELEVATION));
+          elSeedMoistureValue.textContent = String(Math.round(SEED_MOISTURE));
+          elSeedContinentsValue.textContent = String(Math.round(SEED_CONTINENTS));
+        }
+
+        function setParamInputsFromState() {
+          elMapRadius.value = String(MAP_RADIUS);
+          elNumContinents.value = String(NUM_CONTINENTS);
+          elMapRadiusValue.textContent = String(MAP_RADIUS);
+          elNumContinentsValue.textContent = String(NUM_CONTINENTS);
+        }
+
+        let rebuildTimer = null;
+        function scheduleRebuild() {
+          if (rebuildTimer) clearTimeout(rebuildTimer);
+          rebuildTimer = setTimeout(() => {
+            rebuildTimer = null;
+            rebuildMap();
+          });
+        }
+
+        function onSeedChange(kind, value) {
+          const v = Number(value);
+          if (!Number.isFinite(v)) return;
+          if (kind === 'elevation') SEED_ELEVATION = v;
+          if (kind === 'moisture') SEED_MOISTURE = v;
+          if (kind === 'continents') SEED_CONTINENTS = v;
+          saveSeeds({ elevation: SEED_ELEVATION, moisture: SEED_MOISTURE, continents: SEED_CONTINENTS });
+          setSeedInputsFromState();
+          scheduleRebuild();
+        }
+
+        function onParamChange(kind, value) {
+          const v = Number(value);
+          if (!Number.isFinite(v)) return;
+          if (kind === 'mapRadius') {
+            // Clamp to sensible bounds
+            MAP_RADIUS = Math.max(3, Math.min(60, Math.round(v)));
+          }
+          if (kind === 'numContinents') {
+            NUM_CONTINENTS = Math.max(1, Math.min(20, Math.round(v)));
+          }
+          saveParams({ mapRadius: MAP_RADIUS, numContinents: NUM_CONTINENTS });
+          setParamInputsFromState();
+          scheduleRebuild();
+        }
+
+        elSeedElevation.addEventListener('input', (e) => onSeedChange('elevation', e.target.value));
+        elSeedMoisture.addEventListener('input', (e) => onSeedChange('moisture', e.target.value));
+        elSeedContinents.addEventListener('input', (e) => onSeedChange('continents', e.target.value));
+
+        elMapRadius.addEventListener('input', (e) => onParamChange('mapRadius', e.target.value));
+        elNumContinents.addEventListener('input', (e) => onParamChange('numContinents', e.target.value));
+
         // Init
-        buildHexMap(MAP_RADIUS);
-        applyTransform();
+        setSeedInputsFromState();
+        setParamInputsFromState();
+        rebuildMap();
 
         // Keep map centered at the origin. No heuristic nudge is necessary
         // because our axial-to-pixel conversion is symmetric around (0,0).
