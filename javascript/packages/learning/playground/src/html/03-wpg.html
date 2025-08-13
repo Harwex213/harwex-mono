@@ -182,7 +182,7 @@
         <span class="chip"><span class="swatch" style="background:#e9f4ff"></span> Snow</span>
         <span class="chip">City: <span style="display:inline-block;width:10px;height:10px;background:#ff3b3b;border-radius:50%;margin-left:6px;border:1px solid #0e0e12"></span></span>
       </div>
-      <div id="help">Wheel to zoom. Drag to pan. Click hex to select.</div>
+      <div id="help">Wheel to zoom. Drag to pan. Click hex to select. Press "Q" to toggle paint mode.</div>
       <div class="section-title">Seeds</div>
       <label class="control" for="seed-elevation">
         Elevation
@@ -773,6 +773,19 @@
           editorState.brush = brush;
           saveEditor(editorState);
           setEditorInputsFromState();
+        });
+
+        // Hotkey: toggle paint mode with "P"
+        window.addEventListener('keydown', (e) => {
+          if (e.key === 'q' || e.key === 'Q') {
+            // Avoid toggling while typing in inputs
+            const tag = (document.activeElement && document.activeElement.tagName) || '';
+            if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+            editorState.paintMode = !editorState.paintMode;
+            elPaintMode.checked = editorState.paintMode;
+            saveEditor(editorState);
+            e.preventDefault();
+          }
         });
 
         // Init
