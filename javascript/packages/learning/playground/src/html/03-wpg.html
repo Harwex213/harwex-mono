@@ -1,0 +1,812 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Hex Map – WPG</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        height: 100%;
+        background: #0f1115;
+        color: #eaeef2;
+        font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto,
+          Helvetica, Arial, Apple Color Emoji, Segoe UI Emoji;
+        overflow: hidden;
+      }
+
+      #ui {
+        position: fixed;
+        inset: 12px auto auto 12px;
+        z-index: 2;
+        background: rgba(20, 22, 28, 0.8);
+        backdrop-filter: blur(6px);
+        border: 1px solid #2a2f3a;
+        border-radius: 10px;
+        padding: 10px 12px;
+        line-height: 1.4;
+        box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+      }
+
+      #ui h3 {
+        margin: 0 0 8px 0;
+        font-size: 14px;
+        font-weight: 600;
+        color: #c8d2e0;
+      }
+
+      #legend {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        flex-wrap: wrap;
+        font-size: 12px;
+      }
+
+      /* Controls */
+      #ui .section-title {
+        margin-top: 10px;
+        font-size: 12px;
+        color: #9fb0c3;
+        font-weight: 600;
+      }
+      #ui .control {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 12px;
+        margin-top: 6px;
+        color: #c8d2e0;
+      }
+      #ui .control .value {
+        min-width: 40px;
+        text-align: right;
+        color: #c8d2e0;
+        opacity: 0.9;
+      }
+      #ui .control input[type='range'] {
+        width: 160px;
+      }
+
+      /* Editor buttons */
+      .chip.button {
+        cursor: pointer;
+        user-select: none;
+        transition: filter 120ms ease, outline-color 120ms ease;
+      }
+      .chip.button:hover { filter: brightness(1.12); }
+      .chip.button.active {
+        outline: 2px solid #6ee776;
+        outline-offset: 1px;
+      }
+
+      .chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        border: 1px solid #2a2f3a;
+        border-radius: 999px;
+        padding: 2px 8px;
+        background: #151821;
+      }
+
+      .swatch {
+        width: 14px;
+        height: 14px;
+        border-radius: 4px;
+        border: 1px solid rgba(0, 0, 0, 0.25);
+        box-shadow: inset 0 1px 2px rgba(255, 255, 255, 0.06);
+      }
+
+      #help {
+        margin-top: 8px;
+        font-size: 12px;
+        color: #9fb0c3;
+      }
+
+      #app {
+        position: fixed;
+        inset: 0;
+      }
+
+      svg#map {
+        width: 100%;
+        height: 100%;
+        touch-action: none; /* enable custom pan/zoom */
+        user-select: none;
+        -webkit-user-drag: none;
+        background: radial-gradient(1200px 800px at 60% -10%, #1b2030, #0f1115);
+      }
+
+      .tile {
+        stroke: #11151d;
+        stroke-opacity: 0.9;
+        stroke-width: 1.25;
+        /* Avoid hairline gaps between adjacent polygons when zoomed */
+        vector-effect: non-scaling-stroke;
+        paint-order: stroke fill;
+        shape-rendering: geometricPrecision;
+        stroke-linejoin: round;
+        transition: fill 120ms ease, stroke 120ms ease, opacity 120ms ease;
+        pointer-events: all;
+      }
+
+      .tile:hover {
+        filter: brightness(1.06);
+        stroke-width: 1.4;
+      }
+
+      .tile.selected {
+        stroke: #f7f7f7;
+        stroke-width: 2.2;
+      }
+
+      /* Terrain fills */
+      .water {
+        fill: #67b5ff;
+      }
+      .desert {
+        fill: #e4c580;
+      }
+      .grass {
+        fill: #7ec850;
+      }
+      .snow {
+        fill: #e9f4ff;
+      }
+
+      .city {
+        fill: #ff3b3b;
+        stroke: #0e0e12;
+        stroke-width: 1.2;
+        filter: drop-shadow(0 0 2px rgba(255, 59, 59, 0.5));
+        pointer-events: none; /* clicks go to underlying hex */
+      }
+
+      .coords-label {
+        font-size: 9px;
+        fill: #314257;
+        pointer-events: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="ui">
+      <h3>Hex Map</h3>
+      <div id="legend">
+        <span class="chip"><span class="swatch" style="background:#67b5ff"></span> Water</span>
+        <span class="chip"><span class="swatch" style="background:#e4c580"></span> Desert</span>
+        <span class="chip"><span class="swatch" style="background:#7ec850"></span> Grass</span>
+        <span class="chip"><span class="swatch" style="background:#e9f4ff"></span> Snow</span>
+        <span class="chip">City: <span style="display:inline-block;width:10px;height:10px;background:#ff3b3b;border-radius:50%;margin-left:6px;border:1px solid #0e0e12"></span></span>
+      </div>
+      <div id="help">Wheel to zoom. Drag to pan. Click hex to select. Press "Q" to toggle paint mode.</div>
+      <div class="section-title">Seeds</div>
+      <label class="control" for="seed-elevation">
+        Elevation
+        <input type="range" id="seed-elevation" min="0" max="9999" step="1" />
+        <span class="value" id="seed-elevation-value"></span>
+      </label>
+      <label class="control" for="seed-moisture">
+        Moisture
+        <input type="range" id="seed-moisture" min="0" max="9999" step="1" />
+        <span class="value" id="seed-moisture-value"></span>
+      </label>
+      <label class="control" for="seed-continents">
+        Continents
+        <input type="range" id="seed-continents" min="0" max="9999" step="1" />
+        <span class="value" id="seed-continents-value"></span>
+      </label>
+      <div class="section-title">Map</div>
+      <label class="control" for="map-radius">
+        Map radius
+        <input type="range" id="map-radius" min="6" max="45" step="1" />
+        <span class="value" id="map-radius-value"></span>
+      </label>
+      <label class="control" for="num-continents">
+        Continents count
+        <input type="range" id="num-continents" min="1" max="12" step="1" />
+        <span class="value" id="num-continents-value"></span>
+      </label>
+
+      <div class="section-title">Editor</div>
+      <label class="control" for="paint-mode">
+        <input type="checkbox" id="paint-mode" /> Paint mode
+      </label>
+      <div id="brushes" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">
+        <span class="chip button" data-brush="water"><span class="swatch" style="background:#67b5ff"></span> Water</span>
+        <span class="chip button" data-brush="desert"><span class="swatch" style="background:#e4c580"></span> Desert</span>
+        <span class="chip button" data-brush="grass"><span class="swatch" style="background:#7ec850"></span> Grass</span>
+        <span class="chip button" data-brush="snow"><span class="swatch" style="background:#e9f4ff"></span> Snow</span>
+        <span class="chip button" data-brush="erase">Erase</span>
+      </div>
+    </div>
+    <div id="app">
+      <svg id="map" xmlns="http://www.w3.org/2000/svg">
+        <g id="map-layer"></g>
+      </svg>
+    </div>
+
+    <script>
+      (function () {
+        const svg = document.getElementById('map');
+        const layer = document.getElementById('map-layer');
+
+        const HEX_SIZE = 24; // radius of hex in px
+        let MAP_RADIUS = 20; // hex radius (controls total map size)
+
+        // Seeds for deterministic noise (persisted in localStorage)
+        const STORAGE_KEY_SEEDS = 'wpgSeeds';
+        const STORAGE_KEY_PARAMS = 'wpgParams';
+        const STORAGE_KEY_OVERRIDES = 'wpgOverrides';
+        const STORAGE_KEY_EDITOR = 'wpgEditor';
+        function loadSeeds() {
+          try {
+            const raw = localStorage.getItem(STORAGE_KEY_SEEDS);
+            const obj = raw ? JSON.parse(raw) : null;
+            if (
+              obj &&
+              Number.isFinite(obj.elevation) &&
+              Number.isFinite(obj.moisture) &&
+              Number.isFinite(obj.continents)
+            ) {
+              return obj;
+            }
+          } catch (_) {}
+          // Defaults
+          return { elevation: 1337, moisture: 987, continents: 4242 };
+        }
+        function saveSeeds(seeds) {
+          try { localStorage.setItem(STORAGE_KEY_SEEDS, JSON.stringify(seeds)); } catch (_) {}
+        }
+        let { elevation: SEED_ELEVATION, moisture: SEED_MOISTURE, continents: SEED_CONTINENTS } = loadSeeds();
+
+        // Map params (persisted in localStorage)
+        function loadParams() {
+          try {
+            const raw = localStorage.getItem(STORAGE_KEY_PARAMS);
+            const obj = raw ? JSON.parse(raw) : null;
+            if (
+              obj &&
+              Number.isInteger(obj.mapRadius) &&
+              Number.isInteger(obj.numContinents)
+            ) {
+              return obj;
+            }
+          } catch (_) {}
+          return { mapRadius: 20, numContinents: 4 };
+        }
+        function saveParams(params) {
+          try { localStorage.setItem(STORAGE_KEY_PARAMS, JSON.stringify(params)); } catch (_) {}
+        }
+
+        // Continents config (runtime-adjustable)
+        let NUM_CONTINENTS = 4; // how many landmasses
+        let CONTINENT_RADIUS = MAP_RADIUS * 0.55; // hexes
+
+        // Initialize params from storage
+        const { mapRadius: __initMapRadius, numContinents: __initNumContinents } = loadParams();
+        MAP_RADIUS = __initMapRadius;
+        NUM_CONTINENTS = __initNumContinents;
+        CONTINENT_RADIUS = MAP_RADIUS * 0.55;
+
+        // Camera transform state
+        const camera = {
+          x: window.innerWidth * 0.5,
+          y: window.innerHeight * 0.5,
+          scale: 1,
+        };
+
+        // Utility: convert client screen point to SVG space (which in our case is CSS pixels)
+        function clientPointInSvg(evt) {
+          const rect = svg.getBoundingClientRect();
+          return { x: evt.clientX - rect.left, y: evt.clientY - rect.top };
+        }
+
+        function applyTransform() {
+          layer.setAttribute(
+            'transform',
+            `translate(${camera.x.toFixed(2)}, ${camera.y.toFixed(2)}) scale(${camera.scale.toFixed(4)})`
+          );
+        }
+
+        // Hex math (pointy-top axial)
+        const SQRT3 = Math.sqrt(3);
+        function axialToPixel(q, r, size) {
+          // Standard pointy-top axial → pixel conversion
+          // x = size * sqrt(3) * (q + r/2)
+          // y = size * 3/2 * r
+          const x = size * SQRT3 * (q + r / 2);
+          const y = size * 1.5 * r;
+          return { x, y };
+        }
+
+        function hexPolygonPoints(cx, cy, size) {
+          const pts = [];
+          for (let i = 0; i < 6; i++) {
+            const angle = ((60 * i - 30) * Math.PI) / 180; // pointy-top
+            const px = cx + size * Math.cos(angle);
+            const py = cy + size * Math.sin(angle);
+            // Keep full precision to prevent tiny gaps due to rounding
+            pts.push(`${px},${py}`);
+          }
+          return pts.join(' ');
+        }
+
+        // Deterministic pseudo-random based on coordinates
+        function prng2(q, r, salt = 1337.123) {
+          const s = Math.sin(q * 12.9898 + r * 78.233 + salt) * 43758.5453;
+          return s - Math.floor(s);
+        }
+
+        // --- Coherent noise utilities (value noise + fbm) ---
+        function hash2(ix, iy, seed = 0) {
+          const s = Math.sin(ix * 127.1 + iy * 311.7 + seed * 17.371) * 43758.5453;
+          return s - Math.floor(s);
+        }
+
+        function lerp(a, b, t) { return a + (b - a) * t; }
+        function smoothstep(t) { return t * t * (3 - 2 * t); }
+
+        function valueNoise(x, y, seed = 0) {
+          const ix = Math.floor(x); const fx = x - ix;
+          const iy = Math.floor(y); const fy = y - iy;
+          const v00 = hash2(ix + 0, iy + 0, seed);
+          const v10 = hash2(ix + 1, iy + 0, seed);
+          const v01 = hash2(ix + 0, iy + 1, seed);
+          const v11 = hash2(ix + 1, iy + 1, seed);
+          const ux = smoothstep(fx); const uy = smoothstep(fy);
+          const a = lerp(v00, v10, ux);
+          const b = lerp(v01, v11, ux);
+          return lerp(a, b, uy);
+        }
+
+        function fbm(x, y, octaves = 5, gain = 0.5, lacunarity = 2.0, seed = 0) {
+          let sum = 0;
+          let amp = 0.5;
+          let freq = 1.0;
+          for (let i = 0; i < octaves; i++) {
+            sum += amp * valueNoise(x * freq, y * freq, seed + i * 13.37);
+            amp *= gain;
+            freq *= lacunarity;
+          }
+          return sum;
+        }
+
+        function axialDistance(q1, r1, q2, r2) {
+          const s1 = -q1 - r1;
+          const s2 = -q2 - r2;
+          return (
+            Math.abs(q1 - q2) + Math.abs(r1 - r2) + Math.abs(s1 - s2)
+          ) / 2;
+        }
+
+        function clamp01(v) { return Math.max(0, Math.min(1, v)); }
+        function easeIn(v, p = 1.6) { return Math.pow(clamp01(v), p); }
+
+        function generateContinentCenters(num, radius, seed) {
+          const centers = [];
+          for (let i = 0; i < num; i++) {
+            let q = (prng2(i * 3 + 1, i * 5 + 7, seed) * 2 - 1) * radius * 0.9;
+            let r = (prng2(i * 11 + 3, i * 13 + 9, seed) * 2 - 1) * radius * 0.9;
+            q = Math.round(q); r = Math.round(r);
+            // Keep inside map bounds
+            const dist = axialDistance(0, 0, q, r);
+            if (dist > MAP_RADIUS - 2) {
+              const scale = (MAP_RADIUS - 2) / dist;
+              q = Math.round(q * scale);
+              r = Math.round(r * scale);
+            }
+            centers.push({ q, r });
+          }
+          return centers;
+        }
+
+        let CONTINENT_CENTERS = [];
+
+        // --- Editor state & overrides ---
+        function loadOverrides() {
+          try {
+            const raw = localStorage.getItem(STORAGE_KEY_OVERRIDES);
+            const obj = raw ? JSON.parse(raw) : null;
+            if (obj && typeof obj === 'object') return obj;
+          } catch (_) {}
+          return {};
+        }
+        function saveOverrides(map) {
+          try { localStorage.setItem(STORAGE_KEY_OVERRIDES, JSON.stringify(map)); } catch (_) {}
+        }
+        let overridesMap = loadOverrides(); // key: "q,r" -> terrain
+
+        function loadEditor() {
+          try {
+            const raw = localStorage.getItem(STORAGE_KEY_EDITOR);
+            const obj = raw ? JSON.parse(raw) : null;
+            if (obj && typeof obj === 'object') return obj;
+          } catch (_) {}
+          return { paintMode: false, brush: 'grass' };
+        }
+        function saveEditor(state) {
+          try { localStorage.setItem(STORAGE_KEY_EDITOR, JSON.stringify(state)); } catch (_) {}
+        }
+        const editorState = loadEditor();
+
+        function pickTerrain(q, r) {
+          // Convert axial to a stable 2D sampling domain
+          const p = axialToPixel(q, r, 1);
+
+          // Base continental field: nearest continent center influence
+          let minD = Infinity;
+          for (const c of CONTINENT_CENTERS) {
+            const d = axialDistance(q, r, c.q, c.r);
+            if (d < minD) minD = d;
+          }
+          const continental = easeIn(1 - minD / CONTINENT_RADIUS, 1.6);
+
+          // Boundary falloff to ensure oceans near outer edge
+          const edge = 1 - Math.pow(axialDistance(0, 0, q, r) / (MAP_RADIUS + 0.01), 1.4);
+
+          // Fine detail from fbm
+          const base = fbm(p.x * 0.08, p.y * 0.08, 5, 0.5, 2.0, SEED_ELEVATION);
+
+          // Combined elevation
+          const elevation = 0.50 * continental + 0.30 * base + 0.20 * edge;
+
+          if (elevation < 0.48) return 'water';
+
+          // Climate: temperature from latitude and elevation; moisture from fbm
+          const lat = Math.abs(r) / (MAP_RADIUS + 0.01); // 0..1 (cold at poles)
+          const moisture = fbm(p.x * 0.12, p.y * 0.12, 4, 0.5, 2.1, SEED_MOISTURE);
+          const temperature = (1 - lat) * (1 - 0.25 * (elevation - 0.48));
+
+          if (temperature < 0.34 || (elevation > 0.82 && temperature < 0.58)) {
+            return 'snow';
+          }
+          if (moisture < 0.33) return 'desert';
+          return 'grass';
+        }
+
+        function hasCity(q, r) {
+          // Sparse cities
+          return prng2(q, r, 9876.5) > 0.95;
+        }
+
+        function createHexTile(q, r, cx, cy, terrain) {
+          const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+          g.classList.add('hex');
+          g.dataset.q = String(q);
+          g.dataset.r = String(r);
+
+          const poly = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+          poly.setAttribute('points', hexPolygonPoints(cx, cy, HEX_SIZE));
+          poly.classList.add('tile', terrain);
+          poly.dataset.terrain = terrain;
+          g.appendChild(poly);
+
+          return g;
+        }
+
+        function buildHexMap(radius) {
+          const tiles = new Map(); // key: "q,r" → data
+          const frag = document.createDocumentFragment();
+          for (let q = -radius; q <= radius; q++) {
+            const rMin = Math.max(-radius, -q - radius);
+            const rMax = Math.min(radius, -q + radius);
+            for (let r = rMin; r <= rMax; r++) {
+              const { x, y } = axialToPixel(q, r, HEX_SIZE);
+              let terrain = pickTerrain(q, r);
+              const key = `${q},${r}`;
+              if (overridesMap[key]) terrain = overridesMap[key];
+              const g = createHexTile(q, r, x, y, terrain);
+              frag.appendChild(g);
+              tiles.set(`${q},${r}`, { q, r, cx: x, cy: y, terrain, g });
+            }
+          }
+          layer.appendChild(frag);
+          placeCities(tiles);
+        }
+
+        // Rebuild map with current seeds
+        function rebuildMap() {
+          // Recompute continent centers based on seed and params
+          CONTINENT_CENTERS = generateContinentCenters(
+            NUM_CONTINENTS,
+            MAP_RADIUS * 0.8,
+            SEED_CONTINENTS
+          );
+          CONTINENT_RADIUS = MAP_RADIUS * 0.55;
+
+          // Clear layer and rebuild
+          while (layer.firstChild) layer.removeChild(layer.firstChild);
+          buildHexMap(MAP_RADIUS);
+          // Keep current camera transform
+          applyTransform();
+        }
+
+        function placeCities(tiles) {
+          const cities = [];
+          const minDistance = 3; // in hexes
+          for (const tile of tiles.values()) {
+            if (tile.terrain === 'water') continue; // never place on water
+            // Terrain-biased spawn chance
+            let p = 0.012; // base
+            if (tile.terrain === 'grass') p *= 1.8;
+            if (tile.terrain === 'desert') p *= 0.9;
+            if (tile.terrain === 'snow') p *= 0.6;
+            const roll = prng2(tile.q, tile.r, 9876.5);
+            if (roll < 1 - p) continue;
+
+            // Keep cities apart
+            let tooClose = false;
+            for (const c of cities) {
+              if (axialDistance(tile.q, tile.r, c.q, c.r) < minDistance) {
+                tooClose = true; break;
+              }
+            }
+            if (tooClose) continue;
+
+            const city = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+            city.setAttribute('cx', tile.cx);
+            city.setAttribute('cy', tile.cy);
+            city.setAttribute('r', String(Math.max(2.5, HEX_SIZE * 0.18)));
+            city.setAttribute('class', 'city');
+            tile.g.appendChild(city);
+            cities.push({ q: tile.q, r: tile.r });
+          }
+        }
+
+        // Helpers for painting
+        const TERRAIN_CLASSES = ['water','desert','grass','snow'];
+        function setPolygonTerrain(poly, terrain) {
+          for (const cls of TERRAIN_CLASSES) poly.classList.remove(cls);
+          if (TERRAIN_CLASSES.includes(terrain)) poly.classList.add(terrain);
+          poly.dataset.terrain = terrain;
+        }
+
+        function paintTile(poly, brush) {
+          if (!poly) return;
+          const g = poly.parentNode;
+          const q = Number(g.dataset.q);
+          const r = Number(g.dataset.r);
+          const key = `${q},${r}`;
+          if (brush === 'erase') {
+            delete overridesMap[key];
+            const base = pickTerrain(q, r);
+            setPolygonTerrain(poly, base);
+          } else if (TERRAIN_CLASSES.includes(brush)) {
+            overridesMap[key] = brush;
+            setPolygonTerrain(poly, brush);
+          }
+          saveOverrides(overridesMap);
+        }
+
+        // Interaction: selection via event delegation (disabled in paint mode)
+        layer.addEventListener('click', (evt) => {
+          if (editorState.paintMode) return;
+          const poly = evt.target.closest('polygon.tile');
+          if (!poly) return;
+          poly.classList.toggle('selected');
+        });
+
+        // Interaction: pan
+        let isPanning = false;
+        let isPainting = false;
+        let currentBrush = editorState.brush || 'grass';
+        let panStart = { x: 0, y: 0 };
+        let camStart = { x: camera.x, y: camera.y };
+
+        svg.addEventListener('pointerdown', (evt) => {
+          if (evt.button !== 0) return;
+          const poly = evt.target.closest && evt.target.closest('polygon.tile');
+          if (editorState.paintMode && poly) {
+            // Start painting
+            isPainting = true;
+            svg.setPointerCapture(evt.pointerId);
+            paintTile(poly, currentBrush);
+            evt.preventDefault();
+            return;
+          }
+          // Panning
+          isPanning = true;
+          svg.setPointerCapture(evt.pointerId);
+          panStart = clientPointInSvg(evt);
+          camStart = { x: camera.x, y: camera.y };
+        });
+
+        svg.addEventListener('pointermove', (evt) => {
+          if (isPainting) {
+            const poly = evt.target.closest && evt.target.closest('polygon.tile');
+            if (poly) paintTile(poly, currentBrush);
+            return;
+          }
+          if (!isPanning) return;
+          const p = clientPointInSvg(evt);
+          camera.x = camStart.x + (p.x - panStart.x);
+          camera.y = camStart.y + (p.y - panStart.y);
+          applyTransform();
+        });
+
+        svg.addEventListener('pointerup', (evt) => {
+          if (isPainting) {
+            isPainting = false;
+            try { svg.releasePointerCapture(evt.pointerId); } catch (_) {}
+            return;
+          }
+          if (!isPanning) return;
+          isPanning = false;
+          try { svg.releasePointerCapture(evt.pointerId); } catch (_) {}
+        });
+
+        svg.addEventListener('pointerleave', () => {
+          isPanning = false;
+          isPainting = false;
+        });
+
+        // Interaction: zoom (keep cursor position stable in world space)
+        svg.addEventListener('wheel', (evt) => {
+          evt.preventDefault();
+          const { x: mx, y: my } = clientPointInSvg(evt);
+
+          const scaleBefore = camera.scale;
+          const zoomIntensity = 1.0018; // smooth zoom
+          const wheel = -evt.deltaY; // up -> zoom in
+          const scaleFactor = Math.pow(zoomIntensity, wheel);
+          const scaleAfter = clamp(scaleBefore * scaleFactor, 0.35, 6);
+
+          // World point under mouse before zoom
+          const wx = (mx - camera.x) / scaleBefore;
+          const wy = (my - camera.y) / scaleBefore;
+
+          camera.scale = scaleAfter;
+          // Recompute camera so that world point under cursor stays fixed
+          camera.x = mx - wx * scaleAfter;
+          camera.y = my - wy * scaleAfter;
+          applyTransform();
+        }, { passive: false });
+
+        function clamp(v, min, max) {
+          return Math.max(min, Math.min(max, v));
+        }
+
+        // Resize: keep camera offset reasonable
+        window.addEventListener('resize', () => {
+          // no-op; keep current camera to avoid jump
+          applyTransform();
+        });
+
+        // Seeds UI wiring
+        const elSeedElevation = document.getElementById('seed-elevation');
+        const elSeedMoisture = document.getElementById('seed-moisture');
+        const elSeedContinents = document.getElementById('seed-continents');
+        const elSeedElevationValue = document.getElementById('seed-elevation-value');
+        const elSeedMoistureValue = document.getElementById('seed-moisture-value');
+        const elSeedContinentsValue = document.getElementById('seed-continents-value');
+
+        // Params UI wiring
+        const elMapRadius = document.getElementById('map-radius');
+        const elMapRadiusValue = document.getElementById('map-radius-value');
+        const elNumContinents = document.getElementById('num-continents');
+        const elNumContinentsValue = document.getElementById('num-continents-value');
+
+        // Editor UI wiring
+        const elPaintMode = document.getElementById('paint-mode');
+        const elBrushes = document.getElementById('brushes');
+
+        function setSeedInputsFromState() {
+          elSeedElevation.value = String(Math.round(SEED_ELEVATION));
+          elSeedMoisture.value = String(Math.round(SEED_MOISTURE));
+          elSeedContinents.value = String(Math.round(SEED_CONTINENTS));
+          elSeedElevationValue.textContent = String(Math.round(SEED_ELEVATION));
+          elSeedMoistureValue.textContent = String(Math.round(SEED_MOISTURE));
+          elSeedContinentsValue.textContent = String(Math.round(SEED_CONTINENTS));
+        }
+
+        function setParamInputsFromState() {
+          elMapRadius.value = String(MAP_RADIUS);
+          elNumContinents.value = String(NUM_CONTINENTS);
+          elMapRadiusValue.textContent = String(MAP_RADIUS);
+          elNumContinentsValue.textContent = String(NUM_CONTINENTS);
+        }
+
+        function setEditorInputsFromState() {
+          elPaintMode.checked = !!editorState.paintMode;
+          // Update brush UI
+          for (const btn of elBrushes.querySelectorAll('.button')) btn.classList.remove('active');
+          const active = elBrushes.querySelector(`[data-brush="${currentBrush}"]`);
+          if (active) active.classList.add('active');
+        }
+
+        let rebuildTimer = null;
+        function scheduleRebuild() {
+          if (rebuildTimer) clearTimeout(rebuildTimer);
+          rebuildTimer = setTimeout(() => {
+            rebuildTimer = null;
+            rebuildMap();
+          });
+        }
+
+        function onSeedChange(kind, value) {
+          const v = Number(value);
+          if (!Number.isFinite(v)) return;
+          if (kind === 'elevation') SEED_ELEVATION = v;
+          if (kind === 'moisture') SEED_MOISTURE = v;
+          if (kind === 'continents') SEED_CONTINENTS = v;
+          saveSeeds({ elevation: SEED_ELEVATION, moisture: SEED_MOISTURE, continents: SEED_CONTINENTS });
+          setSeedInputsFromState();
+          scheduleRebuild();
+        }
+
+        function onParamChange(kind, value) {
+          const v = Number(value);
+          if (!Number.isFinite(v)) return;
+          if (kind === 'mapRadius') {
+            // Clamp to sensible bounds
+            MAP_RADIUS = Math.max(3, Math.min(60, Math.round(v)));
+          }
+          if (kind === 'numContinents') {
+            NUM_CONTINENTS = Math.max(1, Math.min(20, Math.round(v)));
+          }
+          saveParams({ mapRadius: MAP_RADIUS, numContinents: NUM_CONTINENTS });
+          setParamInputsFromState();
+          scheduleRebuild();
+        }
+
+        elSeedElevation.addEventListener('input', (e) => onSeedChange('elevation', e.target.value));
+        elSeedMoisture.addEventListener('input', (e) => onSeedChange('moisture', e.target.value));
+        elSeedContinents.addEventListener('input', (e) => onSeedChange('continents', e.target.value));
+
+        elMapRadius.addEventListener('input', (e) => onParamChange('mapRadius', e.target.value));
+        elNumContinents.addEventListener('input', (e) => onParamChange('numContinents', e.target.value));
+
+        elPaintMode.addEventListener('change', () => {
+          editorState.paintMode = elPaintMode.checked;
+          saveEditor(editorState);
+        });
+        elBrushes.addEventListener('click', (e) => {
+          const btn = e.target.closest('.button');
+          if (!btn) return;
+          const brush = btn.dataset.brush;
+          if (!brush) return;
+          currentBrush = brush;
+          editorState.brush = brush;
+          saveEditor(editorState);
+          setEditorInputsFromState();
+        });
+
+        // Hotkey: toggle paint mode with "P"
+        window.addEventListener('keydown', (e) => {
+          if (e.key === 'q' || e.key === 'Q') {
+            // Avoid toggling while typing in inputs
+            const tag = (document.activeElement && document.activeElement.tagName) || '';
+            if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+            editorState.paintMode = !editorState.paintMode;
+            elPaintMode.checked = editorState.paintMode;
+            saveEditor(editorState);
+            e.preventDefault();
+          }
+        });
+
+        // Init
+        setSeedInputsFromState();
+        setParamInputsFromState();
+        setEditorInputsFromState();
+        rebuildMap();
+
+        // Keep map centered at the origin. No heuristic nudge is necessary
+        // because our axial-to-pixel conversion is symmetric around (0,0).
+
+        // Double click to reset camera
+        svg.addEventListener('dblclick', () => {
+          camera.scale = 1;
+          camera.x = window.innerWidth * 0.5;
+          camera.y = window.innerHeight * 0.5;
+          applyTransform();
+        });
+      })();
+    </script>
+  </body>
+  </html>
+
+
