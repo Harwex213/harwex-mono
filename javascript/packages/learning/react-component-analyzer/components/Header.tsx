@@ -1,6 +1,10 @@
 import React from 'react';
 import { Logo } from './Logo';
 
+const ShouldBeIgnored2 = () => {
+  return <div>ShouldBeIgnored</div>;
+};
+
 interface HeaderProps {
   title: string;
 }

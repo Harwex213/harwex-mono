@@ -3,6 +3,14 @@ import { Button } from './Button';
 import { Header } from './Header';
 import { Footer } from './Footer';
 
+const ShouldBeIgnored = () => {
+  return <div>ShouldBeIgnored</div>;
+};
+
+const ShouldBeAnalyzed = () => {
+  return <div>ShouldBeAnalyzed</div>;
+};
+
 interface AppProps {
   title: string;
 }
@@ -16,6 +24,8 @@ export function App({ title }: AppProps) {
           Click me
         </Button>
       </main>
+
+      <ShouldBeAnalyzed/>
       <Footer/>
     </div>
   );

@@ -1,0 +1,5 @@
+---
+alwaysApply: true
+---
+
+Do not write README file (even if it not exist) in package, describing what you've done

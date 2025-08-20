@@ -87,6 +87,48 @@ The tool outputs JSON with the following structure:
 - React components that start with uppercase letters
 - Local imports (relative paths starting with `./` or `/`)
 
+## Mermaid Diagram Generator
+
+After generating a JSON analysis file, you can create a visual Mermaid diagram:
+
+```bash
+# Generate Mermaid diagram to console
+yarn tsx src/generate-mermaid.ts output/MarketsWithTabs-MarketsWithTabs-analysis.json
+
+# Save Mermaid diagram to file
+yarn tsx src/generate-mermaid.ts output/MarketsWithTabs-MarketsWithTabs-analysis.json output/diagram.mmd
+```
+
+The generator creates a flowchart diagram that shows:
+- **Component nodes** with different shapes based on type:
+  - `[]` Rectangle for functions
+  - `{}` Hexagon for classes  
+  - `()` Circle for arrow functions
+  - `[[]]` Subroutine for const declarations
+- **Color coding** for different component types
+- **File grouping** information to show which file components come from
+- **Dependency arrows** showing component relationships
+- **Statistics** in comments showing analysis summary
+
+### Example Output
+
+The generated Mermaid diagram will look like:
+
+```mermaid
+flowchart TD
+  MarketsWithTabs[["MarketsWithTabs"]]
+  StatsIcon[["StatsIcon"]]
+  BurgerMenuIcon[["BurgerMenuIcon"]]
+  
+  MarketsWithTabs --> StatsIcon
+  MarketsWithTabs --> BurgerMenuIcon
+  
+  classDef constClass fill:#fff3e0,stroke:#ef6c00,stroke-width:2px
+  class MarketsWithTabs constClass
+  class StatsIcon constClass
+  class BurgerMenuIcon constClass
+```
+
 ## Dependencies
 
 - `@typescript-eslint/parser` - For parsing TSX files
