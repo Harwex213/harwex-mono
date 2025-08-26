@@ -1,0 +1,1 @@
+`input` folder stores input files, such as json that will be input for corresponding script

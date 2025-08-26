@@ -609,6 +609,8 @@ __metadata:
     "@typescript-eslint/types": "npm:8.36.0"
     tsx: "npm:4.19.4"
     typescript: "npm:5.8.3"
+  bin:
+    exports-imports-analyzer: ./src/index.ts
   languageName: unknown
   linkType: soft
 
@@ -884,7 +886,7 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@hw/utils@npm:1.0.0, @hw/utils@workspace:packages/infrastructure/utils":
+"@hw/utils@npm:1.0.0, @hw/utils@workspace:*, @hw/utils@workspace:packages/infrastructure/utils":
   version: 0.0.0-use.local
   resolution: "@hw/utils@workspace:packages/infrastructure/utils"
   languageName: unknown
@@ -924,6 +926,14 @@ __metadata:
     webpack: "npm:5.99.9"
     webpack-cli: "npm:6.0.1"
     webpack-dev-server: "npm:5.2.1"
+  languageName: unknown
+  linkType: soft
+
+"@hw/work-chore@workspace:packages/work/chore":
+  version: 0.0.0-use.local
+  resolution: "@hw/work-chore@workspace:packages/work/chore"
+  dependencies:
+    "@hw/utils": "workspace:*"
   languageName: unknown
   linkType: soft
 

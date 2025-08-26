@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>3D Hex Globe</title>
+    <style>
+      html, body { height: 100%; }
+      body {
+        margin: 0;
+        background: radial-gradient(1200px 800px at 60% -10%, #121621, #0c0f16);
+        color: #dfe7f1;
+        font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto,
+          Helvetica, Arial, Apple Color Emoji, Segoe UI Emoji;
+        overflow: hidden;
+        user-select: none;
+      }
+
+      #ui {
+        position: fixed;
+        inset: 12px auto auto 12px;
+        z-index: 10;
+        background: rgba(14, 17, 24, 0.78);
+        border: 1px solid #263042;
+        border-radius: 10px;
+        padding: 10px 12px;
+        line-height: 1.4;
+        box-shadow: 0 6px 22px rgba(0, 0, 0, 0.45);
+      }
+      #ui h3 {
+        margin: 0 0 8px 0;
+        font-size: 14px;
+        font-weight: 600;
+        color: #c8d2e0;
+      }
+      .control { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+      .control input[type='range'] { width: 160px; }
+      .value { min-width: 32px; text-align: right; opacity: 0.9; }
+      #help { margin-top: 6px; font-size: 12px; color: #9fb0c3; max-width: 320px; }
+
+      canvas { display: block; }
+      .badge { display:inline-block; border:1px solid #2a2f3a; background:#141826; border-radius:999px; padding:2px 8px; font-size:11px; color:#9fb0c3; }
+    </style>
+  </head>
+  <body>
+    <div id="ui">
+      <h3>3D Hex Globe</h3>
+      <div class="control">
+        <label for="res">Resolution</label>
+        <input id="res" type="range" min="1" max="3" step="1" />
+        <span class="value" id="resValue"></span>
+      </div>
+      <div class="control">
+        <label for="seed">Seed</label>
+        <input id="seed" type="range" min="0" max="9999" step="1" />
+        <span class="value" id="seedValue"></span>
+      </div>
+      <div class="control">
+        <span class="badge" id="cellCount">cells: --</span>
+        <span class="badge" id="hoverInfo">hover: –</span>
+      </div>
+      <div id="help">Left-drag to rotate, right-drag to pan, wheel to zoom. Click a hex to highlight. RimWorld-like spherical hex world.</div>
+    </div>
+
+    <!-- H3 (UMD) -->
+    <script src="https://unpkg.com/h3-js@3.7.2/dist/h3-js.umd.js"></script>
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://unpkg.com/three@0.156.1/build/three.module.js"
+        }
+      }
+    </script>
+    <script type="module">
+      import * as THREE from 'three';
+      import { OrbitControls } from 'https://unpkg.com/three@0.156.1/examples/jsm/controls/OrbitControls.js';
+
+      (function () {
+        const h3 = window.h3;
+        const STORAGE_KEY = 'hexGlobe.v1';
+        function loadState() {
+          try {
+            const raw = localStorage.getItem(STORAGE_KEY);
+            const obj = raw ? JSON.parse(raw) : null;
+            if (obj && Number.isInteger(obj.res) && Number.isFinite(obj.seed)) return obj;
+          } catch (_) {}
+          return { res: 2, seed: 1337 };
+        }
+        function saveState(s) { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(s)); } catch (_) {} }
+
+        let { res: H3_RESOLUTION, seed: SEED } = loadState();
+
+        const RADIUS = 100; // base sphere radius
+        const HEX_OFFSET = 0.6; // push hexes over the ocean sphere to prevent z-fighting
+
+        const COLORS = {
+          water: 0x67b5ff,
+          desert: 0xe4c580,
+          grass: 0x7ec850,
+          snow: 0xe9f4ff,
+          ocean: 0x264f8e,
+          line: 0x11151d,
+          hover: 0xffffff,
+        };
+
+        // UI
+        const resInput = document.getElementById('res');
+        const resValue = document.getElementById('resValue');
+        const seedInput = document.getElementById('seed');
+        const seedValue = document.getElementById('seedValue');
+        const cellCountLabel = document.getElementById('cellCount');
+        const hoverInfo = document.getElementById('hoverInfo');
+        resInput.value = String(H3_RESOLUTION);
+        seedInput.value = String(SEED);
+        resValue.textContent = String(H3_RESOLUTION);
+        seedValue.textContent = String(SEED);
+
+        // Scene setup
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x0c0f16);
+
+        const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 1200);
+        camera.position.set(0, 0, RADIUS * 3.1);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.08;
+        controls.enablePan = true;
+        controls.panSpeed = 0.5;
+        controls.minDistance = RADIUS * 1.25;
+        controls.maxDistance = RADIUS * 8;
+
+        // Lights
+        const hemi = new THREE.HemisphereLight(0xcad6ff, 0x0e1016, 0.9);
+        scene.add(hemi);
+        const dir = new THREE.DirectionalLight(0xffffff, 0.65);
+        dir.position.set(1.5, 1.2, 1.0).multiplyScalar(200);
+        scene.add(dir);
+
+        // Star field background
+        (function addStars() {
+          const g = new THREE.BufferGeometry();
+          const cnt = 2000;
+          const positions = new Float32Array(cnt * 3);
+          for (let i = 0; i < cnt; i++) {
+            const r = 900 + Math.random() * 300;
+            const theta = Math.random() * Math.PI * 2;
+            const phi = Math.acos(2 * Math.random() - 1);
+            positions[i * 3 + 0] = r * Math.sin(phi) * Math.cos(theta);
+            positions[i * 3 + 1] = r * Math.cos(phi);
+            positions[i * 3 + 2] = r * Math.sin(phi) * Math.sin(theta);
+          }
+          g.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+          const m = new THREE.PointsMaterial({ size: 1.2, color: 0x9fb3ff });
+          const pts = new THREE.Points(g, m);
+          scene.add(pts);
+        })();
+
+        // Ocean sphere
+        const ocean = new THREE.Mesh(
+          new THREE.SphereGeometry(RADIUS, 64, 64),
+          new THREE.MeshPhongMaterial({ color: COLORS.ocean, shininess: 18, specular: 0x203a6b, transparent: false })
+        );
+        scene.add(ocean);
+
+        // Materials (reuse across tiles)
+        const MAT = {
+          water: new THREE.MeshLambertMaterial({ color: COLORS.water, side: THREE.DoubleSide }),
+          desert: new THREE.MeshLambertMaterial({ color: COLORS.desert, side: THREE.DoubleSide }),
+          grass: new THREE.MeshLambertMaterial({ color: COLORS.grass, side: THREE.DoubleSide }),
+          snow: new THREE.MeshLambertMaterial({ color: COLORS.snow, side: THREE.DoubleSide }),
+          highlight: new THREE.MeshLambertMaterial({ color: COLORS.hover, side: THREE.DoubleSide })
+        };
+
+        const hexGroup = new THREE.Group();
+        scene.add(hexGroup);
+
+        // --- Noise utilities (deterministic value noise + fbm) ---
+        function hash2(ix, iy, seed) {
+          const s = Math.sin(ix * 127.1 + iy * 311.7 + seed * 17.371) * 43758.5453;
+          return s - Math.floor(s);
+        }
+        function lerp(a, b, t) { return a + (b - a) * t; }
+        function smoothstep(t) { return t * t * (3 - 2 * t); }
+        function valueNoise(x, y, seed) {
+          const ix = Math.floor(x); const fx = x - ix;
+          const iy = Math.floor(y); const fy = y - iy;
+          const v00 = hash2(ix + 0, iy + 0, seed);
+          const v10 = hash2(ix + 1, iy + 0, seed);
+          const v01 = hash2(ix + 0, iy + 1, seed);
+          const v11 = hash2(ix + 1, iy + 1, seed);
+          const ux = smoothstep(fx); const uy = smoothstep(fy);
+          const a = lerp(v00, v10, ux);
+          const b = lerp(v01, v11, ux);
+          return lerp(a, b, uy);
+        }
+        function fbm(x, y, oct = 5, gain = 0.5, lac = 2.0, seed = 0) {
+          let sum = 0, amp = 0.5, freq = 1.0;
+          for (let i = 0; i < oct; i++) {
+            sum += amp * valueNoise(x * freq, y * freq, seed + i * 13.37);
+            amp *= gain; freq *= lac;
+          }
+          return sum;
+        }
+        function clamp01(v) { return Math.max(0, Math.min(1, v)); }
+
+        // Lat/Lon helpers
+        const DEG2RAD = Math.PI / 180;
+        function latLonToVector3(latDeg, lonDeg, radius) {
+          const lat = latDeg * DEG2RAD; // [-pi/2..pi/2]
+          const lon = lonDeg * DEG2RAD; // [-pi..pi]
+          const x = radius * Math.cos(lat) * Math.cos(lon);
+          const y = radius * Math.sin(lat);
+          const z = radius * Math.cos(lat) * Math.sin(lon);
+          return new THREE.Vector3(x, y, z);
+        }
+
+        function pickTerrain(latDeg, lonDeg) {
+          // Map lon/lat into a stable 2D domain for noise sampling
+          const x = (lonDeg + 180) / 360; // 0..1
+          const y = (latDeg + 90) / 180;  // 0..1
+
+          const continental = fbm(x * 1.0, y * 0.8, 5, 0.5, 2.0, SEED * 0.73);
+          const detail = fbm(x * 3.2, y * 3.0, 4, 0.5, 2.0, SEED * 1.91);
+          let elevation = 0.60 * continental + 0.40 * detail; // 0..1
+
+          // Bias: keep oceans but raise some landmass so the globe isn't all water for many seeds
+          const waterLevel = 0.46;
+          if (elevation < waterLevel) return 'water';
+
+          const latAbs = Math.abs(latDeg) / 90; // 0 at equator, 1 at poles
+          const moisture = fbm(x * 2.1, y * 2.0, 4, 0.5, 2.0, SEED * 3.31);
+          const temperature = clamp01((1 - latAbs) - 0.22 * (elevation - waterLevel));
+
+          if (temperature < 0.34) return 'snow';
+          if (moisture < 0.33) return 'desert';
+          return 'grass';
+        }
+
+        function buildCellMesh(h) {
+          // Boundary (lat, lng) in degrees, ordered
+          const boundary = h3.h3ToGeoBoundary(h, false); // [[lat, lng], ...]
+          const centerArr = h3.h3ToGeo(h); // [lat, lng]
+          const center = { lat: centerArr[0], lng: centerArr[1] };
+
+          const centerVec = latLonToVector3(center.lat, center.lng, RADIUS + HEX_OFFSET);
+
+          const verts = [];
+          for (let i = 0; i < boundary.length; i++) {
+            const a = boundary[i];
+            const b = boundary[(i + 1) % boundary.length];
+            const va = latLonToVector3(a[0], a[1], RADIUS + HEX_OFFSET);
+            const vb = latLonToVector3(b[0], b[1], RADIUS + HEX_OFFSET);
+            verts.push(centerVec.x, centerVec.y, centerVec.z);
+            verts.push(va.x, va.y, va.z);
+            verts.push(vb.x, vb.y, vb.z);
+          }
+          const geom = new THREE.BufferGeometry();
+          geom.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
+          geom.computeVertexNormals();
+
+          const t = pickTerrain(center.lat, center.lng);
+          const material = MAT[t] || MAT.grass;
+          const mesh = new THREE.Mesh(geom, material);
+          mesh.userData = { h3: h, terrain: t, center };
+          
+          // Optional border for visual separation
+          const borderPos = [];
+          for (let i = 0; i < boundary.length; i++) {
+            const p = boundary[i];
+            const v = latLonToVector3(p[0], p[1], RADIUS + HEX_OFFSET + 0.02);
+            borderPos.push(v.x, v.y, v.z);
+          }
+          const borderGeom = new THREE.BufferGeometry();
+          borderGeom.setAttribute('position', new THREE.Float32BufferAttribute(borderPos, 3));
+          const borderMat = new THREE.LineBasicMaterial({ color: 0x0e1016, transparent: true, opacity: 0.75 });
+          const border = new THREE.LineLoop(borderGeom, borderMat);
+          const group = new THREE.Group();
+          group.add(mesh);
+          group.add(border);
+          return group;
+        }
+
+        function allCellsForRes(res) {
+          // Cover the planet by expanding around all icosahedron faces
+          const res0 = h3.getRes0Indexes();
+          const all = [];
+          for (const r0 of res0) {
+            const ch = h3.h3ToChildren(r0, res);
+            all.push(...ch);
+          }
+          return all;
+        }
+
+        let hovered = null;
+        const raycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2();
+
+        function setHover(o) {
+          if (o === hovered) return;
+          if (hovered) hovered.material.emissive && (hovered.material.emissive.setHex(0x000000));
+          hovered = o || null;
+          if (hovered && hovered.material.emissive) hovered.material.emissive.setHex(0x111111);
+          if (hovered) {
+            const d = hovered.userData;
+            hoverInfo.textContent = `hover: ${d.terrain} / ${d.center.lat.toFixed(2)}, ${d.center.lng.toFixed(2)}`;
+          } else {
+            hoverInfo.textContent = 'hover: –';
+          }
+        }
+
+        function handlePointerMove(evt) {
+          const rect = renderer.domElement.getBoundingClientRect();
+          mouse.x = ((evt.clientX - rect.left) / rect.width) * 2 - 1;
+          mouse.y = -((evt.clientY - rect.top) / rect.height) * 2 + 1;
+          raycaster.setFromCamera(mouse, camera);
+          const hits = raycaster.intersectObjects(hexGroup.children, false);
+          setHover(hits.length ? hits[0].object : null);
+        }
+        renderer.domElement.addEventListener('mousemove', handlePointerMove);
+
+        renderer.domElement.addEventListener('click', () => {
+          if (!hovered) return;
+          // Simple selection pulse
+          hovered.scale.setScalar(1.03);
+          setTimeout(() => hovered && hovered.scale.setScalar(1), 140);
+        });
+
+        function rebuild() {
+          saveState({ res: H3_RESOLUTION, seed: SEED });
+          while (hexGroup.children.length) hexGroup.remove(hexGroup.children[0]);
+          const cells = allCellsForRes(H3_RESOLUTION);
+          cellCountLabel.textContent = `cells: ${cells.length.toLocaleString()}`;
+          // Build in chunks to keep UI responsive on higher resolutions
+          let i = 0;
+          function step() {
+            const start = performance.now();
+            while (i < cells.length && performance.now() - start < 16) {
+              const obj = buildCellMesh(cells[i++]);
+              hexGroup.add(obj);
+            }
+            if (i < cells.length) requestAnimationFrame(step);
+          }
+          requestAnimationFrame(step);
+        }
+
+        resInput.addEventListener('input', () => {
+          H3_RESOLUTION = Math.max(1, Math.min(3, parseInt(resInput.value, 10) || 2));
+          resValue.textContent = String(H3_RESOLUTION);
+          rebuild();
+        });
+        seedInput.addEventListener('input', () => {
+          SEED = Math.max(0, Math.min(9999, parseInt(seedInput.value, 10) || 0));
+          seedValue.textContent = String(SEED);
+          rebuild();
+        });
+
+        window.addEventListener('resize', () => {
+          camera.aspect = window.innerWidth / window.innerHeight;
+          camera.updateProjectionMatrix();
+          renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        function animate() {
+          requestAnimationFrame(animate);
+          controls.update();
+          renderer.render(scene, camera);
+        }
+
+        // Initial build
+        rebuild();
+        animate();
+      })();
+    </script>
+  </body>
+  </html>
+
+

@@ -1,0 +1,10 @@
+{
+  "name": "@hw/work-chore",
+  "description": "Chore code necessary during work",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "dependencies": {
+    "@hw/utils": "workspace:*"
+  }
+}
