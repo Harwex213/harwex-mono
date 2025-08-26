@@ -6,5 +6,8 @@
   "type": "module",
   "dependencies": {
     "@hw/utils": "workspace:*"
+  },
+  "scripts": {
+    "delete-files": "node ./src/delete-files.js"
   }
 }
