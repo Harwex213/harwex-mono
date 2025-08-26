@@ -10,7 +10,7 @@
     "@stylistic/eslint-plugin-js": "4.2.0",
     "@stylistic/eslint-plugin-ts": "4.2.0",
     "@typescript-eslint/eslint-plugin": "8.31.1",
-    "@typescript-eslint/parser": "8.31.1",
+    "@typescript-eslint/parser": "8.36.0",
     "@typescript-eslint/type-utils": "8.31.1",
     "@typescript-eslint/utils": "8.31.1",
     "eslint": "9.25.1",

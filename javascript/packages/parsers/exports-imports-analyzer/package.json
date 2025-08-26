@@ -4,7 +4,6 @@
   "version": "1.0.0",
   "type": "module",
   "main": "src/index.ts",
-  "bin": "./src/index.ts",
   "scripts": {
     "build": "tsc",
     "extract-exports": "tsx src/index.ts extract-exports",

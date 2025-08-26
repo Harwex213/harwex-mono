@@ -588,7 +588,7 @@ __metadata:
     "@stylistic/eslint-plugin-js": "npm:4.2.0"
     "@stylistic/eslint-plugin-ts": "npm:4.2.0"
     "@typescript-eslint/eslint-plugin": "npm:8.31.1"
-    "@typescript-eslint/parser": "npm:8.31.1"
+    "@typescript-eslint/parser": "npm:8.36.0"
     "@typescript-eslint/type-utils": "npm:8.31.1"
     "@typescript-eslint/utils": "npm:8.31.1"
     eslint: "npm:9.25.1"
@@ -599,9 +599,9 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@hw/exports-imports-analyzer@workspace:packages/learning/exports-imports-analyzer":
+"@hw/exports-imports-analyzer@workspace:packages/parsers/exports-imports-analyzer":
   version: 0.0.0-use.local
-  resolution: "@hw/exports-imports-analyzer@workspace:packages/learning/exports-imports-analyzer"
+  resolution: "@hw/exports-imports-analyzer@workspace:packages/parsers/exports-imports-analyzer"
   dependencies:
     "@hw/eslint-config": "workspace:*"
     "@hw/typescript-config": "workspace:*"
@@ -609,8 +609,6 @@ __metadata:
     "@typescript-eslint/types": "npm:8.36.0"
     tsx: "npm:4.19.4"
     typescript: "npm:5.8.3"
-  bin:
-    exports-imports-analyzer: ./src/index.ts
   languageName: unknown
   linkType: soft
 
@@ -792,9 +790,9 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@hw/react-component-analyzer@workspace:packages/learning/react-component-analyzer":
+"@hw/react-component-analyzer@workspace:packages/parsers/react-component-analyzer":
   version: 0.0.0-use.local
-  resolution: "@hw/react-component-analyzer@workspace:packages/learning/react-component-analyzer"
+  resolution: "@hw/react-component-analyzer@workspace:packages/parsers/react-component-analyzer"
   dependencies:
     "@hw/eslint-config": "workspace:*"
     "@hw/typescript-config": "workspace:*"
@@ -883,6 +881,19 @@ __metadata:
   peerDependencies:
     "@types/webpack-env": ^1.18.0
     typescript: 5.8.3
+  languageName: unknown
+  linkType: soft
+
+"@hw/typescript-eslint-parser@workspace:packages/learning/libs-investigate/typescript-eslint-parser":
+  version: 0.0.0-use.local
+  resolution: "@hw/typescript-eslint-parser@workspace:packages/learning/libs-investigate/typescript-eslint-parser"
+  dependencies:
+    "@hw/eslint-config": "workspace:*"
+    "@hw/typescript-config": "workspace:*"
+    "@typescript-eslint/parser": "npm:8.36.0"
+    "@typescript-eslint/types": "npm:8.36.0"
+    tsx: "npm:4.19.4"
+    typescript: "npm:5.8.3"
   languageName: unknown
   linkType: soft
 
@@ -1919,22 +1930,6 @@ __metadata:
     eslint: ^8.57.0 || ^9.0.0
     typescript: ">=4.8.4 <5.9.0"
   checksum: 10/be72838653e1f31da11b3f6515fa3b750f0c5c130bae315079920ee6b78e9c4d131790e2473ff7930e8d50dee45d623c9c90478fd78befb976c1736d369078e9
-  languageName: node
-  linkType: hard
-
-"@typescript-eslint/parser@npm:8.31.1":
-  version: 8.31.1
-  resolution: "@typescript-eslint/parser@npm:8.31.1"
-  dependencies:
-    "@typescript-eslint/scope-manager": "npm:8.31.1"
-    "@typescript-eslint/types": "npm:8.31.1"
-    "@typescript-eslint/typescript-estree": "npm:8.31.1"
-    "@typescript-eslint/visitor-keys": "npm:8.31.1"
-    debug: "npm:^4.3.4"
-  peerDependencies:
-    eslint: ^8.57.0 || ^9.0.0
-    typescript: ">=4.8.4 <5.9.0"
-  checksum: 10/506c98b9c265faea4376f02e4d19b4722cd11c40f8e08e4c1b456eeb47bc59b70abaa604e633f1070eaf7c785cf7b39f30346f001d3e5257f8074f07a113eeff
   languageName: node
   linkType: hard
 
