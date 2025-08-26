@@ -1,5 +1,5 @@
-import * as ts from 'typescript';
-import type { ExportInfo, ImportInfo } from './types.js';
+import * as ts from "typescript";
+import type { ExportInfo, ImportInfo } from "./types.js";
 
 export class TypeScriptParser {
   private sourceFile: ts.SourceFile;
@@ -9,7 +9,7 @@ export class TypeScriptParser {
       filePath,
       content,
       ts.ScriptTarget.Latest,
-      true
+      true,
     );
   }
 
@@ -23,30 +23,30 @@ export class TypeScriptParser {
           for (const element of node.exportClause.elements) {
             exports.push({
               name: element.name.text,
-              type: 'named',
-              filePath: this.filePath
+              type: "named",
+              filePath: this.filePath,
             });
           }
         }
       }
-      
+
       // Handle export default
       if (ts.isExportAssignment(node) && node.isExportEquals === false) {
         exports.push({
-          name: 'default',
-          type: 'default',
-          filePath: this.filePath
+          name: "default",
+          type: "default",
+          filePath: this.filePath,
         });
       }
 
       // Handle named exports (export const/function/class/etc)
       if (ts.isVariableStatement(node) && this.hasExportModifier(node)) {
-        node.declarationList.declarations.forEach(declaration => {
+        node.declarationList.declarations.forEach((declaration) => {
           if (ts.isIdentifier(declaration.name)) {
             exports.push({
               name: declaration.name.text,
-              type: 'named',
-              filePath: this.filePath
+              type: "named",
+              filePath: this.filePath,
             });
           }
         });
@@ -55,32 +55,32 @@ export class TypeScriptParser {
       if (ts.isFunctionDeclaration(node) && this.hasExportModifier(node) && node.name) {
         exports.push({
           name: node.name.text,
-          type: 'named',
-          filePath: this.filePath
+          type: "named",
+          filePath: this.filePath,
         });
       }
 
       if (ts.isClassDeclaration(node) && this.hasExportModifier(node) && node.name) {
         exports.push({
           name: node.name.text,
-          type: 'named',
-          filePath: this.filePath
+          type: "named",
+          filePath: this.filePath,
         });
       }
 
       if (ts.isInterfaceDeclaration(node) && this.hasExportModifier(node)) {
         exports.push({
           name: node.name.text,
-          type: 'named',
-          filePath: this.filePath
+          type: "named",
+          filePath: this.filePath,
         });
       }
 
       if (ts.isTypeAliasDeclaration(node) && this.hasExportModifier(node)) {
         exports.push({
           name: node.name.text,
-          type: 'named',
-          filePath: this.filePath
+          type: "named",
+          filePath: this.filePath,
         });
       }
 
@@ -104,8 +104,8 @@ export class TypeScriptParser {
             imports.push({
               name: node.importClause.name.text,
               source,
-              type: 'default',
-              filePath: this.filePath
+              type: "default",
+              filePath: this.filePath,
             });
           }
 
@@ -115,8 +115,8 @@ export class TypeScriptParser {
               imports.push({
                 name: element.name.text,
                 source,
-                type: 'named',
-                filePath: this.filePath
+                type: "named",
+                filePath: this.filePath,
               });
             }
           }
@@ -133,4 +133,4 @@ export class TypeScriptParser {
   private hasExportModifier(node: ts.Node): boolean {
     return (node as any).modifiers?.some((modifier: any) => modifier.kind === ts.SyntaxKind.ExportKeyword) ?? false;
   }
-} 
+}
