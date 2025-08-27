@@ -1,0 +1,13 @@
+{
+  "name": "@hw/file-processors",
+  "description": "File processor useful during work",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "dependencies": {
+    "@hw/utils": "workspace:*"
+  },
+  "devDependencies": {
+    "@hw/eslint-config": "workspace:*"
+  }
+}

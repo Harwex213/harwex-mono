@@ -8,6 +8,7 @@
     "@hw/utils": "workspace:*"
   },
   "scripts": {
+    "json-union": "node ./src/json-union.js",
     "delete-files": "node ./src/delete-files.js"
   }
 }
