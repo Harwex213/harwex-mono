@@ -1,5 +1,5 @@
-import { readdir, readFile, writeFile, stat } from 'fs/promises';
-import { join } from 'path';
+import { readdir, readFile, writeFile, stat } from "fs/promises";
+import { join } from "path";
 
 export interface FileSystemAPI {
   readdir(path: string): Promise<string[]>;
@@ -15,11 +15,11 @@ export class NodeFileSystem implements FileSystemAPI {
   }
 
   async readFile(path: string): Promise<string> {
-    return readFile(path, 'utf-8');
+    return readFile(path, "utf-8");
   }
 
   async writeFile(path: string, content: string): Promise<void> {
-    await writeFile(path, content, 'utf-8');
+    await writeFile(path, content, "utf-8");
   }
 
   async isDirectory(path: string): Promise<boolean> {
@@ -36,4 +36,4 @@ export class NodeFileSystem implements FileSystemAPI {
   }
 }
 
-export const defaultFileSystem = new NodeFileSystem(); 
+export const defaultFileSystem = new NodeFileSystem();

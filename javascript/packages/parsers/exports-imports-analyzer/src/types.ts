@@ -1,13 +1,13 @@
 export interface ExportInfo {
   name: string;
-  type: 'default' | 'named';
+  type: "default" | "named";
   filePath: string;
 }
 
 export interface ImportInfo {
   name: string;
   source: string;
-  type: 'default' | 'named';
+  type: "default" | "named";
   filePath: string;
 }
 
@@ -23,4 +23,4 @@ export interface ExportsMap {
 
 export interface UsageStatistics {
   [exportName: string]: ExportUsageStatistics;
-} 
+}

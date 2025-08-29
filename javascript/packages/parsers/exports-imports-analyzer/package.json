@@ -3,10 +3,7 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
-  "main": "./src/index.ts",
-  "bin": {
-    "exports-imports-analyzer": "./src/index.ts"
-  },
+  "main": "src/index.ts",
   "scripts": {
     "build": "tsc",
     "extract-exports": "tsx src/index.ts extract-exports",
