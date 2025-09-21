@@ -569,6 +569,17 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@hw/castle-attack@workspace:packages/prototypes/castle-attack":
+  version: 0.0.0-use.local
+  resolution: "@hw/castle-attack@workspace:packages/prototypes/castle-attack"
+  dependencies:
+    "@hw/html-lib": "workspace:*"
+    "@hw/signals": "workspace:*"
+    "@hw/utils": "workspace:*"
+    vite: "npm:6.3.5"
+  languageName: unknown
+  linkType: soft
+
 "@hw/di@workspace:packages/infrastructure/di":
   version: 0.0.0-use.local
   resolution: "@hw/di@workspace:packages/infrastructure/di"
@@ -630,6 +641,15 @@ __metadata:
   languageName: unknown
   linkType: soft
 
+"@hw/file-processors@workspace:packages/work/file-processors":
+  version: 0.0.0-use.local
+  resolution: "@hw/file-processors@workspace:packages/work/file-processors"
+  dependencies:
+    "@hw/eslint-config": "workspace:*"
+    "@hw/utils": "workspace:*"
+  languageName: unknown
+  linkType: soft
+
 "@hw/game-model-benchmark@workspace:packages/learning/game-model-benchmark":
   version: 0.0.0-use.local
   resolution: "@hw/game-model-benchmark@workspace:packages/learning/game-model-benchmark"
@@ -664,7 +684,7 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@hw/html-lib@npm:1.0.0, @hw/html-lib@workspace:packages/infrastructure/html-lib":
+"@hw/html-lib@npm:1.0.0, @hw/html-lib@workspace:*, @hw/html-lib@workspace:packages/infrastructure/html-lib":
   version: 0.0.0-use.local
   resolution: "@hw/html-lib@workspace:packages/infrastructure/html-lib"
   dependencies:
@@ -853,7 +873,7 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@hw/signals@npm:1.0.0, @hw/signals@workspace:packages/infrastructure/signals":
+"@hw/signals@npm:1.0.0, @hw/signals@workspace:*, @hw/signals@workspace:packages/infrastructure/signals":
   version: 0.0.0-use.local
   resolution: "@hw/signals@workspace:packages/infrastructure/signals"
   dependencies:
@@ -872,6 +892,8 @@ __metadata:
 "@hw/structures@workspace:packages/infrastructure/structures":
   version: 0.0.0-use.local
   resolution: "@hw/structures@workspace:packages/infrastructure/structures"
+  dependencies:
+    "@hw/eslint-config": "workspace:*"
   languageName: unknown
   linkType: soft
 
