@@ -127,7 +127,9 @@ class UiElement {
         continue;
       }
 
-      if (previous.key !== current.key) {
+      if (previous.key === current.key) {
+        current.htmlElement = previous.htmlElement;
+      } else {
         previous.htmlElement.replaceWith(current.htmlElement);
         previous.destroy();
       }
