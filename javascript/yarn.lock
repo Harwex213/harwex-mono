@@ -569,6 +569,24 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@hw/castle-attack-ai@workspace:packages/prototypes/castle-attack-ai":
+  version: 0.0.0-use.local
+  resolution: "@hw/castle-attack-ai@workspace:packages/prototypes/castle-attack-ai"
+  dependencies:
+    "@hw/utils": "npm:1.0.0"
+    "@types/pixi.js": "npm:5.0.0"
+    "@vitejs/plugin-react-swc": "npm:3.8.1"
+    mobx: "npm:6.15.0"
+    pixi-viewport: "npm:6.0.3"
+    pixi.js: "npm:8.8.0"
+    react: "npm:18.3.1"
+    react-dom: "npm:18.3.1"
+    redux: "npm:5.0.1"
+    rxjs: "npm:7.8.2"
+    vite: "npm:6.3.5"
+  languageName: unknown
+  linkType: soft
+
 "@hw/castle-attack@workspace:packages/prototypes/castle-attack":
   version: 0.0.0-use.local
   resolution: "@hw/castle-attack@workspace:packages/prototypes/castle-attack"
@@ -869,7 +887,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@hw/rxjs@workspace:packages/learning/libs-investigate/rxjs"
   dependencies:
-    rxjs: "npm:7.8.1"
+    rxjs: "npm:7.8.2"
   languageName: unknown
   linkType: soft
 
@@ -6459,6 +6477,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"mobx@npm:6.15.0":
+  version: 6.15.0
+  resolution: "mobx@npm:6.15.0"
+  checksum: 10/cf7fd4f96d521962c87883a7d41d745ba35af6130265f619e22c2d1ddff875e7f766726984f53bf5d5e215074146e6b190bc0e8668eb675cca9cb5d5204987fa
+  languageName: node
+  linkType: hard
+
 "ms@npm:2.0.0":
   version: 2.0.0
   resolution: "ms@npm:2.0.0"
@@ -7792,15 +7817,6 @@ __metadata:
   dependencies:
     queue-microtask: "npm:^1.2.2"
   checksum: 10/cb4f97ad25a75ebc11a8ef4e33bb962f8af8516bb2001082ceabd8902e15b98f4b84b4f8a9b222e5d57fc3bd1379c483886ed4619367a7680dad65316993021d
-  languageName: node
-  linkType: hard
-
-"rxjs@npm:7.8.1":
-  version: 7.8.1
-  resolution: "rxjs@npm:7.8.1"
-  dependencies:
-    tslib: "npm:^2.1.0"
-  checksum: 10/b10cac1a5258f885e9dd1b70d23c34daeb21b61222ee735d2ec40a8685bdca40429000703a44f0e638c27a684ac139e1c37e835d2a0dc16f6fc061a138ae3abb
   languageName: node
   linkType: hard
 
