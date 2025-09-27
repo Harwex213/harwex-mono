@@ -676,6 +676,17 @@ __metadata:
   languageName: unknown
   linkType: soft
 
+"@hw/gamedev-playground@workspace:packages/learning/gamedev-playground":
+  version: 0.0.0-use.local
+  resolution: "@hw/gamedev-playground@workspace:packages/learning/gamedev-playground"
+  dependencies:
+    "@hw/html-lib": "workspace:*"
+    "@hw/signals": "workspace:*"
+    "@hw/utils": "workspace:*"
+    vite: "npm:6.3.5"
+  languageName: unknown
+  linkType: soft
+
 "@hw/gemini@workspace:packages/irl/gemini":
   version: 0.0.0-use.local
   resolution: "@hw/gemini@workspace:packages/irl/gemini"
