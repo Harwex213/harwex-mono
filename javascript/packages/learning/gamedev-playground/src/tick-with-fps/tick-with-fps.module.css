@@ -1,0 +1,47 @@
+:root {
+  font-family: Lora, sans-serif;
+}
+
+.variables {
+  --charcoal: #2f4858;
+  --hyniadi-yellow: #f6ae2d;
+  --pantone: #f26419;
+  --munsell: #42939c;
+  --robin-egg-blue: #55dde0;
+}
+
+.container {
+  width: 100vw;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 40px;
+}
+
+.scope {
+  overflow: hidden;
+  position: relative;
+  padding: 16px 16px calc(56px + 16px) 16px;
+  border: 2px solid var(--charcoal);
+}
+
+.scope-title {
+  font-size: 16px;
+  font-weight: 500;
+}
+
+.baloon {
+  position: absolute;
+  left: 0;
+  width: 56px;
+  height: 56px;
+  background-color: var(--pantone);
+  color: #000;
+  font-size: 14px;
+  font-weight: 500;
+  border-radius: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
