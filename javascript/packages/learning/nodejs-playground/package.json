@@ -1,0 +1,10 @@
+{
+  "name": "@hw/nodejs-playground",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "dependencies": {
+    "@hw/signals": "workspace:*",
+    "@hw/utils": "workspace:*"
+  }
+}

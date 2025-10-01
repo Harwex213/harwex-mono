@@ -738,6 +738,15 @@ __metadata:
   languageName: unknown
   linkType: soft
 
+"@hw/nodejs-playground@workspace:packages/learning/nodejs-playground":
+  version: 0.0.0-use.local
+  resolution: "@hw/nodejs-playground@workspace:packages/learning/nodejs-playground"
+  dependencies:
+    "@hw/signals": "workspace:*"
+    "@hw/utils": "workspace:*"
+  languageName: unknown
+  linkType: soft
+
 "@hw/notes-app-backend@workspace:packages/prototypes/notes-app/notes-app-backend":
   version: 0.0.0-use.local
   resolution: "@hw/notes-app-backend@workspace:packages/prototypes/notes-app/notes-app-backend"
