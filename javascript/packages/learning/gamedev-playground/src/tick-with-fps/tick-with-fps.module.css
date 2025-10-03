@@ -6,6 +6,7 @@
   --charcoal: #2f4858;
   --hyniadi-yellow: #f6ae2d;
   --pantone: #f26419;
+  --red: #e44343;
   --munsell: #42939c;
   --robin-egg-blue: #55dde0;
 }
@@ -33,10 +34,12 @@
 
 .baloon {
   position: absolute;
+  z-index: 1;
   left: 0;
+  top: 100px;
   width: 56px;
   height: 56px;
-  background-color: var(--pantone);
+  background-color: var(--robin-egg-blue);
   color: #000;
   font-size: 14px;
   font-weight: 500;
@@ -44,4 +47,15 @@
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+.target {
+  position: absolute;
+  z-index: 2;
+  top: calc(100px + 56px / 2 - 2px);
+  left: 0;
+  width: 4px;
+  height: 4px;
+  border-radius: 100%;
+  background-color: var(--red);
 }

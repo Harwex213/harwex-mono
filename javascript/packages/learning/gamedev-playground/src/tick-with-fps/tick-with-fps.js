@@ -91,21 +91,21 @@ const loopOnIntervalAndRFA = (fps, tps, velocity) => {
 
   let tempTick = 0;
   let sinceLastSecondTick = 0;
-  let lastTickCall = performance.now();
+  let lastTickCall = Math.round(performance.now());
 
   // а что если js движок не будет успевать ранать 60 тиков в сек?...
   const msBetweenTicks = 1000 / tps;
-  const velocityPerTick = (velocity / 1000) * tps;
+  const velocityMs = velocity / 1000;
 
-  setInterval(() => {
+  const intervalId = setInterval(() => {
     batch(() => {
-      const now = performance.now();
+      const now = Math.round(performance.now());
 
       const elapsed = now - lastTickCall;
       sinceLastSecondTick += elapsed;
       lastTickCall = now;
 
-      x.value += velocityPerTick;
+      x.value += velocityMs * elapsed;
       tempTick++;
 
       if (sinceLastSecondTick >= 1000) {
@@ -124,6 +124,8 @@ const loopOnIntervalAndRFA = (fps, tps, velocity) => {
   let sinceLastSecondFrame = 0;
   const msBetweenFrames = 1000 / fps;
 
+  let stop = false;
+
   const frame = (timestamp) => {
     batch(() => {
       const elapsed = timestamp - lastFrameCall;
@@ -134,8 +136,8 @@ const loopOnIntervalAndRFA = (fps, tps, velocity) => {
       const fpsModifier = elapsed / msBetweenFrames;
       tempFps = tempFps + (fpsModifier > 1 ? 1 : fpsModifier);
       if (tempFps - lastRenderedFrame >= 1) {
-        const animationModifier = (sinceLastFrame / msBetweenTicks);
-        renderedX.value += (velocityPerTick * animationModifier);
+        const deltaTime = sinceLastFrame / 1000;
+        renderedX.value += (velocity * deltaTime);
 
         lastRenderedFrame = tempFps;
         sinceLastFrame = 0;
@@ -149,35 +151,47 @@ const loopOnIntervalAndRFA = (fps, tps, velocity) => {
         sinceLastSecondFrame = 0;
       }
 
-      requestAnimationFrame(frame);
+      if (!stop) {
+        requestAnimationFrame(frame);
+      }
     })
   };
 
   requestAnimationFrame(frame);
 
-  return { x, renderedX, actualTPS, actualFPS };
+  const finalizer = () => {
+    stop = true;
+    clearInterval(intervalId);
+  }
+
+  return { finalizer, x, renderedX, actualTPS, actualFPS };
 }
 
 const scope = (fps, tps, velocity) => {
   const container = div({ className: classes.scope });
 
-  const definedStats = p({ className: classes.scopeTitle })
-    .content(`DEFINED. ${fps} FPS, ${tps} TPS, ${velocity}px per tick`);
+  const definedStats = p({ key: "stats", className: classes.scopeTitle })
+    .content(`DEFINED. ${fps} FPS, ${tps} TPS, ${velocity}px per sec`);
 
-  const actualStats = p({ className: classes.scopeTitle });
+  const actualStats = p({ key: "actualStats", className: classes.scopeTitle });
 
-  const { x, renderedX, actualTPS, actualFPS } = loopOnIntervalAndRFA(fps, tps, velocity);
+  const { finalizer, x, renderedX, actualTPS, actualFPS } = loopOnIntervalAndRFA(fps, tps, velocity);
 
   actualStats.assocEffect(() => {
     actualStats.content(`ACTUAL.  ${actualFPS.value} FPS, ${actualTPS.value} TPS`);
   });
 
-  const baloon = div({ className: classes.baloon });
+  const baloon = div({ key: "baloon", className: classes.baloon });
 
   baloon.assocEffect(() => {
     baloon.content(`${x.value.toFixed(2)} ${renderedX.value.toFixed(2)}`);
     baloon.props({ style: { left: `${renderedX.value.toFixed(2)}px` } });
   })
+
+  const intervalId = setInterval(() => {
+    console.log(`${fps} FPS, ${tps} TPS, ${velocity}px per sec`, x.peek(), renderedX.peek());
+  }, 1000);
+  container.addFinalizer(() => clearInterval(intervalId));
 
   container.children([
     definedStats,
@@ -188,14 +202,15 @@ const scope = (fps, tps, velocity) => {
   return container;
 };
 
-const VELOCITY = 30;
+const TPS = 60;
+const VELOCITY = 200;
 
 const tickWithFps = () => {
   return div({ className: clsx(classes.container, classes.variables) }).children([
-    scope(30, 60, VELOCITY),
-    scope(60, 60, VELOCITY),
-    scope(120, 60, VELOCITY),
-    scope(240, 60, VELOCITY),
+    scope(15, TPS, VELOCITY),
+    scope(60, TPS, VELOCITY),
+    scope(120, TPS, VELOCITY),
+    scope(240, TPS, VELOCITY),
   ]);
 };
 
