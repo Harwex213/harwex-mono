@@ -1,0 +1,23 @@
+.colors {
+    --white: #ffffffff;
+
+    --timberwolf-100: #d7cdcc;
+
+    --jasmine-300: #FFE882;
+
+    --paynes-gray-600: #59656f;
+
+    --plum-500: #9c528bff;
+
+    --raisin-black-900: #1e1f2e;
+    --raisin-black-1000: #0a0a0f;
+}
+
+.variables {
+}
+
+.container {
+    height: 100dvh;
+    width: 100vw;
+    overflow: hidden;
+}

@@ -1,0 +1,30 @@
+{
+  "name": "@hw/react-virtuoso",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "browserslist": [
+    "> 1%",
+    "last 2 versions",
+    "not dead"
+  ],
+  "scripts": {
+    "start": "yarn vite"
+  },
+  "dependencies": {
+    "@types/react": "19.2.0",
+    "@types/react-dom": "19.2.0",
+    "clsx": "2.1.1",
+    "react": "19.2.0",
+    "react-dom": "19.2.0",
+    "react-router-dom": "5.3.4",
+    "react-virtuoso": "4.14.1"
+  },
+  "devDependencies": {
+    "@hw/typescript-config": "workspace:*",
+    "@hw/webpack-config": "workspace:*",
+    "@vitejs/plugin-react-swc": "4.1.0",
+    "typescript": "5.9.3",
+    "vite": "7.1.10"
+  }
+}

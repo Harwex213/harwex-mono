@@ -91,7 +91,7 @@ const loopOnIntervalAndRFA = (fps, tps, velocity) => {
 
   let tempTick = 0;
   let sinceLastSecondTick = 0;
-  let lastTickCall = Math.round(performance.now());
+  let lastTickCall = performance.now();
 
   // а что если js движок не будет успевать ранать 60 тиков в сек?...
   const msBetweenTicks = 1000 / tps;
@@ -99,7 +99,7 @@ const loopOnIntervalAndRFA = (fps, tps, velocity) => {
 
   const intervalId = setInterval(() => {
     batch(() => {
-      const now = Math.round(performance.now());
+      const now = performance.now();
 
       const elapsed = now - lastTickCall;
       sinceLastSecondTick += elapsed;

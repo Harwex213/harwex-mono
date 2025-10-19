@@ -1,29 +1,77 @@
 import { signal } from "@hw/signals";
 
-const ATTACK_TYPE = {
-  MELEE: "MELEE",
-
-};
-
 class Unit {
-  x = -1;
-  y = -1;
+  //region properties
 
-  viewRange = -1;
-  armor = -1;
-  health = -1;
-  maxHealth = -1;
+  /**
+   * текущая позиция по оси X
+   * @type {number}
+   */
+  x = 0;
 
+  /**
+   текущая позиция по оси Y
+   * @type {number}
+   */
+  y = 0;
+
+  /**
+   * дальность видимости юнита
+   * @type {number}
+   */
+  viewRange = 0;
+
+  /**
+   * на сколько уменьшить урон
+   * @type {number}
+   */
+  armor = 0;
+
+  /**
+   * текущий показатель здоровья
+   * @type {number}
+   */
+  health = 0;
+
+  maxHealth = 0;
+
+  /**
+   * естественное восстановление здоровья
+   * @type {number}
+   */
   regenPerTick = -1;
-  attackType = -1;
+
+  /**
+   * насколько сильно юнит дотягивается для удара
+   * @type {number}
+   */
   attackRange = -1;
+
+  /**
+   * значение урона другому юниту за действие
+   * @type {number}
+   */
   attackPerAction = -1;
+
+  /**
+   * на сколько хилит хп другому юниту за действие
+   * @type {number}
+   */
   healPerAction = -1;
+
+  /**
+   * на сколько двигается за действие
+   * @type {number}
+   */
   movementPerAction = -1;
 
-  lastTickAmount = -1;
+  /**
+   * сколько действий может сделать за тик
+   * @type {number}
+   */
   actionPerTick = -1;
-  actions = -1;
+
+  //endregion
 }
 
 const GAME_STATE = {
@@ -47,14 +95,6 @@ class Game {
     };
   }
 
-  #doActions() {
-
-  }
-
-  #doRegen() {
-
-  }
-
   nextTick() {
     if (this.state.peek() !== GAME_STATE.RUNNING) {
       return;
@@ -64,7 +104,11 @@ class Game {
     this.tick.value = this.tick.peek() + 1;
   }
 
-  spawnUnit(row, col) {
+  spawnRace() {
+
+  }
+
+  spawnUnit() {
 
   }
 }
