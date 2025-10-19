@@ -4,20 +4,20 @@ import { UiElement } from "../uiElement.js";
 import { createMockHtmlElement } from "../../tests/mockHtmlElement.js";
 
 const createElement =
-    typeof document !== "undefined" ? (tagName) => document.createElement(tagName) : createMockHtmlElement;
+  typeof document !== "undefined" ? (tagName) => document.createElement(tagName) : createMockHtmlElement;
 
 const handleAnchorClickFabric =
-    (onClick = voidFn) =>
+  (onClick = voidFn) =>
     (e) => {
-        e.preventDefault();
-        router.push(e.target.getAttribute("href"));
-        onClick(e);
+      e.preventDefault();
+      router.push(e.target.getAttribute("href"));
+      onClick(e);
     };
 
 const elementFabric =
-    (tagName) =>
+  (tagName) =>
     (props = {}) =>
-        new UiElement(createElement(tagName), props);
+      new UiElement(createElement(tagName), props);
 
 const div = elementFabric("div");
 const button = elementFabric("button");

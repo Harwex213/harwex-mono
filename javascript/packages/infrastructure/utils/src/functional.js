@@ -4,17 +4,17 @@ const T = () => true;
 const F = () => false;
 
 const toFunctionCreator =
-    (Constructor) =>
-        (...props) =>
-            new Constructor(...props);
+  (Constructor) =>
+    (...props) =>
+      new Constructor(...props);
 
 const isNil = (examine) => examine === undefined || examine === null;
 const isNotNil = (examine) => examine !== undefined && examine !== null;
 
 const assertNotNil = (examine, source = "unknown source") => {
-    if (isNil(examine)) {
-        throw `${source}: Expected non-nil`;
-    }
+  if (isNil(examine)) {
+    throw `${source}: Expected non-nil`;
+  }
 }
 
 const { isArray } = Array;

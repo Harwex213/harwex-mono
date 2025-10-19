@@ -1,6 +1,9 @@
 {
   "$schema": "https://json.schemastore.org/tsconfig",
   "display": "Base",
+  "files": [
+    "./@types/index.d.ts"
+  ],
   "compilerOptions": {
     "target": "ESNext",
     "module": "ESNext",
@@ -16,7 +19,6 @@
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
     "isolatedModules": true,
-    "jsx": "preserve",
     "verbatimModuleSyntax": true,
     "allowJs": true,
     "noUnusedLocals": true,

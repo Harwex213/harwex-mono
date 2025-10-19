@@ -13,7 +13,7 @@ type TGameAction = {
 }
 
 const applyActionFactory = (game: Game) => {
-  // TODO: all public methods of game could be just linked to game action types
+  // TODO: all public methods of game could be just linked to game action @types
   const actionMap = {
     [GAME_ACTION_TYPE.UNIT_MOVE]: game.moveUnit.bind(game),
     [GAME_ACTION_TYPE.UNIT_SPAWN]: game.spawnUnit.bind(game),

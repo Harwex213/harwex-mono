@@ -1,0 +1,22 @@
+{
+  "name": "@hw/gamedev-playground",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "browserslist": [
+    "> 1%",
+    "last 2 versions",
+    "not dead"
+  ],
+  "scripts": {
+    "start": "yarn vite"
+  },
+  "dependencies": {
+    "@hw/html-lib": "workspace:*",
+    "@hw/signals": "workspace:*",
+    "@hw/utils": "workspace:*"
+  },
+  "devDependencies": {
+    "vite": "7.1.10"
+  }
+}

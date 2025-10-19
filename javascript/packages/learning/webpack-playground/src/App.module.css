@@ -1,0 +1,101 @@
+.app {
+  min-height: 100vh;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.header {
+  text-align: center;
+  padding: 40px 20px;
+  color: white;
+}
+
+.title {
+  font-size: 3rem;
+  font-weight: 700;
+  margin: 0 0 16px 0;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+.subtitle {
+  font-size: 1.2rem;
+  margin: 0;
+  opacity: 0.9;
+  font-weight: 300;
+}
+
+.main {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 0 20px 40px;
+}
+
+.counter {
+  text-align: center;
+}
+
+.countDisplay {
+  font-size: 1.5rem;
+  margin-bottom: 24px;
+  color: #333;
+}
+
+.countValue {
+  font-weight: 700;
+  color: #007bff;
+  font-size: 2rem;
+}
+
+.buttonGroup {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.buttonShowcase {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.featureList {
+  list-style: none;
+  padding: 0;
+  margin: 16px 0 0 0;
+}
+
+.featureList li {
+  padding: 8px 0;
+  font-size: 1.1rem;
+  color: #555;
+}
+
+@media (max-width: 768px) {
+  .title {
+    font-size: 2rem;
+  }
+  
+  .buttonGroup {
+    flex-direction: column;
+    align-items: center;
+  }
+  
+  .buttonGroup button {
+    width: 200px;
+  }
+  
+  .buttonShowcase {
+    flex-direction: column;
+    align-items: center;
+  }
+  
+  .buttonShowcase button {
+    width: 150px;
+  }
+}

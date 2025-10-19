@@ -5,12 +5,11 @@
   "main": "base.json",
   "files": [
     "base.json",
-    "react.json",
     "preact.json",
     "node.json"
   ],
   "peerDependencies": {
-    "@types/webpack-env": "^1.18.0",
-    "typescript": "5.8.3"
+    "@types/webpack-env": "1.18.8",
+    "typescript": "5.9.3"
   }
 }
