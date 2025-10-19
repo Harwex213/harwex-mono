@@ -1,3 +1,1 @@
-import { batch, computed, effect, signal } from "@preact/signals-core";
-
-export { signal, computed, effect, batch };
+export { signal, computed, effect, batch } from "./src/current-implementation.js";
