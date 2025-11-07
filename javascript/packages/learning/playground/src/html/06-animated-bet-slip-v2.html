@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta content="width=device-width, initial-scale=1.0" name="viewport">
+    <title>Animated Bet Slip - V2</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family: Lora, sans-serif;
+      }
+
+      .container {
+        height: 100dvh;
+        width: 100vw;
+        background: #f5f5f5;
+      }
+
+      .bet-slip-container {
+        position: fixed;
+        bottom: 0;
+        left: 300px;
+        width: 250px;
+        max-height: 80dvh;
+        display: grid;
+        grid-template-rows: 40px 1fr;
+        border-radius: 10px;
+        overflow: hidden;
+        background: #1d2c39;
+        transition: border-radius 150ms ease 100ms;
+      }
+
+      .bet-slip-header {
+        cursor: pointer;
+        user-select: none;
+        width: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 4px;
+        border-radius: 10px;
+        padding: 8px 12px;
+        background: #1294ff;
+        color: #fff;
+        transition: border-radius 150ms ease 100ms;
+      }
+
+      .bet-slip-title {
+        font-size: 18px;
+        font-weight: 600;
+      }
+
+      .bet-slip-count {
+        width: 24px;
+        height: 24px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #ffffff;
+        color: #1294ff;
+        border-radius: 100%;
+        font-size: 12px;
+      }
+
+      .bet-slip-coefficient {
+        font-size: 12px;
+        font-weight: 600;
+      }
+
+      .bet-slip-collapse {
+        transform: rotate(180deg);
+        font-family: Verdana, sans-serif;
+        margin-bottom: 4px;
+      }
+
+      .four-button {
+        --circle-size: 4px;
+        --gap: 2px;
+
+        width: calc(var(--circle-size) * 2 + var(--gap));
+        height: calc(var(--circle-size) * 2 + var(--gap));
+        position: relative;
+      }
+
+      .four-button > div {
+        position: absolute;
+        width: var(--circle-size);
+        height: var(--circle-size);
+        background: #8ac1ff;
+        border-radius: 50%;
+      }
+
+      .four-button > div:nth-child(1) {
+        top: 0;
+        left: 0;
+      }
+
+      .four-button > div:nth-child(2) {
+        top: 0;
+        left: calc(var(--circle-size) + var(--gap));
+      }
+
+      .four-button > div:nth-child(3) {
+        top: calc(var(--circle-size) + var(--gap));
+        left: 0;
+      }
+
+      .four-button > div:nth-child(4) {
+        top: calc(var(--circle-size) + var(--gap));
+        left: calc(var(--circle-size) + var(--gap));
+      }
+
+      .bet-slip-content-container {
+        overflow-y: auto;
+      }
+
+      .bet-slip-content {
+        --actual-height: 0;
+
+        height: 0;
+        transition: height 350ms ease;
+        overflow: hidden;
+      }
+
+      .bet-slip-pick, .bet-slip-pick-list {
+        min-height: 0;
+      }
+
+      .bet-slip-container[data-collapsed="false"] {
+        border-radius: 10px 10px 0 0;
+        transition: border-radius 150ms ease;
+      }
+
+      .bet-slip-container[data-collapsed="false"] .bet-slip-header {
+        border-radius: 0;
+        transition: border-radius 150ms ease;
+      }
+
+      .bet-slip-container[data-collapsed="false"] .bet-slip-content {
+        height: var(--actual-height);
+      }
+
+      .bet-slip-pick {
+        padding: 8px;
+        color: #fff;
+      }
+
+      .bet-slip-pick-header {
+        display: grid;
+        grid-template-columns: minmax(0, auto) min-content min-content;
+        align-items: center;
+        gap: 4px;
+      }
+
+      .bet-slip-pick-coefficient {
+        font-size: 12px;
+        font-weight: 600;
+      }
+
+      .bet-slip-close {
+        cursor: pointer;
+        font-size: 16px;
+      }
+
+      .bet-slip-close:hover {
+        opacity: 0.7;
+      }
+
+      .bet-slip-close {
+        padding-bottom: 3px;
+      }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="some-data">
+        <div>
+            Some very very interesting data
+        </div>
+        <div>
+            And more interesting data
+        </div>
+        <div>
+            And more
+        </div>
+        <div>
+            And more
+        </div>
+
+        <button class="add-pick">Add pick</button>
+    </div>
+
+    <div class="bet-slip-container" data-collapsed="true">
+        <div class="bet-slip-header">
+            <div class="four-button">
+                <div></div>
+                <div></div>
+                <div></div>
+                <div></div>
+            </div>
+            <div class="bet-slip-title">Bet Slip</div>
+            <div class="bet-slip-count">4</div>
+            <div class="bet-slip-coefficient">117.28</div>
+            <div class="bet-slip-collapse">^</div>
+        </div>
+
+        <div class="bet-slip-content-container">
+            <div class="bet-slip-content">
+                <div class="bet-slip-pick-list">
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+  let nextPickId = 2;
+
+  const betSlip = document.querySelector(".bet-slip-container");
+  const betSlipHeader = document.querySelector(".bet-slip-header");
+  const betSlipContent = document.querySelector(".bet-slip-content");
+
+  const state = {
+    width: 250,
+    posLeft: 300,
+    maxLeft: -1,
+
+    state: "stale",
+    mousePosX: 0,
+
+    contentHeight: 0,
+  }
+
+  const animateTranslateX = () => {
+    if (state.state === "stale") {
+      return;
+    }
+
+    const newPosLeft = state.mousePosX - state.offsetX;
+
+    state.posLeft = Math.max(0, Math.min(newPosLeft, state.maxLeft));
+
+    betSlip.style.left = state.posLeft + 'px';
+
+    requestAnimationFrame(animateTranslateX);
+  };
+  const animateThreshold = () => {
+    state.posLeft = Math.max(0, Math.min(state.posLeft, state.maxLeft));
+
+    betSlip.style.left = state.posLeft + "px";
+  };
+  const toggleBetSlipExpand = () => {
+    betSlip.dataset.collapsed = betSlip.dataset.collapsed === "false" ? "true" : "false";
+  };
+  const updateContentHeight = () => {
+    betSlipContent.style.setProperty("--actual-height", state.contentHeight + "px");
+  };
+
+  betSlipHeader.addEventListener("mousedown", (e) => {
+    state.state = "clicked";
+    state.mousePosX = e.clientX;
+    state.offsetX = state.mousePosX - state.posLeft;
+    requestAnimationFrame(animateTranslateX);
+  });
+  betSlipHeader.addEventListener("mouseup", (e) => {
+    if (state.state === "clicked") {
+      requestAnimationFrame(toggleBetSlipExpand);
+    }
+  })
+  window.addEventListener("mouseup", () => {
+    state.state = "stale";
+  });
+  window.addEventListener("mousemove", (e) => {
+    if (state.state === "stale") {
+      return;
+    }
+    state.state = "dragging";
+    state.mousePosX = e.clientX;
+  });
+
+  const observer = new ResizeObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.target === document.querySelector(".container")) {
+        state.maxLeft = entry.contentRect.width - state.width;
+        requestAnimationFrame(animateThreshold);
+      }
+      if (entry.target === document.querySelector(".bet-slip-pick-list")) {
+        state.contentHeight = entry.contentRect.height;
+        requestAnimationFrame(updateContentHeight);
+      }
+    })
+  });
+  observer.observe(document.querySelector(".container"));
+  observer.observe(document.querySelector(".bet-slip-pick-list"));
+
+  const removePick = (e) => {
+    const pickId = e.target.dataset.pickId;
+    document.querySelector(`.bet-slip-pick[data-pick-id="${pickId}"]`).remove();
+  };
+
+  const addPick = () => {
+    const div = document.createElement("div");
+    div.innerHTML = `
+        <div class="bet-slip-pick-header">
+            <div class="bet-slip-pick-outcome">
+                Outcome Supa Base
+            </div>
+
+            <div class="bet-slip-pick-coefficient">
+                17.42
+            </div>
+
+            <div class="bet-slip-close" data-pick-id="${nextPickId}">
+                x
+            </div>
+        </div>
+
+        <div class="bet-slip-pick-market">
+            Market Market Market
+        </div>
+
+        <div class="bet-slip-pick-event-name">
+            Eventik Name
+        </div>
+
+        <div class="bet-slip-pick-start-date">
+            18 November 2020 - 19:00
+        </div>
+    `;
+    div.classList.add("bet-slip-pick");
+    div.dataset.pickId = nextPickId.toString();
+    nextPickId++;
+
+    div.querySelector(".bet-slip-close").addEventListener("click", removePick);
+
+    document.querySelector(".bet-slip-pick-list").appendChild(div);
+  }
+
+  document.querySelector(".add-pick").addEventListener("click", () => {
+    requestAnimationFrame(addPick);
+  });
+
+  requestAnimationFrame(addPick);
+</script>
+</body>
+</html>
