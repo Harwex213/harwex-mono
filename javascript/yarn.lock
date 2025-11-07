@@ -1771,6 +1771,17 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@hw/browser-scroll-restoration@workspace:packages/learning/scroll-restoration/browser-scroll-restoration":
+  version: 0.0.0-use.local
+  resolution: "@hw/browser-scroll-restoration@workspace:packages/learning/scroll-restoration/browser-scroll-restoration"
+  dependencies:
+    "@hw/html-lib": "workspace:*"
+    "@hw/signals": "workspace:*"
+    "@hw/utils": "workspace:*"
+    vite: "npm:7.1.10"
+  languageName: unknown
+  linkType: soft
+
 "@hw/castle-attack-ai@workspace:packages/prototypes/castle-attack-ai":
   version: 0.0.0-use.local
   resolution: "@hw/castle-attack-ai@workspace:packages/prototypes/castle-attack-ai"
