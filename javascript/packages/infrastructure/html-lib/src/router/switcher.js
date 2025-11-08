@@ -4,53 +4,53 @@ import { router } from "./router.js";
 import { switcherAlreadyStartedListening } from "../error.js";
 
 class Switcher {
-    #routes = new Map();
-    #defaultPath = null;
-    #startListen = false;
+  #routes = new Map();
+  #defaultPath = null;
+  #startListen = false;
 
-    match(route, handle) {
-        if (this.#startListen) {
-            throw switcherAlreadyStartedListening();
+  match(route, handle) {
+    if (this.#startListen) {
+      throw switcherAlreadyStartedListening();
+    }
+
+    this.#routes.set(route, handle);
+    return this;
+  }
+
+  defaultPath(path) {
+    if (this.#startListen) {
+      throw switcherAlreadyStartedListening();
+    }
+
+    this.#defaultPath = path;
+    return this;
+  }
+
+  listen() {
+    const finalize = effect(() => {
+      const currentPath = router.currentPath.value;
+
+      let resolved = false;
+
+      for (const [route, handle] of this.#routes.entries()) {
+        const match = route.matchRoute(currentPath);
+        if (!!match) {
+          handle(match.params);
+          resolved = true;
+          break;
         }
+      }
 
-        this.#routes.set(route, handle);
-        return this;
-    }
+      if (!resolved && this.#defaultPath) {
+        router.push(this.#defaultPath);
+      }
+    });
 
-    defaultPath(path) {
-        if (this.#startListen) {
-            throw switcherAlreadyStartedListening();
-        }
-
-        this.#defaultPath = path;
-        return this;
-    }
-
-    listen() {
-        const finalize = effect(() => {
-            const currentPath = router.currentPath.value;
-
-            let resolved = false;
-
-            for (const [route, handle] of this.#routes.entries()) {
-                const match = route.matchRoute(currentPath);
-                if (!!match) {
-                    handle(match.params);
-                    resolved = true;
-                    break;
-                }
-            }
-
-            if (!resolved && this.#defaultPath) {
-                router.push(this.#defaultPath);
-            }
-        });
-
-        return () => {
-            finalize();
-            this.#routes.clear();
-        };
-    }
+    return () => {
+      finalize();
+      this.#routes.clear();
+    };
+  }
 }
 
 const switcher = toFunctionCreator(Switcher);
