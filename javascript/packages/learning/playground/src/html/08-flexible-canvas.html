@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0"
+          name="viewport">
+    <meta content="ie=edge" http-equiv="X-UA-Compatible">
+    <title>Flexible Canvas</title>
+
+    <style>
+        body {
+            margin: 0;
+        }
+
+        #container {
+            width: 100vw;
+            height: 100dvh;
+            overflow: hidden;
+        }
+    </style>
+</head>
+<body>
+<div>
+    <div id="container"></div>
+</div>
+
+<script>
+  const dpr = window.devicePixelRatio || 1;
+
+  console.log("devicePixelRatio", dpr);
+
+  const container = document.getElementById("container");
+
+  const canvas = document.createElement("canvas");
+
+  container.appendChild(canvas);
+
+  const observer = new ResizeObserver((entries) => {
+    for (const entry of entries) {
+      if (entry.target === container) {
+        // refer https://developer.mozilla.org/en-US/docs/Web/API/ResizeObserverEntry/contentBoxSize
+
+        let width;
+        let height;
+        if (entry.contentBoxSize) {
+          if (entry.contentBoxSize[0]) {
+            width = entry.contentBoxSize[0].inlineSize;
+            height = entry.contentBoxSize[0].blockSize;
+          } else {
+            // legacy
+            width = entry.contentBoxSize.inlineSize;
+            height = entry.contentBoxSize.blockSize;
+          }
+        } else {
+          // legacy
+          width = entry.contentRect.width;
+          height = entry.contentRect.height;
+        }
+
+        canvas.width = width * dpr;
+        canvas.height = height * dpr;
+        canvas.style.width = width + 'px';
+        canvas.style.height = height + 'px';
+
+        // canvas.width = width;
+        // canvas.height = height;
+        // canvas.style.width = width + 'px';
+        // canvas.style.height = height + 'px';
+
+        ctx.scale(dpr, dpr);
+
+        onReady();
+      }
+    }
+  });
+
+  observer.observe(container);
+
+  const ctx = canvas.getContext("2d");
+
+  const onReady = () => {
+    ctx.beginPath();
+
+    ctx.fillStyle = "#bada55";
+    ctx.fillRect(0, 0, 300, 300);
+    ctx.fillStyle = "white";
+    ctx.font = "18px Arial";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+
+    ctx.beginPath();
+
+    const x = 300 / 2;
+    const y = 300 / 2;
+    const textString = "I love MDN";
+
+    ctx.fillText(textString, x, y);
+  }
+</script>
+</body>
+</html>
