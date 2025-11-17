@@ -1,0 +1,382 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0"
+          name="viewport">
+    <meta content="ie=edge" http-equiv="X-UA-Compatible">
+    <title>Layered Centered Carousel</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Arial', sans-serif;
+            background: #0e0e10;
+            color: white;
+            padding: 50px 0;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .carousel-container {
+            position: relative;
+            width: 100%;
+            max-width: 1400px;
+            height: 500px;
+            margin: 0 auto;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .carousel-wrapper {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .carousel-slide {
+            position: absolute;
+            width: 500px;
+            cursor: pointer;
+            transition: all 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+            transform-origin: center center;
+        }
+
+        .carousel-slide img {
+            width: 100%;
+            height: 280px;
+            object-fit: cover;
+            border-radius: 12px;
+            display: block;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+        }
+
+        .slide-content {
+            background: #18181b;
+            padding: 20px;
+            border-radius: 0 0 12px 12px;
+            margin-top: -4px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+        }
+
+        .slide-title {
+            font-size: 20px;
+            font-weight: bold;
+            margin-bottom: 8px;
+        }
+
+        .slide-description {
+            font-size: 14px;
+            color: #adadb8;
+        }
+
+        /* Center slide - highest z-index, full size */
+        .carousel-slide.center {
+            z-index: 100;
+            transform: translateX(0) scale(1);
+            opacity: 1;
+        }
+
+        /* Right slides (next) - positioned to the right, stacked */
+        .carousel-slide.next-1 {
+            z-index: 90;
+            transform: translateX(350px) scale(0.85);
+            opacity: 0.7;
+        }
+
+        .carousel-slide.next-2 {
+            z-index: 80;
+            transform: translateX(450px) scale(0.7);
+            opacity: 0.5;
+        }
+
+        /* Left slides (previous) - positioned to the left, stacked */
+        .carousel-slide.prev-1 {
+            z-index: 90;
+            transform: translateX(-350px) scale(0.85);
+            opacity: 0.7;
+        }
+
+        .carousel-slide.prev-2 {
+            z-index: 80;
+            transform: translateX(-450px) scale(0.7);
+            opacity: 0.5;
+        }
+
+        /* Hidden slides - far away */
+        .carousel-slide.hidden {
+            z-index: 0;
+            transform: translateX(0) scale(0.5);
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        /* Navigation buttons */
+        .carousel-nav {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            background: rgba(0, 0, 0, 0.7);
+            border: none;
+            color: white;
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 28px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s ease;
+            z-index: 200;
+            backdrop-filter: blur(10px);
+        }
+
+        .carousel-nav:hover {
+            background: rgba(0, 0, 0, 0.9);
+            transform: translateY(-50%) scale(1.1);
+        }
+
+        .carousel-nav.prev {
+            left: 40px;
+        }
+
+        .carousel-nav.next {
+            right: 40px;
+        }
+
+        .carousel-nav:disabled {
+            opacity: 0.3;
+            cursor: not-allowed;
+        }
+
+        .carousel-nav:disabled:hover {
+            transform: translateY(-50%) scale(1);
+        }
+
+        /* Indicators */
+        .carousel-indicators {
+            position: absolute;
+            bottom: -60px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            justify-content: center;
+            gap: 12px;
+            z-index: 200;
+        }
+
+        .indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #3a3a3d;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            border: 2px solid transparent;
+        }
+
+        .indicator:hover {
+            background: #5a5a5d;
+        }
+
+        .indicator.active {
+            background: #9147ff;
+            width: 35px;
+            border-radius: 6px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="carousel-container">
+    <button class="carousel-nav prev" id="prevBtn">‹</button>
+    <button class="carousel-nav next" id="nextBtn">›</button>
+
+    <div class="carousel-wrapper" id="carouselWrapper">
+        <!-- Slides will be generated by JavaScript -->
+    </div>
+
+    <div class="carousel-indicators" id="indicators"></div>
+</div>
+
+<script>
+  // Sample data for carousel slides
+  const slides = [
+    {
+      image: 'https://picsum.photos/500/280?random=1',
+      title: 'Slide 1',
+      description: 'First amazing content'
+    },
+    {
+      image: 'https://picsum.photos/500/280?random=2',
+      title: 'Slide 2',
+      description: 'Second amazing content'
+    },
+    {
+      image: 'https://picsum.photos/500/280?random=3',
+      title: 'Slide 3',
+      description: 'Third amazing content'
+    },
+    {
+      image: 'https://picsum.photos/500/280?random=4',
+      title: 'Slide 4',
+      description: 'Fourth amazing content'
+    },
+    {
+      image: 'https://picsum.photos/500/280?random=5',
+      title: 'Slide 5',
+      description: 'Fifth amazing content'
+    },
+    {
+      image: 'https://picsum.photos/500/280?random=6',
+      title: 'Slide 6',
+      description: 'Sixth amazing content'
+    },
+    {
+      image: 'https://picsum.photos/500/280?random=7',
+      title: 'Slide 7',
+      description: 'Seventh amazing content'
+    }
+  ];
+
+  class CenteredCarousel {
+    constructor(slides, containerId) {
+      this.slides = slides;
+      this.currentIndex = 0;
+      this.wrapper = document.getElementById(containerId);
+      this.prevBtn = document.getElementById('prevBtn');
+      this.nextBtn = document.getElementById('nextBtn');
+      this.indicatorsContainer = document.getElementById('indicators');
+
+      this.init();
+    }
+
+    init() {
+      this.renderSlides();
+      this.renderIndicators();
+      this.attachEventListeners();
+      this.updateCarousel();
+    }
+
+    renderSlides() {
+      this.wrapper.innerHTML = this.slides.map((slide, index) => `
+                <div class="carousel-slide" data-index="${index}">
+                    <img src="${slide.image}" alt="${slide.title}">
+                    <div class="slide-content">
+                        <div class="slide-title">${slide.title}</div>
+                        <div class="slide-description">${slide.description}</div>
+                    </div>
+                </div>
+            `).join('');
+    }
+
+    renderIndicators() {
+      this.indicatorsContainer.innerHTML = this.slides.map((_, index) => `
+                <div class="indicator" data-index="${index}"></div>
+            `).join('');
+    }
+
+    attachEventListeners() {
+      this.prevBtn.addEventListener('click', () => this.goToPrev());
+      this.nextBtn.addEventListener('click', () => this.goToNext());
+
+      // Click on slide to navigate
+      const slideElements = this.wrapper.querySelectorAll('.carousel-slide');
+      slideElements.forEach((slide, index) => {
+        slide.addEventListener('click', () => {
+          const slideIndex = parseInt(slide.dataset.index);
+          if (slideIndex !== this.currentIndex) {
+            this.goToSlide(slideIndex);
+          }
+        });
+      });
+
+      // Click on indicators
+      const indicators = this.indicatorsContainer.querySelectorAll('.indicator');
+      indicators.forEach((indicator, index) => {
+        indicator.addEventListener('click', () => this.goToSlide(index));
+      });
+
+      // Keyboard navigation
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'ArrowLeft') {
+          this.goToPrev();
+        } else if (e.key === 'ArrowRight') {
+          this.goToNext();
+        }
+      });
+    }
+
+    goToPrev() {
+      if (this.currentIndex > 0) {
+        this.currentIndex--;
+        this.updateCarousel();
+      }
+    }
+
+    goToNext() {
+      if (this.currentIndex < this.slides.length - 1) {
+        this.currentIndex++;
+        this.updateCarousel();
+      }
+    }
+
+    goToSlide(index) {
+      this.currentIndex = index;
+      this.updateCarousel();
+    }
+
+    updateCarousel() {
+      const slideElements = this.wrapper.querySelectorAll('.carousel-slide');
+
+      slideElements.forEach((slide, index) => {
+        // Remove all position classes
+        slide.classList.remove('center', 'next-1', 'next-2', 'prev-1', 'prev-2', 'hidden');
+
+        const relativePosition = index - this.currentIndex;
+
+        // Apply appropriate class based on position relative to current
+        if (relativePosition === 0) {
+          slide.classList.add('center');
+        } else if (relativePosition === 1) {
+          slide.classList.add('next-1');
+        } else if (relativePosition === 2) {
+          slide.classList.add('next-2');
+        } else if (relativePosition === -1) {
+          slide.classList.add('prev-1');
+        } else if (relativePosition === -2) {
+          slide.classList.add('prev-2');
+        } else {
+          slide.classList.add('hidden');
+        }
+      });
+
+      // Update indicators
+      const indicators = this.indicatorsContainer.querySelectorAll('.indicator');
+      indicators.forEach((indicator, index) => {
+        indicator.classList.toggle('active', index === this.currentIndex);
+      });
+
+      // Update navigation buttons state
+      this.prevBtn.disabled = this.currentIndex === 0;
+      this.nextBtn.disabled = this.currentIndex === this.slides.length - 1;
+    }
+  }
+
+  // Initialize carousel
+  const carousel = new CenteredCarousel(slides, 'carouselWrapper');
+</script>
+
+</body>
+</html>
