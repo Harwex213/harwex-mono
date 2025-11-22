@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0"
+          name="viewport">
+    <meta content="ie=edge" http-equiv="X-UA-Compatible">
+    <title>Container Query Width investigate</title>
+
+    <style>
+        body {
+            margin: 0;
+        }
+
+        .container {
+            padding-top: 40px;
+            width: 100vw;
+            height: 400px;
+            position: relative;
+            container-type: inline-size;
+        }
+
+        .centered {
+            position: absolute;
+            left: calc(50% - (clamp(320px, 60cqw, 800px) / 2));
+            width: clamp(320px, 60cqw, 800px);
+            height: 400px;
+            background: #1196ff;
+            border-radius: 4px;
+            z-index: 5;
+        }
+
+        .minus-one {
+            background: #94ff11;
+            transform: translateX(-30%) scale(0.8, 0.8);
+            z-index: 4;
+        }
+
+        .plus-one {
+            background: #94ff11;
+            transform: translateX(30%) scale(0.8, 0.8);
+            z-index: 4;
+        }
+    </style>
+</head>
+<body>
+<div>
+    <div class="container">
+        <div class="centered"></div>
+        <div class="centered minus-one"></div>
+        <div class="centered plus-one"></div>
+    </div>
+</div>
+</body>
+</html>
