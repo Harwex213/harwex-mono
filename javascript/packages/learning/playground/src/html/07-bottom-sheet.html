@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0"
+          name="viewport">
+    <meta content="ie=edge" http-equiv="X-UA-Compatible">
+    <title>Simple Mobile Bottom Sheet</title>
+    <style>
+
+
+        #button {
+            width: 120px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        #bottom-sheet {
+            display: none;
+            position: fixed;
+            width: 100vw;
+            height: calc(100dvh - 4px);
+            border-radius: 10px 10px 0 0;
+            top: 4px;
+            left: 0;
+            background: #d5d5d5;
+            transform: translateY(0);
+        }
+
+        #bottom-sheet.appeared {
+            display: block;
+            animation-name: bottom-sheet-appearing;
+            animation-duration: 0.25s;
+            animation-timing-function: ease-in-out;
+        }
+
+        @keyframes bottom-sheet-appearing {
+            from {
+                top: 100%;
+            }
+
+            to {
+                top: 4px;
+            }
+        }
+
+        .bottom-sheet-header {
+            padding: 6px 12px;
+            border-bottom: 1px solid #171717;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .stroke {
+            width: 100px;
+            height: 3px;
+            border-radius: 1px;
+            background: #000000;
+        }
+
+        .bottom-sheet-content {
+            padding: 12px;
+            overflow-y: scroll;
+            overscroll-behavior: contain;
+        }
+    </style>
+</head>
+<body>
+
+<div>
+    <button id="button">Open</button>
+
+    <div id="bottom-sheet">
+        <div class="bottom-sheet-header">
+            <div class="stroke"></div>
+        </div>
+
+        <div class="bottom-sheet-content">
+            Lorem ipsum dolor sit amet, consectetur adipisicing elit. Consectetur, dicta expedita fugiat maiores nam
+            necessitatibus nesciunt vitae! Consequuntur deserunt dolorum eius magni nihil soluta voluptatibus! Minima
+            quas rem reprehenderit soluta?
+
+            Lorem ipsum dolor sit amet, consectetur adipisicing elit. Consectetur, dicta expedita fugiat maiores nam
+            necessitatibus nesciunt vitae! Consequuntur deserunt dolorum eius magni nihil soluta voluptatibus! Minima
+            quas rem reprehenderit soluta?
+
+            Lorem ipsum dolor sit amet, consectetur adipisicing elit. Consectetur, dicta expedita fugiat maiores nam
+            necessitatibus nesciunt vitae! Consequuntur deserunt dolorum eius magni nihil soluta voluptatibus! Minima
+            quas rem reprehenderit soluta?
+
+            Lorem ipsum dolor sit amet, consectetur adipisicing elit. Consectetur, dicta expedita fugiat maiores nam
+            necessitatibus nesciunt vitae! Consequuntur deserunt dolorum eius magni nihil soluta voluptatibus! Minima
+            quas rem reprehenderit soluta?
+        </div>
+    </div>
+</div>
+
+<script>
+  /**
+   * 1. Appearing by click on button
+   * 2. Drag header to some trigger height, at which it will auto collapse
+   */
+
+  const button = document.querySelector("#button");
+  const bottomSheet = document.querySelector("#bottom-sheet");
+
+  button.addEventListener("click", (e) => {
+    bottomSheet.classList.add("appeared");
+    window.document.body.style.overflowY = "hidden";
+  })
+
+  const state = {
+    bottomSheetHeight: 0,
+    isMouseDown: false,
+    mouseY: 0,
+    translateY: 0,
+  }
+
+  const bottomSheetHeader = document.querySelector(".bottom-sheet-header");
+  bottomSheetHeader.addEventListener("touchstart", (e) => {
+    state.isMouseDown = true;
+    state.mouseY = e.touches[0].clientY;
+  });
+  window.addEventListener("touchend", (e) => {
+    if (!state.isMouseDown) {
+      return;
+    }
+
+    state.isMouseDown = false;
+
+    console.log(state.translateY / state.bottomSheetHeight);
+
+    const shouldHide = state.translateY / state.bottomSheetHeight >= 0.13;
+
+    const from = state.translateY;
+    const to = shouldHide ? state.bottomSheetHeight : 0;
+
+    const animation = bottomSheet.animate([
+      { transform: `translateY(${from}px)` },
+      { transform: `translateY(${to}px)` }
+    ], {
+      duration: 250,
+      easing: "ease-in-out"
+    });
+
+    const onFinish = () => {
+      if (shouldHide) {
+        bottomSheet.classList.remove("appeared");
+      }
+      state.translateY = 0;
+      bottomSheet.style.transform = `translateY(${state.translateY}px)`;
+    };
+
+    animation.onfinish = onFinish;
+    animation.oncancel = onFinish;
+    animation.onremove = onFinish;
+  });
+  window.addEventListener("touchcancel", () => {
+    state.isMouseDown = false;
+  });
+  window.addEventListener("touchmove", (e) => {
+    if (!state.isMouseDown) {
+      return;
+    }
+
+    state.translateY += e.touches[0].clientY - state.mouseY
+    bottomSheet.style.transform = `translateY(${state.translateY}px)`;
+    state.mouseY = e.touches[0].clientY;
+  });
+
+  new ResizeObserver((e) => {
+    for (const resizeObserverEntry of e) {
+      state.bottomSheetHeight = resizeObserverEntry.contentRect.height;
+    }
+  }).observe(bottomSheet);
+</script>
+</body>
+</html>
