@@ -1,6 +1,9 @@
 const path = require('path');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
 const MiniCssExtractPlugin = require('mini-css-extract-plugin');
+const CssModulePreprocessorPlugin = require('./webpack-plugins/CssModulePreprocessorPlugin');
+
+const isDev = process.env.NODE_ENV !== 'production';
 
 module.exports = {
   entry: './src/index.js',
@@ -24,12 +27,12 @@ module.exports = {
       {
         test: /\.module\.css$/,
         use: [
-          MiniCssExtractPlugin.loader,
+          isDev ? 'style-loader' : MiniCssExtractPlugin.loader,
           {
             loader: "css-loader",
             options: {
               modules: {
-                localIdentName: '[local]--[contenthash:base64:5]',
+                localIdentName: isDev ? '[local]--[hash:base64:5]' : '[local]--[contenthash:base64:5]',
                 exportLocalsConvention: 'camelCase',
                 namedExport: false,
               },
@@ -42,7 +45,7 @@ module.exports = {
         test: /\.css$/,
         exclude: /\.module\.css$/,
         use: [
-          MiniCssExtractPlugin.loader,
+          isDev ? 'style-loader' : MiniCssExtractPlugin.loader,
           'css-loader',
         ],
       },
@@ -53,12 +56,16 @@ module.exports = {
       template: './public/index.html',
       filename: 'index.html',
     }),
+    !isDev &&
     new MiniCssExtractPlugin({
       filename: '[name].[fullhash].css',
       chunkFilename: '[name].[fullhash].css',
       ignoreOrder: true,
     }),
-  ],
+    new CssModulePreprocessorPlugin({
+      overrideRoots: [path.resolve(__dirname, 'src/themes/green')],
+    }),
+  ].filter(Boolean),
   devServer: {
     static: {
       directory: path.join(__dirname, 'public'),
@@ -70,20 +77,5 @@ module.exports = {
   },
   resolve: {
     extensions: ['.js', '.jsx'],
-  },
-  optimization: {
-    splitChunks: {
-      cacheGroups: {
-        cssModules: {
-          test: /\.module\.css$/,
-          name: (module, chunks, cacheGroupKey) => {
-            const moduleFileName = module.identifier().split('/').pop().replace('.module.css', '');
-            return `css-${moduleFileName}`;
-          },
-          chunks: 'all',
-          enforce: true,
-        },
-      },
-    },
   },
 };
