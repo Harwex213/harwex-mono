@@ -15,6 +15,13 @@ module.exports = {
   module: {
     rules: [
       {
+        test: /\.(png|jpe?g|gif|svg|webp)$/i,
+        type: 'asset/resource',
+        generator: {
+          filename: 'assets/[name].[contenthash][ext][query]',
+        },
+      },
+      {
         test: /\.(js|jsx)$/,
         exclude: /node_modules/,
         use: {
@@ -61,9 +68,6 @@ module.exports = {
       filename: '[name].[fullhash].css',
       chunkFilename: '[name].[fullhash].css',
       ignoreOrder: true,
-    }),
-    new CssModulePreprocessorPlugin({
-      overrideRoots: [path.resolve(__dirname, 'src/themes/green')],
     }),
   ].filter(Boolean),
   devServer: {
