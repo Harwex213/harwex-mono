@@ -1,4 +1,4 @@
-input/readme.md
+input/*
 !input/readme.md
 
 output/*

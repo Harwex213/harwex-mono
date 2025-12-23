@@ -1,0 +1,38 @@
+/* @css-override Button */
+
+.button {
+    background-color: #0f172a;
+    color: #ff0000;
+    border: 1px solid #1f2937;
+}
+
+.button:hover {
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+    transform: translateY(-2px);
+}
+
+.primary {
+    background-color: #1e293b;
+}
+
+.primary:hover {
+    background-color: #111827;
+}
+
+.secondary {
+    background-color: #111827;
+    color: #cbd5e1;
+    border-color: #0f172a;
+}
+
+.secondary:hover {
+    background-color: #0b1120;
+}
+
+.success {
+    background-color: #14532d;
+}
+
+.danger {
+    background-color: #7f1d1d;
+}

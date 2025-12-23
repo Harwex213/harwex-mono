@@ -1876,15 +1876,6 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@hw/file-processors@workspace:packages/work/file-processors":
-  version: 0.0.0-use.local
-  resolution: "@hw/file-processors@workspace:packages/work/file-processors"
-  dependencies:
-    "@hw/eslint-config": "workspace:*"
-    "@hw/utils": "workspace:*"
-  languageName: unknown
-  linkType: soft
-
 "@hw/game-model-benchmark@workspace:packages/learning/game-model-benchmark":
   version: 0.0.0-use.local
   resolution: "@hw/game-model-benchmark@workspace:packages/learning/game-model-benchmark"
@@ -2080,28 +2071,21 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@hw/react-game-backend@workspace:packages/work/react-game/backend":
+"@hw/react-playground@workspace:packages/learning/react-playground":
   version: 0.0.0-use.local
-  resolution: "@hw/react-game-backend@workspace:packages/work/react-game/backend"
+  resolution: "@hw/react-playground@workspace:packages/learning/react-playground"
   dependencies:
-    ws: "npm:8.17.1"
-  languageName: unknown
-  linkType: soft
-
-"@hw/react-game-diff-protocol@workspace:packages/work/react-game/diff-protocol":
-  version: 0.0.0-use.local
-  resolution: "@hw/react-game-diff-protocol@workspace:packages/work/react-game/diff-protocol"
-  languageName: unknown
-  linkType: soft
-
-"@hw/react-game-frontend@workspace:packages/work/react-game/frontend":
-  version: 0.0.0-use.local
-  resolution: "@hw/react-game-frontend@workspace:packages/work/react-game/frontend"
-  dependencies:
+    "@hw/utils": "workspace:*"
+    "@preact/signals-react": "npm:3.0.1"
     "@types/react": "npm:19.2.0"
     "@types/react-dom": "npm:19.2.0"
+    "@types/react-router-dom": "npm:5.3.3"
+    "@vitejs/plugin-react-swc": "npm:4.1.0"
+    clsx: "npm:2.1.1"
     react: "npm:19.2.0"
     react-dom: "npm:19.2.0"
+    react-router-dom: "npm:5.3.4"
+    vite: "npm:7.1.10"
   languageName: unknown
   linkType: soft
 
@@ -2240,9 +2224,9 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@hw/work-chore@workspace:packages/work/chore":
+"@hw/work-chore@workspace:packages/infrastructure/chore":
   version: 0.0.0-use.local
-  resolution: "@hw/work-chore@workspace:packages/work/chore"
+  resolution: "@hw/work-chore@workspace:packages/infrastructure/chore"
   dependencies:
     "@hw/utils": "workspace:*"
   languageName: unknown
@@ -2759,9 +2743,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@softnetix/di@workspace:packages/work/softnetix/di":
+"@softnetix/di@workspace:packages/learning/odysseus/di":
   version: 0.0.0-use.local
-  resolution: "@softnetix/di@workspace:packages/work/softnetix/di"
+  resolution: "@softnetix/di@workspace:packages/learning/odysseus/di"
   dependencies:
     "@types/node": "npm:22.13.10"
     tsx: "npm:4.19.3"
@@ -3073,6 +3057,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@types/history@npm:^4.7.11":
+  version: 4.7.11
+  resolution: "@types/history@npm:4.7.11"
+  checksum: 10/1da529a3485f3015daf794effa3185493bf7dd2551c26932389c614f5a0aab76ab97645897d1eef9c74ead216a3848fcaa019f165bbd6e4b71da6eff164b4c68
+  languageName: node
+  linkType: hard
+
 "@types/html-minifier-terser@npm:^6.0.0":
   version: 6.1.0
   resolution: "@types/html-minifier-terser@npm:6.1.0"
@@ -3183,6 +3174,27 @@ __metadata:
   peerDependencies:
     "@types/react": ^19.2.0
   checksum: 10/e1e2e71214af67e1aa433a25b5f193d8bc98bfc16e108783c2c45c520623737af3c91ee929124c1f7adf2c3988bbd493cdc4ff64af69731245a3a758fde82291
+  languageName: node
+  linkType: hard
+
+"@types/react-router-dom@npm:5.3.3":
+  version: 5.3.3
+  resolution: "@types/react-router-dom@npm:5.3.3"
+  dependencies:
+    "@types/history": "npm:^4.7.11"
+    "@types/react": "npm:*"
+    "@types/react-router": "npm:*"
+  checksum: 10/28c4ea48909803c414bf5a08502acbb8ba414669b4b43bb51297c05fe5addc4df0b8fd00e0a9d1e3535ec4073ef38aaafac2c4a2b95b787167d113bc059beff3
+  languageName: node
+  linkType: hard
+
+"@types/react-router@npm:*":
+  version: 5.1.20
+  resolution: "@types/react-router@npm:5.1.20"
+  dependencies:
+    "@types/history": "npm:^4.7.11"
+    "@types/react": "npm:*"
+  checksum: 10/72d78d2f4a4752ec40940066b73d7758a0824c4d0cbeb380ae24c8b1cdacc21a6fc835a99d6849b5b295517a3df5466fc28be038f1040bd870f8e39e5ded43a4
   languageName: node
   linkType: hard
 
@@ -11390,21 +11402,6 @@ __metadata:
   version: 1.0.2
   resolution: "wrappy@npm:1.0.2"
   checksum: 10/159da4805f7e84a3d003d8841557196034155008f817172d4e986bd591f74aa82aa7db55929a54222309e01079a65a92a9e6414da5a6aa4b01ee44a511ac3ee5
-  languageName: node
-  linkType: hard
-
-"ws@npm:8.17.1":
-  version: 8.17.1
-  resolution: "ws@npm:8.17.1"
-  peerDependencies:
-    bufferutil: ^4.0.1
-    utf-8-validate: ">=5.0.2"
-  peerDependenciesMeta:
-    bufferutil:
-      optional: true
-    utf-8-validate:
-      optional: true
-  checksum: 10/4264ae92c0b3e59c7e309001e93079b26937aab181835fb7af79f906b22cd33b6196d96556dafb4e985742dd401e99139572242e9847661fdbc96556b9e6902d
   languageName: node
   linkType: hard
 
