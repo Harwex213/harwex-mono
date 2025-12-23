@@ -69,6 +69,9 @@ module.exports = {
       chunkFilename: '[name].[fullhash].css',
       ignoreOrder: true,
     }),
+    new CssModulePreprocessorPlugin({
+      overrideRoots: [path.resolve(__dirname, 'src/themes/green')],
+    }),
   ].filter(Boolean),
   devServer: {
     static: {

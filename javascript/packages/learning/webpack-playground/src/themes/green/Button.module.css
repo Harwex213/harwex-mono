@@ -3,4 +3,9 @@
 .button {
     color: green;
     background-color: #00ff00;
+
+    background-image: url("./cat.jpg");
+    background-position: 50%;
+    background-repeat: no-repeat;
+    background-size: cover;
 }
