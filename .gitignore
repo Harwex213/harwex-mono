@@ -1,5 +1,6 @@
 .vs
 .idea
+.vscode
 node_modules
 dist
 .parcel-cache/
@@ -7,3 +8,11 @@ out
 .env.local
 
 *.db
+
+# C++ build artifacts
+cpp/build/
+cpp/install/
+
+# vcpkg (can be regenerated, optional to ignore)
+vcpkg/
+!vcpkg/vcpkg.json
