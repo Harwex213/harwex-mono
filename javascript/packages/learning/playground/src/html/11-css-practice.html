@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0"
+          name="viewport">
+    <meta content="ie=edge" http-equiv="X-UA-Compatible">
+    <title>Css Practice</title>
+</head>
+<body>
+<div>
+    <div style="display: flex; flex-direction: column;">
+        <div style="padding: 40px; background: green; color: black; margin-bottom: 10px">
+            <div style="width: 100px; height: 40px; background: red; color: black; margin-bottom: 10px">
+                Margin collapse
+            </div>
+            <div style="width: 100px; height: 40px; background: red; color: black; margin-top: 10px">
+                Margin collapse
+            </div>
+        </div>
+        <div style="width: 150px; height: 40px; background: green; color: white; margin-top: 10px">
+            Margin no collapse (parent is flex)
+        </div>
+    </div>
+</div>
+</body>
+</html>

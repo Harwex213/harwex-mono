@@ -1,0 +1,305 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0"
+          name="viewport">
+    <meta content="ie=edge" http-equiv="X-UA-Compatible">
+    <title>Document</title>
+    <style>
+        body {
+            margin: 0;
+        }
+
+        :where(html) {
+            --wireframe-font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+
+            --wireframe-color-background: #fff;
+            --wireframe-color-foreground: oklch(.278 .033 256.848);
+            --wireframe-color-text-primary: oklch(.278 .033 256.848);
+            --wireframe-color-text-secondary: oklch(.446 .03 256.802);
+            --wireframe-color-text-success: oklch(.627 .194 149.214);
+            --wireframe-color-text-danger: oklch(.577 .245 27.325);
+
+            --wireframe-spacing: .25rem;
+            --wireframe-spacing-2: calc(var(--wireframe-spacing) * 2);
+            --wireframe-spacing-3: calc(var(--wireframe-spacing) * 3);
+            --wireframe-spacing-4: calc(var(--wireframe-spacing) * 4);
+            --wireframe-spacing-5: calc(var(--wireframe-spacing) * 5);
+            --wireframe-spacing-6: calc(var(--wireframe-spacing) * 6);
+            --wireframe-default-border: 2px solid var(--wireframe-color-foreground);
+
+            --wireframe-text-xs: .75rem;
+            --wireframe-text-xs--line-height: calc(1 / .75);
+
+            --wireframe-text-sm: .875rem;
+            --wireframe-text-sm--line-height: calc(1.25 / .875);
+
+            --wireframe-text-base: 1rem;
+            --wireframe-text-base--line-height: calc(1.5 / 1);
+
+            --wireframe-text-lg: 1.125rem;
+            --wireframe-text-lg--line-height: calc(1.75 / 1.125);
+
+            --wireframe-text-xl: 1.25rem;
+            --wireframe-text-xl--line-height: calc(2 / 1.25);
+
+            --wireframe-text-2xl: 1.5rem;
+            --wireframe-text-2xl--line-height: calc(2 / 1.5);
+
+            --wireframe-text-3xl: 1.875rem;
+            --wireframe-text-3xl--line-height: calc(2.25 / 1.875);
+
+            --wireframe-font-weight-normal: 400;
+            --wireframe-font-weight-medium: 500;
+
+            --wireframe-transition-duration: .15s;
+            --wireframe-transition-timing-function: cubic-bezier(.4, 0, .2, 1);
+        }
+
+        .viewport {
+            width: 100vw;
+            height: 100dvh;
+        }
+
+        .calendar {
+            width: 100%;
+            height: 100%;
+            display: grid;
+            grid-template-columns: 100%;
+            grid-template-rows: minmax(0, 1fr) 150px;
+        }
+
+        .month {
+            width: 100%;
+            height: 100%;
+            display: grid;
+            grid-template-columns: 100%;
+            grid-template-rows: repeat(var(--number-of-weeks), minmax(0, 1fr));
+        }
+
+        .month:last-child {
+            border-bottom: none;
+        }
+
+        .week {
+            display: grid;
+            grid-template-columns: repeat(7, minmax(0, 1fr));
+            grid-template-rows: 100%;
+            border-bottom: var(--wireframe-default-border);
+        }
+
+        .day {
+            box-sizing: border-box;
+            grid-column: var(--column);
+            grid-row: 1;
+            padding: var(--wireframe-spacing);
+            border-right: var(--wireframe-default-border);
+            border-left: 2px solid transparent;
+        }
+
+        .day:last-child {
+            border-right: none;
+        }
+
+        .week:last-child .day:last-child {
+            border-right: var(--wireframe-default-border);
+        }
+
+        .week:first-child .day:first-child {
+            border-left: var(--wireframe-default-border);
+        }
+
+        .passed {
+            opacity: .4;
+        }
+
+        .current {
+            color: var(--wireframe-color-text-success);
+            border-color: var(--wireframe-color-text-success);
+        }
+
+        .calendar-buttons {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .calendar-button {
+            width: 140px;
+            height: 30px;
+        }
+
+        .calendar-button:disabled {
+            opacity: .4;
+            cursor: default;
+        }
+    </style>
+</head>
+<body>
+<div class="viewport">
+    <div class="calendar">
+        <div class="month-container">
+
+        </div>
+        <div class="calendar-buttons">
+            <button class="calendar-button" id="calendar-previous">Previous</button>
+
+            <button class="calendar-button" id="calendar-next">Next</button>
+        </div>
+    </div>
+</div>
+</body>
+<script>
+  const DATE_DAY_TO_COLUMN = {
+    0: 7, // sunday
+    1: 1, // monday
+    2: 2, // tuesday
+    3: 3, // wednesday
+    4: 4, // thursday
+    5: 5, // friday
+    6: 6, // saturday
+  }
+
+  const renderPrevious = (monthIndex) => {
+    const previousButton = document.getElementById("calendar-previous");
+
+    if (monthIndex === 0) {
+      previousButton.setAttribute("disabled", "true");
+    } else {
+      previousButton.removeAttribute("disabled");
+    }
+  }
+
+  const renderNext = (monthIndex) => {
+    const nextButton = document.getElementById("calendar-next");
+
+    if (monthIndex === 11) {
+      nextButton.setAttribute("disabled", "true");
+    } else {
+      nextButton.removeAttribute("disabled");
+    }
+  }
+
+  const renderDay = (parent, day) => {
+    const dayElement = document.createElement("div");
+
+    dayElement.style.setProperty("--column", DATE_DAY_TO_COLUMN[day.date.getDay()]);
+
+    dayElement.classList.add("day");
+
+    dayElement.innerHTML = day.date.toString();
+
+    if (day.isPassed) {
+      dayElement.classList.add("passed");
+    }
+
+    if (day.isCurrent) {
+      dayElement.classList.add("current");
+    }
+
+    parent.appendChild(dayElement);
+  };
+
+  const renderWeek = (parent, weekDays) => {
+    const weekElement = document.createElement("div");
+
+    weekElement.classList.add("week");
+
+    for (const weekDay of weekDays) {
+      renderDay(weekElement, weekDay);
+    }
+
+    parent.appendChild(weekElement);
+  }
+
+  const renderMonth = (days, monthIndex) => {
+    let weekDays = [];
+    let lastDay = -1;
+    const weeks = [];
+
+    const flushWeek = () => {
+      weeks.push(weekDays);
+      weekDays = [];
+    }
+
+    for (const day of days) {
+      if (lastDay === 0 && day.date.getDay() === 1) {
+        flushWeek();
+        weekDays.push(day);
+        continue;
+      }
+
+      weekDays.push(day);
+      lastDay = day.date.getDay();
+    }
+
+    flushWeek();
+
+    const month = document.createElement("div");
+
+    month.style.setProperty("--number-of-weeks", weeks.length.toString());
+
+    month.classList.add("month");
+
+    for (const weekDays of weeks) {
+      renderWeek(month, weekDays);
+    }
+
+    document.querySelector(".month-container").replaceChildren(month);
+
+    renderPrevious(monthIndex);
+    renderNext(monthIndex);
+  }
+
+  const date = new Date("Jan 1 2026 00:00:00");
+  const ONE_DAY = 1_000 * 60 * 60 * 24;
+  let month = date.getMonth();
+  let lastDayMonth = month;
+
+  const monthes = [];
+  let days = [];
+
+  while (month !== 12) {
+    const isCurrent = date.getDate() === new Date().getDate() && date.getMonth() === new Date().getMonth();
+    const isPassed = (date.getTime() < new Date().getTime()) && !isCurrent;
+
+    days.push({
+      date: new Date(date.getTime()),
+      isPassed,
+      isCurrent,
+    });
+
+    date.setTime(date.getTime() + ONE_DAY);
+
+    const isNewMonth = date.getMonth() !== lastDayMonth;
+    if (isNewMonth) {
+      month++;
+      monthes.push(days);
+      days = [];
+    }
+    lastDayMonth = date.getMonth();
+  }
+
+  let currentMonth = 0;
+  renderMonth(monthes[currentMonth], currentMonth);
+
+  document.getElementById("calendar-previous").addEventListener("click", () => {
+    if (document.getElementById("calendar-previous").disabled) {
+      return;
+    }
+
+    currentMonth--;
+    renderMonth(monthes[currentMonth], currentMonth);
+  });
+  document.getElementById("calendar-next").addEventListener("click", () => {
+    if (document.getElementById("calendar-next").disabled) {
+      return;
+    }
+
+    currentMonth++;
+    renderMonth(monthes[currentMonth], currentMonth);
+  });
+</script>
+</html>
