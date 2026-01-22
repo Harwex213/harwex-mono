@@ -1,0 +1,23 @@
+{
+  "name": "@hw/war-system",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "mobx": "6.15.0",
+    "mobx-react-lite": "4.1.0",
+    "react": "19.2.0",
+    "react-dom": "19.2.0"
+  },
+  "devDependencies": {
+    "@types/react": "19.2.0",
+    "@types/react-dom": "19.2.0",
+    "@vitejs/plugin-react-swc": "4.1.0",
+    "typescript": "^5.7.2",
+    "vite": "7.1.10"
+  }
+}
