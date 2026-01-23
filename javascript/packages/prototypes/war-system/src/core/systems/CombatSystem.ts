@@ -9,9 +9,38 @@ export class CombatSystem {
     const units = this.unitsStore.aliveUnits;
 
     for (const unit of units) {
+      // Auto-attack for player units without orders or with non-attack orders
+      if (unit.team === 'player' && (!unit.currentOrder || unit.currentOrder.type !== 'attack')) {
+        this.checkAutoAttack(unit);
+      }
+
       if (!unit.currentOrder || unit.currentOrder.type !== 'attack') continue;
 
       this.processAttack(unit, currentTime);
+    }
+  }
+
+  private checkAutoAttack(unit: Unit): void {
+    const enemyUnits = this.unitsStore.enemyUnits;
+    
+    // Find closest enemy within attack range
+    let closestEnemy: Unit | null = null;
+    let minDistance = unit.stats.attackRange;
+
+    for (const enemy of enemyUnits) {
+      const distance = Vector.distance(unit.position, enemy.position);
+      if (distance <= unit.stats.attackRange && distance < minDistance) {
+        minDistance = distance;
+        closestEnemy = enemy;
+      }
+    }
+
+    // Assign attack order if enemy found in range
+    if (closestEnemy) {
+      unit.currentOrder = {
+        type: 'attack',
+        targetUnitId: closestEnemy.id,
+      };
     }
   }
 

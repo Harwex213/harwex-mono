@@ -7,14 +7,14 @@ export const GAME_CONFIG = {
   initialUnits: {
     player: {
       leader: 1,
-      cavalry: 2,
-      infantry: 4,
-      archer: 4,
-    },
-    enemy: {
-      cavalry: 4,
+      cavalry: 3,
       infantry: 5,
       archer: 5,
+    },
+    enemy: {
+      cavalry: 3,
+      infantry: 4,
+      archer: 4,
     },
   },
   spawn: {
