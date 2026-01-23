@@ -56,7 +56,6 @@ function VirtualListDemo() {
   const [overscan, setOverscan] = useState(3);
   const [itemCount, setItemCount] = useState(10000);
   const [maxDepth, setMaxDepth] = useState(5);
-  const [renderCount, setRenderCount] = useState(0);
 
   // Generate tree data
   const treeData = useMemo(() => {
@@ -67,9 +66,6 @@ function VirtualListDemo() {
 
   // Render function for items
   const renderItem = useCallback((node: VirtualTreeNode<TreeItemData>, depth: number) => {
-    // Track render count (just for demo purposes)
-    setRenderCount(c => c + 1);
-
     return (
       <div
         className={classes.item}
@@ -140,12 +136,8 @@ function VirtualListDemo() {
 
         <div className={classes.metrics}>
           <div className={classes.metric}>
-            <strong>Render Count:</strong> {renderCount}
-          </div>
-          <div className={classes.metric}>
             <strong>Root Nodes:</strong> {treeData.length}
           </div>
-          <button onClick={() => setRenderCount(0)}>Reset Counter</button>
         </div>
       </div>
 

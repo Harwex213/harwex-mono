@@ -10,13 +10,20 @@ export interface VirtualNodeProps<T = unknown> {
 
 function VirtualNodeInner<T>({ node, renderItem }: VirtualNodeProps<T>) {
   const { isNodeVisible, flatIndex } = useVirtualList();
-  
+
   const flatNode = flatIndex.get(node.id);
   const isVisible = isNodeVisible(node.id);
 
   if (!flatNode) {
     return null;
   }
+
+  // Calculate position relative to parent or root
+  // If node has a parent, we need to calculate offset from parent's children container
+  const parentNode = flatNode.parentId ? flatIndex.get(flatNode.parentId) : null;
+  const relativeTop = parentNode
+    ? flatNode.absoluteTop - (parentNode.absoluteTop + parentNode.height)
+    : flatNode.absoluteTop;
 
   // If node is not visible, render placeholder with total height
   if (!isVisible) {
@@ -26,7 +33,7 @@ function VirtualNodeInner<T>({ node, renderItem }: VirtualNodeProps<T>) {
         style={{
           height: `${flatNode.totalHeight}px`,
           position: 'absolute',
-          top: 0,
+          top: `${relativeTop}px`,
           left: 0,
           right: 0,
         }}
@@ -42,17 +49,18 @@ function VirtualNodeInner<T>({ node, renderItem }: VirtualNodeProps<T>) {
       className={styles.virtualNode}
       style={{
         position: 'absolute',
-        top: 0,
+        top: `${relativeTop}px`,
         left: 0,
         right: 0,
         minHeight: `${node.height}px`,
+        height: `${node.height}px`,
       }}
       data-node-id={node.id}
     >
       {/* Render the item content */}
       <div
         className={styles.virtualNodeContent}
-        style={{ minHeight: `${node.height}px` }}
+        style={{ minHeight: `${node.height}px`, height: `${node.height}px` }}
       >
         {renderItem(node, flatNode.depth)}
       </div>
@@ -63,7 +71,7 @@ function VirtualNodeInner<T>({ node, renderItem }: VirtualNodeProps<T>) {
           className={styles.virtualNodeChildren}
           style={{
             position: 'relative',
-            top: 0,
+            height: `${flatNode.totalHeight - flatNode.height}px`,
           }}
         >
           {node.children.map(child => (

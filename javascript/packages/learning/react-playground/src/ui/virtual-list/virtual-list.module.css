@@ -1,12 +1,10 @@
 .virtualListRoot {
   width: 100%;
   position: relative;
-  contain: layout style paint;
 }
 
 .virtualNode {
   width: 100%;
-  contain: layout style paint;
 }
 
 .virtualNodeContent {
