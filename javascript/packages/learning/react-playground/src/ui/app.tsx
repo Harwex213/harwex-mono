@@ -3,6 +3,7 @@ import { Switch, Route, BrowserRouter } from "react-router-dom";
 import classes from "./app.module.css";
 import { router } from "./router-di";
 import "./wireframe/wireframe";
+import "./virtual-list-demo/virtual-list-demo";
 
 const App: FC = memo(() => {
 

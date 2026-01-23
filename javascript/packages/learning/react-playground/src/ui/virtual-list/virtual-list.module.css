@@ -1,0 +1,22 @@
+.virtualListRoot {
+  width: 100%;
+  position: relative;
+}
+
+.virtualNode {
+  width: 100%;
+}
+
+.virtualNodeContent {
+  width: 100%;
+}
+
+.virtualNodeChildren {
+  width: 100%;
+}
+
+.virtualNodePlaceholder {
+  width: 100%;
+  pointer-events: none;
+  contain: strict;
+}
