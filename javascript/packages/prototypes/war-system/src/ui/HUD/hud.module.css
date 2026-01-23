@@ -1,0 +1,161 @@
+.hud {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  background: rgba(255, 255, 255, 0.95);
+  border: 2px solid #d1d5db;
+  border-radius: 8px;
+  padding: 20px;
+  min-width: 250px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  font-family: system-ui, -apple-system, sans-serif;
+}
+
+.title {
+  font-size: 20px;
+  font-weight: bold;
+  margin-bottom: 15px;
+  color: #1f2937;
+}
+
+.section {
+  margin-bottom: 15px;
+  padding-bottom: 15px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.section:last-child {
+  border-bottom: none;
+  margin-bottom: 0;
+  padding-bottom: 0;
+}
+
+.label {
+  font-size: 12px;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 5px;
+}
+
+.value {
+  font-size: 16px;
+  color: #1f2937;
+  font-weight: 600;
+}
+
+.stat {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  font-size: 14px;
+}
+
+.statLabel {
+  color: #6b7280;
+}
+
+.statValue {
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.button {
+  width: 100%;
+  padding: 10px;
+  margin-top: 10px;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.playButton {
+  background: #22c55e;
+  color: white;
+}
+
+.playButton:hover {
+  background: #16a34a;
+}
+
+.pauseButton {
+  background: #f59e0b;
+  color: white;
+}
+
+.pauseButton:hover {
+  background: #d97706;
+}
+
+.restartButton {
+  background: #ef4444;
+  color: white;
+}
+
+.restartButton:hover {
+  background: #dc2626;
+}
+
+.gameStatus {
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-weight: 600;
+  text-align: center;
+  margin-bottom: 10px;
+}
+
+.statusPlaying {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.statusPaused {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.statusWon {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+.statusLost {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.unitInfo {
+  margin-top: 10px;
+}
+
+.unitType {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1f2937;
+  margin-bottom: 8px;
+  text-transform: capitalize;
+}
+
+.hpBar {
+  width: 100%;
+  height: 8px;
+  background: #e5e7eb;
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 5px;
+}
+
+.hpFill {
+  height: 100%;
+  background: #22c55e;
+  transition: width 0.3s;
+}
+
+.hpText {
+  font-size: 12px;
+  color: #6b7280;
+  text-align: center;
+}
