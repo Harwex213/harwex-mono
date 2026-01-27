@@ -4,6 +4,7 @@ import classes from "./app.module.css";
 import { router } from "./router-di";
 import "./wireframe/wireframe";
 import "./virtual-list-demo/virtual-list-demo";
+import "./bottom-sheet/bottom-sheet";
 
 const App: FC = memo(() => {
 

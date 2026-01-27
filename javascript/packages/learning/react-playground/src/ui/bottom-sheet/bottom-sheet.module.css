@@ -1,0 +1,44 @@
+.bottom-sheet {
+    animation-name: bottom-sheet-appearing;
+    animation-duration: 0.25s;
+    animation-timing-function: ease-in-out;
+    position: fixed;
+    width: 100vw;
+    height: calc(100dvh - 4px);
+    border-radius: 10px 10px 0 0;
+    top: 4px;
+    left: 0;
+    background: #d5d5d5;
+    transform: translateY(0);
+}
+
+@keyframes bottom-sheet-appearing {
+    from {
+        top: 100%;
+    }
+
+    to {
+        top: 4px;
+    }
+}
+
+.bottom-sheet-header {
+    padding: 6px 12px;
+    border-bottom: 1px solid #171717;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.stroke {
+    width: 100px;
+    height: 3px;
+    border-radius: 1px;
+    background: #000000;
+}
+
+.bottom-sheet-content {
+    padding: 12px;
+    overflow-y: scroll;
+    overscroll-behavior: contain;
+}
