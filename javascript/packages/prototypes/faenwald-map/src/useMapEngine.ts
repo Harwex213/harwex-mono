@@ -25,6 +25,8 @@ function getPixelHex(data: Uint8ClampedArray, x: number, y: number, width: numbe
   return `#${r}${g}${b}`
 }
 
+const BORDER_HALF_WIDTH = 1 // results in 5px wide borders (1 + 2*2)
+
 function detectBorders(
   imageData: ImageData,
   provincesMap: ProvincesMap,
@@ -35,24 +37,51 @@ function detectBorders(
   const borderData = ctx.createImageData(width, height)
   const bd = borderData.data
 
+  // Pass 1: mark raw border pixels using 8-connectivity
+  const isBorderPixel = new Uint8Array(width * height)
+  const DIRS = [-1, 0, 1]
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
       const color = getPixelHex(data, x, y, width)
       if (color === '#ffffff' || !(color in provincesMap)) continue
 
-      const rightColor = x + 1 < width ? getPixelHex(data, x + 1, y, width) : null
-      const bottomColor = y + 1 < height ? getPixelHex(data, x, y + 1, width) : null
+      let border = false
+      outer: for (const dy of DIRS) {
+        for (const dx of DIRS) {
+          if (dx === 0 && dy === 0) continue
+          const nx = x + dx
+          const ny = y + dy
+          if (nx < 0 || ny < 0 || nx >= width || ny >= height) {
+            border = true
+            break outer
+          }
+          const neighborColor = getPixelHex(data, nx, ny, width)
+          if (neighborColor !== color) {
+            border = true
+            break outer
+          }
+        }
+      }
 
-      const isBorder =
-        (rightColor !== null && rightColor !== color) ||
-        (bottomColor !== null && bottomColor !== color)
+      if (border) isBorderPixel[y * width + x] = 1
+    }
+  }
 
-      if (isBorder) {
-        const i = (y * width + x) * 4
-        bd[i] = 0
-        bd[i + 1] = 0
-        bd[i + 2] = 0
-        bd[i + 3] = 217 // ~0.85 opacity
+  // Pass 2: dilate border pixels by BORDER_HALF_WIDTH
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      if (!isBorderPixel[y * width + x]) continue
+      for (let dy = -BORDER_HALF_WIDTH; dy <= BORDER_HALF_WIDTH; dy++) {
+        for (let dx = -BORDER_HALF_WIDTH; dx <= BORDER_HALF_WIDTH; dx++) {
+          const nx = x + dx
+          const ny = y + dy
+          if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue
+          const i = (ny * width + nx) * 4
+          bd[i] = 0
+          bd[i + 1] = 0
+          bd[i + 2] = 0
+          bd[i + 3] = 217
+        }
       }
     }
   }
@@ -140,6 +169,7 @@ export function useMapEngine(canvasRef: RefObject<HTMLCanvasElement | null>) {
       const { baseImg, borderCanvas, highlightCanvas } = assetsRef.current
       const { offsetX, offsetY, scale } = stateRef.current
 
+      ctx.imageSmoothingEnabled = false
       ctx.clearRect(0, 0, canvas!.width, canvas!.height)
       ctx.save()
       ctx.translate(offsetX, offsetY)
