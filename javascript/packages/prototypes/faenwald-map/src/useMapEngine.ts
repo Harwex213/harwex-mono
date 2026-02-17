@@ -30,7 +30,7 @@ const BORDER_HALF_WIDTH = 1 // results in 5px wide borders (1 + 2*2)
 function detectBorders(
   imageData: ImageData,
   provincesMap: ProvincesMap,
-): OffscreenCanvas {
+): { canvas: OffscreenCanvas; dilatedMask: Uint8Array } {
   const { data, width, height } = imageData
   const canvas = new OffscreenCanvas(width, height)
   const ctx = canvas.getContext('2d')!
@@ -68,6 +68,7 @@ function detectBorders(
   }
 
   // Pass 2: dilate border pixels by BORDER_HALF_WIDTH
+  const dilatedMask = new Uint8Array(width * height)
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
       if (!isBorderPixel[y * width + x]) continue
@@ -81,16 +82,21 @@ function detectBorders(
           bd[i + 1] = 0
           bd[i + 2] = 0
           bd[i + 3] = 217
+          dilatedMask[ny * width + nx] = 1
         }
       }
     }
   }
 
   ctx.putImageData(borderData, 0, 0)
-  return canvas
+  return { canvas, dilatedMask }
 }
 
-function buildHighlight(imageData: ImageData, color: string): OffscreenCanvas {
+function buildHighlight(
+  imageData: ImageData,
+  color: string,
+  dilatedMask: Uint8Array,
+): OffscreenCanvas {
   const { data, width, height } = imageData
   const canvas = new OffscreenCanvas(width, height)
   const ctx = canvas.getContext('2d')!
@@ -99,8 +105,10 @@ function buildHighlight(imageData: ImageData, color: string): OffscreenCanvas {
 
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
+      const idx = y * width + x
+      if (dilatedMask[idx]) continue
       if (getPixelHex(data, x, y, width) === color) {
-        const i = (y * width + x) * 4
+        const i = idx * 4
         hd[i] = 255
         hd[i + 1] = 220
         hd[i + 2] = 80
@@ -131,6 +139,7 @@ export function useMapEngine(canvasRef: RefObject<HTMLCanvasElement | null>) {
     provincesImageData: ImageData
     provincesMap: ProvincesMap
     borderCanvas: OffscreenCanvas
+    dilatedMask: Uint8Array
     highlightCanvas: OffscreenCanvas | null
     selectedColor: string | null
   } | null>(null)
@@ -260,7 +269,7 @@ export function useMapEngine(canvasRef: RefObject<HTMLCanvasElement | null>) {
       }
 
       if (assetsRef.current.selectedColor !== color) {
-        assetsRef.current.highlightCanvas = buildHighlight(provincesImageData, color)
+        assetsRef.current.highlightCanvas = buildHighlight(provincesImageData, color, assetsRef.current.dilatedMask)
         assetsRef.current.selectedColor = color
       }
 
@@ -296,13 +305,14 @@ export function useMapEngine(canvasRef: RefObject<HTMLCanvasElement | null>) {
       offCtx.drawImage(provincesImg, 0, 0)
       const provincesImageData = offCtx.getImageData(0, 0, offscreen.width, offscreen.height)
 
-      const borderCanvas = detectBorders(provincesImageData, provincesMap)
+      const { canvas: borderCanvas, dilatedMask } = detectBorders(provincesImageData, provincesMap)
 
       assetsRef.current = {
         baseImg,
         provincesImageData,
         provincesMap,
         borderCanvas,
+        dilatedMask,
         highlightCanvas: null,
         selectedColor: null,
       }

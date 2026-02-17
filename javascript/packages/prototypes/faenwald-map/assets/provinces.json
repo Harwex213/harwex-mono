@@ -10,5 +10,25 @@
     "#00ff43": {
         "provinceId": "b46be649-a7ba-43dd-b64e-942ebbe8621a",
         "provinceName": "Ceaser + Epstein Dark House"
+    },
+    "#f400ff": {
+        "provinceId": "b46be649-a7ba-43dd-b64e-942ebbe8621a",
+        "provinceName": "Провинция Миркова"
+    },
+    "#00b1ff": {
+        "provinceId": "b46be649-a7ba-43dd-b64e-942ebbe8621a",
+        "provinceName": "Моя Провинция"
+    },
+    "#85ff00": {
+        "provinceId": "b46be649-a7ba-43dd-b64e-942ebbe8621a",
+        "provinceName": "ДАДАДАДАД"
+    },
+    "#ffb100": {
+        "provinceId": "b46be649-a7ba-43dd-b64e-942ebbe8621a",
+        "provinceName": "дандандаднадн"
+    },
+    "#c8ff00": {
+        "provinceId": "b46be649-a7ba-43dd-b64e-942ebbe8621a",
+        "provinceName": "провинция"
     }
 }
