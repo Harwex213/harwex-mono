@@ -1,13 +1,23 @@
-export interface Province {
+export interface TProvince {
   provinceId: string;
   provinceName: string;
 }
 
 // key = "#rrggbb" lowercase
-export type ProvincesMap = Record<string, Province>;
+export type TProvincesMap = Record<string, TProvince>;
 
-export interface MapState {
+export interface TMapState {
   offsetX: number;
   offsetY: number;
   scale: number;
+}
+
+export type TMapAssets = {
+        baseImg: HTMLImageElement;
+        provincesImageData: ImageData;
+        provincesMap: TProvincesMap;
+        borderCanvas: OffscreenCanvas;
+        dilatedMask: Uint8Array;
+        highlightCanvas: OffscreenCanvas | null;
+        selectedColor: string | null;
 }

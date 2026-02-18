@@ -1860,12 +1860,14 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@hw/faenwald-map@workspace:packages/prototypes/faenwald-map"
   dependencies:
+    "@preact/signals-react": "npm:3.9.0"
     "@types/react": "npm:19.2.0"
     "@types/react-dom": "npm:19.2.0"
     "@vitejs/plugin-react-swc": "npm:4.1.0"
+    clsx: "npm:2.1.1"
     react: "npm:19.2.0"
     react-dom: "npm:19.2.0"
-    typescript: "npm:^5.7.2"
+    typescript: "npm:5.9.3"
     vite: "npm:7.1.10"
   languageName: unknown
   linkType: soft
@@ -2090,7 +2092,7 @@ __metadata:
   resolution: "@hw/react-playground@workspace:packages/learning/react-playground"
   dependencies:
     "@hw/utils": "workspace:*"
-    "@preact/signals-react": "npm:3.0.1"
+    "@preact/signals-react": "npm:3.9.0"
     "@types/react": "npm:19.2.0"
     "@types/react-dom": "npm:19.2.0"
     "@types/react-router-dom": "npm:5.3.3"
@@ -2582,6 +2584,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@preact/signals-core@npm:^1.13.0":
+  version: 1.13.0
+  resolution: "@preact/signals-core@npm:1.13.0"
+  checksum: 10/692dadf943a8a26dc8d8b96b9216d932ab8464b738bc8ddc6da293b79189b7b3d6d3d47a1afb21ca106731692f61cd090b0ea72ef605a68201e70a9d0055eec1
+  languageName: node
+  linkType: hard
+
 "@preact/signals-react@npm:3.0.1":
   version: 3.0.1
   resolution: "@preact/signals-react@npm:3.0.1"
@@ -2591,6 +2600,18 @@ __metadata:
   peerDependencies:
     react: ^16.14.0 || 17.x || 18.x || 19.x
   checksum: 10/fc532d39119ed3cfc6161bc5f3bf4963b726510886b9535d219c17c619077c3d671bcf74eb8b2290ce381bdfb0935bdfbb0e5151ccceb2f9e09403c32b267ede
+  languageName: node
+  linkType: hard
+
+"@preact/signals-react@npm:3.9.0":
+  version: 3.9.0
+  resolution: "@preact/signals-react@npm:3.9.0"
+  dependencies:
+    "@preact/signals-core": "npm:^1.13.0"
+    use-sync-external-store: "npm:^1.2.0"
+  peerDependencies:
+    react: ^16.14.0 || 17.x || 18.x || 19.x
+  checksum: 10/93bff202e2beaa0d467320d81ef1ed4a6b99be45922eb6c066df47b7ff4dede0f3a9f5f9834a73b043f7ddfc46f961da516f59f91004bc35515602ca29b4f8e5
   languageName: node
   linkType: hard
 
