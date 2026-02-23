@@ -1,0 +1,9 @@
+{
+  "name": "@hw/faenwald-map-scripts",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "devDependencies": {
+    "@openapitools/openapi-generator-cli": "2.29.0"
+  }
+}
