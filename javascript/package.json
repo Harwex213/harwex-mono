@@ -3,6 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "create-project": "node scripts/create-project/create-project.mjs",
     "force": "yarn :rr **/node_modules && yarn",
     ":rr": "npx rimraf@4.4.1"
   },
