@@ -2268,6 +2268,20 @@ __metadata:
   languageName: unknown
   linkType: soft
 
+"@hw/traders-last-argument@workspace:packages/prototypes/traders-last-argument":
+  version: 0.0.0-use.local
+  resolution: "@hw/traders-last-argument@workspace:packages/prototypes/traders-last-argument"
+  dependencies:
+    "@preact/signals-react": "npm:3.0.1"
+    "@vitejs/plugin-react-swc": "npm:4.1.0"
+    react: "npm:19.2.0"
+    react-dom: "npm:19.2.0"
+    react-router-dom: "npm:5.3.4"
+    typescript: "npm:5.9.3"
+    vite: "npm:7.1.10"
+  languageName: unknown
+  linkType: soft
+
 "@hw/typescript-config@workspace:*, @hw/typescript-config@workspace:packages/infrastructure/typescript-config":
   version: 0.0.0-use.local
   resolution: "@hw/typescript-config@workspace:packages/infrastructure/typescript-config"
