@@ -5,6 +5,7 @@ import { router } from "./router-di";
 import "./wireframe/wireframe";
 import "./virtual-list-demo/virtual-list-demo";
 import "./bottom-sheet/bottom-sheet";
+import "./three-side-slider/three-side-slider";
 
 const App: FC = memo(() => {
 
