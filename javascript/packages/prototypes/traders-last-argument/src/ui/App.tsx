@@ -1,11 +1,7 @@
-import classes from "./App.module.css";
+import { GameWorld } from "./GameWorld/GameWorld";
 
 const App = () => {
-  return (
-    <div className={classes.container}>
-      {"Hello World!"}
-    </div>
-  )
+  return <GameWorld />;
 };
 
 export { App };
