@@ -1,6 +1,6 @@
 import { MAP_CONFIG } from "@/config/map";
 import { TileType, ObjectType } from "@/core/types";
-import type { GameMap } from "@/core/types";
+import type { GameMap, Pawn } from "@/core/types";
 import type { Camera } from "@/engine/camera";
 
 const TILE_COLORS: Record<TileType, string> = {
@@ -63,4 +63,36 @@ function renderMap(
   }
 }
 
-export { renderMap };
+function renderPawns(
+  ctx: CanvasRenderingContext2D,
+  pawns: Pawn[],
+  camera: Camera,
+  selectedPawnId: number | null,
+): void {
+  const { tileSize } = MAP_CONFIG;
+
+  for (const pawn of pawns) {
+    const sx = Math.floor(pawn.x * tileSize * camera.zoom + camera.x);
+    const sy = Math.floor(pawn.y * tileSize * camera.zoom + camera.y);
+    const scaledTile = Math.ceil(tileSize * camera.zoom);
+
+    // Selection highlight
+    if (pawn.id === selectedPawnId) {
+      const radius = scaledTile * 0.45;
+      ctx.beginPath();
+      ctx.arc(sx + scaledTile / 2, sy + scaledTile / 2, radius, 0, Math.PI * 2);
+      ctx.strokeStyle = "#FFD700";
+      ctx.lineWidth = 3;
+      ctx.stroke();
+    }
+
+    // Pawn icon
+    const fontSize = tileSize * camera.zoom * 0.6;
+    ctx.font = `${fontSize}px serif`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("\u{1F9D1}", sx + scaledTile / 2, sy + scaledTile / 2);
+  }
+}
+
+export { renderMap, renderPawns };

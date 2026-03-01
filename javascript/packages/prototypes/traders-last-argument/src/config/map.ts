@@ -17,4 +17,12 @@ const MAP_CONFIG = {
   defaultZoom: 1.0,
 };
 
-export { MAP_CONFIG };
+const PAWN_CONFIG = {
+  initialCount: 5,
+  speed: 1.0,
+  maxHealth: 100,
+  spawnRadius: 20,
+  idleDuration: 1.0,
+};
+
+export { MAP_CONFIG, PAWN_CONFIG };
