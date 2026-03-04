@@ -1,5 +1,7 @@
-import { ReactNode, type RefObject, useCallback, useEffect, useRef } from "react";
+import { FC, memo, ReactNode, type RefObject, useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { router } from "@/ui/router-di.ts";
+import classes from "./anchored-popup.module.css";
 
 const useClickOutside = <T extends HTMLElement>(
   handler: (event: MouseEvent) => void,
@@ -41,29 +43,14 @@ const useClickOutside = <T extends HTMLElement>(
   return ref;
 };
 
-const useClickOutsideEffect = (
-  refs: RefObject<Element | null>[],
-  handler: (event: MouseEvent) => void,
-) => {
-  const handleClickOutside = useCallback(
-    (event: MouseEvent) => {
-      const target = event.target as HTMLElement;
-      if (!refs.some((ref) => ref.current ? ref.current.contains(target) : true)) {
-        handler(event);
-      }
-    },
-    [handler, refs],
-  );
+// ── Portal ───────────────────────────────────────────────────────────────────
 
-  useEffect(
-    () => {
-      document.addEventListener("mousedown", handleClickOutside);
+const portalRoot = document.getElementById("portal-root") ?? document.body;
 
-      return () => document.removeEventListener("mousedown", handleClickOutside);
-    },
-    [handleClickOutside],
-  );
-};
+const Portal: FC<{ children: ReactNode }> = ({ children }) =>
+  createPortal(children, portalRoot);
+
+// ── AnchoredPopup ────────────────────────────────────────────────────────────
 
 interface IAnchoredPopupProps<T extends HTMLElement = HTMLElement> {
   anchorRef: RefObject<HTMLElement | null>;
@@ -291,32 +278,58 @@ const AnchoredPopup = <T extends HTMLElement = HTMLElement>({
 };
 AnchoredPopup.displayName = "AnchoredPopup";
 
-const AnchoredPopupUsage = () => {
+// ── Usage / Demo ─────────────────────────────────────────────────────────────
+
+const AnchoredPopupUsage: FC = memo(() => {
+  const anchorRef = useRef<HTMLButtonElement>(null);
+  const [open, setOpen] = useState(false);
 
   return (
-    <div>
-      <div>
-        Anchor
+    <div className={`${classes.variables} ${classes.page}`}>
+      <h2>Anchored Popup</h2>
+
+      <p className={classes.description}>
+        Click the button below to toggle a popup that stays anchored to it.
+        Scroll the page or resize the window — the popup follows the anchor.
+        Click outside to dismiss.
+      </p>
+
+      <div className={classes.scrollArea}>
+        <div className={classes.spacer}/>
+
+        <button
+          ref={anchorRef}
+          className={classes.anchor}
+          onClick={() => setOpen((prev) => !prev)}
+        >
+          Toggle Popup
+        </button>
+
+        <div className={classes.spacer}/>
       </div>
 
-      <AnchoredPopup<HTMLDivElement>
-        anchorRef={anchorRef}
-        onClose={onClose}
-        marginTop={marginTop}
-        marginBottom={marginBottom}
-        translateLeft={translateLeft}
-        place={place}
-      >
-        {
-          ({ childRef }) => (
-            <div className={classes.container} ref={childRef}>
-              <AdditionalMarketsContainer render={render} renderLoading={renderLoading}/>
+      {open && (
+        <AnchoredPopup<HTMLDivElement>
+          anchorRef={anchorRef}
+          onClose={() => setOpen(false)}
+          marginTop={100}
+          marginBottom={100}
+        >
+          {({ childRef }) => (
+            <div className={classes.popup} ref={childRef}>
+              <p className={classes.popupTitle}>Anchored content</p>
+              <p className={classes.popupText}>
+                This popup repositions itself when the anchor moves, resizes
+                with its content, and closes when the anchor scrolls out of
+                view.
+              </p>
             </div>
-          )
-        }
-      </AnchoredPopup>
+          )}
+        </AnchoredPopup>
+      )}
     </div>
-  )
-}
+  );
+});
+AnchoredPopupUsage.displayName = "AnchoredPopupUsage";
 
-router.registerRoute("/bottom-sheet", AnchoredPopupUsage);
+router.registerRoute("/anchored-popup", AnchoredPopupUsage);
