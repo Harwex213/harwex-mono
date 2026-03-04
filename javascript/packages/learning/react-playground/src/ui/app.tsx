@@ -6,6 +6,7 @@ import "./wireframe/wireframe";
 import "./virtual-list-demo/virtual-list-demo";
 import "./bottom-sheet/bottom-sheet";
 import "./three-side-slider/three-side-slider";
+import "./anchored-popup/anchored-popup";
 
 const App: FC = memo(() => {
 
