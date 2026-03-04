@@ -44,6 +44,11 @@
   height: 600px;
 }
 
+.anchorContainer {
+  position: relative;
+  display: inline-flex;
+}
+
 .anchor {
   flex: none;
   padding: 12px 28px;
@@ -59,6 +64,22 @@
 
 .anchor:hover {
   opacity: 0.85;
+}
+
+.overlay {
+  position: absolute;
+  z-index: 9999;
+  top: 50%;
+}
+
+.overlayCenter {
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.overlayLeft {
+  left: 0;
+  transform: translateY(-50%);
 }
 
 .popup {
