@@ -1,6 +1,7 @@
 export interface TProvince {
   provinceId: string;
   provinceName: string;
+  center: null | [number, number];
 }
 
 // key = "#rrggbb" lowercase
@@ -22,3 +23,5 @@ export type TMapAssets = {
   highlightCanvas: OffscreenCanvas | null;
   selectedColor: string | null;
 }
+
+export const isProvinceHaveCenter = (province: TProvince) => province.center !== null;

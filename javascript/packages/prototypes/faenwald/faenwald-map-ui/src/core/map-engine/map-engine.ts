@@ -1,4 +1,4 @@
-import type { TMapAssets, TMapState, TProvince } from "@/core/map-engine/types.ts";
+import type { TMapAssets, TMapState, TProvince } from "./map.ts";
 import { getPixelHex, loadImage, loadProvinces } from "./utils.ts";
 import { detectBorders } from "./detect-borders";
 import { buildHighlight } from "./map-engine-core";
@@ -117,6 +117,14 @@ class MapEngine {
 
   public get hoverPosition() {
     return { x: this.state.hoverClientX, y: this.state.hoverClientY };
+  }
+
+  public get provincesCopy() {
+    if (!this.assets) {
+      throw new Error("Assets not loaded yet");
+    }
+
+    return Object.values(this.assets.provincesMap);
   }
 
   public destroy() {

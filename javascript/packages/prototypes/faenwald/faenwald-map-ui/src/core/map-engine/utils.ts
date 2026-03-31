@@ -1,4 +1,4 @@
-import { TProvincesMap } from "@/core/map-engine/types.ts";
+import { TProvincesMap } from "@/core/map-engine/map.ts";
 
 export function loadImage(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {

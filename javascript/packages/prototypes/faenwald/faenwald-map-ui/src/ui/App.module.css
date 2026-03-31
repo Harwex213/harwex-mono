@@ -1,16 +1,26 @@
 .app {
     position: relative;
-    width: 100vw;
-    height: 100vh;
+    display: flex;
+    flex-direction: row;
+    width: 100dvw;
+    height: 100dvh;
     overflow: hidden;
     background: #111;
 }
 
 .canvas {
     display: block;
-    width: 100%;
+    width: 80%;
     height: 100%;
     cursor: grab;
+}
+
+.sidebar {
+    display: block;
+    width: 20%;
+    height: 100%;
+    background: #111;
+    border-left: 1px solid gold;
 }
 
 .canvas:active {

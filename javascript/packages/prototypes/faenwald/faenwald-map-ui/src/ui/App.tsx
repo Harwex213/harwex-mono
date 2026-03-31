@@ -1,10 +1,11 @@
 import { useRef } from "react";
 import { useMapEngine } from "@/core/map-engine/useMapEngine.ts";
+import { ProvincesCenterDebug } from "./provinces-center-debug/provinces-center-debug";
 import s from "./App.module.css";
 
 export const App = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const { selectedProvince, hoveredProvince, isLoading } = useMapEngine(canvasRef);
+  const { selectedProvince, hoveredProvince, isLoading, _mapEngine } = useMapEngine(canvasRef);
 
   return (
     <div className={s.app}>
@@ -29,6 +30,14 @@ export const App = () => {
           </div>
         ) : null
       }
+
+      <div className={s.sidebar}>
+        {
+          !isLoading && _mapEngine ? (
+            <ProvincesCenterDebug mapEngine={_mapEngine}/>
+          ) : null
+        }
+      </div>
     </div>
   )
 };

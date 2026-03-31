@@ -2,22 +2,23 @@
 
 ## Overview
 
-Canvas-based interactive map. React serves only as a shell — all heavy lifting happens in a single `useMapEngine` hook via `requestAnimationFrame`.
+Canvas-based interactive map. React serves only as a shell — all heavy lifting happens in a single
+`useMapEngine` hook via `requestAnimationFrame`.
 
 ---
 
 ## Files
 
-| File | Action |
-|---|---|
-| `src/types.ts` | New — shared types |
-| `src/useMapEngine.ts` | New — core logic hook |
-| `src/App.tsx` | Update — canvas + province info overlay |
-| `src/App.module.css` | Update — canvas + overlay styles |
+| File                  | Action                                  |
+|-----------------------|-----------------------------------------|
+| `src/map.ts`          | New — shared types                      |
+| `src/useMapEngine.ts` | New — core logic hook                   |
+| `src/App.tsx`         | Update — canvas + province info overlay |
+| `src/App.module.css`  | Update — canvas + overlay styles        |
 
 ---
 
-## src/types.ts
+## src/map.ts
 
 ```ts
 export interface Province {
@@ -42,8 +43,14 @@ export interface MapState {
 ### Asset loading
 
 ```ts
-loadImage(src: string): Promise<HTMLImageElement>
-loadProvinces(): Promise<ProvincesMap>   // fetch /assets/provinces.json
+loadImage(src
+:
+string
+):
+Promise<HTMLImageElement>
+loadProvinces()
+:
+Promise<ProvincesMap>   // fetch /assets/provinces.json
 ```
 
 ### Edge detection → `detectBorders(provincesImageData, provincesMap): OffscreenCanvas`
@@ -64,6 +71,7 @@ Returns `#rrggbb` hex at (x, y) or `null` if white / out of bounds.
 ### Highlight overlay → `buildHighlight(imageData, color): OffscreenCanvas`
 
 Called once on province selection:
+
 1. Iterate all pixels.
 2. Where color matches selection, write semi-transparent white (or gold).
 3. Return OffscreenCanvas — stored in a ref, redrawn every frame until selection changes.
@@ -71,17 +79,20 @@ Called once on province selection:
 ### Hook: `useMapEngine(canvasRef)`
 
 **State** (plain mutable object, not React state — updated each frame):
+
 ```
 mapState = { offsetX, offsetY, scale }
 ```
 
 **React state** (triggers UI re-render):
+
 ```ts
 const [selectedProvince, setSelectedProvince] = useState<Province | null>(null)
 const [isLoading, setIsLoading] = useState(true)
 ```
 
 **useEffect lifecycle**:
+
 1. Load `map_base.jpg`, `map_provinces.png`, `provinces.json` in parallel.
 2. Draw `map_provinces.png` onto an OffscreenCanvas → extract ImageData (kept in memory for pixel lookup).
 3. Call `detectBorders()` → store `borderCanvas` ref.
@@ -92,6 +103,7 @@ const [isLoading, setIsLoading] = useState(true)
 8. Return cleanup: cancel RAF, remove listeners.
 
 **renderFrame()**:
+
 ```
 ctx.clearRect(...)
 ctx.save()
@@ -104,6 +116,7 @@ ctx.restore()
 ```
 
 **Zoom (wheel)**:
+
 ```
 worldX = (cursorX - offsetX) / scale
 worldY = (cursorY - offsetY) / scale
@@ -111,14 +124,17 @@ scale *= factor  // 1.1 or 0.9, clamped to [minScale, 8]
 offsetX = cursorX - worldX * scale
 offsetY = cursorY - worldY * scale
 ```
+
 `minScale` = fit-to-viewport scale computed at load time.
 
 **Pan (drag)**:
+
 - `mousedown` → set `isDragging = true`, record `lastX, lastY`
 - `mousemove` → if dragging: `offset += delta`
 - `mouseup / mouseleave` → `isDragging = false`
 
 **Click → province selection**:
+
 1. `imageX = (canvasX - offsetX) / scale`, `imageY = ...`
 2. Check bounds.
 3. `color = getProvinceAtPixel(imageData, imageX, imageY)`
@@ -137,7 +153,7 @@ const { selectedProvince, isLoading } = useMapEngine(canvasRef)
 return (
   <div className={s.app}>
     {isLoading && <div className={s.loader}>Loading...</div>}
-    <canvas ref={canvasRef} className={s.canvas} />
+    <canvas ref={canvasRef} className={s.canvas}/>
     {selectedProvince && (
       <div className={s.provinceInfo}>
         <h2>{selectedProvince.provinceName}</h2>
@@ -153,11 +169,44 @@ return (
 ## src/App.module.css
 
 ```css
-.app    { position: relative; width: 100vw; height: 100vh; overflow: hidden; background: #111; }
-.canvas { display: block; width: 100%; height: 100%; cursor: grab; }
-.canvas:active { cursor: grabbing; }
-.loader { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: white; }
-.provinceInfo { position: absolute; bottom: 24px; left: 24px; background: rgba(0,0,0,.75); color: white; padding: 12px 16px; border-radius: 8px; pointer-events: none; }
+.app {
+    position: relative;
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+    background: #111;
+}
+
+.canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    cursor: grab;
+}
+
+.canvas:active {
+    cursor: grabbing;
+}
+
+.loader {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+}
+
+.provinceInfo {
+    position: absolute;
+    bottom: 24px;
+    left: 24px;
+    background: rgba(0, 0, 0, .75);
+    color: white;
+    padding: 12px 16px;
+    border-radius: 8px;
+    pointer-events: none;
+}
 ```
 
 ---

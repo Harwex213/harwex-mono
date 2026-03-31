@@ -65,7 +65,7 @@ src/
 ├── App.tsx                # Canvas host + province info overlay
 ├── App.module.css         # Full-viewport layout, loader, sidebar
 ├── useMapEngine.ts        # Hook bridging React ↔ MapEngine
-├── types.ts               # TProvince, TProvincesMap, TMapState, TMapAssets
+├── map.ts               # TProvince, TProvincesMap, TMapState, TMapAssets
 ├── service/
 │   ├── map-engine/
 │   │   └── map-engine.ts   # Core engine (rendering, events, input)

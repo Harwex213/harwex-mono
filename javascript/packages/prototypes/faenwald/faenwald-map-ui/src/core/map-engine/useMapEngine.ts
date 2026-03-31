@@ -1,5 +1,5 @@
 import { RefObject, useEffect, useState } from 'react'
-import { TProvince } from './types.ts'
+import { TProvince } from './map.ts'
 import { EMapEngineEvent, MapEngine } from './map-engine.ts'
 
 type THoverState = {
@@ -9,9 +9,10 @@ type THoverState = {
 } | null;
 
 export function useMapEngine(canvasRef: RefObject<HTMLCanvasElement | null>) {
-  const [selectedProvince, setSelectedProvince] = useState<TProvince | null>(null)
-  const [hoveredProvince, setHoveredProvince] = useState<THoverState>(null)
-  const [isLoading, setIsLoading] = useState(true)
+  const [selectedProvince, setSelectedProvince] = useState<TProvince | null>(null);
+  const [hoveredProvince, setHoveredProvince] = useState<THoverState>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [_mapEngine, setMapEngine] = useState<MapEngine>();
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -20,6 +21,8 @@ export function useMapEngine(canvasRef: RefObject<HTMLCanvasElement | null>) {
     }
 
     const mapEngine = new MapEngine(canvas);
+
+    setMapEngine(mapEngine);
 
     mapEngine.subscribeOnEvents((event) => {
       if (event === EMapEngineEvent.ASSETS_LOADED) {
@@ -49,5 +52,5 @@ export function useMapEngine(canvasRef: RefObject<HTMLCanvasElement | null>) {
     }
   }, []);
 
-  return { selectedProvince, hoveredProvince, isLoading }
+  return { selectedProvince, hoveredProvince, isLoading, _mapEngine };
 }
