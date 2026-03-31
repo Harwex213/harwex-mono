@@ -1,1456 +1,1456 @@
 {
   "#ff0000": {
-    "provinceId": "567ef8ba-420c-4951-bbf9-46ed4d24f0b3",
+    "provinceId": "#ff0000",
     "provinceName": "Province 1",
     "center": null
   },
   "#0000ff": {
-    "provinceId": "711e6237-c387-49b8-afd2-60f9831ad6d7",
+    "provinceId": "#0000ff",
     "provinceName": "Province 2",
     "center": null
   },
   "#00ff43": {
-    "provinceId": "93b9cae9-e4bd-4393-a69d-3491f2f621d9",
+    "provinceId": "#00ff43",
     "provinceName": "Province 3",
     "center": null
   },
   "#4e00ff": {
-    "provinceId": "e106ca28-b24a-4d00-a6c4-8dc1ecc54a37",
+    "provinceId": "#4e00ff",
     "provinceName": "Province 4",
     "center": null
   },
   "#eb00ff": {
-    "provinceId": "399f0389-736e-439f-beb4-d95b0eff2dfb",
+    "provinceId": "#eb00ff",
     "provinceName": "Province 5",
     "center": null
   },
   "#6200ff": {
-    "provinceId": "c130da72-177f-4c96-8e37-477eb43436e6",
+    "provinceId": "#6200ff",
     "provinceName": "Province 6",
     "center": null
   },
   "#0027ff": {
-    "provinceId": "62f11cf8-1aea-4a58-9f8e-e84d87a69dc7",
+    "provinceId": "#0027ff",
     "provinceName": "Province 7",
     "center": null
   },
   "#ffdb00": {
-    "provinceId": "8fd2036c-1211-4f81-ad42-4eee7b9e59d9",
+    "provinceId": "#ffdb00",
     "provinceName": "Province 8",
     "center": null
   },
   "#71ff00": {
-    "provinceId": "3d56fceb-1a56-4752-9d1b-a698bc92e907",
+    "provinceId": "#71ff00",
     "provinceName": "Province 9",
     "center": null
   },
   "#00ff27": {
-    "provinceId": "8041df30-14d5-4a42-b287-f727925f6f83",
+    "provinceId": "#00ff27",
     "provinceName": "Province 10",
     "center": null
   },
   "#00cdff": {
-    "provinceId": "1b235ab5-ca59-4954-b501-b681c51c4d96",
+    "provinceId": "#00cdff",
     "provinceName": "Province 11",
     "center": null
   },
   "#00ffeb": {
-    "provinceId": "5c846fc2-7f83-4a68-9f34-0863e196c86c",
+    "provinceId": "#00ffeb",
     "provinceName": "Province 12",
     "center": null
   },
   "#d4ff00": {
-    "provinceId": "5997bbb2-4bfe-4317-a48d-784b58e4a2f5",
+    "provinceId": "#d4ff00",
     "provinceName": "Province 13",
     "center": null
   },
   "#7e35b0": {
-    "provinceId": "f76addd4-45c9-4854-8004-59f985d2c798",
+    "provinceId": "#7e35b0",
     "provinceName": "Province 14",
     "center": null
   },
   "#0bb7ce": {
-    "provinceId": "37236389-226e-45e8-9ff3-6b523b38edde",
+    "provinceId": "#0bb7ce",
     "provinceName": "Province 15",
     "center": null
   },
   "#4391e1": {
-    "provinceId": "9fa63cfe-f662-4af6-820d-0e081bac6a4c",
+    "provinceId": "#4391e1",
     "provinceName": "Province 16",
     "center": null
   },
   "#9800ff": {
-    "provinceId": "8cda7613-16d9-41a0-9fce-c55cb86ac732",
+    "provinceId": "#9800ff",
     "provinceName": "Province 17",
     "center": null
   },
   "#ce850b": {
-    "provinceId": "53cd04ac-5071-43b6-806d-56a39a81128c",
+    "provinceId": "#ce850b",
     "provinceName": "Province 18",
     "center": null
   },
   "#0092ff": {
-    "provinceId": "9f66ef3e-beec-4ad3-a501-94ec3cd93a9b",
+    "provinceId": "#0092ff",
     "provinceName": "Province 19",
     "center": null
   },
   "#43cfe1": {
-    "provinceId": "51c49852-5c6d-47ab-923a-04d17ccb0dca",
+    "provinceId": "#43cfe1",
     "provinceName": "Province 20",
     "center": null
   },
   "#00ff2e": {
-    "provinceId": "3908bfbe-67b7-4c2c-a599-951cddb1f0cb",
+    "provinceId": "#00ff2e",
     "provinceName": "Province 21",
     "center": null
   },
   "#0007ff": {
-    "provinceId": "b361382f-c193-40f8-9c8b-bff2702d21eb",
+    "provinceId": "#0007ff",
     "provinceName": "Province 22",
     "center": null
   },
   "#00fff5": {
-    "provinceId": "697c7728-7e29-41c9-a86f-033779d2510a",
+    "provinceId": "#00fff5",
     "provinceName": "Province 23",
     "center": null
   },
   "#ff0028": {
-    "provinceId": "3129e342-8a22-491e-b722-c0393eb4eb69",
+    "provinceId": "#ff0028",
     "provinceName": "Province 24",
     "center": null
   },
   "#0dff00": {
-    "provinceId": "44a86e20-3bba-47cc-94ac-3289714308ec",
+    "provinceId": "#0dff00",
     "provinceName": "Province 25",
     "center": null
   },
   "#0bce10": {
-    "provinceId": "a03f2e25-e7cf-4cf6-a850-5aa8c829b935",
+    "provinceId": "#0bce10",
     "provinceName": "Province 26",
     "center": null
   },
   "#4eddc1": {
-    "provinceId": "bc4481af-a333-4d87-9258-2ef845f53ecb",
+    "provinceId": "#4eddc1",
     "provinceName": "Province 27",
     "center": null
   },
   "#e1be43": {
-    "provinceId": "3d3b222f-cf0e-4db9-bfe8-3feaae8bbd14",
+    "provinceId": "#e1be43",
     "provinceName": "Province 28",
     "center": null
   },
   "#00ff07": {
-    "provinceId": "8afcf262-c6ce-4f0d-9719-bdd15e3884e4",
+    "provinceId": "#00ff07",
     "provinceName": "Province 29",
     "center": null
   },
   "#aee143": {
-    "provinceId": "b3a601d6-8edb-4b27-bc01-045aafe41599",
+    "provinceId": "#aee143",
     "provinceName": "Province 30",
     "center": null
   },
   "#acff00": {
-    "provinceId": "c96e2ef9-28ac-4f0d-89b9-b4e5f83e9d30",
+    "provinceId": "#acff00",
     "provinceName": "Province 31",
     "center": null
   },
   "#95ad22": {
-    "provinceId": "3b6052c7-d8cd-4a2e-9f0f-673bf5d5c606",
+    "provinceId": "#95ad22",
     "provinceName": "Province 32",
     "center": null
   },
   "#ccce0b": {
-    "provinceId": "37a3be17-6247-41b4-92d9-7072cbd3f649",
+    "provinceId": "#ccce0b",
     "provinceName": "Province 33",
     "center": null
   },
   "#ff00ee": {
-    "provinceId": "101273db-ddbc-4b1c-849f-6029d2616b07",
+    "provinceId": "#ff00ee",
     "provinceName": "Province 34",
     "center": null
   },
   "#ce0ba3": {
-    "provinceId": "74c807aa-bd48-4d60-baba-7b2fb52ce336",
+    "provinceId": "#ce0ba3",
     "provinceName": "Province 35",
     "center": null
   },
   "#43e185": {
-    "provinceId": "0c33ef82-c993-494a-87f8-a8ec2127310b",
+    "provinceId": "#43e185",
     "provinceName": "Province 36",
     "center": null
   },
   "#e16843": {
-    "provinceId": "3a3fde69-e3f6-4fbf-9d56-ac175d328827",
+    "provinceId": "#e16843",
     "provinceName": "Province 37",
     "center": null
   },
   "#43e179": {
-    "provinceId": "255e4a66-d343-4a71-85a6-c8da48c452a6",
+    "provinceId": "#43e179",
     "provinceName": "Province 38",
     "center": null
   },
   "#702a92": {
-    "provinceId": "2c5aaa19-a4cf-4294-98c0-488dda4e3bc4",
+    "provinceId": "#702a92",
     "provinceName": "Province 39",
     "center": null
   },
   "#0b6bce": {
-    "provinceId": "599a5e80-e2b1-4183-b754-6a284e6e7ff2",
+    "provinceId": "#0b6bce",
     "provinceName": "Province 40",
     "center": null
   },
   "#35ff00": {
-    "provinceId": "7a0bbd34-26e4-465c-b7af-813d431973b1",
+    "provinceId": "#35ff00",
     "provinceName": "Province 41",
     "center": null
   },
   "#2a4592": {
-    "provinceId": "f73ec9b7-2ea0-4154-8125-47f2621cd7c0",
+    "provinceId": "#2a4592",
     "provinceName": "Province 42",
     "center": null
   },
   "#00ff7e": {
-    "provinceId": "f47ed164-1e53-4d31-981f-0b4572f84364",
+    "provinceId": "#00ff7e",
     "provinceName": "Province 43",
     "center": null
   },
   "#892a92": {
-    "provinceId": "47ded309-0ef3-4663-828b-9bac12d18860",
+    "provinceId": "#892a92",
     "provinceName": "Province 44",
     "center": null
   },
   "#00ffe1": {
-    "provinceId": "cd28bac0-1e45-46b7-b51c-b16cc463633f",
+    "provinceId": "#00ffe1",
     "provinceName": "Province 45",
     "center": null
   },
   "#8400ff": {
-    "provinceId": "fd7d43e9-ef41-419e-9c67-c63576ae1bf3",
+    "provinceId": "#8400ff",
     "provinceName": "Province 46",
     "center": null
   },
   "#ae43e1": {
-    "provinceId": "9f90c784-edbf-4de1-8d13-d848af241f18",
+    "provinceId": "#ae43e1",
     "provinceName": "Province 47",
     "center": null
   },
   "#43e1cf": {
-    "provinceId": "1c3cf197-303a-4018-b389-2f6095233440",
+    "provinceId": "#43e1cf",
     "provinceName": "Province 48",
     "center": null
   },
   "#0bce4d": {
-    "provinceId": "ea44769d-ebf8-48ca-b525-c5cc0744b03e",
+    "provinceId": "#0bce4d",
     "provinceName": "Province 49",
     "center": null
   },
   "#ce0b1a": {
-    "provinceId": "21b512e4-e0af-483b-8c1a-819396d91da1",
+    "provinceId": "#ce0b1a",
     "provinceName": "Province 50",
     "center": null
   },
   "#2b1e87": {
-    "provinceId": "8d7c23c0-e38f-40c4-8225-b55bd937a416",
+    "provinceId": "#2b1e87",
     "provinceName": "Province 51",
     "center": null
   },
   "#bc0bce": {
-    "provinceId": "151bdbd5-40e8-4202-870a-0b3ea7fdc3f6",
+    "provinceId": "#bc0bce",
     "provinceName": "Province 52",
     "center": null
   },
   "#871e1e": {
-    "provinceId": "f212e559-1176-4687-aee8-32dbeeeebb30",
+    "provinceId": "#871e1e",
     "provinceName": "Province 53",
     "center": null
   },
   "#4900ff": {
-    "provinceId": "3cf1d44f-0cdd-48ba-97ca-9c47205aa238",
+    "provinceId": "#4900ff",
     "provinceName": "Province 54",
     "center": null
   },
   "#70e143": {
-    "provinceId": "5adff71d-b818-4770-9c38-ff5573c2a483",
+    "provinceId": "#70e143",
     "provinceName": "Province 55",
     "center": null
   },
   "#87701e": {
-    "provinceId": "7044d551-c63d-49b8-8501-8cc6cba846c0",
+    "provinceId": "#87701e",
     "provinceName": "Province 56",
     "center": null
   },
   "#439de1": {
-    "provinceId": "5b7357a5-89c8-42f8-8d4c-bd06701a855d",
+    "provinceId": "#439de1",
     "provinceName": "Province 57",
     "center": null
   },
   "#8fce0b": {
-    "provinceId": "d8714b14-f243-4af4-80d0-b33b3ff86db8",
+    "provinceId": "#8fce0b",
     "provinceName": "Province 58",
     "center": null
   },
   "#34c771": {
-    "provinceId": "b2996e9d-5e78-47c9-9e6c-20b274426337",
+    "provinceId": "#34c771",
     "provinceName": "Province 59",
     "center": null
   },
   "#330bce": {
-    "provinceId": "0747e0b7-4339-4b76-952c-fc893dd7d066",
+    "provinceId": "#330bce",
     "provinceName": "Province 60",
     "center": null
   },
   "#0042ff": {
-    "provinceId": "ec36392d-f6b9-4dc9-8b53-e026e6398357",
+    "provinceId": "#0042ff",
     "provinceName": "Province 61",
     "center": null
   },
   "#7e2587": {
-    "provinceId": "047f45c5-2483-4688-8a37-30a09ceba89c",
+    "provinceId": "#7e2587",
     "provinceName": "Province 62",
     "center": null
   },
   "#87254b": {
-    "provinceId": "4ddbe028-b7b3-48ae-84c0-bf2a99712649",
+    "provinceId": "#87254b",
     "provinceName": "Province 63",
     "center": null
   },
   "#1e8731": {
-    "provinceId": "3cc34026-63d1-454f-896e-fa8d23a56c4d",
+    "provinceId": "#1e8731",
     "provinceName": "Province 64",
     "center": null
   },
   "#5ec734": {
-    "provinceId": "5fa06323-8a6f-4d8f-8e6f-10ee8110e0d5",
+    "provinceId": "#5ec734",
     "provinceName": "Province 65",
     "center": null
   },
   "#00f5ff": {
-    "provinceId": "22d5260e-372f-4a21-b1b2-0104ab7fbae2",
+    "provinceId": "#00f5ff",
     "provinceName": "Province 66",
     "center": null
   },
   "#252f87": {
-    "provinceId": "bcc5baba-367c-46ed-b857-454124a6a956",
+    "provinceId": "#252f87",
     "provinceName": "Province 67",
     "center": null
   },
   "#5d1e87": {
-    "provinceId": "8ded984e-f461-4f8e-900c-6e30923c7769",
+    "provinceId": "#5d1e87",
     "provinceName": "Province 68",
     "center": null
   },
   "#637148": {
-    "provinceId": "ada91d68-dbab-400c-a8fd-59d52958928f",
+    "provinceId": "#637148",
     "provinceName": "Province 69",
     "center": null
   },
   "#2100ff": {
-    "provinceId": "d57cacbe-3e73-4d3d-ae5c-0bf1daef1141",
+    "provinceId": "#2100ff",
     "provinceName": "Province 70",
     "center": null
   },
   "#762587": {
-    "provinceId": "b0fcbd4c-b638-4586-bcd4-4673ee9368e0",
+    "provinceId": "#762587",
     "provinceName": "Province 71",
     "center": null
   },
   "#ce0bb2": {
-    "provinceId": "126cd5fa-51d6-4af4-80fa-483fc19506d0",
+    "provinceId": "#ce0bb2",
     "provinceName": "Province 72",
     "center": null
   },
   "#38ff5d": {
-    "provinceId": "fad132b0-8078-44e7-928e-3b8baa030192",
+    "provinceId": "#38ff5d",
     "provinceName": "Province 73",
     "center": null
   },
   "#258387": {
-    "provinceId": "be495de1-71da-44d1-968c-cda628132da6",
+    "provinceId": "#258387",
     "provinceName": "Province 74",
     "center": null
   },
   "#0bcea8": {
-    "provinceId": "78f53092-e3b5-44e9-9398-f392637d62e2",
+    "provinceId": "#0bcea8",
     "provinceName": "Province 75",
     "center": null
   },
   "#c73434": {
-    "provinceId": "52566d2a-ed4d-42ba-962d-c3c27a4aa0b1",
+    "provinceId": "#c73434",
     "provinceName": "Province 76",
     "center": null
   },
   "#7100ff": {
-    "provinceId": "88e58f06-3460-48fa-8e0d-cdfd75507658",
+    "provinceId": "#7100ff",
     "provinceName": "Province 77",
     "center": null
   },
   "#e143ca": {
-    "provinceId": "71818d20-f8de-4397-866f-436a22671e62",
+    "provinceId": "#e143ca",
     "provinceName": "Province 78",
     "center": null
   },
   "#2f6b8b": {
-    "provinceId": "085ebc76-539e-49a7-acc7-5b057db792c3",
+    "provinceId": "#2f6b8b",
     "provinceName": "Province 79",
     "center": null
   },
   "#2f8b40": {
-    "provinceId": "f83cacf5-ba7a-428c-b313-c443d7ebb362",
+    "provinceId": "#2f8b40",
     "provinceName": "Province 80",
     "center": null
   },
   "#2a2587": {
-    "provinceId": "bf55fa7a-edd7-4271-86f0-ab2cc6b6807d",
+    "provinceId": "#2a2587",
     "provinceName": "Province 81",
     "center": null
   },
   "#ce0b0b": {
-    "provinceId": "51636c87-fc56-4ae6-a08c-5e5c530c352a",
+    "provinceId": "#ce0b0b",
     "provinceName": "Province 82",
     "center": null
   },
   "#b40e75": {
-    "provinceId": "d945aaf2-86fe-457a-92fc-d589d60f8e5e",
+    "provinceId": "#b40e75",
     "provinceName": "Province 83",
     "center": null
   },
   "#0b2ece": {
-    "provinceId": "bc7cfac1-e04d-4286-b8d0-96ef7d2b3918",
+    "provinceId": "#0b2ece",
     "provinceName": "Province 84",
     "center": null
   },
   "#34c7c1": {
-    "provinceId": "8e0b4c49-c04e-4c88-be8c-748245f401a8",
+    "provinceId": "#34c7c1",
     "provinceName": "Province 85",
     "center": null
   },
   "#255587": {
-    "provinceId": "748f7cd3-5adf-4a92-875e-6f1fdf1a0c3f",
+    "provinceId": "#255587",
     "provinceName": "Province 86",
     "center": null
   },
   "#7d43e1": {
-    "provinceId": "293a31f4-cb0f-400d-a0dd-38e1a3c29553",
+    "provinceId": "#7d43e1",
     "provinceName": "Province 87",
     "center": null
   },
   "#258765": {
-    "provinceId": "3c7495af-4f4d-46c0-bd33-241a42baefec",
+    "provinceId": "#258765",
     "provinceName": "Province 88",
     "center": null
   },
   "#8b2f68": {
-    "provinceId": "c591211c-3055-419f-89f5-aeb95e362683",
+    "provinceId": "#8b2f68",
     "provinceName": "Province 89",
     "center": null
   },
   "#2f408b": {
-    "provinceId": "ac71814a-9ad3-44ff-a918-32af04ff8aa4",
+    "provinceId": "#2f408b",
     "provinceName": "Province 90",
     "center": null
   },
   "#582f8b": {
-    "provinceId": "5acaae32-25c0-4763-80e7-98a82e0ef444",
+    "provinceId": "#582f8b",
     "provinceName": "Province 91",
     "center": null
   },
   "#146d9e": {
-    "provinceId": "3dab18db-6e07-4e78-a4db-004de1a54e21",
+    "provinceId": "#146d9e",
     "provinceName": "Province 92",
     "center": null
   },
   "#80ce0b": {
-    "provinceId": "003d8a16-3bc2-4ac4-b3be-f15c8e7afda2",
+    "provinceId": "#80ce0b",
     "provinceName": "Province 93",
     "center": null
   },
   "#8b2f2f": {
-    "provinceId": "0201d930-0f6d-4b03-9680-adb255435b7f",
+    "provinceId": "#8b2f2f",
     "provinceName": "Province 94",
     "center": null
   },
   "#2f8b5c": {
-    "provinceId": "a41eb52a-ac7c-46d0-9629-d589605f8eb8",
+    "provinceId": "#2f8b5c",
     "provinceName": "Province 95",
     "center": null
   },
   "#9734c7": {
-    "provinceId": "d5e8ab07-5167-412e-a6f7-5875bb852089",
+    "provinceId": "#9734c7",
     "provinceName": "Province 96",
     "center": null
   },
   "#2f8b87": {
-    "provinceId": "9196dec8-0957-4a7a-91ae-14645ccb872a",
+    "provinceId": "#2f8b87",
     "provinceName": "Province 97",
     "center": null
   },
   "#25874e": {
-    "provinceId": "7a00a7eb-e074-46a3-ba35-782ee7c57838",
+    "provinceId": "#25874e",
     "provinceName": "Province 98",
     "center": null
   },
   "#bc0083": {
-    "provinceId": "3287c3ce-46af-4a70-81e3-6bcf3129f949",
+    "provinceId": "#bc0083",
     "provinceName": "Province 99",
     "center": null
   },
   "#b40e0e": {
-    "provinceId": "b9448349-0de4-46f0-8b35-46407b4adb5d",
+    "provinceId": "#b40e0e",
     "provinceName": "Province 100",
     "center": null
   },
   "#a50eb4": {
-    "provinceId": "a4170fb9-a6d9-4985-a15a-5e614e1354aa",
+    "provinceId": "#a50eb4",
     "provinceName": "Province 101",
     "center": null
   },
   "#3493c7": {
-    "provinceId": "522f484d-70d9-4d0a-b16c-d8a2e32f2b6e",
+    "provinceId": "#3493c7",
     "provinceName": "Province 102",
     "center": null
   },
   "#2f5c8b": {
-    "provinceId": "a6dd3641-4e60-4172-9d62-792d2aeda03b",
+    "provinceId": "#2f5c8b",
     "provinceName": "Province 103",
     "center": null
   },
   "#a0cb1d": {
-    "provinceId": "191f878d-671a-4b34-98b4-6e94e5076ba0",
+    "provinceId": "#a0cb1d",
     "provinceName": "Province 104",
     "center": null
   },
   "#4a0eb4": {
-    "provinceId": "fdf90661-cdee-422a-8a1e-b2ed172c94c4",
+    "provinceId": "#4a0eb4",
     "provinceName": "Province 105",
     "center": null
   },
   "#256587": {
-    "provinceId": "f98fc8ab-fd55-4ea2-b776-fa10ce4727a6",
+    "provinceId": "#256587",
     "provinceName": "Province 106",
     "center": null
   },
   "#8a2f8b": {
-    "provinceId": "6402a805-9a92-4cdf-806c-86c8a9e03f54",
+    "provinceId": "#8a2f8b",
     "provinceName": "Province 107",
     "center": null
   },
   "#508b2f": {
-    "provinceId": "0be1475b-a140-4910-b102-95eba1f2788e",
+    "provinceId": "#508b2f",
     "provinceName": "Province 108",
     "center": null
   },
   "#2f398b": {
-    "provinceId": "8fc38809-25d6-42c4-a00b-c5669bb8ea96",
+    "provinceId": "#2f398b",
     "provinceName": "Province 109",
     "center": null
   },
   "#c73478": {
-    "provinceId": "c24a871f-3852-4025-a9c3-0aa86d65d1ee",
+    "provinceId": "#c73478",
     "provinceName": "Province 110",
     "center": null
   },
   "#8f88bc": {
-    "provinceId": "b98ba7bf-36cc-4fff-a602-46517ce4f1c5",
+    "provinceId": "#8f88bc",
     "provinceName": "Province 111",
     "center": null
   },
   "#60c3a8": {
-    "provinceId": "e722f94b-f566-48e1-8f32-618d31aa280c",
+    "provinceId": "#60c3a8",
     "provinceName": "Province 112",
     "center": null
   },
   "#2f8b72": {
-    "provinceId": "e37d47ee-bca2-438c-9fd6-150940bd09f0",
+    "provinceId": "#2f8b72",
     "provinceName": "Province 113",
     "center": null
   },
   "#0e39b4": {
-    "provinceId": "2f87c42b-0fe6-4a46-b0f8-6e6edb81b44b",
+    "provinceId": "#0e39b4",
     "provinceName": "Province 114",
     "center": null
   },
   "#8b6f2f": {
-    "provinceId": "b61b9701-744d-4d37-b60f-e2143b6b0039",
+    "provinceId": "#8b6f2f",
     "provinceName": "Province 115",
     "center": null
   },
   "#469e14": {
-    "provinceId": "ba60260f-a490-4bc9-a552-a565e4f59b0c",
+    "provinceId": "#469e14",
     "provinceName": "Province 116",
     "center": null
   },
   "#149e43": {
-    "provinceId": "283980ea-4e05-429a-947e-c6166e68a80d",
+    "provinceId": "#149e43",
     "provinceName": "Province 117",
     "center": null
   },
   "#5f8725": {
-    "provinceId": "43fd4453-6f43-4bcc-976f-5a3683ddadfa",
+    "provinceId": "#5f8725",
     "provinceName": "Province 118",
     "center": null
   },
   "#3465c7": {
-    "provinceId": "92aecd7e-320a-4a5f-ba0b-95f3f9f115b5",
+    "provinceId": "#3465c7",
     "provinceName": "Province 119",
     "center": null
   },
   "#9e1414": {
-    "provinceId": "e24505b9-6e66-4b5c-90f7-086865c40009",
+    "provinceId": "#9e1414",
     "provinceName": "Province 120",
     "center": null
   },
   "#2f478b": {
-    "provinceId": "c72105e7-8e64-437a-ace4-add10308ca1e",
+    "provinceId": "#2f478b",
     "provinceName": "Province 121",
     "center": null
   },
   "#492f8b": {
-    "provinceId": "1e6a104d-1dea-487f-a875-a50a3da82c36",
+    "provinceId": "#492f8b",
     "provinceName": "Province 122",
     "center": null
   },
   "#2f808b": {
-    "provinceId": "9c37c705-68e6-4cdf-8f31-767821d3c221",
+    "provinceId": "#2f808b",
     "provinceName": "Province 123",
     "center": null
   },
   "#d0d25d": {
-    "provinceId": "ed14364c-5a9f-4b2b-bcb4-4852bf4036e5",
+    "provinceId": "#d0d25d",
     "provinceName": "Province 124",
     "center": null
   },
   "#832f8b": {
-    "provinceId": "6420616f-b4a2-42b2-90a2-fcfdf40d066c",
+    "provinceId": "#832f8b",
     "provinceName": "Province 125",
     "center": null
   },
   "#b9c734": {
-    "provinceId": "f5e3e302-02f1-4537-bddc-2e0cc8221e08",
+    "provinceId": "#b9c734",
     "provinceName": "Province 126",
     "center": null
   },
   "#cb1d1d": {
-    "provinceId": "712bcba4-3743-4858-bbae-3e42c1c30d71",
+    "provinceId": "#cb1d1d",
     "provinceName": "Province 127",
     "center": null
   },
   "#9e15cb": {
-    "provinceId": "1fdfc274-c09e-433b-9584-c9ccfb2126cc",
+    "provinceId": "#9e15cb",
     "provinceName": "Province 128",
     "center": null
   },
   "#2f878b": {
-    "provinceId": "c86ec2b6-b27e-43ff-a9ce-b29754e59816",
+    "provinceId": "#2f878b",
     "provinceName": "Province 129",
     "center": null
   },
   "#274d4f": {
-    "provinceId": "5603ef75-6156-4791-be2f-47237b6bb29c",
+    "provinceId": "#274d4f",
     "provinceName": "Province 130",
     "center": null
   },
   "#8b2f70": {
-    "provinceId": "eda4592a-f876-41f6-992b-9a73e0b061eb",
+    "provinceId": "#8b2f70",
     "provinceName": "Province 131",
     "center": null
   },
   "#3b2f8b": {
-    "provinceId": "cad5bcb2-8361-45f3-987c-33100cf73937",
+    "provinceId": "#3b2f8b",
     "provinceName": "Province 132",
     "center": null
   },
   "#34c743": {
-    "provinceId": "fccf12e7-1c71-4e2d-a20a-eb55f9175d9e",
+    "provinceId": "#34c743",
     "provinceName": "Province 133",
     "center": null
   },
   "#34c74e": {
-    "provinceId": "440ef95d-83aa-4087-9281-548220961c57",
+    "provinceId": "#34c74e",
     "provinceName": "Province 134",
     "center": null
   },
   "#9e1455": {
-    "provinceId": "04c363c3-59a3-497b-9b96-793242c7f197",
+    "provinceId": "#9e1455",
     "provinceName": "Province 135",
     "center": null
   },
   "#c7a634": {
-    "provinceId": "41e894eb-dcae-4115-9774-28c01a716a5b",
+    "provinceId": "#c7a634",
     "provinceName": "Province 136",
     "center": null
   },
   "#46149e": {
-    "provinceId": "6162ef1a-0c25-448b-b0dd-311a6e54baef",
+    "provinceId": "#46149e",
     "provinceName": "Province 137",
     "center": null
   },
   "#9e1495": {
-    "provinceId": "dd8ea009-2936-4584-9a28-4969d51b07d2",
+    "provinceId": "#9e1495",
     "provinceName": "Province 138",
     "center": null
   },
   "#14839e": {
-    "provinceId": "ab55aaf8-37e1-41cd-871a-d7ac2d688ff5",
+    "provinceId": "#14839e",
     "provinceName": "Province 139",
     "center": null
   },
   "#b0007d": {
-    "provinceId": "ff7194d5-ac49-4ca1-8b05-849d35e7e6c9",
+    "provinceId": "#b0007d",
     "provinceName": "Province 140",
     "center": null
   },
   "#aec734": {
-    "provinceId": "0aa6be2a-43cf-4e88-b0f7-5efbf71a6126",
+    "provinceId": "#aec734",
     "provinceName": "Province 141",
     "center": null
   },
   "#c77834": {
-    "provinceId": "1bb7c543-2912-4cce-8029-d86f19301ecc",
+    "provinceId": "#c77834",
     "provinceName": "Province 142",
     "center": null
   },
   "#6d2f8b": {
-    "provinceId": "6a40ba49-ffe1-4924-a35d-26503af2cd21",
+    "provinceId": "#6d2f8b",
     "provinceName": "Province 143",
     "center": null
   },
   "#145456": {
-    "provinceId": "1224c622-51ce-4cb6-990d-55ab94b8bae6",
+    "provinceId": "#145456",
     "provinceName": "Province 144",
     "center": null
   },
   "#156974": {
-    "provinceId": "1bfa5798-04d3-4306-87d9-baf32ab34b10",
+    "provinceId": "#156974",
     "provinceName": "Province 145",
     "center": null
   },
   "#149e23": {
-    "provinceId": "a0b48474-5fde-41a4-9a67-96deb49574a2",
+    "provinceId": "#149e23",
     "provinceName": "Province 146",
     "center": null
   },
   "#331dcb": {
-    "provinceId": "b9d69322-1dff-449c-9a4c-c0eb6333bb56",
+    "provinceId": "#331dcb",
     "provinceName": "Province 147",
     "center": null
   },
   "#149e58": {
-    "provinceId": "72951742-41de-4075-a790-0237a7edc9ff",
+    "provinceId": "#149e58",
     "provinceName": "Province 148",
     "center": null
   },
   "#b4709a": {
-    "provinceId": "8c073f13-4416-43f8-90e8-30281b5c4e6f",
+    "provinceId": "#b4709a",
     "provinceName": "Province 149",
     "center": null
   },
   "#14389e": {
-    "provinceId": "6f8d47dd-597f-49f8-b8cd-bd6ea98d774f",
+    "provinceId": "#14389e",
     "provinceName": "Province 150",
     "center": null
   },
   "#1db6cb": {
-    "provinceId": "a0b1d289-93e0-49ef-bb51-cb177bc9d87d",
+    "provinceId": "#1db6cb",
     "provinceName": "Province 151",
     "center": null
   },
   "#742f8b": {
-    "provinceId": "99e3a2d9-974d-4a23-a42b-e4d59a7de177",
+    "provinceId": "#742f8b",
     "provinceName": "Province 152",
     "center": null
   },
   "#bf0797": {
-    "provinceId": "cccfebc7-cd45-47e7-bf8b-1e7b71ba437c",
+    "provinceId": "#bf0797",
     "provinceName": "Province 153",
     "center": null
   },
   "#1d58cb": {
-    "provinceId": "a0526f7b-546f-49d2-a25f-58d8888195e3",
+    "provinceId": "#1d58cb",
     "provinceName": "Province 154",
     "center": null
   },
   "#1dcb80": {
-    "provinceId": "3a9c01e4-b3a4-47bc-b480-c4eea3d7e5de",
+    "provinceId": "#1dcb80",
     "provinceName": "Province 155",
     "center": null
   },
   "#92cb1d": {
-    "provinceId": "8930585d-1d79-403f-a44d-10b85df81100",
+    "provinceId": "#92cb1d",
     "provinceName": "Province 156",
     "center": null
   },
   "#1dcb2f": {
-    "provinceId": "8d567f48-1099-4cb6-a673-da94b895fc56",
+    "provinceId": "#1dcb2f",
     "provinceName": "Province 157",
     "center": null
   },
   "#0e3c1a": {
-    "provinceId": "835ada9a-384f-41e0-84a3-3346f058f048",
+    "provinceId": "#0e3c1a",
     "provinceName": "Province 158",
     "center": null
   },
   "#141656": {
-    "provinceId": "6233ffcb-6662-4510-a13f-ca0b00a245d6",
+    "provinceId": "#141656",
     "provinceName": "Province 159",
     "center": null
   },
   "#a01dcb": {
-    "provinceId": "769209da-3b2a-4ec4-857a-6d9fb1526aad",
+    "provinceId": "#a01dcb",
     "provinceName": "Province 160",
     "center": null
   },
   "#1dcb21": {
-    "provinceId": "c694f0d7-2e35-4ffb-802e-c00242900b04",
+    "provinceId": "#1dcb21",
     "provinceName": "Province 161",
     "center": null
   },
   "#cb1d53": {
-    "provinceId": "21a95872-c5e1-4810-a393-10025458fe73",
+    "provinceId": "#cb1d53",
     "provinceName": "Province 162",
     "center": null
   },
   "#1d2fcb": {
-    "provinceId": "1b20336f-cefa-4428-b7b9-8ff55b7c2afa",
+    "provinceId": "#1d2fcb",
     "provinceName": "Province 163",
     "center": null
   },
   "#383c0e": {
-    "provinceId": "f52f4bd1-401d-4030-ab7c-926d23618682",
+    "provinceId": "#383c0e",
     "provinceName": "Province 164",
     "center": null
   },
   "#1dc4cb": {
-    "provinceId": "7f2b023b-0c58-4948-9bf7-aaa9b85bacb9",
+    "provinceId": "#1dc4cb",
     "provinceName": "Province 165",
     "center": null
   },
   "#2f6d6a": {
-    "provinceId": "c4a14330-8b1d-4ae0-90bf-81ad3c22cdca",
+    "provinceId": "#2f6d6a",
     "provinceName": "Province 166",
     "center": null
   },
   "#b027a7": {
-    "provinceId": "0a1c69cc-5a43-4214-99b5-a46807a19254",
+    "provinceId": "#b027a7",
     "provinceName": "Province 167",
     "center": null
   },
   "#1dcb58": {
-    "provinceId": "1df9bb25-1405-436e-b0de-9dbcd003adfc",
+    "provinceId": "#1dcb58",
     "provinceName": "Province 168",
     "center": null
   },
   "#4b1456": {
-    "provinceId": "936b571b-cbc7-43df-bd4e-1a3427854b24",
+    "provinceId": "#4b1456",
     "provinceName": "Province 169",
     "center": null
   },
   "#1dcbb6": {
-    "provinceId": "5b7ceccf-b246-4ad9-a518-a21d5fdfd47e",
+    "provinceId": "#1dcbb6",
     "provinceName": "Province 170",
     "center": null
   },
   "#9a0078": {
-    "provinceId": "c22e8244-dd80-46d4-bca4-0d71b7e11cd0",
+    "provinceId": "#9a0078",
     "provinceName": "Province 171",
     "center": null
   },
   "#0e0f3c": {
-    "provinceId": "1f928866-d623-414e-9f27-5c370ab5d874",
+    "provinceId": "#0e0f3c",
     "provinceName": "Province 172",
     "center": null
   },
   "#596d2f": {
-    "provinceId": "3ea33dfc-ac8a-41ac-bbb3-7f508caf5c1b",
+    "provinceId": "#596d2f",
     "provinceName": "Province 173",
     "center": null
   },
   "#c81dcb": {
-    "provinceId": "b56dc2fe-41bf-4d8c-a703-bdc50a4e8cf4",
+    "provinceId": "#c81dcb",
     "provinceName": "Province 174",
     "center": null
   },
   "#6d382f": {
-    "provinceId": "8f662d0d-8e10-4a53-8f5c-ac49962f4a97",
+    "provinceId": "#6d382f",
     "provinceName": "Province 175",
     "center": null
   },
   "#20009a": {
-    "provinceId": "d0a217e4-ecda-4b02-8edf-6e878e3e1546",
+    "provinceId": "#20009a",
     "provinceName": "Province 176",
     "center": null
   },
   "#c9e155": {
-    "provinceId": "a8bbc2a1-24ee-4ae8-b34a-74f6563537b5",
+    "provinceId": "#c9e155",
     "provinceName": "Province 177",
     "center": null
   },
   "#2f3f6d": {
-    "provinceId": "81c650e1-af50-4d15-8859-93a3b94cdb51",
+    "provinceId": "#2f3f6d",
     "provinceName": "Province 178",
     "center": null
   },
   "#6d2f4c": {
-    "provinceId": "7a117e66-efd4-4cd5-a61a-5d2396baea94",
+    "provinceId": "#6d2f4c",
     "provinceName": "Province 179",
     "center": null
   },
   "#276bb0": {
-    "provinceId": "f6525a36-cb0a-4d0c-bf41-e52aa86b4ed6",
+    "provinceId": "#276bb0",
     "provinceName": "Province 180",
     "center": null
   },
   "#27b095": {
-    "provinceId": "5474114c-dea8-40db-99c5-7c2a545d5896",
+    "provinceId": "#27b095",
     "provinceName": "Province 181",
     "center": null
   },
   "#5927b0": {
-    "provinceId": "a1270414-0ce2-4446-b045-6d85f3ac6b30",
+    "provinceId": "#5927b0",
     "provinceName": "Province 182",
     "center": null
   },
   "#80009a": {
-    "provinceId": "64bb80f1-47af-480d-b5c0-ef16057dcc28",
+    "provinceId": "#80009a",
     "provinceName": "Province 183",
     "center": null
   },
   "#55e19a": {
-    "provinceId": "0bf1540e-9e03-42c4-a863-32e65c85e6d6",
+    "provinceId": "#55e19a",
     "provinceName": "Province 184",
     "center": null
   },
   "#1b334b": {
-    "provinceId": "eae44044-34a5-473c-88fd-c077c265a42d",
+    "provinceId": "#1b334b",
     "provinceName": "Province 185",
     "center": null
   },
   "#2eb027": {
-    "provinceId": "a7305907-839a-43bf-b331-044929ac15b1",
+    "provinceId": "#2eb027",
     "provinceName": "Province 186",
     "center": null
   },
   "#88e155": {
-    "provinceId": "4962a40a-0581-4c78-aa48-bc37d650fc90",
+    "provinceId": "#88e155",
     "provinceName": "Province 187",
     "center": null
   },
   "#c37aa2": {
-    "provinceId": "a0ac6759-734c-4b3a-b5b4-3434ad976895",
+    "provinceId": "#c37aa2",
     "provinceName": "Province 188",
     "center": null
   },
   "#9a9000": {
-    "provinceId": "732bcdb8-3ebe-4c1d-beb6-367a57776712",
+    "provinceId": "#9a9000",
     "provinceName": "Province 189",
     "center": null
   },
   "#5d2f6d": {
-    "provinceId": "8aeea151-e516-44b5-b739-6852f76de3d5",
+    "provinceId": "#5d2f6d",
     "provinceName": "Province 190",
     "center": null
   },
   "#e1556b": {
-    "provinceId": "be9f8c30-31af-4d46-80ab-34859e3a7299",
+    "provinceId": "#e1556b",
     "provinceName": "Province 191",
     "center": null
   },
   "#009a40": {
-    "provinceId": "40c35545-5f75-430f-9ee3-435d8acfcb9c",
+    "provinceId": "#009a40",
     "provinceName": "Province 192",
     "center": null
   },
   "#79b027": {
-    "provinceId": "1a2b1783-05c8-4535-aec1-55f8bda05266",
+    "provinceId": "#79b027",
     "provinceName": "Province 193",
     "center": null
   },
   "#27b040": {
-    "provinceId": "01481b94-8e75-4d4c-96f8-b5c41c391592",
+    "provinceId": "#27b040",
     "provinceName": "Province 194",
     "center": null
   },
   "#2e27b0": {
-    "provinceId": "e0778705-8a42-443b-a231-413201e8ae58",
+    "provinceId": "#2e27b0",
     "provinceName": "Province 195",
     "center": null
   },
   "#55e1bb": {
-    "provinceId": "c7358050-6909-448e-83ab-71edd8c08996",
+    "provinceId": "#55e1bb",
     "provinceName": "Province 196",
     "center": null
   },
   "#6eb027": {
-    "provinceId": "18566fcd-b8a5-4065-8b48-d0b4cb85e183",
+    "provinceId": "#6eb027",
     "provinceName": "Province 197",
     "center": null
   },
   "#00409a": {
-    "provinceId": "3568f11c-0f2b-4318-aa29-d4fa4ebabdd7",
+    "provinceId": "#00409a",
     "provinceName": "Province 198",
     "center": null
   },
   "#3927b0": {
-    "provinceId": "f7f9d923-0cb0-4218-95d3-d07db4c51cbe",
+    "provinceId": "#3927b0",
     "provinceName": "Province 199",
     "center": null
   },
   "#781937": {
-    "provinceId": "30d6558d-6923-401e-9a16-b0123a2f4d70",
+    "provinceId": "#781937",
     "provinceName": "Province 200",
     "center": null
   },
   "#e155d8": {
-    "provinceId": "4db15909-2680-443b-956a-3235c0839f43",
+    "provinceId": "#e155d8",
     "provinceName": "Province 201",
     "center": null
   },
   "#372f6d": {
-    "provinceId": "0419cf8b-5e10-42c4-a431-a12a9f0407b9",
+    "provinceId": "#372f6d",
     "provinceName": "Province 202",
     "center": null
   },
   "#3c1978": {
-    "provinceId": "413aa721-6985-4a0d-b2b9-64f79cbd2238",
+    "provinceId": "#3c1978",
     "provinceName": "Province 203",
     "center": null
   },
   "#193978": {
-    "provinceId": "e8e75b04-46c2-4f57-b6d7-923bd53fdf16",
+    "provinceId": "#193978",
     "provinceName": "Province 204",
     "center": null
   },
   "#a9792a": {
-    "provinceId": "648ca220-de6a-4fe5-a2e9-bb22730ec579",
+    "provinceId": "#a9792a",
     "provinceName": "Province 205",
     "center": null
   },
   "#6e27b0": {
-    "provinceId": "84b5591f-2195-4a4d-bdfd-347e9391ccdf",
+    "provinceId": "#6e27b0",
     "provinceName": "Province 206",
     "center": null
   },
   "#27b08b": {
-    "provinceId": "e2019237-1893-4dd1-b737-44641e495157",
+    "provinceId": "#27b08b",
     "provinceName": "Province 207",
     "center": null
   },
   "#a427b0": {
-    "provinceId": "e1bab3f1-2abb-4cfe-a10a-178f6dd18b0f",
+    "provinceId": "#a427b0",
     "provinceName": "Province 208",
     "center": null
   },
   "#558fe1": {
-    "provinceId": "74cf74c0-7c14-47e0-8c21-a6b11c937826",
+    "provinceId": "#558fe1",
     "provinceName": "Province 209",
     "center": null
   },
   "#5a108b": {
-    "provinceId": "aeca5bcd-cded-46c0-889e-74eb929d9275",
+    "provinceId": "#5a108b",
     "provinceName": "Province 210",
     "center": null
   },
   "#8f236e": {
-    "provinceId": "2f5f3da4-bae9-480f-ab40-e9a16bf552c1",
+    "provinceId": "#8f236e",
     "provinceName": "Province 211",
     "center": null
   },
   "#781954": {
-    "provinceId": "23feb779-d19a-43b6-8f68-bb45f7f45c7f",
+    "provinceId": "#781954",
     "provinceName": "Province 212",
     "center": null
   },
   "#a955e1": {
-    "provinceId": "24f333f4-87c6-4661-a62a-d68c9005d07e",
+    "provinceId": "#a955e1",
     "provinceName": "Province 213",
     "center": null
   },
   "#1ebdc3": {
-    "provinceId": "f9c3d915-44bb-45c5-90e8-6be0ce6fd411",
+    "provinceId": "#1ebdc3",
     "provinceName": "Province 214",
     "center": null
   },
   "#e15555": {
-    "provinceId": "f13cd37a-1342-4c76-b43a-0c5f807a3e64",
+    "provinceId": "#e15555",
     "provinceName": "Province 215",
     "center": null
   },
   "#2780b0": {
-    "provinceId": "68e4a6e1-3cc7-49fb-ad9e-072e685545ee",
+    "provinceId": "#2780b0",
     "provinceName": "Province 216",
     "center": null
   },
   "#681978": {
-    "provinceId": "5e80a013-a41e-4a9f-9001-09ce68478620",
+    "provinceId": "#681978",
     "provinceName": "Province 217",
     "center": null
   },
   "#a0bf0a": {
-    "provinceId": "9eb8910d-72b8-43e5-9e2f-7a944fa6bc9b",
+    "provinceId": "#a0bf0a",
     "provinceName": "Province 218",
     "center": null
   },
   "#365e37": {
-    "provinceId": "8618092b-c222-4b1b-930b-8fa27c6fb863",
+    "provinceId": "#365e37",
     "provinceName": "Province 219",
     "center": null
   },
   "#435e26": {
-    "provinceId": "935c1810-7243-41f0-ba51-be86ed2d8c16",
+    "provinceId": "#435e26",
     "provinceName": "Province 220",
     "center": null
   },
   "#a9972a": {
-    "provinceId": "711d5ff4-add8-4b56-a0b1-9baf5cc61d79",
+    "provinceId": "#a9972a",
     "provinceName": "Province 221",
     "center": null
   },
   "#2aa968": {
-    "provinceId": "7766e958-4c9b-4181-bbd9-55d5ac0a76a0",
+    "provinceId": "#2aa968",
     "provinceName": "Province 222",
     "center": null
   },
   "#302aa9": {
-    "provinceId": "3b259a2f-1c2a-480d-af23-8297165f20b7",
+    "provinceId": "#302aa9",
     "provinceName": "Province 223",
     "center": null
   },
   "#5e2626": {
-    "provinceId": "705f62c5-4407-42b8-8b4a-6c342d2fc041",
+    "provinceId": "#5e2626",
     "provinceName": "Province 224",
     "center": null
   },
   "#8855e1": {
-    "provinceId": "c524a108-a404-47ee-bd80-05417b0ca131",
+    "provinceId": "#8855e1",
     "provinceName": "Province 225",
     "center": null
   },
   "#72e155": {
-    "provinceId": "7a5239ab-ef56-4e45-9157-6ca67c950a9c",
+    "provinceId": "#72e155",
     "provinceName": "Province 226",
     "center": null
   },
   "#2aa941": {
-    "provinceId": "7d7cd425-fb93-41d9-9c57-84681d0f62ad",
+    "provinceId": "#2aa941",
     "provinceName": "Province 227",
     "center": null
   },
   "#265e39": {
-    "provinceId": "55ba2e59-f97c-48e3-bb60-16b6034320eb",
+    "provinceId": "#265e39",
     "provinceName": "Province 228",
     "center": null
   },
   "#55e1a5": {
-    "provinceId": "098cd321-b82c-405c-9646-092eb0e1bb06",
+    "provinceId": "#55e1a5",
     "provinceName": "Province 229",
     "center": null
   },
   "#2aa9a4": {
-    "provinceId": "9bdffbcb-ba09-486b-99e6-78ebce9ccac2",
+    "provinceId": "#2aa9a4",
     "provinceName": "Province 230",
     "center": null
   },
   "#5e4d26": {
-    "provinceId": "430c24b9-d42d-4a60-8010-eafbb84cc744",
+    "provinceId": "#5e4d26",
     "provinceName": "Province 231",
     "center": null
   },
   "#55d1e1": {
-    "provinceId": "39831981-e383-4db0-a20e-8e2387905821",
+    "provinceId": "#55d1e1",
     "provinceName": "Province 232",
     "center": null
   },
   "#ddcc65": {
-    "provinceId": "4843e008-6497-4ceb-aea7-4b833dad4ed9",
+    "provinceId": "#ddcc65",
     "provinceName": "Province 233",
     "center": null
   },
   "#2aa94b": {
-    "provinceId": "aaad5dc0-40ee-4b19-bce3-17a6e09a34ac",
+    "provinceId": "#2aa94b",
     "provinceName": "Province 234",
     "center": null
   },
   "#559ae1": {
-    "provinceId": "426035d5-a5b4-4f73-8582-e9aa45a1e6a3",
+    "provinceId": "#559ae1",
     "provinceName": "Province 235",
     "center": null
   },
   "#932aa9": {
-    "provinceId": "74e8b64d-3c2b-415e-8820-ef7d6df0cb33",
+    "provinceId": "#932aa9",
     "provinceName": "Province 236",
     "center": null
   },
   "#5fd262": {
-    "provinceId": "847d98ba-3963-41dd-812f-3e2661c5a453",
+    "provinceId": "#5fd262",
     "provinceName": "Province 237",
     "center": null
   },
   "#aeb019": {
-    "provinceId": "b9d451c3-db72-4a9b-9167-86fd6d762a66",
+    "provinceId": "#aeb019",
     "provinceName": "Province 238",
     "center": null
   },
   "#687fbf": {
-    "provinceId": "ea3747c8-3f7a-4497-8e23-7f068f66fc7f",
+    "provinceId": "#687fbf",
     "provinceName": "Province 239",
     "center": null
   },
   "#9e9850": {
-    "provinceId": "240c76c5-f630-4d83-acfd-2329703c8733",
+    "provinceId": "#9e9850",
     "provinceName": "Province 240",
     "center": null
   },
   "#50949e": {
-    "provinceId": "a2739836-d3cd-4edf-a93c-617574df1dd0",
+    "provinceId": "#50949e",
     "provinceName": "Province 241",
     "center": null
   },
   "#7b24a5": {
-    "provinceId": "47692a43-ff9d-4d19-b3ea-3cf67459e7f4",
+    "provinceId": "#7b24a5",
     "provinceName": "Province 242",
     "center": null
   },
   "#19b07b": {
-    "provinceId": "ff81fcd6-27a0-4421-ac9d-66f75cebbeea",
+    "provinceId": "#19b07b",
     "provinceName": "Province 243",
     "center": null
   },
   "#50529e": {
-    "provinceId": "d80d2815-5cf8-49e0-9fb5-f85d26107507",
+    "provinceId": "#50529e",
     "provinceName": "Province 244",
     "center": null
   },
   "#4138e5": {
-    "provinceId": "ac90805f-1ec7-4f14-ad7a-2182d33dd987",
+    "provinceId": "#4138e5",
     "provinceName": "Province 245",
     "center": null
   },
   "#a51864": {
-    "provinceId": "0311d8cc-2b09-47ef-9346-65a9907eee80",
+    "provinceId": "#a51864",
     "provinceName": "Province 246",
     "center": null
   },
   "#5019b0": {
-    "provinceId": "323a7cb8-9ad0-4a65-abdc-67f726c3f412",
+    "provinceId": "#5019b0",
     "provinceName": "Province 247",
     "center": null
   },
   "#39b019": {
-    "provinceId": "2baec0cf-0bb0-4c47-abfe-811f035a0d49",
+    "provinceId": "#39b019",
     "provinceName": "Province 248",
     "center": null
   },
   "#78509e": {
-    "provinceId": "d59c8b72-6100-4a1b-910d-5424fdb75353",
+    "provinceId": "#78509e",
     "provinceName": "Province 249",
     "center": null
   },
   "#509e64": {
-    "provinceId": "ccd5df36-f23a-48bf-9f71-0d7dfee28649",
+    "provinceId": "#509e64",
     "provinceName": "Province 250",
     "center": null
   },
   "#9e507a": {
-    "provinceId": "1c241b1b-95a1-43c8-b39e-8fc9b58391cb",
+    "provinceId": "#9e507a",
     "provinceName": "Province 251",
     "center": null
   },
   "#9e508c": {
-    "provinceId": "8faabd7e-3493-4f0b-97e4-ee3646b52610",
+    "provinceId": "#9e508c",
     "provinceName": "Province 252",
     "center": null
   },
   "#9e5050": {
-    "provinceId": "f2b50e43-a735-48de-89e0-cf93cdf9c1a9",
+    "provinceId": "#9e5050",
     "provinceName": "Province 253",
     "center": null
   },
   "#b01983": {
-    "provinceId": "817065f1-7af3-4c70-b682-81c810e35f59",
+    "provinceId": "#b01983",
     "provinceName": "Province 254",
     "center": null
   },
   "#b0199b": {
-    "provinceId": "f5eb4200-7540-4ea2-94d3-b9fdf19e6fe5",
+    "provinceId": "#b0199b",
     "provinceName": "Province 255",
     "center": null
   },
   "#7f19b0": {
-    "provinceId": "905f2cc5-591a-4aed-a3f4-8d4888608d1b",
+    "provinceId": "#7f19b0",
     "provinceName": "Province 256",
     "center": null
   },
   "#96509e": {
-    "provinceId": "f6d62276-93d8-4a8c-aec6-40f7aac8878f",
+    "provinceId": "#96509e",
     "provinceName": "Province 257",
     "center": null
   },
   "#19b093": {
-    "provinceId": "acbed957-2c74-4000-97f9-510261e84e02",
+    "provinceId": "#19b093",
     "provinceName": "Province 258",
     "center": null
   },
   "#50589e": {
-    "provinceId": "e9eacc2c-869f-4851-85a9-ed228a0f1d3d",
+    "provinceId": "#50589e",
     "provinceName": "Province 259",
     "center": null
   },
   "#2119b0": {
-    "provinceId": "234b1fd9-13b1-43f3-9c1c-b6e93194ec23",
+    "provinceId": "#2119b0",
     "provinceName": "Province 260",
     "center": null
   },
   "#54509e": {
-    "provinceId": "40d82c03-44d9-4e62-8e25-f6e59b88e1ac",
+    "provinceId": "#54509e",
     "provinceName": "Province 261",
     "center": null
   },
   "#ae19b0": {
-    "provinceId": "9e0aad34-1d1b-42a7-ad9d-89db4dc79972",
+    "provinceId": "#ae19b0",
     "provinceName": "Province 262",
     "center": null
   },
   "#1940b0": {
-    "provinceId": "c1e80404-d2d3-47ae-9a5a-518971731151",
+    "provinceId": "#1940b0",
     "provinceName": "Province 263",
     "center": null
   },
   "#8b19b0": {
-    "provinceId": "0d48b151-7249-4c37-89d7-9fcfcfb493b6",
+    "provinceId": "#8b19b0",
     "provinceName": "Province 264",
     "center": null
   },
   "#19b029": {
-    "provinceId": "551458be-896d-47f0-9f05-6f6287227165",
+    "provinceId": "#19b029",
     "provinceName": "Province 265",
     "center": null
   },
   "#1935b0": {
-    "provinceId": "d1a95d83-2e40-43db-b2d3-5ca4ca808f61",
+    "provinceId": "#1935b0",
     "provinceName": "Province 266",
     "center": null
   },
   "#19aab0": {
-    "provinceId": "bc3e01db-6b4a-43fc-820a-60e89242e5a5",
+    "provinceId": "#19aab0",
     "provinceName": "Province 267",
     "center": null
   },
   "#03c773": {
-    "provinceId": "65641fc1-85b7-4783-b2b9-0a5e21097c26",
+    "provinceId": "#03c773",
     "provinceName": "Province 268",
     "center": null
   },
   "#4419b0": {
-    "provinceId": "283850ac-2d1c-4e5c-af64-715ad2313746",
+    "provinceId": "#4419b0",
     "provinceName": "Province 269",
     "center": null
   },
   "#b01954": {
-    "provinceId": "002f7378-b690-4448-b270-c415cf4d187e",
+    "provinceId": "#b01954",
     "provinceName": "Province 270",
     "center": null
   },
   "#61eaf0": {
-    "provinceId": "4aa467fa-4936-4a35-8b7f-ad81014bc9dd",
+    "provinceId": "#61eaf0",
     "provinceName": "Province 271",
     "center": null
   },
   "#19b064": {
-    "provinceId": "6b1e5f5b-ab3a-4f8e-8934-79028e02d501",
+    "provinceId": "#19b064",
     "provinceName": "Province 272",
     "center": null
   },
   "#97b019": {
-    "provinceId": "6ad1876e-31b3-4300-be85-aa0f4168a930",
+    "provinceId": "#97b019",
     "provinceName": "Province 273",
     "center": null
   },
   "#2fd640": {
-    "provinceId": "dcc7d2a0-cf73-4d54-869f-50ccfb926af8",
+    "provinceId": "#2fd640",
     "provinceName": "Province 274",
     "center": null
   },
   "#b019a6": {
-    "provinceId": "5b33d02e-7ccf-49f9-b2da-874316a345cd",
+    "provinceId": "#b019a6",
     "provinceName": "Province 275",
     "center": null
   },
   "#2fd69b": {
-    "provinceId": "8114978d-4c0f-425f-a774-95cbb3a5eb66",
+    "provinceId": "#2fd69b",
     "provinceName": "Province 276",
     "center": null
   },
   "#19b04c": {
-    "provinceId": "bd448ea6-aab6-4aa1-9a43-7d251446a6d4",
+    "provinceId": "#19b04c",
     "provinceName": "Province 277",
     "center": null
   },
   "#b03119": {
-    "provinceId": "347f4e75-181e-4efb-b022-16db889da978",
+    "provinceId": "#b03119",
     "provinceName": "Province 278",
     "center": null
   },
   "#a0d62f": {
-    "provinceId": "553b99d9-3a12-4550-9548-1b82e627c7fd",
+    "provinceId": "#a0d62f",
     "provinceName": "Province 279",
     "center": null
   },
   "#792fd6": {
-    "provinceId": "f261b19e-bfc5-4728-ba19-59f109fca490",
+    "provinceId": "#792fd6",
     "provinceName": "Province 280",
     "center": null
   },
   "#2fd634": {
-    "provinceId": "d616cd96-e379-46d1-80d0-11082fb2d53a",
+    "provinceId": "#2fd634",
     "provinceName": "Province 281",
     "center": null
   },
   "#401a71": {
-    "provinceId": "d3dcad70-abba-4f25-8c03-20cc07c55dfa",
+    "provinceId": "#401a71",
     "provinceName": "Province 282",
     "center": null
   },
   "#c72fd6": {
-    "provinceId": "e3b606b3-7a8f-465f-a46e-036809db6970",
+    "provinceId": "#c72fd6",
     "provinceName": "Province 283",
     "center": null
   },
   "#2f67d6": {
-    "provinceId": "f93f0cb6-ca14-4cc8-b7c2-8b20c1fb671d",
+    "provinceId": "#2f67d6",
     "provinceName": "Province 284",
     "center": null
   },
   "#2fd6c2": {
-    "provinceId": "729f02b7-0387-49f9-9f0f-abd2cb6e8694",
+    "provinceId": "#2fd6c2",
     "provinceName": "Province 285",
     "center": null
   },
   "#2f81d6": {
-    "provinceId": "b35e096c-b338-4365-97d0-ca0a637bb4a2",
+    "provinceId": "#2f81d6",
     "provinceName": "Province 286",
     "center": null
   },
   "#d62fb1": {
-    "provinceId": "dd14320d-2cb8-410c-9ebd-66c893f42df5",
+    "provinceId": "#d62fb1",
     "provinceName": "Province 287",
     "center": null
   },
   "#d62f49": {
-    "provinceId": "69b74b7e-d2a5-4d4d-b4f8-7721620ba977",
+    "provinceId": "#d62f49",
     "provinceName": "Province 288",
     "center": null
   },
   "#79d62f": {
-    "provinceId": "fbf39d21-c4bf-4bc2-94e2-8e6be8fb7d3c",
+    "provinceId": "#79d62f",
     "provinceName": "Province 289",
     "center": null
   },
   "#d6cb2f": {
-    "provinceId": "c6dda977-151e-4c61-9072-782c54cbb633",
+    "provinceId": "#d6cb2f",
     "provinceName": "Province 290",
     "center": null
   },
   "#d6a42f": {
-    "provinceId": "85669cc0-1174-42fc-aaf4-d4df1ed7021e",
+    "provinceId": "#d6a42f",
     "provinceName": "Province 291",
     "center": null
   }

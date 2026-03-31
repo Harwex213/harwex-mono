@@ -236,7 +236,7 @@ class MapEngine {
     const dy = e.clientY - state.lastY;
 
     if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
-      state.isDragging = true;
+      state.hasDragged = true;
     }
 
     state.lastX = e.clientX;
