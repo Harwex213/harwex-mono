@@ -1,6 +1,6 @@
 import { memo } from "react";
 import type { MapEngine } from "../../core/map-engine/map-engine";
-import { isProvinceHaveCenter } from "../../core/map-engine/map";
+import { isProvinceHaveCenter } from "../../core/map-engine/map-types";
 import s from "./provinces-center-debug.module.css";
 import { not } from "../../utils";
 
@@ -10,8 +10,6 @@ type TProvincesCenterDebugProps = {
 
 const ProvincesCenterDebug = memo<TProvincesCenterDebugProps>(({ mapEngine }) => {
   const provinces = mapEngine.provincesCopy;
-
-  console.log(provinces);
 
   return (
     <div className={s.list}>

@@ -1,5 +1,5 @@
 import { RefObject, useEffect, useState } from 'react'
-import { TProvince } from './map.ts'
+import { TProvince } from './map-types.ts'
 import { EMapEngineEvent, MapEngine } from './map-engine.ts'
 
 type THoverState = {

@@ -1,5 +1,5 @@
 import { useRef } from "react";
-import { useMapEngine } from "@/core/map-engine/useMapEngine.ts";
+import { useMapEngine } from "../core/map-engine/use-map-engine.ts";
 import { ProvincesCenterDebug } from "./provinces-center-debug/provinces-center-debug";
 import s from "./App.module.css";
 

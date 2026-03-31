@@ -9,16 +9,16 @@ Canvas-based interactive map. React serves only as a shell — all heavy lifting
 
 ## Files
 
-| File                  | Action                                  |
-|-----------------------|-----------------------------------------|
-| `src/map.ts`          | New — shared types                      |
-| `src/useMapEngine.ts` | New — core logic hook                   |
-| `src/App.tsx`         | Update — canvas + province info overlay |
-| `src/App.module.css`  | Update — canvas + overlay styles        |
+| File                    | Action                                  |
+|-------------------------|-----------------------------------------|
+| `src/map-types.ts`      | New — shared types                      |
+| `src/use-map-engine.ts` | New — core logic hook                   |
+| `src/App.tsx`           | Update — canvas + province info overlay |
+| `src/App.module.css`    | Update — canvas + overlay styles        |
 
 ---
 
-## src/map.ts
+## src/map-types.ts
 
 ```ts
 export interface Province {
@@ -38,7 +38,7 @@ export interface MapState {
 
 ---
 
-## src/useMapEngine.ts
+## src/use-map-engine.ts
 
 ### Asset loading
 

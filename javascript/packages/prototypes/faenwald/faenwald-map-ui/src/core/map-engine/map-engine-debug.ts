@@ -1,4 +1,5 @@
 import { getPixelHex } from "./utils";
+import type { TProvincesMap } from "./map-types";
 
 export function findUniqueColors(imageData: ImageData): void {
   const { data, width, height } = imageData;
@@ -109,4 +110,33 @@ export function findDuplicateAresAndHighlightThem(imageData: ImageData): Offscre
 
   ctx.putImageData(hlData, 0, 0);
   return canvas;
+}
+
+export function assignProvinceCentroid(imageData: ImageData, provinces: TProvincesMap) {
+  const { data, width, height } = imageData;
+
+  const sums = new Map<string, { sumX: number; sumY: number; count: number }>();
+
+  for (const color of Object.keys(provinces)) {
+    sums.set(color, { sumX: 0, sumY: 0, count: 0 });
+  }
+
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const color = getPixelHex(data, x, y, width);
+      const acc = sums.get(color);
+      if (!acc) continue;
+
+      acc.sumX += x;
+      acc.sumY += y;
+      acc.count++;
+    }
+  }
+
+  for (const [color, { sumX, sumY, count }] of sums) {
+    if (count === 0) continue;
+    provinces[color].center = [Math.round(sumX / count), Math.round(sumY / count)];
+  }
+
+  console.log(JSON.stringify(provinces, null, 2));
 }

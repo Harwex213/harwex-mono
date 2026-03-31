@@ -1,4 +1,4 @@
-import type { TMapAssets, TMapState, TProvince } from "./map.ts";
+import type { TMapAssets, TMapState, TProvince } from "./map-types.ts";
 import { getPixelHex, loadImage, loadProvinces } from "./utils.ts";
 import { detectBorders } from "./detect-borders";
 import { buildHighlight } from "./map-engine-core";
@@ -88,6 +88,8 @@ class MapEngine {
       // findUniqueColors(provincesImageData);
 
       // const duplicateProvincesCanvas = findDuplicateAresAndHighlightThem(provincesImageData);
+
+      // assignProvinceCentroid(provincesImageData, provincesMap);
 
       this.assets = {
         baseImg,

@@ -1,4 +1,4 @@
-import { TProvincesMap } from "./map.ts";
+import { TProvincesMap } from "./map-types.ts";
 import { getPixelHex } from "./utils.ts";
 
 const BORDER_HALF_WIDTH = 1 // results in 5px wide borders (1 + 2*2)
@@ -64,6 +64,7 @@ export function detectBorders(
     }
   }
 
-  ctx.putImageData(borderData, 0, 0)
+  ctx.putImageData(borderData, 0, 0);
+  
   return { canvas, dilatedMask }
 }

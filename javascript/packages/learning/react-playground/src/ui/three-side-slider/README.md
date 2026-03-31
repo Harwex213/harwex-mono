@@ -29,7 +29,7 @@ src/
       SliderCard.tsx       ← individual card (expanded / collapsed)
       SliderDots.tsx       ← dot indicators
       useSlider.ts         ← logic hook (auto-play, touch, keyboard)
-      slider.map.ts      ← shared TypeScript interfaces
+      slider.map-types.ts      ← shared TypeScript interfaces
       Slider.module.css    ← or tailwind classes
   data/
     sliderData.ts          ← card content (title, description, image)
@@ -40,7 +40,7 @@ src/
 ## 2. Data Model
 
 ```ts
-// slider.map.ts
+// slider.map-types.ts
 export interface SliderItem {
   id: number;
   title: string;
@@ -392,7 +392,7 @@ trackRef.current?.scrollTo({ left: activeIndex * trackRef.current.offsetWidth, b
 
 ## 9. Implementation Order (Recommended)
 
-1. **Types & data** — `slider.map.ts`, `sliderData.ts`
+1. **Types & data** — `slider.map-types.ts`, `sliderData.ts`
 2. **Hook** — `useSlider.ts` (state, keyboard, auto-play)
 3. **SliderCard** — static markup + CSS transitions
 4. **Slider (desktop)** — flex expand layout wired to hook
