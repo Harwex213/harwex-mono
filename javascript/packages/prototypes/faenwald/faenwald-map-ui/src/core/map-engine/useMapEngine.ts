@@ -2,8 +2,15 @@ import { RefObject, useEffect, useState } from 'react'
 import { TProvince } from './types.ts'
 import { EMapEngineEvent, MapEngine } from './map-engine.ts'
 
+type THoverState = {
+  province: TProvince;
+  x: number;
+  y: number;
+} | null;
+
 export function useMapEngine(canvasRef: RefObject<HTMLCanvasElement | null>) {
   const [selectedProvince, setSelectedProvince] = useState<TProvince | null>(null)
+  const [hoveredProvince, setHoveredProvince] = useState<THoverState>(null)
   const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
@@ -24,6 +31,17 @@ export function useMapEngine(canvasRef: RefObject<HTMLCanvasElement | null>) {
         setSelectedProvince(mapEngine.selectedProvice);
         return;
       }
+
+      if (event === EMapEngineEvent.PROVINCE_HOVERED) {
+        const province = mapEngine.hoveredProvince;
+        if (province) {
+          const pos = mapEngine.hoverPosition;
+          setHoveredProvince({ province, x: pos.x, y: pos.y });
+        } else {
+          setHoveredProvince(null);
+        }
+        return;
+      }
     });
 
     return () => {
@@ -31,5 +49,5 @@ export function useMapEngine(canvasRef: RefObject<HTMLCanvasElement | null>) {
     }
   }, []);
 
-  return { selectedProvince, isLoading }
+  return { selectedProvince, hoveredProvince, isLoading }
 }

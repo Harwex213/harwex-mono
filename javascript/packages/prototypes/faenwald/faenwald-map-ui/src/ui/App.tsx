@@ -1,10 +1,10 @@
 import { useRef } from "react";
-import s from "./App.module.css";
 import { useMapEngine } from "@/core/map-engine/useMapEngine.ts";
+import s from "./App.module.css";
 
 export const App = () => {
-  const canvasRef = useRef<HTMLCanvasElement>(null)
-  const { selectedProvince, isLoading } = useMapEngine(canvasRef)
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const { selectedProvince, hoveredProvince, isLoading } = useMapEngine(canvasRef);
 
   return (
     <div className={s.app}>
@@ -14,9 +14,18 @@ export const App = () => {
 
       {
         selectedProvince ? (
-          <div className={s.provinceInfo}>
+          <div className={s.selectedProvince}>
             <div className={s.provinceName}>{selectedProvince.provinceName}</div>
             <div className={s.provinceId}>{selectedProvince.provinceId}</div>
+          </div>
+        ) : null
+      }
+
+      {
+        hoveredProvince ? (
+          <div className={s.hoveredProvince}>
+            <div className={s.provinceName}>{hoveredProvince.province.provinceName}</div>
+            <div className={s.provinceId}>{hoveredProvince.province.provinceId}</div>
           </div>
         ) : null
       }

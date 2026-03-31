@@ -14,12 +14,16 @@ type TMapEngineState = {
   lastX: number;
   lastY: number;
   selectedProvince: TProvince | null;
+  hoveredProvince: TProvince | null;
+  hoverClientX: number;
+  hoverClientY: number;
   isLoading: boolean;
 };
 
 enum EMapEngineEvent {
   ASSETS_LOADED = "ASSETS_LOADED",
   PROVINCE_SELECTED = "PROVINCE_SELECTED",
+  PROVINCE_HOVERED = "PROVINCE_HOVERED",
 }
 
 type TMapEngineEventSubscriber = (event: EMapEngineEvent) => void;
@@ -39,6 +43,9 @@ class MapEngine {
     lastX: 0,
     lastY: 0,
     selectedProvince: null,
+    hoveredProvince: null,
+    hoverClientX: 0,
+    hoverClientY: 0,
     isLoading: false,
   };
   private assets: TMapAssets | null = null;
@@ -60,7 +67,7 @@ class MapEngine {
     canvas.addEventListener("mousedown", this.onMouseDown);
     window.addEventListener("mousemove", this.onMouseMove);
     window.addEventListener("mouseup", this.stopDrag);
-    canvas.addEventListener("mouseleave", this.stopDrag);
+    canvas.addEventListener("mouseleave", this.onMouseLeave);
     canvas.addEventListener("click", this.onClick);
 
     this.state.rafId = requestAnimationFrame(this.renderFrame);
@@ -104,6 +111,14 @@ class MapEngine {
     return this.state.selectedProvince;
   }
 
+  public get hoveredProvince() {
+    return this.state.hoveredProvince;
+  }
+
+  public get hoverPosition() {
+    return { x: this.state.hoverClientX, y: this.state.hoverClientY };
+  }
+
   public destroy() {
     cancelAnimationFrame(this.state.rafId);
     this.resizeObserver.disconnect();
@@ -114,7 +129,7 @@ class MapEngine {
     canvas.removeEventListener("mousedown", this.onMouseDown);
     window.removeEventListener("mousemove", this.onMouseMove);
     window.removeEventListener("mouseup", this.stopDrag);
-    canvas.removeEventListener("mouseleave", this.stopDrag);
+    canvas.removeEventListener("mouseleave", this.onMouseLeave);
     canvas.removeEventListener("click", this.onClick);
 
     this.subscribers.splice(0, this.subscribers.length);
@@ -228,29 +243,76 @@ class MapEngine {
 
   private onMouseMove = (e: MouseEvent) => {
     const state = this.state;
-    if (!state.isDragging) {
+
+    if (state.isDragging) {
+      const dx = e.clientX - state.lastX;
+      const dy = e.clientY - state.lastY;
+
+      if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
+        state.hasDragged = true;
+      }
+
+      state.lastX = e.clientX;
+      state.lastY = e.clientY;
+
+      const mapState = this.mapState;
+
+      mapState.offsetX += dx;
+      mapState.offsetY += dy;
+
+      if (state.hoveredProvince) {
+        state.hoveredProvince = null;
+        this.dispatchEvent(EMapEngineEvent.PROVINCE_HOVERED);
+      }
       return;
     }
 
-    const dx = e.clientX - state.lastX;
-    const dy = e.clientY - state.lastY;
-
-    if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
-      state.hasDragged = true;
-    }
-
-    state.lastX = e.clientX;
-    state.lastY = e.clientY;
-
-    const mapState = this.mapState;
-
-    mapState.offsetX += dx;
-    mapState.offsetY += dy;
+    this.updateHover(e.clientX, e.clientY);
   }
 
   private stopDrag = () => {
     this.state.isDragging = false;
     this.canvas.style.cursor = "grab";
+  }
+
+  private onMouseLeave = () => {
+    this.stopDrag();
+    if (this.state.hoveredProvince) {
+      this.state.hoveredProvince = null;
+      this.dispatchEvent(EMapEngineEvent.PROVINCE_HOVERED);
+    }
+  }
+
+  private updateHover = (clientX: number, clientY: number) => {
+    const state = this.state;
+    const assets = this.assets;
+    if (!assets) return;
+
+    const { provincesImageData, provincesMap } = assets;
+    const { x, y } = this.getCanvasCoords(clientX, clientY);
+    const mapState = this.mapState;
+
+    const imgX = Math.round((x - mapState.offsetX) / mapState.scale);
+    const imgY = Math.round((y - mapState.offsetY) / mapState.scale);
+    const { width, height } = provincesImageData;
+
+    let province: TProvince | null = null;
+
+    if (imgX >= 0 && imgY >= 0 && imgX < width && imgY < height) {
+      const color = getPixelHex(provincesImageData.data, imgX, imgY, width);
+      if (color !== NO_PROVINCE_ID) {
+        province = provincesMap[color] ?? null;
+      }
+    }
+
+    const prev = state.hoveredProvince;
+    state.hoveredProvince = province;
+    state.hoverClientX = clientX;
+    state.hoverClientY = clientY;
+
+    if (prev?.provinceId !== province?.provinceId) {
+      this.dispatchEvent(EMapEngineEvent.PROVINCE_HOVERED);
+    }
   }
 
   private onClick = (e: MouseEvent) => {

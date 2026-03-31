@@ -1,55 +1,73 @@
 .app {
-  position: relative;
-  width: 100vw;
-  height: 100vh;
-  overflow: hidden;
-  background: #111;
+    position: relative;
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+    background: #111;
 }
 
 .canvas {
-  display: block;
-  width: 100%;
-  height: 100%;
-  cursor: grab;
+    display: block;
+    width: 100%;
+    height: 100%;
+    cursor: grab;
 }
 
 .canvas:active {
-  cursor: grabbing;
+    cursor: grabbing;
 }
 
 .loader {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #fff;
-  font-size: 1.25rem;
-  letter-spacing: 0.05em;
-  z-index: 10;
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-size: 1.25rem;
+    letter-spacing: 0.05em;
+    z-index: 10;
 }
 
-.provinceInfo {
-  position: absolute;
-  bottom: 24px;
-  left: 24px;
-  background: rgba(0, 0, 0, 0.72);
-  color: #fff;
-  padding: 12px 16px;
-  border-radius: 8px;
-  pointer-events: none;
-  backdrop-filter: blur(4px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+.selectedProvince, .hoveredProvince {
+    position: absolute;
+    bottom: 24px;
+    left: 24px;
+    background: rgba(0, 0, 0, 0.72);
+    color: #fff;
+    padding: 12px 16px;
+    border-radius: 8px;
+    pointer-events: none;
+    backdrop-filter: blur(4px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.hoveredProvince {
+    bottom: 104px;
 }
 
 .provinceName {
-  font-size: 1rem;
-  font-weight: 600;
-  margin-bottom: 4px;
+    font-size: 1rem;
+    font-weight: 600;
+    margin-bottom: 4px;
 }
 
 .provinceId {
-  font-size: 0.7rem;
-  opacity: 0.5;
-  font-family: monospace;
+    font-size: 0.7rem;
+    opacity: 0.5;
+    font-family: monospace;
+}
+
+.tooltip {
+    position: fixed;
+    background: rgba(0, 0, 0, 0.8);
+    color: #fff;
+    padding: 6px 10px;
+    border-radius: 4px;
+    font-size: 0.8rem;
+    pointer-events: none;
+    white-space: nowrap;
+    z-index: 20;
+    backdrop-filter: blur(4px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
 }

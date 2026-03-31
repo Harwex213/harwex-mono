@@ -58,7 +58,7 @@ type TArmyUnit = {
   stripes: number;
   rank: number;
   modifiers: TArmyUnitModifier[];
-  house: THouse;
+  houseId: string;
 };
 
 type TArmyUnitTemplate = Pick<
