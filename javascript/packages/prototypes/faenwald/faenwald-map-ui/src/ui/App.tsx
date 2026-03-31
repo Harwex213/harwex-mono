@@ -1,6 +1,6 @@
 import { useRef } from "react";
 import s from "./App.module.css";
-import { useMapEngine } from "./useMapEngine";
+import { useMapEngine } from "@/core/map-engine/useMapEngine.ts";
 
 export const App = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -10,7 +10,7 @@ export const App = () => {
     <div className={s.app}>
       {isLoading ? <div className={s.loader}>Loading...</div> : null}
 
-      <canvas ref={canvasRef} className={s.canvas} />
+      <canvas ref={canvasRef} className={s.canvas}/>
 
       {
         selectedProvince ? (

@@ -1,5 +1,5 @@
-import { TProvincesMap } from "@/types";
-import { getPixelHex } from "./utils";
+import { TProvincesMap } from "@/core/map-engine/types.ts";
+import { getPixelHex } from "./utils.ts";
 
 const BORDER_HALF_WIDTH = 1 // results in 5px wide borders (1 + 2*2)
 

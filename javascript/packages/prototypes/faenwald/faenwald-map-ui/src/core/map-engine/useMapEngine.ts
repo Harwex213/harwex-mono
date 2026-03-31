@@ -1,6 +1,6 @@
 import { RefObject, useEffect, useState } from 'react'
-import { TProvince } from './types'
-import { EMapEngineEvent, MapEngine } from './service/map-engine/MapEngine'
+import { TProvince } from './types.ts'
+import { EMapEngineEvent, MapEngine } from './map-engine.ts'
 
 export function useMapEngine(canvasRef: RefObject<HTMLCanvasElement | null>) {
   const [selectedProvince, setSelectedProvince] = useState<TProvince | null>(null)
@@ -29,7 +29,7 @@ export function useMapEngine(canvasRef: RefObject<HTMLCanvasElement | null>) {
     return () => {
       mapEngine.destroy();
     }
-  }, [])
+  }, []);
 
   return { selectedProvince, isLoading }
 }
