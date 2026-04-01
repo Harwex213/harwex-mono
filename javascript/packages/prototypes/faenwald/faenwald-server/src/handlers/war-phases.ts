@@ -9,15 +9,15 @@ import type {
   TWarPhaseSerialized
 } from "../data-source/data-source-types.js";
 
-type LoadParams = { turn: number };
-type SaveParams = { warPhase: TWarPhase };
+type LoadParams = { turn: number, phase: number };
+type SaveParams = { turn: number, warPhase: TWarPhase };
 
 register<LoadParams, TWarPhase>("warPhase.load", async (params) => {
   if (typeof params?.turn !== "number") {
     throw new RpcError("INVALID_PARAMS", "\"turn\" must be a number");
   }
 
-  const warPhaseRaw = await loadWarPhase(params.turn);
+  const warPhaseRaw = await loadWarPhase(params.turn, params.phase);
 
   const armies = Object.values(warPhaseRaw.armies).reduce<Record<string, TArmy>>((armies, serializedArmy) => {
     armies[serializedArmy.id] = {
@@ -94,5 +94,5 @@ register<SaveParams, void>("warPhase.save", async (params) => {
     actions: warPhase.actionRounds,
   } satisfies TWarPhaseActionSerialized;
 
-  await flushWarPhase(warPhase.phase, warPhaseRaw, actions);
+  await flushWarPhase(params.turn, warPhase.phase, warPhaseRaw, actions);
 });

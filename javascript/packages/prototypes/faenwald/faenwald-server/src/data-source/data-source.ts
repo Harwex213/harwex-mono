@@ -9,12 +9,12 @@ import type {
   TWarPhaseSerialized
 } from "./data-source-types.js";
 
-const BASE_PATH = path.join(import.meta.dirname, "..");
+const BASE_PATH = path.join(import.meta.dirname, "..", "..");
 const PATH = {
   PROVINCES: path.join(BASE_PATH, "data/provinces.json"),
   turn: (turn: number) => path.join(BASE_PATH, `data/game/${turn}-turn.json`),
-  warPhase: (turn: number) => path.join(BASE_PATH, `data/game/${turn}-phase.json`),
-  warPhaseActions: (turn: number) => path.join(BASE_PATH, `data/game/${turn}-phase-actions.json`),
+  warPhase: (turn: number, phase: number) => path.join(BASE_PATH, `data/wars/${turn}-turn/${phase}-phase.json`),
+  warPhaseActions: (turn: number, phase: number) => path.join(BASE_PATH, `data/wars/${turn}-turn/${phase}-phase-actions.json`),
 };
 
 const loadGameTurn = async (turn: number): Promise<TGameTurn> => {
@@ -63,9 +63,9 @@ const flushGameTurn = async (gameTurn: TGameTurn): Promise<void> => {
   await fs.writeFile(PATH.turn(gameTurn.turn), JSON.stringify(gameTurnSerialized, null, 2), "utf-8");
 };
 
-const loadWarPhase = async (phaseNumber: number): Promise<TWarPhaseDataSource> => {
-  const warPhaseJSON = await fs.readFile(PATH.warPhase(phaseNumber), "utf-8");
-  const warPhaseActionsJSON = await fs.readFile(PATH.warPhaseActions(phaseNumber), "utf-8");
+const loadWarPhase = async (turn: number, phaseNumber: number): Promise<TWarPhaseDataSource> => {
+  const warPhaseJSON = await fs.readFile(PATH.warPhase(turn, phaseNumber), "utf-8");
+  const warPhaseActionsJSON = await fs.readFile(PATH.warPhaseActions(turn, phaseNumber), "utf-8");
 
   const armies = JSON.parse(warPhaseJSON) as TWarPhaseSerialized;
   const actions = JSON.parse(warPhaseActionsJSON) as TWarPhaseActionSerialized;
@@ -77,9 +77,9 @@ const loadWarPhase = async (phaseNumber: number): Promise<TWarPhaseDataSource> =
   };
 };
 
-const flushWarPhase = async (phaseNumber: number, warPhase: TWarPhaseSerialized, actions: TWarPhaseActionSerialized): Promise<void> => {
-  await fs.writeFile(PATH.warPhase(phaseNumber), JSON.stringify(warPhase, null, 2), "utf-8");
-  await fs.writeFile(PATH.warPhaseActions(phaseNumber), JSON.stringify(actions, null, 2), "utf-8");
+const flushWarPhase = async (turn: number, phaseNumber: number, warPhase: TWarPhaseSerialized, actions: TWarPhaseActionSerialized): Promise<void> => {
+  await fs.writeFile(PATH.warPhase(turn, phaseNumber), JSON.stringify(warPhase, null, 2), "utf-8");
+  await fs.writeFile(PATH.warPhaseActions(turn, phaseNumber), JSON.stringify(actions, null, 2), "utf-8");
 }
 
 export {

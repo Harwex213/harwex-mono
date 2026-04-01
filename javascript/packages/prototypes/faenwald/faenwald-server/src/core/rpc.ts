@@ -52,7 +52,7 @@ const handleRpc = async (req: IncomingMessage, res: ServerResponse) => {
   }
 
   const result = await handler(params);
-  sendJSON(res, 200, { result });
+  sendJSON(res, 200, result);
 };
 
 const getRegisteredMethods = (): string[] => [...procedures.keys()];

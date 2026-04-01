@@ -1,9 +1,10 @@
-import type { TMapAssets, TMapState, TProvince } from "./map-types.js";
-import { getPixelHex, loadImage, loadProvinces } from "./utils.js";
+import type { TGameContext, TMapAssets, TMapState, TProvince } from "./map-types.js";
+import { getPixelHex, loadImage } from "./utils.js";
 import { detectBorders } from "./detect-borders";
 import { buildAllHighlights, buildAllHoverBorders } from "./map-engine-core";
 import { renderProvinceCenters } from "./map-engine-debug";
 import { getLocalStorage, setLocalStorage } from "../../utils";
+import { loadGameTurn, loadWarPhase } from "../../api/api";
 
 const ZOOM_FACTOR = 1.1;
 
@@ -21,6 +22,8 @@ type TMapEngineState = {
   hoverClientY: number;
   isLoading: boolean;
   isRenderingProvinceCenters: boolean;
+  turn: string;
+  phase: string;
 };
 
 enum EMapEngineEvent {
@@ -51,8 +54,11 @@ class MapEngine {
     hoverClientY: 0,
     isLoading: false,
     isRenderingProvinceCenters: getLocalStorage("isRenderingProvinceCenters") ?? false,
+    turn: getLocalStorage("turn") ?? "4",
+    phase: getLocalStorage("phase") ?? "2",
   };
   private assets: TMapAssets | null = null;
+  private gameContext: TGameContext | null = null;
   private readonly subscribers: TMapEngineEventSubscriber[] = [];
   private provincesArray!: TProvince[];
 
@@ -77,50 +83,7 @@ class MapEngine {
 
     this.state.rafId = requestAnimationFrame(this.renderFrame);
 
-    // TODO: change to URL instances
-    Promise.all([
-      loadImage("/assets/map_base.jpg"),
-      loadImage("/assets/map_provinces.png"),
-      loadProvinces(),
-    ]).then(([baseImg, provincesImg, provincesMap]) => {
-      const offscreen = new OffscreenCanvas(provincesImg.naturalWidth, provincesImg.naturalHeight);
-      const offCtx = offscreen.getContext("2d")!;
-      offCtx.drawImage(provincesImg, 0, 0);
-      const provincesImageData = offCtx.getImageData(0, 0, offscreen.width, offscreen.height);
-
-      const { canvas: borderCanvas, dilatedMask } = detectBorders(provincesImageData, provincesMap);
-
-      // findUniqueColors(provincesImageData);
-
-      // const duplicateProvincesCanvas = findDuplicateAresAndHighlightThem(provincesImageData);
-
-      // assignProvinceCentroid(provincesImageData, provincesMap);
-
-      const provincesCenterCanvas = renderProvinceCenters(provincesImageData, provincesMap);
-      const hoverBorderCanvases = buildAllHoverBorders(provincesImageData, provincesMap);
-      const highlightCanvases = buildAllHighlights(provincesImageData, provincesMap, dilatedMask);
-
-      this.assets = {
-        baseImg,
-        provincesImageData,
-        provincesMap,
-        borderCanvas,
-        dilatedMask,
-        provincesCenterCanvas,
-        duplicateProvincesCanvas: null,
-        highlightCanvases,
-        hoverBorderCanvases,
-        selectedColor: null,
-        hoveredColor: null,
-      };
-
-      this.initScale(baseImg.naturalWidth, baseImg.naturalHeight);
-      this.state.isLoading = false;
-
-      this.provincesArray = Object.values(this.assets.provincesMap);
-
-      this.dispatchEvent(EMapEngineEvent.ASSETS_LOADED);
-    })
+    this.loadAssets();
   }
 
   public get selectedProvice() {
@@ -141,6 +104,24 @@ class MapEngine {
 
   public get provinces() {
     return this.provincesArray;
+  }
+
+  public set turn(value: string) {
+    const parsed = Number.parseInt(value);
+    if (!isNaN(parsed)) {
+      this.state.turn = value;
+    }
+
+    this.loadAssets();
+  }
+
+  public set phase(value: string) {
+    const parsed = Number.parseInt(value);
+    if (!isNaN(parsed)) {
+      this.state.phase = value;
+    }
+
+    this.loadAssets();
   }
 
   public toggleRenderProvinceCenters() {
@@ -173,6 +154,60 @@ class MapEngine {
       this.subscribers.findIndex(s => s === subscriber),
       1,
     )
+  }
+
+  private loadAssets() {
+    const turn = Number(this.state.turn);
+    const phase = Number(this.state.phase);
+
+    Promise.all([
+      loadImage("/assets/map_base.jpg"),
+      loadImage("/assets/map_provinces.png"),
+      loadGameTurn(turn),
+      loadWarPhase(turn, phase),
+    ]).then(([baseImg, provincesImg, gameTurn, warPhase]) => {
+      const offscreen = new OffscreenCanvas(provincesImg.naturalWidth, provincesImg.naturalHeight);
+      const offCtx = offscreen.getContext("2d")!;
+      offCtx.drawImage(provincesImg, 0, 0);
+      const provincesImageData = offCtx.getImageData(0, 0, offscreen.width, offscreen.height);
+
+      const { canvas: borderCanvas, dilatedMask } = detectBorders(provincesImageData, gameTurn.provinces);
+
+      // findUniqueColors(provincesImageData);
+
+      // const duplicateProvincesCanvas = findDuplicateAresAndHighlightThem(provincesImageData);
+
+      // assignProvinceCentroid(provincesImageData, provincesMap);
+
+      const provincesCenterCanvas = renderProvinceCenters(provincesImageData, gameTurn.provinces);
+      const hoverBorderCanvases = buildAllHoverBorders(provincesImageData, gameTurn.provinces);
+      const highlightCanvases = buildAllHighlights(provincesImageData, gameTurn.provinces, dilatedMask);
+
+      this.provincesArray = Object.values(gameTurn.provinces);
+
+      this.gameContext = {
+        gameTurn,
+        warPhase,
+      }
+
+      this.assets = {
+        baseImg,
+        provincesImageData,
+        borderCanvas,
+        dilatedMask,
+        provincesCenterCanvas,
+        duplicateProvincesCanvas: null,
+        highlightCanvases,
+        hoverBorderCanvases,
+        selectedColor: null,
+        hoveredColor: null,
+      };
+
+      this.initScale(baseImg.naturalWidth, baseImg.naturalHeight);
+      this.state.isLoading = false;
+
+      this.dispatchEvent(EMapEngineEvent.ASSETS_LOADED);
+    });
   }
 
   private syncCanvasSize = () => {
@@ -350,9 +385,11 @@ class MapEngine {
   private updateHover = (clientX: number, clientY: number) => {
     const state = this.state;
     const assets = this.assets;
-    if (!assets) return;
+    const gameContext = this.gameContext;
+    if (!assets || !gameContext) return;
 
-    const { provincesImageData, provincesMap } = assets;
+    const { provincesImageData } = assets;
+    const { gameTurn: { provinces } } = gameContext;
     const { x, y } = this.getCanvasCoords(clientX, clientY);
     const mapState = this.mapState;
 
@@ -365,8 +402,8 @@ class MapEngine {
 
     if (imgX >= 0 && imgY >= 0 && imgX < width && imgY < height) {
       const pixelColor = getPixelHex(provincesImageData.data, imgX, imgY, width);
-      if (pixelColor !== NO_PROVINCE_ID && provincesMap[pixelColor]) {
-        province = provincesMap[pixelColor];
+      if (pixelColor !== NO_PROVINCE_ID && provinces[pixelColor]) {
+        province = provinces[pixelColor];
         color = pixelColor;
       }
     }
@@ -386,11 +423,13 @@ class MapEngine {
   private onClick = (e: MouseEvent) => {
     const state = this.state;
     const assets = this.assets;
-    if (state.hasDragged || !assets) {
+    const gameContext = this.gameContext;
+    if (state.hasDragged || !assets || !gameContext) {
       return;
     }
 
-    const { provincesImageData, provincesMap } = assets;
+    const { provincesImageData } = assets;
+    const { gameTurn: { provinces } } = gameContext;
     const { x, y } = this.getCanvasCoords(e.clientX, e.clientY);
     const mapState = this.mapState;
 
@@ -407,7 +446,7 @@ class MapEngine {
     }
 
     const color = getPixelHex(provincesImageData.data, imgX, imgY, width);
-    const province = provincesMap[color];
+    const province = provinces[color];
 
     if (!province || color === NO_PROVINCE_ID) {
       assets.selectedColor = null;

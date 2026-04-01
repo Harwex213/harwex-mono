@@ -1,11 +1,4 @@
-export interface TProvince {
-  provinceId: string;
-  provinceName: string;
-  center: null | [number, number];
-}
-
-// key = "#rrggbb" lowercase
-export type TProvincesMap = Record<string, TProvince>;
+import type { TGameTurn, TProvince, TWarPhase } from "@hw/faenwald-core";
 
 export interface TMapState {
   offsetX: number;
@@ -13,10 +6,14 @@ export interface TMapState {
   scale: number;
 }
 
+export type TGameContext = {
+  gameTurn: TGameTurn;
+  warPhase: TWarPhase;
+}
+
 export type TMapAssets = {
   baseImg: HTMLImageElement;
   provincesImageData: ImageData;
-  provincesMap: TProvincesMap;
   borderCanvas: OffscreenCanvas;
   dilatedMask: Uint8Array;
   duplicateProvincesCanvas: OffscreenCanvas | null;
