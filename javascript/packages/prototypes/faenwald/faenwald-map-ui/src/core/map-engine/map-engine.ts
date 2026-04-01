@@ -2,6 +2,8 @@ import type { TMapAssets, TMapState, TProvince } from "./map-types.ts";
 import { getPixelHex, loadImage, loadProvinces } from "./utils.ts";
 import { detectBorders } from "./detect-borders";
 import { buildHighlight } from "./map-engine-core";
+import { renderProvinceCenters } from "./map-engine-debug";
+import { getLocalStorage, setLocalStorage } from "../../utils";
 
 const ZOOM_FACTOR = 1.1;
 
@@ -18,6 +20,7 @@ type TMapEngineState = {
   hoverClientX: number;
   hoverClientY: number;
   isLoading: boolean;
+  isRenderingProvinceCenters: boolean;
 };
 
 enum EMapEngineEvent {
@@ -47,6 +50,7 @@ class MapEngine {
     hoverClientX: 0,
     hoverClientY: 0,
     isLoading: false,
+    isRenderingProvinceCenters: getLocalStorage("isRenderingProvinceCenters") ?? false,
   };
   private assets: TMapAssets | null = null;
   private readonly subscribers: TMapEngineEventSubscriber[] = [];
@@ -91,12 +95,15 @@ class MapEngine {
 
       // assignProvinceCentroid(provincesImageData, provincesMap);
 
+      const provincesCenterCanvas = renderProvinceCenters(provincesImageData, provincesMap);
+
       this.assets = {
         baseImg,
         provincesImageData,
         provincesMap,
         borderCanvas,
         dilatedMask,
+        provincesCenterCanvas,
         duplicateProvincesCanvas: null,
         highlightCanvas: null,
         selectedColor: null,
@@ -121,12 +128,29 @@ class MapEngine {
     return { x: this.state.hoverClientX, y: this.state.hoverClientY };
   }
 
-  public get provincesCopy() {
+  public get provinces() {
+    if (!this.assets) {
+      throw new Error("Assets not loaded yet");
+    }
+
+    return { ...this.assets.provincesMap };
+  }
+
+  public get provincesArray() {
     if (!this.assets) {
       throw new Error("Assets not loaded yet");
     }
 
     return Object.values(this.assets.provincesMap);
+  }
+
+  public get isRenderingProvinceCenters() {
+    return this.state.isRenderingProvinceCenters;
+  }
+
+  public toggleRenderProvinceCenters() {
+    this.state.isRenderingProvinceCenters = !this.state.isRenderingProvinceCenters;
+    setLocalStorage("isRenderingProvinceCenters", this.state.isRenderingProvinceCenters);
   }
 
   public destroy() {
@@ -187,7 +211,13 @@ class MapEngine {
       return;
     }
 
-    const { baseImg, borderCanvas, highlightCanvas, duplicateProvincesCanvas } = this.assets;
+    const {
+      baseImg,
+      borderCanvas,
+      highlightCanvas,
+      duplicateProvincesCanvas,
+      provincesCenterCanvas,
+    } = this.assets;
     const { offsetX, offsetY, scale } = this.mapState;
 
     ctx.imageSmoothingEnabled = false;
@@ -202,6 +232,9 @@ class MapEngine {
     }
     if (highlightCanvas) {
       ctx.drawImage(highlightCanvas, 0, 0);
+    }
+    if (provincesCenterCanvas && this.state.isRenderingProvinceCenters) {
+      ctx.drawImage(provincesCenterCanvas, 0, 0);
     }
     ctx.restore();
 

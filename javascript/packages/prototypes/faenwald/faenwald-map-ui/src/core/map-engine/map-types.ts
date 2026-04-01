@@ -21,6 +21,7 @@ export type TMapAssets = {
   dilatedMask: Uint8Array;
   duplicateProvincesCanvas: OffscreenCanvas | null;
   highlightCanvas: OffscreenCanvas | null;
+  provincesCenterCanvas: OffscreenCanvas | null,
   selectedColor: string | null;
 }
 

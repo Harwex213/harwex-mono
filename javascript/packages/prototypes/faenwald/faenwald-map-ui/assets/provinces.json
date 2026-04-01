@@ -267,8 +267,8 @@
     "provinceId": "#ff00ee",
     "provinceName": "Province 34",
     "center": [
-      1593,
-      750
+      1583,
+      755
     ]
   },
   "#ce0ba3": {
@@ -324,7 +324,7 @@
     "provinceName": "Province 41",
     "center": [
       1405,
-      767
+      764
     ]
   },
   "#2a4592": {
@@ -339,7 +339,7 @@
     "provinceId": "#00ff7e",
     "provinceName": "Province 43",
     "center": [
-      1474,
+      1470,
       769
     ]
   },
@@ -459,7 +459,7 @@
     "provinceId": "#8fce0b",
     "provinceName": "Province 58",
     "center": [
-      1306,
+      1316,
       832
     ]
   },
@@ -899,8 +899,8 @@
     "provinceId": "#2f8b72",
     "provinceName": "Province 113",
     "center": [
-      1106,
-      1016
+      1120,
+      1012
     ]
   },
   "#0e39b4": {
@@ -1019,7 +1019,7 @@
     "provinceId": "#9e15cb",
     "provinceName": "Province 128",
     "center": [
-      908,
+      914,
       1063
     ]
   },
@@ -1147,8 +1147,8 @@
     "provinceId": "#145456",
     "provinceName": "Province 144",
     "center": [
-      1217,
-      1127
+      1195,
+      1135
     ]
   },
   "#156974": {
@@ -1308,7 +1308,7 @@
     "provinceName": "Province 164",
     "center": [
       1242,
-      1195
+      1185
     ]
   },
   "#1dc4cb": {
@@ -1371,8 +1371,8 @@
     "provinceId": "#0e0f3c",
     "provinceName": "Province 172",
     "center": [
-      1107,
-      1236
+      1105,
+      1219
     ]
   },
   "#596d2f": {
@@ -1395,16 +1395,16 @@
     "provinceId": "#6d382f",
     "provinceName": "Province 175",
     "center": [
-      926,
-      1240
+      923,
+      1248
     ]
   },
   "#20009a": {
     "provinceId": "#20009a",
     "provinceName": "Province 176",
     "center": [
-      469,
-      1245
+      455,
+      1247
     ]
   },
   "#c9e155": {
@@ -1627,8 +1627,8 @@
     "provinceId": "#193978",
     "provinceName": "Province 204",
     "center": [
-      728,
-      1359
+      717,
+      1364
     ]
   },
   "#a9792a": {
@@ -1723,8 +1723,8 @@
     "provinceId": "#2780b0",
     "provinceName": "Province 216",
     "center": [
-      545,
-      1409
+      538,
+      1419
     ]
   },
   "#681978": {
@@ -1795,8 +1795,8 @@
     "provinceId": "#8855e1",
     "provinceName": "Province 225",
     "center": [
-      1038,
-      1437
+      1032,
+      1440
     ]
   },
   "#72e155": {
@@ -1995,8 +1995,8 @@
     "provinceId": "#509e64",
     "provinceName": "Province 250",
     "center": [
-      872,
-      1546
+      877,
+      1540
     ]
   },
   "#9e507a": {
@@ -2115,8 +2115,8 @@
     "provinceId": "#19b029",
     "provinceName": "Province 265",
     "center": [
-      939,
-      1641
+      945,
+      1633
     ]
   },
   "#1935b0": {
@@ -2251,8 +2251,8 @@
     "provinceId": "#401a71",
     "provinceName": "Province 282",
     "center": [
-      1258,
-      1761
+      1279,
+      1772
     ]
   },
   "#c72fd6": {
@@ -2275,8 +2275,8 @@
     "provinceId": "#2fd6c2",
     "provinceName": "Province 285",
     "center": [
-      1078,
-      1805
+      1083,
+      1808
     ]
   },
   "#2f81d6": {

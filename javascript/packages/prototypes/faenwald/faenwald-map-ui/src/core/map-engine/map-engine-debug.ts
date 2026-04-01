@@ -140,3 +140,25 @@ export function assignProvinceCentroid(imageData: ImageData, provinces: TProvinc
 
   console.log(JSON.stringify(provinces, null, 2));
 }
+
+export function renderProvinceCenters(imageData: ImageData, provinces: TProvincesMap): OffscreenCanvas {
+  const { width, height } = imageData;
+  const canvas = new OffscreenCanvas(width, height);
+  const ctx = canvas.getContext("2d")!;
+
+  const RADIUS = 4;
+
+  for (const province of Object.values(provinces)) {
+    if (!province.center) continue;
+
+    const [cx, cy] = province.center;
+
+    ctx.beginPath();
+    ctx.arc(cx, cy, RADIUS, 0, Math.PI * 2);
+    ctx.fillStyle = "red";
+    ctx.fill();
+  }
+
+  return canvas;
+}
+
