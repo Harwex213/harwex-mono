@@ -1,5 +1,5 @@
-import { getPixelHex } from "./utils.js";
 import type { TProvincesMap } from "@hw/faenwald-core";
+import { getPixelHex } from "./utils.js";
 
 const BORDER_HALF_WIDTH = 1 // results in 5px wide borders (1 + 2*2)
 

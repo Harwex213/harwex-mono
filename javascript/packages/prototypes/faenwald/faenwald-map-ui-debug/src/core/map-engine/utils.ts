@@ -1,5 +1,3 @@
-import { TProvincesMap } from "./map-types.ts";
-
 export function loadImage(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const img = new Image();
@@ -7,11 +5,6 @@ export function loadImage(src: string): Promise<HTMLImageElement> {
     img.onerror = reject;
     img.src = src;
   });
-}
-
-export async function loadProvinces(): Promise<TProvincesMap> {
-  const res = await fetch('/assets/provinces.json');
-  return res.json();
 }
 
 export function getPixelHex(data: Uint8ClampedArray, x: number, y: number, width: number): string {

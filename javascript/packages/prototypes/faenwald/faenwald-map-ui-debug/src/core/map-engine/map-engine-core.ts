@@ -1,4 +1,4 @@
-import { TProvincesMap } from "./map-types";
+import type { TProvincesMap } from "@hw/faenwald-core";
 import { getPixelHex } from "./utils";
 
 const BORDER_HALF_WIDTH = 1;

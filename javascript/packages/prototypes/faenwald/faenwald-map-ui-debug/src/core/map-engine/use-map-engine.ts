@@ -1,5 +1,5 @@
+import type { TProvince } from "@hw/faenwald-core";
 import { RefObject, useEffect, useState } from 'react';
-import { TProvince } from './map-types.js';
 import { EMapEngineEvent, MapEngine } from './map-engine.js';
 
 type THoverState = {

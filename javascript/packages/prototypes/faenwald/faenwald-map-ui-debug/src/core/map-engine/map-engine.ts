@@ -1,4 +1,5 @@
-import type { TGameContext, TMapAssets, TMapState, TProvince } from "./map-types.js";
+import type { TProvince } from "@hw/faenwald-core";
+import type { TGameContext, TMapAssets, TMapState } from "./map-types.js";
 import { getPixelHex, loadImage } from "./utils.js";
 import { detectBorders } from "./detect-borders";
 import { buildAllHighlights, buildAllHoverBorders } from "./map-engine-core";

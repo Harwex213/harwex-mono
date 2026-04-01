@@ -1,5 +1,5 @@
+import type { TProvincesMap } from "@hw/faenwald-core";
 import { getPixelHex } from "./utils";
-import type { TProvincesMap } from "./map-types";
 
 export function findUniqueColors(imageData: ImageData): void {
   const { data, width, height } = imageData;
