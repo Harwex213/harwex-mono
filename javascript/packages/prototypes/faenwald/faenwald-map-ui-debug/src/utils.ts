@@ -17,7 +17,7 @@ export const setLocalStorage = <Type>(key: string, value: Type) => {
   return self.localStorage.setItem(key, JSON.stringify(value));
 }
 
-export const useLocalStorageState = <Type>(initialValue: Type, key: string) => {
+export const useLocalStorageState = <Type>(initialValue: Type, key: string): [Type, Dispatch<SetStateAction<Type>>] => {
   const [value, setValue] = useState<Type>(() => {
     const value = getLocalStorageRaw(key);
     if (value === null) {

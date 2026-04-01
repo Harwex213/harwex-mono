@@ -54,6 +54,7 @@ class MapEngine {
   };
   private assets: TMapAssets | null = null;
   private readonly subscribers: TMapEngineEventSubscriber[] = [];
+  private provincesArray!: TProvince[];
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
@@ -116,6 +117,8 @@ class MapEngine {
       this.initScale(baseImg.naturalWidth, baseImg.naturalHeight);
       this.state.isLoading = false;
 
+      this.provincesArray = Object.values(this.assets.provincesMap);
+
       this.dispatchEvent(EMapEngineEvent.ASSETS_LOADED);
     })
   }
@@ -132,24 +135,12 @@ class MapEngine {
     return { x: this.state.hoverClientX, y: this.state.hoverClientY };
   }
 
-  public get provinces() {
-    if (!this.assets) {
-      throw new Error("Assets not loaded yet");
-    }
-
-    return { ...this.assets.provincesMap };
-  }
-
-  public get provincesArray() {
-    if (!this.assets) {
-      throw new Error("Assets not loaded yet");
-    }
-
-    return Object.values(this.assets.provincesMap);
-  }
-
   public get isRenderingProvinceCenters() {
     return this.state.isRenderingProvinceCenters;
+  }
+
+  public get provinces() {
+    return this.provincesArray;
   }
 
   public toggleRenderProvinceCenters() {
