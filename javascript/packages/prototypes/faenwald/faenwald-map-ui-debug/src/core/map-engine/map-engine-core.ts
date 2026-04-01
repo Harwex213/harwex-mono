@@ -89,37 +89,51 @@ export function buildAllHoverBorders(
   return result;
 }
 
-export function buildHighlight(
+export function buildAllHighlights(
   imageData: ImageData,
-  color: string,
+  provincesMap: TProvincesMap,
   dilatedMask: Uint8Array,
-): OffscreenCanvas {
+): Map<string, OffscreenCanvas> {
   const { data, width, height } = imageData;
-  const canvas = new OffscreenCanvas(width, height);
-  const ctx = canvas.getContext("2d")!;
-  const hlData = ctx.createImageData(width, height);
-  const hd = hlData.data;
+
+  // Single pass: collect non-border pixel indices per color
+  const colorToPixels = new Map<string, number[]>();
 
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
       const idx = y * width + x;
+      if (dilatedMask[idx]) continue;
 
-      if (dilatedMask[idx]) {
-        continue;
-      }
+      const color = getPixelHex(data, x, y, width);
+      if (color === "#ffffff" || !(color in provincesMap)) continue;
 
-      if (getPixelHex(data, x, y, width) === color) {
-        // TODO: refactor magic numbers
-        const i = idx * 4;
-        hd[i] = 255;
-        hd[i + 1] = 220;
-        hd[i + 2] = 80;
-        hd[i + 3] = 89; // ~0.35 opacity
+      let pixels = colorToPixels.get(color);
+      if (!pixels) {
+        pixels = [];
+        colorToPixels.set(color, pixels);
       }
+      pixels.push(idx * 4);
     }
   }
 
-  ctx.putImageData(hlData, 0, 0);
+  const result = new Map<string, OffscreenCanvas>();
 
-  return canvas;
+  for (const [color, pixels] of colorToPixels) {
+    const canvas = new OffscreenCanvas(width, height);
+    const ctx = canvas.getContext("2d")!;
+    const hlData = ctx.createImageData(width, height);
+    const hd = hlData.data;
+
+    for (const i of pixels) {
+      hd[i] = 255;
+      hd[i + 1] = 220;
+      hd[i + 2] = 80;
+      hd[i + 3] = 89;
+    }
+
+    ctx.putImageData(hlData, 0, 0);
+    result.set(color, canvas);
+  }
+
+  return result;
 }

@@ -1,6 +1,6 @@
-import { RefObject, useEffect, useState } from 'react'
-import { TProvince } from './map-types.ts'
-import { EMapEngineEvent, MapEngine } from './map-engine.ts'
+import { RefObject, useEffect, useState } from 'react';
+import { TProvince } from './map-types.js';
+import { EMapEngineEvent, MapEngine } from './map-engine.js';
 
 type THoverState = {
   province: TProvince;
@@ -8,23 +8,30 @@ type THoverState = {
   y: number;
 } | null;
 
-export function useMapEngine(canvasRef: RefObject<HTMLCanvasElement | null>) {
+const mapCanvas = document.createElement('canvas');
+mapCanvas.style.display = "block";
+mapCanvas.style.width = "100%";
+mapCanvas.style.height = "100%";
+mapCanvas.style.cursor = "grab";
+const mapEngine = new MapEngine(mapCanvas);
+
+export function useMapEngine(containerRef: RefObject<HTMLDivElement | null>) {
   const [selectedProvince, setSelectedProvince] = useState<TProvince | null>(null);
   const [hoveredProvince, setHoveredProvince] = useState<THoverState>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [_mapEngine, setMapEngine] = useState<MapEngine>();
 
   useEffect(() => {
-    const canvas = canvasRef.current
-    if (!canvas) {
+    const container = containerRef.current;
+    if (!container) {
       return;
     }
 
-    const mapEngine = new MapEngine(canvas);
+    container.appendChild(mapCanvas);
 
     setMapEngine(mapEngine);
 
-    mapEngine.subscribeOnEvents((event) => {
+    const handleEvent = (event: EMapEngineEvent) => {
       if (event === EMapEngineEvent.ASSETS_LOADED) {
         setIsLoading(false);
         return;
@@ -45,10 +52,13 @@ export function useMapEngine(canvasRef: RefObject<HTMLCanvasElement | null>) {
         }
         return;
       }
-    });
+    };
+
+    mapEngine.subscribeOnEvents(handleEvent);
 
     return () => {
-      mapEngine.destroy();
+      container.removeChild(mapCanvas);
+      mapEngine.unsubscribeFromEvents(handleEvent);
     }
   }, []);
 

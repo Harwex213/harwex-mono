@@ -23,7 +23,7 @@
     border-left: 1px solid gold;
 }
 
-.canvas:active {
+.canvas canvas:active {
     cursor: grabbing;
 }
 

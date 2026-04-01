@@ -20,7 +20,7 @@ export type TMapAssets = {
   borderCanvas: OffscreenCanvas;
   dilatedMask: Uint8Array;
   duplicateProvincesCanvas: OffscreenCanvas | null;
-  highlightCanvas: OffscreenCanvas | null;
+  highlightCanvases: Map<string, OffscreenCanvas>;
   hoverBorderCanvases: Map<string, OffscreenCanvas>;
   provincesCenterCanvas: OffscreenCanvas | null,
   selectedColor: string | null;

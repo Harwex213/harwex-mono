@@ -1,7 +1,7 @@
 import type { TMapAssets, TMapState, TProvince } from "./map-types.js";
 import { getPixelHex, loadImage, loadProvinces } from "./utils.js";
 import { detectBorders } from "./detect-borders";
-import { buildAllHoverBorders, buildHighlight } from "./map-engine-core";
+import { buildAllHighlights, buildAllHoverBorders } from "./map-engine-core";
 import { renderProvinceCenters } from "./map-engine-debug";
 import { getLocalStorage, setLocalStorage } from "../../utils";
 
@@ -97,6 +97,7 @@ class MapEngine {
 
       const provincesCenterCanvas = renderProvinceCenters(provincesImageData, provincesMap);
       const hoverBorderCanvases = buildAllHoverBorders(provincesImageData, provincesMap);
+      const highlightCanvases = buildAllHighlights(provincesImageData, provincesMap, dilatedMask);
 
       this.assets = {
         baseImg,
@@ -106,7 +107,7 @@ class MapEngine {
         dilatedMask,
         provincesCenterCanvas,
         duplicateProvincesCanvas: null,
-        highlightCanvas: null,
+        highlightCanvases,
         hoverBorderCanvases,
         selectedColor: null,
         hoveredColor: null,
@@ -176,6 +177,13 @@ class MapEngine {
     this.subscribers.push(subscriber);
   }
 
+  public unsubscribeFromEvents(subscriber: (event: EMapEngineEvent) => void) {
+    this.subscribers.splice(
+      this.subscribers.findIndex(s => s === subscriber),
+      1,
+    )
+  }
+
   private syncCanvasSize = () => {
     this.canvas.width = this.canvas.clientWidth;
     this.canvas.height = this.canvas.clientHeight;
@@ -217,11 +225,12 @@ class MapEngine {
     const {
       baseImg,
       borderCanvas,
-      highlightCanvas,
+      highlightCanvases,
       hoverBorderCanvases,
       duplicateProvincesCanvas,
       provincesCenterCanvas,
       hoveredColor,
+      selectedColor,
     } = this.assets;
     const { offsetX, offsetY, scale } = this.mapState;
 
@@ -241,8 +250,11 @@ class MapEngine {
     if (duplicateProvincesCanvas) {
       ctx.drawImage(duplicateProvincesCanvas, 0, 0);
     }
-    if (highlightCanvas) {
-      ctx.drawImage(highlightCanvas, 0, 0);
+    if (selectedColor) {
+      const highlight = highlightCanvases.get(selectedColor);
+      if (highlight) {
+        ctx.drawImage(highlight, 0, 0);
+      }
     }
     if (provincesCenterCanvas && this.state.isRenderingProvinceCenters) {
       ctx.drawImage(provincesCenterCanvas, 0, 0);
@@ -397,12 +409,9 @@ class MapEngine {
     const { width, height } = provincesImageData;
 
     if (imgX < 0 || imgY < 0 || imgX >= width || imgY >= height) {
-      assets.highlightCanvas = null;
       assets.selectedColor = null;
-
       state.selectedProvince = null;
       this.dispatchEvent(EMapEngineEvent.PROVINCE_SELECTED);
-
       return;
     }
 
@@ -410,20 +419,13 @@ class MapEngine {
     const province = provincesMap[color];
 
     if (!province || color === NO_PROVINCE_ID) {
-      assets.highlightCanvas = null;
       assets.selectedColor = null;
-
       state.selectedProvince = null;
       this.dispatchEvent(EMapEngineEvent.PROVINCE_SELECTED);
-
       return;
     }
 
-    if (assets.selectedColor !== color) {
-      assets.highlightCanvas = buildHighlight(provincesImageData, color, assets.dilatedMask);
-      assets.selectedColor = color;
-    }
-
+    assets.selectedColor = color;
     state.selectedProvince = province;
     this.dispatchEvent(EMapEngineEvent.PROVINCE_SELECTED);
   }

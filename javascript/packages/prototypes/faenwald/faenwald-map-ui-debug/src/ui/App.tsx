@@ -1,17 +1,17 @@
 import { useRef } from "react";
-import { useMapEngine } from "../core/map-engine/use-map-engine.ts";
+import { useMapEngine } from "../core/map-engine/use-map-engine.js";
 import { ProvincesCenterDebug } from "./provinces-center-debug/provinces-center-debug";
 import s from "./App.module.css";
 
 export const App = () => {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const { selectedProvince, hoveredProvince, isLoading, _mapEngine } = useMapEngine(canvasRef);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const { selectedProvince, hoveredProvince, isLoading, _mapEngine } = useMapEngine(containerRef);
 
   return (
     <div className={s.app}>
       {isLoading ? <div className={s.loader}>Loading...</div> : null}
 
-      <canvas ref={canvasRef} className={s.canvas}/>
+      <div ref={containerRef} className={s.canvas}/>
 
       {
         selectedProvince ? (
