@@ -9,6 +9,13 @@ import { loadGameTurn, loadWarPhase } from "../../api/api";
 
 const ZOOM_FACTOR = 1.1;
 
+const ICON_SIZE = 44;
+const ICON_SCALE = ICON_SIZE / 24; // SVG viewBox is 24x24
+
+const SHIELD_PATH = new Path2D(
+  "M12 22c-1.148 0-3.418-1.362-5.13-3.34C4.44 15.854 3 11.967 3 7a1 1 0 0 1 .629-.929c3.274-1.31 5.88-2.613 7.816-3.903a1 1 0 0 1 1.11 0c1.935 1.29 4.543 2.594 7.816 3.903A1 1 0 0 1 21 7c0 4.968-1.44 8.855-3.87 11.66C15.419 20.637 13.149 22 12 22z"
+);
+
 const NO_PROVINCE_ID = "#ffffff";
 
 type TMapEngineState = {
@@ -287,9 +294,51 @@ class MapEngine {
       ctx.drawImage(provincesCenterCanvas, 0, 0);
     }
     ctx.restore();
+    this.renderArmies(ctx);
 
     this.state.rafId = requestAnimationFrame(this.renderFrame);
   }
+
+  private renderArmies(ctx: CanvasRenderingContext2D) {
+    const gameContext = this.gameContext;
+    if (!gameContext) return;
+
+    const { warPhase: { armies }, gameTurn: { provinces } } = gameContext;
+    const { offsetX, offsetY, scale } = this.mapState;
+
+    for (const armyId in armies) {
+      const army = armies[armyId];
+      const province = provinces[army.provinceId];
+      if (!province?.center) continue;
+
+      const [worldX, worldY] = province.center;
+      const screenX = worldX * scale + offsetX;
+      const screenY = worldY * scale + offsetY;
+
+      ctx.save();
+      ctx.translate(screenX - ICON_SIZE / 2, screenY - ICON_SIZE / 2);
+      ctx.scale(ICON_SCALE, ICON_SCALE);
+
+      // Shadow
+      ctx.shadowColor = "rgba(0, 0, 0, 0.5)";
+      ctx.shadowBlur = 4;
+      ctx.shadowOffsetX = 1;
+      ctx.shadowOffsetY = 1;
+
+      // Fill
+      ctx.fillStyle = "#ffffff";
+      ctx.fill(SHIELD_PATH);
+
+      // Border
+      ctx.shadowColor = "transparent";
+      ctx.strokeStyle = "rgba(0, 0, 0, 0.3)";
+      ctx.lineWidth = 1;
+      ctx.stroke(SHIELD_PATH);
+
+      ctx.restore();
+    }
+  }
+
 
   private onWheel = (e: WheelEvent) => {
     e.preventDefault();
