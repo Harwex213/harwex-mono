@@ -1,4 +1,4 @@
-import { TArmyUnitModifier, TArmyUnitTemplate, TArmyUnitType } from "./army.js";
+import { TArmyUnitModifier, type TArmyUnitRank, TArmyUnitTemplate, TArmyUnitType } from "./army.js";
 
 const ARMY_UNIT_TYPE_TO_SUPPLY: Record<TArmyUnitType, number> = {
   "light-spearman": 1,
@@ -16,8 +16,8 @@ const ARMY_UNIT_TYPE_TO_SUPPLY: Record<TArmyUnitType, number> = {
   "crossbowman": 1,
 };
 
-const SYSTEM_ARMY_MODIFIERS: TArmyUnitModifier[] = [
-  {
+const ARMY_RANK_TO_MODIFIER: Record<TArmyUnitRank, TArmyUnitModifier> = {
+  "1": {
     id: "rank-one",
     name: "Ранг I",
     source: "system",
@@ -39,7 +39,29 @@ const SYSTEM_ARMY_MODIFIERS: TArmyUnitModifier[] = [
       }
     ]
   },
-  {
+  "2": {
+    id: "rank-two",
+    name: "Ранг II",
+    source: "system",
+    implications: [
+      {
+        modifierProperty: "baseHp",
+        modifierType: "value",
+        modifierValue: 0,
+      },
+      {
+        modifierProperty: "baseAttack",
+        modifierType: "value",
+        modifierValue: 0,
+      },
+      {
+        modifierProperty: "baseMorale",
+        modifierType: "value",
+        modifierValue: 0,
+      }
+    ]
+  },
+  "3": {
     id: "rank-three",
     name: "Ранг III",
     source: "system",
@@ -61,7 +83,7 @@ const SYSTEM_ARMY_MODIFIERS: TArmyUnitModifier[] = [
       }
     ]
   },
-  {
+  "4": {
     id: "rank-four",
     name: "Ранг IV",
     source: "system",
@@ -83,7 +105,7 @@ const SYSTEM_ARMY_MODIFIERS: TArmyUnitModifier[] = [
       }
     ]
   },
-  {
+  "5": {
     id: "rank-five",
     name: "Ранг V",
     source: "system",
@@ -105,7 +127,7 @@ const SYSTEM_ARMY_MODIFIERS: TArmyUnitModifier[] = [
       }
     ]
   }
-];
+}
 
 const ARMY_UNIT_TEMPLATES: Record<TArmyUnitType, TArmyUnitTemplate> = {
   "light-spearman": {
@@ -201,4 +223,4 @@ const ARMY_UNIT_TEMPLATES: Record<TArmyUnitType, TArmyUnitTemplate> = {
   },
 }
 
-export { ARMY_UNIT_TYPE_TO_SUPPLY };
+export { ARMY_UNIT_TYPE_TO_SUPPLY, ARMY_UNIT_TEMPLATES, ARMY_RANK_TO_MODIFIER };

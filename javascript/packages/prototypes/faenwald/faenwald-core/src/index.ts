@@ -13,11 +13,11 @@ export type {
   TArmyUnitModifier,
   TArmyUnitKind,
   TArmyUnit,
-  TSerializedArmyUnit,
   TArmyUnitTemplate,
   TArmy,
+  TArmyUnitRank,
 } from "./war/army.js";
-export { ARMY_UNIT_TYPE_TO_SUPPLY } from "./war/army-constants.js";
+export { ARMY_UNIT_TYPE_TO_SUPPLY, ARMY_UNIT_TEMPLATES, ARMY_RANK_TO_MODIFIER } from "./war/army-constants.js";
 export type {
   TAssaultDeviceUnitType,
   TAssaultDevice,

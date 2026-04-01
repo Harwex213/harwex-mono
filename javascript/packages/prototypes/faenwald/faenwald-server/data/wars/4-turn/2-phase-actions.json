@@ -1,0 +1,15 @@
+{
+  "phase": 2,
+  "actions": [
+    [
+      {
+        "type": "move",
+        "armyId": "army-slonston-1",
+        "movement": [
+          "#c37aa2",
+          "#6eb027"
+        ]
+      }
+    ]
+  ]
+}

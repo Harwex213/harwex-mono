@@ -33,6 +33,8 @@ export type TArmyUnitKind = |
   "liege" |
   "vassal";
 
+export type TArmyUnitRank = "1" | "2" | "3" | "4" | "5";
+
 export type TArmyUnit = {
   kind: TArmyUnitKind;
   type: TArmyUnitType;
@@ -42,20 +44,10 @@ export type TArmyUnit = {
   baseMorale: number;
   baseSpeed: number;
   stripes: number;
-  rank: number;
+  rank: TArmyUnitRank;
   modifiers: TArmyUnitModifier[];
   houseId: string;
 };
-
-export type TSerializedArmyUnit = {
-  kind: TArmyUnitKind;
-  type: TArmyUnitType;
-  amount: number;
-  stripes: number;
-  rank: number;
-  modifiers: TArmyUnitModifier[];
-  houseId: string;
-}
 
 export type TArmyUnitTemplate = Pick<
   TArmyUnit,

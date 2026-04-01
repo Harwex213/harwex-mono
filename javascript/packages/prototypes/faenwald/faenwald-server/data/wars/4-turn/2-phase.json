@@ -9,7 +9,7 @@
           "type": "medium-spearman",
           "amount": 100,
           "stripes": 0,
-          "rank": 2,
+          "rank": "2",
           "modifiers": [],
           "houseId": "house-slonston"
         },
@@ -18,7 +18,7 @@
           "type": "medium-spearman",
           "amount": 100,
           "stripes": 0,
-          "rank": 2,
+          "rank": "2",
           "modifiers": [],
           "houseId": "house-slonston"
         },
@@ -27,7 +27,7 @@
           "type": "medium-spearman",
           "amount": 25,
           "stripes": 0,
-          "rank": 2,
+          "rank": "2",
           "modifiers": [],
           "houseId": "house-slonston"
         },
@@ -36,12 +36,12 @@
           "type": "heavy-cavalry",
           "amount": 68,
           "stripes": 0,
-          "rank": 2,
+          "rank": "2",
           "modifiers": [],
           "houseId": "house-slonston"
         }
       ],
-      "provinceId": "#6eb027"
+      "provinceId": "#79b027"
     }
   }
 }
