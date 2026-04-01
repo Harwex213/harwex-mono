@@ -1,7 +1,7 @@
-import type { TMapAssets, TMapState, TProvince } from "./map-types.ts";
-import { getPixelHex, loadImage, loadProvinces } from "./utils.ts";
+import type { TMapAssets, TMapState, TProvince } from "./map-types.js";
+import { getPixelHex, loadImage, loadProvinces } from "./utils.js";
 import { detectBorders } from "./detect-borders";
-import { buildHighlight } from "./map-engine-core";
+import { buildAllHoverBorders, buildHighlight } from "./map-engine-core";
 import { renderProvinceCenters } from "./map-engine-debug";
 import { getLocalStorage, setLocalStorage } from "../../utils";
 
@@ -96,6 +96,7 @@ class MapEngine {
       // assignProvinceCentroid(provincesImageData, provincesMap);
 
       const provincesCenterCanvas = renderProvinceCenters(provincesImageData, provincesMap);
+      const hoverBorderCanvases = buildAllHoverBorders(provincesImageData, provincesMap);
 
       this.assets = {
         baseImg,
@@ -106,7 +107,9 @@ class MapEngine {
         provincesCenterCanvas,
         duplicateProvincesCanvas: null,
         highlightCanvas: null,
+        hoverBorderCanvases,
         selectedColor: null,
+        hoveredColor: null,
       };
 
       this.initScale(baseImg.naturalWidth, baseImg.naturalHeight);
@@ -215,8 +218,10 @@ class MapEngine {
       baseImg,
       borderCanvas,
       highlightCanvas,
+      hoverBorderCanvases,
       duplicateProvincesCanvas,
       provincesCenterCanvas,
+      hoveredColor,
     } = this.assets;
     const { offsetX, offsetY, scale } = this.mapState;
 
@@ -227,6 +232,12 @@ class MapEngine {
     ctx.scale(scale, scale);
     ctx.drawImage(baseImg, 0, 0);
     ctx.drawImage(borderCanvas, 0, 0);
+    if (hoveredColor) {
+      const hoverBorder = hoverBorderCanvases.get(hoveredColor);
+      if (hoverBorder) {
+        ctx.drawImage(hoverBorder, 0, 0);
+      }
+    }
     if (duplicateProvincesCanvas) {
       ctx.drawImage(duplicateProvincesCanvas, 0, 0);
     }
@@ -305,6 +316,9 @@ class MapEngine {
 
       if (state.hoveredProvince) {
         state.hoveredProvince = null;
+        if (this.assets) {
+          this.assets.hoveredColor = null;
+        }
         this.dispatchEvent(EMapEngineEvent.PROVINCE_HOVERED);
       }
       return;
@@ -322,6 +336,10 @@ class MapEngine {
     this.stopDrag();
     if (this.state.hoveredProvince) {
       this.state.hoveredProvince = null;
+      if (this.assets) {
+        this.assets.hoveredColor = null;
+      }
+      this.canvas.style.cursor = "grab";
       this.dispatchEvent(EMapEngineEvent.PROVINCE_HOVERED);
     }
   }
@@ -340,11 +358,13 @@ class MapEngine {
     const { width, height } = provincesImageData;
 
     let province: TProvince | null = null;
+    let color: string | null = null;
 
     if (imgX >= 0 && imgY >= 0 && imgX < width && imgY < height) {
-      const color = getPixelHex(provincesImageData.data, imgX, imgY, width);
-      if (color !== NO_PROVINCE_ID) {
-        province = provincesMap[color] ?? null;
+      const pixelColor = getPixelHex(provincesImageData.data, imgX, imgY, width);
+      if (pixelColor !== NO_PROVINCE_ID && provincesMap[pixelColor]) {
+        province = provincesMap[pixelColor];
+        color = pixelColor;
       }
     }
 
@@ -354,6 +374,8 @@ class MapEngine {
     state.hoverClientY = clientY;
 
     if (prev?.provinceId !== province?.provinceId) {
+      assets.hoveredColor = color;
+      this.canvas.style.cursor = province ? "pointer" : "grab";
       this.dispatchEvent(EMapEngineEvent.PROVINCE_HOVERED);
     }
   }

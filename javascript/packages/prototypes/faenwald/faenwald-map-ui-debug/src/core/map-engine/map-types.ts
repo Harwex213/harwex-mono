@@ -21,8 +21,10 @@ export type TMapAssets = {
   dilatedMask: Uint8Array;
   duplicateProvincesCanvas: OffscreenCanvas | null;
   highlightCanvas: OffscreenCanvas | null;
+  hoverBorderCanvases: Map<string, OffscreenCanvas>;
   provincesCenterCanvas: OffscreenCanvas | null,
   selectedColor: string | null;
+  hoveredColor: string | null;
 }
 
 export const isProvinceHaveCenter = (province: TProvince) => province.center !== null;
