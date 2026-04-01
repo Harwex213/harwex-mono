@@ -1,0 +1,11 @@
+{
+  "name": "@hw/faenwald-core",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "devDependencies": {
+    "typescript": "5.9.3"
+  },
+  "types": "./dist/index.d.ts",
+  "exports": "./src/index.ts"
+}
