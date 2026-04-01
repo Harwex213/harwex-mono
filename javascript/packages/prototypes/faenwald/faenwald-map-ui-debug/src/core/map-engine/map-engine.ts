@@ -1,4 +1,4 @@
-import type { TProvince } from "@hw/faenwald-core";
+import type { TArmy, TProvince } from "@hw/faenwald-core";
 import type { TGameContext, TMapAssets, TMapState } from "./map-types.js";
 import { getPixelHex, loadImage } from "./utils.js";
 import { detectBorders } from "./detect-borders";
@@ -24,8 +24,20 @@ type TMapEngineState = {
   hasDragged: boolean;
   lastX: number;
   lastY: number;
-  selectedProvince: TProvince | null;
-  hoveredProvince: TProvince | null;
+  selectedEntity: {
+    type: "province"
+    value: TProvince;
+  } | {
+    type: "army";
+    value: TArmy;
+  } | null;
+  hoveredEntity: {
+    type: "province"
+    value: TProvince;
+  } | {
+    type: "army";
+    value: TArmy;
+  } | null;
   hoverClientX: number;
   hoverClientY: number;
   isLoading: boolean;
@@ -36,8 +48,8 @@ type TMapEngineState = {
 
 enum EMapEngineEvent {
   ASSETS_LOADED = "ASSETS_LOADED",
-  PROVINCE_SELECTED = "PROVINCE_SELECTED",
-  PROVINCE_HOVERED = "PROVINCE_HOVERED",
+  ENTITY_SELECTED = "ENTITY_SELECTED",
+  ENTITY_HOVERED = "ENTITY_HOVERED",
 }
 
 type TMapEngineEventSubscriber = (event: EMapEngineEvent) => void;
@@ -56,8 +68,8 @@ class MapEngine {
     hasDragged: false,
     lastX: 0,
     lastY: 0,
-    selectedProvince: null,
-    hoveredProvince: null,
+    selectedEntity: null,
+    hoveredEntity: null,
     hoverClientX: 0,
     hoverClientY: 0,
     isLoading: false,
@@ -94,12 +106,12 @@ class MapEngine {
     this.loadAssets();
   }
 
-  public get selectedProvice() {
-    return this.state.selectedProvince;
+  public get selectedEntity() {
+    return this.state.selectedEntity;
   }
 
-  public get hoveredProvince() {
-    return this.state.hoveredProvince;
+  public get hoveredEntity() {
+    return this.state.hoveredEntity;
   }
 
   public get hoverPosition() {
@@ -305,6 +317,12 @@ class MapEngine {
 
     const { warPhase: { armies }, gameTurn: { provinces } } = gameContext;
     const { offsetX, offsetY, scale } = this.mapState;
+    const selectedArmyId = this.state.selectedEntity && this.state.selectedEntity.type === "army"
+      ? this.state.selectedEntity.value.id
+      : null;
+    const hoveredArmyId = this.state.hoveredEntity && this.state.hoveredEntity.type === "army"
+      ? this.state.hoveredEntity.value.id
+      : null;
 
     for (const armyId in armies) {
       const army = armies[armyId];
@@ -314,25 +332,38 @@ class MapEngine {
       const [worldX, worldY] = province.center;
       const screenX = worldX * scale + offsetX;
       const screenY = worldY * scale + offsetY;
+      const isSelected = army.id === selectedArmyId;
+      const isHovered = army.id === hoveredArmyId;
 
       ctx.save();
       ctx.translate(screenX - ICON_SIZE / 2, screenY - ICON_SIZE / 2);
       ctx.scale(ICON_SCALE, ICON_SCALE);
 
       // Shadow
-      ctx.shadowColor = "rgba(0, 0, 0, 0.5)";
-      ctx.shadowBlur = 4;
-      ctx.shadowOffsetX = 1;
-      ctx.shadowOffsetY = 1;
+      if (isSelected) {
+        ctx.shadowColor = "gold";
+        ctx.shadowBlur = 10;
+      } else if (isHovered) {
+        ctx.shadowColor = "rgba(186, 161, 10, 0.6)";
+        ctx.shadowBlur = 8;
+      } else {
+        ctx.shadowColor = "rgba(0, 0, 0, 0.5)";
+        ctx.shadowBlur = 4;
+        ctx.shadowOffsetX = 1;
+        ctx.shadowOffsetY = 1;
+      }
 
       // Fill
-      ctx.fillStyle = "#ffffff";
+      ctx.fillStyle = isSelected ? "#fff8dc" : isHovered ? "#f0f0f0" : "#ffffff";
       ctx.fill(SHIELD_PATH);
 
       // Border
       ctx.shadowColor = "transparent";
-      ctx.strokeStyle = "rgba(0, 0, 0, 0.3)";
-      ctx.lineWidth = 1;
+      ctx.shadowBlur = 0;
+      ctx.shadowOffsetX = 0;
+      ctx.shadowOffsetY = 0;
+      ctx.strokeStyle = isSelected ? "gold" : isHovered ? "rgba(186, 161, 10, 0.6)" : "rgba(0, 0, 0, 0.3)";
+      ctx.lineWidth = isSelected || isHovered ? 2 : 1;
       ctx.stroke(SHIELD_PATH);
 
       ctx.restore();
@@ -402,12 +433,12 @@ class MapEngine {
       mapState.offsetX += dx;
       mapState.offsetY += dy;
 
-      if (state.hoveredProvince) {
-        state.hoveredProvince = null;
+      if (this.state.hoveredEntity) {
+        state.hoveredEntity = null;
         if (this.assets) {
           this.assets.hoveredColor = null;
         }
-        this.dispatchEvent(EMapEngineEvent.PROVINCE_HOVERED);
+        this.dispatchEvent(EMapEngineEvent.ENTITY_HOVERED);
       }
       return;
     }
@@ -422,13 +453,13 @@ class MapEngine {
 
   private onMouseLeave = () => {
     this.stopDrag();
-    if (this.state.hoveredProvince) {
-      this.state.hoveredProvince = null;
+    if (this.state.hoveredEntity) {
+      this.state.hoveredEntity = null;
       if (this.assets) {
         this.assets.hoveredColor = null;
       }
       this.canvas.style.cursor = "grab";
-      this.dispatchEvent(EMapEngineEvent.PROVINCE_HOVERED);
+      this.dispatchEvent(EMapEngineEvent.ENTITY_HOVERED);
     }
   }
 
@@ -438,9 +469,36 @@ class MapEngine {
     const gameContext = this.gameContext;
     if (!assets || !gameContext) return;
 
+    const { x, y } = this.getCanvasCoords(clientX, clientY);
+
+    // Army hover takes priority
+    const army = this.findArmyAtScreen(x, y);
+    const prevHoveredEntity = state.hoveredEntity;
+
+    if (army) {
+      state.hoverClientX = clientX;
+      state.hoverClientY = clientY;
+
+      const isNewHover = prevHoveredEntity === null ||
+        prevHoveredEntity.type !== "army" ||
+        (prevHoveredEntity.type === "army" && prevHoveredEntity.value.id !== army.id);
+
+      if (isNewHover) {
+        state.hoveredEntity = {
+          type: "army",
+          value: army,
+        };
+        assets.hoveredColor = null;
+        this.canvas.style.cursor = "pointer";
+        this.dispatchEvent(EMapEngineEvent.ENTITY_HOVERED);
+      }
+
+      return;
+    }
+
+    // Province hover
     const { provincesImageData } = assets;
     const { gameTurn: { provinces } } = gameContext;
-    const { x, y } = this.getCanvasCoords(clientX, clientY);
     const mapState = this.mapState;
 
     const imgX = Math.round((x - mapState.offsetX) / mapState.scale);
@@ -458,16 +516,61 @@ class MapEngine {
       }
     }
 
-    const prev = state.hoveredProvince;
-    state.hoveredProvince = province;
-    state.hoverClientX = clientX;
-    state.hoverClientY = clientY;
+    if (province && color) {
+      state.hoverClientX = clientX;
+      state.hoverClientY = clientY;
 
-    if (prev?.provinceId !== province?.provinceId) {
-      assets.hoveredColor = color;
-      this.canvas.style.cursor = province ? "pointer" : "grab";
-      this.dispatchEvent(EMapEngineEvent.PROVINCE_HOVERED);
+      const isNewHover = prevHoveredEntity === null ||
+        prevHoveredEntity.type !== "province" ||
+        (prevHoveredEntity.type === "province" && prevHoveredEntity.value.provinceId !== province.provinceId);
+
+      if (isNewHover) {
+        state.hoveredEntity = {
+          type: "province",
+          value: province,
+        };
+        assets.hoveredColor = color;
+        this.canvas.style.cursor = province ? "pointer" : "grab";
+        this.dispatchEvent(EMapEngineEvent.ENTITY_HOVERED);
+      }
+
+      return;
     }
+
+    if (prevHoveredEntity !== null) {
+      state.hoveredEntity = null;
+      assets.hoveredColor = null;
+      this.canvas.style.cursor = "grab";
+      this.dispatchEvent(EMapEngineEvent.ENTITY_HOVERED);
+    }
+  }
+
+  private findArmyAtScreen(screenX: number, screenY: number): TArmy | null {
+    const gameContext = this.gameContext;
+    if (!gameContext) return null;
+
+    const { warPhase: { armies }, gameTurn: { provinces } } = gameContext;
+    const { offsetX, offsetY, scale } = this.mapState;
+    const halfSize = ICON_SIZE / 2;
+
+    for (const armyId in armies) {
+      const army = armies[armyId];
+      const province = provinces[army.provinceId];
+      if (!province?.center) continue;
+
+      const [worldX, worldY] = province.center;
+      const cx = worldX * scale + offsetX;
+      const cy = worldY * scale + offsetY;
+
+      if (
+        screenX >= cx - halfSize && screenX <= cx + halfSize &&
+        screenY >= cy - halfSize && screenY <= cy + halfSize
+      ) {
+        return army;
+      }
+    }
+
+    return null;
   }
 
   private onClick = (e: MouseEvent) => {
@@ -478,9 +581,28 @@ class MapEngine {
       return;
     }
 
+    const { x, y } = this.getCanvasCoords(e.clientX, e.clientY);
+
+    // Army hit-test first (rendered on top)
+    const army = this.findArmyAtScreen(x, y);
+    if (army) {
+      const shouldSelect = state.selectedEntity === null ||
+        state.selectedEntity.type !== "army" ||
+        (state.selectedEntity?.type === "army" && state.selectedEntity.value.id !== army.id);
+
+      if (shouldSelect) {
+        state.selectedEntity = {
+          type: "army",
+          value: army,
+        }
+        assets.selectedColor = null;
+        this.dispatchEvent(EMapEngineEvent.ENTITY_SELECTED);
+      }
+      return;
+    }
+
     const { provincesImageData } = assets;
     const { gameTurn: { provinces } } = gameContext;
-    const { x, y } = this.getCanvasCoords(e.clientX, e.clientY);
     const mapState = this.mapState;
 
     const imgX = Math.round((x - mapState.offsetX) / mapState.scale);
@@ -489,9 +611,11 @@ class MapEngine {
     const { width, height } = provincesImageData;
 
     if (imgX < 0 || imgY < 0 || imgX >= width || imgY >= height) {
-      assets.selectedColor = null;
-      state.selectedProvince = null;
-      this.dispatchEvent(EMapEngineEvent.PROVINCE_SELECTED);
+      if (this.selectedEntity !== null) {
+        assets.selectedColor = null;
+        state.selectedEntity = null;
+        this.dispatchEvent(EMapEngineEvent.ENTITY_SELECTED);
+      }
       return;
     }
 
@@ -499,15 +623,27 @@ class MapEngine {
     const province = provinces[color];
 
     if (!province || color === NO_PROVINCE_ID) {
-      assets.selectedColor = null;
-      state.selectedProvince = null;
-      this.dispatchEvent(EMapEngineEvent.PROVINCE_SELECTED);
+      if (this.selectedEntity !== null) {
+        assets.selectedColor = null;
+        state.selectedEntity = null;
+        this.dispatchEvent(EMapEngineEvent.ENTITY_SELECTED);
+      }
+
       return;
     }
 
-    assets.selectedColor = color;
-    state.selectedProvince = province;
-    this.dispatchEvent(EMapEngineEvent.PROVINCE_SELECTED);
+    const shouldSelect = state.selectedEntity === null ||
+      state.selectedEntity.type !== "province" ||
+      (state.selectedEntity.type === "province" && state.selectedEntity.value.provinceId !== province.provinceId);
+
+    if (shouldSelect) {
+      assets.selectedColor = color;
+      state.selectedEntity = {
+        type: "province",
+        value: province,
+      };
+      this.dispatchEvent(EMapEngineEvent.ENTITY_SELECTED);
+    }
   }
 
   private dispatchEvent(event: EMapEngineEvent) {

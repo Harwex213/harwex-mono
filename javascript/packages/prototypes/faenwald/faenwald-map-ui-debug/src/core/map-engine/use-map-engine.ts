@@ -1,4 +1,4 @@
-import type { TProvince } from "@hw/faenwald-core";
+import type { TArmy, TProvince } from "@hw/faenwald-core";
 import { RefObject, useEffect, useState } from 'react';
 import { EMapEngineEvent, MapEngine } from './map-engine.js';
 
@@ -17,6 +17,7 @@ const mapEngine = new MapEngine(mapCanvas);
 
 export function useMapEngine(containerRef: RefObject<HTMLDivElement | null>) {
   const [selectedProvince, setSelectedProvince] = useState<TProvince | null>(null);
+  const [selectedArmy, setSelectedArmy] = useState<TArmy | null>(null);
   const [hoveredProvince, setHoveredProvince] = useState<THoverState>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [_mapEngine, setMapEngine] = useState<MapEngine>();
@@ -34,22 +35,56 @@ export function useMapEngine(containerRef: RefObject<HTMLDivElement | null>) {
     const handleEvent = (event: EMapEngineEvent) => {
       if (event === EMapEngineEvent.ASSETS_LOADED) {
         setIsLoading(false);
+
         return;
       }
 
-      if (event === EMapEngineEvent.PROVINCE_SELECTED) {
-        setSelectedProvince(mapEngine.selectedProvice);
-        return;
-      }
+      if (event === EMapEngineEvent.ENTITY_SELECTED) {
+        const selectedEntity = mapEngine.selectedEntity;
 
-      if (event === EMapEngineEvent.PROVINCE_HOVERED) {
-        const province = mapEngine.hoveredProvince;
-        if (province) {
-          const pos = mapEngine.hoverPosition;
-          setHoveredProvince({ province, x: pos.x, y: pos.y });
-        } else {
-          setHoveredProvince(null);
+        if (!selectedEntity) {
+          setSelectedProvince(null);
+          setSelectedArmy(null);
+          return;
         }
+
+
+        switch (selectedEntity.type) {
+          case "army":
+            setSelectedArmy(selectedEntity.value);
+            setSelectedProvince(null);
+            break;
+          case "province":
+            setSelectedProvince(selectedEntity.value);
+            setSelectedArmy(null);
+            break;
+        }
+
+        return;
+      }
+
+      if (event === EMapEngineEvent.ENTITY_HOVERED) {
+        const hoveredEntity = mapEngine.hoveredEntity;
+
+        if (!hoveredEntity) {
+          setHoveredProvince(null);
+          return;
+        }
+
+        switch (hoveredEntity.type) {
+          case "army":
+            break;
+          case "province":
+            const province = hoveredEntity.value;
+            if (province) {
+              const pos = mapEngine.hoverPosition;
+              setHoveredProvince({ province, x: pos.x, y: pos.y });
+            } else {
+              setHoveredProvince(null);
+            }
+            break;
+        }
+
         return;
       }
     };
@@ -62,5 +97,5 @@ export function useMapEngine(containerRef: RefObject<HTMLDivElement | null>) {
     }
   }, []);
 
-  return { selectedProvince, hoveredProvince, isLoading, _mapEngine };
+  return { selectedProvince, selectedArmy, hoveredProvince, isLoading, _mapEngine };
 }
