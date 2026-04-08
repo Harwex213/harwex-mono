@@ -1,14 +1,9 @@
-import type { TGameTurn, TProvince, TWarPhase } from "@hw/faenwald-core";
+import type { TProvinceRaw } from "@hw/faenwald-core";
 
 export interface TMapState {
   offsetX: number;
   offsetY: number;
   scale: number;
-}
-
-export type TGameContext = {
-  gameTurn: TGameTurn;
-  warPhase: TWarPhase;
 }
 
 export type TMapAssets = {
@@ -24,4 +19,4 @@ export type TMapAssets = {
   hoveredColor: string | null;
 }
 
-export const isProvinceHaveCenter = (province: TProvince) => province.center !== null;
+export const isProvinceHaveCenter = (province: TProvinceRaw) => province.center !== null;

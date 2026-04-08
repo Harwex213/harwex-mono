@@ -1,11 +1,11 @@
 import { useRef } from "react";
 import { useMapEngine } from "../core/map-engine/use-map-engine.js";
-import { ProvincesCenterDebug } from "./provinces-center-debug/provinces-center-debug";
 import s from "./App.module.css";
+import { DebugPanel } from "./debug-panel/debug-panel";
 
 export const App = () => {
   const containerRef = useRef<HTMLDivElement>(null);
-  const { selectedProvince, hoveredProvince, isLoading, _mapEngine } = useMapEngine(containerRef);
+  const { selectedProvince, selectedArmy, hoveredProvince, isLoading, _mapEngine } = useMapEngine(containerRef);
 
   return (
     <div className={s.app}>
@@ -31,13 +31,25 @@ export const App = () => {
         ) : null
       }
 
-      <div className={s.sidebar}>
-        {
-          !isLoading && _mapEngine ? (
-            <ProvincesCenterDebug mapEngine={_mapEngine}/>
-          ) : null
-        }
-      </div>
+      {
+        selectedArmy ? (
+          <div className={s.selectedArmy}>
+            <div className={s.provinceName}>{selectedArmy.provinceId}</div>
+            <div className={s.provinceName}>{selectedArmy.name}</div>
+            <div className={s.provinceId}>{selectedArmy.units.map((unit, i) => (
+              <div key={i}>
+                {`${unit.type} - ${unit.amount} - ${unit.rank}`}
+              </div>
+            ))}</div>
+          </div>
+        ) : null
+      }
+
+      {
+        !isLoading && _mapEngine ? (
+          <DebugPanel mapEngine={_mapEngine}/>
+        ) : null
+      }
     </div>
   )
 };

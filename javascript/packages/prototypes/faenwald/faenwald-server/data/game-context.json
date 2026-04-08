@@ -1,0 +1,11 @@
+{
+  "counters": {
+    "globalEvent": 0,
+    "globalArmy": 0,
+    "globalArmyUnit": 0
+  },
+  "gameState": {
+    "currentTurn": 4,
+    "currentPhase": 3
+  }
+}

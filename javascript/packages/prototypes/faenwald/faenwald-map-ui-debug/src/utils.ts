@@ -26,9 +26,17 @@ export const useLocalStorageState = <Type>(initialValue: Type, key: string): [Ty
     return JSON.parse(value) as Type;
   });
 
-  const setDecoratedValue: Dispatch<SetStateAction<Type>> = (newValue) => {
-    setLocalStorage(key, newValue);
-    setValue(newValue);
+  const setDecoratedValue: Dispatch<SetStateAction<Type>> = (newValueOrFn) => {
+    if (typeof newValueOrFn === "function") {
+      const fn = newValueOrFn as (prevState: Type) => Type;
+      const newValue = fn(value);
+      setLocalStorage(key, newValue);
+      setValue(newValue);
+      return;
+    }
+
+    setLocalStorage(key, newValueOrFn);
+    setValue(newValueOrFn);
   }
 
   return [value, setDecoratedValue];

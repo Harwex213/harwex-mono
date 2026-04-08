@@ -1,0 +1,3737 @@
+{
+  "phase": 2,
+  "snapshots": [
+    {
+      "snapshot": 0,
+      "armies": {
+        "army-slonston-1": {
+          "id": "army-slonston-1",
+          "name": "Армия Слонстон 1",
+          "provinceId": "#6eb027",
+          "units": [
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-slonston"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-slonston"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 25,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-slonston"
+            },
+            {
+              "kind": "regular",
+              "type": "heavy-cavalry",
+              "amount": 68,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-slonston"
+            }
+          ]
+        },
+        "army-mezhrechya": {
+          "id": "army-mezhrechya",
+          "name": "Армия Межречья",
+          "provinceId": "#6eb027",
+          "units": [
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-liantarel"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-liantarel"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-liantarel"
+            }
+          ]
+        },
+        "army-barsids": {
+          "id": "army-barsids",
+          "name": "Армия Барсиды",
+          "provinceId": "#2aa94b",
+          "units": [
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-barsidy"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-barsidy"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-barsidy"
+            },
+            {
+              "kind": "regular",
+              "type": "archer",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-barsidy"
+            },
+            {
+              "kind": "regular",
+              "type": "heavy-cavalry",
+              "amount": 10,
+              "stripes": 0,
+              "rank": "5",
+              "modifiers": [],
+              "houseId": "house-barsidy"
+            }
+          ]
+        },
+        "army-bree": {
+          "id": "army-bree",
+          "name": "Армия Бри",
+          "provinceId": "#193978",
+          "units": [
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-bree"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-bree"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-bree"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-bree"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-bree"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-bree"
+            },
+            {
+              "kind": "regular",
+              "type": "swordsman",
+              "amount": 84,
+              "stripes": 2,
+              "rank": "3",
+              "modifiers": [],
+              "houseId": "house-bree"
+            },
+            {
+              "kind": "regular",
+              "type": "swordsman",
+              "amount": 84,
+              "stripes": 2,
+              "rank": "3",
+              "modifiers": [],
+              "houseId": "house-bree"
+            },
+            {
+              "kind": "regular",
+              "type": "swordsman",
+              "amount": 100,
+              "stripes": 2,
+              "rank": "3",
+              "modifiers": [],
+              "houseId": "house-bree"
+            }
+          ]
+        },
+        "army-slonston-2": {
+          "id": "army-slonston-2",
+          "name": "Армия Слонстон 2",
+          "provinceId": "#193978",
+          "units": [
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-slonston"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-slonston"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-slonston"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-slonston"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-slonston"
+            },
+            {
+              "kind": "regular",
+              "type": "heavy-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-slonston"
+            },
+            {
+              "kind": "regular",
+              "type": "light-spearman",
+              "amount": 98,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-slonston"
+            },
+            {
+              "kind": "regular",
+              "type": "heavy-cavalry",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-slonston"
+            },
+            {
+              "kind": "regular",
+              "type": "heavy-cavalry",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-slonston"
+            }
+          ]
+        },
+        "army-zolotohvatov": {
+          "id": "army-zolotohvatov",
+          "name": "Армия Золотохватов",
+          "provinceId": "#a955e1",
+          "units": [
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-zolotohvatov"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-zolotohvatov"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-zolotohvatov"
+            },
+            {
+              "kind": "regular",
+              "type": "heavy-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-zolotohvatov"
+            },
+            {
+              "kind": "regular",
+              "type": "cavalry-archer",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-zolotohvatov"
+            },
+            {
+              "kind": "regular",
+              "type": "heavy-cavalry",
+              "amount": 10,
+              "stripes": 0,
+              "rank": "5",
+              "modifiers": [],
+              "houseId": "house-zolotohvatov"
+            }
+          ]
+        },
+        "army-dragon-polyan-1": {
+          "id": "army-dragon-polyan-1",
+          "name": "Армия Драгон-Полян 1",
+          "provinceId": "#5e2626",
+          "units": [
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-dragon-polyan"
+            }
+          ]
+        },
+        "army-dragon-polyan-2": {
+          "id": "army-dragon-polyan-2",
+          "name": "Армия Драгон-Полян 2",
+          "provinceId": "#39b019",
+          "units": [
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-dragon-polyan"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-dragon-polyan"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-dragon-polyan"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-dragon-polyan"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-dragon-polyan"
+            }
+          ]
+        },
+        "army-effel-1": {
+          "id": "army-effel-1",
+          "name": "Армия Эффеля 1",
+          "provinceId": "#19b093",
+          "units": [
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-effel"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-effel"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-effel"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-effel"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-effel"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-effel"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-effel"
+            },
+            {
+              "kind": "regular",
+              "type": "swordsman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "3",
+              "modifiers": [],
+              "houseId": "house-effel"
+            },
+            {
+              "kind": "regular",
+              "type": "swordsman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "3",
+              "modifiers": [],
+              "houseId": "house-effel"
+            },
+            {
+              "kind": "regular",
+              "type": "swordsman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "3",
+              "modifiers": [],
+              "houseId": "house-effel"
+            }
+          ]
+        },
+        "army-effel-2": {
+          "id": "army-effel-2",
+          "name": "Армия Эффеля 2",
+          "provinceId": "#1935b0",
+          "units": [
+            {
+              "kind": "regular",
+              "type": "light-cavalry",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-effel"
+            },
+            {
+              "kind": "regular",
+              "type": "light-cavalry",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-effel"
+            },
+            {
+              "kind": "regular",
+              "type": "light-cavalry",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-effel"
+            }
+          ]
+        },
+        "army-dinavis-1": {
+          "id": "army-dinavis-1",
+          "name": "Армия Динависа 1",
+          "provinceId": "#19b093",
+          "units": [
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-dinavis"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-dinavis"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-dinavis"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-dinavis"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-dinavis"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-dinavis"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-dinavis"
+            }
+          ]
+        },
+        "army-dinavis-2": {
+          "id": "army-dinavis-2",
+          "name": "Армия Динависа 2",
+          "provinceId": "#1940b0",
+          "units": [
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-dinavis"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-dinavis"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-dinavis"
+            }
+          ]
+        },
+        "army-dinavis-3": {
+          "id": "army-dinavis-3",
+          "name": "Армия Динависа 3",
+          "provinceId": "#19aab0",
+          "units": [
+            {
+              "kind": "regular",
+              "type": "axeman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "3",
+              "modifiers": [],
+              "houseId": "house-dinavis"
+            },
+            {
+              "kind": "regular",
+              "type": "axeman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "3",
+              "modifiers": [],
+              "houseId": "house-dinavis"
+            },
+            {
+              "kind": "regular",
+              "type": "axeman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "3",
+              "modifiers": [],
+              "houseId": "house-dinavis"
+            },
+            {
+              "kind": "regular",
+              "type": "archer",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "4",
+              "modifiers": [],
+              "houseId": "house-dinavis"
+            }
+          ]
+        },
+        "army-sayukcha-1": {
+          "id": "army-sayukcha-1",
+          "name": "Армия Саюкча 1",
+          "provinceId": "#19aab0",
+          "units": [
+            {
+              "kind": "regular",
+              "type": "axeman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "3",
+              "modifiers": [],
+              "houseId": "house-sayukcha"
+            },
+            {
+              "kind": "regular",
+              "type": "archer",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "4",
+              "modifiers": [],
+              "houseId": "house-sayukcha"
+            }
+          ]
+        },
+        "army-sayukcha-2": {
+          "id": "army-sayukcha-2",
+          "name": "Армия Саюкча 2",
+          "provinceId": "#2fd640",
+          "units": [
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-sayukcha"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-sayukcha"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-sayukcha"
+            },
+            {
+              "kind": "regular",
+              "type": "archer",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "4",
+              "modifiers": [],
+              "houseId": "house-sayukcha"
+            }
+          ]
+        },
+        "army-chjo-1": {
+          "id": "army-chjo-1",
+          "name": "Армия Чжоу 1",
+          "provinceId": "#b019a6",
+          "units": [
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-chjo"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-chjo"
+            },
+            {
+              "kind": "regular",
+              "type": "light-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "3",
+              "modifiers": [],
+              "houseId": "house-chjo"
+            },
+            {
+              "kind": "regular",
+              "type": "light-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "3",
+              "modifiers": [],
+              "houseId": "house-chjo"
+            }
+          ]
+        },
+        "army-chjo-2": {
+          "id": "army-chjo-2",
+          "name": "Армия Чжоу 2",
+          "provinceId": "#03c773",
+          "units": [
+            {
+              "kind": "regular",
+              "type": "axeman",
+              "amount": 82,
+              "stripes": 0,
+              "rank": "3",
+              "modifiers": [],
+              "houseId": "house-chjo"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-chjo"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-chjo"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-cavalry",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "4",
+              "modifiers": [],
+              "houseId": "house-chjo"
+            },
+            {
+              "kind": "regular",
+              "type": "heavy-cavalry",
+              "amount": 10,
+              "stripes": 0,
+              "rank": "5",
+              "modifiers": [],
+              "houseId": "house-chjo"
+            }
+          ]
+        },
+        "army-tintao": {
+          "id": "army-tintao",
+          "name": "Армия Тинтао",
+          "provinceId": "#b019a6",
+          "units": [
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-tintao"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-tintao"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-tintao"
+            },
+            {
+              "kind": "regular",
+              "type": "light-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-tintao"
+            },
+            {
+              "kind": "regular",
+              "type": "archer",
+              "amount": 10,
+              "stripes": 0,
+              "rank": "5",
+              "modifiers": [],
+              "houseId": "house-tintao"
+            }
+          ]
+        }
+      },
+      "events": []
+    },
+    {
+      "snapshot": 1,
+      "armies": {
+        "army-slonston-1": {
+          "id": "army-slonston-1",
+          "name": "Армия Слонстон 1",
+          "provinceId": "#6eb027",
+          "units": [
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-slonston"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-slonston"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 25,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-slonston"
+            },
+            {
+              "kind": "regular",
+              "type": "heavy-cavalry",
+              "amount": 68,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-slonston"
+            }
+          ]
+        },
+        "army-mezhrechya": {
+          "id": "army-mezhrechya",
+          "name": "Армия Межречья",
+          "provinceId": "#6eb027",
+          "units": [
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-liantarel"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-liantarel"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-liantarel"
+            }
+          ]
+        },
+        "army-barsids": {
+          "id": "army-barsids",
+          "name": "Армия Барсиды",
+          "provinceId": "#2aa94b",
+          "units": [
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-barsidy"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-barsidy"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-barsidy"
+            },
+            {
+              "kind": "regular",
+              "type": "archer",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-barsidy"
+            },
+            {
+              "kind": "regular",
+              "type": "heavy-cavalry",
+              "amount": 10,
+              "stripes": 0,
+              "rank": "5",
+              "modifiers": [],
+              "houseId": "house-barsidy"
+            }
+          ]
+        },
+        "army-bree": {
+          "id": "army-bree",
+          "name": "Армия Бри",
+          "provinceId": "#193978",
+          "units": [
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-bree"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-bree"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-bree"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-bree"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-bree"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-bree"
+            },
+            {
+              "kind": "regular",
+              "type": "swordsman",
+              "amount": 84,
+              "stripes": 2,
+              "rank": "3",
+              "modifiers": [],
+              "houseId": "house-bree"
+            },
+            {
+              "kind": "regular",
+              "type": "swordsman",
+              "amount": 84,
+              "stripes": 2,
+              "rank": "3",
+              "modifiers": [],
+              "houseId": "house-bree"
+            },
+            {
+              "kind": "regular",
+              "type": "swordsman",
+              "amount": 100,
+              "stripes": 2,
+              "rank": "3",
+              "modifiers": [],
+              "houseId": "house-bree"
+            }
+          ]
+        },
+        "army-slonston-2": {
+          "id": "army-slonston-2",
+          "name": "Армия Слонстон 2",
+          "provinceId": "#193978",
+          "units": [
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-slonston"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-slonston"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-slonston"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-slonston"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-slonston"
+            },
+            {
+              "kind": "regular",
+              "type": "heavy-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-slonston"
+            },
+            {
+              "kind": "regular",
+              "type": "light-spearman",
+              "amount": 98,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-slonston"
+            },
+            {
+              "kind": "regular",
+              "type": "heavy-cavalry",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-slonston"
+            },
+            {
+              "kind": "regular",
+              "type": "heavy-cavalry",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-slonston"
+            }
+          ]
+        },
+        "army-zolotohvatov": {
+          "id": "army-zolotohvatov",
+          "name": "Армия Золотохватов",
+          "provinceId": "#a955e1",
+          "units": [
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-zolotohvatov"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-zolotohvatov"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-zolotohvatov"
+            },
+            {
+              "kind": "regular",
+              "type": "heavy-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-zolotohvatov"
+            },
+            {
+              "kind": "regular",
+              "type": "cavalry-archer",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-zolotohvatov"
+            },
+            {
+              "kind": "regular",
+              "type": "heavy-cavalry",
+              "amount": 10,
+              "stripes": 0,
+              "rank": "5",
+              "modifiers": [],
+              "houseId": "house-zolotohvatov"
+            }
+          ]
+        },
+        "army-dragon-polyan-1": {
+          "id": "army-dragon-polyan-1",
+          "name": "Армия Драгон-Полян 1",
+          "provinceId": "#5e2626",
+          "units": [
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-dragon-polyan"
+            }
+          ]
+        },
+        "army-dragon-polyan-2": {
+          "id": "army-dragon-polyan-2",
+          "name": "Армия Драгон-Полян 2",
+          "provinceId": "#39b019",
+          "units": [
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-dragon-polyan"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-dragon-polyan"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-dragon-polyan"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-dragon-polyan"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-dragon-polyan"
+            }
+          ]
+        },
+        "army-effel-1": {
+          "id": "army-effel-1",
+          "name": "Армия Эффеля 1",
+          "provinceId": "#19b093",
+          "units": [
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-effel"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-effel"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-effel"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-effel"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-effel"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-effel"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-effel"
+            },
+            {
+              "kind": "regular",
+              "type": "swordsman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "3",
+              "modifiers": [],
+              "houseId": "house-effel"
+            },
+            {
+              "kind": "regular",
+              "type": "swordsman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "3",
+              "modifiers": [],
+              "houseId": "house-effel"
+            },
+            {
+              "kind": "regular",
+              "type": "swordsman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "3",
+              "modifiers": [],
+              "houseId": "house-effel"
+            }
+          ]
+        },
+        "army-effel-2": {
+          "id": "army-effel-2",
+          "name": "Армия Эффеля 2",
+          "provinceId": "#1935b0",
+          "units": [
+            {
+              "kind": "regular",
+              "type": "light-cavalry",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-effel"
+            },
+            {
+              "kind": "regular",
+              "type": "light-cavalry",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-effel"
+            },
+            {
+              "kind": "regular",
+              "type": "light-cavalry",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-effel"
+            }
+          ]
+        },
+        "army-dinavis-1": {
+          "id": "army-dinavis-1",
+          "name": "Армия Динависа 1",
+          "provinceId": "#19b093",
+          "units": [
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-dinavis"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-dinavis"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-dinavis"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-dinavis"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-dinavis"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-dinavis"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-dinavis"
+            }
+          ]
+        },
+        "army-dinavis-2": {
+          "id": "army-dinavis-2",
+          "name": "Армия Динависа 2",
+          "provinceId": "#1940b0",
+          "units": [
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-dinavis"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-dinavis"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-dinavis"
+            }
+          ]
+        },
+        "army-dinavis-3": {
+          "id": "army-dinavis-3",
+          "name": "Армия Динависа 3",
+          "provinceId": "#19aab0",
+          "units": [
+            {
+              "kind": "regular",
+              "type": "axeman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "3",
+              "modifiers": [],
+              "houseId": "house-dinavis"
+            },
+            {
+              "kind": "regular",
+              "type": "axeman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "3",
+              "modifiers": [],
+              "houseId": "house-dinavis"
+            },
+            {
+              "kind": "regular",
+              "type": "axeman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "3",
+              "modifiers": [],
+              "houseId": "house-dinavis"
+            },
+            {
+              "kind": "regular",
+              "type": "archer",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "4",
+              "modifiers": [],
+              "houseId": "house-dinavis"
+            }
+          ]
+        },
+        "army-sayukcha-1": {
+          "id": "army-sayukcha-1",
+          "name": "Армия Саюкча 1",
+          "provinceId": "#19aab0",
+          "units": [
+            {
+              "kind": "regular",
+              "type": "axeman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "3",
+              "modifiers": [],
+              "houseId": "house-sayukcha"
+            },
+            {
+              "kind": "regular",
+              "type": "archer",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "4",
+              "modifiers": [],
+              "houseId": "house-sayukcha"
+            }
+          ]
+        },
+        "army-sayukcha-2": {
+          "id": "army-sayukcha-2",
+          "name": "Армия Саюкча 2",
+          "provinceId": "#2fd640",
+          "units": [
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-sayukcha"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-sayukcha"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-sayukcha"
+            },
+            {
+              "kind": "regular",
+              "type": "archer",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "4",
+              "modifiers": [],
+              "houseId": "house-sayukcha"
+            }
+          ]
+        },
+        "army-chjo-1": {
+          "id": "army-chjo-1",
+          "name": "Армия Чжоу 1",
+          "provinceId": "#b019a6",
+          "units": [
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-chjo"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-chjo"
+            },
+            {
+              "kind": "regular",
+              "type": "light-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "3",
+              "modifiers": [],
+              "houseId": "house-chjo"
+            },
+            {
+              "kind": "regular",
+              "type": "light-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "3",
+              "modifiers": [],
+              "houseId": "house-chjo"
+            }
+          ]
+        },
+        "army-chjo-2": {
+          "id": "army-chjo-2",
+          "name": "Армия Чжоу 2",
+          "provinceId": "#03c773",
+          "units": [
+            {
+              "kind": "regular",
+              "type": "axeman",
+              "amount": 82,
+              "stripes": 0,
+              "rank": "3",
+              "modifiers": [],
+              "houseId": "house-chjo"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-chjo"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-chjo"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-cavalry",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "4",
+              "modifiers": [],
+              "houseId": "house-chjo"
+            },
+            {
+              "kind": "regular",
+              "type": "heavy-cavalry",
+              "amount": 10,
+              "stripes": 0,
+              "rank": "5",
+              "modifiers": [],
+              "houseId": "house-chjo"
+            }
+          ]
+        },
+        "army-tintao": {
+          "id": "army-tintao",
+          "name": "Армия Тинтао",
+          "provinceId": "#b019a6",
+          "units": [
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-tintao"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-tintao"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-tintao"
+            },
+            {
+              "kind": "regular",
+              "type": "light-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-tintao"
+            },
+            {
+              "kind": "regular",
+              "type": "archer",
+              "amount": 10,
+              "stripes": 0,
+              "rank": "5",
+              "modifiers": [],
+              "houseId": "house-tintao"
+            }
+          ]
+        }
+      },
+      "events": []
+    },
+    {
+      "snapshot": 2,
+      "armies": {
+        "army-slonston-1": {
+          "id": "army-slonston-1",
+          "name": "Армия Слонстон 1",
+          "provinceId": "#6eb027",
+          "units": [
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-slonston"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-slonston"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 25,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-slonston"
+            },
+            {
+              "kind": "regular",
+              "type": "heavy-cavalry",
+              "amount": 68,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-slonston"
+            }
+          ]
+        },
+        "army-mezhrechya": {
+          "id": "army-mezhrechya",
+          "name": "Армия Межречья",
+          "provinceId": "#6eb027",
+          "units": [
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-liantarel"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-liantarel"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-liantarel"
+            }
+          ]
+        },
+        "army-barsids": {
+          "id": "army-barsids",
+          "name": "Армия Барсиды",
+          "provinceId": "#2aa94b",
+          "units": [
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-barsidy"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-barsidy"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-barsidy"
+            },
+            {
+              "kind": "regular",
+              "type": "archer",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-barsidy"
+            },
+            {
+              "kind": "regular",
+              "type": "heavy-cavalry",
+              "amount": 10,
+              "stripes": 0,
+              "rank": "5",
+              "modifiers": [],
+              "houseId": "house-barsidy"
+            }
+          ]
+        },
+        "army-bree": {
+          "id": "army-bree",
+          "name": "Армия Бри",
+          "provinceId": "#193978",
+          "units": [
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-bree"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-bree"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-bree"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-bree"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-bree"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-bree"
+            },
+            {
+              "kind": "regular",
+              "type": "swordsman",
+              "amount": 84,
+              "stripes": 2,
+              "rank": "3",
+              "modifiers": [],
+              "houseId": "house-bree"
+            },
+            {
+              "kind": "regular",
+              "type": "swordsman",
+              "amount": 84,
+              "stripes": 2,
+              "rank": "3",
+              "modifiers": [],
+              "houseId": "house-bree"
+            },
+            {
+              "kind": "regular",
+              "type": "swordsman",
+              "amount": 100,
+              "stripes": 2,
+              "rank": "3",
+              "modifiers": [],
+              "houseId": "house-bree"
+            }
+          ]
+        },
+        "army-slonston-2": {
+          "id": "army-slonston-2",
+          "name": "Армия Слонстон 2",
+          "provinceId": "#193978",
+          "units": [
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-slonston"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-slonston"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-slonston"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-slonston"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-slonston"
+            },
+            {
+              "kind": "regular",
+              "type": "heavy-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-slonston"
+            },
+            {
+              "kind": "regular",
+              "type": "light-spearman",
+              "amount": 98,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-slonston"
+            },
+            {
+              "kind": "regular",
+              "type": "heavy-cavalry",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-slonston"
+            },
+            {
+              "kind": "regular",
+              "type": "heavy-cavalry",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-slonston"
+            }
+          ]
+        },
+        "army-zolotohvatov": {
+          "id": "army-zolotohvatov",
+          "name": "Армия Золотохватов",
+          "provinceId": "#a955e1",
+          "units": [
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-zolotohvatov"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-zolotohvatov"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-zolotohvatov"
+            },
+            {
+              "kind": "regular",
+              "type": "heavy-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-zolotohvatov"
+            },
+            {
+              "kind": "regular",
+              "type": "cavalry-archer",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-zolotohvatov"
+            },
+            {
+              "kind": "regular",
+              "type": "heavy-cavalry",
+              "amount": 10,
+              "stripes": 0,
+              "rank": "5",
+              "modifiers": [],
+              "houseId": "house-zolotohvatov"
+            }
+          ]
+        },
+        "army-dragon-polyan-1": {
+          "id": "army-dragon-polyan-1",
+          "name": "Армия Драгон-Полян 1",
+          "provinceId": "#5e2626",
+          "units": [
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-dragon-polyan"
+            }
+          ]
+        },
+        "army-dragon-polyan-2": {
+          "id": "army-dragon-polyan-2",
+          "name": "Армия Драгон-Полян 2",
+          "provinceId": "#39b019",
+          "units": [
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-dragon-polyan"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-dragon-polyan"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-dragon-polyan"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-dragon-polyan"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-dragon-polyan"
+            }
+          ]
+        },
+        "army-effel-1": {
+          "id": "army-effel-1",
+          "name": "Армия Эффеля 1",
+          "provinceId": "#19b093",
+          "units": [
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-effel"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-effel"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-effel"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-effel"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-effel"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-effel"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-effel"
+            },
+            {
+              "kind": "regular",
+              "type": "swordsman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "3",
+              "modifiers": [],
+              "houseId": "house-effel"
+            },
+            {
+              "kind": "regular",
+              "type": "swordsman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "3",
+              "modifiers": [],
+              "houseId": "house-effel"
+            },
+            {
+              "kind": "regular",
+              "type": "swordsman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "3",
+              "modifiers": [],
+              "houseId": "house-effel"
+            }
+          ]
+        },
+        "army-effel-2": {
+          "id": "army-effel-2",
+          "name": "Армия Эффеля 2",
+          "provinceId": "#1935b0",
+          "units": [
+            {
+              "kind": "regular",
+              "type": "light-cavalry",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-effel"
+            },
+            {
+              "kind": "regular",
+              "type": "light-cavalry",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-effel"
+            },
+            {
+              "kind": "regular",
+              "type": "light-cavalry",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-effel"
+            }
+          ]
+        },
+        "army-dinavis-1": {
+          "id": "army-dinavis-1",
+          "name": "Армия Динависа 1",
+          "provinceId": "#19b093",
+          "units": [
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-dinavis"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-dinavis"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-dinavis"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-dinavis"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-dinavis"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-dinavis"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-dinavis"
+            }
+          ]
+        },
+        "army-dinavis-2": {
+          "id": "army-dinavis-2",
+          "name": "Армия Динависа 2",
+          "provinceId": "#1940b0",
+          "units": [
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-dinavis"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-dinavis"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-dinavis"
+            }
+          ]
+        },
+        "army-dinavis-3": {
+          "id": "army-dinavis-3",
+          "name": "Армия Динависа 3",
+          "provinceId": "#19aab0",
+          "units": [
+            {
+              "kind": "regular",
+              "type": "axeman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "3",
+              "modifiers": [],
+              "houseId": "house-dinavis"
+            },
+            {
+              "kind": "regular",
+              "type": "axeman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "3",
+              "modifiers": [],
+              "houseId": "house-dinavis"
+            },
+            {
+              "kind": "regular",
+              "type": "axeman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "3",
+              "modifiers": [],
+              "houseId": "house-dinavis"
+            },
+            {
+              "kind": "regular",
+              "type": "archer",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "4",
+              "modifiers": [],
+              "houseId": "house-dinavis"
+            }
+          ]
+        },
+        "army-sayukcha-1": {
+          "id": "army-sayukcha-1",
+          "name": "Армия Саюкча 1",
+          "provinceId": "#19aab0",
+          "units": [
+            {
+              "kind": "regular",
+              "type": "axeman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "3",
+              "modifiers": [],
+              "houseId": "house-sayukcha"
+            },
+            {
+              "kind": "regular",
+              "type": "archer",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "4",
+              "modifiers": [],
+              "houseId": "house-sayukcha"
+            }
+          ]
+        },
+        "army-sayukcha-2": {
+          "id": "army-sayukcha-2",
+          "name": "Армия Саюкча 2",
+          "provinceId": "#2fd640",
+          "units": [
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-sayukcha"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-sayukcha"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-sayukcha"
+            },
+            {
+              "kind": "regular",
+              "type": "archer",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "4",
+              "modifiers": [],
+              "houseId": "house-sayukcha"
+            }
+          ]
+        },
+        "army-chjo-1": {
+          "id": "army-chjo-1",
+          "name": "Армия Чжоу 1",
+          "provinceId": "#b019a6",
+          "units": [
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-chjo"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-chjo"
+            },
+            {
+              "kind": "regular",
+              "type": "light-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "3",
+              "modifiers": [],
+              "houseId": "house-chjo"
+            },
+            {
+              "kind": "regular",
+              "type": "light-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "3",
+              "modifiers": [],
+              "houseId": "house-chjo"
+            }
+          ]
+        },
+        "army-chjo-2": {
+          "id": "army-chjo-2",
+          "name": "Армия Чжоу 2",
+          "provinceId": "#03c773",
+          "units": [
+            {
+              "kind": "regular",
+              "type": "axeman",
+              "amount": 82,
+              "stripes": 0,
+              "rank": "3",
+              "modifiers": [],
+              "houseId": "house-chjo"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-chjo"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-chjo"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-cavalry",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "4",
+              "modifiers": [],
+              "houseId": "house-chjo"
+            },
+            {
+              "kind": "regular",
+              "type": "heavy-cavalry",
+              "amount": 10,
+              "stripes": 0,
+              "rank": "5",
+              "modifiers": [],
+              "houseId": "house-chjo"
+            }
+          ]
+        },
+        "army-tintao": {
+          "id": "army-tintao",
+          "name": "Армия Тинтао",
+          "provinceId": "#b019a6",
+          "units": [
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-tintao"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-tintao"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-tintao"
+            },
+            {
+              "kind": "regular",
+              "type": "light-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-tintao"
+            },
+            {
+              "kind": "regular",
+              "type": "archer",
+              "amount": 10,
+              "stripes": 0,
+              "rank": "5",
+              "modifiers": [],
+              "houseId": "house-tintao"
+            }
+          ]
+        }
+      },
+      "events": []
+    },
+    {
+      "snapshot": 3,
+      "armies": {
+        "army-slonston-1": {
+          "id": "army-slonston-1",
+          "name": "Армия Слонстон 1",
+          "provinceId": "#6eb027",
+          "units": [
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-slonston"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-slonston"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 25,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-slonston"
+            },
+            {
+              "kind": "regular",
+              "type": "heavy-cavalry",
+              "amount": 68,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-slonston"
+            }
+          ]
+        },
+        "army-mezhrechya": {
+          "id": "army-mezhrechya",
+          "name": "Армия Межречья",
+          "provinceId": "#6eb027",
+          "units": [
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-liantarel"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-liantarel"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-liantarel"
+            }
+          ]
+        },
+        "army-barsids": {
+          "id": "army-barsids",
+          "name": "Армия Барсиды",
+          "provinceId": "#2aa94b",
+          "units": [
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-barsidy"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-barsidy"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-barsidy"
+            },
+            {
+              "kind": "regular",
+              "type": "archer",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-barsidy"
+            },
+            {
+              "kind": "regular",
+              "type": "heavy-cavalry",
+              "amount": 10,
+              "stripes": 0,
+              "rank": "5",
+              "modifiers": [],
+              "houseId": "house-barsidy"
+            }
+          ]
+        },
+        "army-bree": {
+          "id": "army-bree",
+          "name": "Армия Бри",
+          "provinceId": "#193978",
+          "units": [
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-bree"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-bree"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-bree"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-bree"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-bree"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-bree"
+            },
+            {
+              "kind": "regular",
+              "type": "swordsman",
+              "amount": 84,
+              "stripes": 2,
+              "rank": "3",
+              "modifiers": [],
+              "houseId": "house-bree"
+            },
+            {
+              "kind": "regular",
+              "type": "swordsman",
+              "amount": 84,
+              "stripes": 2,
+              "rank": "3",
+              "modifiers": [],
+              "houseId": "house-bree"
+            },
+            {
+              "kind": "regular",
+              "type": "swordsman",
+              "amount": 100,
+              "stripes": 2,
+              "rank": "3",
+              "modifiers": [],
+              "houseId": "house-bree"
+            }
+          ]
+        },
+        "army-slonston-2": {
+          "id": "army-slonston-2",
+          "name": "Армия Слонстон 2",
+          "provinceId": "#193978",
+          "units": [
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-slonston"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-slonston"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-slonston"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-slonston"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-slonston"
+            },
+            {
+              "kind": "regular",
+              "type": "heavy-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-slonston"
+            },
+            {
+              "kind": "regular",
+              "type": "light-spearman",
+              "amount": 98,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-slonston"
+            },
+            {
+              "kind": "regular",
+              "type": "heavy-cavalry",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-slonston"
+            },
+            {
+              "kind": "regular",
+              "type": "heavy-cavalry",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-slonston"
+            }
+          ]
+        },
+        "army-zolotohvatov": {
+          "id": "army-zolotohvatov",
+          "name": "Армия Золотохватов",
+          "provinceId": "#a955e1",
+          "units": [
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-zolotohvatov"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-zolotohvatov"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-zolotohvatov"
+            },
+            {
+              "kind": "regular",
+              "type": "heavy-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-zolotohvatov"
+            },
+            {
+              "kind": "regular",
+              "type": "cavalry-archer",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-zolotohvatov"
+            },
+            {
+              "kind": "regular",
+              "type": "heavy-cavalry",
+              "amount": 10,
+              "stripes": 0,
+              "rank": "5",
+              "modifiers": [],
+              "houseId": "house-zolotohvatov"
+            }
+          ]
+        },
+        "army-dragon-polyan-1": {
+          "id": "army-dragon-polyan-1",
+          "name": "Армия Драгон-Полян 1",
+          "provinceId": "#5e2626",
+          "units": [
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-dragon-polyan"
+            }
+          ]
+        },
+        "army-dragon-polyan-2": {
+          "id": "army-dragon-polyan-2",
+          "name": "Армия Драгон-Полян 2",
+          "provinceId": "#39b019",
+          "units": [
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-dragon-polyan"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-dragon-polyan"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-dragon-polyan"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-dragon-polyan"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-dragon-polyan"
+            }
+          ]
+        },
+        "army-effel-1": {
+          "id": "army-effel-1",
+          "name": "Армия Эффеля 1",
+          "provinceId": "#19b093",
+          "units": [
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-effel"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-effel"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-effel"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-effel"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-effel"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-effel"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-effel"
+            },
+            {
+              "kind": "regular",
+              "type": "swordsman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "3",
+              "modifiers": [],
+              "houseId": "house-effel"
+            },
+            {
+              "kind": "regular",
+              "type": "swordsman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "3",
+              "modifiers": [],
+              "houseId": "house-effel"
+            },
+            {
+              "kind": "regular",
+              "type": "swordsman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "3",
+              "modifiers": [],
+              "houseId": "house-effel"
+            }
+          ]
+        },
+        "army-effel-2": {
+          "id": "army-effel-2",
+          "name": "Армия Эффеля 2",
+          "provinceId": "#1935b0",
+          "units": [
+            {
+              "kind": "regular",
+              "type": "light-cavalry",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-effel"
+            },
+            {
+              "kind": "regular",
+              "type": "light-cavalry",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-effel"
+            },
+            {
+              "kind": "regular",
+              "type": "light-cavalry",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-effel"
+            }
+          ]
+        },
+        "army-dinavis-1": {
+          "id": "army-dinavis-1",
+          "name": "Армия Динависа 1",
+          "provinceId": "#19b093",
+          "units": [
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-dinavis"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-dinavis"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-dinavis"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-dinavis"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-dinavis"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-dinavis"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-dinavis"
+            }
+          ]
+        },
+        "army-dinavis-2": {
+          "id": "army-dinavis-2",
+          "name": "Армия Динависа 2",
+          "provinceId": "#1940b0",
+          "units": [
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-dinavis"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-dinavis"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-dinavis"
+            }
+          ]
+        },
+        "army-dinavis-3": {
+          "id": "army-dinavis-3",
+          "name": "Армия Динависа 3",
+          "provinceId": "#19aab0",
+          "units": [
+            {
+              "kind": "regular",
+              "type": "axeman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "3",
+              "modifiers": [],
+              "houseId": "house-dinavis"
+            },
+            {
+              "kind": "regular",
+              "type": "axeman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "3",
+              "modifiers": [],
+              "houseId": "house-dinavis"
+            },
+            {
+              "kind": "regular",
+              "type": "axeman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "3",
+              "modifiers": [],
+              "houseId": "house-dinavis"
+            },
+            {
+              "kind": "regular",
+              "type": "archer",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "4",
+              "modifiers": [],
+              "houseId": "house-dinavis"
+            }
+          ]
+        },
+        "army-sayukcha-1": {
+          "id": "army-sayukcha-1",
+          "name": "Армия Саюкча 1",
+          "provinceId": "#19aab0",
+          "units": [
+            {
+              "kind": "regular",
+              "type": "axeman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "3",
+              "modifiers": [],
+              "houseId": "house-sayukcha"
+            },
+            {
+              "kind": "regular",
+              "type": "archer",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "4",
+              "modifiers": [],
+              "houseId": "house-sayukcha"
+            }
+          ]
+        },
+        "army-sayukcha-2": {
+          "id": "army-sayukcha-2",
+          "name": "Армия Саюкча 2",
+          "provinceId": "#2fd640",
+          "units": [
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-sayukcha"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-sayukcha"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-sayukcha"
+            },
+            {
+              "kind": "regular",
+              "type": "archer",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "4",
+              "modifiers": [],
+              "houseId": "house-sayukcha"
+            }
+          ]
+        },
+        "army-chjo-1": {
+          "id": "army-chjo-1",
+          "name": "Армия Чжоу 1",
+          "provinceId": "#b019a6",
+          "units": [
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-chjo"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-chjo"
+            },
+            {
+              "kind": "regular",
+              "type": "light-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "3",
+              "modifiers": [],
+              "houseId": "house-chjo"
+            },
+            {
+              "kind": "regular",
+              "type": "light-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "3",
+              "modifiers": [],
+              "houseId": "house-chjo"
+            }
+          ]
+        },
+        "army-chjo-2": {
+          "id": "army-chjo-2",
+          "name": "Армия Чжоу 2",
+          "provinceId": "#03c773",
+          "units": [
+            {
+              "kind": "regular",
+              "type": "axeman",
+              "amount": 82,
+              "stripes": 0,
+              "rank": "3",
+              "modifiers": [],
+              "houseId": "house-chjo"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-chjo"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-chjo"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-cavalry",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "4",
+              "modifiers": [],
+              "houseId": "house-chjo"
+            },
+            {
+              "kind": "regular",
+              "type": "heavy-cavalry",
+              "amount": 10,
+              "stripes": 0,
+              "rank": "5",
+              "modifiers": [],
+              "houseId": "house-chjo"
+            }
+          ]
+        },
+        "army-tintao": {
+          "id": "army-tintao",
+          "name": "Армия Тинтао",
+          "provinceId": "#b019a6",
+          "units": [
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-tintao"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-tintao"
+            },
+            {
+              "kind": "regular",
+              "type": "medium-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-tintao"
+            },
+            {
+              "kind": "regular",
+              "type": "light-spearman",
+              "amount": 100,
+              "stripes": 0,
+              "rank": "2",
+              "modifiers": [],
+              "houseId": "house-tintao"
+            },
+            {
+              "kind": "regular",
+              "type": "archer",
+              "amount": 10,
+              "stripes": 0,
+              "rank": "5",
+              "modifiers": [],
+              "houseId": "house-tintao"
+            }
+          ]
+        }
+      },
+      "events": []
+    }
+  ]
+}

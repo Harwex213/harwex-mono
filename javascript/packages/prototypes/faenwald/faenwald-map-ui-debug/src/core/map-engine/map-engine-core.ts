@@ -1,4 +1,4 @@
-import type { TProvincesMap } from "@hw/faenwald-core";
+import type { TProvinceRaw } from "@hw/faenwald-core";
 import { getPixelHex } from "./utils";
 
 const BORDER_HALF_WIDTH = 1;
@@ -6,7 +6,7 @@ const DIRS_8 = [-1, 0, 1];
 
 export function buildAllHoverBorders(
   imageData: ImageData,
-  provincesMap: TProvincesMap,
+  provincesMap: Record<string, TProvinceRaw>,
 ): Map<string, OffscreenCanvas> {
   const { data, width, height } = imageData;
   const totalPixels = width * height;
@@ -91,7 +91,7 @@ export function buildAllHoverBorders(
 
 export function buildAllHighlights(
   imageData: ImageData,
-  provincesMap: TProvincesMap,
+  provincesMap: Record<string, TProvinceRaw>,
   dilatedMask: Uint8Array,
 ): Map<string, OffscreenCanvas> {
   const { data, width, height } = imageData;

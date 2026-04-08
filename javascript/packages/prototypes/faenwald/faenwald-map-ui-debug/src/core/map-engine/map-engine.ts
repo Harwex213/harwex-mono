@@ -1,11 +1,11 @@
-import type { TArmy, TProvince } from "@hw/faenwald-core";
-import type { TGameContext, TMapAssets, TMapState } from "./map-types.js";
+import { createGameState, type TArmy, type TGameContext, type TGameState, type TProvince } from "@hw/faenwald-core";
+import type { TMapAssets, TMapState } from "./map-types.js";
 import { getPixelHex, loadImage } from "./utils.js";
 import { detectBorders } from "./detect-borders";
 import { buildAllHighlights, buildAllHoverBorders } from "./map-engine-core";
 import { renderProvinceCenters } from "./map-engine-debug";
 import { getLocalStorage, setLocalStorage } from "../../utils";
-import { loadGameTurn, loadWarPhase } from "../../api/api";
+import { loadGameContext } from "../../api/api";
 
 const ZOOM_FACTOR = 1.1;
 
@@ -79,6 +79,7 @@ class MapEngine {
   };
   private assets: TMapAssets | null = null;
   private gameContext: TGameContext | null = null;
+  private gameState: TGameState | null = null;
   private readonly subscribers: TMapEngineEventSubscriber[] = [];
   private provincesArray!: TProvince[];
 
@@ -177,21 +178,17 @@ class MapEngine {
   }
 
   private loadAssets() {
-    const turn = Number(this.state.turn);
-    const phase = Number(this.state.phase);
-
     Promise.all([
       loadImage("/assets/map_base.jpg"),
       loadImage("/assets/map_provinces.png"),
-      loadGameTurn(turn),
-      loadWarPhase(turn, phase),
-    ]).then(([baseImg, provincesImg, gameTurn, warPhase]) => {
+      loadGameContext(),
+    ]).then(([baseImg, provincesImg, gameContext]) => {
       const offscreen = new OffscreenCanvas(provincesImg.naturalWidth, provincesImg.naturalHeight);
       const offCtx = offscreen.getContext("2d")!;
       offCtx.drawImage(provincesImg, 0, 0);
       const provincesImageData = offCtx.getImageData(0, 0, offscreen.width, offscreen.height);
 
-      const { canvas: borderCanvas, dilatedMask } = detectBorders(provincesImageData, gameTurn.provinces);
+      const { canvas: borderCanvas, dilatedMask } = detectBorders(provincesImageData, gameContext.provincesRaw);
 
       // findUniqueColors(provincesImageData);
 
@@ -199,16 +196,14 @@ class MapEngine {
 
       // assignProvinceCentroid(provincesImageData, provincesMap);
 
-      const provincesCenterCanvas = renderProvinceCenters(provincesImageData, gameTurn.provinces);
-      const hoverBorderCanvases = buildAllHoverBorders(provincesImageData, gameTurn.provinces);
-      const highlightCanvases = buildAllHighlights(provincesImageData, gameTurn.provinces, dilatedMask);
+      const provincesCenterCanvas = renderProvinceCenters(provincesImageData, gameContext.provincesRaw);
+      const hoverBorderCanvases = buildAllHoverBorders(provincesImageData, gameContext.provincesRaw);
+      const highlightCanvases = buildAllHighlights(provincesImageData, gameContext.provincesRaw, dilatedMask);
 
-      this.provincesArray = Object.values(gameTurn.provinces);
+      this.gameContext = gameContext;
+      this.gameState = createGameState(gameContext);
 
-      this.gameContext = {
-        gameTurn,
-        warPhase,
-      }
+      this.provincesArray = Object.values(this.gameState!.provinces);
 
       this.assets = {
         baseImg,
@@ -312,10 +307,10 @@ class MapEngine {
   }
 
   private renderArmies(ctx: CanvasRenderingContext2D) {
-    const gameContext = this.gameContext;
-    if (!gameContext) return;
+    const gameState = this.gameState;
+    if (!gameState) return;
 
-    const { warPhase: { armies }, gameTurn: { provinces } } = gameContext;
+    const { armies, provinces } = gameState;
     const { offsetX, offsetY, scale } = this.mapState;
     const selectedArmyId = this.state.selectedEntity && this.state.selectedEntity.type === "army"
       ? this.state.selectedEntity.value.id
@@ -466,8 +461,8 @@ class MapEngine {
   private updateHover = (clientX: number, clientY: number) => {
     const state = this.state;
     const assets = this.assets;
-    const gameContext = this.gameContext;
-    if (!assets || !gameContext) return;
+    const gameState = this.gameState;
+    if (!assets || !gameState) return;
 
     const { x, y } = this.getCanvasCoords(clientX, clientY);
 
@@ -498,7 +493,7 @@ class MapEngine {
 
     // Province hover
     const { provincesImageData } = assets;
-    const { gameTurn: { provinces } } = gameContext;
+    const { provinces } = gameState;
     const mapState = this.mapState;
 
     const imgX = Math.round((x - mapState.offsetX) / mapState.scale);
@@ -546,10 +541,10 @@ class MapEngine {
   }
 
   private findArmyAtScreen(screenX: number, screenY: number): TArmy | null {
-    const gameContext = this.gameContext;
-    if (!gameContext) return null;
+    const gameState = this.gameState;
+    if (!gameState) return null;
 
-    const { warPhase: { armies }, gameTurn: { provinces } } = gameContext;
+    const { armies, provinces } = gameState;
     const { offsetX, offsetY, scale } = this.mapState;
     const halfSize = ICON_SIZE / 2;
 
@@ -576,8 +571,8 @@ class MapEngine {
   private onClick = (e: MouseEvent) => {
     const state = this.state;
     const assets = this.assets;
-    const gameContext = this.gameContext;
-    if (state.hasDragged || !assets || !gameContext) {
+    const gameState = this.gameState;
+    if (state.hasDragged || !assets || !gameState) {
       return;
     }
 
@@ -602,7 +597,7 @@ class MapEngine {
     }
 
     const { provincesImageData } = assets;
-    const { gameTurn: { provinces } } = gameContext;
+    const { provinces } = gameState;
     const mapState = this.mapState;
 
     const imgX = Math.round((x - mapState.offsetX) / mapState.scale);
