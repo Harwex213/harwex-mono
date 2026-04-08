@@ -1,0 +1,135 @@
+/* ═══════════════════════════════════════════════════════════════
+   Layer 1: Primitive Tokens
+   Raw design values with no implied usage. Named by what they ARE.
+   ═══════════════════════════════════════════════════════════════ */
+
+:root {
+  /* ── Colors: Neutrals ── */
+  --color-black: #000000;
+  --color-gray-950: #171717;
+  --color-gray-900: #1c1c1c;
+  --color-gray-800: #2c2c2c;
+  --color-gray-600: #555555;
+  --color-gray-400: #8b8b8b;
+  --color-gray-300: #b5b5b5;
+  --color-gray-200: #dddddd;
+  --color-white: #ffffff;
+
+  /* ── Colors: Brand ── */
+  --color-gold-500: gold;
+  --color-gold-400: rgba(255, 215, 0, 0.4);
+  --color-gold-200: rgba(255, 215, 0, 0.2);
+  --color-gold-100: rgba(255, 215, 0, 0.1);
+
+  /* ── Colors: Alpha (white) ── */
+  --color-white-alpha-06: rgba(255, 255, 255, 0.06);
+  --color-white-alpha-08: rgba(255, 255, 255, 0.08);
+  --color-white-alpha-10: rgba(255, 255, 255, 0.1);
+  --color-white-alpha-12: rgba(255, 255, 255, 0.12);
+  --color-white-alpha-15: rgba(255, 255, 255, 0.15);
+  --color-white-alpha-20: rgba(255, 255, 255, 0.2);
+  --color-white-alpha-30: rgba(255, 255, 255, 0.3);
+  --color-white-alpha-50: rgba(255, 255, 255, 0.5);
+
+  /* ── Colors: Alpha (black) ── */
+  --color-black-alpha-72: rgba(0, 0, 0, 0.72);
+  --color-black-alpha-80: rgba(0, 0, 0, 0.8);
+  --color-black-alpha-82: rgba(0, 0, 0, 0.82);
+
+  /* ── Typography: Font Families ── */
+  --font-body: 'Spectral', serif;
+  --font-display: 'Playfair Display', serif;
+  --font-mono: monospace;
+
+  /* ── Typography: Font Sizes ── */
+  --font-size-xs: 0.7rem;
+  --font-size-sm: 0.75rem;
+  --font-size-md: 0.85rem;
+  --font-size-base: 1rem;
+  --font-size-lg: 1.1rem;
+  --font-size-xl: 1.25rem;
+
+  /* ── Typography: Font Weights ── */
+  --font-weight-normal: 400;
+  --font-weight-semibold: 600;
+
+  /* ── Spacing ── */
+  --space-1: 2px;
+  --space-2: 4px;
+  --space-3: 6px;
+  --space-4: 8px;
+  --space-5: 10px;
+  --space-6: 12px;
+  --space-7: 16px;
+  --space-8: 24px;
+
+  /* ── Radii ── */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
+
+  /* ── Opacity ── */
+  --opacity-disabled: 0.3;
+  --opacity-muted: 0.5;
+  --opacity-hover: 0.8;
+
+  /* ── Effects ── */
+  --blur-sm: blur(4px);
+}
+
+
+/* ═══════════════════════════════════════════════════════════════
+   Layer 2: Semantic Tokens
+   Named by what they DO. Reference primitives above.
+   ═══════════════════════════════════════════════════════════════ */
+
+:root {
+  /* ── Backgrounds ── */
+  --bg-app: var(--color-gray-950);
+  --bg-canvas: var(--color-black);
+  --bg-surface: var(--color-black);
+  --bg-surface-hover: var(--color-gray-800);
+  --bg-overlay: var(--color-black-alpha-72);
+  --bg-overlay-heavy: var(--color-black-alpha-82);
+  --bg-tooltip: var(--color-black-alpha-80);
+  --bg-control: var(--color-white-alpha-08);
+  --bg-control-hover: var(--color-white-alpha-15);
+  --bg-control-subtle: var(--color-white-alpha-06);
+  --bg-control-subtle-hover: var(--color-white-alpha-12);
+  --bg-accent: var(--color-gold-100);
+  --bg-accent-hover: var(--color-gold-200);
+
+  /* ── Text ── */
+  --text-primary: var(--color-white);
+  --text-secondary: var(--color-gray-200);
+  --text-muted: var(--color-gray-300);
+  --text-faint: var(--color-white-alpha-30);
+  --text-accent: var(--color-gold-500);
+
+  /* ── Borders ── */
+  --border-default: var(--color-white-alpha-10);
+  --border-subtle: var(--color-white-alpha-15);
+  --border-medium: var(--color-white-alpha-20);
+  --border-strong: var(--color-gray-600);
+  --border-accent: var(--color-gold-500);
+  --border-accent-muted: var(--color-gold-400);
+
+  /* ── Interactive States ── */
+  --interactive-disabled-opacity: var(--opacity-disabled);
+  --interactive-hover-opacity: var(--opacity-hover);
+
+  /* ── Overlay Effects ── */
+  --overlay-backdrop: var(--blur-sm);
+
+  /* ── Component-specific (shared patterns) ── */
+  --card-bg: var(--bg-overlay);
+  --card-border: var(--border-default);
+  --card-radius: var(--radius-md);
+  --card-padding: var(--space-6) var(--space-7);
+  --card-backdrop: var(--overlay-backdrop);
+
+  --nav-button-size: 28px;
+  --nav-button-bg: var(--bg-control);
+  --nav-button-border: var(--border-medium);
+  --nav-button-radius: var(--radius-sm);
+}

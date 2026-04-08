@@ -1,0 +1,83 @@
+.layout {
+  display: flex;
+  height: 100dvh;
+  background: var(--bg-app);
+  color: var(--text-primary);
+}
+
+.sidebar {
+  width: 220px;
+  border-right: 1px solid var(--border-default);
+  padding: var(--space-7);
+  overflow-y: auto;
+  flex-shrink: 0;
+}
+
+.title {
+  font-family: var(--font-display);
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-accent);
+  margin: 0 0 var(--space-1) 0;
+}
+
+.count {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  margin: 0 0 var(--space-7) 0;
+}
+
+.navList {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.navItem {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: var(--space-3) var(--space-4);
+  margin: var(--space-1) 0;
+  font-family: var(--font-body);
+  font-size: var(--font-size-md);
+  color: var(--text-secondary);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.navItem:hover {
+  background: var(--bg-control-subtle-hover);
+}
+
+.navItemActive {
+  background: var(--bg-control);
+  color: var(--text-primary);
+}
+
+.main {
+  flex: 1;
+  padding: var(--space-8);
+  overflow-y: auto;
+}
+
+.componentName {
+  font-family: var(--font-display);
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-primary);
+  margin: 0 0 var(--space-8) 0;
+  padding-bottom: var(--space-4);
+  border-bottom: 1px solid var(--border-default);
+}
+
+.componentArea {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+}
+
+.empty {
+  color: var(--text-muted);
+  font-size: var(--font-size-md);
+}

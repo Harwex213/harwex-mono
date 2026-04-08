@@ -2,6 +2,7 @@ import { useRef } from "react";
 import { useMapEngine } from "../core/map-engine/use-map-engine.js";
 import s from "./App.module.css";
 import { DebugPanel } from "./debug-panel/debug-panel";
+import { EventTimeline } from "./event-timeline/event-timeline";
 
 export const App = () => {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -47,7 +48,10 @@ export const App = () => {
 
       {
         !isLoading && _mapEngine ? (
-          <DebugPanel mapEngine={_mapEngine}/>
+          <>
+            <DebugPanel mapEngine={_mapEngine}/>
+            <EventTimeline mapEngine={_mapEngine}/>
+          </>
         ) : null
       }
     </div>

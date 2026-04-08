@@ -127,6 +127,18 @@ class MapEngine {
     return this.provincesArray;
   }
 
+  public get gameContextData() {
+    return this.gameContext;
+  }
+
+  public get currentTurn(): number {
+    return Number.parseInt(this.state.turn);
+  }
+
+  public get currentPhase(): number {
+    return Number.parseInt(this.state.phase);
+  }
+
   public set turn(value: string) {
     const parsed = Number.parseInt(value);
     if (!isNaN(parsed)) {

@@ -1,0 +1,119 @@
+.container {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 10px 16px;
+    background: rgba(0, 0, 0, 0.82);
+    backdrop-filter: blur(4px);
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    z-index: 5;
+}
+
+.turnRow {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+}
+
+.turnLabel {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #fff;
+    min-width: 80px;
+    text-align: center;
+}
+
+.phaseRow {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.eventsScroll {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    overflow-x: auto;
+    padding: 4px 0;
+}
+
+.eventCard {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 80px;
+    height: 36px;
+    padding: 0 10px;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 4px;
+    color: #ddd;
+    font-size: 0.75rem;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.eventCard:hover {
+    background: rgba(255, 255, 255, 0.12);
+    border-color: gold;
+    color: #fff;
+}
+
+.navButton {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 4px;
+    color: #fff;
+    font-size: 0.8rem;
+    cursor: pointer;
+}
+
+.navButton:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.15);
+    border-color: gold;
+}
+
+.navButton:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+}
+
+.addButton {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    background: rgba(255, 215, 0, 0.1);
+    border: 1px dashed rgba(255, 215, 0, 0.4);
+    border-radius: 4px;
+    color: gold;
+    font-size: 1.1rem;
+    cursor: pointer;
+}
+
+.addButton:hover {
+    background: rgba(255, 215, 0, 0.2);
+    border-color: gold;
+}
+
+.empty {
+    color: rgba(255, 255, 255, 0.3);
+    font-size: 0.75rem;
+    font-style: italic;
+    padding: 0 8px;
+}
