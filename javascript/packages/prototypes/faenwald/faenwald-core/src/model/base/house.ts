@@ -19,3 +19,14 @@ export type THouse = {
   domain: string[]; // provinceId[]
   vassals: string[]; // houseId[]
 };
+
+export type TDynastyEvent_UpdateHouses = {
+  type: "TDynastyEvent_CreateHouses";
+  eventId: string;
+  houses: Record<string, THouse>;
+};
+
+export type TGameTurnPhaseDynastyEvent = {
+  type: "dynasty";
+  event: TDynastyEvent_UpdateHouses;
+};

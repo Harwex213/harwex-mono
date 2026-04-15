@@ -50,8 +50,9 @@ export type TWarEvent_ArmyCorrection = {
   type: "TWarEvent_ArmyCorrection";
   eventId: string;
   armyId: string;
-  deletedUnits: string[];
-  addedUnits: TArmyUnit[];
+  provinceId: string;
+  name: string;
+  units: TArmyUnit[];
 };
 
 export type TGameTurnPhaseWarEvent = {
@@ -67,3 +68,5 @@ export type TGameTurnPhaseWarEvent = {
     TWarEvent_UnitStartCreating |
     TWarEvent_UnitCreated;
 };
+
+export type TGameTurnPhaseWarEventSubtype = TGameTurnPhaseWarEvent["event"]["type"];

@@ -1,11 +1,11 @@
-import type { TProvincesMap } from "@hw/faenwald-core";
 import { getPixelHex } from "./utils.js";
+import type { TProvinceRaw } from "@hw/faenwald-core";
 
 const BORDER_HALF_WIDTH = 1 // results in 5px wide borders (1 + 2*2)
 
 export function detectBorders(
   imageData: ImageData,
-  provincesMap: TProvincesMap,
+  provincesMap: Record<string, TProvinceRaw>,
 ): { canvas: OffscreenCanvas; dilatedMask: Uint8Array } {
   const { data, width, height } = imageData
   const canvas = new OffscreenCanvas(width, height)

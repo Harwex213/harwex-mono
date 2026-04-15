@@ -2,7 +2,7 @@ import type { TGameContext, TGameState } from "../model/game-context.js";
 import type { TProvince } from "../model/base/province.js";
 import { applyEvent } from "./event/apply-event.js";
 
-export const createGameState = (ctx: TGameContext) => {
+export const createGameState = (ctx: TGameContext, untilTurn?: number, untilPhase?: number) => {
   const gameState: TGameState = {
     houses: {},
     provinces: Object.values(ctx.provincesRaw).reduce<Record<string, TProvince>>((map, province) => {
@@ -19,15 +19,23 @@ export const createGameState = (ctx: TGameContext) => {
   };
 
   for (const turn of ctx.turns) {
-    for (const phase of turn.phases) {
-      for (const event of phase) {
+    if (untilTurn === turn.turn) {
+      return gameState;
+    }
+
+    for (let phase = 0; phase < turn.phases.length; phase++) {
+      if (untilPhase === phase) {
+        return gameState;
+      }
+
+      for (const event of turn.phases[phase]!) {
         applyEvent(gameState, event);
       }
     }
   }
 
   return gameState;
-}
+};
 
 export const getInvalidTurns = (ctx: TGameContext) => {
   for (const turn of ctx.turns) {

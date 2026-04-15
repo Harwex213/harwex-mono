@@ -1,0 +1,552 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Event Timeline &mdash; Implementation Plan v2</title>
+    <style>
+        :root {
+            --bg: #0d1117;
+            --surface: #161b22;
+            --surface2: #1c2129;
+            --border: #30363d;
+            --text: #e6edf3;
+            --text-muted: #8b949e;
+            --accent: #58a6ff;
+            --green: #3fb950;
+            --red: #f85149;
+            --orange: #d29922;
+            --purple: #bc8cff;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.6;
+            padding: 2rem;
+            max-width: 960px;
+            margin: 0 auto;
+        }
+
+        h1 { font-size: 1.8rem; margin-bottom: 0.25rem; }
+        .subtitle {
+            color: var(--text-muted);
+            font-size: 0.9rem;
+            margin-bottom: 2rem;
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 1rem;
+        }
+
+        h2 {
+            font-size: 1.3rem;
+            margin: 2rem 0 1rem;
+            color: var(--accent);
+        }
+
+        h3 {
+            font-size: 1.05rem;
+            margin: 1.5rem 0 0.75rem;
+            color: var(--purple);
+        }
+
+        p, li { font-size: 0.92rem; }
+        p { margin-bottom: 0.75rem; }
+        ul, ol { padding-left: 1.5rem; margin-bottom: 1rem; }
+        li { margin-bottom: 0.35rem; }
+        a { color: var(--accent); }
+        code {
+            background: var(--surface2);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 0.85rem;
+            color: var(--orange);
+        }
+
+        .card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 1.25rem;
+            margin-bottom: 1rem;
+        }
+        .card h3 { margin-top: 0; }
+
+        .tag {
+            display: inline-block;
+            font-size: 0.75rem;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-weight: 600;
+            margin-right: 4px;
+        }
+        .tag-green { background: #1a3a2a; color: var(--green); }
+        .tag-orange { background: #3a2e1a; color: var(--orange); }
+        .tag-blue { background: #1a2a3a; color: var(--accent); }
+        .tag-purple { background: #2a1a3a; color: var(--purple); }
+        .tag-red { background: #3a1a1a; color: var(--red); }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1rem 0;
+            font-size: 0.88rem;
+        }
+        th, td {
+            text-align: left;
+            padding: 0.6rem 0.75rem;
+            border: 1px solid var(--border);
+        }
+        th { background: var(--surface2); color: var(--accent); font-weight: 600; }
+        td { background: var(--surface); }
+
+        pre {
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 1rem;
+            overflow-x: auto;
+            font-size: 0.85rem;
+            line-height: 1.5;
+            margin: 1rem 0;
+        }
+
+        .toc {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 1rem 1.25rem;
+            margin-bottom: 2rem;
+        }
+        .toc a { color: var(--accent); text-decoration: none; font-size: 0.9rem; }
+        .toc a:hover { text-decoration: underline; }
+        .toc ol { margin-bottom: 0; }
+        .toc li { margin-bottom: 0.2rem; }
+    </style>
+</head>
+<body>
+
+<h1>Event Timeline &mdash; Implementation Plan v2</h1>
+<p class="subtitle">Full rewrite: UI kit adoption, event create/edit modal, add-event flow &mdash; April 2026</p>
+
+<nav class="toc">
+    <strong>Contents</strong>
+    <ol>
+        <li><a href="#gaps">Current Gaps</a></li>
+        <li><a href="#overview">Plan Overview</a></li>
+        <li><a href="#step1">Step 1: Rewrite timeline with UI kit + tokens</a></li>
+        <li><a href="#step2">Step 2: Event modal shell</a></li>
+        <li><a href="#step3">Step 3: Event type/subtype selectors</a></li>
+        <li><a href="#step4">Step 4: Event subtype forms</a></li>
+        <li><a href="#step5">Step 5: Save/update logic</a></li>
+        <li><a href="#step6">Step 6: Add-event flow (insertion slots)</a></li>
+        <li><a href="#step7">Step 7: Edit-event flow</a></li>
+        <li><a href="#files">File Changes</a></li>
+    </ol>
+</nav>
+
+<!-- ─────────────────────────────────────────── -->
+<h2 id="gaps">1. Current Gaps</h2>
+
+<div class="card">
+    <p>The existing <code>event-timeline.tsx</code> has three issues:</p>
+    <ol>
+        <li><strong>No UI kit usage</strong> &mdash; raw <code>&lt;button&gt;</code> elements with hardcoded hex colors/spacing in CSS instead of <code>IconButton</code>, <code>Button</code>, <code>ScrollArea</code> from <code>@/ui/kit</code> and tokens from <code>tokens.css</code>.</li>
+        <li><strong>No event creation</strong> &mdash; the "+" button is a no-op. Spec requires: if no events &rarr; open modal directly; if events exist &rarr; show insertion slots between events, then open modal on slot click.</li>
+        <li><strong>No event editing</strong> &mdash; clicking an event card is a no-op. Spec requires: open modal pre-filled with event data, allow editing, save button disabled until changes are made.</li>
+    </ol>
+</div>
+
+<!-- ─────────────────────────────────────────── -->
+<h2 id="overview">2. Plan Overview</h2>
+
+<div class="card">
+<pre>
+EventTimeline (rewritten)
+├── CurrentTurn           ← IconButton (←/→) + turn label
+├── PhaseRow
+│   ├── IconButton ←      ← prev phase
+│   ├── ScrollArea        ← horizontal, styled scrollbar
+│   │   ├── [InsertSlot]  ← shown in add-mode only (before first event)
+│   │   ├── EventCard     ← Button (ghost), click → open edit modal
+│   │   ├── [InsertSlot]  ← shown in add-mode only (between events)
+│   │   ├── EventCard
+│   │   ├── [InsertSlot]  ← shown in add-mode only (after last event)
+│   │   └── ...
+│   ├── IconButton →      ← next phase
+│   └── IconButton +      ← toggle add-mode / open modal if empty
+└── EventModal (Dialog)
+    ├── DialogTitle       ← "Create Event" / "Edit Event"
+    ├── type Select       ← "system" / "war"
+    ├── subtype Select    ← depends on type
+    ├── EventForm         ← dynamic form per subtype
+    └── Button            ← "Create" / "Update" (disabled logic)
+</pre>
+</div>
+
+<!-- ─────────────────────────────────────────── -->
+<h2 id="step1">Step 1: Rewrite timeline with UI kit + tokens</h2>
+
+<div class="card">
+    <h3>What changes</h3>
+    <ul>
+        <li>Replace all raw <code>&lt;button&gt;</code> elements with <code>IconButton</code> (nav arrows, add button) and <code>Button</code> (event cards, ghost variant)</li>
+        <li>Wrap events scroll area with <code>ScrollArea direction="horizontal"</code></li>
+        <li>Rewrite <code>event-timeline.module.css</code> to use only tokens (<code>var(--*)</code>) &mdash; no raw hex, rgba, px spacing</li>
+        <li>Keep component structure and state logic unchanged</li>
+    </ul>
+
+    <h3>Acceptance</h3>
+    <ul>
+        <li>Zero raw color/spacing values in CSS</li>
+        <li>All interactive elements are kit components</li>
+        <li>Visual appearance stays the same (dark theme, gold accents)</li>
+    </ul>
+</div>
+
+<!-- ─────────────────────────────────────────── -->
+<h2 id="step2">Step 2: Event modal shell</h2>
+
+<div class="card">
+    <h3>New file: <code>event-modal/event-modal.tsx</code></h3>
+
+    <p>A <code>Dialog</code> (from kit) that serves both create and edit flows.</p>
+
+    <h3>Props</h3>
+<pre>
+type TEventModalProps = {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  mode: "create" | "edit";
+  /** Index in the phase array where the new event will be inserted (create mode) */
+  insertAfterIndex?: number;
+  /** Existing event to edit (edit mode) */
+  event?: TGameTurnPhaseEvent;
+  /** Current game context for resolving armies, houses, provinces */
+  gameContext: TGameContext;
+  /** Callback after successful create/update */
+  onSave: () =&gt; void;
+};
+</pre>
+
+    <h3>Layout (matching spec wireframe)</h3>
+    <ol>
+        <li><code>DialogTitle</code> &mdash; "Create Event" or "Edit Event"</li>
+        <li>Type &amp; subtype selectors row (Step 3)</li>
+        <li>Dynamic form area (Step 4)</li>
+        <li>Footer with save <code>Button</code> (primary variant)</li>
+    </ol>
+</div>
+
+<!-- ─────────────────────────────────────────── -->
+<h2 id="step3">Step 3: Event type/subtype selectors</h2>
+
+<div class="card">
+    <p>Two <code>Select</code> components (from kit) in a row at the top of the modal.</p>
+
+    <h3>Event type select</h3>
+    <ul>
+        <li>Options: <code>"system"</code>, <code>"war"</code></li>
+        <li>Changing type resets the subtype and form state</li>
+    </ul>
+
+    <h3>Event subtype select</h3>
+    <p>Options depend on selected type:</p>
+
+    <table>
+        <thead>
+            <tr><th>Type</th><th>Subtype options</th></tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td><code>system</code></td>
+                <td><code>TSystemEvent_Snapshot</code></td>
+            </tr>
+            <tr>
+                <td><code>war</code></td>
+                <td>
+                    <code>TWarEvent_ProvincePillaged</code>,
+                    <code>TWarEvent_Battle</code>,
+                    <code>TWarEvent_FortressAssault</code>,
+                    <code>TWarEvent_SiegeStarted</code>,
+                    <code>TWarEvent_ArmyMoved</code>,
+                    <code>TWarEvent_ArmyMoveCommand</code>,
+                    <code>TWarEvent_ArmyCorrection</code>,
+                    <code>TWarEvent_UnitStartCreating</code>,
+                    <code>TWarEvent_UnitCreated</code>
+                </td>
+            </tr>
+        </tbody>
+    </table>
+
+    <h3>In edit mode</h3>
+    <p>Type and subtype are pre-filled from the existing event and <strong>locked</strong> (disabled selects). You can't change an event's type after creation.</p>
+</div>
+
+<!-- ─────────────────────────────────────────── -->
+<h2 id="step4">Step 4: Event subtype forms</h2>
+
+<div class="card">
+    <p>Each subtype gets its own form component. All forms use kit components (<code>Input</code>, <code>Select</code>, <code>Button</code>) and tokens.</p>
+
+    <h3>Implementation order (by complexity)</h3>
+
+    <table>
+        <thead>
+            <tr>
+                <th>Priority</th>
+                <th>Subtype</th>
+                <th>Form fields</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td><span class="tag tag-green">Simple</span></td>
+                <td><code>TSystemEvent_Snapshot</code></td>
+                <td>No form &mdash; just the type selectors</td>
+            </tr>
+            <tr>
+                <td><span class="tag tag-green">Simple</span></td>
+                <td><code>TWarEvent_ProvincePillaged</code></td>
+                <td><code>Select</code> armyId, <code>Input</code> percent (number)</td>
+            </tr>
+            <tr>
+                <td><span class="tag tag-green">Simple</span></td>
+                <td><code>TWarEvent_ArmyMoved</code></td>
+                <td><code>Select</code> armyId, <code>Select</code> newProvinceId</td>
+            </tr>
+            <tr>
+                <td><span class="tag tag-blue">Medium</span></td>
+                <td><code>TWarEvent_ArmyMoveCommand</code></td>
+                <td><code>Select</code> armyId, dynamic list of <code>Select</code> provinceId for movement path</td>
+            </tr>
+            <tr>
+                <td><span class="tag tag-blue">Medium</span></td>
+                <td><code>TWarEvent_SiegeStarted</code></td>
+                <td><code>Select</code> provinceId, dynamic list of <code>Select</code> armyId</td>
+            </tr>
+            <tr>
+                <td><span class="tag tag-blue">Medium</span></td>
+                <td><code>TWarEvent_UnitStartCreating</code></td>
+                <td><code>Select</code> houseId, <code>Select</code> provinceId, <code>Select</code> unitKind, <code>Select</code> unitType, <code>Input</code> amount</td>
+            </tr>
+            <tr>
+                <td><span class="tag tag-orange">Complex</span></td>
+                <td><code>TWarEvent_UnitCreated</code></td>
+                <td><code>Select</code> armyId, full unit sub-form (kind, type, amount, stripes, rank, houseId, base stats as readonly)</td>
+            </tr>
+            <tr>
+                <td><span class="tag tag-orange">Complex</span></td>
+                <td><code>TWarEvent_ArmyCorrection</code></td>
+                <td><code>Select</code> armyId, <code>Select</code> provinceId, <code>Input</code> name, dynamic units list (add/remove units, each with full unit sub-form)</td>
+            </tr>
+            <tr>
+                <td><span class="tag tag-red">Complex</span></td>
+                <td><code>TWarEvent_Battle</code></td>
+                <td><code>Select</code> provinceId, attack army list, defense army list, <code>Select</code> winner, battleUnits populated from selected armies</td>
+            </tr>
+            <tr>
+                <td><span class="tag tag-red">Complex</span></td>
+                <td><code>TWarEvent_FortressAssault</code></td>
+                <td><code>Select</code> provinceId, attack army list, <code>Select</code> winner, battleUnits</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <h3>Shared: Unit sub-form</h3>
+    <p>Reused by <code>ArmyCorrection</code> and <code>UnitCreated</code>:</p>
+    <ul>
+        <li><code>Select</code> kind &mdash; regular / liege / vassal</li>
+        <li><code>Select</code> type &mdash; 13 unit types</li>
+        <li><code>Input</code> amount (number)</li>
+        <li><code>Input</code> stripes (number)</li>
+        <li><code>Select</code> rank &mdash; 1&ndash;5</li>
+        <li><code>Select</code> houseId</li>
+        <li>Base stats (baseHp, baseAttack, baseMorale, baseSpeed, baseCost) &mdash; auto-filled from <code>ARMY_UNIT_TEMPLATES</code> based on selected type, shown as readonly <code>Input</code></li>
+    </ul>
+
+    <h3>File structure</h3>
+<pre>
+event-modal/
+├── event-modal.tsx              # Shell: Dialog + type/subtype selects + save button
+├── event-modal.module.css
+├── forms/
+│   ├── system-snapshot.tsx      # No form (empty or "No additional fields")
+│   ├── war-province-pillaged.tsx
+│   ├── war-army-moved.tsx
+│   ├── war-army-move-command.tsx
+│   ├── war-siege-started.tsx
+│   ├── war-unit-start-creating.tsx
+│   ├── war-unit-created.tsx
+│   ├── war-army-correction.tsx
+│   ├── war-battle.tsx
+│   ├── war-fortress-assault.tsx
+│   └── shared/
+│       └── unit-sub-form.tsx    # Reusable TArmyUnit editor
+└── use-event-form.ts            # Form state hook (values, validation, dirty check)
+</pre>
+</div>
+
+<!-- ─────────────────────────────────────────── -->
+<h2 id="step5">Step 5: Save/update logic</h2>
+
+<div class="card">
+    <h3>Create mode</h3>
+    <ol>
+        <li>Generate <code>eventId</code> from <code>gameContext.counters.globalEvent++</code></li>
+        <li>Build <code>TGameTurnPhaseEvent</code> from form state</li>
+        <li>Call <code>createEvent(ctx, { event, afterIndex })</code> from <code>@hw/faenwald-core</code></li>
+        <li>Call <code>saveGameContext(gameContext)</code> to persist</li>
+        <li>Trigger <code>mapEngine.reload()</code> to refresh game state</li>
+        <li>Close modal</li>
+    </ol>
+
+    <h3>Edit mode</h3>
+    <ol>
+        <li>Build updated <code>TGameTurnPhaseEvent</code> from form state</li>
+        <li>Replace event in phase array by index</li>
+        <li>Call <code>saveGameContext(gameContext)</code></li>
+        <li>Trigger <code>mapEngine.reload()</code></li>
+        <li>Close modal</li>
+    </ol>
+
+    <h3>Save button disabled when</h3>
+    <ul>
+        <li><strong>Create mode:</strong> form has required fields that are empty</li>
+        <li><strong>Edit mode:</strong> form has no changes compared to original event OR has empty required fields</li>
+    </ul>
+
+    <h3>Required: expose <code>loadAssets</code></h3>
+    <p>Currently <code>MapEngine.loadAssets()</code> is private. Need to add a public <code>reload()</code> method that re-fetches game context and recomputes game state.</p>
+</div>
+
+<!-- ─────────────────────────────────────────── -->
+<h2 id="step6">Step 6: Add-event flow (insertion slots)</h2>
+
+<div class="card">
+    <h3>Behavior (from spec)</h3>
+    <ul>
+        <li>Click "+" button &rarr; enter <strong>add mode</strong></li>
+        <li><strong>If phase has no events:</strong> skip add mode, open modal immediately with <code>insertAfterIndex = undefined</code> (appends to end)</li>
+        <li><strong>If phase has events:</strong> show insertion slot indicators between every pair of events (and before first / after last)</li>
+        <li>Click a slot &rarr; open modal with the corresponding <code>insertAfterIndex</code></li>
+        <li>Click "+" again or press Escape &rarr; exit add mode</li>
+    </ul>
+
+    <h3>Insertion slots</h3>
+    <p>Visual: a thin highlighted gap or dashed border area between event cards, clickable. Rendered conditionally when <code>isAddMode === true</code>.</p>
+
+    <h3>State additions to <code>EventTimeline</code></h3>
+<pre>
+const [isAddMode, setIsAddMode] = useState(false);
+const [modalOpen, setModalOpen] = useState(false);
+const [modalMode, setModalMode] = useState&lt;"create" | "edit"&gt;("create");
+const [insertAfterIndex, setInsertAfterIndex] = useState&lt;number | undefined&gt;();
+const [editingEvent, setEditingEvent] = useState&lt;TGameTurnPhaseEvent | null&gt;(null);
+</pre>
+</div>
+
+<!-- ─────────────────────────────────────────── -->
+<h2 id="step7">Step 7: Edit-event flow</h2>
+
+<div class="card">
+    <h3>Behavior (from spec)</h3>
+    <ul>
+        <li>Click an event card &rarr; open modal in edit mode</li>
+        <li>Modal pre-fills type, subtype, and all form fields from the existing event</li>
+        <li>Type &amp; subtype selects are <strong>disabled</strong></li>
+        <li>Save button shows "Update" and is disabled until a field changes</li>
+    </ul>
+
+    <h3>Dirty check</h3>
+    <p>The <code>useEventForm</code> hook tracks the original event snapshot. On each form change, deep-compare current state vs original. If identical &rarr; button disabled.</p>
+</div>
+
+<!-- ─────────────────────────────────────────── -->
+<h2 id="files">File Changes Summary</h2>
+
+<table>
+    <thead>
+        <tr>
+            <th>File</th>
+            <th>Action</th>
+            <th>Step</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+            <td><code>ui/event-timeline/event-timeline.tsx</code></td>
+            <td>Rewrite &mdash; use kit components, add modal/add-mode state</td>
+            <td>1, 6, 7</td>
+        </tr>
+        <tr>
+            <td><code>ui/event-timeline/event-timeline.module.css</code></td>
+            <td>Rewrite &mdash; tokens only, add insertion slot styles</td>
+            <td>1, 6</td>
+        </tr>
+        <tr>
+            <td><code>ui/event-timeline/event-modal/event-modal.tsx</code></td>
+            <td>New &mdash; Dialog shell with type/subtype selects + save button</td>
+            <td>2, 3</td>
+        </tr>
+        <tr>
+            <td><code>ui/event-timeline/event-modal/event-modal.module.css</code></td>
+            <td>New &mdash; modal layout styles</td>
+            <td>2</td>
+        </tr>
+        <tr>
+            <td><code>ui/event-timeline/event-modal/use-event-form.ts</code></td>
+            <td>New &mdash; form state, validation, dirty check</td>
+            <td>4, 5</td>
+        </tr>
+        <tr>
+            <td><code>ui/event-timeline/event-modal/forms/*.tsx</code></td>
+            <td>New &mdash; 10 subtype form components + unit sub-form</td>
+            <td>4</td>
+        </tr>
+        <tr>
+            <td><code>core/map-engine/map-engine.ts</code></td>
+            <td>Add public <code>reload()</code> method</td>
+            <td>5</td>
+        </tr>
+    </tbody>
+</table>
+
+<h2>Implementation Order</h2>
+
+<table>
+    <thead>
+        <tr>
+            <th>Order</th>
+            <th>Steps</th>
+            <th>What it delivers</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+            <td><span class="tag tag-green">Phase 1</span></td>
+            <td>Step 1</td>
+            <td>Timeline rewritten with kit + tokens. No new features, just cleanup.</td>
+        </tr>
+        <tr>
+            <td><span class="tag tag-blue">Phase 2</span></td>
+            <td>Steps 2 + 3 + simple forms from Step 4</td>
+            <td>Modal opens, type/subtype selects work, simple event forms (Snapshot, Pillaged, ArmyMoved).</td>
+        </tr>
+        <tr>
+            <td><span class="tag tag-orange">Phase 3</span></td>
+            <td>Steps 5 + 6</td>
+            <td>Events can be created and persisted. Add-mode with insertion slots works.</td>
+        </tr>
+        <tr>
+            <td><span class="tag tag-purple">Phase 4</span></td>
+            <td>Step 7 + remaining forms from Step 4</td>
+            <td>Edit flow works. All event forms implemented including complex ones (Battle, ArmyCorrection).</td>
+        </tr>
+    </tbody>
+</table>
+
+</body>
+</html>

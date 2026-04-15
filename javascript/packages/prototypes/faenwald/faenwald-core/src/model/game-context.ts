@@ -15,6 +15,8 @@ export type TGameTurnPhaseEvent = |
   TGameTurnPhaseSystemEvent |
   TGameTurnPhaseWarEvent;
 
+export type TGameTurnPhaseEventType = TGameTurnPhaseEvent["type"];
+
 export type TGameState = {
   houses: Record<string, THouse>;
   provinces: Record<string, TProvince>;

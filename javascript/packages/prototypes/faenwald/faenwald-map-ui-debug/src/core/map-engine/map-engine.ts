@@ -144,8 +144,6 @@ class MapEngine {
     if (!isNaN(parsed)) {
       this.state.turn = value;
     }
-
-    this.loadAssets();
   }
 
   public set phase(value: string) {
@@ -153,8 +151,17 @@ class MapEngine {
     if (!isNaN(parsed)) {
       this.state.phase = value;
     }
+  }
 
-    this.loadAssets();
+  public changeTurnAndPhase(turn: string, phase: string) {
+    this.state.turn = turn;
+    this.state.phase = phase;
+
+    this.createGameState(this.gameContext!);
+  }
+
+  public reload() {
+    this.createGameState(this.gameContext!);
   }
 
   public toggleRenderProvinceCenters() {
@@ -190,6 +197,8 @@ class MapEngine {
   }
 
   private loadAssets() {
+    this.state.isLoading = true;
+
     Promise.all([
       loadImage("/assets/map_base.jpg"),
       loadImage("/assets/map_provinces.png"),
@@ -213,9 +222,8 @@ class MapEngine {
       const highlightCanvases = buildAllHighlights(provincesImageData, gameContext.provincesRaw, dilatedMask);
 
       this.gameContext = gameContext;
-      this.gameState = createGameState(gameContext);
 
-      this.provincesArray = Object.values(this.gameState!.provinces);
+      this.createGameState(gameContext);
 
       this.assets = {
         baseImg,
@@ -235,6 +243,13 @@ class MapEngine {
 
       this.dispatchEvent(EMapEngineEvent.ASSETS_LOADED);
     });
+  }
+
+  private createGameState(gameContext: TGameContext) {
+    const untilTurn = Number.parseInt(this.state.turn) === gameContext.gameState.currentTurn ? Infinity : Number.parseInt(this.state.turn);
+    const untilPhase = Number.parseInt(this.state.phase) === gameContext.gameState.currentPhase ? Infinity : Number.parseInt(this.state.phase);
+    this.gameState = createGameState(gameContext, untilTurn, untilPhase);
+    this.provincesArray = Object.values(this.gameState!.provinces);
   }
 
   private syncCanvasSize = () => {

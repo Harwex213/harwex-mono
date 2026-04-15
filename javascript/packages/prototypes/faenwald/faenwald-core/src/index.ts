@@ -7,6 +7,7 @@ export type { TProvince, TProvinceRaw } from "./model/base/province.js";
 export type {
   TGameTurnPhaseSystemEvent,
   TGameTurnPhaseEvent,
+  TGameTurnPhaseEventType,
   TGameState,
   TGameTurn,
   TGameContext,
@@ -49,6 +50,7 @@ export type {
   TWarEvent_UnitCreated,
   TWarEvent_ArmyCorrection,
   TGameTurnPhaseWarEvent,
+  TGameTurnPhaseWarEventSubtype,
 } from "./model/war/war.js";
 export type {
   TAssaultDeviceUnitType,
@@ -65,7 +67,7 @@ export {
 
 // logic - event
 export { applyWarEvent } from "./logic/event/apply-war-event.js";
-export { getWarEvent, createEvent, swapEvents } from "./logic/event/create-event.js";
+export { createEvent, swapEvents } from "./logic/event/create-event.js";
 
 // logic - war
 export {
