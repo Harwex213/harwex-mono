@@ -1,0 +1,41 @@
+.content {
+    background: var(--bg-surface);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-md);
+    padding: var(--space-7);
+    color: var(--text-primary);
+    z-index: 55;
+    animation: popoverShow 0.1s ease-out;
+}
+
+.arrow {
+    fill: var(--bg-surface);
+}
+
+.close {
+    position: absolute;
+    top: var(--space-4);
+    right: var(--space-4);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border-radius: var(--radius-sm);
+    background: var(--bg-control);
+    border: 1px solid var(--border-medium);
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: var(--font-size-sm);
+    transition: background 0.15s, border-color 0.15s;
+}
+
+.close:hover {
+    background: var(--bg-control-hover);
+    border-color: var(--border-accent);
+}
+
+@keyframes popoverShow {
+    from { opacity: 0; transform: translateY(-4px); }
+    to { opacity: 1; transform: translateY(0); }
+}

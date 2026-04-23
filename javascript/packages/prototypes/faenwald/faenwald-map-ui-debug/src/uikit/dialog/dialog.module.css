@@ -1,0 +1,67 @@
+.overlay {
+    position: fixed;
+    inset: 0;
+    background: var(--color-black-alpha-72);
+    backdrop-filter: var(--overlay-backdrop);
+    z-index: 50;
+    animation: overlayShow 0.15s ease-out;
+}
+
+.content {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 51;
+    width: 90vw;
+    max-width: 480px;
+    max-height: 85vh;
+    overflow-y: auto;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-md);
+    padding: var(--space-8);
+    color: var(--text-primary);
+    animation: contentShow 0.15s ease-out;
+}
+
+.title {
+    font-family: var(--font-display);
+    font-size: var(--font-size-xl);
+    font-weight: var(--font-weight-semibold);
+    color: var(--text-primary);
+    margin-bottom: var(--space-7);
+}
+
+.close {
+    position: absolute;
+    top: var(--space-5);
+    right: var(--space-5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: var(--radius-sm);
+    background: var(--bg-control);
+    border: 1px solid var(--border-medium);
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: var(--font-size-base);
+    transition: background 0.15s, border-color 0.15s;
+}
+
+.close:hover {
+    background: var(--bg-control-hover);
+    border-color: var(--border-accent);
+}
+
+@keyframes overlayShow {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes contentShow {
+    from { opacity: 0; transform: translate(-50%, -48%); }
+    to { opacity: 1; transform: translate(-50%, -50%); }
+}

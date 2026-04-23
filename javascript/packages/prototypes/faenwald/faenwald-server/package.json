@@ -1,0 +1,13 @@
+{
+  "name": "@hw/faenwald-server",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "dependencies": {
+    "@hw/faenwald-core": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "24.1.0",
+    "typescript": "5.9.3"
+  }
+}

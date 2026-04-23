@@ -1,0 +1,2330 @@
+{
+  "#ff0000": {
+    "provinceId": "#ff0000",
+    "provinceName": "Province 1",
+    "center": [
+      1547,
+      466
+    ]
+  },
+  "#0000ff": {
+    "provinceId": "#0000ff",
+    "provinceName": "Province 2",
+    "center": [
+      1592,
+      495
+    ]
+  },
+  "#00ff43": {
+    "provinceId": "#00ff43",
+    "provinceName": "Province 3",
+    "center": [
+      1532,
+      525
+    ]
+  },
+  "#4e00ff": {
+    "provinceId": "#4e00ff",
+    "provinceName": "Province 4",
+    "center": [
+      1584,
+      546
+    ]
+  },
+  "#eb00ff": {
+    "provinceId": "#eb00ff",
+    "provinceName": "Province 5",
+    "center": [
+      1501,
+      568
+    ]
+  },
+  "#6200ff": {
+    "provinceId": "#6200ff",
+    "provinceName": "Province 6",
+    "center": [
+      1465,
+      595
+    ]
+  },
+  "#0027ff": {
+    "provinceId": "#0027ff",
+    "provinceName": "Province 7",
+    "center": [
+      1557,
+      593
+    ]
+  },
+  "#ffdb00": {
+    "provinceId": "#ffdb00",
+    "provinceName": "Province 8",
+    "center": [
+      1609,
+      588
+    ]
+  },
+  "#71ff00": {
+    "provinceId": "#71ff00",
+    "provinceName": "Province 9",
+    "center": [
+      1667,
+      602
+    ]
+  },
+  "#00ff27": {
+    "provinceId": "#00ff27",
+    "provinceName": "Province 10",
+    "center": [
+      1507,
+      622
+    ]
+  },
+  "#00cdff": {
+    "provinceId": "#00cdff",
+    "provinceName": "Province 11",
+    "center": [
+      1609,
+      631
+    ]
+  },
+  "#00ffeb": {
+    "provinceId": "#00ffeb",
+    "provinceName": "Province 12",
+    "center": [
+      1447,
+      640
+    ]
+  },
+  "#d4ff00": {
+    "provinceId": "#d4ff00",
+    "provinceName": "Province 13",
+    "center": [
+      1550,
+      655
+    ]
+  },
+  "#7e35b0": {
+    "provinceId": "#7e35b0",
+    "provinceName": "Province 14",
+    "center": [
+      1661,
+      652
+    ]
+  },
+  "#0bb7ce": {
+    "provinceId": "#0bb7ce",
+    "provinceName": "Province 15",
+    "center": [
+      1287,
+      653
+    ]
+  },
+  "#4391e1": {
+    "provinceId": "#4391e1",
+    "provinceName": "Province 16",
+    "center": [
+      1185,
+      665
+    ]
+  },
+  "#9800ff": {
+    "provinceId": "#9800ff",
+    "provinceName": "Province 17",
+    "center": [
+      1408,
+      650
+    ]
+  },
+  "#ce850b": {
+    "provinceId": "#ce850b",
+    "provinceName": "Province 18",
+    "center": [
+      1230,
+      656
+    ]
+  },
+  "#0092ff": {
+    "provinceId": "#0092ff",
+    "provinceName": "Province 19",
+    "center": [
+      1488,
+      672
+    ]
+  },
+  "#43cfe1": {
+    "provinceId": "#43cfe1",
+    "provinceName": "Province 20",
+    "center": [
+      1141,
+      675
+    ]
+  },
+  "#00ff2e": {
+    "provinceId": "#00ff2e",
+    "provinceName": "Province 21",
+    "center": [
+      1435,
+      681
+    ]
+  },
+  "#0007ff": {
+    "provinceId": "#0007ff",
+    "provinceName": "Province 22",
+    "center": [
+      1609,
+      700
+    ]
+  },
+  "#00fff5": {
+    "provinceId": "#00fff5",
+    "provinceName": "Province 23",
+    "center": [
+      1574,
+      702
+    ]
+  },
+  "#ff0028": {
+    "provinceId": "#ff0028",
+    "provinceName": "Province 24",
+    "center": [
+      1666,
+      706
+    ]
+  },
+  "#0dff00": {
+    "provinceId": "#0dff00",
+    "provinceName": "Province 25",
+    "center": [
+      1514,
+      708
+    ]
+  },
+  "#0bce10": {
+    "provinceId": "#0bce10",
+    "provinceName": "Province 26",
+    "center": [
+      1289,
+      705
+    ]
+  },
+  "#4eddc1": {
+    "provinceId": "#4eddc1",
+    "provinceName": "Province 27",
+    "center": [
+      1235,
+      721
+    ]
+  },
+  "#e1be43": {
+    "provinceId": "#e1be43",
+    "provinceName": "Province 28",
+    "center": [
+      1022,
+      725
+    ]
+  },
+  "#00ff07": {
+    "provinceId": "#00ff07",
+    "provinceName": "Province 29",
+    "center": [
+      1360,
+      717
+    ]
+  },
+  "#aee143": {
+    "provinceId": "#aee143",
+    "provinceName": "Province 30",
+    "center": [
+      979,
+      736
+    ]
+  },
+  "#acff00": {
+    "provinceId": "#acff00",
+    "provinceName": "Province 31",
+    "center": [
+      1396,
+      734
+    ]
+  },
+  "#95ad22": {
+    "provinceId": "#95ad22",
+    "provinceName": "Province 32",
+    "center": [
+      1527,
+      750
+    ]
+  },
+  "#ccce0b": {
+    "provinceId": "#ccce0b",
+    "provinceName": "Province 33",
+    "center": [
+      1308,
+      744
+    ]
+  },
+  "#ff00ee": {
+    "provinceId": "#ff00ee",
+    "provinceName": "Province 34",
+    "center": [
+      1583,
+      755
+    ]
+  },
+  "#ce0ba3": {
+    "provinceId": "#ce0ba3",
+    "provinceName": "Province 35",
+    "center": [
+      1209,
+      763
+    ]
+  },
+  "#43e185": {
+    "provinceId": "#43e185",
+    "provinceName": "Province 36",
+    "center": [
+      1017,
+      761
+    ]
+  },
+  "#e16843": {
+    "provinceId": "#e16843",
+    "provinceName": "Province 37",
+    "center": [
+      1066,
+      776
+    ]
+  },
+  "#43e179": {
+    "provinceId": "#43e179",
+    "provinceName": "Province 38",
+    "center": [
+      1139,
+      764
+    ]
+  },
+  "#702a92": {
+    "provinceId": "#702a92",
+    "provinceName": "Province 39",
+    "center": [
+      896,
+      779
+    ]
+  },
+  "#0b6bce": {
+    "provinceId": "#0b6bce",
+    "provinceName": "Province 40",
+    "center": [
+      1277,
+      771
+    ]
+  },
+  "#35ff00": {
+    "provinceId": "#35ff00",
+    "provinceName": "Province 41",
+    "center": [
+      1405,
+      764
+    ]
+  },
+  "#2a4592": {
+    "provinceId": "#2a4592",
+    "provinceName": "Province 42",
+    "center": [
+      827,
+      783
+    ]
+  },
+  "#00ff7e": {
+    "provinceId": "#00ff7e",
+    "provinceName": "Province 43",
+    "center": [
+      1470,
+      769
+    ]
+  },
+  "#892a92": {
+    "provinceId": "#892a92",
+    "provinceName": "Province 44",
+    "center": [
+      761,
+      788
+    ]
+  },
+  "#00ffe1": {
+    "provinceId": "#00ffe1",
+    "provinceName": "Province 45",
+    "center": [
+      1538,
+      795
+    ]
+  },
+  "#8400ff": {
+    "provinceId": "#8400ff",
+    "provinceName": "Province 46",
+    "center": [
+      1397,
+      801
+    ]
+  },
+  "#ae43e1": {
+    "provinceId": "#ae43e1",
+    "provinceName": "Province 47",
+    "center": [
+      1109,
+      812
+    ]
+  },
+  "#43e1cf": {
+    "provinceId": "#43e1cf",
+    "provinceName": "Province 48",
+    "center": [
+      1157,
+      804
+    ]
+  },
+  "#0bce4d": {
+    "provinceId": "#0bce4d",
+    "provinceName": "Province 49",
+    "center": [
+      1290,
+      806
+    ]
+  },
+  "#ce0b1a": {
+    "provinceId": "#ce0b1a",
+    "provinceName": "Province 50",
+    "center": [
+      1232,
+      804
+    ]
+  },
+  "#2b1e87": {
+    "provinceId": "#2b1e87",
+    "provinceName": "Province 51",
+    "center": [
+      840,
+      826
+    ]
+  },
+  "#bc0bce": {
+    "provinceId": "#bc0bce",
+    "provinceName": "Province 52",
+    "center": [
+      1201,
+      824
+    ]
+  },
+  "#871e1e": {
+    "provinceId": "#871e1e",
+    "provinceName": "Province 53",
+    "center": [
+      924,
+      832
+    ]
+  },
+  "#4900ff": {
+    "provinceId": "#4900ff",
+    "provinceName": "Province 54",
+    "center": [
+      1356,
+      825
+    ]
+  },
+  "#70e143": {
+    "provinceId": "#70e143",
+    "provinceName": "Province 55",
+    "center": [
+      1054,
+      831
+    ]
+  },
+  "#87701e": {
+    "provinceId": "#87701e",
+    "provinceName": "Province 56",
+    "center": [
+      766,
+      834
+    ]
+  },
+  "#439de1": {
+    "provinceId": "#439de1",
+    "provinceName": "Province 57",
+    "center": [
+      1149,
+      843
+    ]
+  },
+  "#8fce0b": {
+    "provinceId": "#8fce0b",
+    "provinceName": "Province 58",
+    "center": [
+      1316,
+      832
+    ]
+  },
+  "#34c771": {
+    "provinceId": "#34c771",
+    "provinceName": "Province 59",
+    "center": [
+      984,
+      842
+    ]
+  },
+  "#330bce": {
+    "provinceId": "#330bce",
+    "provinceName": "Province 60",
+    "center": [
+      1229,
+      842
+    ]
+  },
+  "#0042ff": {
+    "provinceId": "#0042ff",
+    "provinceName": "Province 61",
+    "center": [
+      1412,
+      848
+    ]
+  },
+  "#7e2587": {
+    "provinceId": "#7e2587",
+    "provinceName": "Province 62",
+    "center": [
+      594,
+      864
+    ]
+  },
+  "#87254b": {
+    "provinceId": "#87254b",
+    "provinceName": "Province 63",
+    "center": [
+      636,
+      865
+    ]
+  },
+  "#1e8731": {
+    "provinceId": "#1e8731",
+    "provinceName": "Province 64",
+    "center": [
+      883,
+      863
+    ]
+  },
+  "#5ec734": {
+    "provinceId": "#5ec734",
+    "provinceName": "Province 65",
+    "center": [
+      1017,
+      868
+    ]
+  },
+  "#00f5ff": {
+    "provinceId": "#00f5ff",
+    "provinceName": "Province 66",
+    "center": [
+      1345,
+      863
+    ]
+  },
+  "#252f87": {
+    "provinceId": "#252f87",
+    "provinceName": "Province 67",
+    "center": [
+      550,
+      871
+    ]
+  },
+  "#5d1e87": {
+    "provinceId": "#5d1e87",
+    "provinceName": "Province 68",
+    "center": [
+      836,
+      870
+    ]
+  },
+  "#637148": {
+    "provinceId": "#637148",
+    "provinceName": "Province 69",
+    "center": [
+      1103,
+      870
+    ]
+  },
+  "#2100ff": {
+    "provinceId": "#2100ff",
+    "provinceName": "Province 70",
+    "center": [
+      1449,
+      868
+    ]
+  },
+  "#762587": {
+    "provinceId": "#762587",
+    "provinceName": "Province 71",
+    "center": [
+      699,
+      871
+    ]
+  },
+  "#ce0bb2": {
+    "provinceId": "#ce0bb2",
+    "provinceName": "Province 72",
+    "center": [
+      1225,
+      876
+    ]
+  },
+  "#38ff5d": {
+    "provinceId": "#38ff5d",
+    "provinceName": "Province 73",
+    "center": [
+      916,
+      905
+    ]
+  },
+  "#258387": {
+    "provinceId": "#258387",
+    "provinceName": "Province 74",
+    "center": [
+      541,
+      910
+    ]
+  },
+  "#0bcea8": {
+    "provinceId": "#0bcea8",
+    "provinceName": "Province 75",
+    "center": [
+      1282,
+      888
+    ]
+  },
+  "#c73434": {
+    "provinceId": "#c73434",
+    "provinceName": "Province 76",
+    "center": [
+      1047,
+      897
+    ]
+  },
+  "#7100ff": {
+    "provinceId": "#7100ff",
+    "provinceName": "Province 77",
+    "center": [
+      1406,
+      890
+    ]
+  },
+  "#e143ca": {
+    "provinceId": "#e143ca",
+    "provinceName": "Province 78",
+    "center": [
+      1161,
+      885
+    ]
+  },
+  "#2f6b8b": {
+    "provinceId": "#2f6b8b",
+    "provinceName": "Province 79",
+    "center": [
+      967,
+      900
+    ]
+  },
+  "#2f8b40": {
+    "provinceId": "#2f8b40",
+    "provinceName": "Province 80",
+    "center": [
+      712,
+      907
+    ]
+  },
+  "#2a2587": {
+    "provinceId": "#2a2587",
+    "provinceName": "Province 81",
+    "center": [
+      583,
+      905
+    ]
+  },
+  "#ce0b0b": {
+    "provinceId": "#ce0b0b",
+    "provinceName": "Province 82",
+    "center": [
+      1346,
+      904
+    ]
+  },
+  "#b40e75": {
+    "provinceId": "#b40e75",
+    "provinceName": "Province 83",
+    "center": [
+      859,
+      918
+    ]
+  },
+  "#0b2ece": {
+    "provinceId": "#0b2ece",
+    "provinceName": "Province 84",
+    "center": [
+      1233,
+      921
+    ]
+  },
+  "#34c7c1": {
+    "provinceId": "#34c7c1",
+    "provinceName": "Province 85",
+    "center": [
+      1096,
+      907
+    ]
+  },
+  "#255587": {
+    "provinceId": "#255587",
+    "provinceName": "Province 86",
+    "center": [
+      670,
+      932
+    ]
+  },
+  "#7d43e1": {
+    "provinceId": "#7d43e1",
+    "provinceName": "Province 87",
+    "center": [
+      1182,
+      911
+    ]
+  },
+  "#258765": {
+    "provinceId": "#258765",
+    "provinceName": "Province 88",
+    "center": [
+      618,
+      930
+    ]
+  },
+  "#8b2f68": {
+    "provinceId": "#8b2f68",
+    "provinceName": "Province 89",
+    "center": [
+      1002,
+      932
+    ]
+  },
+  "#2f408b": {
+    "provinceId": "#2f408b",
+    "provinceName": "Province 90",
+    "center": [
+      751,
+      931
+    ]
+  },
+  "#582f8b": {
+    "provinceId": "#582f8b",
+    "provinceName": "Province 91",
+    "center": [
+      809,
+      929
+    ]
+  },
+  "#146d9e": {
+    "provinceId": "#146d9e",
+    "provinceName": "Province 92",
+    "center": [
+      533,
+      968
+    ]
+  },
+  "#80ce0b": {
+    "provinceId": "#80ce0b",
+    "provinceName": "Province 93",
+    "center": [
+      1289,
+      926
+    ]
+  },
+  "#8b2f2f": {
+    "provinceId": "#8b2f2f",
+    "provinceName": "Province 94",
+    "center": [
+      1071,
+      945
+    ]
+  },
+  "#2f8b5c": {
+    "provinceId": "#2f8b5c",
+    "provinceName": "Province 95",
+    "center": [
+      938,
+      948
+    ]
+  },
+  "#9734c7": {
+    "provinceId": "#9734c7",
+    "provinceName": "Province 96",
+    "center": [
+      1191,
+      958
+    ]
+  },
+  "#2f8b87": {
+    "provinceId": "#2f8b87",
+    "provinceName": "Province 97",
+    "center": [
+      723,
+      972
+    ]
+  },
+  "#25874e": {
+    "provinceId": "#25874e",
+    "provinceName": "Province 98",
+    "center": [
+      577,
+      970
+    ]
+  },
+  "#bc0083": {
+    "provinceId": "#bc0083",
+    "provinceName": "Province 99",
+    "center": [
+      1027,
+      966
+    ]
+  },
+  "#b40e0e": {
+    "provinceId": "#b40e0e",
+    "provinceName": "Province 100",
+    "center": [
+      794,
+      963
+    ]
+  },
+  "#a50eb4": {
+    "provinceId": "#a50eb4",
+    "provinceName": "Province 101",
+    "center": [
+      890,
+      965
+    ]
+  },
+  "#3493c7": {
+    "provinceId": "#3493c7",
+    "provinceName": "Province 102",
+    "center": [
+      1134,
+      963
+    ]
+  },
+  "#2f5c8b": {
+    "provinceId": "#2f5c8b",
+    "provinceName": "Province 103",
+    "center": [
+      968,
+      979
+    ]
+  },
+  "#a0cb1d": {
+    "provinceId": "#a0cb1d",
+    "provinceName": "Province 104",
+    "center": [
+      427,
+      1000
+    ]
+  },
+  "#4a0eb4": {
+    "provinceId": "#4a0eb4",
+    "provinceName": "Province 105",
+    "center": [
+      845,
+      977
+    ]
+  },
+  "#256587": {
+    "provinceId": "#256587",
+    "provinceName": "Province 106",
+    "center": [
+      630,
+      985
+    ]
+  },
+  "#8a2f8b": {
+    "provinceId": "#8a2f8b",
+    "provinceName": "Province 107",
+    "center": [
+      1084,
+      991
+    ]
+  },
+  "#508b2f": {
+    "provinceId": "#508b2f",
+    "provinceName": "Province 108",
+    "center": [
+      690,
+      1000
+    ]
+  },
+  "#2f398b": {
+    "provinceId": "#2f398b",
+    "provinceName": "Province 109",
+    "center": [
+      913,
+      1009
+    ]
+  },
+  "#c73478": {
+    "provinceId": "#c73478",
+    "provinceName": "Province 110",
+    "center": [
+      1164,
+      993
+    ]
+  },
+  "#8f88bc": {
+    "provinceId": "#8f88bc",
+    "provinceName": "Province 111",
+    "center": [
+      1026,
+      1003
+    ]
+  },
+  "#60c3a8": {
+    "provinceId": "#60c3a8",
+    "provinceName": "Province 112",
+    "center": [
+      744,
+      1006
+    ]
+  },
+  "#2f8b72": {
+    "provinceId": "#2f8b72",
+    "provinceName": "Province 113",
+    "center": [
+      1120,
+      1012
+    ]
+  },
+  "#0e39b4": {
+    "provinceId": "#0e39b4",
+    "provinceName": "Province 114",
+    "center": [
+      867,
+      1014
+    ]
+  },
+  "#8b6f2f": {
+    "provinceId": "#8b6f2f",
+    "provinceName": "Province 115",
+    "center": [
+      966,
+      1015
+    ]
+  },
+  "#469e14": {
+    "provinceId": "#469e14",
+    "provinceName": "Province 116",
+    "center": [
+      480,
+      1036
+    ]
+  },
+  "#149e43": {
+    "provinceId": "#149e43",
+    "provinceName": "Province 117",
+    "center": [
+      532,
+      1038
+    ]
+  },
+  "#5f8725": {
+    "provinceId": "#5f8725",
+    "provinceName": "Province 118",
+    "center": [
+      593,
+      1035
+    ]
+  },
+  "#3465c7": {
+    "provinceId": "#3465c7",
+    "provinceName": "Province 119",
+    "center": [
+      1166,
+      1029
+    ]
+  },
+  "#9e1414": {
+    "provinceId": "#9e1414",
+    "provinceName": "Province 120",
+    "center": [
+      654,
+      1040
+    ]
+  },
+  "#2f478b": {
+    "provinceId": "#2f478b",
+    "provinceName": "Province 121",
+    "center": [
+      1072,
+      1063
+    ]
+  },
+  "#492f8b": {
+    "provinceId": "#492f8b",
+    "provinceName": "Province 122",
+    "center": [
+      991,
+      1046
+    ]
+  },
+  "#2f808b": {
+    "provinceId": "#2f808b",
+    "provinceName": "Province 123",
+    "center": [
+      713,
+      1042
+    ]
+  },
+  "#d0d25d": {
+    "provinceId": "#d0d25d",
+    "provinceName": "Province 124",
+    "center": [
+      830,
+      1043
+    ]
+  },
+  "#832f8b": {
+    "provinceId": "#832f8b",
+    "provinceName": "Province 125",
+    "center": [
+      790,
+      1061
+    ]
+  },
+  "#b9c734": {
+    "provinceId": "#b9c734",
+    "provinceName": "Province 126",
+    "center": [
+      1184,
+      1043
+    ]
+  },
+  "#cb1d1d": {
+    "provinceId": "#cb1d1d",
+    "provinceName": "Province 127",
+    "center": [
+      426,
+      1077
+    ]
+  },
+  "#9e15cb": {
+    "provinceId": "#9e15cb",
+    "provinceName": "Province 128",
+    "center": [
+      914,
+      1063
+    ]
+  },
+  "#2f878b": {
+    "provinceId": "#2f878b",
+    "provinceName": "Province 129",
+    "center": [
+      945,
+      1076
+    ]
+  },
+  "#274d4f": {
+    "provinceId": "#274d4f",
+    "provinceName": "Province 130",
+    "center": [
+      1030,
+      1067
+    ]
+  },
+  "#8b2f70": {
+    "provinceId": "#8b2f70",
+    "provinceName": "Province 131",
+    "center": [
+      758,
+      1067
+    ]
+  },
+  "#3b2f8b": {
+    "provinceId": "#3b2f8b",
+    "provinceName": "Province 132",
+    "center": [
+      880,
+      1070
+    ]
+  },
+  "#34c743": {
+    "provinceId": "#34c743",
+    "provinceName": "Province 133",
+    "center": [
+      1196,
+      1056
+    ]
+  },
+  "#34c74e": {
+    "provinceId": "#34c74e",
+    "provinceName": "Province 134",
+    "center": [
+      1172,
+      1056
+    ]
+  },
+  "#9e1455": {
+    "provinceId": "#9e1455",
+    "provinceName": "Province 135",
+    "center": [
+      724,
+      1077
+    ]
+  },
+  "#c7a634": {
+    "provinceId": "#c7a634",
+    "provinceName": "Province 136",
+    "center": [
+      1221,
+      1062
+    ]
+  },
+  "#46149e": {
+    "provinceId": "#46149e",
+    "provinceName": "Province 137",
+    "center": [
+      591,
+      1087
+    ]
+  },
+  "#9e1495": {
+    "provinceId": "#9e1495",
+    "provinceName": "Province 138",
+    "center": [
+      658,
+      1094
+    ]
+  },
+  "#14839e": {
+    "provinceId": "#14839e",
+    "provinceName": "Province 139",
+    "center": [
+      517,
+      1095
+    ]
+  },
+  "#b0007d": {
+    "provinceId": "#b0007d",
+    "provinceName": "Province 140",
+    "center": [
+      834,
+      1085
+    ]
+  },
+  "#aec734": {
+    "provinceId": "#aec734",
+    "provinceName": "Province 141",
+    "center": [
+      1189,
+      1069
+    ]
+  },
+  "#c77834": {
+    "provinceId": "#c77834",
+    "provinceName": "Province 142",
+    "center": [
+      1204,
+      1071
+    ]
+  },
+  "#6d2f8b": {
+    "provinceId": "#6d2f8b",
+    "provinceName": "Province 143",
+    "center": [
+      868,
+      1102
+    ]
+  },
+  "#145456": {
+    "provinceId": "#145456",
+    "provinceName": "Province 144",
+    "center": [
+      1195,
+      1135
+    ]
+  },
+  "#156974": {
+    "provinceId": "#156974",
+    "provinceName": "Province 145",
+    "center": [
+      801,
+      1114
+    ]
+  },
+  "#149e23": {
+    "provinceId": "#149e23",
+    "provinceName": "Province 146",
+    "center": [
+      748,
+      1122
+    ]
+  },
+  "#331dcb": {
+    "provinceId": "#331dcb",
+    "provinceName": "Province 147",
+    "center": [
+      455,
+      1137
+    ]
+  },
+  "#149e58": {
+    "provinceId": "#149e58",
+    "provinceName": "Province 148",
+    "center": [
+      710,
+      1118
+    ]
+  },
+  "#b4709a": {
+    "provinceId": "#b4709a",
+    "provinceName": "Province 149",
+    "center": [
+      904,
+      1112
+    ]
+  },
+  "#14389e": {
+    "provinceId": "#14389e",
+    "provinceName": "Province 150",
+    "center": [
+      536,
+      1139
+    ]
+  },
+  "#1db6cb": {
+    "provinceId": "#1db6cb",
+    "provinceName": "Province 151",
+    "center": [
+      594,
+      1143
+    ]
+  },
+  "#742f8b": {
+    "provinceId": "#742f8b",
+    "provinceName": "Province 152",
+    "center": [
+      841,
+      1132
+    ]
+  },
+  "#bf0797": {
+    "provinceId": "#bf0797",
+    "provinceName": "Province 153",
+    "center": [
+      884,
+      1146
+    ]
+  },
+  "#1d58cb": {
+    "provinceId": "#1d58cb",
+    "provinceName": "Province 154",
+    "center": [
+      761,
+      1170
+    ]
+  },
+  "#1dcb80": {
+    "provinceId": "#1dcb80",
+    "provinceName": "Province 155",
+    "center": [
+      543,
+      1185
+    ]
+  },
+  "#92cb1d": {
+    "provinceId": "#92cb1d",
+    "provinceName": "Province 156",
+    "center": [
+      805,
+      1171
+    ]
+  },
+  "#1dcb2f": {
+    "provinceId": "#1dcb2f",
+    "provinceName": "Province 157",
+    "center": [
+      842,
+      1165
+    ]
+  },
+  "#0e3c1a": {
+    "provinceId": "#0e3c1a",
+    "provinceName": "Province 158",
+    "center": [
+      1146,
+      1201
+    ]
+  },
+  "#141656": {
+    "provinceId": "#141656",
+    "provinceName": "Province 159",
+    "center": [
+      1071,
+      1181
+    ]
+  },
+  "#a01dcb": {
+    "provinceId": "#a01dcb",
+    "provinceName": "Province 160",
+    "center": [
+      414,
+      1206
+    ]
+  },
+  "#1dcb21": {
+    "provinceId": "#1dcb21",
+    "provinceName": "Province 161",
+    "center": [
+      473,
+      1200
+    ]
+  },
+  "#cb1d53": {
+    "provinceId": "#cb1d53",
+    "provinceName": "Province 162",
+    "center": [
+      636,
+      1196
+    ]
+  },
+  "#1d2fcb": {
+    "provinceId": "#1d2fcb",
+    "provinceName": "Province 163",
+    "center": [
+      598,
+      1197
+    ]
+  },
+  "#383c0e": {
+    "provinceId": "#383c0e",
+    "provinceName": "Province 164",
+    "center": [
+      1242,
+      1185
+    ]
+  },
+  "#1dc4cb": {
+    "provinceId": "#1dc4cb",
+    "provinceName": "Province 165",
+    "center": [
+      705,
+      1214
+    ]
+  },
+  "#2f6d6a": {
+    "provinceId": "#2f6d6a",
+    "provinceName": "Province 166",
+    "center": [
+      998,
+      1204
+    ]
+  },
+  "#b027a7": {
+    "provinceId": "#b027a7",
+    "provinceName": "Province 167",
+    "center": [
+      751,
+      1231
+    ]
+  },
+  "#1dcb58": {
+    "provinceId": "#1dcb58",
+    "provinceName": "Province 168",
+    "center": [
+      661,
+      1225
+    ]
+  },
+  "#4b1456": {
+    "provinceId": "#4b1456",
+    "provinceName": "Province 169",
+    "center": [
+      1060,
+      1236
+    ]
+  },
+  "#1dcbb6": {
+    "provinceId": "#1dcbb6",
+    "provinceName": "Province 170",
+    "center": [
+      552,
+      1229
+    ]
+  },
+  "#9a0078": {
+    "provinceId": "#9a0078",
+    "provinceName": "Province 171",
+    "center": [
+      358,
+      1242
+    ]
+  },
+  "#0e0f3c": {
+    "provinceId": "#0e0f3c",
+    "provinceName": "Province 172",
+    "center": [
+      1105,
+      1219
+    ]
+  },
+  "#596d2f": {
+    "provinceId": "#596d2f",
+    "provinceName": "Province 173",
+    "center": [
+      884,
+      1223
+    ]
+  },
+  "#c81dcb": {
+    "provinceId": "#c81dcb",
+    "provinceName": "Province 174",
+    "center": [
+      603,
+      1237
+    ]
+  },
+  "#6d382f": {
+    "provinceId": "#6d382f",
+    "provinceName": "Province 175",
+    "center": [
+      923,
+      1248
+    ]
+  },
+  "#20009a": {
+    "provinceId": "#20009a",
+    "provinceName": "Province 176",
+    "center": [
+      455,
+      1247
+    ]
+  },
+  "#c9e155": {
+    "provinceId": "#c9e155",
+    "provinceName": "Province 177",
+    "center": [
+      1191,
+      1250
+    ]
+  },
+  "#2f3f6d": {
+    "provinceId": "#2f3f6d",
+    "provinceName": "Province 178",
+    "center": [
+      1011,
+      1248
+    ]
+  },
+  "#6d2f4c": {
+    "provinceId": "#6d2f4c",
+    "provinceName": "Province 179",
+    "center": [
+      876,
+      1253
+    ]
+  },
+  "#276bb0": {
+    "provinceId": "#276bb0",
+    "provinceName": "Province 180",
+    "center": [
+      680,
+      1268
+    ]
+  },
+  "#27b095": {
+    "provinceId": "#27b095",
+    "provinceName": "Province 181",
+    "center": [
+      630,
+      1268
+    ]
+  },
+  "#5927b0": {
+    "provinceId": "#5927b0",
+    "provinceName": "Province 182",
+    "center": [
+      735,
+      1272
+    ]
+  },
+  "#80009a": {
+    "provinceId": "#80009a",
+    "provinceName": "Province 183",
+    "center": [
+      388,
+      1277
+    ]
+  },
+  "#55e19a": {
+    "provinceId": "#55e19a",
+    "provinceName": "Province 184",
+    "center": [
+      1153,
+      1280
+    ]
+  },
+  "#1b334b": {
+    "provinceId": "#1b334b",
+    "provinceName": "Province 185",
+    "center": [
+      804,
+      1290
+    ]
+  },
+  "#2eb027": {
+    "provinceId": "#2eb027",
+    "provinceName": "Province 186",
+    "center": [
+      575,
+      1285
+    ]
+  },
+  "#88e155": {
+    "provinceId": "#88e155",
+    "provinceName": "Province 187",
+    "center": [
+      1206,
+      1310
+    ]
+  },
+  "#c37aa2": {
+    "provinceId": "#c37aa2",
+    "provinceName": "Province 188",
+    "center": [
+      639,
+      1308
+    ]
+  },
+  "#9a9000": {
+    "provinceId": "#9a9000",
+    "provinceName": "Province 189",
+    "center": [
+      320,
+      1316
+    ]
+  },
+  "#5d2f6d": {
+    "provinceId": "#5d2f6d",
+    "provinceName": "Province 190",
+    "center": [
+      889,
+      1299
+    ]
+  },
+  "#e1556b": {
+    "provinceId": "#e1556b",
+    "provinceName": "Province 191",
+    "center": [
+      1127,
+      1313
+    ]
+  },
+  "#009a40": {
+    "provinceId": "#009a40",
+    "provinceName": "Province 192",
+    "center": [
+      397,
+      1318
+    ]
+  },
+  "#79b027": {
+    "provinceId": "#79b027",
+    "provinceName": "Province 193",
+    "center": [
+      715,
+      1310
+    ]
+  },
+  "#27b040": {
+    "provinceId": "#27b040",
+    "provinceName": "Province 194",
+    "center": [
+      608,
+      1297
+    ]
+  },
+  "#2e27b0": {
+    "provinceId": "#2e27b0",
+    "provinceName": "Province 195",
+    "center": [
+      770,
+      1325
+    ]
+  },
+  "#55e1bb": {
+    "provinceId": "#55e1bb",
+    "provinceName": "Province 196",
+    "center": [
+      1178,
+      1324
+    ]
+  },
+  "#6eb027": {
+    "provinceId": "#6eb027",
+    "provinceName": "Province 197",
+    "center": [
+      562,
+      1333
+    ]
+  },
+  "#00409a": {
+    "provinceId": "#00409a",
+    "provinceName": "Province 198",
+    "center": [
+      434,
+      1338
+    ]
+  },
+  "#3927b0": {
+    "provinceId": "#3927b0",
+    "provinceName": "Province 199",
+    "center": [
+      487,
+      1335
+    ]
+  },
+  "#781937": {
+    "provinceId": "#781937",
+    "provinceName": "Province 200",
+    "center": [
+      811,
+      1333
+    ]
+  },
+  "#e155d8": {
+    "provinceId": "#e155d8",
+    "provinceName": "Province 201",
+    "center": [
+      1074,
+      1350
+    ]
+  },
+  "#372f6d": {
+    "provinceId": "#372f6d",
+    "provinceName": "Province 202",
+    "center": [
+      853,
+      1350
+    ]
+  },
+  "#3c1978": {
+    "provinceId": "#3c1978",
+    "provinceName": "Province 203",
+    "center": [
+      673,
+      1352
+    ]
+  },
+  "#193978": {
+    "provinceId": "#193978",
+    "provinceName": "Province 204",
+    "center": [
+      717,
+      1364
+    ]
+  },
+  "#a9792a": {
+    "provinceId": "#a9792a",
+    "provinceName": "Province 205",
+    "center": [
+      900,
+      1341
+    ]
+  },
+  "#6e27b0": {
+    "provinceId": "#6e27b0",
+    "provinceName": "Province 206",
+    "center": [
+      516,
+      1366
+    ]
+  },
+  "#27b08b": {
+    "provinceId": "#27b08b",
+    "provinceName": "Province 207",
+    "center": [
+      617,
+      1365
+    ]
+  },
+  "#a427b0": {
+    "provinceId": "#a427b0",
+    "provinceName": "Province 208",
+    "center": [
+      358,
+      1367
+    ]
+  },
+  "#558fe1": {
+    "provinceId": "#558fe1",
+    "provinceName": "Province 209",
+    "center": [
+      1177,
+      1366
+    ]
+  },
+  "#5a108b": {
+    "provinceId": "#5a108b",
+    "provinceName": "Province 210",
+    "center": [
+      1116,
+      1383
+    ]
+  },
+  "#8f236e": {
+    "provinceId": "#8f236e",
+    "provinceName": "Province 211",
+    "center": [
+      812,
+      1377
+    ]
+  },
+  "#781954": {
+    "provinceId": "#781954",
+    "provinceName": "Province 212",
+    "center": [
+      764,
+      1383
+    ]
+  },
+  "#a955e1": {
+    "provinceId": "#a955e1",
+    "provinceName": "Province 213",
+    "center": [
+      1020,
+      1383
+    ]
+  },
+  "#1ebdc3": {
+    "provinceId": "#1ebdc3",
+    "provinceName": "Province 214",
+    "center": [
+      443,
+      1391
+    ]
+  },
+  "#e15555": {
+    "provinceId": "#e15555",
+    "provinceName": "Province 215",
+    "center": [
+      899,
+      1378
+    ]
+  },
+  "#2780b0": {
+    "provinceId": "#2780b0",
+    "provinceName": "Province 216",
+    "center": [
+      538,
+      1419
+    ]
+  },
+  "#681978": {
+    "provinceId": "#681978",
+    "provinceName": "Province 217",
+    "center": [
+      676,
+      1409
+    ]
+  },
+  "#a0bf0a": {
+    "provinceId": "#a0bf0a",
+    "provinceName": "Province 218",
+    "center": [
+      878,
+      1408
+    ]
+  },
+  "#365e37": {
+    "provinceId": "#365e37",
+    "provinceName": "Province 219",
+    "center": [
+      1057,
+      1407
+    ]
+  },
+  "#435e26": {
+    "provinceId": "#435e26",
+    "provinceName": "Province 220",
+    "center": [
+      1175,
+      1415
+    ]
+  },
+  "#a9972a": {
+    "provinceId": "#a9972a",
+    "provinceName": "Province 221",
+    "center": [
+      727,
+      1416
+    ]
+  },
+  "#2aa968": {
+    "provinceId": "#2aa968",
+    "provinceName": "Province 222",
+    "center": [
+      504,
+      1435
+    ]
+  },
+  "#302aa9": {
+    "provinceId": "#302aa9",
+    "provinceName": "Province 223",
+    "center": [
+      797,
+      1420
+    ]
+  },
+  "#5e2626": {
+    "provinceId": "#5e2626",
+    "provinceName": "Province 224",
+    "center": [
+      1091,
+      1438
+    ]
+  },
+  "#8855e1": {
+    "provinceId": "#8855e1",
+    "provinceName": "Province 225",
+    "center": [
+      1032,
+      1440
+    ]
+  },
+  "#72e155": {
+    "provinceId": "#72e155",
+    "provinceName": "Province 226",
+    "center": [
+      826,
+      1442
+    ]
+  },
+  "#2aa941": {
+    "provinceId": "#2aa941",
+    "provinceName": "Province 227",
+    "center": [
+      637,
+      1439
+    ]
+  },
+  "#265e39": {
+    "provinceId": "#265e39",
+    "provinceName": "Province 228",
+    "center": [
+      1195,
+      1450
+    ]
+  },
+  "#55e1a5": {
+    "provinceId": "#55e1a5",
+    "provinceName": "Province 229",
+    "center": [
+      875,
+      1452
+    ]
+  },
+  "#2aa9a4": {
+    "provinceId": "#2aa9a4",
+    "provinceName": "Province 230",
+    "center": [
+      772,
+      1453
+    ]
+  },
+  "#5e4d26": {
+    "provinceId": "#5e4d26",
+    "provinceName": "Province 231",
+    "center": [
+      1126,
+      1446
+    ]
+  },
+  "#55d1e1": {
+    "provinceId": "#55d1e1",
+    "provinceName": "Province 232",
+    "center": [
+      934,
+      1464
+    ]
+  },
+  "#ddcc65": {
+    "provinceId": "#ddcc65",
+    "provinceName": "Province 233",
+    "center": [
+      605,
+      1467
+    ]
+  },
+  "#2aa94b": {
+    "provinceId": "#2aa94b",
+    "provinceName": "Province 234",
+    "center": [
+      728,
+      1460
+    ]
+  },
+  "#559ae1": {
+    "provinceId": "#559ae1",
+    "provinceName": "Province 235",
+    "center": [
+      987,
+      1473
+    ]
+  },
+  "#932aa9": {
+    "provinceId": "#932aa9",
+    "provinceName": "Province 236",
+    "center": [
+      670,
+      1478
+    ]
+  },
+  "#5fd262": {
+    "provinceId": "#5fd262",
+    "provinceName": "Province 237",
+    "center": [
+      548,
+      1484
+    ]
+  },
+  "#aeb019": {
+    "provinceId": "#aeb019",
+    "provinceName": "Province 238",
+    "center": [
+      1047,
+      1483
+    ]
+  },
+  "#687fbf": {
+    "provinceId": "#687fbf",
+    "provinceName": "Province 239",
+    "center": [
+      1135,
+      1501
+    ]
+  },
+  "#9e9850": {
+    "provinceId": "#9e9850",
+    "provinceName": "Province 240",
+    "center": [
+      815,
+      1488
+    ]
+  },
+  "#50949e": {
+    "provinceId": "#50949e",
+    "provinceName": "Province 241",
+    "center": [
+      890,
+      1498
+    ]
+  },
+  "#7b24a5": {
+    "provinceId": "#7b24a5",
+    "provinceName": "Province 242",
+    "center": [
+      716,
+      1494
+    ]
+  },
+  "#19b07b": {
+    "provinceId": "#19b07b",
+    "provinceName": "Province 243",
+    "center": [
+      1091,
+      1512
+    ]
+  },
+  "#50529e": {
+    "provinceId": "#50529e",
+    "provinceName": "Province 244",
+    "center": [
+      782,
+      1513
+    ]
+  },
+  "#4138e5": {
+    "provinceId": "#4138e5",
+    "provinceName": "Province 245",
+    "center": [
+      620,
+      1517
+    ]
+  },
+  "#a51864": {
+    "provinceId": "#a51864",
+    "provinceName": "Province 246",
+    "center": [
+      843,
+      1522
+    ]
+  },
+  "#5019b0": {
+    "provinceId": "#5019b0",
+    "provinceName": "Province 247",
+    "center": [
+      939,
+      1523
+    ]
+  },
+  "#39b019": {
+    "provinceId": "#39b019",
+    "provinceName": "Province 248",
+    "center": [
+      1002,
+      1524
+    ]
+  },
+  "#78509e": {
+    "provinceId": "#78509e",
+    "provinceName": "Province 249",
+    "center": [
+      729,
+      1520
+    ]
+  },
+  "#509e64": {
+    "provinceId": "#509e64",
+    "provinceName": "Province 250",
+    "center": [
+      877,
+      1540
+    ]
+  },
+  "#9e507a": {
+    "provinceId": "#9e507a",
+    "provinceName": "Province 251",
+    "center": [
+      741,
+      1558
+    ]
+  },
+  "#9e508c": {
+    "provinceId": "#9e508c",
+    "provinceName": "Province 252",
+    "center": [
+      693,
+      1562
+    ]
+  },
+  "#9e5050": {
+    "provinceId": "#9e5050",
+    "provinceName": "Province 253",
+    "center": [
+      797,
+      1560
+    ]
+  },
+  "#b01983": {
+    "provinceId": "#b01983",
+    "provinceName": "Province 254",
+    "center": [
+      1057,
+      1560
+    ]
+  },
+  "#b0199b": {
+    "provinceId": "#b0199b",
+    "provinceName": "Province 255",
+    "center": [
+      938,
+      1577
+    ]
+  },
+  "#7f19b0": {
+    "provinceId": "#7f19b0",
+    "provinceName": "Province 256",
+    "center": [
+      991,
+      1576
+    ]
+  },
+  "#96509e": {
+    "provinceId": "#96509e",
+    "provinceName": "Province 257",
+    "center": [
+      869,
+      1580
+    ]
+  },
+  "#19b093": {
+    "provinceId": "#19b093",
+    "provinceName": "Province 258",
+    "center": [
+      1035,
+      1603
+    ]
+  },
+  "#50589e": {
+    "provinceId": "#50589e",
+    "provinceName": "Province 259",
+    "center": [
+      757,
+      1604
+    ]
+  },
+  "#2119b0": {
+    "provinceId": "#2119b0",
+    "provinceName": "Province 260",
+    "center": [
+      910,
+      1608
+    ]
+  },
+  "#54509e": {
+    "provinceId": "#54509e",
+    "provinceName": "Province 261",
+    "center": [
+      811,
+      1613
+    ]
+  },
+  "#ae19b0": {
+    "provinceId": "#ae19b0",
+    "provinceName": "Province 262",
+    "center": [
+      851,
+      1626
+    ]
+  },
+  "#1940b0": {
+    "provinceId": "#1940b0",
+    "provinceName": "Province 263",
+    "center": [
+      983,
+      1632
+    ]
+  },
+  "#8b19b0": {
+    "provinceId": "#8b19b0",
+    "provinceName": "Province 264",
+    "center": [
+      1131,
+      1638
+    ]
+  },
+  "#19b029": {
+    "provinceId": "#19b029",
+    "provinceName": "Province 265",
+    "center": [
+      945,
+      1633
+    ]
+  },
+  "#1935b0": {
+    "provinceId": "#1935b0",
+    "provinceName": "Province 266",
+    "center": [
+      1064,
+      1640
+    ]
+  },
+  "#19aab0": {
+    "provinceId": "#19aab0",
+    "provinceName": "Province 267",
+    "center": [
+      1024,
+      1652
+    ]
+  },
+  "#03c773": {
+    "provinceId": "#03c773",
+    "provinceName": "Province 268",
+    "center": [
+      1069,
+      1672
+    ]
+  },
+  "#4419b0": {
+    "provinceId": "#4419b0",
+    "provinceName": "Province 269",
+    "center": [
+      989,
+      1674
+    ]
+  },
+  "#b01954": {
+    "provinceId": "#b01954",
+    "provinceName": "Province 270",
+    "center": [
+      1122,
+      1678
+    ]
+  },
+  "#61eaf0": {
+    "provinceId": "#61eaf0",
+    "provinceName": "Province 271",
+    "center": [
+      951,
+      1681
+    ]
+  },
+  "#19b064": {
+    "provinceId": "#19b064",
+    "provinceName": "Province 272",
+    "center": [
+      1156,
+      1700
+    ]
+  },
+  "#97b019": {
+    "provinceId": "#97b019",
+    "provinceName": "Province 273",
+    "center": [
+      1199,
+      1699
+    ]
+  },
+  "#2fd640": {
+    "provinceId": "#2fd640",
+    "provinceName": "Province 274",
+    "center": [
+      1015,
+      1708
+    ]
+  },
+  "#b019a6": {
+    "provinceId": "#b019a6",
+    "provinceName": "Province 275",
+    "center": [
+      1074,
+      1715
+    ]
+  },
+  "#2fd69b": {
+    "provinceId": "#2fd69b",
+    "provinceName": "Province 276",
+    "center": [
+      1232,
+      1730
+    ]
+  },
+  "#19b04c": {
+    "provinceId": "#19b04c",
+    "provinceName": "Province 277",
+    "center": [
+      1115,
+      1730
+    ]
+  },
+  "#b03119": {
+    "provinceId": "#b03119",
+    "provinceName": "Province 278",
+    "center": [
+      1190,
+      1745
+    ]
+  },
+  "#a0d62f": {
+    "provinceId": "#a0d62f",
+    "provinceName": "Province 279",
+    "center": [
+      1032,
+      1749
+    ]
+  },
+  "#792fd6": {
+    "provinceId": "#792fd6",
+    "provinceName": "Province 280",
+    "center": [
+      1151,
+      1766
+    ]
+  },
+  "#2fd634": {
+    "provinceId": "#2fd634",
+    "provinceName": "Province 281",
+    "center": [
+      1076,
+      1765
+    ]
+  },
+  "#401a71": {
+    "provinceId": "#401a71",
+    "provinceName": "Province 282",
+    "center": [
+      1279,
+      1772
+    ]
+  },
+  "#c72fd6": {
+    "provinceId": "#c72fd6",
+    "provinceName": "Province 283",
+    "center": [
+      1212,
+      1794
+    ]
+  },
+  "#2f67d6": {
+    "provinceId": "#2f67d6",
+    "provinceName": "Province 284",
+    "center": [
+      1118,
+      1796
+    ]
+  },
+  "#2fd6c2": {
+    "provinceId": "#2fd6c2",
+    "provinceName": "Province 285",
+    "center": [
+      1083,
+      1808
+    ]
+  },
+  "#2f81d6": {
+    "provinceId": "#2f81d6",
+    "provinceName": "Province 286",
+    "center": [
+      1260,
+      1806
+    ]
+  },
+  "#d62fb1": {
+    "provinceId": "#d62fb1",
+    "provinceName": "Province 287",
+    "center": [
+      1172,
+      1825
+    ]
+  },
+  "#d62f49": {
+    "provinceId": "#d62f49",
+    "provinceName": "Province 288",
+    "center": [
+      1212,
+      1850
+    ]
+  },
+  "#79d62f": {
+    "provinceId": "#79d62f",
+    "provinceName": "Province 289",
+    "center": [
+      1114,
+      1845
+    ]
+  },
+  "#d6cb2f": {
+    "provinceId": "#d6cb2f",
+    "provinceName": "Province 290",
+    "center": [
+      1157,
+      1873
+    ]
+  },
+  "#d6a42f": {
+    "provinceId": "#d6a42f",
+    "provinceName": "Province 291",
+    "center": [
+      1136,
+      1897
+    ]
+  }
+}

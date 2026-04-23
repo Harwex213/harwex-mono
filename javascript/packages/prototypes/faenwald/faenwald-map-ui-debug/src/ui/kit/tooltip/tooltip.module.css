@@ -1,0 +1,22 @@
+.content {
+    background: var(--bg-tooltip);
+    backdrop-filter: var(--overlay-backdrop);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-sm);
+    padding: var(--space-3) var(--space-5);
+    color: var(--text-primary);
+    font-size: var(--font-size-sm);
+    white-space: nowrap;
+    z-index: 60;
+    animation: tooltipShow 0.1s ease-out;
+    user-select: none;
+}
+
+.arrow {
+    fill: var(--bg-tooltip);
+}
+
+@keyframes tooltipShow {
+    from { opacity: 0; transform: translateY(2px); }
+    to { opacity: 1; transform: translateY(0); }
+}

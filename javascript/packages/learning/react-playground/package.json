@@ -12,7 +12,7 @@
     },
     "dependencies": {
         "@hw/utils": "workspace:*",
-        "@preact/signals-react": "3.0.1",
+        "@preact/signals-react": "3.9.0",
         "@types/react": "19.2.0",
         "@types/react-dom": "19.2.0",
         "clsx": "2.1.1",

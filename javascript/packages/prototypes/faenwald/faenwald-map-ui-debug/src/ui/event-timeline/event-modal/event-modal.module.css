@@ -1,0 +1,61 @@
+.selectRow {
+    display: flex;
+    gap: var(--space-4);
+    margin-bottom: var(--space-7);
+}
+
+.formArea {
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-sm);
+    padding: var(--space-7);
+    margin-bottom: var(--space-7);
+    min-height: 120px;
+}
+
+.formFields {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+}
+
+.formRow {
+    display: flex;
+    gap: var(--space-4);
+    align-items: flex-end;
+}
+
+.footer {
+    display: flex;
+    justify-content: flex-start;
+}
+
+.emptyForm {
+    color: var(--text-faint);
+    font-size: var(--font-size-sm);
+    font-style: italic;
+}
+
+.listHeader {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: var(--space-3);
+}
+
+.listLabel {
+    font-size: var(--font-size-sm);
+    color: var(--text-muted);
+    font-weight: var(--font-weight-semibold);
+}
+
+.listItem {
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-sm);
+    padding: var(--space-4);
+    margin-bottom: var(--space-3);
+}
+
+.removeButton {
+    color: var(--text-muted);
+    font-size: var(--font-size-sm);
+}

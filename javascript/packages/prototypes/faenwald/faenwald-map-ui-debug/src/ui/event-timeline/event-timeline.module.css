@@ -1,0 +1,100 @@
+.container {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    padding: var(--space-5) var(--space-7);
+    background: var(--bg-overlay-heavy);
+    backdrop-filter: var(--overlay-backdrop);
+    border-top: 1px solid var(--border-default);
+    z-index: 5;
+}
+
+.turnRow {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-6);
+}
+
+.turnLabel {
+    font-size: var(--font-size-md);
+    font-weight: var(--font-weight-semibold);
+    color: var(--text-primary);
+    min-width: 80px;
+    text-align: center;
+}
+
+.phaseRow {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+}
+
+.eventsScroll {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-2) 0;
+}
+
+.eventCard {
+    flex-shrink: 0;
+    min-width: 80px;
+    height: 36px;
+    border: 1px solid var(--border-subtle);
+    background: var(--bg-control-subtle);
+    border-radius: var(--radius-sm);
+    color: var(--text-secondary);
+    font-size: var(--font-size-sm);
+    white-space: nowrap;
+}
+
+.eventCard:hover {
+    background: var(--bg-control-subtle-hover);
+    border-color: var(--border-accent);
+    color: var(--text-primary);
+}
+
+.addIconButton {
+    background: var(--bg-accent);
+    border: 1px dashed var(--border-accent-muted);
+    color: var(--text-accent);
+}
+
+.addIconButton:hover:not(:disabled) {
+    background: var(--bg-accent-hover);
+    border-color: var(--border-accent);
+}
+
+.addModeActive {
+    border-style: solid;
+    border-color: var(--border-accent);
+}
+
+.insertSlot {
+    flex-shrink: 0;
+    width: 20px;
+    height: 36px;
+    border: 1px dashed var(--border-accent-muted);
+    border-radius: var(--radius-sm);
+    background: var(--bg-accent);
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+}
+
+.insertSlot:hover {
+    background: var(--bg-accent-hover);
+    border-color: var(--border-accent);
+}
+
+.empty {
+    color: var(--text-faint);
+    font-size: var(--font-size-sm);
+    font-style: italic;
+    padding: 0 var(--space-4);
+}

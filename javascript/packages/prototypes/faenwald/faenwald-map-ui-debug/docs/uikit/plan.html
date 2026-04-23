@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UI Kit Component Plan &mdash; Faenwald Map UI</title>
+    <style>
+        :root {
+            --bg: #0d1117;
+            --surface: #161b22;
+            --surface2: #1c2129;
+            --border: #30363d;
+            --text: #e6edf3;
+            --text-muted: #8b949e;
+            --accent: #58a6ff;
+            --green: #3fb950;
+            --red: #f85149;
+            --orange: #d29922;
+            --purple: #bc8cff;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.6;
+            padding: 2rem;
+            max-width: 960px;
+            margin: 0 auto;
+        }
+
+        h1 { font-size: 1.8rem; margin-bottom: 0.25rem; }
+        .subtitle {
+            color: var(--text-muted);
+            font-size: 0.9rem;
+            margin-bottom: 2rem;
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 1rem;
+        }
+
+        h2 {
+            font-size: 1.3rem;
+            margin: 2rem 0 1rem;
+            color: var(--accent);
+        }
+
+        h3 {
+            font-size: 1.05rem;
+            margin: 1.5rem 0 0.75rem;
+            color: var(--purple);
+        }
+
+        p, li { color: var(--text); font-size: 0.92rem; }
+        p { margin-bottom: 0.75rem; }
+        ul, ol { padding-left: 1.5rem; margin-bottom: 1rem; }
+        li { margin-bottom: 0.35rem; }
+        a { color: var(--accent); }
+        code {
+            background: var(--surface2);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 0.85rem;
+            color: var(--orange);
+        }
+
+        .card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 1.25rem;
+            margin-bottom: 1rem;
+        }
+        .card h3 { margin-top: 0; }
+
+        .tag {
+            display: inline-block;
+            font-size: 0.75rem;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-weight: 600;
+            margin-right: 4px;
+        }
+        .tag-green { background: #1a3a2a; color: var(--green); }
+        .tag-orange { background: #3a2e1a; color: var(--orange); }
+        .tag-blue { background: #1a2a3a; color: var(--accent); }
+        .tag-purple { background: #2a1a3a; color: var(--purple); }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1rem 0;
+            font-size: 0.88rem;
+        }
+        th, td {
+            text-align: left;
+            padding: 0.6rem 0.75rem;
+            border: 1px solid var(--border);
+        }
+        th { background: var(--surface2); color: var(--accent); font-weight: 600; }
+        td { background: var(--surface); }
+
+        .toc {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 1rem 1.25rem;
+            margin-bottom: 2rem;
+        }
+        .toc a { color: var(--accent); text-decoration: none; font-size: 0.9rem; }
+        .toc a:hover { text-decoration: underline; }
+        .toc ol { margin-bottom: 0; }
+        .toc li { margin-bottom: 0.2rem; }
+    </style>
+</head>
+<body>
+
+<h1>UI Kit Component Plan</h1>
+<p class="subtitle">Faenwald Map UI &mdash; Hand-rolled + Radix Primitives &mdash; April 2026</p>
+
+<nav class="toc">
+    <strong>Contents</strong>
+    <ol>
+        <li><a href="#approach">Approach</a></li>
+        <li><a href="#components">Component List</a></li>
+        <li><a href="#hand-rolled">Hand-rolled Components (no deps)</a></li>
+        <li><a href="#radix">Radix-backed Components</a></li>
+        <li><a href="#structure">File Structure</a></li>
+        <li><a href="#priority">Implementation Priority</a></li>
+    </ol>
+</nav>
+
+<!-- ─────────────────────────────────────────── -->
+<h2 id="approach">1. Approach</h2>
+
+<div class="card">
+    <p>Following the <a href="uikit-or-by-hand.html">research verdict</a>: <strong>hand-roll simple components</strong>, use <strong>Radix Primitives</strong> for complex interactive behaviors.</p>
+    <ul>
+        <li>All components styled with <strong>CSS Modules</strong>, consuming design tokens from <code>tokens.css</code></li>
+        <li>Each component lives in <code>src/ui/kit/</code> as a <code>.tsx</code> + <code>.module.css</code> pair</li>
+        <li>Simple components (Button, Input, Checkbox, IconButton) &mdash; pure React, no dependencies</li>
+        <li>Complex components (Dialog, Select, Tooltip, Popover) &mdash; Radix Primitives for behavior, CSS Modules for visuals</li>
+    </ul>
+</div>
+
+<!-- ─────────────────────────────────────────── -->
+<h2 id="components">2. Component List</h2>
+
+<table>
+    <thead>
+        <tr>
+            <th>Component</th>
+            <th>Type</th>
+            <th>Needed By</th>
+            <th>Description</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+            <td><strong>Button</strong></td>
+            <td><span class="tag tag-green">Hand-rolled</span></td>
+            <td>Event timeline, debug panel, modals</td>
+            <td>Primary, secondary, ghost variants. Supports disabled state and icon slot.</td>
+        </tr>
+        <tr>
+            <td><strong>IconButton</strong></td>
+            <td><span class="tag tag-green">Hand-rolled</span></td>
+            <td>Event timeline nav, debug panel toggle</td>
+            <td>Square button for icons (arrows, plus, hamburger). Fixed size variants.</td>
+        </tr>
+        <tr>
+            <td><strong>Input</strong></td>
+            <td><span class="tag tag-green">Hand-rolled</span></td>
+            <td>Debug panel, event editing modal</td>
+            <td>Text and number input with label. Dark-themed, compact.</td>
+        </tr>
+        <tr>
+            <td><strong>Checkbox</strong></td>
+            <td><span class="tag tag-green">Hand-rolled</span></td>
+            <td>Debug panel</td>
+            <td>Toggle with label. Custom-styled checkbox replacing native.</td>
+        </tr>
+        <tr>
+            <td><strong>Card</strong></td>
+            <td><span class="tag tag-green">Hand-rolled</span></td>
+            <td>Province info, army info, event cards</td>
+            <td>Semi-transparent overlay container with backdrop blur and border.</td>
+        </tr>
+        <tr>
+            <td><strong>ScrollArea</strong></td>
+            <td><span class="tag tag-green">Hand-rolled</span></td>
+            <td>Debug panel list, event timeline</td>
+            <td>Horizontal or vertical scrollable container with styled scrollbar.</td>
+        </tr>
+        <tr>
+            <td><strong>Dialog</strong></td>
+            <td><span class="tag tag-purple">Radix</span></td>
+            <td>Event editing, add event flow</td>
+            <td>Modal overlay with backdrop, focus trap, close on Escape. Uses <code>@radix-ui/react-dialog</code>.</td>
+        </tr>
+        <tr>
+            <td><strong>Select</strong></td>
+            <td><span class="tag tag-purple">Radix</span></td>
+            <td>Event type picker, army/province selectors</td>
+            <td>Dropdown with keyboard nav and search. Uses <code>@radix-ui/react-select</code>.</td>
+        </tr>
+        <tr>
+            <td><strong>Tooltip</strong></td>
+            <td><span class="tag tag-purple">Radix</span></td>
+            <td>Map UI hints, button labels</td>
+            <td>Hover/focus tooltip with arrow. Uses <code>@radix-ui/react-tooltip</code>.</td>
+        </tr>
+        <tr>
+            <td><strong>Popover</strong></td>
+            <td><span class="tag tag-purple">Radix</span></td>
+            <td>Contextual menus, quick actions</td>
+            <td>Anchored floating panel with click-outside dismiss. Uses <code>@radix-ui/react-popover</code>.</td>
+        </tr>
+    </tbody>
+</table>
+
+<!-- ─────────────────────────────────────────── -->
+<h2 id="hand-rolled">3. Hand-rolled Components</h2>
+
+<p>Pure React + CSS Modules. No external dependencies.</p>
+
+<div class="card">
+    <h3>Button</h3>
+    <p>Variants: <code>primary</code> (gold accent), <code>secondary</code> (white-alpha), <code>ghost</code> (transparent). Props: <code>variant</code>, <code>size</code> (<code>sm | md</code>), <code>disabled</code>, <code>children</code>.</p>
+    <p>Replaces raw <code>&lt;button&gt;</code> elements throughout the app.</p>
+</div>
+
+<div class="card">
+    <h3>IconButton</h3>
+    <p>Square button for icon-only actions (navigation arrows, add, toggle). Props: <code>size</code> (<code>sm | md</code>), <code>disabled</code>, <code>children</code> (icon content).</p>
+    <p>Replaces <code>.navButton</code> and <code>.addButton</code> in event timeline, debug panel toggle.</p>
+</div>
+
+<div class="card">
+    <h3>Input</h3>
+    <p>Text/number input with optional label. Props: <code>label</code>, <code>type</code>, <code>value</code>, <code>onChange</code>, standard input attributes.</p>
+    <p>Replaces raw <code>&lt;input&gt;</code> in debug panel.</p>
+</div>
+
+<div class="card">
+    <h3>Checkbox</h3>
+    <p>Custom-styled checkbox with label. Props: <code>label</code>, <code>checked</code>, <code>onChange</code>.</p>
+    <p>Replaces native checkbox in debug panel.</p>
+</div>
+
+<div class="card">
+    <h3>Card</h3>
+    <p>Overlay container matching the existing dark translucent style. Props: <code>children</code>, optional <code>className</code> for positioning.</p>
+    <p>Extracts the shared pattern from selected province / hovered province / selected army panels.</p>
+</div>
+
+<div class="card">
+    <h3>ScrollArea</h3>
+    <p>Wrapper with styled scrollbar (thin, dark-themed). Props: <code>direction</code> (<code>horizontal | vertical</code>), <code>children</code>.</p>
+    <p>Replaces <code>overflow-x: auto</code> and <code>overflow-y: scroll</code> patterns.</p>
+</div>
+
+<!-- ─────────────────────────────────────────── -->
+<h2 id="radix">4. Radix-backed Components</h2>
+
+<p>Use <a href="https://www.radix-ui.com/primitives">Radix Primitives</a> for accessible behavior. All visuals via CSS Modules.</p>
+
+<div class="card">
+    <h3>Dialog</h3>
+    <p>Install: <code>@radix-ui/react-dialog</code></p>
+    <p>Wraps Radix Dialog with project styling: dark overlay, centered content panel, close button. Provides <code>DialogTrigger</code>, <code>DialogContent</code>, <code>DialogTitle</code>, <code>DialogClose</code> re-exports with applied CSS Modules.</p>
+    <p><strong>Needed for:</strong> event editing modal (click event card &rarr; open details), add event form.</p>
+</div>
+
+<div class="card">
+    <h3>Select</h3>
+    <p>Install: <code>@radix-ui/react-select</code></p>
+    <p>Wraps Radix Select with dark-themed trigger, dropdown, and option items. Keyboard navigation and typeahead built in.</p>
+    <p><strong>Needed for:</strong> event type picker when creating events, army/province selection in event forms.</p>
+</div>
+
+<div class="card">
+    <h3>Tooltip</h3>
+    <p>Install: <code>@radix-ui/react-tooltip</code></p>
+    <p>Wraps Radix Tooltip. Dark compact style with arrow. Delay on hover.</p>
+    <p><strong>Needed for:</strong> button labels on icon-only buttons, map UI element hints.</p>
+</div>
+
+<div class="card">
+    <h3>Popover</h3>
+    <p>Install: <code>@radix-ui/react-popover</code></p>
+    <p>Wraps Radix Popover for anchored floating panels. Dark-themed, with arrow and outside-click dismiss.</p>
+    <p><strong>Needed for:</strong> contextual actions, quick-edit panels, future province/army context menus.</p>
+</div>
+
+<!-- ─────────────────────────────────────────── -->
+<h2 id="structure">5. File Structure</h2>
+
+<div class="card">
+<pre style="color: var(--text); font-size: 0.85rem; line-height: 1.5; overflow-x: auto;">
+src/ui/kit/
+├── button/
+│   ├── button.tsx
+│   └── button.module.css
+├── icon-button/
+│   ├── icon-button.tsx
+│   └── icon-button.module.css
+├── input/
+│   ├── input.tsx
+│   └── input.module.css
+├── checkbox/
+│   ├── checkbox.tsx
+│   └── checkbox.module.css
+├── card/
+│   ├── card.tsx
+│   └── card.module.css
+├── scroll-area/
+│   ├── scroll-area.tsx
+│   └── scroll-area.module.css
+├── dialog/
+│   ├── dialog.tsx
+│   └── dialog.module.css
+├── select/
+│   ├── select.tsx
+│   └── select.module.css
+├── tooltip/
+│   ├── tooltip.tsx
+│   └── tooltip.module.css
+├── popover/
+│   ├── popover.tsx
+│   └── popover.module.css
+└── index.ts              &larr; barrel export
+</pre>
+</div>
+
+<!-- ─────────────────────────────────────────── -->
+<h2 id="priority">6. Implementation Priority</h2>
+
+<p>Ordered by immediate need and dependency chain:</p>
+
+<table>
+    <thead>
+        <tr>
+            <th>Priority</th>
+            <th>Component</th>
+            <th>Reason</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+            <td><span class="tag tag-green">P0</span></td>
+            <td>Button, IconButton</td>
+            <td>Used everywhere &mdash; event timeline, debug panel. Foundation for other components.</td>
+        </tr>
+        <tr>
+            <td><span class="tag tag-green">P0</span></td>
+            <td>Input, Checkbox</td>
+            <td>Debug panel already uses raw inputs. Event editing will need them immediately.</td>
+        </tr>
+        <tr>
+            <td><span class="tag tag-blue">P1</span></td>
+            <td>Dialog</td>
+            <td>Required for event editing modal &mdash; the next event-timeline feature.</td>
+        </tr>
+        <tr>
+            <td><span class="tag tag-blue">P1</span></td>
+            <td>Select</td>
+            <td>Needed inside event editing dialog for type/army/province selection.</td>
+        </tr>
+        <tr>
+            <td><span class="tag tag-blue">P1</span></td>
+            <td>Card</td>
+            <td>Extract shared overlay pattern. Clean up existing info panels.</td>
+        </tr>
+        <tr>
+            <td><span class="tag tag-orange">P2</span></td>
+            <td>Tooltip</td>
+            <td>Nice-to-have for icon buttons; improves discoverability.</td>
+        </tr>
+        <tr>
+            <td><span class="tag tag-orange">P2</span></td>
+            <td>ScrollArea</td>
+            <td>Polish pass; custom scrollbar styling.</td>
+        </tr>
+        <tr>
+            <td><span class="tag tag-orange">P2</span></td>
+            <td>Popover</td>
+            <td>Future use &mdash; context menus, quick actions. Not currently needed.</td>
+        </tr>
+    </tbody>
+</table>
+
+</body>
+</html>

@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Research: UI Kit Showcase Without Storybook</title>
+    <style>
+        :root {
+            --bg: #0d1117;
+            --surface: #161b22;
+            --surface2: #1c2129;
+            --border: #30363d;
+            --text: #e6edf3;
+            --text-muted: #8b949e;
+            --accent: #58a6ff;
+            --green: #3fb950;
+            --red: #f85149;
+            --orange: #d29922;
+            --purple: #bc8cff;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.6;
+            padding: 2rem;
+            max-width: 960px;
+            margin: 0 auto;
+        }
+
+        h1 { font-size: 1.8rem; margin-bottom: 0.25rem; }
+
+        .subtitle {
+            color: var(--text-muted);
+            font-size: 0.9rem;
+            margin-bottom: 2rem;
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 1rem;
+        }
+
+        h2 {
+            font-size: 1.3rem;
+            margin: 2rem 0 1rem;
+            color: var(--accent);
+        }
+
+        h3 {
+            font-size: 1.05rem;
+            margin: 1.5rem 0 0.75rem;
+            color: var(--purple);
+        }
+
+        p, li { font-size: 0.92rem; }
+        p { margin-bottom: 0.75rem; }
+        ul, ol { padding-left: 1.5rem; margin-bottom: 1rem; }
+        li { margin-bottom: 0.35rem; }
+
+        .card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 1.25rem;
+            margin-bottom: 1rem;
+        }
+
+        .card h3 { margin-top: 0; }
+
+        .tag {
+            display: inline-block;
+            font-size: 0.75rem;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-weight: 600;
+            margin-right: 4px;
+        }
+
+        .tag-green { background: #1a3a2a; color: var(--green); }
+        .tag-red { background: #3a1a1a; color: var(--red); }
+        .tag-orange { background: #3a2e1a; color: var(--orange); }
+        .tag-blue { background: #1a2a3a; color: var(--accent); }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1rem 0;
+            font-size: 0.85rem;
+        }
+
+        th, td {
+            text-align: left;
+            padding: 0.6rem 0.75rem;
+            border: 1px solid var(--border);
+        }
+
+        th {
+            background: var(--surface2);
+            color: var(--accent);
+            font-weight: 600;
+        }
+
+        td { background: var(--surface); }
+
+        code {
+            background: var(--surface2);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 0.85rem;
+            color: var(--orange);
+        }
+
+        pre {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 1rem;
+            overflow-x: auto;
+            margin: 0.75rem 0 1rem;
+            font-size: 0.82rem;
+            line-height: 1.5;
+        }
+
+        pre code {
+            background: none;
+            padding: 0;
+            color: var(--text);
+        }
+
+        .keyword { color: var(--purple); }
+        .string { color: var(--green); }
+        .comment { color: var(--text-muted); }
+        .func { color: var(--accent); }
+
+        .verdict {
+            background: linear-gradient(135deg, #1a2a1a, #162016);
+            border: 1px solid #2a4a2a;
+            border-radius: 8px;
+            padding: 1.5rem;
+            margin: 2rem 0;
+        }
+
+        .verdict h2 { color: var(--green); margin-top: 0; }
+
+        .toc {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 1rem 1.25rem;
+            margin-bottom: 2rem;
+        }
+
+        .toc a { color: var(--accent); text-decoration: none; font-size: 0.9rem; }
+        .toc a:hover { text-decoration: underline; }
+        .toc ol { margin-bottom: 0; }
+        .toc li { margin-bottom: 0.2rem; }
+
+        a { color: var(--accent); }
+
+        .pros { border-left: 3px solid var(--green); }
+        .cons { border-left: 3px solid var(--red); }
+    </style>
+</head>
+<body>
+
+<h1>UI Kit Showcase Without Storybook</h1>
+<p class="subtitle">Research for Faenwald Map UI &mdash; April 2026</p>
+
+<nav class="toc">
+    <strong>Contents</strong>
+    <ol>
+        <li><a href="#problem">The Problem</a></li>
+        <li><a href="#tools">Lightweight Dedicated Tools</a></li>
+        <li><a href="#diy">DIY Vite Showcase Page</a></li>
+        <li><a href="#docs">Doc-Based Approaches</a></li>
+        <li><a href="#summary">Summary Comparison</a></li>
+        <li><a href="#verdict">Verdict &amp; Recommendation</a></li>
+    </ol>
+</nav>
+
+<!-- ─────────────────────────────────────────── -->
+<h2 id="problem">1. The Problem</h2>
+
+<div class="card">
+    <p>We need a dev environment to preview and iterate on UI kit components in isolation. Storybook is the obvious choice, but it is heavy: large <code>node_modules</code> footprint, slow cold starts, complex configuration, and its own build pipeline.</p>
+    <p><strong>Our stack:</strong> React 19 + TypeScript 5.9 + Vite 7 + CSS Modules. We want something that works with this stack with minimal friction.</p>
+    <p><strong>Requirements:</strong> see components rendered with variants/states, hot reload on changes, minimal dependencies, no complex build setup.</p>
+</div>
+
+<!-- ─────────────────────────────────────────── -->
+<h2 id="tools">2. Lightweight Dedicated Tools</h2>
+
+<h3>Ladle <span class="tag tag-orange">Promising but risky</span></h3>
+
+<div class="card">
+    <p><a href="https://ladle.dev/">Ladle</a> &mdash; a Vite-native, React-only Storybook alternative. ~2.9k stars. Uses the same <code>.stories.tsx</code> format (CSF 3.0 compatible). Zero-config.</p>
+
+    <table>
+        <tr><th>Aspect</th><th>Detail</th></tr>
+        <tr><td>Install weight</td><td>~20x smaller page weight than Storybook. Build output ~2-4 MB vs Storybook's ~7-16 MB</td></tr>
+        <tr><td>Setup</td><td><code>npm i @ladle/react</code> + write <code>.stories.tsx</code> files. Zero-config.</td></tr>
+        <tr><td>React 19</td><td>Supported since v5.0.0</td></tr>
+        <tr><td>Vite 7</td><td><span class="tag tag-red">Broken</span> &mdash; HMR fails due to Rolldown changes ("Missing field moduleType"). Open issue, unresolved. Must pin Vite 6 for Ladle.</td></tr>
+        <tr><td>HMR</td><td>Full Vite HMR. ~1.2s cold start for 50 stories</td></tr>
+        <tr><td>Maintenance</td><td>Single maintainer. Last release Nov 2024. Activity slowing.</td></tr>
+    </table>
+
+    <p><strong>Verdict:</strong> Best lightweight tool in concept, but <strong>Vite 7 incompatibility</strong> and slowing maintenance make it risky for our stack.</p>
+</div>
+
+<h3>React Cosmos <span class="tag tag-blue">Solid alternative</span></h3>
+
+<div class="card">
+    <p><a href="https://reactcosmos.org/">React Cosmos</a> &mdash; component sandbox using "fixtures" instead of "stories." 8.6k stars. Established since 2014.</p>
+
+    <table>
+        <tr><th>Aspect</th><th>Detail</th></tr>
+        <tr><td>Install weight</td><td>Minimal. ESM-only. Lighter than Storybook, slightly heavier than Ladle</td></tr>
+        <tr><td>Setup</td><td><code>npm i react-cosmos react-cosmos-plugin-vite</code> + <code>cosmos.config.json</code> + <code>.fixture.tsx</code> files</td></tr>
+        <tr><td>React 19</td><td>Supported since v7.0.0</td></tr>
+        <tr><td>Vite 7</td><td><span class="tag tag-orange">Untested</span> &mdash; latest release v7.2.0 (March 2025). Needs testing.</td></tr>
+        <tr><td>HMR</td><td>Full Vite HMR via plugin</td></tr>
+        <tr><td>Maintenance</td><td>Actively maintained through early 2025. Consistent releases.</td></tr>
+    </table>
+
+    <p><strong>Verdict:</strong> More mature and better maintained than Ladle. Worth testing with Vite 7.</p>
+</div>
+
+<h3>Eliminated Options</h3>
+
+<div class="card" style="opacity: 0.6;">
+    <ul>
+        <li><strong>Histoire</strong> &mdash; Vue/Svelte only. No React support.</li>
+        <li><strong>React Styleguidist</strong> &mdash; Webpack-only (no Vite). Effectively dead.</li>
+        <li><strong>StoryLite</strong> &mdash; Experimental, unmaintained. Too risky.</li>
+        <li><strong>vite-plugin-react-pages</strong> &mdash; Archived Dec 2025. Dead.</li>
+    </ul>
+</div>
+
+<!-- ─────────────────────────────────────────── -->
+<h2 id="diy">3. DIY Vite Showcase Page <span class="tag tag-green">Recommended</span></h2>
+
+<p>Create a dedicated page within your existing Vite app that renders all components with their variants. Zero new dependencies. Guaranteed Vite 7 + React 19 compatibility.</p>
+
+<h3>Pattern A: Separate Vite entry point <span class="tag tag-green">CHOSEN</span></h3>
+
+<div class="card">
+    <p>A standalone HTML entry that Vite serves alongside your main app.</p>
+
+<pre><code><span class="comment">// File structure</span>
+src/
+  showcase/
+    index.html            <span class="comment">// separate HTML entry</span>
+    main.tsx              <span class="comment">// React root</span>
+    ShowcaseApp.tsx        <span class="comment">// sidebar nav + component display</span>
+    entries/
+      ButtonShowcase.tsx
+      ModalShowcase.tsx
+      ...
+</code></pre>
+
+<pre><code><span class="comment">// vite.config.ts &mdash; add showcase as a second entry</span>
+<span class="keyword">export default</span> <span class="func">defineConfig</span>({
+  build: {
+    rollupOptions: {
+      input: {
+        main: <span class="string">'index.html'</span>,
+        showcase: <span class="string">'src/showcase/index.html'</span>,
+      },
+    },
+  },
+});
+</code></pre>
+
+    <p><strong>Pro:</strong> Fully isolated from your game UI. Own HTML, own React root.<br>
+    <strong>Con:</strong> Slightly more setup (second entry point in Vite config).</p>
+</div>
+
+<h3>Pattern B: Dev-only route</h3>
+
+<div class="card">
+    <p>Add a route that only exists in development mode.</p>
+
+<pre><code><span class="comment">// Conditionally render showcase in dev</span>
+<span class="keyword">if</span> (<span class="keyword">import</span>.meta.env.DEV) {
+  <span class="comment">// render &lt;ShowcaseApp /&gt; when URL has ?showcase param</span>
+}
+</code></pre>
+
+    <p><strong>Pro:</strong> Simplest setup &mdash; no config changes.<br>
+    <strong>Con:</strong> Shares the app's React root; may interfere with MapEngine initialization.</p>
+</div>
+
+<h3>Pattern C: Auto-discovery with <code>import.meta.glob</code></h3>
+
+<div class="card">
+    <p>Vite's glob import automatically discovers all showcase files. No manual registration needed.</p>
+
+<pre><code><span class="comment">// ShowcaseApp.tsx</span>
+<span class="keyword">const</span> modules = <span class="keyword">import</span>.meta.<span class="func">glob</span>(
+  <span class="string">'../ui/**/*.showcase.tsx'</span>,
+  { eager: <span class="keyword">true</span> }
+);
+
+<span class="comment">// Each module exports: { name: string, render: () =&gt; ReactNode }</span>
+<span class="keyword">const</span> entries = Object.<span class="func">values</span>(modules).<span class="func">map</span>(
+  (m) =&gt; (m <span class="keyword">as</span> <span class="keyword">any</span>).<span class="keyword">default</span>
+);
+</code></pre>
+
+<pre><code><span class="comment">// src/ui/button/Button.showcase.tsx</span>
+<span class="keyword">export default</span> {
+  name: <span class="string">'Button'</span>,
+  <span class="func">render</span>: () =&gt; (
+    &lt;div&gt;
+      &lt;h3&gt;Default&lt;/h3&gt;
+      &lt;Button&gt;Click me&lt;/Button&gt;
+
+      &lt;h3&gt;Disabled&lt;/h3&gt;
+      &lt;Button disabled&gt;Disabled&lt;/Button&gt;
+
+      &lt;h3&gt;Variants&lt;/h3&gt;
+      &lt;Button variant=<span class="string">"primary"</span>&gt;Primary&lt;/Button&gt;
+      &lt;Button variant=<span class="string">"ghost"</span>&gt;Ghost&lt;/Button&gt;
+    &lt;/div&gt;
+  ),
+};
+</code></pre>
+
+    <p><strong>Pro:</strong> Add a <code>.showcase.tsx</code> next to any component and it appears automatically.<br>
+    <strong>Con:</strong> You build the shell UI yourself (sidebar, layout &mdash; ~50-100 lines).</p>
+</div>
+
+<h3>What the showcase shell looks like (~60 lines)</h3>
+
+<div class="card">
+<pre><code><span class="comment">// ShowcaseApp.tsx &mdash; the entire shell</span>
+<span class="keyword">import</span> { useState } <span class="keyword">from</span> <span class="string">'react'</span>;
+
+<span class="keyword">type</span> TShowcaseEntry = {
+  name: <span class="keyword">string</span>;
+  render: () =&gt; React.ReactNode;
+};
+
+<span class="keyword">const</span> modules = <span class="keyword">import</span>.meta.<span class="func">glob</span>(
+  <span class="string">'../ui/**/*.showcase.tsx'</span>,
+  { eager: <span class="keyword">true</span> }
+);
+
+<span class="keyword">const</span> entries: TShowcaseEntry[] = Object.<span class="func">values</span>(modules)
+  .<span class="func">map</span>((m) =&gt; (m <span class="keyword">as</span> <span class="keyword">any</span>).<span class="keyword">default</span>)
+  .<span class="func">filter</span>(Boolean);
+
+<span class="keyword">export function</span> <span class="func">ShowcaseApp</span>() {
+  <span class="keyword">const</span> [selected, setSelected] = <span class="func">useState</span>(entries[0]?.name);
+  <span class="keyword">const</span> active = entries.<span class="func">find</span>((e) =&gt; e.name === selected);
+
+  <span class="keyword">return</span> (
+    &lt;div style={{ display: <span class="string">'flex'</span>, height: <span class="string">'100dvh'</span> }}&gt;
+      &lt;nav style={{ width: 220, borderRight: <span class="string">'1px solid #30363d'</span>,
+                     padding: <span class="string">'1rem'</span>, overflowY: <span class="string">'auto'</span> }}&gt;
+        &lt;h2 style={{ color: <span class="string">'#58a6ff'</span>, fontSize: <span class="string">'1rem'</span> }}&gt;UI Kit&lt;/h2&gt;
+        {entries.<span class="func">map</span>((e) =&gt; (
+          &lt;button
+            key={e.name}
+            onClick={() =&gt; <span class="func">setSelected</span>(e.name)}
+            style={{
+              display: <span class="string">'block'</span>, width: <span class="string">'100%'</span>,
+              textAlign: <span class="string">'left'</span>,
+              padding: <span class="string">'6px 8px'</span>, margin: <span class="string">'2px 0'</span>,
+              background: selected === e.name
+                ? <span class="string">'#1c2129'</span> : <span class="string">'transparent'</span>,
+              color: <span class="string">'#e6edf3'</span>, border: <span class="string">'none'</span>,
+              borderRadius: 4, cursor: <span class="string">'pointer'</span>,
+            }}
+          &gt;
+            {e.name}
+          &lt;/button&gt;
+        ))}
+      &lt;/nav&gt;
+      &lt;main style={{ flex: 1, padding: <span class="string">'2rem'</span>,
+                      overflowY: <span class="string">'auto'</span> }}&gt;
+        {active ? active.<span class="func">render</span>() : <span class="string">'Select a component'</span>}
+      &lt;/main&gt;
+    &lt;/div&gt;
+  );
+}
+</code></pre>
+
+    <p>That's the entire showcase infrastructure. ~60 lines. Full Vite HMR. Zero dependencies.</p>
+</div>
+
+<!-- ─────────────────────────────────────────── -->
+<h2 id="docs">4. Doc-Based Approaches <span class="tag tag-red">Overkill</span></h2>
+
+<div class="card" style="opacity: 0.6;">
+    <p>Tools like <strong>Docusaurus</strong> and <strong>Astro + Starlight</strong> can render live React components in MDX. However:</p>
+    <ul>
+        <li>Docusaurus: ~150+ MB node_modules, uses Webpack internally (not Vite), separate build pipeline</li>
+        <li>Astro: its own framework, had Vite 7 compatibility issues, separate build</li>
+    </ul>
+    <p>These are documentation site generators, not component dev environments. Eliminated for our use case.</p>
+</div>
+
+<!-- ─────────────────────────────────────────── -->
+<h2 id="summary">5. Summary Comparison</h2>
+
+<table>
+    <thead>
+        <tr>
+            <th>Criterion</th>
+            <th>DIY Vite Page</th>
+            <th>React Cosmos</th>
+            <th>Ladle</th>
+            <th>Storybook 10</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+            <td>New dependencies</td>
+            <td><span class="tag tag-green">0</span></td>
+            <td>2 packages</td>
+            <td>1 package</td>
+            <td>~10+ packages</td>
+        </tr>
+        <tr>
+            <td>Setup time</td>
+            <td>~30 min</td>
+            <td>~15 min</td>
+            <td>~10 min</td>
+            <td>~30-60 min</td>
+        </tr>
+        <tr>
+            <td>Vite 7 compat</td>
+            <td><span class="tag tag-green">Guaranteed</span></td>
+            <td><span class="tag tag-orange">Untested</span></td>
+            <td><span class="tag tag-red">Broken</span></td>
+            <td><span class="tag tag-green">Yes</span></td>
+        </tr>
+        <tr>
+            <td>React 19</td>
+            <td><span class="tag tag-green">Native</span></td>
+            <td><span class="tag tag-green">Yes</span></td>
+            <td><span class="tag tag-green">Yes</span></td>
+            <td><span class="tag tag-green">Yes</span></td>
+        </tr>
+        <tr>
+            <td>HMR</td>
+            <td>Full (Vite native)</td>
+            <td>Full (Vite plugin)</td>
+            <td>Full (Vite native)</td>
+            <td>Full (Vite native)</td>
+        </tr>
+        <tr>
+            <td>Auto-discovery</td>
+            <td><code>import.meta.glob</code></td>
+            <td><code>*.fixture.tsx</code></td>
+            <td><code>*.stories.tsx</code></td>
+            <td><code>*.stories.tsx</code></td>
+        </tr>
+        <tr>
+            <td>Controls / knobs</td>
+            <td>Build yourself</td>
+            <td>Built-in</td>
+            <td>Built-in</td>
+            <td>Built-in + addons</td>
+        </tr>
+        <tr>
+            <td>Sidebar UI</td>
+            <td>Build yourself (~60 LOC)</td>
+            <td>Built-in</td>
+            <td>Built-in</td>
+            <td>Built-in</td>
+        </tr>
+        <tr>
+            <td>Build complexity</td>
+            <td>None</td>
+            <td>Separate process</td>
+            <td>Separate process</td>
+            <td>Separate process</td>
+        </tr>
+        <tr>
+            <td>Migration path</td>
+            <td>&rarr; Cosmos / Ladle later</td>
+            <td>&rarr; Storybook (diff format)</td>
+            <td>&rarr; Storybook (CSF compat)</td>
+            <td>Final destination</td>
+        </tr>
+    </tbody>
+</table>
+
+<!-- ─────────────────────────────────────────── -->
+<div class="verdict">
+    <h2 id="verdict">6. Decision: DIY Vite Showcase &mdash; Pattern A (Separate Entry Point)</h2>
+
+    <p><span class="tag tag-green">DECIDED</span> <strong>We will implement Pattern A: a separate Vite entry point with auto-discovery (Pattern C) for component registration.</strong></p>
+
+    <p><strong>Why DIY over third-party tools:</strong></p>
+    <ul>
+        <li><strong>Zero dependency risk</strong> &mdash; no third-party tool to break with Vite 7. Ladle is already broken; Cosmos is untested.</li>
+        <li><strong>Zero learning curve</strong> &mdash; it's just React + CSS Modules, the same as our components.</li>
+        <li><strong>Zero build complexity</strong> &mdash; same Vite process, same HMR, same everything.</li>
+    </ul>
+
+    <p><strong>Why Pattern A over B and C:</strong></p>
+    <ul>
+        <li><strong>Full isolation</strong> &mdash; separate HTML entry + React root, no interference with MapEngine initialization.</li>
+        <li><strong>Clean separation</strong> &mdash; showcase has its own <code>index.html</code>, own styles, own mount point. The game app doesn't know it exists.</li>
+        <li><strong>Combined with Pattern C's auto-discovery</strong> &mdash; <code>import.meta.glob('**/*.showcase.tsx')</code> inside the separate entry, so adding components is still zero-config.</li>
+    </ul>
+
+    <p><strong>Implementation plan:</strong></p>
+    <ol>
+        <li>Create <code>src/showcase/index.html</code> &mdash; standalone HTML entry</li>
+        <li>Create <code>src/showcase/main.tsx</code> &mdash; React root for showcase</li>
+        <li>Create <code>src/showcase/ShowcaseApp.tsx</code> &mdash; sidebar nav + component display shell, using <code>import.meta.glob</code> for auto-discovery</li>
+        <li>Update <code>vite.config.ts</code> &mdash; add showcase as second input entry</li>
+        <li>Add <code>"showcase"</code> npm script</li>
+        <li>For each UI component, co-locate a <code>ComponentName.showcase.tsx</code> that renders all variants</li>
+    </ol>
+
+    <p><strong>When to reconsider:</strong> If we grow beyond ~20 components and need prop controls, viewport toggling, or visual regression testing &mdash; then evaluate React Cosmos or Storybook 10.</p>
+</div>
+
+</body>
+</html>

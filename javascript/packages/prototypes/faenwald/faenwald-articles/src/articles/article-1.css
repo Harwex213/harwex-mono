@@ -1,0 +1,182 @@
+.image-one {
+    height: 200px;
+    background-image: url("./img-1.png");
+    background-position: center 40%;
+    background-repeat: no-repeat;
+    background-size: 100%;
+    animation-name: scroll-animation-image-one;
+    animation-timing-function: linear;
+    animation-timeline: --main-timeline;
+    animation-range-end: 600px;
+}
+
+@keyframes scroll-animation-image-one {
+    0% {
+        background-size: 110%;
+    }
+    100% {
+        background-size: 100%;
+    }
+}
+
+@media (max-width: 500px) {
+    .image-one {
+        background-size: 145%;
+        animation-name: scroll-animation-mobile-image-one;
+        animation-timing-function: linear;
+        animation-timeline: --main-timeline;
+        animation-range-end: 400px;
+    }
+}
+
+@keyframes scroll-animation-mobile-image-one {
+    0% {
+        background-size: 160%;
+    }
+    100% {
+        background-size: 145%;
+    }
+}
+
+.image-two {
+    height: 550px;
+    width: 320px;
+    background-image: url("./img-2.png");
+    background-position: center;
+    background-repeat: no-repeat;
+    background-size: 115%;
+    animation-name: scroll-animation-image-two;
+    animation-timing-function: linear;
+    animation-timeline: --main-timeline;
+    animation-range-end: 800px;
+}
+
+@keyframes scroll-animation-image-two {
+    0% {
+        background-size: 100%;
+    }
+    100% {
+        background-size: 115%;
+    }
+}
+
+.image-three {
+    height: 200px;
+    background-image: url("./img-3.jpg");
+    background-position: center 28%;
+    background-repeat: no-repeat;
+    background-size: 100%;
+    animation-name: scroll-animation-image-one;
+    animation-timing-function: linear;
+    animation-timeline: --main-timeline;
+    animation-range-start: 1200px;
+    animation-range-end: 2600px;
+}
+
+.image-four {
+    height: 490px;
+    width: 300px;
+    background-image: url("./img-4.png");
+    background-position: center;
+    background-repeat: no-repeat;
+    background-size: 135%;
+    animation-name: scroll-animation-image-four;
+    animation-timing-function: linear;
+    animation-timeline: --main-timeline;
+    animation-range-start: 2100px;
+    animation-range-end: 3620px;
+}
+
+@keyframes scroll-animation-image-four {
+    0% {
+        background-size: 125%;
+    }
+    100% {
+        background-size: 135%;
+    }
+}
+
+.image-five {
+    height: 200px;
+    background-image: url("./img-5.png");
+    background-position: center 55%;
+    background-repeat: no-repeat;
+    background-size: 100%;
+    animation-name: scroll-animation-image-one;
+    animation-timing-function: linear;
+    animation-timeline: --main-timeline;
+    animation-range-start: 3221px;
+    animation-range-end: 4432px;
+}
+
+.image-six {
+    height: 200px;
+    background-image: url("./img-6.png");
+    background-position: center 55%;
+    background-repeat: no-repeat;
+    background-size: 100%;
+    animation-name: scroll-animation-image-one;
+    animation-timing-function: linear;
+    animation-timeline: --main-timeline;
+    animation-range-start: 4500px;
+    animation-range-end: 5800px;
+}
+
+.image-seven {
+    height: 490px;
+    width: 300px;
+    background-image: url("./img-7.png");
+    background-position: center;
+    background-repeat: no-repeat;
+    background-size: 115%;
+    animation-name: scroll-animation-image-seven;
+    animation-timing-function: linear;
+    animation-timeline: --main-timeline;
+    animation-range-start: 4900px;
+    animation-range-end: 6400px;
+}
+
+@keyframes scroll-animation-image-seven {
+    0% {
+        background-size: 110%;
+    }
+    100% {
+        background-size: 115%;
+    }
+}
+
+.image-eight {
+    height: 200px;
+    background-image: url("./img-8.png");
+    background-position: center 55%;
+    background-repeat: no-repeat;
+    background-size: 100%;
+    animation-name: scroll-animation-image-one;
+    animation-timing-function: linear;
+    animation-timeline: --main-timeline;
+    animation-range-start: 6000px;
+    animation-range-end: 7100px;
+}
+
+.image-nine {
+    height: 490px;
+    width: 300px;
+    background-image: url("./img-9.png");
+    background-position: center;
+    background-repeat: no-repeat;
+    background-size: 125%;
+    animation-name: scroll-animation-image-nine;
+    animation-timing-function: linear;
+    animation-timeline: --main-timeline;
+    animation-range-start: 6500px;
+    animation-range-end: 7800px;
+}
+
+@keyframes scroll-animation-image-nine {
+    0% {
+        background-size: 115%;
+    }
+    100% {
+        background-size: 125%;
+    }
+}

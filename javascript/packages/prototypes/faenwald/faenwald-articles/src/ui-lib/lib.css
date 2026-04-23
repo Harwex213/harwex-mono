@@ -1,0 +1,293 @@
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400..900;1,400..900&family=Spectral:ital,wght@0,200;0,300;0,400;0,500;0,600;0,700;0,800;1,200;1,300;1,400;1,500;1,600;1,700;1,800&display=swap');
+
+@layer lib {
+    /* ---- Tokens ---- */
+    :root {
+        --u: 0.073vw;
+
+        --bg: #0c0c0c;
+        --surface: #111111;
+        --surface-raised: #181818;
+        --border: #1e1e1e;
+        --text: #f0ede6;
+        --text-secondary: #a8a29a;
+        --text-muted: #504a44;
+        --accent: #c9a96e;
+        --accent-dim: #7a6340;
+        --accent-faint: #3a2e1e;
+
+        --font-display: "Spectral", serif;
+        --font-body: "Spectral", serif;
+        --font-mono: "JetBrains Mono", monospace;
+    }
+
+    /* ---- Base ---- */
+    html {
+        scroll-timeline: --main-timeline;
+    }
+
+    body {
+        background: var(--bg);
+        margin: 0;
+        -webkit-font-smoothing: antialiased;
+    }
+
+    /* ---- Reveal animation ---- */
+    .lib-reveal {
+        opacity: 0;
+        transform: translateY(5px);
+        transition: opacity 0.95s ease-in-out, transform 0.75s ease-in-out;
+    }
+
+    .lib-reveal.lib-visible {
+        opacity: 1;
+        transform: translateY(0px);
+    }
+
+    /* ---- Page ---- */
+    .lib-page {
+        margin: 0 auto;
+        padding: max(40px, calc(60 * var(--u))) max(12px, calc(20 * var(--u)));
+    }
+
+    /* ---- Layout ---- */
+    .lib-section {
+        display: flex;
+        flex-direction: column;
+        gap: max(20px, calc(25 * var(--u)));
+        margin-bottom: max(40px, calc(60 * var(--u)));
+    }
+
+    .lib-text-section {
+    }
+
+    .lib-divider {
+        display: grid;
+        grid-template-columns: calc(50% - 3px - 16px) 6px calc(50% - 3px - 16px);
+        align-items: center;
+        gap: 16px;
+        margin: max(40px, calc(50 * var(--u))) 0;
+    }
+
+    .lib-divider__line {
+        height: 1px;
+        background: var(--border);
+        animation-name: lib-divider__line_appear-left;
+        animation-timing-function: ease-in-out;
+        animation-duration: 2s;
+    }
+
+
+    @keyframes lib-divider__line_appear-left {
+        from {
+            clip-path: inset(0 0 0 100%);
+        }
+        to {
+            clip-path: inset(0 0 0 0);
+        }
+    }
+
+    .lib-divider__line:last-child {
+        animation-name: lib-divider__line_appear-right;
+    }
+
+    @keyframes lib-divider__line_appear-right {
+        from {
+            clip-path: inset(0 100% 0 0);
+        }
+        to {
+            clip-path: inset(0 0 0 0);
+        }
+    }
+
+    .lib-divider__diamond {
+        width: 4px;
+        height: 4px;
+        background: var(--accent-dim);
+        transform: rotate(45deg);
+        flex-shrink: 0;
+    }
+
+    .lib-img-wrapper {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 4px;
+        margin: 0 0 12px 0;
+    }
+
+    /* ---- Typography ---- */
+    .lib-title {
+        font-family: var(--font-display);
+        font-weight: 700;
+        font-size: max(24px, calc(36 * var(--u)));
+        line-height: 1.08;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        text-align: center;
+        color: var(--text);
+        margin: 0;
+    }
+
+    .lib-h2 {
+        font-family: var(--font-display);
+        font-weight: 400;
+        font-size: max(20px, calc(28 * var(--u)));
+        text-align: center;
+        line-height: 1.3;
+        color: var(--text);
+        margin: 0;
+    }
+
+    .lib-h3 {
+        font-family: var(--font-display);
+        font-weight: 400;
+        font-style: italic;
+        font-size: max(20px, calc(24 * var(--u)));
+        line-height: 1.45;
+        color: var(--text);
+        margin: 0;
+    }
+
+    .lib-label {
+        font-family: var(--font-display);
+        font-size: 0.68rem;
+        font-weight: 700;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        color: var(--accent);
+        display: block;
+    }
+
+    .lib-subtitle {
+        font-family: var(--font-body);
+        font-size: 16px;
+        line-height: 1.85;
+        color: var(--text-secondary);
+        margin: 0;
+    }
+
+    .lib-text {
+        font-family: var(--font-body);
+        font-size: 18px;
+        line-height: 1.5;
+        text-align: justify;
+        color: var(--text);
+        margin: 0 0 12px 0;
+    }
+
+    .lib-quote {
+        font-family: var(--font-body);
+        font-style: italic;
+        font-size: max(0.95rem, calc(12 * var(--u)));
+        line-height: 1.85;
+        color: var(--text-secondary);
+        border-left: 2px solid var(--accent-dim);
+        padding-left: max(16px, calc(20 * var(--u)));
+        margin: 0;
+    }
+
+    .lib-mechanics {
+        font-family: var(--font-mono);
+        font-size: 0.76rem;
+        line-height: 1.7;
+        color: var(--text-muted);
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-left: 2px solid var(--accent-faint);
+        border-radius: 0 2px 2px 0;
+        padding: max(10px, calc(10 * var(--u))) max(14px, calc(15 * var(--u)));
+        margin: 0;
+        white-space: pre-line;
+    }
+
+    .lib-callout {
+        font-family: var(--font-body);
+        font-style: italic;
+        font-size: max(0.9rem, calc(11 * var(--u)));
+        line-height: 1.8;
+        color: var(--text-secondary);
+        background: var(--surface-raised);
+        border-left: 2px solid var(--accent-dim);
+        border-radius: 0 2px 2px 0;
+        padding: max(12px, calc(14 * var(--u))) max(18px, calc(22 * var(--u)));
+    }
+
+    /* ---- Images ---- */
+    .lib-img-hero {
+        display: block;
+        width: 100vw;
+        position: relative;
+        left: 50%;
+        margin-left: -50vw;
+        margin-bottom: 8px;
+    }
+
+    .lib-img-hero img {
+        display: block;
+        width: 100%;
+        height: 72vh;
+        object-fit: cover;
+        object-position: center;
+    }
+
+    .lib-img-inline {
+        display: block;
+        border-radius: 6px;
+        margin: 0 0 max(12px, calc(24 * var(--u))) 0;
+    }
+
+    .lib-img-wrapper:has(.lib-img-inline) .lib-img-inline {
+        margin: 0;
+    }
+
+    .lib-img-inline--left {
+        float: left;
+        shape-outside: margin-box;
+        margin: 4px max(24px, calc(35 * var(--u))) 4px 0;
+    }
+
+    .lib-img-inline--right {
+        float: right;
+        max-width: 42%;
+        margin: 4px 0 16px max(24px, calc(35 * var(--u)));
+    }
+
+    .lib-img-overlay {
+        display: block;
+        position: relative;
+        overflow: hidden;
+        border-radius: 2px;
+        width: 100vw;
+        left: 50%;
+        margin-left: -50vw;
+    }
+
+    .lib-img-overlay img {
+        display: block;
+        width: 100%;
+        height: 60vh;
+        object-fit: cover;
+        object-position: center;
+    }
+
+    .lib-img-overlay-content {
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        padding: max(40px, calc(60 * var(--u))) max(24px, calc(35 * var(--u))) max(28px, calc(35 * var(--u)));
+        z-index: 1;
+        background: linear-gradient(to top, rgba(0, 0, 0, 0.9) 0%, rgba(0, 0, 0, 0.5) 50%, transparent 100%);
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+    }
+
+    /* ---- Responsive ---- */
+    @media (min-width: 780px) {
+        .lib-page {
+            max-width: 780px;
+        }
+    }
+}

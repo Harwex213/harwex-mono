@@ -1,0 +1,33 @@
+.iconButton {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-sm);
+    background: var(--bg-control);
+    border: 1px solid var(--border-medium);
+    color: var(--text-primary);
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+}
+
+.iconButton:hover:not(:disabled) {
+    background: var(--bg-control-hover);
+    border-color: var(--border-accent);
+}
+
+.iconButton:disabled {
+    opacity: var(--interactive-disabled-opacity);
+    cursor: not-allowed;
+}
+
+.sm {
+    width: 28px;
+    height: 28px;
+    font-size: var(--font-size-md);
+}
+
+.md {
+    width: 36px;
+    height: 36px;
+    font-size: var(--font-size-lg);
+}

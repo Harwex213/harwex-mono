@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Research: BaseUI vs Hand-rolled UI Kit for Faenwald</title>
+    <style>
+        :root {
+            --bg: #0d1117;
+            --surface: #161b22;
+            --surface2: #1c2129;
+            --border: #30363d;
+            --text: #e6edf3;
+            --text-muted: #8b949e;
+            --accent: #58a6ff;
+            --green: #3fb950;
+            --red: #f85149;
+            --orange: #d29922;
+            --purple: #bc8cff;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.6;
+            padding: 2rem;
+            max-width: 960px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            font-size: 1.8rem;
+            margin-bottom: 0.25rem;
+            color: var(--text);
+        }
+
+        .subtitle {
+            color: var(--text-muted);
+            font-size: 0.9rem;
+            margin-bottom: 2rem;
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 1rem;
+        }
+
+        h2 {
+            font-size: 1.3rem;
+            margin: 2rem 0 1rem;
+            color: var(--accent);
+        }
+
+        h3 {
+            font-size: 1.05rem;
+            margin: 1.5rem 0 0.75rem;
+            color: var(--purple);
+        }
+
+        p, li {
+            color: var(--text);
+            font-size: 0.92rem;
+        }
+
+        p { margin-bottom: 0.75rem; }
+
+        ul, ol {
+            padding-left: 1.5rem;
+            margin-bottom: 1rem;
+        }
+
+        li { margin-bottom: 0.35rem; }
+
+        .card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 1.25rem;
+            margin-bottom: 1rem;
+        }
+
+        .card h3 { margin-top: 0; }
+
+        .comparison {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+            margin: 1rem 0;
+        }
+
+        @media (max-width: 700px) {
+            .comparison { grid-template-columns: 1fr; }
+        }
+
+        .pros { border-left: 3px solid var(--green); }
+        .cons { border-left: 3px solid var(--red); }
+        .neutral { border-left: 3px solid var(--orange); }
+
+        .tag {
+            display: inline-block;
+            font-size: 0.75rem;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-weight: 600;
+            margin-right: 4px;
+        }
+
+        .tag-green { background: #1a3a2a; color: var(--green); }
+        .tag-red { background: #3a1a1a; color: var(--red); }
+        .tag-orange { background: #3a2e1a; color: var(--orange); }
+        .tag-blue { background: #1a2a3a; color: var(--accent); }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1rem 0;
+            font-size: 0.88rem;
+        }
+
+        th, td {
+            text-align: left;
+            padding: 0.6rem 0.75rem;
+            border: 1px solid var(--border);
+        }
+
+        th {
+            background: var(--surface2);
+            color: var(--accent);
+            font-weight: 600;
+        }
+
+        td { background: var(--surface); }
+
+        code {
+            background: var(--surface2);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 0.85rem;
+            color: var(--orange);
+        }
+
+        .verdict {
+            background: linear-gradient(135deg, #1a2a1a, #162016);
+            border: 1px solid #2a4a2a;
+            border-radius: 8px;
+            padding: 1.5rem;
+            margin: 2rem 0;
+        }
+
+        .verdict h2 {
+            color: var(--green);
+            margin-top: 0;
+        }
+
+        .toc {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 1rem 1.25rem;
+            margin-bottom: 2rem;
+        }
+
+        .toc a {
+            color: var(--accent);
+            text-decoration: none;
+            font-size: 0.9rem;
+        }
+
+        .toc a:hover { text-decoration: underline; }
+        .toc ol { margin-bottom: 0; }
+        .toc li { margin-bottom: 0.2rem; }
+
+        a { color: var(--accent); }
+    </style>
+</head>
+<body>
+
+<h1>BaseUI vs Hand-rolled UI Kit</h1>
+<p class="subtitle">Research for Faenwald Map UI &mdash; April 2026</p>
+
+<nav class="toc">
+    <strong>Contents</strong>
+    <ol>
+        <li><a href="#context">Project Context</a></li>
+        <li><a href="#baseui">Option A: BaseUI (Uber)</a></li>
+        <li><a href="#handroll">Option B: Hand-rolled Components (Claude-assisted)</a></li>
+        <li><a href="#comparison">Side-by-Side Comparison</a></li>
+        <li><a href="#verdict">Verdict &amp; Recommendation</a></li>
+    </ol>
+</nav>
+
+<!-- ─────────────────────────────────────────── -->
+<h2 id="context">1. Project Context</h2>
+
+<div class="card">
+    <p><strong>Faenwald Map UI</strong> is a canvas-based interactive world map for a strategy game prototype. The tech stack is React 19 + TypeScript 5.9 + Vite 7, with CSS Modules for styling.</p>
+
+    <p>Current UI elements are minimal:</p>
+    <ul>
+        <li>Info overlays (selected province, hovered province, selected army) &mdash; absolutely positioned panels</li>
+        <li>A collapsible debug panel with checkboxes, inputs, and scrollable lists</li>
+        <li>A full-screen canvas container with a loading overlay</li>
+    </ul>
+
+    <p>React serves as a <strong>thin shell</strong> around the canvas engine. All heavy rendering goes through <code>MapEngine</code> with <code>requestAnimationFrame</code>. No UI library is currently installed.</p>
+
+    <p><strong>What we likely need going forward:</strong> buttons, toggles, dropdowns/selects, modals/dialogs, tooltips, tabs, scrollable lists, input fields &mdash; all styled to match a dark, game-like aesthetic.</p>
+</div>
+
+<!-- ─────────────────────────────────────────── -->
+<h2 id="baseui">2. Option A: BaseUI (Uber)</h2>
+
+<p><a href="https://baseweb.design/">Base Web</a> (npm: <code>baseui</code>) is Uber's React component library. ~9k GitHub stars. Current version: 18.0.0.</p>
+
+<h3>How it works</h3>
+<ul>
+    <li><strong>Styling engine:</strong> Styletron (CSS-in-JS, runtime). Required peer dependency &mdash; cannot be swapped.</li>
+    <li><strong>Customization:</strong> "Overrides" pattern &mdash; every component exposes style, props, and full component replacement overrides per sub-element.</li>
+    <li><strong>Theming:</strong> Deep token system (colors, typography, spacing, borders, shadows, breakpoints, z-index). <code>createTheme()</code> / <code>createDarkTheme()</code> deep-merge your tokens.</li>
+    <li><strong>Tree-shaking:</strong> Per-component imports (<code>baseui/button</code>, <code>baseui/select</code>). Styletron runtime ~8 KB gzipped.</li>
+    <li><strong>Components:</strong> ~40+ (Button, Select, Modal, Tabs, Input, Checkbox, Toast, Table, Popover, Tooltip, Drawer, etc.).</li>
+</ul>
+
+<h3>Strengths &amp; Weaknesses for Faenwald</h3>
+
+<div class="comparison">
+    <div class="card pros">
+        <h3><span class="tag tag-green">PROS</span></h3>
+        <ul>
+            <li>Exhaustive component set &mdash; covers all standard widgets</li>
+            <li>Overrides system is extremely powerful for reskinning</li>
+            <li>Built-in accessibility (ARIA, keyboard nav, focus management)</li>
+            <li>TypeScript support out of the box</li>
+            <li>Performant: Lighthouse 100 scores, Styletron deduplicates CSS declarations</li>
+        </ul>
+    </div>
+    <div class="card cons">
+        <h3><span class="tag tag-red">CONS</span></h3>
+        <ul>
+            <li><strong>Styletron lock-in</strong> &mdash; niche engine, conflicts with CSS Modules approach already in use</li>
+            <li><strong>Enterprise design language</strong> &mdash; defaults look nothing like a game UI; heavy reskinning needed</li>
+            <li><strong>Limited community support</strong> &mdash; Uber explicitly deprioritizes external issues/PRs</li>
+            <li><strong>React 19 unverified</strong> &mdash; peer dep says <code>&gt;=18</code> but no explicit React 19 testing documented</li>
+            <li><strong>Overhead for few components</strong> &mdash; if we only need 8-10 widgets, the Styletron setup tax is high relative to benefit</li>
+            <li><strong>Two styling systems</strong> &mdash; CSS Modules for map UI + Styletron for BaseUI components = cognitive split</li>
+        </ul>
+    </div>
+</div>
+
+<!-- ─────────────────────────────────────────── -->
+<h2 id="handroll">3. Option B: Hand-rolled Components (Claude-assisted)</h2>
+
+<p>Build the ~8-10 needed components from scratch using CSS Modules (the existing approach), with Claude generating the implementations.</p>
+
+<h3>What this looks like in practice</h3>
+<ul>
+    <li>Each component is a small React + CSS Module pair (e.g., <code>Button.tsx</code> + <code>Button.module.css</code>)</li>
+    <li>Design tokens defined in CSS custom properties (already partially in place with dark theme variables)</li>
+    <li>For complex behaviors (dropdowns, modals, focus trapping), optionally use <strong>Radix Primitives</strong> as an unstyled foundation</li>
+    <li>Claude generates components per spec &mdash; typically 50-150 lines each</li>
+</ul>
+
+<h3>Strengths &amp; Weaknesses</h3>
+
+<div class="comparison">
+    <div class="card pros">
+        <h3><span class="tag tag-green">PROS</span></h3>
+        <ul>
+            <li><strong>Zero new dependencies</strong> (or only Radix ~3-5 KB per primitive)</li>
+            <li><strong>One styling system</strong> &mdash; CSS Modules everywhere, no cognitive split</li>
+            <li><strong>Total visual control</strong> &mdash; game-aesthetic from day one, no fighting defaults</li>
+            <li><strong>Tiny bundle</strong> &mdash; only what you use, no framework overhead</li>
+            <li><strong>Claude generates fast</strong> &mdash; a Button, Modal, Select, Tabs set takes ~15 min of prompting</li>
+            <li><strong>Full React 19 compatibility</strong> &mdash; no third-party runtime concerns</li>
+        </ul>
+    </div>
+    <div class="card cons">
+        <h3><span class="tag tag-red">CONS</span></h3>
+        <ul>
+            <li><strong>Accessibility is manual</strong> &mdash; you must add ARIA roles, keyboard handling, focus traps yourself (mitigated by Radix)</li>
+            <li><strong>No free components</strong> &mdash; every widget must be specified and built</li>
+            <li><strong>Maintenance burden</strong> &mdash; bugs and edge cases are yours to fix</li>
+            <li><strong>Quality varies</strong> &mdash; needs review; Claude output requires testing</li>
+        </ul>
+    </div>
+</div>
+
+<h3>Radix Primitives as a middle ground</h3>
+
+<div class="card neutral">
+    <p><a href="https://www.radix-ui.com/primitives">Radix Primitives</a> provide <strong>unstyled, accessible, composable</strong> building blocks (Dialog, Select, Popover, Tooltip, Tabs, etc.) that you style yourself with CSS Modules. This gives you:</p>
+    <ul>
+        <li>Correct keyboard navigation and ARIA for free</li>
+        <li>No visual opinions &mdash; you own all CSS</li>
+        <li>Per-primitive install (<code>@radix-ui/react-dialog</code>, etc.) &mdash; tiny footprint</li>
+        <li>Actively maintained, wide community, React 19 compatible</li>
+    </ul>
+    <p>This is <strong>not</strong> a UI kit &mdash; it's behavior primitives. You still write all the CSS, which is exactly what a game UI needs.</p>
+</div>
+
+<!-- ─────────────────────────────────────────── -->
+<h2 id="comparison">4. Side-by-Side Comparison</h2>
+
+<table>
+    <thead>
+        <tr>
+            <th>Criterion</th>
+            <th>BaseUI</th>
+            <th>Hand-rolled (+ Radix)</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+            <td>New dependencies</td>
+            <td><code>baseui</code> + <code>styletron-*</code></td>
+            <td>0 or a few <code>@radix-ui/*</code></td>
+        </tr>
+        <tr>
+            <td>Bundle overhead</td>
+            <td>~8 KB (Styletron) + per-component</td>
+            <td>Near zero</td>
+        </tr>
+        <tr>
+            <td>Styling approach</td>
+            <td>Styletron (CSS-in-JS) &mdash; conflicts with CSS Modules</td>
+            <td>CSS Modules (existing)</td>
+        </tr>
+        <tr>
+            <td>Visual customization effort</td>
+            <td>High &mdash; must override enterprise defaults to look like a game</td>
+            <td>Low &mdash; game aesthetic from scratch</td>
+        </tr>
+        <tr>
+            <td>Accessibility</td>
+            <td>Built-in</td>
+            <td>Manual, or free via Radix</td>
+        </tr>
+        <tr>
+            <td>Component coverage</td>
+            <td>~40+ ready to use</td>
+            <td>Build only what you need (~8-10)</td>
+        </tr>
+        <tr>
+            <td>React 19 support</td>
+            <td>Untested (likely works, risk exists)</td>
+            <td>Native / Radix explicitly supports</td>
+        </tr>
+        <tr>
+            <td>Maintenance</td>
+            <td>Uber-internal; limited community engagement</td>
+            <td>You own it (small surface area)</td>
+        </tr>
+        <tr>
+            <td>Time to first component</td>
+            <td>~30 min (install + theme + provider setup)</td>
+            <td>~10 min (write component + CSS Module)</td>
+        </tr>
+        <tr>
+            <td>Fits game-like aesthetic?</td>
+            <td><span class="tag tag-red">Poor fit</span></td>
+            <td><span class="tag tag-green">Natural fit</span></td>
+        </tr>
+    </tbody>
+</table>
+
+<!-- ─────────────────────────────────────────── -->
+<div class="verdict">
+    <h2 id="verdict">5. Verdict: Hand-roll with optional Radix Primitives</h2>
+
+    <p><strong>BaseUI is the wrong tool for this project.</strong> It is built for enterprise web apps, not game UIs. The Styletron dependency conflicts with the existing CSS Modules approach, the enterprise defaults require heavy reskinning, and the limited community support adds risk for a niche engine.</p>
+
+    <p><strong>Recommended approach:</strong></p>
+    <ol>
+        <li><strong>Define design tokens</strong> as CSS custom properties in a shared <code>tokens.css</code> file (colors, spacing, typography, borders, shadows) &mdash; dark, game-themed.</li>
+        <li><strong>Build components with CSS Modules</strong> &mdash; consistent with existing codebase. Use Claude to generate each component quickly.</li>
+        <li><strong>Use Radix Primitives for complex behaviors</strong> &mdash; Dialog, Select, Popover, Tooltip, Tabs. These handle accessibility and keyboard interaction; you provide all visual styling via CSS Modules.</li>
+        <li><strong>Skip Radix for simple components</strong> &mdash; Button, Input, Checkbox, Toggle are straightforward enough to hand-roll.</li>
+    </ol>
+
+    <p>This gives you <strong>total visual control</strong>, <strong>zero styling conflicts</strong>, <strong>minimal dependencies</strong>, and a <strong>consistent codebase</strong> &mdash; all critical for a game prototype where aesthetics and iteration speed matter more than component library breadth.</p>
+</div>
+
+</body>
+</html>
