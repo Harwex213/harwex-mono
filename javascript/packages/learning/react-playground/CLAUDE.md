@@ -22,7 +22,7 @@ A learning sandbox for building and experimenting with non-trivial React UI comp
 
 ```
 src/
-  index.tsx                  # App entry point
+  index.ts                  # App entry point
   ui/
     router-di.ts             # Singleton Router — all features register routes here
     app.tsx                  # BrowserRouter + route rendering; imports each feature module
@@ -41,7 +41,8 @@ Each feature **self-registers** its route by importing `router` from `../router-
 router.registerRoute("/my-feature", MyFeatureComponent);
 ```
 
-The feature file must then be imported in `app.tsx` so the side-effect runs. No central route config file — registration is co-located with the feature.
+The feature file must then be imported in
+`app.tsx` so the side-effect runs. No central route config file — registration is co-located with the feature.
 
 ## Adding a New Feature
 

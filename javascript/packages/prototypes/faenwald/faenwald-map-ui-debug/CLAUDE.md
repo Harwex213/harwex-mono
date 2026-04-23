@@ -1,6 +1,7 @@
 # Faenwald Map UI
 
-Canvas-based interactive world map for the Faenwald game prototype. React is a thin shell around a `MapEngine` class that owns all canvas rendering via `requestAnimationFrame`.
+Canvas-based interactive world map for the Faenwald game prototype. React is a thin shell around a
+`MapEngine` class that owns all canvas rendering via `requestAnimationFrame`.
 
 ## Quick start
 
@@ -33,7 +34,8 @@ React (App.tsx)
 └─ DebugPanel (dev tools)
 ```
 
-**Key principle**: Canvas state (`offsetX`, `offsetY`, `scale`) is mutable inside `MapEngine` to avoid React re-renders in the hot loop. Only selection and loading state bridge to React.
+**Key principle**: Canvas state (`offsetX`, `offsetY`, `scale`) is mutable inside
+`MapEngine` to avoid React re-renders in the hot loop. Only selection and loading state bridge to React.
 
 ### Rendering pipeline (each frame)
 
@@ -48,7 +50,8 @@ React (App.tsx)
 
 ### Province detection
 
-Provinces are identified by unique RGB colors in `map_provinces.png`. A click converts canvas coords to image coords, reads the pixel color, and looks it up in the provinces map (~49 provinces).
+Provinces are identified by unique RGB colors in
+`map_provinces.png`. A click converts canvas coords to image coords, reads the pixel color, and looks it up in the provinces map (~49 provinces).
 
 ### Border detection (`detect-borders.ts`)
 
@@ -63,7 +66,7 @@ Outputs a cached `OffscreenCanvas` + `dilatedMask` (prevents highlight bleeding 
 
 ```
 src/
-├── index.tsx                    # React entry point
+├── index.ts                    # React entry point
 ├── utils.ts                     # localStorage helpers, useLocalStorageState
 ├── api/
 │   └── api.ts                   # RPC client (loadGameContext, saveGameContext)
@@ -117,7 +120,8 @@ assets/
 Two-layer CSS custom property system in `src/ui/tokens.css`:
 
 - **Layer 1 — Primitives**: raw values named by what they are (`--color-gray-800`, `--space-4`, `--radius-sm`)
-- **Layer 2 — Semantic**: purpose-driven names referencing primitives (`--bg-surface`, `--text-primary`, `--border-accent`)
+- **Layer 2 — Semantic**: purpose-driven names referencing primitives (`--bg-surface`, `--text-primary`,
+  `--border-accent`)
 
 Loaded globally via `<link>` in `index.html`.
 
@@ -133,8 +137,11 @@ Each component is a `.tsx` + `.module.css` pair in its own directory.
 ## Conventions
 
 - CSS Modules with `camelCaseOnly` class names
-- **Always use design tokens from `src/ui/tokens.css`** — never use raw hex colors, rgba values, padding/spacing literals, font sizes, or border-radius values directly in CSS modules. Use the corresponding `var(--*)` token instead. If a needed token doesn't exist, add it to `tokens.css` first
-- Use UI kit components from `@/ui/kit` instead of raw HTML elements for buttons, inputs, checkboxes, cards, dialogs, selects, tooltips, and popovers
+- **Always use design tokens from `src/ui/tokens.css`
+  ** — never use raw hex colors, rgba values, padding/spacing literals, font sizes, or border-radius values directly in CSS modules. Use the corresponding
+  `var(--*)` token instead. If a needed token doesn't exist, add it to `tokens.css` first
+- Use UI kit components from
+  `@/ui/kit` instead of raw HTML elements for buttons, inputs, checkboxes, cards, dialogs, selects, tooltips, and popovers
 - Prefix types with `T` and enums with `E` (e.g., `TProvince`, `EMapEngineEvent`)
 - Keep rendering logic in `MapEngine`, not in React components
 - Pre-compute expensive operations (borders, highlights) once and cache as `OffscreenCanvas`

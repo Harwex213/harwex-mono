@@ -1820,6 +1820,16 @@ __metadata:
   languageName: unknown
   linkType: soft
 
+"@hw/canvas@workspace:packages/learning/canvas":
+  version: 0.0.0-use.local
+  resolution: "@hw/canvas@workspace:packages/learning/canvas"
+  dependencies:
+    "@preact/signals": "npm:2.0.4"
+    typescript: "npm:5.9.3"
+    vite: "npm:7.1.10"
+  languageName: unknown
+  linkType: soft
+
 "@hw/castle-attack-ai@workspace:packages/prototypes/castle-attack-ai":
   version: 0.0.0-use.local
   resolution: "@hw/castle-attack-ai@workspace:packages/prototypes/castle-attack-ai"
