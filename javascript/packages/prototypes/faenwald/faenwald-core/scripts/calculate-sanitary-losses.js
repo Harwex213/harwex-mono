@@ -15,6 +15,7 @@ const ARMY_UNIT_TYPE_TO_SUPPLY = {
   "луч": 1,
   "клу": 2,
   "лон": 1,
+  "лонг": 1,
   "арб": 1,
   "мед": 0,
   "инж": 0,
@@ -26,6 +27,7 @@ const ARMY_UNIT_KIND_TRANSLATE = {
   "р": "Регуляры",
   "н": "Наёмники",
   "г": "Гвардия",
+  "го": "Гарнизон",
 };
 
 const ARMY_UNIT_KIND_TRANSLATE_SHORT = {
@@ -34,6 +36,7 @@ const ARMY_UNIT_KIND_TRANSLATE_SHORT = {
   "р": "Р",
   "н": "Н",
   "г": "Г",
+  "го": "ГО",
 };
 
 const ARMY_UNIT_TYPE_TRANSLATE = {
@@ -49,6 +52,7 @@ const ARMY_UNIT_TYPE_TRANSLATE = {
   "луч": "Лучник",
   "клу": "Конный лучник",
   "лон": "Длинный лук",
+  "лонг": "Длинный лук",
   "арб": "Арбалетчик",
   "мед": "Медики",
   "инж": "Инженеры",
@@ -67,6 +71,7 @@ const ARMY_UNIT_TYPE_TRANSLATE_SHORT = {
   "луч": "Луч",
   "клу": "КЛу",
   "лон": "Лон",
+  "лонг": "Лонг",
   "арб": "Арб",
   "мед": "Мед",
   "инж": "Инж",
@@ -169,6 +174,14 @@ const ARMY_UNIT_TEMPLATES = {
     baseSpeed: 3,
     baseCost: 25_000,
   },
+  "лонг": {
+    type: "лонг",
+    baseHp: 60,
+    baseAttack: 10,
+    baseMorale: 80,
+    baseSpeed: 3,
+    baseCost: 25_000,
+  },
   "арб": {
     type: "арб",
     baseHp: 60,
@@ -246,8 +259,8 @@ export const calculateUnitAmountAfterBattle = (
 const getProvinces = (provincesRaw) => {
   const provinces = {};
 
-  for (const province of provincesRaw.match(/- Провинция "([^"]+)"\nСнабжение ([\d.]*)/gm)) {
-    const match = province.match(/- Провинция "([^"]+)"\nСнабжение ([\d.]*)/m);
+  for (const province of provincesRaw.match(/- Провинция "([^"]+)"\r?\nСнабжение ([\d.]*)/gm)) {
+    const match = province.match(/- Провинция "([^"]+)"\r?\nСнабжение ([\d.]*)/m);
     const provinceName = match[1];
     const provinceSupply = Number(match[2]);
     provinces[provinceName] = provinceSupply;
@@ -260,7 +273,7 @@ const getArmies = (armiesRaw) => {
   const armies = {};
 
   for (const armyRaw of armiesRaw.match(/- Армия [^"]+"[^"]+"/gm)) {
-    const match = armyRaw.match(/- Армия ([^\n]+)\n((?:\d+. \S* \(\S*\) \S* \(\d*\/\d*\)\n)+)Провинция: "([^"]+)"/m);
+    const match = armyRaw.match(/- Армия ([^\n]+)\r?\n((?:\d+. \S* \(\S*\) \S* \(\d*\/\d*\)\r?\n)+)Провинция: "([^"]+)"/m);
 
     const armyName = match[1].trim();
     const unitsRaw = match[2].trim();
@@ -270,7 +283,7 @@ const getArmies = (armiesRaw) => {
 
     let unitId = 0;
 
-    for (const unitRaw of unitsRaw.match(/(\d+. \S* \(\S*\) \S* \(\d*\/\d*\)\n?)/gm)) {
+    for (const unitRaw of unitsRaw.match(/(\d+. \S* \(\S*\) \S* \(\d*\/\d*\)\r?\n?)/gm)) {
       const unitMatch = unitRaw.trim().match(/\d+. (\S+) \((\S+)\) (\S+) \((\d+)\/\d*\)/);
 
       const unitType = unitMatch[1].trim().toLowerCase();
@@ -308,7 +321,7 @@ const getBattles = (battlesRaw) => {
   const battles = {};
 
   for (const armyRaw of battlesRaw.match(/- Армия [^-]+/gm)) {
-    const match = armyRaw.trim().match(/- Армия ([^\n]+)\n((?:\d+. \S* \(\S*\) \S* \(\d*\/\d*\)\n?)+)/m);
+    const match = armyRaw.trim().match(/- Армия ([^\n]+)\n((?:\d+. \S* \(\S*\) \S* \(\d*\/\d*\)\r?\n?)+)/m);
 
     const armyName = match[1].trim();
     const unitsRaw = match[2].trim();
@@ -317,7 +330,7 @@ const getBattles = (battlesRaw) => {
 
     let unitId = 0;
 
-    for (const unitRaw of unitsRaw.match(/(\d+. \S* \(\S*\) \S* \(\d*\/\d*\)\n?)/gm)) {
+    for (const unitRaw of unitsRaw.match(/(\d+. \S* \(\S*\) \S* \(\d*\/\d*\)\r?\n?)/gm)) {
       const unitMatch = unitRaw.trim().match(/\d+. (\S+) \((\S+)\) (\S+) \((\d+)\/(\d+)\)/);
 
       const unitType = unitMatch[1].trim().toLowerCase();
@@ -420,7 +433,7 @@ const printArmiesSanitaryLosses = (armies, provinces, provinceToArmiesDesiredSup
 const main = async () => {
   const data = (await fs.readFile("./input.txt", "utf-8")).toString();
 
-  const match = data.match(/# Провинции\n([\S\s]*)\n# Армии\n([\S\s]*)# Последствия битв\n?([\S\s]*)/m);
+  const match = data.match(/# Провинции\r?\n([\S\s]*)\n# Армии\r?\n([\S\s]*)# Последствия битв\r?\n?([\S\s]*)/m);
 
   const provincesRaw = match[1].trim();
   const armiesRaw = match[2].trim();
