@@ -1,0 +1,7 @@
+{
+  "name": "@hw/learning-sqlite",
+  "type": "module",
+  "dependencies": {
+    "better-sqlite3": "12.9.0"
+  }
+}
