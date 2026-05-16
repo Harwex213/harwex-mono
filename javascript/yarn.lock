@@ -1965,6 +1965,15 @@ __metadata:
   languageName: unknown
   linkType: soft
 
+"@hw/faenwald-tournament@workspace:packages/prototypes/faenwald/faenwald-tournament":
+  version: 0.0.0-use.local
+  resolution: "@hw/faenwald-tournament@workspace:packages/prototypes/faenwald/faenwald-tournament"
+  dependencies:
+    "@types/node": "npm:24.1.0"
+    typescript: "npm:5.9.3"
+  languageName: unknown
+  linkType: soft
+
 "@hw/fantasy-map@workspace:packages/prototypes/fantasy-map":
   version: 0.0.0-use.local
   resolution: "@hw/fantasy-map@workspace:packages/prototypes/fantasy-map"
