@@ -1,0 +1,118 @@
+{
+  "attack": "Ивэрин",
+  "attackUnits": [
+    {
+      "unit": "СКо",
+      "kind": "ЛО",
+      "amount": 100,
+      "rank": 2,
+      "modifiers": [
+        {
+          "type": "attack",
+          "kind": "percent",
+          "value": 20
+        }
+      ]
+    },
+    {
+      "unit": "СКо",
+      "kind": "ЛО",
+      "amount": 100,
+      "rank": 2,
+      "modifiers": [
+        {
+          "type": "attack",
+          "kind": "percent",
+          "value": 20
+        }
+      ]
+    },
+    {
+      "unit": "СКо",
+      "kind": "ВО",
+      "amount": 100,
+      "rank": 2,
+      "modifiers": []
+    },
+    {
+      "unit": "ТКо",
+      "kind": "ВО",
+      "amount": 100,
+      "rank": 2,
+      "modifiers": []
+    },
+    {
+      "unit": "Лук",
+      "kind": "Р",
+      "amount": 100,
+      "rank": 2,
+      "modifiers": []
+    },
+    {
+      "unit": "Лук",
+      "kind": "Р",
+      "amount": 100,
+      "rank": 2,
+      "modifiers": []
+    },
+    {
+      "unit": "Лук",
+      "kind": "Р",
+      "amount": 100,
+      "rank": 2,
+      "modifiers": []
+    },
+    {
+      "unit": "Топ",
+      "kind": "Р",
+      "amount": 100,
+      "rank": 2,
+      "modifiers": []
+    },
+    {
+      "unit": "ТКав",
+      "kind": "Г",
+      "amount": 10,
+      "rank": 5,
+      "modifiers": []
+    }
+  ],
+  "defend": "Таур-Митрен",
+  "defendUnits": [
+    {
+      "unit": "СКо",
+      "kind": "ЛО",
+      "amount": 100,
+      "rank": 2,
+      "modifiers": []
+    },
+    {
+      "unit": "Топ",
+      "kind": "Р",
+      "amount": 100,
+      "rank": 2,
+      "modifiers": []
+    },
+    {
+      "unit": "Лук",
+      "kind": "Р",
+      "amount": 100,
+      "rank": 2,
+      "modifiers": []
+    },
+    {
+      "unit": "Лук",
+      "kind": "Го",
+      "amount": 25,
+      "rank": 2,
+      "modifiers": []
+    },
+    {
+      "unit": "СКо",
+      "kind": "Го",
+      "amount": 50,
+      "rank": 2,
+      "modifiers": []
+    }
+  ]
+}
