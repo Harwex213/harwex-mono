@@ -1,8 +1,12 @@
 {
-  "name": "@hw/faenwald-tournament",
+  "name": "@hw/faenwald-bot",
   "private": true,
   "version": "1.0.0",
   "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node dist/server.js"
+  },
   "dependencies": {
     "node-vk-bot-api": "3.5.0"
   },

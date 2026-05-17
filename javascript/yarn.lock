@@ -1919,6 +1919,16 @@ __metadata:
   languageName: unknown
   linkType: soft
 
+"@hw/faenwald-bot@workspace:packages/prototypes/faenwald/faenwald-bot":
+  version: 0.0.0-use.local
+  resolution: "@hw/faenwald-bot@workspace:packages/prototypes/faenwald/faenwald-bot"
+  dependencies:
+    "@types/node": "npm:24.1.0"
+    node-vk-bot-api: "npm:3.5.0"
+    typescript: "npm:5.9.3"
+  languageName: unknown
+  linkType: soft
+
 "@hw/faenwald-calculator@workspace:packages/prototypes/faenwald/faenwald-calculator":
   version: 0.0.0-use.local
   resolution: "@hw/faenwald-calculator@workspace:packages/prototypes/faenwald/faenwald-calculator"
@@ -1970,6 +1980,7 @@ __metadata:
   resolution: "@hw/faenwald-tournament@workspace:packages/prototypes/faenwald/faenwald-tournament"
   dependencies:
     "@types/node": "npm:24.1.0"
+    node-vk-bot-api: "npm:3.5.0"
     typescript: "npm:5.9.3"
   languageName: unknown
   linkType: soft
@@ -4909,6 +4920,15 @@ __metadata:
   languageName: node
   linkType: hard
 
+"axios@npm:^0.21.1":
+  version: 0.21.4
+  resolution: "axios@npm:0.21.4"
+  dependencies:
+    follow-redirects: "npm:^1.14.0"
+  checksum: 10/da644592cb6f8f9f8c64fdabd7e1396d6769d7a4c1ea5f8ae8beb5c2eb90a823e3a574352b0b934ac62edc762c0f52647753dc54f7d07279127a7e5c4cd20272
+  languageName: node
+  linkType: hard
+
 "babel-loader@npm:10.0.0":
   version: 10.0.0
   resolution: "babel-loader@npm:10.0.0"
@@ -7026,6 +7046,16 @@ __metadata:
   languageName: node
   linkType: hard
 
+"follow-redirects@npm:^1.14.0":
+  version: 1.16.0
+  resolution: "follow-redirects@npm:1.16.0"
+  peerDependenciesMeta:
+    debug:
+      optional: true
+  checksum: 10/3fbe3d80b3b544c22705d837aa5d4a0d07a740d913534a2620b0a004c610af4148e3b58723536dd099aaa1c9d3a155964bde9665d6e5cb331460809a1fc572fd
+  languageName: node
+  linkType: hard
+
 "for-each@npm:^0.3.3, for-each@npm:^0.3.5":
   version: 0.3.5
   resolution: "for-each@npm:0.3.5"
@@ -9126,6 +9156,15 @@ __metadata:
     mime: "npm:^1.6.0"
     pump: "npm:^2.0.0"
   checksum: 10/8ff526d5a15f64062f22a5895dc30112cd7775ffbec5fae27bbd37237094c544be6c4c819239879711b1a88868f723e076ece2860422112054d13a04a0d3d2d2
+  languageName: node
+  linkType: hard
+
+"node-vk-bot-api@npm:3.5.0":
+  version: 3.5.0
+  resolution: "node-vk-bot-api@npm:3.5.0"
+  dependencies:
+    axios: "npm:^0.21.1"
+  checksum: 10/a6b2815bad8a1a6496409c9d8a3545f6c4779ae73d47ec627fff22e39124783b9220af2c53a4fc5784b17f8356a91d89222f5221538a7ff2d9749502e0daa2fa
   languageName: node
   linkType: hard
 
