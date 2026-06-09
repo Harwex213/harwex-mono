@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8"/>
+    <title>4. Convert cartesian coords to clip space</title>
+    <script src="4-normalized-coords.js" type="module"></script>
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            position: relative;
+            margin: 0;
+            padding: 0;
+        }
+
+        #container {
+            height: 100dvh;
+            width: 100dvw;
+            display: grid;
+            grid-template-columns: 100%;
+            grid-template-rows: 100%;
+            overflow: hidden;
+        }
+
+        #info {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 150px;
+            height: max-content;
+            padding: 16px;
+            border: 1px solid #05181a;
+            background: #272727;
+            color: #e3e3e3;
+            font-family: "Courier New", sans-serif;
+        }
+    </style>
+</head>
+<body>
+<div id="info"></div>
+<div id="container"></div>
+</body>
+</html>

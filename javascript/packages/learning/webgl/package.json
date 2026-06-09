@@ -1,0 +1,7 @@
+{
+  "name": "@hw/webgl",
+  "description": "Micro projects to master webgl step by step",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module"
+}
