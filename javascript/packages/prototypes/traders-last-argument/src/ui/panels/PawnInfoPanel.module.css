@@ -1,0 +1,50 @@
+.panel {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  background: rgba(0, 0, 0, 0.75);
+  color: #fff;
+  padding: 16px;
+  border-radius: 8px;
+  min-width: 200px;
+  pointer-events: auto;
+}
+
+.name {
+  font-size: 18px;
+  font-weight: bold;
+  margin-bottom: 12px;
+}
+
+.stat {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.label {
+  font-size: 13px;
+  color: #ccc;
+  flex-shrink: 0;
+}
+
+.healthBar {
+  flex: 1;
+  height: 10px;
+  background: #333;
+  border-radius: 5px;
+  overflow: hidden;
+}
+
+.healthFill {
+  height: 100%;
+  background: #4caf50;
+  border-radius: 5px;
+  transition: width 0.2s;
+}
+
+.healthText {
+  font-size: 13px;
+  color: #ccc;
+  flex-shrink: 0;
+}
