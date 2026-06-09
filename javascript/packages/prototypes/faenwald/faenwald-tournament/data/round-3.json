@@ -1,0 +1,130 @@
+[
+  {
+    "clashId": 1,
+    "firstKnightId": "дом Данмор",
+    "firstKnightPointsAllocation": {
+      "attackLeg": 1,
+      "attackArms": 4,
+      "attackBody": 15,
+      "defenseLeg": 0,
+      "defenseArms": 0,
+      "defenseBody": 0
+    },
+    "secondKnightId": "дом Айронхэнд",
+    "secondKnightPointsAllocation": {
+      "attackLeg": 9,
+      "attackArms": 9,
+      "attackBody": 0,
+      "defenseLeg": 0,
+      "defenseArms": 0,
+      "defenseBody": 2
+    },
+    "dices": [
+      {
+        "firstKnightAttackType": 1,
+        "firstKnightDice": 9,
+        "secondKnightAttackType": 2,
+        "secondKnightDice": 16
+      }
+    ]
+  },
+  {
+    "clashId": 2,
+    "firstKnightId": "дом Серый Коготь",
+    "firstKnightPointsAllocation": {
+      "attackLeg": 10,
+      "attackArms": 0,
+      "attackBody": 10,
+      "defenseLeg": 0,
+      "defenseArms": 0,
+      "defenseBody": 0
+    },
+    "secondKnightId": "дом Фэйртон",
+    "secondKnightPointsAllocation": {
+      "attackLeg": 4,
+      "attackArms": 4,
+      "attackBody": 5,
+      "defenseLeg": 4,
+      "defenseArms": 4,
+      "defenseBody": 5
+    },
+    "dices": [
+      {
+        "firstKnightAttackType": 2,
+        "firstKnightDice": 11,
+        "secondKnightAttackType": 2,
+        "secondKnightDice": 4
+      },
+      {
+        "firstKnightAttackType": 1,
+        "firstKnightDice": 1,
+        "secondKnightAttackType": 3,
+        "secondKnightDice": 10
+      }
+    ]
+  },
+  {
+    "clashId": 3,
+    "firstKnightId": "дом Виноир",
+    "firstKnightPointsAllocation": {
+      "attackLeg": 5,
+      "attackArms": 5,
+      "attackBody": 4,
+      "defenseLeg": 2,
+      "defenseArms": 2,
+      "defenseBody": 2
+    },
+    "secondKnightId": "дом Драгон-Полян",
+    "secondKnightPointsAllocation": {
+      "attackLeg": 0,
+      "attackArms": 0,
+      "attackBody": 5,
+      "defenseLeg": 5,
+      "defenseArms": 5,
+      "defenseBody": 5
+    },
+    "dices": [
+      {
+        "firstKnightAttackType": 3,
+        "firstKnightDice": 13,
+        "secondKnightAttackType": 3,
+        "secondKnightDice": 14
+      }
+    ]
+  },
+  {
+    "clashId": 4,
+    "firstKnightId": "дом Эйкенбиттер",
+    "firstKnightPointsAllocation": {
+      "attackLeg": 3,
+      "attackArms": 3,
+      "attackBody": 5,
+      "defenseLeg": 3,
+      "defenseArms": 3,
+      "defenseBody": 3
+    },
+    "secondKnightId": "дом Эгладорн",
+    "secondKnightPointsAllocation": {
+      "attackLeg": 10,
+      "attackArms": 4,
+      "attackBody": 0,
+      "defenseLeg": 2,
+      "defenseArms": 2,
+      "defenseBody": 2
+    },
+    "dices": [
+      {
+        "firstKnightAttackType": 1,
+        "firstKnightDice": 5,
+        "secondKnightAttackType": 2,
+        "secondKnightDice": 3
+      },
+      {
+        "firstKnightAttackType": 3,
+        "firstKnightDice": 9,
+        "secondKnightAttackType": 3,
+        "secondKnightDice": 8
+      }
+    ]
+  }
+]

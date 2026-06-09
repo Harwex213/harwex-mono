@@ -1,0 +1,550 @@
+[
+  {
+    "clashId": 1,
+    "firstKnightId": "дом Саюкча",
+    "firstKnightPointsAllocation": {
+      "attackLeg": 0,
+      "attackArms": 0,
+      "attackBody": 1,
+      "defenseLeg": 7,
+      "defenseArms": 7,
+      "defenseBody": 7
+    },
+    "secondKnightId": "дом Фортингелл",
+    "secondKnightPointsAllocation": {
+      "attackLeg": 3,
+      "attackArms": 3,
+      "attackBody": 2,
+      "defenseLeg": 4,
+      "defenseArms": 4,
+      "defenseBody": 4
+    },
+    "dices": [
+      {
+        "firstKnightAttackType": 1,
+        "firstKnightDice": 13,
+        "secondKnightAttackType": 2,
+        "secondKnightDice": 7,
+        "winner": "дом Саюкча"
+      },
+      {
+        "firstKnightAttackType": 3,
+        "firstKnightDice": 5,
+        "secondKnightAttackType": 3,
+        "secondKnightDice": 1,
+        "winner": "дом Саюкча"
+      }
+    ]
+  },
+  {
+    "clashId": 2,
+    "firstKnightId": "дом Данмор",
+    "firstKnightPointsAllocation": {
+      "attackLeg": 1,
+      "attackArms": 4,
+      "attackBody": 15,
+      "defenseLeg": 0,
+      "defenseArms": 0,
+      "defenseBody": 0
+    },
+    "secondKnightId": "дом Мири",
+    "secondKnightPointsAllocation": {
+      "attackLeg": 3,
+      "attackArms": 4,
+      "attackBody": 4,
+      "defenseLeg": 3,
+      "defenseArms": 3,
+      "defenseBody": 3
+    },
+    "dices": [
+      {
+        "firstKnightAttackType": 3,
+        "firstKnightDice": 12,
+        "secondKnightAttackType": 3,
+        "secondKnightDice": 5,
+        "winner": "дом Данмор"
+      }
+    ]
+  },
+  {
+    "clashId": 3,
+    "firstKnightId": "дом Барсиды",
+    "firstKnightPointsAllocation": {
+      "attackLeg": 0,
+      "attackArms": 7,
+      "attackBody": 3,
+      "defenseLeg": 3,
+      "defenseArms": 3,
+      "defenseBody": 4
+    },
+    "secondKnightId": "дом Айронхэнд",
+    "secondKnightPointsAllocation": {
+      "attackLeg": 10,
+      "attackArms": 10,
+      "attackBody": 0,
+      "defenseLeg": 0,
+      "defenseArms": 0,
+      "defenseBody": 0
+    },
+    "dices": [
+      {
+        "firstKnightAttackType": 3,
+        "firstKnightDice": 7,
+        "secondKnightAttackType": 2,
+        "secondKnightDice": 14,
+        "winner": "дом Айронхэнд"
+      }
+    ]
+  },
+  {
+    "clashId": 4,
+    "firstKnightId": "чемпион Церкви",
+    "firstKnightPointsAllocation": {
+      "attackLeg": 5,
+      "attackArms": 0,
+      "attackBody": 0,
+      "defenseLeg": 5,
+      "defenseArms": 5,
+      "defenseBody": 5
+    },
+    "secondKnightId": "дом Кранш",
+    "secondKnightPointsAllocation": {
+      "attackLeg": 3,
+      "attackArms": 3,
+      "attackBody": 4,
+      "defenseLeg": 4,
+      "defenseArms": 4,
+      "defenseBody": 4
+    },
+    "dices": [
+      {
+        "firstKnightAttackType": 2,
+        "firstKnightDice": 18,
+        "secondKnightAttackType": 1,
+        "secondKnightDice": 1,
+        "winner": "чемпион Церкви"
+      },
+      {
+        "firstKnightAttackType": 3,
+        "firstKnightDice": 7,
+        "secondKnightAttackType": 1,
+        "secondKnightDice": 10,
+        "winner": "дом Кранш"
+      },
+      {
+        "firstKnightAttackType": 3,
+        "firstKnightDice": 19,
+        "secondKnightAttackType": 1,
+        "secondKnightDice": 4,
+        "winner": "чемпион Церкви"
+      }
+    ]
+  },
+  {
+    "clashId": 5,
+    "firstKnightId": "дом Шаскерор",
+    "firstKnightPointsAllocation": {
+      "attackLeg": 0,
+      "attackArms": 0,
+      "attackBody": 20,
+      "defenseLeg": 0,
+      "defenseArms": 0,
+      "defenseBody": 0
+    },
+    "secondKnightId": "дом Айзеншлосс",
+    "secondKnightPointsAllocation": {
+      "attackLeg": 3,
+      "attackArms": 4,
+      "attackBody": 5,
+      "defenseLeg": 2,
+      "defenseArms": 2,
+      "defenseBody": 3
+    },
+    "dices": [
+      {
+        "firstKnightAttackType": 3,
+        "firstKnightDice": 2,
+        "secondKnightAttackType": 1,
+        "secondKnightDice": 1,
+        "winner": "дом Шаскерор"
+      }
+    ]
+  },
+  {
+    "clashId": 6,
+    "firstKnightId": "дом Серый Коготь",
+    "firstKnightPointsAllocation": {
+      "attackLeg": 0,
+      "attackArms": 0,
+      "attackBody": 0,
+      "defenseLeg": 6,
+      "defenseArms": 6,
+      "defenseBody": 8
+    },
+    "secondKnightId": "дом де Монтардье",
+    "secondKnightPointsAllocation": {
+      "attackLeg": 3,
+      "attackArms": 3,
+      "attackBody": 4,
+      "defenseLeg": 3,
+      "defenseArms": 3,
+      "defenseBody": 4
+    },
+    "dices": [
+      {
+        "firstKnightAttackType": 2,
+        "firstKnightDice": 4,
+        "secondKnightAttackType": 2,
+        "secondKnightDice": 14,
+        "winner": "дом де Монтардье"
+      },
+      {
+        "firstKnightAttackType": 1,
+        "firstKnightDice": 8,
+        "secondKnightAttackType": 1,
+        "secondKnightDice": 7,
+        "winner": "дом Серый Коготь"
+      },
+      {
+        "firstKnightAttackType": 3,
+        "firstKnightDice": 10,
+        "secondKnightAttackType": 3,
+        "secondKnightDice": 4,
+        "winner": "дом Серый Коготь"
+      }
+    ]
+  },
+  {
+    "clashId": 7,
+    "firstKnightId": "дом Фэйртон",
+    "firstKnightPointsAllocation": {
+      "attackLeg": 4,
+      "attackArms": 4,
+      "attackBody": 5,
+      "defenseLeg": 4,
+      "defenseArms": 4,
+      "defenseBody": 5
+    },
+    "secondKnightId": "дом фон Боркенкаф",
+    "secondKnightPointsAllocation": {
+      "attackLeg": 0,
+      "attackArms": 0,
+      "attackBody": 0,
+      "defenseLeg": 0,
+      "defenseArms": 10,
+      "defenseBody": 10
+    },
+    "dices": [
+      {
+        "firstKnightAttackType": 3,
+        "firstKnightDice": 19,
+        "secondKnightAttackType": 2,
+        "secondKnightDice": 14,
+        "winner": "дом Фэйртон"
+      },
+      {
+        "firstKnightAttackType": 1,
+        "firstKnightDice": 11,
+        "secondKnightAttackType": 3,
+        "secondKnightDice": 2,
+        "winner": "дом Фэйртон"
+      }
+    ]
+  },
+  {
+    "clashId": 8,
+    "firstKnightId": "дом Ван Гудрик",
+    "firstKnightPointsAllocation": {
+      "attackLeg": 3,
+      "attackArms": 3,
+      "attackBody": 7,
+      "defenseLeg": 1,
+      "defenseArms": 2,
+      "defenseBody": 4
+    },
+    "secondKnightId": "дом Лиантарэль",
+    "secondKnightPointsAllocation": {
+      "attackLeg": 4,
+      "attackArms": 0,
+      "attackBody": 4,
+      "defenseLeg": 4,
+      "defenseArms": 4,
+      "defenseBody": 4
+    },
+    "dices": [
+      {
+        "firstKnightAttackType": 2,
+        "firstKnightDice": 20,
+        "secondKnightAttackType": 2,
+        "secondKnightDice": 7,
+        "winner": "дом Ван Гудрик"
+      }
+    ]
+  },
+  {
+    "clashId": 9,
+    "firstKnightId": "дом Варда",
+    "firstKnightPointsAllocation": {
+      "attackLeg": 6,
+      "attackArms": 6,
+      "attackBody": 6,
+      "defenseLeg": 2,
+      "defenseArms": 2,
+      "defenseBody": 2
+    },
+    "secondKnightId": "дом Халь-Нарэ",
+    "secondKnightPointsAllocation": {
+      "attackLeg": 8,
+      "attackArms": 3,
+      "attackBody": 9,
+      "defenseLeg": 0,
+      "defenseArms": 0,
+      "defenseBody": 0
+    },
+    "dices": [
+      {
+        "firstKnightAttackType": 3,
+        "firstKnightDice": 15,
+        "secondKnightAttackType": 2,
+        "secondKnightDice": 6,
+        "winner": "дом Варда"
+      }
+    ]
+  },
+  {
+    "clashId": 10,
+    "firstKnightId": "дом Виноир",
+    "firstKnightPointsAllocation": {
+      "attackLeg": 12,
+      "attackArms": 1,
+      "attackBody": 1,
+      "defenseLeg": 2,
+      "defenseArms": 2,
+      "defenseBody": 2
+    },
+    "secondKnightId": "дом Акрано",
+    "secondKnightPointsAllocation": {
+      "attackLeg": 0,
+      "attackArms": 5,
+      "attackBody": 0,
+      "defenseLeg": 6,
+      "defenseArms": 6,
+      "defenseBody": 6
+    },
+    "dices": [
+      {
+        "firstKnightAttackType": 2,
+        "firstKnightDice": 15,
+        "secondKnightAttackType": 2,
+        "secondKnightDice": 6,
+        "winner": "дом Виноир"
+      },
+      {
+        "firstKnightAttackType": 1,
+        "firstKnightDice": 3,
+        "secondKnightAttackType": 1,
+        "secondKnightDice": 10,
+        "winner": "дом Виноир"
+      }
+    ]
+  },
+  {
+    "clashId": 11,
+    "firstKnightId": "дом Драгон-Полян",
+    "firstKnightPointsAllocation": {
+      "attackLeg": 0,
+      "attackArms": 0,
+      "attackBody": 5,
+      "defenseLeg": 5,
+      "defenseArms": 5,
+      "defenseBody": 5
+    },
+    "secondKnightId": "дом Динавис",
+    "secondKnightPointsAllocation": {
+      "attackLeg": 6,
+      "attackArms": 6,
+      "attackBody": 6,
+      "defenseLeg": 1,
+      "defenseArms": 1,
+      "defenseBody": 1
+    },
+    "dices": [
+      {
+        "firstKnightAttackType": 3,
+        "firstKnightDice": 16,
+        "secondKnightAttackType": 1,
+        "secondKnightDice": 7,
+        "winner": "дом Драгон-Полян"
+      }
+    ]
+  },
+  {
+    "clashId": 12,
+    "firstKnightId": "дом Агарди",
+    "firstKnightPointsAllocation": {
+      "attackLeg": 4,
+      "attackArms": 4,
+      "attackBody": 4,
+      "defenseLeg": 4,
+      "defenseArms": 2,
+      "defenseBody": 2
+    },
+    "secondKnightId": "дом Юс'Зай",
+    "secondKnightPointsAllocation": {
+      "attackLeg": 3,
+      "attackArms": 3,
+      "attackBody": 5,
+      "defenseLeg": 2,
+      "defenseArms": 2,
+      "defenseBody": 5
+    },
+    "dices": [
+      {
+        "firstKnightAttackType": 3,
+        "firstKnightDice": 6,
+        "secondKnightAttackType": 1,
+        "secondKnightDice": 3,
+        "winner": "дом Агарди"
+      },
+      {
+        "firstKnightAttackType": 1,
+        "firstKnightDice": 13,
+        "secondKnightAttackType": 1,
+        "secondKnightDice": 9,
+        "winner": "дом Агарди"
+      }
+    ]
+  },
+  {
+    "clashId": 13,
+    "firstKnightId": "дом Эйкенбиттер",
+    "firstKnightPointsAllocation": {
+      "attackLeg": 3,
+      "attackArms": 3,
+      "attackBody": 5,
+      "defenseLeg": 3,
+      "defenseArms": 3,
+      "defenseBody": 3
+    },
+    "secondKnightId": "дом Кевехази",
+    "secondKnightPointsAllocation": {
+      "attackLeg": 9,
+      "attackArms": 8,
+      "attackBody": 0,
+      "defenseLeg": 1,
+      "defenseArms": 1,
+      "defenseBody": 1
+    },
+    "dices": [
+      {
+        "firstKnightAttackType": 2,
+        "firstKnightDice": 12,
+        "secondKnightAttackType": 1,
+        "secondKnightDice": 4,
+        "winner": "дом Эйкенбиттер"
+      },
+      {
+        "firstKnightAttackType": 3,
+        "firstKnightDice": 18,
+        "secondKnightAttackType": 3,
+        "secondKnightDice": 17,
+        "winner": "дом Эйкенбиттер"
+      }
+    ]
+  },
+  {
+    "clashId": 14,
+    "firstKnightId": "дом Лунеталь",
+    "firstKnightPointsAllocation": {
+      "attackLeg": 4,
+      "attackArms": 0,
+      "attackBody": 4,
+      "defenseLeg": 4,
+      "defenseArms": 4,
+      "defenseBody": 4
+    },
+    "secondKnightId": "дом фон Удонен-Кляйнефельд",
+    "secondKnightPointsAllocation": {
+      "attackLeg": 10,
+      "attackArms": 0,
+      "attackBody": 0,
+      "defenseLeg": 6,
+      "defenseArms": 2,
+      "defenseBody": 2
+    },
+    "dices": [
+      {
+        "firstKnightAttackType": 2,
+        "firstKnightDice": 8,
+        "secondKnightAttackType": 3,
+        "secondKnightDice": 3,
+        "winner": "дом Лунеталь"
+      },
+      {
+        "firstKnightAttackType": 2,
+        "firstKnightDice": 19,
+        "secondKnightAttackType": 1,
+        "secondKnightDice": 2,
+        "winner": "дом Лунеталь"
+      }
+    ]
+  },
+  {
+    "clashId": 15,
+    "firstKnightId": "дом Эгладорн",
+    "firstKnightPointsAllocation": {
+      "attackLeg": 8,
+      "attackArms": 8,
+      "attackBody": 2,
+      "defenseLeg": 0,
+      "defenseArms": 0,
+      "defenseBody": 2
+    },
+    "secondKnightId": "дом дель Белейрис",
+    "secondKnightPointsAllocation": {
+      "attackLeg": 0,
+      "attackArms": 0,
+      "attackBody": 10,
+      "defenseLeg": 0,
+      "defenseArms": 5,
+      "defenseBody": 5
+    },
+    "dices": [
+      {
+        "firstKnightAttackType": 1,
+        "firstKnightDice": 19,
+        "secondKnightAttackType": 1,
+        "secondKnightDice": 17
+      }
+    ]
+  },
+  {
+    "clashId": 16,
+    "firstKnightId": "дом Аэтериан",
+    "firstKnightPointsAllocation": {
+      "attackLeg": 0,
+      "attackArms": 12,
+      "attackBody": 10,
+      "defenseLeg": 0,
+      "defenseArms": 0,
+      "defenseBody": 0
+    },
+    "secondKnightId": "дом Квазэль-Вэрде",
+    "secondKnightPointsAllocation": {
+      "attackLeg": 10,
+      "attackArms": 0,
+      "attackBody": 10,
+      "defenseLeg": 0,
+      "defenseArms": 0,
+      "defenseBody": 0
+    },
+    "dices": [
+      {
+        "firstKnightAttackType": 3,
+        "firstKnightDice": 17,
+        "secondKnightAttackType": 1,
+        "secondKnightDice": 4
+      }
+    ]
+  }
+]

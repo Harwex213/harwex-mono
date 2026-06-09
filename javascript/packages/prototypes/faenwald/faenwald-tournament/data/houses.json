@@ -1,172 +1,668 @@
 [
   {
     "id": 0,
-    "name": "Селазий Данмор, Виконт Данмора, Барон Дана, Барон Мора принимает приглащение",
-    "playerId": "id679772159"
+    "answer": "Селазий Данмор, Виконт Данмора, Барон Дана, Барон Мора принимает приглащение",
+    "knight": "Наследник его Сиятельства Селазия Данмора - Катон Данмор",
+    "dynasty": "дом Данмор",
+    "playerId": "id679772159",
+    "footDuels": true,
+    "willChangePointsAllocation": true,
+    "chosenLady": "Эриадна фон Стриве",
+    "health": "health",
+    "pointsAllocation": {
+      "attackLeg": 1,
+      "attackArms": 4,
+      "attackBody": 15,
+      "defenseLeg": 0,
+      "defenseArms": 0,
+      "defenseBody": 0
+    },
+    "bonusPoints": []
   },
   {
     "id": 1,
-    "name": "Хельмут Айзеншлосс, Виконт Железноутёсский, барон Фельзенкрона принимает приглашение",
-    "playerId": "id498119593"
+    "answer": "Хельмут Айзеншлосс, Виконт Железноутёсский, барон Фельзенкрона принимает приглашение",
+    "knight": "Его сиятельство Хельмут Айзеншлосс, Виконт Железноутёсский, барон Фельзенкрона",
+    "dynasty": "дом Айзеншлосс",
+    "playerId": "id498119593",
+    "footDuels": false,
+    "willChangePointsAllocation": false,
+    "chosenLady": "Эриадна фон Стриве",
+    "health": "health",
+    "pointsAllocation": {
+      "attackLeg": 3,
+      "attackArms": 4,
+      "attackBody": 5,
+      "defenseLeg": 2,
+      "defenseArms": 2,
+      "defenseBody": 3
+    }
   },
   {
     "id": 2,
-    "name": "Подпись Гуго II фон Удонен-Кляйнефельда, виконта Маленькой Земли, виконта Нижних земель, барона Зеленого и Оранжевого.",
-    "playerId": "id310335197"
+    "answer": "Подпись Гуго II фон Удонен-Кляйнефельда, виконта Маленькой Земли, виконта Нижних земель, барона Зеленого и Оранжевого.",
+    "knight": "сир Давид ван дер Гроен",
+    "dynasty": "дом фон Удонен-Кляйнефельд",
+    "playerId": "id310335197",
+    "footDuels": true,
+    "willChangePointsAllocation": false,
+    "chosenLady": "Эриадна фон Стриве",
+    "health": "health",
+    "pointsAllocation": {
+      "attackLeg": 10,
+      "attackArms": 0,
+      "attackBody": 0,
+      "defenseLeg": 6,
+      "defenseArms": 2,
+      "defenseBody": 2
+    }
   },
   {
     "id": 3,
-    "name": "Виконт Серого леса, пребудет для участия в турнире.",
-    "playerId": "id138669728"
+    "answer": "Виконт Серого леса, пребудет для участия в турнире.",
+    "knight": "Его сиятельство Хуго Барсид по прозвищу Мягкий шаг, виконт Серого леса, барон Мрачной чащи",
+    "dynasty": "дом Барсиды",
+    "playerId": "id138669728",
+    "footDuels": false,
+    "willChangePointsAllocation": true,
+    "chosenLady": "Элриндель Виноир",
+    "health": "health",
+    "pointsAllocation": {
+      "attackLeg": 0,
+      "attackArms": 7,
+      "attackBody": 3,
+      "defenseLeg": 3,
+      "defenseArms": 3,
+      "defenseBody": 4
+    }
   },
   {
     "id": 4,
-    "name": "Виконт Железной Горы прибудет на турнир!",
-    "playerId": "id439836289"
+    "answer": "Виконт Железной Горы прибудет на турнир!",
+    "knight": "Его сиятельство Трар Айронхэнд, виконт Железной Горы, барон Железного Прииска, Светлого Пути и Тёмного Пути",
+    "dynasty": "дом Айронхэнд",
+    "playerId": "id439836289",
+    "footDuels": true,
+    "willChangePointsAllocation": true,
+    "chosenLady": "Пенелопа Лемонис",
+    "health": "health",
+    "pointsAllocation": {
+      "attackLeg": 10,
+      "attackArms": 10,
+      "attackBody": 0,
+      "defenseLeg": 0,
+      "defenseArms": 0,
+      "defenseBody": 0
+    }
   },
   {
     "id": 5,
-    "name": "Барон Скавенслира не сможет прибыть, но прибудет его брат Саргмар Серый Коготь!",
-    "playerId": "id231257443"
+    "answer": "Барон Скавенслира не сможет прибыть, но прибудет его брат Саргмар Серый Коготь!",
+    "knight": "Саргмар Серый Коготь, брат Его сиятельства барона Скавенслира",
+    "dynasty": "дом Серый Коготь",
+    "playerId": "id231257443",
+    "footDuels": false,
+    "willChangePointsAllocation": true,
+    "chosenLady": "Эриадна фон Стриве",
+    "health": "health",
+    "pointsAllocation": {
+      "attackLeg": 0,
+      "attackArms": 0,
+      "attackBody": 0,
+      "defenseLeg": 6,
+      "defenseArms": 6,
+      "defenseBody": 8
+    }
   },
   {
     "id": 6,
-    "name": "Мы благодарим вас за приглашение, но леди не пристало участвовать в турнирных сшибках, если только они не из Ивэрин.\n\nМы с удовольствием приедем как зрители, а от нашего баронства выступит командир гвардии сир Лансель де Каприэль",
-    "playerId": "id267945325"
+    "answer": "Мы благодарим вас за приглашение, но леди не пристало участвовать в турнирных сшибках, если только они не из Ивэрин.\n\nМы с удовольствием приедем как зрители, а от нашего баронства выступит командир гвардии сир Лансель де Каприэль",
+    "knight": "сир Лансель де Каприэль",
+    "dynasty": "дом Мири",
+    "playerId": "id267945325",
+    "footDuels": true,
+    "willChangePointsAllocation": false,
+    "chosenLady": "Элдриндель Виноир",
+    "health": "health",
+    "pointsAllocation": {
+      "attackLeg": 3,
+      "attackArms": 4,
+      "attackBody": 4,
+      "defenseLeg": 3,
+      "defenseArms": 3,
+      "defenseBody": 3
+    }
   },
   {
     "id": 7,
-    "name": "Баронесса Айну-Линнэ, Алкарэ Халь-Нарэ принимает приглашение и будет участвовать на турнире лично",
-    "playerId": "id267945325"
+    "answer": "Баронесса Айну-Линнэ, Алкарэ Халь-Нарэ принимает приглашение и будет участвовать на турнире лично",
+    "knight": "Её сиятельство Алкарэ Халь-Нарэ, баронесса Айну-Линнэ",
+    "dynasty": "дом Халь-Нарэ",
+    "playerId": "id267945325",
+    "footDuels": false,
+    "willChangePointsAllocation": false,
+    "chosenLady": "Эриадна фон Стриве",
+    "health": "health",
+    "pointsAllocation": {
+      "attackLeg": 8,
+      "attackArms": 3,
+      "attackBody": 9,
+      "defenseLeg": 0,
+      "defenseArms": 0,
+      "defenseBody": 0
+    }
   },
   {
     "id": 8,
-    "name": "Молодой фюрст ПРИЕДЕТ.",
-    "playerId": "id550256992"
+    "answer": "Молодой фюрст ПРИЕДЕТ.",
+    "knight": "сир Раймунд фон Цинцендорф",
+    "dynasty": "дом фон унд цу Данкран",
+    "playerId": "id550256992",
+    "footDuels": false,
+    "willChangePointsAllocation": false,
+    "chosenLady": "Эриадна фон Стриве",
+    "health": "health",
+    "pointsAllocation": {
+      "attackLeg": 4,
+      "attackArms": 4,
+      "attackBody": 4,
+      "defenseLeg": 3,
+      "defenseArms": 2,
+      "defenseBody": 3
+    }
   },
   {
     "id": 9,
-    "name": "Виконт плазменных прибудет на турнир вместе с женой, чтобы опровергнуть слухи среди люда простого о несуществовании своего народа.",
-    "playerId": "id227044831"
+    "answer": "Виконт плазменных прибудет на турнир вместе с женой, чтобы опровергнуть слухи среди люда простого о несуществовании своего народа.",
+    "knight": "Леди Угу",
+    "dynasty": "дом Квазэль-Вэрде",
+    "playerId": "id227044831",
+    "footDuels": false,
+    "willChangePointsAllocation": false,
+    "chosenLady": "Эриадна фон Стриве",
+    "health": "health",
+    "pointsAllocation": {
+      "attackLeg": 10,
+      "attackArms": 0,
+      "attackBody": 10,
+      "defenseLeg": 0,
+      "defenseArms": 0,
+      "defenseBody": 0
+    }
   },
   {
     "id": 10,
-    "name": "Барон Монтардье приедет, дабы смыть с себя позор разгромного поражения в войне и снискать турнирную славу.\n\nORBIS FORTES PROTEGIT",
-    "playerId": "id747657034"
+    "answer": "Барон Монтардье приедет, дабы смыть с себя позор разгромного поражения в войне и снискать турнирную славу.\n\nORBIS FORTES PROTEGIT",
+    "knight": "Его сиятельство Роланд де Монтардье, барон Монтардье",
+    "dynasty": "дом де Монтардье",
+    "playerId": "id747657034",
+    "footDuels": true,
+    "willChangePointsAllocation": true,
+    "chosenLady": "Эриадна фон Стриве",
+    "health": "health",
+    "pointsAllocation": {
+      "attackLeg": 3,
+      "attackArms": 3,
+      "attackBody": 4,
+      "defenseLeg": 3,
+      "defenseArms": 3,
+      "defenseBody": 4
+    }
   },
   {
     "id": 11,
-    "name": "Дьюла Кевехази, граф Этельхаз и барон Везёштер, принимает приглашение с честью и будет рад лично принять участие на турнире",
-    "playerId": "id267945325"
+    "answer": "Дьюла Кевехази, граф Этельхаз и барон Везёштер, принимает приглашение с честью и будет рад лично принять участие на турнире",
+    "knight": "Его сиятельство Дьюла Кевехази, граф Этельхаза, барон Везёштера",
+    "dynasty": "дом Кевехази",
+    "playerId": "id267945325",
+    "footDuels": true,
+    "willChangePointsAllocation": true,
+    "chosenLady": "Миравен Лунеталь",
+    "health": "health",
+    "pointsAllocation": {
+      "attackLeg": 9,
+      "attackArms": 8,
+      "attackBody": 0,
+      "defenseLeg": 1,
+      "defenseArms": 1,
+      "defenseBody": 1
+    }
   },
   {
     "id": 12,
-    "name": "Эрвин Ван Гудрик, Виконт Тарновский, Барон Тарнова и Барон Энкленерда принимает приглашение",
-    "playerId": "id558193248"
+    "answer": "Эрвин Ван Гудрик, Виконт Тарновский, Барон Тарнова и Барон Энкленерда принимает приглашение",
+    "knight": "Его сиятельство Эрвин Ван Гудрик, Виконт Тарновский, Барон Тарнова и Барон Энкленерда",
+    "dynasty": "дом Ван Гудрик",
+    "playerId": "id558193248",
+    "footDuels": true,
+    "willChangePointsAllocation": true,
+    "chosenLady": "Элриндель Виноир",
+    "health": "health",
+    "pointsAllocation": {
+      "attackLeg": 3,
+      "attackArms": 3,
+      "attackBody": 7,
+      "defenseLeg": 1,
+      "defenseArms": 2,
+      "defenseBody": 4
+    }
   },
   {
     "id": 13,
-    "name": "Руперт Варда с удовольствием приедет на турнир.",
-    "playerId": "id395023357"
+    "answer": "Руперт Варда с удовольствием приедет на турнир.",
+    "knight": "Его сиятельство Руперт Лис Варда, граф Фисский, виконт Ролены, барон Шулана, Эспера, Румата и Утрейсы",
+    "dynasty": "дом Варда",
+    "playerId": "id395023357",
+    "footDuels": false,
+    "willChangePointsAllocation": false,
+    "chosenLady": "Элриндель Виноир",
+    "health": "health",
+    "pointsAllocation": {
+      "attackLeg": 6,
+      "attackArms": 6,
+      "attackBody": 6,
+      "defenseLeg": 2,
+      "defenseArms": 2,
+      "defenseBody": 2
+    }
   },
   {
     "id": 14,
-    "name": "Миали Лиантарэль, Знаменная виконтесса Межречья, виконтесса Ивийскую и Крепкой Клешни, баронесса Ластиля и Файселя принимает приглашение",
-    "playerId": "id410464358"
+    "answer": "Миали Лиантарэль, Знаменная виконтесса Межречья, виконтесса Ивийскую и Крепкой Клешни, баронесса Ластиля и Файселя принимает приглашение",
+    "knight": "сир Аэлар Ламат",
+    "dynasty": "дом Лиантарэль",
+    "playerId": "id410464358",
+    "footDuels": false,
+    "willChangePointsAllocation": false,
+    "chosenLady": "Миравен Лунеталь",
+    "health": "health",
+    "pointsAllocation": {
+      "attackLeg": 4,
+      "attackArms": 0,
+      "attackBody": 4,
+      "defenseLeg": 4,
+      "defenseArms": 4,
+      "defenseBody": 4
+    }
   },
   {
     "id": 15,
-    "name": "Уго I, штатсграф Эгладорнский, виконт Лорейнский, барон Аноргасский и Ихтильнэнский принимает приглашение и явится вместе с женой и свитой",
-    "playerId": "id197021932"
+    "answer": "Уго I, штатсграф Эгладорнский, виконт Лорейнский, барон Аноргасский и Ихтильнэнский принимает приглашение и явится вместе с женой и свитой",
+    "knight": "сир Зельмирэль Эгладорн",
+    "dynasty": "дом Эгладорн",
+    "playerId": "id197021932",
+    "footDuels": true,
+    "willChangePointsAllocation": true,
+    "chosenLady": "Элриндель Виноир",
+    "health": "health",
+    "pointsAllocation": {
+      "attackLeg": 8,
+      "attackArms": 8,
+      "attackBody": 2,
+      "defenseLeg": 0,
+      "defenseArms": 0,
+      "defenseBody": 2
+    }
   },
   {
     "id": 16,
-    "name": "Граф-рейхсгерольд Юрий Вечеволодович с радостью принимает приглашение и обязательно прибудет лично.",
-    "playerId": "id225704212"
+    "answer": "Граф-рейхсгерольд Юрий Вечеволодович с радостью принимает приглашение и обязательно прибудет лично.",
+    "knight": "Его сиятельство, Юрий Вечеволодович Динавис, рихтграф-рейхсгерольд Волакды, виконт Сур, виконт Надуба, виконт Венус, виконт Вест-Денэтора, барон Аньряз, барон Казкав, барон Рьтве",
+    "dynasty": "дом Динавис",
+    "playerId": "id225704212",
+    "footDuels": true,
+    "willChangePointsAllocation": true,
+    "chosenLady": "Миравен  ",
+    "health": "health",
+    "pointsAllocation": {
+      "attackLeg": 6,
+      "attackArms": 6,
+      "attackBody": 6,
+      "defenseLeg": 1,
+      "defenseArms": 1,
+      "defenseBody": 0
+    }
   },
   {
     "id": 17,
-    "name": "Его Королевское Величество Эртур Кранш (забыли его новые титулы после отзыва у Эбонфростов бтв) благодарит за приглашение, однако, в силу своего возраста и неопытности в ратном деле, дом Краншей будет представлять его родственник — Валериан Кранш-де-Фер.",
-    "playerId": "id395023357"
+    "answer": "Его Королевское Величество Эртур Кранш (забыли его новые титулы после отзыва у Эбонфростов бтв) благодарит за приглашение, однако, в силу своего возраста и неопытности в ратном деле, дом Краншей будет представлять его родственник — Валериан Кранш-де-Фер.",
+    "knight": "Его сиятельство Анри Кранш-де-Фер",
+    "dynasty": "дом Кранш",
+    "playerId": "id395023357",
+    "footDuels": false,
+    "willChangePointsAllocation": false,
+    "chosenLady": "Миравен Лунеталь",
+    "health": "health",
+    "pointsAllocation": {
+      "attackLeg": 3,
+      "attackArms": 3,
+      "attackBody": 4,
+      "defenseLeg": 4,
+      "defenseArms": 4,
+      "defenseBody": 4
+    }
   },
   {
     "id": 18,
-    "name": "Айвен Лунеталь, виконтесса Ивэрин и Роола принимает приглашение \uD83D\uDDA4\uD83D\uDC9C",
-    "playerId": "id1094600911"
+    "answer": "Айвен Лунеталь, виконтесса Ивэрин и Роола принимает приглашение \uD83D\uDDA4\uD83D\uDC9C",
+    "knight": "Её сиятельство Айвен Лунеталь, виконтесса Ивэрин и Роола",
+    "dynasty": "дом Лунеталь",
+    "playerId": "id1094600911",
+    "footDuels": true,
+    "willChangePointsAllocation": false,
+    "chosenLady": "Миравен Лунеталь",
+    "health": "health",
+    "pointsAllocation": {
+      "attackLeg": 9,
+      "attackArms": 3,
+      "attackBody": 9,
+      "defenseLeg": 1,
+      "defenseArms": 1,
+      "defenseBody": 1
+    }
   },
   {
     "id": 19,
-    "name": "Виконт Всеволод Драгон-Полчн с радостью принимает приглашение и обязательно прибудет лично.",
-    "playerId": "id713241478"
+    "answer": "Виконт Всеволод Драгон-Полян с радостью принимает приглашение и обязательно прибудет лично.",
+    "knight": "Его сиятельство, Отец Ящеролюдов, Виконт Ящерской Заводи, Барон Винграда, Всеволод Драгон-Полян",
+    "dynasty": "дом Драгон-Полян",
+    "playerId": "id225704212",
+    "footDuels": false,
+    "willChangePointsAllocation": false,
+    "chosenLady": "Эриадна фон Стриве",
+    "health": "health",
+    "pointsAllocation": {
+      "attackLeg": 0,
+      "attackArms": 0,
+      "attackBody": 5,
+      "defenseLeg": 5,
+      "defenseArms": 5,
+      "defenseBody": 5
+    }
   },
   {
     "id": 20,
-    "name": "Рикард Фортингелл принимает приглашение и лично прибудет на турнир.",
-    "playerId": "id711759573"
+    "answer": "Рикард Фортингелл принимает приглашение и лично прибудет на турнир.",
+    "knight": "Его сиятельство Рикард Фортингелл, 3-й гонфграф-рейхсмеркатор Альвёлаг, 6-й виконт Нордширский и 6-й барон Нортенфелла",
+    "dynasty": "дом Фортингелл",
+    "playerId": "id711759573",
+    "footDuels": true,
+    "willChangePointsAllocation": false,
+    "chosenLady": "Элриндель Виноир",
+    "health": "health",
+    "pointsAllocation": {
+      "attackLeg": 3,
+      "attackArms": 3,
+      "attackBody": 2,
+      "defenseLeg": 4,
+      "defenseArms": 4,
+      "defenseBody": 4
+    }
   },
   {
     "id": 21,
-    "name": "Пфальцграф-Рейхсрегент Дэлмонт принимает приглашение и благодарит Его сиятельство ланцвиконта Стурт-Виаля за его гостеприимство и тёплые слова.",
-    "playerId": "id232952021"
+    "answer": "Пфальцграф-Рейхсрегент Дэлмонт принимает приглашение и благодарит Его сиятельство ланцвиконта Стурт-Виаля за его гостеприимство и тёплые слова.",
+    "knight": "сир Валафар дель Адре",
+    "dynasty": "дом Фэйртон",
+    "playerId": "id232952021",
+    "footDuels": true,
+    "willChangePointsAllocation": false,
+    "chosenLady": "Миравен Лунеталь",
+    "health": "health",
+    "pointsAllocation": {
+      "attackLeg": 4,
+      "attackArms": 4,
+      "attackBody": 5,
+      "defenseLeg": 4,
+      "defenseArms": 4,
+      "defenseBody": 5
+    }
   },
   {
     "id": 22,
-    "name": "Орбофор Акрано принимает приглашение и явится в Триахсис представлять свой род.",
-    "playerId": "id213908734"
+    "answer": "Орбофор Акрано принимает приглашение и явится в Триахсис представлять свой род.",
+    "knight": "Его сиятельство Орбофор из дома Акрано, граф-рейхскартограф Латтекваро, барон Магнуса, Валуса, и Парвуса",
+    "dynasty": "дом Акрано",
+    "playerId": "id213908734",
+    "footDuels": true,
+    "willChangePointsAllocation": true,
+    "chosenLady": "Элриндель Виноир",
+    "health": "health",
+    "pointsAllocation": {
+      "attackLeg": 0,
+      "attackArms": 5,
+      "attackBody": 0,
+      "defenseLeg": 6,
+      "defenseArms": 6,
+      "defenseBody": 6
+    }
   },
   {
     "id": 23,
-    "name": "Понтий Лемонис, Виконт Великого Культурноса, барон Культурноса изъявляет желание участвовать в турнире.",
-    "playerId": "id422473465"
+    "answer": "Молодой барсук приедет, он наслышан о подвигах своего двоюродного деда, которого краболюд проткнул насквозь и Богер уверен, что он не дурак и такое не повторится.",
+    "knight": "Его сиятельство Богер фон Боркенкаф, граф Бранденфалии, барон Боркенкафа, Орнвуда, Тальгеда и Арнберга",
+    "dynasty": "дом фон Боркенкаф",
+    "playerId": "id215649261",
+    "footDuels": false,
+    "willChangePointsAllocation": true,
+    "chosenLady": "Эриадна фон Стриве",
+    "health": "health",
+    "pointsAllocation": {
+      "attackLeg": 0,
+      "attackArms": 0,
+      "attackBody": 0,
+      "defenseLeg": 0,
+      "defenseArms": 10,
+      "defenseBody": 10
+    }
   },
   {
     "id": 24,
-    "name": "Из-за большого объема работы на посту канцлера Талион Виноир не сможет прибыть на турнир, однако от имени рода Виноир на турнире будет выступать рыцарь Каэрнос Багряный",
-    "playerId": "id1071567448"
-  },
-  {
-    "id": 24,
-    "name": "Герард III Эйкенбиттер почтет за честь лично почтить присутствием событие и принимает приглашение.",
-    "playerId": "id142809566"
+    "answer": "Из-за большого объема работы на посту канцлера Талион Виноир не сможет прибыть на турнир, однако от имени рода Виноир на турнире будет выступать рыцарь Каэрнос Багряный",
+    "knight": "сир Каэрнос Багряный",
+    "dynasty": "дом Виноир",
+    "playerId": "id1071567448",
+    "footDuels": false,
+    "willChangePointsAllocation": true,
+    "chosenLady": "Элриндель Виноир",
+    "health": "health",
+    "pointsAllocation": {
+      "attackLeg": 12,
+      "attackArms": 1,
+      "attackBody": 1,
+      "defenseLeg": 2,
+      "defenseArms": 2,
+      "defenseBody": 2
+    }
   },
   {
     "id": 25,
-    "name": "Саюкча Суа принимает приглашение и с радостью примет участие в турнире.",
-    "playerId": "id343679365"
+    "answer": "Герард III Эйкенбиттер почтет за честь лично почтить присутствием событие и принимает приглашение.",
+    "knight": "Его сиятельство Герард III Эйкенбиттер, граф-рейхсмаршал Айзенваарда, виконт Дорнфельда, виконт и барон Бевердама",
+    "dynasty": "дом Эйкенбиттер",
+    "playerId": "id142809566",
+    "footDuels": true,
+    "willChangePointsAllocation": false,
+    "chosenLady": "Эриадна фон Стриве",
+    "health": "health",
+    "pointsAllocation": {
+      "attackLeg": 3,
+      "attackArms": 3,
+      "attackBody": 5,
+      "defenseLeg": 3,
+      "defenseArms": 3,
+      "defenseBody": 3
+    }
   },
   {
     "id": 26,
-    "name": "Её светлость Аврора дель Белейрис благодарит за приглашение, однако, в силу своего молодого возраста, дом Белейрис будет представлять двоюродный дядя Виконтессы — Кирей дель Белейрис.",
-    "playerId": "id318733108"
+    "answer": "Саюкча Суа принимает приглашение и с радостью примет участие в турнире.",
+    "knight": "Её сиятельство Саюкча Суа, пфальцграфиня-рейхссенешаль Хаеан, Виконтесса Сеоджока и Терранатуса, Баронесса Сегвана и Гёнке",
+    "dynasty": "дом Саюкча",
+    "playerId": "id343679365",
+    "footDuels": true,
+    "willChangePointsAllocation": false,
+    "chosenLady": "Эриадна фон Стриве",
+    "health": "health",
+    "pointsAllocation": {
+      "attackLeg": 0,
+      "attackArms": 0,
+      "attackBody": 1,
+      "defenseLeg": 7,
+      "defenseArms": 7,
+      "defenseBody": 7
+    }
   },
   {
     "id": 27,
-    "name": "Церковь и Инквизиция ответит на приглашение и отправит своих чемпионов!",
-    "playerId": "id439836289"
+    "answer": "Её светлость Аврора дель Белейрис благодарит за приглашение, однако, в силу своего молодого возраста, дом Белейрис будет представлять двоюродный дядя Виконтессы — Кирей дель Белейрис.",
+    "knight": "сир Кирей дель Белейрис",
+    "dynasty": "дом дель Белейрис",
+    "playerId": "id318733108",
+    "footDuels": false,
+    "willChangePointsAllocation": false,
+    "chosenLady": "Эриадна фон Стриве",
+    "health": "health",
+    "pointsAllocation": {
+      "attackLeg": 0,
+      "attackArms": 10,
+      "attackBody": 10,
+      "defenseLeg": 0,
+      "defenseArms": 0,
+      "defenseBody": 0
+    }
   },
   {
     "id": 28,
-    "name": "Церковь и Инквизиция ответит на приглашение и отправит своих чемпионов!",
-    "playerId": "id439836289"
+    "answer": "Церковь и Инквизиция ответит на приглашение и отправит своих чемпионов!",
+    "knight": "Иероприор Фоксвелл \"Благочестивый\"",
+    "dynasty": "чемпион Церкви",
+    "playerId": "id439836289",
+    "footDuels": true,
+    "willChangePointsAllocation": false,
+    "chosenLady": "Эриадна фон Стриве",
+    "health": "health",
+    "pointsAllocation": {
+      "attackLeg": 5,
+      "attackArms": 0,
+      "attackBody": 0,
+      "defenseLeg": 5,
+      "defenseArms": 5,
+      "defenseBody": 5
+    }
   },
   {
     "id": 29,
-    "name": "Ши'иракшас III Шаскерор, барон Шасмирийский принимает приглашение на турнир",
-    "playerId": "id167426114"
+    "answer": "Церковь и Инквизиция ответит на приглашение и отправит своих чемпионов!",
+    "knight": "сир Комутар Герхард \"Смелый\"",
+    "dynasty": "чемпион Инквизиции",
+    "playerId": "id439836289",
+    "footDuels": true,
+    "willChangePointsAllocation": false,
+    "chosenLady": "Миравен Лунеталь",
+    "health": "health",
+    "pointsAllocation": {
+      "attackLeg": 0,
+      "attackArms": 0,
+      "attackBody": 22,
+      "defenseLeg": 0,
+      "defenseArms": 0,
+      "defenseBody": 0
+    }
   },
   {
     "id": 30,
-    "name": "Блохастый Герцог прибудет на турнир!",
-    "playerId": "id439836289"
+    "answer": "Ши'иракшас III Шаскерор, барон Шасмирийский принимает приглашение на турнир",
+    "knight": "Его сиятельство Ши'иракшас III Шаскерор, барон Шасмирийский",
+    "dynasty": "дом Шаскерор",
+    "playerId": "id167426114",
+    "footDuels": true,
+    "willChangePointsAllocation": false,
+    "chosenLady": "Миравен Лунеталь",
+    "health": "health",
+    "pointsAllocation": {
+      "attackLeg": 0,
+      "attackArms": 0,
+      "attackBody": 22,
+      "defenseLeg": 0,
+      "defenseArms": 0,
+      "defenseBody": 0
+    }
   },
   {
     "id": 31,
-    "name": "Представитель падишаха",
-    "playerId": "id142809566"
+    "answer": "Блохастый Герцог прибудет на турнир!",
+    "knight": "Его светлость, Йокутьуша II Агарди, герцог Баскерзага, граф Кутьяшага, виконт Финомчонта, барон Фаркашверема, Эберда, Фогашхаза и Шароша, самый хороший пёсик",
+    "dynasty": "дом Агарди",
+    "playerId": "id439836289",
+    "footDuels": true,
+    "willChangePointsAllocation": false,
+    "chosenLady": "Миравен Лунеталь",
+    "health": "health",
+    "pointsAllocation": {
+      "attackLeg": 4,
+      "attackArms": 4,
+      "attackBody": 4,
+      "defenseLeg": 4,
+      "defenseArms": 2,
+      "defenseBody": 2
+    }
   },
   {
     "id": 32,
-    "name": "Трор, Виконт Дол-Калдурского и барон Эригорский принимает приглашение",
-    "playerId": "id1108602898"
+    "answer": "Представитель падишаха",
+    "knight": "сир Шахрияр Дармани",
+    "dynasty": "дом Корлис",
+    "playerId": "id142809566",
+    "footDuels": false,
+    "willChangePointsAllocation": false,
+    "chosenLady": "Миравен Лунеталь",
+    "health": "health",
+    "pointsAllocation": {
+      "attackLeg": 0,
+      "attackArms": 12,
+      "attackBody": 12,
+      "defenseLeg": 0,
+      "defenseArms": 0,
+      "defenseBody": 0
+    }
+  },
+  {
+    "id": 33,
+    "answer": "Представитель падишаха",
+    "knight": "сир Бас'Чжин, доверенное лицо виконта Анвира",
+    "dynasty": "дом Юс'Зай",
+    "playerId": "id370797999",
+    "footDuels": false,
+    "willChangePointsAllocation": false,
+    "chosenLady": "Миравен Лунеталь",
+    "health": "health",
+    "pointsAllocation": {
+      "attackLeg": 0,
+      "attackArms": 12,
+      "attackBody": 12,
+      "defenseLeg": 0,
+      "defenseArms": 0,
+      "defenseBody": 0
+    }
+  },
+  {
+    "id": 33,
+    "answer": "лирик",
+    "knight": "Его сиятельство Лир II Аэтериан, ланцквиконт Стурт-Виаля, барон Триахсиса и Айнтзира",
+    "dynasty": "дом Аэтериан",
+    "playerId": "id256904856",
+    "footDuels": false,
+    "willChangePointsAllocation": false,
+    "chosenLady": "Эриадна фон Стриве",
+    "health": "health",
+    "pointsAllocation": {
+      "attackLeg": 0,
+      "attackArms": 6,
+      "attackBody": 6,
+      "defenseLeg": 0,
+      "defenseArms": 4,
+      "defenseBody": 4
+    }
   }
 ]

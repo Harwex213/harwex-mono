@@ -1,0 +1,31 @@
+[
+  {
+    "clashId": 1,
+    "firstKnightId": "дом Данмор",
+    "firstKnightPointsAllocation": {
+      "attackLeg": 1,
+      "attackArms": 4,
+      "attackBody": 15,
+      "defenseLeg": 0,
+      "defenseArms": 0,
+      "defenseBody": 0
+    },
+    "secondKnightId": "дом Эйкенбиттер",
+    "secondKnightPointsAllocation": {
+      "attackLeg": 3,
+      "attackArms": 3,
+      "attackBody": 5,
+      "defenseLeg": 3,
+      "defenseArms": 3,
+      "defenseBody": 3
+    },
+    "dices": [
+      {
+        "firstKnightAttackType": 2,
+        "firstKnightDice": 13,
+        "secondKnightAttackType": 3,
+        "secondKnightDice": 14
+      }
+    ]
+  }
+]

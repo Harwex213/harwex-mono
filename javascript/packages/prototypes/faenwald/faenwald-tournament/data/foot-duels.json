@@ -1,0 +1,94 @@
+[
+  [
+    {
+      "clashId": 1,
+      "firstKnight": "дом Кевехази",
+      "secondKnight": "дом Данмор",
+      "firstKnightPlayer": "id267945325",
+      "secondKnightPlayer": "id679772159"
+    },
+    {
+      "clashId": 2,
+      "firstKnight": "дом Динавис",
+      "secondKnight": "дом Лунеталь",
+      "firstKnightPlayer": "id225704212",
+      "secondKnightPlayer": "id1094600911"
+    },
+    {
+      "clashId": 3,
+      "firstKnight": "дом Агарди",
+      "secondKnight": "дом фон Удонен-Кляйнефельд",
+      "firstKnightPlayer": "id439836289",
+      "secondKnightPlayer": "id310335197"
+    },
+    {
+      "clashId": 4,
+      "firstKnight": "дом Айронхэнд",
+      "secondKnight": "дом де Монтардье",
+      "firstKnightPlayer": "id439836289",
+      "secondKnightPlayer": "id747657034"
+    }
+  ],
+  [
+    {
+      "clashId": 5,
+      "firstKnight": "дом Нервус",
+      "secondKnight": "чемпион Церкви",
+      "firstKnightPlayer": "id439836289",
+      "secondKnightPlayer": "id439836289"
+    },
+    {
+      "clashId": 6,
+      "firstKnight": "дом Эгладорн",
+      "secondKnight": "дом фон унд цу Данкран",
+      "firstKnightPlayer": "id197021932",
+      "secondKnightPlayer": "id550256992"
+    },
+    {
+      "clashId": 7,
+      "firstKnight": "дом Мири",
+      "secondKnight": "дом Шаскерор",
+      "firstKnightPlayer": "id267945325",
+      "secondKnightPlayer": "id167426114"
+    },
+    {
+      "clashId": 8,
+      "firstKnight": "чемпион Инквизиции",
+      "secondKnight": "дом Эйкенбиттер",
+      "firstKnightPlayer": "id439836289",
+      "secondKnightPlayer": "id142809566"
+    }
+  ],
+  [
+    {
+      "clashId": 9,
+      "firstKnight": "дом Фэйртон",
+      "secondKnight": "дом Акрано",
+      "firstKnightPlayer": "id232952021",
+      "secondKnightPlayer": "id213908734"
+    },
+    {
+      "clashId": 10,
+      "firstKnight": "дом Саюкча",
+      "secondKnight": "дом ван Гудрик",
+      "firstKnightPlayer": "id343679365",
+      "secondKnightPlayer": "id558193248"
+    },
+    {
+      "clashId": 11,
+      "firstKnight": "дом фон Боркенкаф",
+      "secondKnight": "дом Фортингелл",
+      "firstKnightPlayer": "id215649261",
+      "secondKnightPlayer": "id711759573"
+    },
+    {
+      "clashId": 12,
+      "firstKnight": "дом Аэтериан",
+      "secondKnight": "дом Айзенхарт",
+      "firstKnightPlayer": "256904856",
+      "secondKnightPlayer": "256904856"
+    }
+  ],
+  [
+  ]
+]

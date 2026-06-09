@@ -231,8 +231,40 @@ export const UNIT_RANK_TO_MODIFIER = {
         }
     ],
     2: [],
-    3: [],
-    4: [],
+    3: [
+        {
+            type: "hp",
+            kind: "percent",
+            value: 25
+        },
+        {
+            type: "attack",
+            kind: "percent",
+            value: 25
+        },
+        {
+            type: "morale",
+            kind: "percent",
+            value: 25
+        }
+    ],
+    4: [
+        {
+            type: "hp",
+            kind: "percent",
+            value: 50
+        },
+        {
+            type: "attack",
+            kind: "percent",
+            value: 50
+        },
+        {
+            type: "morale",
+            kind: "percent",
+            value: 50
+        }
+    ],
     5: [
         {
             type: "hp",
@@ -248,6 +280,23 @@ export const UNIT_RANK_TO_MODIFIER = {
             type: "morale",
             kind: "percent",
             value: 75
+        }
+    ],
+    6: [
+        {
+            type: "hp",
+            kind: "percent",
+            value: 100
+        },
+        {
+            type: "attack",
+            kind: "percent",
+            value: 100
+        },
+        {
+            type: "morale",
+            kind: "percent",
+            value: 100
         }
     ],
 };

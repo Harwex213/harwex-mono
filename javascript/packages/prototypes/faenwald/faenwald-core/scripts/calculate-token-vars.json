@@ -1,5 +1,5 @@
 {
-  "attack": "Ивэрин",
+  "attack": "Железный Прииск",
   "attackUnits": [
     {
       "unit": "СКо",
@@ -10,7 +10,17 @@
         {
           "type": "attack",
           "kind": "percent",
-          "value": 20
+          "value": 10
+        },
+        {
+          "type": "attack",
+          "kind": "percent",
+          "value": 25
+        },
+        {
+          "type": "morale",
+          "kind": "value",
+          "value": 10
         }
       ]
     },
@@ -23,61 +33,255 @@
         {
           "type": "attack",
           "kind": "percent",
-          "value": 20
+          "value": 10
+        },
+        {
+          "type": "attack",
+          "kind": "percent",
+          "value": 25
+        },
+        {
+          "type": "morale",
+          "kind": "value",
+          "value": 10
         }
       ]
     },
     {
       "unit": "СКо",
-      "kind": "ВО",
+      "kind": "ЛО",
       "amount": 100,
       "rank": 2,
-      "modifiers": []
+      "modifiers": [
+        {
+          "type": "attack",
+          "kind": "percent",
+          "value": 10
+        },
+        {
+          "type": "attack",
+          "kind": "percent",
+          "value": 25
+        },
+        {
+          "type": "morale",
+          "kind": "value",
+          "value": 10
+        }
+      ]
     },
     {
-      "unit": "ТКо",
-      "kind": "ВО",
+      "unit": "СКо",
+      "kind": "ЛО",
       "amount": 100,
       "rank": 2,
-      "modifiers": []
+      "modifiers": [
+        {
+          "type": "attack",
+          "kind": "percent",
+          "value": 10
+        },
+        {
+          "type": "attack",
+          "kind": "percent",
+          "value": 25
+        },
+        {
+          "type": "morale",
+          "kind": "value",
+          "value": 10
+        }
+      ]
     },
     {
-      "unit": "Лук",
+      "unit": "Меч",
       "kind": "Р",
       "amount": 100,
       "rank": 2,
-      "modifiers": []
+      "modifiers": [
+        {
+          "type": "attack",
+          "kind": "percent",
+          "value": 10
+        },
+        {
+          "type": "attack",
+          "kind": "percent",
+          "value": 25
+        },
+        {
+          "type": "morale",
+          "kind": "value",
+          "value": 10
+        }
+      ]
     },
     {
-      "unit": "Лук",
+      "unit": "Меч",
       "kind": "Р",
       "amount": 100,
       "rank": 2,
-      "modifiers": []
+      "modifiers": [
+        {
+          "type": "attack",
+          "kind": "percent",
+          "value": 10
+        },
+        {
+          "type": "attack",
+          "kind": "percent",
+          "value": 25
+        },
+        {
+          "type": "morale",
+          "kind": "value",
+          "value": 10
+        }
+      ]
     },
     {
-      "unit": "Лук",
+      "unit": "Меч",
+      "kind": "Р",
+      "amount": 100,
+      "rank": 3,
+      "modifiers": [
+        {
+          "type": "attack",
+          "kind": "percent",
+          "value": 10
+        },
+        {
+          "type": "attack",
+          "kind": "percent",
+          "value": 25
+        },
+        {
+          "type": "morale",
+          "kind": "value",
+          "value": 10
+        }
+      ]
+    },
+    {
+      "unit": "Меч",
+      "kind": "Р",
+      "amount": 100,
+      "rank": 4,
+      "modifiers": [
+        {
+          "type": "attack",
+          "kind": "percent",
+          "value": 10
+        },
+        {
+          "type": "attack",
+          "kind": "percent",
+          "value": 25
+        },
+        {
+          "type": "morale",
+          "kind": "value",
+          "value": 10
+        }
+      ]
+    },
+    {
+      "unit": "Луч",
+      "kind": "Р",
+      "amount": 100,
+      "rank": 3,
+      "modifiers": [
+        {
+          "type": "attack",
+          "kind": "percent",
+          "value": 10
+        },
+        {
+          "type": "morale",
+          "kind": "value",
+          "value": 10
+        },
+        {
+          "type": "attack",
+          "kind": "value",
+          "value": 2
+        }
+      ]
+    },
+    {
+      "unit": "Луч",
       "kind": "Р",
       "amount": 100,
       "rank": 2,
-      "modifiers": []
+      "modifiers": [
+        {
+          "type": "attack",
+          "kind": "percent",
+          "value": 10
+        },
+        {
+          "type": "morale",
+          "kind": "value",
+          "value": 10
+        },
+        {
+          "type": "attack",
+          "kind": "value",
+          "value": 2
+        }
+      ]
     },
     {
-      "unit": "Топ",
+      "unit": "Луч",
       "kind": "Р",
       "amount": 100,
       "rank": 2,
-      "modifiers": []
+      "modifiers": [
+        {
+          "type": "attack",
+          "kind": "percent",
+          "value": 10
+        },
+        {
+          "type": "morale",
+          "kind": "value",
+          "value": 10
+        },
+        {
+          "type": "attack",
+          "kind": "value",
+          "value": 2
+        }
+      ]
+    },
+    {
+      "unit": "Лонг",
+      "kind": "Н",
+      "amount": 100,
+      "rank": 5,
+      "modifiers": [
+        {
+          "type": "attack",
+          "kind": "percent",
+          "value": 10
+        }
+      ]
     },
     {
       "unit": "ТКав",
       "kind": "Г",
-      "amount": 10,
-      "rank": 5,
-      "modifiers": []
+      "amount": 11,
+      "rank": 6,
+      "modifiers": [
+        {
+          "type": "attack",
+          "kind": "percent",
+          "value": 10
+        }
+      ]
     }
   ],
-  "defend": "Таур-Митрен",
+  "defend": "Гномычы",
   "defendUnits": [
     {
       "unit": "СКо",
@@ -87,31 +291,24 @@
       "modifiers": []
     },
     {
-      "unit": "Топ",
+      "unit": "СКав",
       "kind": "Р",
       "amount": 100,
-      "rank": 2,
+      "rank": 3,
       "modifiers": []
     },
     {
-      "unit": "Лук",
-      "kind": "Р",
-      "amount": 100,
-      "rank": 2,
-      "modifiers": []
-    },
-    {
-      "unit": "Лук",
-      "kind": "Го",
-      "amount": 25,
-      "rank": 2,
-      "modifiers": []
-    },
-    {
-      "unit": "СКо",
-      "kind": "Го",
+      "unit": "Арб",
+      "kind": "Г",
       "amount": 50,
-      "rank": 2,
+      "rank": 5,
+      "modifiers": []
+    },
+    {
+      "unit": "Меч",
+      "kind": "Р",
+      "amount": 100,
+      "rank": 3,
       "modifiers": []
     }
   ]
