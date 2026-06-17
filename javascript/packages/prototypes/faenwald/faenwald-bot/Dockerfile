@@ -16,5 +16,6 @@ ENV NODE_ENV=production
 COPY package.json ./
 RUN npm install --omit=dev
 COPY --from=builder /app/dist ./dist
+COPY migrations ./migrations
 # .env is NOT baked in — it is mounted at runtime (see deploy/deploy.ps1)
 CMD ["node", "dist/server.js"]

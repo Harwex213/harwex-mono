@@ -55,8 +55,11 @@ rm -f ${RemoteDir}/faenwald-bot.tar
 docker image prune -f >/dev/null 2>&1 || true
 echo '--- running container ---'
 docker ps --filter name=${ContainerName}
-"@
+"@ -replace "`r`n", "`n"
+# CRLF would otherwise reach bash on the droplet as literal \r, breaking
+# `set -e`, `\` line-continuations, and image refs like `faenwald-bot:latest\r`.
 ssh $DropletHost $remote
+if ($LASTEXITCODE -ne 0) { throw "remote deploy step failed" }
 
 Remove-Item $tar -Force
 Write-Host ""

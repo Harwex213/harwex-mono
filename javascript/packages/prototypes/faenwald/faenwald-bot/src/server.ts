@@ -3,6 +3,8 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import VkBot from "node-vk-bot-api";
 import { calculateSanitaryLosses } from "./core/calculate-sanitary-losses.js";
+import { initializeFileDatabase } from "./db/init.js";
+import { buildProcessedRequestId, tryClaimProcessedRequest } from "./db/processed-request.js";
 
 const __dirname = join(dirname(fileURLToPath(import.meta.url)), "..");
 const __env = join(__dirname, ".env");
@@ -16,6 +18,9 @@ process.env = {
     ...process.env,
     ...envFromFile,
 };
+
+const db = await initializeFileDatabase();
+await db.migrate();
 
 const bot = new VkBot({
     token: process.env.VK_ACCESS_TOKEN!,
@@ -46,22 +51,31 @@ const COMMANDS = [
     }
 ];
 
-bot.event("message_new", (ctx) => {
+bot.event("message_new", async (ctx) => {
     console.log(ctx.message);
 
     const command = COMMANDS.find((command) => {
         return ctx.message.text?.match(command.command) !== null;
     });
 
-    if (command && ctx.message.text) {
-        try {
-            ctx.reply(command.handler(ctx.message.text));
-        } catch (e) {
-            if (e instanceof Error) {
-                ctx.reply(e.message);
-            } else {
-                ctx.reply("Орбис умер. СРОЧНО НАПИШИТЕ СОЗДАТЕЛЮ.");
-            }
+    if (!command || !ctx.message.text) {
+        return;
+    }
+
+    const requestId = buildProcessedRequestId(ctx.message.id, ctx.message.from_id);
+    const claimed = await tryClaimProcessedRequest(db, requestId);
+    if (!claimed) {
+        console.log(`Skipping duplicate request ${requestId}`);
+        return;
+    }
+
+    try {
+        ctx.reply(command.handler(ctx.message.text));
+    } catch (e) {
+        if (e instanceof Error) {
+            ctx.reply(e.message);
+        } else {
+            ctx.reply("Орбис умер. СРОЧНО НАПИШИТЕ СОЗДАТЕЛЮ.");
         }
     }
 });

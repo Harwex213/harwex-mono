@@ -5,13 +5,17 @@
   "type": "module",
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
-    "start": "node dist/server.js"
+    "start": "node dist/server.js",
+    "migrate-db": "node --import=tsx scripts/run-migration.ts"
   },
   "dependencies": {
-    "node-vk-bot-api": "3.5.0"
+    "node-vk-bot-api": "3.5.0",
+    "sqlite": "5.1.1",
+    "sqlite3": "5.1.7"
   },
   "devDependencies": {
     "@types/node": "24.1.0",
+    "tsx": "4.19.4",
     "typescript": "5.9.3"
   }
 }
