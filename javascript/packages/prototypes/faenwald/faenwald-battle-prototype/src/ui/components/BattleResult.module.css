@@ -1,0 +1,158 @@
+.result {
+  background: #1b1713;
+  border: 1px solid #3a3228;
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 12px;
+}
+
+.head {
+  text-align: center;
+  margin-bottom: 14px;
+}
+
+.banner {
+  display: inline-block;
+  background: #2c251d;
+  border: 1px solid #d8a657;
+  color: #d8a657;
+  border-radius: 999px;
+  padding: 3px 12px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.headline {
+  margin: 8px 0 0;
+  font-size: 1.25rem;
+  color: #ece5d8;
+}
+
+.note {
+  margin: 6px 0 0;
+  font-size: 0.74rem;
+  color: #9a8f7d;
+}
+
+.side {
+  border: 1px solid #3a3228;
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+}
+
+.blue {
+  border-left: 3px solid #3f74c4;
+}
+
+.red {
+  border-left: 3px solid #cf5048;
+}
+
+.sideHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.sideName {
+  font-weight: 600;
+  color: #ece5d8;
+}
+
+.blue .sideName {
+  color: #7ea7e0;
+}
+
+.red .sideName {
+  color: #e08a84;
+}
+
+.fate {
+  font-size: 0.74rem;
+  color: #d8a657;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.78rem;
+  color: #ece5d8;
+}
+
+.table th {
+  text-align: right;
+  font-weight: 500;
+  color: #9a8f7d;
+  font-size: 0.68rem;
+  padding: 2px 4px;
+  border-bottom: 1px solid #3a3228;
+}
+
+.table th:first-child,
+.table th:nth-child(2) {
+  text-align: left;
+}
+
+.table td {
+  padding: 4px;
+  border-bottom: 1px solid #241e18;
+}
+
+.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.unit {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 110px;
+}
+
+.status {
+  display: inline-block;
+  border-radius: 6px;
+  padding: 1px 6px;
+  font-size: 0.68rem;
+  font-weight: 600;
+}
+
+.survived {
+  background: #1f2e1f;
+  color: #8fcf7e;
+}
+
+.routed {
+  background: #2e2a1a;
+  color: #d8a657;
+}
+
+.destroyed {
+  background: #2e1c1a;
+  color: #e08a84;
+}
+
+.table tfoot td {
+  border-bottom: none;
+  border-top: 1px solid #3a3228;
+  padding-top: 6px;
+  font-weight: 600;
+  color: #9a8f7d;
+}
+
+.replay {
+  width: 100%;
+  margin-top: 6px;
+  background: #d8a657;
+  color: #1b1713;
+  border: none;
+  border-radius: 8px;
+  padding: 9px 14px;
+  font-weight: 600;
+  cursor: pointer;
+}

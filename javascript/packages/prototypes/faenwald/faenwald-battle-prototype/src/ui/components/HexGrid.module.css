@@ -1,0 +1,10 @@
+.grid {
+  width: 100%;
+  height: auto;
+  display: block;
+  background: #100d0a;
+  border: 1px solid #2c251d;
+  border-radius: 12px;
+  user-select: none;
+  touch-action: manipulation;
+}
