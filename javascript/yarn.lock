@@ -1982,9 +1982,21 @@ __metadata:
   languageName: unknown
   linkType: soft
 
+"@hw/faenwald-platform-admin-ui@workspace:packages/projects/faenwald-platform/feanwald-platform-admin-ui":
+  version: 0.0.0-use.local
+  resolution: "@hw/faenwald-platform-admin-ui@workspace:packages/projects/faenwald-platform/feanwald-platform-admin-ui"
+  languageName: unknown
+  linkType: soft
+
 "@hw/faenwald-platform-server@workspace:packages/projects/faenwald-platform/faenwald-platform-server":
   version: 0.0.0-use.local
   resolution: "@hw/faenwald-platform-server@workspace:packages/projects/faenwald-platform/faenwald-platform-server"
+  languageName: unknown
+  linkType: soft
+
+"@hw/faenwald-platform-ui@workspace:packages/projects/faenwald-platform/feanwald-platform-ui":
+  version: 0.0.0-use.local
+  resolution: "@hw/faenwald-platform-ui@workspace:packages/projects/faenwald-platform/feanwald-platform-ui"
   languageName: unknown
   linkType: soft
 
