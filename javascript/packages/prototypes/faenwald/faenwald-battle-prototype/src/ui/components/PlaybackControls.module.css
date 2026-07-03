@@ -1,0 +1,117 @@
+.controls {
+  background: #1b1713;
+  border: 1px solid #3a3228;
+  border-radius: 12px;
+  padding: 14px 16px;
+  margin-bottom: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.label {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #9a8f7d;
+}
+
+.select,
+.input {
+  background: #120f0c;
+  color: #ece5d8;
+  border: 1px solid #3a3228;
+  border-radius: 8px;
+  padding: 7px 10px;
+  font-size: 0.85rem;
+  width: 100%;
+}
+
+.select {
+  cursor: pointer;
+}
+
+.mechanic {
+  margin: -2px 0 0;
+  font-size: 0.74rem;
+  color: #d8a657;
+  line-height: 1.35;
+}
+
+.buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.primary {
+  flex: 1;
+  background: #d8a657;
+  color: #1b1713;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-weight: 600;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.ghost {
+  background: transparent;
+  color: #ece5d8;
+  border: 1px solid #3a3228;
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.primary:disabled,
+.ghost:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.speedRow {
+  display: flex;
+  gap: 6px;
+}
+
+.speed,
+.speedActive {
+  flex: 1;
+  background: transparent;
+  color: #9a8f7d;
+  border: 1px solid #3a3228;
+  border-radius: 8px;
+  padding: 6px 8px;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+.speedActive {
+  background: #2c251d;
+  color: #f2c14e;
+  border-color: #f2c14e;
+}
+
+.seedRow {
+  display: flex;
+  gap: 8px;
+}
+
+.seedRow .input {
+  flex: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.hint {
+  margin: 0;
+  font-size: 0.72rem;
+  color: #6f675b;
+}

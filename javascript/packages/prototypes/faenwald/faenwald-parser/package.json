@@ -1,0 +1,21 @@
+{
+  "name": "@hw/faenwald-parser",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "types": "./dist/index.d.ts",
+  "exports": "./src/index.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "parse": "tsx scripts/parse-sample.ts"
+  },
+  "dependencies": {
+    "node-html-parser": "8.0.3",
+    "undici": "8.5.0"
+  },
+  "devDependencies": {
+    "tsx": "4.19.4",
+    "typescript": "5.9.3"
+  }
+}

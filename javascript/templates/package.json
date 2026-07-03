@@ -1,0 +1,13 @@
+{
+  "name": "@hw/$change-that",
+  "type": "module",
+  "browserslist": [
+    "last 1 version",
+    "> 1%",
+    "not dead"
+  ],
+  "dependencies": {
+  },
+  "devDependencies": {
+  }
+}

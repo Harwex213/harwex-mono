@@ -1919,6 +1919,22 @@ __metadata:
   languageName: unknown
   linkType: soft
 
+"@hw/faenwald-battle-prototype@workspace:packages/prototypes/faenwald/faenwald-battle-prototype":
+  version: 0.0.0-use.local
+  resolution: "@hw/faenwald-battle-prototype@workspace:packages/prototypes/faenwald/faenwald-battle-prototype"
+  dependencies:
+    "@types/react": "npm:19.2.0"
+    "@types/react-dom": "npm:19.2.0"
+    "@vitejs/plugin-react-swc": "npm:4.1.0"
+    mobx: "npm:6.15.0"
+    mobx-react-lite: "npm:4.1.0"
+    react: "npm:19.2.0"
+    react-dom: "npm:19.2.0"
+    typescript: "npm:5.9.3"
+    vite: "npm:7.1.10"
+  languageName: unknown
+  linkType: soft
+
 "@hw/faenwald-calculator@workspace:packages/prototypes/faenwald/faenwald-calculator":
   version: 0.0.0-use.local
   resolution: "@hw/faenwald-calculator@workspace:packages/prototypes/faenwald/faenwald-calculator"
@@ -1952,6 +1968,35 @@ __metadata:
     react-dom: "npm:19.2.0"
     typescript: "npm:5.9.3"
     vite: "npm:7.1.10"
+  languageName: unknown
+  linkType: soft
+
+"@hw/faenwald-parser@workspace:packages/prototypes/faenwald/faenwald-parser":
+  version: 0.0.0-use.local
+  resolution: "@hw/faenwald-parser@workspace:packages/prototypes/faenwald/faenwald-parser"
+  dependencies:
+    node-html-parser: "npm:8.0.3"
+    tsx: "npm:4.19.4"
+    typescript: "npm:5.9.3"
+    undici: "npm:8.5.0"
+  languageName: unknown
+  linkType: soft
+
+"@hw/faenwald-platform-admin-ui@workspace:packages/projects/faenwald-platform/feanwald-platform-admin-ui":
+  version: 0.0.0-use.local
+  resolution: "@hw/faenwald-platform-admin-ui@workspace:packages/projects/faenwald-platform/feanwald-platform-admin-ui"
+  languageName: unknown
+  linkType: soft
+
+"@hw/faenwald-platform-server@workspace:packages/projects/faenwald-platform/faenwald-platform-server":
+  version: 0.0.0-use.local
+  resolution: "@hw/faenwald-platform-server@workspace:packages/projects/faenwald-platform/faenwald-platform-server"
+  languageName: unknown
+  linkType: soft
+
+"@hw/faenwald-platform-ui@workspace:packages/projects/faenwald-platform/feanwald-platform-ui":
+  version: 0.0.0-use.local
+  resolution: "@hw/faenwald-platform-ui@workspace:packages/projects/faenwald-platform/feanwald-platform-ui"
   languageName: unknown
   linkType: soft
 
@@ -2249,6 +2294,12 @@ __metadata:
   resolution: "@hw/redux@workspace:packages/learning/libs-investigate/redux"
   dependencies:
     redux: "npm:5.0.1"
+  languageName: unknown
+  linkType: soft
+
+"@hw/rspack-first-project@workspace:packages/learning/rspack/rspack-first-project":
+  version: 0.0.0-use.local
+  resolution: "@hw/rspack-first-project@workspace:packages/learning/rspack/rspack-first-project"
   languageName: unknown
   linkType: soft
 
@@ -5598,10 +5649,30 @@ __metadata:
   languageName: node
   linkType: hard
 
+"css-select@npm:^5.1.0":
+  version: 5.2.2
+  resolution: "css-select@npm:5.2.2"
+  dependencies:
+    boolbase: "npm:^1.0.0"
+    css-what: "npm:^6.1.0"
+    domhandler: "npm:^5.0.2"
+    domutils: "npm:^3.0.1"
+    nth-check: "npm:^2.0.1"
+  checksum: 10/ebb6a88446433312d1a16301afd1c5f75090805b730dbbdccb0338b0d6ca7922410375f16dde06673ef7da086e2cf3b9ad91afe9a8e0d2ee3625795cb5e0170d
+  languageName: node
+  linkType: hard
+
 "css-what@npm:^6.0.1":
   version: 6.1.0
   resolution: "css-what@npm:6.1.0"
   checksum: 10/c67a3a2d0d81843af87f8bf0a4d0845b0f952377714abbb2884e48942409d57a2110eabee003609d02ee487b054614bdfcfc59ee265728ff105bd5aa221c1d0e
+  languageName: node
+  linkType: hard
+
+"css-what@npm:^6.1.0":
+  version: 6.2.2
+  resolution: "css-what@npm:6.2.2"
+  checksum: 10/3c5a53be94728089bd1716f915f7f96adde5dd8bf374610eb03982266f3d860bf1ebaf108cda30509d02ef748fe33eaa59aa75911e2c49ee05a85ef1f9fb5223
   languageName: node
   linkType: hard
 
@@ -5894,7 +5965,18 @@ __metadata:
   languageName: node
   linkType: hard
 
-"domelementtype@npm:^2.0.1, domelementtype@npm:^2.2.0":
+"dom-serializer@npm:^2.0.0":
+  version: 2.0.0
+  resolution: "dom-serializer@npm:2.0.0"
+  dependencies:
+    domelementtype: "npm:^2.3.0"
+    domhandler: "npm:^5.0.2"
+    entities: "npm:^4.2.0"
+  checksum: 10/e3bf9027a64450bca0a72297ecdc1e3abb7a2912268a9f3f5d33a2e29c1e2c3502c6e9f860fc6625940bfe0cfb57a44953262b9e94df76872fdfb8151097eeb3
+  languageName: node
+  linkType: hard
+
+"domelementtype@npm:^2.0.1, domelementtype@npm:^2.2.0, domelementtype@npm:^2.3.0":
   version: 2.3.0
   resolution: "domelementtype@npm:2.3.0"
   checksum: 10/ee837a318ff702622f383409d1f5b25dd1024b692ef64d3096ff702e26339f8e345820f29a68bcdcea8cfee3531776b3382651232fbeae95612d6f0a75efb4f6
@@ -5910,6 +5992,15 @@ __metadata:
   languageName: node
   linkType: hard
 
+"domhandler@npm:^5.0.2, domhandler@npm:^5.0.3":
+  version: 5.0.3
+  resolution: "domhandler@npm:5.0.3"
+  dependencies:
+    domelementtype: "npm:^2.3.0"
+  checksum: 10/809b805a50a9c6884a29f38aec0a4e1b4537f40e1c861950ed47d10b049febe6b79ab72adaeeebb3cc8fc1cd33f34e97048a72a9265103426d93efafa78d3e96
+  languageName: node
+  linkType: hard
+
 "domutils@npm:^2.5.2, domutils@npm:^2.8.0":
   version: 2.8.0
   resolution: "domutils@npm:2.8.0"
@@ -5918,6 +6009,17 @@ __metadata:
     domelementtype: "npm:^2.2.0"
     domhandler: "npm:^4.2.0"
   checksum: 10/1f316a03f00b09a8893d4a25d297d5cbffd02c564509dede28ef72d5ce38d93f6d61f1de88d439f31b14a1d9b42f587ed711b9e8b1b4d3bf6001399832bfc4e0
+  languageName: node
+  linkType: hard
+
+"domutils@npm:^3.0.1":
+  version: 3.2.2
+  resolution: "domutils@npm:3.2.2"
+  dependencies:
+    dom-serializer: "npm:^2.0.0"
+    domelementtype: "npm:^2.3.0"
+    domhandler: "npm:^5.0.3"
+  checksum: 10/2e08842151aa406f50fe5e6d494f4ec73c2373199fa00d1f77b56ec604e566b7f226312ae35ab8160bb7f27a27c7285d574c8044779053e499282ca9198be210
   languageName: node
   linkType: hard
 
@@ -6083,6 +6185,20 @@ __metadata:
   version: 2.2.0
   resolution: "entities@npm:2.2.0"
   checksum: 10/2c765221ee324dbe25e1b8ca5d1bf2a4d39e750548f2e85cbf7ca1d167d709689ddf1796623e66666ae747364c11ed512c03b48c5bbe70968d30f2a4009509b7
+  languageName: node
+  linkType: hard
+
+"entities@npm:^4.2.0":
+  version: 4.5.0
+  resolution: "entities@npm:4.5.0"
+  checksum: 10/ede2a35c9bce1aeccd055a1b445d41c75a14a2bb1cd22e242f20cf04d236cdcd7f9c859eb83f76885327bfae0c25bf03303665ee1ce3d47c5927b98b0e3e3d48
+  languageName: node
+  linkType: hard
+
+"entities@npm:^8.0.0":
+  version: 8.0.0
+  resolution: "entities@npm:8.0.0"
+  checksum: 10/d6e2ba75e444fb101ee2fbb07c839e687306c8a509426b75186619c19196f97c1db9932ca083f823c03e4a20e7407b654aa34de8cbb7770468e20fb2d4573a0e
   languageName: node
   linkType: hard
 
@@ -9089,6 +9205,16 @@ __metadata:
   languageName: node
   linkType: hard
 
+"node-html-parser@npm:8.0.3":
+  version: 8.0.3
+  resolution: "node-html-parser@npm:8.0.3"
+  dependencies:
+    css-select: "npm:^5.1.0"
+    entities: "npm:^8.0.0"
+  checksum: 10/209313cb46c1d5acb033bd81950bdbadecc2d7ddf5fad2cf0c9aa3cc7b73a39c25e160079151c6b54c9294d3e1ad7fc1e9df098f0d87c7b608195a4f2b873ea5
+  languageName: node
+  linkType: hard
+
 "node-releases@npm:^2.0.19":
   version: 2.0.19
   resolution: "node-releases@npm:2.0.19"
@@ -11774,6 +11900,13 @@ __metadata:
   version: 7.8.0
   resolution: "undici-types@npm:7.8.0"
   checksum: 10/fcff3fbab234f067fbd69e374ee2c198ba74c364ceaf6d93db7ca267e784457b5518cd01d0d2329b075f412574205ea3172a9a675facb49b4c9efb7141cd80b7
+  languageName: node
+  linkType: hard
+
+"undici@npm:8.5.0":
+  version: 8.5.0
+  resolution: "undici@npm:8.5.0"
+  checksum: 10/e95913777afd47d76babfe62547bb4e9a94b93f44b50c84b4e0b6fa41c00364e31ff4f433a955b1592c3162f43e8757e2e0feae6eea195187730594523393568
   languageName: node
   linkType: hard
 

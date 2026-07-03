@@ -1,0 +1,1335 @@
+{
+  "files": [
+    {
+      "fileName": "./PackageIcon.png",
+      "SPDXID": "SPDXRef-File--PackageIcon.png-35E0B5FB0A15D22F442B5C76A3AC1D6631E3E399",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "1f8da83c8330ae62fd1bbe2dd9d0d5064db93ecda77110669f815444ad7a6ae3"
+        },
+        {
+          "algorithm": "SHA1",
+          "checksumValue": "35e0b5fb0a15d22f442b5c76a3ac1d6631e3e399"
+        }
+      ],
+      "licenseConcluded": "NOASSERTION",
+      "licenseInfoInFiles": [
+        "NOASSERTION"
+      ],
+      "copyrightText": "NOASSERTION"
+    },
+    {
+      "fileName": "./NOTICE",
+      "SPDXID": "SPDXRef-File--NOTICE-680D72E8A1518C1CAE45FDBF970D49874EBF82E1",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "3453f9c302d8f713d07206e351ec35a80ed1b99cfc10a4b2361bcd4b9348605f"
+        },
+        {
+          "algorithm": "SHA1",
+          "checksumValue": "680d72e8a1518c1cae45fdbf970d49874ebf82e1"
+        }
+      ],
+      "licenseConcluded": "NOASSERTION",
+      "licenseInfoInFiles": [
+        "NOASSERTION"
+      ],
+      "copyrightText": "NOASSERTION"
+    },
+    {
+      "fileName": "./Microsoft.VisualStudio.Threading.Only.nuspec",
+      "SPDXID": "SPDXRef-File--Microsoft.VisualStudio.Threading.Only.nuspec-3DF5FBAAC8C4F598809AB90704B14D4DDC09DF6F",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "38c0c06ba7a807c30b0b3022544feccb0402d86714d1aebec6354d79e83397ae"
+        },
+        {
+          "algorithm": "SHA1",
+          "checksumValue": "3df5fbaac8c4f598809ab90704b14d4ddc09df6f"
+        }
+      ],
+      "licenseConcluded": "NOASSERTION",
+      "licenseInfoInFiles": [
+        "NOASSERTION"
+      ],
+      "copyrightText": "NOASSERTION"
+    },
+    {
+      "fileName": "./lib/net472/it/Microsoft.VisualStudio.Threading.resources.dll",
+      "SPDXID": "SPDXRef-File--lib-net472-it-Microsoft.VisualStudio.Threading.resources.dll-C29A2C6F7A321BF5867D6780290CD49F86E425AE",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "e6c8e01b612ca548d4d1da079d63b37fa5dc0dbd512fbbf42f7823457bcc1054"
+        },
+        {
+          "algorithm": "SHA1",
+          "checksumValue": "c29a2c6f7a321bf5867d6780290cd49f86e425ae"
+        }
+      ],
+      "licenseConcluded": "NOASSERTION",
+      "licenseInfoInFiles": [
+        "NOASSERTION"
+      ],
+      "copyrightText": "NOASSERTION"
+    },
+    {
+      "fileName": "./lib/net472/fr/Microsoft.VisualStudio.Threading.resources.dll",
+      "SPDXID": "SPDXRef-File--lib-net472-fr-Microsoft.VisualStudio.Threading.resources.dll-8F27FD76D14CE18862C793234A13699D4E7B5135",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "e4dd0829595b6fd0a850a7fd0821f277e663dd276f05a676b904f75fb6d15903"
+        },
+        {
+          "algorithm": "SHA1",
+          "checksumValue": "8f27fd76d14ce18862c793234a13699d4e7b5135"
+        }
+      ],
+      "licenseConcluded": "NOASSERTION",
+      "licenseInfoInFiles": [
+        "NOASSERTION"
+      ],
+      "copyrightText": "NOASSERTION"
+    },
+    {
+      "fileName": "./lib/net472/zh-Hant/Microsoft.VisualStudio.Threading.resources.dll",
+      "SPDXID": "SPDXRef-File--lib-net472-zh-Hant-Microsoft.VisualStudio.Threading.resources.dll-12CA7678A2C782E6A94F6021FB773C9EA2D2DB84",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "901f1a63ebe5e6610f4aa5771e0e04d61eb7403d0158cb96b27fdead53d132a4"
+        },
+        {
+          "algorithm": "SHA1",
+          "checksumValue": "12ca7678a2c782e6a94f6021fb773c9ea2d2db84"
+        }
+      ],
+      "licenseConcluded": "NOASSERTION",
+      "licenseInfoInFiles": [
+        "NOASSERTION"
+      ],
+      "copyrightText": "NOASSERTION"
+    },
+    {
+      "fileName": "./lib/net472/es/Microsoft.VisualStudio.Threading.resources.dll",
+      "SPDXID": "SPDXRef-File--lib-net472-es-Microsoft.VisualStudio.Threading.resources.dll-094378D5582E3178545B9672E56758E584043CBC",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "b946ce981077d2e696915c784ccc0cb99d69cc83affe8cce6637ff9d9d3a5820"
+        },
+        {
+          "algorithm": "SHA1",
+          "checksumValue": "094378d5582e3178545b9672e56758e584043cbc"
+        }
+      ],
+      "licenseConcluded": "NOASSERTION",
+      "licenseInfoInFiles": [
+        "NOASSERTION"
+      ],
+      "copyrightText": "NOASSERTION"
+    },
+    {
+      "fileName": "./lib/net8.0/ja/Microsoft.VisualStudio.Threading.resources.dll",
+      "SPDXID": "SPDXRef-File--lib-net8.0-ja-Microsoft.VisualStudio.Threading.resources.dll-0B0C1C5F1FAAA518C380FE44D050395BDD843CE7",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "1216baf2119913b4a9c63e73f9caf4d9fb66c63b5b1e85b8a5d97376e8ea63d6"
+        },
+        {
+          "algorithm": "SHA1",
+          "checksumValue": "0b0c1c5f1faaa518c380fe44d050395bdd843ce7"
+        }
+      ],
+      "licenseConcluded": "NOASSERTION",
+      "licenseInfoInFiles": [
+        "NOASSERTION"
+      ],
+      "copyrightText": "NOASSERTION"
+    },
+    {
+      "fileName": "./lib/net472/cs/Microsoft.VisualStudio.Threading.resources.dll",
+      "SPDXID": "SPDXRef-File--lib-net472-cs-Microsoft.VisualStudio.Threading.resources.dll-56C41AEF58E5952F160F33AA3BCE900E83B38E60",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "e58397d6b40742ffb887aa8abf955cd37ce3fee1cf7b6e657ed2dbabf38f6b9c"
+        },
+        {
+          "algorithm": "SHA1",
+          "checksumValue": "56c41aef58e5952f160f33aa3bce900e83b38e60"
+        }
+      ],
+      "licenseConcluded": "NOASSERTION",
+      "licenseInfoInFiles": [
+        "NOASSERTION"
+      ],
+      "copyrightText": "NOASSERTION"
+    },
+    {
+      "fileName": "./lib/net472/tr/Microsoft.VisualStudio.Threading.resources.dll",
+      "SPDXID": "SPDXRef-File--lib-net472-tr-Microsoft.VisualStudio.Threading.resources.dll-1086C7EB55D1BF76C3D27B386938249CE3A9DDB4",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "f606acb5a2a59f9e0d90a2ef5113ab228c6d9409f61507f6493f8f04f5cc4582"
+        },
+        {
+          "algorithm": "SHA1",
+          "checksumValue": "1086c7eb55d1bf76c3d27b386938249ce3a9ddb4"
+        }
+      ],
+      "licenseConcluded": "NOASSERTION",
+      "licenseInfoInFiles": [
+        "NOASSERTION"
+      ],
+      "copyrightText": "NOASSERTION"
+    },
+    {
+      "fileName": "./lib/net8.0-windows7.0/Microsoft.VisualStudio.Threading.dll",
+      "SPDXID": "SPDXRef-File--lib-net8.0-windows7.0-Microsoft.VisualStudio.Threading.dll-BB0DB4B56FD47423D0072F2791995CB4CCF0669C",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "1d86ace0a627091e51a193bba47daa6ddf1d95c47fba95e6bd85e59b59d6518e"
+        },
+        {
+          "algorithm": "SHA1",
+          "checksumValue": "bb0db4b56fd47423d0072f2791995cb4ccf0669c"
+        }
+      ],
+      "licenseConcluded": "NOASSERTION",
+      "licenseInfoInFiles": [
+        "NOASSERTION"
+      ],
+      "copyrightText": "NOASSERTION"
+    },
+    {
+      "fileName": "./lib/net472/zh-Hans/Microsoft.VisualStudio.Threading.resources.dll",
+      "SPDXID": "SPDXRef-File--lib-net472-zh-Hans-Microsoft.VisualStudio.Threading.resources.dll-2E65BA9557379A862B670CBF8E02B052FAE9CF57",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "2c523c0b756c82855a333cc151daa36698d59c841c67105bbf410e9b21d15ba6"
+        },
+        {
+          "algorithm": "SHA1",
+          "checksumValue": "2e65ba9557379a862b670cbf8e02b052fae9cf57"
+        }
+      ],
+      "licenseConcluded": "NOASSERTION",
+      "licenseInfoInFiles": [
+        "NOASSERTION"
+      ],
+      "copyrightText": "NOASSERTION"
+    },
+    {
+      "fileName": "./lib/net8.0/fr/Microsoft.VisualStudio.Threading.resources.dll",
+      "SPDXID": "SPDXRef-File--lib-net8.0-fr-Microsoft.VisualStudio.Threading.resources.dll-6B6947ECBA6D8A0F47F5323EBC8DFDE1B1638F58",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "058597d22d4f09f43d12107838e66b05e4d0a1ff4943dbfc6b83ac4912f8fde2"
+        },
+        {
+          "algorithm": "SHA1",
+          "checksumValue": "6b6947ecba6d8a0f47f5323ebc8dfde1b1638f58"
+        }
+      ],
+      "licenseConcluded": "NOASSERTION",
+      "licenseInfoInFiles": [
+        "NOASSERTION"
+      ],
+      "copyrightText": "NOASSERTION"
+    },
+    {
+      "fileName": "./lib/net472/pt-BR/Microsoft.VisualStudio.Threading.resources.dll",
+      "SPDXID": "SPDXRef-File--lib-net472-pt-BR-Microsoft.VisualStudio.Threading.resources.dll-8F478DD7C743291B9E8A2073C32D618B6BB33D03",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "cda158d4236c9d998fab465c8d9c7adbbdec1f5727f90b5e0efb4e458acc6084"
+        },
+        {
+          "algorithm": "SHA1",
+          "checksumValue": "8f478dd7c743291b9e8a2073c32d618b6bb33d03"
+        }
+      ],
+      "licenseConcluded": "NOASSERTION",
+      "licenseInfoInFiles": [
+        "NOASSERTION"
+      ],
+      "copyrightText": "NOASSERTION"
+    },
+    {
+      "fileName": "./lib/net8.0/it/Microsoft.VisualStudio.Threading.resources.dll",
+      "SPDXID": "SPDXRef-File--lib-net8.0-it-Microsoft.VisualStudio.Threading.resources.dll-12168BBF345CE46375734499EA4D93464EA65541",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "ad2f6362beac223f74a91841f090e441a566a8e4f7d8ebfa776f4ef24b252f95"
+        },
+        {
+          "algorithm": "SHA1",
+          "checksumValue": "12168bbf345ce46375734499ea4d93464ea65541"
+        }
+      ],
+      "licenseConcluded": "NOASSERTION",
+      "licenseInfoInFiles": [
+        "NOASSERTION"
+      ],
+      "copyrightText": "NOASSERTION"
+    },
+    {
+      "fileName": "./lib/net8.0/zh-Hans/Microsoft.VisualStudio.Threading.resources.dll",
+      "SPDXID": "SPDXRef-File--lib-net8.0-zh-Hans-Microsoft.VisualStudio.Threading.resources.dll-458DD2EF6CBE4D9C50E976DE4D606C1EB5525CA3",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "c2a4bc661cdacc39a0362e10366814dec791896097ed57a7a9484895534cdaf5"
+        },
+        {
+          "algorithm": "SHA1",
+          "checksumValue": "458dd2ef6cbe4d9c50e976de4d606c1eb5525ca3"
+        }
+      ],
+      "licenseConcluded": "NOASSERTION",
+      "licenseInfoInFiles": [
+        "NOASSERTION"
+      ],
+      "copyrightText": "NOASSERTION"
+    },
+    {
+      "fileName": "./lib/net8.0/de/Microsoft.VisualStudio.Threading.resources.dll",
+      "SPDXID": "SPDXRef-File--lib-net8.0-de-Microsoft.VisualStudio.Threading.resources.dll-7059444DB60D3BF07C32775DC3C19FCB819D7D8C",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "81a9b5d1f376e06e8fdfa64978edaae0194851889868b989f9e8d71ad1e96558"
+        },
+        {
+          "algorithm": "SHA1",
+          "checksumValue": "7059444db60d3bf07c32775dc3c19fcb819d7d8c"
+        }
+      ],
+      "licenseConcluded": "NOASSERTION",
+      "licenseInfoInFiles": [
+        "NOASSERTION"
+      ],
+      "copyrightText": "NOASSERTION"
+    },
+    {
+      "fileName": "./lib/net8.0-windows7.0/ko/Microsoft.VisualStudio.Threading.resources.dll",
+      "SPDXID": "SPDXRef-File--lib-net8.0-windows7.0-ko-Microsoft.VisualStudio.Threading.resources.dll-7E9E8713E15E4D616A351C12E63F6130C29136F1",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "80d9b9b56fd9b72e202e550372d7482155fed9aafb55d94f5a11834837314f49"
+        },
+        {
+          "algorithm": "SHA1",
+          "checksumValue": "7e9e8713e15e4d616a351c12e63f6130c29136f1"
+        }
+      ],
+      "licenseConcluded": "NOASSERTION",
+      "licenseInfoInFiles": [
+        "NOASSERTION"
+      ],
+      "copyrightText": "NOASSERTION"
+    },
+    {
+      "fileName": "./lib/net8.0/zh-Hant/Microsoft.VisualStudio.Threading.resources.dll",
+      "SPDXID": "SPDXRef-File--lib-net8.0-zh-Hant-Microsoft.VisualStudio.Threading.resources.dll-903149333575FC2167AD8EE9528FC92B8ED70995",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "962c53f71b214c3b134e5240446b35e2274ed4762cde12efad28ac7a51f5f56d"
+        },
+        {
+          "algorithm": "SHA1",
+          "checksumValue": "903149333575fc2167ad8ee9528fc92b8ed70995"
+        }
+      ],
+      "licenseConcluded": "NOASSERTION",
+      "licenseInfoInFiles": [
+        "NOASSERTION"
+      ],
+      "copyrightText": "NOASSERTION"
+    },
+    {
+      "fileName": "./lib/net8.0-windows7.0/it/Microsoft.VisualStudio.Threading.resources.dll",
+      "SPDXID": "SPDXRef-File--lib-net8.0-windows7.0-it-Microsoft.VisualStudio.Threading.resources.dll-A086C16F6E04D78DA1F66D8F42CD1EA11D15F78A",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "64b92cf5228edc8134eb5bd21fcc431d755f47bcb7cb359819c733e72c579f5c"
+        },
+        {
+          "algorithm": "SHA1",
+          "checksumValue": "a086c16f6e04d78da1f66d8f42cd1ea11d15f78a"
+        }
+      ],
+      "licenseConcluded": "NOASSERTION",
+      "licenseInfoInFiles": [
+        "NOASSERTION"
+      ],
+      "copyrightText": "NOASSERTION"
+    },
+    {
+      "fileName": "./lib/net8.0/ru/Microsoft.VisualStudio.Threading.resources.dll",
+      "SPDXID": "SPDXRef-File--lib-net8.0-ru-Microsoft.VisualStudio.Threading.resources.dll-A975BB38D7E9655627BE31CE1CA416C831E49F92",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "86660f0766a11d402d94d1b4d3c76c9e4e82a655a5ea04b87a7d77fa72deb4ce"
+        },
+        {
+          "algorithm": "SHA1",
+          "checksumValue": "a975bb38d7e9655627be31ce1ca416c831e49f92"
+        }
+      ],
+      "licenseConcluded": "NOASSERTION",
+      "licenseInfoInFiles": [
+        "NOASSERTION"
+      ],
+      "copyrightText": "NOASSERTION"
+    },
+    {
+      "fileName": "./lib/netstandard2.0/Microsoft.VisualStudio.Threading.xml",
+      "SPDXID": "SPDXRef-File--lib-netstandard2.0-Microsoft.VisualStudio.Threading.xml-36BEC200245C275FC79B7D17F296BC5F89212DD6",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "e6d9a37bda31a8aef38b2ca670cf289686b21eaa35064b72912316995128566c"
+        },
+        {
+          "algorithm": "SHA1",
+          "checksumValue": "36bec200245c275fc79b7d17f296bc5f89212dd6"
+        }
+      ],
+      "licenseConcluded": "NOASSERTION",
+      "licenseInfoInFiles": [
+        "NOASSERTION"
+      ],
+      "copyrightText": "NOASSERTION"
+    },
+    {
+      "fileName": "./lib/net8.0-windows7.0/ja/Microsoft.VisualStudio.Threading.resources.dll",
+      "SPDXID": "SPDXRef-File--lib-net8.0-windows7.0-ja-Microsoft.VisualStudio.Threading.resources.dll-E7EA23F36E81059290DC3CF40BA472828DF23268",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "7b0e9acdddf546e9744432e921a35e50916a5d86bcab165cebdb69d138d41a84"
+        },
+        {
+          "algorithm": "SHA1",
+          "checksumValue": "e7ea23f36e81059290dc3cf40ba472828df23268"
+        }
+      ],
+      "licenseConcluded": "NOASSERTION",
+      "licenseInfoInFiles": [
+        "NOASSERTION"
+      ],
+      "copyrightText": "NOASSERTION"
+    },
+    {
+      "fileName": "./lib/net8.0-windows7.0/es/Microsoft.VisualStudio.Threading.resources.dll",
+      "SPDXID": "SPDXRef-File--lib-net8.0-windows7.0-es-Microsoft.VisualStudio.Threading.resources.dll-E563F8F3D626E7DAECA0D2757CA6693A560C81FE",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "4de2155542f12dbd90833a4f1e09cdb3eceefae7a447e08950dbbca52ed994b1"
+        },
+        {
+          "algorithm": "SHA1",
+          "checksumValue": "e563f8f3d626e7daeca0d2757ca6693a560c81fe"
+        }
+      ],
+      "licenseConcluded": "NOASSERTION",
+      "licenseInfoInFiles": [
+        "NOASSERTION"
+      ],
+      "copyrightText": "NOASSERTION"
+    },
+    {
+      "fileName": "./lib/net8.0-windows7.0/zh-Hant/Microsoft.VisualStudio.Threading.resources.dll",
+      "SPDXID": "SPDXRef-File--lib-net8.0-windows7.0-zh-Hant-Microsoft.VisualStudio.Threading.resources.dll-FE6B186E3C8AB963A3F1BCDC1D9870330291FD0A",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "e954f87b0ad2f7dffc653513e50fa53b31e298b54faa214a50b4529ea79a591d"
+        },
+        {
+          "algorithm": "SHA1",
+          "checksumValue": "fe6b186e3c8ab963a3f1bcdc1d9870330291fd0a"
+        }
+      ],
+      "licenseConcluded": "NOASSERTION",
+      "licenseInfoInFiles": [
+        "NOASSERTION"
+      ],
+      "copyrightText": "NOASSERTION"
+    },
+    {
+      "fileName": "./lib/netstandard2.0/Microsoft.VisualStudio.Threading.dll",
+      "SPDXID": "SPDXRef-File--lib-netstandard2.0-Microsoft.VisualStudio.Threading.dll-BFC3EAD8EFA8CA1B052D8B9B031882478CE907E7",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "a0cf6106db0c697c35b8ff7bb9992b516ddfa8d33d9c7f93197ce65f42249e3d"
+        },
+        {
+          "algorithm": "SHA1",
+          "checksumValue": "bfc3ead8efa8ca1b052d8b9b031882478ce907e7"
+        }
+      ],
+      "licenseConcluded": "NOASSERTION",
+      "licenseInfoInFiles": [
+        "NOASSERTION"
+      ],
+      "copyrightText": "NOASSERTION"
+    },
+    {
+      "fileName": "./lib/net8.0-windows7.0/tr/Microsoft.VisualStudio.Threading.resources.dll",
+      "SPDXID": "SPDXRef-File--lib-net8.0-windows7.0-tr-Microsoft.VisualStudio.Threading.resources.dll-A098700C4F93BF2016D56E064B71D3A8FA8E8791",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "84d7b53df5065411c487754830eecb3a894f7d11b7d88910985847c8a93d98b9"
+        },
+        {
+          "algorithm": "SHA1",
+          "checksumValue": "a098700c4f93bf2016d56e064b71d3a8fa8e8791"
+        }
+      ],
+      "licenseConcluded": "NOASSERTION",
+      "licenseInfoInFiles": [
+        "NOASSERTION"
+      ],
+      "copyrightText": "NOASSERTION"
+    },
+    {
+      "fileName": "./lib/netstandard2.0/pl/Microsoft.VisualStudio.Threading.resources.dll",
+      "SPDXID": "SPDXRef-File--lib-netstandard2.0-pl-Microsoft.VisualStudio.Threading.resources.dll-91FADA5BE5597A8BD647DC29ABD232682C230F35",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "c0a34ca7c400157015fcccf9c31b9330b570d0e55cbcf47bba9e91abbd17f9a2"
+        },
+        {
+          "algorithm": "SHA1",
+          "checksumValue": "91fada5be5597a8bd647dc29abd232682c230f35"
+        }
+      ],
+      "licenseConcluded": "NOASSERTION",
+      "licenseInfoInFiles": [
+        "NOASSERTION"
+      ],
+      "copyrightText": "NOASSERTION"
+    },
+    {
+      "fileName": "./lib/net472/Microsoft.VisualStudio.Threading.dll",
+      "SPDXID": "SPDXRef-File--lib-net472-Microsoft.VisualStudio.Threading.dll-A7BACD7F8013F5575EB00A43E12F49B1B75E63EE",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "aed938e56d185846808b716f15a2702d1f208e1abc263823bd4545388d40544a"
+        },
+        {
+          "algorithm": "SHA1",
+          "checksumValue": "a7bacd7f8013f5575eb00a43e12f49b1b75e63ee"
+        }
+      ],
+      "licenseConcluded": "NOASSERTION",
+      "licenseInfoInFiles": [
+        "NOASSERTION"
+      ],
+      "copyrightText": "NOASSERTION"
+    },
+    {
+      "fileName": "./lib/netstandard2.0/fr/Microsoft.VisualStudio.Threading.resources.dll",
+      "SPDXID": "SPDXRef-File--lib-netstandard2.0-fr-Microsoft.VisualStudio.Threading.resources.dll-D154A7965448D18DF1137E079588B7C8DDC8F841",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "d2b3bf2691064b3b9a5ba2507a871af004edd1e5c42489af67df8c8fd37049be"
+        },
+        {
+          "algorithm": "SHA1",
+          "checksumValue": "d154a7965448d18df1137e079588b7c8ddc8f841"
+        }
+      ],
+      "licenseConcluded": "NOASSERTION",
+      "licenseInfoInFiles": [
+        "NOASSERTION"
+      ],
+      "copyrightText": "NOASSERTION"
+    },
+    {
+      "fileName": "./lib/netstandard2.0/ko/Microsoft.VisualStudio.Threading.resources.dll",
+      "SPDXID": "SPDXRef-File--lib-netstandard2.0-ko-Microsoft.VisualStudio.Threading.resources.dll-883AE8821B0C5FD49D4E7F5D6C95D100BDF04F4D",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "30ada4133b2530ec634a68ef9ead3858ab1ecb616b140446912de72d0bf209c3"
+        },
+        {
+          "algorithm": "SHA1",
+          "checksumValue": "883ae8821b0c5fd49d4e7f5d6c95d100bdf04f4d"
+        }
+      ],
+      "licenseConcluded": "NOASSERTION",
+      "licenseInfoInFiles": [
+        "NOASSERTION"
+      ],
+      "copyrightText": "NOASSERTION"
+    },
+    {
+      "fileName": "./lib/netstandard2.0/ja/Microsoft.VisualStudio.Threading.resources.dll",
+      "SPDXID": "SPDXRef-File--lib-netstandard2.0-ja-Microsoft.VisualStudio.Threading.resources.dll-6169CBF627A251197A8149BDC7F5A909E3632A37",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "599ea10e314c2c712135a01c3f2ea7bcf5ae26c39dbee102c5734d3a6fa0033f"
+        },
+        {
+          "algorithm": "SHA1",
+          "checksumValue": "6169cbf627a251197a8149bdc7f5a909e3632a37"
+        }
+      ],
+      "licenseConcluded": "NOASSERTION",
+      "licenseInfoInFiles": [
+        "NOASSERTION"
+      ],
+      "copyrightText": "NOASSERTION"
+    },
+    {
+      "fileName": "./lib/netstandard2.0/zh-Hans/Microsoft.VisualStudio.Threading.resources.dll",
+      "SPDXID": "SPDXRef-File--lib-netstandard2.0-zh-Hans-Microsoft.VisualStudio.Threading.resources.dll-BB7F12D52B3C9C7929D5D02FD8B52A03A021EADD",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "feb8c4d49b1c67cf537928c2f0889d68f8548d18e49cd7a29ffbb029ddedb53a"
+        },
+        {
+          "algorithm": "SHA1",
+          "checksumValue": "bb7f12d52b3c9c7929d5d02fd8b52a03a021eadd"
+        }
+      ],
+      "licenseConcluded": "NOASSERTION",
+      "licenseInfoInFiles": [
+        "NOASSERTION"
+      ],
+      "copyrightText": "NOASSERTION"
+    },
+    {
+      "fileName": "./README.md",
+      "SPDXID": "SPDXRef-File--README.md-CCD65CD8D64461A2DCD491C25F53DA6BC6081295",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "98e5fbd6a6fdce6f409f03a23d882e7e36cbada22c2b15a2d6f626934ca986b5"
+        },
+        {
+          "algorithm": "SHA1",
+          "checksumValue": "ccd65cd8d64461a2dcd491c25f53da6bc6081295"
+        }
+      ],
+      "licenseConcluded": "NOASSERTION",
+      "licenseInfoInFiles": [
+        "NOASSERTION"
+      ],
+      "copyrightText": "NOASSERTION"
+    },
+    {
+      "fileName": "./lib/net472/ja/Microsoft.VisualStudio.Threading.resources.dll",
+      "SPDXID": "SPDXRef-File--lib-net472-ja-Microsoft.VisualStudio.Threading.resources.dll-2EA1BCACA5BFAE48AEA8881E490BCAC02A1D15D6",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "8cb0c509922ea754346bc3f14772ee7e38e549823020964c17c4a918cd512c8d"
+        },
+        {
+          "algorithm": "SHA1",
+          "checksumValue": "2ea1bcaca5bfae48aea8881e490bcac02a1d15d6"
+        }
+      ],
+      "licenseConcluded": "NOASSERTION",
+      "licenseInfoInFiles": [
+        "NOASSERTION"
+      ],
+      "copyrightText": "NOASSERTION"
+    },
+    {
+      "fileName": "./lib/net8.0/Microsoft.VisualStudio.Threading.dll",
+      "SPDXID": "SPDXRef-File--lib-net8.0-Microsoft.VisualStudio.Threading.dll-77E818296AAF0D96E232B80AE75027A157C50AFE",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "13db0614f2e1ac657a9316e635681612afe7484d48a1b505d6e6e485181b3afa"
+        },
+        {
+          "algorithm": "SHA1",
+          "checksumValue": "77e818296aaf0d96e232b80ae75027a157c50afe"
+        }
+      ],
+      "licenseConcluded": "NOASSERTION",
+      "licenseInfoInFiles": [
+        "NOASSERTION"
+      ],
+      "copyrightText": "NOASSERTION"
+    },
+    {
+      "fileName": "./lib/net8.0/ko/Microsoft.VisualStudio.Threading.resources.dll",
+      "SPDXID": "SPDXRef-File--lib-net8.0-ko-Microsoft.VisualStudio.Threading.resources.dll-FA3363219945AF8A430E1B9E136144A048338481",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "75df68120fdceb0a077c412892099fe46d991a9fb851970dfdff6252561ef216"
+        },
+        {
+          "algorithm": "SHA1",
+          "checksumValue": "fa3363219945af8a430e1b9e136144a048338481"
+        }
+      ],
+      "licenseConcluded": "NOASSERTION",
+      "licenseInfoInFiles": [
+        "NOASSERTION"
+      ],
+      "copyrightText": "NOASSERTION"
+    },
+    {
+      "fileName": "./lib/net8.0-windows7.0/Microsoft.VisualStudio.Threading.xml",
+      "SPDXID": "SPDXRef-File--lib-net8.0-windows7.0-Microsoft.VisualStudio.Threading.xml-A24BC4F8AE151BE88B75C3891D8074B0D9D2CF63",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "33be7c4ae3c9fede7441c7f010b22ead11470c9b9588dc167f31b4680a0a3fef"
+        },
+        {
+          "algorithm": "SHA1",
+          "checksumValue": "a24bc4f8ae151be88b75c3891d8074b0d9d2cf63"
+        }
+      ],
+      "licenseConcluded": "NOASSERTION",
+      "licenseInfoInFiles": [
+        "NOASSERTION"
+      ],
+      "copyrightText": "NOASSERTION"
+    },
+    {
+      "fileName": "./lib/net8.0-windows7.0/pl/Microsoft.VisualStudio.Threading.resources.dll",
+      "SPDXID": "SPDXRef-File--lib-net8.0-windows7.0-pl-Microsoft.VisualStudio.Threading.resources.dll-BBA27BCABCBB5B9A3CDF98631403F34AA56D4798",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "8774cbf7d87f38a39f5460793b83f5c8f22f3d3be082184eb907ccfd8da2af07"
+        },
+        {
+          "algorithm": "SHA1",
+          "checksumValue": "bba27bcabcbb5b9a3cdf98631403f34aa56d4798"
+        }
+      ],
+      "licenseConcluded": "NOASSERTION",
+      "licenseInfoInFiles": [
+        "NOASSERTION"
+      ],
+      "copyrightText": "NOASSERTION"
+    },
+    {
+      "fileName": "./lib/netstandard2.0/cs/Microsoft.VisualStudio.Threading.resources.dll",
+      "SPDXID": "SPDXRef-File--lib-netstandard2.0-cs-Microsoft.VisualStudio.Threading.resources.dll-0C662659D9F5D574FAD3310FE32A0BE499CC86F6",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "fbb1d18c735851623f03967e27fea073bd417e84a06e2862d12db3e150fcc6b1"
+        },
+        {
+          "algorithm": "SHA1",
+          "checksumValue": "0c662659d9f5d574fad3310fe32a0be499cc86f6"
+        }
+      ],
+      "licenseConcluded": "NOASSERTION",
+      "licenseInfoInFiles": [
+        "NOASSERTION"
+      ],
+      "copyrightText": "NOASSERTION"
+    },
+    {
+      "fileName": "./lib/netstandard2.0/pt-BR/Microsoft.VisualStudio.Threading.resources.dll",
+      "SPDXID": "SPDXRef-File--lib-netstandard2.0-pt-BR-Microsoft.VisualStudio.Threading.resources.dll-F4BED66E3894737E199974E76EC5D04B436748A3",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "6870fdd3f0a4cd90235c7ac33c7a694c170d64c81117d99036f8026c7b131be6"
+        },
+        {
+          "algorithm": "SHA1",
+          "checksumValue": "f4bed66e3894737e199974e76ec5d04b436748a3"
+        }
+      ],
+      "licenseConcluded": "NOASSERTION",
+      "licenseInfoInFiles": [
+        "NOASSERTION"
+      ],
+      "copyrightText": "NOASSERTION"
+    },
+    {
+      "fileName": "./lib/net472/ko/Microsoft.VisualStudio.Threading.resources.dll",
+      "SPDXID": "SPDXRef-File--lib-net472-ko-Microsoft.VisualStudio.Threading.resources.dll-A40911E9F9A4E5D8C68092AF57BFAE88AE3A6ABD",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "830a99db522ebe3c0fd222b72dfb92db698fdc1d3017839d8162cdbb4a883f08"
+        },
+        {
+          "algorithm": "SHA1",
+          "checksumValue": "a40911e9f9a4e5d8c68092af57bfae88ae3a6abd"
+        }
+      ],
+      "licenseConcluded": "NOASSERTION",
+      "licenseInfoInFiles": [
+        "NOASSERTION"
+      ],
+      "copyrightText": "NOASSERTION"
+    },
+    {
+      "fileName": "./lib/net8.0/Microsoft.VisualStudio.Threading.xml",
+      "SPDXID": "SPDXRef-File--lib-net8.0-Microsoft.VisualStudio.Threading.xml-CFB1328561581A4E3E125BEEEDFF678CF2A1844F",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "c1cdbac3bc36adf8e4b4ff060e124f70b68a62527ab88317ea4a031cb845ec5c"
+        },
+        {
+          "algorithm": "SHA1",
+          "checksumValue": "cfb1328561581a4e3e125beeedff678cf2a1844f"
+        }
+      ],
+      "licenseConcluded": "NOASSERTION",
+      "licenseInfoInFiles": [
+        "NOASSERTION"
+      ],
+      "copyrightText": "NOASSERTION"
+    },
+    {
+      "fileName": "./lib/net8.0/pl/Microsoft.VisualStudio.Threading.resources.dll",
+      "SPDXID": "SPDXRef-File--lib-net8.0-pl-Microsoft.VisualStudio.Threading.resources.dll-B08F9F305290DE8D35C1932A632EAC82B5C47FBB",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "a0c438b97941d398a2322e0494adee36565f60c69e54ccf88a3069f7a44d55e8"
+        },
+        {
+          "algorithm": "SHA1",
+          "checksumValue": "b08f9f305290de8d35c1932a632eac82b5c47fbb"
+        }
+      ],
+      "licenseConcluded": "NOASSERTION",
+      "licenseInfoInFiles": [
+        "NOASSERTION"
+      ],
+      "copyrightText": "NOASSERTION"
+    },
+    {
+      "fileName": "./lib/net472/Microsoft.VisualStudio.Threading.xml",
+      "SPDXID": "SPDXRef-File--lib-net472-Microsoft.VisualStudio.Threading.xml-2DE4863C0C7AD7AF45DB14E91C34EF9AE09C8B8A",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "4ae85b3fb6d1fe1ebec0c524ee2b3efc962967d382ac231bcf542158d6b02d64"
+        },
+        {
+          "algorithm": "SHA1",
+          "checksumValue": "2de4863c0c7ad7af45db14e91c34ef9ae09c8b8a"
+        }
+      ],
+      "licenseConcluded": "NOASSERTION",
+      "licenseInfoInFiles": [
+        "NOASSERTION"
+      ],
+      "copyrightText": "NOASSERTION"
+    },
+    {
+      "fileName": "./lib/net8.0-windows7.0/cs/Microsoft.VisualStudio.Threading.resources.dll",
+      "SPDXID": "SPDXRef-File--lib-net8.0-windows7.0-cs-Microsoft.VisualStudio.Threading.resources.dll-1439A4DA5497F5DC0136B21F2BD71F0E02977B31",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "862e52dc4b0ab1314b9a223823573240d2af47097c5dc2b0c274a1ca21c58a0b"
+        },
+        {
+          "algorithm": "SHA1",
+          "checksumValue": "1439a4da5497f5dc0136b21f2bd71f0e02977b31"
+        }
+      ],
+      "licenseConcluded": "NOASSERTION",
+      "licenseInfoInFiles": [
+        "NOASSERTION"
+      ],
+      "copyrightText": "NOASSERTION"
+    },
+    {
+      "fileName": "./lib/net472/pl/Microsoft.VisualStudio.Threading.resources.dll",
+      "SPDXID": "SPDXRef-File--lib-net472-pl-Microsoft.VisualStudio.Threading.resources.dll-ABE710AFD595CE61E364AF47CC8FC0D324DA5AB9",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "579cdee5e7ffcb94608880941bcaf1264c03100c973c12f9281e10246564b5be"
+        },
+        {
+          "algorithm": "SHA1",
+          "checksumValue": "abe710afd595ce61e364af47cc8fc0d324da5ab9"
+        }
+      ],
+      "licenseConcluded": "NOASSERTION",
+      "licenseInfoInFiles": [
+        "NOASSERTION"
+      ],
+      "copyrightText": "NOASSERTION"
+    },
+    {
+      "fileName": "./lib/net8.0/cs/Microsoft.VisualStudio.Threading.resources.dll",
+      "SPDXID": "SPDXRef-File--lib-net8.0-cs-Microsoft.VisualStudio.Threading.resources.dll-CB565BEA3A824654478F72290B0524DEDA4F816B",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "795348dbc9487d3a90cd7c4b4aaf0a0edb88ab4a710f63df407b09f570fb99ba"
+        },
+        {
+          "algorithm": "SHA1",
+          "checksumValue": "cb565bea3a824654478f72290b0524deda4f816b"
+        }
+      ],
+      "licenseConcluded": "NOASSERTION",
+      "licenseInfoInFiles": [
+        "NOASSERTION"
+      ],
+      "copyrightText": "NOASSERTION"
+    },
+    {
+      "fileName": "./lib/net8.0-windows7.0/pt-BR/Microsoft.VisualStudio.Threading.resources.dll",
+      "SPDXID": "SPDXRef-File--lib-net8.0-windows7.0-pt-BR-Microsoft.VisualStudio.Threading.resources.dll-CF8E8917FC7755D4E3007BE8209285808B84ED58",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "9323a6f3ebabcb22dd207c629a5f27204f4ca6dbd0161a6d8c807ebc68a1735a"
+        },
+        {
+          "algorithm": "SHA1",
+          "checksumValue": "cf8e8917fc7755d4e3007be8209285808b84ed58"
+        }
+      ],
+      "licenseConcluded": "NOASSERTION",
+      "licenseInfoInFiles": [
+        "NOASSERTION"
+      ],
+      "copyrightText": "NOASSERTION"
+    },
+    {
+      "fileName": "./lib/net8.0/pt-BR/Microsoft.VisualStudio.Threading.resources.dll",
+      "SPDXID": "SPDXRef-File--lib-net8.0-pt-BR-Microsoft.VisualStudio.Threading.resources.dll-1062E0B85C0EBD1C42E9D0C483EDCECDEE41C7DB",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "177775ba300590b22341f7edf2d2cd1bf114766784ff8b7b1b4fb2f20f9a72e8"
+        },
+        {
+          "algorithm": "SHA1",
+          "checksumValue": "1062e0b85c0ebd1c42e9d0c483edcecdee41c7db"
+        }
+      ],
+      "licenseConcluded": "NOASSERTION",
+      "licenseInfoInFiles": [
+        "NOASSERTION"
+      ],
+      "copyrightText": "NOASSERTION"
+    },
+    {
+      "fileName": "./lib/netstandard2.0/de/Microsoft.VisualStudio.Threading.resources.dll",
+      "SPDXID": "SPDXRef-File--lib-netstandard2.0-de-Microsoft.VisualStudio.Threading.resources.dll-E999CF8D1823E692A6957D95C8DF05385DDF15E6",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "ff09cb9823c5e624e47df9d085a95461e56cdcaeeacf3d5aab3ba50089070409"
+        },
+        {
+          "algorithm": "SHA1",
+          "checksumValue": "e999cf8d1823e692a6957d95c8df05385ddf15e6"
+        }
+      ],
+      "licenseConcluded": "NOASSERTION",
+      "licenseInfoInFiles": [
+        "NOASSERTION"
+      ],
+      "copyrightText": "NOASSERTION"
+    },
+    {
+      "fileName": "./lib/net8.0-windows7.0/de/Microsoft.VisualStudio.Threading.resources.dll",
+      "SPDXID": "SPDXRef-File--lib-net8.0-windows7.0-de-Microsoft.VisualStudio.Threading.resources.dll-5CD0CBDF2F48206B4E0535B03055A3459FCD047D",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "a96588aa243bda950a46865c9ab0851493ef3230db30be000aacdcaa7ed8bbbb"
+        },
+        {
+          "algorithm": "SHA1",
+          "checksumValue": "5cd0cbdf2f48206b4e0535b03055a3459fcd047d"
+        }
+      ],
+      "licenseConcluded": "NOASSERTION",
+      "licenseInfoInFiles": [
+        "NOASSERTION"
+      ],
+      "copyrightText": "NOASSERTION"
+    },
+    {
+      "fileName": "./lib/net8.0-windows7.0/ru/Microsoft.VisualStudio.Threading.resources.dll",
+      "SPDXID": "SPDXRef-File--lib-net8.0-windows7.0-ru-Microsoft.VisualStudio.Threading.resources.dll-B55827898AD10B455DF68056A9289EB25664493C",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "c167bdef3f497225c19a8ea76844ec67fe4448128575e118ee6796ecaf14ed06"
+        },
+        {
+          "algorithm": "SHA1",
+          "checksumValue": "b55827898ad10b455df68056a9289eb25664493c"
+        }
+      ],
+      "licenseConcluded": "NOASSERTION",
+      "licenseInfoInFiles": [
+        "NOASSERTION"
+      ],
+      "copyrightText": "NOASSERTION"
+    },
+    {
+      "fileName": "./lib/netstandard2.0/es/Microsoft.VisualStudio.Threading.resources.dll",
+      "SPDXID": "SPDXRef-File--lib-netstandard2.0-es-Microsoft.VisualStudio.Threading.resources.dll-39D1ABDCD9E20AD0A9493BA0AD2540BFEF2CC696",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "86b1c574967c812716cf5b3f6a2ac694378a73e217935cf441208a686b50570a"
+        },
+        {
+          "algorithm": "SHA1",
+          "checksumValue": "39d1abdcd9e20ad0a9493ba0ad2540bfef2cc696"
+        }
+      ],
+      "licenseConcluded": "NOASSERTION",
+      "licenseInfoInFiles": [
+        "NOASSERTION"
+      ],
+      "copyrightText": "NOASSERTION"
+    },
+    {
+      "fileName": "./lib/netstandard2.0/ru/Microsoft.VisualStudio.Threading.resources.dll",
+      "SPDXID": "SPDXRef-File--lib-netstandard2.0-ru-Microsoft.VisualStudio.Threading.resources.dll-1CC289CDE4BD455C7027D3DEC1EA579C8BB19E9D",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "83a74f6d81f27da283b8ef02194f3847bf0f0da78b1321e2a7f3aa718722dc39"
+        },
+        {
+          "algorithm": "SHA1",
+          "checksumValue": "1cc289cde4bd455c7027d3dec1ea579c8bb19e9d"
+        }
+      ],
+      "licenseConcluded": "NOASSERTION",
+      "licenseInfoInFiles": [
+        "NOASSERTION"
+      ],
+      "copyrightText": "NOASSERTION"
+    },
+    {
+      "fileName": "./lib/netstandard2.0/tr/Microsoft.VisualStudio.Threading.resources.dll",
+      "SPDXID": "SPDXRef-File--lib-netstandard2.0-tr-Microsoft.VisualStudio.Threading.resources.dll-B40A203A6EEC48E9AE2B260239B66BD901C0F268",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "1198ef5951b1738a57402a959378998dff509539b43ded2433dfe7f9821e1e0c"
+        },
+        {
+          "algorithm": "SHA1",
+          "checksumValue": "b40a203a6eec48e9ae2b260239b66bd901c0f268"
+        }
+      ],
+      "licenseConcluded": "NOASSERTION",
+      "licenseInfoInFiles": [
+        "NOASSERTION"
+      ],
+      "copyrightText": "NOASSERTION"
+    },
+    {
+      "fileName": "./lib/net472/de/Microsoft.VisualStudio.Threading.resources.dll",
+      "SPDXID": "SPDXRef-File--lib-net472-de-Microsoft.VisualStudio.Threading.resources.dll-53B9C16EE12C146F90911860522888F74EA1BDD1",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "7b99a635bbe5afedab81d8fa58430347fc14998fc24bc9417aad1aa60df55560"
+        },
+        {
+          "algorithm": "SHA1",
+          "checksumValue": "53b9c16ee12c146f90911860522888f74ea1bdd1"
+        }
+      ],
+      "licenseConcluded": "NOASSERTION",
+      "licenseInfoInFiles": [
+        "NOASSERTION"
+      ],
+      "copyrightText": "NOASSERTION"
+    },
+    {
+      "fileName": "./lib/net472/ru/Microsoft.VisualStudio.Threading.resources.dll",
+      "SPDXID": "SPDXRef-File--lib-net472-ru-Microsoft.VisualStudio.Threading.resources.dll-039EA1183CAD551CB9833E64BA946E15456642A4",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "869287c230be727cf236118108f0552b1229b5571677564307cf7241c230c7de"
+        },
+        {
+          "algorithm": "SHA1",
+          "checksumValue": "039ea1183cad551cb9833e64ba946e15456642a4"
+        }
+      ],
+      "licenseConcluded": "NOASSERTION",
+      "licenseInfoInFiles": [
+        "NOASSERTION"
+      ],
+      "copyrightText": "NOASSERTION"
+    },
+    {
+      "fileName": "./lib/net8.0/es/Microsoft.VisualStudio.Threading.resources.dll",
+      "SPDXID": "SPDXRef-File--lib-net8.0-es-Microsoft.VisualStudio.Threading.resources.dll-E94F307579786A0BC89871EBC9F9B9561D8648CD",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "dd68dc06947e83f7e60f1855ac07d4a40786f8663ac452edeed21fd899c17481"
+        },
+        {
+          "algorithm": "SHA1",
+          "checksumValue": "e94f307579786a0bc89871ebc9f9b9561d8648cd"
+        }
+      ],
+      "licenseConcluded": "NOASSERTION",
+      "licenseInfoInFiles": [
+        "NOASSERTION"
+      ],
+      "copyrightText": "NOASSERTION"
+    },
+    {
+      "fileName": "./lib/net8.0/tr/Microsoft.VisualStudio.Threading.resources.dll",
+      "SPDXID": "SPDXRef-File--lib-net8.0-tr-Microsoft.VisualStudio.Threading.resources.dll-875839967695B313D923D0218E3239B39AB55438",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "d58c3680a114ff45270ad64c7339ed3628d8f6fe3422507f38390dbc6c1eac39"
+        },
+        {
+          "algorithm": "SHA1",
+          "checksumValue": "875839967695b313d923d0218e3239b39ab55438"
+        }
+      ],
+      "licenseConcluded": "NOASSERTION",
+      "licenseInfoInFiles": [
+        "NOASSERTION"
+      ],
+      "copyrightText": "NOASSERTION"
+    },
+    {
+      "fileName": "./lib/net8.0-windows7.0/fr/Microsoft.VisualStudio.Threading.resources.dll",
+      "SPDXID": "SPDXRef-File--lib-net8.0-windows7.0-fr-Microsoft.VisualStudio.Threading.resources.dll-1B70EF39096C7BACB5EDB6A896A2980ABFD9D450",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "44185ce1161634f20c21c9ea56acb3b55fad028fd8712c5cf362b49d99166ec4"
+        },
+        {
+          "algorithm": "SHA1",
+          "checksumValue": "1b70ef39096c7bacb5edb6a896a2980abfd9d450"
+        }
+      ],
+      "licenseConcluded": "NOASSERTION",
+      "licenseInfoInFiles": [
+        "NOASSERTION"
+      ],
+      "copyrightText": "NOASSERTION"
+    },
+    {
+      "fileName": "./lib/net8.0-windows7.0/zh-Hans/Microsoft.VisualStudio.Threading.resources.dll",
+      "SPDXID": "SPDXRef-File--lib-net8.0-windows7.0-zh-Hans-Microsoft.VisualStudio.Threading.resources.dll-1BE1468FE78725C0B4110A6CC3F63E4B2EEAFA53",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "7e1901370bbcfdcd2ddb2d156ed99b09dc42d2ebab95e1524c33726a8ef741ab"
+        },
+        {
+          "algorithm": "SHA1",
+          "checksumValue": "1be1468fe78725c0b4110a6cc3f63e4b2eeafa53"
+        }
+      ],
+      "licenseConcluded": "NOASSERTION",
+      "licenseInfoInFiles": [
+        "NOASSERTION"
+      ],
+      "copyrightText": "NOASSERTION"
+    },
+    {
+      "fileName": "./lib/netstandard2.0/it/Microsoft.VisualStudio.Threading.resources.dll",
+      "SPDXID": "SPDXRef-File--lib-netstandard2.0-it-Microsoft.VisualStudio.Threading.resources.dll-AB478361282A4D8A3EDC55394EFC2C966F4203A5",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "0fea1b90984760a0f364f7001961f0c642adb3e45b88a16fde0daea5925419e8"
+        },
+        {
+          "algorithm": "SHA1",
+          "checksumValue": "ab478361282a4d8a3edc55394efc2c966f4203a5"
+        }
+      ],
+      "licenseConcluded": "NOASSERTION",
+      "licenseInfoInFiles": [
+        "NOASSERTION"
+      ],
+      "copyrightText": "NOASSERTION"
+    },
+    {
+      "fileName": "./lib/netstandard2.0/zh-Hant/Microsoft.VisualStudio.Threading.resources.dll",
+      "SPDXID": "SPDXRef-File--lib-netstandard2.0-zh-Hant-Microsoft.VisualStudio.Threading.resources.dll-BCFDCF4C0A673A62EA25780BD2A485C04641E881",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "2acbe6181bb4f6d7b75aed4a250fe3e90adfa16c0347400a849389d9aa39f10f"
+        },
+        {
+          "algorithm": "SHA1",
+          "checksumValue": "bcfdcf4c0a673a62ea25780bd2a485c04641e881"
+        }
+      ],
+      "licenseConcluded": "NOASSERTION",
+      "licenseInfoInFiles": [
+        "NOASSERTION"
+      ],
+      "copyrightText": "NOASSERTION"
+    }
+  ],
+  "packages": [
+    {
+      "name": "Microsoft.VisualStudio.Threading",
+      "SPDXID": "SPDXRef-RootPackage",
+      "downloadLocation": "NOASSERTION",
+      "packageVerificationCode": {
+        "packageVerificationCodeValue": "ed48996a1dcc47545711940eb5980c3338110800"
+      },
+      "filesAnalyzed": true,
+      "licenseConcluded": "NOASSERTION",
+      "licenseInfoFromFiles": [
+        "NOASSERTION"
+      ],
+      "licenseDeclared": "NOASSERTION",
+      "copyrightText": "NOASSERTION",
+      "versionInfo": "1.0.0",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:swid/Microsoft/sbom.microsoft/Microsoft.VisualStudio.Threading@1.0.0?tag_id=4701e1e4-7537-492a-aa7d-d85fc37673c1"
+        }
+      ],
+      "supplier": "Organization: Microsoft",
+      "hasFiles": [
+        "SPDXRef-File--lib-netstandard2.0-ru-Microsoft.VisualStudio.Threading.resources.dll-1CC289CDE4BD455C7027D3DEC1EA579C8BB19E9D",
+        "SPDXRef-File--lib-netstandard2.0-de-Microsoft.VisualStudio.Threading.resources.dll-E999CF8D1823E692A6957D95C8DF05385DDF15E6",
+        "SPDXRef-File--lib-net8.0-windows7.0-pt-BR-Microsoft.VisualStudio.Threading.resources.dll-CF8E8917FC7755D4E3007BE8209285808B84ED58",
+        "SPDXRef-File--lib-net8.0-windows7.0-cs-Microsoft.VisualStudio.Threading.resources.dll-1439A4DA5497F5DC0136B21F2BD71F0E02977B31",
+        "SPDXRef-File--lib-net8.0-pl-Microsoft.VisualStudio.Threading.resources.dll-B08F9F305290DE8D35C1932A632EAC82B5C47FBB",
+        "SPDXRef-File--lib-net8.0-Microsoft.VisualStudio.Threading.xml-CFB1328561581A4E3E125BEEEDFF678CF2A1844F",
+        "SPDXRef-File--lib-net472-ko-Microsoft.VisualStudio.Threading.resources.dll-A40911E9F9A4E5D8C68092AF57BFAE88AE3A6ABD",
+        "SPDXRef-File--lib-net472-Microsoft.VisualStudio.Threading.dll-A7BACD7F8013F5575EB00A43E12F49B1B75E63EE",
+        "SPDXRef-File--lib-netstandard2.0-pt-BR-Microsoft.VisualStudio.Threading.resources.dll-F4BED66E3894737E199974E76EC5D04B436748A3",
+        "SPDXRef-File--lib-netstandard2.0-cs-Microsoft.VisualStudio.Threading.resources.dll-0C662659D9F5D574FAD3310FE32A0BE499CC86F6",
+        "SPDXRef-File--lib-net8.0-windows7.0-pl-Microsoft.VisualStudio.Threading.resources.dll-BBA27BCABCBB5B9A3CDF98631403F34AA56D4798",
+        "SPDXRef-File--lib-net8.0-windows7.0-Microsoft.VisualStudio.Threading.xml-A24BC4F8AE151BE88B75C3891D8074B0D9D2CF63",
+        "SPDXRef-File--lib-net8.0-ko-Microsoft.VisualStudio.Threading.resources.dll-FA3363219945AF8A430E1B9E136144A048338481",
+        "SPDXRef-File--lib-net8.0-Microsoft.VisualStudio.Threading.dll-77E818296AAF0D96E232B80AE75027A157C50AFE",
+        "SPDXRef-File--lib-net472-ja-Microsoft.VisualStudio.Threading.resources.dll-2EA1BCACA5BFAE48AEA8881E490BCAC02A1D15D6",
+        "SPDXRef-File--README.md-CCD65CD8D64461A2DCD491C25F53DA6BC6081295",
+        "SPDXRef-File--lib-netstandard2.0-tr-Microsoft.VisualStudio.Threading.resources.dll-B40A203A6EEC48E9AE2B260239B66BD901C0F268",
+        "SPDXRef-File--lib-netstandard2.0-es-Microsoft.VisualStudio.Threading.resources.dll-39D1ABDCD9E20AD0A9493BA0AD2540BFEF2CC696",
+        "SPDXRef-File--lib-net8.0-windows7.0-ru-Microsoft.VisualStudio.Threading.resources.dll-B55827898AD10B455DF68056A9289EB25664493C",
+        "SPDXRef-File--lib-net8.0-windows7.0-de-Microsoft.VisualStudio.Threading.resources.dll-5CD0CBDF2F48206B4E0535B03055A3459FCD047D",
+        "SPDXRef-File--lib-net8.0-pt-BR-Microsoft.VisualStudio.Threading.resources.dll-1062E0B85C0EBD1C42E9D0C483EDCECDEE41C7DB",
+        "SPDXRef-File--lib-net8.0-cs-Microsoft.VisualStudio.Threading.resources.dll-CB565BEA3A824654478F72290B0524DEDA4F816B",
+        "SPDXRef-File--lib-net472-pl-Microsoft.VisualStudio.Threading.resources.dll-ABE710AFD595CE61E364AF47CC8FC0D324DA5AB9",
+        "SPDXRef-File--lib-net472-Microsoft.VisualStudio.Threading.xml-2DE4863C0C7AD7AF45DB14E91C34EF9AE09C8B8A",
+        "SPDXRef-File--lib-netstandard2.0-pl-Microsoft.VisualStudio.Threading.resources.dll-91FADA5BE5597A8BD647DC29ABD232682C230F35",
+        "SPDXRef-File--lib-netstandard2.0-Microsoft.VisualStudio.Threading.xml-36BEC200245C275FC79B7D17F296BC5F89212DD6",
+        "SPDXRef-File--lib-net8.0-windows7.0-ko-Microsoft.VisualStudio.Threading.resources.dll-7E9E8713E15E4D616A351C12E63F6130C29136F1",
+        "SPDXRef-File--lib-net8.0-windows7.0-Microsoft.VisualStudio.Threading.dll-BB0DB4B56FD47423D0072F2791995CB4CCF0669C",
+        "SPDXRef-File--lib-net8.0-ja-Microsoft.VisualStudio.Threading.resources.dll-0B0C1C5F1FAAA518C380FE44D050395BDD843CE7",
+        "SPDXRef-File--lib-net472-zh-Hant-Microsoft.VisualStudio.Threading.resources.dll-12CA7678A2C782E6A94F6021FB773C9EA2D2DB84",
+        "SPDXRef-File--lib-net472-it-Microsoft.VisualStudio.Threading.resources.dll-C29A2C6F7A321BF5867D6780290CD49F86E425AE",
+        "SPDXRef-File--PackageIcon.png-35E0B5FB0A15D22F442B5C76A3AC1D6631E3E399",
+        "SPDXRef-File--lib-netstandard2.0-zh-Hant-Microsoft.VisualStudio.Threading.resources.dll-BCFDCF4C0A673A62EA25780BD2A485C04641E881",
+        "SPDXRef-File--lib-netstandard2.0-it-Microsoft.VisualStudio.Threading.resources.dll-AB478361282A4D8A3EDC55394EFC2C966F4203A5",
+        "SPDXRef-File--lib-net8.0-windows7.0-zh-Hans-Microsoft.VisualStudio.Threading.resources.dll-1BE1468FE78725C0B4110A6CC3F63E4B2EEAFA53",
+        "SPDXRef-File--lib-net8.0-windows7.0-fr-Microsoft.VisualStudio.Threading.resources.dll-1B70EF39096C7BACB5EDB6A896A2980ABFD9D450",
+        "SPDXRef-File--lib-net8.0-tr-Microsoft.VisualStudio.Threading.resources.dll-875839967695B313D923D0218E3239B39AB55438",
+        "SPDXRef-File--lib-net8.0-es-Microsoft.VisualStudio.Threading.resources.dll-E94F307579786A0BC89871EBC9F9B9561D8648CD",
+        "SPDXRef-File--lib-net472-ru-Microsoft.VisualStudio.Threading.resources.dll-039EA1183CAD551CB9833E64BA946E15456642A4",
+        "SPDXRef-File--lib-net472-de-Microsoft.VisualStudio.Threading.resources.dll-53B9C16EE12C146F90911860522888F74EA1BDD1",
+        "SPDXRef-File--lib-netstandard2.0-ko-Microsoft.VisualStudio.Threading.resources.dll-883AE8821B0C5FD49D4E7F5D6C95D100BDF04F4D",
+        "SPDXRef-File--lib-netstandard2.0-Microsoft.VisualStudio.Threading.dll-BFC3EAD8EFA8CA1B052D8B9B031882478CE907E7",
+        "SPDXRef-File--lib-net8.0-windows7.0-ja-Microsoft.VisualStudio.Threading.resources.dll-E7EA23F36E81059290DC3CF40BA472828DF23268",
+        "SPDXRef-File--lib-net8.0-zh-Hant-Microsoft.VisualStudio.Threading.resources.dll-903149333575FC2167AD8EE9528FC92B8ED70995",
+        "SPDXRef-File--lib-net8.0-it-Microsoft.VisualStudio.Threading.resources.dll-12168BBF345CE46375734499EA4D93464EA65541",
+        "SPDXRef-File--lib-net472-zh-Hans-Microsoft.VisualStudio.Threading.resources.dll-2E65BA9557379A862B670CBF8E02B052FAE9CF57",
+        "SPDXRef-File--lib-net472-fr-Microsoft.VisualStudio.Threading.resources.dll-8F27FD76D14CE18862C793234A13699D4E7B5135",
+        "SPDXRef-File--NOTICE-680D72E8A1518C1CAE45FDBF970D49874EBF82E1",
+        "SPDXRef-File--lib-netstandard2.0-ja-Microsoft.VisualStudio.Threading.resources.dll-6169CBF627A251197A8149BDC7F5A909E3632A37",
+        "SPDXRef-File--lib-net8.0-windows7.0-zh-Hant-Microsoft.VisualStudio.Threading.resources.dll-FE6B186E3C8AB963A3F1BCDC1D9870330291FD0A",
+        "SPDXRef-File--lib-net8.0-windows7.0-it-Microsoft.VisualStudio.Threading.resources.dll-A086C16F6E04D78DA1F66D8F42CD1EA11D15F78A",
+        "SPDXRef-File--lib-net8.0-zh-Hans-Microsoft.VisualStudio.Threading.resources.dll-458DD2EF6CBE4D9C50E976DE4D606C1EB5525CA3",
+        "SPDXRef-File--lib-net8.0-fr-Microsoft.VisualStudio.Threading.resources.dll-6B6947ECBA6D8A0F47F5323EBC8DFDE1B1638F58",
+        "SPDXRef-File--lib-net472-tr-Microsoft.VisualStudio.Threading.resources.dll-1086C7EB55D1BF76C3D27B386938249CE3A9DDB4",
+        "SPDXRef-File--lib-net472-es-Microsoft.VisualStudio.Threading.resources.dll-094378D5582E3178545B9672E56758E584043CBC",
+        "SPDXRef-File--Microsoft.VisualStudio.Threading.Only.nuspec-3DF5FBAAC8C4F598809AB90704B14D4DDC09DF6F",
+        "SPDXRef-File--lib-netstandard2.0-zh-Hans-Microsoft.VisualStudio.Threading.resources.dll-BB7F12D52B3C9C7929D5D02FD8B52A03A021EADD",
+        "SPDXRef-File--lib-netstandard2.0-fr-Microsoft.VisualStudio.Threading.resources.dll-D154A7965448D18DF1137E079588B7C8DDC8F841",
+        "SPDXRef-File--lib-net8.0-windows7.0-tr-Microsoft.VisualStudio.Threading.resources.dll-A098700C4F93BF2016D56E064B71D3A8FA8E8791",
+        "SPDXRef-File--lib-net8.0-windows7.0-es-Microsoft.VisualStudio.Threading.resources.dll-E563F8F3D626E7DAECA0D2757CA6693A560C81FE",
+        "SPDXRef-File--lib-net8.0-ru-Microsoft.VisualStudio.Threading.resources.dll-A975BB38D7E9655627BE31CE1CA416C831E49F92",
+        "SPDXRef-File--lib-net8.0-de-Microsoft.VisualStudio.Threading.resources.dll-7059444DB60D3BF07C32775DC3C19FCB819D7D8C",
+        "SPDXRef-File--lib-net472-pt-BR-Microsoft.VisualStudio.Threading.resources.dll-8F478DD7C743291B9E8A2073C32D618B6BB33D03",
+        "SPDXRef-File--lib-net472-cs-Microsoft.VisualStudio.Threading.resources.dll-56C41AEF58E5952F160F33AA3BCE900E83B38E60"
+      ]
+    }
+  ],
+  "externalDocumentRefs": [],
+  "relationships": [
+    {
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-RootPackage",
+      "spdxElementId": "SPDXRef-DOCUMENT"
+    }
+  ],
+  "spdxVersion": "SPDX-2.2",
+  "dataLicense": "CC0-1.0",
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "name": "Microsoft.VisualStudio.Threading 1.0.0",
+  "documentNamespace": "https://sbom.microsoft/1:34sbAVZth0--DQCSE2iE2Q:kMXbC2KgP0yw9pOD9nhl7g/8123:14386016/Microsoft.VisualStudio.Threading:1.0.0:gTKeP-oMHkyTN_Yb-iLsUA",
+  "creationInfo": {
+    "created": "2026-06-16T03:40:36Z",
+    "creators": [
+      "Organization: Microsoft",
+      "Tool: Microsoft.SBOMTool-3.0.1"
+    ]
+  },
+  "documentDescribes": [
+    "SPDXRef-RootPackage"
+  ]
+}

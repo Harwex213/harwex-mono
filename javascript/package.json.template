@@ -1,0 +1,16 @@
+{
+  "name": "@hw/your-project",
+  "private": true,
+  // delete this node.js project
+  "browserslist": [
+    "> 1%",
+    "last 2 versions",
+    "not dead"
+  ],
+  "dependencies": {
+    // fill
+  },
+  "devDependencies": {
+    // fill
+  }
+}
