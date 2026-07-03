@@ -1,0 +1,9 @@
+{
+  "name": "@hw/faenwald-platform-server",
+  "type": "module",
+  "browserslist": [
+    "last 1 version",
+    "> 1%",
+    "not dead"
+  ]
+}
