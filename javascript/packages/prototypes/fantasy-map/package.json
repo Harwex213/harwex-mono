@@ -9,7 +9,15 @@
     "last 2 versions",
     "not dead"
   ],
+  "scripts": {
+    "start": "rsbuild dev",
+    "build": "rsbuild build",
+    "preview": "rsbuild preview"
+  },
   "dependencies": {
-    "@hw/utils": "1.0.0"
+    "@hw/utils": "workspace:*"
+  },
+  "devDependencies": {
+    "@rsbuild/core": "2.1.4"
   }
 }
