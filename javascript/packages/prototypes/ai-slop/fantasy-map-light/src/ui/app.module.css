@@ -1,0 +1,6 @@
+.container {
+    width: 100vw;
+    height: 100dvh;
+    display: flex;
+    font-family: system-ui, sans-serif;
+}
