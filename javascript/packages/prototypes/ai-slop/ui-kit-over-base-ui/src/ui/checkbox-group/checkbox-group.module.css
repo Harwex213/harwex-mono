@@ -1,0 +1,9 @@
+.root {
+  display: flex;
+  flex-direction: column;
+  gap: var(--uk-space-2);
+  color: var(--uk-fg);
+}
+.root[data-disabled] {
+  opacity: 0.5;
+}

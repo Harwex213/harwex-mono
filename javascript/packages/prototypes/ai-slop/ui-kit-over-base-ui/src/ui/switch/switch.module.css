@@ -1,0 +1,36 @@
+.root {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  width: 36px;
+  height: 20px;
+  padding: 2px;
+  border: none;
+  border-radius: var(--uk-radius-full);
+  background: var(--uk-border-strong);
+  cursor: pointer;
+  transition: background var(--uk-duration) var(--uk-ease);
+}
+.root[data-checked] {
+  background: var(--uk-primary);
+}
+.root[data-disabled] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.root:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--uk-ring);
+}
+
+.thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: var(--uk-radius-full);
+  background: var(--uk-primary-fg);
+  box-shadow: var(--uk-shadow-sm);
+  transition: translate var(--uk-duration) var(--uk-ease);
+}
+.thumb[data-checked] {
+  translate: 16px 0;
+}

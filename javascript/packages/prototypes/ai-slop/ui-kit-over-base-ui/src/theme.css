@@ -1,0 +1,103 @@
+/*
+ * Design tokens for the UI Kit.
+ * All component *.module.css files consume ONLY these CSS variables so the
+ * whole kit re-themes from one place and supports light / dark.
+ */
+:root {
+  --uk-font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+    Helvetica, Arial, sans-serif;
+  --uk-font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
+    "Liberation Mono", monospace;
+
+  /* Radii */
+  --uk-radius-sm: 4px;
+  --uk-radius: 8px;
+  --uk-radius-lg: 12px;
+  --uk-radius-full: 9999px;
+
+  /* Spacing scale */
+  --uk-space-1: 4px;
+  --uk-space-2: 8px;
+  --uk-space-3: 12px;
+  --uk-space-4: 16px;
+  --uk-space-5: 24px;
+  --uk-space-6: 32px;
+
+  /* Motion */
+  --uk-ease: cubic-bezier(0.4, 0, 0.2, 1);
+  --uk-duration: 180ms;
+
+  /* Light palette */
+  --uk-bg: #ffffff;
+  --uk-bg-subtle: #f7f8fa;
+  --uk-panel: #ffffff;
+  --uk-panel-elevated: #ffffff;
+  --uk-fg: #1a1d23;
+  --uk-fg-muted: #61656d;
+  --uk-fg-subtle: #8a8f98;
+  --uk-border: #e3e5e9;
+  --uk-border-strong: #cdd0d6;
+  --uk-hover: #f2f3f5;
+  --uk-active: #e8eaed;
+
+  --uk-primary: #4f46e5;
+  --uk-primary-hover: #4338ca;
+  --uk-primary-active: #3730a3;
+  --uk-primary-fg: #ffffff;
+  --uk-primary-subtle: #eef2ff;
+
+  --uk-danger: #dc2626;
+  --uk-danger-hover: #b91c1c;
+  --uk-danger-fg: #ffffff;
+  --uk-danger-subtle: #fef2f2;
+
+  --uk-success: #16a34a;
+  --uk-warning: #d97706;
+
+  --uk-ring: color-mix(in srgb, var(--uk-primary) 45%, transparent);
+
+  --uk-shadow-sm: 0 1px 2px rgba(16, 18, 22, 0.06),
+    0 1px 3px rgba(16, 18, 22, 0.08);
+  --uk-shadow: 0 4px 12px rgba(16, 18, 22, 0.1),
+    0 2px 4px rgba(16, 18, 22, 0.06);
+  --uk-shadow-lg: 0 12px 32px rgba(16, 18, 22, 0.16),
+    0 4px 8px rgba(16, 18, 22, 0.08);
+
+  --uk-overlay: rgba(15, 18, 22, 0.45);
+}
+
+.dark {
+  --uk-bg: #0e1013;
+  --uk-bg-subtle: #16191e;
+  --uk-panel: #191c22;
+  --uk-panel-elevated: #1f232a;
+  --uk-fg: #f2f3f5;
+  --uk-fg-muted: #a4a9b3;
+  --uk-fg-subtle: #6f757f;
+  --uk-border: #2a2e36;
+  --uk-border-strong: #3a3f49;
+  --uk-hover: #23272e;
+  --uk-active: #2c313a;
+
+  --uk-primary: #6366f1;
+  --uk-primary-hover: #7c7ff4;
+  --uk-primary-active: #8b8df6;
+  --uk-primary-fg: #ffffff;
+  --uk-primary-subtle: #1e1f38;
+
+  --uk-danger: #ef4444;
+  --uk-danger-hover: #f87171;
+  --uk-danger-fg: #ffffff;
+  --uk-danger-subtle: #2a1616;
+
+  --uk-success: #22c55e;
+  --uk-warning: #f59e0b;
+
+  --uk-ring: color-mix(in srgb, var(--uk-primary) 55%, transparent);
+
+  --uk-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --uk-shadow: 0 6px 16px rgba(0, 0, 0, 0.45);
+  --uk-shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.55);
+
+  --uk-overlay: rgba(0, 0, 0, 0.6);
+}

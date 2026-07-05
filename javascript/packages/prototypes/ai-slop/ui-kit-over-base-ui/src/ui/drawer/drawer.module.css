@@ -1,0 +1,113 @@
+.trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--uk-space-2);
+  padding: var(--uk-space-2) var(--uk-space-4);
+  border: 1px solid var(--uk-border-strong);
+  border-radius: var(--uk-radius);
+  background: var(--uk-panel);
+  color: var(--uk-fg);
+  font-weight: 600;
+  cursor: pointer;
+  transition: background var(--uk-duration) var(--uk-ease);
+}
+.trigger:hover {
+  background: var(--uk-hover);
+}
+.trigger:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--uk-ring);
+}
+
+.backdrop {
+  position: fixed;
+  inset: 0;
+  background: var(--uk-overlay);
+  transition: opacity var(--uk-duration) var(--uk-ease);
+}
+.backdrop[data-starting-style],
+.backdrop[data-ending-style] {
+  opacity: 0;
+}
+
+.viewport {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  justify-content: flex-end;
+  align-items: stretch;
+  pointer-events: none;
+}
+
+.popup {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: min(420px, 100%);
+  height: 100%;
+  border-left: 1px solid var(--uk-border);
+  background: var(--uk-panel-elevated);
+  box-shadow: var(--uk-shadow-lg);
+  color: var(--uk-fg);
+  pointer-events: auto;
+  transform: translateX(var(--drawer-swipe-movement-x, 0px));
+  transition: transform var(--uk-duration) var(--uk-ease);
+}
+.popup[data-starting-style],
+.popup[data-ending-style] {
+  transform: translateX(100%);
+}
+.popup[data-swiping] {
+  transition: none;
+}
+.popup:focus-visible {
+  outline: none;
+  box-shadow: var(--uk-shadow-lg), inset 0 0 0 3px var(--uk-ring);
+}
+
+.content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--uk-space-3);
+  flex: 1;
+  min-height: 0;
+  padding: var(--uk-space-5);
+  overflow-y: auto;
+}
+
+.title {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--uk-fg);
+}
+
+.description {
+  margin: 0;
+  color: var(--uk-fg-muted);
+  line-height: 1.5;
+}
+
+.close {
+  align-self: flex-start;
+  margin-top: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--uk-space-2) var(--uk-space-4);
+  border: 1px solid var(--uk-border-strong);
+  border-radius: var(--uk-radius);
+  background: var(--uk-panel);
+  color: var(--uk-fg);
+  font-weight: 600;
+  cursor: pointer;
+  transition: background var(--uk-duration) var(--uk-ease);
+}
+.close:hover {
+  background: var(--uk-hover);
+}
+.close:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--uk-ring);
+}
