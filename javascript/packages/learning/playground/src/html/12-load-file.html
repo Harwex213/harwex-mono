@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0"
+          name="viewport">
+    <meta content="ie=edge" http-equiv="X-UA-Compatible">
+    <title>Document</title>
+</head>
+<body>
+<main>
+    <div>
+        <img alt="ALT" id="preview"/>
+
+        <p id="meta"></p>
+
+        <input id="file" type="file">
+    </div>
+</main>
+<script>
+  const input = document.querySelector("#file");
+  const meta = document.querySelector("#meta");
+  const preview = document.querySelector("#preview");
+
+  input.addEventListener("change", async (e) => {
+    const file = e.target.files[0];
+    if (!file) {
+      return;
+    }
+
+    meta.textContent = `name: ${file.name}\nsize: ${file.size} bytes\ntype: ${file.type}\n\n`;
+
+    if (file.type.startsWith("image/")) {
+      preview.src = URL.createObjectURL(file);
+    }
+  })
+</script>
+</body>
+</html>

@@ -8,3 +8,6 @@ out
 .env.local
 
 *.db
+*.SD_Store
+
+.claude/worktrees
