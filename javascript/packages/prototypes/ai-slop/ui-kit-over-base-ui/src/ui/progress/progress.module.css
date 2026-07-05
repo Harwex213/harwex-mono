@@ -1,0 +1,39 @@
+.root {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: var(--uk-space-2);
+  width: 100%;
+  max-width: 320px;
+}
+
+.label {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--uk-fg);
+}
+
+.value {
+  font-size: 14px;
+  color: var(--uk-fg-muted);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.track {
+  grid-column: 1 / -1;
+  height: 8px;
+  border-radius: var(--uk-radius-full);
+  background: var(--uk-active);
+  overflow: hidden;
+}
+
+.indicator {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--uk-primary);
+  transition: width var(--uk-duration) var(--uk-ease);
+}
+
+.root[data-complete] .indicator {
+  background: var(--uk-success);
+}

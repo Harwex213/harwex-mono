@@ -1,0 +1,56 @@
+.root {
+  display: flex;
+  flex-direction: column;
+  gap: var(--uk-space-2);
+  width: 100%;
+  max-width: 520px;
+}
+
+.trigger {
+  display: flex;
+  align-items: center;
+  gap: var(--uk-space-2);
+  width: fit-content;
+  padding: var(--uk-space-2) var(--uk-space-3);
+  font-family: inherit;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--uk-fg);
+  background: var(--uk-panel);
+  border: 1px solid var(--uk-border);
+  border-radius: var(--uk-radius);
+  cursor: pointer;
+  transition: background var(--uk-duration) var(--uk-ease);
+}
+.trigger:hover {
+  background: var(--uk-hover);
+}
+.trigger:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--uk-ring);
+}
+
+.icon {
+  flex-shrink: 0;
+  color: var(--uk-fg-muted);
+  transition: transform var(--uk-duration) var(--uk-ease);
+}
+.trigger[data-panel-open] .icon {
+  transform: rotate(180deg);
+}
+
+.panel {
+  height: var(--collapsible-panel-height);
+  overflow: hidden;
+  color: var(--uk-fg-muted);
+  font-size: 0.875rem;
+  transition: height var(--uk-duration) var(--uk-ease);
+}
+.panel[data-starting-style],
+.panel[data-ending-style] {
+  height: 0;
+}
+/* padding lives on an inner wrapper so height animation stays smooth */
+.panel > * {
+  padding: var(--uk-space-3) var(--uk-space-3) var(--uk-space-4);
+}

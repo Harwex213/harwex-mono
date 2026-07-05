@@ -1,0 +1,32 @@
+.root {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--uk-space-1);
+  padding: var(--uk-space-1);
+  border: 1px solid var(--uk-border);
+  border-radius: var(--uk-radius);
+  background: var(--uk-panel);
+  box-shadow: var(--uk-shadow-sm);
+}
+
+/* Scoped under .root so it overrides the bordered Menu.Trigger base style. */
+.root .trigger {
+  height: 32px;
+  padding: 0 var(--uk-space-3);
+  border: 1px solid transparent;
+  border-radius: var(--uk-radius-sm);
+  background: transparent;
+  box-shadow: none;
+}
+.root .trigger:hover {
+  background: var(--uk-hover);
+}
+.root .trigger[data-popup-open] {
+  background: var(--uk-primary-subtle);
+  border-color: transparent;
+  color: var(--uk-primary);
+}
+.root .trigger:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--uk-ring);
+}

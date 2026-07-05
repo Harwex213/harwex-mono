@@ -1,0 +1,27 @@
+{
+  "name": "@hw/ui-kit-over-base-ui",
+  "description": "Full UI Kit built on top of Base UI (@base-ui/react) primitives",
+  "private": true,
+  "type": "module",
+  "browserslist": [
+    "last 1 version",
+    "> 1%",
+    "not dead"
+  ],
+  "scripts": {
+    "dev": "yarn vite dev",
+    "build": "yarn vite build",
+    "preview": "yarn vite preview",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@base-ui/react": "1.6.0",
+    "react": "19.2.0",
+    "react-dom": "19.2.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react-swc": "4.1.0",
+    "typescript": "5.9.3",
+    "vite": "7.1.10"
+  }
+}
