@@ -14,33 +14,36 @@ const refKey = (collectionId, modifierId) => `${collectionId}:${modifierId}`;
 
 const STYLE = `
   <style>
-    .bc { font-family: sans-serif; padding: 16px; }
-    .bc .box-label { display: inline-block; margin: 0 0 16px; padding: 10px 20px; border: 1px solid #000; font-size: 16px; font-weight: normal; }
-    .bc .maps { display: flex; gap: 32px; margin-bottom: 24px; }
-    .bc .map-card { display: flex; flex-direction: column; align-items: center; gap: 8px; cursor: pointer; }
-    .bc .map-card img { width: 96px; height: 88px; object-fit: cover; border: 1px solid #000; }
-    .bc hr { border: none; border-top: 1px solid #999; margin: 0 0 24px; }
-    .bc .sides { display: grid; grid-template-columns: 1fr 1fr; }
-    .bc .side { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; padding: 0 24px 24px 0; }
-    .bc .side--defender { align-items: flex-end; padding: 0 0 24px 24px; border-left: 1px solid #999; }
-    .bc .side-label { padding: 8px 16px; border: 1px solid #000; }
-    .bc .unit { display: flex; flex-direction: column; gap: 8px; }
+    .bc { font-family: var(--font-body); color: var(--text-primary); padding: var(--space-8); }
+    .bc .box-label { display: inline-block; margin: 0 0 var(--space-7); padding: var(--space-5) var(--space-8); font-family: var(--font-display); font-size: var(--font-size-xl); color: var(--text-accent); }
+    .bc .maps { display: flex; gap: var(--space-8); margin-bottom: var(--space-8); }
+    .bc .map-card { display: flex; flex-direction: column; align-items: center; gap: var(--space-4); cursor: pointer; }
+    .bc .map-card img { width: 96px; height: 88px; object-fit: cover; border: 1px solid var(--border-default); border-radius: var(--radius-sm); }
+    .bc .map-card:hover img { border-color: var(--border-accent-muted); }
+    .bc hr { border: none; border-top: 1px solid var(--border-default); margin: 0 0 var(--space-8); }
+    .bc .sides { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-8); }
+    .bc .side { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-7); padding: 0 var(--space-8) var(--space-8) 0; }
+    .bc .side--defender { align-items: flex-end; padding: 0 0 var(--space-8) var(--space-8); border-left: 1px solid var(--border-default); }
+    .bc .side-label { padding: var(--space-4) var(--space-7); font-family: var(--font-display); font-size: var(--font-size-lg); color: var(--text-secondary); }
+    .bc .unit { display: flex; flex-direction: column; gap: var(--space-4); padding: var(--card-padding); background: var(--card-bg); border: 1px solid var(--card-border); border-radius: var(--card-radius); }
     .bc .side--defender .unit { align-items: flex-end; }
-    .bc .unit-row { display: flex; align-items: center; gap: 12px; }
-    .bc select, .bc button, .bc input { font: inherit; background: #fff; border: 1px solid #000; padding: 8px 12px; }
+    .bc .unit-row { display: flex; align-items: center; gap: var(--space-6); }
+    .bc select, .bc button, .bc input { font: inherit; color: var(--text-primary); background: var(--bg-control); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: var(--space-4) var(--space-6); }
+    .bc select:hover, .bc input:focus { border-color: var(--border-accent-muted); outline: none; }
     .bc button { cursor: pointer; }
-    .bc button:disabled { color: #999; border-color: #999; cursor: default; }
-    .bc .stats { padding: 8px 12px; border: 1px solid #000; white-space: nowrap; }
-    .bc .modifier-row { display: flex; align-items: center; gap: 12px; margin-left: 24px; }
-    .bc .side--defender .modifier-row { margin-left: 0; margin-right: 24px; }
-    .bc .modifier-name { min-width: 220px; padding: 8px 12px; border: 1px solid #000; text-align: center; }
-    .bc .combo { position: relative; margin-left: 24px; }
-    .bc .side--defender .combo { margin-left: 0; margin-right: 24px; }
-    .bc .combo ul { position: absolute; z-index: 1; left: 0; right: 0; margin: 0; padding: 0; list-style: none; background: #fff; border: 1px solid #000; border-top: none; }
-    .bc .combo li button { display: block; width: 100%; border: none; text-align: left; }
-    .bc .combo li button:hover { background: #eee; }
-    .bc .start { display: flex; align-items: center; gap: 16px; margin-top: 8px; }
-    .bc .hint { margin: 0; color: #999; }
+    .bc button:hover { background: var(--bg-control-hover); }
+    .bc button:disabled { color: var(--text-muted); border-color: var(--border-default); background: transparent; cursor: default; }
+    .bc .stats { padding: var(--space-4) var(--space-6); border: 1px solid var(--border-default); border-radius: var(--radius-sm); color: var(--text-secondary); white-space: nowrap; }
+    .bc .modifier-row { display: flex; align-items: center; gap: var(--space-6); margin-left: var(--space-8); }
+    .bc .side--defender .modifier-row { margin-left: 0; margin-right: var(--space-8); }
+    .bc .modifier-name { min-width: 220px; padding: var(--space-4) var(--space-6); background: var(--bg-control-subtle); border: 1px solid var(--border-default); border-radius: var(--radius-sm); color: var(--text-secondary); text-align: center; }
+    .bc .combo { position: relative; margin-left: var(--space-8); }
+    .bc .side--defender .combo { margin-left: 0; margin-right: var(--space-8); }
+    .bc .combo ul { position: absolute; z-index: 1; left: 0; right: 0; margin: 0; padding: 0; list-style: none; background: var(--bg-surface-raised); border: 1px solid var(--border-medium); border-top: none; border-radius: 0 0 var(--radius-sm) var(--radius-sm); }
+    .bc .combo li button { display: block; width: 100%; border: none; border-radius: 0; background: transparent; text-align: left; }
+    .bc .combo li button:hover { background: var(--bg-control-hover); }
+    .bc .start { display: flex; align-items: center; gap: var(--space-7); margin-top: var(--space-4); }
+    .bc .hint { margin: 0; color: var(--text-muted); }
   </style>
 `;
 

@@ -63,10 +63,21 @@ re-writes the whole page's `innerHTML`.
 
 ### Styling
 
-Prefer a single scoped `<style>` block per page (see `battle-creation.js`): every
-selector is prefixed with a short page class (`.bc` for battle-creation) that also
-wraps the page markup — poor-man's scoping without a bundler. Give each page its own
-unique prefix. Inline `style="..."` is acceptable only for trivial one-off pages.
+**Design tokens** live in `src/styles/` and are loaded globally via `<link>` in
+`index.html`: `tokens.css` (a two-layer system — primitive values named by what they
+*are*, then semantic tokens named by what they *do*) and `base.css` (font `@import`,
+`body` defaults, reset). The identity is the faenwald dark-fantasy palette: warm-neutral
+surfaces, muted parchment gold accent, Playfair Display for headings, system sans for body.
+
+**Always use `var(--*)` tokens — never raw hex, rgba, spacing, font-size, or
+border-radius literals** in a page's CSS. If a needed token doesn't exist, add it to
+`tokens.css` first (extend the primitive layer, then expose a semantic token).
+
+Per-page CSS stays in a single scoped `<style>` block per page (see `battle-creation.js`):
+every selector is prefixed with a short page class (`.bc` for battle-creation, `.mp` for
+main-page, `.bt` for battle) that also wraps the page markup — poor-man's scoping without
+a bundler. Give each page its own unique prefix. Only tokens/base are global; page layout
+is not. Do **not** use inline `style="..."` — use a scoped block with tokens instead.
 
 ## Project structure
 
