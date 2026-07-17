@@ -1,5 +1,6 @@
-import { MAPS, UNIT_TYPES } from "../data/catalog.js";
+import { MAPS, UNIT_TYPES, STAT_META } from "../data/catalog.js";
 import { SIDES, battleConfig, computeStats, isConfigValid } from "../modules/battle-config.js";
+import { findModifier } from "../modules/modifiers-store.js";
 
 const renderBattle = () => {
   const root = document.querySelector("main");
@@ -25,8 +26,12 @@ const renderBattle = () => {
         .map((unit) => {
           const type = UNIT_TYPES.find((t) => t.id === unit.typeId);
           const s = computeStats(unit);
-          const mods = unit.modifierIds.length ? ` — ${unit.modifierIds.join(", ")}` : "";
-          return `<li>${type.name}: ${s.hp} ❤️ ${s.attack} ⚔️ ${s.morale} 🏆${mods}</li>`;
+          const names = unit.modifiers
+            .map((ref) => findModifier(ref.collectionId, ref.modifierId)?.name)
+            .filter(Boolean);
+          const mods = names.length ? ` — ${names.join(", ")}` : "";
+          const stats = STAT_META.map((m) => `${s[m.id]} ${m.emoji}`).join(" ");
+          return `<li>${type.name}: ${stats}${mods}</li>`;
         })
         .join("")}
     </ul>

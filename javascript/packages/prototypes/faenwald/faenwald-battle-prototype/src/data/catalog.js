@@ -11,6 +11,14 @@ const UNIT_TYPES = [
   { id: "militia", name: "militia", hp: 60, attack: 8, morale: 40 },
 ];
 
+// stat identity + presentation in one place; consumed by the stat pickers,
+// the modifiers editor, and the stat readouts on the battle screens
+const STAT_META = [
+  { id: "hp", label: "hp", emoji: "❤️" },
+  { id: "attack", label: "attack", emoji: "⚔️" },
+  { id: "morale", label: "morale", emoji: "🏆" },
+];
+
 const MODIFIERS = [
   { id: "veteran", name: "veteran", description: "+25% attack", flat: {}, percent: { attack: 0.25 } },
   { id: "fortified", name: "fortified", description: "+30 HP", flat: { hp: 30 }, percent: {} },
@@ -20,4 +28,4 @@ const MODIFIERS = [
   { id: "berserk", name: "berserk", description: "+40% attack, -20 morale", flat: { morale: -20 }, percent: { attack: 0.4 } },
 ];
 
-export { MAPS, UNIT_TYPES, MODIFIERS }
+export { MAPS, UNIT_TYPES, MODIFIERS, STAT_META }

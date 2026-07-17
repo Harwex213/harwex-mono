@@ -1,4 +1,4 @@
-import { MAPS, UNIT_TYPES, MODIFIERS } from "../data/catalog.js";
+import { MAPS, UNIT_TYPES, STAT_META } from "../data/catalog.js";
 import {
   SIDES,
   battleConfig,
@@ -8,6 +8,9 @@ import {
   computeStats,
   isConfigValid,
 } from "../modules/battle-config.js";
+import { allModifiers, findModifier, getCollection } from "../modules/modifiers-store.js";
+
+const refKey = (collectionId, modifierId) => `${collectionId}:${modifierId}`;
 
 const STYLE = `
   <style>
@@ -60,7 +63,7 @@ const renderBattleCreation = () => {
 
   const statsHtml = (unit) => {
     const s = computeStats(unit);
-    return `<span class="stats">${s.hp} ❤️ ${s.attack} ⚔️ ${s.morale} 🏆</span>`;
+    return `<span class="stats">${STAT_META.map((m) => `${s[m.id]} ${m.emoji}`).join(" ")}</span>`;
   };
 
   const comboHtml = (unit, remaining) => `
@@ -69,10 +72,10 @@ const renderBattleCreation = () => {
       <ul>
         ${remaining
           .map(
-            (m) => `
+            (x) => `
               <li>
-                <button data-action="pick-modifier" data-unit-id="${unit.id}" data-modifier-id="${m.id}">
-                  ${m.name} — ${m.description}
+                <button data-action="pick-modifier" data-unit-id="${unit.id}" data-collection-id="${x.collectionId}" data-modifier-id="${x.modifier.id}">
+                  ${x.collectionName} / ${x.modifier.name} — ${x.modifier.description}
                 </button>
               </li>`,
           )
@@ -82,18 +85,31 @@ const renderBattleCreation = () => {
   `;
 
   const modifiersHtml = (unit) => {
-    const rows = unit.modifierIds
-      .map((id) => MODIFIERS.find((m) => m.id === id))
-      .map(
-        (m) => `
+    const rows = unit.modifiers
+      .map((ref) => {
+        const modifier = findModifier(ref.collectionId, ref.modifierId);
+        if (!modifier) return null; // ref's collection/modifier was deleted — skip
+        const collection = getCollection(ref.collectionId);
+        const prefix = collection ? `${collection.name} / ` : "";
+        return `
           <div class="modifier-row">
-            <span class="modifier-name">${m.name} — ${m.description}</span>
-            <button data-action="remove-modifier" data-unit-id="${unit.id}" data-modifier-id="${m.id}" title="Remove modifier">🗑️</button>
-          </div>`,
-      )
+            <span class="modifier-name">${prefix}${modifier.name} — ${modifier.description}</span>
+            <button data-action="remove-modifier" data-unit-id="${unit.id}" data-collection-id="${ref.collectionId}" data-modifier-id="${ref.modifierId}" title="Remove modifier">🗑️</button>
+          </div>`;
+      })
+      .filter(Boolean)
       .join("");
 
-    const remaining = MODIFIERS.filter((m) => !unit.modifierIds.includes(m.id));
+    // every modifier across all collections, minus those already picked, sorted
+    // by modifier name (collection name breaks ties)
+    const picked = new Set(unit.modifiers.map((ref) => refKey(ref.collectionId, ref.modifierId)));
+    const remaining = allModifiers()
+      .filter((x) => !picked.has(refKey(x.collectionId, x.modifier.id)))
+      .sort(
+        (a, b) =>
+          a.modifier.name.localeCompare(b.modifier.name) ||
+          a.collectionName.localeCompare(b.collectionName),
+      );
     let footer = "";
     if (comboForUnitId === unit.id) {
       footer = comboHtml(unit, remaining);
@@ -167,8 +183,8 @@ const renderBattleCreation = () => {
     }
   };
 
-  const pickModifier = (unitId, modifierId) => {
-    findUnit(unitId).modifierIds.push(modifierId);
+  const pickModifier = (unitId, collectionId, modifierId) => {
+    findUnit(unitId).modifiers.push({ collectionId, modifierId });
     comboForUnitId = null;
     render();
   };
@@ -199,7 +215,13 @@ const renderBattleCreation = () => {
         break;
       case "remove-modifier": {
         const unit = findUnit(unitId);
-        unit.modifierIds = unit.modifierIds.filter((id) => id !== el.dataset.modifierId);
+        unit.modifiers = unit.modifiers.filter(
+          (ref) =>
+            !(
+              String(ref.collectionId) === el.dataset.collectionId &&
+              String(ref.modifierId) === el.dataset.modifierId
+            ),
+        );
         render();
         break;
       }
@@ -208,7 +230,7 @@ const renderBattleCreation = () => {
         render();
         break;
       case "pick-modifier":
-        pickModifier(unitId, el.dataset.modifierId);
+        pickModifier(unitId, el.dataset.collectionId, el.dataset.modifierId);
         break;
       case "start-battle":
         window.location.hash = "/battle";
@@ -246,7 +268,7 @@ const renderBattleCreation = () => {
     }
     if (event.key === "Enter" && event.target.dataset.role === "combo-input") {
       const first = event.target.nextElementSibling.querySelector("li:not([hidden]) button");
-      if (first) pickModifier(Number(first.dataset.unitId), first.dataset.modifierId);
+      if (first) pickModifier(Number(first.dataset.unitId), first.dataset.collectionId, first.dataset.modifierId);
     }
   };
 

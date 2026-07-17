@@ -1,7 +1,8 @@
-import { MAPS, UNIT_TYPES, MODIFIERS } from "../data/catalog.js";
+import { MAPS, UNIT_TYPES, STAT_META } from "../data/catalog.js";
+import { findModifier } from "./modifiers-store.js";
 
 const SIDES = ["attacker", "defender"];
-const STATS = ["hp", "attack", "morale"];
+const STATS = STAT_META.map((s) => s.id);
 
 // module-level singleton: the draft survives in-session navigation
 const battleConfig = {
@@ -12,7 +13,8 @@ const battleConfig = {
 
 let nextUnitId = 1;
 
-const createUnit = () => ({ id: nextUnitId++, typeId: null, modifierIds: [] });
+// modifiers are composite refs { collectionId, modifierId } into the store
+const createUnit = () => ({ id: nextUnitId++, typeId: null, modifiers: [] });
 
 const findUnit = (unitId) => {
   for (const side of SIDES) {
@@ -28,15 +30,21 @@ const removeUnit = (unitId) => {
   }
 };
 
-// flat bonuses first, then summed percentages: order-independent, min 1
+const sumEntries = (entries, stat) =>
+  entries.reduce((sum, e) => (e.stat === stat ? sum + e.value : sum), 0);
+
+// flat bonuses first, then summed percentages: order-independent, min 1.
+// refs whose collection/modifier was deleted resolve to null and are skipped.
 const computeStats = (unit) => {
   const base = UNIT_TYPES.find((t) => t.id === unit.typeId);
-  const modifiers = unit.modifierIds.map((id) => MODIFIERS.find((m) => m.id === id));
+  const modifiers = unit.modifiers
+    .map((ref) => findModifier(ref.collectionId, ref.modifierId))
+    .filter(Boolean);
 
   const stats = {};
   for (const stat of STATS) {
-    const flat = modifiers.reduce((sum, m) => sum + (m.flat[stat] ?? 0), 0);
-    const percent = modifiers.reduce((sum, m) => sum + (m.percent[stat] ?? 0), 0);
+    const flat = modifiers.reduce((sum, m) => sum + sumEntries(m.flat, stat), 0);
+    const percent = modifiers.reduce((sum, m) => sum + sumEntries(m.percent, stat), 0);
     stats[stat] = Math.max(1, Math.round((base[stat] + flat) * (1 + percent)));
   }
   return stats;
