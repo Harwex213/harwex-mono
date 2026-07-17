@@ -1,4 +1,3 @@
-import { renderMainPage } from "./pages/main-page.js";
 import { renderBattleCreation } from "./pages/battle-creation.js";
 import { renderBattle } from "./pages/battle.js";
 import { renderModifiersCollections } from "./pages/modifiers-collection.js";
@@ -9,7 +8,6 @@ import { ROUTES } from "./data/routing.js";
 const voidFn = () => void 0;
 
 const PAGES = [
-  [ROUTES.ROOT, renderMainPage],
   [ROUTES.GAME, renderBattleCreation],
   [ROUTES.BATTLE, renderBattle],
   [ROUTES.MODIFIERS_COLLECTIONS, renderModifiersCollections],
@@ -25,6 +23,13 @@ const registerAllPages = (router) => {
       finalizePage = pageHandler(params);
     });
   }
+
+  // "/" is a redirect, not a page: the top nav replaced the landing screen.
+  // Registered outside the teardown handshake — it renders nothing, and the
+  // target route's handler finalizes whatever page came before.
+  router.registerRoute(ROUTES.ROOT, () => {
+    router.replace(ROUTES.GAME);
+  });
 };
 
 const main = () => {

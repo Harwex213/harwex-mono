@@ -9,6 +9,7 @@ import {
   isConfigValid,
 } from "../modules/battle-config.js";
 import { allModifiers, findModifier, getCollection } from "../modules/modifiers-store.js";
+import { topNavHtml } from "../components/top-nav.js";
 
 const refKey = (collectionId, modifierId) => `${collectionId}:${modifierId}`;
 
@@ -155,6 +156,7 @@ const renderBattleCreation = () => {
     const valid = isConfigValid();
 
     root.innerHTML = `
+      ${topNavHtml()}
       ${STYLE}
       <section class="bc">
         <h2 class="box-label">Select a map</h2>

@@ -1,6 +1,7 @@
 import { MAPS, UNIT_TYPES, STAT_META } from "../data/catalog.js";
 import { SIDES, battleConfig, computeStats, isConfigValid } from "../modules/battle-config.js";
 import { findModifier } from "../modules/modifiers-store.js";
+import { topNavHtml } from "../components/top-nav.js";
 
 const STYLE = `
   <style>
@@ -18,6 +19,7 @@ const renderBattle = () => {
 
   if (!isConfigValid()) {
     root.innerHTML = `
+      ${topNavHtml()}
       ${STYLE}
       <div class="bt">
         <p>No battle configured.</p>
@@ -50,6 +52,7 @@ const renderBattle = () => {
   `;
 
   root.innerHTML = `
+    ${topNavHtml()}
     ${STYLE}
     <div class="bt">
       <h1>Battle on ${map.name}</h1>

@@ -10,32 +10,35 @@ import {
   removeEntry,
   updateEntry,
 } from "../modules/modifiers-store.js";
+import { topNavHtml } from "../components/top-nav.js";
 
 const STYLE = `
   <style>
-    .mt { font-family: sans-serif; padding: 16px; }
-    .mt a { color: inherit; }
-    .mt .header { display: flex; align-items: center; gap: 16px; margin-bottom: 16px; }
-    .mt .coll-name { font: inherit; padding: 8px 12px; border: 1px solid #000; min-width: 240px; }
-    .mt .title { text-align: center; margin: 0 0 16px; }
-    .mt .title span { display: inline-block; padding: 10px 20px; border: 1px solid #000; font-size: 16px; }
-    .mt hr { border: none; border-top: 1px solid #999; margin: 16px 0; }
-    .mt .row { padding-bottom: 16px; border-bottom: 1px solid #999; margin-bottom: 16px; }
-    .mt .row--open { background: #fffbe6; padding: 12px; }
-    .mt .row-main { display: flex; align-items: center; gap: 12px; }
-    .mt .field { font: inherit; padding: 10px 12px; border: 1px solid #000; }
-    .mt .id { padding: 10px 12px; border: 1px solid #000; min-width: 90px; text-align: center; background: #f4f4f4; }
+    .mt { font-family: var(--font-body); color: var(--text-primary); padding: var(--space-8); }
+    .mt a { color: var(--text-secondary); }
+    .mt a:hover { color: var(--text-primary); }
+    .mt .header { display: flex; align-items: center; gap: var(--space-7); margin-bottom: var(--space-7); }
+    .mt .coll-name { min-width: 240px; }
+    .mt .title { text-align: center; margin: 0 0 var(--space-7); font-weight: var(--font-weight-normal); }
+    .mt .title span { display: inline-block; padding: var(--space-5) var(--space-8); font-family: var(--font-display); font-size: var(--font-size-xl); color: var(--text-accent); }
+    .mt hr { border: none; border-top: 1px solid var(--border-default); margin: var(--space-7) 0; }
+    .mt .row { padding-bottom: var(--space-7); border-bottom: 1px solid var(--border-default); margin-bottom: var(--space-7); }
+    .mt .row--open { background: var(--bg-accent); border-radius: var(--radius-sm); padding: var(--space-6); }
+    .mt .row-main { display: flex; align-items: center; gap: var(--space-6); }
+    .mt .id { padding: var(--space-5) var(--space-6); border: 1px solid var(--border-default); border-radius: var(--radius-sm); min-width: 90px; text-align: center; background: var(--bg-control-subtle); color: var(--text-secondary); }
     .mt .name { width: 160px; }
     .mt .desc { flex: 1; }
-    .mt button { font: inherit; background: #fff; border: 1px solid #000; padding: 10px 12px; cursor: pointer; }
-    .mt .editor { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 16px; }
-    .mt .col { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
-    .mt .col + .col { padding-left: 24px; border-left: 1px solid #999; }
-    .mt .kind { padding: 8px 16px; border: 1px solid #000; }
-    .mt .entry { display: flex; align-items: center; gap: 8px; margin-left: 24px; }
-    .mt .entry select { font: inherit; padding: 8px 10px; border: 1px solid #000; }
-    .mt .val { width: 90px; font: inherit; padding: 8px 10px; border: 1px solid #000; }
-    .mt .missing { color: #999; }
+    .mt select, .mt button, .mt input { font: inherit; color: var(--text-primary); background: var(--bg-control); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: var(--space-4) var(--space-6); }
+    .mt select:hover, .mt input:focus { border-color: var(--border-accent-muted); outline: none; }
+    .mt button { cursor: pointer; }
+    .mt button:hover { background: var(--bg-control-hover); }
+    .mt .editor { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-8); margin-top: var(--space-7); }
+    .mt .col { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-4); }
+    .mt .col + .col { padding-left: var(--space-8); border-left: 1px solid var(--border-default); }
+    .mt .kind { padding: var(--space-4) var(--space-7); border: 1px solid var(--border-default); border-radius: var(--radius-sm); color: var(--text-secondary); }
+    .mt .entry { display: flex; align-items: center; gap: var(--space-4); margin-left: var(--space-8); }
+    .mt .val { width: 90px; }
+    .mt .missing { color: var(--text-muted); }
   </style>
 `;
 
@@ -106,6 +109,7 @@ const renderModifiersTable = (params = {}) => {
 
     if (!collection) {
       root.innerHTML = `
+        ${topNavHtml()}
         ${STYLE}
         <section class="mt">
           <p class="missing">Collection not found.</p>
@@ -125,6 +129,7 @@ const renderModifiersTable = (params = {}) => {
     const selEnd = active?.selectionEnd ?? null;
 
     root.innerHTML = `
+      ${topNavHtml()}
       ${STYLE}
       <section class="mt">
         <div class="header">

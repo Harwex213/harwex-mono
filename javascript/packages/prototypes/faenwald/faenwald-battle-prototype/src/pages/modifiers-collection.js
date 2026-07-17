@@ -1,17 +1,19 @@
 import { ROUTES } from "../data/routing.js";
 import { getCollections, createCollection, deleteCollection } from "../modules/modifiers-store.js";
+import { topNavHtml } from "../components/top-nav.js";
 
 const STYLE = `
   <style>
-    .mc { font-family: sans-serif; padding: 16px; }
-    .mc .box-label { display: inline-block; margin: 0 0 16px; padding: 10px 20px; border: 1px solid #000; font-size: 16px; font-weight: normal; }
-    .mc hr { border: none; border-top: 1px solid #999; margin: 0 0 16px; }
-    .mc .row { display: flex; align-items: center; gap: 16px; margin-bottom: 12px; }
-    .mc .name { width: 280px; padding: 12px 16px; border: 1px solid #000; text-align: center; }
-    .mc .count { width: 200px; padding: 12px 16px; border: 1px solid #000; text-align: center; }
-    .mc button { font: inherit; background: #fff; border: 1px solid #000; padding: 10px 14px; cursor: pointer; }
-    .mc .create { margin-top: 4px; }
-    .mc .empty { color: #999; margin: 0 0 16px; }
+    .mc { font-family: var(--font-body); color: var(--text-primary); padding: var(--space-8); }
+    .mc .box-label { display: inline-block; margin: 0 0 var(--space-7); padding: var(--space-5) var(--space-8); font-family: var(--font-display); font-size: var(--font-size-xl); font-weight: var(--font-weight-normal); color: var(--text-accent); }
+    .mc hr { border: none; border-top: 1px solid var(--border-default); margin: 0 0 var(--space-7); }
+    .mc .row { display: flex; align-items: center; gap: var(--space-7); margin-bottom: var(--space-6); }
+    .mc .name { width: 280px; padding: var(--space-6) var(--space-7); background: var(--bg-control-subtle); border: 1px solid var(--border-default); border-radius: var(--radius-sm); text-align: center; }
+    .mc .count { width: 200px; padding: var(--space-6) var(--space-7); border: 1px solid var(--border-default); border-radius: var(--radius-sm); color: var(--text-secondary); text-align: center; }
+    .mc button { font: inherit; color: var(--text-primary); background: var(--bg-control); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: var(--space-5) var(--space-6); cursor: pointer; }
+    .mc button:hover { background: var(--bg-control-hover); }
+    .mc .create { margin-top: var(--space-2); }
+    .mc .empty { color: var(--text-muted); margin: 0 0 var(--space-7); }
   </style>
 `;
 
@@ -38,6 +40,7 @@ const renderModifiersCollections = () => {
   const render = () => {
     const collections = getCollections();
     root.innerHTML = `
+      ${topNavHtml()}
       ${STYLE}
       <section class="mc">
         <h2 class="box-label">Existed collection of modifiers</h2>

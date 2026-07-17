@@ -5,7 +5,7 @@
   "scripts": {
     "force": "yarn :rr **/node_modules && yarn",
     ":rr": "npx rimraf@4.4.1",
-    ":static": "yarn http-server $INIT_CWD -p 0"
+    ":static": "yarn http-server $INIT_CWD -p 0 -c-1"
   },
   "devDependencies": {
     "http-server": "14.1.1",
