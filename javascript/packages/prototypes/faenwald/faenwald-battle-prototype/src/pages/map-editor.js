@@ -1,5 +1,5 @@
 import { ROUTE_LINKS } from "../data/routing.js";
-import { TERRAINS, DEFAULT_TERRAIN_ID } from "../data/terrains.js";
+import { DEFAULT_TERRAIN_ID, TERRAINS } from "../data/terrains.js";
 import { getMap, renameMap } from "../modules/maps-store.js";
 import { topNavHtml } from "../components/top-nav.js";
 
@@ -39,12 +39,11 @@ const esc = (value) =>
     .replace(/"/g, "&quot;");
 
 const renderMapEditor = (params = {}) => {
-  const root = document.querySelector("main");
-  const mapId = params.mapId;
-
   // transient UI state: the brush terrain; selectable now, paints nothing
   // until the canvas renderer lands
   let selectedTerrainId = DEFAULT_TERRAIN_ID;
+
+  const PALETTE_ASIDE_ID = "me-palette";
 
   const terrainHtml = (terrain) => `
     <button class="terrain ${terrain.id === selectedTerrainId ? "terrain--selected" : ""}"
@@ -54,7 +53,12 @@ const renderMapEditor = (params = {}) => {
     </button>
   `;
 
-  const render = () => {
+  const asideHtml = () => `
+    <div class="palette-title">Terrain</div>
+    ${TERRAINS.map(terrainHtml).join("")}
+  `
+
+  const mapEditorHtml = (root, mapId) => {
     const map = getMap(mapId);
 
     if (!map) {
@@ -82,14 +86,20 @@ const renderMapEditor = (params = {}) => {
           <div class="canvas-panel">
             <span class="placeholder">Hex canvas — coming soon</span>
           </div>
-          <aside class="palette">
-            <div class="palette-title">Terrain</div>
-            ${TERRAINS.map(terrainHtml).join("")}
+          <aside id="${PALETTE_ASIDE_ID}" class="palette">
+            ${asideHtml()}
           </aside>
         </div>
       </section>
     `;
   };
+
+  const root = document.querySelector("main");
+  const mapId = params.mapId;
+
+  mapEditorHtml(root, mapId);
+
+  const aside = document.getElementById(PALETTE_ASIDE_ID);
 
   const onClick = (event) => {
     const el = event.target.closest("[data-action]");
@@ -98,7 +108,7 @@ const renderMapEditor = (params = {}) => {
     switch (el.dataset.action) {
       case "select-terrain":
         selectedTerrainId = el.dataset.terrainId;
-        render();
+        aside.innerHTML = asideHtml();
         break;
     }
   };
@@ -113,7 +123,6 @@ const renderMapEditor = (params = {}) => {
 
   root.addEventListener("click", onClick);
   root.addEventListener("input", onInput);
-  render();
 
   return () => {
     root.removeEventListener("click", onClick);
