@@ -16,8 +16,8 @@ const STYLE = `
     .me .map-name { min-width: 240px; font: inherit; color: var(--text-primary); background: var(--bg-control); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: var(--space-4) var(--space-6); }
     .me .map-name:focus { border-color: var(--border-accent-muted); outline: none; }
     .me .dims { color: var(--text-muted); }
-    .me .workspace { display: grid; grid-template-columns: 1fr 240px; gap: var(--space-8); align-items: start; }
-    .me .canvas-panel { min-height: 520px; display: flex; align-items: center; justify-content: center; background: var(--card-bg); border: 1px dashed var(--border-medium); border-radius: var(--card-radius); }
+    .me .workspace { display: grid; grid-template-columns: minmax(0, 1fr) 240px; grid-template-rows: 1fr; gap: var(--space-8); align-items: start; }
+    .me .canvas-panel { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; background: var(--card-bg); border: 1px dashed var(--border-medium); border-radius: var(--card-radius); }
     .me .placeholder { color: var(--text-muted); }
     .me .palette { display: flex; flex-direction: column; gap: var(--space-2); background: var(--card-bg); border: 1px solid var(--card-border); border-radius: var(--card-radius); padding: var(--space-6); }
     .me .palette-title { font-family: var(--font-display); color: var(--text-accent); padding: var(--space-2) var(--space-4) var(--space-4); }
@@ -38,12 +38,66 @@ const esc = (value) =>
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
 
+const initializeCanvas = (container) => {
+  const dpr = window.devicePixelRatio;
+
+  const resizeObserver = new ResizeObserver((entries) => {
+    for (const entry of entries) {
+      if (entry.target === container) {
+        const size = entry.contentBoxSize[0];
+
+        if (size) {
+          _initialize(size.inlineSize, size.blockSize);
+        }
+      }
+    }
+  });
+  resizeObserver.observe(container);
+
+  let canvas;
+  let ctx;
+
+  const _initialize = (width, height) => {
+    if (canvas) {
+      canvas.style.width = `${width}px`;
+      canvas.style.height = `${height}px`;
+      canvas.width = Math.floor(width * dpr);
+      canvas.height = Math.floor(height * dpr);
+
+      render(ctx);
+
+      return;
+    }
+
+    canvas = document.createElement("canvas");
+    canvas.style.width = `${width}px`;
+    canvas.style.height = `${height}px`;
+    canvas.width = Math.floor(width * dpr);
+    canvas.height = Math.floor(height * dpr);
+
+    container.appendChild(canvas);
+
+    ctx = canvas.getContext("2d");
+
+    render(ctx);
+  };
+
+  const render = (ctx) => {
+    ctx.beginPath();
+    ctx.strokeStyle = "blue";
+    ctx.moveTo(20, 20);
+    ctx.lineTo(200, 20);
+    ctx.stroke();
+  };
+}
+
 const renderMapEditor = (params = {}) => {
   // transient UI state: the brush terrain; selectable now, paints nothing
   // until the canvas renderer lands
   let selectedTerrainId = DEFAULT_TERRAIN_ID;
 
   const PALETTE_ASIDE_ID = "me-palette";
+  const MAP_EDITOR_ID = "map-editor";
 
   const terrainHtml = (terrain) => `
     <button class="terrain ${terrain.id === selectedTerrainId ? "terrain--selected" : ""}"
@@ -83,8 +137,7 @@ const renderMapEditor = (params = {}) => {
           <span class="dims">${map.width} × ${map.height} hexes</span>
         </div>
         <div class="workspace">
-          <div class="canvas-panel">
-            <span class="placeholder">Hex canvas — coming soon</span>
+          <div id="${MAP_EDITOR_ID}" class="canvas-panel">
           </div>
           <aside id="${PALETTE_ASIDE_ID}" class="palette">
             ${asideHtml()}
@@ -100,10 +153,15 @@ const renderMapEditor = (params = {}) => {
   mapEditorHtml(root, mapId);
 
   const aside = document.getElementById(PALETTE_ASIDE_ID);
+  const mapEditor = document.getElementById(MAP_EDITOR_ID);
+
+  initializeCanvas(mapEditor);
 
   const onClick = (event) => {
     const el = event.target.closest("[data-action]");
-    if (!el) return;
+    if (!el) {
+      return;
+    }
 
     switch (el.dataset.action) {
       case "select-terrain":
