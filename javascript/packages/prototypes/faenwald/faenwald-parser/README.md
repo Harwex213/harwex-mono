@@ -6,15 +6,19 @@ Fetches and parses [VK.com](https://vk.com) articles (the `vk.com/@owner-slug`
 Built against the Faenwald combat-system article; see `assets/faenwald.html`
 for the reference fixture and `analyze-article.md` for the markup analysis.
 
-## Install / build
+## Quick start
 
 ```bash
-# from the monorepo root
-yarn
-yarn workspace @hw/faenwald-parser build
+# from anywhere in the monorepo
+yarn :vk-parse https://vk.com/@faenwald-cf-boevaya-sistema
 ```
 
-## Usage
+Fetches, parses and writes rendered Markdown to `faenwald-parser/out/<slug>.md`.
+Accepts multiple urls (requests are rate-limited). `-o/--output` overrides the
+target: a directory path, or — with an extension (`-o article.md`) — an exact
+file (single url only). Relative paths resolve against your current directory.
+
+## Library usage
 
 ### Parse HTML you already have
 
@@ -54,9 +58,7 @@ Each block carries an `order` index and is a discriminated union:
 ## Scripts
 
 ```bash
-yarn workspace @hw/faenwald-parser parse                 # parse the bundled fixture
-yarn workspace @hw/faenwald-parser parse <vk-article-url> # fetch + parse live
-yarn workspace @hw/faenwald-parser dev                    # tsc --watch
+yarn :vk-parse <vk-article-url...> [-o <dir-or-file>]      # fetch + parse live (global)
+yarn workspace @hw/faenwald-parser parse:fixture           # offline smoke check (bundled fixture)
+yarn workspace @hw/faenwald-parser typecheck               # tsc --noEmit
 ```
-
-See `acceptance-criteria.md` for the supported scope and output contract.

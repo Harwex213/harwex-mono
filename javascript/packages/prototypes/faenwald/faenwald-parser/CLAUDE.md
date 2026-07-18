@@ -42,15 +42,18 @@ reference fixture the parser is validated against.
 - The VK fixture renders dates in German (`26. Dez. 2025`); `parseVkDate` is
   best-effort for the `DD. Mon. YYYY` shape.
 
-## Build & run
+## Run & check
 
 ```bash
-# from the monorepo root (javascript/)
-yarn workspace @hw/faenwald-parser build   # tsc
-yarn workspace @hw/faenwald-parser parse    # parse the bundled fixture (tsx)
-yarn workspace @hw/faenwald-parser parse <vk-url>  # fetch + parse live
+yarn :vk-parse <vk-url...> [-o <dir-or-file>]     # global; writes out/<slug>.md by default
+yarn workspace @hw/faenwald-parser parse:fixture  # offline smoke check against assets/faenwald.html
+yarn workspace @hw/faenwald-parser typecheck      # tsc --noEmit (covers src/ and scripts/)
 ```
+
+The package is consumed as source (`exports: ./src/index.ts`); there is no build step.
+The root `:vk-parse` script forwards the caller's directory as `VK_PARSE_CWD` so a
+relative `-o` resolves against where the command was run, not the package dir.
 
 TypeScript runs with `exactOptionalPropertyTypes` — for an optional prop that may be
 absent, spread it conditionally (`...(href ? { href } : {})`) rather than assigning
-`undefined`. There is no test suite yet; `scripts/parse-sample.ts` is the smoke check.
+`undefined`. There is no test suite yet; `parse:fixture` is the smoke check.
