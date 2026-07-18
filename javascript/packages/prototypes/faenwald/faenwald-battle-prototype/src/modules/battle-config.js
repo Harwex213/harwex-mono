@@ -1,12 +1,13 @@
-import { MAPS, UNIT_TYPES, STAT_META } from "../data/catalog.js";
+import { UNIT_TYPES, STAT_META } from "../data/catalog.js";
 import { findModifier } from "./modifiers-store.js";
+import { getMaps, getMap } from "./maps-store.js";
 
 const SIDES = ["attacker", "defender"];
 const STATS = STAT_META.map((s) => s.id);
 
 // module-level singleton: the draft survives in-session navigation
 const battleConfig = {
-  mapId: MAPS[0].id,
+  mapId: getMaps()[0]?.id ?? null,
   attacker: [],
   defender: [],
 };
@@ -50,8 +51,10 @@ const computeStats = (unit) => {
   return stats;
 };
 
+// the map is resolved through the store so a mapId pointing at a deleted map
+// (or an empty store) invalidates the config instead of crashing the battle page
 const isConfigValid = () =>
-  Boolean(battleConfig.mapId) &&
+  Boolean(getMap(battleConfig.mapId)) &&
   SIDES.every(
     (side) => battleConfig[side].length > 0 && battleConfig[side].every((u) => u.typeId),
   );

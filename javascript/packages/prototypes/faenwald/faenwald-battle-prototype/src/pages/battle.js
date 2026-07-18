@@ -1,5 +1,6 @@
-import { MAPS, UNIT_TYPES, STAT_META } from "../data/catalog.js";
+import { UNIT_TYPES, STAT_META } from "../data/catalog.js";
 import { SIDES, battleConfig, computeStats, isConfigValid } from "../modules/battle-config.js";
+import { getMap } from "../modules/maps-store.js";
 import { findModifier } from "../modules/modifiers-store.js";
 import { topNavHtml } from "../components/top-nav.js";
 
@@ -13,6 +14,14 @@ const STYLE = `
     .bt a { display: inline-block; margin-top: var(--space-6); }
   </style>
 `;
+
+// attribute-safe interpolation for user-entered text (map names come from the store)
+const esc = (value) =>
+  String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 
 const renderBattle = () => {
   const root = document.querySelector("main");
@@ -31,7 +40,8 @@ const renderBattle = () => {
     };
   }
 
-  const map = MAPS.find((m) => m.id === battleConfig.mapId);
+  // isConfigValid() above guarantees the map still exists in the store
+  const map = getMap(battleConfig.mapId);
 
   const sideHtml = (side) => `
     <h2>${side}</h2>
@@ -55,7 +65,7 @@ const renderBattle = () => {
     ${topNavHtml()}
     ${STYLE}
     <div class="bt">
-      <h1>Battle on ${map.name}</h1>
+      <h1>Battle on ${esc(map.name)}</h1>
       ${SIDES.map(sideHtml).join("")}
       <a href="#/game">Back to setup</a>
     </div>

@@ -1,4 +1,4 @@
-import { MAPS, UNIT_TYPES, STAT_META } from "../data/catalog.js";
+import { UNIT_TYPES, STAT_META } from "../data/catalog.js";
 import {
   SIDES,
   battleConfig,
@@ -9,9 +9,18 @@ import {
   isConfigValid,
 } from "../modules/battle-config.js";
 import { allModifiers, findModifier, getCollection } from "../modules/modifiers-store.js";
+import { getMaps, getMap } from "../modules/maps-store.js";
 import { topNavHtml } from "../components/top-nav.js";
 
 const refKey = (collectionId, modifierId) => `${collectionId}:${modifierId}`;
+
+// attribute-safe interpolation for user-entered text (map names come from the store)
+const esc = (value) =>
+  String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 
 const STYLE = `
   <style>
@@ -19,8 +28,9 @@ const STYLE = `
     .bc .box-label { display: inline-block; margin: 0 0 var(--space-7); padding: var(--space-5) var(--space-8); font-family: var(--font-display); font-size: var(--font-size-xl); color: var(--text-accent); }
     .bc .maps { display: flex; gap: var(--space-8); margin-bottom: var(--space-8); }
     .bc .map-card { display: flex; flex-direction: column; align-items: center; gap: var(--space-4); cursor: pointer; }
-    .bc .map-card img { width: 96px; height: 88px; object-fit: cover; border: 1px solid var(--border-default); border-radius: var(--radius-sm); }
-    .bc .map-card:hover img { border-color: var(--border-accent-muted); }
+    .bc .map-card img, .bc .map-card .map-thumb { width: 96px; height: 88px; object-fit: cover; border: 1px solid var(--border-default); border-radius: var(--radius-sm); }
+    .bc .map-card .map-thumb { display: flex; align-items: center; justify-content: center; background: var(--card-bg); font-size: var(--font-size-xl); color: var(--text-faint); }
+    .bc .map-card:hover img, .bc .map-card:hover .map-thumb { border-color: var(--border-accent-muted); }
     .bc hr { border: none; border-top: 1px solid var(--border-default); margin: 0 0 var(--space-8); }
     .bc .sides { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-8); }
     .bc .side { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-7); padding: 0 var(--space-8) var(--space-8) 0; }
@@ -56,6 +66,7 @@ const renderBattleCreation = () => {
 
   const validationHint = () => {
     const hints = [];
+    if (!getMap(battleConfig.mapId)) hints.push("select a map.");
     for (const side of SIDES) {
       if (battleConfig[side].length === 0) hints.push(`${side} needs at least one unit.`);
     }
@@ -152,7 +163,20 @@ const renderBattleCreation = () => {
     </div>
   `;
 
+  const mapCardHtml = (m) => `
+    <label class="map-card">
+      ${m.image ? `<img src="${esc(m.image)}" alt="${esc(m.name)}">` : `<span class="map-thumb">⬡</span>`}
+      <span>${esc(m.name)}</span>
+      <input type="radio" name="map" value="${m.id}" ${String(m.id) === String(battleConfig.mapId) ? "checked" : ""}>
+    </label>
+  `;
+
   const render = () => {
+    // maps live in the store now: a mapId pointing at a deleted map self-heals
+    // to the first available one instead of leaving a phantom selection
+    if (!getMap(battleConfig.mapId)) battleConfig.mapId = getMaps()[0]?.id ?? null;
+
+    const maps = getMaps();
     const valid = isConfigValid();
 
     root.innerHTML = `
@@ -161,14 +185,7 @@ const renderBattleCreation = () => {
       <section class="bc">
         <h2 class="box-label">Select a map</h2>
         <div class="maps">
-          ${MAPS.map(
-            (m) => `
-              <label class="map-card">
-                <img src="${m.image}" alt="${m.name}">
-                <span>${m.name}</span>
-                <input type="radio" name="map" value="${m.id}" ${m.id === battleConfig.mapId ? "checked" : ""}>
-              </label>`,
-          ).join("")}
+          ${maps.length ? maps.map(mapCardHtml).join("") : `<p class="hint">No maps yet — <a href="#/maps">create one in the Maps Store</a>.</p>`}
         </div>
         <hr>
         <h2 class="box-label">Specify units</h2>

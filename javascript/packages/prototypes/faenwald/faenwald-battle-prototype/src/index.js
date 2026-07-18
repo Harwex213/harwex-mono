@@ -2,6 +2,8 @@ import { renderBattleCreation } from "./pages/battle-creation.js";
 import { renderBattle } from "./pages/battle.js";
 import { renderModifiersCollections } from "./pages/modifiers-collection.js";
 import { renderModifiersTable } from "./pages/modifiers-table.js";
+import { renderMapsStore } from "./pages/maps-store.js";
+import { renderMapEditor } from "./pages/map-editor.js";
 import { Router } from "./modules/router.js";
 import { ROUTES } from "./data/routing.js";
 
@@ -12,6 +14,8 @@ const PAGES = [
   [ROUTES.BATTLE, renderBattle],
   [ROUTES.MODIFIERS_COLLECTIONS, renderModifiersCollections],
   [ROUTES.MODIFIERS, renderModifiersTable],
+  [ROUTES.MAPS, renderMapsStore],
+  [ROUTES.MAP_EDITOR, renderMapEditor],
 ];
 
 const registerAllPages = (router) => {

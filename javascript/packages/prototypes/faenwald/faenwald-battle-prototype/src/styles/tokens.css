@@ -23,6 +23,20 @@
     --color-gold-200: rgba(201, 169, 110, 0.2);
     --color-gold-100: rgba(201, 169, 110, 0.1);
 
+    /* ── Colors: Map-content hues (terrain fills source palette) ── */
+    --color-ivory: #d9d4c7;
+    --color-umber: #8a7a63;
+    --color-leaf: #52d43a;
+    --color-pine: #2e6b2e;
+    --color-ochre: #b57a24;
+    --color-olive: #75662f;
+    --color-stone: #8c8c8c;
+    --color-cyan-mist: #a8dfe3;
+    --color-moss: #86c33a;
+    --color-ice-pale: #d3edf2;
+    --color-straw: #e8d75a;
+    --color-violet: #8636c2;
+
     /* ── Colors: Alpha (white) ── */
     --color-white-alpha-06: rgba(240, 237, 230, 0.06);
     --color-white-alpha-08: rgba(240, 237, 230, 0.08);
@@ -130,6 +144,21 @@
     --card-radius: var(--radius-md);
     --card-padding: var(--space-6) var(--space-7);
     --card-backdrop: var(--overlay-backdrop);
+
+    /* ── Terrain fills (map content, one per TERRAINS entry; the canvas
+       renderer resolves these via getComputedStyle at draw time) ── */
+    --terrain-plain: var(--color-ivory);
+    --terrain-mud: var(--color-umber);
+    --terrain-thicket: var(--color-leaf);
+    --terrain-forest: var(--color-pine);
+    --terrain-foothills: var(--color-ochre);
+    --terrain-hills: var(--color-olive);
+    --terrain-mountain: var(--color-stone);
+    --terrain-water: var(--color-cyan-mist);
+    --terrain-swamp: var(--color-moss);
+    --terrain-ice: var(--color-ice-pale);
+    --terrain-road: var(--color-straw);
+    --terrain-settlement: var(--color-violet);
 
     --nav-button-size: 28px;
     --nav-button-bg: var(--bg-control);

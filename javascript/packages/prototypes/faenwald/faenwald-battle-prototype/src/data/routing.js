@@ -4,6 +4,8 @@ const ROUTES = {
   BATTLE: "/battle",
   MODIFIERS_COLLECTIONS: "/modifiers-collection",
   MODIFIERS: "/modifiers-collection/:collectionId",
+  MAPS: "/maps",
+  MAP_EDITOR: "/maps/:mapId",
 };
 
 const ROUTE_LINKS = Object.entries(ROUTES).reduce((acc, [name, route]) => {

@@ -13,6 +13,7 @@ const STYLE = `
 const NAV_ITEMS = [
   [ROUTES.GAME, "Battle Creation"],
   [ROUTES.MODIFIERS_COLLECTIONS, "Modifiers"],
+  [ROUTES.MAPS, "Maps"],
 ];
 
 const topNavHtml = () => {
