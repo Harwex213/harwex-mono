@@ -1,7 +1,8 @@
 import { ROUTE_LINKS } from "../data/routing.js";
-import { DEFAULT_TERRAIN_ID, TERRAINS } from "../data/terrains.js";
+import { DEFAULT_TERRAIN_ID, TERRAIN_CODE_TO_ID, TERRAINS } from "../data/terrains.js";
 import { getMap, renameMap } from "../modules/maps-store.js";
 import { topNavHtml } from "../components/top-nav.js";
+import { renderPointTopHexagon } from "../modules/hexagon-render.js";
 
 // swatch fills come from data, but inline style="" is banned — generate one
 // scoped rule per terrain instead, each referencing its semantic token
@@ -82,12 +83,39 @@ const initializeCanvas = (container) => {
     render(ctx);
   };
 
+  const HEXAGON_STYLING = {
+    fill: { style: "#ff0000" },
+    stroke: { style: "#ffaa00", width: 3 }
+  };
+
   const render = (ctx) => {
-    ctx.beginPath();
-    ctx.strokeStyle = "blue";
-    ctx.moveTo(20, 20);
-    ctx.lineTo(200, 20);
-    ctx.stroke();
+    const OFFSET = 100;
+    const HEIGHT = 128;
+    const WIDTH = Math.sqrt(3) * HEIGHT / 2;
+
+    const grid = [
+      [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+      [3, 3, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+      [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    ].map((row) => row.map((code) => TERRAIN_CODE_TO_ID[code]));
+
+    for (let row = 0; row < grid.length; row++) {
+      for (let col = 0; col < grid[row].length; col++) {
+        const isOddRow = row % 2 === 0;
+
+        let x, y;
+
+        if (isOddRow) {
+          x = OFFSET + (WIDTH / 2) + (col * WIDTH);
+          y = OFFSET + (HEIGHT / 2) + (row * HEIGHT * 3 / 4);
+        } else {
+          x = OFFSET + WIDTH + (col * WIDTH);
+          y = OFFSET + (HEIGHT / 2) + (row * HEIGHT * 3 / 4);
+        }
+
+        renderPointTopHexagon(ctx, x, y, HEIGHT, HEXAGON_STYLING);
+      }
+    }
   };
 }
 

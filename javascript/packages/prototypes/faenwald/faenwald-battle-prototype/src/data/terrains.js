@@ -18,6 +18,21 @@ const TERRAINS = [
   { id: "settlement", name: "Поселение", color: "--terrain-settlement" },
 ];
 
+const TERRAIN_CODE_TO_ID = {
+  0: "plain",
+  1: "mud",
+  2: "thicket",
+  3: "forest",
+  4: "foothills",
+  5: "hills",
+  6: "mountain",
+  7: "water",
+  8: "swamp",
+  9: "ice",
+  10: "road",
+  11: "settlement",
+};
+
 const DEFAULT_TERRAIN_ID = "plain";
 
-export { TERRAINS, DEFAULT_TERRAIN_ID }
+export { TERRAINS, DEFAULT_TERRAIN_ID, TERRAIN_CODE_TO_ID };
