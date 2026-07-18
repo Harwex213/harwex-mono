@@ -160,6 +160,10 @@
     --terrain-road: var(--color-straw);
     --terrain-settlement: var(--color-violet);
 
+    /* grid line + hover ring the canvas renderer draws over the fills */
+    --terrain-grid: var(--color-warm-600);
+    --terrain-hover: var(--color-gold-500);
+
     --nav-button-size: 28px;
     --nav-button-bg: var(--bg-control);
     --nav-button-border: var(--border-medium);
