@@ -1,4 +1,4 @@
-import { MODIFIERS, STAT_META } from "../data/catalog.js";
+import { RANK_MODIFIERS, STAT_META } from "../data/catalog.js";
 
 // Domain store for modifier collections. Mirrors battle-config.js: a module
 // singleton mutated only through the exported helpers, but this one is also
@@ -26,8 +26,8 @@ const seed = () => ({
   collections: [
     {
       id: 1,
-      name: "Default",
-      modifiers: MODIFIERS.map((m) => ({
+      name: "Ранги",
+      modifiers: RANK_MODIFIERS.map((m) => ({
         id: m.id,
         name: m.name,
         description: m.description,

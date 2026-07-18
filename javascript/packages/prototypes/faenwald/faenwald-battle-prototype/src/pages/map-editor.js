@@ -1,6 +1,7 @@
 import { ROUTE_LINKS } from "../data/routing.js";
 import { DEFAULT_TERRAIN_ID, TERRAINS } from "../data/terrains.js";
-import { commitMap, getMap, renameMap, setMapCell } from "../modules/maps-store.js";
+import { commitMap, getMap, renameMap, setMapCell, setMapImage } from "../modules/maps-store.js";
+import { renderMapThumbnail } from "../modules/map-thumbnail.js";
 import { topNavHtml } from "../components/top-nav.js";
 import { renderPointTopHexagon } from "../modules/hexagon-render.js";
 import { gridPixelBounds, offsetToPixel, pixelToOffset } from "../modules/hex-layout.js";
@@ -168,7 +169,7 @@ const initializeCanvas = (container, map, getBrush) => {
   // one stroke = one localStorage write, and only if it changed something
   const onPointerUp = () => {
     if (mode?.type === "paint" && mode.dirty) {
-      commitMap();
+      commitMap(map.id);
     }
     mode = null;
   };
@@ -342,6 +343,9 @@ const renderMapEditor = (params = {}) => {
 
   return () => {
     teardownCanvas?.();
+    // one generation per editing session; commitMap() dropped the image on the
+    // first stroke, and the maps page covers sessions this teardown never ends
+    if (map) setMapImage(map.id, renderMapThumbnail(map));
     root.removeEventListener("click", onClick);
     root.removeEventListener("input", onInput);
     root.innerHTML = "";

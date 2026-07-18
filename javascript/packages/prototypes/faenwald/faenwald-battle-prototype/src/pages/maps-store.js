@@ -1,5 +1,6 @@
 import { ROUTES } from "../data/routing.js";
-import { getMaps, createMap, deleteMap } from "../modules/maps-store.js";
+import { getMaps, createMap, deleteMap, setMapImage } from "../modules/maps-store.js";
+import { renderMapThumbnail } from "../modules/map-thumbnail.js";
 import { topNavHtml } from "../components/top-nav.js";
 
 const STYLE = `
@@ -10,7 +11,7 @@ const STYLE = `
     .msp .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: var(--space-8) var(--space-7); align-items: start; }
     .msp .tile { display: flex; flex-direction: column; gap: var(--space-4); cursor: pointer; }
     .msp .preview { height: 120px; display: flex; align-items: center; justify-content: center; background: var(--card-bg); border: 1px solid var(--card-border); border-radius: var(--card-radius); overflow: hidden; }
-    .msp .preview img { width: 100%; height: 100%; object-fit: cover; }
+    .msp .preview img { width: 100%; height: 100%; object-fit: contain; }
     .msp .tile:hover .preview { border-color: var(--border-accent-muted); }
     .msp .glyph { font-size: var(--font-size-xl); color: var(--text-faint); }
     .msp .caption { display: flex; align-items: center; gap: var(--space-4); }
@@ -45,7 +46,19 @@ const renderMapsStore = () => {
     </div>
   `;
 
+  // one rule covers every stale-preview case (new maps, legacy static-catalog
+  // PNG paths, editor sessions whose teardown never ran): a map whose image
+  // isn't a generated data URL gets one rendered from its cells and persisted
+  const refreshThumbnails = () => {
+    for (const map of getMaps()) {
+      if (!map.image?.startsWith("data:")) {
+        setMapImage(map.id, renderMapThumbnail(map));
+      }
+    }
+  };
+
   const render = () => {
+    refreshThumbnails();
     root.innerHTML = `
       ${topNavHtml()}
       ${STYLE}

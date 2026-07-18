@@ -49,7 +49,7 @@ listener leaks it across navigations.
   navigation** (the draft army persists as you move between pages).
 - **Transient UI state** → plain closure variables inside the `render*()` function
   (e.g. `comboForUnitId`). Discarded on teardown.
-- **Static game data** → `data/catalog.js` (`MAPS`, `UNIT_TYPES`, `MODIFIERS`).
+- **Static game data** → `data/catalog.js` (`MAPS`, `UNIT_TYPES`, `RANK_MODIFIERS`).
 
 **Mutating `battleConfig`:** only through the exported helpers
 (`createUnit`, `findUnit`, `removeUnit`, …), then call the page's local `render()`
