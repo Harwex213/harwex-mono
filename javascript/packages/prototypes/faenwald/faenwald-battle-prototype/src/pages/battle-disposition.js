@@ -118,7 +118,9 @@ const initializeCanvas = (container, map, hooks) => {
       }
 
       for (const unit of MODEL.activeBattle.units) {
-        if (unit.position) drawUnit(ctx, unit);
+        if (unit.position) {
+          drawUnit(ctx, unit);
+        }
       }
 
       const selected = hooks.getSelectedUnit();
@@ -259,7 +261,9 @@ const renderBattleDisposition = (params, router) => {
 
   const onClick = (event) => {
     const el = event.target.closest("[data-action]");
-    if (!el) return;
+    if (!el) {
+      return;
+    }
 
     switch (el.dataset.action) {
       case "select-unit": {

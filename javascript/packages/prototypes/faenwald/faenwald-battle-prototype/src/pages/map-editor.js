@@ -61,7 +61,9 @@ const initializeCanvas = (container, map, getBrush) => {
 
   const paintAt = ({ target, requestRender }) => {
     const brush = getBrush();
-    if (!target || map.cells[target.row][target.col] === brush) return;
+    if (!target || map.cells[target.row][target.col] === brush) {
+      return;
+    }
     MAPS_MODULE.setMapCell(MODEL.maps, map.id, target.row, target.col, brush);
     dirty = true;
     requestRender();
@@ -85,7 +87,9 @@ const initializeCanvas = (container, map, getBrush) => {
 
     // one stroke = one localStorage write, and only if it changed something
     onActionEnd: () => {
-      if (dirty) MAPS_MODULE.commitMap(MODEL.maps, map.id);
+      if (dirty) {
+        MAPS_MODULE.commitMap(MODEL.maps, map.id);
+      }
     },
 
     render: ({ ctx, camera, hovered }) => {
@@ -204,7 +208,9 @@ const renderMapEditor = (params = {}, router) => {
     teardownCanvas?.();
     // one generation per editing session; commitMap() dropped the image on the
     // first stroke, and the maps page covers sessions this teardown never ends
-    if (map) MAPS_MODULE.setMapImage(MODEL.maps, map.id, renderMapThumbnail(map));
+    if (map) {
+      MAPS_MODULE.setMapImage(MODEL.maps, map.id, renderMapThumbnail(map));
+    }
     root.removeEventListener("click", onClick);
     root.removeEventListener("input", onInput);
     root.innerHTML = "";

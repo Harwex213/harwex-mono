@@ -55,7 +55,9 @@ const reseedEntryCounter = (modifiers) => {
   for (const c of modifiers.collections) {
     for (const m of c.modifiers) {
       for (const e of [...m.flat, ...m.percent]) {
-        if (typeof e.id === "number" && e.id > max) max = e.id;
+        if (typeof e.id === "number" && e.id > max) {
+          max = e.id;
+        }
       }
     }
   }
@@ -162,7 +164,9 @@ const createCollection = (modifiers, name = "New collection") => {
  */
 const renameCollection = (modifiers, id, name) => {
   const collection = getCollection(modifiers, id);
-  if (!collection) return;
+  if (!collection) {
+    return;
+  }
   collection.name = name;
   persist(modifiers);
 };
@@ -183,7 +187,9 @@ const deleteCollection = (modifiers, id) => {
  */
 const createModifier = (modifiers, collectionId) => {
   const collection = getCollection(modifiers, collectionId);
-  if (!collection) return null;
+  if (!collection) {
+    return null;
+  }
   const modifier = {
     id: nextModifierId(collection),
     name: "new modifier",
@@ -204,7 +210,9 @@ const createModifier = (modifiers, collectionId) => {
  */
 const updateModifier = (modifiers, collectionId, modifierId, patch) => {
   const modifier = findModifier(modifiers, collectionId, modifierId);
-  if (!modifier) return;
+  if (!modifier) {
+    return;
+  }
   Object.assign(modifier, patch);
   persist(modifiers);
 };
@@ -216,7 +224,9 @@ const updateModifier = (modifiers, collectionId, modifierId, patch) => {
  */
 const deleteModifier = (modifiers, collectionId, modifierId) => {
   const collection = getCollection(modifiers, collectionId);
-  if (!collection) return;
+  if (!collection) {
+    return;
+  }
   collection.modifiers = collection.modifiers.filter((m) => String(m.id) !== String(modifierId));
   persist(modifiers);
 };
@@ -229,7 +239,9 @@ const deleteModifier = (modifiers, collectionId, modifierId) => {
  */
 const addEntry = (modifiers, collectionId, modifierId, kind) => {
   const modifier = findModifier(modifiers, collectionId, modifierId);
-  if (!modifier) return;
+  if (!modifier) {
+    return;
+  }
   modifier[kind].push(makeEntry(modifiers, STAT_META[0].id, 0));
   persist(modifiers);
 };
@@ -243,7 +255,9 @@ const addEntry = (modifiers, collectionId, modifierId, kind) => {
  */
 const removeEntry = (modifiers, collectionId, modifierId, kind, entryId) => {
   const modifier = findModifier(modifiers, collectionId, modifierId);
-  if (!modifier) return;
+  if (!modifier) {
+    return;
+  }
   modifier[kind] = modifier[kind].filter((e) => String(e.id) !== String(entryId));
   persist(modifiers);
 };
@@ -258,9 +272,13 @@ const removeEntry = (modifiers, collectionId, modifierId, kind, entryId) => {
  */
 const updateEntry = (modifiers, collectionId, modifierId, kind, entryId, patch) => {
   const modifier = findModifier(modifiers, collectionId, modifierId);
-  if (!modifier) return;
+  if (!modifier) {
+    return;
+  }
   const entry = modifier[kind].find((e) => String(e.id) === String(entryId));
-  if (!entry) return;
+  if (!entry) {
+    return;
+  }
   Object.assign(entry, patch);
   persist(modifiers);
 };

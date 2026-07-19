@@ -71,7 +71,9 @@ class Router {
 
     for (const { regexp, paramNames, handler } of this.#routes) {
       const match = path.match(regexp);
-      if (!match) continue;
+      if (!match) {
+        continue;
+      }
 
       const params = {};
       paramNames.forEach((name, index) => {

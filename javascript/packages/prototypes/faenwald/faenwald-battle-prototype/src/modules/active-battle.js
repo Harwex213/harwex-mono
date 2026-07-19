@@ -91,10 +91,16 @@ const placementCandidates = (activeBattle, unit, map) => {
   const candidates = [];
   for (const row of placementRows(unit.side, map)) {
     for (let col = 0; col < map.width; col++) {
-      if (impassableTerrainIds.has(map.cells[row][col])) continue;
+      if (impassableTerrainIds.has(map.cells[row][col])) {
+        continue;
+      }
       const occupant = unitAt(activeBattle, row, col);
-      if (occupant === unit) continue;
-      if (occupant && unit.position === null) continue;
+      if (occupant === unit) {
+        continue;
+      }
+      if (occupant && unit.position === null) {
+        continue;
+      }
       candidates.push({ row, col });
     }
   }
@@ -112,10 +118,16 @@ const placementCandidates = (activeBattle, unit, map) => {
  */
 const placeUnit = (activeBattle, unitId, row, col) => {
   const unit = findBattleUnit(activeBattle, unitId);
-  if (!unit) return;
+  if (!unit) {
+    return;
+  }
   const occupant = unitAt(activeBattle, row, col);
-  if (occupant && unit.position === null) return;
-  if (occupant) occupant.position = unit.position;
+  if (occupant && unit.position === null) {
+    return;
+  }
+  if (occupant) {
+    occupant.position = unit.position;
+  }
   unit.position = { row, col };
 };
 

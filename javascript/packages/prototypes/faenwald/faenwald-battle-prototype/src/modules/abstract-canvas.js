@@ -15,8 +15,12 @@ const DEFAULTS = {
 };
 
 const shallowEqualTargets = (a, b) => {
-  if (a === b) return true;
-  if (!a || !b) return false;
+  if (a === b) {
+    return true;
+  }
+  if (!a || !b) {
+    return false;
+  }
   const keys = Object.keys(a);
   return keys.length === Object.keys(b).length && keys.every((key) => a[key] === b[key]);
 };
@@ -81,7 +85,9 @@ const initializeAbstractCanvas = (container, config) => {
 
   // coalesce event floods (pointermove, wheel) into one paint per frame
   const requestRender = () => {
-    if (rafId) return;
+    if (rafId) {
+      return;
+    }
     rafId = requestAnimationFrame(() => {
       rafId = 0;
       paint();
@@ -104,7 +110,9 @@ const initializeAbstractCanvas = (container, config) => {
   };
 
   const updateHover = (event) => {
-    if (!hitTest) return;
+    if (!hitTest) {
+      return;
+    }
     const world = toWorld(event);
     const target = hitTest(world.x, world.y);
     if (!isSameTarget(target, hovered)) {
@@ -114,7 +122,9 @@ const initializeAbstractCanvas = (container, config) => {
   };
 
   const onPointerDown = (event) => {
-    if (mode) return;
+    if (mode) {
+      return;
+    }
     if (event.button === 0) {
       mode = { type: "action" };
       onActionStart?.(actionState(event));
@@ -166,7 +176,9 @@ const initializeAbstractCanvas = (container, config) => {
       fitScale * zoomInLimit,
       Math.max(fitScale * zoomOutLimit, camera.scale * factor),
     );
-    if (scale === camera.scale) return;
+    if (scale === camera.scale) {
+      return;
+    }
     // keep the world point under the cursor fixed across the scale change
     const screenX = event.offsetX;
     const screenY = event.offsetY;
@@ -225,7 +237,9 @@ const initializeAbstractCanvas = (container, config) => {
 
   const destroy = () => {
     resizeObserver.disconnect();
-    if (rafId) cancelAnimationFrame(rafId);
+    if (rafId) {
+      cancelAnimationFrame(rafId);
+    }
   };
 
   return { requestRender, destroy };

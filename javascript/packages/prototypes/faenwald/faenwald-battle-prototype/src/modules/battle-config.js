@@ -46,7 +46,9 @@ const changeMap = (battleConfig, mapId) => {
 const findUnit = (battleConfig, unitId) => {
   for (const side of SIDES) {
     const unit = battleConfig[side].find((u) => u.id === unitId);
-    if (unit) return unit;
+    if (unit) {
+      return unit;
+    }
   }
   return null;
 };

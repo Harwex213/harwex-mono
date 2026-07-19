@@ -76,7 +76,9 @@ const renderMapsStore = (params, router) => {
 
   const onClick = (event) => {
     const el = event.target.closest("[data-action]");
-    if (!el) return;
+    if (!el) {
+      return;
+    }
 
     const mapId = el.dataset.mapId;
 

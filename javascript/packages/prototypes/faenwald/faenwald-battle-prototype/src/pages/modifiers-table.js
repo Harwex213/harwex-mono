@@ -138,7 +138,9 @@ const renderModifiersTable = (params = {}, router) => {
     if (focusKey) {
       const el = root.querySelector(`[data-focus="${CSS.escape(focusKey)}"]`);
       if (el) {
-        if (savedValue !== undefined && el.value !== savedValue) el.value = savedValue;
+        if (savedValue !== undefined && el.value !== savedValue) {
+          el.value = savedValue;
+        }
         el.focus();
         if (selStart !== null) {
           try {
@@ -153,7 +155,9 @@ const renderModifiersTable = (params = {}, router) => {
 
   const onClick = (event) => {
     const el = event.target.closest("[data-action]");
-    if (!el) return;
+    if (!el) {
+      return;
+    }
 
     const modifierId = el.dataset.modifierId;
     const kind = el.dataset.kind;
@@ -161,7 +165,9 @@ const renderModifiersTable = (params = {}, router) => {
     switch (el.dataset.action) {
       case "add-modifier": {
         const modifier = MODIFIERS_MODULE.createModifier(MODEL.modifiers, collectionId);
-        if (modifier) editingModifierId = modifier.id;
+        if (modifier) {
+          editingModifierId = modifier.id;
+        }
         render();
         break;
       }
@@ -171,7 +177,9 @@ const renderModifiersTable = (params = {}, router) => {
         break;
       case "delete-modifier":
         MODIFIERS_MODULE.deleteModifier(MODEL.modifiers, collectionId, modifierId);
-        if (editingModifierId === modifierId) editingModifierId = null;
+        if (editingModifierId === modifierId) {
+          editingModifierId = null;
+        }
         render();
         break;
       case "add-entry":
@@ -207,7 +215,9 @@ const renderModifiersTable = (params = {}, router) => {
         const raw = el.value.trim();
         // an in-progress "" / "-" commits as 0; the field keeps the raw text
         const parsed = raw === "" || raw === "-" ? 0 : Number(raw);
-        if (Number.isNaN(parsed)) return;
+        if (Number.isNaN(parsed)) {
+          return;
+        }
         const value = el.dataset.kind === "percent" ? parsed / 100 : parsed;
         MODIFIERS_MODULE.updateEntry(MODEL.modifiers, collectionId, modifierId, el.dataset.kind, el.dataset.entryId, { value });
         break;

@@ -116,7 +116,9 @@ const createMap = (maps) => {
  */
 const renameMap = (maps, id, name) => {
   const map = getMap(maps, id);
-  if (!map) return;
+  if (!map) {
+    return;
+  }
   map.name = name;
   persist(maps);
 };
@@ -156,7 +158,9 @@ const setMapCell = (maps, id, row, col, terrainId) => {
  */
 const commitMap = (maps, id) => {
   const map = getMap(maps, id);
-  if (map) delete map.image;
+  if (map) {
+    delete map.image;
+  }
   persist(maps);
 };
 
@@ -167,7 +171,9 @@ const commitMap = (maps, id) => {
  */
 const setMapImage = (maps, id, dataUrl) => {
   const map = getMap(maps, id);
-  if (!map) return;
+  if (!map) {
+    return;
+  }
   map.image = dataUrl;
   persist(maps);
 };

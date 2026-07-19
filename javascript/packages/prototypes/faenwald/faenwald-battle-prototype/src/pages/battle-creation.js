@@ -106,7 +106,9 @@ const renderBattleCreation = (params, router) => {
     const rows = unit.modifiers
       .map((ref) => {
         const modifier = MODIFIERS_MODULE.findModifier(MODEL.modifiers, ref.collectionId, ref.modifierId);
-        if (!modifier) return null; // ref's collection/modifier was deleted — skip
+        if (!modifier) {
+          return null; // ref's collection/modifier was deleted — skip
+        }
         const collection = MODIFIERS_MODULE.getCollection(MODEL.modifiers, ref.collectionId);
         const prefix = collection ? `${collection.name} / ` : "";
         return `
