@@ -10,28 +10,132 @@ import { initializeAbstractCanvas } from "../modules/abstract-canvas.js";
 
 // swatch fills come from data, but inline style="" is banned — generate one
 // scoped rule per terrain instead, each referencing its semantic token
-const SWATCH_RULES = TERRAINS.map((t) => `.me .swatch--${t.id} { background: var(${t.color}); }`).join("\n    ");
+const SWATCH_RULES = TERRAINS.map(
+  (t) => `.me .swatch--${t.id} {
+      background: var(${t.color});
+    }`,
+).join("\n\n    ");
 
 const STYLE = `
   <style>
-    .me { font-family: var(--font-body); color: var(--text-primary); padding: var(--space-8); }
-    .me a { color: var(--text-secondary); }
-    .me a:hover { color: var(--text-primary); }
-    .me .header { display: flex; align-items: center; gap: var(--space-7); margin-bottom: var(--space-7); }
-    .me .map-name { min-width: 240px; font: inherit; color: var(--text-primary); background: var(--bg-control); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: var(--space-4) var(--space-6); }
-    .me .map-name:focus { border-color: var(--border-accent-muted); outline: none; }
-    .me .dims { color: var(--text-muted); }
-    .me .workspace { display: grid; grid-template-columns: minmax(0, 1fr) 240px; grid-template-rows: 1fr; gap: var(--space-8); align-items: start; }
-    .me .canvas-panel { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; overflow: hidden; background: var(--card-bg); border: 1px dashed var(--border-medium); border-radius: var(--card-radius); }
-    .me .canvas-panel canvas { cursor: crosshair; touch-action: none; }
-    .me .palette { display: flex; flex-direction: column; gap: var(--space-2); background: var(--card-bg); border: 1px solid var(--card-border); border-radius: var(--card-radius); padding: var(--space-6); }
-    .me .palette-title { font-family: var(--font-display); color: var(--text-accent); padding: var(--space-2) var(--space-4) var(--space-4); }
-    .me .terrain { display: flex; align-items: center; gap: var(--space-5); font: inherit; text-align: left; color: var(--text-secondary); background: none; border: 1px solid transparent; border-radius: var(--radius-sm); padding: var(--space-4) var(--space-5); cursor: pointer; }
-    .me .terrain:hover { color: var(--text-primary); background: var(--bg-control-subtle-hover); }
-    .me .terrain--selected { color: var(--text-primary); background: var(--bg-accent); border-color: var(--border-accent-muted); }
-    .me .swatch { width: 18px; height: 18px; border: 1px solid var(--border-default); border-radius: var(--radius-sm); }
+    .me {
+      font-family: var(--font-body);
+      color: var(--text-primary);
+      padding: var(--space-8);
+    }
+
+    .me a {
+      color: var(--text-secondary);
+    }
+
+    .me a:hover {
+      color: var(--text-primary);
+    }
+
+    .me .header {
+      display: flex;
+      align-items: center;
+      gap: var(--space-7);
+      margin-bottom: var(--space-7);
+    }
+
+    .me .map-name {
+      min-width: 240px;
+      font: inherit;
+      color: var(--text-primary);
+      background: var(--bg-control);
+      border: 1px solid var(--border-medium);
+      border-radius: var(--radius-sm);
+      padding: var(--space-4) var(--space-6);
+    }
+
+    .me .map-name:focus {
+      border-color: var(--border-accent-muted);
+      outline: none;
+    }
+
+    .me .dims {
+      color: var(--text-muted);
+    }
+
+    .me .workspace {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 240px;
+      grid-template-rows: 1fr;
+      gap: var(--space-8);
+      align-items: start;
+    }
+
+    .me .canvas-panel {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      background: var(--card-bg);
+      border: 1px dashed var(--border-medium);
+      border-radius: var(--card-radius);
+    }
+
+    .me .canvas-panel canvas {
+      cursor: crosshair;
+      touch-action: none;
+    }
+
+    .me .palette {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-2);
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: var(--card-radius);
+      padding: var(--space-6);
+    }
+
+    .me .palette-title {
+      font-family: var(--font-display);
+      color: var(--text-accent);
+      padding: var(--space-2) var(--space-4) var(--space-4);
+    }
+
+    .me .terrain {
+      display: flex;
+      align-items: center;
+      gap: var(--space-5);
+      font: inherit;
+      text-align: left;
+      color: var(--text-secondary);
+      background: none;
+      border: 1px solid transparent;
+      border-radius: var(--radius-sm);
+      padding: var(--space-4) var(--space-5);
+      cursor: pointer;
+    }
+
+    .me .terrain:hover {
+      color: var(--text-primary);
+      background: var(--bg-control-subtle-hover);
+    }
+
+    .me .terrain--selected {
+      color: var(--text-primary);
+      background: var(--bg-accent);
+      border-color: var(--border-accent-muted);
+    }
+
+    .me .swatch {
+      width: 18px;
+      height: 18px;
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-sm);
+    }
+
     ${SWATCH_RULES}
-    .me .missing { color: var(--text-muted); }
+
+    .me .missing {
+      color: var(--text-muted);
+    }
   </style>
 `;
 

@@ -5,11 +5,31 @@ import { MODEL } from "../../model/model.js";
 
 const STYLE = `
   <style>
-    .bf { font-family: var(--font-body); color: var(--text-primary); padding: var(--space-8); }
-    .bf h1 { margin: 0 0 var(--space-7); font-family: var(--font-display); font-size: var(--font-size-xl); color: var(--text-accent); }
-    .bf p { margin: 0 0 var(--space-7); color: var(--text-secondary); }
-    .bf a { color: var(--text-secondary); }
-    .bf a:hover { color: var(--text-primary); }
+    .bf {
+      font-family: var(--font-body);
+      color: var(--text-primary);
+      padding: var(--space-8);
+    }
+
+    .bf h1 {
+      margin: 0 0 var(--space-7);
+      font-family: var(--font-display);
+      font-size: var(--font-size-xl);
+      color: var(--text-accent);
+    }
+
+    .bf p {
+      margin: 0 0 var(--space-7);
+      color: var(--text-secondary);
+    }
+
+    .bf a {
+      color: var(--text-secondary);
+    }
+
+    .bf a:hover {
+      color: var(--text-primary);
+    }
   </style>
 `;
 

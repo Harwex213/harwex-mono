@@ -6,21 +6,117 @@ import { MODEL } from "../model/model.js";
 
 const STYLE = `
   <style>
-    .msp { font-family: var(--font-body); color: var(--text-primary); padding: var(--space-8); }
-    .msp .box-label { display: inline-block; margin: 0 0 var(--space-7); padding: var(--space-5) var(--space-8); font-family: var(--font-display); font-size: var(--font-size-xl); font-weight: var(--font-weight-normal); color: var(--text-accent); }
-    .msp hr { border: none; border-top: 1px solid var(--border-default); margin: 0 0 var(--space-7); }
-    .msp .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: var(--space-8) var(--space-7); align-items: start; }
-    .msp .tile { display: flex; flex-direction: column; gap: var(--space-4); cursor: pointer; }
-    .msp .preview { height: 120px; display: flex; align-items: center; justify-content: center; background: var(--card-bg); border: 1px solid var(--card-border); border-radius: var(--card-radius); overflow: hidden; }
-    .msp .preview img { width: 100%; height: 100%; object-fit: contain; }
-    .msp .tile:hover .preview { border-color: var(--border-accent-muted); }
-    .msp .glyph { font-size: var(--font-size-xl); color: var(--text-faint); }
-    .msp .caption { display: flex; align-items: center; gap: var(--space-4); }
-    .msp .name { flex: 1; padding: var(--space-4) var(--space-6); border: 1px solid var(--border-default); border-radius: var(--radius-sm); text-align: center; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .msp .delete { font: inherit; color: var(--text-primary); background: var(--bg-control); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: var(--space-4) var(--space-5); cursor: pointer; }
-    .msp .delete:hover { background: var(--bg-control-hover); }
-    .msp .add { height: 120px; display: flex; align-items: center; justify-content: center; font: inherit; color: var(--text-primary); background: var(--bg-control-subtle); border: 1px dashed var(--border-medium); border-radius: var(--card-radius); cursor: pointer; }
-    .msp .add:hover { background: var(--bg-control-subtle-hover); border-color: var(--border-accent-muted); }
+    .msp {
+      font-family: var(--font-body);
+      color: var(--text-primary);
+      padding: var(--space-8);
+    }
+
+    .msp .box-label {
+      display: inline-block;
+      margin: 0 0 var(--space-7);
+      padding: var(--space-5) var(--space-8);
+      font-family: var(--font-display);
+      font-size: var(--font-size-xl);
+      font-weight: var(--font-weight-normal);
+      color: var(--text-accent);
+    }
+
+    .msp hr {
+      border: none;
+      border-top: 1px solid var(--border-default);
+      margin: 0 0 var(--space-7);
+    }
+
+    .msp .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+      gap: var(--space-8) var(--space-7);
+      align-items: start;
+    }
+
+    .msp .tile {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-4);
+      cursor: pointer;
+    }
+
+    .msp .preview {
+      height: 120px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: var(--card-radius);
+      overflow: hidden;
+    }
+
+    .msp .preview img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+    }
+
+    .msp .tile:hover .preview {
+      border-color: var(--border-accent-muted);
+    }
+
+    .msp .glyph {
+      font-size: var(--font-size-xl);
+      color: var(--text-faint);
+    }
+
+    .msp .caption {
+      display: flex;
+      align-items: center;
+      gap: var(--space-4);
+    }
+
+    .msp .name {
+      flex: 1;
+      padding: var(--space-4) var(--space-6);
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-sm);
+      text-align: center;
+      color: var(--text-secondary);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .msp .delete {
+      font: inherit;
+      color: var(--text-primary);
+      background: var(--bg-control);
+      border: 1px solid var(--border-medium);
+      border-radius: var(--radius-sm);
+      padding: var(--space-4) var(--space-5);
+      cursor: pointer;
+    }
+
+    .msp .delete:hover {
+      background: var(--bg-control-hover);
+    }
+
+    .msp .add {
+      height: 120px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font: inherit;
+      color: var(--text-primary);
+      background: var(--bg-control-subtle);
+      border: 1px dashed var(--border-medium);
+      border-radius: var(--card-radius);
+      cursor: pointer;
+    }
+
+    .msp .add:hover {
+      background: var(--bg-control-subtle-hover);
+      border-color: var(--border-accent-muted);
+    }
   </style>
 `;
 

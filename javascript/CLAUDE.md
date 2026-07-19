@@ -1,7 +1,12 @@
-### Code style
+### Code style conventions
 
-- No single-line `if` statements: always braces, body on its own line
-  (`if (!unit) return;` → `if (!unit) {\n  return;\n}`). Same for `else` and loops.
+#### Javascript conventions
+
+- No single-line `if` statements: always braces, body on its own line (`if (!unit) return;` → `if (!unit) {\n  return;\n}`). Same for `else` and loops.
+
+#### CSS conventions
+
+- No single-line CSS rules: one declaration per line, closing brace on its own line (`.bf a:hover { color: var(--text-primary); }` → `.bf a:hover {\n  color: var(--text-primary);\n}`). Applies wherever CSS lives.
 
 ### Development workflow
 

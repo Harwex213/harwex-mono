@@ -13,25 +13,132 @@ import { BATTLE_DISPOSITION_MODULE } from "../../modules/battle-disposition.js";
 
 const STYLE = `
   <style>
-    .bd { font-family: var(--font-body); color: var(--text-primary); padding: var(--space-8); }
-    .bd h1 { margin: 0 0 var(--space-7); font-family: var(--font-display); font-size: var(--font-size-xl); color: var(--text-accent); text-align: center; }
-    .bd .workspace { display: grid; grid-template-columns: 260px minmax(0, 1fr) 260px; gap: var(--space-8); height: 70vh; }
-    .bd .canvas-panel { width: 100%; height: 100%; overflow: hidden; background: var(--card-bg); border: 1px dashed var(--border-medium); border-radius: var(--card-radius); }
-    .bd .canvas-panel canvas { cursor: pointer; touch-action: none; }
-    .bd .panel { display: flex; flex-direction: column; gap: var(--space-4); background: var(--card-bg); border: 1px solid var(--card-border); border-radius: var(--card-radius); padding: var(--space-6); overflow-y: auto; }
-    .bd .panel-title { font-family: var(--font-display); color: var(--text-accent); padding: var(--space-2) var(--space-4) 0; }
-    .bd .panel-progress { color: var(--text-muted); padding: 0 var(--space-4) var(--space-4); }
-    .bd .unit-card { display: flex; flex-direction: column; gap: var(--space-2); font: inherit; text-align: center; color: var(--text-secondary); background: var(--bg-control-subtle); border: 1px solid var(--border-default); border-radius: var(--radius-sm); padding: var(--space-4) var(--space-5); cursor: pointer; }
-    .bd .unit-card:hover { color: var(--text-primary); background: var(--bg-control-subtle-hover); }
-    .bd .unit-card--selected { color: var(--text-primary); background: var(--bg-accent); border-color: var(--border-accent-muted); }
-    .bd .all-placed { margin: 0; padding: 0 var(--space-4); color: var(--text-muted); }
-    .bd .footer { display: flex; justify-content: center; margin-top: var(--space-8); }
-    .bd .footer button { font: inherit; color: var(--text-primary); background: var(--bg-control); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: var(--space-5) var(--space-8); cursor: pointer; }
-    .bd .footer button:hover { background: var(--bg-control-hover); }
-    .bd .footer button:disabled { color: var(--text-muted); border-color: var(--border-default); background: transparent; cursor: default; }
-    .bd .missing { color: var(--text-muted); }
-    .bd a { color: var(--text-secondary); }
-    .bd a:hover { color: var(--text-primary); }
+    .bd {
+      font-family: var(--font-body);
+      color: var(--text-primary);
+      padding: var(--space-8);
+    }
+
+    .bd h1 {
+      margin: 0 0 var(--space-7);
+      font-family: var(--font-display);
+      font-size: var(--font-size-xl);
+      color: var(--text-accent);
+      text-align: center;
+    }
+
+    .bd .workspace {
+      display: grid;
+      grid-template-columns: 260px minmax(0, 1fr) 260px;
+      gap: var(--space-8);
+      height: 70vh;
+    }
+
+    .bd .canvas-panel {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: var(--card-bg);
+      border: 1px dashed var(--border-medium);
+      border-radius: var(--card-radius);
+    }
+
+    .bd .canvas-panel canvas {
+      cursor: pointer;
+      touch-action: none;
+    }
+
+    .bd .panel {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-4);
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: var(--card-radius);
+      padding: var(--space-6);
+      overflow-y: auto;
+    }
+
+    .bd .panel-title {
+      font-family: var(--font-display);
+      color: var(--text-accent);
+      padding: var(--space-2) var(--space-4) 0;
+    }
+
+    .bd .panel-progress {
+      color: var(--text-muted);
+      padding: 0 var(--space-4) var(--space-4);
+    }
+
+    .bd .unit-card {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-2);
+      font: inherit;
+      text-align: center;
+      color: var(--text-secondary);
+      background: var(--bg-control-subtle);
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-sm);
+      padding: var(--space-4) var(--space-5);
+      cursor: pointer;
+    }
+
+    .bd .unit-card:hover {
+      color: var(--text-primary);
+      background: var(--bg-control-subtle-hover);
+    }
+
+    .bd .unit-card--selected {
+      color: var(--text-primary);
+      background: var(--bg-accent);
+      border-color: var(--border-accent-muted);
+    }
+
+    .bd .all-placed {
+      margin: 0;
+      padding: 0 var(--space-4);
+      color: var(--text-muted);
+    }
+
+    .bd .footer {
+      display: flex;
+      justify-content: center;
+      margin-top: var(--space-8);
+    }
+
+    .bd .footer button {
+      font: inherit;
+      color: var(--text-primary);
+      background: var(--bg-control);
+      border: 1px solid var(--border-medium);
+      border-radius: var(--radius-sm);
+      padding: var(--space-5) var(--space-8);
+      cursor: pointer;
+    }
+
+    .bd .footer button:hover {
+      background: var(--bg-control-hover);
+    }
+
+    .bd .footer button:disabled {
+      color: var(--text-muted);
+      border-color: var(--border-default);
+      background: transparent;
+      cursor: default;
+    }
+
+    .bd .missing {
+      color: var(--text-muted);
+    }
+
+    .bd a {
+      color: var(--text-secondary);
+    }
+
+    .bd a:hover {
+      color: var(--text-primary);
+    }
   </style>
 `;
 

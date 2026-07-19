@@ -2,11 +2,39 @@ import { ROUTE_LINKS, ROUTES } from "../data/routing.js";
 
 const STYLE = `
   <style>
-    .tn { display: flex; align-items: center; gap: var(--space-6); padding: var(--space-6) var(--space-8); border-bottom: 1px solid var(--border-default); font-family: var(--font-body); }
-    .tn .brand { margin-right: auto; font-family: var(--font-display); font-size: var(--font-size-xl); color: var(--text-accent); text-decoration: none; }
-    .tn .link { padding: var(--space-4) var(--space-6); border-radius: var(--radius-sm); color: var(--text-secondary); text-decoration: none; }
-    .tn .link:hover { color: var(--text-primary); background: var(--bg-control-subtle-hover); }
-    .tn .link[aria-current="page"] { color: var(--text-accent); background: var(--bg-accent); }
+    .tn {
+      display: flex;
+      align-items: center;
+      gap: var(--space-6);
+      padding: var(--space-6) var(--space-8);
+      border-bottom: 1px solid var(--border-default);
+      font-family: var(--font-body);
+    }
+
+    .tn .brand {
+      margin-right: auto;
+      font-family: var(--font-display);
+      font-size: var(--font-size-xl);
+      color: var(--text-accent);
+      text-decoration: none;
+    }
+
+    .tn .link {
+      padding: var(--space-4) var(--space-6);
+      border-radius: var(--radius-sm);
+      color: var(--text-secondary);
+      text-decoration: none;
+    }
+
+    .tn .link:hover {
+      color: var(--text-primary);
+      background: var(--bg-control-subtle-hover);
+    }
+
+    .tn .link[aria-current="page"] {
+      color: var(--text-accent);
+      background: var(--bg-accent);
+    }
   </style>
 `;
 
