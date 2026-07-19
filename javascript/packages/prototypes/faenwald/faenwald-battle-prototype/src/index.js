@@ -4,6 +4,9 @@ import { renderModifiersTable } from "./pages/modifiers-table.js";
 import { renderMapsStore } from "./pages/maps-store.js";
 import { renderMapEditor } from "./pages/map-editor.js";
 import { renderBattle } from "./pages/battle/battle.js";
+import { renderBattleDisposition } from "./pages/battle/battle-disposition.js";
+import { renderBattleActive } from "./pages/battle/battle-active.js";
+import { renderBattleFinished } from "./pages/battle/battle-finished.js";
 import { Router } from "./modules/router.js";
 import { ROUTES } from "./data/routing.js";
 
@@ -11,7 +14,9 @@ const voidFn = () => void 0;
 
 const PAGES = [
   [ROUTES.BATTLE_CREATION, renderBattleCreation],
-  [ROUTES.BATTLE, renderBattle],
+  [ROUTES.BATTLE_DISPOSITION, renderBattleDisposition],
+  [ROUTES.BATTLE_ACTIVE, renderBattleActive],
+  [ROUTES.BATTLE_FINISHED, renderBattleFinished],
   [ROUTES.MODIFIERS_COLLECTIONS, renderModifiersCollections],
   [ROUTES.MODIFIERS, renderModifiersTable],
   [ROUTES.MAPS, renderMapsStore],
@@ -20,11 +25,18 @@ const PAGES = [
 
 const registerAllPages = (root, router) => {
   let finalizePage = voidFn;
+  let navToken = 0;
 
   const registerPage = (pageRoute, pageHandler) => {
     router.registerRoute(pageRoute, (params) => {
       finalizePage();
-      finalizePage = pageHandler({ root, params, router });
+      finalizePage = voidFn; // a re-entrant resolve must not re-run this teardown
+      const myToken = ++navToken;
+      const teardown = pageHandler({ root, params, router });
+      if (myToken === navToken) {
+        // a nested navigation replaced us — don't clobber its teardown
+        finalizePage = teardown ?? voidFn;
+      }
     });
   };
 
@@ -34,6 +46,10 @@ const registerAllPages = (root, router) => {
 
   router.registerRoute(ROUTES.ROOT, () => {
     router.replace(ROUTES.BATTLE_CREATION);
+  });
+
+  router.registerRoute(ROUTES.BATTLE, () => {
+    renderBattle({ router });
   });
 };
 

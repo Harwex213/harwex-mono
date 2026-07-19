@@ -5,7 +5,7 @@ import { ACTIVE_BATTLE_MODULE } from "./active-battle.js";
 const PLACEMENT_ROWS = 3;
 
 const impassableTerrainIds = new Set(
-  TERRAINS.filter((t) => t.passable === false).map((t) => t.id),
+  TERRAINS.filter((t) => t.impassable === true).map((t) => t.id),
 );
 
 
@@ -76,10 +76,47 @@ const placeUnit = (activeBattle, unitId, row, col) => {
 const isDispositionComplete = (activeBattle) =>
   activeBattle.units.length > 0 && activeBattle.units.every((u) => u.position !== null);
 
+/**
+ * @param {ActiveBattle} activeBattle
+ * @param {number} unitId
+ * @param {number} facing 0-5 vertex orientation
+ */
+const setUnitFacing = (activeBattle, unitId, facing) => {
+  const u = ACTIVE_BATTLE_MODULE.findUnit(activeBattle, unitId);
+  if (!u) {
+    return;
+  }
+  if (!Number.isInteger(facing) || facing < 0 || facing > 5) {
+    return;
+  }
+  u.facing = facing;
+};
+
+/**
+ * Toggles the unit's ruler crown; at most one per side.
+ * @param {ActiveBattle} activeBattle
+ * @param {number} unitId
+ */
+const setRuler = (activeBattle, unitId) => {
+  const u = ACTIVE_BATTLE_MODULE.findUnit(activeBattle, unitId);
+  if (!u) {
+    return;
+  }
+  const was = u.isRulerUnit;
+  for (const other of activeBattle.units) {
+    if (other.side === u.side) {
+      other.isRulerUnit = false;
+    }
+  }
+  u.isRulerUnit = !was;
+};
+
 const BATTLE_DISPOSITION_MODULE = {
   placementCandidates: placementCandidates,
   placeUnit: placeUnit,
   isDispositionComplete: isDispositionComplete,
+  setUnitFacing: setUnitFacing,
+  setRuler: setRuler,
 }
 
 export { BATTLE_DISPOSITION_MODULE };

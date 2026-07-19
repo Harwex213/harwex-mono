@@ -21,6 +21,7 @@ const UNIT_TYPES = [
     attack: 12,
     morale: 70,
     speed: 3,
+    terrainClass: "infantry",
   },
   {
     id: UNIT_TYPE_MEDIUM_SPEARMAN,
@@ -30,6 +31,7 @@ const UNIT_TYPES = [
     attack: 15,
     morale: 85,
     speed: 2,
+    terrainClass: "infantry",
   },
   {
     id: UNIT_TYPE_HEAVY_SPEARMAN,
@@ -39,6 +41,8 @@ const UNIT_TYPES = [
     attack: 18,
     morale: 110,
     speed: 1,
+    terrainClass: "infantry",
+    heavy: true,
   },
   {
     id: UNIT_TYPE_LIGHT_INFANTRY,
@@ -48,6 +52,7 @@ const UNIT_TYPES = [
     attack: 20,
     morale: 70,
     speed: 3,
+    terrainClass: "infantry",
   },
   {
     id: UNIT_TYPE_MEDIUM_INFANTRY,
@@ -57,6 +62,7 @@ const UNIT_TYPES = [
     attack: 25,
     morale: 85,
     speed: 2,
+    terrainClass: "infantry",
   },
   {
     id: UNIT_TYPE_HEAVY_INFANTRY,
@@ -66,6 +72,8 @@ const UNIT_TYPES = [
     attack: 30,
     morale: 100,
     speed: 1,
+    terrainClass: "infantry",
+    heavy: true,
   },
   {
     id: UNIT_TYPE_LIGHT_CAVALRY,
@@ -75,6 +83,9 @@ const UNIT_TYPES = [
     attack: 10,
     morale: 80,
     speed: 5,
+    terrainClass: "cavalry",
+    ramModifier: 8,
+    maneuverable: true,
   },
   {
     id: UNIT_TYPE_MEDIUM_CAVALRY,
@@ -84,6 +95,9 @@ const UNIT_TYPES = [
     attack: 15,
     morale: 90,
     speed: 4,
+    terrainClass: "cavalry",
+    ramModifier: 16,
+    maneuverable: true,
   },
   {
     id: UNIT_TYPE_HEAVY_CAVALRY,
@@ -93,6 +107,10 @@ const UNIT_TYPES = [
     attack: 25,
     morale: 100,
     speed: 3,
+    terrainClass: "cavalry",
+    heavy: true,
+    ramModifier: 24,
+    maneuverable: true,
   },
   {
     id: UNIT_TYPE_ARCHER,
@@ -102,6 +120,8 @@ const UNIT_TYPES = [
     attack: 6,
     morale: 70,
     speed: 3,
+    terrainClass: "infantry",
+    ranged: { arc: { range: 4, mult: 1 }, direct: { range: 2, mult: 2 }, meleeMult: 0.5, shots: 8 },
   },
   {
     id: UNIT_TYPE_HORSE_ARCHER,
@@ -111,6 +131,11 @@ const UNIT_TYPES = [
     attack: 6,
     morale: 80,
     speed: 5,
+    terrainClass: "cavalry",
+    maneuverable: true,
+    // doc §4: «Не получает никакие бонусы за холм»
+    noElevationBonus: true,
+    ranged: { arc: { range: 2, mult: 1 }, direct: { range: 1, mult: 2 }, meleeMult: 0.5, shots: 8 },
   },
   {
     id: UNIT_TYPE_LONGBOWMAN,
@@ -120,15 +145,20 @@ const UNIT_TYPES = [
     attack: 10,
     morale: 80,
     speed: 3,
+    terrainClass: "infantry",
+    ranged: { arc: { range: 4, mult: 1 }, direct: { range: 2, mult: 2 }, meleeMult: 0.5, shots: 8 },
   },
   {
     id: UNIT_TYPE_CROSSBOWMAN,
     type: UNIT_TYPE_CROSSBOWMAN,
     name: "Арбалетчик",
     hp: 60,
-    attack: 40, // direct-fire damage; no arcing shot, fires once per 2 turns
+    // base attack already bakes in the direct-fire x2 multiplier, hence ranged.direct.mult below is 1
+    attack: 40,
     morale: 80,
     speed: 3,
+    terrainClass: "infantry",
+    ranged: { arc: null, direct: { range: 3, mult: 1 }, meleeMult: 0.75, shots: 8, cooldown: 2 },
   },
 ];
 

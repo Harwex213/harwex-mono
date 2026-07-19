@@ -101,6 +101,70 @@ const STYLE = `
       color: var(--text-muted);
     }
 
+    .bd .unit-detail {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-3);
+      margin: 0 var(--space-4);
+      padding: var(--space-4);
+      background: var(--bg-control-subtle);
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-sm);
+    }
+
+    .bd .unit-detail-title {
+      color: var(--text-primary);
+      text-align: center;
+    }
+
+    .bd .facing-control {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: var(--space-2);
+    }
+
+    .bd .facing-btn {
+      font: inherit;
+      color: var(--text-secondary);
+      background: var(--bg-control);
+      border: 1px solid var(--border-medium);
+      border-radius: var(--radius-sm);
+      padding: var(--space-2);
+      cursor: pointer;
+    }
+
+    .bd .facing-btn:hover {
+      color: var(--text-primary);
+      background: var(--bg-control-hover);
+    }
+
+    .bd .facing-btn--active {
+      color: var(--text-primary);
+      background: var(--bg-accent);
+      border-color: var(--border-accent-muted);
+    }
+
+    .bd .crown-toggle {
+      font: inherit;
+      color: var(--text-secondary);
+      background: var(--bg-control);
+      border: 1px solid var(--border-medium);
+      border-radius: var(--radius-sm);
+      padding: var(--space-3);
+      cursor: pointer;
+    }
+
+    .bd .crown-toggle:hover {
+      color: var(--text-primary);
+      background: var(--bg-control-hover);
+    }
+
+    .bd .crown-toggle--active {
+      color: var(--text-primary);
+      background: var(--bg-accent);
+      border-color: var(--border-accent-muted);
+    }
+
     .bd .footer {
       display: flex;
       justify-content: center;
@@ -149,6 +213,21 @@ const HOVER_STROKE_PX = 2;
 const SELECTED_STROKE_PX = 4;
 const UNIT_DISC_RADIUS = HEX_SIZE * 0.6; // world units — part of the scene, scales with zoom
 const UNIT_EMOJI_SIZE = HEX_SIZE * 0.7;
+const CROWN_EMOJI_SIZE = HEX_SIZE * 0.5;
+
+// world-px offset from a hex center to each of its 6 vertices, indexed by facing
+const HEX_HALF_WIDTH = (Math.sqrt(3) / 2) * HEX_SIZE;
+const VERTEX_OFFSET = [
+  { x: HEX_HALF_WIDTH, y: -HEX_SIZE / 2 },
+  { x: 0, y: -HEX_SIZE },
+  { x: -HEX_HALF_WIDTH, y: -HEX_SIZE / 2 },
+  { x: -HEX_HALF_WIDTH, y: HEX_SIZE / 2 },
+  { x: 0, y: HEX_SIZE },
+  { x: HEX_HALF_WIDTH, y: HEX_SIZE / 2 },
+];
+
+// arrow labels for the facing picker, matching the vertex screen positions
+const FACING_ARROWS = ["↗", "↑", "↖", "↙", "↓", "↘"];
 
 const GROUP_EMOJI = {
   [ACTIVE_UNIT_GROUP_TYPE.CAVALRY]: "🐎",
@@ -179,6 +258,26 @@ const initializeCanvas = (container, map, hooks) => {
   const ringColor = token("--unit-ring");
   const emojiFont = `${UNIT_EMOJI_SIZE}px ${token("--font-body")}`;
 
+  // short filled triangle from the disc center toward the front vertex
+  const drawFacingIndicator = (ctx, x, y, facing) => {
+    const offset = VERTEX_OFFSET[facing];
+    const len = Math.hypot(offset.x, offset.y) || 1;
+    const dir = { x: offset.x / len, y: offset.y / len };
+    const perp = { x: -dir.y, y: dir.x };
+    const tipDist = UNIT_DISC_RADIUS * 0.95;
+    const baseDist = UNIT_DISC_RADIUS * 0.4;
+    const baseHalf = UNIT_DISC_RADIUS * 0.3;
+    const tip = { x: x + dir.x * tipDist, y: y + dir.y * tipDist };
+    const baseCenter = { x: x + dir.x * baseDist, y: y + dir.y * baseDist };
+    ctx.beginPath();
+    ctx.moveTo(tip.x, tip.y);
+    ctx.lineTo(baseCenter.x + perp.x * baseHalf, baseCenter.y + perp.y * baseHalf);
+    ctx.lineTo(baseCenter.x - perp.x * baseHalf, baseCenter.y - perp.y * baseHalf);
+    ctx.closePath();
+    ctx.fillStyle = ringColor;
+    ctx.fill();
+  };
+
   const drawUnit = (ctx, unit) => {
     const { x, y } = offsetToPixel(unit.position.col, unit.position.row, HEX_SIZE);
     ctx.beginPath();
@@ -195,6 +294,11 @@ const initializeCanvas = (container, map, hooks) => {
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.fillText(GROUP_EMOJI[getUnitGroupType(unit.type)] ?? "❓", x, y);
+    drawFacingIndicator(ctx, x, y, unit.facing);
+    if (unit.isRulerUnit) {
+      ctx.font = `${CROWN_EMOJI_SIZE}px ${token("--font-body")}`;
+      ctx.fillText("👑", x - UNIT_DISC_RADIUS * 0.7, y - UNIT_DISC_RADIUS * 0.7);
+    }
   };
 
   return initializeAbstractCanvas(container, {
@@ -249,11 +353,15 @@ const initializeCanvas = (container, map, hooks) => {
   });
 };
 
-const renderBattleDisposition = (params, router) => {
-  const root = document.querySelector("main");
+const renderBattleDisposition = ({ root, params, router }) => {
+  if (MODEL.activeBattle.phase !== BATTLE_PHASE.DISPOSITION) {
+    router.replace(ROUTES.BATTLE);
+    return () => {};
+  }
+
   const map = MAPS_MODULE.getMap(MODEL.maps, MODEL.activeBattle.mapId);
 
-  if (MODEL.activeBattle.phase !== BATTLE_PHASE.DISPOSITION || !map) {
+  if (!map) {
     root.innerHTML = `
       ${topNavHtml(router)}
       ${STYLE}
@@ -286,13 +394,30 @@ const renderBattleDisposition = (params, router) => {
     </button>
   `;
 
+  // facing picker + ruler crown toggle for a placed, selected unit
+  const unitDetailHtml = (unit) => `
+    <div class="unit-detail">
+      <div class="unit-detail-title">${unit.name}</div>
+      <div class="facing-control">
+        ${FACING_ARROWS.map((arrow, facing) => `
+          <button class="facing-btn ${facing === unit.facing ? "facing-btn--active" : ""}"
+                  data-action="set-facing" data-unit-id="${unit.id}" data-facing="${facing}">${arrow}</button>
+        `).join("")}
+      </div>
+      <button class="crown-toggle ${unit.isRulerUnit ? "crown-toggle--active" : ""}"
+              data-action="toggle-ruler" data-unit-id="${unit.id}">👑 Ruler</button>
+    </div>
+  `;
+
   const panelHtml = (side) => {
     const units = MODEL.activeBattle.units.filter((u) => u.side === side);
     const unplaced = units.filter((u) => u.position === null);
+    const selected = units.find((u) => u.id === selectedUnitId && u.position !== null);
     return `
       <div class="panel-title">${SIDE_TITLES[side]}</div>
       <div class="panel-progress">placed ${units.length - unplaced.length}/${units.length}</div>
       ${unplaced.length ? unplaced.map(unitCardHtml).join("") : `<p class="all-placed">All units placed.</p>`}
+      ${selected ? unitDetailHtml(selected) : ""}
     `;
   };
 
@@ -380,9 +505,21 @@ const renderBattleDisposition = (params, router) => {
         break;
       }
       case "start-battle":
-        ACTIVE_BATTLE_MODULE.startBattle(MODEL.activeBattle);
+        ACTIVE_BATTLE_MODULE.startBattle(MODEL.activeBattle, map);
         router.push(ROUTES.BATTLE_ACTIVE);
         break;
+      case "set-facing": {
+        const unitId = Number(el.dataset.unitId);
+        BATTLE_DISPOSITION_MODULE.setUnitFacing(MODEL.activeBattle, unitId, Number(el.dataset.facing));
+        refresh();
+        break;
+      }
+      case "toggle-ruler": {
+        const unitId = Number(el.dataset.unitId);
+        BATTLE_DISPOSITION_MODULE.setRuler(MODEL.activeBattle, unitId);
+        refresh();
+        break;
+      }
     }
   };
 

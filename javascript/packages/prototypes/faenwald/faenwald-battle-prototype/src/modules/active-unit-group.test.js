@@ -4,6 +4,7 @@ import {
   ACTIVE_UNIT_GROUP_SIDE,
   ACTIVE_UNIT_GROUP_TYPE,
   createActiveUnitGroup,
+  firstActiveUnitGroup,
   nextActiveUnitGroup
 } from "./active-unit-group.js";
 import {
@@ -435,6 +436,46 @@ describe("nextActiveUnitGroup", () => {
       { side: ACTIVE_UNIT_GROUP_SIDE.DEFENDER, type: UNIT_TYPE_ARCHER },
       { side: ACTIVE_UNIT_GROUP_SIDE.DEFENDER, type: UNIT_TYPE_LIGHT_INFANTRY },
     ]);
+
+    assert.deepStrictEqual(actual, expected);
+  });
+});
+
+describe("firstActiveUnitGroup", () => {
+  test("should return attacker cavalry when only attacker cavalry units exist", () => {
+    const expected = {
+      side: ACTIVE_UNIT_GROUP_SIDE.ATTACKER,
+      type: ACTIVE_UNIT_GROUP_TYPE.CAVALRY,
+    };
+
+    const actual = firstActiveUnitGroup([
+      { side: ACTIVE_UNIT_GROUP_SIDE.ATTACKER, type: UNIT_TYPE_LIGHT_CAVALRY },
+    ]);
+
+    assert.deepStrictEqual(actual, expected);
+  });
+
+  test("should return the earlier GROUP_CYCLE entry across sides", () => {
+    const expected = {
+      side: ACTIVE_UNIT_GROUP_SIDE.ATTACKER,
+      type: ACTIVE_UNIT_GROUP_TYPE.ARCHERS,
+    };
+
+    const actual = firstActiveUnitGroup([
+      { side: ACTIVE_UNIT_GROUP_SIDE.DEFENDER, type: UNIT_TYPE_LIGHT_SPEARMAN },
+      { side: ACTIVE_UNIT_GROUP_SIDE.ATTACKER, type: UNIT_TYPE_ARCHER },
+    ]);
+
+    assert.deepStrictEqual(actual, expected);
+  });
+
+  test("should fall back to defender cavalry when units are empty", () => {
+    const expected = {
+      side: ACTIVE_UNIT_GROUP_SIDE.DEFENDER,
+      type: ACTIVE_UNIT_GROUP_TYPE.CAVALRY,
+    };
+
+    const actual = firstActiveUnitGroup([]);
 
     assert.deepStrictEqual(actual, expected);
   });

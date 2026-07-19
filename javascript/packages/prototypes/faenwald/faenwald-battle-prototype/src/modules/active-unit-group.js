@@ -135,11 +135,27 @@ const nextActiveUnitGroup = (activeUnitGroup, units = []) => {
   return { ...activeUnitGroup };
 };
 
+// the semantically-correct "first group to act" — fixes createActiveUnitGroup's
+// defender-only assumption; used for seeding a battle and detecting round wrap
+const firstActiveUnitGroup = (units = []) => {
+  for (const group of GROUP_CYCLE) {
+    const hasUnits = units.some((unit) => (
+      unit.side === group.side && GROUP_UNIT_TYPES[group.type].includes(unit.type)
+    ));
+    if (hasUnits) {
+      return { ...group };
+    }
+  }
+  return { ...GROUP_CYCLE[0] };
+};
+
 export {
   createActiveUnitGroup,
   nextActiveUnitGroup,
+  firstActiveUnitGroup,
   getUnitGroupType,
 
   ACTIVE_UNIT_GROUP_SIDE,
   ACTIVE_UNIT_GROUP_TYPE,
+  GROUP_CYCLE,
 };

@@ -3,7 +3,7 @@ import { ROUTES } from "../data/routing.js";
 import { BATTLE_CONFIG_MODULE, SIDES, } from "../modules/battle-config.js";
 import { MODIFIERS_MODULE } from "../modules/modifiers.js";
 import { MAPS_MODULE } from "../modules/maps.js";
-import { ACTIVE_BATTLE_MODULE } from "../modules/active-battle.js";
+import { ACTIVE_BATTLE_MODULE, BATTLE_PHASE } from "../modules/active-battle.js";
 import { topNavHtml } from "../components/top-nav.js";
 import { MODEL } from "../model/model.js";
 
@@ -233,6 +233,12 @@ const STYLE = `
 `;
 
 const renderBattleCreation = ({ root, router }) => {
+  const phase = MODEL.activeBattle.phase;
+  if (phase === BATTLE_PHASE.DISPOSITION || phase === BATTLE_PHASE.ACTIVE) {
+    router.replace(ROUTES.BATTLE);
+    return () => {};
+  }
+
   // local UI state: which unit's modifier combobox is open
   let comboForUnitId = null;
 
@@ -438,6 +444,9 @@ const renderBattleCreation = ({ root, router }) => {
         pickModifier(unitId, collectionId, modifierId);
         break;
       case "start-battle":
+        if (MODEL.activeBattle.phase === BATTLE_PHASE.FINISHED) {
+          ACTIVE_BATTLE_MODULE.reset(MODEL.activeBattle);
+        }
         ACTIVE_BATTLE_MODULE.startBattleDisposition(MODEL.activeBattle, MODEL.battleConfig, MODEL.modifiers);
         router.push(ROUTES.BATTLE);
         break;

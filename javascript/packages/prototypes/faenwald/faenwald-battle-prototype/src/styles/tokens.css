@@ -176,6 +176,7 @@
     --unit-attacker: var(--color-crimson);
     --unit-defender: var(--color-cobalt);
     --unit-ring: var(--color-warm-200);
+    --hex-attack: var(--color-crimson);
 
     --nav-button-size: 28px;
     --nav-button-bg: var(--bg-control);
