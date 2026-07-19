@@ -115,7 +115,7 @@ const initializeCanvas = (container, map, getBrush) => {
   return destroy;
 };
 
-const renderMapEditor = (params = {}, router) => {
+const renderMapEditor = ({ root, params = {}, router }) => {
   // transient UI state: the brush terrain the canvas paints with
   let selectedTerrainId = DEFAULT_TERRAIN_ID;
 
@@ -168,7 +168,6 @@ const renderMapEditor = (params = {}, router) => {
     `;
   };
 
-  const root = document.querySelector("main");
   const mapId = params.mapId;
   const map = MAPS_MODULE.getMap(MODEL.maps, mapId);
 

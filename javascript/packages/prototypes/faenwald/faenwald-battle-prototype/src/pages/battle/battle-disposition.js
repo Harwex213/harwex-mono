@@ -1,15 +1,15 @@
-import { STAT_META } from "../data/unit.js";
-import { ROUTE_LINKS, ROUTES } from "../data/routing.js";
-import { DEFAULT_TERRAIN_ID, TERRAINS } from "../data/terrains.js";
-import { MAPS_MODULE } from "../modules/maps.js";
-import { ACTIVE_BATTLE_MODULE, BATTLE_PHASE } from "../modules/active-battle.js";
-import { ACTIVE_UNIT_GROUP_TYPE, getUnitGroupType } from "../modules/active-unit-group.js";
-import { topNavHtml } from "../components/top-nav.js";
-import { renderPointTopHexagon } from "../modules/hexagon-render.js";
-import { gridPixelBounds, offsetToPixel, pixelToOffset } from "../modules/hex-layout.js";
-import { initializeAbstractCanvas } from "../modules/abstract-canvas.js";
-import { MODEL } from "../model/model.js";
-import { BATTLE_DISPOSITION_MODULE } from "../modules/battle-disposition.js";
+import { STAT_META } from "../../data/unit.js";
+import { ROUTE_LINKS, ROUTES } from "../../data/routing.js";
+import { DEFAULT_TERRAIN_ID, TERRAINS } from "../../data/terrains.js";
+import { MAPS_MODULE } from "../../modules/maps.js";
+import { ACTIVE_BATTLE_MODULE, BATTLE_PHASE } from "../../modules/active-battle.js";
+import { ACTIVE_UNIT_GROUP_TYPE, getUnitGroupType } from "../../modules/active-unit-group.js";
+import { topNavHtml } from "../../components/top-nav.js";
+import { renderPointTopHexagon } from "../../modules/hexagon-render.js";
+import { gridPixelBounds, offsetToPixel, pixelToOffset } from "../../modules/hex-layout.js";
+import { initializeAbstractCanvas } from "../../modules/abstract-canvas.js";
+import { MODEL } from "../../model/model.js";
+import { BATTLE_DISPOSITION_MODULE } from "../../modules/battle-disposition.js";
 
 const STYLE = `
   <style>

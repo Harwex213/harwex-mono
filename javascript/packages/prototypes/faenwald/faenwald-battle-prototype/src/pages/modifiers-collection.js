@@ -26,9 +26,7 @@ const esc = (value) =>
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
 
-const renderModifiersCollections = (params, router) => {
-  const root = document.querySelector("main");
-
+const renderModifiersCollections = ({ root, params, router }) => {
   const rowHtml = (collection) => `
     <div class="row">
       <span class="name">${esc(collection.name)}</span>
@@ -47,10 +45,10 @@ const renderModifiersCollections = (params, router) => {
         <h2 class="box-label">Existed collection of modifiers</h2>
         <hr>
         ${
-          collections.length
-            ? collections.map(rowHtml).join("")
-            : `<p class="empty">No collections yet.</p>`
-        }
+      collections.length
+        ? collections.map(rowHtml).join("")
+        : `<p class="empty">No collections yet.</p>`
+    }
         <hr>
         <button class="create" data-action="create">＋ Create modifier collection</button>
       </section>

@@ -1,7 +1,7 @@
 import { ROUTE_LINKS } from "../data/routing.js";
 import { BATTLE_PHASE } from "../modules/active-battle.js";
-import { topNavHtml } from "../components/top-nav.js";
-import { MODEL } from "../model/model.js";
+import { topNavHtml } from "../../components/top-nav.js";
+import { MODEL } from "../../model/model.js";
 
 const STYLE = `
   <style>

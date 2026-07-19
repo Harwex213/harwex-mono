@@ -1,41 +1,30 @@
 import { renderBattleCreation } from "./pages/battle-creation.js";
-import { renderBattleDisposition } from "./pages/battle-disposition.js";
-import { renderBattleActive } from "./pages/battle-active.js";
-import { renderBattleFinished } from "./pages/battle-finished.js";
 import { renderModifiersCollections } from "./pages/modifiers-collection.js";
 import { renderModifiersTable } from "./pages/modifiers-table.js";
 import { renderMapsStore } from "./pages/maps-store.js";
 import { renderMapEditor } from "./pages/map-editor.js";
-import { BATTLE_PHASE } from "./modules/active-battle.js";
+import { renderBattle } from "./pages/battle/battle.js";
 import { Router } from "./modules/router.js";
 import { ROUTES } from "./data/routing.js";
-import { MODEL } from "./model/model.js";
 
 const voidFn = () => void 0;
 
 const PAGES = [
-  [ROUTES.BATTLE_DISPOSITION, renderBattleDisposition],
-  [ROUTES.BATTLE_ACTIVE, renderBattleActive],
-  [ROUTES.BATTLE_FINISHED, renderBattleFinished],
+  [ROUTES.BATTLE_CREATION, renderBattleCreation],
+  [ROUTES.BATTLE, renderBattle],
   [ROUTES.MODIFIERS_COLLECTIONS, renderModifiersCollections],
   [ROUTES.MODIFIERS, renderModifiersTable],
   [ROUTES.MAPS, renderMapsStore],
   [ROUTES.MAP_EDITOR, renderMapEditor],
 ];
 
-const BATTLE_PHASE_ROUTES = {
-  [BATTLE_PHASE.DISPOSITION]: ROUTES.BATTLE_DISPOSITION,
-  [BATTLE_PHASE.ACTIVE]: ROUTES.BATTLE_ACTIVE,
-  [BATTLE_PHASE.FINISHED]: ROUTES.BATTLE_FINISHED,
-};
-
-const registerAllPages = (router) => {
+const registerAllPages = (root, router) => {
   let finalizePage = voidFn;
 
   const registerPage = (pageRoute, pageHandler) => {
     router.registerRoute(pageRoute, (params) => {
       finalizePage();
-      finalizePage = pageHandler(params, router);
+      finalizePage = pageHandler({ root, params, router });
     });
   };
 
@@ -43,36 +32,16 @@ const registerAllPages = (router) => {
     registerPage(pageRoute, pageHandler);
   }
 
-  // a running battle owns the session: /game bounces back to it, so a stale
-  // Back-button entry can't restart a battle over the live one
-  router.registerRoute(ROUTES.GAME, (params) => {
-    const phase = MODEL.activeBattle.phase;
-    if (phase === BATTLE_PHASE.DISPOSITION || phase === BATTLE_PHASE.ACTIVE) {
-      router.replace(ROUTES.BATTLE);
-      return;
-    }
-    finalizePage();
-    finalizePage = renderBattleCreation(params, router);
-  });
-
-  // "/" is a redirect, not a page: the top nav replaced the landing screen.
-  // Registered outside the teardown handshake — it renders nothing, and the
-  // target route's handler finalizes whatever page came before.
   router.registerRoute(ROUTES.ROOT, () => {
-    router.replace(ROUTES.GAME);
-  });
-
-  // "/battle" is a redirect too: it forwards to the subpage for the current
-  // battle phase, or back to setup when no battle has been started
-  router.registerRoute(ROUTES.BATTLE, () => {
-    router.replace(BATTLE_PHASE_ROUTES[MODEL.activeBattle.phase] ?? ROUTES.GAME);
+    router.replace(ROUTES.BATTLE_CREATION);
   });
 };
 
 const main = () => {
+  const root = document.querySelector("main");
   const router = new Router();
 
-  registerAllPages(router);
+  registerAllPages(root, router);
 };
 
 main();

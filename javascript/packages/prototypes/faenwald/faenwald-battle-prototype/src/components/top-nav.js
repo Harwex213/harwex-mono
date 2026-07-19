@@ -11,7 +11,7 @@ const STYLE = `
 `;
 
 const NAV_ITEMS = [
-  [ROUTES.GAME, "Battle Creation"],
+  [ROUTES.BATTLE_CREATION, "Battle Creation"],
   [ROUTES.MODIFIERS_COLLECTIONS, "Modifiers"],
   [ROUTES.MAPS, "Maps"],
 ];
@@ -30,7 +30,7 @@ const topNavHtml = (router) => {
   return `
     ${STYLE}
     <nav class="tn">
-      <a class="brand" href="${ROUTE_LINKS.GAME}">Faenwald Battle</a>
+      <a class="brand" href="${ROUTE_LINKS.BATTLE_CREATION}">Faenwald Battle</a>
       ${links}
     </nav>
   `;

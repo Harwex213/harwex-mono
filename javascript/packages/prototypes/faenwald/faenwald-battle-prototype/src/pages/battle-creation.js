@@ -53,9 +53,7 @@ const STYLE = `
   </style>
 `;
 
-const renderBattleCreation = (params, router) => {
-  const root = document.querySelector("main");
-
+const renderBattleCreation = ({ root, router }) => {
   // local UI state: which unit's modifier combobox is open
   let comboForUnitId = null;
 

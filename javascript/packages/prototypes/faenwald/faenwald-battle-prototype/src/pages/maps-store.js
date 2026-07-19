@@ -32,9 +32,7 @@ const esc = (value) =>
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
 
-const renderMapsStore = (params, router) => {
-  const root = document.querySelector("main");
-
+const renderMapsStore = ({ root, params, router }) => {
   const tileHtml = (map) => `
     <div class="tile" data-action="open" data-map-id="${map.id}">
       <div class="preview">

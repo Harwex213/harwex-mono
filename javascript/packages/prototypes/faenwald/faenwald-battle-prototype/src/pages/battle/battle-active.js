@@ -1,7 +1,7 @@
-import { ROUTE_LINKS } from "../data/routing.js";
-import { BATTLE_PHASE } from "../modules/active-battle.js";
-import { topNavHtml } from "../components/top-nav.js";
-import { MODEL } from "../model/model.js";
+import { ROUTE_LINKS } from "../../data/routing.js";
+import { BATTLE_PHASE } from "../../modules/active-battle.js";
+import { topNavHtml } from "../../components/top-nav.js";
+import { MODEL } from "../../model/model.js";
 
 const STYLE = `
   <style>
@@ -13,14 +13,11 @@ const STYLE = `
   </style>
 `;
 
-// placeholder: the battle loop lands here in a later iteration
-const renderBattleActive = (params, router) => {
-  const root = document.querySelector("main");
-
+const renderBattleActive = ({ root, params, router }) => {
   const content =
     MODEL.activeBattle.phase === BATTLE_PHASE.ACTIVE
       ? `<p>The battle rages — this stage is not built yet.</p>`
-      : `<p>No active battle.</p><a href="${ROUTE_LINKS.BATTLE}">Continue</a>`;
+      : `<p>No active battle.</p><a href="${ROUTE_LINKS.BATTLE_CREATION}">Continue</a>`;
 
   root.innerHTML = `
     ${topNavHtml(router)}

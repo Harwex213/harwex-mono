@@ -42,8 +42,7 @@ const esc = (value) =>
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
 
-const renderModifiersTable = (params = {}, router) => {
-  const root = document.querySelector("main");
+const renderModifiersTable = ({ root, params = {}, router }) => {
   const collectionId = params.collectionId;
 
   // transient UI state: which modifier row is expanded into its flat/percent editor

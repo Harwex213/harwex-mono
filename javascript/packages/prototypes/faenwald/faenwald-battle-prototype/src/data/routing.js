@@ -1,6 +1,6 @@
 const ROUTES = {
   ROOT: "/",
-  GAME: "/game",
+  BATTLE_CREATION: "/battle-creation",
   BATTLE: "/battle",
   BATTLE_DISPOSITION: "/battle/units-disposition",
   BATTLE_ACTIVE: "/battle/active",
