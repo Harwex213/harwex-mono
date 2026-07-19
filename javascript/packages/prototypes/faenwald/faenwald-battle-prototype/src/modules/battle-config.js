@@ -30,10 +30,19 @@ const createUnit = (battleConfig, side) => {
   battleConfig[side].push(createdUnit);
 };
 
+/**
+ * @param {BattleConfig} battleConfig
+ * @param {string} mapId
+ */
 const changeMap = (battleConfig, mapId) => {
   battleConfig.mapId = mapId;
 };
 
+/**
+ * @param {BattleConfig} battleConfig
+ * @param {number} unitId
+ * @returns {BattleConfigUnit | null}
+ */
 const findUnit = (battleConfig, unitId) => {
   for (const side of SIDES) {
     const unit = battleConfig[side].find((u) => u.id === unitId);
@@ -42,14 +51,25 @@ const findUnit = (battleConfig, unitId) => {
   return null;
 };
 
-const assignUnitType = (battleConfig, unitId, type) => {
+/**
+ * @param {BattleConfig} battleConfig
+ * @param {number} unitId
+ * @param {string} typeId a UNIT_TYPES id
+ */
+const assignUnitType = (battleConfig, unitId, typeId) => {
   const unit = findUnit(battleConfig, unitId);
   if (!unit) {
     return;
   }
-  unit.typeId = type;
+  unit.typeId = typeId;
 };
 
+/**
+ * @param {BattleConfig} battleConfig
+ * @param {number} unitId
+ * @param {string} collectionId
+ * @param {string} modifierId
+ */
 const createUnitModifier = (battleConfig, unitId, collectionId, modifierId) => {
   const unit = findUnit(battleConfig, unitId);
   if (!unit) {
@@ -58,6 +78,12 @@ const createUnitModifier = (battleConfig, unitId, collectionId, modifierId) => {
   unit.modifiers.push({ collectionId, modifierId });
 };
 
+/**
+ * @param {BattleConfig} battleConfig
+ * @param {number} unitId
+ * @param {string} collectionId
+ * @param {string} modifierId
+ */
 const removeUnitModifier = (battleConfig, unitId, collectionId, modifierId) => {
   const unit = findUnit(battleConfig, unitId);
   if (!unit) {
@@ -70,18 +96,32 @@ const removeUnitModifier = (battleConfig, unitId, collectionId, modifierId) => {
   );
 };
 
+/**
+ * @param {BattleConfig} battleConfig
+ * @param {number} unitId
+ */
 const removeUnit = (battleConfig, unitId) => {
   for (const side of SIDES) {
     battleConfig[side] = battleConfig[side].filter((u) => u.id !== unitId);
   }
 };
 
+/**
+ * @param {ModifierEntry[]} entries
+ * @param {StatId} stat
+ * @returns {number}
+ */
 const sumEntries = (entries, stat) =>
   entries.reduce((sum, e) => (e.stat === stat ? sum + e.value : sum), 0);
 
 /**
  * Flat bonuses first, then summed percentages: order-independent, min 1.
  * Refs whose collection/modifier was deleted resolve to null and are skipped.
+ * Caller must ensure unit.typeId is set (isConfigValid gates it) — a null
+ * typeId crashes the base-stat lookup.
+ *
+ * @param {BattleConfigUnit} unit
+ * @returns {UnitStats}
  */
 const computeUnitStats = (unit) => {
   const base = UNIT_TYPES.find((t) => t.id === unit.typeId);
@@ -101,6 +141,9 @@ const computeUnitStats = (unit) => {
 /**
  * The map is resolved through the store so a mapId pointing at a deleted map
  * (or an empty store) invalidates the config instead of crashing the battle page.
+ *
+ * @param {BattleConfig} battleConfig
+ * @returns {boolean}
  */
 const isConfigValid = (battleConfig) =>
   Boolean(getMap(battleConfig.mapId)) &&

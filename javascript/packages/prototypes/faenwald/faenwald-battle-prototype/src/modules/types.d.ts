@@ -16,3 +16,21 @@ type BattleConfig = {
   attacker: BattleConfigUnit[];
   defender: BattleConfigUnit[];
 };
+
+type StatId = "hp" | "attack" | "morale";
+
+type UnitStats = Record<StatId, number>;
+
+type ModifierEntry = {
+  id: number;
+  stat: StatId;
+  value: number;
+};
+
+type Modifier = {
+  id: string;
+  name: string;
+  description: string;
+  flat: ModifierEntry[];
+  percent: ModifierEntry[];
+};
