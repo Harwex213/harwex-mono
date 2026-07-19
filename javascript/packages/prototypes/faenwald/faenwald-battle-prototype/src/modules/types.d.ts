@@ -90,5 +90,3 @@ type ActiveBattle = {
   units: ActiveBattleUnit[];
   nextUnitId: number;
 };
-
-type BattleDisposition = {}

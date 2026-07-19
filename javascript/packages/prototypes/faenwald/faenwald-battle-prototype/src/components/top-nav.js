@@ -1,4 +1,5 @@
 import { ROUTE_LINKS, ROUTES } from "../data/routing.js";
+import { MODEL } from "../model/model.js";
 
 const STYLE = `
   <style>
@@ -44,17 +45,22 @@ const NAV_ITEMS = [
   [ROUTES.MAPS, "Maps"],
 ];
 
+const isActive = (currentPath, route) => currentPath === route || currentPath.startsWith(`${route}/`);
+
 const topNavHtml = (router) => {
-  const path = router.currentPath();
-  // prefix match keeps a section link active on its child routes,
-  // e.g. Modifiers stays lit on /modifiers-collection/:collectionId
-  const isActive = (route) => path === route || path.startsWith(`${route}/`);
+  const currentPath = router.currentPath();
 
-  const links = NAV_ITEMS.map(
+  const hasActiveBattle = MODEL.activeBattle.phase !== null;
+
+  const navItems = [
+    hasActiveBattle ? [ROUTES.BATTLE, "Current Battle"] : null,
+    ...NAV_ITEMS,
+  ].filter(Boolean);
+
+  const links = navItems.map(
     ([route, label]) => `
-      <a class="link" href="#${route}" ${isActive(route) ? 'aria-current="page"' : ""}>${label}</a>`,
+      <a class="link" href="#${route}" ${isActive(currentPath, route) ? 'aria-current="page"' : ""}>${label}</a>`,
   ).join("");
-
   return `
     ${STYLE}
     <nav class="tn">
