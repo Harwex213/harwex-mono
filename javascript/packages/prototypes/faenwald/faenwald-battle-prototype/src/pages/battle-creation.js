@@ -10,6 +10,8 @@ import {
 } from "../modules/battle-config.js";
 import { allModifiers, findModifier, getCollection } from "../modules/modifiers-store.js";
 import { getMaps, getMap } from "../modules/maps-store.js";
+import { startBattle } from "../modules/active-battle.js";
+import { ROUTES } from "../data/routing.js";
 import { topNavHtml } from "../components/top-nav.js";
 
 const refKey = (collectionId, modifierId) => `${collectionId}:${modifierId}`;
@@ -255,7 +257,10 @@ const renderBattleCreation = () => {
         pickModifier(unitId, el.dataset.collectionId, el.dataset.modifierId);
         break;
       case "start-battle":
-        window.location.hash = "/battle";
+        // snapshot the draft into a fresh battle; "/battle" then forwards to
+        // the disposition stage
+        startBattle();
+        window.location.hash = ROUTES.BATTLE;
         break;
     }
   };

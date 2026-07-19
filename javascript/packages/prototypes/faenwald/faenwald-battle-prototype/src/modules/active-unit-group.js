@@ -96,6 +96,10 @@ const GROUP_UNIT_TYPES = {
   ],
 };
 
+const unitGroupType = (unitType) =>
+  Object.keys(GROUP_UNIT_TYPES).find((group) => GROUP_UNIT_TYPES[group].includes(unitType)) ??
+  null;
+
 // activation order: within each group type the defender acts first, then the attacker
 const GROUP_CYCLE = [
   { side: ACTIVE_UNIT_GROUP_SIDE.DEFENDER, type: ACTIVE_UNIT_GROUP_TYPE.CAVALRY },
@@ -133,6 +137,7 @@ const nextActiveUnitGroup = (activeUnitGroup, units = []) => {
 export {
   createActiveUnitGroup,
   nextActiveUnitGroup,
+  unitGroupType,
 
   ACTIVE_UNIT_GROUP_SIDE,
   ACTIVE_UNIT_GROUP_TYPE,

@@ -37,6 +37,10 @@
     --color-straw: #e8d75a;
     --color-violet: #8636c2;
 
+    /* ── Colors: Battle-content hues (unit disc fills source palette) ── */
+    --color-crimson: #93382f;
+    --color-cobalt: #3a5e8c;
+
     /* ── Colors: Alpha (white) ── */
     --color-white-alpha-06: rgba(240, 237, 230, 0.06);
     --color-white-alpha-08: rgba(240, 237, 230, 0.08);
@@ -163,6 +167,15 @@
     /* grid line + hover ring the canvas renderer draws over the fills */
     --terrain-grid: var(--color-warm-600);
     --terrain-hover: var(--color-gold-500);
+
+    /* ── Battle canvas overlays (resolved via getComputedStyle, like the
+       terrain fills): placement-candidate veil, selected-hex contour, unit
+       disc fills per side, and the gradation ring drawn around the disc ── */
+    --hex-candidate: var(--color-gold-400);
+    --hex-selected: var(--color-warm-200);
+    --unit-attacker: var(--color-crimson);
+    --unit-defender: var(--color-cobalt);
+    --unit-ring: var(--color-warm-200);
 
     --nav-button-size: 28px;
     --nav-button-bg: var(--bg-control);

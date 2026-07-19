@@ -22,8 +22,11 @@ one page for another.
 - `data/routing.js` — `ROUTES` (path constants) and `ROUTE_LINKS` (the same paths
   as `#`-prefixed hrefs).
 - `src/index.js` — wires each route to a page and manages the teardown handshake.
-  `/` is a **redirect to `/game`** (the top nav replaced the old landing page); it
-  is registered outside the handshake because it renders nothing.
+  `/` is a **redirect to `/game`** (the top nav replaced the old landing page), and
+  `/battle` is a **redirect to the subpage for the current battle phase**
+  (`/battle/units-disposition` → `/battle/active` → `/battle/finished`, or `/game`
+  when no battle is running); both are registered outside the handshake because
+  they render nothing.
 
 **Navigation is done by setting `location.hash`**, e.g. `location.hash = ROUTES.BATTLE`,
 or with a declarative `<a href="#/...">` built from `ROUTE_LINKS`. Pages do **not**
@@ -72,10 +75,11 @@ them.
 
 `components/top-nav.js` exports `topNavHtml()`, the top navigation bar. **Every page
 must embed `${topNavHtml()}` as the first thing it writes into `root.innerHTML`, in
-every render path** — including empty/error states (battle's "No battle configured",
-modifiers-table's "Collection not found"). There is no enforcement point: the nav is
-re-rendered by each page, so a page (or render branch) that forgets it silently ships
-without navigation. Treat it as part of the page skeleton when creating a new page.
+every render path** — including empty/error states (battle-disposition's "No battle
+awaiting disposition", modifiers-table's "Collection not found"). There is no
+enforcement point: the nav is re-rendered by each page, so a page (or render branch)
+that forgets it silently ships without navigation. Treat it as part of the page
+skeleton when creating a new page.
 Active-link state is derived from `location.hash` at build time with a prefix match,
 so a section link stays lit on its child routes.
 
