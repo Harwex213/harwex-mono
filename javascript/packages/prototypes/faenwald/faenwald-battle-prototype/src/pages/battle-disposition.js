@@ -9,6 +9,7 @@ import { renderPointTopHexagon } from "../modules/hexagon-render.js";
 import { gridPixelBounds, offsetToPixel, pixelToOffset } from "../modules/hex-layout.js";
 import { initializeAbstractCanvas } from "../modules/abstract-canvas.js";
 import { MODEL } from "../model/model.js";
+import { BATTLE_DISPOSITION_MODULE } from "../modules/battle-disposition.js";
 
 const STYLE = `
   <style>
@@ -189,7 +190,7 @@ const renderBattleDisposition = (params, router) => {
   };
 
   const footerHtml = () =>
-    `<button data-action="start-battle" ${ACTIVE_BATTLE_MODULE.isDispositionComplete(MODEL.activeBattle) ? "" : "disabled"}>Start Battle</button>`;
+    `<button data-action="start-battle" ${BATTLE_DISPOSITION_MODULE.isDispositionComplete(MODEL.activeBattle) ? "" : "disabled"}>Start Battle</button>`;
 
   root.innerHTML = `
     ${topNavHtml(router)}
@@ -210,11 +211,11 @@ const renderBattleDisposition = (params, router) => {
   const canvasPanel = document.getElementById(CANVAS_PANEL_ID);
   const footer = document.getElementById(FOOTER_ID);
 
-  const getSelectedUnit = () => (selectedUnitId === null ? null : ACTIVE_BATTLE_MODULE.findBattleUnit(MODEL.activeBattle, selectedUnitId));
+  const getSelectedUnit = () => (selectedUnitId === null ? null : ACTIVE_BATTLE_MODULE.findUnit(MODEL.activeBattle, selectedUnitId));
 
   const syncCandidates = () => {
     const unit = getSelectedUnit();
-    candidates = unit ? ACTIVE_BATTLE_MODULE.placementCandidates(MODEL.activeBattle, unit, map) : [];
+    candidates = unit ? BATTLE_DISPOSITION_MODULE.placementCandidates(MODEL.activeBattle, unit, map) : [];
     candidateKeys = new Set(candidates.map((c) => cellKey(c.row, c.col)));
   };
 
@@ -241,7 +242,7 @@ const renderBattleDisposition = (params, router) => {
     const selected = getSelectedUnit();
     // drop first: while relocating, occupied hexes are candidates (swap)
     if (selected && candidateKeys.has(cellKey(target.row, target.col))) {
-      ACTIVE_BATTLE_MODULE.placeUnit(MODEL.activeBattle, selected.id, target.row, target.col);
+      BATTLE_DISPOSITION_MODULE.placeUnit(MODEL.activeBattle, selected.id, target.row, target.col);
       select(null);
       return;
     }
@@ -272,7 +273,7 @@ const renderBattleDisposition = (params, router) => {
         break;
       }
       case "start-battle":
-        ACTIVE_BATTLE_MODULE.beginBattle(MODEL.activeBattle);
+        ACTIVE_BATTLE_MODULE.startBattle(MODEL.activeBattle);
         router.push(ROUTES.BATTLE_ACTIVE);
         break;
     }

@@ -261,7 +261,7 @@ const renderBattleCreation = (params, router) => {
         pickModifier(unitId, collectionId, modifierId);
         break;
       case "start-battle":
-        ACTIVE_BATTLE_MODULE.startBattle(MODEL.activeBattle, MODEL.battleConfig, MODEL.modifiers);
+        ACTIVE_BATTLE_MODULE.startBattleDisposition(MODEL.activeBattle, MODEL.battleConfig, MODEL.modifiers);
         router.push(ROUTES.BATTLE);
         break;
     }
