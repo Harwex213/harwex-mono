@@ -1,6 +1,11 @@
 import { describe, test } from "node:test";
 import assert from "node:assert";
-import { ACTIVE_UNIT_GROUP_SIDE, ACTIVE_UNIT_GROUP_TYPE, createActiveUnitGroup, nextActiveUnitGroup } from "./active-unit-group.js";
+import {
+  ACTIVE_UNIT_GROUP_SIDE,
+  ACTIVE_UNIT_GROUP_TYPE,
+  createActiveUnitGroup,
+  nextActiveUnitGroup
+} from "./active-unit-group.js";
 import {
   UNIT_TYPE_ARCHER,
   UNIT_TYPE_CROSSBOWMAN,
@@ -186,10 +191,14 @@ describe("createActiveUnitGroup", () => {
 
 describe("nextActiveUnitGroup", () => {
   const allGroupsUnits = [
-    { type: UNIT_TYPE_LIGHT_CAVALRY },
-    { type: UNIT_TYPE_ARCHER },
-    { type: UNIT_TYPE_LIGHT_INFANTRY },
-    { type: UNIT_TYPE_LIGHT_SPEARMAN },
+    { side: ACTIVE_UNIT_GROUP_SIDE.ATTACKER, type: UNIT_TYPE_LIGHT_CAVALRY },
+    { side: ACTIVE_UNIT_GROUP_SIDE.ATTACKER, type: UNIT_TYPE_ARCHER },
+    { side: ACTIVE_UNIT_GROUP_SIDE.ATTACKER, type: UNIT_TYPE_LIGHT_INFANTRY },
+    { side: ACTIVE_UNIT_GROUP_SIDE.ATTACKER, type: UNIT_TYPE_LIGHT_SPEARMAN },
+    { side: ACTIVE_UNIT_GROUP_SIDE.DEFENDER, type: UNIT_TYPE_LIGHT_CAVALRY },
+    { side: ACTIVE_UNIT_GROUP_SIDE.DEFENDER, type: UNIT_TYPE_ARCHER },
+    { side: ACTIVE_UNIT_GROUP_SIDE.DEFENDER, type: UNIT_TYPE_LIGHT_INFANTRY },
+    { side: ACTIVE_UNIT_GROUP_SIDE.DEFENDER, type: UNIT_TYPE_LIGHT_SPEARMAN },
   ];
 
   test("should don't change state if units are not passed", () => {
@@ -338,6 +347,94 @@ describe("nextActiveUnitGroup", () => {
     };
 
     const actual = nextActiveUnitGroup(activeUnitGroup, allGroupsUnits);
+
+    assert.deepStrictEqual(actual, expected);
+  });
+
+  test("should skip cavalry on state change if passed units don't have cavalry", () => {
+    const activeUnitGroup = {
+      side: ACTIVE_UNIT_GROUP_SIDE.ATTACKER,
+      type: ACTIVE_UNIT_GROUP_TYPE.SPEARMEN,
+    };
+    const expected = {
+      side: ACTIVE_UNIT_GROUP_SIDE.DEFENDER,
+      type: ACTIVE_UNIT_GROUP_TYPE.ARCHERS,
+    };
+
+    const actual = nextActiveUnitGroup(activeUnitGroup, [
+      { side: ACTIVE_UNIT_GROUP_SIDE.ATTACKER, type: UNIT_TYPE_ARCHER },
+      { side: ACTIVE_UNIT_GROUP_SIDE.ATTACKER, type: UNIT_TYPE_LIGHT_INFANTRY },
+      { side: ACTIVE_UNIT_GROUP_SIDE.ATTACKER, type: UNIT_TYPE_LIGHT_SPEARMAN },
+      { side: ACTIVE_UNIT_GROUP_SIDE.DEFENDER, type: UNIT_TYPE_ARCHER },
+      { side: ACTIVE_UNIT_GROUP_SIDE.DEFENDER, type: UNIT_TYPE_LIGHT_INFANTRY },
+      { side: ACTIVE_UNIT_GROUP_SIDE.DEFENDER, type: UNIT_TYPE_LIGHT_SPEARMAN },
+    ]);
+
+    assert.deepStrictEqual(actual, expected);
+  });
+
+  test("should skip archers on state change if passed units don't have archers", () => {
+    const activeUnitGroup = {
+      side: ACTIVE_UNIT_GROUP_SIDE.ATTACKER,
+      type: ACTIVE_UNIT_GROUP_TYPE.CAVALRY,
+    };
+    const expected = {
+      side: ACTIVE_UNIT_GROUP_SIDE.DEFENDER,
+      type: ACTIVE_UNIT_GROUP_TYPE.SHOCK_INFANTRY,
+    };
+
+    const actual = nextActiveUnitGroup(activeUnitGroup, [
+      { side: ACTIVE_UNIT_GROUP_SIDE.ATTACKER, type: UNIT_TYPE_LIGHT_CAVALRY },
+      { side: ACTIVE_UNIT_GROUP_SIDE.ATTACKER, type: UNIT_TYPE_LIGHT_INFANTRY },
+      { side: ACTIVE_UNIT_GROUP_SIDE.ATTACKER, type: UNIT_TYPE_LIGHT_SPEARMAN },
+      { side: ACTIVE_UNIT_GROUP_SIDE.DEFENDER, type: UNIT_TYPE_LIGHT_CAVALRY },
+      { side: ACTIVE_UNIT_GROUP_SIDE.DEFENDER, type: UNIT_TYPE_LIGHT_INFANTRY },
+      { side: ACTIVE_UNIT_GROUP_SIDE.DEFENDER, type: UNIT_TYPE_LIGHT_SPEARMAN },
+    ]);
+
+    assert.deepStrictEqual(actual, expected);
+  });
+
+  test("should skip shock-infantry on state change if passed units don't have shock-infantry", () => {
+    const activeUnitGroup = {
+      side: ACTIVE_UNIT_GROUP_SIDE.ATTACKER,
+      type: ACTIVE_UNIT_GROUP_TYPE.ARCHERS,
+    };
+    const expected = {
+      side: ACTIVE_UNIT_GROUP_SIDE.DEFENDER,
+      type: ACTIVE_UNIT_GROUP_TYPE.SPEARMEN,
+    };
+
+    const actual = nextActiveUnitGroup(activeUnitGroup, [
+      { side: ACTIVE_UNIT_GROUP_SIDE.ATTACKER, type: UNIT_TYPE_LIGHT_CAVALRY },
+      { side: ACTIVE_UNIT_GROUP_SIDE.ATTACKER, type: UNIT_TYPE_ARCHER },
+      { side: ACTIVE_UNIT_GROUP_SIDE.ATTACKER, type: UNIT_TYPE_LIGHT_SPEARMAN },
+      { side: ACTIVE_UNIT_GROUP_SIDE.DEFENDER, type: UNIT_TYPE_LIGHT_CAVALRY },
+      { side: ACTIVE_UNIT_GROUP_SIDE.DEFENDER, type: UNIT_TYPE_ARCHER },
+      { side: ACTIVE_UNIT_GROUP_SIDE.DEFENDER, type: UNIT_TYPE_LIGHT_SPEARMAN },
+    ]);
+
+    assert.deepStrictEqual(actual, expected);
+  });
+
+  test("should skip spearmen on state change if passed units don't have spearmen", () => {
+    const activeUnitGroup = {
+      side: ACTIVE_UNIT_GROUP_SIDE.ATTACKER,
+      type: ACTIVE_UNIT_GROUP_TYPE.SHOCK_INFANTRY,
+    };
+    const expected = {
+      side: ACTIVE_UNIT_GROUP_SIDE.DEFENDER,
+      type: ACTIVE_UNIT_GROUP_TYPE.CAVALRY,
+    };
+
+    const actual = nextActiveUnitGroup(activeUnitGroup, [
+      { side: ACTIVE_UNIT_GROUP_SIDE.ATTACKER, type: UNIT_TYPE_LIGHT_CAVALRY },
+      { side: ACTIVE_UNIT_GROUP_SIDE.ATTACKER, type: UNIT_TYPE_ARCHER },
+      { side: ACTIVE_UNIT_GROUP_SIDE.ATTACKER, type: UNIT_TYPE_LIGHT_INFANTRY },
+      { side: ACTIVE_UNIT_GROUP_SIDE.DEFENDER, type: UNIT_TYPE_LIGHT_CAVALRY },
+      { side: ACTIVE_UNIT_GROUP_SIDE.DEFENDER, type: UNIT_TYPE_ARCHER },
+      { side: ACTIVE_UNIT_GROUP_SIDE.DEFENDER, type: UNIT_TYPE_LIGHT_INFANTRY },
+    ]);
 
     assert.deepStrictEqual(actual, expected);
   });

@@ -3,12 +3,15 @@ import {
   UNIT_TYPE_CROSSBOWMAN,
   UNIT_TYPE_HEAVY_CAVALRY,
   UNIT_TYPE_HEAVY_INFANTRY,
+  UNIT_TYPE_HEAVY_SPEARMAN,
   UNIT_TYPE_HORSE_ARCHER,
   UNIT_TYPE_LIGHT_CAVALRY,
   UNIT_TYPE_LIGHT_INFANTRY,
+  UNIT_TYPE_LIGHT_SPEARMAN,
   UNIT_TYPE_LONGBOWMAN,
   UNIT_TYPE_MEDIUM_CAVALRY,
-  UNIT_TYPE_MEDIUM_INFANTRY
+  UNIT_TYPE_MEDIUM_INFANTRY,
+  UNIT_TYPE_MEDIUM_SPEARMAN
 } from "../data/catalog.js";
 
 const ACTIVE_UNIT_GROUP_SIDE = {
@@ -69,8 +72,62 @@ const createActiveUnitGroup = (units = []) => {
   return activeUnityGroup;
 };
 
+const GROUP_UNIT_TYPES = {
+  [ACTIVE_UNIT_GROUP_TYPE.CAVALRY]: [
+    UNIT_TYPE_LIGHT_CAVALRY,
+    UNIT_TYPE_MEDIUM_CAVALRY,
+    UNIT_TYPE_HEAVY_CAVALRY,
+    UNIT_TYPE_HORSE_ARCHER,
+  ],
+  [ACTIVE_UNIT_GROUP_TYPE.ARCHERS]: [
+    UNIT_TYPE_ARCHER,
+    UNIT_TYPE_LONGBOWMAN,
+    UNIT_TYPE_CROSSBOWMAN,
+  ],
+  [ACTIVE_UNIT_GROUP_TYPE.SHOCK_INFANTRY]: [
+    UNIT_TYPE_LIGHT_INFANTRY,
+    UNIT_TYPE_MEDIUM_INFANTRY,
+    UNIT_TYPE_HEAVY_INFANTRY,
+  ],
+  [ACTIVE_UNIT_GROUP_TYPE.SPEARMEN]: [
+    UNIT_TYPE_LIGHT_SPEARMAN,
+    UNIT_TYPE_MEDIUM_SPEARMAN,
+    UNIT_TYPE_HEAVY_SPEARMAN,
+  ],
+};
+
+// activation order: within each group type the defender acts first, then the attacker
+const GROUP_CYCLE = [
+  { side: ACTIVE_UNIT_GROUP_SIDE.DEFENDER, type: ACTIVE_UNIT_GROUP_TYPE.CAVALRY },
+  { side: ACTIVE_UNIT_GROUP_SIDE.ATTACKER, type: ACTIVE_UNIT_GROUP_TYPE.CAVALRY },
+  { side: ACTIVE_UNIT_GROUP_SIDE.DEFENDER, type: ACTIVE_UNIT_GROUP_TYPE.ARCHERS },
+  { side: ACTIVE_UNIT_GROUP_SIDE.ATTACKER, type: ACTIVE_UNIT_GROUP_TYPE.ARCHERS },
+  { side: ACTIVE_UNIT_GROUP_SIDE.DEFENDER, type: ACTIVE_UNIT_GROUP_TYPE.SHOCK_INFANTRY },
+  { side: ACTIVE_UNIT_GROUP_SIDE.ATTACKER, type: ACTIVE_UNIT_GROUP_TYPE.SHOCK_INFANTRY },
+  { side: ACTIVE_UNIT_GROUP_SIDE.DEFENDER, type: ACTIVE_UNIT_GROUP_TYPE.SPEARMEN },
+  { side: ACTIVE_UNIT_GROUP_SIDE.ATTACKER, type: ACTIVE_UNIT_GROUP_TYPE.SPEARMEN },
+];
+
 const nextActiveUnitGroup = (activeUnitGroup, units = []) => {
-  // TODO
+  if (units.length === 0) {
+    return { ...activeUnitGroup };
+  }
+
+  const currentIndex = GROUP_CYCLE.findIndex((group) => (
+    group.side === activeUnitGroup.side && group.type === activeUnitGroup.type
+  ));
+
+  for (let step = 1; step <= GROUP_CYCLE.length; step += 1) {
+    const candidate = GROUP_CYCLE[(currentIndex + step) % GROUP_CYCLE.length];
+    const hasUnits = units.some((unit) => (
+      unit.side === candidate.side && GROUP_UNIT_TYPES[candidate.type].includes(unit.type)
+    ));
+    if (hasUnits) {
+      return { ...candidate };
+    }
+  }
+
+  return { ...activeUnitGroup };
 };
 
 export {
