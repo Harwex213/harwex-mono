@@ -1,6 +1,6 @@
 import { describe, test } from "node:test";
 import assert from "node:assert";
-import { ACTIVE_UNIT_GROUP_SIDE, ACTIVE_UNIT_GROUP_TYPE, createActiveUnitGroup } from "./active-unit-group.js";
+import { ACTIVE_UNIT_GROUP_SIDE, ACTIVE_UNIT_GROUP_TYPE, createActiveUnitGroup, nextActiveUnitGroup } from "./active-unit-group.js";
 import {
   UNIT_TYPE_ARCHER,
   UNIT_TYPE_CROSSBOWMAN,
@@ -185,14 +185,160 @@ describe("createActiveUnitGroup", () => {
 });
 
 describe("nextActiveUnitGroup", () => {
-  test("should don't change state if units are not passed");
-  test("should don't change state if units are empty");
-  test("should change state to attacker + cavalry if current state defender + cavalry");
-  test("should change state to attacker + archers if current state defender + archers");
-  test("should change state to attacker + shock-infantry if current state defender + shock-infantry");
-  test("should change state to attacker + spearmen if current state defender + spearmen");
-  test("should change state to defender + cavalry if current state attacker + spearmen");
-  test("should change state to defender + archers if current state attacker + cavalry");
-  test("should change state to defender + shock-infantry if current state attacker + archers");
-  test("should change state to defender + spearmen if current state attacker + shock-infantry");
+  const allGroupsUnits = [
+    { type: UNIT_TYPE_LIGHT_CAVALRY },
+    { type: UNIT_TYPE_ARCHER },
+    { type: UNIT_TYPE_LIGHT_INFANTRY },
+    { type: UNIT_TYPE_LIGHT_SPEARMAN },
+  ];
+
+  test("should don't change state if units are not passed", () => {
+    const activeUnitGroup = {
+      side: ACTIVE_UNIT_GROUP_SIDE.ATTACKER,
+      type: ACTIVE_UNIT_GROUP_TYPE.ARCHERS,
+    };
+    const expected = {
+      side: ACTIVE_UNIT_GROUP_SIDE.ATTACKER,
+      type: ACTIVE_UNIT_GROUP_TYPE.ARCHERS,
+    };
+
+    const actual = nextActiveUnitGroup(activeUnitGroup);
+
+    assert.deepStrictEqual(actual, expected);
+  });
+
+  test("should don't change state if units are empty", () => {
+    const activeUnitGroup = {
+      side: ACTIVE_UNIT_GROUP_SIDE.ATTACKER,
+      type: ACTIVE_UNIT_GROUP_TYPE.ARCHERS,
+    };
+    const expected = {
+      side: ACTIVE_UNIT_GROUP_SIDE.ATTACKER,
+      type: ACTIVE_UNIT_GROUP_TYPE.ARCHERS,
+    };
+
+    const actual = nextActiveUnitGroup(activeUnitGroup, []);
+
+    assert.deepStrictEqual(actual, expected);
+  });
+
+  test("should change state to attacker + cavalry if current state defender + cavalry", () => {
+    const activeUnitGroup = {
+      side: ACTIVE_UNIT_GROUP_SIDE.DEFENDER,
+      type: ACTIVE_UNIT_GROUP_TYPE.CAVALRY,
+    };
+    const expected = {
+      side: ACTIVE_UNIT_GROUP_SIDE.ATTACKER,
+      type: ACTIVE_UNIT_GROUP_TYPE.CAVALRY,
+    };
+
+    const actual = nextActiveUnitGroup(activeUnitGroup, allGroupsUnits);
+
+    assert.deepStrictEqual(actual, expected);
+  });
+
+  test("should change state to attacker + archers if current state defender + archers", () => {
+    const activeUnitGroup = {
+      side: ACTIVE_UNIT_GROUP_SIDE.DEFENDER,
+      type: ACTIVE_UNIT_GROUP_TYPE.ARCHERS,
+    };
+    const expected = {
+      side: ACTIVE_UNIT_GROUP_SIDE.ATTACKER,
+      type: ACTIVE_UNIT_GROUP_TYPE.ARCHERS,
+    };
+
+    const actual = nextActiveUnitGroup(activeUnitGroup, allGroupsUnits);
+
+    assert.deepStrictEqual(actual, expected);
+  });
+
+  test("should change state to attacker + shock-infantry if current state defender + shock-infantry", () => {
+    const activeUnitGroup = {
+      side: ACTIVE_UNIT_GROUP_SIDE.DEFENDER,
+      type: ACTIVE_UNIT_GROUP_TYPE.SHOCK_INFANTRY,
+    };
+    const expected = {
+      side: ACTIVE_UNIT_GROUP_SIDE.ATTACKER,
+      type: ACTIVE_UNIT_GROUP_TYPE.SHOCK_INFANTRY,
+    };
+
+    const actual = nextActiveUnitGroup(activeUnitGroup, allGroupsUnits);
+
+    assert.deepStrictEqual(actual, expected);
+  });
+
+  test("should change state to attacker + spearmen if current state defender + spearmen", () => {
+    const activeUnitGroup = {
+      side: ACTIVE_UNIT_GROUP_SIDE.DEFENDER,
+      type: ACTIVE_UNIT_GROUP_TYPE.SPEARMEN,
+    };
+    const expected = {
+      side: ACTIVE_UNIT_GROUP_SIDE.ATTACKER,
+      type: ACTIVE_UNIT_GROUP_TYPE.SPEARMEN,
+    };
+
+    const actual = nextActiveUnitGroup(activeUnitGroup, allGroupsUnits);
+
+    assert.deepStrictEqual(actual, expected);
+  });
+
+  test("should change state to defender + cavalry if current state attacker + spearmen", () => {
+    const activeUnitGroup = {
+      side: ACTIVE_UNIT_GROUP_SIDE.ATTACKER,
+      type: ACTIVE_UNIT_GROUP_TYPE.SPEARMEN,
+    };
+    const expected = {
+      side: ACTIVE_UNIT_GROUP_SIDE.DEFENDER,
+      type: ACTIVE_UNIT_GROUP_TYPE.CAVALRY,
+    };
+
+    const actual = nextActiveUnitGroup(activeUnitGroup, allGroupsUnits);
+
+    assert.deepStrictEqual(actual, expected);
+  });
+
+  test("should change state to defender + archers if current state attacker + cavalry", () => {
+    const activeUnitGroup = {
+      side: ACTIVE_UNIT_GROUP_SIDE.ATTACKER,
+      type: ACTIVE_UNIT_GROUP_TYPE.CAVALRY,
+    };
+    const expected = {
+      side: ACTIVE_UNIT_GROUP_SIDE.DEFENDER,
+      type: ACTIVE_UNIT_GROUP_TYPE.ARCHERS,
+    };
+
+    const actual = nextActiveUnitGroup(activeUnitGroup, allGroupsUnits);
+
+    assert.deepStrictEqual(actual, expected);
+  });
+
+  test("should change state to defender + shock-infantry if current state attacker + archers", () => {
+    const activeUnitGroup = {
+      side: ACTIVE_UNIT_GROUP_SIDE.ATTACKER,
+      type: ACTIVE_UNIT_GROUP_TYPE.ARCHERS,
+    };
+    const expected = {
+      side: ACTIVE_UNIT_GROUP_SIDE.DEFENDER,
+      type: ACTIVE_UNIT_GROUP_TYPE.SHOCK_INFANTRY,
+    };
+
+    const actual = nextActiveUnitGroup(activeUnitGroup, allGroupsUnits);
+
+    assert.deepStrictEqual(actual, expected);
+  });
+
+  test("should change state to defender + spearmen if current state attacker + shock-infantry", () => {
+    const activeUnitGroup = {
+      side: ACTIVE_UNIT_GROUP_SIDE.ATTACKER,
+      type: ACTIVE_UNIT_GROUP_TYPE.SHOCK_INFANTRY,
+    };
+    const expected = {
+      side: ACTIVE_UNIT_GROUP_SIDE.DEFENDER,
+      type: ACTIVE_UNIT_GROUP_TYPE.SPEARMEN,
+    };
+
+    const actual = nextActiveUnitGroup(activeUnitGroup, allGroupsUnits);
+
+    assert.deepStrictEqual(actual, expected);
+  });
 });

@@ -69,7 +69,7 @@ const createActiveUnitGroup = (units = []) => {
   return activeUnityGroup;
 };
 
-const nextActiveUnitGroup = (units = []) => {
+const nextActiveUnitGroup = (activeUnitGroup, units = []) => {
   // TODO
 };
 
