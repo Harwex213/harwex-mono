@@ -5,6 +5,7 @@ import { renderMapThumbnail } from "../modules/map-thumbnail.js";
 import { topNavHtml } from "../components/top-nav.js";
 import { renderPointTopHexagon } from "../modules/hexagon-render.js";
 import { gridPixelBounds, offsetToPixel, pixelToOffset } from "../modules/hex-layout.js";
+import { initializeAbstractCanvas } from "../modules/abstract-canvas.js";
 
 // swatch fills come from data, but inline style="" is banned — generate one
 // scoped rule per terrain instead, each referencing its semantic token
@@ -43,21 +44,10 @@ const esc = (value) =>
 
 const HEX_HEIGHT = 128; // world units, top vertex to bottom vertex
 const HEX_SIZE = HEX_HEIGHT / 2; // circumradius
-const FIT_MARGIN = 24; // css px kept around the fitted map
-const ZOOM_STEP = 1.1; // per wheel tick, multiplicative
-const ZOOM_OUT_LIMIT = 0.5; // × fit scale
-const ZOOM_IN_LIMIT = 8; // × fit scale
 const GRID_STROKE_PX = 1; // screen px, constant under zoom
 const HOVER_STROKE_PX = 2;
 
-// Camera-driven hex canvas: world coordinates are fixed (hex (0,0) centered on
-// the origin), the camera {x, y, scale} maps world → css px and render() bakes
-// it into ctx.setTransform together with dpr. Left-drag paints getBrush()'s
-// terrain, middle/right-drag pans, wheel zooms anchored at the cursor.
-// Returns a cleanup function — the page teardown must call it.
 const initializeCanvas = (container, map, getBrush) => {
-  const dpr = window.devicePixelRatio;
-
   // tokens are static — resolve them once, not per frame
   const styles = getComputedStyle(container);
   const fillByTerrain = Object.fromEntries(
@@ -66,208 +56,58 @@ const initializeCanvas = (container, map, getBrush) => {
   const gridColor = styles.getPropertyValue("--terrain-grid").trim();
   const hoverColor = styles.getPropertyValue("--terrain-hover").trim();
 
-  const bounds = gridPixelBounds(map.width, map.height, HEX_SIZE);
-  const boundsWidth = bounds.maxX - bounds.minX;
-  const boundsHeight = bounds.maxY - bounds.minY;
+  let dirty = false; // did this stroke change any cell?
 
-  // TODO: state move into module, not domain-specific
-  const camera = { x: 0, y: 0, scale: 1 };
-  // TODO: state move into module, not domain-specific
-  let fitScale = 1; // basis for the zoom clamp; tracks panel size
-  // TODO: state move into module, not domain-specific
-  let userMoved = false; // resize refits the camera only until the first pan/zoom
-  // TODO: state move into module, not domain-specific, should be passed to user hooks
-  let hovered = null; // { col, row } under the cursor
-  // TODO: state move into module, not domain-specific, make universal (type: "paint" -> type: "click")
-  let mode = null; // { type: "pan", lastX, lastY } | { type: "paint", dirty }
-
-  let canvas;
-  let ctx;
-  let rafId = 0;
-
-  const render = () => {
-    // TODO: Area to move into module, not domain-specific
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.setTransform(dpr * camera.scale, 0, 0, dpr * camera.scale, dpr * camera.x, dpr * camera.y);
-    // TODO: End section
-
-    // TODO: this is domain-specific, should be passed from hook
-    for (let row = 0; row < map.height; row++) {
-      for (let col = 0; col < map.width; col++) {
-        const { x, y } = offsetToPixel(col, row, HEX_SIZE);
-        renderPointTopHexagon(ctx, x, y, HEX_HEIGHT, {
-          fill: { style: fillByTerrain[map.cells[row][col]] ?? fillByTerrain[DEFAULT_TERRAIN_ID] },
-          stroke: { style: gridColor, width: GRID_STROKE_PX / camera.scale },
-        });
-      }
-    }
-
-    if (hovered) {
-      const { x, y } = offsetToPixel(hovered.col, hovered.row, HEX_SIZE);
-      renderPointTopHexagon(ctx, x, y, HEX_HEIGHT, {
-        stroke: { style: hoverColor, width: HOVER_STROKE_PX / camera.scale },
-      });
-    }
-    // TODO: end
-  };
-
-  // coalesce event floods (pointermove, wheel) into one paint per frame
-  // TODO: move `requestRender` into module, not domain-specific
-  const requestRender = () => {
-    if (rafId) return;
-    rafId = requestAnimationFrame(() => {
-      rafId = 0;
-      render();
-    });
-  };
-
-  const cellAt = (event) => {
-    const worldX = (event.offsetX - camera.x) / camera.scale;
-    const worldY = (event.offsetY - camera.y) / camera.scale;
-    const { col, row } = pixelToOffset(worldX, worldY, HEX_SIZE);
-    const inGrid = row >= 0 && row < map.height && col >= 0 && col < map.width;
-    return inGrid ? { col, row } : null;
-  };
-
-  const paintAt = (event) => {
-    const cell = cellAt(event);
+  const paintAt = ({ target, requestRender }) => {
     const brush = getBrush();
-    if (!cell || map.cells[cell.row][cell.col] === brush) return;
-    setMapCell(map.id, cell.row, cell.col, brush);
-    mode.dirty = true;
+    if (!target || map.cells[target.row][target.col] === brush) return;
+    setMapCell(map.id, target.row, target.col, brush);
+    dirty = true;
     requestRender();
   };
 
-  // TODO: move `onPointerDown` into module, not domain-specific
-  const onPointerDown = (event) => {
-    if (mode) return;
-    if (event.button === 0) {
-      mode = { type: "paint", dirty: false };
-      paintAt(event);
-    } else if (event.button === 1 || event.button === 2) {
-      event.preventDefault(); // middle button would start autoscroll
-      mode = { type: "pan", lastX: event.clientX, lastY: event.clientY };
-    } else {
-      return;
-    }
-    // last: it throws on synthetic pointers (tests), and losing capture only
-    // costs drag-past-the-edge tracking
-    canvas.setPointerCapture(event.pointerId);
-  };
+  const { destroy } = initializeAbstractCanvas(container, {
+    worldBounds: gridPixelBounds(map.width, map.height, HEX_SIZE),
 
-  // TODO: move `onPointerMove` into module, not domain-specific
-  const onPointerMove = (event) => {
-    if (mode?.type === "pan") {
-      camera.x += event.clientX - mode.lastX;
-      camera.y += event.clientY - mode.lastY;
-      mode.lastX = event.clientX;
-      mode.lastY = event.clientY;
-      userMoved = true;
-      requestRender();
-      return;
-    }
-    if (mode?.type === "paint") {
-      paintAt(event);
-    }
-    const cell = cellAt(event);
-    if (cell?.col !== hovered?.col || cell?.row !== hovered?.row) {
-      hovered = cell;
-      requestRender();
-    }
-  };
+    hitTest: (worldX, worldY) => {
+      const { col, row } = pixelToOffset(worldX, worldY, HEX_SIZE);
+      const inGrid = row >= 0 && row < map.height && col >= 0 && col < map.width;
+      return inGrid ? { col, row } : null;
+    },
 
-  // one stroke = one localStorage write, and only if it changed something
-  // TODO: move `onPointerUp` into module, not domain-specific
-  const onPointerUp = () => {
-    if (mode?.type === "paint" && mode.dirty) {
-      commitMap(map.id);
-    }
-    mode = null;
-  };
+    onActionStart: (state) => {
+      dirty = false;
+      paintAt(state);
+    },
 
-  // TODO: move `onPointerLeave` into module, not domain-specific
-  const onPointerLeave = () => {
-    if (hovered) {
-      hovered = null;
-      requestRender();
-    }
-  };
+    onActionMove: paintAt,
 
-  // TODO: move `onWheel` into module, not domain-specific
-  const onWheel = (event) => {
-    event.preventDefault();
-    const factor = event.deltaY < 0 ? ZOOM_STEP : 1 / ZOOM_STEP;
-    const scale = Math.min(
-      fitScale * ZOOM_IN_LIMIT,
-      Math.max(fitScale * ZOOM_OUT_LIMIT, camera.scale * factor),
-    );
-    if (scale === camera.scale) return;
-    // keep the world point under the cursor fixed across the scale change
-    const screenX = event.offsetX;
-    const screenY = event.offsetY;
-    camera.x = screenX - ((screenX - camera.x) / camera.scale) * scale;
-    camera.y = screenY - ((screenY - camera.y) / camera.scale) * scale;
-    camera.scale = scale;
-    userMoved = true;
-    requestRender();
-  };
+    // one stroke = one localStorage write, and only if it changed something
+    onActionEnd: () => {
+      if (dirty) commitMap(map.id);
+    },
 
-  // TODO: move `_initialize` into module, not domain-specific
-  const _initialize = (width, height) => {
-    if (!canvas) {
-      canvas = document.createElement("canvas");
-      container.appendChild(canvas);
-      ctx = canvas.getContext("2d");
-
-      canvas.addEventListener("pointerdown", onPointerDown);
-      canvas.addEventListener("pointermove", onPointerMove);
-      canvas.addEventListener("pointerup", onPointerUp);
-      canvas.addEventListener("pointercancel", onPointerUp);
-      canvas.addEventListener("pointerleave", onPointerLeave);
-      canvas.addEventListener("wheel", onWheel, { passive: false });
-      canvas.addEventListener("contextmenu", (event) => event.preventDefault());
-    }
-
-    canvas.style.width = `${width}px`;
-    canvas.style.height = `${height}px`;
-    canvas.width = Math.floor(width * dpr);
-    canvas.height = Math.floor(height * dpr);
-
-    fitScale = Math.max(
-      0.01,
-      Math.min((width - 2 * FIT_MARGIN) / boundsWidth, (height - 2 * FIT_MARGIN) / boundsHeight),
-    );
-    if (!userMoved) {
-      camera.scale = fitScale;
-      camera.x = (width - boundsWidth * fitScale) / 2 - bounds.minX * fitScale;
-      camera.y = (height - boundsHeight * fitScale) / 2 - bounds.minY * fitScale;
-    }
-
-    render();
-  };
-
-  // TODO: Area to move into module, not domain-specific
-  const resizeObserver = new ResizeObserver((entries) => {
-    for (const entry of entries) {
-      if (entry.target === container) {
-        const size = entry.contentBoxSize[0];
-
-        if (size) {
-          _initialize(size.inlineSize, size.blockSize);
+    render: ({ ctx, camera, hovered }) => {
+      for (let row = 0; row < map.height; row++) {
+        for (let col = 0; col < map.width; col++) {
+          const { x, y } = offsetToPixel(col, row, HEX_SIZE);
+          renderPointTopHexagon(ctx, x, y, HEX_HEIGHT, {
+            fill: { style: fillByTerrain[map.cells[row][col]] ?? fillByTerrain[DEFAULT_TERRAIN_ID] },
+            stroke: { style: gridColor, width: GRID_STROKE_PX / camera.scale },
+          });
         }
       }
-    }
-  });
-  resizeObserver.observe(container);
-  // TODO: end
 
-  // TODO: Area to move into module, not domain-specific
-  return () => {
-    resizeObserver.disconnect();
-    if (rafId) cancelAnimationFrame(rafId);
-  };
-  // TODO: end
+      if (hovered) {
+        const { x, y } = offsetToPixel(hovered.col, hovered.row, HEX_SIZE);
+        renderPointTopHexagon(ctx, x, y, HEX_HEIGHT, {
+          stroke: { style: hoverColor, width: HOVER_STROKE_PX / camera.scale },
+        });
+      }
+    },
+  });
+
+  return destroy;
 };
 
 const renderMapEditor = (params = {}) => {
