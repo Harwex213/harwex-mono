@@ -3,7 +3,6 @@ import { ROUTE_LINKS, ROUTES } from "../data/routing.js";
 import { DEFAULT_TERRAIN_ID, TERRAINS } from "../data/terrains.js";
 import { getMap } from "../modules/maps-store.js";
 import {
-  activeBattle,
   BATTLE_PHASE,
   beginBattle,
   findBattleUnit,
@@ -12,11 +11,12 @@ import {
   placeUnit,
   unitAt,
 } from "../modules/active-battle.js";
-import { ACTIVE_UNIT_GROUP_TYPE, unitGroupType } from "../modules/active-unit-group.js";
+import { ACTIVE_UNIT_GROUP_TYPE, getUnitGroupType } from "../modules/active-unit-group.js";
 import { topNavHtml } from "../components/top-nav.js";
 import { renderPointTopHexagon } from "../modules/hexagon-render.js";
 import { gridPixelBounds, offsetToPixel, pixelToOffset } from "../modules/hex-layout.js";
 import { initializeAbstractCanvas } from "../modules/abstract-canvas.js";
+import { MODEL } from "../model/model.js";
 
 const STYLE = `
   <style>
@@ -94,7 +94,7 @@ const initializeCanvas = (container, map, hooks) => {
     ctx.font = emojiFont;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillText(GROUP_EMOJI[unitGroupType(unit.type)] ?? "❓", x, y);
+    ctx.fillText(GROUP_EMOJI[getUnitGroupType(unit.type)] ?? "❓", x, y);
   };
 
   return initializeAbstractCanvas(container, {
@@ -125,7 +125,7 @@ const initializeCanvas = (container, map, hooks) => {
         renderPointTopHexagon(ctx, x, y, HEX_HEIGHT, { fill: { style: candidateColor } });
       }
 
-      for (const unit of activeBattle.units) {
+      for (const unit of MODEL.activeBattle.units) {
         if (unit.position) drawUnit(ctx, unit);
       }
 
@@ -149,9 +149,9 @@ const initializeCanvas = (container, map, hooks) => {
 
 const renderBattleDisposition = () => {
   const root = document.querySelector("main");
-  const map = getMap(activeBattle.mapId);
+  const map = getMap(MODEL.activeBattle.mapId);
 
-  if (activeBattle.phase !== BATTLE_PHASE.DISPOSITION || !map) {
+  if (MODEL.activeBattle.phase !== BATTLE_PHASE.DISPOSITION || !map) {
     root.innerHTML = `
       ${topNavHtml()}
       ${STYLE}
@@ -185,7 +185,7 @@ const renderBattleDisposition = () => {
   `;
 
   const panelHtml = (side) => {
-    const units = activeBattle.units.filter((u) => u.side === side);
+    const units = MODEL.activeBattle.units.filter((u) => u.side === side);
     const unplaced = units.filter((u) => u.position === null);
     return `
       <div class="panel-title">${SIDE_TITLES[side]}</div>
@@ -195,7 +195,7 @@ const renderBattleDisposition = () => {
   };
 
   const footerHtml = () =>
-    `<button data-action="start-battle" ${isDispositionComplete() ? "" : "disabled"}>Start Battle</button>`;
+    `<button data-action="start-battle" ${isDispositionComplete(MODEL.activeBattle) ? "" : "disabled"}>Start Battle</button>`;
 
   root.innerHTML = `
     ${topNavHtml()}
@@ -216,11 +216,11 @@ const renderBattleDisposition = () => {
   const canvasPanel = document.getElementById(CANVAS_PANEL_ID);
   const footer = document.getElementById(FOOTER_ID);
 
-  const getSelectedUnit = () => (selectedUnitId === null ? null : findBattleUnit(selectedUnitId));
+  const getSelectedUnit = () => (selectedUnitId === null ? null : findBattleUnit(MODEL.activeBattle, selectedUnitId));
 
   const syncCandidates = () => {
     const unit = getSelectedUnit();
-    candidates = unit ? placementCandidates(unit, map) : [];
+    candidates = unit ? placementCandidates(MODEL.activeBattle, unit, map) : [];
     candidateKeys = new Set(candidates.map((c) => cellKey(c.row, c.col)));
   };
 
@@ -247,11 +247,11 @@ const renderBattleDisposition = () => {
     const selected = getSelectedUnit();
     // drop first: while relocating, occupied hexes are candidates (swap)
     if (selected && candidateKeys.has(cellKey(target.row, target.col))) {
-      placeUnit(selected.id, target.row, target.col);
+      placeUnit(MODEL.activeBattle, selected.id, target.row, target.col);
       select(null);
       return;
     }
-    const occupant = unitAt(target.row, target.col);
+    const occupant = unitAt(MODEL.activeBattle, target.row, target.col);
     if (occupant) {
       select(occupant.id === selectedUnitId ? null : occupant.id);
       return;
@@ -277,6 +277,7 @@ const renderBattleDisposition = () => {
       }
       case "start-battle":
         beginBattle();
+        // WTF???
         window.location.hash = ROUTES.BATTLE_ACTIVE;
         break;
     }

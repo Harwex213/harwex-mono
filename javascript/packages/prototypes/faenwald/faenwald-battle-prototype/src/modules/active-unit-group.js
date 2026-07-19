@@ -95,10 +95,11 @@ const GROUP_UNIT_TYPES = {
     UNIT_TYPE_HEAVY_SPEARMAN,
   ],
 };
+const GROUP_UNIT_KEYS = Object.keys(GROUP_UNIT_TYPES);
 
-const unitGroupType = (unitType) =>
-  Object.keys(GROUP_UNIT_TYPES).find((group) => GROUP_UNIT_TYPES[group].includes(unitType)) ??
-  null;
+const getUnitGroupType = (unitType) => GROUP_UNIT_KEYS.find(
+  (group) => GROUP_UNIT_TYPES[group].includes(unitType)
+) ?? null;
 
 // activation order: within each group type the defender acts first, then the attacker
 const GROUP_CYCLE = [
@@ -137,7 +138,7 @@ const nextActiveUnitGroup = (activeUnitGroup, units = []) => {
 export {
   createActiveUnitGroup,
   nextActiveUnitGroup,
-  unitGroupType,
+  getUnitGroupType,
 
   ACTIVE_UNIT_GROUP_SIDE,
   ACTIVE_UNIT_GROUP_TYPE,

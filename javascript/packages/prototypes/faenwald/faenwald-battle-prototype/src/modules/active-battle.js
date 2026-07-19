@@ -1,14 +1,6 @@
 import { UNIT_TYPES } from "../data/unit.js";
 import { TERRAINS } from "../data/terrains.js";
-import { battleConfig, computeStats, SIDES } from "./battle-config.js";
-
-/**
- * Runtime state of the one battle in progress.
- *
- * Like battleConfig, an in-memory module singleton mutated only through the
- * exported helpers — survives in-session navigation, resets on reload
- * ("/battle" then redirects back to setup).
- */
+import { BATTLE_CONFIG_MODULE, SIDES } from "./battle-config.js";
 
 const BATTLE_PHASE = {
   DISPOSITION: "disposition",
@@ -23,28 +15,22 @@ const impassableTerrainIds = new Set(
   TERRAINS.filter((t) => t.passable === false).map((t) => t.id),
 );
 
-const activeBattle = {
+let nextUnitId = 1;
+
+const createBattle = () => ({
   /** `BATTLE_PHASE`, or null while no battle has been started */
   phase: null,
   mapId: null,
   units: [],
-};
+});
 
-let nextUnitId = 1;
-
-/**
- * Snapshot of the draft config: modifiers are baked into the stats here, so
- * later edits to the draft or the modifier stores don't touch this battle.
- *
- * `type` matches the unit shape active-unit-group.js consumes.
- */
-const startBattle = () => {
+const startBattle = (activeBattle, battleConfig) => {
   activeBattle.phase = BATTLE_PHASE.DISPOSITION;
   activeBattle.mapId = battleConfig.mapId;
   activeBattle.units = SIDES.flatMap((side) =>
     battleConfig[side].map((unit) => {
       const type = UNIT_TYPES.find((t) => t.id === unit.typeId);
-      const stats = computeStats(unit);
+      const stats = BATTLE_CONFIG_MODULE.computeUnitStats(unit);
       return {
         id: nextUnitId++,
         side,
@@ -61,10 +47,11 @@ const startBattle = () => {
   );
 };
 
-const findBattleUnit = (unitId) => activeBattle.units.find((u) => u.id === unitId) ?? null;
+const findBattleUnit = (activeBattle, unitId) => activeBattle.units.find((u) => u.id === unitId) ?? null;
 
-const unitAt = (row, col) =>
-  activeBattle.units.find((u) => u.position?.row === row && u.position?.col === col) ?? null;
+const unitAt = (activeBattle, row, col) => activeBattle.units.find(
+  (u) => u.position?.row === row && u.position?.col === col
+) ?? null;
 
 const placementRows = (side, map) => {
   const count = Math.min(PLACEMENT_ROWS, map.height);
@@ -77,12 +64,12 @@ const placementRows = (side, map) => {
  * Hexes held by another unit qualify only when relocating an already-placed
  * unit (the drop swaps the two); placing from the list needs a free hex.
  */
-const placementCandidates = (unit, map) => {
+const placementCandidates = (activeBattle, unit, map) => {
   const candidates = [];
   for (const row of placementRows(unit.side, map)) {
     for (let col = 0; col < map.width; col++) {
       if (impassableTerrainIds.has(map.cells[row][col])) continue;
-      const occupant = unitAt(row, col);
+      const occupant = unitAt(activeBattle, row, col);
       if (occupant === unit) continue;
       if (occupant && unit.position === null) continue;
       candidates.push({ row, col });
@@ -95,25 +82,25 @@ const placementCandidates = (unit, map) => {
  * Zone/passability validation is the caller's job (clicks only land on
  * placementCandidates); this guards just the occupancy invariant.
  */
-const placeUnit = (unitId, row, col) => {
-  const unit = findBattleUnit(unitId);
+const placeUnit = (activeBattle, unitId, row, col) => {
+  const unit = findBattleUnit(activeBattle, unitId);
   if (!unit) return;
-  const occupant = unitAt(row, col);
+  const occupant = unitAt(activeBattle, row, col);
   if (occupant && unit.position === null) return;
   if (occupant) occupant.position = unit.position;
   unit.position = { row, col };
 };
 
-const isDispositionComplete = () =>
+const isDispositionComplete = (activeBattle) =>
   activeBattle.units.length > 0 && activeBattle.units.every((u) => u.position !== null);
 
-const beginBattle = () => {
+const beginBattle = (activeBattle) => {
   activeBattle.phase = BATTLE_PHASE.ACTIVE;
 };
 
 export {
   BATTLE_PHASE,
-  activeBattle,
+  createBattle,
   startBattle,
   findBattleUnit,
   unitAt,

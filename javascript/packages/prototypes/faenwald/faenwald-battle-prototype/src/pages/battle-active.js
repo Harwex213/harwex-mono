@@ -1,6 +1,7 @@
 import { ROUTE_LINKS } from "../data/routing.js";
-import { BATTLE_PHASE, activeBattle } from "../modules/active-battle.js";
+import { BATTLE_PHASE } from "../modules/active-battle.js";
 import { topNavHtml } from "../components/top-nav.js";
+import { MODEL } from "../model/model.js";
 
 const STYLE = `
   <style>
@@ -17,7 +18,7 @@ const renderBattleActive = () => {
   const root = document.querySelector("main");
 
   const content =
-    activeBattle.phase === BATTLE_PHASE.ACTIVE
+    MODEL.activeBattle.phase === BATTLE_PHASE.ACTIVE
       ? `<p>The battle rages — this stage is not built yet.</p>`
       : `<p>No active battle.</p><a href="${ROUTE_LINKS.BATTLE}">Continue</a>`;
 

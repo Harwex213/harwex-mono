@@ -6,9 +6,10 @@ import { renderModifiersCollections } from "./pages/modifiers-collection.js";
 import { renderModifiersTable } from "./pages/modifiers-table.js";
 import { renderMapsStore } from "./pages/maps-store.js";
 import { renderMapEditor } from "./pages/map-editor.js";
-import { BATTLE_PHASE, activeBattle } from "./modules/active-battle.js";
+import { BATTLE_PHASE } from "./modules/active-battle.js";
 import { Router } from "./modules/router.js";
 import { ROUTES } from "./data/routing.js";
+import { MODEL } from "./model/model.js";
 
 const voidFn = () => void 0;
 
@@ -49,7 +50,7 @@ const registerAllPages = (router) => {
   // "/battle" is a redirect too: it forwards to the subpage for the current
   // battle phase, or back to setup when no battle has been started
   router.registerRoute(ROUTES.BATTLE, () => {
-    router.replace(BATTLE_PHASE_ROUTES[activeBattle.phase] ?? ROUTES.GAME);
+    router.replace(BATTLE_PHASE_ROUTES[MODEL.activeBattle.phase] ?? ROUTES.GAME);
   });
 };
 

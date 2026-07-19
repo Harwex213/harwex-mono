@@ -1,18 +1,11 @@
 import { STAT_META, UNIT_TYPES } from "../data/unit.js";
-import {
-  battleConfig,
-  computeStats,
-  createUnit,
-  findUnit,
-  isConfigValid,
-  removeUnit,
-  SIDES,
-} from "../modules/battle-config.js";
+import { ROUTES } from "../data/routing.js";
+import { BATTLE_CONFIG_MODULE, SIDES, } from "../modules/battle-config.js";
 import { allModifiers, findModifier, getCollection } from "../modules/modifiers-store.js";
 import { getMap, getMaps } from "../modules/maps-store.js";
 import { startBattle } from "../modules/active-battle.js";
-import { ROUTES } from "../data/routing.js";
 import { topNavHtml } from "../components/top-nav.js";
+import { MODEL } from "../model/model.js";
 
 const refKey = (collectionId, modifierId) => `${collectionId}:${modifierId}`;
 
@@ -68,18 +61,26 @@ const renderBattleCreation = () => {
 
   const validationHint = () => {
     const hints = [];
-    if (!getMap(battleConfig.mapId)) hints.push("select a map.");
-    for (const side of SIDES) {
-      if (battleConfig[side].length === 0) hints.push(`${side} needs at least one unit.`);
+
+    if (!getMap(MODEL.battleConfig.mapId)) {
+      hints.push("select a map.");
     }
-    if (SIDES.some((side) => battleConfig[side].some((u) => !u.typeId))) {
+
+    for (const side of SIDES) {
+      if (MODEL.battleConfig[side].length === 0) {
+        hints.push(`${side} needs at least one unit.`);
+      }
+    }
+
+    if (SIDES.some((side) => MODEL.battleConfig[side].some((u) => !u.typeId))) {
       hints.push("Every unit needs a type.");
     }
+
     return hints.join(" ");
   };
 
   const statsHtml = (unit) => {
-    const s = computeStats(unit);
+    const s = BATTLE_CONFIG_MODULE.computeUnitStats(unit);
     return `<span class="stats">${STAT_META.map((m) => `${s[m.id]} ${m.emoji}`).join(" ")}</span>`;
   };
 
@@ -160,7 +161,7 @@ const renderBattleCreation = () => {
   const sideHtml = (side) => `
     <div class="side side--${side}">
       <div class="side-label">${side === "attacker" ? "🗡️ Attacker" : "🛡️ Defender"}</div>
-      ${battleConfig[side].map(unitHtml).join("")}
+      ${MODEL.battleConfig[side].map(unitHtml).join("")}
       <button data-action="add-unit" data-side="${side}">＋ Add Unit</button>
     </div>
   `;
@@ -169,17 +170,20 @@ const renderBattleCreation = () => {
     <label class="map-card">
       ${m.image ? `<img src="${esc(m.image)}" alt="${esc(m.name)}">` : `<span class="map-thumb">⬡</span>`}
       <span>${esc(m.name)}</span>
-      <input type="radio" name="map" value="${m.id}" ${String(m.id) === String(battleConfig.mapId) ? "checked" : ""}>
+      <input type="radio" name="map" value="${m.id}" ${String(m.id) === String(MODEL.battleConfig.mapId) ? "checked" : ""}>
     </label>
   `;
 
   const render = () => {
     // maps live in the store now: a mapId pointing at a deleted map self-heals
     // to the first available one instead of leaving a phantom selection
-    if (!getMap(battleConfig.mapId)) battleConfig.mapId = getMaps()[0]?.id ?? null;
+    if (!getMap(MODEL.battleConfig.mapId)) {
+      const newMapId = getMaps()[0]?.id ?? null;
+      BATTLE_CONFIG_MODULE.changeMap(MODEL.battleConfig, newMapId);
+    }
 
     const maps = getMaps();
-    const valid = isConfigValid();
+    const valid = BATTLE_CONFIG_MODULE.isValid(MODEL.battleConfig);
 
     root.innerHTML = `
       ${topNavHtml()}
@@ -208,7 +212,7 @@ const renderBattleCreation = () => {
   };
 
   const pickModifier = (unitId, collectionId, modifierId) => {
-    findUnit(unitId).modifiers.push({ collectionId, modifierId });
+    BATTLE_CONFIG_MODULE.createUnitModifier(MODEL.battleConfig, unitId, collectionId, modifierId);
     comboForUnitId = null;
     render();
   };
@@ -229,23 +233,21 @@ const renderBattleCreation = () => {
 
     switch (el.dataset.action) {
       case "add-unit":
-        battleConfig[el.dataset.side].push(createUnit());
+        const side = el.dataset.side;
+        BATTLE_CONFIG_MODULE.createUnit(MODEL.battleConfig, side);
         render();
         break;
       case "remove-unit":
-        removeUnit(unitId);
-        if (comboForUnitId === unitId) comboForUnitId = null;
+        BATTLE_CONFIG_MODULE.removeUnit(MODEL.battleConfig, unitId);
+        if (comboForUnitId === unitId) {
+          comboForUnitId = null;
+        }
         render();
         break;
       case "remove-modifier": {
-        const unit = findUnit(unitId);
-        unit.modifiers = unit.modifiers.filter(
-          (ref) =>
-            !(
-              String(ref.collectionId) === el.dataset.collectionId &&
-              String(ref.modifierId) === el.dataset.modifierId
-            ),
-        );
+        const collectionId = el.dataset.collectionId;
+        const modifierId = el.dataset.modifierId;
+        BATTLE_CONFIG_MODULE.removeUnitModifier(MODEL.battleConfig, unitId, collectionId, modifierId);
         render();
         break;
       }
@@ -254,12 +256,14 @@ const renderBattleCreation = () => {
         render();
         break;
       case "pick-modifier":
-        pickModifier(unitId, el.dataset.collectionId, el.dataset.modifierId);
+        const collectionId = el.dataset.collectionId;
+        const modifierId = el.dataset.modifierId;
+        pickModifier(unitId, collectionId, modifierId);
         break;
       case "start-battle":
-        // snapshot the draft into a fresh battle; "/battle" then forwards to
-        // the disposition stage
-        startBattle();
+        startBattle(MODEL.activeBattle, MODEL.battleConfig);
+
+        // TODO: WTF??? change to rounter call
         window.location.hash = ROUTES.BATTLE;
         break;
     }
@@ -267,19 +271,26 @@ const renderBattleCreation = () => {
 
   const onChange = (event) => {
     if (event.target.matches("input[name=map]")) {
-      battleConfig.mapId = event.target.value;
+      const newMapId = event.target.value;
+      BATTLE_CONFIG_MODULE.changeMap(MODEL.battleConfig, newMapId);
       render();
       return;
     }
+
     if (event.target.dataset.action === "set-type") {
-      findUnit(Number(event.target.dataset.unitId)).typeId = event.target.value || null;
+      const unitId = Number(event.target.dataset.unitId);
+      const unitType = event.target.value || null;
+      BATTLE_CONFIG_MODULE.assignUnitType(MODEL.battleConfig, unitId, unitType);
       render();
     }
   };
 
   // typing filters the open combobox locally — no re-render, so focus survives
   const onInput = (event) => {
-    if (event.target.dataset.role !== "combo-input") return;
+    if (event.target.dataset.role !== "combo-input") {
+      return;
+    }
+
     const query = event.target.value.toLowerCase();
     for (const item of event.target.nextElementSibling.querySelectorAll("li")) {
       item.hidden = !item.textContent.toLowerCase().includes(query);
@@ -287,7 +298,9 @@ const renderBattleCreation = () => {
   };
 
   const onKeydown = (event) => {
-    if (comboForUnitId === null) return;
+    if (comboForUnitId === null) {
+      return;
+    }
     if (event.key === "Escape") {
       comboForUnitId = null;
       render();
@@ -295,7 +308,12 @@ const renderBattleCreation = () => {
     }
     if (event.key === "Enter" && event.target.dataset.role === "combo-input") {
       const first = event.target.nextElementSibling.querySelector("li:not([hidden]) button");
-      if (first) pickModifier(Number(first.dataset.unitId), first.dataset.collectionId, first.dataset.modifierId);
+      if (first) {
+        const unitId = Number(first.dataset.unitId);
+        const collectionId = first.dataset.collectionId;
+        const modifierId = first.dataset.modifierId;
+        pickModifier(unitId, collectionId, modifierId);
+      }
     }
   };
 
