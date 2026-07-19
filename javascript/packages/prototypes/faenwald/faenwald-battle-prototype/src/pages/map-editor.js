@@ -70,10 +70,15 @@ const initializeCanvas = (container, map, getBrush) => {
   const boundsWidth = bounds.maxX - bounds.minX;
   const boundsHeight = bounds.maxY - bounds.minY;
 
+  // TODO: state move into module, not domain-specific
   const camera = { x: 0, y: 0, scale: 1 };
+  // TODO: state move into module, not domain-specific
   let fitScale = 1; // basis for the zoom clamp; tracks panel size
+  // TODO: state move into module, not domain-specific
   let userMoved = false; // resize refits the camera only until the first pan/zoom
+  // TODO: state move into module, not domain-specific, should be passed to user hooks
   let hovered = null; // { col, row } under the cursor
+  // TODO: state move into module, not domain-specific, make universal (type: "paint" -> type: "click")
   let mode = null; // { type: "pan", lastX, lastY } | { type: "paint", dirty }
 
   let canvas;
@@ -81,10 +86,13 @@ const initializeCanvas = (container, map, getBrush) => {
   let rafId = 0;
 
   const render = () => {
+    // TODO: Area to move into module, not domain-specific
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.setTransform(dpr * camera.scale, 0, 0, dpr * camera.scale, dpr * camera.x, dpr * camera.y);
+    // TODO: End section
 
+    // TODO: this is domain-specific, should be passed from hook
     for (let row = 0; row < map.height; row++) {
       for (let col = 0; col < map.width; col++) {
         const { x, y } = offsetToPixel(col, row, HEX_SIZE);
@@ -101,9 +109,11 @@ const initializeCanvas = (container, map, getBrush) => {
         stroke: { style: hoverColor, width: HOVER_STROKE_PX / camera.scale },
       });
     }
+    // TODO: end
   };
 
   // coalesce event floods (pointermove, wheel) into one paint per frame
+  // TODO: move `requestRender` into module, not domain-specific
   const requestRender = () => {
     if (rafId) return;
     rafId = requestAnimationFrame(() => {
@@ -113,9 +123,8 @@ const initializeCanvas = (container, map, getBrush) => {
   };
 
   const cellAt = (event) => {
-    const rect = canvas.getBoundingClientRect();
-    const worldX = (event.clientX - rect.left - camera.x) / camera.scale;
-    const worldY = (event.clientY - rect.top - camera.y) / camera.scale;
+    const worldX = (event.offsetX - camera.x) / camera.scale;
+    const worldY = (event.offsetY - camera.y) / camera.scale;
     const { col, row } = pixelToOffset(worldX, worldY, HEX_SIZE);
     const inGrid = row >= 0 && row < map.height && col >= 0 && col < map.width;
     return inGrid ? { col, row } : null;
@@ -130,6 +139,7 @@ const initializeCanvas = (container, map, getBrush) => {
     requestRender();
   };
 
+  // TODO: move `onPointerDown` into module, not domain-specific
   const onPointerDown = (event) => {
     if (mode) return;
     if (event.button === 0) {
@@ -146,6 +156,7 @@ const initializeCanvas = (container, map, getBrush) => {
     canvas.setPointerCapture(event.pointerId);
   };
 
+  // TODO: move `onPointerMove` into module, not domain-specific
   const onPointerMove = (event) => {
     if (mode?.type === "pan") {
       camera.x += event.clientX - mode.lastX;
@@ -167,6 +178,7 @@ const initializeCanvas = (container, map, getBrush) => {
   };
 
   // one stroke = one localStorage write, and only if it changed something
+  // TODO: move `onPointerUp` into module, not domain-specific
   const onPointerUp = () => {
     if (mode?.type === "paint" && mode.dirty) {
       commitMap(map.id);
@@ -174,6 +186,7 @@ const initializeCanvas = (container, map, getBrush) => {
     mode = null;
   };
 
+  // TODO: move `onPointerLeave` into module, not domain-specific
   const onPointerLeave = () => {
     if (hovered) {
       hovered = null;
@@ -181,6 +194,7 @@ const initializeCanvas = (container, map, getBrush) => {
     }
   };
 
+  // TODO: move `onWheel` into module, not domain-specific
   const onWheel = (event) => {
     event.preventDefault();
     const factor = event.deltaY < 0 ? ZOOM_STEP : 1 / ZOOM_STEP;
@@ -190,9 +204,8 @@ const initializeCanvas = (container, map, getBrush) => {
     );
     if (scale === camera.scale) return;
     // keep the world point under the cursor fixed across the scale change
-    const rect = canvas.getBoundingClientRect();
-    const screenX = event.clientX - rect.left;
-    const screenY = event.clientY - rect.top;
+    const screenX = event.offsetX;
+    const screenY = event.offsetY;
     camera.x = screenX - ((screenX - camera.x) / camera.scale) * scale;
     camera.y = screenY - ((screenY - camera.y) / camera.scale) * scale;
     camera.scale = scale;
@@ -200,6 +213,7 @@ const initializeCanvas = (container, map, getBrush) => {
     requestRender();
   };
 
+  // TODO: move `_initialize` into module, not domain-specific
   const _initialize = (width, height) => {
     if (!canvas) {
       canvas = document.createElement("canvas");
@@ -233,6 +247,7 @@ const initializeCanvas = (container, map, getBrush) => {
     render();
   };
 
+  // TODO: Area to move into module, not domain-specific
   const resizeObserver = new ResizeObserver((entries) => {
     for (const entry of entries) {
       if (entry.target === container) {
@@ -245,11 +260,14 @@ const initializeCanvas = (container, map, getBrush) => {
     }
   });
   resizeObserver.observe(container);
+  // TODO: end
 
+  // TODO: Area to move into module, not domain-specific
   return () => {
     resizeObserver.disconnect();
     if (rafId) cancelAnimationFrame(rafId);
   };
+  // TODO: end
 };
 
 const renderMapEditor = (params = {}) => {
