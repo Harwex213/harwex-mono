@@ -20,7 +20,7 @@ import {
   UNIT_TYPE_MEDIUM_CAVALRY,
   UNIT_TYPE_MEDIUM_INFANTRY,
   UNIT_TYPE_MEDIUM_SPEARMAN,
-} from "../data/catalog.js";
+} from "../data/unit.js";
 
 describe("createActiveUnitGroup", () => {
   test("should create default state if units not passed", () => {

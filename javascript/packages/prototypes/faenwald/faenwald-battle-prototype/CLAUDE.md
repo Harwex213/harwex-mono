@@ -47,17 +47,68 @@ listener leaks it across navigations.
 
 ### State model
 
-- **Domain / session state** → the `battleConfig` singleton in
-  `modules/battle-config.js`. Imported directly by pages and **survives in-session
-  navigation** (the draft army persists as you move between pages).
+- **Domain / session state** → per-module state objects created by module
+  factories and held in the app-wide `MODEL` (`model/model.js`). **Survives
+  in-session navigation** (the draft army persists as you move between pages).
 - **Transient UI state** → plain closure variables inside the `render*()` function
   (e.g. `comboForUnitId`). Discarded on teardown.
-- **Static game data** → `data/catalog.js` (`MAPS`, `UNIT_TYPES`, `RANK_MODIFIERS`).
+- **Static game data** → `data/` constants (`UNIT_TYPES`, `RANK_MODIFIERS`,
+  `TERRAINS`, `DEFAULT_MAPS`). User-editable catalogs (maps, modifier collections)
+  live in localStorage-backed stores in `modules/`.
 
-**Mutating `battleConfig`:** only through the exported helpers
-(`createUnit`, `findUnit`, `removeUnit`, …), then call the page's local `render()`
-to repaint. There is no reactive binding — re-rendering is manual and always
-re-writes the whole page's `innerHTML`.
+**`MODEL` is the app's only singleton** — the composition root that instantiates
+every module's state (store state moves in as the legacy stores migrate). Modules
+never import `model.js` (dependencies point one way: model → modules); pages import
+`MODEL`, read it freely, and mutate it **only through module functions**, then call
+the page's local `render()` to repaint. There is no reactive binding — re-rendering
+is manual.
+
+### Stateful module pattern
+
+Modules in `modules/` that own domain state follow one pattern —
+**`battle-config.js` and `active-battle.js` are the canonical examples**:
+
+1. **No module-level mutable state.** State is a plain object built by a
+   `create()` factory; even id counters live inside it (`nextUnitId`). The module
+   file holds only functions and constants.
+2. **Functions take state as parameters** — their own module's state first, then
+   arguments. When a function needs *another* module's data, the caller passes that
+   module's state object (or a value derived from it); a module may call another
+   module's pure functions on state it received. Modules never reach into another
+   module's storage on their own.
+3. **Module functions are the only way to mutate module state.** Outside the module
+   (pages, other modules) state is read-only. This is a convention, not enforced —
+   an assignment to `MODEL.*` anywhere outside `modules/` is a violation.
+4. **Public API is a namespace object** named `<FILE_NAME>_MODULE`
+   (`battle-config.js` → `BATTLE_CONFIG_MODULE`). Functions are exported **only**
+   through the namespace — never flat alongside it. Plain constants (`SIDES`,
+   `BATTLE_PHASE`) may be exported separately.
+5. **State and data shapes are declared in `modules/types.d.ts`** as ambient global
+   types — JSDoc references them without imports. Nothing type-checks the code
+   (no jsconfig/checkJs); types exist for editors and agents, so keep them in sync
+   with the shapes you change.
+6. **JSDoc**: every namespace (public) function carries typed `@param`/`@returns`.
+   Private helpers get a comment only when behavior is non-obvious (the "why, not
+   what" rule) — no boilerplate blocks that restate a signature.
+7. **Errors**: mutators guard and silently no-op on invalid input or stale refs
+   (ids pointing at a deleted collection are normal, not exceptional); lookups
+   return `null`. Module functions don't throw.
+8. **No side effects at module import.** A persistence-backed module exposes
+   explicit `hydrate`/`persist` functions; `model.js` hydrates at startup. Never
+   touch `localStorage` (or any environment API) at the top level of a module.
+
+The pattern applies to **stateful domain modules only**. Pure-function helpers
+(for example `hex-layout.js`, `hexagon-render.js`) keep flat named exports; 
+If a module owns mutable domain state, it follows the pattern.
+
+### Testing
+
+Unit tests are co-located `<module>.test.js` files using `node:test` + `node:assert`;
+run them with `yarn test` (`node --test 'src/**/*.test.js'`). The module pattern is
+what keeps them cheap: build state with `MODULE.create()`, call module functions
+with plain objects, assert on the result — no DOM, no localStorage, no mocks.
+Legacy modules with import-time side effects can't be imported under Node; don't
+add tests for them until they're migrated.
 
 ### Rendering & events
 
@@ -141,8 +192,8 @@ src/
   [Shared components](#shared-components)). HTML-string builders only — a helper
   that needs its own listeners or state belongs in `modules/` instead.
 - `modules/` — anything with behavior or runtime state: classes (`Router`),
-  singletons (`battleConfig`), helper logic.
-- `data/` — pure constants and values derived from them (`MAPS`, `ROUTES`).
+  stateful domain modules (`battle-config.js`), helper logic.
+- `data/` — pure constants and values derived from them (`UNIT_TYPES`, `ROUTES`).
   A file that mixes constants and logic (e.g. `battle-config.js` carries `SIDES`
   but exists to hold stateful logic) goes where its *primary role* is — here,
   `modules/`.

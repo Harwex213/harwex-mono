@@ -12,9 +12,8 @@ const createBattleConfig = () => ({
   mapId: getMaps()[0]?.id ?? null,
   attacker: [],
   defender: [],
+  nextUnitId: 1,
 });
-
-let nextUnitId = 1;
 
 /**
  * @param {BattleConfig} battleConfig
@@ -25,7 +24,7 @@ const createUnit = (battleConfig, side) => {
     return;
   }
 
-  const createdUnit = ({ id: nextUnitId++, typeId: null, modifiers: [] });
+  const createdUnit = ({ id: battleConfig.nextUnitId++, typeId: null, modifiers: [] });
 
   battleConfig[side].push(createdUnit);
 };

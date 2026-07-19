@@ -1,6 +1,9 @@
 {
   "name": "@hw/battle-prototype",
   "type": "module",
+  "scripts": {
+    "test": "node --test 'src/**/*.test.js'"
+  },
   "browserslist": [
     "last 1 version",
     "> 1%",

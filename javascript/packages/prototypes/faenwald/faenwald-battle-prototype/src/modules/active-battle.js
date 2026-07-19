@@ -15,15 +15,21 @@ const impassableTerrainIds = new Set(
   TERRAINS.filter((t) => t.passable === false).map((t) => t.id),
 );
 
-let nextUnitId = 1;
-
-const createBattle = () => ({
+/**
+ * @returns {ActiveBattle}
+ */
+const createActiveBattle = () => ({
   /** `BATTLE_PHASE`, or null while no battle has been started */
   phase: null,
   mapId: null,
   units: [],
+  nextUnitId: 1,
 });
 
+/**
+ * @param {ActiveBattle} activeBattle
+ * @param {BattleConfig} battleConfig
+ */
 const startBattle = (activeBattle, battleConfig) => {
   activeBattle.phase = BATTLE_PHASE.DISPOSITION;
   activeBattle.mapId = battleConfig.mapId;
@@ -32,7 +38,7 @@ const startBattle = (activeBattle, battleConfig) => {
       const type = UNIT_TYPES.find((t) => t.id === unit.typeId);
       const stats = BATTLE_CONFIG_MODULE.computeUnitStats(unit);
       return {
-        id: nextUnitId++,
+        id: activeBattle.nextUnitId++,
         side,
         type: type.type,
         name: type.name,
@@ -47,8 +53,19 @@ const startBattle = (activeBattle, battleConfig) => {
   );
 };
 
+/**
+ * @param {ActiveBattle} activeBattle
+ * @param {number} unitId
+ * @returns {ActiveBattleUnit | null}
+ */
 const findBattleUnit = (activeBattle, unitId) => activeBattle.units.find((u) => u.id === unitId) ?? null;
 
+/**
+ * @param {ActiveBattle} activeBattle
+ * @param {number} row
+ * @param {number} col
+ * @returns {ActiveBattleUnit | null}
+ */
 const unitAt = (activeBattle, row, col) => activeBattle.units.find(
   (u) => u.position?.row === row && u.position?.col === col
 ) ?? null;
@@ -63,6 +80,11 @@ const placementRows = (side, map) => {
  *
  * Hexes held by another unit qualify only when relocating an already-placed
  * unit (the drop swaps the two); placing from the list needs a free hex.
+ *
+ * @param {ActiveBattle} activeBattle
+ * @param {ActiveBattleUnit} unit
+ * @param {HexMap} map
+ * @returns {{row: number, col: number}[]}
  */
 const placementCandidates = (activeBattle, unit, map) => {
   const candidates = [];
@@ -81,6 +103,11 @@ const placementCandidates = (activeBattle, unit, map) => {
 /**
  * Zone/passability validation is the caller's job (clicks only land on
  * placementCandidates); this guards just the occupancy invariant.
+ *
+ * @param {ActiveBattle} activeBattle
+ * @param {number} unitId
+ * @param {number} row
+ * @param {number} col
  */
 const placeUnit = (activeBattle, unitId, row, col) => {
   const unit = findBattleUnit(activeBattle, unitId);
@@ -91,21 +118,32 @@ const placeUnit = (activeBattle, unitId, row, col) => {
   unit.position = { row, col };
 };
 
+/**
+ * @param {ActiveBattle} activeBattle
+ * @returns {boolean}
+ */
 const isDispositionComplete = (activeBattle) =>
   activeBattle.units.length > 0 && activeBattle.units.every((u) => u.position !== null);
 
+/**
+ * @param {ActiveBattle} activeBattle
+ */
 const beginBattle = (activeBattle) => {
   activeBattle.phase = BATTLE_PHASE.ACTIVE;
 };
 
+const ACTIVE_BATTLE_MODULE = {
+  create: createActiveBattle,
+  startBattle: startBattle,
+  findBattleUnit: findBattleUnit,
+  unitAt: unitAt,
+  placementCandidates: placementCandidates,
+  placeUnit: placeUnit,
+  isDispositionComplete: isDispositionComplete,
+  beginBattle: beginBattle,
+};
+
 export {
   BATTLE_PHASE,
-  createBattle,
-  startBattle,
-  findBattleUnit,
-  unitAt,
-  placementCandidates,
-  placeUnit,
-  isDispositionComplete,
-  beginBattle,
-};
+  ACTIVE_BATTLE_MODULE,
+}

@@ -3,7 +3,7 @@ import { ROUTES } from "../data/routing.js";
 import { BATTLE_CONFIG_MODULE, SIDES, } from "../modules/battle-config.js";
 import { allModifiers, findModifier, getCollection } from "../modules/modifiers-store.js";
 import { getMap, getMaps } from "../modules/maps-store.js";
-import { startBattle } from "../modules/active-battle.js";
+import { ACTIVE_BATTLE_MODULE } from "../modules/active-battle.js";
 import { topNavHtml } from "../components/top-nav.js";
 import { MODEL } from "../model/model.js";
 
@@ -261,7 +261,7 @@ const renderBattleCreation = () => {
         pickModifier(unitId, collectionId, modifierId);
         break;
       case "start-battle":
-        startBattle(MODEL.activeBattle, MODEL.battleConfig);
+        ACTIVE_BATTLE_MODULE.startBattle(MODEL.activeBattle, MODEL.battleConfig);
 
         // TODO: WTF??? change to rounter call
         window.location.hash = ROUTES.BATTLE;

@@ -15,6 +15,7 @@ type BattleConfig = {
   mapId: string | null;
   attacker: BattleConfigUnit[];
   defender: BattleConfigUnit[];
+  nextUnitId: number;
 };
 
 type StatId = "hp" | "attack" | "morale";
@@ -33,4 +34,35 @@ type Modifier = {
   description: string;
   flat: ModifierEntry[];
   percent: ModifierEntry[];
+};
+
+type HexMap = {
+  id: number;
+  name: string;
+  width: number;
+  height: number;
+  /** cells[row][col] is a terrain id — pointy-top hexes, odd-r offset rows */
+  cells: string[][];
+  image?: string;
+};
+
+type BattlePhase = "disposition" | "active" | "finished";
+
+type ActiveBattleUnit = {
+  id: number;
+  side: BattleConfigSide;
+  type: string;
+  name: string;
+  hp: number;
+  attack: number;
+  morale: number;
+  speed: number;
+  position: { row: number; col: number } | null;
+};
+
+type ActiveBattle = {
+  phase: BattlePhase | null;
+  mapId: string | null;
+  units: ActiveBattleUnit[];
+  nextUnitId: number;
 };
