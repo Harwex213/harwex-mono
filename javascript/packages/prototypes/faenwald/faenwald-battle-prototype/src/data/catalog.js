@@ -4,9 +4,24 @@ const MAPS = [
   { id: "hills", name: "Hills", image: "./assets/hills-1.png" },
 ];
 
+const UNIT_TYPE_LIGHT_SPEARMAN = "light-spearman";
+const UNIT_TYPE_MEDIUM_SPEARMAN = "medium-spearman";
+const UNIT_TYPE_HEAVY_SPEARMAN = "heavy-spearman";
+const UNIT_TYPE_LIGHT_INFANTRY = "light-infantry";
+const UNIT_TYPE_MEDIUM_INFANTRY = "medium-infantry";
+const UNIT_TYPE_HEAVY_INFANTRY = "heavy-infantry";
+const UNIT_TYPE_LIGHT_CAVALRY = "light-cavalry";
+const UNIT_TYPE_MEDIUM_CAVALRY = "medium-cavalry";
+const UNIT_TYPE_HEAVY_CAVALRY = "heavy-cavalry";
+const UNIT_TYPE_ARCHER = "archer";
+const UNIT_TYPE_HORSE_ARCHER = "horse-archer";
+const UNIT_TYPE_LONGBOWMAN = "longbowman";
+const UNIT_TYPE_CROSSBOWMAN = "crossbowman";
+
 const UNIT_TYPES = [
   {
-    id: "light-spearman",
+    id: UNIT_TYPE_LIGHT_SPEARMAN,
+    type: UNIT_TYPE_LIGHT_SPEARMAN,
     name: "Легкий копейщик",
     hp: 80,
     attack: 12,
@@ -14,7 +29,8 @@ const UNIT_TYPES = [
     speed: 3,
   },
   {
-    id: "medium-spearman",
+    id: UNIT_TYPE_MEDIUM_SPEARMAN,
+    type: UNIT_TYPE_MEDIUM_SPEARMAN,
     name: "Средний копейщик",
     hp: 120,
     attack: 15,
@@ -22,7 +38,8 @@ const UNIT_TYPES = [
     speed: 2,
   },
   {
-    id: "heavy-spearman",
+    id: UNIT_TYPE_HEAVY_SPEARMAN,
+    type: UNIT_TYPE_HEAVY_SPEARMAN,
     name: "Тяжелый копейщик",
     hp: 160,
     attack: 18,
@@ -30,7 +47,8 @@ const UNIT_TYPES = [
     speed: 1,
   },
   {
-    id: "light-infantry",
+    id: UNIT_TYPE_LIGHT_INFANTRY,
+    type: UNIT_TYPE_LIGHT_INFANTRY,
     name: "Легкий пехотинец",
     hp: 60,
     attack: 20,
@@ -38,7 +56,8 @@ const UNIT_TYPES = [
     speed: 3,
   },
   {
-    id: "medium-infantry",
+    id: UNIT_TYPE_MEDIUM_INFANTRY,
+    type: UNIT_TYPE_MEDIUM_INFANTRY,
     name: "Средний пехотинец",
     hp: 90,
     attack: 25,
@@ -46,7 +65,8 @@ const UNIT_TYPES = [
     speed: 2,
   },
   {
-    id: "heavy-infantry",
+    id: UNIT_TYPE_HEAVY_INFANTRY,
+    type: UNIT_TYPE_HEAVY_INFANTRY,
     name: "Тяжелый пехотинец",
     hp: 120,
     attack: 30,
@@ -54,7 +74,8 @@ const UNIT_TYPES = [
     speed: 1,
   },
   {
-    id: "light-cavalry",
+    id: UNIT_TYPE_LIGHT_CAVALRY,
+    type: UNIT_TYPE_LIGHT_CAVALRY,
     name: "Легкая кавалерия",
     hp: 70,
     attack: 10,
@@ -62,7 +83,8 @@ const UNIT_TYPES = [
     speed: 5,
   },
   {
-    id: "medium-cavalry",
+    id: UNIT_TYPE_MEDIUM_CAVALRY,
+    type: UNIT_TYPE_MEDIUM_CAVALRY,
     name: "Средняя кавалерия",
     hp: 95,
     attack: 15,
@@ -70,7 +92,8 @@ const UNIT_TYPES = [
     speed: 4,
   },
   {
-    id: "heavy-cavalry",
+    id: UNIT_TYPE_HEAVY_CAVALRY,
+    type: UNIT_TYPE_HEAVY_CAVALRY,
     name: "Тяжелая кавалерия",
     hp: 120,
     attack: 25,
@@ -78,7 +101,8 @@ const UNIT_TYPES = [
     speed: 3,
   },
   {
-    id: "archer",
+    id: UNIT_TYPE_ARCHER,
+    type: UNIT_TYPE_ARCHER,
     name: "Лучник",
     hp: 50,
     attack: 6,
@@ -86,7 +110,8 @@ const UNIT_TYPES = [
     speed: 3,
   },
   {
-    id: "horse-archer",
+    id: UNIT_TYPE_HORSE_ARCHER,
+    type: UNIT_TYPE_HORSE_ARCHER,
     name: "Конный лучник",
     hp: 80,
     attack: 6,
@@ -94,7 +119,8 @@ const UNIT_TYPES = [
     speed: 5,
   },
   {
-    id: "longbowman",
+    id: UNIT_TYPE_LONGBOWMAN,
+    type: UNIT_TYPE_LONGBOWMAN,
     name: "Лонгбоумен",
     hp: 60,
     attack: 10,
@@ -102,7 +128,8 @@ const UNIT_TYPES = [
     speed: 3,
   },
   {
-    id: "crossbowman",
+    id: UNIT_TYPE_CROSSBOWMAN,
+    type: UNIT_TYPE_CROSSBOWMAN,
     name: "Арбалетчик",
     hp: 60,
     attack: 40, // direct-fire damage; no arcing shot, fires once per 2 turns
@@ -157,4 +184,22 @@ const RANK_MODIFIERS = [
   },
 ];
 
-export { MAPS, UNIT_TYPES, RANK_MODIFIERS, STAT_META }
+export {
+  MAPS,
+  UNIT_TYPES,
+  RANK_MODIFIERS,
+  STAT_META,
+  UNIT_TYPE_LIGHT_SPEARMAN,
+  UNIT_TYPE_MEDIUM_SPEARMAN,
+  UNIT_TYPE_HEAVY_SPEARMAN,
+  UNIT_TYPE_LIGHT_INFANTRY,
+  UNIT_TYPE_MEDIUM_INFANTRY,
+  UNIT_TYPE_HEAVY_INFANTRY,
+  UNIT_TYPE_LIGHT_CAVALRY,
+  UNIT_TYPE_MEDIUM_CAVALRY,
+  UNIT_TYPE_HEAVY_CAVALRY,
+  UNIT_TYPE_ARCHER,
+  UNIT_TYPE_HORSE_ARCHER,
+  UNIT_TYPE_LONGBOWMAN,
+  UNIT_TYPE_CROSSBOWMAN,
+}
