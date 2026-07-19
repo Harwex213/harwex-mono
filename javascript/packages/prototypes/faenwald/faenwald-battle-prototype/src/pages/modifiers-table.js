@@ -1,15 +1,7 @@
 import { ROUTE_LINKS } from "../data/routing.js";
 import { STAT_META } from "../data/unit.js";
-import {
-  addEntry,
-  createModifier,
-  deleteModifier,
-  getCollection,
-  removeEntry,
-  renameCollection,
-  updateEntry,
-  updateModifier,
-} from "../modules/modifiers-store.js";
+import { MODIFIERS_MODULE } from "../modules/modifiers.js";
+import { MODEL } from "../model/model.js";
 import { topNavHtml } from "../components/top-nav.js";
 
 const STYLE = `
@@ -50,7 +42,7 @@ const esc = (value) =>
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
 
-const renderModifiersTable = (params = {}) => {
+const renderModifiersTable = (params = {}, router) => {
   const root = document.querySelector("main");
   const collectionId = params.collectionId;
 
@@ -105,11 +97,11 @@ const renderModifiersTable = (params = {}) => {
   };
 
   const render = () => {
-    const collection = getCollection(collectionId);
+    const collection = MODIFIERS_MODULE.getCollection(MODEL.modifiers, collectionId);
 
     if (!collection) {
       root.innerHTML = `
-        ${topNavHtml()}
+        ${topNavHtml(router)}
         ${STYLE}
         <section class="mt">
           <p class="missing">Collection not found.</p>
@@ -129,7 +121,7 @@ const renderModifiersTable = (params = {}) => {
     const selEnd = active?.selectionEnd ?? null;
 
     root.innerHTML = `
-      ${topNavHtml()}
+      ${topNavHtml(router)}
       ${STYLE}
       <section class="mt">
         <div class="header">
@@ -168,7 +160,7 @@ const renderModifiersTable = (params = {}) => {
 
     switch (el.dataset.action) {
       case "add-modifier": {
-        const modifier = createModifier(collectionId);
+        const modifier = MODIFIERS_MODULE.createModifier(MODEL.modifiers, collectionId);
         if (modifier) editingModifierId = modifier.id;
         render();
         break;
@@ -178,16 +170,16 @@ const renderModifiersTable = (params = {}) => {
         render();
         break;
       case "delete-modifier":
-        deleteModifier(collectionId, modifierId);
+        MODIFIERS_MODULE.deleteModifier(MODEL.modifiers, collectionId, modifierId);
         if (editingModifierId === modifierId) editingModifierId = null;
         render();
         break;
       case "add-entry":
-        addEntry(collectionId, modifierId, kind);
+        MODIFIERS_MODULE.addEntry(MODEL.modifiers, collectionId, modifierId, kind);
         render();
         break;
       case "remove-entry":
-        removeEntry(collectionId, modifierId, kind, el.dataset.entryId);
+        MODIFIERS_MODULE.removeEntry(MODEL.modifiers, collectionId, modifierId, kind, el.dataset.entryId);
         render();
         break;
     }
@@ -203,13 +195,13 @@ const renderModifiersTable = (params = {}) => {
 
     switch (el.dataset.role) {
       case "coll-name":
-        renameCollection(collectionId, el.value);
+        MODIFIERS_MODULE.renameCollection(MODEL.modifiers, collectionId, el.value);
         break;
       case "name":
-        updateModifier(collectionId, modifierId, { name: el.value });
+        MODIFIERS_MODULE.updateModifier(MODEL.modifiers, collectionId, modifierId, { name: el.value });
         break;
       case "description":
-        updateModifier(collectionId, modifierId, { description: el.value });
+        MODIFIERS_MODULE.updateModifier(MODEL.modifiers, collectionId, modifierId, { description: el.value });
         break;
       case "entry-value": {
         const raw = el.value.trim();
@@ -217,7 +209,7 @@ const renderModifiersTable = (params = {}) => {
         const parsed = raw === "" || raw === "-" ? 0 : Number(raw);
         if (Number.isNaN(parsed)) return;
         const value = el.dataset.kind === "percent" ? parsed / 100 : parsed;
-        updateEntry(collectionId, modifierId, el.dataset.kind, el.dataset.entryId, { value });
+        MODIFIERS_MODULE.updateEntry(MODEL.modifiers, collectionId, modifierId, el.dataset.kind, el.dataset.entryId, { value });
         break;
       }
     }
@@ -225,7 +217,7 @@ const renderModifiersTable = (params = {}) => {
 
   const onChange = (event) => {
     if (event.target.dataset.role === "entry-stat") {
-      updateEntry(collectionId, event.target.dataset.modifierId, event.target.dataset.kind, event.target.dataset.entryId, {
+      MODIFIERS_MODULE.updateEntry(MODEL.modifiers, collectionId, event.target.dataset.modifierId, event.target.dataset.kind, event.target.dataset.entryId, {
         stat: event.target.value,
       });
     }

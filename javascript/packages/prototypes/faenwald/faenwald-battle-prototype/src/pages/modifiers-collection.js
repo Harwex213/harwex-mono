@@ -1,5 +1,6 @@
 import { ROUTES } from "../data/routing.js";
-import { getCollections, createCollection, deleteCollection } from "../modules/modifiers-store.js";
+import { MODIFIERS_MODULE } from "../modules/modifiers.js";
+import { MODEL } from "../model/model.js";
 import { topNavHtml } from "../components/top-nav.js";
 
 const STYLE = `
@@ -25,7 +26,7 @@ const esc = (value) =>
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
 
-const renderModifiersCollections = () => {
+const renderModifiersCollections = (params, router) => {
   const root = document.querySelector("main");
 
   const rowHtml = (collection) => `
@@ -38,9 +39,9 @@ const renderModifiersCollections = () => {
   `;
 
   const render = () => {
-    const collections = getCollections();
+    const collections = MODEL.modifiers.collections;
     root.innerHTML = `
-      ${topNavHtml()}
+      ${topNavHtml(router)}
       ${STYLE}
       <section class="mc">
         <h2 class="box-label">Existed collection of modifiers</h2>
@@ -64,17 +65,17 @@ const renderModifiersCollections = () => {
 
     switch (el.dataset.action) {
       case "create": {
-        const collection = createCollection();
-        location.hash = `${ROUTES.MODIFIERS_COLLECTIONS}/${collection.id}`;
+        const collection = MODIFIERS_MODULE.createCollection(MODEL.modifiers);
+        router.push(ROUTES.MODIFIERS, { collectionId: collection.id });
         break;
       }
       case "open":
-        location.hash = `${ROUTES.MODIFIERS_COLLECTIONS}/${collectionId}`;
+        router.push(ROUTES.MODIFIERS, { collectionId });
         break;
       case "delete":
         // destructive: cascades to the collection's modifiers
         if (confirm("Delete this collection and all its modifiers?")) {
-          deleteCollection(collectionId);
+          MODIFIERS_MODULE.deleteCollection(MODEL.modifiers, collectionId);
           render();
         }
         break;

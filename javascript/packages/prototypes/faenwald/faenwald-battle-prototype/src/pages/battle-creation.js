@@ -1,8 +1,8 @@
 import { STAT_META, UNIT_TYPES } from "../data/unit.js";
 import { ROUTES } from "../data/routing.js";
 import { BATTLE_CONFIG_MODULE, SIDES, } from "../modules/battle-config.js";
-import { allModifiers, findModifier, getCollection } from "../modules/modifiers-store.js";
-import { getMap, getMaps } from "../modules/maps-store.js";
+import { MODIFIERS_MODULE } from "../modules/modifiers.js";
+import { MAPS_MODULE } from "../modules/maps.js";
 import { ACTIVE_BATTLE_MODULE } from "../modules/active-battle.js";
 import { topNavHtml } from "../components/top-nav.js";
 import { MODEL } from "../model/model.js";
@@ -53,7 +53,7 @@ const STYLE = `
   </style>
 `;
 
-const renderBattleCreation = () => {
+const renderBattleCreation = (params, router) => {
   const root = document.querySelector("main");
 
   // local UI state: which unit's modifier combobox is open
@@ -62,7 +62,7 @@ const renderBattleCreation = () => {
   const validationHint = () => {
     const hints = [];
 
-    if (!getMap(MODEL.battleConfig.mapId)) {
+    if (!MAPS_MODULE.getMap(MODEL.maps, MODEL.battleConfig.mapId)) {
       hints.push("select a map.");
     }
 
@@ -80,7 +80,7 @@ const renderBattleCreation = () => {
   };
 
   const statsHtml = (unit) => {
-    const s = BATTLE_CONFIG_MODULE.computeUnitStats(unit);
+    const s = BATTLE_CONFIG_MODULE.computeUnitStats(unit, MODEL.modifiers);
     return `<span class="stats">${STAT_META.map((m) => `${s[m.id]} ${m.emoji}`).join(" ")}</span>`;
   };
 
@@ -105,9 +105,9 @@ const renderBattleCreation = () => {
   const modifiersHtml = (unit) => {
     const rows = unit.modifiers
       .map((ref) => {
-        const modifier = findModifier(ref.collectionId, ref.modifierId);
+        const modifier = MODIFIERS_MODULE.findModifier(MODEL.modifiers, ref.collectionId, ref.modifierId);
         if (!modifier) return null; // ref's collection/modifier was deleted — skip
-        const collection = getCollection(ref.collectionId);
+        const collection = MODIFIERS_MODULE.getCollection(MODEL.modifiers, ref.collectionId);
         const prefix = collection ? `${collection.name} / ` : "";
         return `
           <div class="modifier-row">
@@ -121,7 +121,7 @@ const renderBattleCreation = () => {
     // every modifier across all collections, minus those already picked, sorted
     // by modifier name (collection name breaks ties)
     const picked = new Set(unit.modifiers.map((ref) => refKey(ref.collectionId, ref.modifierId)));
-    const remaining = allModifiers()
+    const remaining = MODIFIERS_MODULE.allModifiers(MODEL.modifiers)
       .filter((x) => !picked.has(refKey(x.collectionId, x.modifier.id)))
       .sort(
         (a, b) =>
@@ -175,18 +175,16 @@ const renderBattleCreation = () => {
   `;
 
   const render = () => {
-    // maps live in the store now: a mapId pointing at a deleted map self-heals
-    // to the first available one instead of leaving a phantom selection
-    if (!getMap(MODEL.battleConfig.mapId)) {
-      const newMapId = getMaps()[0]?.id ?? null;
+    if (!MAPS_MODULE.getMap(MODEL.maps, MODEL.battleConfig.mapId)) {
+      const newMapId = MODEL.maps.maps[0]?.id ?? null;
       BATTLE_CONFIG_MODULE.changeMap(MODEL.battleConfig, newMapId);
     }
 
-    const maps = getMaps();
-    const valid = BATTLE_CONFIG_MODULE.isValid(MODEL.battleConfig);
+    const maps = MODEL.maps.maps;
+    const valid = BATTLE_CONFIG_MODULE.isValid(MODEL.battleConfig, MODEL.maps);
 
     root.innerHTML = `
-      ${topNavHtml()}
+      ${topNavHtml(router)}
       ${STYLE}
       <section class="bc">
         <h2 class="box-label">Select a map</h2>
@@ -261,10 +259,8 @@ const renderBattleCreation = () => {
         pickModifier(unitId, collectionId, modifierId);
         break;
       case "start-battle":
-        ACTIVE_BATTLE_MODULE.startBattle(MODEL.activeBattle, MODEL.battleConfig);
-
-        // TODO: WTF??? change to rounter call
-        window.location.hash = ROUTES.BATTLE;
+        ACTIVE_BATTLE_MODULE.startBattle(MODEL.activeBattle, MODEL.battleConfig, MODEL.modifiers);
+        router.push(ROUTES.BATTLE);
         break;
     }
   };

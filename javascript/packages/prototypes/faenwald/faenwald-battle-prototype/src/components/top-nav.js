@@ -16,8 +16,8 @@ const NAV_ITEMS = [
   [ROUTES.MAPS, "Maps"],
 ];
 
-const topNavHtml = () => {
-  const path = window.location.hash.slice(1) || "/";
+const topNavHtml = (router) => {
+  const path = router.currentPath();
   // prefix match keeps a section link active on its child routes,
   // e.g. Modifiers stays lit on /modifiers-collection/:collectionId
   const isActive = (route) => path === route || path.startsWith(`${route}/`);

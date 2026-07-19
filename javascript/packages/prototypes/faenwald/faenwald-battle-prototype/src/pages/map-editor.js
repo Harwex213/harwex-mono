@@ -1,6 +1,7 @@
 import { ROUTE_LINKS } from "../data/routing.js";
 import { DEFAULT_TERRAIN_ID, TERRAINS } from "../data/terrains.js";
-import { commitMap, getMap, renameMap, setMapCell, setMapImage } from "../modules/maps-store.js";
+import { MAPS_MODULE } from "../modules/maps.js";
+import { MODEL } from "../model/model.js";
 import { renderMapThumbnail } from "../modules/map-thumbnail.js";
 import { topNavHtml } from "../components/top-nav.js";
 import { renderPointTopHexagon } from "../modules/hexagon-render.js";
@@ -61,7 +62,7 @@ const initializeCanvas = (container, map, getBrush) => {
   const paintAt = ({ target, requestRender }) => {
     const brush = getBrush();
     if (!target || map.cells[target.row][target.col] === brush) return;
-    setMapCell(map.id, target.row, target.col, brush);
+    MAPS_MODULE.setMapCell(MODEL.maps, map.id, target.row, target.col, brush);
     dirty = true;
     requestRender();
   };
@@ -84,7 +85,7 @@ const initializeCanvas = (container, map, getBrush) => {
 
     // one stroke = one localStorage write, and only if it changed something
     onActionEnd: () => {
-      if (dirty) commitMap(map.id);
+      if (dirty) MAPS_MODULE.commitMap(MODEL.maps, map.id);
     },
 
     render: ({ ctx, camera, hovered }) => {
@@ -110,7 +111,7 @@ const initializeCanvas = (container, map, getBrush) => {
   return destroy;
 };
 
-const renderMapEditor = (params = {}) => {
+const renderMapEditor = (params = {}, router) => {
   // transient UI state: the brush terrain the canvas paints with
   let selectedTerrainId = DEFAULT_TERRAIN_ID;
 
@@ -133,7 +134,7 @@ const renderMapEditor = (params = {}) => {
   const mapEditorHtml = (root, map) => {
     if (!map) {
       root.innerHTML = `
-        ${topNavHtml()}
+        ${topNavHtml(router)}
         ${STYLE}
         <section class="me">
           <p class="missing">Map not found.</p>
@@ -144,7 +145,7 @@ const renderMapEditor = (params = {}) => {
     }
 
     root.innerHTML = `
-      ${topNavHtml()}
+      ${topNavHtml(router)}
       ${STYLE}
       <section class="me">
         <div class="header">
@@ -165,7 +166,7 @@ const renderMapEditor = (params = {}) => {
 
   const root = document.querySelector("main");
   const mapId = params.mapId;
-  const map = getMap(mapId);
+  const map = MAPS_MODULE.getMap(MODEL.maps, mapId);
 
   mapEditorHtml(root, map);
 
@@ -192,7 +193,7 @@ const renderMapEditor = (params = {}) => {
   // derives from the name, and repainting would drop the caret (see modifiers-table)
   const onInput = (event) => {
     if (event.target.dataset.role === "map-name") {
-      renameMap(mapId, event.target.value);
+      MAPS_MODULE.renameMap(MODEL.maps, mapId, event.target.value);
     }
   };
 
@@ -203,7 +204,7 @@ const renderMapEditor = (params = {}) => {
     teardownCanvas?.();
     // one generation per editing session; commitMap() dropped the image on the
     // first stroke, and the maps page covers sessions this teardown never ends
-    if (map) setMapImage(map.id, renderMapThumbnail(map));
+    if (map) MAPS_MODULE.setMapImage(MODEL.maps, map.id, renderMapThumbnail(map));
     root.removeEventListener("click", onClick);
     root.removeEventListener("input", onInput);
     root.innerHTML = "";

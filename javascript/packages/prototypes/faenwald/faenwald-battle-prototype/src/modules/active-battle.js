@@ -29,14 +29,15 @@ const createActiveBattle = () => ({
 /**
  * @param {ActiveBattle} activeBattle
  * @param {BattleConfig} battleConfig
+ * @param {ModifiersState} modifiers
  */
-const startBattle = (activeBattle, battleConfig) => {
+const startBattle = (activeBattle, battleConfig, modifiers) => {
   activeBattle.phase = BATTLE_PHASE.DISPOSITION;
   activeBattle.mapId = battleConfig.mapId;
   activeBattle.units = SIDES.flatMap((side) =>
     battleConfig[side].map((unit) => {
       const type = UNIT_TYPES.find((t) => t.id === unit.typeId);
-      const stats = BATTLE_CONFIG_MODULE.computeUnitStats(unit);
+      const stats = BATTLE_CONFIG_MODULE.computeUnitStats(unit, modifiers);
       return {
         id: activeBattle.nextUnitId++,
         side,

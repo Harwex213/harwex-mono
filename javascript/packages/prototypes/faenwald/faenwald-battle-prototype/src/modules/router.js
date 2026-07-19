@@ -56,6 +56,10 @@ class Router {
     history.back();
   }
 
+  currentPath() {
+    return window.location.hash.slice(1) || "/";
+  }
+
   #buildPath(path, params = {}) {
     return path.replace(/:([^/]+)/g, (match, name) =>
       name in params ? encodeURIComponent(params[name]) : match,
@@ -63,7 +67,7 @@ class Router {
   }
 
   #resolve() {
-    const path = window.location.hash.slice(1) || "/";
+    const path = this.currentPath();
 
     for (const { regexp, paramNames, handler } of this.#routes) {
       const match = path.match(regexp);

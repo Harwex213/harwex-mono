@@ -1,7 +1,8 @@
 import { ROUTES } from "../data/routing.js";
-import { getMaps, createMap, deleteMap, setMapImage } from "../modules/maps-store.js";
+import { MAPS_MODULE } from "../modules/maps.js";
 import { renderMapThumbnail } from "../modules/map-thumbnail.js";
 import { topNavHtml } from "../components/top-nav.js";
+import { MODEL } from "../model/model.js";
 
 const STYLE = `
   <style>
@@ -31,7 +32,7 @@ const esc = (value) =>
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
 
-const renderMapsStore = () => {
+const renderMapsStore = (params, router) => {
   const root = document.querySelector("main");
 
   const tileHtml = (map) => `
@@ -50,9 +51,9 @@ const renderMapsStore = () => {
   // PNG paths, editor sessions whose teardown never ran): a map whose image
   // isn't a generated data URL gets one rendered from its cells and persisted
   const refreshThumbnails = () => {
-    for (const map of getMaps()) {
+    for (const map of MODEL.maps.maps) {
       if (!map.image?.startsWith("data:")) {
-        setMapImage(map.id, renderMapThumbnail(map));
+        MAPS_MODULE.setMapImage(MODEL.maps, map.id, renderMapThumbnail(map));
       }
     }
   };
@@ -60,14 +61,14 @@ const renderMapsStore = () => {
   const render = () => {
     refreshThumbnails();
     root.innerHTML = `
-      ${topNavHtml()}
+      ${topNavHtml(router)}
       ${STYLE}
       <section class="msp">
         <h2 class="box-label">Maps Store</h2>
         <hr>
         <div class="grid">
           <button class="add" data-action="create">＋ Add</button>
-          ${getMaps().map(tileHtml).join("")}
+          ${MODEL.maps.maps.map(tileHtml).join("")}
         </div>
       </section>
     `;
@@ -81,16 +82,16 @@ const renderMapsStore = () => {
 
     switch (el.dataset.action) {
       case "create": {
-        const map = createMap();
-        location.hash = `${ROUTES.MAPS}/${map.id}`;
+        const map = MAPS_MODULE.createMap(MODEL.maps);
+        router.push(ROUTES.MAP_EDITOR, { mapId: map.id });
         break;
       }
       case "open":
-        location.hash = `${ROUTES.MAPS}/${mapId}`;
+        router.push(ROUTES.MAP_EDITOR, { mapId });
         break;
       case "delete":
         if (confirm("Delete this map?")) {
-          deleteMap(mapId);
+          MAPS_MODULE.deleteMap(MODEL.maps, mapId);
           render();
         }
         break;

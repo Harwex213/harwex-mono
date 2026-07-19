@@ -14,7 +14,7 @@ const STYLE = `
 `;
 
 // placeholder: the battle outcome screen lands here in a later iteration
-const renderBattleFinished = () => {
+const renderBattleFinished = (params, router) => {
   const root = document.querySelector("main");
 
   const content =
@@ -23,7 +23,7 @@ const renderBattleFinished = () => {
       : `<p>No finished battle.</p><a href="${ROUTE_LINKS.BATTLE}">Continue</a>`;
 
   root.innerHTML = `
-    ${topNavHtml()}
+    ${topNavHtml(router)}
     ${STYLE}
     <section class="bf">
       <h1>Battle finished</h1>

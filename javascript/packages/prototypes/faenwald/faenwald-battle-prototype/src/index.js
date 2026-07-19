@@ -14,7 +14,6 @@ import { MODEL } from "./model/model.js";
 const voidFn = () => void 0;
 
 const PAGES = [
-  [ROUTES.GAME, renderBattleCreation],
   [ROUTES.BATTLE_DISPOSITION, renderBattleDisposition],
   [ROUTES.BATTLE_ACTIVE, renderBattleActive],
   [ROUTES.BATTLE_FINISHED, renderBattleFinished],
@@ -33,12 +32,28 @@ const BATTLE_PHASE_ROUTES = {
 const registerAllPages = (router) => {
   let finalizePage = voidFn;
 
-  for (const [pageRoute, pageHandler] of PAGES) {
+  const registerPage = (pageRoute, pageHandler) => {
     router.registerRoute(pageRoute, (params) => {
       finalizePage();
-      finalizePage = pageHandler(params);
+      finalizePage = pageHandler(params, router);
     });
+  };
+
+  for (const [pageRoute, pageHandler] of PAGES) {
+    registerPage(pageRoute, pageHandler);
   }
+
+  // a running battle owns the session: /game bounces back to it, so a stale
+  // Back-button entry can't restart a battle over the live one
+  router.registerRoute(ROUTES.GAME, (params) => {
+    const phase = MODEL.activeBattle.phase;
+    if (phase === BATTLE_PHASE.DISPOSITION || phase === BATTLE_PHASE.ACTIVE) {
+      router.replace(ROUTES.BATTLE);
+      return;
+    }
+    finalizePage();
+    finalizePage = renderBattleCreation(params, router);
+  });
 
   // "/" is a redirect, not a page: the top nav replaced the landing screen.
   // Registered outside the teardown handshake — it renders nothing, and the

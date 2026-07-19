@@ -1,7 +1,7 @@
 import { STAT_META } from "../data/unit.js";
 import { ROUTE_LINKS, ROUTES } from "../data/routing.js";
 import { DEFAULT_TERRAIN_ID, TERRAINS } from "../data/terrains.js";
-import { getMap } from "../modules/maps-store.js";
+import { MAPS_MODULE } from "../modules/maps.js";
 import { ACTIVE_BATTLE_MODULE, BATTLE_PHASE } from "../modules/active-battle.js";
 import { ACTIVE_UNIT_GROUP_TYPE, getUnitGroupType } from "../modules/active-unit-group.js";
 import { topNavHtml } from "../components/top-nav.js";
@@ -139,13 +139,13 @@ const initializeCanvas = (container, map, hooks) => {
   });
 };
 
-const renderBattleDisposition = () => {
+const renderBattleDisposition = (params, router) => {
   const root = document.querySelector("main");
-  const map = getMap(MODEL.activeBattle.mapId);
+  const map = MAPS_MODULE.getMap(MODEL.maps, MODEL.activeBattle.mapId);
 
   if (MODEL.activeBattle.phase !== BATTLE_PHASE.DISPOSITION || !map) {
     root.innerHTML = `
-      ${topNavHtml()}
+      ${topNavHtml(router)}
       ${STYLE}
       <section class="bd">
         <p class="missing">No battle awaiting disposition.</p>
@@ -190,7 +190,7 @@ const renderBattleDisposition = () => {
     `<button data-action="start-battle" ${ACTIVE_BATTLE_MODULE.isDispositionComplete(MODEL.activeBattle) ? "" : "disabled"}>Start Battle</button>`;
 
   root.innerHTML = `
-    ${topNavHtml()}
+    ${topNavHtml(router)}
     ${STYLE}
     <section class="bd">
       <h1>Размещение армий</h1>
@@ -269,8 +269,7 @@ const renderBattleDisposition = () => {
       }
       case "start-battle":
         ACTIVE_BATTLE_MODULE.beginBattle(MODEL.activeBattle);
-        // WTF???
-        window.location.hash = ROUTES.BATTLE_ACTIVE;
+        router.push(ROUTES.BATTLE_ACTIVE);
         break;
     }
   };

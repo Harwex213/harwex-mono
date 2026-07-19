@@ -1,3 +1,9 @@
+/** localStorage-shaped persistence adapter, injected by model.js */
+type StorageAdapter = {
+  getItem(key: string): string | null;
+  setItem(key: string, value: string): void;
+};
+
 type BattleConfigUnitModifier = {
   collectionId: string;
   modifierId: string;
@@ -36,6 +42,19 @@ type Modifier = {
   percent: ModifierEntry[];
 };
 
+type ModifierCollection = {
+  id: number;
+  name: string;
+  modifiers: Modifier[];
+};
+
+type ModifiersState = {
+  storage: StorageAdapter;
+  collections: ModifierCollection[];
+  /** derived from the data on hydrate, never persisted */
+  nextEntryId: number;
+};
+
 type HexMap = {
   id: number;
   name: string;
@@ -44,6 +63,11 @@ type HexMap = {
   /** cells[row][col] is a terrain id — pointy-top hexes, odd-r offset rows */
   cells: string[][];
   image?: string;
+};
+
+type MapsState = {
+  storage: StorageAdapter;
+  maps: HexMap[];
 };
 
 type BattlePhase = "disposition" | "active" | "finished";

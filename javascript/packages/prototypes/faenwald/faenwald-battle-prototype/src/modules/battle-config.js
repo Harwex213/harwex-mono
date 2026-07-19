@@ -1,15 +1,16 @@
 import { STAT_META, UNIT_TYPES } from "../data/unit.js";
-import { findModifier } from "./modifiers-store.js";
-import { getMap, getMaps } from "./maps-store.js";
+import { MODIFIERS_MODULE } from "./modifiers.js";
+import { MAPS_MODULE } from "./maps.js";
 
 const SIDES = ["attacker", "defender"];
 const STAT_IDS = STAT_META.map((s) => s.id);
 
 /**
+ * @param {MapsState} maps
  * @returns {BattleConfig}
  */
-const createBattleConfig = () => ({
-  mapId: getMaps()[0]?.id ?? null,
+const createBattleConfig = (maps) => ({
+  mapId: maps.maps[0]?.id ?? null,
   attacker: [],
   defender: [],
   nextUnitId: 1,
@@ -120,32 +121,35 @@ const sumEntries = (entries, stat) =>
  * typeId crashes the base-stat lookup.
  *
  * @param {BattleConfigUnit} unit
+ * @param {ModifiersState} modifiers
  * @returns {UnitStats}
  */
-const computeUnitStats = (unit) => {
+const computeUnitStats = (unit, modifiers) => {
   const base = UNIT_TYPES.find((t) => t.id === unit.typeId);
-  const modifiers = unit.modifiers
-    .map((ref) => findModifier(ref.collectionId, ref.modifierId))
+  const applied = unit.modifiers
+    .map((ref) => MODIFIERS_MODULE.findModifier(modifiers, ref.collectionId, ref.modifierId))
     .filter(Boolean);
 
   const stats = {};
   for (const stat of STAT_IDS) {
-    const flat = modifiers.reduce((sum, m) => sum + sumEntries(m.flat, stat), 0);
-    const percent = modifiers.reduce((sum, m) => sum + sumEntries(m.percent, stat), 0);
+    const flat = applied.reduce((sum, m) => sum + sumEntries(m.flat, stat), 0);
+    const percent = applied.reduce((sum, m) => sum + sumEntries(m.percent, stat), 0);
     stats[stat] = Math.max(1, Math.round((base[stat] + flat) * (1 + percent)));
   }
   return stats;
 };
 
 /**
- * The map is resolved through the store so a mapId pointing at a deleted map
- * (or an empty store) invalidates the config instead of crashing the battle page.
+ * The map is resolved through the maps state so a mapId pointing at a deleted
+ * map (or an empty catalog) invalidates the config instead of crashing the
+ * battle page.
  *
  * @param {BattleConfig} battleConfig
+ * @param {MapsState} maps
  * @returns {boolean}
  */
-const isConfigValid = (battleConfig) =>
-  Boolean(getMap(battleConfig.mapId)) &&
+const isConfigValid = (battleConfig, maps) =>
+  Boolean(MAPS_MODULE.getMap(maps, battleConfig.mapId)) &&
   SIDES.every(
     (side) => battleConfig[side].length > 0 && battleConfig[side].every((u) => u.typeId),
   );

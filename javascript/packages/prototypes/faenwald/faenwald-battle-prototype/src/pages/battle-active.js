@@ -14,7 +14,7 @@ const STYLE = `
 `;
 
 // placeholder: the battle loop lands here in a later iteration
-const renderBattleActive = () => {
+const renderBattleActive = (params, router) => {
   const root = document.querySelector("main");
 
   const content =
@@ -23,7 +23,7 @@ const renderBattleActive = () => {
       : `<p>No active battle.</p><a href="${ROUTE_LINKS.BATTLE}">Continue</a>`;
 
   root.innerHTML = `
-    ${topNavHtml()}
+    ${topNavHtml(router)}
     ${STYLE}
     <section class="ba">
       <h1>Battle</h1>

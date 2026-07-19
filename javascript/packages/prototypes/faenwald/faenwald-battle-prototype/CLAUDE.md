@@ -16,26 +16,36 @@ one page for another.
 
 ### Routing
 
-- `modules/router.js` — a custom hash router. It **only listens**: it matches
-  `location.hash` against registered routes (regex, with `:param` support) and
-  calls the matching handler. It never navigates on its own.
+- `modules/router.js` — a custom hash router. It matches `location.hash` against
+  registered routes (regex, with `:param` support) and calls the matching handler;
+  `push`/`replace`/`back` navigate, `currentPath()` reads the current route.
 - `data/routing.js` — `ROUTES` (path constants) and `ROUTE_LINKS` (the same paths
   as `#`-prefixed hrefs).
 - `src/index.js` — wires each route to a page and manages the teardown handshake.
-  `/` is a **redirect to `/game`** (the top nav replaced the old landing page), and
-  `/battle` is a **redirect to the subpage for the current battle phase**
+  Three routes are guarded redirects registered outside the handshake because they
+  render nothing: `/` **redirects to `/game`** (the top nav replaced the old landing
+  page); `/battle` **redirects to the subpage for the current battle phase**
   (`/battle/units-disposition` → `/battle/active` → `/battle/finished`, or `/game`
-  when no battle is running); both are registered outside the handshake because
-  they render nothing.
+  when no battle is running); and `/game` **bounces back to `/battle` while a battle
+  is in a non-finished phase**, so a stale history entry can't restart a battle over
+  the live one.
 
-**Navigation is done by setting `location.hash`**, e.g. `location.hash = ROUTES.BATTLE`,
-or with a declarative `<a href="#/...">` built from `ROUTE_LINKS`. Pages do **not**
-import the router. If a page ever needs the router programmatically, pass it as an
-argument to the page's `render*()` function — do not turn it into a singleton.
+**The Router owns all knowledge of `window` location.** Pages and components never
+read or write `location.hash` directly:
+
+- Imperative navigation → `router.push(ROUTES.X, params)`; the router instance is
+  passed to every page as `render*(params, router)`. Do **not** turn it into a
+  singleton or import it from a page.
+- Declarative navigation → `<a href="#/...">` built from `ROUTE_LINKS`; anchors are
+  the platform's navigation, and the router hears the resulting `hashchange`.
+- Reading the current route → `router.currentPath()` (e.g. pages pass `router` into
+  `topNavHtml(router)` for active-link state).
+- Redirects (`index.js` only) → `router.replace(...)`.
 
 ### Page lifecycle
 
-Every page is a `render*()` function that:
+Every page is a `render*(params, router)` function (route params first, the shared
+`Router` instance second) that:
 
 1. writes its markup into `<main>` via `root.innerHTML`,
 2. attaches its event listeners to `root`,
@@ -54,10 +64,11 @@ listener leaks it across navigations.
   (e.g. `comboForUnitId`). Discarded on teardown.
 - **Static game data** → `data/` constants (`UNIT_TYPES`, `RANK_MODIFIERS`,
   `TERRAINS`, `DEFAULT_MAPS`). User-editable catalogs (maps, modifier collections)
-  live in localStorage-backed stores in `modules/`.
+  are module state in `MODEL` too, persisted to localStorage through a storage
+  adapter injected by `model.js` (see rule 8 below).
 
 **`MODEL` is the app's only singleton** — the composition root that instantiates
-every module's state (store state moves in as the legacy stores migrate). Modules
+every module's state. Modules
 never import `model.js` (dependencies point one way: model → modules); pages import
 `MODEL`, read it freely, and mutate it **only through module functions**, then call
 the page's local `render()` to repaint. There is no reactive binding — re-rendering
@@ -66,7 +77,8 @@ is manual.
 ### Stateful module pattern
 
 Modules in `modules/` that own domain state follow one pattern —
-**`battle-config.js` and `active-battle.js` are the canonical examples**:
+**`battle-config.js` and `active-battle.js` are the canonical examples**
+(**`maps.js` and `modifiers.js`** for the persistence-backed variant):
 
 1. **No module-level mutable state.** State is a plain object built by a
    `create()` factory; even id counters live inside it (`nextUnitId`). The module
@@ -93,9 +105,14 @@ Modules in `modules/` that own domain state follow one pattern —
 7. **Errors**: mutators guard and silently no-op on invalid input or stale refs
    (ids pointing at a deleted collection are normal, not exceptional); lookups
    return `null`. Module functions don't throw.
-8. **No side effects at module import.** A persistence-backed module exposes
-   explicit `hydrate`/`persist` functions; `model.js` hydrates at startup. Never
-   touch `localStorage` (or any environment API) at the top level of a module.
+8. **No side effects at module import — and no environment access, ever.** A
+   persistence-backed module receives a localStorage-shaped adapter
+   (`{ getItem, setItem }`, typed `StorageAdapter`) via `create({ storage })` and
+   exposes an explicit `hydrate(state)`; `model.js` passes `localStorage` and
+   hydrates at startup, tests pass a plain fake. Mutators persist through the
+   adapter (`setMapCell`/`commitMap` split a paint stroke from its single write);
+   only the data is serialized, never the adapter or derived counters. Storage
+   keys live in `data/local-storage-keys.js`.
 
 The pattern applies to **stateful domain modules only**. Pure-function helpers
 (for example `hex-layout.js`, `hexagon-render.js`) keep flat named exports; 
@@ -106,9 +123,8 @@ If a module owns mutable domain state, it follows the pattern.
 Unit tests are co-located `<module>.test.js` files using `node:test` + `node:assert`;
 run them with `yarn test` (`node --test 'src/**/*.test.js'`). The module pattern is
 what keeps them cheap: build state with `MODULE.create()`, call module functions
-with plain objects, assert on the result — no DOM, no localStorage, no mocks.
-Legacy modules with import-time side effects can't be imported under Node; don't
-add tests for them until they're migrated.
+with plain objects, assert on the result — no DOM, no localStorage, no mocks
+(persistence-backed modules take a fake `{ getItem, setItem }` object).
 
 ### Rendering & events
 
@@ -124,15 +140,15 @@ their own scoped `<style>` block (unique prefix, tokens only) but attach **no
 listeners and need no teardown**; the embedding page's `innerHTML` lifecycle covers
 them.
 
-`components/top-nav.js` exports `topNavHtml()`, the top navigation bar. **Every page
-must embed `${topNavHtml()}` as the first thing it writes into `root.innerHTML`, in
-every render path** — including empty/error states (battle-disposition's "No battle
-awaiting disposition", modifiers-table's "Collection not found"). There is no
-enforcement point: the nav is re-rendered by each page, so a page (or render branch)
-that forgets it silently ships without navigation. Treat it as part of the page
-skeleton when creating a new page.
-Active-link state is derived from `location.hash` at build time with a prefix match,
-so a section link stays lit on its child routes.
+`components/top-nav.js` exports `topNavHtml(router)`, the top navigation bar.
+**Every page must embed `${topNavHtml(router)}` as the first thing it writes into
+`root.innerHTML`, in every render path** — including empty/error states
+(battle-disposition's "No battle awaiting disposition", modifiers-table's
+"Collection not found"). There is no enforcement point: the nav is re-rendered by
+each page, so a page (or render branch) that forgets it silently ships without
+navigation. Treat it as part of the page skeleton when creating a new page.
+Active-link state is derived from `router.currentPath()` at build time with a
+prefix match, so a section link stays lit on its child routes.
 
 ### Styling
 
