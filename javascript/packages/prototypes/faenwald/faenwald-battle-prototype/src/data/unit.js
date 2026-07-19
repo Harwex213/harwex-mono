@@ -1,9 +1,3 @@
-const MAPS = [
-  { id: "plains", name: "Plains", image: "./assets/plains-1.png" },
-  { id: "water", name: "Water", image: "./assets/water-1.png" },
-  { id: "hills", name: "Hills", image: "./assets/hills-1.png" },
-];
-
 const UNIT_TYPE_LIGHT_SPEARMAN = "light-spearman";
 const UNIT_TYPE_MEDIUM_SPEARMAN = "medium-spearman";
 const UNIT_TYPE_HEAVY_SPEARMAN = "heavy-spearman";
@@ -138,57 +132,13 @@ const UNIT_TYPES = [
   },
 ];
 
-// stat identity + presentation in one place; consumed by the stat pickers,
-// the modifiers editor, and the stat readouts on the battle screens
 const STAT_META = [
   { id: "hp", label: "hp", emoji: "❤️" },
   { id: "attack", label: "attack", emoji: "⚔️" },
   { id: "morale", label: "morale", emoji: "🏆" },
 ];
 
-const RANK_MODIFIERS = [
-  {
-    id: "first-rank",
-    name: "I Ранг",
-    description: "-25% ко всему",
-    flat: {},
-    percent: { attack: -0.25, hp: -0.25, morale: -0.25 },
-  },
-  {
-    id: "third-rank",
-    name: "III Ранг",
-    description: "+25% ко всему",
-    flat: {},
-    percent: { attack: 0.25, hp: 0.25, morale: 0.25 },
-  },
-  {
-    id: "fourth-rank",
-    name: "IV Ранг",
-    description: "+50% ко всему",
-    flat: {},
-    percent: { attack: 0.50, hp: 0.50, morale: 0.50 },
-  },
-  {
-    id: "fifth-rank",
-    name: "V Ранг",
-    description: "+75% ко всему",
-    flat: {},
-    percent: { attack: 0.75, hp: 0.75, morale: 0.75 },
-  },
-  {
-    id: "sixth-rank",
-    name: "VI Ранг",
-    description: "+100% ко всему",
-    flat: {},
-    percent: { attack: 1, hp: 1, morale: 1 },
-  },
-];
-
 export {
-  MAPS,
-  UNIT_TYPES,
-  RANK_MODIFIERS,
-  STAT_META,
   UNIT_TYPE_LIGHT_SPEARMAN,
   UNIT_TYPE_MEDIUM_SPEARMAN,
   UNIT_TYPE_HEAVY_SPEARMAN,
@@ -202,4 +152,7 @@ export {
   UNIT_TYPE_HORSE_ARCHER,
   UNIT_TYPE_LONGBOWMAN,
   UNIT_TYPE_CROSSBOWMAN,
-}
+
+  UNIT_TYPES,
+  STAT_META,
+};

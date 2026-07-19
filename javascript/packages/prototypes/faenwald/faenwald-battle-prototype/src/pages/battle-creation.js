@@ -1,15 +1,15 @@
-import { UNIT_TYPES, STAT_META } from "../data/catalog.js";
+import { STAT_META, UNIT_TYPES } from "../data/unit.js";
 import {
-  SIDES,
   battleConfig,
+  computeStats,
   createUnit,
   findUnit,
-  removeUnit,
-  computeStats,
   isConfigValid,
+  removeUnit,
+  SIDES,
 } from "../modules/battle-config.js";
 import { allModifiers, findModifier, getCollection } from "../modules/modifiers-store.js";
-import { getMaps, getMap } from "../modules/maps-store.js";
+import { getMap, getMaps } from "../modules/maps-store.js";
 import { startBattle } from "../modules/active-battle.js";
 import { ROUTES } from "../data/routing.js";
 import { topNavHtml } from "../components/top-nav.js";
@@ -88,15 +88,15 @@ const renderBattleCreation = () => {
       <input data-role="combo-input" data-unit-id="${unit.id}" placeholder="search modifier…">
       <ul>
         ${remaining
-          .map(
-            (x) => `
+    .map(
+      (x) => `
               <li>
                 <button data-action="pick-modifier" data-unit-id="${unit.id}" data-collection-id="${x.collectionId}" data-modifier-id="${x.modifier.id}">
                   ${x.collectionName} / ${x.modifier.name} — ${x.modifier.description}
                 </button>
               </li>`,
-          )
-          .join("")}
+    )
+    .join("")}
       </ul>
     </div>
   `;

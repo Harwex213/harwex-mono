@@ -12,7 +12,7 @@ import {
   UNIT_TYPE_MEDIUM_CAVALRY,
   UNIT_TYPE_MEDIUM_INFANTRY,
   UNIT_TYPE_MEDIUM_SPEARMAN
-} from "../data/catalog.js";
+} from "../data/unit.js";
 
 const ACTIVE_UNIT_GROUP_SIDE = {
   ATTACKER: "attacker",

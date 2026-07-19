@@ -1,27 +1,11 @@
-// Domain-free pan & zoom canvas. Owns the <canvas> element, dpr sizing, the
-// camera {x, y, scale} (world → css px), fit-to-container on resize (until the
-// first user pan/zoom), middle/right-drag pan, cursor-anchored wheel zoom,
-// rAF-coalesced repaints, and hover tracking. Everything domain-shaped comes
-// in through `config`:
-//
-//   worldBounds  {minX, minY, maxX, maxY}          required — fit/center basis
-//   render(state)                                  required — draws the scene;
-//     called with {ctx, camera, hovered} after the module has cleared the
-//     canvas and baked dpr × camera into ctx, so it draws in pure world
-//     coordinates (divide stroke widths by camera.scale to keep them
-//     screen-constant)
-//   hitTest(worldX, worldY) → target | null        optional — maps a world
-//     point to an opaque hover target; omit it and `hovered` stays null
-//   isSameTarget(a, b)                             optional — hover change
-//     detection; defaults to shallow key equality
-//   onActionStart / onActionMove ({world, target, camera, requestRender})
-//   onActionEnd ({camera, requestRender})          optional — left-button
-//     gesture; hooks repaint explicitly via requestRender, never implicitly
-//   fitMargin, zoomStep, zoomOutLimit, zoomInLimit optional camera knobs
-//
-// Returns {requestRender, destroy}: requestRender for repaints triggered
-// outside canvas events (store changes, sidebar clicks), destroy for the
-// page's teardown.
+/**
+ * Domain-free pan & zoom canvas. Owns:
+ * - the <canvas> element and dpr sizing,
+ * - the camera {x, y, scale} (world → css px),
+ * - fit-to-container on resize (until the first user pan/zoom),
+ * - middle/right-drag pan, cursor-anchored wheel zoom,
+ * - rAF-coalesced repaints and hover tracking.
+ */
 
 const DEFAULTS = {
   fitMargin: 24, // css px kept around the fitted world bounds
@@ -37,6 +21,27 @@ const shallowEqualTargets = (a, b) => {
   return keys.length === Object.keys(b).length && keys.every((key) => a[key] === b[key]);
 };
 
+/**
+ * Everything domain-shaped comes in through `config`:
+ * - `worldBounds` {minX, minY, maxX, maxY} — required; fit/center basis.
+ * - `render(state)` — required; draws the scene. Called with {ctx, camera, hovered}
+ *   after the module has cleared the canvas and baked dpr × camera into ctx, so it
+ *   draws in pure world coordinates (divide stroke widths by camera. Scale to keep
+ *   them screen-constant).
+ * - `hitTest(worldX, worldY) → target | null` — optional; maps a world point to an
+ *   opaque hover target. Omit it and `hovered` stays null.
+ * - `isSameTarget(a, b)` — optional; hover change detection. Defaults to shallow
+ *   key equality.
+ * - `onActionStart` / `onActionMove` ({world, target, camera, requestRender}) and
+ *   `onActionEnd` ({camera, requestRender}) — optional; left-button gesture hooks.
+ *   They repaint explicitly via requestRender, never implicitly.
+ * - `fitMargin`, `zoomStep`, `zoomOutLimit`, `zoomInLimit` — optional camera knobs.
+ *
+ * Returns {requestRender, destroy}:
+ * - `requestRender` — repaints triggered outside canvas events (store changes,
+ *   sidebar clicks).
+ * - `destroy` — for the page's teardown.
+ */
 const initializeAbstractCanvas = (container, config) => {
   const {
     worldBounds,

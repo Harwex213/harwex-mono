@@ -1,11 +1,15 @@
 import { DEFAULT_TERRAIN_ID, TERRAINS } from "../data/terrains.js";
-import { gridPixelBounds, offsetToPixel } from "../modules/hex-layout.js";
-import { renderPointTopHexagon } from "../modules/hexagon-render.js";
+import { gridPixelBounds, offsetToPixel } from "./hex-layout.js";
+import { renderPointTopHexagon } from "./hexagon-render.js";
 
-// Renders a map's full hex grid into an offscreen canvas and returns it as a
-// PNG data URL — the store-tile preview. Same fills and grid strokes as the
-// editor canvas, so the thumbnail is a faithful mini-map; the transparent
-// background lets the tile's card background show through the letterboxing.
+/**
+ * Renders a map's full hex grid into an offscreen canvas and returns it as a
+ * PNG data URL — the store-tile preview.
+ *
+ * Same fills and grid strokes as the editor canvas, so the thumbnail is a
+ * faithful mini-map; the transparent background lets the tile's card
+ * background show through the letterboxing.
+ */
 
 const HEX_HEIGHT = 128; // world units, top vertex to bottom vertex
 const HEX_SIZE = HEX_HEIGHT / 2; // circumradius
@@ -13,8 +17,10 @@ const THUMB_HEIGHT = 240; // px — 2× the 120px preview slot, crisp on retina
 const GRID_STROKE_PX = 1; // device px, matches the editor's grid line
 
 const renderMapThumbnail = (map) => {
-  // terrain tokens live on :root — resolve them at generation time, like the
-  // editor does per session
+  /**
+   * Terrain tokens live on :root — resolve them at generation time, like the
+   * editor does per session.
+   */
   const styles = getComputedStyle(document.documentElement);
   const fillByTerrain = Object.fromEntries(
     TERRAINS.map((t) => [t.id, styles.getPropertyValue(t.color).trim()]),

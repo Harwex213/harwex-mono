@@ -1,7 +1,11 @@
-// Pointy-top hex layout math, after https://www.redblobgames.com/grids/hexagons.
-// Grids are stored as odd-r offset coordinates (cells[row][col], odd rows shift
-// right by half a hex); rendering and hit-testing convert through axial (q, r).
-// `size` is the circumradius: center to a top/bottom vertex.
+/**
+ * Pointy-top hex layout math, after https://www.redblobgames.com/grids/hexagons.
+ *
+ * Grids are stored as odd-r offset coordinates (cells[row][col], odd rows shift
+ * right by half a hex); rendering and hit-testing convert through axial (q, r).
+ *
+ * `size` is the circumradius: center to a top/bottom vertex.
+ */
 
 const SQRT3 = Math.sqrt(3);
 
@@ -21,8 +25,10 @@ const pixelToAxial = (x, y, size) => ({
   r: ((2 / 3) * y) / size,
 });
 
-// cube rounding: round all three cube components (s = -q - r), then recompute
-// the one that drifted furthest so q + r + s = 0 holds again
+/**
+ * Cube rounding: round all three cube components (s = -q - r), then recompute
+ * the one that drifted furthest so q + r + s = 0 holds again.
+ */
 const axialRound = (q, r) => {
   const s = -q - r;
   let rq = Math.round(q);
@@ -50,8 +56,10 @@ const pixelToOffset = (x, y, size) => {
   return axialToOffset(q, r);
 };
 
-// world-space bounding box (hex edges included) of a cols×rows odd-r grid
-// whose (0, 0) hex is centered on the origin
+/**
+ * World-space bounding box (hex edges included) of a cols×rows odd-r grid
+ * whose (0, 0) hex is centered on the origin.
+ */
 const gridPixelBounds = (cols, rows, size) => {
   const hexWidth = SQRT3 * size;
   const oddRowShift = rows > 1 ? hexWidth / 2 : 0;

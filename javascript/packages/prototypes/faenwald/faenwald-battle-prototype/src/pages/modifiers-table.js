@@ -1,14 +1,14 @@
 import { ROUTE_LINKS } from "../data/routing.js";
-import { STAT_META } from "../data/catalog.js";
+import { STAT_META } from "../data/unit.js";
 import {
-  getCollection,
-  renameCollection,
-  createModifier,
-  updateModifier,
-  deleteModifier,
   addEntry,
+  createModifier,
+  deleteModifier,
+  getCollection,
   removeEntry,
+  renameCollection,
   updateEntry,
+  updateModifier,
 } from "../modules/modifiers-store.js";
 import { topNavHtml } from "../components/top-nav.js";
 

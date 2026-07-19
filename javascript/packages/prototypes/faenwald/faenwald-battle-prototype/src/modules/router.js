@@ -25,8 +25,10 @@ class Router {
       handler,
     });
 
-    // resolve once after all synchronous registrations, so the current
-    // route renders without firing a handler per registerRoute call
+    /**
+     * Resolve once after all synchronous registrations, so the current
+     * route renders without firing a handler per registerRoute call.
+     */
     if (!this.#resolveScheduled) {
       this.#resolveScheduled = true;
       queueMicrotask(() => {
@@ -37,8 +39,10 @@ class Router {
   }
 
   push(path, params) {
-    // pushState (unlike assigning location.hash) doesn't fire hashchange,
-    // so resolve manually and stay synchronous
+    /**
+     * pushState (unlike assigning location.hash) doesn't fire hashchange,
+     * so resolve manually and stay synchronous.
+     */
     history.pushState(null, "", `#${this.#buildPath(path, params)}`);
     this.#resolve();
   }

@@ -1,15 +1,15 @@
-import { STAT_META } from "../data/catalog.js";
-import { ROUTES, ROUTE_LINKS } from "../data/routing.js";
+import { STAT_META } from "../data/unit.js";
+import { ROUTE_LINKS, ROUTES } from "../data/routing.js";
 import { DEFAULT_TERRAIN_ID, TERRAINS } from "../data/terrains.js";
 import { getMap } from "../modules/maps-store.js";
 import {
-  BATTLE_PHASE,
   activeBattle,
+  BATTLE_PHASE,
   beginBattle,
   findBattleUnit,
   isDispositionComplete,
-  placeUnit,
   placementCandidates,
+  placeUnit,
   unitAt,
 } from "../modules/active-battle.js";
 import { ACTIVE_UNIT_GROUP_TYPE, unitGroupType } from "../modules/active-unit-group.js";

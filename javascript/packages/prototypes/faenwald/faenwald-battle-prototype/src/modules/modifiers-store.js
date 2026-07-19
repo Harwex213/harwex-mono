@@ -1,27 +1,30 @@
-import { RANK_MODIFIERS, STAT_META } from "../data/catalog.js";
+import { RANK_MODIFIERS } from "../data/modifiers.js";
+import { STAT_META } from "../data/unit.js";
+import { MODIFIERS_LS_KEY } from "../data/local-storage-keys.js";
 
-// Domain store for modifier collections. Mirrors battle-config.js: a module
-// singleton mutated only through the exported helpers, but this one is also
-// hydrated from / persisted to localStorage so edits survive a reload.
-//
-// Shapes:
-//   collection = { id: number, name: string, modifiers: Modifier[] }
-//   modifier   = { id: string, name, description, flat: Entry[], percent: Entry[] }
-//   entry      = { id: number, stat: string, value: number }
-// A percent entry's value is a fraction (0.3 == +30%), matching computeStats.
-// A modifier's effective, cross-collection id is `${collection.id}:${modifier.id}`;
-// units reference one via a composite { collectionId, modifierId }.
-
-const STORAGE_KEY = "hw.faenwald.modifiers.v1";
+/**
+ * Domain store for modifier collections. A module singleton mutated only through
+ * the exported helpers, hydrated from / persisted to localStorage.
+ *
+ * Shapes:
+ *   collection = { id: number, name: string, modifiers: Modifier[] }
+ *   modifier   = { id: string, name, description, flat: Entry[], percent: Entry[] }
+ *   entry      = { id: number, stat: string, value: number }
+ *
+ * A percent entry's value is a fraction (0.3 == +30%), matching computeStats.
+ * A modifier's effective, cross-collection id is `${collection.id}:${modifier.id}`;
+ * units reference one via a composite { collectionId, modifierId }.
+ */
 
 const store = { collections: [] };
 
-// entry ids are unique across the whole store so a focus key survives re-render
 let nextEntryId = 1;
 const makeEntry = (stat, value) => ({ id: nextEntryId++, stat, value });
 
-// one "Default" collection wrapping the static catalog, converted from the
-// object shape ({ hp: 30 }) to the array shape ([{ stat: "hp", value: 30 }])
+/**
+ * One collection wrapping the static catalog, converted from the object shape
+ * ({ hp: 30 }) to the array shape ([{ stat: "hp", value: 30 }]).
+ */
 const seed = () => ({
   collections: [
     {
@@ -50,8 +53,10 @@ const isValidShape = (data) =>
       c.modifiers.every((m) => m && Array.isArray(m.flat) && Array.isArray(m.percent)),
   );
 
-// counters are derived from the data (not persisted) so they never collide
-// with ids already in the store after a reload
+/**
+ * Counters are derived from the data (not persisted) so they never collide
+ * with ids already in the store after a reload.
+ */
 const reseedEntryCounter = () => {
   let max = 0;
   for (const c of store.collections) {
@@ -67,19 +72,21 @@ const reseedEntryCounter = () => {
 const nextCollectionId = () =>
   store.collections.reduce((max, c) => Math.max(max, Number(c.id) || 0), 0) + 1;
 
-// unique within the collection; frozen once assigned so composite refs stay valid.
-// ignores non-numeric seed ids (slugs like "veteran"), so new ids are "1", "2", …
+/**
+ * Unique within the collection; frozen once assigned so composite refs stay valid.
+ * Ignores non-numeric seed ids (slugs like "veteran"), so new ids are "1", "2", …
+ */
 const nextModifierId = (collection) =>
   String(collection.modifiers.reduce((max, m) => Math.max(max, Number(m.id) || 0), 0) + 1);
 
 const persist = () => {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(store));
+  localStorage.setItem(MODIFIERS_LS_KEY, JSON.stringify(store));
 };
 
 const load = () => {
   let data = null;
   try {
-    data = JSON.parse(localStorage.getItem(STORAGE_KEY));
+    data = JSON.parse(localStorage.getItem(MODIFIERS_LS_KEY));
   } catch {
     data = null;
   }
@@ -104,12 +111,16 @@ const getCollection = (id) =>
 const getModifier = (collectionId, modifierId) =>
   getCollection(collectionId)?.modifiers.find((m) => String(m.id) === String(modifierId)) ?? null;
 
-// resolves a unit's composite ref; returns null when the collection or modifier
-// has since been deleted, so callers can defensively skip it
+/**
+ * Resolves a unit's composite ref; returns null when the collection or modifier
+ * has since been deleted, so callers can defensively skip it.
+ */
 const findModifier = (collectionId, modifierId) => getModifier(collectionId, modifierId);
 
-// flattened view for the battle-creation picker: every modifier, tagged with its
-// owning collection so options can be labelled/searched/sorted by collection name
+/**
+ * Flattened view for the battle-creation picker: every modifier, tagged with its
+ * owning collection so options can be labelled/searched/sorted by collection name.
+ */
 const allModifiers = () =>
   store.collections.flatMap((c) =>
     c.modifiers.map((modifier) => ({

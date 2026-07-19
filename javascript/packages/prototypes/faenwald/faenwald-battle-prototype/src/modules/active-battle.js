@@ -1,11 +1,14 @@
-import { UNIT_TYPES } from "../data/catalog.js";
+import { UNIT_TYPES } from "../data/unit.js";
 import { TERRAINS } from "../data/terrains.js";
-import { SIDES, battleConfig, computeStats } from "./battle-config.js";
+import { battleConfig, computeStats, SIDES } from "./battle-config.js";
 
-// Runtime state of the one battle in progress. Like battleConfig this is an
-// in-memory module singleton mutated only through the exported helpers — it
-// survives in-session navigation and resets on reload ("/battle" then
-// redirects back to setup).
+/**
+ * Runtime state of the one battle in progress.
+ *
+ * Like battleConfig, an in-memory module singleton mutated only through the
+ * exported helpers — survives in-session navigation, resets on reload
+ * ("/battle" then redirects back to setup).
+ */
 
 const BATTLE_PHASE = {
   DISPOSITION: "disposition",
@@ -13,8 +16,7 @@ const BATTLE_PHASE = {
   FINISHED: "finished",
 };
 
-// each side deploys on its edge of the map: attacker the top rows,
-// defender the bottom ones
+/** Each side deploys on its edge of the map: attacker the top rows, defender the bottom. */
 const PLACEMENT_ROWS = 3;
 
 const impassableTerrainIds = new Set(
@@ -30,9 +32,12 @@ const activeBattle = {
 
 let nextUnitId = 1;
 
-// snapshot of the draft config: modifiers are baked into the stats here, so
-// later edits to the draft or the modifier stores don't touch this battle.
-// `type` matches the unit shape active-unit-group.js consumes.
+/**
+ * Snapshot of the draft config: modifiers are baked into the stats here, so
+ * later edits to the draft or the modifier stores don't touch this battle.
+ *
+ * `type` matches the unit shape active-unit-group.js consumes.
+ */
 const startBattle = () => {
   activeBattle.phase = BATTLE_PHASE.DISPOSITION;
   activeBattle.mapId = battleConfig.mapId;
@@ -66,9 +71,12 @@ const placementRows = (side, map) => {
   return Array.from({ length: count }, (_, i) => (side === "attacker" ? i : map.height - 1 - i));
 };
 
-// hexes the unit may be dropped on: its side's zone minus impassable terrain.
-// Hexes held by another unit qualify only when relocating an already-placed
-// unit (the drop swaps the two); placing from the list needs a free hex.
+/**
+ * Hexes the unit may be dropped on: its side's zone minus impassable terrain.
+ *
+ * Hexes held by another unit qualify only when relocating an already-placed
+ * unit (the drop swaps the two); placing from the list needs a free hex.
+ */
 const placementCandidates = (unit, map) => {
   const candidates = [];
   for (const row of placementRows(unit.side, map)) {
@@ -83,8 +91,10 @@ const placementCandidates = (unit, map) => {
   return candidates;
 };
 
-// zone/passability validation is the caller's job (clicks only land on
-// placementCandidates); this guards just the occupancy invariant
+/**
+ * Zone/passability validation is the caller's job (clicks only land on
+ * placementCandidates); this guards just the occupancy invariant.
+ */
 const placeUnit = (unitId, row, col) => {
   const unit = findBattleUnit(unitId);
   if (!unit) return;

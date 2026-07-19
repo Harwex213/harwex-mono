@@ -1,22 +1,24 @@
-import { MAPS } from "../data/catalog.js";
+import { DEFAULT_MAPS } from "../data/maps.js";
 import { DEFAULT_TERRAIN_ID } from "../data/terrains.js";
 
-// Domain store for hex maps. Mirrors modifiers-store.js: a module singleton
-// mutated only through the exported helpers, hydrated from / persisted to
-// localStorage so edits survive a reload.
-//
-// Shapes:
-//   map = { id: number, name: string, width, height, cells: string[][], image?: string }
-// `cells[row][col]` is a terrain id — pointy-top hexes, odd-r offset rows
-// (odd rows shift right by half a hex). Convert offset→axial in helpers when
-// neighbor/distance logic arrives; the grid itself stays the stored shape.
-// `image` is the store-tile preview. Invariant: a `data:` image always matches
-// `cells` — commitMap() drops the image on any cell change and callers restore
-// it via setMapImage() (the editor on teardown, the maps page lazily for maps
-// whose image is missing or still a legacy static-catalog PNG path).
+/**
+ * Domain store for hex maps. Mirrors modifiers-store.js: a module singleton
+ * mutated only through the exported helpers, hydrated from / persisted to
+ * localStorage.
+ *
+ * Shape:
+ *   map = { id: number, name: string, width, height, cells: string[][], image?: string }
+ *
+ * `cells[row][col]` is a terrain id — pointy-top hexes, odd-r offset rows
+ * (odd rows shift right by half a hex). Convert offset→axial in helpers when
+ * neighbor/distance logic arrives; the grid itself stays the stored shape.
+ *
+ * `image` is the store-tile preview. Invariant: a `data:` image always matches
+ * `cells` — commitMap() drops the image on any cell change and callers restore
+ * it via setMapImage() (the editor on teardown, the maps page lazily for maps
+ * whose image is missing or still a legacy static-catalog PNG path).
+ */
 
-// v1 → v2: default map size corrected from 20×14 to 14×12; prototype data is
-// disposable, so the key bump reseeds instead of migrating
 const STORAGE_KEY = "hw.faenwald.maps.v2";
 const DEFAULT_WIDTH = 14;
 const DEFAULT_HEIGHT = 12;
@@ -26,13 +28,14 @@ const store = { maps: [] };
 const makeCells = (width, height, terrainId) =>
   Array.from({ length: height }, () => Array.from({ length: width }, () => terrainId));
 
-// legacy catalog maps become ordinary hex maps: a uniform fill of their
-// namesake terrain, keeping the PNG as the store-tile preview. battle-creation
-// still reads the static MAPS — deleting or editing these touches only this store.
+/**
+ * Legacy catalog maps become ordinary hex maps: a uniform fill of their
+ * namesake terrain, keeping the PNG as the store-tile preview.
+ */
 const SEED_FILL = { plains: "plain", water: "water", hills: "hills" };
 
 const seed = () => ({
-  maps: MAPS.map((m, index) => ({
+  maps: DEFAULT_MAPS.map((m, index) => ({
     id: index + 1,
     name: m.name,
     width: DEFAULT_WIDTH,
@@ -110,8 +113,10 @@ const deleteMap = (id) => {
   persist();
 };
 
-// in-memory only — a paint stroke calls this per cell and commitMap() once on
-// release, so a drag isn't a localStorage write per hex
+/**
+ * In-memory only — a paint stroke calls this per cell and commitMap() once on
+ * release, so a drag isn't a localStorage write per hex.
+ */
 const setMapCell = (id, row, col, terrainId) => {
   const map = getMap(id);
   if (!map?.cells[row] || map.cells[row][col] === undefined) return;

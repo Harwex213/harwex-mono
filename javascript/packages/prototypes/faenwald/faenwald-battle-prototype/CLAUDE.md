@@ -171,5 +171,8 @@ conventions used across the app.
 - **Named exports only**, no default; one `export { ... }` block at the bottom of each file.
 - **Arrow functions** throughout. Class internals use private fields (`#`) — see `Router`.
 - **Comments explain why, not what** — reserve them for non-obvious behavior.
+- **Multiline comments use `/** */`** with a `*`-prefixed line per row; split a
+  large one into paragraphs separated by a blank `*` line. Single-line comments
+  stay `//`.
 - Follow the event-delegation and state rules above rather than reaching for
   per-element listeners or ad-hoc global variables.

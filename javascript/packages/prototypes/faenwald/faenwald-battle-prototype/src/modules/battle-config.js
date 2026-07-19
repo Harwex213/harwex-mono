@@ -1,6 +1,6 @@
-import { UNIT_TYPES, STAT_META } from "../data/catalog.js";
+import { STAT_META, UNIT_TYPES } from "../data/unit.js";
 import { findModifier } from "./modifiers-store.js";
-import { getMaps, getMap } from "./maps-store.js";
+import { getMap, getMaps } from "./maps-store.js";
 
 const SIDES = ["attacker", "defender"];
 const STATS = STAT_META.map((s) => s.id);
@@ -34,8 +34,10 @@ const removeUnit = (unitId) => {
 const sumEntries = (entries, stat) =>
   entries.reduce((sum, e) => (e.stat === stat ? sum + e.value : sum), 0);
 
-// flat bonuses first, then summed percentages: order-independent, min 1.
-// refs whose collection/modifier was deleted resolve to null and are skipped.
+/**
+ * Flat bonuses first, then summed percentages: order-independent, min 1.
+ * Refs whose collection/modifier was deleted resolve to null and are skipped.
+ */
 const computeStats = (unit) => {
   const base = UNIT_TYPES.find((t) => t.id === unit.typeId);
   const modifiers = unit.modifiers
@@ -51,8 +53,10 @@ const computeStats = (unit) => {
   return stats;
 };
 
-// the map is resolved through the store so a mapId pointing at a deleted map
-// (or an empty store) invalidates the config instead of crashing the battle page
+/**
+ * The map is resolved through the store so a mapId pointing at a deleted map
+ * (or an empty store) invalidates the config instead of crashing the battle page.
+ */
 const isConfigValid = () =>
   Boolean(getMap(battleConfig.mapId)) &&
   SIDES.every(

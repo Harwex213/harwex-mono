@@ -1,7 +1,12 @@
-// Draws a pointy-top regular hexagon (a vertex at top and bottom) centered on
-// (x, y). `height` is the full vertical extent (top vertex to bottom vertex);
-// the width follows from a regular hexagon (√3/2 · height). `colors` carries the
-// paint: { fill, stroke } — either may be omitted to skip that pass.
+/**
+ * Draws a pointy-top regular hexagon (a vertex at top and bottom) centered on (x, y).
+ *
+ * `height` is the full vertical extent (top vertex to bottom vertex); the width
+ * follows from a regular hexagon (√3/2 · height).
+ *
+ * `styling` carries the paint: { fill, stroke } — either may be omitted to skip
+ * that pass.
+ */
 const renderPointTopHexagon = (ctx, x, y, height, styling = {}) => {
   const r = height / 2; // circumradius: center to the top/bottom vertex
   const halfWidth = (Math.sqrt(3) / 2) * r;
