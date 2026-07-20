@@ -3,8 +3,8 @@ import { ROUTE_LINKS, ROUTES } from "../../data/routing.js";
 import { DEFAULT_TERRAIN_ID, TERRAINS } from "../../data/terrains.js";
 import { MAPS_MODULE } from "../../modules/maps.js";
 import { ACTIVE_BATTLE_MODULE, BATTLE_PHASE } from "../../modules/active-battle.js";
-import { ACTIVE_UNIT_GROUP_TYPE, GROUP_CYCLE, getUnitGroupType } from "../../modules/active-unit-group.js";
-import { frontHexes, flankHexes, rearHexes, zoneOf } from "../../modules/hex-facing.js";
+import { ACTIVE_UNIT_GROUP_TYPE, getUnitGroupType, GROUP_CYCLE } from "../../modules/active-unit-group.js";
+import { flankHexes, frontHexes, rearHexes, zoneOf } from "../../modules/hex-facing.js";
 import { topNavHtml } from "../../components/top-nav.js";
 import { renderPointTopHexagon } from "../../modules/hexagon-render.js";
 import { gridPixelBounds, offsetToPixel, pixelToOffset } from "../../modules/hex-layout.js";
@@ -175,6 +175,12 @@ const STYLE = `
       border-color: var(--border-accent-muted);
     }
 
+    .ba .footer button.toggle-hp--active {
+      color: var(--text-primary);
+      background: var(--bg-accent);
+      border-color: var(--border-accent-muted);
+    }
+
     .ba .footer button.fire-mode--active {
       color: var(--text-primary);
       background: var(--bg-accent);
@@ -290,6 +296,12 @@ const initializeCanvas = (container, map, hooks) => {
     }
   };
 
+  const drawUnitHp = (ctx, unit) => {
+    const { x, y } = offsetToPixel(unit.position.col, unit.position.row, HEX_SIZE);
+    ctx.fillStyle = "#000000";
+    ctx.fillText(`${unit.hp}❤️`, x, y);
+  }
+
   const handleCenters = (activeUnit) => {
     const { x, y } = offsetToPixel(activeUnit.position.col, activeUnit.position.row, HEX_SIZE);
     return VERTEX_OFFSET.map((v) => ({ x: x + v.x * HANDLE_DISTANCE, y: y + v.y * HANDLE_DISTANCE }));
@@ -394,6 +406,14 @@ const initializeCanvas = (container, map, hooks) => {
         });
       }
 
+      if (hooks.isHpEnabled()) {
+        for (const unit of MODEL.activeBattle.units) {
+          if (unit.position) {
+            drawUnitHp(ctx, unit);
+          }
+        }
+      }
+
       hooks.onHoverChange(hovered);
     },
   });
@@ -402,7 +422,8 @@ const initializeCanvas = (container, map, hooks) => {
 const renderBattleActive = ({ root, params, router }) => {
   if (MODEL.activeBattle.phase !== BATTLE_PHASE.ACTIVE) {
     router.replace(ROUTES.BATTLE);
-    return () => {};
+    return () => {
+    };
   }
 
   const map = MAPS_MODULE.getMap(MODEL.maps, MODEL.activeBattle.mapId);
@@ -425,6 +446,7 @@ const renderBattleActive = ({ root, params, router }) => {
   // hovered unit shown in the right panel, and the fire mode picked for the
   // active unit's next attack (only meaningful while it's a ranged unit)
   let handlesEnabled = true;
+  let hpEnabled = true;
   let hoveredUnitId = null;
   let confirmingCapitulation = false;
   let selectedFireMode = "direct";
@@ -471,11 +493,11 @@ const renderBattleActive = ({ root, params, router }) => {
         <div class="active-unit-name">${unit.name}</div>
         <div class="active-unit-stats">${unitStatsHtml(unit)}</div>
         ${ranged
-          ? `<div class="active-unit-fire-info">
+      ? `<div class="active-unit-fire-info">
               Режим: ${FIRE_MODE_LABEL[resolveSelectedFireMode()] ?? ""}
               ${unit.cooldown > 0 ? ` · перезарядка ${unit.cooldown}` : ""}
             </div>`
-          : ""}
+      : ""}
       </div>
     `;
   };
@@ -564,6 +586,7 @@ const renderBattleActive = ({ root, params, router }) => {
          <button data-action="capitulate-cancel">Cancel</button>`
       : `<button data-action="capitulate">Capitulate</button>`}
     <button data-action="toggle-handles" class="${handlesEnabled ? "toggle-handles--active" : ""}">Rotate Handles</button>
+    <button data-action="toggle-hp" class="${hpEnabled ? "toggle-hp--active" : ""}">Show HP</button>
   `;
   };
 
@@ -653,6 +676,7 @@ const renderBattleActive = ({ root, params, router }) => {
   canvasApi = initializeCanvas(canvasPanel, map, {
     getActiveUnit,
     isHandlesEnabled: () => handlesEnabled,
+    isHpEnabled: () => hpEnabled,
     onHoverChange,
     getAttackTargetIds,
     getMoveTargetHexes: () => {
@@ -737,6 +761,11 @@ const renderBattleActive = ({ root, params, router }) => {
       }
       case "toggle-handles":
         handlesEnabled = !handlesEnabled;
+        footer.innerHTML = footerHtml();
+        canvasApi.requestRender();
+        break;
+      case "toggle-hp":
+        hpEnabled = !hpEnabled;
         footer.innerHTML = footerHtml();
         canvasApi.requestRender();
         break;
