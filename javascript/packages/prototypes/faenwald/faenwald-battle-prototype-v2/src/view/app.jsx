@@ -7,18 +7,18 @@ function App() {
   const mapId = VIEW_MODEL.battleConfig.mapId;
 
   return (
-    <div class="app">
-      <h1 class="header">
+    <div class={"app"}>
+      <h1 className={"header"}>
         Hello world!
       </h1>
 
-      <div class="app-content">
+      <div className={"app-content"}>
         Map: {mapId}
       </div>
 
       <div>
         <Field.Root>
-          <Field.Label>
+          <Field.Label className={"field-label"}>
             Map Id
           </Field.Label>
 

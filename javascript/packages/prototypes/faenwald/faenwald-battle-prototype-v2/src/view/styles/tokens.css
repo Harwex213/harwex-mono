@@ -1,0 +1,185 @@
+/* ═══════════════════════════════════════════════════════════════
+   Layer 1: Primitive Tokens
+   Raw design values with no implied usage. Named by what they ARE.
+   ═══════════════════════════════════════════════════════════════ */
+
+:root {
+    /* ── Colors: Warm Neutrals (950 darkest → 200 lightest) ── */
+    --color-warm-950: #0c0c0c;
+    --color-warm-900: #111111;
+    --color-warm-800: #181818;
+    --color-warm-700: #1e1e1e;
+    --color-warm-600: #2a2724;
+    --color-warm-500: #504a44;
+    --color-warm-400: #736a5f;
+    --color-warm-300: #a8a29a;
+    --color-warm-200: #f0ede6;
+
+    /* ── Colors: Brand (muted parchment gold) ── */
+    --color-gold-500: #c9a96e;
+    --color-gold-dim: #7a6340;
+    --color-gold-faint: #3a2e1e;
+    --color-gold-400: rgba(201, 169, 110, 0.4);
+    --color-gold-200: rgba(201, 169, 110, 0.2);
+    --color-gold-100: rgba(201, 169, 110, 0.1);
+
+    /* ── Colors: Map-content hues (terrain fills source palette) ── */
+    --color-ivory: #d9d4c7;
+    --color-umber: #8a7a63;
+    --color-leaf: #52d43a;
+    --color-pine: #2e6b2e;
+    --color-ochre: #b57a24;
+    --color-olive: #75662f;
+    --color-stone: #8c8c8c;
+    --color-cyan-mist: #a8dfe3;
+    --color-moss: #86c33a;
+    --color-ice-pale: #d3edf2;
+    --color-straw: #e8d75a;
+    --color-violet: #8636c2;
+
+    /* ── Colors: Battle-content hues (unit disc fills source palette) ── */
+    --color-crimson: #93382f;
+    --color-cobalt: #3a5e8c;
+
+    /* ── Colors: Alpha (white) ── */
+    --color-white-alpha-06: rgba(240, 237, 230, 0.06);
+    --color-white-alpha-08: rgba(240, 237, 230, 0.08);
+    --color-white-alpha-10: rgba(240, 237, 230, 0.1);
+    --color-white-alpha-12: rgba(240, 237, 230, 0.12);
+    --color-white-alpha-15: rgba(240, 237, 230, 0.15);
+    --color-white-alpha-20: rgba(240, 237, 230, 0.2);
+    --color-white-alpha-30: rgba(240, 237, 230, 0.3);
+    --color-white-alpha-50: rgba(240, 237, 230, 0.5);
+
+    /* ── Colors: Alpha (black) ── */
+    --color-black-alpha-72: rgba(0, 0, 0, 0.72);
+    --color-black-alpha-80: rgba(0, 0, 0, 0.8);
+    --color-black-alpha-82: rgba(0, 0, 0, 0.82);
+
+    /* ── Typography: Font Families ── */
+    --font-body: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --font-display: "Spectral", serif;
+    --font-mono: monospace;
+
+    /* ── Typography: Font Sizes ── */
+    --font-size-xs: 0.7rem;
+    --font-size-sm: 0.75rem;
+    --font-size-md: 0.85rem;
+    --font-size-base: 1rem;
+    --font-size-lg: 1.1rem;
+    --font-size-xl: 1.25rem;
+
+    /* ── Typography: Font Weights ── */
+    --font-weight-normal: 400;
+    --font-weight-semibold: 600;
+
+    /* ── Spacing ── */
+    --space-1: 2px;
+    --space-2: 4px;
+    --space-3: 6px;
+    --space-4: 8px;
+    --space-5: 10px;
+    --space-6: 12px;
+    --space-7: 16px;
+    --space-8: 24px;
+
+    /* ── Radii ── */
+    --radius-sm: 4px;
+    --radius-md: 8px;
+    --radius-lg: 10px;
+
+    /* ── Opacity ── */
+    --opacity-disabled: 0.3;
+    --opacity-muted: 0.5;
+    --opacity-hover: 0.8;
+
+    /* ── Effects ── */
+    --blur-sm: blur(4px);
+}
+
+
+/* ═══════════════════════════════════════════════════════════════
+   Layer 2: Semantic Tokens
+   Named by what they DO. Reference primitives above.
+   ═══════════════════════════════════════════════════════════════ */
+
+:root {
+    /* ── Backgrounds ── */
+    --bg-app: var(--color-warm-950);
+    --bg-canvas: var(--color-warm-950);
+    --bg-surface: var(--color-warm-900);
+    --bg-surface-raised: var(--color-warm-800);
+    --bg-surface-hover: var(--color-warm-800);
+    --bg-overlay: var(--color-black-alpha-72);
+    --bg-overlay-heavy: var(--color-black-alpha-82);
+    --bg-tooltip: var(--color-black-alpha-80);
+    --bg-control: var(--color-white-alpha-08);
+    --bg-control-hover: var(--color-white-alpha-15);
+    --bg-control-subtle: var(--color-white-alpha-06);
+    --bg-control-subtle-hover: var(--color-white-alpha-12);
+    --bg-accent: var(--color-gold-100);
+    --bg-accent-hover: var(--color-gold-200);
+
+    /* ── Text ── */
+    --text-primary: var(--color-warm-200);
+    --text-secondary: var(--color-warm-300);
+    --text-muted: var(--color-warm-500);
+    --text-faint: var(--color-white-alpha-30);
+    --text-accent: var(--color-gold-500);
+
+    /* ── Borders ── */
+    --border-default: var(--color-white-alpha-10);
+    --border-subtle: var(--color-white-alpha-15);
+    --border-medium: var(--color-white-alpha-20);
+    --border-strong: var(--color-warm-500);
+    --border-accent: var(--color-gold-500);
+    --border-accent-muted: var(--color-gold-400);
+
+    /* ── Interactive States ── */
+    --interactive-disabled-opacity: var(--opacity-disabled);
+    --interactive-hover-opacity: var(--opacity-hover);
+
+    /* ── Overlay Effects ── */
+    --overlay-backdrop: var(--blur-sm);
+
+    /* ── Component-specific (shared patterns) ── */
+    --card-bg: var(--bg-surface);
+    --card-border: var(--border-default);
+    --card-radius: var(--radius-md);
+    --card-padding: var(--space-6) var(--space-7);
+    --card-backdrop: var(--overlay-backdrop);
+
+    /* ── Terrain fills (map content, one per TERRAINS entry; the canvas
+       renderer resolves these via getComputedStyle at draw time) ── */
+    --terrain-plain: var(--color-ivory);
+    --terrain-mud: var(--color-umber);
+    --terrain-thicket: var(--color-leaf);
+    --terrain-forest: var(--color-pine);
+    --terrain-foothills: var(--color-ochre);
+    --terrain-hills: var(--color-olive);
+    --terrain-mountain: var(--color-stone);
+    --terrain-water: var(--color-cyan-mist);
+    --terrain-swamp: var(--color-moss);
+    --terrain-ice: var(--color-ice-pale);
+    --terrain-road: var(--color-straw);
+    --terrain-settlement: var(--color-violet);
+
+    /* grid line + hover ring the canvas renderer draws over the fills */
+    --terrain-grid: var(--color-warm-600);
+    --terrain-hover: var(--color-gold-500);
+
+    /* ── Battle canvas overlays (resolved via getComputedStyle, like the
+       terrain fills): placement-candidate veil, selected-hex contour, unit
+       disc fills per side, and the gradation ring drawn around the disc ── */
+    --hex-candidate: var(--color-gold-400);
+    --hex-selected: var(--color-warm-200);
+    --unit-attacker: var(--color-crimson);
+    --unit-defender: var(--color-cobalt);
+    --unit-ring: var(--color-warm-200);
+    --hex-attack: var(--color-crimson);
+
+    --nav-button-size: 28px;
+    --nav-button-bg: var(--bg-control);
+    --nav-button-border: var(--border-medium);
+    --nav-button-radius: var(--radius-sm);
+}

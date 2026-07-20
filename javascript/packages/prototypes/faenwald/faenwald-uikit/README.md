@@ -34,17 +34,11 @@ import "@hw/faenwald-uikit/theme.css"; // design tokens — once, at app entry
 
 Components are namespaced parts: `<Switch.Root>`, `<Tabs.List>`, etc. Class names come precompiled (CSS Modules); pass `className` to extend.
 
+All components consume only the `--uk-*` CSS variables from `theme.css`. Light is the default (`:root`); dark activates by adding the `dark` class to any ancestor (typically `<html>` or `<body>`):
+
 ## Requirements
 
 - A CSS-aware bundler: emitted JS contains `import "./x.css"` side effects. rspack: `{ test: /\.css$/i, type: "css/auto" }`. No SSR/Node usage without a bundler.
 - ESM only, no CJS build.
 - Unused components tree-shake away (`sideEffects: ["**/*.css"]`).
 - `@base-ui/react` is a regular dependency here — if your app also depends on it directly, keep the exact version in sync to avoid duplicate instances (broken portals/contexts).
-
-## Develop
-
-- `yarn dev` — component gallery (rspack dev server).
-- `yarn build` / `rslib build --watch` — rebuild dist while consumers run.
-- `yarn typecheck`.
-
-New component: add `src/ui/<name>/`, re-export from `src/index.tsx`; a colocated `demo.tsx` (`export const meta = { title }` + default component) auto-appears in the gallery.
