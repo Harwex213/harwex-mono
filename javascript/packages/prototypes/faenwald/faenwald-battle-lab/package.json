@@ -2,7 +2,19 @@
   "name": "@hw/faenwald-battle-lab",
   "type": "module",
   "scripts": {
+    "dev": "rspack serve",
+    "build": "rspack build",
     "test": "node --test 'src/**/*.test.js'"
+  },
+  "dependencies": {
+    "@base-ui/react": "1.6.0",
+    "htm": "3.1.1",
+    "preact": "10.29.7"
+  },
+  "devDependencies": {
+    "@rspack/cli": "2.1.4",
+    "@rspack/core": "2.1.4",
+    "@rspack/dev-server": "2.1.0"
   },
   "browserslist": [
     "last 1 version",

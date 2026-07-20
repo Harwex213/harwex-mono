@@ -1,0 +1,36 @@
+.dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+}
+
+.dialog-viewport {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+}
+
+.dialog-popup {
+  min-width: 20rem;
+  max-width: 90vw;
+  padding: 1.5rem;
+  border: 1px solid #4a4a5a;
+  border-radius: 8px;
+  background: #24242f;
+  color: #e8e8f0;
+}
+
+.dialog-title {
+  margin: 0 0 0.5rem;
+  font-size: 1.25rem;
+}
+
+.dialog-description {
+  margin: 0 0 1rem;
+  color: #a8a8b8;
+}
+
+.dialog-close {
+  margin-top: 1rem;
+}

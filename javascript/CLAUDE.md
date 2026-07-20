@@ -3,6 +3,7 @@
 #### Javascript conventions
 
 - No single-line `if` statements: always braces, body on its own line (`if (!unit) return;` → `if (!unit) {\n  return;\n}`). Same for `else` and loops.
+- No single-quote string literal
 
 #### CSS conventions
 

@@ -1,36 +1,71 @@
-import { h, render } from 'https://esm.sh/preact';
-import { useState } from 'https://esm.sh/preact/hooks';
-import htm from 'https://esm.sh/htm';
+import { html, render } from 'htm/preact';
+import { useState } from 'preact/hooks';
+import { Button } from './components/button.js';
+import { Combobox } from './components/combobox.js';
+import { Dialog } from './components/dialog.js';
+import { Drawer } from './components/drawer.js';
+import './styles.css';
 
-// Initialize htm with Preact
-const html = htm.bind(h);
+const UNIT_TYPES = [
+  'Archers',
+  'Crossbowmen',
+  'Pikemen',
+  'Swordsmen',
+  'Knights',
+  'Light Cavalry',
+  'Siege Engineers',
+];
 
-function Main(props) {
-  return h("p", null, `Clicked x${props.amount} times`);
-}
-
-function App(props) {
-  const [value, setValue] = useState(0);
+function App() {
+  const [count, setCount] = useState(0);
+  const [unit, setUnit] = useState(null);
 
   const onClick = () => {
-    setValue(value + 1);
+    setCount(count + 1);
   };
 
   return html`
-      <header>
-          <h1 onClick=${onClick}>Hello ${props.name}!</h1>
-      </header>
-      <main>
-          <${Main} amount=${value}/>
-      </main>
+      <h1>Faenwald — Battle Lab</h1>
+
+      <section class="demo">
+          <h2>Button</h2>
+          <${Button} onClick=${onClick}>Clicked x${count} times<//>
+      </section>
+
+      <section class="demo">
+          <h2>Combobox</h2>
+          <${Combobox}
+              items=${UNIT_TYPES}
+              label="Unit type"
+              placeholder="Pick a unit"
+              onValueChange=${setUnit}
+          />
+          <p class="demo-note">Selected: ${unit ?? '—'}</p>
+      </section>
+
+      <section class="demo">
+          <h2>Dialog</h2>
+          <${Dialog}
+              trigger="Open dialog"
+              title="Battle report"
+              description="A portal-rendered modal with a focus trap."
+          >
+              <p>If you can read this, Base UI's Dialog survived preact/compat.</p>
+          <//>
+      </section>
+
+      <section class="demo">
+          <h2>Drawer</h2>
+          <${Drawer} trigger="Open drawer" title="Army roster">
+              <p>Slides from the bottom edge; swipe down to dismiss.</p>
+          <//>
+      </section>
   `;
 }
 
-console.log(`<${App} name="World"/>`);
-
 render(
   html`
-      <${App} name="World"/>
+      <${App}/>
   `,
-  document.querySelector("#container")
+  document.querySelector('#container'),
 );

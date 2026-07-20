@@ -1,0 +1,52 @@
+.drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  opacity: calc(1 - var(--drawer-swipe-progress));
+}
+
+.drawer-backdrop[data-swiping] {
+  transition-duration: 0ms;
+}
+
+.drawer-viewport {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+}
+
+.drawer-popup {
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  pointer-events: auto;
+  transform: translateY(calc(var(--drawer-snap-point-offset) + var(--drawer-swipe-movement-y)));
+  transition: transform 0.3s ease;
+}
+
+.drawer-popup[data-starting-style],
+.drawer-popup[data-ending-style] {
+  transform: translateY(100%);
+}
+
+.drawer-popup[data-swiping] {
+  transition-duration: 0ms;
+}
+
+.drawer-content {
+  padding: 1.5rem;
+  border-top: 1px solid #4a4a5a;
+  border-radius: 12px 12px 0 0;
+  background: #24242f;
+  color: #e8e8f0;
+}
+
+.drawer-title {
+  margin: 0 0 0.75rem;
+  font-size: 1.25rem;
+}
+
+.drawer-close {
+  margin-top: 1rem;
+}

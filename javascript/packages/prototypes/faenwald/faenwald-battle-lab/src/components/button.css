@@ -1,0 +1,23 @@
+.button {
+  padding: 0.5rem 1rem;
+  border: 1px solid #4a4a5a;
+  border-radius: 6px;
+  background: #2e2e3e;
+  color: #e8e8f0;
+  font: inherit;
+  cursor: pointer;
+}
+
+.button:hover {
+  background: #3a3a4e;
+}
+
+.button:focus-visible {
+  outline: 2px solid #8a8aff;
+  outline-offset: 2px;
+}
+
+.button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
