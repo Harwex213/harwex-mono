@@ -5,6 +5,105 @@ __metadata:
   version: 8
   cacheKey: 10
 
+"@ast-grep/napi-darwin-arm64@npm:0.37.0":
+  version: 0.37.0
+  resolution: "@ast-grep/napi-darwin-arm64@npm:0.37.0"
+  conditions: os=darwin & cpu=arm64
+  languageName: node
+  linkType: hard
+
+"@ast-grep/napi-darwin-x64@npm:0.37.0":
+  version: 0.37.0
+  resolution: "@ast-grep/napi-darwin-x64@npm:0.37.0"
+  conditions: os=darwin & cpu=x64
+  languageName: node
+  linkType: hard
+
+"@ast-grep/napi-linux-arm64-gnu@npm:0.37.0":
+  version: 0.37.0
+  resolution: "@ast-grep/napi-linux-arm64-gnu@npm:0.37.0"
+  conditions: os=linux & cpu=arm64 & libc=glibc
+  languageName: node
+  linkType: hard
+
+"@ast-grep/napi-linux-arm64-musl@npm:0.37.0":
+  version: 0.37.0
+  resolution: "@ast-grep/napi-linux-arm64-musl@npm:0.37.0"
+  conditions: os=linux & cpu=arm64 & libc=musl
+  languageName: node
+  linkType: hard
+
+"@ast-grep/napi-linux-x64-gnu@npm:0.37.0":
+  version: 0.37.0
+  resolution: "@ast-grep/napi-linux-x64-gnu@npm:0.37.0"
+  conditions: os=linux & cpu=x64 & libc=glibc
+  languageName: node
+  linkType: hard
+
+"@ast-grep/napi-linux-x64-musl@npm:0.37.0":
+  version: 0.37.0
+  resolution: "@ast-grep/napi-linux-x64-musl@npm:0.37.0"
+  conditions: os=linux & cpu=x64 & libc=musl
+  languageName: node
+  linkType: hard
+
+"@ast-grep/napi-win32-arm64-msvc@npm:0.37.0":
+  version: 0.37.0
+  resolution: "@ast-grep/napi-win32-arm64-msvc@npm:0.37.0"
+  conditions: os=win32 & cpu=arm64
+  languageName: node
+  linkType: hard
+
+"@ast-grep/napi-win32-ia32-msvc@npm:0.37.0":
+  version: 0.37.0
+  resolution: "@ast-grep/napi-win32-ia32-msvc@npm:0.37.0"
+  conditions: os=win32 & cpu=ia32
+  languageName: node
+  linkType: hard
+
+"@ast-grep/napi-win32-x64-msvc@npm:0.37.0":
+  version: 0.37.0
+  resolution: "@ast-grep/napi-win32-x64-msvc@npm:0.37.0"
+  conditions: os=win32 & cpu=x64
+  languageName: node
+  linkType: hard
+
+"@ast-grep/napi@npm:0.37.0":
+  version: 0.37.0
+  resolution: "@ast-grep/napi@npm:0.37.0"
+  dependencies:
+    "@ast-grep/napi-darwin-arm64": "npm:0.37.0"
+    "@ast-grep/napi-darwin-x64": "npm:0.37.0"
+    "@ast-grep/napi-linux-arm64-gnu": "npm:0.37.0"
+    "@ast-grep/napi-linux-arm64-musl": "npm:0.37.0"
+    "@ast-grep/napi-linux-x64-gnu": "npm:0.37.0"
+    "@ast-grep/napi-linux-x64-musl": "npm:0.37.0"
+    "@ast-grep/napi-win32-arm64-msvc": "npm:0.37.0"
+    "@ast-grep/napi-win32-ia32-msvc": "npm:0.37.0"
+    "@ast-grep/napi-win32-x64-msvc": "npm:0.37.0"
+  dependenciesMeta:
+    "@ast-grep/napi-darwin-arm64":
+      optional: true
+    "@ast-grep/napi-darwin-x64":
+      optional: true
+    "@ast-grep/napi-linux-arm64-gnu":
+      optional: true
+    "@ast-grep/napi-linux-arm64-musl":
+      optional: true
+    "@ast-grep/napi-linux-x64-gnu":
+      optional: true
+    "@ast-grep/napi-linux-x64-musl":
+      optional: true
+    "@ast-grep/napi-win32-arm64-msvc":
+      optional: true
+    "@ast-grep/napi-win32-ia32-msvc":
+      optional: true
+    "@ast-grep/napi-win32-x64-msvc":
+      optional: true
+  checksum: 10/f0ec92d2843be4318eef4aba84a259ac3541792b2e0f715cf0b346b0a96246f34b600e3d37b559c8f9515ac24011599512c889121b2e039db9d486d36703bdba
+  languageName: node
+  linkType: hard
+
 "@babel/code-frame@npm:^7.27.1":
   version: 7.27.1
   resolution: "@babel/code-frame@npm:7.27.1"
@@ -2036,6 +2135,8 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@hw/faenwald-battle-prototype-v2@workspace:packages/prototypes/faenwald/faenwald-battle-prototype-v2"
   dependencies:
+    "@hw/faenwald-uikit": "workspace:"
+    "@preact/signals": "npm:2.9.4"
     "@rspack/cli": "npm:2.1.4"
     "@rspack/core": "npm:2.1.4"
     "@rspack/dev-server": "npm:2.1.0"
@@ -2145,16 +2246,21 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@hw/faenwald-uikit@workspace:packages/prototypes/faenwald/faenwald-uikit":
+"@hw/faenwald-uikit@workspace:, @hw/faenwald-uikit@workspace:packages/prototypes/faenwald/faenwald-uikit":
   version: 0.0.0-use.local
   resolution: "@hw/faenwald-uikit@workspace:packages/prototypes/faenwald/faenwald-uikit"
   dependencies:
     "@base-ui/react": "npm:1.6.0"
-    "@vitejs/plugin-react-swc": "npm:4.1.0"
+    "@rslib/core": "npm:0.23.2"
+    "@rspack/cli": "npm:2.1.4"
+    "@rspack/core": "npm:2.1.4"
+    "@rspack/dev-server": "npm:2.1.0"
     react: "npm:19.2.0"
     react-dom: "npm:19.2.0"
     typescript: "npm:5.9.3"
-    vite: "npm:7.1.10"
+  peerDependencies:
+    react: ^19.0.0
+    react-dom: ^19.0.0
   languageName: unknown
   linkType: soft
 
@@ -2309,6 +2415,12 @@ __metadata:
   resolution: "@hw/playground@workspace:packages/learning/playground"
   dependencies:
     "@hw/utils": "npm:1.0.0"
+  languageName: unknown
+  linkType: soft
+
+"@hw/preact-signals@workspace:packages/learning/libs-investigate/preact-signals":
+  version: 0.0.0-use.local
+  resolution: "@hw/preact-signals@workspace:packages/learning/libs-investigate/preact-signals"
   languageName: unknown
   linkType: soft
 
@@ -3727,6 +3839,43 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@rsbuild/core@npm:~2.1.4":
+  version: 2.1.6
+  resolution: "@rsbuild/core@npm:2.1.6"
+  dependencies:
+    "@rspack/core": "npm:~2.1.4"
+    "@swc/helpers": "npm:^0.5.23"
+  peerDependencies:
+    core-js: ">= 3.0.0"
+  peerDependenciesMeta:
+    core-js:
+      optional: true
+  bin:
+    rsbuild: ./bin/rsbuild.js
+  checksum: 10/666b82aa67d6eee8724e6733789eff7fe9a989c390a579a951c2b6185f6bf3f8fcf0782fc1110db38cc66c4c9b77176407c97e1404bf6b32504afbd014f3df97
+  languageName: node
+  linkType: hard
+
+"@rslib/core@npm:0.23.2":
+  version: 0.23.2
+  resolution: "@rslib/core@npm:0.23.2"
+  dependencies:
+    "@rsbuild/core": "npm:~2.1.4"
+    rsbuild-plugin-dts: "npm:0.23.2"
+  peerDependencies:
+    "@microsoft/api-extractor": ^7
+    typescript: ^5 || ^6 || ^7.0.1-0
+  peerDependenciesMeta:
+    "@microsoft/api-extractor":
+      optional: true
+    typescript:
+      optional: true
+  bin:
+    rslib: ./bin/rslib.js
+  checksum: 10/66d52535f04673e36bb6da982e82b1428baaf5ad6a480b50638688df912e00555535ebddf93c8f7840695cd9fdc8823092724f470065ceeb0a8c6dd541b4a105
+  languageName: node
+  linkType: hard
+
 "@rspack/binding-darwin-arm64@npm:2.1.2":
   version: 2.1.2
   resolution: "@rspack/binding-darwin-arm64@npm:2.1.2"
@@ -4008,7 +4157,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@rspack/core@npm:2.1.4":
+"@rspack/core@npm:2.1.4, @rspack/core@npm:~2.1.4":
   version: 2.1.4
   resolution: "@rspack/core@npm:2.1.4"
   dependencies:
@@ -11311,6 +11460,27 @@ __metadata:
   bin:
     rollup: dist/bin/rollup
   checksum: 10/ca5e2ba511d29accc0a3e02546d777a95748b757040f907e8c58c236b507f8791ab18dbe7a86085c1e7746c8c246a94a1f1895d9e29404e30be46cf1a7405dce
+  languageName: node
+  linkType: hard
+
+"rsbuild-plugin-dts@npm:0.23.2":
+  version: 0.23.2
+  resolution: "rsbuild-plugin-dts@npm:0.23.2"
+  dependencies:
+    "@ast-grep/napi": "npm:0.37.0"
+  peerDependencies:
+    "@microsoft/api-extractor": ^7
+    "@rsbuild/core": ^1.0.0 || ^2.0.0-0
+    "@typescript/native-preview": ^7.0.0-0
+    typescript: ^5 || ^6 || ^7.0.1-0
+  peerDependenciesMeta:
+    "@microsoft/api-extractor":
+      optional: true
+    "@typescript/native-preview":
+      optional: true
+    typescript:
+      optional: true
+  checksum: 10/802175a3cc3d60ee200f300e45affb110121051adfbe1e8426ea44da8b4ca436b362357325e22cc6cabbc8cb6b1b441c59d7564ee19a6c6c2da69eb4a7396784
   languageName: node
   linkType: hard
 

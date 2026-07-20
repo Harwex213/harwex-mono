@@ -1,22 +1,27 @@
 import { UNIT_TYPES } from "../data/unit.js";
-import { TERRAINS, DEFAULT_TERRAIN_ID } from "../data/terrains.js";
+import { DEFAULT_TERRAIN_ID, TERRAINS } from "../data/terrains.js";
 import { BATTLE_CONFIG_MODULE, SIDES } from "./battle-config.js";
 import { advanceCost, effectiveSpeed } from "./movement-cost.js";
 import { unitActivationOrder } from "./turn-order.js";
 import {
-  zoneOf,
-  zoneAtRange,
-  frontalConeReach,
-  hexDistance,
-  HEX_ZONE,
   directionTo,
-  neighbor,
   flankHexes,
+  frontalConeReach,
+  HEX_ZONE,
+  hexDistance,
+  neighbor,
+  zoneAtRange,
+  zoneOf,
 } from "./hex-facing.js";
-import { firstActiveUnitGroup, nextActiveUnitGroup, getUnitGroupType, ACTIVE_UNIT_GROUP_TYPE } from "./active-unit-group.js";
-import { resolveAttack, elevationDamageMult, chargeDamageMult, formationCoverMult } from "./damage.js";
+import {
+  ACTIVE_UNIT_GROUP_TYPE,
+  firstActiveUnitGroup,
+  getUnitGroupType,
+  nextActiveUnitGroup
+} from "./active-unit-group.js";
+import { chargeDamageMult, elevationDamageMult, formationCoverMult, resolveAttack } from "./damage.js";
 import { fleePath } from "./flee-path.js";
-import { directLosBlocked, arcBlocked } from "./line-of-sight.js";
+import { arcBlocked, directLosBlocked } from "./line-of-sight.js";
 
 const BATTLE_PHASE = {
   DISPOSITION: "disposition",
@@ -116,7 +121,7 @@ const beginActivation = (state, unit, map) => {
  * @returns {ActiveBattle}
  */
 const createActiveBattle = () => ({
-  /** `BATTLE_PHASE`, or null while no battle has been started */
+  /** `ACTIVE_BATTLE_PHASE`, or null while no battle has been started */
   phase: null,
   mapId: null,
   units: [],

@@ -1,4 +1,4 @@
-import { SQRT3 } from "./constants.js";
+import { SQRT3 } from "./constants/math.js";
 
 const renderPointTopHexagon = (ctx, x, y, height, styling = {}) => {
   const r = height / 2; // circumradius: center to the top/bottom vertex

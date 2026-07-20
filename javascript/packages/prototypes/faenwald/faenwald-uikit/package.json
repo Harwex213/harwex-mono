@@ -3,25 +3,41 @@
   "description": "Full UI Kit built on top of Base UI (@base-ui/react) primitives",
   "private": true,
   "type": "module",
+  "sideEffects": [
+    "**/*.css"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./theme.css": "./dist/theme.css"
+  },
   "browserslist": [
     "last 1 version",
     "> 1%",
     "not dead"
   ],
   "scripts": {
-    "dev": "yarn vite dev",
-    "build": "yarn vite build",
-    "preview": "yarn vite preview",
+    "dev": "rspack serve",
+    "build": "rslib build",
+    "prepare": "rslib build",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@base-ui/react": "1.6.0",
-    "react": "19.2.0",
-    "react-dom": "19.2.0"
+    "@base-ui/react": "1.6.0"
+  },
+  "peerDependencies": {
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
   },
   "devDependencies": {
-    "@vitejs/plugin-react-swc": "4.1.0",
-    "typescript": "5.9.3",
-    "vite": "7.1.10"
+    "@rslib/core": "0.23.2",
+    "@rspack/cli": "2.1.4",
+    "@rspack/core": "2.1.4",
+    "@rspack/dev-server": "2.1.0",
+    "react": "19.2.0",
+    "react-dom": "19.2.0",
+    "typescript": "5.9.3"
   }
 }

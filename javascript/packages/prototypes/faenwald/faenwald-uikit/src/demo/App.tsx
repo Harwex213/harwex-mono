@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react"
 import styles from "./App.module.css"
-import { cn } from "./ui/utils"
+import { cn } from "../ui/utils"
 
 /**
  * Each component ships a `demo.tsx` exporting:
@@ -13,9 +13,14 @@ type DemoModule = {
   default: React.ComponentType
 }
 
-const modules = import.meta.glob<DemoModule>("./ui/*/demo.tsx", { eager: true })
+const context = import.meta.webpackContext("../ui", {
+  recursive: true,
+  regExp: /demo\.tsx$/,
+})
 
-const demos = Object.values(modules)
+const demos = context
+  .keys()
+  .map((key) => context(key) as DemoModule)
   .map((m) => ({ title: m.meta.title, Component: m.default }))
   .sort((a, b) => a.title.localeCompare(b.title))
 

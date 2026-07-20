@@ -1,9 +1,14 @@
-import { signal } from "@hw/signals";
+import { signal } from "@preact/signals";
 
 const battleConfig = {
-  mapId: signal(null),
+  mapId: signal(""),
   attacker: signal([]),
   defender: signal([]),
 };
 
-const MODEL = {};
+const VIEW_MODEL = {
+  battleConfig: battleConfig,
+};
+
+export { VIEW_MODEL };
+
