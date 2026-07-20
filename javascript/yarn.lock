@@ -1889,12 +1889,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@hw/battle-prototype@workspace:packages/prototypes/faenwald/faenwald-battle-prototype":
-  version: 0.0.0-use.local
-  resolution: "@hw/battle-prototype@workspace:packages/prototypes/faenwald/faenwald-battle-prototype"
-  languageName: unknown
-  linkType: soft
-
 "@hw/browser-scroll-restoration@workspace:packages/learning/scroll-restoration/browser-scroll-restoration":
   version: 0.0.0-use.local
   resolution: "@hw/browser-scroll-restoration@workspace:packages/learning/scroll-restoration/browser-scroll-restoration"
@@ -2002,6 +1996,18 @@ __metadata:
     react-dom: "npm:19.2.0"
     typescript: "npm:5.9.3"
     vite: "npm:7.1.10"
+  languageName: unknown
+  linkType: soft
+
+"@hw/faenwald-battle-lab@workspace:packages/prototypes/faenwald/faenwald-battle-lab":
+  version: 0.0.0-use.local
+  resolution: "@hw/faenwald-battle-lab@workspace:packages/prototypes/faenwald/faenwald-battle-lab"
+  languageName: unknown
+  linkType: soft
+
+"@hw/faenwald-battle-prototype@workspace:packages/prototypes/faenwald/faenwald-battle-prototype":
+  version: 0.0.0-use.local
+  resolution: "@hw/faenwald-battle-prototype@workspace:packages/prototypes/faenwald/faenwald-battle-prototype"
   languageName: unknown
   linkType: soft
 

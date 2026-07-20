@@ -1,5 +1,5 @@
 {
-  "name": "@hw/faenwald-battle-prototype",
+  "name": "@hw/faenwald-battle-lab",
   "type": "module",
   "scripts": {
     "test": "node --test 'src/**/*.test.js'"
