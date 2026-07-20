@@ -1,0 +1,179 @@
+.root {
+  position: relative;
+  display: flex;
+  max-width: max-content;
+}
+
+.list {
+  display: flex;
+  align-items: center;
+  gap: var(--uk-space-1);
+  padding: var(--uk-space-1);
+  border: 1px solid var(--uk-border);
+  border-radius: var(--uk-radius);
+  background: var(--uk-panel);
+  box-shadow: var(--uk-shadow-sm);
+  list-style: none;
+  margin: 0;
+}
+
+.item {
+  list-style: none;
+}
+
+.trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--uk-space-2);
+  height: 34px;
+  padding: 0 var(--uk-space-3);
+  border: none;
+  border-radius: var(--uk-radius-sm);
+  background: transparent;
+  color: var(--uk-fg);
+  font-size: 0.875rem;
+  font-family: var(--uk-font-sans);
+  font-weight: 500;
+  cursor: default;
+  user-select: none;
+  transition: background var(--uk-duration) var(--uk-ease);
+}
+.trigger:hover {
+  background: var(--uk-hover);
+}
+.trigger[data-popup-open] {
+  background: var(--uk-primary-subtle);
+  color: var(--uk-primary);
+}
+.trigger:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--uk-ring);
+}
+
+.icon {
+  display: inline-flex;
+  color: var(--uk-fg-muted);
+  transition: transform var(--uk-duration) var(--uk-ease);
+}
+.trigger[data-popup-open] .icon {
+  transform: rotate(180deg);
+}
+
+.backdrop {
+  position: fixed;
+  inset: 0;
+}
+
+.positioner {
+  outline: none;
+  z-index: 50;
+}
+
+.popup {
+  box-sizing: border-box;
+  position: relative;
+  border: 1px solid var(--uk-border);
+  border-radius: var(--uk-radius);
+  background: var(--uk-panel-elevated);
+  box-shadow: var(--uk-shadow-lg);
+  color: var(--uk-fg);
+  outline: none;
+  transform-origin: var(--transform-origin);
+  transition: opacity var(--uk-duration) var(--uk-ease),
+    transform var(--uk-duration) var(--uk-ease);
+}
+.popup[data-starting-style],
+.popup[data-ending-style] {
+  opacity: 0;
+  transform: scale(0.96);
+}
+
+.viewport {
+  position: relative;
+  width: var(--popup-width);
+  height: var(--popup-height);
+  overflow: hidden;
+  transition: width var(--uk-duration) var(--uk-ease),
+    height var(--uk-duration) var(--uk-ease);
+}
+
+.content {
+  display: grid;
+  gap: var(--uk-space-1);
+  width: 340px;
+  padding: var(--uk-space-2);
+}
+.content[data-starting-style],
+.content[data-ending-style] {
+  opacity: 0;
+}
+
+.link {
+  display: block;
+  padding: var(--uk-space-2) var(--uk-space-3);
+  border-radius: var(--uk-radius-sm);
+  color: var(--uk-fg);
+  font-size: 0.875rem;
+  text-decoration: none;
+  outline: none;
+  transition: background var(--uk-duration) var(--uk-ease);
+}
+.link:hover {
+  background: var(--uk-hover);
+}
+.link[data-highlighted],
+.link:focus-visible {
+  background: var(--uk-primary);
+  color: var(--uk-primary-fg);
+}
+.link[data-active] {
+  color: var(--uk-primary);
+  font-weight: 600;
+}
+
+/* Top-level link that sits in the List alongside triggers. */
+.navLink {
+  display: inline-flex;
+  align-items: center;
+  height: 34px;
+  padding: 0 var(--uk-space-3);
+  border-radius: var(--uk-radius-sm);
+  color: var(--uk-fg);
+  font-size: 0.875rem;
+  font-weight: 500;
+  text-decoration: none;
+  outline: none;
+  transition: background var(--uk-duration) var(--uk-ease);
+}
+.navLink:hover {
+  background: var(--uk-hover);
+}
+.navLink:focus-visible {
+  box-shadow: 0 0 0 3px var(--uk-ring);
+}
+
+.linkTitle {
+  display: block;
+  font-weight: 600;
+}
+.linkDesc {
+  display: block;
+  margin-top: 2px;
+  color: var(--uk-fg-muted);
+  font-size: 0.8125rem;
+}
+.link[data-highlighted] .linkDesc,
+.link:focus-visible .linkDesc {
+  color: var(--uk-primary-fg);
+}
+
+.arrow {
+  display: flex;
+}
+.arrow[data-side="top"] {
+  bottom: -9px;
+  rotate: 180deg;
+}
+.arrow[data-side="bottom"] {
+  top: -9px;
+}

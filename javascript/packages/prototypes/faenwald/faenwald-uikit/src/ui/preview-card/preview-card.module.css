@@ -1,0 +1,106 @@
+.trigger {
+  color: var(--uk-primary);
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+  border-radius: var(--uk-radius-sm);
+}
+.trigger:hover {
+  color: var(--uk-primary-hover);
+}
+.trigger:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--uk-ring);
+}
+
+.positioner {
+  z-index: 50;
+}
+
+.popup {
+  box-sizing: border-box;
+  width: 300px;
+  padding: var(--uk-space-4);
+  border: 1px solid var(--uk-border);
+  border-radius: var(--uk-radius-lg);
+  background: var(--uk-panel-elevated);
+  color: var(--uk-fg);
+  box-shadow: var(--uk-shadow-lg);
+  transform-origin: var(--transform-origin);
+  transition:
+    opacity var(--uk-duration) var(--uk-ease),
+    transform var(--uk-duration) var(--uk-ease);
+}
+.popup[data-starting-style],
+.popup[data-ending-style] {
+  opacity: 0;
+  transform: scale(0.96);
+}
+
+.arrow {
+  color: var(--uk-border);
+}
+.arrow[data-side="bottom"] {
+  transform: rotate(180deg);
+}
+.arrow[data-side="left"] {
+  transform: rotate(-90deg);
+}
+.arrow[data-side="right"] {
+  transform: rotate(90deg);
+}
+
+.arrowSvg {
+  display: block;
+}
+.arrowFill {
+  fill: var(--uk-panel-elevated);
+}
+.arrowStroke {
+  stroke: var(--uk-border);
+}
+
+/* demo profile card helpers */
+.profileHead {
+  display: flex;
+  align-items: center;
+  gap: var(--uk-space-3);
+}
+.avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  flex-shrink: 0;
+  border-radius: var(--uk-radius-full);
+  background: var(--uk-primary-subtle);
+  color: var(--uk-primary);
+  font-weight: 700;
+}
+.name {
+  font-weight: 700;
+}
+.handle {
+  color: var(--uk-fg-muted);
+  font-size: 13px;
+}
+.bio {
+  margin: var(--uk-space-3) 0 0;
+  color: var(--uk-fg-muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.stats {
+  display: flex;
+  gap: var(--uk-space-4);
+  margin-top: var(--uk-space-3);
+  padding-top: var(--uk-space-3);
+  border-top: 1px solid var(--uk-border);
+  font-size: 13px;
+  color: var(--uk-fg-muted);
+}
+.stats strong {
+  color: var(--uk-fg);
+}

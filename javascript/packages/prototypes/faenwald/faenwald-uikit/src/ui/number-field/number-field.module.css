@@ -1,0 +1,80 @@
+.root {
+  display: flex;
+  flex-direction: column;
+  gap: var(--uk-space-1);
+  color: var(--uk-fg);
+}
+
+.group {
+  display: inline-flex;
+  align-items: stretch;
+  height: 36px;
+  border: 1px solid var(--uk-border);
+  border-radius: var(--uk-radius);
+  background: var(--uk-panel);
+  overflow: hidden;
+  transition: border-color var(--uk-duration) var(--uk-ease),
+    box-shadow var(--uk-duration) var(--uk-ease);
+}
+.group:focus-within {
+  border-color: var(--uk-primary);
+  box-shadow: 0 0 0 3px var(--uk-ring);
+}
+
+.input {
+  width: 6ch;
+  border: none;
+  background: transparent;
+  color: var(--uk-fg);
+  text-align: center;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  padding: 0 var(--uk-space-2);
+}
+.input:focus {
+  outline: none;
+}
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  flex-shrink: 0;
+  border: none;
+  background: var(--uk-bg-subtle);
+  color: var(--uk-fg-muted);
+  cursor: pointer;
+  transition: background var(--uk-duration) var(--uk-ease),
+    color var(--uk-duration) var(--uk-ease);
+}
+.button:hover {
+  background: var(--uk-hover);
+  color: var(--uk-fg);
+}
+.button:active {
+  background: var(--uk-active);
+}
+.button:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--uk-primary);
+}
+.button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.scrubArea {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--uk-space-2);
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: ew-resize;
+  user-select: none;
+}
+
+.scrubCursor {
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.3));
+  color: var(--uk-fg);
+}

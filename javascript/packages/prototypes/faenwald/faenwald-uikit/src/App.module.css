@@ -1,0 +1,132 @@
+.shell {
+  display: grid;
+  grid-template-columns: 264px 1fr;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--uk-space-3);
+  padding: var(--uk-space-4);
+  border-right: 1px solid var(--uk-border);
+  background: var(--uk-bg-subtle);
+  overflow: hidden;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: var(--uk-space-3);
+}
+
+.brandDot {
+  width: 28px;
+  height: 28px;
+  border-radius: var(--uk-radius);
+  background: linear-gradient(135deg, var(--uk-primary), #a855f7);
+  box-shadow: var(--uk-shadow-sm);
+}
+
+.brandTitle {
+  font-weight: 700;
+  font-size: 15px;
+}
+
+.brandSub {
+  font-size: 12px;
+  color: var(--uk-fg-subtle);
+}
+
+.search {
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: var(--uk-radius);
+  border: 1px solid var(--uk-border);
+  background: var(--uk-panel);
+  color: var(--uk-fg);
+  outline: none;
+}
+.search:focus-visible {
+  border-color: var(--uk-primary);
+  box-shadow: 0 0 0 3px var(--uk-ring);
+}
+
+.nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-y: auto;
+  flex: 1;
+  margin: 0 calc(-1 * var(--uk-space-2));
+  padding: 0 var(--uk-space-2);
+}
+
+.navItem {
+  text-align: left;
+  padding: 7px 10px;
+  border-radius: var(--uk-radius-sm);
+  color: var(--uk-fg-muted);
+  font-size: 13px;
+}
+.navItem:hover {
+  background: var(--uk-hover);
+  color: var(--uk-fg);
+}
+.navItemActive,
+.navItemActive:hover {
+  background: var(--uk-primary);
+  color: var(--uk-primary-fg);
+  font-weight: 600;
+}
+
+.empty {
+  color: var(--uk-fg-subtle);
+  font-size: 13px;
+  padding: 8px 10px;
+}
+
+.sidebarFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--uk-fg-subtle);
+  padding-top: var(--uk-space-2);
+  border-top: 1px solid var(--uk-border);
+}
+
+.themeBtn {
+  padding: 5px 10px;
+  border-radius: var(--uk-radius-full);
+  border: 1px solid var(--uk-border);
+  background: var(--uk-panel);
+  color: var(--uk-fg);
+  font-size: 12px;
+}
+.themeBtn:hover {
+  background: var(--uk-hover);
+}
+
+.main {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.header {
+  padding: var(--uk-space-5) var(--uk-space-6) var(--uk-space-4);
+  border-bottom: 1px solid var(--uk-border);
+}
+
+.title {
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.stage {
+  flex: 1;
+  overflow: auto;
+  padding: var(--uk-space-6);
+}

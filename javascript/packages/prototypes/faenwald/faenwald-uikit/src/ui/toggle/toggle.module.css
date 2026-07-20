@@ -1,0 +1,37 @@
+.root {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 1px solid var(--uk-border);
+  border-radius: var(--uk-radius);
+  background: var(--uk-panel);
+  color: var(--uk-fg-muted);
+  cursor: pointer;
+  transition: background var(--uk-duration) var(--uk-ease),
+    color var(--uk-duration) var(--uk-ease),
+    border-color var(--uk-duration) var(--uk-ease);
+}
+
+.root:hover {
+  background: var(--uk-hover);
+  color: var(--uk-fg);
+}
+
+.root:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--uk-ring);
+}
+
+.root[data-pressed] {
+  background: var(--uk-primary-subtle);
+  border-color: var(--uk-primary);
+  color: var(--uk-primary);
+}
+
+.root[data-disabled] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

@@ -2145,6 +2145,19 @@ __metadata:
   languageName: unknown
   linkType: soft
 
+"@hw/faenwald-uikit@workspace:packages/prototypes/faenwald/faenwald-uikit":
+  version: 0.0.0-use.local
+  resolution: "@hw/faenwald-uikit@workspace:packages/prototypes/faenwald/faenwald-uikit"
+  dependencies:
+    "@base-ui/react": "npm:1.6.0"
+    "@vitejs/plugin-react-swc": "npm:4.1.0"
+    react: "npm:19.2.0"
+    react-dom: "npm:19.2.0"
+    typescript: "npm:5.9.3"
+    vite: "npm:7.1.10"
+  languageName: unknown
+  linkType: soft
+
 "@hw/fantasy-map@workspace:packages/prototypes/fantasy-map":
   version: 0.0.0-use.local
   resolution: "@hw/fantasy-map@workspace:packages/prototypes/fantasy-map"
