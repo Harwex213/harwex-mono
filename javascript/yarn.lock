@@ -1923,7 +1923,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@hw/canvas@workspace:packages/learning/canvas"
   dependencies:
-    "@preact/signals": "npm:2.0.4"
+    "@preact/signals": "npm:2.9.4"
     typescript: "npm:5.9.3"
     vite: "npm:7.1.10"
   languageName: unknown
@@ -2023,6 +2023,19 @@ __metadata:
   resolution: "@hw/faenwald-battle-lab@workspace:packages/prototypes/faenwald/faenwald-battle-lab"
   dependencies:
     "@base-ui/react": "npm:1.6.0"
+    "@preact/signals": "npm:2.9.4"
+    "@rspack/cli": "npm:2.1.4"
+    "@rspack/core": "npm:2.1.4"
+    "@rspack/dev-server": "npm:2.1.0"
+    htm: "npm:3.1.1"
+    preact: "npm:10.29.7"
+  languageName: unknown
+  linkType: soft
+
+"@hw/faenwald-battle-prototype-v2@workspace:packages/prototypes/faenwald/faenwald-battle-prototype-v2":
+  version: 0.0.0-use.local
+  resolution: "@hw/faenwald-battle-prototype-v2@workspace:packages/prototypes/faenwald/faenwald-battle-prototype-v2"
+  dependencies:
     "@rspack/cli": "npm:2.1.4"
     "@rspack/core": "npm:2.1.4"
     "@rspack/dev-server": "npm:2.1.0"
@@ -2336,7 +2349,7 @@ __metadata:
     "@hw/project-may-game-model": "workspace:*"
     "@hw/typescript-config": "workspace:*"
     "@hw/webpack-config": "workspace:*"
-    "@preact/signals": "npm:2.0.4"
+    "@preact/signals": "npm:2.9.4"
     preact: "npm:10.29.7"
     webpack: "npm:5.99.9"
   languageName: unknown
@@ -2938,6 +2951,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@preact/signals-core@npm:^1.14.4":
+  version: 1.14.4
+  resolution: "@preact/signals-core@npm:1.14.4"
+  checksum: 10/11b948fd5c1420100bacbf384cd27fd3e55db093075b370f15b3029ce29921b2f7bd60b31ed19a8a6dbbba6ce2fa27ec2f2de5ef6335635f3c04ac3b753bf39c
+  languageName: node
+  linkType: hard
+
 "@preact/signals-react@npm:3.0.1":
   version: 3.0.1
   resolution: "@preact/signals-react@npm:3.0.1"
@@ -2962,14 +2982,14 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@preact/signals@npm:2.0.4":
-  version: 2.0.4
-  resolution: "@preact/signals@npm:2.0.4"
+"@preact/signals@npm:2.9.4":
+  version: 2.9.4
+  resolution: "@preact/signals@npm:2.9.4"
   dependencies:
-    "@preact/signals-core": "npm:^1.7.0"
+    "@preact/signals-core": "npm:^1.14.4"
   peerDependencies:
-    preact: ">= 10.25.0"
-  checksum: 10/c70386d5485b51865885d6062331d6af8098f15d6ea2a4a57d6100882497cb3349a1642898974ddce46a59b72b639f8ca24a672b60fcda561058fa73ba22ba75
+    preact: ">= 10.25.0 || >=11.0.0-0"
+  checksum: 10/0770ac0b9ea0ea9f0cb7844ca6e0f644ef35cb3b2f4ef3d7383c682f5e9ed698183358f299a6a8449312a677faa5ab8e31fe61e1f82783400901ba8076869b0d
   languageName: node
   linkType: hard
 

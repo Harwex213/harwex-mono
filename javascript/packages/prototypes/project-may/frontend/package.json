@@ -14,7 +14,7 @@
   },
   "dependencies": {
     "@hw/project-may-game-model": "workspace:*",
-    "@preact/signals": "2.0.4",
+    "@preact/signals": "2.9.4",
     "preact": "10.29.7"
   },
   "devDependencies": {
