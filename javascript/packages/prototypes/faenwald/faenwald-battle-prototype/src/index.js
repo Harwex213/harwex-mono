@@ -1,4 +1,4 @@
-import { renderBattleCreation } from "./pages/battle-creation.js";
+import { renderBattleCreation } from "./pages/battle-creation/battle-creation.js";
 import { renderModifiersCollections } from "./pages/modifiers-collection.js";
 import { renderModifiersTable } from "./pages/modifiers-table.js";
 import { renderMapsStore } from "./pages/maps-store.js";

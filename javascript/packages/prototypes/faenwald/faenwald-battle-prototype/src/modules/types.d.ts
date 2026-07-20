@@ -24,6 +24,12 @@ type BattleConfig = {
   nextUnitId: number;
 };
 
+/** `BATTLE_CONFIG_MODULE.validate()` result row — a code plus its params, no copy */
+type BattleConfigProblem =
+  | { code: "NO_MAP" }
+  | { code: "EMPTY_SIDE"; side: BattleConfigSide }
+  | { code: "UNTYPED_UNIT" };
+
 type StatId = "hp" | "attack" | "morale";
 
 type UnitStats = Record<StatId, number>;

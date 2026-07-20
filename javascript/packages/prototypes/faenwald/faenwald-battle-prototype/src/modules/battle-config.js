@@ -144,17 +144,39 @@ const computeUnitStats = (unit, modifiers) => {
 /**
  * The map is resolved through the maps state so a mapId pointing at a deleted
  * map (or an empty catalog) invalidates the config instead of crashing the
- * battle page.
+ * battle page. Problems carry codes (plus params), not copy — the UI owns
+ * the wording.
  *
+ * @param {BattleConfig} battleConfig
+ * @param {MapsState} maps
+ * @returns {BattleConfigProblem[]}
+ */
+const validateConfig = (battleConfig, maps) => {
+  const problems = [];
+
+  if (!MAPS_MODULE.getMap(maps, battleConfig.mapId)) {
+    problems.push({ code: "NO_MAP" });
+  }
+
+  for (const side of SIDES) {
+    if (battleConfig[side].length === 0) {
+      problems.push({ code: "EMPTY_SIDE", side });
+    }
+  }
+
+  if (SIDES.some((side) => battleConfig[side].some((u) => !u.typeId))) {
+    problems.push({ code: "UNTYPED_UNIT" });
+  }
+
+  return problems;
+};
+
+/**
  * @param {BattleConfig} battleConfig
  * @param {MapsState} maps
  * @returns {boolean}
  */
-const isConfigValid = (battleConfig, maps) =>
-  Boolean(MAPS_MODULE.getMap(maps, battleConfig.mapId)) &&
-  SIDES.every(
-    (side) => battleConfig[side].length > 0 && battleConfig[side].every((u) => u.typeId),
-  );
+const isConfigValid = (battleConfig, maps) => validateConfig(battleConfig, maps).length === 0;
 
 const BATTLE_CONFIG_MODULE = {
   create: createBattleConfig,
@@ -165,6 +187,7 @@ const BATTLE_CONFIG_MODULE = {
   createUnitModifier: createUnitModifier,
   removeUnitModifier: removeUnitModifier,
   removeUnit: removeUnit,
+  validate: validateConfig,
   isValid: isConfigValid,
   computeUnitStats: computeUnitStats,
 };
