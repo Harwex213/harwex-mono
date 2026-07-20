@@ -18,6 +18,24 @@ export default {
         test: /\.css$/i,
         type: "css/auto",
       },
+      {
+        test: /\.jsx$/,
+        loader: "builtin:swc-loader",
+        options: {
+          jsc: {
+            parser: {
+              syntax: "ecmascript",
+              jsx: true,
+            },
+            transform: {
+              react: {
+                runtime: "automatic",
+              },
+            },
+          },
+        },
+        type: "javascript/auto",
+      },
     ],
   },
   plugins: [

@@ -2135,12 +2135,11 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@hw/faenwald-battle-prototype-v2@workspace:packages/prototypes/faenwald/faenwald-battle-prototype-v2"
   dependencies:
-    "@hw/faenwald-uikit": "workspace:"
+    "@hw/faenwald-uikit": "workspace:*"
     "@preact/signals": "npm:2.9.4"
     "@rspack/cli": "npm:2.1.4"
     "@rspack/core": "npm:2.1.4"
     "@rspack/dev-server": "npm:2.1.0"
-    htm: "npm:3.1.1"
     preact: "npm:10.29.7"
   languageName: unknown
   linkType: soft
@@ -2246,7 +2245,7 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@hw/faenwald-uikit@workspace:, @hw/faenwald-uikit@workspace:packages/prototypes/faenwald/faenwald-uikit":
+"@hw/faenwald-uikit@workspace:*, @hw/faenwald-uikit@workspace:packages/prototypes/faenwald/faenwald-uikit":
   version: 0.0.0-use.local
   resolution: "@hw/faenwald-uikit@workspace:packages/prototypes/faenwald/faenwald-uikit"
   dependencies:

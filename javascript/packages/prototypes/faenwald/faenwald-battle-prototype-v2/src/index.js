@@ -1,17 +1,12 @@
-import { html, render } from "htm/preact";
+import { h, render } from "preact";
 import "@hw/faenwald-uikit/theme.css";
-import { App } from "./view/app.js";
+import { App } from "./view/app.jsx";
 
 const main = () => {
-
-
   render(
-    html`
-      <${App}/>
-    `,
+    h(App),
     document.querySelector('#container'),
   );
-
 };
 
 main();
