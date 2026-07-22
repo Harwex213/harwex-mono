@@ -1,6 +1,6 @@
-@import url('./components/hud.css');
-@import url('./components/build-menu.css');
-@import url('./components/game-canvas.css');
+@import url("./components/hud.css");
+@import url("./components/build-menu.css");
+@import url("./components/game-canvas.css");
 
 :root {
   --bg: #0f1216;
@@ -34,8 +34,8 @@ body {
 #app {
   display: grid;
   grid-template:
-    'hud hud' auto
-    'menu game' 1fr
+    "hud hud" auto
+    "menu game" 1fr
     / 240px 1fr;
   height: 100vh;
 }

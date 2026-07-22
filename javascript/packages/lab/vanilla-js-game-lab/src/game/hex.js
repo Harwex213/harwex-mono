@@ -1,7 +1,7 @@
 /** Axial hex math for a pointy-top hexagon board. World unit = 1 hex size. */
 
 export const RADIUS = 5
-const SQRT3 = Math.sqrt(3)
+export const SQRT3 = Math.sqrt(3)
 
 export const DIRS = [
   { q: 1, r: 0 },

@@ -4,6 +4,7 @@
 
 - No single-line `if` statements: always braces, body on its own line (`if (!unit) return;` → `if (!unit) {\n  return;\n}`). Same for `else` and loops.
 - No single-quote string literal
+- Create named exports (e.g. `export { myFunc1, myFunc2 }`) until all named state in file is exported
 
 #### CSS conventions
 

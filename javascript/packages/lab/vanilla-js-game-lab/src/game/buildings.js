@@ -17,7 +17,7 @@ export const SELL_RATIO = 0.5
 
 export const priceOf = (type, count) => Math.floor(BUILDINGS[type].cost * COST_GROWTH ** count)
 
-const blockedKeys = (s) => new Set(Object.keys(s.buildings))
+export const blockedKeys = (s) => new Set(Object.keys(s.buildings))
 
 /**
  * @param {import("../types.js").GameState} s

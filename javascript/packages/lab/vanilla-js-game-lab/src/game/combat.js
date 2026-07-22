@@ -3,8 +3,8 @@ import { enemyPos } from "./enemies.js"
 import { BUILDINGS } from "./buildings.js"
 import { addPopup } from "./effects.js"
 
-const PROJECTILE_SPEED = 6
-const HIT_RADIUS = 0.15
+export const PROJECTILE_SPEED = 6
+export const HIT_RADIUS = 0.15
 
 /** Apply damage; on kill, pay the bounty. */
 export function hitEnemy(s, enemy, damage) {

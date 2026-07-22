@@ -8,10 +8,10 @@ export const CYCLE = 60 // seconds per day
 export const DAY_HALF = 30 // calm building phase; night trickle after
 export const CLICK_COINS = 1
 export const CLICK_DAMAGE = 3
-const CLICK_RADIUS = 0.9 // world units, forgiving hitbox
+export const CLICK_RADIUS = 0.9 // world units, forgiving hitbox
 
 /** Enemies per second during the night phase. */
-const spawnRate = (day) => 0.4 + 0.12 * (day - 1)
+export const spawnRate = (day) => 0.4 + 0.12 * (day - 1)
 
 /** @returns {import("../types.js").GameState} */
 export function createInitialState() {
@@ -33,6 +33,16 @@ export function createInitialState() {
     nextId: 1,
     gameOver: false,
   }
+}
+
+/** Skip the calm day half — jump straight to tonight's wave. */
+export function skipToNight(s) {
+  if (s.gameOver || s.phase !== "day") {
+    return
+  }
+  const cycleStart = Math.floor(s.time / CYCLE) * CYCLE
+  s.time = cycleStart + DAY_HALF
+  s.phase = "night"
 }
 
 /** Advance the whole simulation one fixed step. */

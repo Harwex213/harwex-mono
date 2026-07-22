@@ -2,7 +2,7 @@ import { CELLS, cellOf, cellToWorld, isCenter, keyOf } from "./hex.js"
 import { BUILDINGS, canPlace } from "./buildings.js"
 import { ENEMIES, enemyPos } from "./enemies.js"
 
-const COLORS = {
+export const COLORS = {
   cell: "#1a2027",
   cellStroke: "#2a323d",
   base: "#232c25",

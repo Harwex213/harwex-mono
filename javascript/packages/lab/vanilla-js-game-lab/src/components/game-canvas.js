@@ -2,10 +2,10 @@ import { RADIUS, worldToCell } from "../game/hex.js"
 import { draw } from "../game/render.js"
 import { clickAt } from "../game/sim.js"
 
-const SQRT3 = Math.sqrt(3)
+export const SQRT3 = Math.sqrt(3)
 // world-unit extents of a radius-N pointy-top hex board
-const BOARD_W = SQRT3 * (2 * RADIUS + 1)
-const BOARD_H = 3 * RADIUS + 2
+export const BOARD_W = SQRT3 * (2 * RADIUS + 1)
+export const BOARD_H = 3 * RADIUS + 2
 
 /** Center panel: DPR-aware canvas, pointer input → sim actions, game-over overlay. */
 export function createGameCanvas({ store, onRestart }) {

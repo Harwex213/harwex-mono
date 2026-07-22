@@ -1,7 +1,7 @@
 import { test } from "node:test"
 import assert from "node:assert/strict"
 
-import { createInitialState, tickSim, clickAt, CYCLE, DAY_HALF } from "./sim.js"
+import { createInitialState, tickSim, clickAt, skipToNight, CYCLE, DAY_HALF } from "./sim.js"
 import { canPlace, place, priceOf, sellAt, BUILDINGS } from "./buildings.js"
 import { CELLS, EDGE_CELLS, keyOf, neighbors, worldToCell, cellToWorld, computeFlow } from "./hex.js"
 
@@ -44,6 +44,21 @@ test("day phase is calm, night spawns enemies", () => {
   // spawned counter, not live count — undefended enemies reach the base and despawn
   const spawned = s.nextId - 1
   assert.ok(spawned > 5, `expected a night trickle, got ${spawned} spawns`)
+})
+
+test("skip jumps from day phase to tonight's wave, no-op at night", () => {
+  const s = createInitialState()
+  run(s, 5)
+  assert.equal(s.phase, "day")
+  skipToNight(s)
+  assert.equal(s.phase, "night")
+  assert.equal(s.time, DAY_HALF)
+  assert.equal(s.day, 1)
+  const t = s.time
+  skipToNight(s)
+  assert.equal(s.time, t, "skip must do nothing during the night")
+  run(s, 3) // day-1 spawn rate is 0.4/s — need a few seconds for the first spawn
+  assert.ok(s.nextId > 1, "wave should start spawning right after skip")
 })
 
 test("enemies reach the base and damage it", () => {

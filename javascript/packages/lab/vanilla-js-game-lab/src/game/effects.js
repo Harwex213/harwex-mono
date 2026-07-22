@@ -1,4 +1,4 @@
-const POPUP_TTL = 0.8
+export const POPUP_TTL = 0.8
 
 /** Floating text at a world position (coin gains, damage numbers). */
 export function addPopup(s, x, y, text, color) {
