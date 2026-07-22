@@ -1,7 +1,6 @@
 import { ROUTES } from "../data/routing.js";
 import { createCollection, deleteCollection } from "../state/modifiers.js";
 import { MODEL, STORE } from "../model/model.js";
-import { topNavHtml } from "../components/top-nav.js";
 
 const STYLE = `
   <style>
@@ -98,7 +97,6 @@ const renderModifiersCollections = ({ root, params, router }) => {
   const render = () => {
     const collections = MODEL.modifiers.collections;
     root.innerHTML = `
-      ${topNavHtml(router)}
       ${STYLE}
       <section class="mc">
         <h2 class="box-label">Existed collection of modifiers</h2>

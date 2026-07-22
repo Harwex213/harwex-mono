@@ -10,6 +10,7 @@ import { renderBattleFinished } from "./pages/battle/battle-finished.js";
 import { Router } from "./router.js";
 import { ROUTES } from "./data/routing.js";
 import { STORE } from "./model/model.js";
+import { createTopNav } from "./components/top-nav.js";
 import { MAPS_LS_KEY, MODIFIERS_LS_KEY } from "./data/local-storage-keys.js";
 import { hydrateMaps, serializeMaps } from "./state/maps.js";
 import { hydrateModifiers, serializeModifiers } from "./state/modifiers.js";
@@ -17,6 +18,8 @@ import { createBattleConfig } from "./state/battle-config.js";
 
 const voidFn = () => void 0;
 
+// Legacy pages: render({ root, params, router }) → teardown. Entries move to
+// COMPONENT_PAGES as they migrate to `{ el, destroy }` factories.
 const PAGES = [
   [ROUTES.BATTLE_CREATION, renderBattleCreation],
   [ROUTES.BATTLE_DISPOSITION, renderBattleDisposition],
@@ -27,6 +30,9 @@ const PAGES = [
   [ROUTES.MAPS, renderMapsStore],
   [ROUTES.MAP_EDITOR, renderMapEditor],
 ];
+
+// Component pages: createXPage({ store, router, params }) → { el, destroy }.
+const COMPONENT_PAGES = [];
 
 const registerAllPages = (root, router) => {
   let finalizePage = voidFn;
@@ -45,8 +51,28 @@ const registerAllPages = (root, router) => {
     });
   };
 
+  const registerComponentPage = (pageRoute, createPage) => {
+    router.registerRoute(pageRoute, (params) => {
+      finalizePage();
+      finalizePage = voidFn; // a re-entrant resolve must not re-run this teardown
+      const myToken = ++navToken;
+      const page = createPage({ store: STORE, router, params });
+      if (myToken !== navToken) {
+        // a nested navigation replaced us — don't clobber its DOM or teardown
+        page.destroy();
+        return;
+      }
+      root.replaceChildren(page.el);
+      finalizePage = () => page.destroy();
+    });
+  };
+
   for (const [pageRoute, pageHandler] of PAGES) {
     registerPage(pageRoute, pageHandler);
+  }
+
+  for (const [pageRoute, createPage] of COMPONENT_PAGES) {
+    registerComponentPage(pageRoute, createPage);
   }
 
   router.registerRoute(ROUTES.ROOT, () => {
@@ -91,6 +117,9 @@ const main = () => {
 
   const root = document.querySelector("main");
   const router = new Router();
+
+  const topNav = createTopNav({ store: STORE, router });
+  document.body.prepend(topNav.el);
 
   registerAllPages(root, router);
 };

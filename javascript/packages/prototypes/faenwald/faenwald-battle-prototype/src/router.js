@@ -1,6 +1,7 @@
 class Router {
   #routes = [];
   #resolveScheduled = false;
+  #changeListeners = new Set();
 
   constructor() {
     window.addEventListener("hashchange", () => this.#resolve());
@@ -60,6 +61,15 @@ class Router {
     return window.location.hash.slice(1) || "/";
   }
 
+  /**
+   * Fires after every resolved navigation (components like top-nav re-render
+   * their active state from it). Returns an unsubscribe.
+   */
+  onChange(listener) {
+    this.#changeListeners.add(listener);
+    return () => this.#changeListeners.delete(listener);
+  }
+
   #buildPath(path, params = {}) {
     return path.replace(/:([^/]+)/g, (match, name) =>
       name in params ? encodeURIComponent(params[name]) : match,
@@ -81,6 +91,9 @@ class Router {
       });
 
       handler(params);
+      for (const listener of this.#changeListeners) {
+        listener();
+      }
       return;
     }
   }

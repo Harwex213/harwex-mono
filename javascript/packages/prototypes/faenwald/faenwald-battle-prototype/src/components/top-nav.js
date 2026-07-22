@@ -1,43 +1,4 @@
 import { ROUTE_LINKS, ROUTES } from "../data/routing.js";
-import { MODEL } from "../model/model.js";
-
-const STYLE = `
-  <style>
-    .tn {
-      display: flex;
-      align-items: center;
-      gap: var(--space-6);
-      padding: var(--space-6) var(--space-8);
-      border-bottom: 1px solid var(--border-default);
-      font-family: var(--font-body);
-    }
-
-    .tn .brand {
-      margin-right: auto;
-      font-family: var(--font-display);
-      font-size: var(--font-size-xl);
-      color: var(--text-accent);
-      text-decoration: none;
-    }
-
-    .tn .link {
-      padding: var(--space-4) var(--space-6);
-      border-radius: var(--radius-sm);
-      color: var(--text-secondary);
-      text-decoration: none;
-    }
-
-    .tn .link:hover {
-      color: var(--text-primary);
-      background: var(--bg-control-subtle-hover);
-    }
-
-    .tn .link[aria-current="page"] {
-      color: var(--text-accent);
-      background: var(--bg-accent);
-    }
-  </style>
-`;
 
 const NAV_ITEMS = [
   [ROUTES.BATTLE_CREATION, "Battle Creation"],
@@ -47,27 +8,52 @@ const NAV_ITEMS = [
 
 const isActive = (currentPath, route) => currentPath === route || currentPath.startsWith(`${route}/`);
 
-const topNavHtml = (router) => {
-  const currentPath = router.currentPath();
-
-  const hasActiveBattle = MODEL.activeBattle.phase !== null;
-
-  const navItems = [
-    hasActiveBattle ? [ROUTES.BATTLE, "Current Battle"] : null,
-    ...NAV_ITEMS,
-  ].filter(Boolean);
-
-  const links = navItems.map(
-    ([route, label]) => `
-      <a class="link" href="#${route}" ${isActive(currentPath, route) ? 'aria-current="page"' : ""}>${label}</a>`,
-  ).join("");
-  return `
-    ${STYLE}
-    <nav class="tn">
-      <a class="brand" href="${ROUTE_LINKS.BATTLE_CREATION}">Faenwald Battle</a>
-      ${links}
-    </nav>
+/**
+ * App-shell navigation, mounted once above <main> — pages don't render it.
+ * Re-renders on store changes (the "Current Battle" item follows
+ * activeBattle.phase) and on every resolved navigation (active-link state).
+ *
+ * @param {{ store: Store, router: Router }} deps
+ * @returns {{ el: HTMLElement, destroy: () => void }}
+ */
+const createTopNav = ({ store, router }) => {
+  const el = document.createElement("nav");
+  el.className = "top-nav";
+  el.innerHTML = `
+    <a class="top-nav-brand" href="${ROUTE_LINKS.BATTLE_CREATION}">Faenwald Battle</a>
+    <span class="top-nav-links" data-role="links"></span>
   `;
+  const linksEl = el.querySelector('[data-role="links"]');
+
+  const render = () => {
+    const currentPath = router.currentPath();
+    const hasActiveBattle = store.get().activeBattle.phase !== null;
+    const navItems = [
+      hasActiveBattle ? [ROUTES.BATTLE, "Current Battle"] : null,
+      ...NAV_ITEMS,
+    ].filter(Boolean);
+
+    linksEl.replaceChildren(...navItems.map(([route, label]) => {
+      const link = document.createElement("a");
+      link.className = "top-nav-link";
+      link.href = `#${route}`;
+      link.textContent = label;
+      if (isActive(currentPath, route)) {
+        link.setAttribute("aria-current", "page");
+      }
+      return link;
+    }));
+  };
+
+  const unsubscribeStore = store.subscribe(render);
+  const unsubscribeRouter = router.onChange(render);
+
+  const destroy = () => {
+    unsubscribeStore();
+    unsubscribeRouter();
+  };
+
+  return { el, destroy };
 };
 
-export { topNavHtml };
+export { createTopNav };

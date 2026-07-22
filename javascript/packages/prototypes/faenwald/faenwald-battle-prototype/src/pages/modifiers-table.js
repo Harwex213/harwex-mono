@@ -2,7 +2,6 @@ import { ROUTE_LINKS } from "../data/routing.js";
 import { STAT_META } from "../data/unit.js";
 import { addEntry, createModifier, deleteModifier, getCollection, removeEntry, renameCollection, updateEntry, updateModifier } from "../state/modifiers.js";
 import { MODEL, STORE } from "../model/model.js";
-import { topNavHtml } from "../components/top-nav.js";
 
 const STYLE = `
   <style>
@@ -218,7 +217,6 @@ const renderModifiersTable = ({ root, params = {}, router }) => {
 
     if (!collection) {
       root.innerHTML = `
-        ${topNavHtml(router)}
         ${STYLE}
         <section class="mt">
           <p class="missing">Collection not found.</p>
@@ -238,7 +236,6 @@ const renderModifiersTable = ({ root, params = {}, router }) => {
     const selEnd = active?.selectionEnd ?? null;
 
     root.innerHTML = `
-      ${topNavHtml(router)}
       ${STYLE}
       <section class="mt">
         <div class="header">

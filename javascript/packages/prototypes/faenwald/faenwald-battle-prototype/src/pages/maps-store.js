@@ -1,7 +1,6 @@
 import { ROUTES } from "../data/routing.js";
 import { createMap, deleteMap, setMapImage } from "../state/maps.js";
 import { renderMapThumbnail } from "../lib/map-thumbnail.js";
-import { topNavHtml } from "../components/top-nav.js";
 import { MODEL, STORE } from "../model/model.js";
 
 const STYLE = `
@@ -155,7 +154,6 @@ const renderMapsStore = ({ root, params, router }) => {
   const render = () => {
     refreshThumbnails();
     root.innerHTML = `
-      ${topNavHtml(router)}
       ${STYLE}
       <section class="msp">
         <h2 class="box-label">Maps Store</h2>

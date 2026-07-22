@@ -2,7 +2,6 @@ import { ROUTES } from "../../data/routing.js";
 import { changeMap, validateConfig } from "../../state/battle-config.js";
 import { getMap } from "../../state/maps.js";
 import { BATTLE_PHASE } from "../../state/active-battle.js";
-import { topNavHtml } from "../../components/top-nav.js";
 import { MODEL } from "../../model/model.js";
 import { STYLE } from "./style.js";
 import { battleCreationHtml } from "./view.js";
@@ -30,7 +29,6 @@ const renderBattleCreation = ({ root, router }) => {
 
   const render = () => {
     root.innerHTML = `
-      ${topNavHtml(router)}
       ${STYLE}
       ${battleCreationHtml({
       maps: MODEL.maps.maps,

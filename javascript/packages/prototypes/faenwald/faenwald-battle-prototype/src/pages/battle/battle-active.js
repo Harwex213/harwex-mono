@@ -5,7 +5,6 @@ import { getMap } from "../../state/maps.js";
 import { BATTLE_PHASE, accelerate, advanceUnit, applyBreakthrough, attack, capitulate, declineBreakthrough, effectiveMorale, endActivation, findUnit, fireModesAvailable, rotateUnit, routTick, unitAt, validRangedTargets } from "../../state/active-battle.js";
 import { ACTIVE_UNIT_GROUP_TYPE, getUnitGroupType, GROUP_CYCLE } from "../../lib/active-unit-group.js";
 import { flankHexes, frontHexes, rearHexes, zoneOf } from "../../lib/hex-facing.js";
-import { topNavHtml } from "../../components/top-nav.js";
 import { renderPointTopHexagon } from "../../lib/hexagon-render.js";
 import { gridPixelBounds, offsetToPixel, pixelToOffset } from "../../lib/hex-layout.js";
 import { initializeAbstractCanvas } from "../../lib/abstract-canvas.js";
@@ -430,7 +429,6 @@ const renderBattleActive = ({ root, params, router }) => {
 
   if (!map) {
     root.innerHTML = `
-      ${topNavHtml(router)}
       ${STYLE}
       <section class="ba">
         <p class="missing">No active battle.</p>
@@ -591,7 +589,6 @@ const renderBattleActive = ({ root, params, router }) => {
   };
 
   root.innerHTML = `
-    ${topNavHtml(router)}
     ${STYLE}
     <section class="ba">
       <h1>Battle</h1>

@@ -4,7 +4,6 @@ import { DEFAULT_TERRAIN_ID, TERRAINS } from "../../data/terrains.js";
 import { getMap } from "../../state/maps.js";
 import { BATTLE_PHASE, findUnit, startBattle, unitAt } from "../../state/active-battle.js";
 import { ACTIVE_UNIT_GROUP_TYPE, getUnitGroupType } from "../../lib/active-unit-group.js";
-import { topNavHtml } from "../../components/top-nav.js";
 import { renderPointTopHexagon } from "../../lib/hexagon-render.js";
 import { gridPixelBounds, offsetToPixel, pixelToOffset } from "../../lib/hex-layout.js";
 import { initializeAbstractCanvas } from "../../lib/abstract-canvas.js";
@@ -363,7 +362,6 @@ const renderBattleDisposition = ({ root, params, router }) => {
 
   if (!map) {
     root.innerHTML = `
-      ${topNavHtml(router)}
       ${STYLE}
       <section class="bd">
         <p class="missing">No battle awaiting disposition.</p>
@@ -425,7 +423,6 @@ const renderBattleDisposition = ({ root, params, router }) => {
     `<button data-action="start-battle" ${isDispositionComplete(MODEL.activeBattle) ? "" : "disabled"}>Start Battle</button>`;
 
   root.innerHTML = `
-    ${topNavHtml(router)}
     ${STYLE}
     <section class="bd">
       <h1>Размещение армий</h1>

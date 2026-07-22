@@ -3,7 +3,6 @@ import { DEFAULT_TERRAIN_ID, TERRAINS } from "../data/terrains.js";
 import { commitMap, getMap, renameMap, setMapCell, setMapImage } from "../state/maps.js";
 import { MODEL, STORE } from "../model/model.js";
 import { renderMapThumbnail } from "../lib/map-thumbnail.js";
-import { topNavHtml } from "../components/top-nav.js";
 import { renderPointTopHexagon } from "../lib/hexagon-render.js";
 import { gridPixelBounds, offsetToPixel, pixelToOffset } from "../lib/hex-layout.js";
 import { initializeAbstractCanvas } from "../lib/abstract-canvas.js";
@@ -242,7 +241,6 @@ const renderMapEditor = ({ root, params = {}, router }) => {
   const mapEditorHtml = (root, map) => {
     if (!map) {
       root.innerHTML = `
-        ${topNavHtml(router)}
         ${STYLE}
         <section class="me">
           <p class="missing">Map not found.</p>
@@ -253,7 +251,6 @@ const renderMapEditor = ({ root, params = {}, router }) => {
     }
 
     root.innerHTML = `
-      ${topNavHtml(router)}
       ${STYLE}
       <section class="me">
         <div class="header">

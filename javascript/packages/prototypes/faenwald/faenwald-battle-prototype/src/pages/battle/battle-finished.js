@@ -1,7 +1,6 @@
 import { ROUTE_LINKS, ROUTES } from "../../data/routing.js";
 import { BATTLE_PHASE, resetActiveBattle } from "../../state/active-battle.js";
 import { computeLosses } from "../../lib/losses.js";
-import { topNavHtml } from "../../components/top-nav.js";
 import { MODEL } from "../../model/model.js";
 
 const STYLE = `
@@ -181,7 +180,6 @@ const renderBattleFinished = ({ root, params, router }) => {
   const logHtml = state.log.map((line) => `<div class="log-line">${line}</div>`).join("");
 
   root.innerHTML = `
-    ${topNavHtml(router)}
     ${STYLE}
     <section class="bf">
       <h1>${bannerText}</h1>
