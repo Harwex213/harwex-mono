@@ -1,14 +1,14 @@
 import { STAT_META, UNIT_TYPES } from "../../data/unit.js";
 import { ROUTE_LINKS, ROUTES } from "../../data/routing.js";
 import { DEFAULT_TERRAIN_ID, TERRAINS } from "../../data/terrains.js";
-import { MAPS_MODULE } from "../../modules/maps.js";
-import { ACTIVE_BATTLE_MODULE, BATTLE_PHASE } from "../../modules/active-battle.js";
-import { ACTIVE_UNIT_GROUP_TYPE, getUnitGroupType, GROUP_CYCLE } from "../../modules/active-unit-group.js";
-import { flankHexes, frontHexes, rearHexes, zoneOf } from "../../modules/hex-facing.js";
+import { getMap } from "../../state/maps.js";
+import { BATTLE_PHASE, accelerate, advanceUnit, applyBreakthrough, attack, capitulate, declineBreakthrough, effectiveMorale, endActivation, findUnit, fireModesAvailable, rotateUnit, routTick, unitAt, validRangedTargets } from "../../state/active-battle.js";
+import { ACTIVE_UNIT_GROUP_TYPE, getUnitGroupType, GROUP_CYCLE } from "../../lib/active-unit-group.js";
+import { flankHexes, frontHexes, rearHexes, zoneOf } from "../../lib/hex-facing.js";
 import { topNavHtml } from "../../components/top-nav.js";
-import { renderPointTopHexagon } from "../../modules/hexagon-render.js";
-import { gridPixelBounds, offsetToPixel, pixelToOffset } from "../../modules/hex-layout.js";
-import { initializeAbstractCanvas } from "../../modules/abstract-canvas.js";
+import { renderPointTopHexagon } from "../../lib/hexagon-render.js";
+import { gridPixelBounds, offsetToPixel, pixelToOffset } from "../../lib/hex-layout.js";
+import { initializeAbstractCanvas } from "../../lib/abstract-canvas.js";
 import { MODEL } from "../../model/model.js";
 
 const STYLE = `
@@ -426,7 +426,7 @@ const renderBattleActive = ({ root, params, router }) => {
     };
   }
 
-  const map = MAPS_MODULE.getMap(MODEL.maps, MODEL.activeBattle.mapId);
+  const map = getMap(MODEL.maps, MODEL.activeBattle.mapId);
 
   if (!map) {
     root.innerHTML = `
@@ -459,7 +459,7 @@ const renderBattleActive = ({ root, params, router }) => {
   const FIRE_MODE_LABEL = { arc: "Навес", direct: "Прямой", melee: "Ближний" };
 
   const getState = () => MODEL.activeBattle;
-  const getActiveUnit = () => ACTIVE_BATTLE_MODULE.findUnit(getState(), getState().activeUnitId);
+  const getActiveUnit = () => findUnit(getState(), getState().activeUnitId);
   const unitRangedOf = (unit) => UNIT_TYPES.find((t) => t.type === unit.type)?.ranged ?? null;
   const getActiveRanged = () => {
     const unit = getActiveUnit();
@@ -473,7 +473,7 @@ const renderBattleActive = ({ root, params, router }) => {
     if (!ranged) {
       return null;
     }
-    const available = ACTIVE_BATTLE_MODULE.fireModesAvailable(getState(), map);
+    const available = fireModesAvailable(getState(), map);
     if (available[selectedFireMode]) {
       return selectedFireMode;
     }
@@ -483,7 +483,7 @@ const renderBattleActive = ({ root, params, router }) => {
   const unitStatsHtml = (unit) => `
     <span>MP ${unit.movePoints}</span>
     ${unitRangedOf(unit) ? `<span>ammo ${unit.ammo}</span>` : ""}
-    ${STAT_META.map((m) => `<span>${m.id === "morale" ? ACTIVE_BATTLE_MODULE.effectiveMorale(getState(), unit) : unit[m.id]} ${m.emoji}</span>`).join("")}
+    ${STAT_META.map((m) => `<span>${m.id === "morale" ? effectiveMorale(getState(), unit) : unit[m.id]} ${m.emoji}</span>`).join("")}
   `;
 
   const activeUnitCardHtml = (unit) => {
@@ -535,7 +535,7 @@ const renderBattleActive = ({ root, params, router }) => {
 
   const rightPanelHtml = () => {
     const state = getState();
-    const hoveredUnit = hoveredUnitId === null ? null : ACTIVE_BATTLE_MODULE.findUnit(state, hoveredUnitId);
+    const hoveredUnit = hoveredUnitId === null ? null : findUnit(state, hoveredUnitId);
     const logHtml = state.log
       .slice()
       .reverse()
@@ -554,7 +554,7 @@ const renderBattleActive = ({ root, params, router }) => {
     if (!ranged) {
       return "";
     }
-    const available = ACTIVE_BATTLE_MODULE.fireModesAvailable(getState(), map);
+    const available = fireModesAvailable(getState(), map);
     const effective = resolveSelectedFireMode();
     return ["arc", "direct", "melee"].map((mode) => {
       const disabled = mode === "arc" ? !ranged.arc || !available.arc : !available[mode];
@@ -635,7 +635,7 @@ const renderBattleActive = ({ root, params, router }) => {
       if (!a || !a.routed) {
         break;
       }
-      ACTIVE_BATTLE_MODULE.routTick(getState(), map);
+      routTick(getState(), map);
       guard += 1;
       if (guard > 1000) {
         break;
@@ -651,7 +651,7 @@ const renderBattleActive = ({ root, params, router }) => {
   };
 
   const onHoverChange = (hovered) => {
-    const unit = hovered?.type === "hex" ? ACTIVE_BATTLE_MODULE.unitAt(getState(), hovered.row, hovered.col) : null;
+    const unit = hovered?.type === "hex" ? unitAt(getState(), hovered.row, hovered.col) : null;
     const id = unit ? unit.id : null;
     if (id === hoveredUnitId) {
       return;
@@ -668,9 +668,9 @@ const renderBattleActive = ({ root, params, router }) => {
       return [];
     }
     if (getActiveRanged()) {
-      return ACTIVE_BATTLE_MODULE.validRangedTargets(getState(), map, resolveSelectedFireMode());
+      return validRangedTargets(getState(), map, resolveSelectedFireMode());
     }
-    return ACTIVE_BATTLE_MODULE.validRangedTargets(getState(), map, "melee");
+    return validRangedTargets(getState(), map, "melee");
   };
 
   canvasApi = initializeCanvas(canvasPanel, map, {
@@ -684,7 +684,7 @@ const renderBattleActive = ({ root, params, router }) => {
       return a?.position ? moveTargetHexes(a) : [];
     },
     onRotate: (facing) => {
-      ACTIVE_BATTLE_MODULE.rotateUnit(getState(), facing, map);
+      rotateUnit(getState(), facing, map);
       afterAction();
     },
     onHexClick: (row, col) => {
@@ -692,18 +692,18 @@ const renderBattleActive = ({ root, params, router }) => {
       if (!active?.position || active.routed) {
         return;
       }
-      const target = ACTIVE_BATTLE_MODULE.unitAt(getState(), row, col);
+      const target = unitAt(getState(), row, col);
       const ranged = getActiveRanged();
       if (ranged && target) {
         const mode = resolveSelectedFireMode();
-        if (ACTIVE_BATTLE_MODULE.validRangedTargets(getState(), map, mode).includes(target.id)) {
-          ACTIVE_BATTLE_MODULE.attack(getState(), target.id, map, mode);
+        if (validRangedTargets(getState(), map, mode).includes(target.id)) {
+          attack(getState(), target.id, map, mode);
           afterAction();
           return;
         }
       }
       if (target && target.side !== active.side && zoneOf(active.position, active.facing, target.position) !== null) {
-        ACTIVE_BATTLE_MODULE.attack(getState(), target.id, map);
+        attack(getState(), target.id, map);
         afterAction();
         return;
       }
@@ -711,7 +711,7 @@ const renderBattleActive = ({ root, params, router }) => {
       if (!isMoveTarget) {
         return;
       }
-      ACTIVE_BATTLE_MODULE.advanceUnit(getState(), { row, col }, map);
+      advanceUnit(getState(), { row, col }, map);
       afterAction();
     },
   });
@@ -733,11 +733,11 @@ const renderBattleActive = ({ root, params, router }) => {
         canvasApi.requestRender();
         break;
       case "accelerate":
-        ACTIVE_BATTLE_MODULE.accelerate(getState(), map);
+        accelerate(getState(), map);
         afterAction();
         break;
       case "end-activation":
-        ACTIVE_BATTLE_MODULE.endActivation(getState(), map);
+        endActivation(getState(), map);
         afterAction();
         break;
       case "capitulate":
@@ -755,7 +755,7 @@ const renderBattleActive = ({ root, params, router }) => {
           footer.innerHTML = footerHtml();
           break;
         }
-        ACTIVE_BATTLE_MODULE.capitulate(getState(), side);
+        capitulate(getState(), side);
         syncPhase();
         break;
       }
@@ -770,11 +770,11 @@ const renderBattleActive = ({ root, params, router }) => {
         canvasApi.requestRender();
         break;
       case "breakthrough-apply":
-        ACTIVE_BATTLE_MODULE.applyBreakthrough(getState(), map);
+        applyBreakthrough(getState(), map);
         afterAction();
         break;
       case "breakthrough-decline":
-        ACTIVE_BATTLE_MODULE.declineBreakthrough(getState());
+        declineBreakthrough(getState());
         afterAction();
         break;
     }

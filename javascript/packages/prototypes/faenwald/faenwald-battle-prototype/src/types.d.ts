@@ -24,7 +24,7 @@ type BattleConfig = {
   nextUnitId: number;
 };
 
-/** `BATTLE_CONFIG_MODULE.validate()` result row — a code plus its params, no copy */
+/** `validateConfig()` result row — a code plus its params, no copy */
 type BattleConfigProblem =
   | { code: "NO_MAP" }
   | { code: "EMPTY_SIDE"; side: BattleConfigSide }

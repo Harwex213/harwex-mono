@@ -1,6 +1,6 @@
 import { STAT_META, UNIT_TYPES } from "../data/unit.js";
-import { MODIFIERS_MODULE } from "./modifiers.js";
-import { MAPS_MODULE } from "./maps.js";
+import { findModifier } from "./modifiers.js";
+import { getMap } from "./maps.js";
 
 const SIDES = ["attacker", "defender"];
 const STAT_IDS = STAT_META.map((s) => s.id);
@@ -129,7 +129,7 @@ const sumEntries = (entries, stat) =>
 const computeUnitStats = (unit, modifiers) => {
   const base = UNIT_TYPES.find((t) => t.id === unit.typeId);
   const applied = unit.modifiers
-    .map((ref) => MODIFIERS_MODULE.findModifier(modifiers, ref.collectionId, ref.modifierId))
+    .map((ref) => findModifier(modifiers, ref.collectionId, ref.modifierId))
     .filter(Boolean);
 
   const stats = {};
@@ -154,7 +154,7 @@ const computeUnitStats = (unit, modifiers) => {
 const validateConfig = (battleConfig, maps) => {
   const problems = [];
 
-  if (!MAPS_MODULE.getMap(maps, battleConfig.mapId)) {
+  if (!getMap(maps, battleConfig.mapId)) {
     problems.push({ code: "NO_MAP" });
   }
 
@@ -178,21 +178,16 @@ const validateConfig = (battleConfig, maps) => {
  */
 const isConfigValid = (battleConfig, maps) => validateConfig(battleConfig, maps).length === 0;
 
-const BATTLE_CONFIG_MODULE = {
-  create: createBattleConfig,
-  changeMap: changeMap,
-  createUnit: createUnit,
-  findUnit: findUnit,
-  assignUnitType: assignUnitType,
-  createUnitModifier: createUnitModifier,
-  removeUnitModifier: removeUnitModifier,
-  removeUnit: removeUnit,
-  validate: validateConfig,
-  isValid: isConfigValid,
-  computeUnitStats: computeUnitStats,
-};
-
 export {
   SIDES,
-  BATTLE_CONFIG_MODULE,
-}
+  createBattleConfig,
+  changeMap,
+  createUnit,
+  assignUnitType,
+  createUnitModifier,
+  removeUnitModifier,
+  removeUnit,
+  validateConfig,
+  isConfigValid,
+  computeUnitStats,
+};

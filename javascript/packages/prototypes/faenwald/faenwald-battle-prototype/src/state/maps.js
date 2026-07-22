@@ -1,10 +1,11 @@
 import { DEFAULT_MAPS } from "../data/maps.js";
 import { DEFAULT_TERRAIN_ID } from "../data/terrains.js";
-import { MAPS_LS_KEY } from "../data/local-storage-keys.js";
 
 /**
- * Domain module for hex maps, persisted through the storage adapter injected
- * by the composition root (model.js passes localStorage; tests pass a fake).
+ * State module for hex maps. Pure: no storage access — the composition root
+ * hydrates from a raw localStorage string and persists on `rev` changes
+ * (see the persister in index.js). Mutators that must reach storage bump
+ * `rev`; in-memory-only ones (setMapCell) don't.
  *
  * `cells[row][col]` is a terrain id — pointy-top hexes, odd-r offset rows
  * (odd rows shift right by half a hex). Convert offset→axial in helpers when
@@ -53,30 +54,35 @@ const isValidShape = (data) =>
 
 const nextMapId = (maps) => maps.maps.reduce((max, m) => Math.max(max, Number(m.id) || 0), 0) + 1;
 
-// the adapter is runtime wiring, not data — only the maps are serialized
-const persist = (maps) => {
-  maps.storage.setItem(MAPS_LS_KEY, JSON.stringify({ maps: maps.maps }));
-};
-
 /**
- * @param {{ storage: StorageAdapter }} deps
  * @returns {MapsState}
  */
-const createMaps = ({ storage }) => ({ storage, maps: [] });
+const createMaps = () => ({ maps: [], rev: 0 });
 
+// the rev counter is runtime wiring, not data — only the maps are serialized
 /**
  * @param {MapsState} maps
+ * @returns {string}
  */
-const hydrateMaps = (maps) => {
+const serializeMaps = (maps) => JSON.stringify({ maps: maps.maps });
+
+/**
+ * Seeding bumps `rev` so the persister writes the seeds back; a clean load
+ * leaves `rev` untouched.
+ *
+ * @param {MapsState} maps
+ * @param {string | null} raw the stored JSON string, or null
+ */
+const hydrateMaps = (maps, raw) => {
   let data = null;
   try {
-    data = JSON.parse(maps.storage.getItem(MAPS_LS_KEY));
+    data = JSON.parse(raw);
   } catch {
     data = null;
   }
   if (!isValidShape(data)) {
     maps.maps = seedMaps();
-    persist(maps);
+    maps.rev += 1;
     return;
   }
   maps.maps = data.maps;
@@ -105,7 +111,7 @@ const createMap = (maps) => {
     cells: makeCells(DEFAULT_WIDTH, DEFAULT_HEIGHT, DEFAULT_TERRAIN_ID),
   };
   maps.maps.push(map);
-  persist(maps);
+  maps.rev += 1;
   return map;
 };
 
@@ -120,7 +126,7 @@ const renameMap = (maps, id, name) => {
     return;
   }
   map.name = name;
-  persist(maps);
+  maps.rev += 1;
 };
 
 /**
@@ -129,7 +135,7 @@ const renameMap = (maps, id, name) => {
  */
 const deleteMap = (maps, id) => {
   maps.maps = maps.maps.filter((m) => String(m.id) !== String(id));
-  persist(maps);
+  maps.rev += 1;
 };
 
 /**
@@ -161,7 +167,7 @@ const commitMap = (maps, id) => {
   if (map) {
     delete map.image;
   }
-  persist(maps);
+  maps.rev += 1;
 };
 
 /**
@@ -175,19 +181,18 @@ const setMapImage = (maps, id, dataUrl) => {
     return;
   }
   map.image = dataUrl;
-  persist(maps);
+  maps.rev += 1;
 };
 
-const MAPS_MODULE = {
-  create: createMaps,
-  hydrate: hydrateMaps,
-  getMap: getMap,
-  createMap: createMap,
-  renameMap: renameMap,
-  deleteMap: deleteMap,
-  setMapCell: setMapCell,
-  commitMap: commitMap,
-  setMapImage: setMapImage,
+export {
+  createMaps,
+  serializeMaps,
+  hydrateMaps,
+  getMap,
+  createMap,
+  renameMap,
+  deleteMap,
+  setMapCell,
+  commitMap,
+  setMapImage,
 };
-
-export { MAPS_MODULE };

@@ -1,8 +1,8 @@
 import { UNIT_TYPES } from "../data/unit.js";
 import { DEFAULT_TERRAIN_ID, TERRAINS } from "../data/terrains.js";
-import { BATTLE_CONFIG_MODULE, SIDES } from "./battle-config.js";
-import { advanceCost, effectiveSpeed } from "./movement-cost.js";
-import { unitActivationOrder } from "./turn-order.js";
+import { computeUnitStats, SIDES } from "./battle-config.js";
+import { advanceCost, effectiveSpeed } from "../lib/movement-cost.js";
+import { unitActivationOrder } from "../lib/turn-order.js";
 import {
   directionTo,
   flankHexes,
@@ -12,16 +12,16 @@ import {
   neighbor,
   zoneAtRange,
   zoneOf,
-} from "./hex-facing.js";
+} from "../lib/hex-facing.js";
 import {
   ACTIVE_UNIT_GROUP_TYPE,
   firstActiveUnitGroup,
   getUnitGroupType,
   nextActiveUnitGroup
-} from "./active-unit-group.js";
-import { chargeDamageMult, elevationDamageMult, formationCoverMult, resolveAttack } from "./damage.js";
-import { fleePath } from "./flee-path.js";
-import { arcBlocked, directLosBlocked } from "./line-of-sight.js";
+} from "../lib/active-unit-group.js";
+import { chargeDamageMult, elevationDamageMult, formationCoverMult, resolveAttack } from "../lib/damage.js";
+import { fleePath } from "../lib/flee-path.js";
+import { arcBlocked, directLosBlocked } from "../lib/line-of-sight.js";
 
 const BATTLE_PHASE = {
   DISPOSITION: "disposition",
@@ -151,7 +151,7 @@ const startBattleDisposition = (activeBattle, battleConfig, modifiers) => {
   activeBattle.units = SIDES.flatMap((side) =>
     battleConfig[side].map((unit) => {
       const type = UNIT_TYPES.find((t) => t.id === unit.typeId);
-      const stats = BATTLE_CONFIG_MODULE.computeUnitStats(unit, modifiers);
+      const stats = computeUnitStats(unit, modifiers);
       return {
         id: activeBattle.nextUnitId++,
         side,
@@ -407,7 +407,7 @@ const endActivation = (state, map) => {
  * Return the battle to the pristine, no-battle shape so a new one can start.
  * @param {ActiveBattle} activeBattle
  */
-const reset = (activeBattle) => {
+const resetActiveBattle = (activeBattle) => {
   activeBattle.phase = null;
   activeBattle.mapId = null;
   activeBattle.units = [];
@@ -1042,31 +1042,27 @@ const routTick = (state, map) => {
   checkVictory(state);
 };
 
-const ACTIVE_BATTLE_MODULE = {
-  create: createActiveBattle,
-  startBattleDisposition: startBattleDisposition,
-  startBattle: startBattle,
-  findUnit: findUnit,
-  unitAt: unitAt,
-  reset: reset,
-  advanceUnit: advanceUnit,
-  rotateUnit: rotateUnit,
-  accelerate: accelerate,
-  endActivation: endActivation,
-  attack: attack,
-  validRangedTargets: validRangedTargets,
-  fireModesAvailable: fireModesAvailable,
-  capitulate: capitulate,
-  routTick: routTick,
-  checkVictory: checkVictory,
-  applyBreakthrough: applyBreakthrough,
-  declineBreakthrough: declineBreakthrough,
-  rulerAuraBonus: rulerAuraBonus,
-  effectiveMorale: effectiveMorale,
-};
-
 export {
   BATTLE_PHASE,
   DEFAULT_FACING_BY_SIDE,
-  ACTIVE_BATTLE_MODULE,
-}
+  createActiveBattle,
+  startBattleDisposition,
+  startBattle,
+  findUnit,
+  unitAt,
+  resetActiveBattle,
+  advanceUnit,
+  rotateUnit,
+  accelerate,
+  endActivation,
+  attack,
+  validRangedTargets,
+  fireModesAvailable,
+  capitulate,
+  routTick,
+  checkVictory,
+  applyBreakthrough,
+  declineBreakthrough,
+  rulerAuraBonus,
+  effectiveMorale,
+};

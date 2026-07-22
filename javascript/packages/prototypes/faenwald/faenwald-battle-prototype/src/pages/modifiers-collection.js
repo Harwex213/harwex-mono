@@ -1,6 +1,6 @@
 import { ROUTES } from "../data/routing.js";
-import { MODIFIERS_MODULE } from "../modules/modifiers.js";
-import { MODEL } from "../model/model.js";
+import { createCollection, deleteCollection } from "../state/modifiers.js";
+import { MODEL, STORE } from "../model/model.js";
 import { topNavHtml } from "../components/top-nav.js";
 
 const STYLE = `
@@ -124,7 +124,10 @@ const renderModifiersCollections = ({ root, params, router }) => {
 
     switch (el.dataset.action) {
       case "create": {
-        const collection = MODIFIERS_MODULE.createCollection(MODEL.modifiers);
+        let collection;
+        STORE.set((s) => {
+          collection = createCollection(s.modifiers);
+        });
         router.push(ROUTES.MODIFIERS, { collectionId: collection.id });
         break;
       }
@@ -134,7 +137,7 @@ const renderModifiersCollections = ({ root, params, router }) => {
       case "delete":
         // destructive: cascades to the collection's modifiers
         if (confirm("Delete this collection and all its modifiers?")) {
-          MODIFIERS_MODULE.deleteCollection(MODEL.modifiers, collectionId);
+          STORE.set((s) => deleteCollection(s.modifiers, collectionId));
           render();
         }
         break;

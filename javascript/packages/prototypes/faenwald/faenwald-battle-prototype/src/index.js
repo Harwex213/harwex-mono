@@ -7,8 +7,13 @@ import { renderBattle } from "./pages/battle/battle.js";
 import { renderBattleDisposition } from "./pages/battle/battle-disposition.js";
 import { renderBattleActive } from "./pages/battle/battle-active.js";
 import { renderBattleFinished } from "./pages/battle/battle-finished.js";
-import { Router } from "./modules/router.js";
+import { Router } from "./router.js";
 import { ROUTES } from "./data/routing.js";
+import { STORE } from "./model/model.js";
+import { MAPS_LS_KEY, MODIFIERS_LS_KEY } from "./data/local-storage-keys.js";
+import { hydrateMaps, serializeMaps } from "./state/maps.js";
+import { hydrateModifiers, serializeModifiers } from "./state/modifiers.js";
+import { createBattleConfig } from "./state/battle-config.js";
 
 const voidFn = () => void 0;
 
@@ -53,7 +58,37 @@ const registerAllPages = (root, router) => {
   });
 };
 
+/**
+ * The composition root is the only place the environment (localStorage) is
+ * touched. Actions are pure; a mutator that must reach storage bumps its
+ * domain's `rev`, and this subscriber writes the domain out when the rev
+ * moves. Subscribed before hydration so a seeding hydrate (rev bump) writes
+ * the seeds back.
+ */
+const attachPersister = (store) => {
+  let mapsRev = store.get().maps.rev;
+  let modifiersRev = store.get().modifiers.rev;
+  store.subscribe((s) => {
+    if (s.maps.rev !== mapsRev) {
+      mapsRev = s.maps.rev;
+      localStorage.setItem(MAPS_LS_KEY, serializeMaps(s.maps));
+    }
+    if (s.modifiers.rev !== modifiersRev) {
+      modifiersRev = s.modifiers.rev;
+      localStorage.setItem(MODIFIERS_LS_KEY, serializeModifiers(s.modifiers));
+    }
+  });
+};
+
 const main = () => {
+  attachPersister(STORE);
+  STORE.set((s) => {
+    hydrateMaps(s.maps, localStorage.getItem(MAPS_LS_KEY));
+    hydrateModifiers(s.modifiers, localStorage.getItem(MODIFIERS_LS_KEY));
+    // persistence-backed state hydrates before battleConfig reads it for its default map
+    s.battleConfig = createBattleConfig(s.maps);
+  });
+
   const root = document.querySelector("main");
   const router = new Router();
 

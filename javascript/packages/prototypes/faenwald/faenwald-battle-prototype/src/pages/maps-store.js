@@ -1,8 +1,8 @@
 import { ROUTES } from "../data/routing.js";
-import { MAPS_MODULE } from "../modules/maps.js";
-import { renderMapThumbnail } from "../modules/map-thumbnail.js";
+import { createMap, deleteMap, setMapImage } from "../state/maps.js";
+import { renderMapThumbnail } from "../lib/map-thumbnail.js";
 import { topNavHtml } from "../components/top-nav.js";
-import { MODEL } from "../model/model.js";
+import { MODEL, STORE } from "../model/model.js";
 
 const STYLE = `
   <style>
@@ -147,7 +147,7 @@ const renderMapsStore = ({ root, params, router }) => {
   const refreshThumbnails = () => {
     for (const map of MODEL.maps.maps) {
       if (!map.image?.startsWith("data:")) {
-        MAPS_MODULE.setMapImage(MODEL.maps, map.id, renderMapThumbnail(map));
+        STORE.set((s) => setMapImage(s.maps, map.id, renderMapThumbnail(map)));
       }
     }
   };
@@ -178,7 +178,10 @@ const renderMapsStore = ({ root, params, router }) => {
 
     switch (el.dataset.action) {
       case "create": {
-        const map = MAPS_MODULE.createMap(MODEL.maps);
+        let map;
+        STORE.set((s) => {
+          map = createMap(s.maps);
+        });
         router.push(ROUTES.MAP_EDITOR, { mapId: map.id });
         break;
       }
@@ -187,7 +190,7 @@ const renderMapsStore = ({ root, params, router }) => {
         break;
       case "delete":
         if (confirm("Delete this map?")) {
-          MAPS_MODULE.deleteMap(MODEL.maps, mapId);
+          STORE.set((s) => deleteMap(s.maps, mapId));
           render();
         }
         break;

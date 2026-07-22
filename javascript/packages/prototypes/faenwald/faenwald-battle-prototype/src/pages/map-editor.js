@@ -1,12 +1,12 @@
 import { ROUTE_LINKS } from "../data/routing.js";
 import { DEFAULT_TERRAIN_ID, TERRAINS } from "../data/terrains.js";
-import { MAPS_MODULE } from "../modules/maps.js";
-import { MODEL } from "../model/model.js";
-import { renderMapThumbnail } from "../modules/map-thumbnail.js";
+import { commitMap, getMap, renameMap, setMapCell, setMapImage } from "../state/maps.js";
+import { MODEL, STORE } from "../model/model.js";
+import { renderMapThumbnail } from "../lib/map-thumbnail.js";
 import { topNavHtml } from "../components/top-nav.js";
-import { renderPointTopHexagon } from "../modules/hexagon-render.js";
-import { gridPixelBounds, offsetToPixel, pixelToOffset } from "../modules/hex-layout.js";
-import { initializeAbstractCanvas } from "../modules/abstract-canvas.js";
+import { renderPointTopHexagon } from "../lib/hexagon-render.js";
+import { gridPixelBounds, offsetToPixel, pixelToOffset } from "../lib/hex-layout.js";
+import { initializeAbstractCanvas } from "../lib/abstract-canvas.js";
 
 // swatch fills come from data, but inline style="" is banned — generate one
 // scoped rule per terrain instead, each referencing its semantic token
@@ -168,7 +168,7 @@ const initializeCanvas = (container, map, getBrush) => {
     if (!target || map.cells[target.row][target.col] === brush) {
       return;
     }
-    MAPS_MODULE.setMapCell(MODEL.maps, map.id, target.row, target.col, brush);
+    setMapCell(MODEL.maps, map.id, target.row, target.col, brush);
     dirty = true;
     requestRender();
   };
@@ -192,7 +192,7 @@ const initializeCanvas = (container, map, getBrush) => {
     // one stroke = one localStorage write, and only if it changed something
     onActionEnd: () => {
       if (dirty) {
-        MAPS_MODULE.commitMap(MODEL.maps, map.id);
+        STORE.set((s) => commitMap(s.maps, map.id));
       }
     },
 
@@ -273,7 +273,7 @@ const renderMapEditor = ({ root, params = {}, router }) => {
   };
 
   const mapId = params.mapId;
-  const map = MAPS_MODULE.getMap(MODEL.maps, mapId);
+  const map = getMap(MODEL.maps, mapId);
 
   mapEditorHtml(root, map);
 
@@ -300,7 +300,7 @@ const renderMapEditor = ({ root, params = {}, router }) => {
   // derives from the name, and repainting would drop the caret (see modifiers-table)
   const onInput = (event) => {
     if (event.target.dataset.role === "map-name") {
-      MAPS_MODULE.renameMap(MODEL.maps, mapId, event.target.value);
+      STORE.set((s) => renameMap(s.maps, mapId, event.target.value));
     }
   };
 
@@ -312,7 +312,7 @@ const renderMapEditor = ({ root, params = {}, router }) => {
     // one generation per editing session; commitMap() dropped the image on the
     // first stroke, and the maps page covers sessions this teardown never ends
     if (map) {
-      MAPS_MODULE.setMapImage(MODEL.maps, map.id, renderMapThumbnail(map));
+      STORE.set((s) => setMapImage(s.maps, map.id, renderMapThumbnail(map)));
     }
     root.removeEventListener("click", onClick);
     root.removeEventListener("input", onInput);

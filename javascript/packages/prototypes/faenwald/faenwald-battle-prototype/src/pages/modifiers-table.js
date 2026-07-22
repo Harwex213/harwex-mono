@@ -1,7 +1,7 @@
 import { ROUTE_LINKS } from "../data/routing.js";
 import { STAT_META } from "../data/unit.js";
-import { MODIFIERS_MODULE } from "../modules/modifiers.js";
-import { MODEL } from "../model/model.js";
+import { addEntry, createModifier, deleteModifier, getCollection, removeEntry, renameCollection, updateEntry, updateModifier } from "../state/modifiers.js";
+import { MODEL, STORE } from "../model/model.js";
 import { topNavHtml } from "../components/top-nav.js";
 
 const STYLE = `
@@ -214,7 +214,7 @@ const renderModifiersTable = ({ root, params = {}, router }) => {
   };
 
   const render = () => {
-    const collection = MODIFIERS_MODULE.getCollection(MODEL.modifiers, collectionId);
+    const collection = getCollection(MODEL.modifiers, collectionId);
 
     if (!collection) {
       root.innerHTML = `
@@ -281,7 +281,10 @@ const renderModifiersTable = ({ root, params = {}, router }) => {
 
     switch (el.dataset.action) {
       case "add-modifier": {
-        const modifier = MODIFIERS_MODULE.createModifier(MODEL.modifiers, collectionId);
+        let modifier;
+        STORE.set((s) => {
+          modifier = createModifier(s.modifiers, collectionId);
+        });
         if (modifier) {
           editingModifierId = modifier.id;
         }
@@ -293,18 +296,18 @@ const renderModifiersTable = ({ root, params = {}, router }) => {
         render();
         break;
       case "delete-modifier":
-        MODIFIERS_MODULE.deleteModifier(MODEL.modifiers, collectionId, modifierId);
+        STORE.set((s) => deleteModifier(s.modifiers, collectionId, modifierId));
         if (editingModifierId === modifierId) {
           editingModifierId = null;
         }
         render();
         break;
       case "add-entry":
-        MODIFIERS_MODULE.addEntry(MODEL.modifiers, collectionId, modifierId, kind);
+        STORE.set((s) => addEntry(s.modifiers, collectionId, modifierId, kind));
         render();
         break;
       case "remove-entry":
-        MODIFIERS_MODULE.removeEntry(MODEL.modifiers, collectionId, modifierId, kind, el.dataset.entryId);
+        STORE.set((s) => removeEntry(s.modifiers, collectionId, modifierId, kind, el.dataset.entryId));
         render();
         break;
     }
@@ -320,13 +323,13 @@ const renderModifiersTable = ({ root, params = {}, router }) => {
 
     switch (el.dataset.role) {
       case "coll-name":
-        MODIFIERS_MODULE.renameCollection(MODEL.modifiers, collectionId, el.value);
+        STORE.set((s) => renameCollection(s.modifiers, collectionId, el.value));
         break;
       case "name":
-        MODIFIERS_MODULE.updateModifier(MODEL.modifiers, collectionId, modifierId, { name: el.value });
+        STORE.set((s) => updateModifier(s.modifiers, collectionId, modifierId, { name: el.value }));
         break;
       case "description":
-        MODIFIERS_MODULE.updateModifier(MODEL.modifiers, collectionId, modifierId, { description: el.value });
+        STORE.set((s) => updateModifier(s.modifiers, collectionId, modifierId, { description: el.value }));
         break;
       case "entry-value": {
         const raw = el.value.trim();
@@ -336,7 +339,7 @@ const renderModifiersTable = ({ root, params = {}, router }) => {
           return;
         }
         const value = el.dataset.kind === "percent" ? parsed / 100 : parsed;
-        MODIFIERS_MODULE.updateEntry(MODEL.modifiers, collectionId, modifierId, el.dataset.kind, el.dataset.entryId, { value });
+        STORE.set((s) => updateEntry(s.modifiers, collectionId, modifierId, el.dataset.kind, el.dataset.entryId, { value }));
         break;
       }
     }
@@ -344,9 +347,9 @@ const renderModifiersTable = ({ root, params = {}, router }) => {
 
   const onChange = (event) => {
     if (event.target.dataset.role === "entry-stat") {
-      MODIFIERS_MODULE.updateEntry(MODEL.modifiers, collectionId, event.target.dataset.modifierId, event.target.dataset.kind, event.target.dataset.entryId, {
+      STORE.set((s) => updateEntry(s.modifiers, collectionId, event.target.dataset.modifierId, event.target.dataset.kind, event.target.dataset.entryId, {
         stat: event.target.value,
-      });
+      }));
     }
   };
 

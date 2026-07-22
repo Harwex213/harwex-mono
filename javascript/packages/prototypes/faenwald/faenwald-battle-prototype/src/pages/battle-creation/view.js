@@ -1,6 +1,6 @@
 import { STAT_META, UNIT_TYPES } from "../../data/unit.js";
-import { BATTLE_CONFIG_MODULE } from "../../modules/battle-config.js";
-import { MODIFIERS_MODULE } from "../../modules/modifiers.js";
+import { computeUnitStats, validateConfig } from "../../state/battle-config.js";
+import { allModifiers, findModifier, getCollection } from "../../state/modifiers.js";
 
 /**
  * Pure HTML builders: everything arrives as parameters, nothing reads MODEL.
@@ -18,7 +18,7 @@ const esc = (value) =>
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
 
-// user-facing copy for BATTLE_CONFIG_MODULE.validate() problem codes
+// user-facing copy for validateConfig() problem codes
 const PROBLEM_TEXT = {
   NO_MAP: () => "select a map.",
   EMPTY_SIDE: (problem) => `${problem.side} needs at least one unit.`,
@@ -29,7 +29,7 @@ const problemsHint = (problems) =>
   problems.map((problem) => PROBLEM_TEXT[problem.code](problem)).join(" ");
 
 const statsHtml = (unit, modifiers) => {
-  const s = BATTLE_CONFIG_MODULE.computeUnitStats(unit, modifiers);
+  const s = computeUnitStats(unit, modifiers);
   return `<span class="stats">${STAT_META.map((m) => `${s[m.id]} ${m.emoji}`).join(" ")}</span>`;
 };
 
@@ -54,11 +54,11 @@ const comboHtml = (unit, remaining) => `
 const modifiersHtml = (unit, { modifiers, openComboUnitId }) => {
   const rows = unit.modifiers
     .map((ref) => {
-      const modifier = MODIFIERS_MODULE.findModifier(modifiers, ref.collectionId, ref.modifierId);
+      const modifier = findModifier(modifiers, ref.collectionId, ref.modifierId);
       if (!modifier) {
         return null; // ref's collection/modifier was deleted — skip
       }
-      const collection = MODIFIERS_MODULE.getCollection(modifiers, ref.collectionId);
+      const collection = getCollection(modifiers, ref.collectionId);
       const prefix = collection ? `${collection.name} / ` : "";
       return `
         <div class="modifier-row">
@@ -72,7 +72,7 @@ const modifiersHtml = (unit, { modifiers, openComboUnitId }) => {
   // every modifier across all collections, minus those already picked, sorted
   // by modifier name (collection name breaks ties)
   const picked = new Set(unit.modifiers.map((ref) => refKey(ref.collectionId, ref.modifierId)));
-  const remaining = MODIFIERS_MODULE.allModifiers(modifiers)
+  const remaining = allModifiers(modifiers)
     .filter((x) => !picked.has(refKey(x.collectionId, x.modifier.id)))
     .sort(
       (a, b) =>

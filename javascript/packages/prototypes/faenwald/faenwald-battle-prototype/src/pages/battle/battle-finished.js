@@ -1,6 +1,6 @@
 import { ROUTE_LINKS, ROUTES } from "../../data/routing.js";
-import { ACTIVE_BATTLE_MODULE, BATTLE_PHASE } from "../../modules/active-battle.js";
-import { computeLosses } from "../../modules/losses.js";
+import { BATTLE_PHASE, resetActiveBattle } from "../../state/active-battle.js";
+import { computeLosses } from "../../lib/losses.js";
 import { topNavHtml } from "../../components/top-nav.js";
 import { MODEL } from "../../model/model.js";
 
@@ -202,7 +202,7 @@ const renderBattleFinished = ({ root, params, router }) => {
       return;
     }
     if (el.dataset.action === "new-battle") {
-      ACTIVE_BATTLE_MODULE.reset(MODEL.activeBattle);
+      resetActiveBattle(MODEL.activeBattle);
       router.push(ROUTES.BATTLE_CREATION);
     }
   };

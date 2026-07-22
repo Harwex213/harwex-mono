@@ -1,11 +1,10 @@
 import { RANK_MODIFIERS } from "../data/modifiers.js";
 import { STAT_META } from "../data/unit.js";
-import { MODIFIERS_LS_KEY } from "../data/local-storage-keys.js";
 
 /**
- * Domain module for modifier collections, persisted through the storage
- * adapter injected by the composition root (model.js passes localStorage;
- * tests pass a fake).
+ * State module for modifier collections. Pure: no storage access — the
+ * composition root hydrates from a raw localStorage string and persists on
+ * `rev` changes (see the persister in index.js).
  *
  * A percent entry's value is a fraction (0.3 == +30%), matching computeStats.
  * A modifier's effective, cross-collection id is `${collection.id}:${modifier.id}`;
@@ -74,31 +73,36 @@ const nextCollectionId = (modifiers) =>
 const nextModifierId = (collection) =>
   String(collection.modifiers.reduce((max, m) => Math.max(max, Number(m.id) || 0), 0) + 1);
 
-// the adapter and counter are runtime wiring, not data — only collections are serialized
-const persist = (modifiers) => {
-  modifiers.storage.setItem(MODIFIERS_LS_KEY, JSON.stringify({ collections: modifiers.collections }));
-};
-
 /**
- * @param {{ storage: StorageAdapter }} deps
  * @returns {ModifiersState}
  */
-const createModifiers = ({ storage }) => ({ storage, collections: [], nextEntryId: 1 });
+const createModifiers = () => ({ collections: [], nextEntryId: 1, rev: 0 });
 
+// the rev counter and entry counter are runtime wiring, not data — only collections are serialized
 /**
  * @param {ModifiersState} modifiers
+ * @returns {string}
  */
-const hydrateModifiers = (modifiers) => {
+const serializeModifiers = (modifiers) => JSON.stringify({ collections: modifiers.collections });
+
+/**
+ * Seeding bumps `rev` so the persister writes the seeds back; a clean load
+ * leaves `rev` untouched.
+ *
+ * @param {ModifiersState} modifiers
+ * @param {string | null} raw the stored JSON string, or null
+ */
+const hydrateModifiers = (modifiers, raw) => {
   let data = null;
   try {
-    data = JSON.parse(modifiers.storage.getItem(MODIFIERS_LS_KEY));
+    data = JSON.parse(raw);
   } catch {
     data = null;
   }
   if (!isValidShape(data)) {
     seedCollections(modifiers);
     reseedEntryCounter(modifiers);
-    persist(modifiers);
+    modifiers.rev += 1;
     return;
   }
   modifiers.collections = data.collections;
@@ -153,7 +157,7 @@ const allModifiers = (modifiers) =>
 const createCollection = (modifiers, name = "New collection") => {
   const collection = { id: nextCollectionId(modifiers), name, modifiers: [] };
   modifiers.collections.push(collection);
-  persist(modifiers);
+  modifiers.rev += 1;
   return collection;
 };
 
@@ -168,7 +172,7 @@ const renameCollection = (modifiers, id, name) => {
     return;
   }
   collection.name = name;
-  persist(modifiers);
+  modifiers.rev += 1;
 };
 
 /**
@@ -177,7 +181,7 @@ const renameCollection = (modifiers, id, name) => {
  */
 const deleteCollection = (modifiers, id) => {
   modifiers.collections = modifiers.collections.filter((c) => String(c.id) !== String(id));
-  persist(modifiers);
+  modifiers.rev += 1;
 };
 
 /**
@@ -198,7 +202,7 @@ const createModifier = (modifiers, collectionId) => {
     percent: [],
   };
   collection.modifiers.push(modifier);
-  persist(modifiers);
+  modifiers.rev += 1;
   return modifier;
 };
 
@@ -214,7 +218,7 @@ const updateModifier = (modifiers, collectionId, modifierId, patch) => {
     return;
   }
   Object.assign(modifier, patch);
-  persist(modifiers);
+  modifiers.rev += 1;
 };
 
 /**
@@ -228,7 +232,7 @@ const deleteModifier = (modifiers, collectionId, modifierId) => {
     return;
   }
   collection.modifiers = collection.modifiers.filter((m) => String(m.id) !== String(modifierId));
-  persist(modifiers);
+  modifiers.rev += 1;
 };
 
 /**
@@ -243,7 +247,7 @@ const addEntry = (modifiers, collectionId, modifierId, kind) => {
     return;
   }
   modifier[kind].push(makeEntry(modifiers, STAT_META[0].id, 0));
-  persist(modifiers);
+  modifiers.rev += 1;
 };
 
 /**
@@ -259,7 +263,7 @@ const removeEntry = (modifiers, collectionId, modifierId, kind, entryId) => {
     return;
   }
   modifier[kind] = modifier[kind].filter((e) => String(e.id) !== String(entryId));
-  persist(modifiers);
+  modifiers.rev += 1;
 };
 
 /**
@@ -280,24 +284,23 @@ const updateEntry = (modifiers, collectionId, modifierId, kind, entryId, patch) 
     return;
   }
   Object.assign(entry, patch);
-  persist(modifiers);
+  modifiers.rev += 1;
 };
 
-const MODIFIERS_MODULE = {
-  create: createModifiers,
-  hydrate: hydrateModifiers,
-  getCollection: getCollection,
-  findModifier: findModifier,
-  allModifiers: allModifiers,
-  createCollection: createCollection,
-  renameCollection: renameCollection,
-  deleteCollection: deleteCollection,
-  createModifier: createModifier,
-  updateModifier: updateModifier,
-  deleteModifier: deleteModifier,
-  addEntry: addEntry,
-  removeEntry: removeEntry,
-  updateEntry: updateEntry,
+export {
+  createModifiers,
+  serializeModifiers,
+  hydrateModifiers,
+  getCollection,
+  findModifier,
+  allModifiers,
+  createCollection,
+  renameCollection,
+  deleteCollection,
+  createModifier,
+  updateModifier,
+  deleteModifier,
+  addEntry,
+  removeEntry,
+  updateEntry,
 };
-
-export { MODIFIERS_MODULE };

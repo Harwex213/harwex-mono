@@ -1,6 +1,6 @@
 import { describe, test } from "node:test";
 import assert from "node:assert";
-import { ACTIVE_BATTLE_MODULE, BATTLE_PHASE } from "./active-battle.js";
+import { BATTLE_PHASE, accelerate, advanceUnit, applyBreakthrough, attack, capitulate, checkVictory, createActiveBattle, declineBreakthrough, effectiveMorale, endActivation, fireModesAvailable, resetActiveBattle, rotateUnit, routTick, rulerAuraBonus, startBattle, startBattleDisposition, validRangedTargets } from "./active-battle.js";
 
 const PRISTINE = {
   phase: null,
@@ -59,7 +59,7 @@ const buildMap = (overrides = {}) => {
 };
 
 const makeActiveState = (unit, extraUnits = []) => {
-  const state = ACTIVE_BATTLE_MODULE.create();
+  const state = createActiveBattle();
   state.phase = BATTLE_PHASE.ACTIVE;
   state.units = [unit, ...extraUnits];
   state.activeUnitId = unit.id;
@@ -68,7 +68,7 @@ const makeActiveState = (unit, extraUnits = []) => {
 
 describe("reset", () => {
   test("returns a finished battle to the pristine shape", () => {
-    const state = ACTIVE_BATTLE_MODULE.create();
+    const state = createActiveBattle();
     state.phase = BATTLE_PHASE.FINISHED;
     state.mapId = "m1";
     state.units = [buildUnit()];
@@ -79,35 +79,35 @@ describe("reset", () => {
     state.actedUnitIds = [1];
     state.log = ["x"];
 
-    ACTIVE_BATTLE_MODULE.reset(state);
+    resetActiveBattle(state);
 
     assert.deepStrictEqual(state, PRISTINE);
   });
 
   test("is idempotent on a pristine state", () => {
-    const state = ACTIVE_BATTLE_MODULE.create();
+    const state = createActiveBattle();
 
-    ACTIVE_BATTLE_MODULE.reset(state);
+    resetActiveBattle(state);
 
-    assert.deepStrictEqual(state, ACTIVE_BATTLE_MODULE.create());
+    assert.deepStrictEqual(state, createActiveBattle());
   });
 
   test("mutates in place and returns undefined", () => {
-    const state = ACTIVE_BATTLE_MODULE.create();
+    const state = createActiveBattle();
     state.phase = BATTLE_PHASE.FINISHED;
 
-    const ret = ACTIVE_BATTLE_MODULE.reset(state);
+    const ret = resetActiveBattle(state);
 
     assert.strictEqual(ret, undefined);
     assert.strictEqual(state.phase, null);
   });
 
   test("unblocks startBattleDisposition after a finished battle", () => {
-    const state = ACTIVE_BATTLE_MODULE.create();
+    const state = createActiveBattle();
     state.phase = BATTLE_PHASE.FINISHED;
 
-    ACTIVE_BATTLE_MODULE.reset(state);
-    ACTIVE_BATTLE_MODULE.startBattleDisposition(
+    resetActiveBattle(state);
+    startBattleDisposition(
       state,
       { mapId: "m1", attacker: [], defender: [], nextUnitId: 1 },
       { collections: [] },
@@ -123,12 +123,12 @@ describe("startBattle", () => {
   test("seeds round 1, the first group, and its fastest unit's activation", () => {
     const fast = buildUnit({ id: 1, speed: 5 });
     const slow = buildUnit({ id: 2, speed: 3, position: { row: 1, col: 2 } });
-    const state = ACTIVE_BATTLE_MODULE.create();
+    const state = createActiveBattle();
     state.phase = BATTLE_PHASE.DISPOSITION;
     state.units = [slow, fast];
     const map = buildMap();
 
-    ACTIVE_BATTLE_MODULE.startBattle(state, map);
+    startBattle(state, map);
 
     assert.strictEqual(state.phase, BATTLE_PHASE.ACTIVE);
     assert.strictEqual(state.round, 1);
@@ -140,12 +140,12 @@ describe("startBattle", () => {
 
   test("is a no-op when the battle is not in disposition", () => {
     const unit = buildUnit();
-    const state = ACTIVE_BATTLE_MODULE.create();
+    const state = createActiveBattle();
     state.phase = BATTLE_PHASE.ACTIVE;
     state.units = [unit];
     const map = buildMap();
 
-    ACTIVE_BATTLE_MODULE.startBattle(state, map);
+    startBattle(state, map);
 
     assert.strictEqual(state.round, 0);
     assert.strictEqual(state.activeUnitId, null);
@@ -158,7 +158,7 @@ describe("advanceUnit", () => {
     const state = makeActiveState(unit);
     const map = buildMap();
 
-    ACTIVE_BATTLE_MODULE.advanceUnit(state, { row: 2, col: 1 }, map);
+    advanceUnit(state, { row: 2, col: 1 }, map);
 
     assert.deepStrictEqual(unit.position, { row: 2, col: 1 });
     assert.strictEqual(unit.movePoints, 2);
@@ -170,7 +170,7 @@ describe("advanceUnit", () => {
     const state = makeActiveState(unit);
     const map = buildMap();
 
-    ACTIVE_BATTLE_MODULE.advanceUnit(state, { row: 0, col: 0 }, map);
+    advanceUnit(state, { row: 0, col: 0 }, map);
 
     assert.deepStrictEqual(unit.position, { row: 1, col: 1 });
     assert.strictEqual(unit.movePoints, 3);
@@ -182,7 +182,7 @@ describe("advanceUnit", () => {
     const state = makeActiveState(unit, [occupant]);
     const map = buildMap();
 
-    ACTIVE_BATTLE_MODULE.advanceUnit(state, { row: 2, col: 1 }, map);
+    advanceUnit(state, { row: 2, col: 1 }, map);
 
     assert.deepStrictEqual(unit.position, { row: 1, col: 1 });
     assert.strictEqual(unit.movePoints, 3);
@@ -193,7 +193,7 @@ describe("advanceUnit", () => {
     const state = makeActiveState(unit);
     const map = buildMap({ "2:1": "water" });
 
-    ACTIVE_BATTLE_MODULE.advanceUnit(state, { row: 2, col: 1 }, map);
+    advanceUnit(state, { row: 2, col: 1 }, map);
 
     assert.deepStrictEqual(unit.position, { row: 1, col: 1 });
     assert.strictEqual(unit.movePoints, 3);
@@ -204,7 +204,7 @@ describe("advanceUnit", () => {
     const state = makeActiveState(unit);
     const map = buildMap();
 
-    ACTIVE_BATTLE_MODULE.advanceUnit(state, { row: 2, col: 1 }, map);
+    advanceUnit(state, { row: 2, col: 1 }, map);
 
     assert.deepStrictEqual(unit.position, { row: 1, col: 1 });
     assert.strictEqual(unit.movePoints, 0.5);
@@ -215,7 +215,7 @@ describe("advanceUnit", () => {
     const state = makeActiveState(unit);
     const map = buildMap();
 
-    ACTIVE_BATTLE_MODULE.advanceUnit(state, { row: 2, col: 1 }, map);
+    advanceUnit(state, { row: 2, col: 1 }, map);
 
     assert.deepStrictEqual(unit.position, { row: 1, col: 1 });
     assert.strictEqual(unit.movePoints, 3);
@@ -227,7 +227,7 @@ describe("rotateUnit", () => {
     const unit = buildUnit({ movePoints: 3, facing: 4 });
     const state = makeActiveState(unit);
 
-    ACTIVE_BATTLE_MODULE.rotateUnit(state, 2);
+    rotateUnit(state, 2);
 
     assert.strictEqual(unit.facing, 2);
     assert.strictEqual(unit.movePoints, 2);
@@ -237,9 +237,9 @@ describe("rotateUnit", () => {
     const unit = buildUnit({ movePoints: 3, facing: 4 });
     const state = makeActiveState(unit);
 
-    ACTIVE_BATTLE_MODULE.rotateUnit(state, 6);
-    ACTIVE_BATTLE_MODULE.rotateUnit(state, -1);
-    ACTIVE_BATTLE_MODULE.rotateUnit(state, 1.5);
+    rotateUnit(state, 6);
+    rotateUnit(state, -1);
+    rotateUnit(state, 1.5);
 
     assert.strictEqual(unit.facing, 4);
     assert.strictEqual(unit.movePoints, 3);
@@ -249,7 +249,7 @@ describe("rotateUnit", () => {
     const unit = buildUnit({ movePoints: 3, facing: 4 });
     const state = makeActiveState(unit);
 
-    ACTIVE_BATTLE_MODULE.rotateUnit(state, 4);
+    rotateUnit(state, 4);
 
     assert.strictEqual(unit.movePoints, 3);
   });
@@ -258,12 +258,12 @@ describe("rotateUnit", () => {
     const unit = buildUnit({ type: "heavy-infantry", movePoints: 3, facing: 4 });
     const state = makeActiveState(unit);
 
-    ACTIVE_BATTLE_MODULE.rotateUnit(state, 2);
+    rotateUnit(state, 2);
     assert.strictEqual(unit.facing, 2);
     assert.strictEqual(unit.movePoints, 3);
     assert.strictEqual(unit.freeRotationUsed, true);
 
-    ACTIVE_BATTLE_MODULE.rotateUnit(state, 0);
+    rotateUnit(state, 0);
     assert.strictEqual(unit.facing, 0);
     assert.strictEqual(unit.movePoints, 2);
   });
@@ -275,7 +275,7 @@ describe("accelerate", () => {
     const state = makeActiveState(unit);
     const map = buildMap();
 
-    ACTIVE_BATTLE_MODULE.accelerate(state, map);
+    accelerate(state, map);
 
     assert.strictEqual(unit.morale, 70);
     assert.strictEqual(unit.movePoints, 6);
@@ -287,7 +287,7 @@ describe("accelerate", () => {
     const state = makeActiveState(unit);
     const map = buildMap();
 
-    ACTIVE_BATTLE_MODULE.accelerate(state, map);
+    accelerate(state, map);
 
     assert.strictEqual(unit.morale, 80);
     assert.strictEqual(unit.movePoints, 3);
@@ -298,7 +298,7 @@ describe("accelerate", () => {
     const state = makeActiveState(unit);
     const map = buildMap({ "1:1": "forest" });
 
-    ACTIVE_BATTLE_MODULE.accelerate(state, map);
+    accelerate(state, map);
 
     assert.strictEqual(unit.morale, 80);
     assert.strictEqual(unit.movePoints, 3);
@@ -309,7 +309,7 @@ describe("accelerate", () => {
 describe("MP accumulation across activations", () => {
   test("a partial-cost move is carried over and restored on reactivation", () => {
     const unit = buildUnit({ speed: 1, movePoints: 1 });
-    const state = ACTIVE_BATTLE_MODULE.create();
+    const state = createActiveBattle();
     state.phase = BATTLE_PHASE.ACTIVE;
     state.units = [unit];
     state.activeGroup = { side: "attacker", type: "cavalry" };
@@ -318,18 +318,18 @@ describe("MP accumulation across activations", () => {
     const map = buildMap({ "2:1": "hills" });
 
     // {2,1} is a front hex; climbing to hills costs 2 MP, unit only has 1
-    ACTIVE_BATTLE_MODULE.advanceUnit(state, { row: 2, col: 1 }, map);
+    advanceUnit(state, { row: 2, col: 1 }, map);
     assert.strictEqual(unit.movePoints, 1);
 
     // single-unit, single-group battle: the group wraps back to this unit
     // within one endActivation call, banking then restoring its MP + carry
-    ACTIVE_BATTLE_MODULE.endActivation(state, map);
+    endActivation(state, map);
 
     assert.strictEqual(state.round, 2);
     assert.strictEqual(state.activeUnitId, unit.id);
     assert.strictEqual(unit.movePoints, 2);
 
-    ACTIVE_BATTLE_MODULE.advanceUnit(state, { row: 2, col: 1 }, map);
+    advanceUnit(state, { row: 2, col: 1 }, map);
     assert.deepStrictEqual(unit.position, { row: 2, col: 1 });
     assert.strictEqual(unit.movePoints, 0);
   });
@@ -339,7 +339,7 @@ describe("endActivation ordering", () => {
   test("activates the next unit in speed/id order, then advances the group", () => {
     const fast = buildUnit({ id: 1, speed: 5, movePoints: 5 });
     const slow = buildUnit({ id: 2, speed: 3, movePoints: 3, position: { row: 1, col: 2 } });
-    const state = ACTIVE_BATTLE_MODULE.create();
+    const state = createActiveBattle();
     state.phase = BATTLE_PHASE.ACTIVE;
     state.units = [slow, fast];
     state.activeGroup = { side: "attacker", type: "cavalry" };
@@ -347,13 +347,13 @@ describe("endActivation ordering", () => {
     state.round = 1;
     const map = buildMap();
 
-    ACTIVE_BATTLE_MODULE.endActivation(state, map);
+    endActivation(state, map);
 
     assert.strictEqual(state.activeUnitId, slow.id);
     assert.deepStrictEqual(state.actedUnitIds, [fast.id]);
     assert.strictEqual(state.round, 1);
 
-    ACTIVE_BATTLE_MODULE.endActivation(state, map);
+    endActivation(state, map);
 
     // only group in play; wraps and increments the round, resetting actedUnitIds
     assert.strictEqual(state.round, 2);
@@ -395,7 +395,7 @@ describe("attack", () => {
     const state = makeActiveState(attacker, [target]);
     const map = buildMap();
 
-    ACTIVE_BATTLE_MODULE.attack(state, target.id, map);
+    attack(state, target.id, map);
 
     assert.strictEqual(target.hp, 80);
     assert.strictEqual(target.morale, 50);
@@ -409,7 +409,7 @@ describe("attack", () => {
     const state = makeActiveState(attacker, [target]);
     const map = buildMap();
 
-    ACTIVE_BATTLE_MODULE.attack(state, target.id, map);
+    attack(state, target.id, map);
 
     assert.strictEqual(target.hp, 100);
     assert.strictEqual(attacker.hasAttacked, false);
@@ -421,7 +421,7 @@ describe("attack", () => {
     const state = makeActiveState(attacker, [target]);
     const map = buildMap();
 
-    ACTIVE_BATTLE_MODULE.attack(state, target.id, map);
+    attack(state, target.id, map);
 
     assert.strictEqual(target.hp, 100);
     assert.strictEqual(attacker.hasAttacked, false);
@@ -433,7 +433,7 @@ describe("attack", () => {
     const state = makeActiveState(attacker, [target]);
     const map = buildMap();
 
-    ACTIVE_BATTLE_MODULE.attack(state, target.id, map);
+    attack(state, target.id, map);
 
     assert.strictEqual(target.hp, 100);
   });
@@ -444,7 +444,7 @@ describe("attack", () => {
     const state = makeActiveState(attacker, [target]);
     const map = buildMap();
 
-    ACTIVE_BATTLE_MODULE.attack(state, target.id, map);
+    attack(state, target.id, map);
 
     assert.strictEqual(target.hp, 100);
   });
@@ -455,7 +455,7 @@ describe("attack", () => {
     const state = makeActiveState(attacker, [target]);
     const map = buildMap();
 
-    ACTIVE_BATTLE_MODULE.attack(state, target.id, map);
+    attack(state, target.id, map);
 
     assert.strictEqual(attacker.hasAttacked, false);
   });
@@ -464,12 +464,12 @@ describe("attack", () => {
     const frontAttacker = buildAttacker();
     const frontTarget = buildTarget({ facing: 1 });
     const frontState = makeActiveState(frontAttacker, [frontTarget]);
-    ACTIVE_BATTLE_MODULE.attack(frontState, frontTarget.id, buildMap());
+    attack(frontState, frontTarget.id, buildMap());
 
     const flankAttacker = buildAttacker();
     const flankTarget = buildTarget({ facing: 5 });
     const flankState = makeActiveState(flankAttacker, [flankTarget]);
-    ACTIVE_BATTLE_MODULE.attack(flankState, flankTarget.id, buildMap());
+    attack(flankState, flankTarget.id, buildMap());
 
     const frontMoraleDamage = 80 - frontTarget.morale;
     const flankMoraleDamage = 80 - flankTarget.morale;
@@ -483,7 +483,7 @@ describe("attack", () => {
     const state = makeActiveState(attacker, [target]);
     const map = buildMap();
 
-    ACTIVE_BATTLE_MODULE.attack(state, target.id, map);
+    attack(state, target.id, map);
 
     assert.strictEqual(target.destroyed, true);
     assert.strictEqual(target.position, null);
@@ -496,7 +496,7 @@ describe("attack", () => {
     const state = makeActiveState(attacker, [target]);
     const map = buildMap();
 
-    ACTIVE_BATTLE_MODULE.attack(state, target.id, map);
+    attack(state, target.id, map);
 
     assert.strictEqual(target.routed, true);
     assert.notStrictEqual(target.position, null);
@@ -520,7 +520,7 @@ describe("morale shock", () => {
     const state = makeActiveState(attacker, [target, allyD1, allyD2, allyD3]);
     const map = buildMap();
 
-    ACTIVE_BATTLE_MODULE.attack(state, target.id, map);
+    attack(state, target.id, map);
 
     assert.strictEqual(allyD1.morale, 70);
     assert.strictEqual(allyD2.morale, 75);
@@ -539,7 +539,7 @@ describe("morale shock", () => {
     const state = makeActiveState(attacker, [target, allyD1, allyD2]);
     const map = buildMap();
 
-    ACTIVE_BATTLE_MODULE.attack(state, target.id, map);
+    attack(state, target.id, map);
 
     assert.strictEqual(allyD1.morale, 60);
     assert.strictEqual(allyD2.morale, 70);
@@ -557,7 +557,7 @@ describe("morale shock", () => {
     const state = makeActiveState(attacker, [target, allyD1, furtherAlly]);
     const map = buildMap();
 
-    ACTIVE_BATTLE_MODULE.attack(state, target.id, map);
+    attack(state, target.id, map);
 
     assert.strictEqual(allyD1.routed, true);
     assert.strictEqual(furtherAlly.morale, 45);
@@ -571,7 +571,7 @@ describe("victory / draw", () => {
     const state = makeActiveState(attacker, [target]);
     const map = buildMap();
 
-    ACTIVE_BATTLE_MODULE.attack(state, target.id, map);
+    attack(state, target.id, map);
 
     assert.strictEqual(state.phase, BATTLE_PHASE.FINISHED);
     assert.strictEqual(state.winner, "attacker");
@@ -583,7 +583,7 @@ describe("victory / draw", () => {
     const defenderUnit = buildTarget({ routed: true });
     const state = makeActiveState(attackerUnit, [defenderUnit]);
 
-    ACTIVE_BATTLE_MODULE.checkVictory(state);
+    checkVictory(state);
 
     assert.strictEqual(state.phase, BATTLE_PHASE.FINISHED);
     assert.strictEqual(state.winner, "draw");
@@ -595,7 +595,7 @@ describe("capitulate", () => {
     const unit = buildUnit();
     const state = makeActiveState(unit);
 
-    ACTIVE_BATTLE_MODULE.capitulate(state, "attacker");
+    capitulate(state, "attacker");
 
     assert.strictEqual(state.phase, BATTLE_PHASE.FINISHED);
     assert.strictEqual(state.winner, "defender");
@@ -607,7 +607,7 @@ describe("capitulate", () => {
     const state = makeActiveState(unit);
     state.phase = BATTLE_PHASE.FINISHED;
 
-    ACTIVE_BATTLE_MODULE.capitulate(state, "attacker");
+    capitulate(state, "attacker");
 
     assert.strictEqual(state.winner, null);
   });
@@ -616,7 +616,7 @@ describe("capitulate", () => {
     const unit = buildUnit();
     const state = makeActiveState(unit);
 
-    ACTIVE_BATTLE_MODULE.capitulate(state, "spectator");
+    capitulate(state, "spectator");
 
     assert.strictEqual(state.phase, BATTLE_PHASE.ACTIVE);
     assert.strictEqual(state.winner, null);
@@ -626,7 +626,7 @@ describe("capitulate", () => {
 describe("routTick", () => {
   test("a routed unit with enough MP flees all the way to its deployment edge", () => {
     const unit = buildUnit({ routed: true, position: { row: 2, col: 1 }, movePoints: 5 });
-    const state = ACTIVE_BATTLE_MODULE.create();
+    const state = createActiveBattle();
     state.phase = BATTLE_PHASE.ACTIVE;
     state.units = [unit];
     state.activeGroup = { side: "attacker", type: "cavalry" };
@@ -634,7 +634,7 @@ describe("routTick", () => {
     state.round = 1;
     const map = buildMap();
 
-    ACTIVE_BATTLE_MODULE.routTick(state, map);
+    routTick(state, map);
 
     assert.strictEqual(unit.position, null);
     assert.strictEqual(unit.routed, true);
@@ -643,7 +643,7 @@ describe("routTick", () => {
 
   test("a routed unit with no MP does not move, but still ends its activation", () => {
     const unit = buildUnit({ routed: true, position: { row: 2, col: 1 }, movePoints: 0 });
-    const state = ACTIVE_BATTLE_MODULE.create();
+    const state = createActiveBattle();
     state.phase = BATTLE_PHASE.ACTIVE;
     state.units = [unit];
     state.activeGroup = { side: "attacker", type: "cavalry" };
@@ -651,7 +651,7 @@ describe("routTick", () => {
     state.round = 1;
     const map = buildMap();
 
-    ACTIVE_BATTLE_MODULE.routTick(state, map);
+    routTick(state, map);
 
     assert.deepStrictEqual(unit.position, { row: 2, col: 1 });
     assert.strictEqual(state.round, 2);
@@ -659,7 +659,7 @@ describe("routTick", () => {
 
   test("a non-routed active unit just ends its activation without moving", () => {
     const unit = buildUnit({ routed: false, position: { row: 2, col: 1 }, movePoints: 5 });
-    const state = ACTIVE_BATTLE_MODULE.create();
+    const state = createActiveBattle();
     state.phase = BATTLE_PHASE.ACTIVE;
     state.units = [unit];
     state.activeGroup = { side: "attacker", type: "cavalry" };
@@ -667,7 +667,7 @@ describe("routTick", () => {
     state.round = 1;
     const map = buildMap();
 
-    ACTIVE_BATTLE_MODULE.routTick(state, map);
+    routTick(state, map);
 
     assert.deepStrictEqual(unit.position, { row: 2, col: 1 });
     assert.strictEqual(state.round, 2);
@@ -727,7 +727,7 @@ describe("ranged attack", () => {
     const state = makeActiveState(attacker, [target, friendly]);
     const map = buildWideMap();
 
-    ACTIVE_BATTLE_MODULE.attack(state, target.id, map, "arc");
+    attack(state, target.id, map, "arc");
 
     assert.ok(target.hp < 100);
     assert.ok(target.morale < 80);
@@ -741,7 +741,7 @@ describe("ranged attack", () => {
     const state = makeActiveState(attacker, [target, friendly]);
     const map = buildWideMap();
 
-    ACTIVE_BATTLE_MODULE.attack(state, target.id, map, "direct");
+    attack(state, target.id, map, "direct");
 
     assert.strictEqual(target.hp, 100);
     assert.strictEqual(target.morale, 80);
@@ -754,7 +754,7 @@ describe("ranged attack", () => {
     const state = makeActiveState(attacker, [target]);
     const map = buildWideMap();
 
-    ACTIVE_BATTLE_MODULE.attack(state, target.id, map, "direct");
+    attack(state, target.id, map, "direct");
 
     assert.ok(target.hp < 100);
     assert.ok(target.morale < 80);
@@ -767,7 +767,7 @@ describe("ranged attack", () => {
     const arcState = makeActiveState(arcAttacker, [arcTarget]);
     const arcMap = buildWideMap({ "2:4": "settlement" });
 
-    ACTIVE_BATTLE_MODULE.attack(arcState, arcTarget.id, arcMap, "arc");
+    attack(arcState, arcTarget.id, arcMap, "arc");
 
     assert.strictEqual(arcTarget.hp, 100);
     assert.strictEqual(arcAttacker.ammo, 8);
@@ -777,7 +777,7 @@ describe("ranged attack", () => {
     const directState = makeActiveState(directAttacker, [directTarget]);
     const directMap = buildWideMap({ "2:4": "settlement" });
 
-    ACTIVE_BATTLE_MODULE.attack(directState, directTarget.id, directMap, "direct");
+    attack(directState, directTarget.id, directMap, "direct");
 
     assert.ok(directTarget.hp < 100);
     assert.strictEqual(directAttacker.ammo, 7);
@@ -789,13 +789,13 @@ describe("ranged attack", () => {
     const state = makeActiveState(attacker, [target]);
     const map = buildWideMap();
 
-    ACTIVE_BATTLE_MODULE.attack(state, target.id, map, "arc");
+    attack(state, target.id, map, "arc");
     assert.strictEqual(target.hp, 100);
 
-    ACTIVE_BATTLE_MODULE.attack(state, target.id, map, "direct");
+    attack(state, target.id, map, "direct");
     assert.strictEqual(target.hp, 100);
 
-    ACTIVE_BATTLE_MODULE.attack(state, target.id, map, "melee");
+    attack(state, target.id, map, "melee");
     assert.ok(target.hp < 100);
     assert.strictEqual(attacker.ammo, 0);
   });
@@ -806,10 +806,10 @@ describe("ranged attack", () => {
     const state = makeActiveState(attacker, [target]);
     const map = buildWideMap();
 
-    ACTIVE_BATTLE_MODULE.attack(state, target.id, map, "arc");
+    attack(state, target.id, map, "arc");
     assert.strictEqual(target.hp, 100);
 
-    ACTIVE_BATTLE_MODULE.attack(state, target.id, map, "direct");
+    attack(state, target.id, map, "direct");
     assert.strictEqual(target.hp, 100);
   });
 
@@ -817,12 +817,12 @@ describe("ranged attack", () => {
     const frontAttacker = buildRangedAttacker();
     const frontTarget = buildRangedTarget({ facing: 3 });
     const frontState = makeActiveState(frontAttacker, [frontTarget]);
-    ACTIVE_BATTLE_MODULE.attack(frontState, frontTarget.id, buildWideMap(), "direct");
+    attack(frontState, frontTarget.id, buildWideMap(), "direct");
 
     const flankAttacker = buildRangedAttacker();
     const flankTarget = buildRangedTarget({ facing: 1 });
     const flankState = makeActiveState(flankAttacker, [flankTarget]);
-    ACTIVE_BATTLE_MODULE.attack(flankState, flankTarget.id, buildWideMap(), "direct");
+    attack(flankState, flankTarget.id, buildWideMap(), "direct");
 
     const frontMoraleDamage = 80 - frontTarget.morale;
     const flankMoraleDamage = 80 - flankTarget.morale;
@@ -834,12 +834,12 @@ describe("ranged attack", () => {
     const meleeAttacker = buildAttacker();
     const archerTarget = buildTarget({ type: "archer" });
     const archerState = makeActiveState(meleeAttacker, [archerTarget]);
-    ACTIVE_BATTLE_MODULE.attack(archerState, archerTarget.id, buildMap());
+    attack(archerState, archerTarget.id, buildMap());
 
     const meleeAttacker2 = buildAttacker();
     const cavalryTarget = buildTarget({ type: "light-cavalry" });
     const cavalryState = makeActiveState(meleeAttacker2, [cavalryTarget]);
-    ACTIVE_BATTLE_MODULE.attack(cavalryState, cavalryTarget.id, buildMap());
+    attack(cavalryState, cavalryTarget.id, buildMap());
 
     const archerMoraleDamage = 80 - archerTarget.morale;
     const cavalryMoraleDamage = 80 - cavalryTarget.morale;
@@ -852,8 +852,8 @@ describe("ranged attack", () => {
     const state = makeActiveState(attacker, [target]);
     const map = buildWideMap();
 
-    assert.strictEqual(ACTIVE_BATTLE_MODULE.fireModesAvailable(state, map).direct, true);
-    assert.ok(ACTIVE_BATTLE_MODULE.validRangedTargets(state, map, "direct").includes(target.id));
+    assert.strictEqual(fireModesAvailable(state, map).direct, true);
+    assert.ok(validRangedTargets(state, map, "direct").includes(target.id));
   });
 });
 
@@ -864,7 +864,7 @@ describe("crossbow cooldown", () => {
     const state = makeActiveState(attacker, [target]);
     const map = buildWideMap();
 
-    ACTIVE_BATTLE_MODULE.attack(state, target.id, map, "direct");
+    attack(state, target.id, map, "direct");
 
     assert.strictEqual(attacker.ammo, 7);
     assert.strictEqual(attacker.cooldown, 2);
@@ -876,7 +876,7 @@ describe("crossbow cooldown", () => {
     const state = makeActiveState(attacker, [target]);
     const map = buildWideMap();
 
-    ACTIVE_BATTLE_MODULE.attack(state, target.id, map, "direct");
+    attack(state, target.id, map, "direct");
 
     assert.strictEqual(target.hp, 100);
     assert.strictEqual(attacker.ammo, 8);
@@ -884,7 +884,7 @@ describe("crossbow cooldown", () => {
 
   test("beginActivation ticks cooldown down by 1 each activation", () => {
     const unit = buildUnit({ type: "crossbowman", cooldown: 2, movePoints: 3 });
-    const state = ACTIVE_BATTLE_MODULE.create();
+    const state = createActiveBattle();
     state.phase = BATTLE_PHASE.ACTIVE;
     state.units = [unit];
     state.activeGroup = { side: "attacker", type: "archers" };
@@ -894,7 +894,7 @@ describe("crossbow cooldown", () => {
 
     // single-unit, single-group battle: the group wraps back to this unit
     // within one endActivation call, invoking beginActivation on it again
-    ACTIVE_BATTLE_MODULE.endActivation(state, map);
+    endActivation(state, map);
 
     assert.strictEqual(unit.cooldown, 1);
   });
@@ -923,17 +923,17 @@ describe("charge accumulation (M6)", () => {
     const state = makeActiveState(unit);
     const map = buildTallMap();
 
-    ACTIVE_BATTLE_MODULE.advanceUnit(state, { row: 2, col: 1 }, map);
+    advanceUnit(state, { row: 2, col: 1 }, map);
     assert.strictEqual(unit.chargeHexes, 1);
 
-    ACTIVE_BATTLE_MODULE.advanceUnit(state, { row: 3, col: 1 }, map);
+    advanceUnit(state, { row: 3, col: 1 }, map);
     assert.strictEqual(unit.chargeHexes, 2);
 
-    ACTIVE_BATTLE_MODULE.rotateUnit(state, 2);
+    rotateUnit(state, 2);
     assert.strictEqual(unit.chargeHexes, 0);
 
-    ACTIVE_BATTLE_MODULE.rotateUnit(state, 4);
-    ACTIVE_BATTLE_MODULE.advanceUnit(state, { row: 4, col: 1 }, map);
+    rotateUnit(state, 4);
+    advanceUnit(state, { row: 4, col: 1 }, map);
     assert.strictEqual(unit.chargeHexes, 1);
   });
 });
@@ -944,7 +944,7 @@ describe("spearman flank/rear moves (M6)", () => {
     const state = makeActiveState(unit);
     const map = buildMap();
 
-    ACTIVE_BATTLE_MODULE.advanceUnit(state, { row: 1, col: 0 }, map);
+    advanceUnit(state, { row: 1, col: 0 }, map);
 
     assert.deepStrictEqual(unit.position, { row: 1, col: 0 });
     assert.strictEqual(unit.chargeHexes, 0);
@@ -956,7 +956,7 @@ describe("spearman flank/rear moves (M6)", () => {
     const state = makeActiveState(unit);
     const map = buildMap();
 
-    ACTIVE_BATTLE_MODULE.advanceUnit(state, { row: 1, col: 0 }, map);
+    advanceUnit(state, { row: 1, col: 0 }, map);
 
     assert.deepStrictEqual(unit.position, { row: 1, col: 1 });
     assert.strictEqual(unit.movePoints, 4);
@@ -969,7 +969,7 @@ describe("charge damage (M6)", () => {
     const target = buildTarget({ facing: 1 });
     const state = makeActiveState(attacker, [target]);
 
-    ACTIVE_BATTLE_MODULE.attack(state, target.id, buildMap());
+    attack(state, target.id, buildMap());
 
     assert.strictEqual(target.hp, 100 - 12);
     assert.strictEqual(target.morale, 80 - 12);
@@ -980,7 +980,7 @@ describe("charge damage (M6)", () => {
     const target = buildTarget({ facing: 1 });
     const state = makeActiveState(attacker, [target]);
 
-    ACTIVE_BATTLE_MODULE.attack(state, target.id, buildMap());
+    attack(state, target.id, buildMap());
 
     assert.strictEqual(100 - target.hp, 15);
     assert.strictEqual(80 - target.morale, 21);
@@ -988,7 +988,7 @@ describe("charge damage (M6)", () => {
 
   test("beginActivation resets chargeHexes on the next activation", () => {
     const unit = buildUnit({ chargeHexes: 3, movePoints: 3 });
-    const state = ACTIVE_BATTLE_MODULE.create();
+    const state = createActiveBattle();
     state.phase = BATTLE_PHASE.ACTIVE;
     state.units = [unit];
     state.activeGroup = { side: "attacker", type: "cavalry" };
@@ -998,7 +998,7 @@ describe("charge damage (M6)", () => {
 
     // single-unit, single-group battle: the group wraps back to this unit
     // within one endActivation call, invoking beginActivation on it again
-    ACTIVE_BATTLE_MODULE.endActivation(state, map);
+    endActivation(state, map);
 
     assert.strictEqual(unit.chargeHexes, 0);
   });
@@ -1011,10 +1011,10 @@ describe("maneuver (M6)", () => {
     const state = makeActiveState(attacker, [target]);
     const map = buildMap();
 
-    ACTIVE_BATTLE_MODULE.attack(state, target.id, map);
+    attack(state, target.id, map);
     assert.strictEqual(attacker.hasAttacked, true);
 
-    ACTIVE_BATTLE_MODULE.advanceUnit(state, { row: 2, col: 2 }, map);
+    advanceUnit(state, { row: 2, col: 2 }, map);
 
     assert.deepStrictEqual(attacker.position, { row: 2, col: 2 });
   });
@@ -1025,10 +1025,10 @@ describe("maneuver (M6)", () => {
     const state = makeActiveState(attacker, [target]);
     const map = buildMap();
 
-    ACTIVE_BATTLE_MODULE.attack(state, target.id, map);
+    attack(state, target.id, map);
     assert.strictEqual(attacker.hasAttacked, true);
 
-    ACTIVE_BATTLE_MODULE.advanceUnit(state, { row: 2, col: 2 }, map);
+    advanceUnit(state, { row: 2, col: 2 }, map);
 
     assert.deepStrictEqual(attacker.position, { row: 1, col: 1 });
   });
@@ -1041,7 +1041,7 @@ describe("closed formation (M6)", () => {
     const state = makeActiveState(attacker, [target]);
     const map = buildMap({ "2:2": "mountain" });
 
-    ACTIVE_BATTLE_MODULE.attack(state, target.id, map);
+    attack(state, target.id, map);
 
     assert.strictEqual(100 - target.hp, 16);
   });
@@ -1052,7 +1052,7 @@ describe("closed formation (M6)", () => {
     const state = makeActiveState(attacker, [target]);
     const map = buildMap({ "2:2": "mountain", "2:0": "mountain" });
 
-    ACTIVE_BATTLE_MODULE.attack(state, target.id, map);
+    attack(state, target.id, map);
 
     assert.strictEqual(100 - target.hp, 12);
   });
@@ -1063,7 +1063,7 @@ describe("closed formation (M6)", () => {
     const state = makeActiveState(attacker, [target]);
     const map = buildMap();
 
-    ACTIVE_BATTLE_MODULE.attack(state, target.id, map);
+    attack(state, target.id, map);
 
     assert.strictEqual(100 - target.hp, 20);
   });
@@ -1074,12 +1074,12 @@ describe("spearman rear physical bonus (M6)", () => {
     const spearAttacker = buildAttacker();
     const spearTarget = buildTarget({ type: "medium-spearman" }); // facing 4 -> rear
     const spearState = makeActiveState(spearAttacker, [spearTarget]);
-    ACTIVE_BATTLE_MODULE.attack(spearState, spearTarget.id, buildMap());
+    attack(spearState, spearTarget.id, buildMap());
 
     const infAttacker = buildAttacker();
     const infTarget = buildTarget({ type: "medium-infantry" }); // facing 4 -> rear
     const infState = makeActiveState(infAttacker, [infTarget]);
-    ACTIVE_BATTLE_MODULE.attack(infState, infTarget.id, buildMap());
+    attack(infState, infTarget.id, buildMap());
 
     assert.strictEqual(100 - spearTarget.hp, 30);
     assert.strictEqual(100 - infTarget.hp, 20);
@@ -1092,12 +1092,12 @@ describe("shock infantry rear-to-flank morale downgrade (M6)", () => {
     const shockAttacker = buildAttacker({ type: "light-infantry" });
     const shockTarget = buildTarget({ type: "medium-cavalry" }); // facing 4 -> rear
     const shockState = makeActiveState(shockAttacker, [shockTarget]);
-    ACTIVE_BATTLE_MODULE.attack(shockState, shockTarget.id, buildMap());
+    attack(shockState, shockTarget.id, buildMap());
 
     const plainAttacker = buildAttacker({ type: "light-cavalry" });
     const plainTarget = buildTarget({ type: "medium-cavalry" }); // facing 4 -> rear
     const plainState = makeActiveState(plainAttacker, [plainTarget]);
-    ACTIVE_BATTLE_MODULE.attack(plainState, plainTarget.id, buildMap());
+    attack(plainState, plainTarget.id, buildMap());
 
     const shockMorale = 80 - shockTarget.morale;
     const plainMorale = 80 - plainTarget.morale;
@@ -1112,7 +1112,7 @@ describe("breakthrough (M6)", () => {
     const state = makeActiveState(attacker, [target]);
     const map = buildTallMap();
 
-    ACTIVE_BATTLE_MODULE.attack(state, target.id, map);
+    attack(state, target.id, map);
 
     assert.deepStrictEqual(state.pendingBreakthrough, { attackerId: attacker.id, targetId: target.id, pushDir: 4 });
   });
@@ -1122,9 +1122,9 @@ describe("breakthrough (M6)", () => {
     const target = buildTarget({ facing: 1, attack: 10 });
     const state = makeActiveState(attacker, [target]);
     const map = buildTallMap();
-    ACTIVE_BATTLE_MODULE.attack(state, target.id, map);
+    attack(state, target.id, map);
 
-    ACTIVE_BATTLE_MODULE.applyBreakthrough(state, map);
+    applyBreakthrough(state, map);
 
     assert.strictEqual(state.pendingBreakthrough, null);
     assert.deepStrictEqual(target.position, { row: 3, col: 0 });
@@ -1137,9 +1137,9 @@ describe("breakthrough (M6)", () => {
     const behind = buildUnit({ id: 3, side: "defender", position: { row: 3, col: 0 } });
     const state = makeActiveState(attacker, [target, behind]);
     const map = buildTallMap();
-    ACTIVE_BATTLE_MODULE.attack(state, target.id, map);
+    attack(state, target.id, map);
 
-    ACTIVE_BATTLE_MODULE.applyBreakthrough(state, map);
+    applyBreakthrough(state, map);
 
     assert.deepStrictEqual(target.position, { row: 3, col: 0 });
     assert.deepStrictEqual(behind.position, { row: 4, col: 0 });
@@ -1152,7 +1152,7 @@ describe("breakthrough (M6)", () => {
     const state = makeActiveState(attacker, [target]);
     const map = buildMap(); // 3x3: {3,0} is off-map
 
-    ACTIVE_BATTLE_MODULE.attack(state, target.id, map);
+    attack(state, target.id, map);
 
     assert.strictEqual(state.pendingBreakthrough, null);
   });
@@ -1163,7 +1163,7 @@ describe("breakthrough (M6)", () => {
     const state = makeActiveState(attacker, [target]);
     const map = buildTallMap();
 
-    ACTIVE_BATTLE_MODULE.attack(state, target.id, map);
+    attack(state, target.id, map);
 
     assert.strictEqual(state.pendingBreakthrough, null);
   });
@@ -1173,9 +1173,9 @@ describe("breakthrough (M6)", () => {
     const target = buildTarget({ facing: 1, attack: 10 });
     const state = makeActiveState(attacker, [target]);
     const map = buildTallMap();
-    ACTIVE_BATTLE_MODULE.attack(state, target.id, map);
+    attack(state, target.id, map);
 
-    ACTIVE_BATTLE_MODULE.declineBreakthrough(state);
+    declineBreakthrough(state);
 
     assert.strictEqual(state.pendingBreakthrough, null);
     assert.deepStrictEqual(attacker.position, { row: 1, col: 1 });
@@ -1188,10 +1188,10 @@ describe("breakthrough (M6)", () => {
     const state = makeActiveState(attacker, [target]);
     state.activeGroup = { side: "attacker", type: "shock-infantry" };
     const map = buildTallMap();
-    ACTIVE_BATTLE_MODULE.attack(state, target.id, map);
+    attack(state, target.id, map);
     assert.notStrictEqual(state.pendingBreakthrough, null);
 
-    ACTIVE_BATTLE_MODULE.endActivation(state, map);
+    endActivation(state, map);
 
     assert.strictEqual(state.pendingBreakthrough, null);
   });
@@ -1204,7 +1204,7 @@ describe("charge reflection (M6)", () => {
     const state = makeActiveState(attacker, [target]);
     const map = buildMap({ "2:2": "mountain" });
 
-    ACTIVE_BATTLE_MODULE.attack(state, target.id, map);
+    attack(state, target.id, map);
 
     assert.strictEqual(attacker.hp, 100 - 17);
     assert.ok(state.log.some((line) => line.includes("отражает")));
@@ -1216,7 +1216,7 @@ describe("charge reflection (M6)", () => {
     const state = makeActiveState(attacker, [target]);
     const map = buildMap({ "2:2": "mountain" });
 
-    ACTIVE_BATTLE_MODULE.attack(state, target.id, map);
+    attack(state, target.id, map);
 
     assert.strictEqual(attacker.hp, 100);
   });
@@ -1227,7 +1227,7 @@ describe("charge reflection (M6)", () => {
     const state = makeActiveState(attacker, [target]);
     const map = buildMap();
 
-    ACTIVE_BATTLE_MODULE.attack(state, target.id, map);
+    attack(state, target.id, map);
 
     assert.strictEqual(attacker.hp, 100);
   });
@@ -1238,7 +1238,7 @@ describe("charge reflection (M6)", () => {
     const state = makeActiveState(attacker, [target]);
     const map = buildMap({ "2:2": "mountain" });
 
-    ACTIVE_BATTLE_MODULE.attack(state, target.id, map);
+    attack(state, target.id, map);
 
     assert.strictEqual(attacker.hp, 100);
   });
@@ -1246,10 +1246,10 @@ describe("charge reflection (M6)", () => {
 
 describe("reset clears pendingBreakthrough (M6)", () => {
   test("reset returns pendingBreakthrough to null along with everything else", () => {
-    const state = ACTIVE_BATTLE_MODULE.create();
+    const state = createActiveBattle();
     state.pendingBreakthrough = { attackerId: 1, targetId: 2, pushDir: 4 };
 
-    ACTIVE_BATTLE_MODULE.reset(state);
+    resetActiveBattle(state);
 
     assert.deepStrictEqual(state, PRISTINE);
   });
@@ -1262,7 +1262,7 @@ describe("horse archer hill exclusion (M6)", () => {
     const state = makeActiveState(attacker, [target]);
     const map = buildWideMap({ "2:1": "hills" });
 
-    ACTIVE_BATTLE_MODULE.attack(state, target.id, map, "arc");
+    attack(state, target.id, map, "arc");
 
     assert.strictEqual(target.hp, 100);
     assert.strictEqual(attacker.ammo, 8);
@@ -1272,13 +1272,13 @@ describe("horse archer hill exclusion (M6)", () => {
     const horse = buildRangedAttacker({ type: "horse-archer" });
     const horseTarget = buildRangedTarget();
     const horseState = makeActiveState(horse, [horseTarget]);
-    ACTIVE_BATTLE_MODULE.attack(horseState, horseTarget.id, buildWideMap({ "2:2": "hills" }), "arc");
+    attack(horseState, horseTarget.id, buildWideMap({ "2:2": "hills" }), "arc");
     assert.strictEqual(horseTarget.hp, 80); // 20 × arc 1 × clamped elev 1
 
     const archer = buildRangedAttacker();
     const archerTarget = buildRangedTarget();
     const archerState = makeActiveState(archer, [archerTarget]);
-    ACTIVE_BATTLE_MODULE.attack(archerState, archerTarget.id, buildWideMap({ "2:2": "hills" }), "arc");
+    attack(archerState, archerTarget.id, buildWideMap({ "2:2": "hills" }), "arc");
     assert.strictEqual(archerTarget.hp, 70); // 20 × arc 1 × elev 1.5 (hills are elevation 2)
   });
 
@@ -1287,7 +1287,7 @@ describe("horse archer hill exclusion (M6)", () => {
     const target = buildRangedTarget();
     const state = makeActiveState(attacker, [target]);
 
-    ACTIVE_BATTLE_MODULE.attack(state, target.id, buildWideMap({ "2:4": "hills" }), "arc");
+    attack(state, target.id, buildWideMap({ "2:4": "hills" }), "arc");
 
     assert.strictEqual(target.hp, 90); // 20 × arc 1 × elev 0.5 (firing 2 levels uphill)
   });
@@ -1300,11 +1300,11 @@ describe("validRangedTargets after attacking", () => {
     const state = makeActiveState(attacker, [target]);
     const map = buildWideMap();
 
-    assert.deepStrictEqual(ACTIVE_BATTLE_MODULE.validRangedTargets(state, map, "arc"), [target.id]);
+    assert.deepStrictEqual(validRangedTargets(state, map, "arc"), [target.id]);
 
-    ACTIVE_BATTLE_MODULE.attack(state, target.id, map, "arc");
+    attack(state, target.id, map, "arc");
 
-    assert.deepStrictEqual(ACTIVE_BATTLE_MODULE.validRangedTargets(state, map, "arc"), []);
+    assert.deepStrictEqual(validRangedTargets(state, map, "arc"), []);
   });
 });
 
@@ -1316,7 +1316,7 @@ describe("opportunity arming (M7)", () => {
     state.round = 1;
     const map = buildMap();
 
-    ACTIVE_BATTLE_MODULE.advanceUnit(state, { row: 2, col: 1 }, map);
+    advanceUnit(state, { row: 2, col: 1 }, map);
 
     assert.deepStrictEqual(mover.position, { row: 2, col: 1 });
     assert.deepStrictEqual(state.pendingOpportunity, { queue: [2], targetId: 1 });
@@ -1329,7 +1329,7 @@ describe("opportunity arming (M7)", () => {
     state.round = 1;
     const map = buildMap();
 
-    ACTIVE_BATTLE_MODULE.advanceUnit(state, { row: 2, col: 1 }, map);
+    advanceUnit(state, { row: 2, col: 1 }, map);
 
     assert.strictEqual(state.pendingOpportunity, null);
   });
@@ -1343,7 +1343,7 @@ describe("opportunity arming (M7)", () => {
     state.round = 1;
     const map = buildMap();
 
-    ACTIVE_BATTLE_MODULE.advanceUnit(state, { row: 2, col: 1 }, map);
+    advanceUnit(state, { row: 2, col: 1 }, map);
 
     assert.strictEqual(state.pendingOpportunity, null);
   });
@@ -1356,9 +1356,9 @@ describe("opportunity resolution (M7)", () => {
     const state = makeActiveState(mover, [opp]);
     state.round = 1;
     const map = buildMap();
-    ACTIVE_BATTLE_MODULE.advanceUnit(state, { row: 2, col: 1 }, map);
+    advanceUnit(state, { row: 2, col: 1 }, map);
 
-    ACTIVE_BATTLE_MODULE.rotateUnit(state, 2, map);
+    rotateUnit(state, 2, map);
 
     assert.ok(mover.hp < 100);
     assert.strictEqual(state.pendingOpportunity, null);
@@ -1374,9 +1374,9 @@ describe("opportunity resolution (M7)", () => {
     state.round = 1;
     state.activeGroup = { side: "attacker", type: "cavalry" };
     const map = buildMap();
-    ACTIVE_BATTLE_MODULE.advanceUnit(state, { row: 2, col: 1 }, map);
+    advanceUnit(state, { row: 2, col: 1 }, map);
 
-    ACTIVE_BATTLE_MODULE.endActivation(state, map);
+    endActivation(state, map);
 
     assert.strictEqual(state.pendingOpportunity, null);
     assert.strictEqual(mover.hp, 100);
@@ -1389,9 +1389,9 @@ describe("opportunity resolution (M7)", () => {
     const state = makeActiveState(mover, [opp]);
     state.round = 1;
     const map = buildMap();
-    ACTIVE_BATTLE_MODULE.advanceUnit(state, { row: 2, col: 1 }, map);
+    advanceUnit(state, { row: 2, col: 1 }, map);
 
-    assert.doesNotThrow(() => ACTIVE_BATTLE_MODULE.accelerate(state, map));
+    assert.doesNotThrow(() => accelerate(state, map));
 
     assert.strictEqual(mover.destroyed, true);
     assert.strictEqual(mover.position, null);
@@ -1404,9 +1404,9 @@ describe("opportunity resolution (M7)", () => {
     const state = makeActiveState(mover, [opp]);
     state.round = 1;
     const map = buildMap();
-    ACTIVE_BATTLE_MODULE.advanceUnit(state, { row: 2, col: 1 }, map);
+    advanceUnit(state, { row: 2, col: 1 }, map);
 
-    ACTIVE_BATTLE_MODULE.rotateUnit(state, 2, map);
+    rotateUnit(state, 2, map);
 
     assert.strictEqual(mover.destroyed, true);
     assert.strictEqual(mover.facing, 4);
@@ -1421,9 +1421,9 @@ describe("opportunity strike-first (M7)", () => {
     const state = makeActiveState(mover, [opp]);
     state.round = 1;
     const map = buildMap();
-    ACTIVE_BATTLE_MODULE.advanceUnit(state, { row: 2, col: 1 }, map);
+    advanceUnit(state, { row: 2, col: 1 }, map);
 
-    ACTIVE_BATTLE_MODULE.attack(state, opp.id, map);
+    attack(state, opp.id, map);
 
     assert.strictEqual(opp.destroyed, true);
     assert.strictEqual(mover.hp, 100);
@@ -1435,9 +1435,9 @@ describe("opportunity strike-first (M7)", () => {
     const state = makeActiveState(mover, [opp]);
     state.round = 1;
     const map = buildMap();
-    ACTIVE_BATTLE_MODULE.advanceUnit(state, { row: 2, col: 1 }, map);
+    advanceUnit(state, { row: 2, col: 1 }, map);
 
-    ACTIVE_BATTLE_MODULE.attack(state, opp.id, map);
+    attack(state, opp.id, map);
 
     assert.ok(opp.hp < 200);
     assert.strictEqual(opp.destroyed, false);
@@ -1455,18 +1455,18 @@ describe("opportunity rotate-only slot (M7)", () => {
     state.round = 1;
     const map = buildMap();
 
-    ACTIVE_BATTLE_MODULE.advanceUnit(state, { row: 1, col: 1 }, map);
+    advanceUnit(state, { row: 1, col: 1 }, map);
     assert.deepStrictEqual(active.position, { row: 2, col: 1 });
 
-    ACTIVE_BATTLE_MODULE.attack(state, dummy.id, map);
+    attack(state, dummy.id, map);
     assert.strictEqual(dummy.hp, 50);
     assert.strictEqual(active.hasAttacked, false);
 
-    ACTIVE_BATTLE_MODULE.accelerate(state, map);
+    accelerate(state, map);
     assert.strictEqual(active.movePoints, 5);
     assert.strictEqual(active.morale, 80);
 
-    ACTIVE_BATTLE_MODULE.rotateUnit(state, 3, map);
+    rotateUnit(state, 3, map);
     assert.strictEqual(active.facing, 3);
   });
 });
@@ -1480,11 +1480,11 @@ describe("opportunity multi-enemy order (M7)", () => {
     state.round = 1;
     const map = buildTallMap();
 
-    ACTIVE_BATTLE_MODULE.advanceUnit(state, { row: 2, col: 1 }, map);
+    advanceUnit(state, { row: 2, col: 1 }, map);
 
     assert.deepStrictEqual(state.pendingOpportunity.queue, [2, 3]);
 
-    ACTIVE_BATTLE_MODULE.rotateUnit(state, 2, map);
+    rotateUnit(state, 2, map);
 
     assert.strictEqual(oppA.reactedRound, 1);
     assert.strictEqual(oppB.reactedRound, 1);
@@ -1497,20 +1497,20 @@ describe("ruler aura (M7)", () => {
     const ruler = buildUnit({ id: 1, side: "defender", isRulerUnit: true, position: { row: 0, col: 0 } });
     const state = makeActiveState(ruler);
 
-    assert.strictEqual(ACTIVE_BATTLE_MODULE.rulerAuraBonus(state, "defender"), 10);
-    assert.strictEqual(ACTIVE_BATTLE_MODULE.rulerAuraBonus(state, "attacker"), 0);
+    assert.strictEqual(rulerAuraBonus(state, "defender"), 10);
+    assert.strictEqual(rulerAuraBonus(state, "attacker"), 0);
 
     ruler.routed = true;
-    assert.strictEqual(ACTIVE_BATTLE_MODULE.rulerAuraBonus(state, "defender"), 0);
+    assert.strictEqual(rulerAuraBonus(state, "defender"), 0);
 
     ruler.routed = false;
     ruler.destroyed = true;
     ruler.position = null;
-    assert.strictEqual(ACTIVE_BATTLE_MODULE.rulerAuraBonus(state, "defender"), 0);
+    assert.strictEqual(rulerAuraBonus(state, "defender"), 0);
 
     const noRuler = buildUnit({ id: 2, side: "defender", isRulerUnit: false, position: { row: 0, col: 0 } });
     const noRulerState = makeActiveState(noRuler);
-    assert.strictEqual(ACTIVE_BATTLE_MODULE.rulerAuraBonus(noRulerState, "defender"), 0);
+    assert.strictEqual(rulerAuraBonus(noRulerState, "defender"), 0);
   });
 
   test("effectiveMorale adds the aura", () => {
@@ -1518,7 +1518,7 @@ describe("ruler aura (M7)", () => {
     const ruler = buildUnit({ id: 2, side: "defender", isRulerUnit: true, position: { row: 0, col: 0 } });
     const state = makeActiveState(unit, [ruler]);
 
-    assert.strictEqual(ACTIVE_BATTLE_MODULE.effectiveMorale(state, unit), 15);
+    assert.strictEqual(effectiveMorale(state, unit), 15);
   });
 
   test("the aura keeps a low-morale ally from routing", () => {
@@ -1527,7 +1527,7 @@ describe("ruler aura (M7)", () => {
     const ruler = buildUnit({ id: 3, side: "defender", isRulerUnit: true, position: { row: 0, col: 0 }, hp: 100 });
     const state = makeActiveState(attacker, [ally, ruler]);
 
-    ACTIVE_BATTLE_MODULE.attack(state, ally.id, buildMap());
+    attack(state, ally.id, buildMap());
 
     assert.strictEqual(ally.routed, false);
   });
@@ -1537,7 +1537,7 @@ describe("ruler aura (M7)", () => {
     const ally = buildTarget({ facing: 1, morale: 15, hp: 100 });
     const state = makeActiveState(attacker, [ally]);
 
-    ACTIVE_BATTLE_MODULE.attack(state, ally.id, buildMap());
+    attack(state, ally.id, buildMap());
 
     assert.strictEqual(ally.routed, true);
   });
@@ -1551,9 +1551,9 @@ describe("ruler aura (M7)", () => {
     const state = makeActiveState(attacker, [ruler, ally]);
     const map = buildMap();
 
-    assert.strictEqual(ACTIVE_BATTLE_MODULE.effectiveMorale(state, ally), 5);
+    assert.strictEqual(effectiveMorale(state, ally), 5);
 
-    ACTIVE_BATTLE_MODULE.attack(state, ruler.id, map);
+    attack(state, ruler.id, map);
 
     assert.strictEqual(ruler.destroyed, true);
     assert.strictEqual(ally.routed, true);
@@ -1563,10 +1563,10 @@ describe("ruler aura (M7)", () => {
 
 describe("reset clears pendingOpportunity (M7)", () => {
   test("reset returns pendingOpportunity to null along with everything else", () => {
-    const state = ACTIVE_BATTLE_MODULE.create();
+    const state = createActiveBattle();
     state.pendingOpportunity = { queue: [2], targetId: 1 };
 
-    ACTIVE_BATTLE_MODULE.reset(state);
+    resetActiveBattle(state);
 
     assert.strictEqual(state.pendingOpportunity, null);
     assert.deepStrictEqual(state, PRISTINE);
@@ -1584,7 +1584,7 @@ describe("group cycle skips wiped-out groups", () => {
     const map = buildMap();
 
     // infantry's group is done; the dead archers group must be skipped entirely
-    ACTIVE_BATTLE_MODULE.endActivation(state, map);
+    endActivation(state, map);
 
     assert.strictEqual(state.activeUnitId, 3);
     assert.deepStrictEqual(state.activeGroup, { side: "defender", type: "spearmen" });

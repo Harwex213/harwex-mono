@@ -1,5 +1,5 @@
 import { TERRAINS } from "../data/terrains.js";
-import { ACTIVE_BATTLE_MODULE } from "./active-battle.js";
+import { findUnit, unitAt } from "./active-battle.js";
 
 /** Each side deploys on its edge of the map: attacker the top rows, defender the bottom. */
 const PLACEMENT_ROWS = 3;
@@ -32,7 +32,7 @@ const placementCandidates = (activeBattle, unit, map) => {
       if (impassableTerrainIds.has(map.cells[row][col])) {
         continue;
       }
-      const occupant = ACTIVE_BATTLE_MODULE.unitAt(activeBattle, row, col);
+      const occupant = unitAt(activeBattle, row, col);
       if (occupant === unit) {
         continue;
       }
@@ -55,11 +55,11 @@ const placementCandidates = (activeBattle, unit, map) => {
  * @param {number} col
  */
 const placeUnit = (activeBattle, unitId, row, col) => {
-  const unit = ACTIVE_BATTLE_MODULE.findUnit(activeBattle, unitId);
+  const unit = findUnit(activeBattle, unitId);
   if (!unit) {
     return;
   }
-  const occupant = ACTIVE_BATTLE_MODULE.unitAt(activeBattle, row, col);
+  const occupant = unitAt(activeBattle, row, col);
   if (occupant && unit.position === null) {
     return;
   }
@@ -82,7 +82,7 @@ const isDispositionComplete = (activeBattle) =>
  * @param {number} facing 0-5 vertex orientation
  */
 const setUnitFacing = (activeBattle, unitId, facing) => {
-  const u = ACTIVE_BATTLE_MODULE.findUnit(activeBattle, unitId);
+  const u = findUnit(activeBattle, unitId);
   if (!u) {
     return;
   }
@@ -98,7 +98,7 @@ const setUnitFacing = (activeBattle, unitId, facing) => {
  * @param {number} unitId
  */
 const setRuler = (activeBattle, unitId) => {
-  const u = ACTIVE_BATTLE_MODULE.findUnit(activeBattle, unitId);
+  const u = findUnit(activeBattle, unitId);
   if (!u) {
     return;
   }
@@ -111,12 +111,10 @@ const setRuler = (activeBattle, unitId) => {
   u.isRulerUnit = !was;
 };
 
-const BATTLE_DISPOSITION_MODULE = {
-  placementCandidates: placementCandidates,
-  placeUnit: placeUnit,
-  isDispositionComplete: isDispositionComplete,
-  setUnitFacing: setUnitFacing,
-  setRuler: setRuler,
-}
-
-export { BATTLE_DISPOSITION_MODULE };
+export {
+  placementCandidates,
+  placeUnit,
+  isDispositionComplete,
+  setUnitFacing,
+  setRuler,
+};

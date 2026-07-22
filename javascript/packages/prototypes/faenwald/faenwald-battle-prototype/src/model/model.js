@@ -1,22 +1,13 @@
-import { ACTIVE_BATTLE_MODULE } from "../modules/active-battle.js";
-import { BATTLE_CONFIG_MODULE } from "../modules/battle-config.js";
-import { MAPS_MODULE } from "../modules/maps.js";
-import { MODIFIERS_MODULE } from "../modules/modifiers.js";
+import { createStore } from "../store.js";
+import { createInitialState } from "../state/app-state.js";
 
-// the composition root is the only place the environment (localStorage) is handed to modules;
-// persistence-backed state hydrates before battleConfig reads it for its default map
+// Transitional shim while pages migrate to `{ el, destroy }` factories that
+// receive { store } explicitly: STORE is the app's single source of truth;
+// MODEL aliases its state object for legacy read paths (actions mutate the
+// state in place, so the alias stays valid). Delete this file once every
+// page takes { store }.
 
-const maps = MAPS_MODULE.create({ storage: localStorage });
-MAPS_MODULE.hydrate(maps);
+const STORE = createStore(createInitialState());
+const MODEL = STORE.get();
 
-const modifiers = MODIFIERS_MODULE.create({ storage: localStorage });
-MODIFIERS_MODULE.hydrate(modifiers);
-
-const MODEL = {
-  maps: maps,
-  modifiers: modifiers,
-  battleConfig: BATTLE_CONFIG_MODULE.create(maps),
-  activeBattle: ACTIVE_BATTLE_MODULE.create(),
-};
-
-export { MODEL };
+export { STORE, MODEL };

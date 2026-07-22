@@ -1,4 +1,4 @@
-import { BATTLE_PHASE } from "../../modules/active-battle.js";
+import { BATTLE_PHASE } from "../../state/active-battle.js";
 import { ROUTES } from "../../data/routing.js";
 import { MODEL } from "../../model/model.js";
 

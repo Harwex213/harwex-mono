@@ -1,7 +1,7 @@
 import { ROUTES } from "../../data/routing.js";
-import { BATTLE_CONFIG_MODULE } from "../../modules/battle-config.js";
-import { MAPS_MODULE } from "../../modules/maps.js";
-import { BATTLE_PHASE } from "../../modules/active-battle.js";
+import { changeMap, validateConfig } from "../../state/battle-config.js";
+import { getMap } from "../../state/maps.js";
+import { BATTLE_PHASE } from "../../state/active-battle.js";
 import { topNavHtml } from "../../components/top-nav.js";
 import { MODEL } from "../../model/model.js";
 import { STYLE } from "./style.js";
@@ -21,8 +21,8 @@ const renderBattleCreation = ({ root, router }) => {
    * is only observable at mount — normalize once here and render() stays
    * read-only.
    */
-  if (!MAPS_MODULE.getMap(MODEL.maps, MODEL.battleConfig.mapId)) {
-    BATTLE_CONFIG_MODULE.changeMap(MODEL.battleConfig, MODEL.maps.maps[0]?.id ?? null);
+  if (!getMap(MODEL.maps, MODEL.battleConfig.mapId)) {
+    changeMap(MODEL.battleConfig, MODEL.maps.maps[0]?.id ?? null);
   }
 
   // local UI state: which unit's modifier combobox is open
@@ -39,7 +39,7 @@ const renderBattleCreation = ({ root, router }) => {
       defender: MODEL.battleConfig.defender,
       modifiers: MODEL.modifiers,
       openComboUnitId: ui.comboForUnitId,
-      problems: BATTLE_CONFIG_MODULE.validate(MODEL.battleConfig, MODEL.maps),
+      problems: validateConfig(MODEL.battleConfig, MODEL.maps),
     })}
     `;
 

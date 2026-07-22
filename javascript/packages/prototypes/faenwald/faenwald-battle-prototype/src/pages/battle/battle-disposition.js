@@ -1,15 +1,15 @@
 import { STAT_META } from "../../data/unit.js";
 import { ROUTE_LINKS, ROUTES } from "../../data/routing.js";
 import { DEFAULT_TERRAIN_ID, TERRAINS } from "../../data/terrains.js";
-import { MAPS_MODULE } from "../../modules/maps.js";
-import { ACTIVE_BATTLE_MODULE, BATTLE_PHASE } from "../../modules/active-battle.js";
-import { ACTIVE_UNIT_GROUP_TYPE, getUnitGroupType } from "../../modules/active-unit-group.js";
+import { getMap } from "../../state/maps.js";
+import { BATTLE_PHASE, findUnit, startBattle, unitAt } from "../../state/active-battle.js";
+import { ACTIVE_UNIT_GROUP_TYPE, getUnitGroupType } from "../../lib/active-unit-group.js";
 import { topNavHtml } from "../../components/top-nav.js";
-import { renderPointTopHexagon } from "../../modules/hexagon-render.js";
-import { gridPixelBounds, offsetToPixel, pixelToOffset } from "../../modules/hex-layout.js";
-import { initializeAbstractCanvas } from "../../modules/abstract-canvas.js";
+import { renderPointTopHexagon } from "../../lib/hexagon-render.js";
+import { gridPixelBounds, offsetToPixel, pixelToOffset } from "../../lib/hex-layout.js";
+import { initializeAbstractCanvas } from "../../lib/abstract-canvas.js";
 import { MODEL } from "../../model/model.js";
-import { BATTLE_DISPOSITION_MODULE } from "../../modules/battle-disposition.js";
+import { isDispositionComplete, placeUnit, placementCandidates, setRuler, setUnitFacing } from "../../state/battle-disposition.js";
 
 const STYLE = `
   <style>
@@ -359,7 +359,7 @@ const renderBattleDisposition = ({ root, params, router }) => {
     return () => {};
   }
 
-  const map = MAPS_MODULE.getMap(MODEL.maps, MODEL.activeBattle.mapId);
+  const map = getMap(MODEL.maps, MODEL.activeBattle.mapId);
 
   if (!map) {
     root.innerHTML = `
@@ -422,7 +422,7 @@ const renderBattleDisposition = ({ root, params, router }) => {
   };
 
   const footerHtml = () =>
-    `<button data-action="start-battle" ${BATTLE_DISPOSITION_MODULE.isDispositionComplete(MODEL.activeBattle) ? "" : "disabled"}>Start Battle</button>`;
+    `<button data-action="start-battle" ${isDispositionComplete(MODEL.activeBattle) ? "" : "disabled"}>Start Battle</button>`;
 
   root.innerHTML = `
     ${topNavHtml(router)}
@@ -443,11 +443,11 @@ const renderBattleDisposition = ({ root, params, router }) => {
   const canvasPanel = document.getElementById(CANVAS_PANEL_ID);
   const footer = document.getElementById(FOOTER_ID);
 
-  const getSelectedUnit = () => (selectedUnitId === null ? null : ACTIVE_BATTLE_MODULE.findUnit(MODEL.activeBattle, selectedUnitId));
+  const getSelectedUnit = () => (selectedUnitId === null ? null : findUnit(MODEL.activeBattle, selectedUnitId));
 
   const syncCandidates = () => {
     const unit = getSelectedUnit();
-    candidates = unit ? BATTLE_DISPOSITION_MODULE.placementCandidates(MODEL.activeBattle, unit, map) : [];
+    candidates = unit ? placementCandidates(MODEL.activeBattle, unit, map) : [];
     candidateKeys = new Set(candidates.map((c) => cellKey(c.row, c.col)));
   };
 
@@ -474,11 +474,11 @@ const renderBattleDisposition = ({ root, params, router }) => {
     const selected = getSelectedUnit();
     // drop first: while relocating, occupied hexes are candidates (swap)
     if (selected && candidateKeys.has(cellKey(target.row, target.col))) {
-      BATTLE_DISPOSITION_MODULE.placeUnit(MODEL.activeBattle, selected.id, target.row, target.col);
+      placeUnit(MODEL.activeBattle, selected.id, target.row, target.col);
       select(null);
       return;
     }
-    const occupant = ACTIVE_BATTLE_MODULE.unitAt(MODEL.activeBattle, target.row, target.col);
+    const occupant = unitAt(MODEL.activeBattle, target.row, target.col);
     if (occupant) {
       select(occupant.id === selectedUnitId ? null : occupant.id);
       return;
@@ -505,18 +505,18 @@ const renderBattleDisposition = ({ root, params, router }) => {
         break;
       }
       case "start-battle":
-        ACTIVE_BATTLE_MODULE.startBattle(MODEL.activeBattle, map);
+        startBattle(MODEL.activeBattle, map);
         router.push(ROUTES.BATTLE_ACTIVE);
         break;
       case "set-facing": {
         const unitId = Number(el.dataset.unitId);
-        BATTLE_DISPOSITION_MODULE.setUnitFacing(MODEL.activeBattle, unitId, Number(el.dataset.facing));
+        setUnitFacing(MODEL.activeBattle, unitId, Number(el.dataset.facing));
         refresh();
         break;
       }
       case "toggle-ruler": {
         const unitId = Number(el.dataset.unitId);
-        BATTLE_DISPOSITION_MODULE.setRuler(MODEL.activeBattle, unitId);
+        setRuler(MODEL.activeBattle, unitId);
         refresh();
         break;
       }
