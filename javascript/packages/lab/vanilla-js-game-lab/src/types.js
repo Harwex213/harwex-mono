@@ -47,6 +47,7 @@
  * @property {Popup[]} effects
  * @property {Object<string, number>} flow BFS distance-to-base per cell key; derived, recomputed on build/sell.
  * @property {string | null} selected Armed building type from the build menu.
+ * @property {number} speed Sim steps per frame tick (game speed multiplier).
  * @property {number} spawnAcc Fractional spawn accumulator.
  * @property {number} nextId
  * @property {boolean} gameOver

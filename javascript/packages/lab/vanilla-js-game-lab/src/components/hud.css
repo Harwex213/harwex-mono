@@ -48,6 +48,31 @@
   color: var(--bg);
 }
 
+.hud-speed {
+  display: flex;
+  gap: 4px;
+}
+
+.hud-speed button {
+  min-width: 34px;
+  padding: 3px 6px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.hud-speed button:hover {
+  border-color: var(--muted);
+}
+
+.hud-speed button.is-active {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
 .hud-hp {
   margin-left: auto;
 }

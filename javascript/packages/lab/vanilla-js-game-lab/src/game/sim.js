@@ -9,6 +9,7 @@ export const DAY_HALF = 30 // calm building phase; night trickle after
 export const CLICK_COINS = 1
 export const CLICK_DAMAGE = 3
 export const CLICK_RADIUS = 0.9 // world units, forgiving hitbox
+export const SPEEDS = [1, 2, 3, 5, 10]
 
 /** Enemies per second during the night phase. */
 export const spawnRate = (day) => 0.4 + 0.12 * (day - 1)
@@ -29,9 +30,17 @@ export function createInitialState() {
     effects: [],
     flow: computeFlow(new Set()),
     selected: null,
+    speed: 1,
     spawnAcc: 0,
     nextId: 1,
     gameOver: false,
+  }
+}
+
+/** One frame tick at the current game speed: N fixed sim steps, still deterministic. */
+export function advance(s, dt) {
+  for (let i = 0; i < s.speed; i++) {
+    tickSim(s, dt)
   }
 }
 

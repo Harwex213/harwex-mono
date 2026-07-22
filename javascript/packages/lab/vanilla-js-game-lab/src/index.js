@@ -1,5 +1,5 @@
 import { createStore } from "./store.js"
-import { createInitialState, tickSim } from "./game/sim.js"
+import { advance, createInitialState } from "./game/sim.js"
 import { createLoop } from "./game/loop.js"
 import { createHud } from "./components/hud.js"
 import { createBuildMenu } from "./components/build-menu.js"
@@ -18,6 +18,6 @@ document.querySelector("#app").append(hud.el, menu.el, canvas.el)
 
 createLoop({
   tickRate: 60,
-  tick: (dt) => store.set((s) => tickSim(s, dt)),
+  tick: (dt) => store.set((s) => advance(s, dt)),
   render: canvas.render,
 }).start()
