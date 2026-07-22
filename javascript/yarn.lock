@@ -2117,9 +2117,9 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@hw/faenwald-battle-lab@workspace:packages/prototypes/faenwald/faenwald-battle-lab":
+"@hw/faenwald-battle-lab@workspace:packages/lab/faenwald-battle-lab":
   version: 0.0.0-use.local
-  resolution: "@hw/faenwald-battle-lab@workspace:packages/prototypes/faenwald/faenwald-battle-lab"
+  resolution: "@hw/faenwald-battle-lab@workspace:packages/lab/faenwald-battle-lab"
   dependencies:
     "@base-ui/react": "npm:1.6.0"
     "@preact/signals": "npm:2.9.4"
@@ -2666,6 +2666,12 @@ __metadata:
 "@hw/utils@npm:1.0.0, @hw/utils@workspace:*, @hw/utils@workspace:packages/infrastructure/utils":
   version: 0.0.0-use.local
   resolution: "@hw/utils@workspace:packages/infrastructure/utils"
+  languageName: unknown
+  linkType: soft
+
+"@hw/vanilla-js-game-lab@workspace:packages/lab/vanilla-js-game-lab":
+  version: 0.0.0-use.local
+  resolution: "@hw/vanilla-js-game-lab@workspace:packages/lab/vanilla-js-game-lab"
   languageName: unknown
   linkType: soft
 

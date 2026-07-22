@@ -1,0 +1,41 @@
+@import url('./components/hud.css');
+@import url('./components/build-menu.css');
+@import url('./components/game-canvas.css');
+
+:root {
+  --bg: #0f1216;
+  --panel: #171b21;
+  --border: #262c35;
+  --text: #d7dde6;
+  --muted: #8b94a1;
+  --accent: #e8b64c;
+  --danger: #e0564c;
+  --ok: #58c470;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background: var(--bg);
+  color: var(--muted);
+  font-family: system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+#app {
+  display: grid;
+  grid-template:
+    'hud hud' auto
+    'menu game' 1fr
+    / 240px 1fr;
+  height: 100vh;
+}

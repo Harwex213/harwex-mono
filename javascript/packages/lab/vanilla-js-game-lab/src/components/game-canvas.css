@@ -1,0 +1,45 @@
+.game-canvas {
+  grid-area: game;
+  position: relative;
+  overflow: hidden;
+}
+
+.game-canvas canvas {
+  display: block;
+  cursor: pointer;
+}
+
+.game-canvas.is-placing canvas {
+  cursor: crosshair;
+}
+
+.game-over[hidden] {
+  display: none;
+}
+
+.game-over {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  background: rgba(10, 12, 15, 0.82);
+  font-size: 20px;
+}
+
+.game-over button {
+  padding: 10px 28px;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  cursor: pointer;
+}
+
+.game-over button:hover {
+  background: var(--accent);
+  color: var(--bg);
+}

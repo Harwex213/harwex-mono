@@ -1,0 +1,38 @@
+.hud {
+  grid-area: hud;
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  padding: 10px 16px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  font-size: 15px;
+}
+
+.hud b {
+  color: var(--text);
+}
+
+.hud-day {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.hud-cycle {
+  width: 80px;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--border);
+  overflow: hidden;
+}
+
+.hud-cycle-fill {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+}
+
+.hud-hp {
+  margin-left: auto;
+}
