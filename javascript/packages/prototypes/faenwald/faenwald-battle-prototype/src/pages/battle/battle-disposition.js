@@ -127,10 +127,10 @@ const createBattleDispositionPage = ({ store, router }) => {
     </div>
     <div class="footer" data-role="footer"></div>
   `;
-  const attackerPanel = el.querySelector('[data-role="attacker-panel"]');
-  const defenderPanel = el.querySelector('[data-role="defender-panel"]');
-  const canvasPanel = el.querySelector('[data-role="canvas-panel"]');
-  const footer = el.querySelector('[data-role="footer"]');
+  const attackerPanel = el.querySelector("[data-role=attacker-panel]");
+  const defenderPanel = el.querySelector("[data-role=defender-panel]");
+  const canvasPanel = el.querySelector("[data-role=canvas-panel]");
+  const footer = el.querySelector("[data-role=footer]");
 
   const unitCardHtml = (unit) => `
     <button class="unit-card ${unit.id === selectedUnitId ? "unit-card--selected" : ""}"

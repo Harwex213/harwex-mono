@@ -146,9 +146,9 @@ const createMapEditorPage = ({ store, router, params = {} }) => {
       </aside>
     </div>
   `;
-  const nameEl = el.querySelector('[data-role="map-name"]');
-  const canvasPanelEl = el.querySelector('[data-role="canvas-panel"]');
-  const paletteEl = el.querySelector('[data-role="palette"]');
+  const nameEl = el.querySelector("[data-role=map-name]");
+  const canvasPanelEl = el.querySelector("[data-role=canvas-panel]");
+  const paletteEl = el.querySelector("[data-role=palette]");
 
   el.addEventListener("click", (event) => {
     const target = event.target.closest("[data-action]");

@@ -24,8 +24,8 @@ const createMapsStorePage = ({ store, router }) => {
       <button class="maps-store-add" data-action="create">＋ Add</button>
     </div>
   `;
-  const gridEl = el.querySelector('[data-role="grid"]');
-  const addEl = gridEl.querySelector('[data-action="create"]');
+  const gridEl = el.querySelector("[data-role=grid]");
+  const addEl = gridEl.querySelector("[data-action=create]");
 
   const tileEl = (map) => {
     const tile = document.createElement("div");

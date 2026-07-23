@@ -49,8 +49,8 @@ const createModifiersTablePage = ({ store, router, params = {} }) => {
     <div data-role="rows"></div>
     <button data-action="add-modifier">＋ Add</button>
   `;
-  const collNameEl = el.querySelector('[data-role="coll-name"]');
-  const rowsEl = el.querySelector('[data-role="rows"]');
+  const collNameEl = el.querySelector("[data-role=coll-name]");
+  const rowsEl = el.querySelector("[data-role=rows]");
 
   const entryHtml = (modifierId, kind, entry) => {
     // percent is stored as a fraction (0.3); the field shows it as a whole number

@@ -40,9 +40,9 @@ const createBattleCreationPage = ({ store, router }) => {
     <div class="sides" data-role="sides"></div>
     <div class="start" data-role="start"></div>
   `;
-  const mapsEl = el.querySelector('[data-role="maps"]');
-  const sidesEl = el.querySelector('[data-role="sides"]');
-  const startEl = el.querySelector('[data-role="start"]');
+  const mapsEl = el.querySelector("[data-role=maps]");
+  const sidesEl = el.querySelector("[data-role=sides]");
+  const startEl = el.querySelector("[data-role=start]");
 
   const render = () => {
     const s = store.get();

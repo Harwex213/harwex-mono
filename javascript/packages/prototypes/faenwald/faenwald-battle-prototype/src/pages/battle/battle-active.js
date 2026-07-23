@@ -189,8 +189,8 @@ const createBattleActivePage = ({ store, router }) => {
     <div class="workspace" data-role="workspace"></div>
     <div class="footer" data-role="footer"></div>
   `;
-  el.querySelector('[data-role="workspace"]').append(leftPanel.el, canvas.el, rightPanel.el);
-  const footer = el.querySelector('[data-role="footer"]');
+  el.querySelector("[data-role=workspace]").append(leftPanel.el, canvas.el, rightPanel.el);
+  const footer = el.querySelector("[data-role=footer]");
 
   const fireModeButtonsHtml = () => {
     const ranged = getActiveRanged();

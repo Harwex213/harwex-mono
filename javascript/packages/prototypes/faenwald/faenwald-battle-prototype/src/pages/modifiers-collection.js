@@ -23,7 +23,7 @@ const createModifiersCollectionPage = ({ store, router }) => {
     <hr>
     <button class="modifiers-collection-create" data-action="create">＋ Create modifier collection</button>
   `;
-  const rowsEl = el.querySelector('[data-role="rows"]');
+  const rowsEl = el.querySelector("[data-role=rows]");
 
   const rowEl = (collection) => {
     const row = document.createElement("div");

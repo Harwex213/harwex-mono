@@ -23,7 +23,7 @@ const createTopNav = ({ store, router }) => {
     <a class="top-nav-brand" href="${ROUTE_LINKS.BATTLE_CREATION}">Faenwald Battle</a>
     <span class="top-nav-links" data-role="links"></span>
   `;
-  const linksEl = el.querySelector('[data-role="links"]');
+  const linksEl = el.querySelector("[data-role=links]");
 
   const render = () => {
     const currentPath = router.currentPath();
