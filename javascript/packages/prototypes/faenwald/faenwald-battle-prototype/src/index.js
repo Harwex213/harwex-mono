@@ -1,5 +1,5 @@
 import { renderBattleCreation } from "./pages/battle-creation/battle-creation.js";
-import { renderModifiersCollections } from "./pages/modifiers-collection.js";
+import { createModifiersCollectionPage } from "./pages/modifiers-collection.js";
 import { renderModifiersTable } from "./pages/modifiers-table.js";
 import { renderMapsStore } from "./pages/maps-store.js";
 import { renderMapEditor } from "./pages/map-editor.js";
@@ -25,14 +25,15 @@ const PAGES = [
   [ROUTES.BATTLE_DISPOSITION, renderBattleDisposition],
   [ROUTES.BATTLE_ACTIVE, renderBattleActive],
   [ROUTES.BATTLE_FINISHED, renderBattleFinished],
-  [ROUTES.MODIFIERS_COLLECTIONS, renderModifiersCollections],
   [ROUTES.MODIFIERS, renderModifiersTable],
   [ROUTES.MAPS, renderMapsStore],
   [ROUTES.MAP_EDITOR, renderMapEditor],
 ];
 
 // Component pages: createXPage({ store, router, params }) → { el, destroy }.
-const COMPONENT_PAGES = [];
+const COMPONENT_PAGES = [
+  [ROUTES.MODIFIERS_COLLECTIONS, createModifiersCollectionPage],
+];
 
 const registerAllPages = (root, router) => {
   let finalizePage = voidFn;

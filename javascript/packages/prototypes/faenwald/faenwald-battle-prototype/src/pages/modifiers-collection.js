@@ -1,80 +1,5 @@
 import { ROUTES } from "../data/routing.js";
 import { createCollection, deleteCollection } from "../state/modifiers.js";
-import { MODEL, STORE } from "../model/model.js";
-
-const STYLE = `
-  <style>
-    .mc {
-      font-family: var(--font-body);
-      color: var(--text-primary);
-      padding: var(--space-8);
-    }
-
-    .mc .box-label {
-      display: inline-block;
-      margin: 0 0 var(--space-7);
-      padding: var(--space-5) var(--space-8);
-      font-family: var(--font-display);
-      font-size: var(--font-size-xl);
-      font-weight: var(--font-weight-normal);
-      color: var(--text-accent);
-    }
-
-    .mc hr {
-      border: none;
-      border-top: 1px solid var(--border-default);
-      margin: 0 0 var(--space-7);
-    }
-
-    .mc .row {
-      display: flex;
-      align-items: center;
-      gap: var(--space-7);
-      margin-bottom: var(--space-6);
-    }
-
-    .mc .name {
-      width: 280px;
-      padding: var(--space-6) var(--space-7);
-      background: var(--bg-control-subtle);
-      border: 1px solid var(--border-default);
-      border-radius: var(--radius-sm);
-      text-align: center;
-    }
-
-    .mc .count {
-      width: 200px;
-      padding: var(--space-6) var(--space-7);
-      border: 1px solid var(--border-default);
-      border-radius: var(--radius-sm);
-      color: var(--text-secondary);
-      text-align: center;
-    }
-
-    .mc button {
-      font: inherit;
-      color: var(--text-primary);
-      background: var(--bg-control);
-      border: 1px solid var(--border-medium);
-      border-radius: var(--radius-sm);
-      padding: var(--space-5) var(--space-6);
-      cursor: pointer;
-    }
-
-    .mc button:hover {
-      background: var(--bg-control-hover);
-    }
-
-    .mc .create {
-      margin-top: var(--space-2);
-    }
-
-    .mc .empty {
-      color: var(--text-muted);
-      margin: 0 0 var(--space-7);
-    }
-  </style>
-`;
 
 // attribute-safe interpolation for user-entered text
 const esc = (value) =>
@@ -84,46 +9,55 @@ const esc = (value) =>
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
 
-const renderModifiersCollections = ({ root, params, router }) => {
-  const rowHtml = (collection) => `
-    <div class="row">
-      <span class="name">${esc(collection.name)}</span>
-      <span class="count">${collection.modifiers.length} modifiers</span>
+/**
+ * @param {{ store: Store, router: Router }} deps
+ * @returns {{ el: HTMLElement, destroy: () => void }}
+ */
+const createModifiersCollectionPage = ({ store, router }) => {
+  const el = document.createElement("section");
+  el.className = "modifiers-collection";
+  el.innerHTML = `
+    <h2 class="modifiers-collection-label">Existed collection of modifiers</h2>
+    <hr>
+    <div data-role="rows"></div>
+    <hr>
+    <button class="modifiers-collection-create" data-action="create">＋ Create modifier collection</button>
+  `;
+  const rowsEl = el.querySelector('[data-role="rows"]');
+
+  const rowEl = (collection) => {
+    const row = document.createElement("div");
+    row.className = "modifiers-collection-row";
+    row.innerHTML = `
+      <span class="modifiers-collection-name">${esc(collection.name)}</span>
+      <span class="modifiers-collection-count">${collection.modifiers.length} modifiers</span>
       <button data-action="open" data-collection-id="${collection.id}" title="Edit">✏️</button>
       <button data-action="delete" data-collection-id="${collection.id}" title="Delete">🗑️</button>
-    </div>
-  `;
-
-  const render = () => {
-    const collections = MODEL.modifiers.collections;
-    root.innerHTML = `
-      ${STYLE}
-      <section class="mc">
-        <h2 class="box-label">Existed collection of modifiers</h2>
-        <hr>
-        ${
-      collections.length
-        ? collections.map(rowHtml).join("")
-        : `<p class="empty">No collections yet.</p>`
-    }
-        <hr>
-        <button class="create" data-action="create">＋ Create modifier collection</button>
-      </section>
     `;
+    return row;
   };
 
-  const onClick = (event) => {
-    const el = event.target.closest("[data-action]");
-    if (!el) {
+  const render = (s) => {
+    const collections = s.modifiers.collections;
+    if (collections.length === 0) {
+      rowsEl.innerHTML = `<p class="modifiers-collection-empty">No collections yet.</p>`;
+      return;
+    }
+    rowsEl.replaceChildren(...collections.map(rowEl));
+  };
+
+  el.addEventListener("click", (event) => {
+    const target = event.target.closest("[data-action]");
+    if (!target) {
       return;
     }
 
-    const collectionId = el.dataset.collectionId;
+    const collectionId = target.dataset.collectionId;
 
-    switch (el.dataset.action) {
+    switch (target.dataset.action) {
       case "create": {
         let collection;
-        STORE.set((s) => {
+        store.set((s) => {
           collection = createCollection(s.modifiers);
         });
         router.push(ROUTES.MODIFIERS, { collectionId: collection.id });
@@ -135,20 +69,15 @@ const renderModifiersCollections = ({ root, params, router }) => {
       case "delete":
         // destructive: cascades to the collection's modifiers
         if (confirm("Delete this collection and all its modifiers?")) {
-          STORE.set((s) => deleteCollection(s.modifiers, collectionId));
-          render();
+          store.set((s) => deleteCollection(s.modifiers, collectionId));
         }
         break;
     }
-  };
+  });
 
-  root.addEventListener("click", onClick);
-  render();
+  const unsubscribe = store.subscribe(render);
 
-  return () => {
-    root.removeEventListener("click", onClick);
-    root.innerHTML = "";
-  };
+  return { el, destroy: unsubscribe };
 };
 
-export { renderModifiersCollections };
+export { createModifiersCollectionPage };

@@ -1,0 +1,70 @@
+.modifiers-collection {
+  display: block;
+  font-family: var(--font-body);
+  color: var(--text-primary);
+  padding: var(--space-8);
+}
+
+.modifiers-collection-label {
+  display: inline-block;
+  margin: 0 0 var(--space-7);
+  padding: var(--space-5) var(--space-8);
+  font-family: var(--font-display);
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-normal);
+  color: var(--text-accent);
+}
+
+.modifiers-collection hr {
+  border: none;
+  border-top: 1px solid var(--border-default);
+  margin: 0 0 var(--space-7);
+}
+
+.modifiers-collection-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-7);
+  margin-bottom: var(--space-6);
+}
+
+.modifiers-collection-name {
+  width: 280px;
+  padding: var(--space-6) var(--space-7);
+  background: var(--bg-control-subtle);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  text-align: center;
+}
+
+.modifiers-collection-count {
+  width: 200px;
+  padding: var(--space-6) var(--space-7);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+.modifiers-collection button {
+  font: inherit;
+  color: var(--text-primary);
+  background: var(--bg-control);
+  border: 1px solid var(--border-medium);
+  border-radius: var(--radius-sm);
+  padding: var(--space-5) var(--space-6);
+  cursor: pointer;
+}
+
+.modifiers-collection button:hover {
+  background: var(--bg-control-hover);
+}
+
+.modifiers-collection-create {
+  margin-top: var(--space-2);
+}
+
+.modifiers-collection-empty {
+  color: var(--text-muted);
+  margin: 0 0 var(--space-7);
+}
