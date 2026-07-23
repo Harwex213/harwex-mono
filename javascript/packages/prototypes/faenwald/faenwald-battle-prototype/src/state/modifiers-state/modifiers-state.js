@@ -1,5 +1,5 @@
-import { RANK_MODIFIERS } from "../data/modifiers.js";
-import { STAT_META } from "../data/unit.js";
+import { RANK_MODIFIERS } from "../../data/modifiers.js";
+import { STAT_META } from "../../data/unit.js";
 
 /**
  * State module for modifier collections. Pure: no storage access — the

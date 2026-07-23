@@ -1,6 +1,6 @@
 import { STAT_META, UNIT_TYPES } from "../../data/unit.js";
-import { computeUnitStats } from "../../state/battle-config.js";
-import { allModifiers, findModifier, getCollection } from "../../state/modifiers.js";
+import { computeUnitStats } from "../../state/battle-config-state/battle-config-state.js";
+import { allModifiers, findModifier, getCollection } from "../../state/modifiers-state/modifiers-state.js";
 
 /**
  * Pure HTML builders, one per dynamic region of the page skeleton: everything
@@ -39,15 +39,15 @@ const comboHtml = (unit, remaining) => `
     <input data-role="combo-input" data-unit-id="${unit.id}" placeholder="search modifier…">
     <ul>
       ${remaining
-    .map(
-      (x) => `
+  .map(
+    (x) => `
             <li>
               <button data-action="pick-modifier" data-unit-id="${unit.id}" data-collection-id="${x.collectionId}" data-modifier-id="${x.modifier.id}">
                 ${x.collectionName} / ${x.modifier.name} — ${x.modifier.description}
               </button>
             </li>`,
-    )
-    .join("")}
+  )
+  .join("")}
     </ul>
   </div>
 `;

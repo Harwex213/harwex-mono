@@ -1,6 +1,26 @@
 import { describe, test } from "node:test";
 import assert from "node:assert";
-import { BATTLE_PHASE, accelerate, advanceUnit, applyBreakthrough, attack, capitulate, checkVictory, createActiveBattle, declineBreakthrough, effectiveMorale, endActivation, fireModesAvailable, resetActiveBattle, rotateUnit, routTick, rulerAuraBonus, startBattle, startBattleDisposition, validRangedTargets } from "./active-battle.js";
+import {
+  accelerate,
+  advanceUnit,
+  applyBreakthrough,
+  attack,
+  BATTLE_PHASE,
+  capitulate,
+  checkVictory,
+  createActiveBattle,
+  declineBreakthrough,
+  effectiveMorale,
+  endActivation,
+  fireModesAvailable,
+  resetActiveBattle,
+  rotateUnit,
+  routTick,
+  rulerAuraBonus,
+  startBattle,
+  startBattleDisposition,
+  validRangedTargets
+} from "./active-battle-state.js";
 
 const PRISTINE = {
   phase: null,
@@ -940,7 +960,13 @@ describe("charge accumulation (M6)", () => {
 
 describe("spearman flank/rear moves (M6)", () => {
   test("a spearman may advance into a flank hex at 2x MP cost and resets its charge", () => {
-    const unit = buildUnit({ type: "light-spearman", position: { row: 1, col: 1 }, facing: 4, movePoints: 4, chargeHexes: 2 });
+    const unit = buildUnit({
+      type: "light-spearman",
+      position: { row: 1, col: 1 },
+      facing: 4,
+      movePoints: 4,
+      chargeHexes: 2
+    });
     const state = makeActiveState(unit);
     const map = buildMap();
 
@@ -1310,8 +1336,21 @@ describe("validRangedTargets after attacking", () => {
 
 describe("opportunity arming (M7)", () => {
   test("advancing into an adjacent enemy's zone arms a reaction", () => {
-    const mover = buildUnit({ id: 1, side: "attacker", type: "light-cavalry", position: { row: 1, col: 1 }, facing: 4, movePoints: 5 });
-    const enemy = buildUnit({ id: 2, side: "defender", type: "medium-infantry", position: { row: 2, col: 0 }, facing: 1 });
+    const mover = buildUnit({
+      id: 1,
+      side: "attacker",
+      type: "light-cavalry",
+      position: { row: 1, col: 1 },
+      facing: 4,
+      movePoints: 5
+    });
+    const enemy = buildUnit({
+      id: 2,
+      side: "defender",
+      type: "medium-infantry",
+      position: { row: 2, col: 0 },
+      facing: 1
+    });
     const state = makeActiveState(mover, [enemy]);
     state.round = 1;
     const map = buildMap();
@@ -1323,8 +1362,21 @@ describe("opportunity arming (M7)", () => {
   });
 
   test("no arming when the mover was already in the zone before the move", () => {
-    const mover = buildUnit({ id: 1, side: "attacker", type: "light-cavalry", position: { row: 1, col: 1 }, facing: 4, movePoints: 5 });
-    const enemy = buildUnit({ id: 2, side: "defender", type: "medium-infantry", position: { row: 2, col: 2 }, facing: 1 });
+    const mover = buildUnit({
+      id: 1,
+      side: "attacker",
+      type: "light-cavalry",
+      position: { row: 1, col: 1 },
+      facing: 4,
+      movePoints: 5
+    });
+    const enemy = buildUnit({
+      id: 2,
+      side: "defender",
+      type: "medium-infantry",
+      position: { row: 2, col: 2 },
+      facing: 1
+    });
     const state = makeActiveState(mover, [enemy]);
     state.round = 1;
     const map = buildMap();
@@ -1335,7 +1387,14 @@ describe("opportunity arming (M7)", () => {
   });
 
   test("no arming for an enemy that already attacked this round", () => {
-    const mover = buildUnit({ id: 1, side: "attacker", type: "light-cavalry", position: { row: 1, col: 1 }, facing: 4, movePoints: 5 });
+    const mover = buildUnit({
+      id: 1,
+      side: "attacker",
+      type: "light-cavalry",
+      position: { row: 1, col: 1 },
+      facing: 4,
+      movePoints: 5
+    });
     const enemy = buildUnit({
       id: 2, side: "defender", type: "medium-infantry", position: { row: 2, col: 0 }, facing: 1, attackedRound: 1,
     });
@@ -1351,8 +1410,24 @@ describe("opportunity arming (M7)", () => {
 
 describe("opportunity resolution (M7)", () => {
   test("the reaction resolves on the mover's next action and cuts the mover's hp", () => {
-    const mover = buildUnit({ id: 1, side: "attacker", type: "light-cavalry", position: { row: 1, col: 1 }, facing: 4, movePoints: 5, hp: 100, maxHp: 100 });
-    const opp = buildUnit({ id: 2, side: "defender", type: "medium-infantry", position: { row: 2, col: 0 }, facing: 1, attack: 20 });
+    const mover = buildUnit({
+      id: 1,
+      side: "attacker",
+      type: "light-cavalry",
+      position: { row: 1, col: 1 },
+      facing: 4,
+      movePoints: 5,
+      hp: 100,
+      maxHp: 100
+    });
+    const opp = buildUnit({
+      id: 2,
+      side: "defender",
+      type: "medium-infantry",
+      position: { row: 2, col: 0 },
+      facing: 1,
+      attack: 20
+    });
     const state = makeActiveState(mover, [opp]);
     state.round = 1;
     const map = buildMap();
@@ -1368,8 +1443,24 @@ describe("opportunity resolution (M7)", () => {
   });
 
   test("ending the activation cancels the reaction", () => {
-    const mover = buildUnit({ id: 1, side: "attacker", type: "light-cavalry", position: { row: 1, col: 1 }, facing: 4, movePoints: 5, hp: 100, maxHp: 100 });
-    const opp = buildUnit({ id: 2, side: "defender", type: "medium-infantry", position: { row: 2, col: 0 }, facing: 1, attack: 20 });
+    const mover = buildUnit({
+      id: 1,
+      side: "attacker",
+      type: "light-cavalry",
+      position: { row: 1, col: 1 },
+      facing: 4,
+      movePoints: 5,
+      hp: 100,
+      maxHp: 100
+    });
+    const opp = buildUnit({
+      id: 2,
+      side: "defender",
+      type: "medium-infantry",
+      position: { row: 2, col: 0 },
+      facing: 1,
+      attack: 20
+    });
     const state = makeActiveState(mover, [opp]);
     state.round = 1;
     state.activeGroup = { side: "attacker", type: "cavalry" };
@@ -1384,8 +1475,24 @@ describe("opportunity resolution (M7)", () => {
   });
 
   test("a reaction that destroys the mover does not crash a later accelerate", () => {
-    const mover = buildUnit({ id: 1, side: "attacker", type: "light-cavalry", position: { row: 1, col: 1 }, facing: 4, movePoints: 5, hp: 1, maxHp: 100 });
-    const opp = buildUnit({ id: 2, side: "defender", type: "medium-infantry", position: { row: 2, col: 0 }, facing: 1, attack: 20 });
+    const mover = buildUnit({
+      id: 1,
+      side: "attacker",
+      type: "light-cavalry",
+      position: { row: 1, col: 1 },
+      facing: 4,
+      movePoints: 5,
+      hp: 1,
+      maxHp: 100
+    });
+    const opp = buildUnit({
+      id: 2,
+      side: "defender",
+      type: "medium-infantry",
+      position: { row: 2, col: 0 },
+      facing: 1,
+      attack: 20
+    });
     const state = makeActiveState(mover, [opp]);
     state.round = 1;
     const map = buildMap();
@@ -1399,8 +1506,24 @@ describe("opportunity resolution (M7)", () => {
   });
 
   test("a reaction that destroys the mover leaves it untouched by a later rotateUnit", () => {
-    const mover = buildUnit({ id: 1, side: "attacker", type: "light-cavalry", position: { row: 1, col: 1 }, facing: 4, movePoints: 5, hp: 1, maxHp: 100 });
-    const opp = buildUnit({ id: 2, side: "defender", type: "medium-infantry", position: { row: 2, col: 0 }, facing: 1, attack: 20 });
+    const mover = buildUnit({
+      id: 1,
+      side: "attacker",
+      type: "light-cavalry",
+      position: { row: 1, col: 1 },
+      facing: 4,
+      movePoints: 5,
+      hp: 1,
+      maxHp: 100
+    });
+    const opp = buildUnit({
+      id: 2,
+      side: "defender",
+      type: "medium-infantry",
+      position: { row: 2, col: 0 },
+      facing: 1,
+      attack: 20
+    });
     const state = makeActiveState(mover, [opp]);
     state.round = 1;
     const map = buildMap();
@@ -1416,8 +1539,26 @@ describe("opportunity resolution (M7)", () => {
 
 describe("opportunity strike-first (M7)", () => {
   test("the mover attacking the opportuner strikes first and can kill it before it reacts", () => {
-    const mover = buildUnit({ id: 1, side: "attacker", type: "light-cavalry", position: { row: 1, col: 1 }, facing: 4, movePoints: 5, hp: 100, maxHp: 100, attack: 20 });
-    const opp = buildUnit({ id: 2, side: "defender", type: "medium-infantry", position: { row: 2, col: 0 }, facing: 1, hp: 10, maxHp: 100 });
+    const mover = buildUnit({
+      id: 1,
+      side: "attacker",
+      type: "light-cavalry",
+      position: { row: 1, col: 1 },
+      facing: 4,
+      movePoints: 5,
+      hp: 100,
+      maxHp: 100,
+      attack: 20
+    });
+    const opp = buildUnit({
+      id: 2,
+      side: "defender",
+      type: "medium-infantry",
+      position: { row: 2, col: 0 },
+      facing: 1,
+      hp: 10,
+      maxHp: 100
+    });
     const state = makeActiveState(mover, [opp]);
     state.round = 1;
     const map = buildMap();
@@ -1430,8 +1571,26 @@ describe("opportunity strike-first (M7)", () => {
   });
 
   test("if the opportuner survives the mover's strike it then reacts", () => {
-    const mover = buildUnit({ id: 1, side: "attacker", type: "light-cavalry", position: { row: 1, col: 1 }, facing: 4, movePoints: 5, hp: 100, maxHp: 100, attack: 20 });
-    const opp = buildUnit({ id: 2, side: "defender", type: "medium-infantry", position: { row: 2, col: 0 }, facing: 1, hp: 200, maxHp: 200 });
+    const mover = buildUnit({
+      id: 1,
+      side: "attacker",
+      type: "light-cavalry",
+      position: { row: 1, col: 1 },
+      facing: 4,
+      movePoints: 5,
+      hp: 100,
+      maxHp: 100,
+      attack: 20
+    });
+    const opp = buildUnit({
+      id: 2,
+      side: "defender",
+      type: "medium-infantry",
+      position: { row: 2, col: 0 },
+      facing: 1,
+      hp: 200,
+      maxHp: 200
+    });
     const state = makeActiveState(mover, [opp]);
     state.round = 1;
     const map = buildMap();
@@ -1448,7 +1607,14 @@ describe("opportunity strike-first (M7)", () => {
 describe("opportunity rotate-only slot (M7)", () => {
   test("a unit that reacted this round may only rotate on its own slot", () => {
     const active = buildUnit({
-      id: 1, side: "defender", type: "medium-infantry", position: { row: 2, col: 1 }, facing: 1, movePoints: 5, morale: 80, reactedRound: 1,
+      id: 1,
+      side: "defender",
+      type: "medium-infantry",
+      position: { row: 2, col: 1 },
+      facing: 1,
+      movePoints: 5,
+      morale: 80,
+      reactedRound: 1,
     });
     const dummy = buildUnit({ id: 2, side: "attacker", position: { row: 2, col: 0 }, hp: 50 });
     const state = makeActiveState(active, [dummy]);
@@ -1473,9 +1639,30 @@ describe("opportunity rotate-only slot (M7)", () => {
 
 describe("opportunity multi-enemy order (M7)", () => {
   test("multiple newly-entered enemies queue in ascending id order and all react", () => {
-    const mover = buildUnit({ id: 1, side: "attacker", type: "light-cavalry", position: { row: 1, col: 1 }, facing: 4, movePoints: 5, hp: 100, maxHp: 100 });
-    const oppA = buildUnit({ id: 2, side: "defender", type: "medium-infantry", position: { row: 2, col: 0 }, attack: 15 });
-    const oppB = buildUnit({ id: 3, side: "defender", type: "medium-infantry", position: { row: 3, col: 1 }, attack: 15 });
+    const mover = buildUnit({
+      id: 1,
+      side: "attacker",
+      type: "light-cavalry",
+      position: { row: 1, col: 1 },
+      facing: 4,
+      movePoints: 5,
+      hp: 100,
+      maxHp: 100
+    });
+    const oppA = buildUnit({
+      id: 2,
+      side: "defender",
+      type: "medium-infantry",
+      position: { row: 2, col: 0 },
+      attack: 15
+    });
+    const oppB = buildUnit({
+      id: 3,
+      side: "defender",
+      type: "medium-infantry",
+      position: { row: 3, col: 1 },
+      attack: 15
+    });
     const state = makeActiveState(mover, [oppA, oppB]);
     state.round = 1;
     const map = buildTallMap();
@@ -1544,7 +1731,15 @@ describe("ruler aura (M7)", () => {
 
   test("destroying the ruler ends the aura and routs a now-unbuffered ally", () => {
     const attacker = buildAttacker();
-    const ruler = buildUnit({ id: 2, side: "defender", isRulerUnit: true, position: { row: 2, col: 1 }, facing: 1, hp: 15, maxHp: 15 });
+    const ruler = buildUnit({
+      id: 2,
+      side: "defender",
+      isRulerUnit: true,
+      position: { row: 2, col: 1 },
+      facing: 1,
+      hp: 15,
+      maxHp: 15
+    });
     const ally = buildUnit({
       id: 3, side: "defender", position: { row: 0, col: 0 }, morale: -5, hp: 100, maxHp: 100,
     });
@@ -1576,9 +1771,21 @@ describe("reset clears pendingOpportunity (M7)", () => {
 describe("group cycle skips wiped-out groups", () => {
   test("a destroyed unit's group no longer activates — the round advances to the next fielded group", () => {
     // attacker shock-infantry vs defender archer (destroyed) + defender spearman
-    const inf = buildUnit({ id: 1, side: "attacker", type: "medium-infantry", position: { row: 1, col: 1 }, facing: 4 });
+    const inf = buildUnit({
+      id: 1,
+      side: "attacker",
+      type: "medium-infantry",
+      position: { row: 1, col: 1 },
+      facing: 4
+    });
     const archer = buildUnit({ id: 2, side: "defender", type: "archer", position: null, destroyed: true, hp: 0 });
-    const spear = buildUnit({ id: 3, side: "defender", type: "light-spearman", position: { row: 2, col: 2 }, facing: 1 });
+    const spear = buildUnit({
+      id: 3,
+      side: "defender",
+      type: "light-spearman",
+      position: { row: 2, col: 2 },
+      facing: 1
+    });
     const state = makeActiveState(inf, [archer, spear]);
     state.activeGroup = { side: "attacker", type: "shock-infantry" };
     const map = buildMap();

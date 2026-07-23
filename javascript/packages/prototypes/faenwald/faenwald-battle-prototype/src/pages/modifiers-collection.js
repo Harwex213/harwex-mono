@@ -1,5 +1,5 @@
 import { ROUTES } from "../data/routing.js";
-import { createCollection, deleteCollection } from "../state/modifiers.js";
+import { createCollection, deleteCollection } from "../state/modifiers-state/modifiers-state.js";
 
 // attribute-safe interpolation for user-entered text
 const esc = (value) =>

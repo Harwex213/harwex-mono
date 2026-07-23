@@ -1,7 +1,7 @@
 import { ROUTES } from "../../data/routing.js";
-import { changeMap, validateConfig } from "../../state/battle-config.js";
-import { getMap } from "../../state/maps.js";
-import { BATTLE_PHASE } from "../../state/active-battle.js";
+import { changeMap, validateConfig } from "../../state/battle-config-state/battle-config-state.js";
+import { getMap } from "../../state/maps-state/maps-state.js";
+import { BATTLE_PHASE } from "../../state/active-battle-state/active-battle-state.js";
 import { mapsHtml, sidesHtml, startHtml } from "./view.js";
 import { CHANGE_ACTIONS, CLICK_ACTIONS } from "./actions.js";
 

@@ -1,6 +1,6 @@
 import { ROUTE_LINKS } from "../data/routing.js";
 import { DEFAULT_TERRAIN_ID, TERRAINS } from "../data/terrains.js";
-import { commitMap, getMap, renameMap, setMapCell, setMapImage } from "../state/maps.js";
+import { commitMap, getMap, renameMap, setMapCell, setMapImage } from "../state/maps-state/maps-state.js";
 import { renderMapThumbnail } from "../lib/map-thumbnail.js";
 import { renderPointTopHexagon } from "../lib/hexagon-render.js";
 import { gridPixelBounds, offsetToPixel, pixelToOffset } from "../lib/hex-layout.js";

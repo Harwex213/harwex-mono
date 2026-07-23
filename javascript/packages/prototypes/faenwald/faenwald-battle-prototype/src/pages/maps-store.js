@@ -1,5 +1,5 @@
 import { ROUTES } from "../data/routing.js";
-import { createMap, deleteMap, setMapImage } from "../state/maps.js";
+import { createMap, deleteMap, setMapImage } from "../state/maps-state/maps-state.js";
 import { renderMapThumbnail } from "../lib/map-thumbnail.js";
 
 // attribute-safe interpolation for user-entered text

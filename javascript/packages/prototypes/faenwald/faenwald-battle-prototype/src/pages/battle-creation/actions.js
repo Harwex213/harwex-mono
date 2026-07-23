@@ -1,6 +1,17 @@
 import { ROUTES } from "../../data/routing.js";
-import { assignUnitType, changeMap, createUnit, createUnitModifier, removeUnit, removeUnitModifier } from "../../state/battle-config.js";
-import { BATTLE_PHASE, resetActiveBattle, startBattleDisposition } from "../../state/active-battle.js";
+import {
+  assignUnitType,
+  changeMap,
+  createUnit,
+  createUnitModifier,
+  removeUnit,
+  removeUnitModifier
+} from "../../state/battle-config-state/battle-config-state.js";
+import {
+  BATTLE_PHASE,
+  resetActiveBattle,
+  startBattleDisposition
+} from "../../state/active-battle-state/active-battle-state.js";
 
 /**
  * User intents, keyed by `data-action`. Every handler is `(ctx, el)` where

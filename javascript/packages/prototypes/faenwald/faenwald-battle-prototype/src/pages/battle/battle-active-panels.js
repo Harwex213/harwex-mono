@@ -1,5 +1,5 @@
 import { STAT_META, UNIT_TYPES } from "../../data/unit.js";
-import { effectiveMorale, findUnit } from "../../state/active-battle.js";
+import { effectiveMorale, findUnit } from "../../state/active-battle-state/active-battle-state.js";
 import { getUnitGroupType, GROUP_CYCLE } from "../../lib/active-unit-group.js";
 import { GROUP_EMOJI } from "../../lib/unit-render.js";
 

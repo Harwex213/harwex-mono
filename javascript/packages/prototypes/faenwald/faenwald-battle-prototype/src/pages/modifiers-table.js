@@ -1,6 +1,15 @@
 import { ROUTE_LINKS } from "../data/routing.js";
 import { STAT_META } from "../data/unit.js";
-import { addEntry, createModifier, deleteModifier, getCollection, removeEntry, renameCollection, updateEntry, updateModifier } from "../state/modifiers.js";
+import {
+  addEntry,
+  createModifier,
+  deleteModifier,
+  getCollection,
+  removeEntry,
+  renameCollection,
+  updateEntry,
+  updateModifier
+} from "../state/modifiers-state/modifiers-state.js";
 
 // attribute-safe interpolation for user-entered text
 const esc = (value) =>

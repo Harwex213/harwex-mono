@@ -1,7 +1,22 @@
 import { UNIT_TYPES } from "../../data/unit.js";
 import { ROUTE_LINKS, ROUTES } from "../../data/routing.js";
-import { getMap } from "../../state/maps.js";
-import { BATTLE_PHASE, accelerate, advanceUnit, applyBreakthrough, attack, capitulate, declineBreakthrough, endActivation, findUnit, fireModesAvailable, rotateUnit, routTick, unitAt, validRangedTargets } from "../../state/active-battle.js";
+import { getMap } from "../../state/maps-state/maps-state.js";
+import {
+  accelerate,
+  advanceUnit,
+  applyBreakthrough,
+  attack,
+  BATTLE_PHASE,
+  capitulate,
+  declineBreakthrough,
+  endActivation,
+  findUnit,
+  fireModesAvailable,
+  rotateUnit,
+  routTick,
+  unitAt,
+  validRangedTargets
+} from "../../state/active-battle-state/active-battle-state.js";
 import { ACTIVE_UNIT_GROUP_TYPE, getUnitGroupType } from "../../lib/active-unit-group.js";
 import { flankHexes, frontHexes, rearHexes, zoneOf } from "../../lib/hex-facing.js";
 import { createBattleActiveCanvas } from "./battle-active-canvas.js";

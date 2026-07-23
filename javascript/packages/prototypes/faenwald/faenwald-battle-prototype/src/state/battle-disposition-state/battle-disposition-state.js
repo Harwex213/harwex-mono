@@ -1,5 +1,5 @@
-import { TERRAINS } from "../data/terrains.js";
-import { findUnit, unitAt } from "./active-battle.js";
+import { TERRAINS } from "../../data/terrains.js";
+import { findUnit, unitAt } from "../active-battle-state/active-battle-state.js";
 
 /** Each side deploys on its edge of the map: attacker the top rows, defender the bottom. */
 const PLACEMENT_ROWS = 3;

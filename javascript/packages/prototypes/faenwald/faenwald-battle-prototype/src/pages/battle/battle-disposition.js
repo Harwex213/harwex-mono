@@ -1,8 +1,8 @@
 import { STAT_META } from "../../data/unit.js";
 import { ROUTE_LINKS, ROUTES } from "../../data/routing.js";
 import { DEFAULT_TERRAIN_ID, TERRAINS } from "../../data/terrains.js";
-import { getMap } from "../../state/maps.js";
-import { BATTLE_PHASE, findUnit, startBattle, unitAt } from "../../state/active-battle.js";
+import { getMap } from "../../state/maps-state/maps-state.js";
+import { BATTLE_PHASE, findUnit, startBattle, unitAt } from "../../state/active-battle-state/active-battle-state.js";
 import { renderPointTopHexagon } from "../../lib/hexagon-render.js";
 import { gridPixelBounds, offsetToPixel, pixelToOffset } from "../../lib/hex-layout.js";
 import { initializeAbstractCanvas } from "../../lib/abstract-canvas.js";
@@ -14,7 +14,13 @@ import {
   HOVER_STROKE_PX,
   SELECTED_STROKE_PX,
 } from "../../lib/unit-render.js";
-import { isDispositionComplete, placeUnit, placementCandidates, setRuler, setUnitFacing } from "../../state/battle-disposition.js";
+import {
+  isDispositionComplete,
+  placementCandidates,
+  placeUnit,
+  setRuler,
+  setUnitFacing
+} from "../../state/battle-disposition-state/battle-disposition-state.js";
 
 
 // arrow labels for the facing picker, matching the vertex screen positions

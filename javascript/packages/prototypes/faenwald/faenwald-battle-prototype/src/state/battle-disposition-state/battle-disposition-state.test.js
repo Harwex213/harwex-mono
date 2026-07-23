@@ -1,7 +1,7 @@
 import { describe, test } from "node:test";
 import assert from "node:assert";
-import { placementCandidates, setRuler, setUnitFacing } from "./battle-disposition.js";
-import { createActiveBattle } from "./active-battle.js";
+import { placementCandidates, setRuler, setUnitFacing } from "./battle-disposition-state.js";
+import { createActiveBattle } from "../active-battle-state/active-battle-state.js";
 
 const buildMap = (cells) => ({
   id: 1,

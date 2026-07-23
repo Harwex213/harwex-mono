@@ -13,9 +13,9 @@ import { createStore } from "./store.js";
 import { createInitialState } from "./state/app-state.js";
 import { createTopNav } from "./components/top-nav.js";
 import { MAPS_LS_KEY, MODIFIERS_LS_KEY } from "./data/local-storage-keys.js";
-import { hydrateMaps, serializeMaps } from "./state/maps.js";
-import { hydrateModifiers, serializeModifiers } from "./state/modifiers.js";
-import { createBattleConfig } from "./state/battle-config.js";
+import { hydrateMaps, serializeMaps } from "./state/maps-state/maps-state.js";
+import { hydrateModifiers, serializeModifiers } from "./state/modifiers-state/modifiers-state.js";
+import { createBattleConfig } from "./state/battle-config-state/battle-config-state.js";
 
 const voidFn = () => void 0;
 

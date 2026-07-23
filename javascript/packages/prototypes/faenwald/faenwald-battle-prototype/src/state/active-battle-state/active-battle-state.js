@@ -1,8 +1,8 @@
-import { UNIT_TYPES } from "../data/unit.js";
-import { DEFAULT_TERRAIN_ID, TERRAINS } from "../data/terrains.js";
-import { computeUnitStats, SIDES } from "./battle-config.js";
-import { advanceCost, effectiveSpeed } from "../lib/movement-cost.js";
-import { unitActivationOrder } from "../lib/turn-order.js";
+import { UNIT_TYPES } from "../../data/unit.js";
+import { DEFAULT_TERRAIN_ID, TERRAINS } from "../../data/terrains.js";
+import { computeUnitStats, SIDES } from "../battle-config-state/battle-config-state.js";
+import { advanceCost, effectiveSpeed } from "../../lib/movement-cost.js";
+import { unitActivationOrder } from "../../lib/turn-order.js";
 import {
   directionTo,
   flankHexes,
@@ -12,16 +12,16 @@ import {
   neighbor,
   zoneAtRange,
   zoneOf,
-} from "../lib/hex-facing.js";
+} from "../../lib/hex-facing.js";
 import {
   ACTIVE_UNIT_GROUP_TYPE,
   firstActiveUnitGroup,
   getUnitGroupType,
   nextActiveUnitGroup
-} from "../lib/active-unit-group.js";
-import { chargeDamageMult, elevationDamageMult, formationCoverMult, resolveAttack } from "../lib/damage.js";
-import { fleePath } from "../lib/flee-path.js";
-import { arcBlocked, directLosBlocked } from "../lib/line-of-sight.js";
+} from "../../lib/active-unit-group.js";
+import { chargeDamageMult, elevationDamageMult, formationCoverMult, resolveAttack } from "../../lib/damage.js";
+import { fleePath } from "../../lib/flee-path.js";
+import { arcBlocked, directLosBlocked } from "../../lib/line-of-sight.js";
 
 const BATTLE_PHASE = {
   DISPOSITION: "disposition",

@@ -1,7 +1,14 @@
 import { describe, test } from "node:test";
 import assert from "node:assert";
-import { SIDES, assignUnitType, createBattleConfig, createUnit, isConfigValid, validateConfig } from "./battle-config.js";
-import { createMap, createMaps, deleteMap } from "./maps.js";
+import {
+  assignUnitType,
+  createBattleConfig,
+  createUnit,
+  isConfigValid,
+  SIDES,
+  validateConfig
+} from "./battle-config-state.js";
+import { createMap, createMaps, deleteMap } from "../maps-state/maps-state.js";
 
 const buildMaps = () => {
   const maps = createMaps();

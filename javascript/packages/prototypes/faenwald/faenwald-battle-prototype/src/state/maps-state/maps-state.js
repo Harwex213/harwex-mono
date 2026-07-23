@@ -1,5 +1,5 @@
-import { DEFAULT_MAPS } from "../data/maps.js";
-import { DEFAULT_TERRAIN_ID } from "../data/terrains.js";
+import { DEFAULT_MAPS } from "../../data/maps.js";
+import { DEFAULT_TERRAIN_ID } from "../../data/terrains.js";
 
 /**
  * State module for hex maps. Pure: no storage access — the composition root

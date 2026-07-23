@@ -1,6 +1,6 @@
-import { STAT_META, UNIT_TYPES } from "../data/unit.js";
-import { findModifier } from "./modifiers.js";
-import { getMap } from "./maps.js";
+import { STAT_META, UNIT_TYPES } from "../../data/unit.js";
+import { findModifier } from "../modifiers-state/modifiers-state.js";
+import { getMap } from "../maps-state/maps-state.js";
 
 const SIDES = ["attacker", "defender"];
 const STAT_IDS = STAT_META.map((s) => s.id);
