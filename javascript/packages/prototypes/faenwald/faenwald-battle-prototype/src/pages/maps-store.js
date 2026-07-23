@@ -66,6 +66,9 @@ const createMapsStorePage = ({ store, router }) => {
     if (!target) {
       return;
     }
+    // don't leak the action past the page — a navigation here can mount a
+    // legacy page mid-dispatch whose <main> listener would see this event
+    event.stopPropagation();
 
     const mapId = target.dataset.mapId;
 

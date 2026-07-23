@@ -1,11 +1,12 @@
 import { STAT_META, UNIT_TYPES } from "../../data/unit.js";
-import { computeUnitStats, validateConfig } from "../../state/battle-config.js";
+import { computeUnitStats } from "../../state/battle-config.js";
 import { allModifiers, findModifier, getCollection } from "../../state/modifiers.js";
 
 /**
- * Pure HTML builders: everything arrives as parameters, nothing reads MODEL.
- * `viewState` threads the two shared inputs — the modifiers catalog and which
- * unit's combobox is open ({ modifiers, openComboUnitId }).
+ * Pure HTML builders, one per dynamic region of the page skeleton: everything
+ * arrives as parameters, nothing reads the store. `viewState` threads the two
+ * shared inputs — the modifiers catalog and which unit's combobox is open
+ * ({ modifiers, openComboUnitId }).
  */
 
 const refKey = (collectionId, modifierId) => `${collectionId}:${modifierId}`;
@@ -126,38 +127,34 @@ const mapCardHtml = (m, selectedMapId) => `
 `;
 
 /**
- * @param {object} props
- * @param {HexMap[]} props.maps
- * @param {string | null} props.mapId
- * @param {BattleConfigUnit[]} props.attacker
- * @param {BattleConfigUnit[]} props.defender
- * @param {ModifiersState} props.modifiers
- * @param {number | null} props.openComboUnitId
- * @param {BattleConfigProblem[]} props.problems
+ * @param {HexMap[]} maps
+ * @param {string | null} mapId
  * @returns {string}
  */
-const battleCreationHtml = ({ maps, mapId, attacker, defender, modifiers, openComboUnitId, problems }) => {
-  const viewState = { modifiers, openComboUnitId };
-  const valid = problems.length === 0;
+const mapsHtml = (maps, mapId) =>
+  maps.length
+    ? maps.map((m) => mapCardHtml(m, mapId)).join("")
+    : `<p class="hint">No maps yet — <a href="#/maps">create one in the Maps Store</a>.</p>`;
 
+/**
+ * @param {BattleConfigUnit[]} attacker
+ * @param {BattleConfigUnit[]} defender
+ * @param {{ modifiers: ModifiersState, openComboUnitId: number | null }} viewState
+ * @returns {string}
+ */
+const sidesHtml = (attacker, defender, viewState) =>
+  sideHtml("attacker", attacker, viewState) + sideHtml("defender", defender, viewState);
+
+/**
+ * @param {BattleConfigProblem[]} problems
+ * @returns {string}
+ */
+const startHtml = (problems) => {
+  const valid = problems.length === 0;
   return `
-    <section class="bc">
-      <h2 class="box-label">Select a map</h2>
-      <div class="maps">
-        ${maps.length ? maps.map((m) => mapCardHtml(m, mapId)).join("") : `<p class="hint">No maps yet — <a href="#/maps">create one in the Maps Store</a>.</p>`}
-      </div>
-      <hr>
-      <h2 class="box-label">Specify units</h2>
-      <div class="sides">
-        ${sideHtml("attacker", attacker, viewState)}
-        ${sideHtml("defender", defender, viewState)}
-      </div>
-      <div class="start">
-        <button data-action="start-battle" ${valid ? "" : "disabled"}>Start battle</button>
-        ${valid ? "" : `<p class="hint">${problemsHint(problems)}</p>`}
-      </div>
-    </section>
+    <button data-action="start-battle" ${valid ? "" : "disabled"}>Start battle</button>
+    ${valid ? "" : `<p class="hint">${problemsHint(problems)}</p>`}
   `;
 };
 
-export { battleCreationHtml };
+export { mapsHtml, sidesHtml, startHtml };

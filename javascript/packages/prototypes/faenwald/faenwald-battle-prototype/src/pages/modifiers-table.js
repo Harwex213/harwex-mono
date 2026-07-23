@@ -147,6 +147,9 @@ const createModifiersTablePage = ({ store, router, params = {} }) => {
     if (!target) {
       return;
     }
+    // don't leak the action past the page — a navigation here can mount a
+    // legacy page mid-dispatch whose <main> listener would see this event
+    event.stopPropagation();
 
     const modifierId = target.dataset.modifierId;
     const kind = target.dataset.kind;

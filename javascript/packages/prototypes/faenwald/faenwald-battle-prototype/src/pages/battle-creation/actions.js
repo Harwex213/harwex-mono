@@ -4,9 +4,10 @@ import { BATTLE_PHASE, resetActiveBattle, startBattleDisposition } from "../../s
 
 /**
  * User intents, keyed by `data-action`. Every handler is `(ctx, el)` where
- * `ctx` is the page context ({ model, ui, router, render }) and `el` the
- * element carrying the `data-*` payload. Handlers that change what's on
- * screen call ctx.render() themselves — there is no automatic repaint.
+ * `ctx` is the page context ({ store, ui, router, render }) and `el` the
+ * element carrying the `data-*` payload. Store dispatches repaint through the
+ * page's subscription; only pure-UI changes (combobox open/close) call
+ * ctx.render() themselves.
  *
  * Click and change intents live in separate maps so a click on a form
  * control can't dispatch its change intent twice (radios/selects fire both
@@ -15,23 +16,20 @@ import { BATTLE_PHASE, resetActiveBattle, startBattleDisposition } from "../../s
 
 const CLICK_ACTIONS = {
   "add-unit": (ctx, el) => {
-    createUnit(ctx.model.battleConfig, el.dataset.side);
-    ctx.render();
+    ctx.store.set((s) => createUnit(s.battleConfig, el.dataset.side));
   },
 
   "remove-unit": (ctx, el) => {
     const unitId = Number(el.dataset.unitId);
-    removeUnit(ctx.model.battleConfig, unitId);
     if (ctx.ui.comboForUnitId === unitId) {
       ctx.ui.comboForUnitId = null;
     }
-    ctx.render();
+    ctx.store.set((s) => removeUnit(s.battleConfig, unitId));
   },
 
   "remove-modifier": (ctx, el) => {
     const { unitId, collectionId, modifierId } = el.dataset;
-    removeUnitModifier(ctx.model.battleConfig, Number(unitId), collectionId, modifierId);
-    ctx.render();
+    ctx.store.set((s) => removeUnitModifier(s.battleConfig, Number(unitId), collectionId, modifierId));
   },
 
   "open-combo": (ctx, el) => {
@@ -41,29 +39,28 @@ const CLICK_ACTIONS = {
 
   "pick-modifier": (ctx, el) => {
     const { unitId, collectionId, modifierId } = el.dataset;
-    createUnitModifier(ctx.model.battleConfig, Number(unitId), collectionId, modifierId);
     ctx.ui.comboForUnitId = null;
-    ctx.render();
+    ctx.store.set((s) => createUnitModifier(s.battleConfig, Number(unitId), collectionId, modifierId));
   },
 
   "start-battle": (ctx) => {
-    if (ctx.model.activeBattle.phase === BATTLE_PHASE.FINISHED) {
-      resetActiveBattle(ctx.model.activeBattle);
-    }
-    startBattleDisposition(ctx.model.activeBattle, ctx.model.battleConfig, ctx.model.modifiers);
+    ctx.store.set((s) => {
+      if (s.activeBattle.phase === BATTLE_PHASE.FINISHED) {
+        resetActiveBattle(s.activeBattle);
+      }
+      startBattleDisposition(s.activeBattle, s.battleConfig, s.modifiers);
+    });
     ctx.router.push(ROUTES.BATTLE);
   },
 };
 
 const CHANGE_ACTIONS = {
   "select-map": (ctx, el) => {
-    changeMap(ctx.model.battleConfig, el.value);
-    ctx.render();
+    ctx.store.set((s) => changeMap(s.battleConfig, el.value));
   },
 
   "set-type": (ctx, el) => {
-    assignUnitType(ctx.model.battleConfig, Number(el.dataset.unitId), el.value || null);
-    ctx.render();
+    ctx.store.set((s) => assignUnitType(s.battleConfig, Number(el.dataset.unitId), el.value || null));
   },
 };
 

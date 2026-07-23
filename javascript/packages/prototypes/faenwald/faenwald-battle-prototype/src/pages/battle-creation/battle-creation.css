@@ -1,0 +1,210 @@
+.battle-creation {
+  font-family: var(--font-body);
+  color: var(--text-primary);
+  padding: var(--space-8);
+}
+
+.battle-creation .box-label {
+  display: inline-block;
+  margin: 0 0 var(--space-7);
+  padding: var(--space-5) var(--space-8);
+  font-family: var(--font-display);
+  font-size: var(--font-size-xl);
+  color: var(--text-accent);
+}
+
+.battle-creation .maps {
+  display: flex;
+  gap: var(--space-8);
+  margin-bottom: var(--space-8);
+}
+
+.battle-creation .map-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-4);
+  cursor: pointer;
+}
+
+.battle-creation .map-card img, .battle-creation .map-card .map-thumb {
+  width: 96px;
+  height: 88px;
+  object-fit: cover;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+}
+
+.battle-creation .map-card .map-thumb {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--card-bg);
+  font-size: var(--font-size-xl);
+  color: var(--text-faint);
+}
+
+.battle-creation .map-card:hover img, .battle-creation .map-card:hover .map-thumb {
+  border-color: var(--border-accent-muted);
+}
+
+.battle-creation hr {
+  border: none;
+  border-top: 1px solid var(--border-default);
+  margin: 0 0 var(--space-8);
+}
+
+.battle-creation .sides {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-8);
+}
+
+.battle-creation .side {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-7);
+  padding: 0 var(--space-8) var(--space-8) 0;
+}
+
+.battle-creation .side--defender {
+  align-items: flex-end;
+  padding: 0 0 var(--space-8) var(--space-8);
+  border-left: 1px solid var(--border-default);
+}
+
+.battle-creation .side-label {
+  padding: var(--space-4) var(--space-7);
+  font-family: var(--font-display);
+  font-size: var(--font-size-lg);
+  color: var(--text-secondary);
+}
+
+.battle-creation .unit {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--card-padding);
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: var(--card-radius);
+}
+
+.battle-creation .side--defender .unit {
+  align-items: flex-end;
+}
+
+.battle-creation .unit-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-6);
+}
+
+.battle-creation select, .battle-creation button, .battle-creation input {
+  font: inherit;
+  color: var(--text-primary);
+  background: var(--bg-control);
+  border: 1px solid var(--border-medium);
+  border-radius: var(--radius-sm);
+  padding: var(--space-4) var(--space-6);
+}
+
+.battle-creation select:hover, .battle-creation input:focus {
+  border-color: var(--border-accent-muted);
+  outline: none;
+}
+
+.battle-creation button {
+  cursor: pointer;
+}
+
+.battle-creation button:hover {
+  background: var(--bg-control-hover);
+}
+
+.battle-creation button:disabled {
+  color: var(--text-muted);
+  border-color: var(--border-default);
+  background: transparent;
+  cursor: default;
+}
+
+.battle-creation .stats {
+  padding: var(--space-4) var(--space-6);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.battle-creation .modifier-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-6);
+  margin-left: var(--space-8);
+}
+
+.battle-creation .side--defender .modifier-row {
+  margin-left: 0;
+  margin-right: var(--space-8);
+}
+
+.battle-creation .modifier-name {
+  min-width: 220px;
+  padding: var(--space-4) var(--space-6);
+  background: var(--bg-control-subtle);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+.battle-creation .combo {
+  position: relative;
+  margin-left: var(--space-8);
+}
+
+.battle-creation .side--defender .combo {
+  margin-left: 0;
+  margin-right: var(--space-8);
+}
+
+.battle-creation .combo ul {
+  position: absolute;
+  z-index: 1;
+  left: 0;
+  right: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  background: var(--bg-surface-raised);
+  border: 1px solid var(--border-medium);
+  border-top: none;
+  border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+}
+
+.battle-creation .combo li button {
+  display: block;
+  width: 100%;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  text-align: left;
+}
+
+.battle-creation .combo li button:hover {
+  background: var(--bg-control-hover);
+}
+
+.battle-creation .start {
+  display: flex;
+  align-items: center;
+  gap: var(--space-7);
+  margin-top: var(--space-4);
+}
+
+.battle-creation .hint {
+  margin: 0;
+  color: var(--text-muted);
+}
