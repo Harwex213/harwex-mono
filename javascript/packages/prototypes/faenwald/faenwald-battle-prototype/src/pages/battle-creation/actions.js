@@ -7,8 +7,8 @@ import {
   removeUnit,
   removeUnitModifier
 } from "../../state/battle-config-state/battle-config-state.js";
+import { BATTLE_PHASE } from "../../data/battle.js";
 import {
-  BATTLE_PHASE,
   resetActiveBattle,
   startBattleDisposition
 } from "../../state/active-battle-state/active-battle-state.js";

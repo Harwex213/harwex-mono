@@ -1,12 +1,12 @@
 import { UNIT_TYPES } from "../../data/unit.js";
 import { ROUTE_LINKS, ROUTES } from "../../data/routing.js";
+import { BATTLE_PHASE } from "../../data/battle.js";
 import { getMap } from "../../state/maps-state/maps-state.js";
 import {
   accelerate,
   advanceUnit,
   applyBreakthrough,
   attack,
-  BATTLE_PHASE,
   capitulate,
   declineBreakthrough,
   endActivation,

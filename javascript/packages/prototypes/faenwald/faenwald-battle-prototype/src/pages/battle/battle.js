@@ -1,4 +1,4 @@
-import { BATTLE_PHASE } from "../../state/active-battle-state/active-battle-state.js";
+import { BATTLE_PHASE } from "../../data/battle.js";
 import { ROUTES } from "../../data/routing.js";
 
 const BATTLE_PHASE_ROUTES = {

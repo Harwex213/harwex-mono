@@ -1,5 +1,6 @@
 import { ROUTES } from "../../data/routing.js";
-import { BATTLE_PHASE, resetActiveBattle } from "../../state/active-battle-state/active-battle-state.js";
+import { BATTLE_PHASE } from "../../data/battle.js";
+import { resetActiveBattle } from "../../state/active-battle-state/active-battle-state.js";
 import { computeLosses } from "../../lib/losses.js";
 
 const SIDE_LABEL = { attacker: "Атакующий", defender: "Защитник" };

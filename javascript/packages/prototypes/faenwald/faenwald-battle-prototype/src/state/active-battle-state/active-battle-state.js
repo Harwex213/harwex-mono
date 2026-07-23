@@ -1,4 +1,5 @@
 import { UNIT_TYPES } from "../../data/unit.js";
+import { BATTLE_PHASE } from "../../data/battle.js";
 import { DEFAULT_TERRAIN_ID, TERRAINS } from "../../data/terrains.js";
 import { computeUnitStats, SIDES } from "../battle-config-state/battle-config-state.js";
 import { advanceCost, effectiveSpeed } from "../../lib/movement-cost.js";
@@ -22,12 +23,6 @@ import {
 import { chargeDamageMult, elevationDamageMult, formationCoverMult, resolveAttack } from "../../lib/damage.js";
 import { fleePath } from "../../lib/flee-path.js";
 import { arcBlocked, directLosBlocked } from "../../lib/line-of-sight.js";
-
-const BATTLE_PHASE = {
-  DISPOSITION: "disposition",
-  ACTIVE: "active",
-  FINISHED: "finished",
-};
 
 // vertex 4 = south (attacker faces the enemy deploying top rows),
 // vertex 1 = north (defender faces the enemy deploying bottom rows)
@@ -1043,7 +1038,6 @@ const routTick = (state, map) => {
 };
 
 export {
-  BATTLE_PHASE,
   DEFAULT_FACING_BY_SIDE,
   createActiveBattle,
   startBattleDisposition,

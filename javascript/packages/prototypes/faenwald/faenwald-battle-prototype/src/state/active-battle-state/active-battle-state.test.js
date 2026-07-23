@@ -1,11 +1,11 @@
 import { describe, test } from "node:test";
 import assert from "node:assert";
+import { BATTLE_PHASE } from "../../data/battle.js";
 import {
   accelerate,
   advanceUnit,
   applyBreakthrough,
   attack,
-  BATTLE_PHASE,
   capitulate,
   checkVictory,
   createActiveBattle,

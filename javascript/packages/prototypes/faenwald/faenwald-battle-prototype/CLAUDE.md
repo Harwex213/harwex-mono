@@ -1,14 +1,12 @@
 # @hw/battle-prototype
 
-A battle configurator for the Faenwald game: pick a map, build attacker/defender
+Prototype for the Faenwald Battle system: pick a map, build attacker/defender
 armies, place them, fight the battle.
 
-**Architecture = the `vanilla-proto` skill** (`javascript/.claude/skills/vanilla-proto`):
-no bundler, native ESM, one pub/sub store, pure state actions, factory components
+Architecture: no bundler, native ESM, one pub/sub store, pure state actions, factory components
 `{ el, destroy }`, per-component CSS. Run with `yarn :static`, test with `yarn test`.
-This file documents only what this app adds on top of the skill.
 
-## Routing (skill doesn't cover it)
+## Routing
 
 A hash router (`src/router.js`) swaps page components into `<main>`. The router
 owns all knowledge of `location.hash` — pages and components never touch it.
