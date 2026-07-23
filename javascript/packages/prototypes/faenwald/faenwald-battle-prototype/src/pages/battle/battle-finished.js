@@ -1,128 +1,6 @@
-import { ROUTE_LINKS, ROUTES } from "../../data/routing.js";
+import { ROUTES } from "../../data/routing.js";
 import { BATTLE_PHASE, resetActiveBattle } from "../../state/active-battle.js";
 import { computeLosses } from "../../lib/losses.js";
-import { MODEL } from "../../model/model.js";
-
-const STYLE = `
-  <style>
-    .bf {
-      font-family: var(--font-body);
-      color: var(--text-primary);
-      padding: var(--space-8);
-    }
-
-    .bf h1 {
-      margin: 0 0 var(--space-7);
-      font-family: var(--font-display);
-      font-size: var(--font-size-xl);
-      color: var(--text-accent);
-      text-align: center;
-    }
-
-    .bf .sides {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: var(--space-8);
-      margin-bottom: var(--space-8);
-    }
-
-    .bf .side {
-      display: flex;
-      flex-direction: column;
-      gap: var(--space-4);
-      background: var(--card-bg);
-      border: 1px solid var(--card-border);
-      border-radius: var(--card-radius);
-      padding: var(--space-6);
-    }
-
-    .bf .side-title {
-      font-family: var(--font-display);
-      color: var(--text-accent);
-    }
-
-    .bf .group-title {
-      color: var(--text-secondary);
-    }
-
-    .bf .unit-list {
-      display: flex;
-      flex-direction: column;
-      gap: var(--space-2);
-      margin: 0;
-      padding: 0;
-      list-style: none;
-    }
-
-    .bf .unit-row {
-      display: flex;
-      justify-content: space-between;
-      gap: var(--space-3);
-      color: var(--text-primary);
-      padding: var(--space-2) var(--space-3);
-      background: var(--bg-control-subtle);
-      border: 1px solid var(--border-default);
-      border-radius: var(--radius-sm);
-    }
-
-    .bf .unit-row-detail {
-      color: var(--text-secondary);
-    }
-
-    .bf .missing {
-      margin: 0;
-      color: var(--text-muted);
-    }
-
-    .bf .side-totals {
-      color: var(--text-secondary);
-    }
-
-    .bf .log {
-      display: flex;
-      flex-direction: column;
-      gap: var(--space-2);
-      margin: 0 0 var(--space-8);
-      padding: var(--space-3);
-      max-height: 40vh;
-      overflow-y: auto;
-      background: var(--bg-control-subtle);
-      border: 1px solid var(--border-default);
-      border-radius: var(--radius-sm);
-    }
-
-    .bf .log-line {
-      color: var(--text-secondary);
-    }
-
-    .bf .footer {
-      display: flex;
-      justify-content: center;
-    }
-
-    .bf .footer button {
-      font: inherit;
-      color: var(--text-primary);
-      background: var(--bg-control);
-      border: 1px solid var(--border-medium);
-      border-radius: var(--radius-sm);
-      padding: var(--space-5) var(--space-8);
-      cursor: pointer;
-    }
-
-    .bf .footer button:hover {
-      background: var(--bg-control-hover);
-    }
-
-    .bf a {
-      color: var(--text-secondary);
-    }
-
-    .bf a:hover {
-      color: var(--text-primary);
-    }
-  </style>
-`;
 
 const SIDE_LABEL = { attacker: "Атакующий", defender: "Защитник" };
 
@@ -163,13 +41,23 @@ const sideHtml = (side, sideLosses) => `
   </div>
 `;
 
-const renderBattleFinished = ({ root, params, router }) => {
-  if (MODEL.activeBattle.phase !== BATTLE_PHASE.FINISHED) {
+const noopPage = () => ({ el: document.createElement("span"), destroy: () => void 0 });
+
+/**
+ * A finished battle is frozen — the report renders once at creation, no
+ * subscription needed.
+ *
+ * @param {{ store: Store, router: Router }} deps
+ * @returns {{ el: HTMLElement, destroy: () => void }}
+ */
+const createBattleFinishedPage = ({ store, router }) => {
+  const state = store.get().activeBattle;
+
+  if (state.phase !== BATTLE_PHASE.FINISHED) {
     router.replace(ROUTES.BATTLE);
-    return () => {};
+    return noopPage();
   }
 
-  const state = MODEL.activeBattle;
   const losses = computeLosses(state.units);
 
   const capitulated = state.log.some((line) => line.includes("капитулирует"));
@@ -179,38 +67,33 @@ const renderBattleFinished = ({ root, params, router }) => {
 
   const logHtml = state.log.map((line) => `<div class="log-line">${line}</div>`).join("");
 
-  root.innerHTML = `
-    ${STYLE}
-    <section class="bf">
-      <h1>${bannerText}</h1>
-      <div class="sides">
-        ${sideHtml("attacker", losses.attacker)}
-        ${sideHtml("defender", losses.defender)}
-      </div>
-      <div class="log">${logHtml}</div>
-      <div class="footer">
-        <button data-action="new-battle">Новая битва</button>
-      </div>
-    </section>
+  const el = document.createElement("section");
+  el.className = "battle-finished";
+  el.innerHTML = `
+    <h1>${bannerText}</h1>
+    <div class="sides">
+      ${sideHtml("attacker", losses.attacker)}
+      ${sideHtml("defender", losses.defender)}
+    </div>
+    <div class="log">${logHtml}</div>
+    <div class="footer">
+      <button data-action="new-battle">Новая битва</button>
+    </div>
   `;
 
-  const onClick = (event) => {
-    const el = event.target.closest("[data-action]");
-    if (!el) {
+  el.addEventListener("click", (event) => {
+    const target = event.target.closest("[data-action]");
+    if (!target) {
       return;
     }
-    if (el.dataset.action === "new-battle") {
-      resetActiveBattle(MODEL.activeBattle);
+    event.stopPropagation();
+    if (target.dataset.action === "new-battle") {
+      store.set((s) => resetActiveBattle(s.activeBattle));
       router.push(ROUTES.BATTLE_CREATION);
     }
-  };
+  });
 
-  root.addEventListener("click", onClick);
-
-  return () => {
-    root.removeEventListener("click", onClick);
-    root.innerHTML = "";
-  };
+  return { el, destroy: () => void 0 };
 };
 
-export { renderBattleFinished };
+export { createBattleFinishedPage };

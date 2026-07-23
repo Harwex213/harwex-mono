@@ -3,13 +3,14 @@ import { createModifiersCollectionPage } from "./pages/modifiers-collection.js";
 import { createModifiersTablePage } from "./pages/modifiers-table.js";
 import { createMapsStorePage } from "./pages/maps-store.js";
 import { createMapEditorPage } from "./pages/map-editor.js";
-import { renderBattle } from "./pages/battle/battle.js";
+import { battlePhaseRoute } from "./pages/battle/battle.js";
 import { createBattleDispositionPage } from "./pages/battle/battle-disposition.js";
 import { createBattleActivePage } from "./pages/battle/battle-active.js";
-import { renderBattleFinished } from "./pages/battle/battle-finished.js";
+import { createBattleFinishedPage } from "./pages/battle/battle-finished.js";
 import { Router } from "./router.js";
 import { ROUTES } from "./data/routing.js";
-import { STORE } from "./model/model.js";
+import { createStore } from "./store.js";
+import { createInitialState } from "./state/app-state.js";
 import { createTopNav } from "./components/top-nav.js";
 import { MAPS_LS_KEY, MODIFIERS_LS_KEY } from "./data/local-storage-keys.js";
 import { hydrateMaps, serializeMaps } from "./state/maps.js";
@@ -18,48 +19,30 @@ import { createBattleConfig } from "./state/battle-config.js";
 
 const voidFn = () => void 0;
 
-// Legacy pages: render({ root, params, router }) → teardown. Entries move to
-// COMPONENT_PAGES as they migrate to `{ el, destroy }` factories.
+// Pages: createXPage({ store, router, params }) → { el, destroy }. Pages that
+// must measure layout or resolve computed styles (canvas) also return an
+// optional mount(), called right after el is inserted into <main>.
 const PAGES = [
-  [ROUTES.BATTLE_FINISHED, renderBattleFinished],
-];
-
-// Component pages: createXPage({ store, router, params }) → { el, destroy }.
-// Pages that must measure layout or resolve computed styles (canvas) also
-// return an optional mount(), called right after el is inserted into <main>.
-const COMPONENT_PAGES = [
   [ROUTES.BATTLE_CREATION, createBattleCreationPage],
   [ROUTES.BATTLE_DISPOSITION, createBattleDispositionPage],
   [ROUTES.BATTLE_ACTIVE, createBattleActivePage],
+  [ROUTES.BATTLE_FINISHED, createBattleFinishedPage],
   [ROUTES.MODIFIERS_COLLECTIONS, createModifiersCollectionPage],
   [ROUTES.MODIFIERS, createModifiersTablePage],
   [ROUTES.MAPS, createMapsStorePage],
   [ROUTES.MAP_EDITOR, createMapEditorPage],
 ];
 
-const registerAllPages = (root, router) => {
+const registerAllPages = (root, router, store) => {
   let finalizePage = voidFn;
   let navToken = 0;
 
-  const registerPage = (pageRoute, pageHandler) => {
+  const registerPage = (pageRoute, createPage) => {
     router.registerRoute(pageRoute, (params) => {
       finalizePage();
       finalizePage = voidFn; // a re-entrant resolve must not re-run this teardown
       const myToken = ++navToken;
-      const teardown = pageHandler({ root, params, router });
-      if (myToken === navToken) {
-        // a nested navigation replaced us — don't clobber its teardown
-        finalizePage = teardown ?? voidFn;
-      }
-    });
-  };
-
-  const registerComponentPage = (pageRoute, createPage) => {
-    router.registerRoute(pageRoute, (params) => {
-      finalizePage();
-      finalizePage = voidFn; // a re-entrant resolve must not re-run this teardown
-      const myToken = ++navToken;
-      const page = createPage({ store: STORE, router, params });
+      const page = createPage({ store, router, params });
       if (myToken !== navToken) {
         // a nested navigation replaced us — don't clobber its DOM or teardown
         page.destroy();
@@ -71,12 +54,8 @@ const registerAllPages = (root, router) => {
     });
   };
 
-  for (const [pageRoute, pageHandler] of PAGES) {
-    registerPage(pageRoute, pageHandler);
-  }
-
-  for (const [pageRoute, createPage] of COMPONENT_PAGES) {
-    registerComponentPage(pageRoute, createPage);
+  for (const [pageRoute, createPage] of PAGES) {
+    registerPage(pageRoute, createPage);
   }
 
   router.registerRoute(ROUTES.ROOT, () => {
@@ -84,7 +63,7 @@ const registerAllPages = (root, router) => {
   });
 
   router.registerRoute(ROUTES.BATTLE, () => {
-    renderBattle({ router });
+    router.replace(battlePhaseRoute(store.get().activeBattle));
   });
 };
 
@@ -111,8 +90,10 @@ const attachPersister = (store) => {
 };
 
 const main = () => {
-  attachPersister(STORE);
-  STORE.set((s) => {
+  const store = createStore(createInitialState());
+
+  attachPersister(store);
+  store.set((s) => {
     hydrateMaps(s.maps, localStorage.getItem(MAPS_LS_KEY));
     hydrateModifiers(s.modifiers, localStorage.getItem(MODIFIERS_LS_KEY));
     // persistence-backed state hydrates before battleConfig reads it for its default map
@@ -122,10 +103,10 @@ const main = () => {
   const root = document.querySelector("main");
   const router = new Router();
 
-  const topNav = createTopNav({ store: STORE, router });
+  const topNav = createTopNav({ store, router });
   document.body.prepend(topNav.el);
 
-  registerAllPages(root, router);
+  registerAllPages(root, router, store);
 };
 
 main();
