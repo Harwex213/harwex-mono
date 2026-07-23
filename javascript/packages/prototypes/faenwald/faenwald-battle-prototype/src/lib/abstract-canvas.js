@@ -77,6 +77,9 @@ const initializeAbstractCanvas = (container, config) => {
   let rafId = 0;
 
   const paint = () => {
+    if (!ctx) {
+      return; // requestRender before the first ResizeObserver tick created the canvas
+    }
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.setTransform(dpr * camera.scale, 0, 0, dpr * camera.scale, dpr * camera.x, dpr * camera.y);

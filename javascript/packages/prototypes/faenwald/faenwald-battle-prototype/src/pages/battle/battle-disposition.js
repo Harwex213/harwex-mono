@@ -7,203 +7,7 @@ import { ACTIVE_UNIT_GROUP_TYPE, getUnitGroupType } from "../../lib/active-unit-
 import { renderPointTopHexagon } from "../../lib/hexagon-render.js";
 import { gridPixelBounds, offsetToPixel, pixelToOffset } from "../../lib/hex-layout.js";
 import { initializeAbstractCanvas } from "../../lib/abstract-canvas.js";
-import { MODEL } from "../../model/model.js";
 import { isDispositionComplete, placeUnit, placementCandidates, setRuler, setUnitFacing } from "../../state/battle-disposition.js";
-
-const STYLE = `
-  <style>
-    .bd {
-      font-family: var(--font-body);
-      color: var(--text-primary);
-      padding: var(--space-8);
-    }
-
-    .bd h1 {
-      margin: 0 0 var(--space-7);
-      font-family: var(--font-display);
-      font-size: var(--font-size-xl);
-      color: var(--text-accent);
-      text-align: center;
-    }
-
-    .bd .workspace {
-      display: grid;
-      grid-template-columns: 260px minmax(0, 1fr) 260px;
-      gap: var(--space-8);
-      height: 70vh;
-    }
-
-    .bd .canvas-panel {
-      width: 100%;
-      height: 100%;
-      overflow: hidden;
-      background: var(--card-bg);
-      border: 1px dashed var(--border-medium);
-      border-radius: var(--card-radius);
-    }
-
-    .bd .canvas-panel canvas {
-      cursor: pointer;
-      touch-action: none;
-    }
-
-    .bd .panel {
-      display: flex;
-      flex-direction: column;
-      gap: var(--space-4);
-      background: var(--card-bg);
-      border: 1px solid var(--card-border);
-      border-radius: var(--card-radius);
-      padding: var(--space-6);
-      overflow-y: auto;
-    }
-
-    .bd .panel-title {
-      font-family: var(--font-display);
-      color: var(--text-accent);
-      padding: var(--space-2) var(--space-4) 0;
-    }
-
-    .bd .panel-progress {
-      color: var(--text-muted);
-      padding: 0 var(--space-4) var(--space-4);
-    }
-
-    .bd .unit-card {
-      display: flex;
-      flex-direction: column;
-      gap: var(--space-2);
-      font: inherit;
-      text-align: center;
-      color: var(--text-secondary);
-      background: var(--bg-control-subtle);
-      border: 1px solid var(--border-default);
-      border-radius: var(--radius-sm);
-      padding: var(--space-4) var(--space-5);
-      cursor: pointer;
-    }
-
-    .bd .unit-card:hover {
-      color: var(--text-primary);
-      background: var(--bg-control-subtle-hover);
-    }
-
-    .bd .unit-card--selected {
-      color: var(--text-primary);
-      background: var(--bg-accent);
-      border-color: var(--border-accent-muted);
-    }
-
-    .bd .all-placed {
-      margin: 0;
-      padding: 0 var(--space-4);
-      color: var(--text-muted);
-    }
-
-    .bd .unit-detail {
-      display: flex;
-      flex-direction: column;
-      gap: var(--space-3);
-      margin: 0 var(--space-4);
-      padding: var(--space-4);
-      background: var(--bg-control-subtle);
-      border: 1px solid var(--border-default);
-      border-radius: var(--radius-sm);
-    }
-
-    .bd .unit-detail-title {
-      color: var(--text-primary);
-      text-align: center;
-    }
-
-    .bd .facing-control {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: var(--space-2);
-    }
-
-    .bd .facing-btn {
-      font: inherit;
-      color: var(--text-secondary);
-      background: var(--bg-control);
-      border: 1px solid var(--border-medium);
-      border-radius: var(--radius-sm);
-      padding: var(--space-2);
-      cursor: pointer;
-    }
-
-    .bd .facing-btn:hover {
-      color: var(--text-primary);
-      background: var(--bg-control-hover);
-    }
-
-    .bd .facing-btn--active {
-      color: var(--text-primary);
-      background: var(--bg-accent);
-      border-color: var(--border-accent-muted);
-    }
-
-    .bd .crown-toggle {
-      font: inherit;
-      color: var(--text-secondary);
-      background: var(--bg-control);
-      border: 1px solid var(--border-medium);
-      border-radius: var(--radius-sm);
-      padding: var(--space-3);
-      cursor: pointer;
-    }
-
-    .bd .crown-toggle:hover {
-      color: var(--text-primary);
-      background: var(--bg-control-hover);
-    }
-
-    .bd .crown-toggle--active {
-      color: var(--text-primary);
-      background: var(--bg-accent);
-      border-color: var(--border-accent-muted);
-    }
-
-    .bd .footer {
-      display: flex;
-      justify-content: center;
-      margin-top: var(--space-8);
-    }
-
-    .bd .footer button {
-      font: inherit;
-      color: var(--text-primary);
-      background: var(--bg-control);
-      border: 1px solid var(--border-medium);
-      border-radius: var(--radius-sm);
-      padding: var(--space-5) var(--space-8);
-      cursor: pointer;
-    }
-
-    .bd .footer button:hover {
-      background: var(--bg-control-hover);
-    }
-
-    .bd .footer button:disabled {
-      color: var(--text-muted);
-      border-color: var(--border-default);
-      background: transparent;
-      cursor: default;
-    }
-
-    .bd .missing {
-      color: var(--text-muted);
-    }
-
-    .bd a {
-      color: var(--text-secondary);
-    }
-
-    .bd a:hover {
-      color: var(--text-primary);
-    }
-  </style>
-`;
 
 const HEX_HEIGHT = 128; // world units, top vertex to bottom vertex
 const HEX_SIZE = HEX_HEIGHT / 2; // circumradius
@@ -328,7 +132,7 @@ const initializeCanvas = (container, map, hooks) => {
         renderPointTopHexagon(ctx, x, y, HEX_HEIGHT, { fill: { style: candidateColor } });
       }
 
-      for (const unit of MODEL.activeBattle.units) {
+      for (const unit of hooks.getUnits()) {
         if (unit.position) {
           drawUnit(ctx, unit);
         }
@@ -352,25 +156,29 @@ const initializeCanvas = (container, map, hooks) => {
   });
 };
 
-const renderBattleDisposition = ({ root, params, router }) => {
-  if (MODEL.activeBattle.phase !== BATTLE_PHASE.DISPOSITION) {
+const noopPage = () => ({ el: document.createElement("span"), destroy: () => void 0 });
+
+/**
+ * @param {{ store: Store, router: Router }} deps
+ * @returns {{ el: HTMLElement, mount?: () => void, destroy: () => void }}
+ */
+const createBattleDispositionPage = ({ store, router }) => {
+  if (store.get().activeBattle.phase !== BATTLE_PHASE.DISPOSITION) {
     router.replace(ROUTES.BATTLE);
-    return () => {};
+    return noopPage();
   }
 
-  const map = getMap(MODEL.maps, MODEL.activeBattle.mapId);
+  const map = getMap(store.get().maps, store.get().activeBattle.mapId);
+
+  const el = document.createElement("section");
+  el.className = "battle-disposition";
 
   if (!map) {
-    root.innerHTML = `
-      ${STYLE}
-      <section class="bd">
-        <p class="missing">No battle awaiting disposition.</p>
-        <a href="${ROUTE_LINKS.BATTLE}">Continue</a>
-      </section>
+    el.innerHTML = `
+      <p class="missing">No battle awaiting disposition.</p>
+      <a href="${ROUTE_LINKS.BATTLE}">Continue</a>
     `;
-    return () => {
-      root.innerHTML = "";
-    };
+    return { el, destroy: () => void 0 };
   }
 
   // transient UI state: which unit is being placed/relocated, and the hexes
@@ -379,10 +187,19 @@ const renderBattleDisposition = ({ root, params, router }) => {
   let candidates = [];
   let candidateKeys = new Set();
 
-  const ATTACKER_PANEL_ID = "bd-attacker-panel";
-  const DEFENDER_PANEL_ID = "bd-defender-panel";
-  const CANVAS_PANEL_ID = "bd-canvas-panel";
-  const FOOTER_ID = "bd-footer";
+  el.innerHTML = `
+    <h1>Размещение армий</h1>
+    <div class="workspace">
+      <aside class="panel" data-role="attacker-panel"></aside>
+      <div class="canvas-panel" data-role="canvas-panel"></div>
+      <aside class="panel" data-role="defender-panel"></aside>
+    </div>
+    <div class="footer" data-role="footer"></div>
+  `;
+  const attackerPanel = el.querySelector('[data-role="attacker-panel"]');
+  const defenderPanel = el.querySelector('[data-role="defender-panel"]');
+  const canvasPanel = el.querySelector('[data-role="canvas-panel"]');
+  const footer = el.querySelector('[data-role="footer"]');
 
   const unitCardHtml = (unit) => `
     <button class="unit-card ${unit.id === selectedUnitId ? "unit-card--selected" : ""}"
@@ -408,7 +225,7 @@ const renderBattleDisposition = ({ root, params, router }) => {
   `;
 
   const panelHtml = (side) => {
-    const units = MODEL.activeBattle.units.filter((u) => u.side === side);
+    const units = store.get().activeBattle.units.filter((u) => u.side === side);
     const unplaced = units.filter((u) => u.position === null);
     const selected = units.find((u) => u.id === selectedUnitId && u.position !== null);
     return `
@@ -420,37 +237,20 @@ const renderBattleDisposition = ({ root, params, router }) => {
   };
 
   const footerHtml = () =>
-    `<button data-action="start-battle" ${isDispositionComplete(MODEL.activeBattle) ? "" : "disabled"}>Start Battle</button>`;
+    `<button data-action="start-battle" ${isDispositionComplete(store.get().activeBattle) ? "" : "disabled"}>Start Battle</button>`;
 
-  root.innerHTML = `
-    ${STYLE}
-    <section class="bd">
-      <h1>Размещение армий</h1>
-      <div class="workspace">
-        <aside id="${ATTACKER_PANEL_ID}" class="panel">${panelHtml("attacker")}</aside>
-        <div id="${CANVAS_PANEL_ID}" class="canvas-panel"></div>
-        <aside id="${DEFENDER_PANEL_ID}" class="panel">${panelHtml("defender")}</aside>
-      </div>
-      <div id="${FOOTER_ID}" class="footer">${footerHtml()}</div>
-    </section>
-  `;
-
-  const attackerPanel = document.getElementById(ATTACKER_PANEL_ID);
-  const defenderPanel = document.getElementById(DEFENDER_PANEL_ID);
-  const canvasPanel = document.getElementById(CANVAS_PANEL_ID);
-  const footer = document.getElementById(FOOTER_ID);
-
-  const getSelectedUnit = () => (selectedUnitId === null ? null : findUnit(MODEL.activeBattle, selectedUnitId));
+  const getSelectedUnit = () =>
+    selectedUnitId === null ? null : findUnit(store.get().activeBattle, selectedUnitId);
 
   const syncCandidates = () => {
     const unit = getSelectedUnit();
-    candidates = unit ? placementCandidates(MODEL.activeBattle, unit, map) : [];
+    candidates = unit ? placementCandidates(store.get().activeBattle, unit, map) : [];
     candidateKeys = new Set(candidates.map((c) => cellKey(c.row, c.col)));
   };
 
   let canvasApi = null;
 
-  const refresh = () => {
+  const render = () => {
     syncCandidates();
     attackerPanel.innerHTML = panelHtml("attacker");
     defenderPanel.innerHTML = panelHtml("defender");
@@ -460,7 +260,7 @@ const renderBattleDisposition = ({ root, params, router }) => {
 
   const select = (unitId) => {
     selectedUnitId = unitId;
-    refresh();
+    render();
   };
 
   const onHexClick = (target) => {
@@ -471,11 +271,11 @@ const renderBattleDisposition = ({ root, params, router }) => {
     const selected = getSelectedUnit();
     // drop first: while relocating, occupied hexes are candidates (swap)
     if (selected && candidateKeys.has(cellKey(target.row, target.col))) {
-      placeUnit(MODEL.activeBattle, selected.id, target.row, target.col);
+      store.set((s) => placeUnit(s.activeBattle, selected.id, target.row, target.col));
       select(null);
       return;
     }
-    const occupant = unitAt(MODEL.activeBattle, target.row, target.col);
+    const occupant = unitAt(store.get().activeBattle, target.row, target.col);
     if (occupant) {
       select(occupant.id === selectedUnitId ? null : occupant.id);
       return;
@@ -483,50 +283,53 @@ const renderBattleDisposition = ({ root, params, router }) => {
     select(null);
   };
 
-  canvasApi = initializeCanvas(canvasPanel, map, {
-    onHexClick,
-    getCandidates: () => candidates,
-    getSelectedUnit,
-  });
-
-  const onClick = (event) => {
-    const el = event.target.closest("[data-action]");
-    if (!el) {
+  el.addEventListener("click", (event) => {
+    const target = event.target.closest("[data-action]");
+    if (!target) {
       return;
     }
+    event.stopPropagation();
 
-    switch (el.dataset.action) {
+    switch (target.dataset.action) {
       case "select-unit": {
-        const unitId = Number(el.dataset.unitId);
+        const unitId = Number(target.dataset.unitId);
         select(unitId === selectedUnitId ? null : unitId);
         break;
       }
       case "start-battle":
-        startBattle(MODEL.activeBattle, map);
+        store.set((s) => startBattle(s.activeBattle, map));
         router.push(ROUTES.BATTLE_ACTIVE);
         break;
       case "set-facing": {
-        const unitId = Number(el.dataset.unitId);
-        setUnitFacing(MODEL.activeBattle, unitId, Number(el.dataset.facing));
-        refresh();
+        const unitId = Number(target.dataset.unitId);
+        store.set((s) => setUnitFacing(s.activeBattle, unitId, Number(target.dataset.facing)));
         break;
       }
       case "toggle-ruler": {
-        const unitId = Number(el.dataset.unitId);
-        setRuler(MODEL.activeBattle, unitId);
-        refresh();
+        const unitId = Number(target.dataset.unitId);
+        store.set((s) => setRuler(s.activeBattle, unitId));
         break;
       }
     }
+  });
+
+  const mount = () => {
+    canvasApi = initializeCanvas(canvasPanel, map, {
+      onHexClick,
+      getCandidates: () => candidates,
+      getSelectedUnit,
+      getUnits: () => store.get().activeBattle.units,
+    });
   };
 
-  root.addEventListener("click", onClick);
+  const unsubscribe = store.subscribe(render);
 
-  return () => {
-    canvasApi.destroy();
-    root.removeEventListener("click", onClick);
-    root.innerHTML = "";
+  const destroy = () => {
+    canvasApi?.destroy();
+    unsubscribe();
   };
+
+  return { el, mount, destroy };
 };
 
-export { renderBattleDisposition };
+export { createBattleDispositionPage };
