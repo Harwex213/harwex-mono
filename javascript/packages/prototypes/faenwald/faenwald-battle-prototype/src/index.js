@@ -5,7 +5,7 @@ import { createMapsStorePage } from "./pages/maps-store.js";
 import { createMapEditorPage } from "./pages/map-editor.js";
 import { renderBattle } from "./pages/battle/battle.js";
 import { createBattleDispositionPage } from "./pages/battle/battle-disposition.js";
-import { renderBattleActive } from "./pages/battle/battle-active.js";
+import { createBattleActivePage } from "./pages/battle/battle-active.js";
 import { renderBattleFinished } from "./pages/battle/battle-finished.js";
 import { Router } from "./router.js";
 import { ROUTES } from "./data/routing.js";
@@ -21,7 +21,6 @@ const voidFn = () => void 0;
 // Legacy pages: render({ root, params, router }) → teardown. Entries move to
 // COMPONENT_PAGES as they migrate to `{ el, destroy }` factories.
 const PAGES = [
-  [ROUTES.BATTLE_ACTIVE, renderBattleActive],
   [ROUTES.BATTLE_FINISHED, renderBattleFinished],
 ];
 
@@ -31,6 +30,7 @@ const PAGES = [
 const COMPONENT_PAGES = [
   [ROUTES.BATTLE_CREATION, createBattleCreationPage],
   [ROUTES.BATTLE_DISPOSITION, createBattleDispositionPage],
+  [ROUTES.BATTLE_ACTIVE, createBattleActivePage],
   [ROUTES.MODIFIERS_COLLECTIONS, createModifiersCollectionPage],
   [ROUTES.MODIFIERS, createModifiersTablePage],
   [ROUTES.MAPS, createMapsStorePage],
