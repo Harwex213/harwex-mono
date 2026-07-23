@@ -1,142 +1,19 @@
 import { ROUTE_LINKS } from "../data/routing.js";
 import { DEFAULT_TERRAIN_ID, TERRAINS } from "../data/terrains.js";
 import { commitMap, getMap, renameMap, setMapCell, setMapImage } from "../state/maps.js";
-import { MODEL, STORE } from "../model/model.js";
 import { renderMapThumbnail } from "../lib/map-thumbnail.js";
 import { renderPointTopHexagon } from "../lib/hexagon-render.js";
 import { gridPixelBounds, offsetToPixel, pixelToOffset } from "../lib/hex-layout.js";
 import { initializeAbstractCanvas } from "../lib/abstract-canvas.js";
 
 // swatch fills come from data, but inline style="" is banned — generate one
-// scoped rule per terrain instead, each referencing its semantic token
+// scoped rule per terrain instead, each referencing its semantic token; the
+// static rules live in map-editor.css, these can't (they're data-driven)
 const SWATCH_RULES = TERRAINS.map(
-  (t) => `.me .swatch--${t.id} {
+  (t) => `.map-editor .swatch--${t.id} {
       background: var(${t.color});
     }`,
 ).join("\n\n    ");
-
-const STYLE = `
-  <style>
-    .me {
-      font-family: var(--font-body);
-      color: var(--text-primary);
-      padding: var(--space-8);
-    }
-
-    .me a {
-      color: var(--text-secondary);
-    }
-
-    .me a:hover {
-      color: var(--text-primary);
-    }
-
-    .me .header {
-      display: flex;
-      align-items: center;
-      gap: var(--space-7);
-      margin-bottom: var(--space-7);
-    }
-
-    .me .map-name {
-      min-width: 240px;
-      font: inherit;
-      color: var(--text-primary);
-      background: var(--bg-control);
-      border: 1px solid var(--border-medium);
-      border-radius: var(--radius-sm);
-      padding: var(--space-4) var(--space-6);
-    }
-
-    .me .map-name:focus {
-      border-color: var(--border-accent-muted);
-      outline: none;
-    }
-
-    .me .dims {
-      color: var(--text-muted);
-    }
-
-    .me .workspace {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) 240px;
-      grid-template-rows: 1fr;
-      gap: var(--space-8);
-      align-items: start;
-    }
-
-    .me .canvas-panel {
-      width: 100%;
-      height: 100%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      overflow: hidden;
-      background: var(--card-bg);
-      border: 1px dashed var(--border-medium);
-      border-radius: var(--card-radius);
-    }
-
-    .me .canvas-panel canvas {
-      cursor: crosshair;
-      touch-action: none;
-    }
-
-    .me .palette {
-      display: flex;
-      flex-direction: column;
-      gap: var(--space-2);
-      background: var(--card-bg);
-      border: 1px solid var(--card-border);
-      border-radius: var(--card-radius);
-      padding: var(--space-6);
-    }
-
-    .me .palette-title {
-      font-family: var(--font-display);
-      color: var(--text-accent);
-      padding: var(--space-2) var(--space-4) var(--space-4);
-    }
-
-    .me .terrain {
-      display: flex;
-      align-items: center;
-      gap: var(--space-5);
-      font: inherit;
-      text-align: left;
-      color: var(--text-secondary);
-      background: none;
-      border: 1px solid transparent;
-      border-radius: var(--radius-sm);
-      padding: var(--space-4) var(--space-5);
-      cursor: pointer;
-    }
-
-    .me .terrain:hover {
-      color: var(--text-primary);
-      background: var(--bg-control-subtle-hover);
-    }
-
-    .me .terrain--selected {
-      color: var(--text-primary);
-      background: var(--bg-accent);
-      border-color: var(--border-accent-muted);
-    }
-
-    .me .swatch {
-      width: 18px;
-      height: 18px;
-      border: 1px solid var(--border-default);
-      border-radius: var(--radius-sm);
-    }
-
-    ${SWATCH_RULES}
-
-    .me .missing {
-      color: var(--text-muted);
-    }
-  </style>
-`;
 
 // attribute-safe interpolation for user-entered text
 const esc = (value) =>
@@ -151,7 +28,7 @@ const HEX_SIZE = HEX_HEIGHT / 2; // circumradius
 const GRID_STROKE_PX = 1; // screen px, constant under zoom
 const HOVER_STROKE_PX = 2;
 
-const initializeCanvas = (container, map, getBrush) => {
+const initializeCanvas = (container, map, getBrush, store) => {
   // tokens are static — resolve them once, not per frame
   const styles = getComputedStyle(container);
   const fillByTerrain = Object.fromEntries(
@@ -167,7 +44,9 @@ const initializeCanvas = (container, map, getBrush) => {
     if (!target || map.cells[target.row][target.col] === brush) {
       return;
     }
-    setMapCell(MODEL.maps, map.id, target.row, target.col, brush);
+    // in-memory only (no rev bump), so a drag isn't a storage write per hex —
+    // the canvas repaints itself, no store notification needed
+    setMapCell(store.get().maps, map.id, target.row, target.col, brush);
     dirty = true;
     requestRender();
   };
@@ -191,7 +70,7 @@ const initializeCanvas = (container, map, getBrush) => {
     // one stroke = one localStorage write, and only if it changed something
     onActionEnd: () => {
       if (dirty) {
-        STORE.set((s) => commitMap(s.maps, map.id));
+        store.set((s) => commitMap(s.maps, map.id));
       }
     },
 
@@ -218,12 +97,27 @@ const initializeCanvas = (container, map, getBrush) => {
   return destroy;
 };
 
-const renderMapEditor = ({ root, params = {}, router }) => {
+/**
+ * @param {{ store: Store, router: Router, params: { mapId?: string } }} deps
+ * @returns {{ el: HTMLElement, mount?: () => void, destroy: () => void }}
+ */
+const createMapEditorPage = ({ store, router, params = {} }) => {
+  const mapId = params.mapId;
+  const map = getMap(store.get().maps, mapId);
+
+  const el = document.createElement("section");
+  el.className = "map-editor";
+
+  if (!map) {
+    el.innerHTML = `
+      <p class="missing">Map not found.</p>
+      <a href="${ROUTE_LINKS.MAPS}">← Back to maps</a>
+    `;
+    return { el, destroy: () => void 0 };
+  }
+
   // transient UI state: the brush terrain the canvas paints with
   let selectedTerrainId = DEFAULT_TERRAIN_ID;
-
-  const PALETTE_ASIDE_ID = "me-palette";
-  const MAP_EDITOR_ID = "map-editor";
 
   const terrainHtml = (terrain) => `
     <button class="terrain ${terrain.id === selectedTerrainId ? "terrain--selected" : ""}"
@@ -233,88 +127,83 @@ const renderMapEditor = ({ root, params = {}, router }) => {
     </button>
   `;
 
-  const asideHtml = () => `
+  const paletteHtml = () => `
     <div class="palette-title">Terrain</div>
     ${TERRAINS.map(terrainHtml).join("")}
-  `
+  `;
 
-  const mapEditorHtml = (root, map) => {
-    if (!map) {
-      root.innerHTML = `
-        ${STYLE}
-        <section class="me">
-          <p class="missing">Map not found.</p>
-          <a href="${ROUTE_LINKS.MAPS}">← Back to maps</a>
-        </section>
-      `;
+  el.innerHTML = `
+    <style>${SWATCH_RULES}</style>
+    <div class="header">
+      <a href="${ROUTE_LINKS.MAPS}">← Maps</a>
+      <input class="map-name" data-role="map-name" value="${esc(map.name)}" placeholder="map name">
+      <span class="dims">${map.width} × ${map.height} hexes</span>
+    </div>
+    <div class="workspace">
+      <div class="canvas-panel" data-role="canvas-panel"></div>
+      <aside class="palette" data-role="palette">
+        ${paletteHtml()}
+      </aside>
+    </div>
+  `;
+  const nameEl = el.querySelector('[data-role="map-name"]');
+  const canvasPanelEl = el.querySelector('[data-role="canvas-panel"]');
+  const paletteEl = el.querySelector('[data-role="palette"]');
+
+  el.addEventListener("click", (event) => {
+    const target = event.target.closest("[data-action]");
+    if (!target) {
       return;
     }
+    event.stopPropagation();
 
-    root.innerHTML = `
-      ${STYLE}
-      <section class="me">
-        <div class="header">
-          <a href="${ROUTE_LINKS.MAPS}">← Maps</a>
-          <input class="map-name" data-role="map-name" value="${esc(map.name)}" placeholder="map name">
-          <span class="dims">${map.width} × ${map.height} hexes</span>
-        </div>
-        <div class="workspace">
-          <div id="${MAP_EDITOR_ID}" class="canvas-panel">
-          </div>
-          <aside id="${PALETTE_ASIDE_ID}" class="palette">
-            ${asideHtml()}
-          </aside>
-        </div>
-      </section>
-    `;
-  };
-
-  const mapId = params.mapId;
-  const map = getMap(MODEL.maps, mapId);
-
-  mapEditorHtml(root, map);
-
-  const aside = document.getElementById(PALETTE_ASIDE_ID);
-  const mapEditor = document.getElementById(MAP_EDITOR_ID);
-
-  const teardownCanvas = map ? initializeCanvas(mapEditor, map, () => selectedTerrainId) : null;
-
-  const onClick = (event) => {
-    const el = event.target.closest("[data-action]");
-    if (!el) {
-      return;
-    }
-
-    switch (el.dataset.action) {
+    switch (target.dataset.action) {
       case "select-terrain":
-        selectedTerrainId = el.dataset.terrainId;
-        aside.innerHTML = asideHtml();
+        selectedTerrainId = target.dataset.terrainId;
+        paletteEl.innerHTML = paletteHtml();
         break;
     }
-  };
+  });
 
-  // live rename commits on every keystroke; no re-render — nothing on the page
-  // derives from the name, and repainting would drop the caret (see modifiers-table)
-  const onInput = (event) => {
+  // live rename commits on every keystroke; muted from repaint — nothing on the
+  // page derives from the name, and repainting would drop the caret
+  let muteRender = false;
+  el.addEventListener("input", (event) => {
     if (event.target.dataset.role === "map-name") {
-      STORE.set((s) => renameMap(s.maps, mapId, event.target.value));
+      muteRender = true;
+      store.set((s) => renameMap(s.maps, mapId, event.target.value));
+      muteRender = false;
+    }
+  });
+
+  const render = (s) => {
+    if (muteRender) {
+      return;
+    }
+    const current = getMap(s.maps, mapId);
+    if (current && document.activeElement !== nameEl) {
+      nameEl.value = current.name;
     }
   };
 
-  root.addEventListener("click", onClick);
-  root.addEventListener("input", onInput);
+  // canvas init needs the element laid out and computed styles resolvable —
+  // both require being in the document, hence mount(), not creation time
+  let teardownCanvas = null;
+  const mount = () => {
+    teardownCanvas = initializeCanvas(canvasPanelEl, map, () => selectedTerrainId, store);
+  };
 
-  return () => {
+  const unsubscribe = store.subscribe(render);
+
+  const destroy = () => {
     teardownCanvas?.();
+    unsubscribe();
     // one generation per editing session; commitMap() dropped the image on the
     // first stroke, and the maps page covers sessions this teardown never ends
-    if (map) {
-      STORE.set((s) => setMapImage(s.maps, map.id, renderMapThumbnail(map)));
-    }
-    root.removeEventListener("click", onClick);
-    root.removeEventListener("input", onInput);
-    root.innerHTML = "";
+    store.set((s) => setMapImage(s.maps, map.id, renderMapThumbnail(map)));
   };
+
+  return { el, mount, destroy };
 };
 
-export { renderMapEditor };
+export { createMapEditorPage };

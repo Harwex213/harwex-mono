@@ -2,7 +2,7 @@ import { createBattleCreationPage } from "./pages/battle-creation/battle-creatio
 import { createModifiersCollectionPage } from "./pages/modifiers-collection.js";
 import { createModifiersTablePage } from "./pages/modifiers-table.js";
 import { createMapsStorePage } from "./pages/maps-store.js";
-import { renderMapEditor } from "./pages/map-editor.js";
+import { createMapEditorPage } from "./pages/map-editor.js";
 import { renderBattle } from "./pages/battle/battle.js";
 import { renderBattleDisposition } from "./pages/battle/battle-disposition.js";
 import { renderBattleActive } from "./pages/battle/battle-active.js";
@@ -24,15 +24,17 @@ const PAGES = [
   [ROUTES.BATTLE_DISPOSITION, renderBattleDisposition],
   [ROUTES.BATTLE_ACTIVE, renderBattleActive],
   [ROUTES.BATTLE_FINISHED, renderBattleFinished],
-  [ROUTES.MAP_EDITOR, renderMapEditor],
 ];
 
 // Component pages: createXPage({ store, router, params }) → { el, destroy }.
+// Pages that must measure layout or resolve computed styles (canvas) also
+// return an optional mount(), called right after el is inserted into <main>.
 const COMPONENT_PAGES = [
   [ROUTES.BATTLE_CREATION, createBattleCreationPage],
   [ROUTES.MODIFIERS_COLLECTIONS, createModifiersCollectionPage],
   [ROUTES.MODIFIERS, createModifiersTablePage],
   [ROUTES.MAPS, createMapsStorePage],
+  [ROUTES.MAP_EDITOR, createMapEditorPage],
 ];
 
 const registerAllPages = (root, router) => {
@@ -64,6 +66,7 @@ const registerAllPages = (root, router) => {
         return;
       }
       root.replaceChildren(page.el);
+      page.mount?.();
       finalizePage = () => page.destroy();
     });
   };
