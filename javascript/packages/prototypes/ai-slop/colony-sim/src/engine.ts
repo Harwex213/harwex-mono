@@ -5,21 +5,17 @@ import type { World } from "@/sim/world";
 import { GameRenderer } from "@/render/renderer";
 import { saveSnapshot } from "@/persistence/snapshot";
 import type { ColonyDb } from "@/persistence/db";
-import { gameTick, colonistCount, storedWood, speed, paused, selectedId } from "@/ui/signals";
-import type { EntityId } from "@/sim/components";
+import { gameTick, colonistCount, storedWood, paused, speed } from "@/ui/signals";
+import { CommandDispatcher, type Command } from "@/commands";
 
 const TICK_MS = 100; // 10 logical ticks per second
 const AUTOSAVE_MS = 10000;
-
-type Command =
-  | { type: "setSpeed"; value: number }
-  | { type: "togglePause" }
-  | { type: "select"; id: EntityId | null };
 
 // Owns the world, the fixed-timestep loop, the renderer and persistence. React
 // gets a reference via context and talks to it only through dispatch().
 class GameEngine {
   private app: Application;
+  private commands = new CommandDispatcher();
   private db: ColonyDb;
   private world: World;
   private rng: Rng;
@@ -32,7 +28,7 @@ class GameEngine {
     this.app = app;
     this.db = db;
     this.rng = createRng(world.seed ^ (world.tick * 0x9e3779b1));
-    this.renderer = new GameRenderer(app, world);
+    this.renderer = new GameRenderer(app, world, this.commands);
     colonistCount.value = world.needs.size;
     storedWood.value = world.storedWood;
     gameTick.value = world.tick;
@@ -44,14 +40,10 @@ class GameEngine {
     globalThis.addEventListener("beforeunload", this.onBeforeUnload);
   }
 
+  // React's only entry point into the engine; the camera holds the same
+  // dispatcher for its hotkeys.
   dispatch(command: Command): void {
-    if (command.type === "setSpeed") {
-      speed.value = command.value;
-    } else if (command.type === "togglePause") {
-      paused.value = !paused.value;
-    } else if (command.type === "select") {
-      selectedId.value = command.id;
-    }
+    this.commands.dispatch(command);
   }
 
   private onFrame = (ticker: Ticker): void => {
@@ -106,5 +98,4 @@ class GameEngine {
   };
 }
 
-export type { Command };
 export { GameEngine, TICK_MS };

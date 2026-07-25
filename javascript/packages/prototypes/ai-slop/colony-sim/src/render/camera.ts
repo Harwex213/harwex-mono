@@ -1,5 +1,6 @@
 import type { Application, Container, Ticker } from "pixi.js";
 import { GRID_H, GRID_W, TILE_SIZE } from "@/sim/grid";
+import type { Command, CommandDispatcher } from "@/commands";
 
 const MIN_ZOOM = 1;
 const MAX_ZOOM = 8;
@@ -21,13 +22,23 @@ const PAN_KEYS: Record<string, readonly [number, number]> = {
   s: [0, 1],
 };
 
+// One-shot keys fired on keydown; unlike PAN_KEYS they are not held over frames.
+const COMMAND_KEYS: Record<string, Command> = {
+  " ": { type: "togglePause" },
+  "1": { type: "setSpeed", value: 1 },
+  "2": { type: "setSpeed", value: 2 },
+  "3": { type: "setSpeed", value: 3 },
+};
+
 // Screen-space camera over the pixi root container: drag / key panning plus
 // cursor-anchored wheel zoom. Pure view state — the sim never sees it, so world
 // coordinates stay tile-based. Offsets are kept as floats and only rounded on
 // the way into pixi so the pixel-art grid does not shimmer while panning.
+// It also owns the keyboard bindings, forwarding non-view keys to the dispatcher.
 class Camera {
   private app: Application;
   private root: Container;
+  private commands: CommandDispatcher;
   private zoom = DEFAULT_ZOOM;
   private x = 0;
   private y = 0;
@@ -36,9 +47,10 @@ class Camera {
   private dragY = 0;
   private keys = new Set<string>();
 
-  constructor(app: Application, root: Container) {
+  constructor(app: Application, root: Container, commands: CommandDispatcher) {
     this.app = app;
     this.root = root;
+    this.commands = commands;
 
     const canvas = app.canvas;
     canvas.style.cursor = "grab";
@@ -122,14 +134,22 @@ class Camera {
 
   private onKeyDown = (event: KeyboardEvent): void => {
     const key = event.key.toLowerCase();
-    if (!PAN_KEYS[key] || event.ctrlKey || event.metaKey || event.altKey) {
+    const command = COMMAND_KEYS[key];
+    if ((!PAN_KEYS[key] && !command) || event.ctrlKey || event.metaKey || event.altKey) {
       return;
     }
     const target = event.target as HTMLElement | null;
-    if (target && (target.isContentEditable || /^(input|textarea|select)$/i.test(target.tagName))) {
+    if (target && (target.isContentEditable || /^(input|textarea|select|button)$/i.test(target.tagName))) {
       return;
     }
     event.preventDefault();
+    if (command) {
+      // Autorepeat would toggle pause dozens of times while the key is held.
+      if (!event.repeat) {
+        this.commands.dispatch(command);
+      }
+      return;
+    }
     this.keys.add(key);
   };
 

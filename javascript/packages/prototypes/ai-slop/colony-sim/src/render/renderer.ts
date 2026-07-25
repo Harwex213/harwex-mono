@@ -4,6 +4,7 @@ import type { EntityId } from "@/sim/components";
 import type { World } from "@/sim/world";
 import { createLayers, type Layers } from "@/render/layers";
 import { Camera } from "@/render/camera";
+import type { CommandDispatcher } from "@/commands";
 
 const TERRAIN_COLORS: Record<number, number> = {
   [Terrain.Grass]: 0x4a7c3a,
@@ -18,10 +19,10 @@ class GameRenderer {
   private layers: Layers;
   private sprites = new Map<EntityId, Graphics>();
 
-  constructor(app: Application, world: World) {
+  constructor(app: Application, world: World, commands: CommandDispatcher) {
     this.layers = createLayers();
     app.stage.addChild(this.layers.root);
-    this.camera = new Camera(app, this.layers.root);
+    this.camera = new Camera(app, this.layers.root, commands);
     this.drawGround(world);
   }
 

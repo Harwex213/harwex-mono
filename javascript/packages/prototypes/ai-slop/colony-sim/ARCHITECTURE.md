@@ -53,6 +53,7 @@ IndexedDB.put('saves', {schemaVersion, tick, seed, world}, 'autosave')
 src/
   index.tsx              boot: openDB → load|newGame → new GameEngine → mount React
   engine.ts              GameEngine: fixed-tick loop, pixi App, dispatch(command)
+  commands.ts            Command-тип + CommandDispatcher (единственный писатель UI-signals)
   sim/
     world.ts             World (ECS-контейнер), createWorld, allocId
     components.ts        типы компонентов (Position, Needs, Job, Inventory…)
@@ -67,7 +68,7 @@ src/
   render/
     renderer.ts          GameRenderer: реконсилиация, lerp, слои
     layers.ts            создание pixi-контейнеров (ground/objects/entities/fx)
-    camera.ts            pan (drag / WASD-стрелки) + zoom к курсору поверх root
+    camera.ts            pan (drag / WASD-стрелки) + zoom к курсору поверх root, хоткеи → dispatcher
   ui/
     App.tsx              React HUD (часы, ресурсы, панель выбора)
     signals.ts           UI-signals + производные computed
@@ -86,6 +87,7 @@ src/
 - Логика в tile-координатах; `worldPx = tile * 16`.
 - **Камера** — единственный владелец трансформа `layers.root`: `zoom` ×1…×8 (старт ×3, шаг колесом якорится на курсоре), pan drag'ом (ЛКМ/СКМ) и WASD/стрелками, оба зажаты границами мира (мир меньше вьюпорта → центрируется). Offset хранится во float, в pixi уходит округлённым — иначе pixel-art дрожит при панораме. `scaleMode: "nearest"` на текстурах (без замыливания).
 - Sim о камере не знает: экран→мир только через `camera.screenToTile()`.
+- **Хоткеи** живут в камере (единственный слушатель клавиатуры), но не-view клавиши уходят в `CommandDispatcher`: `Space` — пауза, `1`/`2`/`3` — скорость. Тот же диспетчер держит `GameEngine.dispatch()` для HUD-кнопок, так что состояние меняется одним путём.
 - Колонисты/животные — **32px** `AnimatedSprite` (листы кадров, напр. Horse 128×192 = 4×6).
 
 ## MVP-слайс
