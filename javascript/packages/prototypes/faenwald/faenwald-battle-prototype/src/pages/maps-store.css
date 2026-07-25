@@ -1,0 +1,112 @@
+.maps-store {
+  display: block;
+  font-family: var(--font-body);
+  color: var(--text-primary);
+  padding: var(--space-8);
+}
+
+.maps-store-label {
+  display: inline-block;
+  margin: 0 0 var(--space-7);
+  padding: var(--space-5) var(--space-8);
+  font-family: var(--font-display);
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-normal);
+  color: var(--text-accent);
+}
+
+.maps-store hr {
+  border: none;
+  border-top: 1px solid var(--border-default);
+  margin: 0 0 var(--space-7);
+}
+
+.maps-store-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: var(--space-8) var(--space-7);
+  align-items: start;
+}
+
+.maps-store-tile {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  cursor: pointer;
+}
+
+.maps-store-preview {
+  height: 120px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: var(--card-radius);
+  overflow: hidden;
+}
+
+.maps-store-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.maps-store-tile:hover .maps-store-preview {
+  border-color: var(--border-accent-muted);
+}
+
+.maps-store-glyph {
+  font-size: var(--font-size-xl);
+  color: var(--text-faint);
+}
+
+.maps-store-caption {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.maps-store-name {
+  flex: 1;
+  padding: var(--space-4) var(--space-6);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  text-align: center;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.maps-store-delete {
+  font: inherit;
+  color: var(--text-primary);
+  background: var(--bg-control);
+  border: 1px solid var(--border-medium);
+  border-radius: var(--radius-sm);
+  padding: var(--space-4) var(--space-5);
+  cursor: pointer;
+}
+
+.maps-store-delete:hover {
+  background: var(--bg-control-hover);
+}
+
+.maps-store-add {
+  height: 120px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font: inherit;
+  color: var(--text-primary);
+  background: var(--bg-control-subtle);
+  border: 1px dashed var(--border-medium);
+  border-radius: var(--card-radius);
+  cursor: pointer;
+}
+
+.maps-store-add:hover {
+  background: var(--bg-control-subtle-hover);
+  border-color: var(--border-accent-muted);
+}

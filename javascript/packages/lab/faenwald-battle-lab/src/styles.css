@@ -1,0 +1,28 @@
+body {
+  margin: 0;
+  padding: 2rem;
+  background: #1a1a24;
+  color: #e8e8f0;
+  font-family: system-ui, sans-serif;
+}
+
+h1 {
+  margin: 0 0 2rem;
+}
+
+.demo {
+  margin-bottom: 2.5rem;
+}
+
+.demo h2 {
+  margin: 0 0 0.75rem;
+  font-size: 1rem;
+  color: #a8a8b8;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.demo-note {
+  margin: 0.75rem 0 0;
+  color: #a8a8b8;
+}

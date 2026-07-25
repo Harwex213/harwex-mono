@@ -1,0 +1,191 @@
+.battle-disposition {
+  display: block;
+  font-family: var(--font-body);
+  color: var(--text-primary);
+  padding: var(--space-8);
+}
+
+.battle-disposition h1 {
+  margin: 0 0 var(--space-7);
+  font-family: var(--font-display);
+  font-size: var(--font-size-xl);
+  color: var(--text-accent);
+  text-align: center;
+}
+
+.battle-disposition .workspace {
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr) 260px;
+  gap: var(--space-8);
+  height: 70vh;
+}
+
+.battle-disposition .canvas-panel {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--card-bg);
+  border: 1px dashed var(--border-medium);
+  border-radius: var(--card-radius);
+}
+
+.battle-disposition .canvas-panel canvas {
+  cursor: pointer;
+  touch-action: none;
+}
+
+.battle-disposition .panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: var(--card-radius);
+  padding: var(--space-6);
+  overflow-y: auto;
+}
+
+.battle-disposition .panel-title {
+  font-family: var(--font-display);
+  color: var(--text-accent);
+  padding: var(--space-2) var(--space-4) 0;
+}
+
+.battle-disposition .panel-progress {
+  color: var(--text-muted);
+  padding: 0 var(--space-4) var(--space-4);
+}
+
+.battle-disposition .unit-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  font: inherit;
+  text-align: center;
+  color: var(--text-secondary);
+  background: var(--bg-control-subtle);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  padding: var(--space-4) var(--space-5);
+  cursor: pointer;
+}
+
+.battle-disposition .unit-card:hover {
+  color: var(--text-primary);
+  background: var(--bg-control-subtle-hover);
+}
+
+.battle-disposition .unit-card--selected {
+  color: var(--text-primary);
+  background: var(--bg-accent);
+  border-color: var(--border-accent-muted);
+}
+
+.battle-disposition .all-placed {
+  margin: 0;
+  padding: 0 var(--space-4);
+  color: var(--text-muted);
+}
+
+.battle-disposition .unit-detail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin: 0 var(--space-4);
+  padding: var(--space-4);
+  background: var(--bg-control-subtle);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+}
+
+.battle-disposition .unit-detail-title {
+  color: var(--text-primary);
+  text-align: center;
+}
+
+.battle-disposition .facing-control {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-2);
+}
+
+.battle-disposition .facing-btn {
+  font: inherit;
+  color: var(--text-secondary);
+  background: var(--bg-control);
+  border: 1px solid var(--border-medium);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2);
+  cursor: pointer;
+}
+
+.battle-disposition .facing-btn:hover {
+  color: var(--text-primary);
+  background: var(--bg-control-hover);
+}
+
+.battle-disposition .facing-btn--active {
+  color: var(--text-primary);
+  background: var(--bg-accent);
+  border-color: var(--border-accent-muted);
+}
+
+.battle-disposition .crown-toggle {
+  font: inherit;
+  color: var(--text-secondary);
+  background: var(--bg-control);
+  border: 1px solid var(--border-medium);
+  border-radius: var(--radius-sm);
+  padding: var(--space-3);
+  cursor: pointer;
+}
+
+.battle-disposition .crown-toggle:hover {
+  color: var(--text-primary);
+  background: var(--bg-control-hover);
+}
+
+.battle-disposition .crown-toggle--active {
+  color: var(--text-primary);
+  background: var(--bg-accent);
+  border-color: var(--border-accent-muted);
+}
+
+.battle-disposition .footer {
+  display: flex;
+  justify-content: center;
+  margin-top: var(--space-8);
+}
+
+.battle-disposition .footer button {
+  font: inherit;
+  color: var(--text-primary);
+  background: var(--bg-control);
+  border: 1px solid var(--border-medium);
+  border-radius: var(--radius-sm);
+  padding: var(--space-5) var(--space-8);
+  cursor: pointer;
+}
+
+.battle-disposition .footer button:hover {
+  background: var(--bg-control-hover);
+}
+
+.battle-disposition .footer button:disabled {
+  color: var(--text-muted);
+  border-color: var(--border-default);
+  background: transparent;
+  cursor: default;
+}
+
+.battle-disposition .missing {
+  color: var(--text-muted);
+}
+
+.battle-disposition a {
+  color: var(--text-secondary);
+}
+
+.battle-disposition a:hover {
+  color: var(--text-primary);
+}

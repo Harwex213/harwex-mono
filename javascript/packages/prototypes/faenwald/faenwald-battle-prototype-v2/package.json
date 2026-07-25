@@ -1,0 +1,24 @@
+{
+  "name": "@hw/faenwald-battle-prototype-v2",
+  "type": "module",
+  "scripts": {
+    "dev": "rspack serve",
+    "build": "rspack build",
+    "test": "node --test 'src/**/*.test.js'"
+  },
+  "dependencies": {
+    "@hw/faenwald-uikit": "workspace:*",
+    "@preact/signals": "2.9.4",
+    "preact": "10.29.7"
+  },
+  "devDependencies": {
+    "@rspack/cli": "2.1.4",
+    "@rspack/core": "2.1.4",
+    "@rspack/dev-server": "2.1.0"
+  },
+  "browserslist": [
+    "last 1 version",
+    "> 1%",
+    "not dead"
+  ]
+}

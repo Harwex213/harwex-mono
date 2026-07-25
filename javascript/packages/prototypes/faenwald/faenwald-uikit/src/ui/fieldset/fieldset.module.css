@@ -1,0 +1,20 @@
+.root {
+  display: flex;
+  flex-direction: column;
+  gap: var(--uk-space-4);
+  width: 100%;
+  max-width: 360px;
+  margin: 0;
+  padding: 0;
+  border: none;
+}
+
+.legend {
+  padding: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--uk-fg);
+}
+.legend[data-disabled] {
+  color: var(--uk-fg-subtle);
+}

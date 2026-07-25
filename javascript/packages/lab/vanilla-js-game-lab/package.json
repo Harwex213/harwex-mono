@@ -1,0 +1,8 @@
+{
+  "name": "@hw/vanilla-js-game-lab",
+  "type": "module",
+  "scripts": {
+    "dev": "yarn :static",
+    "test": "node --test 'src/**/*.test.js'"
+  }
+}

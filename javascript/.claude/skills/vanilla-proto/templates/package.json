@@ -1,0 +1,8 @@
+{
+  "name": "@hw/PROTO_NAME",
+  "type": "module",
+  "scripts": {
+    "dev": "yarn :static",
+    "test": "node --test 'src/**/*.test.js'"
+  }
+}

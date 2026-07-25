@@ -1,0 +1,8 @@
+.app {
+  background: var(--bg-app);
+  color: var(--text-primary);
+}
+
+.app .app-content {
+  margin: 12px 0;
+}

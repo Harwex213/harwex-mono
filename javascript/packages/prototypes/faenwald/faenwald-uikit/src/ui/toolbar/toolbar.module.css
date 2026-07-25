@@ -1,0 +1,117 @@
+.root {
+  display: flex;
+  align-items: center;
+  gap: var(--uk-space-1);
+  padding: var(--uk-space-1);
+  border: 1px solid var(--uk-border);
+  border-radius: var(--uk-radius);
+  background: var(--uk-panel);
+  box-shadow: var(--uk-shadow-sm);
+}
+
+.root[data-orientation="vertical"] {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.group {
+  display: flex;
+  align-items: center;
+  gap: var(--uk-space-1);
+}
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--uk-space-2);
+  min-width: 32px;
+  height: 32px;
+  padding: 0 var(--uk-space-2);
+  border: 0;
+  border-radius: var(--uk-radius-sm);
+  background: transparent;
+  color: var(--uk-fg-muted);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background var(--uk-duration) var(--uk-ease),
+    color var(--uk-duration) var(--uk-ease);
+}
+
+.button:hover {
+  background: var(--uk-hover);
+  color: var(--uk-fg);
+}
+
+.button:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--uk-ring);
+}
+
+.button[data-pressed] {
+  background: var(--uk-primary-subtle);
+  color: var(--uk-primary);
+}
+
+.button[data-disabled] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.link {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 var(--uk-space-2);
+  height: 32px;
+  border-radius: var(--uk-radius-sm);
+  color: var(--uk-primary);
+  font-size: 14px;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.link:hover {
+  background: var(--uk-hover);
+  text-decoration: underline;
+}
+
+.link:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--uk-ring);
+}
+
+.separator {
+  width: 1px;
+  align-self: stretch;
+  margin: var(--uk-space-1) var(--uk-space-1);
+  background: var(--uk-border);
+}
+
+.root[data-orientation="vertical"] .separator {
+  width: auto;
+  height: 1px;
+  margin: var(--uk-space-1) var(--uk-space-1);
+}
+
+.input {
+  height: 32px;
+  padding: 0 var(--uk-space-2);
+  border: 1px solid var(--uk-border);
+  border-radius: var(--uk-radius-sm);
+  background: var(--uk-bg);
+  color: var(--uk-fg);
+  font: inherit;
+  font-size: 14px;
+}
+
+.input:focus-visible {
+  outline: none;
+  border-color: var(--uk-primary);
+  box-shadow: 0 0 0 3px var(--uk-ring);
+}
+
+.input[data-disabled] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

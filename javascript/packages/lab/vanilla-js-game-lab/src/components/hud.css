@@ -1,0 +1,78 @@
+.hud {
+  grid-area: hud;
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  padding: 10px 16px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  font-size: 15px;
+}
+
+.hud b {
+  color: var(--text);
+}
+
+.hud-day {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.hud-cycle {
+  width: 80px;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--border);
+  overflow: hidden;
+}
+
+.hud-cycle-fill {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+}
+
+.hud-skip {
+  padding: 3px 10px;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--accent);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.hud-skip:hover {
+  background: var(--accent);
+  color: var(--bg);
+}
+
+.hud-speed {
+  display: flex;
+  gap: 4px;
+}
+
+.hud-speed button {
+  min-width: 34px;
+  padding: 3px 6px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.hud-speed button:hover {
+  border-color: var(--muted);
+}
+
+.hud-speed button.is-active {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.hud-hp {
+  margin-left: auto;
+}

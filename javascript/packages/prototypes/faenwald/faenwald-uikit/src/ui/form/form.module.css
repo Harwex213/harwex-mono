@@ -1,0 +1,31 @@
+.root {
+  display: flex;
+  flex-direction: column;
+  gap: var(--uk-space-4);
+  width: 100%;
+  max-width: 360px;
+}
+
+.submit {
+  align-self: flex-start;
+  padding: var(--uk-space-2) var(--uk-space-5);
+  font-family: inherit;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--uk-primary-fg);
+  background: var(--uk-primary);
+  border: none;
+  border-radius: var(--uk-radius);
+  cursor: pointer;
+  transition: background var(--uk-duration) var(--uk-ease);
+}
+.submit:hover {
+  background: var(--uk-primary-hover);
+}
+.submit:active {
+  background: var(--uk-primary-active);
+}
+.submit:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--uk-ring);
+}

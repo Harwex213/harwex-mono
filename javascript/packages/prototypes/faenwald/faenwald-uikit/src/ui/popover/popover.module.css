@@ -1,0 +1,126 @@
+.trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--uk-space-2);
+  padding: var(--uk-space-2) var(--uk-space-4);
+  border: 1px solid var(--uk-border-strong);
+  border-radius: var(--uk-radius);
+  background: var(--uk-panel);
+  color: var(--uk-fg);
+  font-weight: 600;
+  cursor: pointer;
+  transition: background var(--uk-duration) var(--uk-ease);
+}
+.trigger:hover {
+  background: var(--uk-hover);
+}
+.trigger:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--uk-ring);
+}
+
+.backdrop {
+  position: fixed;
+  inset: 0;
+  background: var(--uk-overlay);
+}
+
+.positioner {
+  z-index: 1;
+}
+
+.popup {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--uk-space-2);
+  max-width: 280px;
+  padding: var(--uk-space-4);
+  border: 1px solid var(--uk-border);
+  border-radius: var(--uk-radius);
+  background: var(--uk-panel-elevated);
+  box-shadow: var(--uk-shadow-lg);
+  color: var(--uk-fg);
+  transform-origin: var(--transform-origin);
+  transition:
+    opacity var(--uk-duration) var(--uk-ease),
+    transform var(--uk-duration) var(--uk-ease);
+}
+.popup[data-starting-style],
+.popup[data-ending-style] {
+  opacity: 0;
+  transform: scale(0.96);
+}
+.popup:focus-visible {
+  outline: none;
+  box-shadow: var(--uk-shadow-lg), 0 0 0 3px var(--uk-ring);
+}
+
+.arrow {
+  display: flex;
+}
+.arrow[data-side="top"] {
+  bottom: -9px;
+  rotate: 180deg;
+}
+.arrow[data-side="bottom"] {
+  top: -9px;
+}
+.arrow[data-side="left"] {
+  right: -13px;
+  rotate: 90deg;
+}
+.arrow[data-side="right"] {
+  left: -13px;
+  rotate: -90deg;
+}
+
+.arrowSvg {
+  display: block;
+}
+.arrowFill {
+  fill: var(--uk-panel-elevated);
+}
+.arrowStroke {
+  stroke: var(--uk-border);
+  stroke-width: 1;
+}
+
+.title {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--uk-fg);
+}
+
+.description {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--uk-fg-muted);
+  line-height: 1.5;
+}
+
+.close {
+  align-self: flex-start;
+  margin-top: var(--uk-space-1);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--uk-space-1) var(--uk-space-3);
+  border: 1px solid var(--uk-border-strong);
+  border-radius: var(--uk-radius-sm);
+  background: var(--uk-panel);
+  color: var(--uk-fg);
+  font-weight: 600;
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: background var(--uk-duration) var(--uk-ease);
+}
+.close:hover {
+  background: var(--uk-hover);
+}
+.close:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--uk-ring);
+}

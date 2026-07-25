@@ -1,0 +1,13 @@
+@import "./styles/tokens.css";
+@import "./styles/base.css";
+
+@import "./components/top-nav.css";
+
+@import "./pages/modifiers-collection.css";
+@import "./pages/maps-store.css";
+@import "./pages/modifiers-table.css";
+@import "./pages/battle-creation/battle-creation.css";
+@import "./pages/map-editor.css";
+@import "./pages/battle/battle-disposition.css";
+@import "./pages/battle/battle-active.css";
+@import "./pages/battle/battle-finished.css";

@@ -3,12 +3,11 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
-  "types": "./dist/index.d.ts",
   "exports": "./src/index.ts",
   "scripts": {
-    "build": "tsc",
-    "dev": "tsc --watch",
-    "parse": "tsx scripts/parse-sample.ts"
+    "typecheck": "tsc",
+    "parse": "tsx scripts/vk-parse.ts",
+    "parse:fixture": "tsx scripts/parse-fixture.ts"
   },
   "dependencies": {
     "node-html-parser": "8.0.3",

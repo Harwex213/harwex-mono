@@ -1,0 +1,16 @@
+.root {
+  display: inline-flex;
+  gap: var(--uk-space-1);
+  padding: var(--uk-space-1);
+  border: 1px solid var(--uk-border);
+  border-radius: var(--uk-radius);
+  background: var(--uk-bg-subtle);
+}
+
+.root[data-orientation="vertical"] {
+  flex-direction: column;
+}
+
+.root[data-disabled] {
+  opacity: 0.5;
+}
