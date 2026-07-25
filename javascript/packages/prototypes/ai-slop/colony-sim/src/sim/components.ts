@@ -37,5 +37,16 @@ interface Inventory {
   wood: number;
 }
 
-export type { EntityId, Position, Needs, PathFollow, Job, Inventory };
-export { JobKind };
+const enum AnimalKind {
+  Chicken = 0,
+}
+
+// Livestock/wildlife. No needs and no job: those Maps define "is a colonist"
+// for the HUD count and the job-assign system.
+interface Animal {
+  kind: AnimalKind;
+  idleTicks: number; // ticks left standing still before the next stroll
+}
+
+export type { EntityId, Position, Needs, PathFollow, Job, Inventory, Animal };
+export { JobKind, AnimalKind };

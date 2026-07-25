@@ -1,9 +1,10 @@
-import { Application, Container, Graphics } from "pixi.js";
+import { Application, Container, Graphics, Sprite } from "pixi.js";
 import { TILE_SIZE, Terrain, tileIndex } from "@/sim/grid";
-import type { EntityId } from "@/sim/components";
+import type { EntityId, Position } from "@/sim/components";
 import type { World } from "@/sim/world";
 import { createLayers, type Layers } from "@/render/layers";
 import { Camera } from "@/render/camera";
+import { Facing, FRAMES_PER_ROW, chickenFrames } from "@/render/textures";
 import type { CommandDispatcher } from "@/commands";
 
 const TERRAIN_COLORS: Record<number, number> = {
@@ -12,12 +13,18 @@ const TERRAIN_COLORS: Record<number, number> = {
   [Terrain.Rock]: 0x7a7168,
 };
 
+const ANIM_TICKS_PER_FRAME = 2; // 10 ticks/s ÷ 2 = 5 fps walk cycle
+
 // Owns the pixi view tree and reconciles it against the World every frame:
 // spawn sprites for new entities, drop stale ones, lerp positions between ticks.
 class GameRenderer {
   readonly camera: Camera;
   private layers: Layers;
-  private sprites = new Map<EntityId, Graphics>();
+  private sprites = new Map<EntityId, Container>();
+  // Animated subset of `sprites`, plus the facing derived from their movement.
+  // Both are view-only state: nothing here is persisted.
+  private animals = new Map<EntityId, Sprite>();
+  private facings = new Map<EntityId, Facing>();
 
   constructor(app: Application, world: World, commands: CommandDispatcher) {
     this.layers = createLayers();
@@ -40,6 +47,25 @@ class GameRenderer {
       sprite.y = y * TILE_SIZE;
       sprite.zIndex = y;
     }
+    this.animate(world);
+  }
+
+  // Pick the sheet frame per animal. Frames advance on sim ticks rather than
+  // wall clock, so pause freezes the walk cycle and 2×/3× speeds it up for free.
+  private animate(world: World): void {
+    const frames = chickenFrames();
+    for (const [id, sprite] of this.animals) {
+      const cur = world.positions.get(id);
+      const prev = world.prevPositions.get(id);
+      if (!cur || !prev) {
+        continue;
+      }
+      const facing = deriveFacing(prev, cur, this.facings.get(id) ?? Facing.Down);
+      this.facings.set(id, facing);
+      const walking = world.paths.has(id);
+      const frame = walking ? Math.floor(world.tick / ANIM_TICKS_PER_FRAME) % FRAMES_PER_ROW : 0;
+      sprite.texture = frames[facing][frame];
+    }
   }
 
   private reconcile(world: World): void {
@@ -52,12 +78,24 @@ class GameRenderer {
       if (!world.entities.has(id)) {
         sprite.destroy();
         this.sprites.delete(id);
+        this.animals.delete(id);
+        this.facings.delete(id);
       }
     }
   }
 
-  // Placeholder graphics until real 16px/32px spritesheets are atlased.
+  // Animals use the real 16px sheets; trees and colonists are still placeholder
+  // graphics until their spritesheets are atlased.
   private createSprite(world: World, id: EntityId): void {
+    if (world.animals.has(id)) {
+      const sprite = new Sprite(chickenFrames()[Facing.Down][0]);
+      sprite.anchor.set(0.5, 0.6); // feet on the tile point, not the body centre
+      this.layers.entities.addChild(sprite);
+      this.sprites.set(id, sprite);
+      this.animals.set(id, sprite);
+      return;
+    }
+
     const g = new Graphics();
     let parent: Container;
     if (world.trees.has(id)) {
@@ -87,6 +125,20 @@ class GameRenderer {
     g.fill(0xcaa24a);
     this.layers.ground.addChild(g);
   }
+}
+
+// Facing comes from the last tick's movement; standing still keeps the previous
+// direction instead of snapping back to a default.
+function deriveFacing(prev: Position, cur: Position, last: Facing): Facing {
+  const dx = cur.x - prev.x;
+  const dy = cur.y - prev.y;
+  if (Math.abs(dx) < 1e-4 && Math.abs(dy) < 1e-4) {
+    return last;
+  }
+  if (Math.abs(dx) > Math.abs(dy)) {
+    return dx > 0 ? Facing.Right : Facing.Left;
+  }
+  return dy > 0 ? Facing.Down : Facing.Up;
 }
 
 export { GameRenderer };

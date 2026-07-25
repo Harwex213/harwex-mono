@@ -31,7 +31,18 @@ async function loadSnapshot(db: ColonyDb): Promise<World | null> {
     // TODO: migrate old snapshots; for the prototype we discard them.
     return null;
   }
-  return snapshot.world;
+  return hydrate(snapshot.world);
+}
+
+// The version stamp alone cannot be trusted: under HMR the save path picks up
+// the new SCHEMA_VERSION while the live world object still predates the
+// component Map that version added. Backfill missing Maps so a snapshot can
+// never hand the systems/renderer an undefined component store.
+function hydrate(world: World): World {
+  if (!world.animals) {
+    world.animals = new Map();
+  }
+  return world;
 }
 
 export type { Snapshot };

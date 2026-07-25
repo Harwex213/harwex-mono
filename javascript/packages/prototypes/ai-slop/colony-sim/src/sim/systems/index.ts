@@ -2,6 +2,7 @@ import type { Rng } from "@/sim/rng";
 import type { World } from "@/sim/world";
 import { needsSystem } from "@/sim/systems/needs";
 import { jobAssignSystem } from "@/sim/systems/job-assign";
+import { animalWanderSystem } from "@/sim/systems/animal-wander";
 import { pathFollowSystem } from "@/sim/systems/path-follow";
 import { workSystem } from "@/sim/systems/work";
 
@@ -14,6 +15,7 @@ interface SimContext {
 function runSystems(world: World, ctx: SimContext): void {
   needsSystem(world);
   jobAssignSystem(world, ctx.rng);
+  animalWanderSystem(world, ctx.rng);
   pathFollowSystem(world);
   workSystem(world);
 }

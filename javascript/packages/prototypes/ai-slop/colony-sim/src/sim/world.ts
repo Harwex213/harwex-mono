@@ -1,8 +1,8 @@
 import { createNoise2D } from "simplex-noise";
 import { createRng, randInt, type Rng } from "@/sim/rng";
 import { createGrid, tileIndex, isWalkable, Terrain, GRID_W, GRID_H, type Grid } from "@/sim/grid";
-import type { EntityId, Position, Needs, PathFollow, Job, Inventory } from "@/sim/components";
-import { JobKind } from "@/sim/components";
+import type { EntityId, Position, Needs, PathFollow, Job, Inventory, Animal } from "@/sim/components";
+import { JobKind, AnimalKind } from "@/sim/components";
 
 // The World is the single runtime source of truth. Pure data only (no
 // functions) so it round-trips through IndexedDB's structured clone verbatim.
@@ -19,12 +19,14 @@ interface World {
   paths: Map<EntityId, PathFollow>;
   jobs: Map<EntityId, Job>;
   inventories: Map<EntityId, Inventory>;
+  animals: Map<EntityId, Animal>;
   trees: Set<EntityId>;
   stockpile: Position;
   storedWood: number;
 }
 
-const SCHEMA_VERSION = 1;
+// 2: added the animals component Map.
+const SCHEMA_VERSION = 2;
 
 function allocId(world: World): EntityId {
   const id = world.nextId;
@@ -63,6 +65,7 @@ function createEmptyWorld(seed: number): World {
     paths: new Map(),
     jobs: new Map(),
     inventories: new Map(),
+    animals: new Map(),
     trees: new Set(),
     stockpile: { x: Math.floor(GRID_W / 2), y: Math.floor(GRID_H / 2) },
     storedWood: 0,
@@ -76,6 +79,14 @@ function spawnColonist(world: World, pos: Position): EntityId {
   world.needs.set(id, { hunger: 0, fatigue: 0 });
   world.jobs.set(id, { kind: JobKind.Wander, targetId: null, targetTile: null, progress: 0 });
   world.inventories.set(id, { wood: 0 });
+  return id;
+}
+
+function spawnChicken(world: World, pos: Position): EntityId {
+  const id = allocId(world);
+  world.positions.set(id, { x: pos.x, y: pos.y });
+  world.prevPositions.set(id, { x: pos.x, y: pos.y });
+  world.animals.set(id, { kind: AnimalKind.Chicken, idleTicks: 0 });
   return id;
 }
 
@@ -110,8 +121,11 @@ function newGame(seed: number): World {
   for (let i = 0; i < 40; i += 1) {
     spawnTree(world, randomWalkableTile());
   }
+  for (let i = 0; i < 8; i += 1) {
+    spawnChicken(world, randomWalkableTile());
+  }
   return world;
 }
 
 export type { World };
-export { SCHEMA_VERSION, newGame, allocId, spawnColonist, spawnTree };
+export { SCHEMA_VERSION, newGame, allocId, spawnColonist, spawnTree, spawnChicken };

@@ -23,7 +23,7 @@ IndexedDB (defs + autosave snapshot)
    ▼
 in-memory ECS world  ◄──── единственный источник правды в рантайме
    │  fixed tick (10/s, accumulator, pause / ×1 / ×2 / ×3)
-   ├─► systems (по порядку): needs → jobAssign → pathfollow → work(harvest/haul)
+   ├─► systems (по порядку): needs → jobAssign → animalWander → pathfollow → work(harvest/haul)
    │
    ├─► GameRenderer: реконсилиация Map<entityId, Sprite> каждый кадр,
    │        lerp(prevPos, pos, alpha) для плавности между тиками
@@ -56,17 +56,19 @@ src/
   commands.ts            Command-тип + CommandDispatcher (единственный писатель UI-signals)
   sim/
     world.ts             World (ECS-контейнер), createWorld, allocId
-    components.ts        типы компонентов (Position, Needs, Job, Inventory…)
+    components.ts        типы компонентов (Position, Needs, Job, Inventory, Animal…)
     grid.ts              64×64 сетка тайлов, tile↔px, walkable
     systems/
       needs.ts           декей голода/сна, флаги приоритета
       job-assign.ts      раздача задач из очереди ближайшим колонистам
+      animal-wander.ts   короткие перебежки животных в радиусе + паузы
       path-follow.ts     движение по построенному пути
       work.ts            harvest дерева / haul на склад
     pathfinding/astar.ts A* 8-напр., диагональ √2, без срезания углов
     rng.ts               seeded PRNG (mulberry32)
   render/
-    renderer.ts          GameRenderer: реконсилиация, lerp, слои
+    renderer.ts          GameRenderer: реконсилиация, lerp, слои, кадр анимации по тику
+    textures.ts          загрузка PNG через Assets + нарезка листов на кадры (nearest)
     layers.ts            создание pixi-контейнеров (ground/objects/entities/fx)
     camera.ts            pan (drag / WASD-стрелки) + zoom к курсору поверх root, хоткеи → dispatcher
   ui/
@@ -88,7 +90,8 @@ src/
 - **Камера** — единственный владелец трансформа `layers.root`: `zoom` ×1…×8 (старт ×3, шаг колесом якорится на курсоре), pan drag'ом (ЛКМ/СКМ) и WASD/стрелками, оба зажаты границами мира (мир меньше вьюпорта → центрируется). Offset хранится во float, в pixi уходит округлённым — иначе pixel-art дрожит при панораме. `scaleMode: "nearest"` на текстурах (без замыливания).
 - Sim о камере не знает: экран→мир только через `camera.screenToTile()`.
 - **Хоткеи** живут в камере (единственный слушатель клавиатуры), но не-view клавиши уходят в `CommandDispatcher`: `Space` — пауза, `1`/`2`/`3` — скорость. Тот же диспетчер держит `GameEngine.dispatch()` для HUD-кнопок, так что состояние меняется одним путём.
-- Колонисты/животные — **32px** `AnimatedSprite` (листы кадров, напр. Horse 128×192 = 4×6).
+- Животные — **16px** `Sprite` из листа 4×4 (`Chicken.png` 64×64: ряд = направление, столбец = цикл ходьбы). Кадр выбирается по `world.tick`, а не по `Ticker`: пауза замораживает анимацию, ×2/×3 ускоряет её, детерминизм не ломается — поэтому не `AnimatedSprite`. 32px-листы (Horse 128×192 = 4×6) режутся тем же `sliceSheet` с другим размером кадра.
+- Facing — производное рендера (из `prevPos → pos`), не компонент: в сейве не нужен.
 
 ## MVP-слайс
 
@@ -100,9 +103,9 @@ src/
 
 1. **Детерминизм:** seeded PRNG (mulberry32), seed в сейве. Команды применяются на границе тика, не мгновенно — оставляет дверь для event-log/replay.
 2. **A*:** 8-направленный, диагональ √2, без срезания углов.
-3. **Ассеты:** у PNG нет JSON-атласов → фрейм-раскладку (16px-сетка земли, 32px аним-листы) описываем вручную через pixi `Spritesheet`. Отдельная задача сетапа.
+3. **Ассеты:** у PNG нет JSON-атласов → фрейм-раскладка описана вручную в `render/textures.ts` (`sliceSheet` режет лист на под-текстуры одного GPU-источника). Прелоад — `await loadTextures()` в бутстрапе: `reconcile()` синхронный и ждать не может. Алиас `@assets` → `assets/`.
 4. **entityId:** монотонный счётчик в world (персистится в снапшоте).
-5. **Save-модель:** один autosave-slot; на буте есть слот → load, нет → newGame.
+5. **Save-модель:** один autosave-slot; на буте есть слот → load, нет → newGame. `SCHEMA_VERSION` = 2 (добавлена Map `animals`); чужая версия → снапшот отбрасывается, новая игра. Версии одной мало: под HMR сейв уходит с новым `SCHEMA_VERSION`, хотя живой `world` ещё старый — поэтому `loadSnapshot` бэкфиллит отсутствующие Map'ы (`hydrate`).
 
 ## Bootstrap (последовательность)
 

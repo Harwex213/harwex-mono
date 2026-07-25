@@ -5,6 +5,7 @@ import { openColonyDb } from "@/persistence/db";
 import { loadSnapshot } from "@/persistence/snapshot";
 import { newGame } from "@/sim/world";
 import { GameEngine } from "@/engine";
+import { loadTextures } from "@/render/textures";
 import { EngineProvider } from "@/ui/engine-context";
 import { App } from "@/ui/App";
 
@@ -23,6 +24,8 @@ async function boot(): Promise<void> {
     resizeTo: window,
     antialias: false,
   });
+  // Before the engine: the renderer creates sprites synchronously on frame one.
+  await loadTextures();
   document.body.appendChild(app.canvas);
 
   const engine = new GameEngine(world, app, db);
