@@ -2,7 +2,19 @@ import { createRng, randInt, type Rng } from "./rng";
 import { createGrid, type Grid, GRID_H, GRID_W, isWalkable, Terrain, tileIndex } from "./grid";
 import { DEFAULT_MAP_GEN, getMapGenerator, type MapGenId } from "./mapgen";
 import { pickEntity } from "./picking";
-import type { Animal, EntityId, Inventory, Job, Needs, PathFollow, Position, Stock } from "./components";
+import { type MapObjectKind, RESOURCE_DEFS } from "../data/defs";
+import type {
+  Animal,
+  EntityId,
+  Inventory,
+  ItemStack,
+  Job,
+  Needs,
+  PathFollow,
+  Position,
+  ResourceKind,
+  Stock,
+} from "./components";
 import { AnimalKind, JobKind } from "./components";
 
 // The World is the single runtime source of truth. Pure data only (no
@@ -21,6 +33,7 @@ interface World {
   jobs: Map<EntityId, Job>;
   inventories: Map<EntityId, Inventory>;
   animals: Map<EntityId, Animal>;
+  items: Map<EntityId, ItemStack>; // loose resource stacks lying on the ground
   trees: Set<EntityId>;
   rocks: Set<EntityId>;
   stockpile: Position;
@@ -30,7 +43,10 @@ interface World {
 // 2: added the animals component Map.
 // 3: rocks became entities (were baked ground decor).
 // 4: storedWood → stock record (wood / stone / food).
-const SCHEMA_VERSION = 4;
+// 5: grid widened to 96×64 — an old snapshot's grid is narrower than the camera
+//    bounds this build clamps to, so it pans into nothing.
+// 6: added the items component Map (loose resources on the ground).
+const SCHEMA_VERSION = 6;
 
 // Rock density per terrain, in percent of eligible tiles. High ground is strewn
 // with boulders; grassland gets the occasional one.
@@ -59,6 +75,7 @@ function createEmptyWorld(seed: number): World {
     jobs: new Map(),
     inventories: new Map(),
     animals: new Map(),
+    items: new Map(),
     trees: new Set(),
     rocks: new Set(),
     stockpile: { x: Math.floor(GRID_W / 2), y: Math.floor(GRID_H / 2) },
@@ -98,6 +115,63 @@ function spawnRock(world: World, pos: Position): EntityId {
   world.prevPositions.set(id, { x: pos.x, y: pos.y });
   world.rocks.add(id);
   return id;
+}
+
+function spawnItem(world: World, pos: Position, kind: ResourceKind, amount: number): EntityId {
+  const id = allocId(world);
+  world.positions.set(id, { x: pos.x, y: pos.y });
+  world.prevPositions.set(id, { x: pos.x, y: pos.y });
+  world.items.set(id, { kind, amount });
+  return id;
+}
+
+// The only way an entity leaves the world. Every collection has to be cleared,
+// not just `entities`: the renderer reconciles against that Set, but a row left
+// behind in any component Map is a job target, a sprite pick or a roster line
+// pointing at something that no longer exists — and ids are never reused, so the
+// leak is silent until something iterates that Map instead of `entities`.
+function despawn(world: World, id: EntityId): void {
+  world.entities.delete(id);
+  world.positions.delete(id);
+  world.prevPositions.delete(id);
+  world.needs.delete(id);
+  world.paths.delete(id);
+  world.jobs.delete(id);
+  world.inventories.delete(id);
+  world.animals.delete(id);
+  world.items.delete(id);
+  world.trees.delete(id);
+  world.rocks.delete(id);
+}
+
+function objectKindOf(world: World, id: EntityId): MapObjectKind | null {
+  if (world.trees.has(id)) {
+    return "tree";
+  }
+  if (world.rocks.has(id)) {
+    return "rock";
+  }
+  return null;
+}
+
+// Destroying a map object is what puts resources on the ground, and the drop
+// comes from the shared table in `defs` — so a chopped tree, a mined boulder and
+// a debug click cannot disagree about what an object is worth. The stack lands on
+// the tile the object stood on, which is free by definition now, and it goes to
+// the ground rather than into `stock`: hauling it home is a separate job, and the
+// player should be able to see the loot waiting for one.
+// Returns the new stack's id, or null for an entity that is not a destructible
+// object (a colonist, an animal, an already-dropped stack).
+function destroyObject(world: World, id: EntityId): EntityId | null {
+  const kind = objectKindOf(world, id);
+  const pos = world.positions.get(id);
+  if (!kind || !pos) {
+    return null;
+  }
+  const tile = { x: pos.x, y: pos.y };
+  despawn(world, id);
+  const def = RESOURCE_DEFS[kind];
+  return spawnItem(world, tile, def.yields, def.amount);
 }
 
 // A walkable tile with nothing standing on it, for spawns that were told what to
@@ -143,6 +217,16 @@ function scatterRocks(world: World, rng: Rng, taken: Set<number>): void {
 // on the far side of one would never reach the stockpile: the colony starts as
 // one cluster, and the map says where that cluster goes.
 const COLONIST_SPAWN_RADIUS = 8;
+
+// Loot the map starts with, lying about as if something had already been felled
+// here. Without it the ground stays bare until the first tree comes down, and
+// everything that will read loose stacks (hauling, the inspector, picking) would
+// have nothing to be tried against on a fresh game.
+const STARTING_PILES: readonly { kind: ResourceKind; count: number }[] = [
+  { kind: "wood", count: 12 },
+  { kind: "stone", count: 10 },
+];
+const STARTING_PILE_MAX = 4; // stack size drawn from 1..this, so piles are uneven
 
 // New game: let the chosen generator draw the map, scatter rocks, then place
 // colonists around the colony spot it picked and the rest of the life on
@@ -197,8 +281,26 @@ function newGame(seed: number, mapGenId: MapGenId = DEFAULT_MAP_GEN): World {
   for (let i = 0; i < 8; i += 1) {
     spawnChicken(world, claimWalkableTile());
   }
+  for (const pile of STARTING_PILES) {
+    for (let i = 0; i < pile.count; i += 1) {
+      spawnItem(world, claimWalkableTile(), pile.kind, randInt(rng, 1, STARTING_PILE_MAX + 1));
+    }
+  }
   return world;
 }
 
 export type { World };
-export { SCHEMA_VERSION, newGame, allocId, randomFreeTile, spawnColonist, spawnTree, spawnRock, spawnChicken };
+export {
+  SCHEMA_VERSION,
+  newGame,
+  allocId,
+  despawn,
+  destroyObject,
+  objectKindOf,
+  randomFreeTile,
+  spawnColonist,
+  spawnItem,
+  spawnTree,
+  spawnRock,
+  spawnChicken,
+};

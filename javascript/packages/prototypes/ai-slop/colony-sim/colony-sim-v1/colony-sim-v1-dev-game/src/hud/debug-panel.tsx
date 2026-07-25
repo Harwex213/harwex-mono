@@ -4,8 +4,12 @@ import "./debug-panel.css";
 
 const SPAWNS: readonly { kind: SpawnKind; icon: string; label: string }[] = [
   { kind: "tree", icon: "🌲", label: "tree" },
-  { kind: "rock", icon: "🪨", label: "rock" },
+  // 🪨 is the stone *resource* here and in the HUD's stock panel, so the boulder
+  // that drops it gets the landform icon instead of sharing one with its loot.
+  { kind: "rock", icon: "⛰️", label: "rock" },
   { kind: "chicken", icon: "🐔", label: "chicken" },
+  { kind: "wood", icon: "🪵", label: "wood" },
+  { kind: "stone", icon: "🪨", label: "stone" },
 ];
 
 // A dev-only way to put things into the world by hand, instead of regenerating the
@@ -21,6 +25,11 @@ function DebugPanel() {
   // and the engine picks a free tile instead.
   const selected = selection.value;
   const tile = selected && selected.kind === "tile" ? { x: selected.x, y: selected.y } : null;
+  // Destroying is the other half of the same story: until colonists chop and mine
+  // on their own, this button is what turns a standing tree or boulder into the
+  // resources it drops. A selected colonist is not destructible and the sim just
+  // ignores the command — the panel only checks that *something* is selected.
+  const target = selected && selected.kind === "entity" ? selected.id : null;
 
   return (
     <div className="panel debug-panel">
@@ -43,6 +52,18 @@ function DebugPanel() {
             </button>
           );
         })}
+        <button
+          type="button"
+          className="hud-button debug-action"
+          title="destroy the selected tree or rock"
+          disabled={target === null}
+          onClick={() => target !== null && engine.dispatch({ type: "destroy", id: target })}
+        >
+          <span className="debug-icon" aria-hidden="true">
+            💥
+          </span>
+          destroy
+        </button>
       </div>
     </div>
   );

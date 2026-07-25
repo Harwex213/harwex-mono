@@ -9,6 +9,7 @@ export type {
   Animal,
   EntityId,
   Inventory,
+  ItemStack,
   Job,
   Needs,
   PathFollow,
@@ -20,11 +21,15 @@ export { AnimalKind, JobKind } from "./sim/components";
 export type { World } from "./sim/world";
 export {
   allocId,
+  despawn,
+  destroyObject,
   newGame,
+  objectKindOf,
   randomFreeTile,
   SCHEMA_VERSION,
   spawnChicken,
   spawnColonist,
+  spawnItem,
   spawnRock,
   spawnTree,
 } from "./sim/world";
@@ -39,7 +44,7 @@ export type { SimContext } from "./sim/systems";
 export { runSystems } from "./sim/systems";
 
 // Static content definitions.
-export type { ResourceDef, TerrainDef } from "./data/defs";
+export type { MapObjectKind, ResourceDef, TerrainDef } from "./data/defs";
 export { RESOURCE_DEFS, TERRAIN_DEFS } from "./data/defs";
 
 // UI state: the reactivity boundary, plus the read models projected onto it.

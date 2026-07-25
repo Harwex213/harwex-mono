@@ -1,64 +1,49 @@
-import { Container, Graphics, type Texture } from "pixi.js";
+import { Container, Graphics, Sprite } from "pixi.js";
 import { CompositeTilemap } from "@pixi/tilemap";
-import { createNoise2D } from "simplex-noise";
-import { createRng, type Grid, inBounds, Terrain, TILE_SIZE, tileIndex, type World } from "@hw/colony-sim-v1-core";
-import { sheets } from "./textures";
-
-// Tiles away from the nearest shore at which water reaches its darkest shade.
-const MAX_DEPTH = 3;
-
-// The two grass shades split along their own simplex field: per-tile picks look
-// like static and square patches like a quilt, whereas a noise field at a finer
-// scale than the terrain's gives organic blotches.
-const SHADE_SCALE = 7; // tiles per noise unit
-const SHADE_THRESHOLD = 0.2; // above it the darker shade wins
-const SHADE_SALT = 0x9e3779b1;
-const TUFT_PERCENT = 28; // ground tiles carrying a tuft decal
+import { type Grid, inBounds, Terrain, TILE_SIZE, tileIndex, type World } from "@hw/colony-sim-v1-core";
+import { bakeTerrain } from "./terrain";
+import { type Cliff, CLIFF_HALF, CLIFF_INSET, sheets } from "./textures";
+import { tileHash } from "./tile-hash";
+import { buildWaterSurface, type WaterSurface } from "./water";
 
 const STOCKPILE_COLOR = 0xcaa24a;
 
-const NEIGHBOURS4 = [
-  [0, -1],
-  [-1, 0],
-  [1, 0],
-  [0, 1],
-] as const;
-
-const NEIGHBOURS8 = [
-  [-1, -1],
-  [0, -1],
-  [1, -1],
-  [-1, 0],
-  [1, 0],
-  [-1, 1],
-  [0, 1],
-  [1, 1],
-] as const;
-
-// The ground never changes, so it is painted once into a CompositeTilemap: 64×64
-// tiles plus decor collapse into a single draw call, where a Sprite (or a
-// Graphics rect) per tile would cost 4096 display objects.
-function buildGround(world: World): Container {
-  const layer = new Container();
-  const tilemap = new CompositeTilemap();
-  paintTerrain(tilemap, world);
-  layer.addChild(tilemap, stockpileMarker(world));
-  return layer;
+// The ground is baked; the water surface on top of it is the one live piece, so
+// the renderer gets a handle on it alongside the finished layer.
+interface Ground {
+  layer: Container;
+  water: WaterSurface;
 }
 
-function paintTerrain(tilemap: CompositeTilemap, world: World): void {
-  const { grid } = world;
-  const depth = waterDepthMap(grid);
-  const shade = shadeMap(grid, world.seed);
+// The ground never changes, so it is built once: the terrain as a single baked
+// bitmap (one sprite, one draw call — see terrain.ts for why it is not a tilemap),
+// and the cliffs on top of it in a CompositeTilemap, where a Sprite per mountain
+// tile would cost thousands of display objects.
+function buildGround(world: World): Ground {
+  const layer = new Container();
+  const baked = bakeTerrain(world);
+  // Shader pass over the baked water, so it goes above the terrain but below the
+  // cliffs: a rock face on the shore should not be tinted by the swell.
+  const water = buildWaterSurface(baked.water);
+  const cliffs = new CompositeTilemap();
+  paintCliffs(cliffs, world);
+  layer.addChild(new Sprite(baked.texture), water.view, cliffs, stockpileMarker(world));
+  return { layer, water };
+}
+
+// A cliff is laid over the ground, not instead of it: its frames are cut round,
+// and the bare ground has to show through the corners for the mass to read as a
+// rock rising out of the terrain rather than a square patch. That is also why the
+// mountain never becomes its own material in the bake — the terrain under it is
+// the barren ground it rises from.
+function paintCliffs(tilemap: CompositeTilemap, world: World): void {
+  const { grid, seed } = world;
   for (let y = 0; y < grid.height; y += 1) {
     for (let x = 0; x < grid.width; x += 1) {
-      tilemap.tile(terrainTile(world, depth, shade, x, y), x * TILE_SIZE, y * TILE_SIZE);
-      // A cliff is laid over the ground, not instead of it: its frames are cut
-      // round, and the bare ground has to show through the corners for the mass
-      // to read as a rock rising out of the terrain rather than a square patch.
-      if (grid.terrain[tileIndex(grid, x, y)] === Terrain.Mountain) {
-        tilemap.tile(cliffTile(grid, world.seed, x, y), x * TILE_SIZE, y * TILE_SIZE);
+      if (grid.terrain[tileIndex(grid, x, y)] !== Terrain.Mountain) {
+        continue;
       }
+      paintCliff(tilemap, grid, seed, x, y);
     }
   }
 }
@@ -70,119 +55,66 @@ function paintTerrain(tilemap: CompositeTilemap, world: World): void {
 // wide is the case the nine-slice cannot state: every frame it could offer is a
 // wall along one side and plateau along the other, and there is no plateau. Such
 // a spur is drawn as crags — a chain of boulders, which is what it is.
-function cliffTile(grid: Grid, seed: number, x: number, y: number): Texture {
+//
+// The other case it cannot state is a concave joint: a corner where two arms of
+// the mass meet and the diagonal tile between them is open ground. The tile is
+// enclosed on all four sides, so the nine-slice calls it plateau — and the wall
+// that should turn around the joint is simply missing, which is the hole a
+// diagonal edge shows at every step. There the tile is laid half at a time and
+// the joint counts as an open side for the half it touches, which turns the wall
+// where the sheet already turns it: at the halfway line.
+function paintCliff(tilemap: CompositeTilemap, grid: Grid, seed: number, x: number, y: number): void {
   const { cliff, crag } = sheets();
+  const left = x * TILE_SIZE;
+  const top = y * TILE_SIZE;
   const north = isMountain(grid, x, y - 1);
   const south = isMountain(grid, x, y + 1);
   const west = isMountain(grid, x - 1, y);
   const east = isMountain(grid, x + 1, y);
   if ((!north && !south) || (!west && !east)) {
-    return crag[tileHash(seed, x, y) % crag.length];
+    tilemap.tile(crag[tileHash(seed, x, y) % crag.length], left, top);
+    return;
   }
-  return cliff[north ? (south ? 1 : 2) : 0][west ? (east ? 1 : 2) : 0];
+  const row = north ? (south ? 1 : 2) : 0;
+  const upper = [
+    !west || (north && !isMountain(grid, x - 1, y - 1)),
+    !east || (north && !isMountain(grid, x + 1, y - 1)),
+  ];
+  const lower = [
+    !west || (south && !isMountain(grid, x - 1, y + 1)),
+    !east || (south && !isMountain(grid, x + 1, y + 1)),
+  ];
+  if (upper[0] === !west && upper[1] === !east && lower[0] === !west && lower[1] === !east) {
+    tilemap.tile(cliff.face[row][west ? (east ? 1 : 2) : 0], left, top);
+    return;
+  }
+  paintCliffHalf(tilemap, cliff, row, 0, upper, left, top);
+  paintCliffHalf(tilemap, cliff, row, 1, lower, left, top + CLIFF_HALF);
+}
+
+// One half-tile of a cliff, by which side the mass ends on within that half. Ends
+// on both — the mass is one tile wide as far as this half is concerned — and the
+// two side walls are laid instead, each trimmed so it stops short of the strip the
+// other one leaves open for the ground.
+function paintCliffHalf(
+  tilemap: CompositeTilemap,
+  cliff: Cliff,
+  row: number,
+  half: number,
+  [openWest, openEast]: boolean[],
+  left: number,
+  top: number,
+): void {
+  if (openWest && openEast) {
+    tilemap.tile(cliff.joint[half][row][0], left, top);
+    tilemap.tile(cliff.joint[half][row][1], left + CLIFF_INSET, top);
+    return;
+  }
+  tilemap.tile(cliff.half[half][row][openWest ? 0 : openEast ? 2 : 1], left, top);
 }
 
 function isMountain(grid: Grid, x: number, y: number): boolean {
   return inBounds(grid, x, y) && grid.terrain[tileIndex(grid, x, y)] === Terrain.Mountain;
-}
-
-function terrainTile(world: World, depth: Uint8Array, shade: Uint8Array, x: number, y: number): Texture {
-  const { grid, seed } = world;
-  const index = tileIndex(grid, x, y);
-  const terrain = grid.terrain[index];
-  const tiles = sheets();
-  const hash = tileHash(seed, x, y);
-
-  if (terrain === Terrain.Water) {
-    return tiles.water[depth[index] - 1];
-  }
-  // Land bordering water becomes beach, so the seam reads as a shore instead of a
-  // hard colour edge.
-  if (touches(grid, x, y, Terrain.Water)) {
-    return tiles.sand[hash % tiles.sand.length];
-  }
-  // High ground is dry and sparse; the boulders scattered densely over it carry
-  // the rest of the read. Its sheet shares the grass layout, so the same shade
-  // and tuft picks apply. Mountains sit in that same barren band and use it as
-  // the ground their cliff is laid over.
-  const ground = terrain === Terrain.Grass ? tiles.grass : tiles.dryGrass;
-  const variant = hash % 100 < TUFT_PERCENT ? 1 + ((hash >>> 8) % 2) : 0;
-  return ground[shade[index]][variant];
-}
-
-function shadeMap(grid: Grid, seed: number): Uint8Array {
-  const noise = createNoise2D(createRng(seed ^ SHADE_SALT));
-  const shade = new Uint8Array(grid.width * grid.height);
-  for (let y = 0; y < grid.height; y += 1) {
-    for (let x = 0; x < grid.width; x += 1) {
-      const dark = noise(x / SHADE_SCALE, y / SHADE_SCALE) > SHADE_THRESHOLD;
-      shade[tileIndex(grid, x, y)] = dark ? 1 : 0;
-    }
-  }
-  return shade;
-}
-
-// Distance in tiles from each water tile to the nearest land, capped at
-// MAX_DEPTH: shallows get the pale shade, open water the dark one. Land stays 0.
-function waterDepthMap(grid: Grid): Uint8Array {
-  const depth = new Uint8Array(grid.width * grid.height);
-  const queue: number[] = [];
-  for (let y = 0; y < grid.height; y += 1) {
-    for (let x = 0; x < grid.width; x += 1) {
-      const index = tileIndex(grid, x, y);
-      if (grid.terrain[index] !== Terrain.Water || !touchesLand(grid, x, y)) {
-        continue;
-      }
-      depth[index] = 1;
-      queue.push(index);
-    }
-  }
-  for (let head = 0; head < queue.length; head += 1) {
-    const index = queue[head];
-    if (depth[index] >= MAX_DEPTH) {
-      continue;
-    }
-    const x = index % grid.width;
-    const y = (index - x) / grid.width;
-    for (const [dx, dy] of NEIGHBOURS4) {
-      const nx = x + dx;
-      const ny = y + dy;
-      if (!inBounds(grid, nx, ny)) {
-        continue;
-      }
-      const next = tileIndex(grid, nx, ny);
-      if (grid.terrain[next] !== Terrain.Water || depth[next] !== 0) {
-        continue;
-      }
-      depth[next] = depth[index] + 1;
-      queue.push(next);
-    }
-  }
-  // Water the ramp never reached is beyond MAX_DEPTH from any shore: open water.
-  for (let index = 0; index < depth.length; index += 1) {
-    if (grid.terrain[index] === Terrain.Water && depth[index] === 0) {
-      depth[index] = MAX_DEPTH;
-    }
-  }
-  return depth;
-}
-
-function touchesLand(grid: Grid, x: number, y: number): boolean {
-  return touches(grid, x, y, Terrain.Grass) || touches(grid, x, y, Terrain.Rock) || touches(grid, x, y, Terrain.Mountain);
-}
-
-function touches(grid: Grid, x: number, y: number, terrain: Terrain): boolean {
-  for (const [dx, dy] of NEIGHBOURS8) {
-    const nx = x + dx;
-    const ny = y + dy;
-    if (!inBounds(grid, nx, ny)) {
-      continue;
-    }
-    if (grid.terrain[tileIndex(grid, nx, ny)] === terrain) {
-      return true;
-    }
-  }
-  return false;
 }
 
 function stockpileMarker(world: World): Graphics {
@@ -192,14 +124,5 @@ function stockpileMarker(world: World): Graphics {
   return marker;
 }
 
-// Stable per-tile randomness (mulberry-style mixing): the same seed and tile
-// always pick the same variant, so terrain detail and decor survive a reload
-// without being written to the save.
-function tileHash(seed: number, x: number, y: number): number {
-  let h = (seed ^ Math.imul(x, 0x27d4eb2d) ^ Math.imul(y, 0x165667b1)) >>> 0;
-  h = Math.imul(h ^ (h >>> 15), 0x2c1b3c6d) >>> 0;
-  h = Math.imul(h ^ (h >>> 12), 0x297a2d39) >>> 0;
-  return (h ^ (h >>> 15)) >>> 0;
-}
-
+export type { Ground };
 export { buildGround };

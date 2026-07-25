@@ -4,7 +4,15 @@ import { runSystems } from "./sim/systems";
 import { inBounds } from "./sim/grid";
 import { pickEntity } from "./sim/picking";
 import type { EntityId, Position } from "./sim/components";
-import { randomFreeTile, spawnChicken, spawnRock, spawnTree, type World } from "./sim/world";
+import {
+  destroyObject,
+  randomFreeTile,
+  spawnChicken,
+  spawnItem,
+  spawnRock,
+  spawnTree,
+  type World,
+} from "./sim/world";
 import { saveSnapshot } from "./persistence/snapshot";
 import type { ColonyDb } from "./persistence/db";
 import {
@@ -25,12 +33,19 @@ import type { CreateView, GameView } from "./view";
 const TICK_MS = 100; // 10 logical ticks per second
 const AUTOSAVE_MS = 10000;
 
+// How big a hand-spawned resource pile is. Destruction drops come from the
+// object's def instead (see destroyObject) — this is only the size of a stack
+// conjured out of nothing.
+const SPAWNED_STACK = 5;
+
 // The one place a spawn command's kind is turned into a spawner. A command names
 // what to create; how it is created stays in the sim.
 const SPAWNERS: Record<SpawnKind, (world: World, pos: Position) => EntityId> = {
   tree: spawnTree,
   rock: spawnRock,
   chicken: spawnChicken,
+  wood: (world, pos) => spawnItem(world, pos, "wood", SPAWNED_STACK),
+  stone: (world, pos) => spawnItem(world, pos, "stone", SPAWNED_STACK),
 };
 
 interface GameEngineOptions {
@@ -125,7 +140,18 @@ class GameEngine implements Dispatcher {
   // per tick is deliberate: a paused game ticks not at all, and a spawn that only
   // appeared on resume would be useless to anyone poking at a frozen world.
   private applyWorldCommands(): void {
-    for (const command of this.commands.takePending()) {
+    const pending = this.commands.takePending();
+    if (pending.length === 0) {
+      return;
+    }
+    for (const command of pending) {
+      if (command.type === "destroy") {
+        // Not a destructible object → nothing happens. The sim owns that rule:
+        // a caller holding an entity id has no business knowing which ids drop
+        // loot and which are colonists.
+        destroyObject(this.world, command.id);
+        continue;
+      }
       // No tile given → the sim finds one; a full map yields nothing and the
       // command is dropped rather than stacking entities on an occupied tile.
       const tile = command.tile ?? randomFreeTile(this.world, this.rng);
@@ -134,6 +160,9 @@ class GameEngine implements Dispatcher {
       }
       SPAWNERS[command.kind](this.world, tile);
     }
+    // A paused game runs no tick to rebuild the read models, and the entity a
+    // destroy command just removed must not linger in the inspector.
+    this.refreshSelection();
   }
 
   // Canvas click → selection. Picking needs the World, so it lives here rather

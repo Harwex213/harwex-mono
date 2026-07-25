@@ -45,6 +45,9 @@ function hydrate(world: World): World {
   if (!world.rocks) {
     world.rocks = new Set();
   }
+  if (!world.items) {
+    world.items = new Map();
+  }
   if (!world.stock) {
     world.stock = { wood: 0, stone: 0, food: 0 };
   }

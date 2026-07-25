@@ -66,8 +66,15 @@
   cursor: pointer;
 }
 
-.hud-button:hover {
+.hud-button:hover:not(:disabled) {
   border-color: var(--hud-button-active-bg);
+}
+
+/* A button whose action needs a selection it does not have: dimmed rather than
+   hidden, so the row of actions keeps its shape while the player clicks around. */
+.hud-button:disabled {
+  color: var(--hud-muted);
+  cursor: default;
 }
 
 .hud-button.active {

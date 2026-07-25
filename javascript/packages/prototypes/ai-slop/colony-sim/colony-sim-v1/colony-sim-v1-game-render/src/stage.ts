@@ -24,6 +24,9 @@ async function createGameStage(mount: HTMLElement = document.body): Promise<Game
     background: BACKGROUND,
     resizeTo: window,
     antialias: false,
+    // Our own shaders are GLSL only, so the backend is pinned rather than
+    // auto-detected — a WebGPU context would silently drop them.
+    preference: "webgl",
   });
   // Before any view exists: reconcile() creates sprites synchronously on frame one
   // and cannot await a texture.

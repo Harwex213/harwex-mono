@@ -5,13 +5,16 @@ import type { World } from "./world";
 // so half a tile keeps a neighbour from stealing the click.
 const PICK_RADIUS = 0.6;
 
-// Rank, not a boolean: resources cover a large share of the map, so nearest-wins
+// Rank, not a boolean: scenery covers a large share of the map, so nearest-wins
 // alone would let a boulder steal the click from a colonist standing in front of
-// it. A resource is only picked when no actor is within reach.
+// it. Each rank is only picked when nothing above it is within reach — and a
+// dropped stack is the lowest of the three because it lies *under* whatever is
+// standing on its tile.
 const enum PickRank {
   None = 0,
-  Resource = 1, // trees, rocks — static and harvestable
-  Actor = 2, // colonists and animals
+  Item = 1, // dropped resource stacks
+  Object = 2, // trees, rocks — static and harvestable
+  Actor = 3, // colonists and animals
 }
 
 function rankOf(world: World, id: EntityId): PickRank {
@@ -19,7 +22,10 @@ function rankOf(world: World, id: EntityId): PickRank {
     return PickRank.Actor;
   }
   if (world.trees.has(id) || world.rocks.has(id)) {
-    return PickRank.Resource;
+    return PickRank.Object;
+  }
+  if (world.items.has(id)) {
+    return PickRank.Item;
   }
   return PickRank.None;
 }

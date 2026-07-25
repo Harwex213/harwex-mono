@@ -44,6 +44,15 @@ type ResourceKind = "wood" | "stone" | "food";
 
 type Stock = Record<ResourceKind, number>;
 
+// A stack of resources lying on the map — what a felled tree or a broken boulder
+// leaves behind, and what a hauler picks up on the way to the stockpile. Not the
+// same thing as `Stock`: that is what the colony already owns, this is loose loot
+// with a tile of its own, so it is an entity and not a counter.
+interface ItemStack {
+  kind: ResourceKind;
+  amount: number;
+}
+
 const enum AnimalKind {
   Chicken = 0,
 }
@@ -55,5 +64,5 @@ interface Animal {
   idleTicks: number; // ticks left standing still before the next stroll
 }
 
-export type { EntityId, Position, Needs, PathFollow, Job, Inventory, Animal, ResourceKind, Stock };
+export type { EntityId, Position, Needs, PathFollow, Job, Inventory, Animal, ItemStack, ResourceKind, Stock };
 export { JobKind, AnimalKind };

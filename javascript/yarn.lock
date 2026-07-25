@@ -2160,6 +2160,90 @@ __metadata:
   languageName: unknown
   linkType: soft
 
+"@hw/colony-sim-v3-backend@workspace:packages/prototypes/ai-slop/colony-sim/colony-sim-v3/colony-sim-v3-backend":
+  version: 0.0.0-use.local
+  resolution: "@hw/colony-sim-v3-backend@workspace:packages/prototypes/ai-slop/colony-sim/colony-sim-v3/colony-sim-v3-backend"
+  dependencies:
+    "@hw/colony-sim-v3-protocol": "workspace:*"
+    "@types/node": "npm:24.1.0"
+    typescript: "npm:5.9.3"
+  languageName: unknown
+  linkType: soft
+
+"@hw/colony-sim-v3-core@workspace:*, @hw/colony-sim-v3-core@workspace:packages/prototypes/ai-slop/colony-sim/colony-sim-v3/colony-sim-v3-core":
+  version: 0.0.0-use.local
+  resolution: "@hw/colony-sim-v3-core@workspace:packages/prototypes/ai-slop/colony-sim/colony-sim-v3/colony-sim-v3-core"
+  dependencies:
+    "@preact/signals": "npm:2.9.4"
+    idb: "npm:8.0.3"
+    simplex-noise: "npm:4.0.3"
+    typescript: "npm:5.9.3"
+  languageName: unknown
+  linkType: soft
+
+"@hw/colony-sim-v3-dev-game@workspace:packages/prototypes/ai-slop/colony-sim/colony-sim-v3/colony-sim-v3-dev-game":
+  version: 0.0.0-use.local
+  resolution: "@hw/colony-sim-v3-dev-game@workspace:packages/prototypes/ai-slop/colony-sim/colony-sim-v3/colony-sim-v3-dev-game"
+  dependencies:
+    "@hw/colony-sim-v3-core": "workspace:*"
+    "@hw/colony-sim-v3-game-render": "workspace:*"
+    "@hw/colony-sim-v3-hud": "workspace:*"
+    "@rspack/cli": "npm:2.1.4"
+    "@rspack/core": "npm:2.1.4"
+    "@rspack/dev-server": "npm:2.1.0"
+    preact: "npm:10.29.7"
+    typescript: "npm:5.9.3"
+  languageName: unknown
+  linkType: soft
+
+"@hw/colony-sim-v3-game-render@workspace:*, @hw/colony-sim-v3-game-render@workspace:packages/prototypes/ai-slop/colony-sim/colony-sim-v3/colony-sim-v3-game-render":
+  version: 0.0.0-use.local
+  resolution: "@hw/colony-sim-v3-game-render@workspace:packages/prototypes/ai-slop/colony-sim/colony-sim-v3/colony-sim-v3-game-render"
+  dependencies:
+    "@hw/colony-sim-v3-core": "workspace:*"
+    "@pixi/tilemap": "npm:5.0.2"
+    pixi.js: "npm:8.8.0"
+    simplex-noise: "npm:4.0.3"
+    typescript: "npm:5.9.3"
+  languageName: unknown
+  linkType: soft
+
+"@hw/colony-sim-v3-hud@workspace:*, @hw/colony-sim-v3-hud@workspace:packages/prototypes/ai-slop/colony-sim/colony-sim-v3/colony-sim-v3-hud":
+  version: 0.0.0-use.local
+  resolution: "@hw/colony-sim-v3-hud@workspace:packages/prototypes/ai-slop/colony-sim/colony-sim-v3/colony-sim-v3-hud"
+  dependencies:
+    "@hw/colony-sim-v3-core": "workspace:*"
+    "@preact/signals": "npm:2.9.4"
+    preact: "npm:10.29.7"
+    typescript: "npm:5.9.3"
+  languageName: unknown
+  linkType: soft
+
+"@hw/colony-sim-v3-protocol@workspace:*, @hw/colony-sim-v3-protocol@workspace:packages/prototypes/ai-slop/colony-sim/colony-sim-v3/colony-sim-v3-protocol":
+  version: 0.0.0-use.local
+  resolution: "@hw/colony-sim-v3-protocol@workspace:packages/prototypes/ai-slop/colony-sim/colony-sim-v3/colony-sim-v3-protocol"
+  dependencies:
+    typescript: "npm:5.9.3"
+  languageName: unknown
+  linkType: soft
+
+"@hw/colony-sim-v3-web-game@workspace:packages/prototypes/ai-slop/colony-sim/colony-sim-v3/colony-sim-v3-web-game":
+  version: 0.0.0-use.local
+  resolution: "@hw/colony-sim-v3-web-game@workspace:packages/prototypes/ai-slop/colony-sim/colony-sim-v3/colony-sim-v3-web-game"
+  dependencies:
+    "@hw/colony-sim-v3-core": "workspace:*"
+    "@hw/colony-sim-v3-game-render": "workspace:*"
+    "@hw/colony-sim-v3-hud": "workspace:*"
+    "@hw/colony-sim-v3-protocol": "workspace:*"
+    "@preact/signals": "npm:2.9.4"
+    "@rspack/cli": "npm:2.1.4"
+    "@rspack/core": "npm:2.1.4"
+    "@rspack/dev-server": "npm:2.1.0"
+    preact: "npm:10.29.7"
+    typescript: "npm:5.9.3"
+  languageName: unknown
+  linkType: soft
+
 "@hw/di@workspace:packages/infrastructure/di":
   version: 0.0.0-use.local
   resolution: "@hw/di@workspace:packages/infrastructure/di"

@@ -17,6 +17,7 @@ import { Camera } from "./camera";
 import { buildGround } from "./ground";
 import { HOVER_STYLE, Marker, SELECTION_STYLE } from "./selection";
 import { type Creature, Facing, sheets, TREE_VARIANTS } from "./textures";
+import type { WaterSurface } from "./water";
 
 const ANIM_TICKS_PER_FRAME = 2; // 10 ticks/s ÷ 2 = 5 fps walk cycle
 
@@ -39,12 +40,17 @@ const ROCK_TINT_MOSSY = 1; // the sheet's yellow-green moss row, matching the gr
 // more closely than a tree does.
 const ROCK_ANCHOR_Y = 0.65;
 
+// A dropped stack lies flat on the ground, so its frame is centred on the tile
+// point instead of standing above it.
+const ITEM_ANCHOR_Y = 0.6;
+
 // Owns the pixi view tree and reconciles it against the World every frame:
 // spawn sprites for new entities, drop stale ones, lerp positions between ticks.
 // This is core's GameView: world in, pixels out, nothing written back.
 class GameRenderer implements GameView {
   readonly camera: Camera;
   private layers: Layers;
+  private water: WaterSurface;
   private marker: Marker;
   private hoverMarker: Marker;
   // What a click would take right now, as resolved by the engine. View-only: it
@@ -61,7 +67,14 @@ class GameRenderer implements GameView {
     this.layers = createLayers();
     app.stage.addChild(this.layers.root);
     this.camera = new Camera(app, this.layers.root, commands, handlers);
-    this.layers.ground.addChild(buildGround(world));
+    // The camera's own default is the middle of the grid, which is only the
+    // right guess for a map that put the colony there. On a map that did not
+    // (the divided lands sit their colony well off-centre) the first frame would
+    // open on empty ground.
+    this.camera.centerOn(world.stockpile.x, world.stockpile.y);
+    const ground = buildGround(world);
+    this.water = ground.water;
+    this.layers.ground.addChild(ground.layer);
     // Hover first so the selection brackets stay on top where the two overlap.
     this.hoverMarker = new Marker(this.layers.fx, HOVER_STYLE);
     this.marker = new Marker(this.layers.fx, SELECTION_STYLE);
@@ -88,7 +101,7 @@ class GameRenderer implements GameView {
       sprite.y = y * TILE_SIZE;
       sprite.zIndex = y;
     }
-    this.animate(world);
+    this.animate(world, alpha);
     const selected = selection.value;
     this.place(this.marker, selected);
     // Two markers on the same thing would just darken it; the selection already
@@ -115,9 +128,13 @@ class GameRenderer implements GameView {
     marker.atSprite(sprite);
   }
 
-  // Pick the sheet frame per creature. Frames advance on sim ticks rather than
-  // wall clock, so pause freezes the walk cycle and 2×/3× speeds it up for free.
-  private animate(world: World): void {
+  // Pick the sheet frame per creature, and advance the water shader. Both run on
+  // the sim clock rather than wall clock, so pause freezes them and 2×/3× speeds
+  // them up for free. A sheet frame is a whole tick's worth of animation; the water
+  // is a continuous surface, so it gets the interpolated clock instead of stepping
+  // at 10 fps under a 60 fps picture.
+  private animate(world: World, alpha: number): void {
+    this.water.setPhase(world.tick + alpha);
     for (const [id, actor] of this.creatures) {
       const cur = world.positions.get(id);
       const prev = world.prevPositions.get(id);
@@ -174,6 +191,18 @@ class GameRenderer implements GameView {
     if (world.rocks.has(id)) {
       const sprite = new Sprite(rockTexture(world, id));
       sprite.anchor.set(0.5, ROCK_ANCHOR_Y);
+      this.layers.objects.addChild(sprite);
+      this.sprites.set(id, sprite);
+      return;
+    }
+
+    // Dropped stacks belong to the object layer, y-sorted against the trees and
+    // boulders around them — creatures live a layer above and pass over a pile
+    // either way, which is what walking over loot should look like.
+    const item = world.items.get(id);
+    if (item) {
+      const sprite = new Sprite(sheets().items[item.kind]);
+      sprite.anchor.set(0.5, ITEM_ANCHOR_Y);
       this.layers.objects.addChild(sprite);
       this.sprites.set(id, sprite);
       return;

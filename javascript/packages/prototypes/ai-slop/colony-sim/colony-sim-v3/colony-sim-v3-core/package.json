@@ -1,0 +1,19 @@
+{
+  "name": "@hw/colony-sim-v3-core",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "exports": "./src/index.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "node --test 'src/**/*.test.js'"
+  },
+  "dependencies": {
+    "@preact/signals": "2.9.4",
+    "idb": "8.0.3",
+    "simplex-noise": "4.0.3"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3"
+  }
+}

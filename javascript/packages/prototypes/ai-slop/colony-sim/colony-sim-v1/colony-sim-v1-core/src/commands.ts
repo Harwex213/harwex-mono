@@ -1,10 +1,10 @@
-import type { Position } from "./sim/components";
+import type { EntityId, Position } from "./sim/components";
 import { colonistsOpen, paused, selection, type Selection, speed } from "./state/signals";
 
 // What a command may put into the world. A spawn without a tile is not an error:
 // the caller (a debug button, a hotkey) knows what to create, and the engine is
 // the one that can tell which tiles are free.
-type SpawnKind = "tree" | "rock" | "chicken";
+type SpawnKind = "tree" | "rock" | "chicken" | "wood" | "stone";
 
 // UI commands land in signals and take effect at once — nothing in the sim reads
 // them mid-tick.
@@ -18,7 +18,11 @@ type UiCommand =
 // are sent: a click arrives mid-tick, and a system that already ran this tick
 // would then see a different world than the one after it. They queue here and the
 // engine drains them on a tick boundary.
-type WorldCommand = { type: "spawn"; kind: SpawnKind; tile: Position | null };
+// `destroy` names the entity, not the tile: what is being removed was picked, and
+// by the time the queue drains something else may be standing on that tile.
+type WorldCommand =
+  | { type: "spawn"; kind: SpawnKind; tile: Position | null }
+  | { type: "destroy"; id: EntityId };
 
 type Command = UiCommand | WorldCommand;
 
@@ -36,7 +40,7 @@ class CommandDispatcher implements Dispatcher {
   private pending: WorldCommand[] = [];
 
   dispatch(command: Command): void {
-    if (command.type === "spawn") {
+    if (command.type === "spawn" || command.type === "destroy") {
       this.pending.push(command);
     } else if (command.type === "setSpeed") {
       speed.value = command.value;

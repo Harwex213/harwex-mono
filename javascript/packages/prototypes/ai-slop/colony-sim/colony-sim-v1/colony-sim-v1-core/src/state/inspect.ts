@@ -1,6 +1,7 @@
 import { isWalkable, Terrain, tileIndex } from "../sim/grid";
+import { RESOURCE_DEFS } from "../data/defs";
 import { AnimalKind, type EntityId, JobKind } from "../sim/components";
-import type { World } from "../sim/world";
+import { objectKindOf, type World } from "../sim/world";
 import type { Selection } from "./signals";
 
 // Read model for the HUD's selection panel: label/value rows, no World types
@@ -79,13 +80,18 @@ function describeEntity(world: World, id: EntityId): SelectionDetails | null {
     };
   }
 
-  // Harvesting is still a stub (see systems/work.ts), so a resource reports what
-  // it would yield rather than a stock it does not track yet.
-  if (world.trees.has(id)) {
-    return { title: `tree #${id}`, rows: [["at", at], ["yields", "wood"]] };
+  const item = world.items.get(id);
+  if (item) {
+    return { title: `${item.kind} #${id}`, rows: [["at", at], ["amount", String(item.amount)]] };
   }
-  if (world.rocks.has(id)) {
-    return { title: `rock #${id}`, rows: [["at", at], ["yields", "stone"]] };
+
+  // A standing object reports the drop it is holding, straight from the table the
+  // destruction path reads — so the panel cannot promise a yield the sim will not
+  // deliver.
+  const objectKind = objectKindOf(world, id);
+  if (objectKind) {
+    const def = RESOURCE_DEFS[objectKind];
+    return { title: `${objectKind} #${id}`, rows: [["at", at], ["yields", `${def.amount} ${def.yields}`]] };
   }
 
   const needs = world.needs.get(id);
