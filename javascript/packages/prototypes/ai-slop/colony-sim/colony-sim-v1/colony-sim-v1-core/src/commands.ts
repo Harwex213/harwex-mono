@@ -1,10 +1,10 @@
-import type { EntityId, Position } from "./sim/components";
+import type { EntityId, PlayerId, Position } from "./sim/components";
 import { colonistsOpen, paused, selection, type Selection, speed } from "./state/signals";
 
 // What a command may put into the world. A spawn without a tile is not an error:
 // the caller (a debug button, a hotkey) knows what to create, and the engine is
 // the one that can tell which tiles are free.
-type SpawnKind = "tree" | "rock" | "chicken" | "wood" | "stone";
+type SpawnKind = "colonist" | "tree" | "rock" | "chicken" | "wood" | "stone";
 
 // UI commands land in signals and take effect at once — nothing in the sim reads
 // them mid-tick.
@@ -20,8 +20,11 @@ type UiCommand =
 // engine drains them on a tick boundary.
 // `destroy` names the entity, not the tile: what is being removed was picked, and
 // by the time the queue drains something else may be standing on that tile.
+// `owner` is nullable for the same reason `tile` is — a tree belongs to nobody, and
+// for the kinds that do belong to someone the sim falls back to the default player
+// rather than putting an unowned colonist on the map.
 type WorldCommand =
-  | { type: "spawn"; kind: SpawnKind; tile: Position | null }
+  | { type: "spawn"; kind: SpawnKind; tile: Position | null; owner: PlayerId | null }
   | { type: "destroy"; id: EntityId };
 
 type Command = UiCommand | WorldCommand;

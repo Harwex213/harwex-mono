@@ -1,15 +1,20 @@
-import { selection, type SpawnKind } from "@hw/colony-sim-v1-core";
+import { DEFAULT_PLAYER, type PlayerId, selection, type SpawnKind } from "@hw/colony-sim-v1-core";
 import { useEngine } from "@hw/colony-sim-v1-hud";
 import "./debug-panel.css";
 
-const SPAWNS: readonly { kind: SpawnKind; icon: string; label: string }[] = [
-  { kind: "tree", icon: "🌲", label: "tree" },
+// `owner` is what a spawn belongs to, and null is the honest answer for a tree.
+// Every worker joins the one colony this app runs (see main.ts): a button that
+// spawned somebody else's would put a colonist on the map that nothing here can
+// command and no panel accounts for.
+const SPAWNS: readonly { kind: SpawnKind; owner: PlayerId | null; icon: string; label: string }[] = [
+  { kind: "colonist", owner: DEFAULT_PLAYER, icon: "🧑", label: "worker" },
+  { kind: "tree", owner: null, icon: "🌲", label: "tree" },
   // 🪨 is the stone *resource* here and in the HUD's stock panel, so the boulder
   // that drops it gets the landform icon instead of sharing one with its loot.
-  { kind: "rock", icon: "⛰️", label: "rock" },
-  { kind: "chicken", icon: "🐔", label: "chicken" },
-  { kind: "wood", icon: "🪵", label: "wood" },
-  { kind: "stone", icon: "🪨", label: "stone" },
+  { kind: "rock", owner: null, icon: "⛰️", label: "rock" },
+  { kind: "chicken", owner: null, icon: "🐔", label: "chicken" },
+  { kind: "wood", owner: null, icon: "🪵", label: "wood" },
+  { kind: "stone", owner: null, icon: "🪨", label: "stone" },
 ];
 
 // A dev-only way to put things into the world by hand, instead of regenerating the
@@ -40,10 +45,10 @@ function DebugPanel() {
           return (
             <button
               type="button"
-              key={spawn.kind}
+              key={spawn.label}
               className="hud-button debug-action"
               title={`spawn ${spawn.label}`}
-              onClick={() => engine.dispatch({ type: "spawn", kind: spawn.kind, tile })}
+              onClick={() => engine.dispatch({ type: "spawn", kind: spawn.kind, tile, owner: spawn.owner })}
             >
               <span className="debug-icon" aria-hidden="true">
                 {spawn.icon}

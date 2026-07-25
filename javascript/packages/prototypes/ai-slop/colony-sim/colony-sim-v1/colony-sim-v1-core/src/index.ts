@@ -4,7 +4,19 @@
 
 // Simulation: the world and the pure data it is made of.
 export type { Grid } from "./sim/grid";
-export { createGrid, GRID_H, GRID_W, inBounds, isWalkable, Terrain, TILE_SIZE, tileIndex, tileToPx } from "./sim/grid";
+export {
+  createGrid,
+  GRID_H,
+  GRID_W,
+  inBounds,
+  isDeadLands,
+  isWalkable,
+  Region,
+  Terrain,
+  TILE_SIZE,
+  tileIndex,
+  tileToPx,
+} from "./sim/grid";
 export type {
   Animal,
   EntityId,
@@ -13,6 +25,7 @@ export type {
   Job,
   Needs,
   PathFollow,
+  PlayerId,
   Position,
   ResourceKind,
   Stock,
@@ -44,8 +57,8 @@ export type { SimContext } from "./sim/systems";
 export { runSystems } from "./sim/systems";
 
 // Static content definitions.
-export type { MapObjectKind, ResourceDef, TerrainDef } from "./data/defs";
-export { RESOURCE_DEFS, TERRAIN_DEFS } from "./data/defs";
+export type { MapObjectKind, PlayerDef, ResourceDef, TerrainDef } from "./data/defs";
+export { DEFAULT_PLAYER, PLAYER_DEFS, PLAYER_IDS, RESOURCE_DEFS, TERRAIN_DEFS } from "./data/defs";
 
 // UI state: the reactivity boundary, plus the read models projected onto it.
 export type { Selection } from "./state/signals";
@@ -60,7 +73,7 @@ export {
   speed,
 } from "./state/signals";
 export type { ColonistRow, SelectionDetails } from "./state/inspect";
-export { describeSelection, listColonists } from "./state/inspect";
+export { countColonists, describeSelection, listColonists } from "./state/inspect";
 
 // The one write path into that state.
 export type { Command, Dispatcher, SpawnKind, WorldCommand } from "./commands";

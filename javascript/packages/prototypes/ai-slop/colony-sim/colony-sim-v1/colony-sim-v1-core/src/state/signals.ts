@@ -9,6 +9,8 @@ type Selection = { kind: "entity"; id: EntityId } | { kind: "tile"; x: number; y
 // The reactivity boundary: ONLY what the DOM HUD renders. Per-entity hot data
 // (positions, needs of hundreds of colonists) stays in plain Maps on the World
 // and is read directly by the renderer — never mirrored into signals.
+// One headcount: the HUD speaks for the colony it belongs to and says nothing about
+// anyone else's, so a per-player breakdown has no reader on this boundary.
 const colonistCount = signal(0);
 const resources = signal<Stock>({ wood: 0, stone: 0, food: 0 });
 const speed = signal(1);

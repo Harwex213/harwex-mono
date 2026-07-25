@@ -14,10 +14,22 @@ const enum Terrain {
   Mountain = 3, // cliff face: the second thing on the map you cannot walk through
 }
 
+// Which land a tile belongs to, on a map that has more than one. Terrain cannot
+// answer this: the barren side of a divided map and the stony rises of the green
+// side are both `Rock`, so "would a colonist go here" is a second field the
+// generator writes — not something the sim can read off the ground.
+const enum Region {
+  Peace = 0,
+  Dead = 1,
+}
+
 interface Grid {
   width: number;
   height: number;
   terrain: Uint8Array;
+  // Parallel to `terrain`, same indexing. Zero-filled, so a generator that draws
+  // no regions hands out a map that is peace lands end to end.
+  region: Uint8Array;
 }
 
 function createGrid(width: number, height: number): Grid {
@@ -25,6 +37,7 @@ function createGrid(width: number, height: number): Grid {
     width,
     height,
     terrain: new Uint8Array(width * height),
+    region: new Uint8Array(width * height),
   };
 }
 
@@ -44,9 +57,31 @@ function isWalkable(grid: Grid, x: number, y: number): boolean {
   return terrain !== Terrain.Water && terrain !== Terrain.Mountain;
 }
 
+// Walkable is not the same question as wanted: the dead lands are crossable, they
+// are just no place for a colonist to stroll to. Out of bounds counts as dead so a
+// caller only has to ask one of the two.
+function isDeadLands(grid: Grid, x: number, y: number): boolean {
+  if (!inBounds(grid, x, y)) {
+    return true;
+  }
+  return grid.region[tileIndex(grid, x, y)] === Region.Dead;
+}
+
 function tileToPx(tile: number): number {
   return tile * TILE_SIZE;
 }
 
 export type { Grid };
-export { TILE_SIZE, GRID_W, GRID_H, Terrain, createGrid, tileIndex, inBounds, isWalkable, tileToPx };
+export {
+  TILE_SIZE,
+  GRID_W,
+  GRID_H,
+  Region,
+  Terrain,
+  createGrid,
+  tileIndex,
+  inBounds,
+  isWalkable,
+  isDeadLands,
+  tileToPx,
+};

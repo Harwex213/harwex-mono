@@ -2,7 +2,7 @@ import { createRng, randInt, type Rng } from "./rng";
 import { createGrid, type Grid, GRID_H, GRID_W, isWalkable, Terrain, tileIndex } from "./grid";
 import { DEFAULT_MAP_GEN, getMapGenerator, type MapGenId } from "./mapgen";
 import { pickEntity } from "./picking";
-import { type MapObjectKind, RESOURCE_DEFS } from "../data/defs";
+import { type MapObjectKind, PLAYER_IDS, RESOURCE_DEFS } from "../data/defs";
 import type {
   Animal,
   EntityId,
@@ -11,6 +11,7 @@ import type {
   Job,
   Needs,
   PathFollow,
+  PlayerId,
   Position,
   ResourceKind,
   Stock,
@@ -28,6 +29,7 @@ interface World {
   entities: Set<EntityId>;
   positions: Map<EntityId, Position>;
   prevPositions: Map<EntityId, Position>; // last-tick pos, for render lerp
+  owners: Map<EntityId, PlayerId>; // whose entity this is; scenery and wildlife are in nobody's
   needs: Map<EntityId, Needs>;
   paths: Map<EntityId, PathFollow>;
   jobs: Map<EntityId, Job>;
@@ -46,7 +48,9 @@ interface World {
 // 5: grid widened to 96×64 — an old snapshot's grid is narrower than the camera
 //    bounds this build clamps to, so it pans into nothing.
 // 6: added the items component Map (loose resources on the ground).
-const SCHEMA_VERSION = 6;
+// 7: colonists belong to a player — the owners component Map.
+// 8: the grid carries a region per tile beside its terrain.
+const SCHEMA_VERSION = 8;
 
 // Rock density per terrain, in percent of eligible tiles. High ground is strewn
 // with boulders; grassland gets the occasional one.
@@ -70,6 +74,7 @@ function createEmptyWorld(seed: number): World {
     entities: new Set(),
     positions: new Map(),
     prevPositions: new Map(),
+    owners: new Map(),
     needs: new Map(),
     paths: new Map(),
     jobs: new Map(),
@@ -83,10 +88,14 @@ function createEmptyWorld(seed: number): World {
   };
 }
 
-function spawnColonist(world: World, pos: Position): EntityId {
+// An owner is required rather than defaulted: a colonist nobody owns is a colonist
+// the renderer has no sheet for and the HUD cannot count, and the caller always
+// knows whose it is (a starting camp, a spawn command).
+function spawnColonist(world: World, pos: Position, owner: PlayerId): EntityId {
   const id = allocId(world);
   world.positions.set(id, { x: pos.x, y: pos.y });
   world.prevPositions.set(id, { x: pos.x, y: pos.y });
+  world.owners.set(id, owner);
   world.needs.set(id, { hunger: 0, fatigue: 0 });
   world.jobs.set(id, { kind: JobKind.Wander, targetId: null, targetTile: null, progress: 0 });
   world.inventories.set(id, { wood: 0 });
@@ -134,6 +143,7 @@ function despawn(world: World, id: EntityId): void {
   world.entities.delete(id);
   world.positions.delete(id);
   world.prevPositions.delete(id);
+  world.owners.delete(id);
   world.needs.delete(id);
   world.paths.delete(id);
   world.jobs.delete(id);
@@ -212,11 +222,16 @@ function scatterRocks(world: World, rng: Rng, taken: Set<number>): void {
   }
 }
 
-// How far from the stockpile the starting colonists may land. A map can put a
-// wall across itself (see the divided-lands generator), and a colonist dropped
-// on the far side of one would never reach the stockpile: the colony starts as
-// one cluster, and the map says where that cluster goes.
-const COLONIST_SPAWN_RADIUS = 8;
+// How far from its camp centre a starting colonist may land. A map can put a wall
+// across itself (see the divided-lands generator), and a colonist dropped on the
+// far side of one would never reach the stockpile: a player starts as one cluster,
+// and the map says where that cluster goes.
+const COLONIST_SPAWN_RADIUS = 6;
+
+// Each player's own starting crew. Where that crew lands is the map's call, not
+// this builder's: only the generator knows which half of the map is worth settling
+// and where a wall runs (see MapGenResult.camps).
+const COLONISTS_PER_PLAYER = 6;
 
 // Loot the map starts with, lying about as if something had already been felled
 // here. Without it the ground stays bare until the first tree comes down, and
@@ -228,13 +243,22 @@ const STARTING_PILES: readonly { kind: ResourceKind; count: number }[] = [
 ];
 const STARTING_PILE_MAX = 4; // stack size drawn from 1..this, so piles are uneven
 
-// New game: let the chosen generator draw the map, scatter rocks, then place
-// colonists around the colony spot it picked and the rest of the life on
-// whatever walkable tiles are left.
-function newGame(seed: number, mapGenId: MapGenId = DEFAULT_MAP_GEN): World {
+// New game: let the chosen generator draw the map, scatter rocks, then fill in the
+// crew of every camp it marked and put the rest of the life on whatever walkable
+// tiles are left. The stockpile and `stock` stay shared for now: only the colonists
+// are split by player, the storehouse is not yet.
+//
+// Who gets a crew is the caller's policy (dev-game runs a single colony), but the
+// map is still drawn for every player in `PLAYER_IDS`: a seed has to produce the
+// same terrain wherever it is opened, or dev stops being a preview of the game.
+function newGame(
+  seed: number,
+  mapGenId: MapGenId = DEFAULT_MAP_GEN,
+  players: readonly PlayerId[] = PLAYER_IDS,
+): World {
   const world = createEmptyWorld(seed);
   const rng = createRng(seed);
-  const { colonyOrigin } = getMapGenerator(mapGenId).generate(world.grid, rng);
+  const { colonyOrigin, camps } = getMapGenerator(mapGenId).generate(world.grid, rng, PLAYER_IDS.length);
   world.stockpile = colonyOrigin;
 
   const taken = new Set<number>([tileIndex(world.grid, world.stockpile.x, world.stockpile.y)]);
@@ -259,12 +283,12 @@ function newGame(seed: number, mapGenId: MapGenId = DEFAULT_MAP_GEN): World {
     return { x: world.stockpile.x, y: world.stockpile.y };
   };
 
-  // Rejection sampling in a box around the stockpile; a cramped spot (a pocket
+  // Rejection sampling in a box around a camp centre; a cramped spot (a pocket
   // in the cliffs, a shore) falls back to anywhere walkable rather than hangs.
-  const claimTileNearColony = (): Position => {
+  const claimTileNear = (center: Position): Position => {
     for (let attempt = 0; attempt < 200; attempt += 1) {
-      const x = colonyOrigin.x + randInt(rng, -COLONIST_SPAWN_RADIUS, COLONIST_SPAWN_RADIUS + 1);
-      const y = colonyOrigin.y + randInt(rng, -COLONIST_SPAWN_RADIUS, COLONIST_SPAWN_RADIUS + 1);
+      const x = Math.round(center.x) + randInt(rng, -COLONIST_SPAWN_RADIUS, COLONIST_SPAWN_RADIUS + 1);
+      const y = Math.round(center.y) + randInt(rng, -COLONIST_SPAWN_RADIUS, COLONIST_SPAWN_RADIUS + 1);
       if (claim(x, y)) {
         return { x, y };
       }
@@ -272,9 +296,18 @@ function newGame(seed: number, mapGenId: MapGenId = DEFAULT_MAP_GEN): World {
     return claimWalkableTile();
   };
 
-  for (let i = 0; i < 6; i += 1) {
-    spawnColonist(world, claimTileNearColony());
-  }
+  // One camp per player, in PLAYER_IDS order — the map returns them in that same
+  // order, so the first player gets the first camp the generator drew. A generator
+  // that hands back fewer camps than there are players (it cannot, but the type
+  // cannot say so) drops the rest on the colony spot instead of nowhere. Camps of
+  // players who are not in this game stay empty.
+  players.forEach((player) => {
+    const index = PLAYER_IDS.indexOf(player);
+    const camp = camps[index] ?? colonyOrigin;
+    for (let i = 0; i < COLONISTS_PER_PLAYER; i += 1) {
+      spawnColonist(world, claimTileNear(camp), player);
+    }
+  });
   for (let i = 0; i < 40; i += 1) {
     spawnTree(world, claimWalkableTile());
   }

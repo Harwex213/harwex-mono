@@ -10,6 +10,7 @@ function BottomBar() {
   const engine = useEngine();
   const isPaused = paused.value;
   const rosterOpen = colonistsOpen.value;
+  const count = colonistCount.value;
 
   return (
     <div className="bottom-bar">
@@ -22,7 +23,7 @@ function BottomBar() {
           onClick={() => engine.dispatch({ type: "toggleColonists" })}
         >
           colonists
-          <span className="tab-count">{colonistCount.value}</span>
+          <span className="tab-count">{count}</span>
         </button>
       </div>
 

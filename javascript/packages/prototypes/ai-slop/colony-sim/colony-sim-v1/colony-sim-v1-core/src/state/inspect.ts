@@ -1,4 +1,4 @@
-import { isWalkable, Terrain, tileIndex } from "../sim/grid";
+import { isDeadLands, isWalkable, Terrain, tileIndex } from "../sim/grid";
 import { RESOURCE_DEFS } from "../data/defs";
 import { AnimalKind, type EntityId, JobKind } from "../sim/components";
 import { objectKindOf, type World } from "../sim/world";
@@ -12,6 +12,8 @@ interface SelectionDetails {
 }
 
 // Read model for the colonists panel: one row per colonist, already formatted.
+// Who owns a colonist is not in here: the HUD speaks for one colony, and ownership
+// only survives where it does work — the sprite sheet the renderer picks.
 interface ColonistRow {
   id: EntityId;
   title: string;
@@ -55,6 +57,9 @@ function describeTile(world: World, x: number, y: number): SelectionDetails {
   const rows: [string, string][] = [
     ["terrain", TERRAIN_NAMES[terrain]],
     ["walkable", isWalkable(world.grid, x, y) ? "yes" : "no"],
+    // Which land the tile belongs to, because walkable ground a colonist refuses to
+    // wander onto otherwise looks like a pathfinding bug.
+    ["region", isDeadLands(world.grid, x, y) ? "dead lands" : "peace lands"],
   ];
   if (world.stockpile.x === x && world.stockpile.y === y) {
     rows.push(["stockpile", `${world.stock.wood} wood`]);
@@ -129,9 +134,17 @@ function listColonists(world: World): ColonistRow[] {
   return rows;
 }
 
+// Headcount over the same Map that defines what a colonist is. Counted rather than
+// kept as a running tally: a spawn and a despawn would each have to remember to
+// touch the tally, and one that forgot would be a headcount drifting away from the
+// world with nothing to correct it.
+function countColonists(world: World): number {
+  return world.needs.size;
+}
+
 function percent(value: number): string {
   return `${Math.round(value * 100)}%`;
 }
 
 export type { SelectionDetails, ColonistRow };
-export { describeSelection, listColonists };
+export { countColonists, describeSelection, listColonists };

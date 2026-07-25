@@ -1,7 +1,8 @@
 import { Assets, Rectangle, Texture } from "pixi.js";
-import type { ResourceKind } from "@hw/colony-sim-v1-core";
+import { PLAYER_IDS, type PlayerId, type ResourceKind } from "@hw/colony-sim-v1-core";
 import chickenUrl from "@assets/Animals/Chicken.png";
-import farmerUrl from "@assets/Characters/Workers/FarmerTemplate.png";
+import farmerLimeUrl from "@assets/Characters/Workers/LimeWorker/FarmerLime.png";
+import farmerRedUrl from "@assets/Characters/Workers/RedWorker/FarmerRed.png";
 import grassUrl from "@assets/Ground/Grass.png";
 import texturedGrassUrl from "@assets/Ground/TexturedGrass.png";
 import shoreUrl from "@assets/Ground/Shore.png";
@@ -39,6 +40,15 @@ const FARMER_CLIPS = 3;
 const FARMER_COLS = 5;
 const FARMER_STAND_CLIP = 0;
 const FARMER_WALK_CLIP = 1;
+
+// One worker sheet per player. They are recolours of that same template, so a team
+// is a different image and not a different layout — nothing below this table is
+// per-player. Keyed by PlayerId rather than ordered like the art folders: which
+// sheet a colonist draws from is decided by who owns it.
+const WORKER_SHEETS: Record<PlayerId, string> = {
+  red: farmerRedUrl,
+  lime: farmerLimeUrl,
+};
 
 // Grass.png is a 5×1 palette strip: water, light grass, dark grass, then two sand
 // fills. Only the sand is taken from here — grass comes from the textured sheet
@@ -114,7 +124,7 @@ interface Cliff {
 // never reach the GPU as themselves — see `Fills`.
 interface Sheets {
   chicken: Creature;
-  colonist: Creature;
+  colonists: Record<PlayerId, Creature>; // one recolour of the worker sheet per player
   cliff: Cliff;
   crag: Texture[]; // whole-tile rock, for cliffs too narrow for the nine-slice
   trees: Texture[]; // [0] = stump, [1..] = canopies
@@ -202,6 +212,17 @@ function farmerClip(grid: Texture[][], clip: number): Texture[][] {
   return byFacing;
 }
 
+// One player's worker, cut from that player's sheet.
+function farmerCreature(sheet: Texture): Creature {
+  const grid = sliceSheet(sheet, FARMER_CLIPS * FACING_ROWS, FARMER_COLS, FRAME);
+  return {
+    // The stand clip animates a weight shift over five frames; standing still
+    // holds its neutral pose so idle colonists do not march in place.
+    stand: farmerClip(grid, FARMER_STAND_CLIP).map((row) => row[0]),
+    walk: farmerClip(grid, FARMER_WALK_CLIP),
+  };
+}
+
 // The fill sheets are decoded straight to bytes through a scratch canvas instead
 // of going through `Assets`: they never reach the GPU as themselves, only as the
 // pixels the bake copies out of them.
@@ -230,10 +251,11 @@ async function decodeFrames(url: string, rows: number, cols: number, frame: numb
 // reconcile() creates sprites synchronously and cannot await, and the terrain bake
 // needs the fills already decoded.
 async function loadTextures(): Promise<void> {
-  const [chicken, farmer, grassStrip, texturedGrass, deadGrass, shore, cliff, trees, rocks, wood, stone, food, selector] =
+  const [chicken, workers, grassStrip, texturedGrass, deadGrass, shore, cliff, trees, rocks, wood, stone, food, selector] =
     await Promise.all([
       Assets.load<Texture>(chickenUrl),
-      Assets.load<Texture>(farmerUrl),
+      // In PLAYER_IDS order, so the sheets line up with the players they belong to.
+      Promise.all(PLAYER_IDS.map((player) => Assets.load<Texture>(WORKER_SHEETS[player]))),
       decodeFrames(grassUrl, 1, GRASS_STRIP_COLS, FRAME),
       decodeFrames(texturedGrassUrl, GRASS_SHADES, GRASS_VARIANTS, FRAME),
       decodeFrames(deadGrassUrl, GRASS_SHADES, GRASS_VARIANTS, FRAME),
@@ -250,20 +272,17 @@ async function loadTextures(): Promise<void> {
   const cliffGrid = sliceSheet(cliff, CLIFF_ROWS, CLIFF_COLS, FRAME);
   // The chicken has no separate standing pose: frame 0 of its walk doubles as one.
   const chickenWalk = sliceSheet(chicken, FACING_ROWS, CHICKEN_WALK_FRAMES, FRAME);
-  const farmerGrid = sliceSheet(farmer, FARMER_CLIPS * FACING_ROWS, FARMER_COLS, FRAME);
-  const farmerStand = farmerClip(farmerGrid, FARMER_STAND_CLIP);
+  const colonists = {} as Record<PlayerId, Creature>;
+  PLAYER_IDS.forEach((player, index) => {
+    colonists[player] = farmerCreature(workers[index]);
+  });
 
   loaded = {
     chicken: {
       stand: chickenWalk.map((row) => row[0]),
       walk: chickenWalk,
     },
-    colonist: {
-      // The stand clip animates a weight shift over five frames; standing still
-      // holds its neutral pose so idle colonists do not march in place.
-      stand: farmerStand.map((row) => row[0]),
-      walk: farmerClip(farmerGrid, FARMER_WALK_CLIP),
-    },
+    colonists,
     cliff: cliffBlock(cliff, cliffGrid),
     crag: CRAG_COLS.map((col) => cliffGrid[CRAG_ROW][col]),
     trees: sliceSheet(trees, 1, TREE_VARIANTS, FRAME)[0],

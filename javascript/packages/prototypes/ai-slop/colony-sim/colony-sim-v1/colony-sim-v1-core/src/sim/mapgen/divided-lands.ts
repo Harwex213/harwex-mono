@@ -22,10 +22,10 @@
 
 import { createNoise2D } from "simplex-noise";
 import type { Position } from "../components";
-import { type Grid, isWalkable, Terrain, tileIndex } from "../grid";
+import { type Grid, isWalkable, Region, Terrain, tileIndex } from "../grid";
 import { randInt, type Rng } from "../rng";
 import type { MapGenerator, MapGenResult } from "./types";
-import { nearestWalkable } from "./util";
+import { campRows, nearestWalkable } from "./util";
 
 // Where the wall stands, as a fraction of the map's width.
 const RIDGE_X = 0.32;
@@ -156,6 +156,13 @@ const DEAD_MOUNTAIN = 0.55;
 const PEACE_SCALE = 15;
 const PEACE_ROCK = 0.62;
 
+// Every camp starts in the peace lands — the dead side is the place the map is
+// about coming *from*, and a crew that begins on it has already lost the half of
+// the game that is building something. The first and last camp keep this far from
+// the north and south edges, so a starting crew has room to spread in every
+// direction rather than half a box.
+const CAMP_MARGIN = 8;
+
 // Lakes are placed, not thresholded out of the biome field. A "water below -0.5"
 // band scatters a dozen ponds of the same size all over the green half, and every
 // one of them is a hole in the ground the player has to build around; a couple of
@@ -175,7 +182,7 @@ const LAKE_SHAPE_SCALE = 9;
 // Everything that keeps lakes apart measures with this, not with the radius.
 const LAKE_REACH = 1 + LAKE_WOBBLE;
 // Clearances, in tiles: between two lakes' rims, from the ridge apron, and around
-// the spot the colony starts on.
+// every spot the colony is promised — the origin and each player's camp.
 const LAKE_GAP = 6;
 const LAKE_SHORE = 3;
 const LAKE_COLONY_CLEARANCE = 12;
@@ -201,14 +208,23 @@ function ridgeEast(noise: (x: number, y: number) => number, grid: Grid, y: numbe
   return ridgeCenter(noise, grid, y) + ridgeHalfWidth(noise, y) + APRON;
 }
 
+// The middle of the green half on a given row: the ridge wanders, so "halfway to
+// the east edge" is a different tile on every row. Both the colony origin and the
+// camps sit on this line — the widest part of the buildable side, so the first
+// jobs are neither all uphill against the cliff nor pressed into the map's edge.
+function peaceMiddle(noise: (x: number, y: number) => number, grid: Grid, y: number): number {
+  return (ridgeEast(noise, grid, y) + grid.width - 1) / 2;
+}
+
 // Rejection sampling: a lake that lands on the ridge, on another lake or on the
-// colony's doorstep is redrawn, and a map with no room left simply gets fewer
-// lakes rather than an overlapping pair fused into an inland sea.
+// doorstep of anything the colony was promised (the origin, a camp) is redrawn,
+// and a map with no room left simply gets fewer lakes rather than an overlapping
+// pair fused into an inland sea.
 function placeLakes(
   grid: Grid,
   rng: Rng,
   ridgeNoise: (x: number, y: number) => number,
-  colony: Position,
+  keepClear: readonly Position[],
 ): Lake[] {
   const lakes: Lake[] = [];
   const count = randInt(rng, LAKE_COUNT_MIN, LAKE_COUNT_MAX + 1);
@@ -224,7 +240,8 @@ function placeLakes(
       const y = rng() * (grid.height - 1);
       const x = rng() * (grid.width - 1);
       const lake = { x, y, rx, ry };
-      if (Math.hypot(x - colony.x, y - colony.y) < Math.max(rx, ry) * LAKE_REACH + LAKE_COLONY_CLEARANCE) {
+      const reach = Math.max(rx, ry) * LAKE_REACH + LAKE_COLONY_CLEARANCE;
+      if (keepClear.some((spot) => Math.hypot(x - spot.x, y - spot.y) < reach)) {
         continue;
       }
       if (lakes.some((other) => overlaps(lake, other))) {
@@ -280,7 +297,7 @@ function inLake(
   return false;
 }
 
-function generate(grid: Grid, rng: Rng): MapGenResult {
+function generate(grid: Grid, rng: Rng, campCount: number): MapGenResult {
   // Four independent fields off the one rng: the ridge must be free to wander
   // without the biome either side of it — or a shoreline — following the same
   // wiggle.
@@ -291,13 +308,20 @@ function generate(grid: Grid, rng: Rng): MapGenResult {
   const passes = placePasses(grid, rng);
 
   // The colony starts in the peace lands, halfway between the ridge and the east
-  // edge — far enough from the cliff that the first jobs are not all uphill. It
-  // is chosen before the water is placed rather than after: `nearestWalkable`
-  // can push the colony off a lake, but only by walking it to the shore, and a
-  // colony on a shore has half the room a colony needs.
+  // edge — far enough from the cliff that the first jobs are not all uphill. The
+  // camps take the same line, spread north to south: first player at the top of
+  // the green half, last at the bottom, with the whole width of the ridge between
+  // each of them and the dead lands. All of it is chosen before the water is
+  // placed rather than after: `nearestWalkable` can push a spot off a lake, but
+  // only by walking it to the shore, and a camp on a shore has half the room a
+  // camp needs.
   const midY = Math.floor(grid.height / 2);
-  const colonyWish = { x: (ridgeEast(ridgeNoise, grid, midY) + grid.width - 1) / 2, y: midY };
-  const lakes = placeLakes(grid, rng, ridgeNoise, colonyWish);
+  const colonyWish = { x: peaceMiddle(ridgeNoise, grid, midY), y: midY };
+  const campWishes = campRows(grid, campCount, CAMP_MARGIN).map((y) => ({
+    x: peaceMiddle(ridgeNoise, grid, y),
+    y,
+  }));
+  const lakes = placeLakes(grid, rng, ridgeNoise, [colonyWish, ...campWishes]);
 
   for (let y = 0; y < grid.height; y += 1) {
     const center = ridgeCenter(ridgeNoise, grid, y);
@@ -320,7 +344,12 @@ function generate(grid: Grid, rng: Rng): MapGenResult {
       } else {
         terrain = peaceTerrain(peaceNoise(x / PEACE_SCALE, y / PEACE_SCALE));
       }
-      grid.terrain[tileIndex(grid, x, y)] = terrain;
+      const index = tileIndex(grid, x, y);
+      grid.terrain[index] = terrain;
+      // The ridge is the border, so the side of its centre line a tile fell on is
+      // the whole rule — the apron and the floor of a pass belong to the land they
+      // face, and nothing has to name the barren stone twice.
+      grid.region[index] = x + 0.5 < center ? Region.Dead : Region.Peace;
     }
   }
 
@@ -331,7 +360,10 @@ function generate(grid: Grid, rng: Rng): MapGenResult {
     clearPassMouth(grid, pass.y, Math.round(center + edge), 1);
   }
 
-  return { colonyOrigin: nearestWalkable(grid, colonyWish) };
+  return {
+    colonyOrigin: nearestWalkable(grid, colonyWish),
+    camps: campWishes.map((wish) => nearestWalkable(grid, wish)),
+  };
 }
 
 const dividedLands: MapGenerator = {

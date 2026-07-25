@@ -8,6 +8,12 @@ interface Position {
   y: number;
 }
 
+// Which player an entity belongs to. Ownership is a component rather than a set
+// of entities per player: a colonist that changes hands stays in every collection
+// it was already in, and the systems keep iterating one Map instead of asking
+// which player's list to walk. The ids themselves are content — see PLAYER_DEFS.
+type PlayerId = "red" | "lime";
+
 interface Needs {
   hunger: number; // 0 = full, 1 = starving
   fatigue: number; // 0 = rested, 1 = exhausted
@@ -64,5 +70,17 @@ interface Animal {
   idleTicks: number; // ticks left standing still before the next stroll
 }
 
-export type { EntityId, Position, Needs, PathFollow, Job, Inventory, Animal, ItemStack, ResourceKind, Stock };
+export type {
+  EntityId,
+  Position,
+  PlayerId,
+  Needs,
+  PathFollow,
+  Job,
+  Inventory,
+  Animal,
+  ItemStack,
+  ResourceKind,
+  Stock,
+};
 export { JobKind, AnimalKind };

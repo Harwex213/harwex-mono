@@ -2,7 +2,7 @@
 // Loaded into the `defs` store on first boot; referenced by id from sim data.
 // For the prototype they live in code; migrate to seeded IDB rows as they grow.
 
-import type { ResourceKind } from "../sim/components";
+import type { PlayerId, ResourceKind } from "../sim/components";
 
 interface TerrainDef {
   id: string;
@@ -25,6 +25,28 @@ interface ResourceDef {
   harvestTicks: number;
 }
 
+// The players a match is made of. Their colour is a definition and not a render
+// detail: the worker sheet, the roster dot and the headcount chip have to name the
+// same red, and three layers each holding their own hex is how they stop matching.
+interface PlayerDef {
+  id: PlayerId;
+  label: string;
+  color: string; // the team colour worn by this player's worker sprites
+}
+
+// Turn order / spawn order, and the only iteration order for anything per-player.
+const PLAYER_IDS: readonly PlayerId[] = ["red", "lime"];
+
+// Who an entity belongs to when nobody said: a spawn command without an owner, a
+// save written before ownership existed. Unowned is not an option for anything the
+// renderer has to pick a sheet for.
+const DEFAULT_PLAYER: PlayerId = "red";
+
+const PLAYER_DEFS: Record<PlayerId, PlayerDef> = {
+  red: { id: "red", label: "red", color: "#bc4e4e" },
+  lime: { id: "lime", label: "lime", color: "#87a947" },
+};
+
 const TERRAIN_DEFS: Record<string, TerrainDef> = {
   grass: { id: "grass", walkable: true, moveCost: 1 },
   water: { id: "water", walkable: false, moveCost: Infinity },
@@ -37,5 +59,5 @@ const RESOURCE_DEFS: Record<MapObjectKind, ResourceDef> = {
   rock: { id: "rock", yields: "stone", amount: 4, harvestTicks: 45 },
 };
 
-export type { MapObjectKind, TerrainDef, ResourceDef };
-export { TERRAIN_DEFS, RESOURCE_DEFS };
+export type { MapObjectKind, PlayerDef, TerrainDef, ResourceDef };
+export { DEFAULT_PLAYER, PLAYER_DEFS, PLAYER_IDS, TERRAIN_DEFS, RESOURCE_DEFS };

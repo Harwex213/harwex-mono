@@ -1,5 +1,13 @@
 import "./styles/reset.css";
-import { DEFAULT_MAP_GEN, GameEngine, MAP_GENERATORS, type MapGenId, newGame, type World } from "@hw/colony-sim-v1-core";
+import {
+  DEFAULT_MAP_GEN,
+  DEFAULT_PLAYER,
+  GameEngine,
+  MAP_GENERATORS,
+  type MapGenId,
+  newGame,
+  type World,
+} from "@hw/colony-sim-v1-core";
 import { createGameStage } from "@hw/colony-sim-v1-game-render";
 import { mountDevHud } from "./hud/mount";
 
@@ -26,8 +34,13 @@ function mapGenFromUrl(): MapGenId {
 // reloading constantly that is the normal case rather than the rare one. So the dev
 // app always starts from a freshly generated world, and `?seed=N` / `?map=ID` is
 // how you leave the defaults.
+//
+// One colony, not one per player: what is being watched here is a single crew's
+// behaviour, and a second crew only adds colonists that move on their own in the
+// middle of it. The map is still generated for all of them, so a seed draws the
+// same terrain as in the shipped game.
 async function boot(): Promise<void> {
-  const world = newGame(seedFromUrl(), mapGenFromUrl());
+  const world = newGame(seedFromUrl(), mapGenFromUrl(), [DEFAULT_PLAYER]);
 
   const stage = await createGameStage();
   const engine = new GameEngine({ world, createView: stage.createView });

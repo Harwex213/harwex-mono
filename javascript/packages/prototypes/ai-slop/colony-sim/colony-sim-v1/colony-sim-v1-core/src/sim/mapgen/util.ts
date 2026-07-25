@@ -35,4 +35,24 @@ function nearestWalkable(grid: Grid, wish: Position): Position {
   return { x: x0, y: y0 };
 }
 
-export { nearestWalkable };
+// The rows the starting camps sit on: spread along the map's height, the outermost
+// two a margin in from the edges. Camps go as far from each other as the map
+// allows — rival crews sharing a clearing is a fight on tick one — and they spread
+// along the height, not the width, because a map is free to run a wall down the
+// vertical axis (see divided-lands) and every camp has to end up on the same side
+// of it. The column is the generator's business; only the rows are shared.
+function campRows(grid: Grid, count: number, margin: number): number[] {
+  if (count <= 0) {
+    return [];
+  }
+  // A margin wider than half the map would put the first camp below the last.
+  const top = Math.min(margin, (grid.height - 1) / 2);
+  const bottom = grid.height - 1 - top;
+  if (count === 1) {
+    return [Math.round((top + bottom) / 2)];
+  }
+  const step = (bottom - top) / (count - 1);
+  return Array.from({ length: count }, (_, i) => Math.round(top + i * step));
+}
+
+export { campRows, nearestWalkable };

@@ -1,0 +1,17 @@
+{
+  "sheet": "RoadMarkers.png",
+  "tileSize": 16,
+  "columns": 8,
+  "sprites": [
+    { "name": "line_right", "x": 0, "y": 0, "w": 16, "h": 16 },
+    { "name": "line_left", "x": 16, "y": 0, "w": 16, "h": 16 },
+    { "name": "line_up", "x": 32, "y": 0, "w": 16, "h": 16 },
+    { "name": "line_down", "x": 48, "y": 0, "w": 16, "h": 16 },
+    { "name": "line_double", "x": 64, "y": 0, "w": 16, "h": 16 },
+    { "name": "line_double_long", "x": 80, "y": 0, "w": 16, "h": 16 },
+    { "name": "chevrons_right", "x": 96, "y": 0, "w": 16, "h": 16 },
+    { "name": "chevrons_left", "x": 112, "y": 0, "w": 16, "h": 16 },
+    { "name": "lane_up", "x": 0, "y": 16, "w": 16, "h": 16 },
+    { "name": "lane_down", "x": 16, "y": 16, "w": 16, "h": 16 }
+  ]
+}

@@ -3,11 +3,13 @@ import { createRng, type Rng } from "./sim/rng";
 import { runSystems } from "./sim/systems";
 import { inBounds } from "./sim/grid";
 import { pickEntity } from "./sim/picking";
-import type { EntityId, Position } from "./sim/components";
+import type { EntityId, PlayerId, Position } from "./sim/components";
+import { DEFAULT_PLAYER } from "./data/defs";
 import {
   destroyObject,
   randomFreeTile,
   spawnChicken,
+  spawnColonist,
   spawnItem,
   spawnRock,
   spawnTree,
@@ -26,7 +28,7 @@ import {
   selectionDetails,
   speed,
 } from "./state/signals";
-import { describeSelection, listColonists } from "./state/inspect";
+import { countColonists, describeSelection, listColonists } from "./state/inspect";
 import { type Command, CommandDispatcher, type Dispatcher, type SpawnKind } from "./commands";
 import type { CreateView, GameView } from "./view";
 
@@ -39,8 +41,11 @@ const AUTOSAVE_MS = 10000;
 const SPAWNED_STACK = 5;
 
 // The one place a spawn command's kind is turned into a spawner. A command names
-// what to create; how it is created stays in the sim.
-const SPAWNERS: Record<SpawnKind, (world: World, pos: Position) => EntityId> = {
+// what to create; how it is created stays in the sim. Every spawner is handed the
+// owner even though only a colonist has one — the alternative is two kinds of
+// spawner and a table that says which is which.
+const SPAWNERS: Record<SpawnKind, (world: World, pos: Position, owner: PlayerId) => EntityId> = {
+  colonist: spawnColonist,
   tree: spawnTree,
   rock: spawnRock,
   chicken: spawnChicken,
@@ -82,7 +87,7 @@ class GameEngine implements Dispatcher {
       commands: this.commands,
       pointer: { pick: this.selectAt, hover: this.hoverAt },
     });
-    colonistCount.value = this.world.needs.size;
+    this.refreshColonistCount();
     this.refreshResources();
     // Selection details are refreshed every tick for live needs, plus on every
     // selection change — a paused game runs no ticks but still repaints the panel.
@@ -158,11 +163,15 @@ class GameEngine implements Dispatcher {
       if (!tile) {
         continue;
       }
-      SPAWNERS[command.kind](this.world, tile);
+      SPAWNERS[command.kind](this.world, tile, command.owner ?? DEFAULT_PLAYER);
     }
-    // A paused game runs no tick to rebuild the read models, and the entity a
-    // destroy command just removed must not linger in the inspector.
+    // A paused game runs no tick to rebuild the read models, and what a command
+    // just put into (or took out of) the world must not wait for one: the entity a
+    // destroy removed cannot linger in the inspector, and a spawned colonist has to
+    // show up in the headcount and in an open roster right away.
     this.refreshSelection();
+    this.refreshColonistCount();
+    this.refreshColonists();
   }
 
   // Canvas click → selection. Picking needs the World, so it lives here rather
@@ -209,6 +218,12 @@ class GameEngine implements Dispatcher {
     colonistRoster.value = colonistsOpen.value ? listColonists(this.world) : [];
   }
 
+  // Headcount read model. A number compares by value, so the signal itself drops
+  // the writes that would repaint the bar with the number already on it.
+  private refreshColonistCount(): void {
+    colonistCount.value = countColonists(this.world);
+  }
+
   // Stock read model. Signals compare by identity, so handing over a fresh object
   // every tick would repaint the resources panel ten times a second for nothing.
   private refreshResources(): void {
@@ -235,7 +250,7 @@ class GameEngine implements Dispatcher {
     runSystems(this.world, { rng: this.rng });
     this.world.tick += 1;
 
-    colonistCount.value = this.world.needs.size;
+    this.refreshColonistCount();
     this.refreshResources();
     this.refreshSelection();
     if (colonistsOpen.value) {

@@ -1,5 +1,6 @@
 import { Application, Container, Sprite, type Texture } from "pixi.js";
 import {
+  DEFAULT_PLAYER,
   type Dispatcher,
   type EntityId,
   type GameView,
@@ -208,7 +209,11 @@ class GameRenderer implements GameView {
       return;
     }
 
-    this.createCreature(id, sheets().colonist, COLONIST_ANCHOR_Y);
+    // Which worker sheet a colonist draws from is the one thing about its art that
+    // comes from the world rather than from its id: teams have to stay apart across
+    // a reload, and a colonist that changed hands has to change colour with it.
+    // An unowned colonist is a spawner bug, not a state to draw as sheet-less.
+    this.createCreature(id, sheets().colonists[world.owners.get(id) ?? DEFAULT_PLAYER], COLONIST_ANCHOR_Y);
   }
 
   // Creatures are the animated entities: one sprite plus the sheet it draws from,

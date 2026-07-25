@@ -1,3 +1,4 @@
+import { DEFAULT_PLAYER } from "../data/defs";
 import { SCHEMA_VERSION, type World } from "../sim/world";
 import { type ColonyDb, SAVES_STORE } from "./db";
 
@@ -50,6 +51,23 @@ function hydrate(world: World): World {
   }
   if (!world.stock) {
     world.stock = { wood: 0, stone: 0, food: 0 };
+  }
+  // A world from before ownership has colonists but nobody to own them, and an
+  // owner-less colonist has no sprite sheet and no headcount to land in. Everything
+  // such a save says about them is that they were one colony, so they all join the
+  // default player rather than being left out of the component.
+  if (!world.owners) {
+    world.owners = new Map();
+    for (const id of world.needs.keys()) {
+      world.owners.set(id, DEFAULT_PLAYER);
+    }
+  }
+  // A grid from before regions has terrain and nothing to say about which land a
+  // tile belongs to. Zero-filled means peace lands everywhere, i.e. colonists
+  // wander the whole map as they did before the field existed — a wrong region
+  // would fence them out of their own half.
+  if (!world.grid.region || world.grid.region.length !== world.grid.terrain.length) {
+    world.grid.region = new Uint8Array(world.grid.terrain.length);
   }
   return world;
 }
