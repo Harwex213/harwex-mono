@@ -1,42 +1,22 @@
-import { gameTick, colonistCount, storedWood, speed, paused } from "@/ui/signals";
-import { useEngine } from "@/ui/engine-context";
+import { ResourcesPanel } from "@/ui/resources-panel";
+import { ColonistsPanel } from "@/ui/colonists-panel";
+import { InspectorPanel } from "@/ui/inspector-panel";
+import { BottomBar } from "@/ui/bottom-bar";
 import "@/ui/hud.css";
 
-const SPEEDS = [1, 2, 3];
-
-// DOM HUD overlaid on the pixi canvas. Reads signals (auto-subscribed by
-// @preact/signals) and pushes commands back through engine.dispatch.
+// DOM HUD overlaid on the pixi canvas: a resources readout in the top-right corner,
+// a bar along the bottom edge, and the panels that dock above its two ends. App
+// only composes them — each piece reads its own signals (auto-subscribed by
+// @preact/signals) and writes back through engine.dispatch, so nothing has to be
+// threaded through here.
 function App() {
-  const engine = useEngine();
-
   return (
-    <div className="hud">
-      <span className="stat">tick {gameTick.value}</span>
-      <span className="stat">colonists {colonistCount.value}</span>
-      <span className="stat">wood {storedWood.value}</span>
-      <span className="spacer" />
-      <div className="controls">
-        <button
-          type="button"
-          className={paused.value ? "active" : ""}
-          onClick={() => engine.dispatch({ type: "togglePause" })}
-        >
-          {paused.value ? "▶" : "❚❚"}
-        </button>
-        {SPEEDS.map((value) => {
-          return (
-            <button
-              type="button"
-              key={value}
-              className={!paused.value && speed.value === value ? "active" : ""}
-              onClick={() => engine.dispatch({ type: "setSpeed", value })}
-            >
-              {value}×
-            </button>
-          );
-        })}
-      </div>
-    </div>
+    <>
+      <ResourcesPanel />
+      <ColonistsPanel />
+      <InspectorPanel />
+      <BottomBar />
+    </>
   );
 }
 

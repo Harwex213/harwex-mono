@@ -1,14 +1,22 @@
-import { Application, Container, Graphics, Sprite } from "pixi.js";
-import { TILE_SIZE } from "@/sim/grid";
+import { Application, Container, Sprite, type Texture } from "pixi.js";
+import { TILE_SIZE, Terrain, tileIndex } from "@/sim/grid";
 import type { EntityId, Position } from "@/sim/components";
 import type { World } from "@/sim/world";
 import { createLayers, type Layers } from "@/render/layers";
-import { Camera } from "@/render/camera";
+import { Camera, type PointerHandlers } from "@/render/camera";
 import { buildGround } from "@/render/ground";
-import { Facing, FRAMES_PER_ROW, TREE_VARIANTS, sheets } from "@/render/textures";
+import { HOVER_STYLE, Marker, SELECTION_STYLE } from "@/render/selection";
+import { Facing, TREE_VARIANTS, sheets, type Creature } from "@/render/textures";
+import { selection, type Selection } from "@/ui/signals";
 import type { CommandDispatcher } from "@/commands";
 
 const ANIM_TICKS_PER_FRAME = 2; // 10 ticks/s ÷ 2 = 5 fps walk cycle
+
+// Feet on the tile point rather than the body centre, so y-sorting matches where
+// the creature actually stands. The two sheets draw their feet at different
+// heights inside the 16px frame, hence two values.
+const CHICKEN_ANCHOR_Y = 0.6;
+const COLONIST_ANCHOR_Y = 0.85;
 
 // Trees.png frame 0 is a bare stump, kept for a future harvested state; the
 // canopies follow it.
@@ -16,22 +24,45 @@ const TREE_CANOPIES = TREE_VARIANTS - 1;
 // Trunk base sits on the entity's tile point, canopy grows up from it.
 const TREE_ANCHOR_Y = 0.85;
 
+// Rocks.png rows are tints; only the first two are in play here.
+const ROCK_TINT_BARE = 0;
+const ROCK_TINT_MOSSY = 1; // the sheet's yellow-green moss row, matching the grass
+// A boulder sits on its tile rather than standing on it, so it hugs the point
+// more closely than a tree does.
+const ROCK_ANCHOR_Y = 0.65;
+
 // Owns the pixi view tree and reconciles it against the World every frame:
 // spawn sprites for new entities, drop stale ones, lerp positions between ticks.
 class GameRenderer {
   readonly camera: Camera;
   private layers: Layers;
+  private marker: Marker;
+  private hoverMarker: Marker;
+  // What a click would take right now, as resolved by the engine. View-only: it
+  // never reaches the World and never goes into a signal — the DOM HUD does not
+  // draw it, and repainting the HUD on every pointer move would be wasteful.
+  private hovered: Selection | null = null;
   private sprites = new Map<EntityId, Container>();
   // Animated subset of `sprites`, plus the facing derived from their movement.
   // Both are view-only state: nothing here is persisted.
-  private animals = new Map<EntityId, Sprite>();
+  private creatures = new Map<EntityId, { sprite: Sprite; sheet: Creature }>();
   private facings = new Map<EntityId, Facing>();
 
-  constructor(app: Application, world: World, commands: CommandDispatcher) {
+  constructor(app: Application, world: World, commands: CommandDispatcher, handlers: PointerHandlers) {
     this.layers = createLayers();
     app.stage.addChild(this.layers.root);
-    this.camera = new Camera(app, this.layers.root, commands);
+    this.camera = new Camera(app, this.layers.root, commands, handlers);
     this.layers.ground.addChild(buildGround(world));
+    // Hover first so the selection brackets stay on top where the two overlap.
+    this.hoverMarker = new Marker(this.layers.fx, HOVER_STYLE);
+    this.marker = new Marker(this.layers.fx, SELECTION_STYLE);
+  }
+
+  // Hover feedback is a view concern, so the engine only says *what* is under the
+  // cursor and the renderer decides how it looks — marker plus cursor shape.
+  setHover(target: Selection | null): void {
+    this.hovered = target;
+    this.camera.setHoverKind(target ? target.kind : null);
   }
 
   render(world: World, alpha: number): void {
@@ -49,13 +80,36 @@ class GameRenderer {
       sprite.zIndex = y;
     }
     this.animate(world);
+    const selected = selection.value;
+    this.place(this.marker, selected);
+    // Two markers on the same thing would just darken it; the selection already
+    // says everything the hover would.
+    this.place(this.hoverMarker, sameTarget(this.hovered, selected) ? null : this.hovered);
   }
 
-  // Pick the sheet frame per animal. Frames advance on sim ticks rather than
+  // The selection marker mirrors the `selection` signal — the same UI state the
+  // DOM panel reads, so canvas and HUD can never disagree about what is selected.
+  private place(marker: Marker, target: Selection | null): void {
+    if (!target) {
+      marker.hide();
+      return;
+    }
+    if (target.kind === "tile") {
+      marker.atTile(target.x, target.y);
+      return;
+    }
+    const sprite = this.sprites.get(target.id);
+    if (!sprite) {
+      marker.hide();
+      return;
+    }
+    marker.atSprite(sprite);
+  }
+
+  // Pick the sheet frame per creature. Frames advance on sim ticks rather than
   // wall clock, so pause freezes the walk cycle and 2×/3× speeds it up for free.
   private animate(world: World): void {
-    const frames = sheets().chicken;
-    for (const [id, sprite] of this.animals) {
+    for (const [id, actor] of this.creatures) {
       const cur = world.positions.get(id);
       const prev = world.prevPositions.get(id);
       if (!cur || !prev) {
@@ -63,9 +117,14 @@ class GameRenderer {
       }
       const facing = deriveFacing(prev, cur, this.facings.get(id) ?? Facing.Down);
       this.facings.set(id, facing);
-      const walking = world.paths.has(id);
-      const frame = walking ? Math.floor(world.tick / ANIM_TICKS_PER_FRAME) % FRAMES_PER_ROW : 0;
-      sprite.texture = frames[facing][frame];
+      // Having a path is what "moving" means here: the sim clears it on arrival,
+      // so the cycle stops on the same tick the entity does.
+      if (!world.paths.has(id)) {
+        actor.sprite.texture = actor.sheet.stand[facing];
+        continue;
+      }
+      const cycle = actor.sheet.walk[facing];
+      actor.sprite.texture = cycle[Math.floor(world.tick / ANIM_TICKS_PER_FRAME) % cycle.length];
     }
   }
 
@@ -79,21 +138,17 @@ class GameRenderer {
       if (!world.entities.has(id)) {
         sprite.destroy();
         this.sprites.delete(id);
-        this.animals.delete(id);
+        this.creatures.delete(id);
         this.facings.delete(id);
       }
     }
   }
 
-  // Animals and trees use the real 16px sheets; colonists are still placeholder
-  // graphics until a worker sheet is picked and recoloured.
+  // Everything on the map comes from the 16px sheets; which one is decided by the
+  // component that makes the entity what it is.
   private createSprite(world: World, id: EntityId): void {
     if (world.animals.has(id)) {
-      const sprite = new Sprite(sheets().chicken[Facing.Down][0]);
-      sprite.anchor.set(0.5, 0.6); // feet on the tile point, not the body centre
-      this.layers.entities.addChild(sprite);
-      this.sprites.set(id, sprite);
-      this.animals.set(id, sprite);
+      this.createCreature(id, sheets().chicken, CHICKEN_ANCHOR_Y);
       return;
     }
 
@@ -107,12 +162,61 @@ class GameRenderer {
       return;
     }
 
-    const colonist = new Graphics();
-    colonist.circle(0, 0, 5).fill(0xe8c39e);
-    colonist.circle(0, -1, 5).stroke({ color: 0x3a2a1a, width: 1 });
-    this.layers.entities.addChild(colonist);
-    this.sprites.set(id, colonist);
+    if (world.rocks.has(id)) {
+      const sprite = new Sprite(rockTexture(world, id));
+      sprite.anchor.set(0.5, ROCK_ANCHOR_Y);
+      this.layers.objects.addChild(sprite);
+      this.sprites.set(id, sprite);
+      return;
+    }
+
+    this.createCreature(id, sheets().colonist, COLONIST_ANCHOR_Y);
   }
+
+  // Creatures are the animated entities: one sprite plus the sheet it draws from,
+  // so animate() needs to know nothing about what kind of creature it is.
+  private createCreature(id: EntityId, sheet: Creature, anchorY: number): void {
+    const sprite = new Sprite(sheet.stand[Facing.Down]);
+    sprite.anchor.set(0.5, anchorY);
+    this.layers.entities.addChild(sprite);
+    this.sprites.set(id, sprite);
+    this.creatures.set(id, { sprite, sheet });
+  }
+}
+
+function sameTarget(a: Selection | null, b: Selection | null): boolean {
+  if (!a || !b || a.kind !== b.kind) {
+    return false;
+  }
+  if (a.kind === "entity" && b.kind === "entity") {
+    return a.id === b.id;
+  }
+  if (a.kind === "tile" && b.kind === "tile") {
+    return a.x === b.x && a.y === b.y;
+  }
+  return false;
+}
+
+// Size and tint of a boulder: derived from its id and the ground beneath it, so
+// they stay out of the save yet never change for a given rock. Bare stone on high
+// ground; on grass, half the boulders grow moss.
+function rockTexture(world: World, id: EntityId): Texture {
+  const { rocks } = sheets();
+  const pos = world.positions.get(id);
+  const terrain = pos
+    ? world.grid.terrain[tileIndex(world.grid, Math.round(pos.x), Math.round(pos.y))]
+    : Terrain.Rock;
+  const hash = hashId(id);
+  const tint = terrain !== Terrain.Rock && hash % 2 === 0 ? ROCK_TINT_MOSSY : ROCK_TINT_BARE;
+  return rocks[tint][(hash >>> 8) % rocks[tint].length];
+}
+
+// Entity ids run sequentially and have no bit spread of their own; one mixing
+// round gives the derived picks something to slice.
+function hashId(id: number): number {
+  let h = Math.imul(id ^ 0x9e3779b1, 0x85ebca6b) >>> 0;
+  h = Math.imul(h ^ (h >>> 13), 0xc2b2ae35) >>> 0;
+  return (h ^ (h >>> 16)) >>> 0;
 }
 
 // Facing comes from the last tick's movement; standing still keeps the previous

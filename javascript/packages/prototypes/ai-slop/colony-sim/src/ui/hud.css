@@ -1,43 +1,222 @@
-.hud {
+/* HUD chrome. Three ideas only: tokens, one shared panel/button look, and the
+   fixed slots the layout is made of — resources top-right, a bar along the bottom
+   edge, and panels docked above that bar's two ends. Nothing here is in the page
+   flow, so the canvas keeps the whole viewport and stays clickable between the
+   panels. */
+:root {
+  --hud-font: 13px/1.5 ui-monospace, monospace;
+  --hud-text: #f0ede6;
+  --hud-muted: #9aa892;
+  --hud-bg: rgba(20, 24, 20, 0.82);
+  --hud-border: #4a5a4a;
+  --hud-button-bg: #2f3a2f;
+  --hud-button-active-bg: #5a7a4a;
+  --hud-gap: 12px;
+  --hud-bar-h: 44px;
+}
+
+.panel {
   position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
+  padding: 8px 10px;
+  font: var(--hud-font);
+  color: var(--hud-text);
+  background: var(--hud-bg);
+  border: 1px solid var(--hud-border);
+  border-radius: 4px;
+}
+
+.panel-head {
   display: flex;
-  gap: 16px;
+  gap: 12px;
   align-items: center;
-  padding: 8px 12px;
-  font: 13px/1.4 ui-monospace, monospace;
-  color: #f0ede6;
-  background: rgba(20, 24, 20, 0.72);
-  pointer-events: none;
+  margin-bottom: 4px;
 }
 
-.hud .stat {
-  pointer-events: auto;
-}
-
-.hud .spacer {
+.panel-title {
   flex: 1;
+  font-weight: 700;
 }
 
-.hud .controls {
-  display: flex;
-  gap: 4px;
-  pointer-events: auto;
-}
-
-.hud button {
-  min-width: 34px;
-  padding: 4px 8px;
+.panel-close {
+  padding: 0 4px;
   font: inherit;
-  color: #f0ede6;
-  background: #2f3a2f;
-  border: 1px solid #4a5a4a;
+  line-height: 1;
+  color: var(--hud-muted);
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+.panel-close:hover {
+  color: var(--hud-text);
+}
+
+.panel-empty {
+  color: var(--hud-muted);
+}
+
+.hud-button {
+  min-width: 34px;
+  padding: 5px 9px;
+  font: var(--hud-font);
+  color: var(--hud-text);
+  background: var(--hud-button-bg);
+  border: 1px solid var(--hud-border);
   border-radius: 4px;
   cursor: pointer;
 }
 
-.hud button.active {
-  background: #5a7a4a;
+.hud-button:hover {
+  border-color: var(--hud-button-active-bg);
+}
+
+.hud-button.active {
+  background: var(--hud-button-active-bg);
+}
+
+/* Resources: the only always-on readout, kept clear of the bottom edge where
+   everything interactive lives. */
+.resources {
+  top: var(--hud-gap);
+  right: var(--hud-gap);
+  min-width: 96px;
+}
+
+.resources .panel-title {
+  margin-bottom: 4px;
+  font-weight: 400;
+  color: var(--hud-muted);
+  text-align: right;
+}
+
+.resource-list {
+  list-style: none;
+}
+
+.resource {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.resource-amount {
+  font-variant-numeric: tabular-nums;
+}
+
+.resource-icon {
+  width: 16px;
+  font-size: 14px;
+  line-height: 1;
+  text-align: center;
+}
+
+/* The bar spans the full width, so its own edge is the HUD's baseline: the docked
+   panels offset from it instead of hardcoding a bottom margin. */
+.bottom-bar {
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: flex;
+  gap: var(--hud-gap);
+  align-items: center;
+  justify-content: space-between;
+  height: var(--hud-bar-h);
+  padding: 0 var(--hud-gap);
+  font: var(--hud-font);
+  color: var(--hud-text);
+  background: var(--hud-bg);
+  border-top: 1px solid var(--hud-border);
+}
+
+.bar-group {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.tab {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.tab-count {
+  color: var(--hud-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.tab.active .tab-count {
+  color: var(--hud-text);
+}
+
+.colonists {
+  bottom: calc(var(--hud-bar-h) + var(--hud-gap));
+  left: var(--hud-gap);
+  width: 320px;
+  max-height: 40vh;
+  overflow-y: auto;
+}
+
+.roster {
+  list-style: none;
+}
+
+.roster-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 0 10px;
+  align-items: center;
+  width: 100%;
+  padding: 3px 4px;
+  font: var(--hud-font);
+  color: var(--hud-text);
+  text-align: left;
+  background: none;
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.roster-row:hover {
+  background: rgba(90, 122, 74, 0.28);
+}
+
+.roster-row.active {
+  background: var(--hud-button-active-bg);
+}
+
+.roster-job {
+  overflow: hidden;
+  color: var(--hud-muted);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.roster-needs {
+  color: var(--hud-muted);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.roster-row.active .roster-job,
+.roster-row.active .roster-needs {
+  color: var(--hud-text);
+}
+
+.inspector {
+  right: var(--hud-gap);
+  bottom: calc(var(--hud-bar-h) + var(--hud-gap));
+  min-width: 200px;
+}
+
+.detail-row {
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.detail-label {
+  color: var(--hud-muted);
 }

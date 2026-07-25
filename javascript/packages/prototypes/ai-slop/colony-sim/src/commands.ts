@@ -1,10 +1,10 @@
-import { paused, selectedId, speed } from "@/ui/signals";
-import type { EntityId } from "@/sim/components";
+import { colonistsOpen, paused, selection, speed, type Selection } from "@/ui/signals";
 
 type Command =
   | { type: "setSpeed"; value: number }
   | { type: "togglePause" }
-  | { type: "select"; id: EntityId | null };
+  | { type: "select"; selection: Selection | null }
+  | { type: "toggleColonists" };
 
 // The single write path into UI state: every input source (React HUD, camera
 // hotkeys, later the build mode) goes through dispatch instead of poking signals
@@ -16,7 +16,9 @@ class CommandDispatcher {
     } else if (command.type === "togglePause") {
       paused.value = !paused.value;
     } else if (command.type === "select") {
-      selectedId.value = command.id;
+      selection.value = command.selection;
+    } else if (command.type === "toggleColonists") {
+      colonistsOpen.value = !colonistsOpen.value;
     }
   }
 }

@@ -37,6 +37,13 @@ interface Inventory {
   wood: number;
 }
 
+// Colony-wide stock. One record rather than loose counters on the World: the HUD
+// reads the pools as a set, and a new resource should not mean a new field in
+// three layers.
+type ResourceKind = "wood" | "stone" | "food";
+
+type Stock = Record<ResourceKind, number>;
+
 const enum AnimalKind {
   Chicken = 0,
 }
@@ -48,5 +55,5 @@ interface Animal {
   idleTicks: number; // ticks left standing still before the next stroll
 }
 
-export type { EntityId, Position, Needs, PathFollow, Job, Inventory, Animal };
+export type { EntityId, Position, Needs, PathFollow, Job, Inventory, Animal, ResourceKind, Stock };
 export { JobKind, AnimalKind };

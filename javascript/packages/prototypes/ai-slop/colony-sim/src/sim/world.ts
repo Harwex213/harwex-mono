@@ -1,7 +1,7 @@
 import { createNoise2D } from "simplex-noise";
 import { createRng, randInt, type Rng } from "@/sim/rng";
 import { createGrid, tileIndex, isWalkable, Terrain, GRID_W, GRID_H, type Grid } from "@/sim/grid";
-import type { EntityId, Position, Needs, PathFollow, Job, Inventory, Animal } from "@/sim/components";
+import type { EntityId, Position, Needs, PathFollow, Job, Inventory, Animal, Stock } from "@/sim/components";
 import { JobKind, AnimalKind } from "@/sim/components";
 
 // The World is the single runtime source of truth. Pure data only (no
@@ -21,12 +21,20 @@ interface World {
   inventories: Map<EntityId, Inventory>;
   animals: Map<EntityId, Animal>;
   trees: Set<EntityId>;
+  rocks: Set<EntityId>;
   stockpile: Position;
-  storedWood: number;
+  stock: Stock;
 }
 
 // 2: added the animals component Map.
-const SCHEMA_VERSION = 2;
+// 3: rocks became entities (were baked ground decor).
+// 4: storedWood → stock record (wood / stone / food).
+const SCHEMA_VERSION = 4;
+
+// Rock density per terrain, in percent of eligible tiles. High ground is strewn
+// with boulders; grassland gets the occasional one.
+const STONE_ROCK_PERCENT = 22;
+const GRASS_ROCK_PERCENT = 3;
 
 function allocId(world: World): EntityId {
   const id = world.nextId;
@@ -67,8 +75,9 @@ function createEmptyWorld(seed: number): World {
     inventories: new Map(),
     animals: new Map(),
     trees: new Set(),
+    rocks: new Set(),
     stockpile: { x: Math.floor(GRID_W / 2), y: Math.floor(GRID_H / 2) },
-    storedWood: 0,
+    stock: { wood: 0, stone: 0, food: 0 },
   };
 }
 
@@ -98,17 +107,52 @@ function spawnTree(world: World, pos: Position): EntityId {
   return id;
 }
 
-// New game: generate terrain, then scatter colonists and trees on walkable land.
+function spawnRock(world: World, pos: Position): EntityId {
+  const id = allocId(world);
+  world.positions.set(id, { x: pos.x, y: pos.y });
+  world.prevPositions.set(id, { x: pos.x, y: pos.y });
+  world.rocks.add(id);
+  return id;
+}
+
+// Boulders are entities rather than ground decor because they are selectable
+// (and one day mineable) — that is the line between the baked layer and the
+// world. Their tiles are claimed here so nothing else spawns on top of them.
+function scatterRocks(world: World, rng: Rng, taken: Set<number>): void {
+  const { grid } = world;
+  for (let y = 0; y < grid.height; y += 1) {
+    for (let x = 0; x < grid.width; x += 1) {
+      const index = tileIndex(grid, x, y);
+      const terrain = grid.terrain[index];
+      if (terrain === Terrain.Water || taken.has(index)) {
+        continue;
+      }
+      const density = terrain === Terrain.Rock ? STONE_ROCK_PERCENT : GRASS_ROCK_PERCENT;
+      if (rng() * 100 >= density) {
+        continue;
+      }
+      taken.add(index);
+      spawnRock(world, { x, y });
+    }
+  }
+}
+
+// New game: generate terrain, scatter rocks, then place colonists, trees and
+// animals on whatever walkable tiles are left.
 function newGame(seed: number): World {
   const world = createEmptyWorld(seed);
   const rng = createRng(seed);
   generateTerrain(world.grid, rng);
 
-  const randomWalkableTile = (): Position => {
+  const taken = new Set<number>([tileIndex(world.grid, world.stockpile.x, world.stockpile.y)]);
+  scatterRocks(world, rng, taken);
+
+  const claimWalkableTile = (): Position => {
     for (let attempt = 0; attempt < 200; attempt += 1) {
       const x = randInt(rng, 0, world.grid.width);
       const y = randInt(rng, 0, world.grid.height);
-      if (isWalkable(world.grid, x, y)) {
+      if (isWalkable(world.grid, x, y) && !taken.has(tileIndex(world.grid, x, y))) {
+        taken.add(tileIndex(world.grid, x, y));
         return { x, y };
       }
     }
@@ -116,16 +160,16 @@ function newGame(seed: number): World {
   };
 
   for (let i = 0; i < 6; i += 1) {
-    spawnColonist(world, randomWalkableTile());
+    spawnColonist(world, claimWalkableTile());
   }
   for (let i = 0; i < 40; i += 1) {
-    spawnTree(world, randomWalkableTile());
+    spawnTree(world, claimWalkableTile());
   }
   for (let i = 0; i < 8; i += 1) {
-    spawnChicken(world, randomWalkableTile());
+    spawnChicken(world, claimWalkableTile());
   }
   return world;
 }
 
 export type { World };
-export { SCHEMA_VERSION, newGame, allocId, spawnColonist, spawnTree, spawnChicken };
+export { SCHEMA_VERSION, newGame, allocId, spawnColonist, spawnTree, spawnRock, spawnChicken };

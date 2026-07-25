@@ -9,7 +9,7 @@ const HARVEST_TICKS = 30;
 // TODO:
 //   HarvestTree: on arrival at targetId tree, accumulate progress up to
 //     HARVEST_TICKS, then remove the tree, +wood to inventory, switch to Haul.
-//   Haul: path to stockpile, on arrival move inventory.wood → world.storedWood.
+//   Haul: path to stockpile, on arrival move inventory.wood → world.stock.wood.
 function workSystem(_world: World): void {
   void HARVEST_TICKS;
 }

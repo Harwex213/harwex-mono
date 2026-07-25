@@ -1,25 +1,39 @@
 import { Assets, Rectangle, Texture } from "pixi.js";
 import chickenUrl from "@assets/Animals/Chicken.png";
+import farmerUrl from "@assets/Characters/Workers/FarmerTemplate.png";
 import grassUrl from "@assets/Ground/Grass.png";
 import texturedGrassUrl from "@assets/Ground/TexturedGrass.png";
 import shoreUrl from "@assets/Ground/Shore.png";
 import deadGrassUrl from "@assets/Ground/DeadGrass.png";
 import treesUrl from "@assets/Nature/Trees.png";
 import rocksUrl from "@assets/Nature/Rocks.png";
+import selectorUrl from "@assets/User Interface/BoxSelector.png";
 
 // The sheets ship without JSON atlases, so every frame layout is described here
 // by hand. All of the ones used so far are on a 16px grid = one logical tile.
 const FRAME = 16;
-const FRAMES_PER_ROW = 4; // chicken walk cycle length
 const FACING_ROWS = 4;
 
-// Row index in an animal sheet == facing direction.
+// Facing is the semantic axis every creature sheet is remapped onto; the numbers
+// are Chicken.png's own row order, which the farmer sheet does not share.
 const enum Facing {
   Down = 0,
   Up = 1,
   Left = 2,
   Right = 3,
 }
+
+const CHICKEN_WALK_FRAMES = 4;
+
+// FarmerTemplate.png is 5×12 frames: three clips stacked, each one row per
+// facing, in the sheet's own order (down, up, right, left). Clip 0 stands,
+// clip 1 walks with the arms swinging out, clip 2 swings a tool over three
+// frames — that last one waits for the work system to emit harvest jobs.
+const FARMER_CLIP_ROWS: readonly Facing[] = [Facing.Down, Facing.Up, Facing.Right, Facing.Left];
+const FARMER_CLIPS = 3;
+const FARMER_COLS = 5;
+const FARMER_STAND_CLIP = 0;
+const FARMER_WALK_CLIP = 1;
 
 // Grass.png is a 5×1 palette strip: water, light grass, dark grass, then two
 // sand fills. Only the sand is taken from here — grass comes from the textured
@@ -39,17 +53,29 @@ const GRASS_VARIANTS = 3; // cols: plain, tuft A, tuft B
 const TREE_VARIANTS = 4; // cols: stump, then three canopies
 const ROCK_TINTS = 4; // rows: bare, mossy, green moss, snow
 const ROCK_SIZES = 3; // cols: small → large
+// BoxSelector.png is 32×16: the same corner brackets twice, wide then inset —
+// i.e. a two-frame pulse, not two different markers.
+const SELECTOR_FRAMES = 2;
+
+// A creature sheet reduced to the two states the renderer distinguishes: the
+// pose held while standing, and the cycle played while moving.
+interface Creature {
+  stand: Texture[]; // [facing]
+  walk: Texture[][]; // [facing][frame]
+}
 
 // Every texture the renderer can draw, resolved to a semantic axis so callers
 // never index raw sheet coordinates.
 interface Sheets {
-  chicken: Texture[][]; // [facing][walk frame]
+  chicken: Creature;
+  colonist: Creature;
   grass: Texture[][]; // [shade][plain | tuft A | tuft B]
   dryGrass: Texture[][]; // same axes as `grass`, for high rocky ground
   sand: Texture[]; // beach fills
   water: Texture[]; // shallow → open water
   trees: Texture[]; // [0] = stump, [1..] = canopies
   rocks: Texture[][]; // [tint][size]
+  selector: Texture[]; // selection brackets: [wide, inset]
 }
 
 let loaded: Sheets | null = null;
@@ -74,30 +100,55 @@ function sliceSheet(base: Texture, rows: number, cols: number, frame: number): T
   return grid;
 }
 
+// One clip of the farmer sheet, with its rows reordered onto Facing.
+function farmerClip(grid: Texture[][], clip: number): Texture[][] {
+  const byFacing: Texture[][] = [];
+  FARMER_CLIP_ROWS.forEach((facing, row) => {
+    byFacing[facing] = grid[clip * FACING_ROWS + row];
+  });
+  return byFacing;
+}
+
 // Must be awaited during boot, before the first render frame: the renderer's
 // reconcile() creates sprites synchronously and cannot await.
 async function loadTextures(): Promise<void> {
-  const [chicken, grassStrip, texturedGrass, deadGrass, shore, trees, rocks] = await Promise.all([
+  const [chicken, farmer, grassStrip, texturedGrass, deadGrass, shore, trees, rocks, selector] = await Promise.all([
     Assets.load<Texture>(chickenUrl),
+    Assets.load<Texture>(farmerUrl),
     Assets.load<Texture>(grassUrl),
     Assets.load<Texture>(texturedGrassUrl),
     Assets.load<Texture>(deadGrassUrl),
     Assets.load<Texture>(shoreUrl),
     Assets.load<Texture>(treesUrl),
     Assets.load<Texture>(rocksUrl),
+    Assets.load<Texture>(selectorUrl),
   ]);
 
   const grassRow = sliceSheet(grassStrip, 1, GRASS_STRIP_COLS, FRAME)[0];
   const shoreRow = sliceSheet(shore, 1, SHORE_STRIP_COLS, FRAME)[0];
+  // The chicken has no separate standing pose: frame 0 of its walk doubles as one.
+  const chickenWalk = sliceSheet(chicken, FACING_ROWS, CHICKEN_WALK_FRAMES, FRAME);
+  const farmerGrid = sliceSheet(farmer, FARMER_CLIPS * FACING_ROWS, FARMER_COLS, FRAME);
+  const farmerStand = farmerClip(farmerGrid, FARMER_STAND_CLIP);
 
   loaded = {
-    chicken: sliceSheet(chicken, FACING_ROWS, FRAMES_PER_ROW, FRAME),
+    chicken: {
+      stand: chickenWalk.map((row) => row[0]),
+      walk: chickenWalk,
+    },
+    colonist: {
+      // The stand clip animates a weight shift over five frames; standing still
+      // holds its neutral pose so idle colonists do not march in place.
+      stand: farmerStand.map((row) => row[0]),
+      walk: farmerClip(farmerGrid, FARMER_WALK_CLIP),
+    },
     grass: sliceSheet(texturedGrass, GRASS_SHADES, GRASS_VARIANTS, FRAME),
     dryGrass: sliceSheet(deadGrass, GRASS_SHADES, GRASS_VARIANTS, FRAME),
     sand: GRASS_STRIP_SAND.map((col) => grassRow[col]),
     water: SHORE_STRIP_WATER.map((col) => shoreRow[col]),
     trees: sliceSheet(trees, 1, TREE_VARIANTS, FRAME)[0],
     rocks: sliceSheet(rocks, ROCK_TINTS, ROCK_SIZES, FRAME),
+    selector: sliceSheet(selector, 1, SELECTOR_FRAMES, FRAME)[0],
   };
 }
 
@@ -108,5 +159,5 @@ function sheets(): Sheets {
   return loaded;
 }
 
-export type { Sheets };
-export { Facing, FRAMES_PER_ROW, TREE_VARIANTS, loadTextures, sheets };
+export type { Creature, Sheets };
+export { Facing, TREE_VARIANTS, loadTextures, sheets };
