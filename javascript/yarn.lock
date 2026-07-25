@@ -2063,7 +2063,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@hw/colony-sim@workspace:packages/prototypes/ai-slop/colony-sim"
   dependencies:
-    "@pixi/tilemap": "npm:5.0.1"
+    "@pixi/tilemap": "npm:5.0.2"
     "@preact/signals": "npm:2.9.4"
     "@rspack/cli": "npm:2.1.4"
     "@rspack/core": "npm:2.1.4"
@@ -3077,12 +3077,12 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@pixi/tilemap@npm:5.0.1":
-  version: 5.0.1
-  resolution: "@pixi/tilemap@npm:5.0.1"
+"@pixi/tilemap@npm:5.0.2":
+  version: 5.0.2
+  resolution: "@pixi/tilemap@npm:5.0.2"
   peerDependencies:
-    pixi.js: ">=8.0.2"
-  checksum: 10/a9016788eb6657ff69a60ae6c4a0bac4c452b31942ec3657efe467203ca31d0b1408ef902dbe64ae0f96b00d17d24496d85bbfb5180cf6621235ae21b6a69179
+    pixi.js: ">=8.5.0"
+  checksum: 10/fe967ca5ac11c8754793b82916d5986bb2dbd802ea0ccbce9c5db80ca170becf78205d68437fd6f8c8705de2733a9bd81384858a09edf194ef3f34e53960554d
   languageName: node
   linkType: hard
 
