@@ -1,19 +1,20 @@
 import { Application, Container, Graphics, Sprite } from "pixi.js";
-import { TILE_SIZE, Terrain, tileIndex } from "@/sim/grid";
+import { TILE_SIZE } from "@/sim/grid";
 import type { EntityId, Position } from "@/sim/components";
 import type { World } from "@/sim/world";
 import { createLayers, type Layers } from "@/render/layers";
 import { Camera } from "@/render/camera";
-import { Facing, FRAMES_PER_ROW, chickenFrames } from "@/render/textures";
+import { buildGround } from "@/render/ground";
+import { Facing, FRAMES_PER_ROW, TREE_VARIANTS, sheets } from "@/render/textures";
 import type { CommandDispatcher } from "@/commands";
 
-const TERRAIN_COLORS: Record<number, number> = {
-  [Terrain.Grass]: 0x4a7c3a,
-  [Terrain.Water]: 0x2b5d8c,
-  [Terrain.Rock]: 0x7a7168,
-};
-
 const ANIM_TICKS_PER_FRAME = 2; // 10 ticks/s ÷ 2 = 5 fps walk cycle
+
+// Trees.png frame 0 is a bare stump, kept for a future harvested state; the
+// canopies follow it.
+const TREE_CANOPIES = TREE_VARIANTS - 1;
+// Trunk base sits on the entity's tile point, canopy grows up from it.
+const TREE_ANCHOR_Y = 0.85;
 
 // Owns the pixi view tree and reconciles it against the World every frame:
 // spawn sprites for new entities, drop stale ones, lerp positions between ticks.
@@ -30,7 +31,7 @@ class GameRenderer {
     this.layers = createLayers();
     app.stage.addChild(this.layers.root);
     this.camera = new Camera(app, this.layers.root, commands);
-    this.drawGround(world);
+    this.layers.ground.addChild(buildGround(world));
   }
 
   render(world: World, alpha: number): void {
@@ -53,7 +54,7 @@ class GameRenderer {
   // Pick the sheet frame per animal. Frames advance on sim ticks rather than
   // wall clock, so pause freezes the walk cycle and 2×/3× speeds it up for free.
   private animate(world: World): void {
-    const frames = chickenFrames();
+    const frames = sheets().chicken;
     for (const [id, sprite] of this.animals) {
       const cur = world.positions.get(id);
       const prev = world.prevPositions.get(id);
@@ -84,11 +85,11 @@ class GameRenderer {
     }
   }
 
-  // Animals use the real 16px sheets; trees and colonists are still placeholder
-  // graphics until their spritesheets are atlased.
+  // Animals and trees use the real 16px sheets; colonists are still placeholder
+  // graphics until a worker sheet is picked and recoloured.
   private createSprite(world: World, id: EntityId): void {
     if (world.animals.has(id)) {
-      const sprite = new Sprite(chickenFrames()[Facing.Down][0]);
+      const sprite = new Sprite(sheets().chicken[Facing.Down][0]);
       sprite.anchor.set(0.5, 0.6); // feet on the tile point, not the body centre
       this.layers.entities.addChild(sprite);
       this.sprites.set(id, sprite);
@@ -96,34 +97,21 @@ class GameRenderer {
       return;
     }
 
-    const g = new Graphics();
-    let parent: Container;
     if (world.trees.has(id)) {
-      g.poly([0, -12, 6, 2, -6, 2]).fill(0x2f6b2a);
-      parent = this.layers.objects;
-    } else {
-      g.circle(0, 0, 5).fill(0xe8c39e);
-      g.circle(0, -1, 5).stroke({ color: 0x3a2a1a, width: 1 });
-      parent = this.layers.entities;
+      // Canopy variant from the entity id: a view-only detail, so it stays out of
+      // the save yet never changes for a given tree.
+      const sprite = new Sprite(sheets().trees[1 + (id % TREE_CANOPIES)]);
+      sprite.anchor.set(0.5, TREE_ANCHOR_Y);
+      this.layers.objects.addChild(sprite);
+      this.sprites.set(id, sprite);
+      return;
     }
-    parent.addChild(g);
-    this.sprites.set(id, g);
-  }
 
-  private drawGround(world: World): void {
-    const g = new Graphics();
-    const { grid } = world;
-    for (let y = 0; y < grid.height; y += 1) {
-      for (let x = 0; x < grid.width; x += 1) {
-        const terrain = grid.terrain[tileIndex(grid, x, y)];
-        g.rect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
-        g.fill(TERRAIN_COLORS[terrain] ?? 0x000000);
-      }
-    }
-    // Stockpile marker.
-    g.rect(world.stockpile.x * TILE_SIZE, world.stockpile.y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
-    g.fill(0xcaa24a);
-    this.layers.ground.addChild(g);
+    const colonist = new Graphics();
+    colonist.circle(0, 0, 5).fill(0xe8c39e);
+    colonist.circle(0, -1, 5).stroke({ color: 0x3a2a1a, width: 1 });
+    this.layers.entities.addChild(colonist);
+    this.sprites.set(id, colonist);
   }
 }
 
