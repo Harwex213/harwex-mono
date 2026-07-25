@@ -67,6 +67,7 @@ src/
   render/
     renderer.ts          GameRenderer: реконсилиация, lerp, слои
     layers.ts            создание pixi-контейнеров (ground/objects/entities/fx)
+    camera.ts            pan (drag / WASD-стрелки) + zoom к курсору поверх root
   ui/
     App.tsx              React HUD (часы, ресурсы, панель выбора)
     signals.ts           UI-signals + производные computed
@@ -82,8 +83,9 @@ src/
 ## Мир и координаты
 
 - Сетка **64×64**, логический тайл **16px** (базовый размер ассетов).
-- pixi-stage масштабируется `×3` с `scaleMode: "nearest"` (без замыливания).
 - Логика в tile-координатах; `worldPx = tile * 16`.
+- **Камера** — единственный владелец трансформа `layers.root`: `zoom` ×1…×8 (старт ×3, шаг колесом якорится на курсоре), pan drag'ом (ЛКМ/СКМ) и WASD/стрелками, оба зажаты границами мира (мир меньше вьюпорта → центрируется). Offset хранится во float, в pixi уходит округлённым — иначе pixel-art дрожит при панораме. `scaleMode: "nearest"` на текстурах (без замыливания).
+- Sim о камере не знает: экран→мир только через `camera.screenToTile()`.
 - Колонисты/животные — **32px** `AnimatedSprite` (листы кадров, напр. Horse 128×192 = 4×6).
 
 ## MVP-слайс

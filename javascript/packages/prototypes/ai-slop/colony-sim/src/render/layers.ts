@@ -2,7 +2,8 @@ import { Container } from "pixi.js";
 
 // Stage layering: static ground at the bottom, then world objects and living
 // entities (both y-sorted for top-down overlap), then transient FX. React HUD
-// lives in the DOM above the canvas, not in this tree.
+// lives in the DOM above the canvas, not in this tree. `root` carries the camera
+// transform (pan offset + zoom scale), so children stay in world px.
 interface Layers {
   root: Container;
   ground: Container;
@@ -11,9 +12,8 @@ interface Layers {
   fx: Container;
 }
 
-function createLayers(scale: number): Layers {
+function createLayers(): Layers {
   const root = new Container();
-  root.scale.set(scale);
 
   const ground = new Container();
   const objects = new Container();

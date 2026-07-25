@@ -3,8 +3,7 @@ import { TILE_SIZE, Terrain, tileIndex } from "@/sim/grid";
 import type { EntityId } from "@/sim/components";
 import type { World } from "@/sim/world";
 import { createLayers, type Layers } from "@/render/layers";
-
-const STAGE_SCALE = 3;
+import { Camera } from "@/render/camera";
 
 const TERRAIN_COLORS: Record<number, number> = {
   [Terrain.Grass]: 0x4a7c3a,
@@ -15,12 +14,14 @@ const TERRAIN_COLORS: Record<number, number> = {
 // Owns the pixi view tree and reconciles it against the World every frame:
 // spawn sprites for new entities, drop stale ones, lerp positions between ticks.
 class GameRenderer {
+  readonly camera: Camera;
   private layers: Layers;
   private sprites = new Map<EntityId, Graphics>();
 
   constructor(app: Application, world: World) {
-    this.layers = createLayers(STAGE_SCALE);
+    this.layers = createLayers();
     app.stage.addChild(this.layers.root);
+    this.camera = new Camera(app, this.layers.root);
     this.drawGround(world);
   }
 
@@ -87,4 +88,4 @@ class GameRenderer {
   }
 }
 
-export { GameRenderer, STAGE_SCALE };
+export { GameRenderer };
