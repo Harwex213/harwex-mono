@@ -2059,9 +2059,9 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@hw/colony-sim-v2@workspace:packages/prototypes/ai-slop/colony-sim-v2":
+"@hw/colony-sim-v1@workspace:packages/prototypes/ai-slop/colony-sim/colony-sim-v1":
   version: 0.0.0-use.local
-  resolution: "@hw/colony-sim-v2@workspace:packages/prototypes/ai-slop/colony-sim-v2"
+  resolution: "@hw/colony-sim-v1@workspace:packages/prototypes/ai-slop/colony-sim/colony-sim-v1"
   dependencies:
     "@pixi/tilemap": "npm:5.0.2"
     "@preact/signals": "npm:2.9.4"
@@ -2076,9 +2076,9 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@hw/colony-sim@workspace:packages/prototypes/ai-slop/colony-sim":
+"@hw/colony-sim-v2@workspace:packages/prototypes/ai-slop/colony-sim/colony-sim-v2":
   version: 0.0.0-use.local
-  resolution: "@hw/colony-sim@workspace:packages/prototypes/ai-slop/colony-sim"
+  resolution: "@hw/colony-sim-v2@workspace:packages/prototypes/ai-slop/colony-sim/colony-sim-v2"
   dependencies:
     "@pixi/tilemap": "npm:5.0.2"
     "@preact/signals": "npm:2.9.4"
