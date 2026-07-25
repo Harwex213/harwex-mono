@@ -1,0 +1,43 @@
+.hud {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  padding: 8px 12px;
+  font: 13px/1.4 ui-monospace, monospace;
+  color: #f0ede6;
+  background: rgba(20, 24, 20, 0.72);
+  pointer-events: none;
+}
+
+.hud .stat {
+  pointer-events: auto;
+}
+
+.hud .spacer {
+  flex: 1;
+}
+
+.hud .controls {
+  display: flex;
+  gap: 4px;
+  pointer-events: auto;
+}
+
+.hud button {
+  min-width: 34px;
+  padding: 4px 8px;
+  font: inherit;
+  color: #f0ede6;
+  background: #2f3a2f;
+  border: 1px solid #4a5a4a;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.hud button.active {
+  background: #5a7a4a;
+}

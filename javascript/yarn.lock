@@ -2059,6 +2059,23 @@ __metadata:
   languageName: unknown
   linkType: soft
 
+"@hw/colony-sim@workspace:packages/prototypes/ai-slop/colony-sim":
+  version: 0.0.0-use.local
+  resolution: "@hw/colony-sim@workspace:packages/prototypes/ai-slop/colony-sim"
+  dependencies:
+    "@pixi/tilemap": "npm:5.0.1"
+    "@preact/signals": "npm:2.9.4"
+    "@rspack/cli": "npm:2.1.4"
+    "@rspack/core": "npm:2.1.4"
+    "@rspack/dev-server": "npm:2.1.0"
+    idb: "npm:8.0.3"
+    pixi.js: "npm:8.8.0"
+    preact: "npm:10.29.7"
+    simplex-noise: "npm:4.0.3"
+    typescript: "npm:5.9.3"
+  languageName: unknown
+  linkType: soft
+
 "@hw/di@workspace:packages/infrastructure/di":
   version: 0.0.0-use.local
   resolution: "@hw/di@workspace:packages/infrastructure/di"
@@ -3057,6 +3074,15 @@ __metadata:
   version: 2.9.6
   resolution: "@pixi/colord@npm:2.9.6"
   checksum: 10/62f56fa1dd881f30091973465046b7a50466923f42d8a1af33ccf06a13fbad3f68499ac025c6984b50f8913ac2f5cb8f4e4d2c96ce18c87637d54f1edcb3738b
+  languageName: node
+  linkType: hard
+
+"@pixi/tilemap@npm:5.0.1":
+  version: 5.0.1
+  resolution: "@pixi/tilemap@npm:5.0.1"
+  peerDependencies:
+    pixi.js: ">=8.0.2"
+  checksum: 10/a9016788eb6657ff69a60ae6c4a0bac4c452b31942ec3657efe467203ca31d0b1408ef902dbe64ae0f96b00d17d24496d85bbfb5180cf6621235ae21b6a69179
   languageName: node
   linkType: hard
 
@@ -8626,6 +8652,13 @@ __metadata:
   peerDependencies:
     postcss: ^8.1.0
   checksum: 10/5c324d283552b1269cfc13a503aaaa172a280f914e5b81544f3803bc6f06a3b585fb79f66f7c771a2c052db7982c18bf92d001e3b47282e3abbbb4c4cc488d68
+  languageName: node
+  linkType: hard
+
+"idb@npm:8.0.3":
+  version: 8.0.3
+  resolution: "idb@npm:8.0.3"
+  checksum: 10/e2beccb0be7c6af562a5e92b209363358571a770aecdc68e891d1141d994d8f1e8f34b79dafa309ed7467d0f4df2b7b4c15f67cfd0611100282bfc3d85f9c73c
   languageName: node
   linkType: hard
 

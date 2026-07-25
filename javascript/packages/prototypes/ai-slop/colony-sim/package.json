@@ -1,0 +1,30 @@
+{
+  "name": "@hw/colony-sim",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "rspack serve",
+    "build": "rspack build",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test 'src/**/*.test.js'"
+  },
+  "dependencies": {
+    "@pixi/tilemap": "5.0.1",
+    "@preact/signals": "2.9.4",
+    "idb": "8.0.3",
+    "pixi.js": "8.8.0",
+    "preact": "10.29.7",
+    "simplex-noise": "4.0.3"
+  },
+  "devDependencies": {
+    "@rspack/cli": "2.1.4",
+    "@rspack/core": "2.1.4",
+    "@rspack/dev-server": "2.1.0",
+    "typescript": "5.9.3"
+  },
+  "browserslist": [
+    "last 1 version",
+    "> 1%",
+    "not dead"
+  ]
+}
