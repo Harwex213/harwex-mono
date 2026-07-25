@@ -5,6 +5,8 @@ import { pickEntity } from "./picking";
 import { type MapObjectKind, PLAYER_IDS, RESOURCE_DEFS } from "../data/defs";
 import type {
   Animal,
+  Building,
+  BuildOrder,
   EntityId,
   Inventory,
   ItemStack,
@@ -14,9 +16,8 @@ import type {
   PlayerId,
   Position,
   ResourceKind,
-  Stock,
 } from "./components";
-import { AnimalKind, JobKind } from "./components";
+import { AnimalKind, BuildingKind, JobKind } from "./components";
 
 // The World is the single runtime source of truth. Pure data only (no
 // functions) so it round-trips through IndexedDB's structured clone verbatim.
@@ -36,10 +37,10 @@ interface World {
   inventories: Map<EntityId, Inventory>;
   animals: Map<EntityId, Animal>;
   items: Map<EntityId, ItemStack>; // loose resource stacks lying on the ground
+  buildings: Map<EntityId, Building>; // placed stores and producers
   trees: Set<EntityId>;
   rocks: Set<EntityId>;
   stockpile: Position;
-  stock: Stock;
 }
 
 // 2: added the animals component Map.
@@ -50,7 +51,9 @@ interface World {
 // 6: added the items component Map (loose resources on the ground).
 // 7: colonists belong to a player — the owners component Map.
 // 8: the grid carries a region per tile beside its terrain.
-const SCHEMA_VERSION = 8;
+// 9: buildings; the colony's resources moved into the stores, so `stock` is gone
+//    and a colonist carries one stack instead of a wood counter.
+const SCHEMA_VERSION = 9;
 
 // Rock density per terrain, in percent of eligible tiles. High ground is strewn
 // with boulders; grassland gets the occasional one.
@@ -81,10 +84,10 @@ function createEmptyWorld(seed: number): World {
     inventories: new Map(),
     animals: new Map(),
     items: new Map(),
+    buildings: new Map(),
     trees: new Set(),
     rocks: new Set(),
     stockpile: { x: Math.floor(GRID_W / 2), y: Math.floor(GRID_H / 2) },
-    stock: { wood: 0, stone: 0, food: 0 },
   };
 }
 
@@ -98,7 +101,7 @@ function spawnColonist(world: World, pos: Position, owner: PlayerId): EntityId {
   world.owners.set(id, owner);
   world.needs.set(id, { hunger: 0, fatigue: 0 });
   world.jobs.set(id, { kind: JobKind.Wander, targetId: null, targetTile: null, progress: 0 });
-  world.inventories.set(id, { wood: 0 });
+  world.inventories.set(id, { kind: null, amount: 0 });
   return id;
 }
 
@@ -134,12 +137,52 @@ function spawnItem(world: World, pos: Position, kind: ResourceKind, amount: numb
   return id;
 }
 
+// Whether a tile takes a building: standable, and with nothing already on it. A
+// building fills its tile and blocks it, so one placed over a colonist would wall
+// it in and one placed over a tree would leave the tree inside a hut. The renderer
+// asks this same function for its placement ghost — a second copy of the rule would
+// promise spots the command then refuses.
+function canBuildAt(world: World, x: number, y: number): boolean {
+  return isWalkable(world.grid, x, y) && pickEntity(world, x, y) === null;
+}
+
+// Places a building on a tile, or returns null when that tile does not take one.
+// The occupancy bit is written here rather than by a system: `blocked` is the
+// grid's derived copy of where the buildings are, and this and `despawn` are the
+// only two places allowed to disagree with it for a moment.
+function buildAt(world: World, order: BuildOrder, tile: Position, owner: PlayerId): EntityId | null {
+  const x = Math.floor(tile.x);
+  const y = Math.floor(tile.y);
+  if (!canBuildAt(world, x, y)) {
+    return null;
+  }
+  const id = allocId(world);
+  world.positions.set(id, { x, y });
+  world.prevPositions.set(id, { x, y });
+  world.owners.set(id, owner);
+  world.buildings.set(id, {
+    kind: order.kind,
+    stores: order.kind === BuildingKind.Warehouse ? order.stores : null,
+    amount: 0,
+    growth: 0,
+  });
+  world.grid.blocked[tileIndex(world.grid, x, y)] = 1;
+  return id;
+}
+
 // The only way an entity leaves the world. Every collection has to be cleared,
 // not just `entities`: the renderer reconciles against that Set, but a row left
 // behind in any component Map is a job target, a sprite pick or a roster line
 // pointing at something that no longer exists — and ids are never reused, so the
 // leak is silent until something iterates that Map instead of `entities`.
 function despawn(world: World, id: EntityId): void {
+  // The tile a building held is freed here rather than by the caller, and before
+  // the position it is read from is gone: a tile left blocked under nothing is a
+  // hole in the map that no later pass can tell from a real wall.
+  const pos = world.positions.get(id);
+  if (pos && world.buildings.has(id)) {
+    world.grid.blocked[tileIndex(world.grid, Math.floor(pos.x), Math.floor(pos.y))] = 0;
+  }
   world.entities.delete(id);
   world.positions.delete(id);
   world.prevPositions.delete(id);
@@ -150,6 +193,7 @@ function despawn(world: World, id: EntityId): void {
   world.inventories.delete(id);
   world.animals.delete(id);
   world.items.delete(id);
+  world.buildings.delete(id);
   world.trees.delete(id);
   world.rocks.delete(id);
 }
@@ -168,11 +212,17 @@ function objectKindOf(world: World, id: EntityId): MapObjectKind | null {
 // comes from the shared table in `defs` — so a chopped tree, a mined boulder and
 // a debug click cannot disagree about what an object is worth. The stack lands on
 // the tile the object stood on, which is free by definition now, and it goes to
-// the ground rather than into `stock`: hauling it home is a separate job, and the
+// the ground rather than into a store: hauling it home is a separate job, and the
 // player should be able to see the loot waiting for one.
-// Returns the new stack's id, or null for an entity that is not a destructible
-// object (a colonist, an animal, an already-dropped stack).
+// Returns the new stack's id, or null for an entity that leaves nothing behind —
+// a colonist, an animal, an already-dropped stack, a demolished building.
 function destroyObject(world: World, id: EntityId): EntityId | null {
+  // A building is destructible too, and drops nothing: what a store held is gone
+  // with it. Salvage would be a second drop table for the same click.
+  if (world.buildings.has(id)) {
+    despawn(world, id);
+    return null;
+  }
   const kind = objectKindOf(world, id);
   const pos = world.positions.get(id);
   if (!kind || !pos) {
@@ -245,8 +295,9 @@ const STARTING_PILE_MAX = 4; // stack size drawn from 1..this, so piles are unev
 
 // New game: let the chosen generator draw the map, scatter rocks, then fill in the
 // crew of every camp it marked and put the rest of the life on whatever walkable
-// tiles are left. The stockpile and `stock` stay shared for now: only the colonists
-// are split by player, the storehouse is not yet.
+// tiles are left. Nobody starts with a building: a store is the first thing the
+// player builds, and until one stands the loose loot below has nowhere to go —
+// which is the point of putting it on the map.
 //
 // Who gets a crew is the caller's policy (dev-game runs a single colony), but the
 // map is still drawn for every player in `PLAYER_IDS`: a seed has to produce the
@@ -327,6 +378,8 @@ export {
   SCHEMA_VERSION,
   newGame,
   allocId,
+  buildAt,
+  canBuildAt,
   despawn,
   destroyObject,
   objectKindOf,

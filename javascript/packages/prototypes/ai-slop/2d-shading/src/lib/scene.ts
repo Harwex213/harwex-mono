@@ -24,6 +24,15 @@ type Occluder = {
   elev: number;
 };
 
+// A wall face in world pixels. Both endpoints matter: the caster shoots a ray at
+// each one, so the segment count drives both loops of the visibility pass.
+type Segment = {
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+};
+
 // Deterministic PRNG: the layout must be identical across reloads, otherwise
 // comparing "merge on" against "merge off" compares two different scenes.
 function mulberry32(seed: number): () => number {
@@ -84,6 +93,27 @@ function buildGrid(): Uint8Array {
   }
 
   return grid;
+}
+
+// Lights are placed by tile and the map is generated, so a requested tile may hold
+// a pillar. A light inside an occluder sees nothing at all, which reads as a bug
+// rather than as a demo — so snap to the nearest free tile and return its centre.
+function freeTile(grid: Uint8Array, tx: number, ty: number): { x: number; y: number } {
+  for (let r = 0; r < 10; r += 1) {
+    for (let dy = -r; dy <= r; dy += 1) {
+      for (let dx = -r; dx <= r; dx += 1) {
+        const x = tx + dx;
+        const y = ty + dy;
+        if (x < 0 || y < 0 || x >= MAP_W || y >= MAP_H) {
+          continue;
+        }
+        if (grid[y * MAP_W + x] === 0) {
+          return { x: (x + 0.5) * TILE, y: (y + 0.5) * TILE };
+        }
+      }
+    }
+  }
+  return { x: (MAP_W / 2) * TILE, y: (MAP_H / 2) * TILE };
 }
 
 // One box per occupied tile. This is the honest baseline: correct, and the reason
@@ -154,5 +184,93 @@ function mergeOccluders(grid: Uint8Array): Occluder[] {
   return runs;
 }
 
-export { buildGrid, mergeOccluders, tileOccluders, MAP_H, MAP_W, TILE };
-export type { Occluder };
+
+// A wall face is an edge of the shadow-casting world only when the tile behind it
+// is empty: interior faces between two solid tiles can never be hit by a ray, and
+// feeding them to the caster doubles n for nothing. Collinear faces are then merged
+// into runs — the same reason as greedy meshing, but it matters far more here,
+// because visibility costs O(rays x segments) and every segment also adds two rays.
+function occluderSegments(grid: Uint8Array): Segment[] {
+  const segs: Segment[] = [];
+  const solid = (x: number, y: number): boolean => {
+    if (x < 0 || y < 0 || x >= MAP_W || y >= MAP_H) {
+      return false;
+    }
+    return grid[y * MAP_W + x] !== 0;
+  };
+
+  // Horizontal faces: north (dy = -1) and south (dy = +1), merged along x.
+  for (const dy of [-1, 1]) {
+    for (let y = 0; y < MAP_H; y += 1) {
+      let run = -1;
+      for (let x = 0; x <= MAP_W; x += 1) {
+        const exposed = x < MAP_W && solid(x, y) && !solid(x, y + dy);
+        if (exposed && run < 0) {
+          run = x;
+        }
+        if (!exposed && run >= 0) {
+          const edgeY = (dy < 0 ? y : y + 1) * TILE;
+          segs.push({ x1: run * TILE, y1: edgeY, x2: x * TILE, y2: edgeY });
+          run = -1;
+        }
+      }
+    }
+  }
+
+  // Vertical faces: west (dx = -1) and east (dx = +1), merged along y.
+  for (const dx of [-1, 1]) {
+    for (let x = 0; x < MAP_W; x += 1) {
+      let run = -1;
+      for (let y = 0; y <= MAP_H; y += 1) {
+        const exposed = y < MAP_H && solid(x, y) && !solid(x + dx, y);
+        if (exposed && run < 0) {
+          run = y;
+        }
+        if (!exposed && run >= 0) {
+          const edgeX = (dx < 0 ? x : x + 1) * TILE;
+          segs.push({ x1: edgeX, y1: run * TILE, x2: edgeX, y2: y * TILE });
+          run = -1;
+        }
+      }
+    }
+  }
+
+  return segs;
+}
+
+// The unmerged baseline: four edges per solid tile, interior faces included. Kept
+// so the demo can show what the caster costs without the pass above.
+function tileSegments(grid: Uint8Array): Segment[] {
+  const segs: Segment[] = [];
+  for (let y = 0; y < MAP_H; y += 1) {
+    for (let x = 0; x < MAP_W; x += 1) {
+      if (grid[y * MAP_W + x] === 0) {
+        continue;
+      }
+      const x0 = x * TILE;
+      const y0 = y * TILE;
+      const x1 = x0 + TILE;
+      const y1 = y0 + TILE;
+      segs.push(
+        { x1: x0, y1: y0, x2: x1, y2: y0 },
+        { x1: x1, y1: y0, x2: x1, y2: y1 },
+        { x1: x1, y1: y1, x2: x0, y2: y1 },
+        { x1: x0, y1: y1, x2: x0, y2: y0 },
+      );
+    }
+  }
+  return segs;
+}
+
+export {
+  buildGrid,
+  freeTile,
+  mergeOccluders,
+  occluderSegments,
+  tileOccluders,
+  tileSegments,
+  MAP_H,
+  MAP_W,
+  TILE,
+};
+export type { Occluder, Segment };

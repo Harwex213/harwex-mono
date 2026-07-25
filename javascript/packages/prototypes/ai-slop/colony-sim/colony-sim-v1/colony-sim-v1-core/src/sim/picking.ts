@@ -30,6 +30,22 @@ function rankOf(world: World, id: EntityId): PickRank {
   return PickRank.None;
 }
 
+// The building whose tile the point falls in. A building is hit by containment
+// rather than by distance, because it fills its tile instead of standing at a point
+// in it: measured from the tile's corner — where its position is — the far side of
+// its own roof is already out of every sane radius.
+function buildingAt(world: World, x: number, y: number): EntityId | null {
+  const tx = Math.floor(x);
+  const ty = Math.floor(y);
+  for (const id of world.buildings.keys()) {
+    const pos = world.positions.get(id);
+    if (pos && Math.floor(pos.x) === tx && Math.floor(pos.y) === ty) {
+      return id;
+    }
+  }
+  return null;
+}
+
 // Best pickable entity near a point in tile coords — highest rank first, nearest
 // within that rank — or null when the click landed on bare ground.
 function pickEntity(world: World, x: number, y: number): EntityId | null {
@@ -55,7 +71,14 @@ function pickEntity(world: World, x: number, y: number): EntityId | null {
     bestDistance = distance;
     best = id;
   }
-  return best;
+  // An actor keeps the click it won — a colonist standing against a wall must stay
+  // clickable, and its sprite overhangs the tile behind it. Below that, the building
+  // under the cursor wins: nothing else can be on its tile anyway, so this only
+  // decides against a neighbour's sprite leaning over the roof.
+  if (bestRank === PickRank.Actor) {
+    return best;
+  }
+  return buildingAt(world, x, y) ?? best;
 }
 
 export { pickEntity };

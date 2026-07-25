@@ -34,7 +34,7 @@ async function createGameStage(mount: HTMLElement = document.body): Promise<Game
   mount.appendChild(app.canvas);
 
   return {
-    createView: (deps: ViewDeps) => new GameRenderer(app, deps.world, deps.commands, deps.pointer),
+    createView: (deps: ViewDeps) => new GameRenderer(app, deps),
     onFrame: (callback: (deltaMs: number) => void) => {
       app.ticker.add((ticker) => callback(ticker.deltaMS));
     },

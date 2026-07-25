@@ -1,11 +1,12 @@
 import { useEngine } from "./engine-context";
 import { colonistCount, colonistsOpen, paused, speed } from "@hw/colony-sim-v1-core";
+import { BuildMenu } from "./build-menu";
 
 const SPEEDS = [1, 2, 3];
 
-// The bottom strip: panel tabs on the left, time controls on the right. Every
-// button only dispatches — the same commands the hotkeys send, so keyboard and
-// mouse can never disagree about the state.
+// The bottom strip: panel tabs on the left, building in the middle, time controls on
+// the right. Every button only dispatches — the same commands the hotkeys send, so
+// keyboard and mouse can never disagree about the state.
 function BottomBar() {
   const engine = useEngine();
   const isPaused = paused.value;
@@ -26,6 +27,8 @@ function BottomBar() {
           <span className="tab-count">{count}</span>
         </button>
       </div>
+
+      <BuildMenu />
 
       <div className="bar-group">
         <button

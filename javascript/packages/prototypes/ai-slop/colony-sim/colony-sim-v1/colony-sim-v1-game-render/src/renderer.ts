@@ -1,20 +1,24 @@
 import { Application, Container, Sprite, type Texture } from "pixi.js";
 import {
+  type Building,
+  buildOrder,
   DEFAULT_PLAYER,
-  type Dispatcher,
   type EntityId,
   type GameView,
-  type PointerHandlers,
+  type PlayerId,
   type Position,
   selection,
   type Selection,
   Terrain,
   TILE_SIZE,
   tileIndex,
+  type ViewDeps,
   type World,
 } from "@hw/colony-sim-v1-core";
+import { buildingSprite, resourceBadge } from "./buildings";
 import { createLayers, type Layers } from "./layers";
 import { Camera } from "./camera";
+import { BuildGhost } from "./ghost";
 import { buildGround } from "./ground";
 import { HOVER_STYLE, Marker, SELECTION_STYLE } from "./selection";
 import { type Creature, Facing, sheets, TREE_VARIANTS } from "./textures";
@@ -54,6 +58,10 @@ class GameRenderer implements GameView {
   private water: WaterSurface;
   private marker: Marker;
   private hoverMarker: Marker;
+  private ghost: BuildGhost;
+  // Whose client this is, for the one thing the view still needs an owner id for
+  // that the world cannot answer: the colour of a building not yet placed.
+  private player: PlayerId;
   // What a click would take right now, as resolved by the engine. View-only: it
   // never reaches the World and never goes into a signal — the DOM HUD does not
   // draw it, and repainting the HUD on every pointer move would be wasteful.
@@ -64,10 +72,12 @@ class GameRenderer implements GameView {
   private creatures = new Map<EntityId, { sprite: Sprite; sheet: Creature }>();
   private facings = new Map<EntityId, Facing>();
 
-  constructor(app: Application, world: World, commands: Dispatcher, handlers: PointerHandlers) {
+  constructor(app: Application, deps: ViewDeps) {
+    const { world } = deps;
+    this.player = deps.player;
     this.layers = createLayers();
     app.stage.addChild(this.layers.root);
-    this.camera = new Camera(app, this.layers.root, commands, handlers);
+    this.camera = new Camera(app, this.layers.root, deps.commands, deps.pointer);
     // The camera's own default is the middle of the grid, which is only the
     // right guess for a map that put the colony there. On a map that did not
     // (the divided lands sit their colony well off-centre) the first frame would
@@ -79,6 +89,8 @@ class GameRenderer implements GameView {
     // Hover first so the selection brackets stay on top where the two overlap.
     this.hoverMarker = new Marker(this.layers.fx, HOVER_STYLE);
     this.marker = new Marker(this.layers.fx, SELECTION_STYLE);
+    // Above both: the ghost is what the click is about while it is on screen.
+    this.ghost = new BuildGhost(this.layers.fx);
   }
 
   // Hover feedback is a view concern, so the engine only says *what* is under the
@@ -104,21 +116,33 @@ class GameRenderer implements GameView {
     }
     this.animate(world, alpha);
     const selected = selection.value;
-    this.place(this.marker, selected);
+    this.place(this.marker, world, selected);
     // Two markers on the same thing would just darken it; the selection already
     // says everything the hover would.
-    this.place(this.hoverMarker, sameTarget(this.hovered, selected) ? null : this.hovered);
+    this.place(this.hoverMarker, world, sameTarget(this.hovered, selected) ? null : this.hovered);
+    // The armed order comes off the same signal the build menu writes, so cursor and
+    // menu cannot disagree about what is about to be placed.
+    this.ghost.show(world, this.player, buildOrder.value, this.hovered);
   }
 
   // The selection marker mirrors the `selection` signal — the same UI state the
   // DOM panel reads, so canvas and HUD can never disagree about what is selected.
-  private place(marker: Marker, target: Selection | null): void {
+  private place(marker: Marker, world: World, target: Selection | null): void {
     if (!target) {
       marker.hide();
       return;
     }
     if (target.kind === "tile") {
       marker.atTile(target.x, target.y);
+      return;
+    }
+    // A building is framed as the tile it fills. Following its sprite would put the
+    // brackets half a tile off: the marker centres itself on a sprite's position,
+    // which is right for everything that merely stands at a point and wrong for the
+    // one thing anchored to a tile's corner.
+    const tile = world.buildings.has(target.id) ? world.positions.get(target.id) : undefined;
+    if (tile) {
+      marker.atTile(tile.x, tile.y);
       return;
     }
     const sprite = this.sprites.get(target.id);
@@ -209,11 +233,32 @@ class GameRenderer implements GameView {
       return;
     }
 
+    const building = world.buildings.get(id);
+    if (building) {
+      this.createBuilding(world, id, building);
+      return;
+    }
+
     // Which worker sheet a colonist draws from is the one thing about its art that
     // comes from the world rather than from its id: teams have to stay apart across
     // a reload, and a colonist that changed hands has to change colour with it.
     // An unowned colonist is a spawner bug, not a state to draw as sheet-less.
     this.createCreature(id, sheets().colonists[world.owners.get(id) ?? DEFAULT_PLAYER], COLONIST_ANCHOR_Y);
+  }
+
+  // A building is a small tree of its own: the frame on its tile, plus — for a store
+  // — the badge naming the one resource it keeps. The badge is built once because the
+  // resource never changes; how full the store is belongs in the inspector, not in a
+  // sprite that would have to be rebuilt every deposit.
+  private createBuilding(world: World, id: EntityId, building: Building): void {
+    const container = new Container();
+    const player = world.owners.get(id) ?? DEFAULT_PLAYER;
+    container.addChild(buildingSprite(player, building.kind, hashId(id)));
+    if (building.stores !== null) {
+      container.addChild(resourceBadge(building.stores));
+    }
+    this.layers.objects.addChild(container);
+    this.sprites.set(id, container);
   }
 
   // Creatures are the animated entities: one sprite plus the sheet it draws from,

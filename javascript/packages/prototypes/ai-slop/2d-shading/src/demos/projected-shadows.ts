@@ -1,32 +1,10 @@
 import { Application, BlurFilter, Container, Graphics, RenderTexture, Sprite } from "pixi.js";
-import { convexHull, type Point } from "../lib/hull";
+import type { Point } from "../lib/hull";
 import { group, slider, stats, toggle } from "../lib/controls";
-import {
-  buildGrid,
-  MAP_H,
-  MAP_W,
-  mergeOccluders,
-  type Occluder,
-  TILE,
-  tileOccluders,
-} from "../lib/scene";
+import { HEIGHT, paintGround, paintOccluders, WIDTH } from "../lib/paint";
+import { flatten, shadowHull, sunDirection } from "../lib/projection";
+import { buildGrid, mergeOccluders, tileOccluders } from "../lib/scene";
 import type { Teardown } from "./types";
-
-const WIDTH = MAP_W * TILE;
-const HEIGHT = MAP_H * TILE;
-
-// Top-down foreshortening: a shadow running "down the screen" is a shadow running
-// away from the camera, so its screen length is shorter than the same shadow cast
-// sideways. One constant is enough to read as a camera tilt; the alternative is a
-// real 3D projection, which this technique deliberately does not have.
-const Y_SQUASH = 0.62;
-
-const GRASS_A = 0x3f5a3a;
-const GRASS_B = 0x445f3e;
-const WALL_FACE = 0x6a6f7b;
-const WALL_TOP = 0x878d9b;
-const PILLAR_FACE = 0x7d7466;
-const PILLAR_TOP = 0x9c9282;
 
 type State = {
   angleDeg: number;
@@ -38,52 +16,6 @@ type State = {
   wireframe: boolean;
   animate: boolean;
 };
-
-// The shadow of an axis-aligned box under a directional light: the box's four
-// corners plus the same four translated along the light, hulled. Elevation scales
-// the offset, so pillars reach further than walls under one sun.
-function shadowHull(box: Occluder, dir: Point, length: number): Point[] {
-  const dx = dir.x * length * box.elev;
-  const dy = dir.y * length * box.elev;
-  const pts: Point[] = [];
-  const corners: Point[] = [
-    { x: box.x, y: box.y },
-    { x: box.x + box.w, y: box.y },
-    { x: box.x + box.w, y: box.y + box.h },
-    { x: box.x, y: box.y + box.h },
-  ];
-  for (const c of corners) {
-    pts.push(c, { x: c.x + dx, y: c.y + dy });
-  }
-  return convexHull(pts);
-}
-
-function flatten(hull: Point[]): number[] {
-  const flat: number[] = [];
-  for (const p of hull) {
-    flat.push(p.x, p.y);
-  }
-  return flat;
-}
-
-function paintGround(g: Graphics): void {
-  for (let y = 0; y < MAP_H; y += 1) {
-    for (let x = 0; x < MAP_W; x += 1) {
-      const tint = (x + y) % 2 === 0 ? GRASS_A : GRASS_B;
-      g.rect(x * TILE, y * TILE, TILE, TILE).fill(tint);
-    }
-  }
-}
-
-// Occluders are drawn above the shadow layer, so nothing ever shadows the box that
-// cast it — the usual self-shadowing artifact is solved by paint order alone.
-function paintOccluders(g: Graphics, boxes: Occluder[]): void {
-  for (const box of boxes) {
-    const tall = box.elev > 1;
-    g.rect(box.x, box.y, box.w, box.h).fill(tall ? PILLAR_FACE : WALL_FACE);
-    g.rect(box.x, box.y, box.w, Math.min(7, box.h)).fill(tall ? PILLAR_TOP : WALL_TOP);
-  }
-}
 
 // A sun dial in the corner: the arrow points where the shadows go, which is the
 // only thing the angle slider actually controls.
@@ -159,8 +91,7 @@ async function mountProjectedShadows(host: HTMLElement): Promise<Teardown> {
   let dirty = true;
 
   function rebuild(): void {
-    const rad = (state.angleDeg * Math.PI) / 180;
-    const dir: Point = { x: Math.cos(rad), y: Math.sin(rad) * Y_SQUASH };
+    const dir = sunDirection(state.angleDeg);
     const boxes = state.merge ? merged : perTile;
 
     const t0 = performance.now();

@@ -143,6 +143,11 @@
   align-items: center;
 }
 
+/* What a group of bar buttons is for, when the icons alone do not say it. */
+.bar-label {
+  color: var(--hud-muted);
+}
+
 .tab {
   display: flex;
   gap: 8px;

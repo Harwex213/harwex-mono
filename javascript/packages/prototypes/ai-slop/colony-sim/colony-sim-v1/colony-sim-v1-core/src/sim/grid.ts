@@ -30,6 +30,11 @@ interface Grid {
   // Parallel to `terrain`, same indexing. Zero-filled, so a generator that draws
   // no regions hands out a map that is peace lands end to end.
   region: Uint8Array;
+  // Also parallel to `terrain`: 1 where a building stands. Buildings are entities,
+  // but "can a colonist step here" has to be answerable from the grid alone — A*
+  // walks tiles and must not learn to read component Maps. Derived, not owned: only
+  // placing and despawning a building may write it (see world.ts).
+  blocked: Uint8Array;
 }
 
 function createGrid(width: number, height: number): Grid {
@@ -38,6 +43,7 @@ function createGrid(width: number, height: number): Grid {
     height,
     terrain: new Uint8Array(width * height),
     region: new Uint8Array(width * height),
+    blocked: new Uint8Array(width * height),
   };
 }
 
@@ -49,12 +55,16 @@ function inBounds(grid: Grid, x: number, y: number): boolean {
   return x >= 0 && y >= 0 && x < grid.width && y < grid.height;
 }
 
+// What can be stood on, terrain and buildings together: a hut is as solid as a
+// cliff face to anything that walks, and asking the two questions separately means
+// every caller has to remember the second one.
 function isWalkable(grid: Grid, x: number, y: number): boolean {
   if (!inBounds(grid, x, y)) {
     return false;
   }
-  const terrain = grid.terrain[tileIndex(grid, x, y)];
-  return terrain !== Terrain.Water && terrain !== Terrain.Mountain;
+  const index = tileIndex(grid, x, y);
+  const terrain = grid.terrain[index];
+  return terrain !== Terrain.Water && terrain !== Terrain.Mountain && grid.blocked[index] === 0;
 }
 
 // Walkable is not the same question as wanted: the dead lands are crossable, they

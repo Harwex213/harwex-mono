@@ -19,6 +19,8 @@ export {
 } from "./sim/grid";
 export type {
   Animal,
+  Building,
+  BuildOrder,
   EntityId,
   Inventory,
   ItemStack,
@@ -28,12 +30,13 @@ export type {
   PlayerId,
   Position,
   ResourceKind,
-  Stock,
 } from "./sim/components";
-export { AnimalKind, JobKind } from "./sim/components";
+export { AnimalKind, BuildingKind, JobKind } from "./sim/components";
 export type { World } from "./sim/world";
 export {
   allocId,
+  buildAt,
+  canBuildAt,
   despawn,
   destroyObject,
   newGame,
@@ -57,12 +60,20 @@ export type { SimContext } from "./sim/systems";
 export { runSystems } from "./sim/systems";
 
 // Static content definitions.
-export type { MapObjectKind, PlayerDef, ResourceDef, TerrainDef } from "./data/defs";
-export { DEFAULT_PLAYER, PLAYER_DEFS, PLAYER_IDS, RESOURCE_DEFS, TERRAIN_DEFS } from "./data/defs";
+export type { BuildingDef, MapObjectKind, PlayerDef, ResourceDef, TerrainDef } from "./data/defs";
+export {
+  BUILDING_DEFS,
+  DEFAULT_PLAYER,
+  PLAYER_DEFS,
+  PLAYER_IDS,
+  RESOURCE_DEFS,
+  TERRAIN_DEFS,
+} from "./data/defs";
 
 // UI state: the reactivity boundary, plus the read models projected onto it.
 export type { Selection } from "./state/signals";
 export {
+  buildOrder,
   colonistCount,
   colonistRoster,
   colonistsOpen,
@@ -72,8 +83,8 @@ export {
   selectionDetails,
   speed,
 } from "./state/signals";
-export type { ColonistRow, SelectionDetails } from "./state/inspect";
-export { countColonists, describeSelection, listColonists } from "./state/inspect";
+export type { ColonistRow, SelectionDetails, Stock } from "./state/inspect";
+export { countColonists, countStock, describeSelection, listColonists } from "./state/inspect";
 
 // The one write path into that state.
 export type { Command, Dispatcher, SpawnKind, WorldCommand } from "./commands";

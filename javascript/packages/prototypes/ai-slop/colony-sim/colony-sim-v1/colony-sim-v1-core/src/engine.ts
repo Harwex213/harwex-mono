@@ -6,6 +6,7 @@ import { pickEntity } from "./sim/picking";
 import type { EntityId, PlayerId, Position } from "./sim/components";
 import { DEFAULT_PLAYER } from "./data/defs";
 import {
+  buildAt,
   destroyObject,
   randomFreeTile,
   spawnChicken,
@@ -18,6 +19,7 @@ import {
 import { saveSnapshot } from "./persistence/snapshot";
 import type { ColonyDb } from "./persistence/db";
 import {
+  buildOrder,
   colonistCount,
   colonistRoster,
   colonistsOpen,
@@ -28,7 +30,7 @@ import {
   selectionDetails,
   speed,
 } from "./state/signals";
-import { countColonists, describeSelection, listColonists } from "./state/inspect";
+import { countColonists, countStock, describeSelection, listColonists } from "./state/inspect";
 import { type Command, CommandDispatcher, type Dispatcher, type SpawnKind } from "./commands";
 import type { CreateView, GameView } from "./view";
 
@@ -51,6 +53,7 @@ const SPAWNERS: Record<SpawnKind, (world: World, pos: Position, owner: PlayerId)
   chicken: spawnChicken,
   wood: (world, pos) => spawnItem(world, pos, "wood", SPAWNED_STACK),
   stone: (world, pos) => spawnItem(world, pos, "stone", SPAWNED_STACK),
+  food: (world, pos) => spawnItem(world, pos, "food", SPAWNED_STACK),
 };
 
 interface GameEngineOptions {
@@ -61,6 +64,11 @@ interface GameEngineOptions {
   // Optional on purpose — the dev app runs the very same engine with no
   // persistence at all, which is also what keeps stale saves out of its loop.
   db?: ColonyDb | null;
+  // Whose client this is. Not world state: every client builds the same world from
+  // the same seed and differs only in who is looking at it, so a snapshot must not
+  // carry a seat. It is what the read models are filtered by (the HUD speaks for one
+  // colony) and what an ownerless spawn command belongs to.
+  player?: PlayerId;
 }
 
 // Owns the world, the fixed-timestep loop, the view and persistence. The HUD gets
@@ -69,6 +77,7 @@ class GameEngine implements Dispatcher {
   private commands = new CommandDispatcher();
   private db: ColonyDb | null;
   private world: World;
+  private player: PlayerId;
   private rng: Rng;
   private view: GameView;
   private accumulator = 0;
@@ -81,11 +90,13 @@ class GameEngine implements Dispatcher {
   constructor(options: GameEngineOptions) {
     this.world = options.world;
     this.db = options.db ?? null;
+    this.player = options.player ?? DEFAULT_PLAYER;
     this.rng = createRng(this.world.seed ^ (this.world.tick * 0x9e3779b1));
     this.view = options.createView({
       world: this.world,
       commands: this.commands,
       pointer: { pick: this.selectAt, hover: this.hoverAt },
+      player: this.player,
     });
     this.refreshColonistCount();
     this.refreshResources();
@@ -157,26 +168,42 @@ class GameEngine implements Dispatcher {
         destroyObject(this.world, command.id);
         continue;
       }
+      if (command.type === "build") {
+        // A tile that cannot take the building drops the command: the ghost already
+        // said so, and there is no second-best tile worth guessing at.
+        buildAt(this.world, command.order, command.tile, command.owner ?? this.player);
+        continue;
+      }
       // No tile given → the sim finds one; a full map yields nothing and the
       // command is dropped rather than stacking entities on an occupied tile.
       const tile = command.tile ?? randomFreeTile(this.world, this.rng);
       if (!tile) {
         continue;
       }
-      SPAWNERS[command.kind](this.world, tile, command.owner ?? DEFAULT_PLAYER);
+      SPAWNERS[command.kind](this.world, tile, command.owner ?? this.player);
     }
     // A paused game runs no tick to rebuild the read models, and what a command
     // just put into (or took out of) the world must not wait for one: the entity a
-    // destroy removed cannot linger in the inspector, and a spawned colonist has to
-    // show up in the headcount and in an open roster right away.
+    // destroy removed cannot linger in the inspector, a spawned colonist has to
+    // show up in the headcount and in an open roster right away, and a demolished
+    // warehouse takes its contents out of the readout with it.
     this.refreshSelection();
     this.refreshColonistCount();
     this.refreshColonists();
+    this.refreshResources();
   }
 
-  // Canvas click → selection. Picking needs the World, so it lives here rather
-  // than in the view; the camera only reports which tile was hit.
+  // Canvas click → selection, or a building where the build cursor is armed. What a
+  // click means is the engine's call: the view reports the tile it hit and nothing
+  // else, and picking needs the World anyway.
   private selectAt = (tile: Position): void => {
+    const order = buildOrder.value;
+    if (order) {
+      // Owner stays null: whose building it is follows from whose client this is,
+      // and the menu that sent this has no business naming a player.
+      this.commands.dispatch({ type: "build", order, tile, owner: null });
+      return;
+    }
     this.commands.dispatch({ type: "select", selection: this.targetAt(tile) });
   };
 
@@ -197,6 +224,12 @@ class GameEngine implements Dispatcher {
     if (!inBounds(this.world.grid, x, y)) {
       return null;
     }
+    // With the build cursor armed the click lands on the tile, so the tile is what
+    // the hover has to point at too — the ghost is drawn on it, and whatever stands
+    // there is an obstacle rather than a target.
+    if (buildOrder.value) {
+      return { kind: "tile", x, y };
+    }
     const id = pickEntity(this.world, tile.x, tile.y);
     return id === null ? { kind: "tile", x, y } : { kind: "entity", id };
   }
@@ -215,24 +248,25 @@ class GameEngine implements Dispatcher {
   // Roster read model. A per-entity list in a signal is only affordable because
   // it is rebuilt while its panel is open and never otherwise.
   private refreshColonists(): void {
-    colonistRoster.value = colonistsOpen.value ? listColonists(this.world) : [];
+    colonistRoster.value = colonistsOpen.value ? listColonists(this.world, this.player) : [];
   }
 
   // Headcount read model. A number compares by value, so the signal itself drops
   // the writes that would repaint the bar with the number already on it.
   private refreshColonistCount(): void {
-    colonistCount.value = countColonists(this.world);
+    colonistCount.value = countColonists(this.world, this.player);
   }
 
-  // Stock read model. Signals compare by identity, so handing over a fresh object
-  // every tick would repaint the resources panel ten times a second for nothing.
+  // Stock read model, summed out of the viewer's stores. Signals compare by identity,
+  // so handing over a fresh object every tick would repaint the resources panel ten
+  // times a second for nothing.
   private refreshResources(): void {
-    const stock = this.world.stock;
+    const stock = countStock(this.world, this.player);
     const shown = resources.value;
     if (shown.wood === stock.wood && shown.stone === stock.stone && shown.food === stock.food) {
       return;
     }
-    resources.value = { ...stock };
+    resources.value = stock;
   }
 
   private step(): void {

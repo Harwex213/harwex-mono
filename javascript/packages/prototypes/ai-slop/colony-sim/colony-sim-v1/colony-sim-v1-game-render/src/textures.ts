@@ -1,6 +1,10 @@
 import { Assets, Rectangle, Texture } from "pixi.js";
 import { PLAYER_IDS, type PlayerId, type ResourceKind } from "@hw/colony-sim-v1-core";
 import chickenUrl from "@assets/Animals/Chicken.png";
+import limeHutsUrl from "@assets/Buildings/Lime/LimeHuts.png";
+import limeTradesUrl from "@assets/Buildings/Lime/LimeResources.png";
+import redHutsUrl from "@assets/Buildings/Red/RedHuts.png";
+import redTradesUrl from "@assets/Buildings/Red/RedResources.png";
 import farmerLimeUrl from "@assets/Characters/Workers/LimeWorker/FarmerLime.png";
 import farmerRedUrl from "@assets/Characters/Workers/RedWorker/FarmerRed.png";
 import grassUrl from "@assets/Ground/Grass.png";
@@ -48,6 +52,32 @@ const FARMER_WALK_CLIP = 1;
 const WORKER_SHEETS: Record<PlayerId, string> = {
   red: farmerRedUrl,
   lime: farmerLimeUrl,
+};
+
+// Huts.png is a 5×1 strip: a neutral plank shed, then four huts in the team's
+// colour. The store takes the huts — a warehouse belongs to somebody and has to
+// wear whose it is, while the shed is the same pixels in every team's sheet — and
+// four of them means the row of stores along a camp is not one frame repeated.
+const HUT_COLS = 5;
+const HUT_STORE_COLS = [1, 2, 3, 4];
+
+// Resources.png is 3×5: one row per trade, three variants of that trade's building
+// across. Row 1 is the barn with the timber cross — the farm — and its three
+// variants are the same building, so which one a farm wears comes from its id.
+const TRADE_COLS = 3;
+const TRADE_ROWS = 5;
+const FARM_ROW = 1;
+
+// Same story as the worker sheets: recolours of one layout, so only the file is
+// per-player and nothing below these tables is.
+const HUT_SHEETS: Record<PlayerId, string> = {
+  red: redHutsUrl,
+  lime: limeHutsUrl,
+};
+
+const TRADE_SHEETS: Record<PlayerId, string> = {
+  red: redTradesUrl,
+  lime: limeTradesUrl,
 };
 
 // Grass.png is a 5×1 palette strip: water, light grass, dark grass, then two sand
@@ -119,12 +149,22 @@ interface Cliff {
   joint: Texture[][][];
 }
 
+// One player's buildings, each as the variants of that building. The frames of a
+// kind are interchangeable by construction — the sheet draws the same barn three
+// ways — so the renderer picks among them by entity id and keeps the choice out of
+// the save.
+interface Buildings {
+  store: Texture[];
+  farm: Texture[];
+}
+
 // Every texture the renderer draws as a sprite, resolved to a semantic axis so
 // callers never index raw sheet coordinates. The ground fills are not here: they
 // never reach the GPU as themselves — see `Fills`.
 interface Sheets {
   chicken: Creature;
   colonists: Record<PlayerId, Creature>; // one recolour of the worker sheet per player
+  buildings: Record<PlayerId, Buildings>; // likewise: a team is a file, not a layout
   cliff: Cliff;
   crag: Texture[]; // whole-tile rock, for cliffs too narrow for the nine-slice
   trees: Texture[]; // [0] = stump, [1..] = canopies
@@ -251,30 +291,51 @@ async function decodeFrames(url: string, rows: number, cols: number, frame: numb
 // reconcile() creates sprites synchronously and cannot await, and the terrain bake
 // needs the fills already decoded.
 async function loadTextures(): Promise<void> {
-  const [chicken, workers, grassStrip, texturedGrass, deadGrass, shore, cliff, trees, rocks, wood, stone, food, selector] =
-    await Promise.all([
-      Assets.load<Texture>(chickenUrl),
-      // In PLAYER_IDS order, so the sheets line up with the players they belong to.
-      Promise.all(PLAYER_IDS.map((player) => Assets.load<Texture>(WORKER_SHEETS[player]))),
-      decodeFrames(grassUrl, 1, GRASS_STRIP_COLS, FRAME),
-      decodeFrames(texturedGrassUrl, GRASS_SHADES, GRASS_VARIANTS, FRAME),
-      decodeFrames(deadGrassUrl, GRASS_SHADES, GRASS_VARIANTS, FRAME),
-      decodeFrames(shoreUrl, 1, SHORE_STRIP_COLS, FRAME),
-      Assets.load<Texture>(cliffUrl),
-      Assets.load<Texture>(treesUrl),
-      Assets.load<Texture>(rocksUrl),
-      Assets.load<Texture>(woodUrl),
-      Assets.load<Texture>(stoneUrl),
-      Assets.load<Texture>(foodUrl),
-      Assets.load<Texture>(selectorUrl),
-    ]);
+  const [
+    chicken,
+    workers,
+    huts,
+    trades,
+    grassStrip,
+    texturedGrass,
+    deadGrass,
+    shore,
+    cliff,
+    trees,
+    rocks,
+    wood,
+    stone,
+    food,
+    selector,
+  ] = await Promise.all([
+    Assets.load<Texture>(chickenUrl),
+    // In PLAYER_IDS order, so the sheets line up with the players they belong to.
+    Promise.all(PLAYER_IDS.map((player) => Assets.load<Texture>(WORKER_SHEETS[player]))),
+    Promise.all(PLAYER_IDS.map((player) => Assets.load<Texture>(HUT_SHEETS[player]))),
+    Promise.all(PLAYER_IDS.map((player) => Assets.load<Texture>(TRADE_SHEETS[player]))),
+    decodeFrames(grassUrl, 1, GRASS_STRIP_COLS, FRAME),
+    decodeFrames(texturedGrassUrl, GRASS_SHADES, GRASS_VARIANTS, FRAME),
+    decodeFrames(deadGrassUrl, GRASS_SHADES, GRASS_VARIANTS, FRAME),
+    decodeFrames(shoreUrl, 1, SHORE_STRIP_COLS, FRAME),
+    Assets.load<Texture>(cliffUrl),
+    Assets.load<Texture>(treesUrl),
+    Assets.load<Texture>(rocksUrl),
+    Assets.load<Texture>(woodUrl),
+    Assets.load<Texture>(stoneUrl),
+    Assets.load<Texture>(foodUrl),
+    Assets.load<Texture>(selectorUrl),
+  ]);
 
   const cliffGrid = sliceSheet(cliff, CLIFF_ROWS, CLIFF_COLS, FRAME);
   // The chicken has no separate standing pose: frame 0 of its walk doubles as one.
   const chickenWalk = sliceSheet(chicken, FACING_ROWS, CHICKEN_WALK_FRAMES, FRAME);
   const colonists = {} as Record<PlayerId, Creature>;
+  const buildings = {} as Record<PlayerId, Buildings>;
   PLAYER_IDS.forEach((player, index) => {
     colonists[player] = farmerCreature(workers[index]);
+    const hut = sliceSheet(huts[index], 1, HUT_COLS, FRAME)[0];
+    const trade = sliceSheet(trades[index], TRADE_ROWS, TRADE_COLS, FRAME);
+    buildings[player] = { store: HUT_STORE_COLS.map((col) => hut[col]), farm: trade[FARM_ROW] };
   });
 
   loaded = {
@@ -283,6 +344,7 @@ async function loadTextures(): Promise<void> {
       walk: chickenWalk,
     },
     colonists,
+    buildings,
     cliff: cliffBlock(cliff, cliffGrid),
     crag: CRAG_COLS.map((col) => cliffGrid[CRAG_ROW][col]),
     trees: sliceSheet(trees, 1, TREE_VARIANTS, FRAME)[0],
@@ -318,5 +380,5 @@ function fills(): Fills {
   return decoded;
 }
 
-export type { Cliff, Creature, Fills, Sheets };
+export type { Buildings, Cliff, Creature, Fills, Sheets };
 export { CLIFF_HALF, CLIFF_INSET, Facing, GRASS_VARIANTS, TREE_VARIANTS, loadTextures, sheets, fills };

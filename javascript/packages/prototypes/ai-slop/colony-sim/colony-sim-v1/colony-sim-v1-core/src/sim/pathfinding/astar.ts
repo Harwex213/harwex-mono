@@ -125,6 +125,27 @@ function findPath(grid: Grid, start: Position, goal: Position): Position[] | nul
   return null;
 }
 
+// Path to `goal`, or — when the goal itself cannot be stood on — to the closest
+// tile beside it. A building fills and blocks its own tile, so everything a
+// colonist does with one is done from the outside, and asking for a route "to" it
+// must not simply fail. An empty array means the start already is that tile.
+function findPathNear(grid: Grid, start: Position, goal: Position): Position[] | null {
+  const direct = findPath(grid, start, goal);
+  if (direct) {
+    return direct;
+  }
+  const gx = Math.round(goal.x);
+  const gy = Math.round(goal.y);
+  let best: Position[] | null = null;
+  for (const [dx, dy] of NEIGHBOURS) {
+    const candidate = findPath(grid, start, { x: gx + dx, y: gy + dy });
+    if (candidate && (!best || candidate.length < best.length)) {
+      best = candidate;
+    }
+  }
+  return best;
+}
+
 function reconstruct(grid: Grid, cameFrom: Int32Array, goalIdx: number): Position[] {
   const path: Position[] = [];
   let node = goalIdx;
@@ -137,4 +158,4 @@ function reconstruct(grid: Grid, cameFrom: Int32Array, goalIdx: number): Positio
   return path;
 }
 
-export { findPath };
+export { findPath, findPathNear };

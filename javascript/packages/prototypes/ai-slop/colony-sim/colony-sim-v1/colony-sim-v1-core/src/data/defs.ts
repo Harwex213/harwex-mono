@@ -2,7 +2,7 @@
 // Loaded into the `defs` store on first boot; referenced by id from sim data.
 // For the prototype they live in code; migrate to seeded IDB rows as they grow.
 
-import type { PlayerId, ResourceKind } from "../sim/components";
+import { BuildingKind, type PlayerId, type ResourceKind } from "../sim/components";
 
 interface TerrainDef {
   id: string;
@@ -24,6 +24,24 @@ interface ResourceDef {
   amount: number;
   harvestTicks: number;
 }
+
+// What a building of this kind can do. A building has at most two mechanics —
+// holding one resource, and turning ticks into one — and a kind that lacks either
+// leaves those fields at zero: the systems then read one table instead of asking
+// which kind they are looking at, and adding a producer is a row, not a system.
+interface BuildingDef {
+  id: BuildingKind;
+  label: string;
+  capacity: number; // store: how much of its one resource it holds
+  produces: ResourceKind | null; // farm: what a crop is made of
+  produceTicks: number; // ticks between crops
+  produceAmount: number; // stack size a crop lands as
+}
+
+// How fast a colonist walks, in tiles per tick. Content rather than a constant
+// inside one system: wandering and hauling have to move at the same pace, or a
+// colonist visibly changes gear the moment it is given something to do.
+const COLONIST_SPEED = 0.12;
 
 // The players a match is made of. Their colour is a definition and not a render
 // detail: the worker sheet, the roster dot and the headcount chip have to name the
@@ -59,5 +77,32 @@ const RESOURCE_DEFS: Record<MapObjectKind, ResourceDef> = {
   rock: { id: "rock", yields: "stone", amount: 4, harvestTicks: 45 },
 };
 
-export type { MapObjectKind, PlayerDef, TerrainDef, ResourceDef };
-export { DEFAULT_PLAYER, PLAYER_DEFS, PLAYER_IDS, TERRAIN_DEFS, RESOURCE_DEFS };
+const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
+  [BuildingKind.Warehouse]: {
+    id: BuildingKind.Warehouse,
+    label: "warehouse",
+    capacity: 50,
+    produces: null,
+    produceTicks: 0,
+    produceAmount: 0,
+  },
+  [BuildingKind.Farm]: {
+    id: BuildingKind.Farm,
+    label: "farm",
+    capacity: 0,
+    produces: "food",
+    produceTicks: 60, // 6 s at 1× — long enough to watch a hauler fetch the last one
+    produceAmount: 2,
+  },
+};
+
+export type { BuildingDef, MapObjectKind, PlayerDef, TerrainDef, ResourceDef };
+export {
+  BUILDING_DEFS,
+  COLONIST_SPEED,
+  DEFAULT_PLAYER,
+  PLAYER_DEFS,
+  PLAYER_IDS,
+  TERRAIN_DEFS,
+  RESOURCE_DEFS,
+};

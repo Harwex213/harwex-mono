@@ -1,4 +1,4 @@
-import type { Position } from "./sim/components";
+import type { PlayerId, Position } from "./sim/components";
 import type { World } from "./sim/world";
 import type { CommandDispatcher } from "./commands";
 import type { Selection } from "./state/signals";
@@ -34,6 +34,10 @@ interface ViewDeps {
   world: World;
   commands: CommandDispatcher;
   pointer: PointerHandlers;
+  // Whose client this is. The view is the one place an owner id still does work —
+  // it picks the art — and what the player is about to build has no owner in the
+  // world yet, so the ghost can only learn whose colour to wear from here.
+  player: PlayerId;
 }
 
 type CreateView = (deps: ViewDeps) => GameView;

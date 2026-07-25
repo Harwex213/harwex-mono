@@ -15,6 +15,9 @@ const SPAWNS: readonly { kind: SpawnKind; owner: PlayerId | null; icon: string; 
   { kind: "chicken", owner: null, icon: "🐔", label: "chicken" },
   { kind: "wood", owner: null, icon: "🪵", label: "wood" },
   { kind: "stone", owner: null, icon: "🪨", label: "stone" },
+  // Food is the farm's output, and this is how the haul loop gets tried without
+  // waiting on a farm to grow one.
+  { kind: "food", owner: null, icon: "🍗", label: "food" },
 ];
 
 // A dev-only way to put things into the world by hand, instead of regenerating the

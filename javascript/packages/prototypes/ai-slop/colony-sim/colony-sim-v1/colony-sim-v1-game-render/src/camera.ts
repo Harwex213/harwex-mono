@@ -48,7 +48,9 @@ const COMMAND_KEYS: Record<string, Command> = {
   "2": { type: "setSpeed", value: 2 },
   "3": { type: "setSpeed", value: 3 },
   c: { type: "toggleColonists" },
-  escape: { type: "select", selection: null },
+  // "Never mind", not "clear the selection": with the build cursor armed that is the
+  // thing Escape has to drop first, and which of the two is live is core's call.
+  escape: { type: "cancel" },
 };
 
 // Screen-space camera over the pixi root container: drag / key panning plus

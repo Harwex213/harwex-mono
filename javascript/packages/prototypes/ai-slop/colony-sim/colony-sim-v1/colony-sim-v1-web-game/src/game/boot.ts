@@ -1,5 +1,5 @@
 import { render } from "preact";
-import { GameEngine, loadSnapshot, newGame, openColonyDb } from "@hw/colony-sim-v1-core";
+import { GameEngine, loadSnapshot, newGame, openColonyDb, type PlayerId } from "@hw/colony-sim-v1-core";
 import { createGameStage } from "@hw/colony-sim-v1-game-render";
 import { mountHud } from "@hw/colony-sim-v1-hud";
 
@@ -11,7 +11,10 @@ interface GameSession {
   destroy(): void;
 }
 
-async function bootGame(mount: HTMLElement, seed: number): Promise<GameSession> {
+// `player` is the seat this client plays, not a property of the world: the world is
+// the same on every client (one seed, every colony in it), and what differs is whose
+// side of it the HUD reports.
+async function bootGame(mount: HTMLElement, seed: number, player: PlayerId): Promise<GameSession> {
   const db = await openColonyDb();
   const saved = await loadSnapshot(db);
   // There is one autosave slot for the whole app, so a snapshot belongs to this game
@@ -21,7 +24,7 @@ async function bootGame(mount: HTMLElement, seed: number): Promise<GameSession> 
   const world = saved && saved.seed === seed ? saved : newGame(seed);
 
   const stage = await createGameStage(mount);
-  const engine = new GameEngine({ world, db, createView: stage.createView });
+  const engine = new GameEngine({ world, db, player, createView: stage.createView });
   // The stage owns the clock, the engine owns what a frame means.
   stage.onFrame((deltaMs) => engine.frame(deltaMs));
   engine.start();

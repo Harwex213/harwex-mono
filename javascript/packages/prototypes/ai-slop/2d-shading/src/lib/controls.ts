@@ -54,6 +54,46 @@ function toggle(label: string, value: boolean, onChange: (value: boolean) => voi
   return row;
 }
 
+let radioSeq = 0;
+
+// Radio group. The name has to be unique per mounted demo, otherwise two groups on
+// one page share a selection — hence the counter rather than a caller-supplied id.
+function radio(
+  options: Array<{ value: string; label: string }>,
+  value: string,
+  onChange: (value: string) => void,
+): HTMLElement {
+  radioSeq += 1;
+  const name = `radio-${radioSeq}`;
+
+  const box = document.createElement("div");
+  box.className = "radio-group";
+
+  for (const option of options) {
+    const row = document.createElement("label");
+    row.className = "control control-toggle";
+
+    const input = document.createElement("input");
+    input.type = "radio";
+    input.name = name;
+    input.value = option.value;
+    input.checked = option.value === value;
+    input.addEventListener("change", () => {
+      if (input.checked) {
+        onChange(option.value);
+      }
+    });
+
+    const text = document.createElement("span");
+    text.textContent = option.label;
+
+    row.append(input, text);
+    box.append(row);
+  }
+
+  return box;
+}
+
 function group(title: string, children: HTMLElement[]): HTMLElement {
   const box = document.createElement("section");
   box.className = "control-group";
@@ -76,4 +116,4 @@ function stats(): { el: HTMLElement; set: (text: string) => void } {
   };
 }
 
-export { group, slider, stats, toggle };
+export { group, radio, slider, stats, toggle };

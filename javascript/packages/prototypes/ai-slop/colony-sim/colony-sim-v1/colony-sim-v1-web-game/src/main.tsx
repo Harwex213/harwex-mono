@@ -4,7 +4,7 @@ import { effect } from "@preact/signals";
 import { render } from "preact";
 import { bootGame, type GameSession } from "./game/boot";
 import { App } from "./shell/App";
-import { findRoom } from "./shell/lobby";
+import { findRoom, seatOf } from "./shell/lobby";
 import { GAMES_PATH, navigate, route } from "./shell/router";
 import { session } from "./shell/session";
 
@@ -48,16 +48,19 @@ effect(() => {
   // Non-reactive reads: this effect follows the route, not the lobby or the session.
   // A deep link into a game lands here with neither — the session lives in memory and
   // did not survive the reload — and the shell's gate takes it from the lobby.
-  const room = session.peek() ? findRoom(wanted) : null;
-  if (!room) {
+  const me = session.peek();
+  const room = me ? findRoom(wanted) : null;
+  if (!room || !me) {
     mountedGameId = null;
     navigate(GAMES_PATH);
     return;
   }
 
   // The seed comes from the room, so every player who pressed into this game builds
-  // the same world. Nothing else about it is shared — see CLAUDE.md.
-  void bootGame(gameRoot, room.seed).then((booted) => {
+  // the same world. Nothing else about it is shared — see CLAUDE.md. The seat comes
+  // from the same room snapshot, which is what makes two clients read the world as
+  // two different colonies instead of both as the first one.
+  void bootGame(gameRoot, room.seed, seatOf(room, me.playerId)).then((booted) => {
     if (generation !== started) {
       booted.destroy();
       return;

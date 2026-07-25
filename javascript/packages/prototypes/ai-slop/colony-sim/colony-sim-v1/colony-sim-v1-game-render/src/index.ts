@@ -12,5 +12,7 @@ export { bakeTerrain } from "./terrain";
 export type { WaterField, WaterSurface } from "./water";
 export { buildWaterSurface } from "./water";
 export { HOVER_STYLE, Marker, SELECTION_STYLE } from "./selection";
-export type { Creature, Fills, Sheets } from "./textures";
+export { BuildGhost } from "./ghost";
+export { buildingSprite, resourceBadge } from "./buildings";
+export type { Buildings, Creature, Fills, Sheets } from "./textures";
 export { Facing, fills, loadTextures, sheets, TREE_VARIANTS } from "./textures";

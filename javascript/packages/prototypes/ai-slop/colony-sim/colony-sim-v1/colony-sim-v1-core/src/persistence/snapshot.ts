@@ -1,4 +1,5 @@
 import { DEFAULT_PLAYER } from "../data/defs";
+import { tileIndex } from "../sim/grid";
 import { SCHEMA_VERSION, type World } from "../sim/world";
 import { type ColonyDb, SAVES_STORE } from "./db";
 
@@ -49,8 +50,16 @@ function hydrate(world: World): World {
   if (!world.items) {
     world.items = new Map();
   }
-  if (!world.stock) {
-    world.stock = { wood: 0, stone: 0, food: 0 };
+  if (!world.buildings) {
+    world.buildings = new Map();
+  }
+  // An inventory from before colonists carried stacks counted wood and nothing else,
+  // and there is no stack to recover out of that number — so the hands are emptied
+  // rather than left as a shape the haul job would read as a load it never picked up.
+  for (const [id, inventory] of world.inventories) {
+    if (!("kind" in inventory)) {
+      world.inventories.set(id, { kind: null, amount: 0 });
+    }
   }
   // A world from before ownership has colonists but nobody to own them, and an
   // owner-less colonist has no sprite sheet and no headcount to land in. Everything
@@ -68,6 +77,17 @@ function hydrate(world: World): World {
   // would fence them out of their own half.
   if (!world.grid.region || world.grid.region.length !== world.grid.terrain.length) {
     world.grid.region = new Uint8Array(world.grid.terrain.length);
+  }
+  // Occupancy is derived from the buildings, so it is rebuilt rather than trusted:
+  // a save from before the field existed has none, and one written mid-placement
+  // cannot be half-right. A stale bit here is a tile nothing can walk on and nothing
+  // explains.
+  world.grid.blocked = new Uint8Array(world.grid.terrain.length);
+  for (const id of world.buildings.keys()) {
+    const pos = world.positions.get(id);
+    if (pos) {
+      world.grid.blocked[tileIndex(world.grid, Math.floor(pos.x), Math.floor(pos.y))] = 1;
+    }
   }
   return world;
 }
