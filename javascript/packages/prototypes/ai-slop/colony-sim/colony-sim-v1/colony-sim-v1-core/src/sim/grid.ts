@@ -7,7 +7,8 @@ const GRID_H = 64;
 const enum Terrain {
   Grass = 0,
   Water = 1,
-  Rock = 2,
+  Rock = 2, // high ground: passable, just barren
+  Mountain = 3, // cliff face: the second thing on the map you cannot walk through
 }
 
 interface Grid {
@@ -36,7 +37,8 @@ function isWalkable(grid: Grid, x: number, y: number): boolean {
   if (!inBounds(grid, x, y)) {
     return false;
   }
-  return grid.terrain[tileIndex(grid, x, y)] !== Terrain.Water;
+  const terrain = grid.terrain[tileIndex(grid, x, y)];
+  return terrain !== Terrain.Water && terrain !== Terrain.Mountain;
 }
 
 function tileToPx(tile: number): number {

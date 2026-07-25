@@ -4,8 +4,9 @@ import { fileURLToPath } from "node:url";
 const dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // Every app in this group bundles the same three source packages, so the loader
-// rules and the asset alias live here instead of being copy-pasted per app. What
-// stays in each app's own config is what actually differs: entry, html, devServer.
+// rules, the asset alias and the dev-server policy live here instead of being
+// copy-pasted per app. What stays in each app's own config is what actually
+// differs: entry and html.
 const resolve = {
   extensions: [".ts", ".tsx", ".js", ".jsx"],
   alias: {
@@ -52,4 +53,13 @@ const moduleRules = {
   ],
 };
 
-export { moduleRules, resolve };
+// A free port picked by the OS on every start, the same as the repo's `yarn :static`.
+// Fixed ports cost more than they give here: a leftover server from an earlier run
+// either blocks the new one or, worse, keeps answering on the expected address with
+// a bundle built from sources that no longer exist. The port is printed on startup.
+const devServer = {
+  hot: true,
+  port: 0,
+};
+
+export { devServer, moduleRules, resolve };

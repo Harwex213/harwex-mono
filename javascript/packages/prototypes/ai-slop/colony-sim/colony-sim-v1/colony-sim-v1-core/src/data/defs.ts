@@ -19,6 +19,7 @@ const TERRAIN_DEFS: Record<string, TerrainDef> = {
   grass: { id: "grass", walkable: true, moveCost: 1 },
   water: { id: "water", walkable: false, moveCost: Infinity },
   rock: { id: "rock", walkable: true, moveCost: 2 },
+  mountain: { id: "mountain", walkable: false, moveCost: Infinity },
 };
 
 const RESOURCE_DEFS: Record<string, ResourceDef> = {

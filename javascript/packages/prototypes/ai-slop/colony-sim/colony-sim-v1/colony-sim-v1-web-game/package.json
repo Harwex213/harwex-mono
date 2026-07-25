@@ -11,7 +11,10 @@
   "dependencies": {
     "@hw/colony-sim-v1-core": "workspace:*",
     "@hw/colony-sim-v1-game-render": "workspace:*",
-    "@hw/colony-sim-v1-hud": "workspace:*"
+    "@hw/colony-sim-v1-hud": "workspace:*",
+    "@hw/colony-sim-v1-protocol": "workspace:*",
+    "@preact/signals": "2.9.4",
+    "preact": "10.29.7"
   },
   "devDependencies": {
     "@rspack/cli": "2.1.4",

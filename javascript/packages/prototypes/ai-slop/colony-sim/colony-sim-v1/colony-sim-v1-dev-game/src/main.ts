@@ -1,7 +1,7 @@
 import "./styles/reset.css";
-import { GameEngine, newGame, type World } from "@hw/colony-sim-v1-core";
+import { DEFAULT_MAP_GEN, GameEngine, MAP_GENERATORS, type MapGenId, newGame, type World } from "@hw/colony-sim-v1-core";
 import { createGameStage } from "@hw/colony-sim-v1-game-render";
-import { mountHud } from "@hw/colony-sim-v1-hud";
+import { mountDevHud } from "./hud/mount";
 
 // A fixed seed, so every reload generates the same world and a change to a system
 // can be judged against the previous run instead of against fresh terrain.
@@ -13,14 +13,21 @@ function seedFromUrl(): number {
   return Number.isFinite(parsed) ? parsed >>> 0 : DEFAULT_SEED;
 }
 
+// Which map generator to run, `?map=<id>`. Comparing two map styles on one seed
+// is a dev-loop thing, so the switch lives here and not in the shipped game.
+function mapGenFromUrl(): MapGenId {
+  const raw = new URLSearchParams(globalThis.location.search).get("map");
+  return raw !== null && raw in MAP_GENERATORS ? (raw as MapGenId) : DEFAULT_MAP_GEN;
+}
+
 // Dev boot: the same core, the same renderer, the same HUD — minus IndexedDB. The
 // autosave is what makes iteration here slow and confusing: it outlives an edit to
 // the world's shape and then hands the systems yesterday's data, and with HMR
 // reloading constantly that is the normal case rather than the rare one. So the dev
-// app always starts from a freshly generated world, and `?seed=N` is how you leave
-// the default one.
+// app always starts from a freshly generated world, and `?seed=N` / `?map=ID` is
+// how you leave the defaults.
 async function boot(): Promise<void> {
-  const world = newGame(seedFromUrl());
+  const world = newGame(seedFromUrl(), mapGenFromUrl());
 
   const stage = await createGameStage();
   const engine = new GameEngine({ world, createView: stage.createView });
@@ -31,7 +38,7 @@ async function boot(): Promise<void> {
   if (!mount) {
     throw new Error("#app mount point missing");
   }
-  mountHud(engine, mount);
+  mountDevHud(engine, mount);
 
   expose({ world, engine });
 }

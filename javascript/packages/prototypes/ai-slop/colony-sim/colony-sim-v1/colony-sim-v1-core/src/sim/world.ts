@@ -1,6 +1,7 @@
-import { createNoise2D } from "simplex-noise";
 import { createRng, randInt, type Rng } from "./rng";
 import { createGrid, type Grid, GRID_H, GRID_W, isWalkable, Terrain, tileIndex } from "./grid";
+import { DEFAULT_MAP_GEN, getMapGenerator, type MapGenId } from "./mapgen";
+import { pickEntity } from "./picking";
 import type { Animal, EntityId, Inventory, Job, Needs, PathFollow, Position, Stock } from "./components";
 import { AnimalKind, JobKind } from "./components";
 
@@ -41,22 +42,6 @@ function allocId(world: World): EntityId {
   world.nextId += 1;
   world.entities.add(id);
   return id;
-}
-
-function generateTerrain(grid: Grid, rng: Rng): void {
-  const noise = createNoise2D(rng);
-  for (let y = 0; y < grid.height; y += 1) {
-    for (let x = 0; x < grid.width; x += 1) {
-      const n = noise(x / 16, y / 16);
-      let terrain = Terrain.Grass;
-      if (n < -0.55) {
-        terrain = Terrain.Water;
-      } else if (n > 0.6) {
-        terrain = Terrain.Rock;
-      }
-      grid.terrain[tileIndex(grid, x, y)] = terrain;
-    }
-  }
 }
 
 function createEmptyWorld(seed: number): World {
@@ -115,6 +100,22 @@ function spawnRock(world: World, pos: Position): EntityId {
   return id;
 }
 
+// A walkable tile with nothing standing on it, for spawns that were told what to
+// create but not where (see the spawn command). Rejection sampling rather than a
+// scan of the map: on a mostly-empty grid a handful of draws hit, and the caller
+// gets `null` instead of a hang on the pathological one. Occupancy is asked of
+// `pickEntity` so "free" here means the same thing it does to a click.
+function randomFreeTile(world: World, rng: Rng): Position | null {
+  for (let attempt = 0; attempt < 200; attempt += 1) {
+    const x = randInt(rng, 0, world.grid.width);
+    const y = randInt(rng, 0, world.grid.height);
+    if (isWalkable(world.grid, x, y) && pickEntity(world, x, y) === null) {
+      return { x, y };
+    }
+  }
+  return null;
+}
+
 // Boulders are entities rather than ground decor because they are selectable
 // (and one day mineable) — that is the line between the baked layer and the
 // world. Their tiles are claimed here so nothing else spawns on top of them.
@@ -124,7 +125,7 @@ function scatterRocks(world: World, rng: Rng, taken: Set<number>): void {
     for (let x = 0; x < grid.width; x += 1) {
       const index = tileIndex(grid, x, y);
       const terrain = grid.terrain[index];
-      if (terrain === Terrain.Water || taken.has(index)) {
+      if (terrain === Terrain.Water || terrain === Terrain.Mountain || taken.has(index)) {
         continue;
       }
       const density = terrain === Terrain.Rock ? STONE_ROCK_PERCENT : GRASS_ROCK_PERCENT;
@@ -137,30 +138,58 @@ function scatterRocks(world: World, rng: Rng, taken: Set<number>): void {
   }
 }
 
-// New game: generate terrain, scatter rocks, then place colonists, trees and
-// animals on whatever walkable tiles are left.
-function newGame(seed: number): World {
+// How far from the stockpile the starting colonists may land. A map can put a
+// wall across itself (see the divided-lands generator), and a colonist dropped
+// on the far side of one would never reach the stockpile: the colony starts as
+// one cluster, and the map says where that cluster goes.
+const COLONIST_SPAWN_RADIUS = 8;
+
+// New game: let the chosen generator draw the map, scatter rocks, then place
+// colonists around the colony spot it picked and the rest of the life on
+// whatever walkable tiles are left.
+function newGame(seed: number, mapGenId: MapGenId = DEFAULT_MAP_GEN): World {
   const world = createEmptyWorld(seed);
   const rng = createRng(seed);
-  generateTerrain(world.grid, rng);
+  const { colonyOrigin } = getMapGenerator(mapGenId).generate(world.grid, rng);
+  world.stockpile = colonyOrigin;
 
   const taken = new Set<number>([tileIndex(world.grid, world.stockpile.x, world.stockpile.y)]);
   scatterRocks(world, rng, taken);
+
+  const claim = (x: number, y: number): boolean => {
+    if (!isWalkable(world.grid, x, y) || taken.has(tileIndex(world.grid, x, y))) {
+      return false;
+    }
+    taken.add(tileIndex(world.grid, x, y));
+    return true;
+  };
 
   const claimWalkableTile = (): Position => {
     for (let attempt = 0; attempt < 200; attempt += 1) {
       const x = randInt(rng, 0, world.grid.width);
       const y = randInt(rng, 0, world.grid.height);
-      if (isWalkable(world.grid, x, y) && !taken.has(tileIndex(world.grid, x, y))) {
-        taken.add(tileIndex(world.grid, x, y));
+      if (claim(x, y)) {
         return { x, y };
       }
     }
     return { x: world.stockpile.x, y: world.stockpile.y };
   };
 
+  // Rejection sampling in a box around the stockpile; a cramped spot (a pocket
+  // in the cliffs, a shore) falls back to anywhere walkable rather than hangs.
+  const claimTileNearColony = (): Position => {
+    for (let attempt = 0; attempt < 200; attempt += 1) {
+      const x = colonyOrigin.x + randInt(rng, -COLONIST_SPAWN_RADIUS, COLONIST_SPAWN_RADIUS + 1);
+      const y = colonyOrigin.y + randInt(rng, -COLONIST_SPAWN_RADIUS, COLONIST_SPAWN_RADIUS + 1);
+      if (claim(x, y)) {
+        return { x, y };
+      }
+    }
+    return claimWalkableTile();
+  };
+
   for (let i = 0; i < 6; i += 1) {
-    spawnColonist(world, claimWalkableTile());
+    spawnColonist(world, claimTileNearColony());
   }
   for (let i = 0; i < 40; i += 1) {
     spawnTree(world, claimWalkableTile());
@@ -172,4 +201,4 @@ function newGame(seed: number): World {
 }
 
 export type { World };
-export { SCHEMA_VERSION, newGame, allocId, spawnColonist, spawnTree, spawnRock, spawnChicken };
+export { SCHEMA_VERSION, newGame, allocId, randomFreeTile, spawnColonist, spawnTree, spawnRock, spawnChicken };

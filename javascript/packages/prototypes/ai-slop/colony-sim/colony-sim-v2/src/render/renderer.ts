@@ -52,14 +52,16 @@ class GameRenderer {
       sprite.y = y * TILE_SIZE;
       sprite.zIndex = y;
     }
-    this.animate(world);
+    this.animate(world, alpha);
   }
 
-  // Pick the sheet frame per animal, and step the water shader. Both advance on
-  // sim ticks rather than wall clock, so pause freezes them and 2×/3× speeds
-  // them up for free.
-  private animate(world: World): void {
-    this.water.setTick(world.tick);
+  // Pick the sheet frame per animal, and advance the water shader. Both run on the
+  // sim clock rather than wall clock, so pause freezes them and 2×/3× speeds them
+  // up for free. A sprite frame is a whole tick's worth of animation; the water is
+  // a continuous surface, so it gets the interpolated clock instead of stepping at
+  // 10 fps under a 60 fps picture.
+  private animate(world: World, alpha: number): void {
+    this.water.setPhase(world.tick + alpha);
     const frames = sheets().chicken;
     for (const [id, sprite] of this.animals) {
       const cur = world.positions.get(id);

@@ -1,5 +1,5 @@
 import { rspack } from "@rspack/core";
-import { moduleRules, resolve } from "../rspack.shared.mjs";
+import { devServer, moduleRules, resolve } from "../rspack.shared.mjs";
 
 export default {
   entry: {
@@ -12,8 +12,5 @@ export default {
       template: "./index.html",
     }),
   ],
-  devServer: {
-    hot: true,
-    port: 5150,
-  },
+  devServer,
 };

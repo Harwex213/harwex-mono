@@ -21,16 +21,21 @@ const enum Facing {
   Right = 3,
 }
 
-// Grass.png is a 5×1 palette strip: water, light grass, dark grass, then two
-// sand fills. Only the sand is taken from here — grass comes from the textured
-// sheet and water from the shore ramp.
+// Grass.png is a 5×1 palette strip: water, light grass, dark grass, then two sand
+// fills. Only the sand is taken from here — grass comes from the textured sheet
+// and water from the shore ramp — and the two sand frames are pixel-identical, so
+// one of them is the whole beach.
 const GRASS_STRIP_COLS = 5;
-const GRASS_STRIP_SAND = [3, 4];
+const SAND_COL = 3;
 
 // Shore.png is a 5×1 depth ramp (sand → wet sand → shallow → mid → open water).
-// The first two are redundant with the sand fills above.
+// Frame 0 is the same fill as the beach above; the rest is the whole shore ramp,
+// wet sand included — it is the palette step that carries sand into water. Water
+// frames stay ordered shallow → deep, the order the water materials are numbered
+// in.
 const SHORE_STRIP_COLS = 5;
-const SHORE_STRIP_WATER = [2, 3, 4];
+const WET_SAND_COL = 1;
+const WATER_COLS = [2, 3, 4];
 
 // Sheet grids that map straight onto a semantic axis. TexturedGrass.png and
 // DeadGrass.png share this layout, so the two grounds are interchangeable.
@@ -40,19 +45,27 @@ const TREE_VARIANTS = 4; // cols: stump, then three canopies
 const ROCK_TINTS = 4; // rows: bare, mossy, green moss, snow
 const ROCK_SIZES = 3; // cols: small → large
 
-// Every texture the renderer can draw, resolved to a semantic axis so callers
+// Sheets the renderer draws as sprites, resolved to a semantic axis so callers
 // never index raw sheet coordinates.
 interface Sheets {
   chicken: Texture[][]; // [facing][walk frame]
-  grass: Texture[][]; // [shade][plain | tuft A | tuft B]
-  dryGrass: Texture[][]; // same axes as `grass`, for high rocky ground
-  sand: Texture[]; // beach fills
-  water: Texture[]; // shallow → open water
   trees: Texture[]; // [0] = stump, [1..] = canopies
   rocks: Texture[][]; // [tint][size]
 }
 
+// The ground fills are needed as raw RGBA bytes, not as textures: the terrain is
+// composed pixel by pixel on the CPU (see terrain.ts) and a GPU texture cannot be
+// read back. Each entry is one 16×16 frame, RGBA, row-major.
+interface Fills {
+  grass: Uint8Array[][]; // [shade][plain | tuft A | tuft B]
+  dryGrass: Uint8Array[][]; // same axes as `grass`, for high rocky ground
+  sand: Uint8Array; // beach fill
+  wetSand: Uint8Array; // the band where the beach meets the water
+  water: Uint8Array[]; // shallow → open water
+}
+
 let loaded: Sheets | null = null;
+let decoded: Fills | null = null;
 
 // Cut a grid of sub-textures sharing one GPU source. `nearest` keeps pixel art
 // crisp at the camera's ×1…×8 zoom.
@@ -74,30 +87,56 @@ function sliceSheet(base: Texture, rows: number, cols: number, frame: number): T
   return grid;
 }
 
+// The fill sheets are decoded straight to bytes through a scratch canvas instead
+// of going through `Assets`: they never reach the GPU as themselves, only as the
+// pixels the bake copies out of them.
+async function decodeFrames(url: string, rows: number, cols: number, frame: number): Promise<Uint8Array[][]> {
+  const blob = await (await fetch(url)).blob();
+  const bitmap = await createImageBitmap(blob, { premultiplyAlpha: "none" });
+  const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  if (!ctx) {
+    throw new Error("no 2d canvas context — cannot decode ground fills");
+  }
+  ctx.drawImage(bitmap, 0, 0);
+  bitmap.close();
+  const grid: Uint8Array[][] = [];
+  for (let row = 0; row < rows; row += 1) {
+    const line: Uint8Array[] = [];
+    for (let col = 0; col < cols; col += 1) {
+      line.push(new Uint8Array(ctx.getImageData(col * frame, row * frame, frame, frame).data));
+    }
+    grid.push(line);
+  }
+  return grid;
+}
+
 // Must be awaited during boot, before the first render frame: the renderer's
-// reconcile() creates sprites synchronously and cannot await.
+// reconcile() creates sprites synchronously and cannot await, and the terrain bake
+// needs the fills already decoded.
 async function loadTextures(): Promise<void> {
-  const [chicken, grassStrip, texturedGrass, deadGrass, shore, trees, rocks] = await Promise.all([
+  const [chicken, trees, rocks, grassStrip, texturedGrass, deadGrass, shore] = await Promise.all([
     Assets.load<Texture>(chickenUrl),
-    Assets.load<Texture>(grassUrl),
-    Assets.load<Texture>(texturedGrassUrl),
-    Assets.load<Texture>(deadGrassUrl),
-    Assets.load<Texture>(shoreUrl),
     Assets.load<Texture>(treesUrl),
     Assets.load<Texture>(rocksUrl),
+    decodeFrames(grassUrl, 1, GRASS_STRIP_COLS, FRAME),
+    decodeFrames(texturedGrassUrl, GRASS_SHADES, GRASS_VARIANTS, FRAME),
+    decodeFrames(deadGrassUrl, GRASS_SHADES, GRASS_VARIANTS, FRAME),
+    decodeFrames(shoreUrl, 1, SHORE_STRIP_COLS, FRAME),
   ]);
-
-  const grassRow = sliceSheet(grassStrip, 1, GRASS_STRIP_COLS, FRAME)[0];
-  const shoreRow = sliceSheet(shore, 1, SHORE_STRIP_COLS, FRAME)[0];
 
   loaded = {
     chicken: sliceSheet(chicken, FACING_ROWS, FRAMES_PER_ROW, FRAME),
-    grass: sliceSheet(texturedGrass, GRASS_SHADES, GRASS_VARIANTS, FRAME),
-    dryGrass: sliceSheet(deadGrass, GRASS_SHADES, GRASS_VARIANTS, FRAME),
-    sand: GRASS_STRIP_SAND.map((col) => grassRow[col]),
-    water: SHORE_STRIP_WATER.map((col) => shoreRow[col]),
     trees: sliceSheet(trees, 1, TREE_VARIANTS, FRAME)[0],
     rocks: sliceSheet(rocks, ROCK_TINTS, ROCK_SIZES, FRAME),
+  };
+
+  decoded = {
+    grass: texturedGrass,
+    dryGrass: deadGrass,
+    sand: grassStrip[0][SAND_COL],
+    wetSand: shore[0][WET_SAND_COL],
+    water: WATER_COLS.map((col) => shore[0][col]),
   };
 }
 
@@ -108,5 +147,12 @@ function sheets(): Sheets {
   return loaded;
 }
 
-export type { Sheets };
-export { Facing, FRAMES_PER_ROW, TREE_VARIANTS, loadTextures, sheets };
+function fills(): Fills {
+  if (!decoded) {
+    throw new Error("textures not loaded — call loadTextures() during boot");
+  }
+  return decoded;
+}
+
+export type { Fills, Sheets };
+export { Facing, FRAMES_PER_ROW, GRASS_VARIANTS, TREE_VARIANTS, loadTextures, sheets, fills };

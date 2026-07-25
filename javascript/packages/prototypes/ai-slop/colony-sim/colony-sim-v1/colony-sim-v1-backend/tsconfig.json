@@ -6,6 +6,9 @@
     ],
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
+    // Node runs these sources directly, stripping the types: it resolves the literal
+    // path, so imports must name the .ts file that is actually on disk.
+    "allowImportingTsExtensions": true,
     "types": [
       "node"
     ]

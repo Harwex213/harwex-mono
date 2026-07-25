@@ -18,7 +18,19 @@ export type {
 } from "./sim/components";
 export { AnimalKind, JobKind } from "./sim/components";
 export type { World } from "./sim/world";
-export { allocId, newGame, SCHEMA_VERSION, spawnChicken, spawnColonist, spawnRock, spawnTree } from "./sim/world";
+export {
+  allocId,
+  newGame,
+  randomFreeTile,
+  SCHEMA_VERSION,
+  spawnChicken,
+  spawnColonist,
+  spawnRock,
+  spawnTree,
+} from "./sim/world";
+// Map generation: which map a new game gets is the caller's choice, by id.
+export type { MapGenerator, MapGenId, MapGenResult } from "./sim/mapgen";
+export { DEFAULT_MAP_GEN, getMapGenerator, listMapGenerators, MAP_GENERATORS } from "./sim/mapgen";
 export type { Rng } from "./sim/rng";
 export { createRng, randInt } from "./sim/rng";
 export { pickEntity } from "./sim/picking";
@@ -46,7 +58,7 @@ export type { ColonistRow, SelectionDetails } from "./state/inspect";
 export { describeSelection, listColonists } from "./state/inspect";
 
 // The one write path into that state.
-export type { Command, Dispatcher } from "./commands";
+export type { Command, Dispatcher, SpawnKind, WorldCommand } from "./commands";
 export { CommandDispatcher } from "./commands";
 
 // The seam a renderer plugs into.

@@ -1,0 +1,40 @@
+/* The dev panel borrows the HUD's own tokens and its .panel / .hud-button look —
+   only its slot and its innards are local. Top-left is the corner the shared HUD
+   leaves empty, so nothing here has to move to make room for it. */
+.debug-panel {
+  top: var(--hud-gap);
+  left: var(--hud-gap);
+  width: 128px;
+}
+
+.debug-panel .panel-title {
+  margin-bottom: 4px;
+  font-weight: 400;
+  color: var(--hud-muted);
+}
+
+.debug-target {
+  margin-bottom: 6px;
+  color: var(--hud-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.debug-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.debug-action {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  text-align: left;
+}
+
+.debug-icon {
+  width: 16px;
+  font-size: 14px;
+  line-height: 1;
+  text-align: center;
+}

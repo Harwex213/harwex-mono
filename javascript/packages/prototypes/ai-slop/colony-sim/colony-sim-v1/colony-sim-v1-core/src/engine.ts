@@ -3,8 +3,8 @@ import { createRng, type Rng } from "./sim/rng";
 import { runSystems } from "./sim/systems";
 import { inBounds } from "./sim/grid";
 import { pickEntity } from "./sim/picking";
-import type { Position } from "./sim/components";
-import type { World } from "./sim/world";
+import type { EntityId, Position } from "./sim/components";
+import { randomFreeTile, spawnChicken, spawnRock, spawnTree, type World } from "./sim/world";
 import { saveSnapshot } from "./persistence/snapshot";
 import type { ColonyDb } from "./persistence/db";
 import {
@@ -19,11 +19,19 @@ import {
   speed,
 } from "./state/signals";
 import { describeSelection, listColonists } from "./state/inspect";
-import { type Command, CommandDispatcher, type Dispatcher } from "./commands";
+import { type Command, CommandDispatcher, type Dispatcher, type SpawnKind } from "./commands";
 import type { CreateView, GameView } from "./view";
 
 const TICK_MS = 100; // 10 logical ticks per second
 const AUTOSAVE_MS = 10000;
+
+// The one place a spawn command's kind is turned into a spawner. A command names
+// what to create; how it is created stays in the sim.
+const SPAWNERS: Record<SpawnKind, (world: World, pos: Position) => EntityId> = {
+  tree: spawnTree,
+  rock: spawnRock,
+  chicken: spawnChicken,
+};
 
 interface GameEngineOptions {
   world: World;
@@ -89,6 +97,7 @@ class GameEngine implements Dispatcher {
   // in, so pause and speed stay a multiplier on the accumulator — the view keeps
   // getting every frame either way.
   frame(deltaMs: number): void {
+    this.applyWorldCommands();
     this.accumulator += deltaMs * (paused.value ? 0 : speed.value);
     while (this.accumulator >= TICK_MS) {
       this.step();
@@ -109,6 +118,22 @@ class GameEngine implements Dispatcher {
   // dispatcher for its hotkeys.
   dispatch(command: Command): void {
     this.commands.dispatch(command);
+  }
+
+  // World commands land here, between ticks — never inside one, where half the
+  // systems would have run against the old world. Draining per frame rather than
+  // per tick is deliberate: a paused game ticks not at all, and a spawn that only
+  // appeared on resume would be useless to anyone poking at a frozen world.
+  private applyWorldCommands(): void {
+    for (const command of this.commands.takePending()) {
+      // No tile given → the sim finds one; a full map yields nothing and the
+      // command is dropped rather than stacking entities on an occupied tile.
+      const tile = command.tile ?? randomFreeTile(this.world, this.rng);
+      if (!tile) {
+        continue;
+      }
+      SPAWNERS[command.kind](this.world, tile);
+    }
   }
 
   // Canvas click → selection. Picking needs the World, so it lives here rather

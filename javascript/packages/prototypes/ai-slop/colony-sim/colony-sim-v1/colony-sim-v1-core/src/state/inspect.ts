@@ -23,6 +23,7 @@ const TERRAIN_NAMES: Record<Terrain, string> = {
   [Terrain.Grass]: "grass",
   [Terrain.Water]: "water",
   [Terrain.Rock]: "rock",
+  [Terrain.Mountain]: "mountain",
 };
 
 const JOB_NAMES: Record<JobKind, string> = {

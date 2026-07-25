@@ -53,8 +53,37 @@ function paintTerrain(tilemap: CompositeTilemap, world: World): void {
   for (let y = 0; y < grid.height; y += 1) {
     for (let x = 0; x < grid.width; x += 1) {
       tilemap.tile(terrainTile(world, depth, shade, x, y), x * TILE_SIZE, y * TILE_SIZE);
+      // A cliff is laid over the ground, not instead of it: its frames are cut
+      // round, and the bare ground has to show through the corners for the mass
+      // to read as a rock rising out of the terrain rather than a square patch.
+      if (grid.terrain[tileIndex(grid, x, y)] === Terrain.Mountain) {
+        tilemap.tile(cliffTile(grid, world.seed, x, y), x * TILE_SIZE, y * TILE_SIZE);
+      }
     }
   }
+}
+
+// Which of the nine cliff frames a mountain tile wears. A wall is drawn on every
+// side the mountain ends on, so the frame follows from the four neighbours alone
+// and an enclosed tile gets the middle one — the plateau top. Off-map counts as
+// open ground, which walls a mountain running into the map edge. A mass one tile
+// wide is the case the nine-slice cannot state: every frame it could offer is a
+// wall along one side and plateau along the other, and there is no plateau. Such
+// a spur is drawn as crags — a chain of boulders, which is what it is.
+function cliffTile(grid: Grid, seed: number, x: number, y: number): Texture {
+  const { cliff, crag } = sheets();
+  const north = isMountain(grid, x, y - 1);
+  const south = isMountain(grid, x, y + 1);
+  const west = isMountain(grid, x - 1, y);
+  const east = isMountain(grid, x + 1, y);
+  if ((!north && !south) || (!west && !east)) {
+    return crag[tileHash(seed, x, y) % crag.length];
+  }
+  return cliff[north ? (south ? 1 : 2) : 0][west ? (east ? 1 : 2) : 0];
+}
+
+function isMountain(grid: Grid, x: number, y: number): boolean {
+  return inBounds(grid, x, y) && grid.terrain[tileIndex(grid, x, y)] === Terrain.Mountain;
 }
 
 function terrainTile(world: World, depth: Uint8Array, shade: Uint8Array, x: number, y: number): Texture {
@@ -74,8 +103,9 @@ function terrainTile(world: World, depth: Uint8Array, shade: Uint8Array, x: numb
   }
   // High ground is dry and sparse; the boulders scattered densely over it carry
   // the rest of the read. Its sheet shares the grass layout, so the same shade
-  // and tuft picks apply.
-  const ground = terrain === Terrain.Rock ? tiles.dryGrass : tiles.grass;
+  // and tuft picks apply. Mountains sit in that same barren band and use it as
+  // the ground their cliff is laid over.
+  const ground = terrain === Terrain.Grass ? tiles.grass : tiles.dryGrass;
   const variant = hash % 100 < TUFT_PERCENT ? 1 + ((hash >>> 8) % 2) : 0;
   return ground[shade[index]][variant];
 }
@@ -138,7 +168,7 @@ function waterDepthMap(grid: Grid): Uint8Array {
 }
 
 function touchesLand(grid: Grid, x: number, y: number): boolean {
-  return touches(grid, x, y, Terrain.Grass) || touches(grid, x, y, Terrain.Rock);
+  return touches(grid, x, y, Terrain.Grass) || touches(grid, x, y, Terrain.Rock) || touches(grid, x, y, Terrain.Mountain);
 }
 
 function touches(grid: Grid, x: number, y: number, terrain: Terrain): boolean {
