@@ -12,7 +12,8 @@ export default {
     extensions: [".ts", ".tsx", ".js", ".jsx"],
     alias: {
       "@": path.resolve(dirname, "src"),
-      "@assets": path.resolve(dirname, "assets"),
+      // Sprite sheets live one level up, shared with colony-sim-v1.
+      "@assets": path.resolve(dirname, "../assets"),
       "react": "preact/compat",
       "react-dom/test-utils": "preact/test-utils",
       "react-dom": "preact/compat",

@@ -1,4 +1,8 @@
 {
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "files": [
+    "./types/ambient.d.ts"
+  ],
   "compilerOptions": {
     "target": "ES2022",
     "lib": [
@@ -12,31 +16,17 @@
     "resolveJsonModule": true,
     "isolatedModules": true,
     "noEmit": true,
-    "jsx": "react-jsx",
     "strict": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
-    "baseUrl": "./",
+    "jsx": "react-jsx",
+    "jsxImportSource": "preact",
+    "baseUrl": ".",
     "paths": {
-      "@/*": [
-        "src/*"
-      ],
       "@assets/*": [
         "../assets/*"
-      ],
-      "react": [
-        "./node_modules/preact/compat/"
-      ],
-      "react-dom": [
-        "./node_modules/preact/compat/"
-      ],
-      "react/jsx-runtime": [
-        "./node_modules/preact/jsx-runtime"
       ]
     }
-  },
-  "include": [
-    "src"
-  ]
+  }
 }

@@ -1,0 +1,19 @@
+{
+  "name": "@hw/colony-sim-v1-game-render",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "exports": "./src/index.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@hw/colony-sim-v1-core": "workspace:*",
+    "@pixi/tilemap": "5.0.2",
+    "pixi.js": "8.8.0",
+    "simplex-noise": "4.0.3"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3"
+  }
+}
