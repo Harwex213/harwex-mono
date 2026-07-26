@@ -1,3 +1,4 @@
+import { dist } from "../math";
 import type { World } from "../world";
 
 // Advance each entity along its resolved path. prevPositions is snapshotted by
@@ -17,8 +18,8 @@ function pathFollowSystem(world: World): void {
 
     const dx = target.x - pos.x;
     const dy = target.y - pos.y;
-    const dist = Math.hypot(dx, dy);
-    if (dist <= path.speed) {
+    const remaining = dist(target.x, target.y, pos.x, pos.y);
+    if (remaining <= path.speed) {
       pos.x = target.x;
       pos.y = target.y;
       path.index += 1;
@@ -26,8 +27,8 @@ function pathFollowSystem(world: World): void {
         world.paths.delete(id);
       }
     } else {
-      pos.x += (dx / dist) * path.speed;
-      pos.y += (dy / dist) * path.speed;
+      pos.x += (dx / remaining) * path.speed;
+      pos.y += (dy / remaining) * path.speed;
     }
   }
 }

@@ -25,6 +25,12 @@ interface World {
   schemaVersion: number;
   tick: number;
   seed: number;
+  // Position of the sim's random stream. State, not a property of the engine running
+  // it: a stream kept in a closure restarts on every reload, and two lockstep clients
+  // whose engines were built at different moments would then draw different numbers
+  // for the same tick. Here it is snapshotted, hashed, and equal everywhere — see
+  // stateRng.
+  rngState: number;
   nextId: EntityId;
   grid: Grid;
   entities: Set<EntityId>;
@@ -53,7 +59,8 @@ interface World {
 // 8: the grid carries a region per tile beside its terrain.
 // 9: buildings; the colony's resources moved into the stores, so `stock` is gone
 //    and a colonist carries one stack instead of a wood counter.
-const SCHEMA_VERSION = 9;
+// 10: the random stream's position lives on the world (`rngState`).
+const SCHEMA_VERSION = 10;
 
 // Rock density per terrain, in percent of eligible tiles. High ground is strewn
 // with boulders; grassland gets the occasional one.
@@ -72,6 +79,7 @@ function createEmptyWorld(seed: number): World {
     schemaVersion: SCHEMA_VERSION,
     tick: 0,
     seed,
+    rngState: seed | 0,
     nextId: 1,
     grid: createGrid(GRID_W, GRID_H),
     entities: new Set(),

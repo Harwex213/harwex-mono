@@ -226,3 +226,24 @@
   padding: 5px 9px;
   font-size: 13px;
 }
+
+/* Beside it, along the top edge: what the network is doing to the game. Centred rather
+   than tucked away — a stopped world is not a detail. */
+.net-banner {
+  position: fixed;
+  top: var(--shell-gap);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1;
+  padding: 5px 12px;
+  font-size: 13px;
+  color: var(--shell-muted);
+  background: rgb(0 0 0 / 65%);
+  border: 1px solid var(--shell-border);
+  border-radius: 4px;
+}
+
+.net-banner-bad {
+  color: #ffd0d0;
+  border-color: #a33;
+}

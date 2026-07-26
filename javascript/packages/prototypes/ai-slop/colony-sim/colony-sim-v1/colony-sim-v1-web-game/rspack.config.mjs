@@ -25,6 +25,10 @@ export default {
       {
         context: ["/api"],
         target: `http://localhost:${process.env.BACKEND_PORT ?? 8787}`,
+        // The game's turn stream is a WebSocket on the same origin, so the proxy has to
+        // pass an upgrade through and not only requests. Without this the socket is
+        // answered by the dev server itself — which speaks HMR, not lockstep.
+        ws: true,
       },
     ],
   },

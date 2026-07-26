@@ -10,6 +10,7 @@ import {
   UniformGroup,
 } from "pixi.js";
 import { group, radio, slider, stats, toggle } from "../lib/controls";
+import { QUAD_VERTEX, unitQuad } from "../lib/mesh";
 import { LightMap } from "../lib/lightmap";
 import { HEIGHT, paintGround, paintOccluders, WIDTH } from "../lib/paint";
 import { buildGrid, freeTile, mergeOccluders, type Occluder } from "../lib/scene";
@@ -28,22 +29,6 @@ const MARCH_STEPS = 192;
 // wants a compile-time bound.
 const MAX_TAPS = 9;
 
-const VERTEX = `#version 300 es
-in vec2 aPosition;
-in vec2 aUV;
-
-out vec2 vUV;
-
-uniform mat3 uProjectionMatrix;
-uniform mat3 uWorldTransformMatrix;
-uniform mat3 uTransformMatrix;
-
-void main() {
-  mat3 mvp = uProjectionMatrix * uWorldTransformMatrix * uTransformMatrix;
-  gl_Position = vec4((mvp * vec3(aPosition, 1.0)).xy, 0.0, 1.0);
-  vUV = aUV;
-}
-`;
 
 // Pass 2 — the reduction. One texel per angular slice: march the ray from the light
 // outwards through the occluder map and store the first hit as a normalised
@@ -157,16 +142,6 @@ type Light = {
   mesh: Mesh<Geometry, Shader>;
 };
 
-function unitQuad(): Geometry {
-  return new Geometry({
-    attributes: {
-      aPosition: [0, 0, 1, 0, 1, 1, 0, 1],
-      aUV: [0, 0, 1, 0, 1, 1, 0, 1],
-    },
-    indexBuffer: [0, 1, 2, 0, 2, 3],
-  });
-}
-
 // White silhouettes on transparent: the march tests alpha, so what matters is
 // coverage, not colour.
 function paintSilhouettes(g: Graphics, boxes: Occluder[]): void {
@@ -224,7 +199,7 @@ async function mountShadowMap1D(host: HTMLElement): Promise<Teardown> {
   const distMesh = new Mesh({
     geometry: quad,
     shader: Shader.from({
-      gl: { vertex: VERTEX, fragment: FRAGMENT_DISTANCE },
+      gl: { vertex: QUAD_VERTEX, fragment: FRAGMENT_DISTANCE },
       resources: {
         uOcc: occTexture.source,
         distUniforms,
@@ -265,7 +240,7 @@ async function mountShadowMap1D(host: HTMLElement): Promise<Teardown> {
     const mesh = new Mesh({
       geometry: quad,
       shader: Shader.from({
-        gl: { vertex: VERTEX, fragment: FRAGMENT_LIGHT },
+        gl: { vertex: QUAD_VERTEX, fragment: FRAGMENT_LIGHT },
         resources: {
           uDist: dist.source,
           lightUniforms: uniforms,

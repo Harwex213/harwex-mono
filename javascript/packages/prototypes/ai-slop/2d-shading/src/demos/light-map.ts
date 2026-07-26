@@ -10,6 +10,7 @@ import {
   UniformGroup,
 } from "pixi.js";
 import { group, radio, slider, stats, toggle } from "../lib/controls";
+import { QUAD_VERTEX, unitQuad } from "../lib/mesh";
 import { HEIGHT, paintGround, paintOccluders, radialTexture, WIDTH } from "../lib/paint";
 import { flatten, shadowHull, sunDirection } from "../lib/projection";
 import { buildGrid, freeTile, mergeOccluders } from "../lib/scene";
@@ -27,22 +28,6 @@ const TORCHES: ReadonlyArray<{ tile: [number, number]; color: number; radius: nu
   { tile: [20, 12], color: 0x86c8ff, radius: 190, power: 0.8 },
 ];
 
-const VERTEX = `#version 300 es
-in vec2 aPosition;
-in vec2 aUV;
-
-out vec2 vUV;
-
-uniform mat3 uProjectionMatrix;
-uniform mat3 uWorldTransformMatrix;
-uniform mat3 uTransformMatrix;
-
-void main() {
-  mat3 mvp = uProjectionMatrix * uWorldTransformMatrix * uTransformMatrix;
-  gl_Position = vec4((mvp * vec3(aPosition, 1.0)).xy, 0.0, 1.0);
-  vUV = aUV;
-}
-`;
 
 // The composite. Everything interesting about technique 5 is in these four lines:
 // the buffer is an unbounded sum of light, and the screen is not — so exposure
@@ -154,16 +139,6 @@ function scaleColor(color: number, level: number): number {
   return (r << 16) | (g << 8) | b;
 }
 
-function unitQuad(): Geometry {
-  return new Geometry({
-    attributes: {
-      aPosition: [0, 0, 1, 0, 1, 1, 0, 1],
-      aUV: [0, 0, 1, 0, 1, 1, 0, 1],
-    },
-    indexBuffer: [0, 1, 2, 0, 2, 3],
-  });
-}
-
 async function mountLightMap(host: HTMLElement): Promise<Teardown> {
   const state: State = {
     scale: 2,
@@ -271,7 +246,7 @@ async function mountLightMap(host: HTMLElement): Promise<Teardown> {
     composite = new Mesh({
       geometry: quad,
       shader: Shader.from({
-        gl: { vertex: VERTEX, fragment: FRAGMENT_COMPOSITE },
+        gl: { vertex: QUAD_VERTEX, fragment: FRAGMENT_COMPOSITE },
         resources: { uLight: buffer.source, compositeUniforms },
       }),
     });
@@ -280,7 +255,7 @@ async function mountLightMap(host: HTMLElement): Promise<Teardown> {
     bloom = new Mesh({
       geometry: quad,
       shader: Shader.from({
-        gl: { vertex: VERTEX, fragment: FRAGMENT_BLOOM },
+        gl: { vertex: QUAD_VERTEX, fragment: FRAGMENT_BLOOM },
         resources: { uLight: buffer.source, bloomUniforms },
       }),
     });

@@ -1,6 +1,7 @@
 import { COLONIST_SPEED } from "../../data/defs";
 import type { EntityId, Inventory, Job, Position } from "../components";
 import { JobKind } from "../components";
+import { dist } from "../math";
 import { findPathNear } from "../pathfinding/astar";
 import { deposit, nearestStore, storeRoom } from "../stores";
 import { despawn, spawnItem, type World } from "../world";
@@ -148,7 +149,7 @@ function dropLoad(world: World, pos: Position, carried: Inventory): void {
 }
 
 function within(a: Position, b: Position): boolean {
-  return Math.hypot(a.x - b.x, a.y - b.y) <= REACH;
+  return dist(a.x, a.y, b.x, b.y) <= REACH;
 }
 
 // Back to idle, and back to jobAssign's hands next tick.

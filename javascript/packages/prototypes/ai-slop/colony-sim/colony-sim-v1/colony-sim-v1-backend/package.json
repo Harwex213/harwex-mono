@@ -9,10 +9,12 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@hw/colony-sim-v1-protocol": "workspace:*"
+    "@hw/colony-sim-v1-protocol": "workspace:*",
+    "ws": "8.18.2"
   },
   "devDependencies": {
     "@types/node": "24.1.0",
+    "@types/ws": "8.18.1",
     "typescript": "5.9.3"
   }
 }

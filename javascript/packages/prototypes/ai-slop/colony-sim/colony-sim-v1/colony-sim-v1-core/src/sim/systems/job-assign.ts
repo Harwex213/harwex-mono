@@ -1,5 +1,6 @@
 import { COLONIST_SPEED } from "../../data/defs";
 import { randInt, type Rng } from "../rng";
+import { dist2 } from "../math";
 import { isDeadLands, isWalkable } from "../grid";
 import { findPath } from "../pathfinding/astar";
 import { type EntityId, type Job, JobKind, type Position } from "../components";
@@ -70,7 +71,7 @@ function takeHaul(world: World, id: EntityId, job: Job, from: Position, claimed:
     if (!tile || nearestStore(world, tile, stack.kind) === null) {
       continue;
     }
-    candidates.push({ id: stackId, tile, distance: (tile.x - from.x) ** 2 + (tile.y - from.y) ** 2 });
+    candidates.push({ id: stackId, tile, distance: dist2(tile.x, tile.y, from.x, from.y) });
   }
   candidates.sort((a, b) => a.distance - b.distance);
 

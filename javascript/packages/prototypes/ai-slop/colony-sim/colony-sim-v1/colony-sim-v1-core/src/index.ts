@@ -52,8 +52,11 @@ export {
 // Map generation: which map a new game gets is the caller's choice, by id.
 export type { MapGenerator, MapGenId, MapGenResult } from "./sim/mapgen";
 export { DEFAULT_MAP_GEN, getMapGenerator, listMapGenerators, MAP_GENERATORS } from "./sim/mapgen";
-export type { Rng } from "./sim/rng";
-export { createRng, randInt } from "./sim/rng";
+export type { Rng, RngHolder } from "./sim/rng";
+export { createRng, randInt, stateRng } from "./sim/rng";
+export { dist, dist2 } from "./sim/math";
+// The desync detector: lockstep's only honest way to know it is still lockstep.
+export { hashWorld } from "./sim/hash";
 export { pickEntity } from "./sim/picking";
 export { findPath } from "./sim/pathfinding/astar";
 export type { SimContext } from "./sim/systems";
@@ -67,6 +70,7 @@ export {
   PLAYER_DEFS,
   PLAYER_IDS,
   RESOURCE_DEFS,
+  RESOURCE_KINDS,
   TERRAIN_DEFS,
 } from "./data/defs";
 
@@ -74,6 +78,7 @@ export {
 export type { Selection } from "./state/signals";
 export {
   buildOrder,
+  clockOwned,
   colonistCount,
   colonistRoster,
   colonistsOpen,
@@ -87,15 +92,19 @@ export type { ColonistRow, SelectionDetails, Stock } from "./state/inspect";
 export { countColonists, countStock, describeSelection, listColonists } from "./state/inspect";
 
 // The one write path into that state.
-export type { Command, Dispatcher, SpawnKind, WorldCommand } from "./commands";
-export { CommandDispatcher } from "./commands";
+export type { ClockCommand, Command, CommandSink, Dispatcher, SpawnKind, UiCommand, WorldCommand } from "./commands";
+export { CommandDispatcher, SPAWN_KINDS } from "./commands";
 
 // The seam a renderer plugs into.
 export type { CreateView, GameView, HoverKind, PointerHandlers, ViewDeps } from "./view";
 
+// The seam a network plugs into: who decides when a tick happens.
+export type { TurnSource, TurnStep } from "./turns";
+export { LocalTurnSource, MAX_STEPS_PER_FRAME, TICK_MS } from "./turns";
+
 // The loop.
 export type { GameEngineOptions } from "./engine";
-export { GameEngine, TICK_MS } from "./engine";
+export { GameEngine } from "./engine";
 
 // Persistence.
 export type { ColonyDb, ColonyDbSchema } from "./persistence/db";

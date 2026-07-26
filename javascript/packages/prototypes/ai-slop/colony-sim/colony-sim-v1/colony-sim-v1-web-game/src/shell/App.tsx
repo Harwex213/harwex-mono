@@ -1,5 +1,6 @@
 import { leaveRoom } from "./api";
 import { NamePage } from "./name-page";
+import { NetBanner } from "./net-banner";
 import { GamesPage } from "./games-page";
 import { RoomPage } from "./room-page";
 import { GAMES_PATH, navigate, route } from "./router";
@@ -22,19 +23,22 @@ function App() {
 
   if (current.name === "play") {
     return (
-      <button
-        type="button"
-        className="shell-button leave-game"
-        onClick={() => {
-          // Walking out of the game is also walking out of the room. Without this the
-          // player stays listed in a game they are no longer in, until the tab closes
-          // and the stream takes them out.
-          void leaveRoom(current.gameId, requireSession().playerId);
-          navigate(GAMES_PATH);
-        }}
-      >
-        ← games
-      </button>
+      <>
+        <button
+          type="button"
+          className="shell-button leave-game"
+          onClick={() => {
+            // Walking out of the game is also walking out of the room. Without this the
+            // player stays listed in a game they are no longer in, until the tab closes
+            // and the stream takes them out.
+            void leaveRoom(current.gameId, requireSession().playerId);
+            navigate(GAMES_PATH);
+          }}
+        >
+          ← games
+        </button>
+        <NetBanner />
+      </>
     );
   }
 

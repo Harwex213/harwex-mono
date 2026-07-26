@@ -41,6 +41,13 @@ async function loadSnapshot(db: ColonyDb): Promise<World | null> {
 // component Map that version added. Backfill missing Maps so a snapshot can
 // never hand the systems/renderer an undefined component store.
 function hydrate(world: World): World {
+  // A world from before the stream lived on it resumes from the seed rather than from
+  // wherever the last session's closure had got to — that position is gone with the
+  // page. Not the same numbers the save would have drawn next, but a save is a
+  // single-player thing: nobody is holding the other half of this stream.
+  if (typeof world.rngState !== "number") {
+    world.rngState = world.seed | 0;
+  }
   if (!world.animals) {
     world.animals = new Map();
   }

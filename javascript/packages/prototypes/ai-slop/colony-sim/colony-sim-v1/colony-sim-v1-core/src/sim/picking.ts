@@ -1,4 +1,5 @@
 import type { EntityId } from "./components";
+import { dist2 } from "./math";
 import type { World } from "./world";
 
 // Click tolerance around the cursor, in tiles. Sprites are about one tile wide,
@@ -57,7 +58,7 @@ function pickEntity(world: World, x: number, y: number): EntityId | null {
     if (rank === PickRank.None || rank < bestRank) {
       continue;
     }
-    const distance = (pos.x - x) ** 2 + (pos.y - y) ** 2;
+    const distance = dist2(pos.x, pos.y, x, y);
     // A higher rank restarts the distance race: the nearest tree so far must not
     // rule out a colonist that is further away but still in range.
     if (rank > bestRank) {

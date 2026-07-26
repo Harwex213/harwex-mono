@@ -1,5 +1,4 @@
 import { signal } from "@preact/signals";
-import { DEFAULT_PLAYER, PLAYER_IDS, type PlayerId } from "@hw/colony-sim-v1-core";
 import type { LobbyPlayer, LobbyRoom } from "@hw/colony-sim-v1-protocol";
 import { openLobbyStream } from "./api";
 
@@ -46,14 +45,10 @@ function findRoom(roomId: string): LobbyRoom | null {
   return rooms.peek().find((room) => room.id === roomId) ?? null;
 }
 
-// Which colony in the sim this player runs. The room lists its members in join
-// order, host first, and every client gets that same server snapshot — so the seat
-// is the same everywhere without anyone having to agree on it separately. A room
-// holding more players than the sim has colonies seats the extras with the first
-// one; there is nowhere else to put them until the sim grows more.
-function seatOf(room: LobbyRoom, playerId: string): PlayerId {
-  const index = room.players.findIndex((player) => player.id === playerId);
-  return PLAYER_IDS[index] ?? DEFAULT_PLAYER;
-}
+// Seats used to be worked out here, from this snapshot of the room. They are not any
+// more: the game session pins the player list when the host presses start, and the seat is
+// an index into *that* — a snapshot a client happened to be holding could be one join
+// behind, and two clients disagreeing about who sits where is the whole game disagreeing.
+// See net/wire.ts.
 
-export { connectLobby, disconnectLobby, findRoom, lobbyError, onlinePlayers, rooms, seatOf };
+export { connectLobby, disconnectLobby, findRoom, lobbyError, onlinePlayers, rooms };

@@ -1,6 +1,7 @@
 import { mountLightMap } from "./demos/light-map";
 import { mountProjectedShadows } from "./demos/projected-shadows";
 import { mountShadowCasting } from "./demos/shadow-casting";
+import { mountScreenSpace } from "./demos/screen-space";
 import { mountShadowMap1D } from "./demos/shadow-map-1d";
 import type { Demo } from "./demos/types";
 
@@ -47,8 +48,8 @@ const DEMOS: Demo[] = [
     id: "screen-space",
     title: "6. Screen-space хаки",
     summary:
-      "Размытая альфа-маска высоты как прижатая тень; марш по height-map в шейдере при фиксированном угле солнца — рельефные тени без геометрии.",
-    mount: null,
+      "Тень без геометрии: размытая маска силуэтов, сдвинутая по солнцу, — прижатая тень; марш по height-map в шейдере — рельефные тени, где земля и стены лежат в одном буфере высот. Стоимость — выборки на пиксель, но из-за края буфера тень не придёт.",
+    mount: mountScreenSpace,
   },
 ];
 

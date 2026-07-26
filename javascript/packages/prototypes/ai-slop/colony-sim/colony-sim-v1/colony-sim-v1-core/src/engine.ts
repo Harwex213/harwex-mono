@@ -1,5 +1,5 @@
 import { effect } from "@preact/signals";
-import { createRng, type Rng } from "./sim/rng";
+import { type Rng, stateRng } from "./sim/rng";
 import { runSystems } from "./sim/systems";
 import { inBounds } from "./sim/grid";
 import { pickEntity } from "./sim/picking";
@@ -23,18 +23,16 @@ import {
   colonistCount,
   colonistRoster,
   colonistsOpen,
-  paused,
   resources,
   selection,
   type Selection,
   selectionDetails,
-  speed,
 } from "./state/signals";
 import { countColonists, countStock, describeSelection, listColonists } from "./state/inspect";
-import { type Command, CommandDispatcher, type Dispatcher, type SpawnKind } from "./commands";
+import { type Command, CommandDispatcher, type Dispatcher, type SpawnKind, type WorldCommand } from "./commands";
+import { LocalTurnSource, type TurnSource } from "./turns";
 import type { CreateView, GameView } from "./view";
 
-const TICK_MS = 100; // 10 logical ticks per second
 const AUTOSAVE_MS = 10000;
 
 // How big a hand-spawned resource pile is. Destruction drops come from the
@@ -69,18 +67,22 @@ interface GameEngineOptions {
   // carry a seat. It is what the read models are filtered by (the HUD speaks for one
   // colony) and what an ownerless spawn command belongs to.
   player?: PlayerId;
+  // Who says when a tick happens. Left out, the clock is local and the game is a
+  // single-player one; a networked game passes the turn stream instead. The engine
+  // never learns which it got — see turns.ts.
+  turns?: TurnSource;
 }
 
 // Owns the world, the fixed-timestep loop, the view and persistence. The HUD gets
 // a reference through context and talks to it only through dispatch().
 class GameEngine implements Dispatcher {
-  private commands = new CommandDispatcher();
+  private turns: TurnSource;
+  private commands: CommandDispatcher;
   private db: ColonyDb | null;
   private world: World;
   private player: PlayerId;
   private rng: Rng;
   private view: GameView;
-  private accumulator = 0;
   private autosaveTimer = 0;
   // Last cursor position in tile coords, kept as-is rather than resolved on the
   // spot: the cursor can sit still while an animal walks under it, so what is
@@ -91,7 +93,13 @@ class GameEngine implements Dispatcher {
     this.world = options.world;
     this.db = options.db ?? null;
     this.player = options.player ?? DEFAULT_PLAYER;
-    this.rng = createRng(this.world.seed ^ (this.world.tick * 0x9e3779b1));
+    this.turns = options.turns ?? new LocalTurnSource();
+    this.commands = new CommandDispatcher(this.turns);
+    // The stream's position is the world's, not this object's: an engine built for a
+    // world in progress has to draw the numbers that world would have drawn next, or
+    // a reload — and every client that started its engine a second later than another
+    // — is a different game from here on.
+    this.rng = stateRng(this.world);
     this.view = options.createView({
       world: this.world,
       commands: this.commands,
@@ -124,19 +132,19 @@ class GameEngine implements Dispatcher {
   }
 
   // One rendered frame, driven by the host's clock (the pixi ticker) rather than
-  // by a ticker of the engine's own: core must not know what draws it. Real time
-  // in, so pause and speed stay a multiplier on the accumulator — the view keeps
+  // by a ticker of the engine's own: core must not know what draws it. Real time in,
+  // and out of it the turn source says how much of that time the *sim* is allowed to
+  // spend — none while paused, one tick per turn over a network. The view keeps
   // getting every frame either way.
   frame(deltaMs: number): void {
-    this.applyWorldCommands();
-    this.accumulator += deltaMs * (paused.value ? 0 : speed.value);
-    while (this.accumulator >= TICK_MS) {
-      this.step();
-      this.accumulator -= TICK_MS;
+    for (const step of this.turns.pump(deltaMs)) {
+      this.applyWorldCommands(step.commands);
+      if (step.advance) {
+        this.step();
+      }
     }
-    const alpha = this.accumulator / TICK_MS;
     this.view.setHover(this.targetAt(this.hoverTile));
-    this.view.render(this.world, alpha);
+    this.view.render(this.world, this.turns.alpha());
 
     this.autosaveTimer += deltaMs;
     if (this.autosaveTimer >= AUTOSAVE_MS) {
@@ -152,11 +160,11 @@ class GameEngine implements Dispatcher {
   }
 
   // World commands land here, between ticks — never inside one, where half the
-  // systems would have run against the old world. Draining per frame rather than
-  // per tick is deliberate: a paused game ticks not at all, and a spawn that only
-  // appeared on resume would be useless to anyone poking at a frozen world.
-  private applyWorldCommands(): void {
-    const pending = this.commands.takePending();
+  // systems would have run against the old world. Which orders arrive together, and on
+  // which tick, is the clock's answer: locally the next tick (or none at all, on a
+  // paused world, so a spawn still lands), over a network the turn every client
+  // applies at this same tick.
+  private applyWorldCommands(pending: readonly WorldCommand[]): void {
     if (pending.length === 0) {
       return;
     }
@@ -311,4 +319,4 @@ class GameEngine implements Dispatcher {
 }
 
 export type { GameEngineOptions };
-export { GameEngine, TICK_MS };
+export { GameEngine };

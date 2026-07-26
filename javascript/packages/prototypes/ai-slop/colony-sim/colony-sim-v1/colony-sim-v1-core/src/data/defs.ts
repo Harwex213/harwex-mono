@@ -55,6 +55,11 @@ interface PlayerDef {
 // Turn order / spawn order, and the only iteration order for anything per-player.
 const PLAYER_IDS: readonly PlayerId[] = ["red", "lime"];
 
+// The resources, as a list. `ResourceKind` is the type's home; this is for the code
+// that has to walk them at runtime — the build menu's store options, the check that
+// narrows a resource arriving over the wire back into the union.
+const RESOURCE_KINDS: readonly ResourceKind[] = ["wood", "stone", "food"];
+
 // Who an entity belongs to when nobody said: a spawn command without an owner, a
 // save written before ownership existed. Unowned is not an option for anything the
 // renderer has to pick a sheet for.
@@ -103,6 +108,7 @@ export {
   DEFAULT_PLAYER,
   PLAYER_DEFS,
   PLAYER_IDS,
+  RESOURCE_KINDS,
   TERRAIN_DEFS,
   RESOURCE_DEFS,
 };

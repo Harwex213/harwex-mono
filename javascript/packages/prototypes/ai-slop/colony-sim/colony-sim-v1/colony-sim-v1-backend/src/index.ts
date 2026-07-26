@@ -1,17 +1,20 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { SessionResponse } from "@hw/colony-sim-v1-protocol";
+import { attachGameSockets } from "./game-socket.ts";
+import { startSession } from "./game.ts";
 import { readJson, requireString, sendJson } from "./http.ts";
 import { addPlayer, createRoom, joinRoom, leaveRoom, LobbyError, startRoom } from "./lobby.ts";
 import { broadcast, openStream } from "./streams.ts";
 
-// The lobby server: sessions, rooms, and the event stream that keeps every client's
-// view of them current. `node src/index.ts` — Node strips the types itself, so the
-// package still has no dependencies and no build step.
+// The lobby server: sessions, rooms, the event stream that keeps every client's view of
+// them current — and, once a room starts, the turn clock its players run in lockstep.
+// `node src/index.ts`: Node strips the types itself, so there is still no build step.
 //
-// Deliberately empty of game logic. The one game-shaped thing it owns is the seed,
-// and it owns that precisely because it is the one number every player in a room
-// must receive identically. Whatever else the client and server come to share
-// belongs in the protocol package, not in a second copy of the simulation.
+// Deliberately empty of game *logic*. What it owns of the game is the seed and the turn
+// boundaries — both for the same reason: they are the things every player must receive
+// identically, and nothing else can say so. It reads no command, holds no entity and
+// builds no world; the simulation runs on the clients, out of the seed and the sequence
+// of turns this server publishes.
 const DEFAULT_PORT = 8787;
 
 const port = Number.parseInt(process.env.PORT ?? "", 10) || DEFAULT_PORT;
@@ -69,7 +72,11 @@ async function route(request: IncomingMessage, response: ServerResponse): Promis
     } else if (verb === "leave") {
       leaveRoom(roomId, playerId);
     } else {
-      startRoom(roomId, playerId);
+      // Starting a room opens its turn clock, and freezes who is playing it: the seat
+      // order the clients will read their colony out of is this list, taken once. From
+      // here the room is only a waiting list nobody is waiting in.
+      const room = startRoom(roomId, playerId);
+      startSession(room.id, room.seed, room.playerIds, room.hostId);
     }
     broadcast();
     sendJson(response, 200, { ok: true });
@@ -93,6 +100,11 @@ function handle(request: IncomingMessage, response: ServerResponse): void {
 }
 
 const server = createServer(handle);
+
+// The game speaks over a socket on the same server and the same port: one origin for
+// the client, one thing to start in dev. See game-socket.ts for why the game does not
+// reuse the lobby's stream.
+attachGameSockets(server);
 
 server.listen(port, () => {
   console.log(`colony-sim-v1 backend listening on http://localhost:${port}`);

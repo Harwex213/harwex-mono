@@ -23,6 +23,7 @@
 import { createNoise2D } from "simplex-noise";
 import type { Position } from "../components";
 import { type Grid, isWalkable, Region, Terrain, tileIndex } from "../grid";
+import { dist2 } from "../math";
 import { randInt, type Rng } from "../rng";
 import type { MapGenerator, MapGenResult } from "./types";
 import { campRows, nearestWalkable } from "./util";
@@ -241,7 +242,7 @@ function placeLakes(
       const x = rng() * (grid.width - 1);
       const lake = { x, y, rx, ry };
       const reach = Math.max(rx, ry) * LAKE_REACH + LAKE_COLONY_CLEARANCE;
-      if (keepClear.some((spot) => Math.hypot(x - spot.x, y - spot.y) < reach)) {
+      if (keepClear.some((spot) => dist2(x, y, spot.x, spot.y) < reach * reach)) {
         continue;
       }
       if (lakes.some((other) => overlaps(lake, other))) {

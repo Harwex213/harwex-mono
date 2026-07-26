@@ -1,5 +1,6 @@
 import { BUILDING_DEFS } from "../data/defs";
 import { BuildingKind, type EntityId, type Position, type ResourceKind } from "./components";
+import { dist2 } from "./math";
 import type { World } from "./world";
 
 // Where the colony's resources are kept, as queries over the buildings. A store
@@ -32,7 +33,7 @@ function nearestStore(world: World, from: Position, kind: ResourceKind): EntityI
     if (!pos) {
       continue;
     }
-    const distance = (pos.x - from.x) ** 2 + (pos.y - from.y) ** 2;
+    const distance = dist2(pos.x, pos.y, from.x, from.y);
     if (distance < bestDistance) {
       bestDistance = distance;
       best = id;
