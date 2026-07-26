@@ -11,6 +11,11 @@ export type { BakedTerrain } from "./terrain";
 export { bakeTerrain } from "./terrain";
 export type { WaterField, WaterSurface } from "./water";
 export { buildWaterSurface } from "./water";
+// Render experiments: the flags, and the one thing currently behind one of them.
+export type { Experiments } from "./experiments";
+export { experiments, setExperiment } from "./experiments";
+export type { FogField, FogOfWar, VisionSource } from "./fog";
+export { buildFogOfWar } from "./fog";
 export { HOVER_STYLE, Marker, SELECTION_STYLE } from "./selection";
 export { BuildGhost } from "./ghost";
 export { buildingSprite, resourceBadge } from "./buildings";

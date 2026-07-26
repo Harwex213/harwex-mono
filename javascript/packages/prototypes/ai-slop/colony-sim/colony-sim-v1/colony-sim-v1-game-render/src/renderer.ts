@@ -18,6 +18,8 @@ import {
 import { buildingSprite, resourceBadge } from "./buildings";
 import { createLayers, type Layers } from "./layers";
 import { Camera } from "./camera";
+import { experiments } from "./experiments";
+import { buildFogOfWar, type FogOfWar, hiddenByFog, visionSources } from "./fog";
 import { BuildGhost } from "./ghost";
 import { buildGround } from "./ground";
 import { HOVER_STYLE, Marker, SELECTION_STYLE } from "./selection";
@@ -66,6 +68,13 @@ class GameRenderer implements GameView {
   // never reaches the World and never goes into a signal — the DOM HUD does not
   // draw it, and repainting the HUD on every pointer move would be wasteful.
   private hovered: Selection | null = null;
+  // EXPERIMENT (`experiments.fogOfWar`): built the first frame the flag is on and
+  // kept afterwards — baking it costs a pass over the map, and the flag is a switch
+  // to flick while watching, not a setting. Null once `fogBuilt` is set means the
+  // map has no dead lands to shroud.
+  private fog: FogOfWar | null = null;
+  private fogBuilt = false;
+  private fogging = false;
   private sprites = new Map<EntityId, Container>();
   // Animated subset of `sprites`, plus the facing derived from their movement.
   // Both are view-only state: nothing here is persisted.
@@ -115,6 +124,7 @@ class GameRenderer implements GameView {
       sprite.zIndex = y;
     }
     this.animate(world, alpha);
+    this.updateFog(world, alpha);
     const selected = selection.value;
     this.place(this.marker, world, selected);
     // Two markers on the same thing would just darken it; the selection already
@@ -177,6 +187,52 @@ class GameRenderer implements GameView {
       const cycle = actor.sheet.walk[facing];
       actor.sprite.texture = cycle[Math.floor(world.tick / ANIM_TICKS_PER_FRAME) % cycle.length];
     }
+  }
+
+  // EXPERIMENT (`experiments.fogOfWar`). The flag is looked at once a frame instead
+  // of subscribed to: this view already re-derives itself from the world every
+  // frame, so a boolean is one more thing to read while doing it — and it can never
+  // flip halfway through a frame and leave the picture half shrouded.
+  //
+  // The world is not told any of this. What the fog hides, it hides from the eye:
+  // the sim still paths, picks and works over the whole map.
+  private updateFog(world: World, alpha: number): void {
+    const on = experiments.fogOfWar;
+    if (on && !this.fogBuilt) {
+      this.fog = buildFogOfWar(world);
+      this.fogBuilt = true;
+      if (this.fog) {
+        // Over the entities, under the markers: the bank hides what stands in it,
+        // but not the brackets around what this client has selected — those are the
+        // client talking to itself, not something it can see out there.
+        this.layers.fx.addChildAt(this.fog.view, 0);
+      }
+    }
+    if (!this.fog) {
+      return;
+    }
+
+    this.fog.view.visible = on;
+    if (!on) {
+      // Switching the experiment off has to give back everything it hid, and only
+      // then: sprite visibility is nobody else's business here, so it is written
+      // exactly on the frame the flag changes.
+      if (this.fogging) {
+        for (const sprite of this.sprites.values()) {
+          sprite.visible = true;
+        }
+        this.fogging = false;
+      }
+      return;
+    }
+
+    const eyes = visionSources(world, this.player, alpha);
+    this.fog.setPhase(world.tick + alpha);
+    this.fog.setVision(eyes);
+    for (const sprite of this.sprites.values()) {
+      sprite.visible = !hiddenByFog(world.grid, eyes, sprite.x, sprite.y);
+    }
+    this.fogging = true;
   }
 
   private reconcile(world: World): void {

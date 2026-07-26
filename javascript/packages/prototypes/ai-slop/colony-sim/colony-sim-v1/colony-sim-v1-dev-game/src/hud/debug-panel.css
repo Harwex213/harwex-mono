@@ -19,6 +19,11 @@
   font-variant-numeric: tabular-nums;
 }
 
+.debug-group-title {
+  margin: 8px 0 4px;
+  color: var(--hud-muted);
+}
+
 .debug-actions {
   display: flex;
   flex-direction: column;

@@ -180,7 +180,7 @@ function bakeTerrain(world: World): BakedTerrain {
 // foam back the tile edges the bake just got rid of.
 function waterMask(wet: Uint8Array, width: number, height: number): Texture {
   const cap = SHORE_REACH_PX * CHAMFER_ORTHO;
-  const distance = chamferDistance(wet, 0, width, height);
+  const distance = chamferDistance(wet, 0, width, height, cap);
   const mask = new Uint8Array(width * height * 4);
   for (let point = 0; point < wet.length; point += 1) {
     if (wet[point] === 0) {
@@ -205,7 +205,7 @@ function wetSandBand(
   seed: number,
   paint: Fills,
 ): void {
-  const distance = chamferDistance(wet, 1, width, height);
+  const distance = chamferDistance(wet, 1, width, height, SHORE_REACH_PX * CHAMFER_ORTHO);
   const reach = createNoise2D(createRng(seed ^ WET_SALT));
   const widest = (WET_BAND_PX + WET_SWING_PX + WET_RAGGED_PX) * CHAMFER_ORTHO;
   for (let py = 0; py < height; py += 1) {
@@ -233,10 +233,18 @@ function wetSandBand(
 
 // Distance from every pixel to the nearest one flagged `seed`, in two chamfer passes
 // (forward, then backward) rather than a queue: a full-map BFS over a million pixels
-// is the slower half of the bake, and nothing here needs more than the first ten.
-// Distances saturate at the cap, in chamfer units — CHAMFER_ORTHO per art pixel.
-function chamferDistance(flags: Uint8Array, seed: number, width: number, height: number): Uint16Array {
-  const cap = SHORE_REACH_PX * CHAMFER_ORTHO;
+// is the slower half of the bake, and no caller needs more than its first few px.
+// Distances saturate at `cap`, in chamfer units — CHAMFER_ORTHO per art pixel. The
+// cap comes from the caller because how far a bake can still tell where an edge is
+// belongs to the thing being drawn: a foam line reaches a few pixels, a shroud
+// fading into the land it covers reaches further.
+function chamferDistance(
+  flags: Uint8Array,
+  seed: number,
+  width: number,
+  height: number,
+  cap: number,
+): Uint16Array {
   const distance = new Uint16Array(width * height);
   for (let point = 0; point < flags.length; point += 1) {
     distance[point] = flags[point] === seed ? 0 : cap;
@@ -436,4 +444,6 @@ function clamp(value: number, max: number): number {
 }
 
 export type { BakedTerrain };
-export { bakeTerrain };
+// The two bake primitives are shared rather than water-only: any layer painted per
+// art pixel needs the same distance field and the same premultiply-free upload.
+export { bakeTerrain, bitmapTexture, CHAMFER_ORTHO, chamferDistance };
