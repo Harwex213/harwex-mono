@@ -3,9 +3,24 @@ guid: e134cf6b9c3874936acf1ad95134ed32
 ModelImporter:
   serializedVersion: 24501
   internalIDToNameTable: []
-  externalObjects: {}
+  externalObjects:
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: MAT_Gold_Dark
+    second: {fileID: 2100000, guid: 515c27e51da9c433e8a5dd488d8d91bf, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: MAT_Gold_Trim
+    second: {fileID: 2100000, guid: df4bade222efd49c38af476560aabc89, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: MAT_Pillar_Body
+    second: {fileID: 2100000, guid: 902c28ef162a645a8a6e36671dc85a6e, type: 2}
   materials:
-    materialImportMode: 0
+    materialImportMode: 1
     materialName: 0
     materialSearch: 1
     materialLocation: 1

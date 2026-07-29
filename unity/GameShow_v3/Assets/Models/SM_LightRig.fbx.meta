@@ -3,9 +3,24 @@ guid: 40c2cd7b32e3440a38096bb741a8c2e6
 ModelImporter:
   serializedVersion: 24501
   internalIDToNameTable: []
-  externalObjects: {}
+  externalObjects:
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: MAT_Fixture_Body
+    second: {fileID: 2100000, guid: b5e9f327c8d1b4d72b353a40eef839c6, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: MAT_Lens_Glow
+    second: {fileID: 2100000, guid: 769181b6aa71b4e4cafbcdb7e5075d33, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: MAT_Truss_Metal
+    second: {fileID: 2100000, guid: 769d83cd3fb064cfab7d8b7a1984cccc, type: 2}
   materials:
-    materialImportMode: 0
+    materialImportMode: 1
     materialName: 0
     materialSearch: 1
     materialLocation: 1
