@@ -131,13 +131,19 @@ namespace GameShow.EditorTools
                 if (asset == null) { continue; }
 
                 var settings = asset.currentPlatformRenderPipelineSettings;
-                if (settings.supportSSR && settings.supportSSRTransparent) { continue; }
+                if (settings.supportSSR && settings.supportSSRTransparent && settings.supportVolumetrics)
+                {
+                    continue;
+                }
 
                 settings.supportSSR = true;
                 settings.supportSSRTransparent = true;
+                // Every quality level, not just the active one. A quality switch must
+                // not silently drop the light shafts.
+                settings.supportVolumetrics = true;
                 asset.currentPlatformRenderPipelineSettings = settings;
                 EditorUtility.SetDirty(asset);
-                Debug.Log("[WheelStageBuilder] Enabled SSR on " + path);
+                Debug.Log("[WheelStageBuilder] Enabled SSR and volumetrics on " + path);
             }
             AssetDatabase.SaveAssets();
         }
@@ -638,7 +644,11 @@ namespace GameShow.EditorTools
             public Vector2 areaSize;
             public bool shadows;
             public float volumetric;
-            public float shaftIntensity;   // peak additive value, 0 = no shaft geometry
+            // Peak additive value of the cone mesh, 0 = no shaft geometry. These
+            // cones are the only visible shafts: HDRP's volumetric fog in this
+            // project takes light from the ambient probe but not from local lights,
+            // so a real spot scatters nothing. See CreateVolume for the evidence.
+            public float shaftIntensity;
         }
 
         /// <summary>
@@ -654,18 +664,18 @@ namespace GameShow.EditorTools
                 pos = new Vector3(6.5f, 7.2f, 3f),
                 forward = new Vector3(-0.47946f, -0.76713f, -0.42618f),
                 up = new Vector3(-0.57336f, 0.64149f, -0.50965f),
-                color = new Color(0.72f, 0.36f, 1f), lumens = 42000f, range = 40f,
+                color = new Color(0.72f, 0.36f, 1f), lumens = 14000f, range = 40f,
                 spotAngle = 22f, innerAngle = 16.5f, shadows = true, volumetric = 1f,
-                shaftIntensity = 0.50f,
+                shaftIntensity = 0.55f,
             },
             new LightDef {
                 name = "Beam_R", type = LightType.Spot,
                 pos = new Vector3(-6.5f, 7.2f, 3f),
                 forward = new Vector3(0.47946f, -0.76713f, -0.42618f),
                 up = new Vector3(0.57336f, 0.64149f, -0.50965f),
-                color = new Color(0.72f, 0.36f, 1f), lumens = 42000f, range = 40f,
+                color = new Color(0.72f, 0.36f, 1f), lumens = 14000f, range = 40f,
                 spotAngle = 22f, innerAngle = 16.5f, shadows = true, volumetric = 1f,
-                shaftIntensity = 0.50f,
+                shaftIntensity = 0.55f,
             },
             // Broad soft key straight onto the wheel face, high and in front.
             new LightDef {
@@ -837,13 +847,13 @@ namespace GameShow.EditorTools
                     forward = mh.aim,
                     up = Vector3.up,
                     color = mh.color,
-                    lumens = 30000f,
+                    lumens = 7500f,
                     range = 32f,
                     spotAngle = 15f,
                     innerAngle = 9f,
                     shadows = false,
                     volumetric = 1f,
-                    shaftIntensity = 0.32f,
+                    shaftIntensity = 0.38f,
                 }, lighting.transform);
             }
 
@@ -858,7 +868,7 @@ namespace GameShow.EditorTools
                     forward = aim,
                     up = Vector3.up,
                     color = wash.color,
-                    lumens = 12000f,
+                    lumens = 5000f,
                     range = 30f,
                     spotAngle = 110f,
                     innerAngle = 30f,
@@ -1015,7 +1025,10 @@ namespace GameShow.EditorTools
             {
                 light.spotAngle = def.spotAngle;
                 light.innerSpotAngle = def.innerAngle;
-                light.enableSpotReflector = false;
+                // A beam fixture puts all of its lumens through the cone. Without the
+                // reflector HDRP spreads them over the whole sphere, which made every
+                // spot in this rig about seventy times too dim to read as a beam.
+                light.enableSpotReflector = true;
             }
             else if (def.type == LightType.Rectangle)
             {
@@ -1072,12 +1085,16 @@ namespace GameShow.EditorTools
             }
             else
             {
-                // Rebuild from scratch so re-running does not stack overrides.
+                // Rebuild from scratch so re-running does not stack overrides. A
+                // profile written before the overrides were saved as sub-assets comes
+                // back as a list of nulls, so drop those without asking their type.
                 foreach (var c in profile.components.ToArray())
                 {
+                    if (c == null) { continue; }
                     profile.Remove(c.GetType());
                     Object.DestroyImmediate(c, true);
                 }
+                profile.components.RemoveAll(c => c == null);
             }
 
             var env = profile.Add<VisualEnvironment>(true);
@@ -1100,25 +1117,36 @@ namespace GameShow.EditorTools
             exposure.mode.value = ExposureMode.Fixed;
             exposure.fixedExposure.value = 9f;
 
-            // Depth haze only. HDRP's volumetric lighting does not scatter in this
-            // project even with Volumetrics enabled on the camera's frame settings,
-            // so the visible shafts are the additive cones on each beam fixture
-            // instead, and this fog just gives the far wall some atmosphere.
+            // Volumetric fog is on, but it only carries depth haze here, not the
+            // shafts. HDRP lights this fog from the ambient probe and never from the
+            // local lights: with the probe dimmer at 0, a fresh 60000 lm spot raking
+            // across the frame at a 4 m mean free path lit the wheel and left the air
+            // black. Ruled out one at a time — supportVolumetrics on every pipeline
+            // asset, the camera's Volumetrics frame setting (verified live by flipping
+            // OpaqueObjects off through the same override and losing all geometry),
+            // affectsVolumetric, volumetricDimmer up to 8, Realtime bake type,
+            // reprojection, all three denoising modes, and the fog colour mode.
+            // The visible beams are the additive cones in AddBeamCone.
             var fog = profile.Add<Fog>(true);
             fog.enabled.value = true;
-            fog.enableVolumetricFog.value = false;
-            fog.meanFreePath.value = 70f;
+            fog.enableVolumetricFog.value = true;
+            // Enough haze to separate the cyclorama from the wheel. Denser than about
+            // 12 and the wall greys out, because the probe light the fog does receive
+            // is a dark violet.
+            fog.meanFreePath.value = 20f;
             fog.baseHeight.value = 0f;
-            fog.maximumHeight.value = 10f;
+            // Haze up to the truss and no further, so the top of frame stays black.
+            fog.maximumHeight.value = 14f;
             fog.albedo.value = new Color(0.9f, 0.87f, 1f);
-            // Near isotropic on purpose. The beams cross the frame side-on, and a
-            // strongly forward phase function (g near 1) scatters their light away
-            // from the camera, which makes the shafts vanish.
-            fog.anisotropy.value = 0.15f;
+            // Anisotropy and multiple scattering only matter for light the fog gets
+            // from local lights. They are set for the day that starts working.
+            fog.anisotropy.value = 0.4f;
             fog.depthExtent.value = 45f;
             fog.multipleScatteringIntensity.value = 0.4f;
+            // Colour mode drives the analytic fog past depthExtent, not the volumetric
+            // froxels. The room is well inside 45 m, so this barely shows.
             fog.colorMode.value = FogColorMode.ConstantColor;
-            fog.color.value = new Color(0.11f, 0.06f, 0.24f);
+            fog.color.value = new Color(0.012f, 0.008f, 0.03f);
             fog.tint.value = new Color(0.85f, 0.78f, 1f);
 
             var bloom = profile.Add<Bloom>(true);
@@ -1148,6 +1176,17 @@ namespace GameShow.EditorTools
             ssr.usedAlgorithm.value = ScreenSpaceReflectionAlgorithm.PBRAccumulation;
             ssr.reflectSky.value = true;
             ssr.depthBufferThickness.value = 0.02f;
+
+            // VolumeProfile.Add creates the override in memory only. Without this the
+            // asset saves a list of null references, and every setting above is gone
+            // after the next domain reload — the scene then renders with no fog, no
+            // bloom and no grade until someone runs Build() again.
+            foreach (var c in profile.components)
+            {
+                if (AssetDatabase.Contains(c)) { continue; }
+                c.hideFlags = HideFlags.HideInHierarchy | HideFlags.HideInInspector;
+                AssetDatabase.AddObjectToAsset(c, profile);
+            }
 
             EditorUtility.SetDirty(profile);
             AssetDatabase.SaveAssets();
