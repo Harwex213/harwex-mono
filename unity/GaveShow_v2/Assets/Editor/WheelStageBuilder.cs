@@ -31,6 +31,9 @@ namespace GameShow.EditorTools
         const string k_ScenePath = k_SceneDir + "/WheelStage.unity";
         const string k_ProfilePath = "Assets/Settings/WheelStage_Volume.asset";
         const string k_LedTexPath = k_TextureDir + "/TEX_LED_Cyclorama.png";
+        const string k_FlareDir = "Assets/Art/Flares";
+        const string k_GlowTexPath = k_TextureDir + "/TEX_Flare_Glow.png";
+        const string k_CrestFlarePath = k_FlareDir + "/FLARE_Crest.asset";
 
         // Aim point the moving heads and washes converge on: the wheel hub.
         static readonly Vector3 k_WheelHub = new Vector3(0f, 3.5f, -1.2f);
@@ -41,6 +44,7 @@ namespace GameShow.EditorTools
             EnsureFolders();
             EnsurePipelineFeatures();
             EnsureLedTexture();
+            EnsureFlareAssets();
             var materials = BuildMaterials();
             ConfigureModelImporters();
             BuildScene(materials);
@@ -54,7 +58,7 @@ namespace GameShow.EditorTools
 
         static void EnsureFolders()
         {
-            string[] dirs = { k_MaterialDir, k_TextureDir, k_SceneDir };
+            string[] dirs = { k_MaterialDir, k_TextureDir, k_SceneDir, k_FlareDir };
             foreach (var d in dirs)
             {
                 if (!AssetDatabase.IsValidFolder(d))
@@ -131,7 +135,8 @@ namespace GameShow.EditorTools
                 if (asset == null) { continue; }
 
                 var settings = asset.currentPlatformRenderPipelineSettings;
-                if (settings.supportSSR && settings.supportSSRTransparent && settings.supportVolumetrics)
+                if (settings.supportSSR && settings.supportSSRTransparent && settings.supportVolumetrics &&
+                    settings.supportScreenSpaceLensFlare && settings.supportDataDrivenLensFlare)
                 {
                     continue;
                 }
@@ -141,9 +146,13 @@ namespace GameShow.EditorTools
                 // Every quality level, not just the active one. A quality switch must
                 // not silently drop the light shafts.
                 settings.supportVolumetrics = true;
+                // Glare is half the reference. The screen space pass streaks every
+                // bright lamp, the data driven pass draws the crest star.
+                settings.supportScreenSpaceLensFlare = true;
+                settings.supportDataDrivenLensFlare = true;
                 asset.currentPlatformRenderPipelineSettings = settings;
                 EditorUtility.SetDirty(asset);
-                Debug.Log("[WheelStageBuilder] Enabled SSR and volumetrics on " + path);
+                Debug.Log("[WheelStageBuilder] Enabled SSR, volumetrics and lens flares on " + path);
             }
             AssetDatabase.SaveAssets();
         }
@@ -626,6 +635,174 @@ namespace GameShow.EditorTools
         }
 
         // ------------------------------------------------------------------
+        // lens flares
+        // ------------------------------------------------------------------
+
+        /// <summary>
+        /// Builds the crest's flare asset and the glow sprite it draws. The crest
+        /// crystal emits 700 nits, which at EV 9 lands at 1.1 — just over the bloom
+        /// threshold, so bloom alone leaves it a pale blob. A flare puts the magenta
+        /// wash of the reference around it without touching the material.
+        /// </summary>
+        static void EnsureFlareAssets()
+        {
+            var glow = EnsureGlowTexture();
+
+            var data = AssetDatabase.LoadAssetAtPath<LensFlareDataSRP>(k_CrestFlarePath);
+            if (data == null)
+            {
+                data = ScriptableObject.CreateInstance<LensFlareDataSRP>();
+                AssetDatabase.CreateAsset(data, k_CrestFlarePath);
+            }
+
+            // A wide magenta wash with a smaller, hotter, whiter core on top. Both are
+            // the same sprite: HDRP's procedural circle element draws a flat disc with
+            // a hard rim, which sat behind the crest as a grey plate.
+            data.elements = new[]
+            {
+                NewFlareElement(glow, new Color(1f, 0.42f, 0.96f, 1f), 4.5f, 2.4f),
+                NewFlareElement(glow, new Color(1f, 0.82f, 1f, 1f), 1.6f, 1.4f),
+            };
+
+            EditorUtility.SetDirty(data);
+            AssetDatabase.SaveAssets();
+        }
+
+        static LensFlareDataElementSRP NewFlareElement(
+            Texture2D texture, Color tint, float scale, float intensity)
+        {
+            var e = new LensFlareDataElementSRP();
+            e.flareType = SRPLensFlareType.Image;
+            e.lensFlareTexture = texture;
+            e.tint = tint;
+            e.sizeXY = Vector2.one;
+            e.uniformScale = scale;
+            e.localIntensity = intensity;
+            e.rotation = 0f;
+            e.preserveAspectRatio = false;
+            e.blendMode = SRPLensFlareBlendMode.Additive;
+            e.autoRotate = false;
+            // Position zero keeps the element on the source. Anything else slides it
+            // along the line to the screen centre, which is what ghosts do, and this
+            // flare has to stay on the crystal.
+            e.position = 0f;
+            e.translationScale = Vector2.one;
+            e.modulateByLightColor = false;
+            return e;
+        }
+
+        /// <summary>
+        /// Paints the crest's glow sprite: a hot core and a wide halo, nothing else.
+        /// The reference puts a plain round magenta wash around the gem, so earlier
+        /// tries at spikes and an anamorphic streak both read as a graphic laid over
+        /// the frame rather than as light. The halo has to reach near zero well inside
+        /// the sprite too, or the square's own rim shows up as a hexagonal outline.
+        /// </summary>
+        static Texture2D EnsureGlowTexture()
+        {
+            const int size = 512;
+
+            var tex = new Texture2D(size, size, TextureFormat.RGBA32, false);
+            var pixels = new Color[size * size];
+
+            for (int y = 0; y < size; y++)
+            {
+                float ny = (y + 0.5f) / size * 2f - 1f;
+                for (int x = 0; x < size; x++)
+                {
+                    float nx = (x + 0.5f) / size * 2f - 1f;
+                    float r = Mathf.Sqrt(nx * nx + ny * ny);
+                    float v = 0f;
+
+                    if (r < 1f)
+                    {
+                        v += Mathf.Exp(-r * r / (2f * 0.05f * 0.05f));
+                        // The halo reaches true zero at 0.6 with a flat slope, so it
+                        // has no edge to see. An exponential tail cut off at the quad
+                        // rim drew a hard circle instead, and the grade's contrast
+                        // pulled that circle out of the black even at 0.05.
+                        v += 0.75f * Mathf.Pow(Mathf.Max(0f, 1f - r / 0.6f), 2.5f);
+                    }
+
+                    v = Mathf.Clamp01(v);
+                    pixels[y * size + x] = new Color(v, v, v, v);
+                }
+            }
+
+            tex.SetPixels(pixels);
+            tex.Apply();
+
+            var bytes = tex.EncodeToPNG();
+            Object.DestroyImmediate(tex);
+            File.WriteAllBytes(Path.Combine(Directory.GetCurrentDirectory(), k_GlowTexPath), bytes);
+            AssetDatabase.ImportAsset(k_GlowTexPath, ImportAssetOptions.ForceUpdate);
+
+            var ti = AssetImporter.GetAtPath(k_GlowTexPath) as TextureImporter;
+            if (ti != null)
+            {
+                ti.textureType = TextureImporterType.Default;
+                // The pixels are an intensity ramp, not a colour, so no sRGB curve.
+                ti.sRGBTexture = false;
+                ti.alphaIsTransparency = false;
+                ti.wrapMode = TextureWrapMode.Clamp;
+                // No mips. The flare shader picked a coarse one for the small quad,
+                // and a coarse mip of this sprite averages to a flat non-zero grey —
+                // which drew the glow as a blocky rectangle with a hard rim.
+                ti.mipmapEnabled = false;
+                ti.maxTextureSize = 512;
+                ti.SaveAndReimport();
+            }
+
+            return AssetDatabase.LoadAssetAtPath<Texture2D>(k_GlowTexPath);
+        }
+
+        /// <summary>
+        /// Hangs the star on the crest crystal. The flare goes on a child object so
+        /// its anchor can sit at the middle of the gem rather than at the mesh pivot
+        /// below it.
+        /// </summary>
+        static void AddCrestFlare(GameObject geometry)
+        {
+            var data = AssetDatabase.LoadAssetAtPath<LensFlareDataSRP>(k_CrestFlarePath);
+            if (data == null)
+            {
+                Debug.LogWarning("[WheelStageBuilder] " + k_CrestFlarePath +
+                    " is missing, so the crest has no flare.");
+                return;
+            }
+
+            MeshRenderer crystal = null;
+            foreach (var r in geometry.GetComponentsInChildren<MeshRenderer>(true))
+            {
+                if (r.name == "Crest_Crystal") { crystal = r; break; }
+            }
+            if (crystal == null)
+            {
+                Debug.LogWarning("[WheelStageBuilder] Crest_Crystal not found, so the crest has no flare.");
+                return;
+            }
+
+            var go = NewChild("Crest_Flare", crystal.transform);
+            go.transform.position = crystal.bounds.center;
+
+            var flare = go.AddComponent<LensFlareComponentSRP>();
+            flare.lensFlareData = data;
+            // HDRP draws this pass after bloom and before the ACES curve, so the
+            // flare neither blooms nor keeps its authored value. An element weight of
+            // 1 came out a dark violet line; the multiplier here carries the star up
+            // to where ACES still leaves it glowing.
+            flare.intensity = 2.2f;
+            flare.scale = 1f;
+            // There is no light on this object to attenuate against, and the crystal
+            // is the highest thing in frame with nothing but sky behind it.
+            flare.attenuationByLightShape = false;
+            flare.useOcclusion = false;
+            flare.allowOffScreen = false;
+            flare.maxAttenuationDistance = 40f;
+            flare.maxAttenuationScale = 40f;
+        }
+
+        // ------------------------------------------------------------------
         // lights
         // ------------------------------------------------------------------
 
@@ -831,6 +1008,7 @@ namespace GameShow.EditorTools
 
             AssignMaterials(geometry, materials);
             ReportUnassignedMaterials(geometry);
+            AddCrestFlare(geometry);
 
             foreach (var def in k_StageLights)
             {
@@ -1149,11 +1327,46 @@ namespace GameShow.EditorTools
             fog.color.value = new Color(0.012f, 0.008f, 0.03f);
             fog.tint.value = new Color(0.85f, 0.78f, 1f);
 
+            // Every bulb in the reference sits inside a halo. Emissive nits set where
+            // the threshold goes: fixed exposure EV 9 puts mid grey at 1.2 * 2^9 =
+            // 614 nits, so the bulbs land near 4.2 and the fixture lenses near 5.2.
+            // The LED wall emits only 0.55, but four cyc washes light it on top of
+            // that and carry it past 1. A threshold of 0.8 therefore bloomed the
+            // whole cyclorama and turned the frame into a milky orange wash. 1.8
+            // clears the lit wall and still catches every lamp.
             var bloom = profile.Add<Bloom>(true);
-            bloom.intensity.value = 0.24f;
-            bloom.scatter.value = 0.7f;
-            bloom.threshold.value = 1.1f;
+            bloom.intensity.value = 0.45f;
+            bloom.scatter.value = 0.8f;
+            bloom.threshold.value = 1.8f;
             bloom.tint.value = new Color(1f, 0.94f, 1f);
+
+            // The truss PAR lenses are one merged mesh, so there is no per lamp
+            // transform to hang a flare component on. This pass works from bright
+            // pixels instead and streaks all of them at once. It samples the bloom
+            // mip chain, so it does nothing unless bloom above stays enabled.
+            var glare = profile.Add<ScreenSpaceLensFlare>(true);
+            glare.intensity.value = 0.4f;
+            glare.tintColor.value = new Color(1f, 0.86f, 1f);
+            glare.bloomMip.value = 1;
+            glare.firstFlareIntensity.value = 0.4f;
+            glare.secondaryFlareIntensity.value = 0.2f;
+            glare.warpedFlareIntensity.value = 0.3f;
+            glare.warpedFlareScale.value = new Vector2(1.2f, 1f);
+            glare.samples.value = 2;
+            glare.sampleDimmer.value = 0.6f;
+            glare.vignetteEffect.value = 0.85f;
+            glare.startingPosition.value = 1.5f;
+            glare.scale.value = 1.3f;
+            // Streaks off. The reference has no horizontal rays anywhere: its ceiling
+            // glare is round out of focus discs, which the flares above draw. At 1.1
+            // the streak through the crest came out a hard banded bar with a green
+            // fringe from the chromatic split.
+            glare.streaksIntensity.value = 0f;
+            glare.streaksLength.value = 0.6f;
+            glare.streaksOrientation.value = 0f;
+            glare.streaksThreshold.value = 0.55f;
+            glare.resolution.value = ScreenSpaceLensFlareResolution.Half;
+            glare.chromaticAbberationIntensity.value = 0.3f;
 
             var tonemap = profile.Add<Tonemapping>(true);
             tonemap.mode.value = TonemappingMode.ACES;
@@ -1230,6 +1443,11 @@ namespace GameShow.EditorTools
                 FrameSettingsField.SSAO,
                 FrameSettingsField.Postprocess,
                 FrameSettingsField.ExposureControl,
+                // HDRP switches the screen space flare off unless bloom is on in the
+                // same frame settings, so both are listed rather than inherited.
+                FrameSettingsField.Bloom,
+                FrameSettingsField.LensFlareScreenSpace,
+                FrameSettingsField.LensFlareDataDriven,
             };
             foreach (var field in wanted)
             {
