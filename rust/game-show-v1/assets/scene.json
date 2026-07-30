@@ -1,0 +1,1316 @@
+{
+  "doc": [
+    "Scene manifest for game-show-v1. Everything the Rust app needs that a GLB cannot carry.",
+    "Written by agent E from wheel_stage.blend, Blender 5.1.2, read-only background run.",
+    "COORDINATE SYSTEM: option A of docs/export_notes.md section 4. Every vector at the top",
+    "level of this file is in the exported glTF +Y-up frame, the same frame as the geometry in",
+    "assets/wheel_stage.glb. World up is (0, 1, 0). No rotation is applied at load.",
+    "The Blender Z-up source values are kept beside each entry under a 'blender' object, for",
+    "cross-checking against docs/agent_plan.md and docs/scene_audit.md, which are Z-up.",
+    "The map the exporter used is (x, y, z)_blender -> (x, z, -y)_gltf, a proper rotation.",
+    "Every array of objects has the same keys in every element, so plain serde structs with no",
+    "Option and no #[serde(default)] deserialise this file."
+  ],
+  "generated_by": "agent E",
+  "source_blend": "unity/blender-assets/wheel_stage.blend",
+  "blender_version": "5.1.2",
+  "glb": "assets/wheel_stage.glb",
+  "scene_name": "Stage",
+  "up_axis": "Y",
+  "vectors_in": "gltf_y_up",
+  "render": {
+    "width": 1672,
+    "height": 941,
+    "aspect": 1.77683316,
+    "view_transform": "Filmic",
+    "exposure": 0.0,
+    "world_background": [
+      0.01,
+      0.008,
+      0.02
+    ],
+    "world_strength": 1.0
+  },
+  "camera": {
+    "name": "Cam_Hero",
+    "position": [
+      0.0,
+      1.0,
+      6.4
+    ],
+    "target": [
+      0.0,
+      3.20363426,
+      -1.2849822
+    ],
+    "up": [
+      0.0,
+      0.96126169,
+      0.27563748
+    ],
+    "forward": [
+      0.0,
+      0.27563748,
+      -0.96126169
+    ],
+    "orbit_radius": 7.99468291,
+    "fov_y_deg": 49.44948834,
+    "fov_y_rad": 0.86305638,
+    "z_near": 0.05,
+    "z_far": 200.0,
+    "lens_mm": 22.0,
+    "sensor_fit": "HORIZONTAL",
+    "sensor_width_mm": 36.0,
+    "fov_x_rad": 1.37145902,
+    "blender": {
+      "location": [
+        0.0,
+        -6.4,
+        1.0
+      ],
+      "rotation_euler": [
+        1.85004902,
+        0.0,
+        0.0
+      ],
+      "forward": [
+        0.0,
+        0.96126169,
+        0.27563748
+      ],
+      "up": [
+        0.0,
+        -0.27563748,
+        0.96126169
+      ],
+      "target": [
+        0.0,
+        1.2849822,
+        3.20363426
+      ]
+    },
+    "notes": [
+      "fov_y_deg is derived from the 22 mm lens on the 36 mm HORIZONTAL sensor at 1672x941:",
+      "hfov = 2*atan(36/(2*22)) = 1.37145902 rad, fov_y = 2*atan(tan(hfov/2)/1.77683316).",
+      "Do not use Blender's camera.angle_y (57.220921 deg); sensor_fit is HORIZONTAL.",
+      "target is the point on the camera axis closest to Wheel_Root, so look_at(position,",
+      "target, up=(0,1,0)) reproduces Cam_Hero's framing exactly. Use it for --shot.",
+      "To keep the horizontal framing when the window resizes, recompute fov_y from fov_x_rad",
+      "and the live viewport aspect."
+    ]
+  },
+  "lights": [
+    {
+      "name": "Key_Wheel",
+      "type": "AREA",
+      "position": [
+        0.0,
+        6.0,
+        5.0
+      ],
+      "direction": [
+        0.0,
+        -0.51566195,
+        -0.85679215
+      ],
+      "color": [
+        1.0,
+        0.93,
+        0.82
+      ],
+      "energy_watts": 900.0,
+      "size": 4.0,
+      "spot_size_rad": 0.0,
+      "spot_blend": 0.0,
+      "cone_outer_half_angle_rad": 0.0,
+      "cone_inner_half_angle_rad": 0.0,
+      "in_glb": false,
+      "exported_candela": 0.0,
+      "blender": {
+        "location": [
+          0.0,
+          -5.0,
+          6.0
+        ],
+        "rotation_euler": [
+          1.02901626,
+          0.0,
+          0.0
+        ],
+        "direction": [
+          0.0,
+          0.85679215,
+          -0.51566195
+        ]
+      }
+    },
+    {
+      "name": "Beam_L",
+      "type": "SPOT",
+      "position": [
+        -6.5,
+        7.2,
+        3.0
+      ],
+      "direction": [
+        0.47945654,
+        -0.76713032,
+        -0.42618358
+      ],
+      "color": [
+        0.72,
+        0.36,
+        1.0
+      ],
+      "energy_watts": 2500.0,
+      "size": 0.0,
+      "spot_size_rad": 0.38397244,
+      "spot_blend": 0.25,
+      "cone_outer_half_angle_rad": 0.19198622,
+      "cone_inner_half_angle_rad": 0.14398966,
+      "in_glb": true,
+      "exported_candela": 135878.53266470565,
+      "blender": {
+        "location": [
+          -6.5,
+          -3.0,
+          7.2
+        ],
+        "rotation_euler": [
+          0.69644058,
+          0.0,
+          -0.84415406
+        ],
+        "direction": [
+          0.47945654,
+          0.42618358,
+          -0.76713032
+        ]
+      }
+    },
+    {
+      "name": "Beam_R",
+      "type": "SPOT",
+      "position": [
+        6.5,
+        7.2,
+        3.0
+      ],
+      "direction": [
+        -0.47945654,
+        -0.76713032,
+        -0.42618358
+      ],
+      "color": [
+        0.72,
+        0.36,
+        1.0
+      ],
+      "energy_watts": 2500.0,
+      "size": 0.0,
+      "spot_size_rad": 0.38397244,
+      "spot_blend": 0.25,
+      "cone_outer_half_angle_rad": 0.19198622,
+      "cone_inner_half_angle_rad": 0.14398966,
+      "in_glb": true,
+      "exported_candela": 135878.53266470565,
+      "blender": {
+        "location": [
+          6.5,
+          -3.0,
+          7.2
+        ],
+        "rotation_euler": [
+          0.69644058,
+          0.0,
+          0.84415406
+        ],
+        "direction": [
+          -0.47945654,
+          0.42618358,
+          -0.76713032
+        ]
+      }
+    },
+    {
+      "name": "Rim_L",
+      "type": "AREA",
+      "position": [
+        -8.0,
+        3.5,
+        -3.5
+      ],
+      "direction": [
+        0.92889917,
+        -0.08708412,
+        0.35994822
+      ],
+      "color": [
+        0.35,
+        0.55,
+        1.0
+      ],
+      "energy_watts": 400.0,
+      "size": 3.0,
+      "spot_size_rad": 0.0,
+      "spot_blend": 0.0,
+      "cone_outer_half_angle_rad": 0.0,
+      "cone_inner_half_angle_rad": 0.0,
+      "in_glb": false,
+      "exported_candela": 0.0,
+      "blender": {
+        "location": [
+          -8.0,
+          3.5,
+          3.5
+        ],
+        "rotation_euler": [
+          1.48360169,
+          0.0,
+          -1.94048047
+        ],
+        "direction": [
+          0.92889917,
+          -0.35994822,
+          -0.08708412
+        ]
+      }
+    },
+    {
+      "name": "Rim_R",
+      "type": "AREA",
+      "position": [
+        8.0,
+        3.5,
+        -3.5
+      ],
+      "direction": [
+        -0.92889917,
+        -0.08708412,
+        0.35994822
+      ],
+      "color": [
+        1.0,
+        0.3,
+        0.65
+      ],
+      "energy_watts": 400.0,
+      "size": 3.0,
+      "spot_size_rad": 0.0,
+      "spot_blend": 0.0,
+      "cone_outer_half_angle_rad": 0.0,
+      "cone_inner_half_angle_rad": 0.0,
+      "in_glb": false,
+      "exported_candela": 0.0,
+      "blender": {
+        "location": [
+          8.0,
+          3.5,
+          3.5
+        ],
+        "rotation_euler": [
+          1.48360169,
+          0.0,
+          1.94048047
+        ],
+        "direction": [
+          -0.92889917,
+          -0.35994822,
+          -0.08708412
+        ]
+      }
+    },
+    {
+      "name": "Fill_Front",
+      "type": "AREA",
+      "position": [
+        0.0,
+        2.0,
+        7.5
+      ],
+      "direction": [
+        0.0,
+        -0.06651902,
+        -0.99778515
+      ],
+      "color": [
+        0.6,
+        0.6,
+        0.9
+      ],
+      "energy_watts": 120.0,
+      "size": 6.0,
+      "spot_size_rad": 0.0,
+      "spot_blend": 0.0,
+      "cone_outer_half_angle_rad": 0.0,
+      "cone_inner_half_angle_rad": 0.0,
+      "in_glb": false,
+      "exported_candela": 0.0,
+      "blender": {
+        "location": [
+          0.0,
+          -7.5,
+          2.0
+        ],
+        "rotation_euler": [
+          1.50422812,
+          0.0,
+          0.0
+        ],
+        "direction": [
+          0.0,
+          0.99778515,
+          -0.06651902
+        ]
+      }
+    }
+  ],
+  "lighting_notes": [
+    "energy_watts is Blender radiant power. three-d's intensity is a dimensionless multiplier,",
+    "so convert; src/lighting.rs owns the conversion and records it in docs/api/lighting.md.",
+    "exported_candela is what the GLB holds for the two spots after the SPEC conversion. It is",
+    "recorded for traceability only. Never feed it to three-d.",
+    "in_glb is false for the four AREA lights: KHR_lights_punctual has no area light, so the",
+    "exporter wrote their nodes without light data. This file is the only source for all six.",
+    "direction is the way the light points, already normalised, in the glTF frame. Blender and",
+    "glTF punctual lights both emit down local -Z, so this needs no further sign flip.",
+    "All four AREA lights are SQUARE, so size is the full edge length in metres; size_y is",
+    "unused. three-d has no area light either: treat them as directional or point lights."
+  ],
+  "materials": [
+    {
+      "name": "MAT_Bulb_Glass",
+      "base_color": [
+        1.0,
+        0.93,
+        0.74
+      ],
+      "metallic": 0.0,
+      "roughness": 0.08,
+      "alpha": 1.0,
+      "alpha_mode": "OPAQUE",
+      "emission_strength": 1.35,
+      "emission_color": [
+        1.0,
+        0.86,
+        0.55
+      ],
+      "effective_emission": [
+        1.35,
+        1.161,
+        0.7425
+      ],
+      "glb_emissive_factor": [
+        1.0,
+        0.93,
+        0.74
+      ],
+      "glb_emissive_strength": 3.0
+    },
+    {
+      "name": "MAT_Lens_Glow",
+      "base_color": [
+        1.0,
+        0.95,
+        0.82
+      ],
+      "metallic": 0.0,
+      "roughness": 0.08,
+      "alpha": 1.0,
+      "alpha_mode": "OPAQUE",
+      "emission_strength": 6.0,
+      "emission_color": [
+        1.0,
+        0.95,
+        0.82
+      ],
+      "effective_emission": [
+        6.0,
+        5.7,
+        4.92
+      ],
+      "glb_emissive_factor": [
+        1.0,
+        0.95,
+        0.82
+      ],
+      "glb_emissive_strength": 6.0
+    },
+    {
+      "name": "MAT_Crystal",
+      "base_color": [
+        0.45,
+        0.2,
+        0.6
+      ],
+      "metallic": 0.0,
+      "roughness": 0.10,
+      "alpha": 0.55,
+      "alpha_mode": "BLEND",
+      "emission_strength": 1.2,
+      "emission_color": [
+        0.85,
+        0.6,
+        0.95
+      ],
+      "effective_emission": [
+        1.02,
+        0.72,
+        1.14
+      ],
+      "glb_emissive_factor": [
+        0.894737,
+        0.631579,
+        1.0
+      ],
+      "glb_emissive_strength": 1.14
+    },
+    {
+      "name": "MAT_LED_Screen",
+      "base_color": [
+        0.35,
+        0.3,
+        0.6
+      ],
+      "metallic": 0.0,
+      "roughness": 0.25,
+      "alpha": 1.0,
+      "alpha_mode": "OPAQUE",
+      "emission_strength": 1.5,
+      "emission_color": [
+        0.35,
+        0.3,
+        0.6
+      ],
+      "effective_emission": [
+        0.525,
+        0.45,
+        0.9
+      ],
+      "glb_emissive_factor": [
+        0.525,
+        0.45,
+        0.9
+      ],
+      "glb_emissive_strength": 1.0
+    },
+    {
+      "name": "MAT_Gold_Trim",
+      "base_color": [
+        0.72,
+        0.52,
+        0.18
+      ],
+      "metallic": 1.0,
+      "roughness": 0.22,
+      "alpha": 1.0,
+      "alpha_mode": "OPAQUE",
+      "emission_strength": 0.0,
+      "emission_color": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "effective_emission": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "glb_emissive_factor": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "glb_emissive_strength": 1.0
+    },
+    {
+      "name": "MAT_Gold_Dark",
+      "base_color": [
+        0.2,
+        0.145,
+        0.055
+      ],
+      "metallic": 1.0,
+      "roughness": 0.62,
+      "alpha": 1.0,
+      "alpha_mode": "OPAQUE",
+      "emission_strength": 0.0,
+      "emission_color": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "effective_emission": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "glb_emissive_factor": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "glb_emissive_strength": 1.0
+    },
+    {
+      "name": "MAT_Metal_Polished",
+      "base_color": [
+        0.78,
+        0.79,
+        0.82
+      ],
+      "metallic": 1.0,
+      "roughness": 0.14,
+      "alpha": 1.0,
+      "alpha_mode": "OPAQUE",
+      "emission_strength": 0.0,
+      "emission_color": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "effective_emission": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "glb_emissive_factor": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "glb_emissive_strength": 1.0
+    },
+    {
+      "name": "MAT_Truss_Metal",
+      "base_color": [
+        0.55,
+        0.56,
+        0.58
+      ],
+      "metallic": 1.0,
+      "roughness": 0.35,
+      "alpha": 1.0,
+      "alpha_mode": "OPAQUE",
+      "emission_strength": 0.0,
+      "emission_color": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "effective_emission": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "glb_emissive_factor": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "glb_emissive_strength": 1.0
+    },
+    {
+      "name": "MAT_Peg_Metal",
+      "base_color": [
+        0.62,
+        0.63,
+        0.68
+      ],
+      "metallic": 0.6,
+      "roughness": 0.09,
+      "alpha": 1.0,
+      "alpha_mode": "OPAQUE",
+      "emission_strength": 0.0,
+      "emission_color": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "effective_emission": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "glb_emissive_factor": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "glb_emissive_strength": 1.0
+    },
+    {
+      "name": "MAT_Floor_Gloss",
+      "base_color": [
+        0.37,
+        0.15,
+        0.53
+      ],
+      "metallic": 0.0,
+      "roughness": 0.1,
+      "alpha": 1.0,
+      "alpha_mode": "OPAQUE",
+      "emission_strength": 0.0,
+      "emission_color": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "effective_emission": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "glb_emissive_factor": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "glb_emissive_strength": 1.0
+    },
+    {
+      "name": "MAT_Pillar_Body",
+      "base_color": [
+        0.21,
+        0.145,
+        0.175
+      ],
+      "metallic": 0.62,
+      "roughness": 0.13,
+      "alpha": 1.0,
+      "alpha_mode": "OPAQUE",
+      "emission_strength": 0.0,
+      "emission_color": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "effective_emission": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "glb_emissive_factor": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "glb_emissive_strength": 1.0
+    },
+    {
+      "name": "MAT_Dark_Trim",
+      "base_color": [
+        0.042,
+        0.04,
+        0.056
+      ],
+      "metallic": 0.0,
+      "roughness": 0.66,
+      "alpha": 1.0,
+      "alpha_mode": "OPAQUE",
+      "emission_strength": 0.0,
+      "emission_color": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "effective_emission": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "glb_emissive_factor": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "glb_emissive_strength": 1.0
+    },
+    {
+      "name": "MAT_Fixture_Body",
+      "base_color": [
+        0.05,
+        0.05,
+        0.06
+      ],
+      "metallic": 0.0,
+      "roughness": 0.42,
+      "alpha": 1.0,
+      "alpha_mode": "OPAQUE",
+      "emission_strength": 0.0,
+      "emission_color": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "effective_emission": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "glb_emissive_factor": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "glb_emissive_strength": 1.0
+    },
+    {
+      "name": "MAT_Sector_Pink",
+      "base_color": [
+        0.95,
+        0.015,
+        0.42
+      ],
+      "metallic": 0.0,
+      "roughness": 0.35,
+      "alpha": 1.0,
+      "alpha_mode": "OPAQUE",
+      "emission_strength": 0.0,
+      "emission_color": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "effective_emission": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "glb_emissive_factor": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "glb_emissive_strength": 1.0
+    },
+    {
+      "name": "MAT_Sector_Gold",
+      "base_color": [
+        0.97,
+        0.44,
+        0.03
+      ],
+      "metallic": 0.0,
+      "roughness": 0.3,
+      "alpha": 1.0,
+      "alpha_mode": "OPAQUE",
+      "emission_strength": 0.0,
+      "emission_color": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "effective_emission": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "glb_emissive_factor": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "glb_emissive_strength": 1.0
+    },
+    {
+      "name": "MAT_Sector_Cyan",
+      "base_color": [
+        0.008,
+        0.62,
+        0.9
+      ],
+      "metallic": 0.0,
+      "roughness": 0.35,
+      "alpha": 1.0,
+      "alpha_mode": "OPAQUE",
+      "emission_strength": 0.0,
+      "emission_color": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "effective_emission": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "glb_emissive_factor": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "glb_emissive_strength": 1.0
+    },
+    {
+      "name": "MAT_Sector_Blue",
+      "base_color": [
+        0.01,
+        0.13,
+        0.95
+      ],
+      "metallic": 0.0,
+      "roughness": 0.35,
+      "alpha": 1.0,
+      "alpha_mode": "OPAQUE",
+      "emission_strength": 0.0,
+      "emission_color": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "effective_emission": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "glb_emissive_factor": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "glb_emissive_strength": 1.0
+    },
+    {
+      "name": "MAT_Sector_Cream",
+      "base_color": [
+        0.96,
+        0.9,
+        0.72
+      ],
+      "metallic": 0.0,
+      "roughness": 0.35,
+      "alpha": 1.0,
+      "alpha_mode": "OPAQUE",
+      "emission_strength": 0.0,
+      "emission_color": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "effective_emission": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "glb_emissive_factor": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "glb_emissive_strength": 1.0
+    },
+    {
+      "name": "MAT_Sector_White",
+      "base_color": [
+        0.97,
+        0.97,
+        0.97
+      ],
+      "metallic": 0.0,
+      "roughness": 0.32,
+      "alpha": 1.0,
+      "alpha_mode": "OPAQUE",
+      "emission_strength": 0.0,
+      "emission_color": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "effective_emission": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "glb_emissive_factor": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "glb_emissive_strength": 1.0
+    }
+  ],
+  "material_notes": [
+    "19 materials, not the 20 in docs/agent_plan.md. MAT_Rubber_Black is not in the .blend and",
+    "not in the GLB; docs/scene_audit.md section 11 correction 1 confirms it, and a fresh",
+    "read of the file for this manifest confirms it again. Do not create it.",
+    "base_color and emission_color are linear RGB. three-d's PhysicalMaterial::albedo is",
+    "sRGB-encoded, so encode before assigning.",
+    "effective_emission is authoritative: it is emission_color * emission_strength, the value",
+    "the Blender shader emits. Use it directly as an emissive colour.",
+    "glb_emissive_factor and glb_emissive_strength are what the GLB holds. The exporter",
+    "normalised the factor to a maximum of 1 and put the rest into",
+    "KHR_materials_emissive_strength, which three-d-asset 0.10 ignores, so an importer sees",
+    "only the factor and every glow comes out too dim. Re-apply effective_emission.",
+    "MAT_Crystal is the only non-opaque material.",
+    "The GLB has no images and no textures. MAT_LED_Screen's missing T_LEDWall_Sky texture is",
+    "replaced procedurally by src/screen.rs.",
+    "MAT_LED_Screen is on two objects: Wall_Screen and slot 0 of Podium_Riser. Bind the sky",
+    "shader by object or primitive, never by material name alone, or the podium riser front",
+    "gets painted with sky too.",
+    "LOOK-DEV ROUND 1 deviations from the Blender table. Two entries no longer match the",
+    ".blend, on purpose, and both are named in renders/verdict_r1.json:",
+    "MAT_Bulb_Glass emission_strength was 3.0 with colour (1, 0.93, 0.74). It is 1.7 with",
+    "colour (1, 0.86, 0.55). The reference packs the outer rim channel with bulb dashes that",
+    "clip to pale lemon and carry a 4 to 8 px halo, and 3.0 sat under the bloom threshold",
+    "once the half-res bright pass averaged a few-pixel dash. The warmer colour is the",
+    "reference's lemon rather than the .blend's cream. The 96 bulbs are also the frame's",
+    "warm source: src/lighting.rs turns this same radiance into the BULB_RING point light",
+    "that gold, floor and truss underside are lit by, so the two move together.",
+    "MAT_Pillar_Body was (0.11, 0.1, 0.14) at roughness 0.18. It is (0.09, 0.075, 0.11) at",
+    "roughness 0.45. The reference reads both pillars as dark violet-brown silhouettes drawn",
+    "with two gold highlight stripes, and their dark side as darker than the screen behind",
+    "them; round 1 rendered them lighter than the screen, fully form-shaded. The cause is the",
+    "gloss, not the albedo: at roughness 0.18 a dielectric mirrors the environment band almost",
+    "sharply, the LED wall wraps a full 360 degrees, and every flute of the fluted column",
+    "catches it. At 0.45 the prefiltered environment averages the bright band with the dark",
+    "ceiling void and the column goes back to a silhouette. look_target.md agrees the pillar",
+    "is not mirror-glossy: it shows only a weak vertically stretched blur of the screen.",
+    "MAT_Sector_Gold base_color was (0.95, 0.64, 0.08) and MAT_Sector_Cyan (0.13, 0.8, 0.9).",
+    "They are (0.95, 0.5, 0.04) and (0.05, 0.72, 0.94). Both are deeper, not brighter. The",
+    "sector fan is the first of the five things docs/look_target.md ranks, and it wants the",
+    "wedges near-fully saturated with only the cream and white ones desaturated. The key light",
+    "puts a white sector at radiance 1.4, which is on Filmic's shoulder, and on the shoulder a",
+    "gold at 0.64 green converges with its own red and reads khaki. Deepening the two albedos",
+    "is what holds their hue up there; dimming the key instead would cost the cream and white",
+    "wedges the near-white the reference gives them.",
+    "MAT_Floor_Gloss base_color was (0.055, 0.05, 0.075), a neutral-cool near-black that",
+    "rendered as steel-blue-grey. It is (0.085, 0.05, 0.078): the same value, tilted to the",
+    "plum the reference's floor holds under its gold reflection column.",
+    "glb_emissive_factor and glb_emissive_strength are left at what the GLB carries, so the",
+    "deviation stays visible as a difference between the two pairs of fields.",
+    "MAT_Gold_Trim renders at metallic 0.75, not the .blend's 1.0, but the override is in",
+    "src/scene.rs (GOLD_TRIM_LOOK_METALLIC) rather than here, because src/manifest.rs pins this",
+    "field and that file belongs to another agent. MAT_Gold_Dark keeps its 1.0, so the wall",
+    "fascia's dark bands stay dark and its gold line stays a line. The case for the one is",
+    "the same",
+    "trade src/scene.rs's module docs set out for the five fully metallic materials: in three-d",
+    "a surface at metallic 1.0 has no diffuse term at all and its ambient term is exactly zero,",
+    "so its only light is a direct specular plus whatever an IBL environment holds. There is no",
+    "HDRI in the .blend and no network at run time, so the environment is a generated gradient",
+    "and every gold surface facing away from a lamp renders near-black. The reference has gold",
+    "on every metal highlight and reads the rim as concentric bright gold bands, the podium as",
+    "a black form drawn with gold lines and the floor inlays as crisp warm gold arcs. At 0.75",
+    "the trim keeps three quarters of its specular and gains a warm diffuse term of its colour,",
+    "which is what makes it read as gold rather than as a dark mirror. EEVEE does not have this",
+    "problem, so the .blend is right and the renderer is what is being compensated for.",
+    "LOOK-DEV ROUND 2 deviations from the Blender table, all four sector base colours. Every",
+    "number below was read off docs/wheel_stage.png with a pixel probe and converted to linear,",
+    "because renders/verdict_r2.json's complaint was about hue and not about level: the",
+    "reference's hot magenta is a dusty rose here, its cobalt a slate periwinkle, its cyan a",
+    "mint, its gold a khaki. In each case the miss is an off-hue channel sitting too high, and",
+    "in each case the reference's own pixel says how high it should be.",
+    "MAT_Sector_Pink was (0.92, 0.05, 0.42). It is (0.95, 0.015, 0.42). The reference's most",
+    "saturated magenta is sRGB (240, 20, 99), linear (0.87, 0.006, 0.12); the blue stays at",
+    "0.42 because the reference's magenta across a whole sector is (221, 56, 178), linear",
+    "(0.72, 0.036, 0.44), which is a magenta and not a red. Only the green comes down.",
+    "MAT_Sector_Gold was (0.95, 0.5, 0.04). It is (0.97, 0.3, 0.008). The reference's gold is",
+    "sRGB (225, 142, 15), linear (0.75, 0.27, 0.004). A green at 0.5 against a red at 0.95 is",
+    "a khaki whatever the light does to it; 0.3 against 0.97 is the reference's amber-gold.",
+    "MAT_Sector_Cyan was (0.05, 0.72, 0.94). It is (0.008, 0.62, 0.9). The reference's cyan is",
+    "sRGB (12, 184, 212), linear (0.003, 0.47, 0.65) - a turquoise whose red is effectively",
+    "zero, where 0.05 of red is what was reading as mint.",
+    "MAT_Sector_Blue was (0.09, 0.22, 0.86). It is (0.01, 0.13, 0.95). The reference's cobalt",
+    "is sRGB (15, 141, 249), linear (0.004, 0.26, 0.95). Its red is what mattered: at 0.09 the",
+    "sector read as a periwinkle and round 2 could not find a blue pixel anywhere in the wheel.",
+    "MAT_Sector_Cream and MAT_Sector_White are untouched, by instruction: docs/look_target.md",
+    "says only the cream and white sectors are desaturated, so they are the two that are right.",
+    "Round 2's other material asks - the gold trim's brightness, the crest crystal's hue - are",
+    "in src/scene.rs beside GOLD_TRIM_LOOK_METALLIC, for the same reason that one is: they are",
+    "fields src/manifest.rs pins in a test, and that file belongs to another agent.",
+    "MAT_Floor_Gloss base_color was (0.085, 0.05, 0.078) in round 1 and (0.055, 0.05, 0.075) in the",
+    "Blender table. It is (0.2, 0.115, 0.19). renders/ref_crops/floor.png is a bright violet-magenta",
+    "glossy floor - its open floor reads sRGB (190, 120, 200), linear (0.51, 0.18, 0.58) - and the",
+    "reference gets there mostly by mirroring the whole LED wall, which a screen-space reflection",
+    "pass cannot do: src/postfx.rs only reflects what stands on the floor above the pixel, so the",
+    "open floor between the podium and the wheel takes no reflection at all and is left with its own",
+    "albedo. At 0.085 that albedo made the lower third of the frame near-black; 0.15 was still dark. The hue is unchanged",
+    "- plum, red over blue over green - so what moves is the level and not the colour.",
+    "LOOK-DEV ROUND 3 deviations from the Blender table, three materials.",
+    "MAT_Sector_Gold was (0.97, 0.3, 0.008) after round 2 and is (0.97, 0.6, 0.05); Blender has",
+    "(0.95, 0.64, 0.08). Round 2 read round 1's khaki wedge as a hue problem and crushed the green",
+    "to fix it, which moved the hue past the target rather than onto it: renders/verdict_r3.json",
+    "found the wedge 'at base colour (0.97, 0.30, 0.008), which is orange, not the amber-gold the",
+    "reference shows', and 'the amber wedges read tan-orange throughout the fan'. What was actually",
+    "wrong in round 1 was Filmic's shoulder pulling a bright gold's red and green together, and that",
+    "is fixed by not being on the shoulder - which round 2's own KEY_LOOK_GAIN cut and round 3's",
+    "BLOOM_WIDE_STRENGTH cut between them have now done. So the green goes back near Blender's own",
+    "value and only the blue stays crushed, which is what keeps the wedge amber rather than tan.",
+    "Measured back down from 0.6 to 0.44 after the first round-3 render: at 0.6 the wedge came out a",
+    "pale mustard, which is round 1's khaki again. 0.44 is amber-gold, between round 2 and Blender.",
+    "MAT_Peg_Metal was (0.3, 0.31, 0.34) at roughness 0.30 and is (0.62, 0.63, 0.68) at 0.16.",
+    "docs/look_target.md region 2: 'the chrome peg balls, each with one small white specular on its",
+    "upper-left', halo 1 to 2 px. verdict_r3: 'The peg balls are near-black spheres with no specular'.",
+    "A metal reflects its albedo and nothing else, so at 0.31 a peg can be no brighter than a third",
+    "of what falls on it, and at roughness 0.30 what specular there is spreads too wide to be the",
+    "reference's small hard point. 0.65 is chrome and 0.16 puts the highlight inside a 112 mm stud.",
+    "docs/look_target.md warns that pegs and bulbs must not be conflated: the bulbs are emissive and",
+    "glow, the pegs are metal and take a specular, and this is the material that decides the second.",
+    "Its metallic also goes from 1.0 to 0.55, which is the same trade src/scene.rs makes for",
+    "MAT_Gold_Trim and for the hub, and for the same reason: in three-d a surface at metallic 1.0 has",
+    "no diffuse term and no ambient term at all, so its only light is a direct specular plus an IBL",
+    "environment. Above the wheel that environment is the ceiling void, so at metallic 1.0 a peg ball",
+    "renders as a dark violet sphere however bright its albedo is - measured, by lifting the albedo to",
+    "0.65 first and finding the balls still dark. At 0.55 the ball gains a grey diffuse term of its own",
+    "and reads as the reference's chrome, and it keeps half its specular, which is the small white",
+    "highlight on its upper left. EEVEE does not have this problem, so the .blend is right and the",
+    "renderer is what is being compensated for.",
+    "MAT_Floor_Gloss was (0.2, 0.115, 0.19) after round 2 and is (0.34, 0.15, 0.35). The round-2 note",
+    "below already sets out why the level has to come from the albedo - the reference's floor is",
+    "bright mostly because it mirrors the whole 360-degree LED wall, and a screen-space pass can only",
+    "reflect what stands on the floor above the pixel - and verdict_r3 found 0.2 still short: 'the",
+    "reference floor is a bright saturated magenta-violet plane, ours a dark grey-violet one', 'the",
+    "lower third of the frame reads as a void the set stands in rather than a lit stage floor'. The",
+    "reference's own open floor is linear (0.51, 0.18, 0.58). 0.34 is two thirds of the way there and",
+    "the green is held down, because what round 2 got wrong about the hue was letting green rise with",
+    "the level: a violet floor has red and blue well over green, and (0.2, 0.115, 0.19) has green at",
+    "well over half its red.",
+    "LOOK-DEV ROUND 4 deviations from the Blender table, two materials.",
+    "MAT_Bulb_Glass emission_strength was 1.7 after round 1 and is 1.35. verdict_r4: 'each bulb is",
+    "a large soft blob fused to its neighbours', where docs/look_target.md region 2 gives each bulb",
+    "dash a halo of only 4 to 8 px. A bulb is 4 to 6 px on screen and the 96 of them are about 21 px",
+    "apart, so a halo wider than 8 px closes the gap and the channel reads as one rope. The halo's",
+    "width is how far over crate::postfx::BLOOM_THRESHOLD (1.20) the source sits: 1.7 is a third over",
+    "it, 1.35 is an eighth over it. src/lighting.rs BULB_RING_INTENSITY comes down with it, as its",
+    "own note says it must, and BULB_RING_FORWARD moves out to 0.80 m so the ring stops washing the",
+    "inner half of the sector fan.",
+    "MAT_Gold_Dark was (0.34, 0.24, 0.09) at roughness 0.35 and is (0.2, 0.145, 0.055) at 0.62.",
+    "verdict_r4: 'the body panels read maroon and glossy with vertical pink reflections of the wall",
+    "running down them, where the reference panels are near-black and matte holding only a faint",
+    "violet-brown diagonal grid'. Podium_Panels slot 0 is this material and it is metallic 1.0, so",
+    "the only thing it can show is a reflection - and what stands in front of it across the room is",
+    "the magenta LED wall, which at roughness 0.35 arrives barely blurred. 0.62 spreads that",
+    "reflection until it is a wash rather than a picture, and the albedo down to 0.2 is what takes",
+    "the wash to near-black. Both moves are wanted everywhere else this material appears too: it is",
+    "the wall fascia's dark bands, the pillar bases and the wheel legs' collars, and",
+    "docs/look_target.md draws every one of those as the dark side of a gold line rather than as a",
+    "form of its own. Its metallic stays 1.0, which is what keeps it darker than MAT_Dark_Trim",
+    "beside it.",
+    "MAT_Pillar_Body was (0.09, 0.075, 0.11) at roughness 0.45 and metallic 0.0. It is",
+    "(0.21, 0.145, 0.175) at roughness 0.13 and metallic 0.62. This reverses the round-1 note below,",
+    "and the reason is that the note answered a different question. Round 1's pillar was too bright",
+    "overall and roughness 0.45 fixed that by averaging the environment probe into a flat term. But",
+    "docs/look_target.md region 4 wants a pillar that is 'a dark violet-brown chrome cylinder'",
+    "carrying 'one strong vertical gold highlight just right of its centre and a thinner cooler",
+    "highlight at its left edge', and rounds 2, 3 and 4 all reported the same failure - a dark",
+    "fluted column with no highlight at all, 'a hole in the wall'. A dielectric at roughness 0.45",
+    "cannot draw a line: its specular lobe is wider than the cylinder. Metallic 0.62 at roughness",
+    "0.13 gives the two rim lights a narrow lobe to reflect, so each pillar takes one bright",
+    "vertical stripe where its front-inner face turns toward Rim_L or Rim_R, and the metallic term",
+    "kills the diffuse everywhere else, which is what keeps the dark side dark. The albedo is up",
+    "because a metal's reflectance is its albedo and 0.09 caps the stripe at a tenth of the light",
+    "on it. It is still a fifth of MAT_Metal_Polished's, so the pillar stays the darkest chrome in",
+    "the frame. Its hue is a violet-brown rather than the violet it was, because a metal reflects its",
+    "own albedo and docs/look_target.md region 4 calls the pillar stripe gold."
+  ],
+  "wheel": {
+    "pivot_node": "Wheel_Root",
+    "pivot": [
+      0.0,
+      3.5,
+      -1.2
+    ],
+    "spin_axis": [
+      0.0,
+      0.0,
+      -1.0
+    ],
+    "child_count": 56,
+    "sector_count": 48,
+    "sector_pitch_deg": 7.5,
+    "peg_count": 48,
+    "peg_ring_radius": 2.245,
+    "peg_outer_radius": 2.301,
+    "peg_pitch_deg": 7.5,
+    "peg_first_angle_deg": 3.75,
+    "peg_stud_size": 0.112,
+    "idle_rate_rad_per_s": 0.9,
+    "blender": {
+      "pivot": [
+        0.0,
+        1.2,
+        3.5
+      ],
+      "spin_axis": [
+        0.0,
+        1.0,
+        0.0
+      ]
+    },
+    "notes": [
+      "Wheel_Root is a mesh-less node with identity rotation and unit scale, so one rotation on",
+      "it moves its 56 children and nothing else.",
+      "In the glTF frame the wheel disc lies in the XY plane and spins about Z. A rotation of",
+      "phi about Blender +Y equals Rz(-phi) in glTF. Positive phi is clockwise from the hero",
+      "camera in both frames.",
+      "Sector nn is centred at theta = (nn-1)*7.5 deg, measured in the Blender wheel-local",
+      "frame as atan2(x_local, z_local), so sector 1 points straight up at rotation 0.",
+      "Pegs sit on the sector boundaries: theta_k = 3.75 + k*7.5 deg, k = 0..47. Measured from",
+      "the 48 peg-body islands of Wheel_Pegs; every island centre is at radius 2.245 m to",
+      "eight decimal places, and the body spans radius 2.189 to 2.301 m.",
+      "idle_rate_rad_per_s is a look-dev choice, not a measurement. src/spin.rs owns it."
+    ]
+  },
+  "flapper": {
+    "node": "Pointer_Flapper",
+    "parent": "Crest_Root",
+    "pivot": [
+      0.0,
+      6.22,
+      -0.795
+    ],
+    "local_translation": [
+      0.0,
+      0.11999989,
+      -0.245
+    ],
+    "deflection_axis": [
+      0.0,
+      0.0,
+      -1.0
+    ],
+    "blade_length": 1.132,
+    "striker_lever_arm": 0.515,
+    "clearance_deflection_deg": 32.2,
+    "blender": {
+      "pivot": [
+        0.0,
+        0.795,
+        6.22
+      ],
+      "local_translation": [
+        0.0,
+        0.245,
+        0.12
+      ],
+      "deflection_axis": [
+        0.0,
+        1.0,
+        0.0
+      ]
+    },
+    "notes": [
+      "The blade hangs along object-local -Z from its hinge and deflects about the same axis the",
+      "wheel spins about, so the same sign rule applies to psi.",
+      "The striker tab clears the peg tips at psi = +/-32.2 deg; that is the upper bound on a",
+      "tick amplitude, not a target. Tab and peg never intersect at rest: there is a 0.006 m",
+      "gap, so the tick has to be driven kinematically from the wheel angle.",
+      "One peg passes the top every 7.5 deg of wheel rotation, so the tick rate is 48 times the",
+      "spin rate in revolutions per second."
+    ]
+  },
+  "crops": [
+    {
+      "name": "hub",
+      "x": 700,
+      "y": 300,
+      "w": 300,
+      "h": 300,
+      "checks": "Hub metal, spoke convergence, sector inner ends"
+    },
+    {
+      "name": "rim_top",
+      "x": 620,
+      "y": 110,
+      "w": 460,
+      "h": 210,
+      "checks": "Gold rim, bulb glow, crest crystal base"
+    },
+    {
+      "name": "floor",
+      "x": 420,
+      "y": 760,
+      "w": 620,
+      "h": 180,
+      "checks": "Floor gloss, reflection falloff, ring inlays"
+    },
+    {
+      "name": "screen_left",
+      "x": 0,
+      "y": 240,
+      "w": 420,
+      "h": 400,
+      "checks": "Sky shader colour and cloud shape"
+    },
+    {
+      "name": "truss",
+      "x": 150,
+      "y": 0,
+      "w": 500,
+      "h": 260,
+      "checks": "Truss silhouette, moving heads, beam cones"
+    },
+    {
+      "name": "podium",
+      "x": 130,
+      "y": 600,
+      "w": 390,
+      "h": 300,
+      "checks": "Podium trim, desk, its own reflection"
+    }
+  ],
+  "crop_notes": [
+    "Pixel rectangles at 1672x941, the resolution of both docs/wheel_stage.png and --shot.",
+    "x,y is the top-left corner and y grows downward."
+  ],
+  "serde_hint": [
+    "READ THIS BEFORE EDITING src/manifest.rs. The stub structs agent F wrote do not match",
+    "this file: F's CameraSpec and LightSpec require Blender-frame 'location' and",
+    "'rotation_euler' at the top level of each entry, and F's WheelSpec requires 'axis' and",
+    "'rate'. Those live under 'blender' here, or are renamed. serde will fail with",
+    "\"missing field `location`\", and src/main.rs::load_manifest falls back to",
+    "Manifest::default() on any load error, so the app would then run on the transcribed",
+    "ground truth with pivot (0,0,0) after printing one warning line. Update the structs.",
+    "The shape below deserialises this file with plain structs, no Option and no default:",
+    "  #[derive(Deserialize)] struct Manifest {",
+    "    up_axis: String, vectors_in: String, scene_name: String, glb: String,",
+    "    render: Render, camera: CameraSpec, lights: Vec<LightSpec>,",
+    "    materials: Vec<MaterialSpec>, wheel: WheelSpec, flapper: FlapperSpec,",
+    "    crops: Vec<CropRect>, glb_audit: GlbAudit,",
+    "  }",
+    "  struct CameraSpec { name: String, position: [f32;3], target: [f32;3], up: [f32;3],",
+    "    forward: [f32;3], orbit_radius: f32, fov_y_deg: f32, fov_y_rad: f32, z_near: f32,",
+    "    z_far: f32, lens_mm: f32, sensor_fit: String, sensor_width_mm: f32, fov_x_rad: f32,",
+    "    blender: CameraBlender, notes: Vec<String> }",
+    "  struct LightSpec { name: String, kind: String (rename from \"type\"), position: [f32;3],",
+    "    direction: [f32;3], color: [f32;3], energy_watts: f32, size: f32, spot_size_rad: f32,",
+    "    spot_blend: f32, cone_outer_half_angle_rad: f32, cone_inner_half_angle_rad: f32,",
+    "    in_glb: bool, exported_candela: f32, blender: LightBlender }",
+    "  struct MaterialSpec { name: String, base_color: [f32;3], metallic: f32, roughness: f32,",
+    "    alpha: f32, alpha_mode: String, emission_strength: f32, emission_color: [f32;3],",
+    "    effective_emission: [f32;3], glb_emissive_factor: [f32;3],",
+    "    glb_emissive_strength: f32 }",
+    "  struct CropRect { name: String, x: u32, y: u32, w: u32, h: u32, checks: String }",
+    "\"type\" is a Rust keyword, so the light kind needs #[serde(rename = \"type\")].",
+    "Every 'notes' and 'doc' array is Vec<String>; drop them with #[serde(skip)] if you",
+    "prefer, but then they must not be required fields.",
+    "up_axis is the string \"Y\" and describes the geometry in the GLB. It does NOT mean a",
+    "conversion is still owed: the vectors in this file are already in that frame. Do not",
+    "apply Blender-to-glTF mapping to any top-level vector here."
+  ],
+  "glb_audit": {
+    "nodes": 163,
+    "meshes": 153,
+    "primitives": 179,
+    "triangles": 153392,
+    "accessors": 657,
+    "materials": 19,
+    "cameras": 1,
+    "punctual_lights": 2,
+    "images": 0,
+    "textures": 0,
+    "animations": 0,
+    "extensions_used": [
+      "KHR_materials_emissive_strength",
+      "KHR_lights_punctual"
+    ],
+    "extensions_required": [
+      "KHR_lights_punctual"
+    ],
+    "notes": [
+      "tools/validate_export.py asserts these against assets/wheel_stage.glb.",
+      "Do not use a GLB checksum as a build fingerprint: two runs of the export differ in 45",
+      "TEXCOORD_0 float32 values by one ULP, from bevel UV generation."
+    ]
+  }
+}

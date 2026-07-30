@@ -1,0 +1,26 @@
+[package]
+name = "game-show-v1"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Renders the Blender scene wheel_stage.blend with three-d"
+# `src/bin/crop.rs` is a second binary, so a bare `cargo run` is ambiguous without this.
+# The CLI contract in docs/agent_plan.md is written as `cargo run --release -- --shot ...`.
+default-run = "game-show-v1"
+
+[dependencies]
+# Versions pinned by docs/three_d_api.md. `three-d` keeps its default features,
+# which is exactly ["window"]; do not add default-features = false, and do not
+# enable `three-d/image` (it is only a compile-time screenshot hack).
+three-d = "0.19.0"
+three-d-asset = { version = "0.10.0", features = ["gltf", "png"] }
+# Must be exactly 0.28 to match three-d's own winit, or
+# WindowedContext::from_winit_window rejects the window type. Used by src/shot.rs.
+winit = "0.28"
+# Used by src/bin/crop.rs and nothing else.
+image = "0.25"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[profile.release]
+opt-level = 3
