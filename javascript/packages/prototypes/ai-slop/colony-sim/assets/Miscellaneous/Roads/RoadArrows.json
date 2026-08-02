@@ -1,0 +1,15 @@
+{
+  "sheet": "RoadArrows.png",
+  "tileSize": 16,
+  "columns": 8,
+  "sprites": [
+    { "name": "arrow_n", "x": 0, "y": 0, "w": 16, "h": 16 },
+    { "name": "arrow_ne", "x": 16, "y": 0, "w": 16, "h": 16 },
+    { "name": "arrow_e", "x": 32, "y": 0, "w": 16, "h": 16 },
+    { "name": "arrow_se", "x": 48, "y": 0, "w": 16, "h": 16 },
+    { "name": "arrow_s", "x": 64, "y": 0, "w": 16, "h": 16 },
+    { "name": "arrow_sw", "x": 80, "y": 0, "w": 16, "h": 16 },
+    { "name": "arrow_w", "x": 96, "y": 0, "w": 16, "h": 16 },
+    { "name": "arrow_nw", "x": 112, "y": 0, "w": 16, "h": 16 }
+  ]
+}

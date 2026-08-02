@@ -1,0 +1,33 @@
+{
+  "sheet": "RoadTiles.png",
+  "tileSize": 16,
+  "columns": 8,
+  "sprites": [
+    { "name": "straight_h", "x": 0, "y": 0, "w": 16, "h": 16 },
+    { "name": "straight_v", "x": 16, "y": 0, "w": 16, "h": 16 },
+    { "name": "corner_ne", "x": 32, "y": 0, "w": 16, "h": 16 },
+    { "name": "corner_nw", "x": 48, "y": 0, "w": 16, "h": 16 },
+    { "name": "corner_se", "x": 64, "y": 0, "w": 16, "h": 16 },
+    { "name": "corner_sw", "x": 80, "y": 0, "w": 16, "h": 16 },
+    { "name": "t_n", "x": 96, "y": 0, "w": 16, "h": 16 },
+    { "name": "t_s", "x": 112, "y": 0, "w": 16, "h": 16 },
+    { "name": "t_e", "x": 0, "y": 16, "w": 16, "h": 16 },
+    { "name": "t_w", "x": 16, "y": 16, "w": 16, "h": 16 },
+    { "name": "cross", "x": 32, "y": 16, "w": 16, "h": 16 },
+    { "name": "end_n", "x": 48, "y": 16, "w": 16, "h": 16 },
+    { "name": "end_s", "x": 64, "y": 16, "w": 16, "h": 16 },
+    { "name": "end_e", "x": 80, "y": 16, "w": 16, "h": 16 },
+    { "name": "end_w", "x": 96, "y": 16, "w": 16, "h": 16 },
+    { "name": "diag_ne_sw", "x": 112, "y": 16, "w": 16, "h": 16 },
+    { "name": "diag_nw_se", "x": 0, "y": 32, "w": 16, "h": 16 },
+    { "name": "ramp_h_ne", "x": 16, "y": 32, "w": 16, "h": 16 },
+    { "name": "ramp_h_nw", "x": 32, "y": 32, "w": 16, "h": 16 },
+    { "name": "ramp_h_se", "x": 48, "y": 32, "w": 16, "h": 16 },
+    { "name": "ramp_h_sw", "x": 64, "y": 32, "w": 16, "h": 16 },
+    { "name": "ramp_v_ne", "x": 80, "y": 32, "w": 16, "h": 16 },
+    { "name": "ramp_v_nw", "x": 96, "y": 32, "w": 16, "h": 16 },
+    { "name": "ramp_v_se", "x": 112, "y": 32, "w": 16, "h": 16 },
+    { "name": "ramp_v_sw", "x": 0, "y": 48, "w": 16, "h": 16 },
+    { "name": "roundabout", "x": 16, "y": 48, "w": 16, "h": 16 }
+  ]
+}

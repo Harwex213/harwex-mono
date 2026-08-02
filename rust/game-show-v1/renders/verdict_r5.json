@@ -1,0 +1,160 @@
+{
+  "round": 5,
+  "shot": "renders/r5.png",
+  "crops": "renders/crops_r5",
+  "extra_crops": "renders/j5",
+  "reference": "docs/wheel_stage.png",
+  "build": "cargo build --release clean; cargo run --release -- --shot renders/r5.png --crops renders/crops_r5 wrote all seven files",
+  "method": "Judged by eye on the six crop pairs plus nine extra pairs cut with src/bin/crop.rs into renders/j5 (crest 740,0 220x220; fan 880,250 180x180; lowright 1050,600 620x341; skyright 1252,240 420x400; base 600,720 480x221; void 1250,0 400x200; band 200,690 300x70; dome 760,340 180x180; col 560,850 560x91), with 2x and 3x zooms of the dome and the desk band. No histogram, mean or similarity score was computed.",
+  "converged": false,
+  "overall": "The frame reads as the right picture and round 4's worst defect is gone: the dash lattice has been killed, the sector wedges are flat paint, the halo round the rim is a smooth gradient, and the bulb ring is 96 discrete warm dashes instead of one fused rope. What separates it from the reference is now value and chroma, not structure. Three large areas are dead or wrong: the strip under the wheel is a flat black slab over a dull mauve floor where the reference has a bright warm glossy mirror; the hub dome is a near-black disc where the reference has a mid-value violet-silver one; and the LED wall is a flat high-chroma magenta field with soft white puffs where the reference has coral and peach cauliflower tops over violet on the left and cyan-white lobes over cobalt on the right. Every gold the round-4 fixer lifted with a uniform radiance now reads as a matte olive-khaki ribbon rather than a thin saturated gold line with a dark groove beside it. The pillars are still black silhouettes for the fourth round running, the crest is still a soft lilac blob with no facets and no spike, and the ceiling void has lost almost all of its sparkle dust.",
+  "what_round_4_fixed": [
+    "The dash lattice is gone. At 2x on renders/j5/fan.png every wedge is flat paint and the halo round the rim is a smooth gradient. Round 4 item 1.",
+    "The bulb ring is un-fused. 96 discrete warm dashes sit in the outer channel, each with a tight halo, and no warm veil reaches the sectors. Round 4 item 2, fourth asking.",
+    "The brown mesh haze is off the ceiling void and off the right of the truss crop.",
+    "No additive quad draws a rectangle in the void any more. Round 4 item 12."
+  ],
+  "round_4_asks_that_did_not_land": [
+    "3 - the floor. No reflection appears under either pillar or under the podium, and none under the wheel base plate.",
+    "4 - the wall. Neither side got its coral or its cyan; the right side has no cloud structure at all and still carries pale specks on the blue band.",
+    "5 - the hub, in the wrong direction. The dome went from too bright to near-black; the rivets are still a circle of near-black dots.",
+    "6 - the per-node golds landed as geometry but not as look: every one of them reads matte olive-khaki.",
+    "7 - the pillar highlight. Fourth asking, still absent.",
+    "8 - the crest. Still a soft blob, no facet, no hard spike.",
+    "9 - the podium panels still carry vertical pink reflections of the wall.",
+    "10 - cone chroma is still thin and the lens cores are still small capsules.",
+    "11 - the flares are still thin diagonal scratches, not soft horizontal streaks."
+  ],
+  "defects": [
+    {
+      "rank": 1,
+      "crop": "floor",
+      "severity": 5,
+      "target_file": "src/scene.rs",
+      "problem": "The whole strip under the wheel is dead. renders/j5/col.png at frame 560,850 is a flat near-black navy slab over a 20 px band of dull grey-mauve; renders/j5/ref_col.png at the same rectangle is a bright warm gold-and-magenta glossy floor with vertical light streaks running the full height of the strip. In the floor crop the base plate's front face is one uniform black with no gradient across it, and the floor to its right is flat matte grey-lavender. There is no gold column under the wheel anywhere in the frame.",
+      "cause_hypothesis": "The reflection pass is working - the podium's and the wheel's contact lines both take a smear on the left of the floor crop - but at the wheel it has nothing bright to mirror. Wheel_BasePlate's slot 0 is MAT_Dark_Trim at (0.06,0.06,0.08) roughness 0.35, so the plate's whole front face renders as flat near-black, and a mirror of flat near-black is flat near-black. docs/look_target.md region 3 calls the plate 'a dark chrome' whose front face reads 'almost black-violet directly under the blown gold edge', which is a chrome with a gradient, not a matte black.",
+      "suggested_fix": "Add a NodeLift for Wheel_BasePlate's MAT_Dark_Trim slot: metallic up toward 0.7, roughness down toward 0.15, and a warm violet-tinted albedo, so the plate's front face reads as a dark chrome slab that picks up the bulb ring and the blown gold edge above it and falls off downward. Then the reflection below it has a warm gradient to mirror and REFLECTION_SATURATION has chroma to work on. Judge on renders/j5/col.png against renders/j5/ref_col.png: the strip must carry a warm vertical smear, not one flat value."
+    },
+    {
+      "rank": 2,
+      "crop": "hub",
+      "severity": 5,
+      "target_file": "src/scene.rs",
+      "problem": "The dome is a dark plum-grey disc that reads as a hole punched in the middle of the wheel. At 2x (renders/j5/dome2x.png against renders/j5/ref_dome2x.png) its brightest point is a mid grey-lavender near the centre and its lower half falls to near-black; the reference dome is a mid-to-high violet-silver across its whole area, with a broad silver-white lobe running out to ten o'clock and a clear groove circle at 55% of the radius. The reference dome is the brightest thing in its crop and the render's is the darkest.",
+      "cause_hypothesis": "Round 4 overshot. HUB_TINT went from (1.10,1.02,1.28) to 0.62 and was walked back only to (0.98,0.90,1.14), while HUB_LOBE_GAIN went to (3.00,0.12) - a ratio of 25 - and HUB_METALLIC_SCALE fell to 0.14. The dark end of a 25:1 span at this tint puts most of the disc's area near zero, so widening the ratio bought the lobe at the cost of the dome's whole mid tone. docs/look_target.md region 1: 'nothing in this crop goes to black'.",
+      "suggested_fix": "Raise HUB_TINT until the disc's mid tone is a violet-silver rather than a plum-grey, and narrow HUB_LOBE_GAIN's ratio back to about 4 to 6 at the same time so the extra level does not clip the lobe. The dark quadrant must be a dark plum-grey with its wedges readable, not near-black. Judge on the 2x dome pair."
+    },
+    {
+      "rank": 3,
+      "crop": "screen_left",
+      "severity": 4,
+      "target_file": "src/screen.rs",
+      "problem": "Both sides have the wrong hue and no cloud structure. Left: a flat high-chroma magenta-pink field with soft white and lilac puffs, uniform in value across the lower two thirds of the crop, and no cobalt, coral, salmon or peach anywhere. The reference left is coral, salmon and peach hard-edged cauliflower lobes over violet with deep cobalt showing through the upper middle. Right (renders/j5/skyright.png): the upper band is a flat electric-indigo field with no clouds at all beyond a few pale specks, and the lower band is violet-magenta with soft white blobs. The reference right is big cyan-white and pink lobes over bright cobalt. The pale specks on the blue band are the stars round 4 asked to be dropped.",
+      "cause_hypothesis": "The sampled window is bright and saturated but narrow in value, so it delivers one hue per band instead of a sunset's range, and the lobes are soft-edged where docs/look_target.md region 4 asks for 'banded, posterised lobes'. The right side's sample is landing on sky with no cloud in it.",
+      "suggested_fix": "Widen the value range on both sides rather than the gain: put deep violet-blue in the cloud undersides and coral-to-peach in the tops on the left, cyan-white tops over cobalt on the right, and posterise the lobe interiors into flat steps with hard edges. Slide the right side's window until it holds cloud, and drop the specks from the blue band. Left must read violet with coral accents, not uniform magenta."
+    },
+    {
+      "rank": 4,
+      "crop": "podium",
+      "severity": 4,
+      "target_file": "src/scene.rs",
+      "problem": "Every gold the round-4 fixer lifted reads as a flat matte olive-khaki ribbon of uniform value. The podium desk band is a pale khaki-cream strip, not the reference's blown lemon-gold; the podium's vertical ribs and its base ring are the same dull tan with no bright highlight line on any of them; the two wall bands in screen_left are broad khaki-mustard ribbons roughly 30 px deep with no bright core and no dark groove above or below; the floor inlays are pale cream-tan arcs; the base plate's top edge is a dull khaki line. The reference draws every one of these as a thin saturated gold line with a hard dark band beside it.",
+      "cause_hypothesis": "The uniform emissive in NODE_LIFTS is doing all the work and it has no gradient across a band's width, so a 25 px band gets one flat value and reads as a ribbon. The emissive's own chroma is also too shallow - Wall_Band_Mid at (0.96,0.60,0.17) and Podium_Top at (1.85,1.10,0.22) both arrive at the frame closer to olive than to gold, because a flat fill above the shoulder pulls the channels together.",
+      "suggested_fix": "Cut the emissive on Wall_Band_Mid, Wall_Band_Up, Podium_Trim and Floor_Rings to roughly half and let the specular draw the bright line, so each band has a value ramp across its width instead of one flat value. At the same time deepen the chroma of what is left - hold red and drop green and blue further - so the flat part reads gold rather than khaki. Keep Podium_Top over the bloom threshold, but give it enough red-over-blue that it clips to a lemon rather than to a cream."
+    },
+    {
+      "rank": 5,
+      "crop": "rim_top",
+      "severity": 4,
+      "target_file": "src/scene.rs",
+      "problem": "The crest is a soft pale-lilac blob shaped like a mushroom, about 60 px across, with an even diffuse glow, no facet, no bevel and no hard white spike (renders/j5/crest.png against renders/j5/ref_crest.png). The reference is a hard-edged faceted chevron with visible bevels, a saturated magenta core, a bright violet-white shell and a hard white spike running up out of the frame. Below it the pointer flapper reads as a soft glowing magenta stripe with no edges that runs down past the rim into the sector fan.",
+      "cause_hypothesis": "The crest's emission is still high enough that the shoulder pulls its facets to one value, so the shape survives only as a silhouette inside its own halo. The flapper is taking the crystal's emission and has no hard edge left either.",
+      "suggested_fix": "Cut the crest emission again until the facet boundaries and the bevels read inside a 25 to 40 px halo, keep the magenta in the core and let the shell go violet-white, and draw the spike as a hard 4 to 6 px white line inside a 12 to 20 px magenta halo. Stop the flapper's glow at the rim's outer band."
+    },
+    {
+      "rank": 6,
+      "crop": "screen_left",
+      "severity": 3,
+      "target_file": "src/lighting.rs",
+      "problem": "Both pillars are black silhouettes. In screen_left the left pillar is a near-black cylinder with faint cool flutes and one thin magenta streak near its base; in renders/j5/skyright.png the right pillar is the same. Neither carries the strong vertical gold highlight just right of centre that the reference puts on both. The reference pillars are bright warm chrome columns and read as a mid tone. Fourth round asking. Because the pillar is black it also casts no reflection: in renders/j5/lowright.png it meets the floor on a hard dark line with nothing below it, where the reference runs a bright warm column down from the pillar's base.",
+      "cause_hypothesis": "The rim gain or the environment band that a metal picks up still does not reach the pillars' front-inner faces, so MAT_Pillar_Body at (0.11,0.1,0.14) has nothing on it but the ambient.",
+      "suggested_fix": "Raise the rim gain or widen the warm side of the environment band until each pillar takes one bright warm vertical stripe just right of its centre and a thinner cool one at its left edge, with near-black between them, without lifting the pillar's dark side. Verify the reflection appears under both pillars once they are bright."
+    },
+    {
+      "rank": 7,
+      "crop": "rim_top",
+      "severity": 3,
+      "target_file": "src/scene.rs",
+      "problem": "The rim is a thin gold hoop about 25 px deep - one bright band with the bulb row in it - where the reference is a stack about 45 px deep: an outer dark warm-brown groove, a broad bright gold band, a hard dark line, a second gold band, then a bright silver chrome band against the sectors, with a hard boundary at every step. The pegs read as flat dull grey balls with no specular at all; the reference pegs are chrome balls each with one small white specular on its upper left, sitting on short gold stalks.",
+      "cause_hypothesis": "Wheel_Rim's albedo came down to (0.68,0.40,0.125) at roughness 0.20 to un-fuse the bulbs, which worked, but it took the band stack's own bevel contrast down with it - the grooves and the bands now sit within a few values of each other. The pegs' MAT_Peg_Metal is fully metallic in a rig with no bright environment for a small round face to catch.",
+      "suggested_fix": "Bring the rim's bevel contrast back without raising its mean: lower the roughness so each band's own bevel keeps a narrow highlight and the grooves between them stay dark, or split the rim's slots so the groove reads with MAT_Gold_Dark's value. Drop the pegs' metallic toward 0.6 and their roughness toward 0.10 so each ball takes one small hard specular."
+    },
+    {
+      "rank": 8,
+      "crop": "hub",
+      "severity": 3,
+      "target_file": "src/scene.rs",
+      "problem": "Two separate hub faults visible at 2x. The sunburst has about eighteen thin hard spokes; the reference has about ten broad soft wedges, so the render's dome reads like a fan blade rather than brushed metal. And the bezel is a saturated brassy gold ring punched through by a full circle of near-black rivets, where the reference bezel is a warm violet-chrome with two thin continuous circumferential highlight lines and no rivet circle visible at all. Fifth round asking on the rivets.",
+      "cause_hypothesis": "HUB_WEDGES is 9.0, and a sinusoid at nine cycles draws nine light plus nine dark bands, so eighteen read on screen against the ten docs/look_target.md counts. The rivets' radiance is (0.13,0.092,0.042) against a bezel that is brighter than it, so the gap between them is still wide enough to punch holes.",
+      "suggested_fix": "Halve HUB_WEDGES to about 5 so ten alternating bands read, and soften the wedge profile so the boundaries are gradients rather than hard spokes. Bring the bezel down from brassy toward the reference's gold-brown chrome and raise the rivets' radiance until each one reads as a slight variation in the bezel rather than a dark dot."
+    },
+    {
+      "rank": 9,
+      "crop": "truss",
+      "severity": 3,
+      "target_file": "src/postfx.rs",
+      "problem": "The ceiling void is nearly empty. About six faint specks cover the whole truss crop where the reference carries dozens of bright white and magenta flecks plus larger soft blobs, a confetti dust that fills the region. The void's own colour is a neutral brown-black rather than the reference's violet. And the flares read as thin hard diagonal pink scratches - clearest in renders/j5/void.png at the top right - where the reference has soft horizontal magenta streaks 40 to 60 px on the long axis and three to five times narrower on the short.",
+      "cause_hypothesis": "Round 4 asked for the sparkles to be thinned and the thinning overshot. The flare axis is still following the source's own direction instead of being pinned horizontal, and its profile is a hard line rather than a soft lobe.",
+      "suggested_fix": "Raise the sparkle count back until the upper half of the frame carries a visible dust of both populations, and put a violet tint into the void's toe so the black is plum rather than brown. Pin the flare axis horizontal, soften its profile, and set its long axis to 40 to 60 px."
+    },
+    {
+      "rank": 10,
+      "crop": "truss",
+      "severity": 2,
+      "target_file": "src/postfx.rs",
+      "problem": "The cones read as flat translucent triangles with straight hard side edges and an even fill, and their chroma is thin: the left cone is a grey-teal wedge, the amber ones in renders/j5/void.png read pale khaki at their brightest third. The reference cones are soft-edged, clearly brightest over their first third, and saturated lavender-magenta or amber. The lens cores are small white capsules with a tight halo; the reference cores are round blown discs inside a halo one and a half to two diameters wide.",
+      "cause_hypothesis": "Per-cone strength is still carrying the visibility, so the tint has no chroma left at the bright end, and the cone's radial falloff is too square.",
+      "suggested_fix": "Cut per-cone strength and put the loss into the tint's chroma so amber reads amber where it is brightest, soften the cone's radial falloff and taper its length so it fades before the fascia, and give each lens core a round blown profile with a halo one and a half to two diameters wide."
+    },
+    {
+      "rank": 11,
+      "crop": "truss",
+      "severity": 2,
+      "target_file": "src/lighting.rs",
+      "problem": "The truss rim light is the right violet-magenta on the left of the frame but reads cool steel-blue-white on the right: in renders/j5/void.png every tube's rim highlight is a pale blue-grey line and the moving-head bodies are cool grey. The reference rim-lights the right-hand truss in violet with warm amber where the two amber cones sit, and docs/look_target.md notes the right side should be cooler but still violet-brown, not steel.",
+      "cause_hypothesis": "Rim_R at (1, 0.3, 0.65) should be putting magenta on that side, so what reaches the right-hand tubes is more likely the environment's cool band than the rim light.",
+      "suggested_fix": "Warm the right-hand environment band or raise Rim_R's contribution on the truss until the right-hand tubes' rim highlights read violet-brown, with the two under the amber cones taking a warm line."
+    },
+    {
+      "rank": 12,
+      "crop": "hub",
+      "severity": 2,
+      "target_file": "src/scene.rs",
+      "problem": "The 48 wedges abut with no divider. At 2x on renders/j5/fan.png each pair of sectors meets on a faint dark seam; the reference draws a thin bright gold hairline down every boundary and one down the length of each wedge, which is what makes the fan read as 48 separated wedges rather than a striped disc.",
+      "cause_hypothesis": "Wheel_Spokes' radiance was measured down to (0.30,0.20,0.065) in round 3 to stop the hairlines reading as wide pale cream lines, and at that value they no longer read at all against a lit cream sector.",
+      "suggested_fix": "Raise Wheel_Spokes' radiance again but deepen its chroma at the same time, so the hairline is gold and darker than a cream sector yet clearly brighter than a magenta or cobalt one. It only has to read as a line, not as a bright line."
+    },
+    {
+      "rank": 13,
+      "crop": "podium",
+      "severity": 2,
+      "target_file": "assets/scene.json",
+      "problem": "The podium body panels still mirror the wall: three broad vertical pink streaks run down them, and the panels read as a glossy dark navy rather than the reference's near-black matte with a faint diagonal diamond grid just readable in it. Round 4 item 9.",
+      "cause_hypothesis": "MAT_Pillar_Body or whichever material the panels carry is still smooth enough for the wall's magenta to reach the camera off them.",
+      "suggested_fix": "Raise the panels' roughness and drop their albedo until they are near-black against the trim and no vertical wall reflection survives."
+    }
+  ],
+  "checked_and_found_innocent": [
+    "The dash lattice is gone. renders/j5/fan.png at 2x shows flat wedges and a smooth halo. Round 4's item 1 is closed.",
+    "The bulb ring is discrete. 96 separate warm dashes, each with a tight halo, no warm veil on the sectors and no brown haze in the top corners. Round 4's item 2 is closed.",
+    "The beam cones' geometry is right for the fourth round: count, half-angle, direction, per-side placement, and the two amber cones in the upper right. Only chroma and the lens-core profile are wrong.",
+    "No additive quad draws a rectangle in the ceiling void any more.",
+    "The floor's gold ring inlays are visible as crisp arcs across the left and centre of the floor and the vertical blur does not touch them. Their hue is the defect, not their crispness."
+  ],
+  "not_to_chase": [
+    "The wheel's scale and position, the podium's position, and the base plate's height in the floor crop. All come from the GLB. The reference's podium sits about 40 px higher in the frame than the render's, so renders/j5/band.png and its reference twin do not line up; judge the podium structurally rather than pixel for pixel.",
+    "The truss lattice's density. The reference is an illustration with a much deeper rig than the 60_Rig collection holds; the render's truss is thin because the geometry is thin, and the rim-lit-silhouette reading that docs/look_target.md asks for is already correct.",
+    "The proportion of magenta to cream in the sector fan. Sector material assignment comes from the GLB."
+  ],
+  "fix_order": "Ranks 1 and 2 first: they are the two largest dead areas and both are single-node material entries in src/scene.rs, so they are cheap and they change the frame's whole tonal range. Then rank 3, the wall, which is half the frame's area. Then rank 4, the golds, which lands on five separate features at once. Ranks 5 onward are local and can go in any order."
+}

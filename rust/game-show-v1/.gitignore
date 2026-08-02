@@ -1,0 +1,18 @@
+/target
+
+# Rendered shots and generated crop directories stay out of the repository. The reference
+# crops and the look-dev verdicts are deliverables in the docs/agent_plan.md ownership map,
+# so they are committed.
+#
+# `/renders/*` ignores the directory's contents rather than the directory itself: git cannot
+# re-include a path under an excluded directory, so with a bare `/renders` the exceptions
+# below would never apply. `/renders/ref_crops/*` re-excludes that directory's contents so
+# only its PNGs come back.
+/renders/*
+!/renders/ref_crops/
+/renders/ref_crops/*
+!/renders/ref_crops/*.png
+!/renders/verdict_r*.json
+
+# Byte-compiled Python. Importing anything from tools/ creates this.
+__pycache__/
