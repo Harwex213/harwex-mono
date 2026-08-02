@@ -71,7 +71,8 @@ committed file on 2026-07-30 at 01:20, the differences are:
    missing. The script now reloads every image with a resolvable path before exporting, and
    `assets/wheel_stage.glb` carries 1 image and 2 textures, with `MAT_LED_Screen` holding a
    `baseColorTexture` and an `emissiveTexture` at emissive strength 1.5. The GLB is
-   10.16 MiB. `tools/validate_export.py` asserts all of that and passes 33 of 33 checks.
+   10.16 MiB. `tools/validate_export.py` asserts all of that. It passed 33 of 33 checks when
+   this was written; the cleanup pass added the emissive-strength assertion, so it is 34 now.
    The "Known defect in the source scene" section below is obsolete.
    **Consequence for the screen:** the author's own sky is the primary path and a procedural
    sky is the fallback, not the other way round. This reverses the earlier decision, which
@@ -243,6 +244,71 @@ rectangles applies to both. `x,y` is the top-left corner, y grows downward.
 
 `C` writes the reference crops to `renders/ref_crops/<name>.png` using `src/bin/crop.rs`
 once it exists, or with `sips` before then.
+
+## Cleanup pass — scope and rules
+
+Five look-dev rounds ran and an adversarial review returned BROKEN with 11 findings. The
+author then chose, explicitly: **pull the renderer back to faithful, and do a cleanup pass
+with no further look-dev.** That decision governs everything below and outranks any earlier
+instruction in this file or in an agent's prompt.
+
+The frame will get further from `docs/wheel_stage.png` as a result. That is the intended
+trade. Do not compensate for it by adding a new effect somewhere else, and do not tune any
+constant to win back what a rollback costs. Nobody is judging crops in this pass.
+
+### What comes out
+
+These were invented during look-dev and are not in the Blender scene:
+
+1. `SCREEN_UV_WINDOW` in `src/screen.rs`, which re-windows and magnifies the author's
+   `T_LEDWall_Sky` so the wall shows about 64% of it. The wall must show the texture as the
+   mesh's own `UVMap` addresses it, at the emissive strength the glTF declares.
+2. The per-side sky grade and its seam: `SCREEN_SIDE_BLEND_M`, the per-side UV offsets, and
+   anything else that treats the left and right halves of one screen differently. The seam
+   was placed at `x = 0` because the wheel hides it, which is the definition of a hack.
+3. The sunburst painted into `Wheel_Hub` in `src/scene.rs`, and the metallic drop from 1.0 to
+   0.14 that came with it. `Wheel_Hub` follows `MAT_Metal_Polished` like every other node.
+4. The sparkle-dust layer and the anamorphic streak/flare layers in `src/postfx.rs`, with
+   their `SPARKLE_*` and `FLARE_*` constants, including `SPARKLE_BAND`, which gates glitter
+   to a screen-space y band.
+5. Every `NODE_LIFTS` entry that invents emission a material does not have in the .blend.
+
+### What stays
+
+Bloom, the additive beam cones, the floor reflection, the vignette and the tone map. Those
+four plus tone mapping were sanctioned from the start and are not up for removal.
+
+A `NODE_LIFTS` entry survives only if it restores a value that glTF transport lost — a
+metallic or roughness that arrived wrong. Judge each entry by that test and say in your
+report which entries you kept and which you deleted, with the reason per entry.
+
+The extra light standing in for the bulb ring may stay if and only if it stands in for
+emissive geometry that really is emissive in the .blend. Emissive geometry casting no light
+is a renderer limitation, so replacing it with a lamp is faithful, not invented. Document it
+as a stand-in wherever it is described.
+
+### The manifest is the single source of truth
+
+The renderer currently hardcodes values that contradict `assets/scene.json`: gold metallic
+0.75 against 1.0, a different crystal emission, and more. After this pass the renderer reads
+the manifest and the manifest matches the Blender scene. A constant in Rust that duplicates
+a manifest value is a defect even when the two agree, because they will drift.
+
+`assets/scene.json` is also stale in a way that matters: its `glb_audit` records
+`images: 0, textures: 0` and it states the screen is procedural. Both were true before the
+export was fixed and are false now. Whatever regenerates it must derive from the current
+Blender file and the current GLB, not from an older report.
+
+Any test that asserts a manifest value the renderer does not read is a green test over a
+divergent render. Fix the test to assert what the renderer actually uses.
+
+### Honesty rules for this pass
+
+A document that disagrees with its module is a defect, not a stylistic matter. Three of the
+four `docs/api/*.md` files currently contradict their code on constant names and values.
+
+`tools/export_gltf.py` downgraded two checks inside `verify()` from `SystemExit` to a
+`print`, while that function's own docstring claims it checks every invariant. Restore them.
 
 ## Reporting
 

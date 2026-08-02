@@ -1,10 +1,14 @@
 """Export the `Stage` scene of `wheel_stage.blend` to a self-contained GLB.
 
-Run headless, from the crate root:
+Run headless, from the crate root. The caller supplies the Blender binary and the .blend;
+this file records no path to either, so nothing here breaks when they move:
 
-    /Applications/Blender.app/Contents/MacOS/Blender --background \
-        ../../unity/blender-assets/wheel_stage.blend \
+    "$BLENDER" --background "$BLEND" \
         --python tools/export_gltf.py -- assets/wheel_stage.glb
+
+`$BLENDER` is a Blender 5.1 executable and `$BLEND` is `wheel_stage.blend`, which lives
+under `unity/blender-assets/` in this repository. `docs/export_notes.md` section 1 shows
+one way to discover both without hardcoding either.
 
 The output path is the first argument after `--` and defaults to
 `assets/wheel_stage.glb`. It is resolved against the crate root, which this script
@@ -22,9 +26,11 @@ explicitly below: `export_apply` defaults to False (modifiers would be dropped) 
 `export_cameras` / `export_lights` default to False.
 
 After the export the GLB is re-parsed from disk — container chunks and JSON — and the
-invariants the Rust side depends on are checked: object names, material names, the wheel
-pivot empty and its 56 children, one buffer with no external URI, triangle-mode
-primitives only.
+invariants the Rust side depends on are checked: object names, material names, the
+material count, the wheel pivot empty and its 56 children, one buffer with no external
+URI, triangle-mode primitives only, the evaluated triangle count, and the LED wall's
+emissive strength. Every one of those raises `SystemExit`; `verify()` never downgrades a
+failed invariant to a printed note.
 """
 
 import json
@@ -61,6 +67,15 @@ EMPTY_NAMES = ("Wheel_Root", "Wheel_Stand", "Crest_Root")
 MATERIAL_PREFIX = "MAT_"
 EXPECTED_MATERIALS = 19
 EXPECTED_TRIANGLES = 153_392  # evaluated, five bevel modifiers applied
+
+# The LED wall. Its emission is the one material value glTF cannot carry in a core field:
+# the exporter normalises `emissiveFactor` to a maximum of 1 and puts the rest in
+# `KHR_materials_emissive_strength`. Losing the extension would silently dim the wall from
+# 1.5 to 1.0, so the export asserts the strength rather than only printing it.
+SCREEN_MATERIAL = "MAT_LED_Screen"
+EMISSIVE_STRENGTH_EXT = "KHR_materials_emissive_strength"
+SCREEN_EMISSIVE_STRENGTH = 1.5
+STRENGTH_EPSILON = 1e-6
 
 GLB_MAGIC = 0x46546C67
 CHUNK_JSON = 0x4E4F534A
@@ -142,6 +157,8 @@ def export_keywords(output: Path) -> dict:
         "export_use_gltfpack": False,                   # no compression, no simplification
         "use_mesh_edges": False,
         "use_mesh_vertices": False,
+        # Only images a material actually uses. This is what keeps the unused reference
+        # backdrop `wheel_stage.png`, whose file really is missing, out of the GLB.
         "export_unused_images": False,
         "export_unused_textures": False,
         "will_save_settings": False,       # do not write settings back into the .blend
@@ -336,7 +353,8 @@ def verify(gltf: dict, bin_length: int) -> None:
     if bad:
         raise SystemExit(f"material names do not all start with {MATERIAL_PREFIX!r}: {bad}")
     if len(material_names) != EXPECTED_MATERIALS:
-        print(f"[verify] NOTE {len(material_names)} materials, expected {EXPECTED_MATERIALS}")
+        raise SystemExit(f"{len(material_names)} materials in the GLB, expected "
+                         f"{EXPECTED_MATERIALS}: {sorted(material_names)}")
     print(f"[verify] materials: {sorted(material_names)}")
     for material in sorted(materials, key=lambda m: m.get("name") or ""):
         pbr = material.get("pbrMetallicRoughness", {})
@@ -426,8 +444,42 @@ def verify(gltf: dict, bin_length: int) -> None:
     print(f"[verify] {mesh_nodes} nodes carry a mesh, {primitives} primitives, "
           f"{triangles} triangles")
     if triangles != EXPECTED_TRIANGLES:
-        print(f"[verify] NOTE triangle count differs from the audited {EXPECTED_TRIANGLES}")
+        raise SystemExit(f"{triangles} triangles, expected the audited {EXPECTED_TRIANGLES} "
+                         f"({triangles - EXPECTED_TRIANGLES:+d}); the bevels dropped or the "
+                         f"geometry changed")
+
+    check_screen_emission(materials)
     print("[verify] all invariants hold")
+
+
+def check_screen_emission(materials: list) -> None:
+    """The LED wall must keep its texture and its 1.5 emissive strength.
+
+    `three-d-asset` reads neither the extension nor a strength above 1, so the manifest
+    re-applies this number. The export asserts it so that the manifest cannot describe a
+    strength the GLB does not carry.
+    """
+    material = next((m for m in materials if m.get("name") == SCREEN_MATERIAL), None)
+    if material is None:
+        raise SystemExit(f"{SCREEN_MATERIAL} is not in the GLB")
+    pbr = material.get("pbrMetallicRoughness", {})
+    if "baseColorTexture" not in pbr:
+        raise SystemExit(f"{SCREEN_MATERIAL} has no baseColorTexture; the sky was dropped "
+                         f"(pbrMetallicRoughness keys: {sorted(pbr)})")
+    if "emissiveTexture" not in material:
+        raise SystemExit(f"{SCREEN_MATERIAL} has no emissiveTexture; the sky was dropped "
+                         f"(material keys: {sorted(material)})")
+    extension = material.get("extensions", {}).get(EMISSIVE_STRENGTH_EXT)
+    if extension is None:
+        raise SystemExit(f"{SCREEN_MATERIAL} carries no {EMISSIVE_STRENGTH_EXT}; its "
+                         f"emission would import at 1.0 instead of {SCREEN_EMISSIVE_STRENGTH}")
+    strength = extension.get("emissiveStrength")
+    if strength is None or abs(strength - SCREEN_EMISSIVE_STRENGTH) > STRENGTH_EPSILON:
+        raise SystemExit(f"{SCREEN_MATERIAL} {EMISSIVE_STRENGTH_EXT} emissiveStrength is "
+                         f"{strength!r}, expected {SCREEN_EMISSIVE_STRENGTH}")
+    print(f"[verify] {SCREEN_MATERIAL}: baseColorTexture "
+          f"{pbr['baseColorTexture']}, emissiveTexture {material['emissiveTexture']}, "
+          f"{EMISSIVE_STRENGTH_EXT} emissiveStrength={strength}")
 
 
 def main() -> None:

@@ -1,0 +1,158 @@
+{
+  "round": 2,
+  "judged_by": "look-dev judge, round 2 of at most 5",
+  "judged_on": "2026-07-30",
+  "shot": "renders/r2.png",
+  "crops": "renders/crops_r2",
+  "reference": "docs/wheel_stage.png",
+  "reference_crops": "renders/ref_crops",
+  "build": "cargo build --release clean; the shot wrote r2.png and all six crops",
+  "method": "Judged by eye on the six crop pairs plus four extra pairs cut with src/bin/crop.rs (sky_right 1252,240 420x400; crest 740,0 220x220; low_right 1050,600 620x341; top_right 1100,0 572x340). No histogram, mean or similarity score was computed, by docs/agent_plan.md invariant 4.",
+  "converged": false,
+  "overall": "Round 1's two headline defects are fixed. The cream beam washes are gone, the ceiling void is dark, the bulb ring is lit, the floor reflects, the hub is a brushed disc instead of a magenta ball. The frame now reads as a night stage. What separates it from the reference is now two things. First, the dark set is not dark: the pillars render as pale grey-lavender fluted columns brighter than the wall behind them, the podium panels as mid-brown, the truss and the moving-head bodies as fully shaded solids. The reference draws all four as near-black silhouettes with thin gold or violet rim lines, and that contrast structure is what makes it read as a lit stage. Second, the LED wall lost its colour: it is a muted mauve with soft white wisps and a near-black navy top on both sides, where the reference has coral and salmon cauliflower lobes on violet at the left and cyan-white lobes on cobalt at the right. The wall is the largest surface in the frame, so its greyness drains the whole image and it also erases the left/right colour split. Behind those, the truss moving heads throw no cones at all - round 1 asked for the washes to be cut and they were cut to nothing - and the sector fan is still pastel where the reference is near-fully saturated.",
+  "regressions_from_round_1": [
+    "The ten narrow beam cones asked for in round 1 item 1 are now absent rather than oversized. The top-right corner shows five clear cones in the reference (one amber, two cyan, two lavender) and none in the render.",
+    "Bloom now over-swells two features it should leave alone: the bulb ring has fused into one continuous glowing tube with a wide halo around the whole wheel, and the crest crystal is a soft pink mushroom with no facets."
+  ],
+  "fixed_since_round_1": [
+    "The two spot beam washes no longer lift and desaturate the frame.",
+    "The ceiling void is dark instead of milky lavender.",
+    "The bulb ring emits and rim-lights the rim and the floor.",
+    "The floor reflects: gold and magenta streaks and ring inlays are present.",
+    "The hub is a brushed silver disc with a radial sunburst inside a bezel, not a magenta ball.",
+    "The sector fan's cobalt blue is present again rather than missing."
+  ],
+  "defects": [
+    {
+      "rank": 1,
+      "crop": "screen_left, podium, whole frame",
+      "target_file": "src/lighting.rs",
+      "severity": 5,
+      "problem": "Nothing in the set is dark. The pillar in screen_left is a pale grey-lavender fluted cylinder, clearly brighter than the wall behind it, with a dozen fine vertical flute highlights; the reference pillar is a dark violet-brown silhouette carrying exactly two bright stripes, darker than the screen. The podium body panels read mid-brown-mauve and half translucent where the reference has them near-black and opaque. The truss chords read as fully shaded solid tubes, pink on the left and cool blue-grey on the right, where the reference is nine parts near-black silhouette to one part thin rim line. The moving-head bodies are pale grey boxes; the reference makes them matte dark grey with only a shoulder specular. All four objects use dark materials in assets/scene.json already (MAT_Pillar_Body 0.09/0.075/0.11, MAT_Dark_Trim 0.06, MAT_Fixture_Body 0.05), so the light reaching them, not their albedo, is what is wrong.",
+      "cause_hypothesis": "Too much wide, undirected light on the set. AMBIENT_INTENSITY 0.28 against an environment map built from the emissive LED band, plus RIM_LOOK_GAIN 2.4 on Rim_L and Rim_R, which sit at x -8 and +8, right beside the two pillars. A 0.09-albedo diffuse surface cannot read pale grey unless it is being flooded.",
+      "suggested_fix": "Cut the flat term hard and put the light back as direction. Drop AMBIENT_INTENSITY toward 0.08-0.12 and pull RIM_LOOK_GAIN down toward 1.2-1.5, then check the pillar first: it must end up darker than the screen band beside it, with one strong gold vertical highlight right of its centre and a thinner cool one at its left edge, and nothing in between. The podium panels and the truss should fall to near-black by the same change. If the truss loses its rim lines as well, restore them from the bulb ring rather than by raising ambient again."
+    },
+    {
+      "rank": 2,
+      "crop": "screen_left, sky_right (1252,240 420x400), podium",
+      "target_file": "src/screen.rs",
+      "severity": 5,
+      "problem": "The LED wall is a muted mauve dusk with soft airbrushed white-grey wisps, going to a near-black navy at its top edge, and it looks the same on both sides of the frame. Three separate misses. (a) Saturation: the source texture T_LEDWall_Sky was examined and it is a good painterly sunset - navy zenith, strong magenta midband, coral and peach cloud tops - and the render shows a washed, low-chroma version of it. (b) Framing: the visible band of the wall shows the texture's navy-and-pale-cloud top, and the coral-peach zone never appears anywhere in the frame, whereas the reference's left wall is exactly that coral-peach zone. (c) The left/right split, which the reference carries mainly on this wall, is absent: sky_right should be cobalt blue with cyan-white cloud lobes and is instead the same violet-mauve as the left. Two smaller items: the cloud lobes read two to three times larger and much softer than the source art's, so the UV scale is magnifying and blurring the painting; and a field of small white dots is sprayed across the whole wall, lower magenta band included, which reads as dirt on a wall rather than as sky.",
+      "cause_hypothesis": "SCREEN_EMISSION_GAIN 0.72 plus SCREEN_LIT_FRACTION 0.16 under Filmic tone mapping desaturates and dims the texture. SCREEN_UV_WINDOW (0.62, 0.22) picks the wrong 62% of the texture's height - it lands on the navy top. The magnification is the same window stretched over a tall wall. The dots are the shader's own star_field (STAR_DENSITY 3.0, STAR_RARITY 0.86, STAR_INTENSITY 1.4) drawn over the whole wall instead of only its dark upper part.",
+      "suggested_fix": "Raise SCREEN_EMISSION_GAIN until the wall is the second-brightest thing in the frame after the wheel, which is what docs/look_target.md asks for, and keep the chroma while doing it rather than letting it clip to pink. Slide SCREEN_UV_WINDOW down the texture so the coral and peach cloud tops land in the visible band and the navy zenith is mostly cropped off above the fascia. Shrink the window's height, or scale the UVs, so the lobes come back to the source art's size and keep their hard cauliflower edges and flat interior steps. Add the left/right split here: sample a different horizontal region of the 4096-wide texture per side, or grade the wall's emission per side, coral-magenta to camera-left and cobalt-cyan to camera-right. Confine star_field to the top of the wall, or drop it - the texture already carries its own stars and the reference wall has none."
+    },
+    {
+      "rank": 3,
+      "crop": "truss, top_right (1100,0 572x340)",
+      "target_file": "src/postfx.rs",
+      "severity": 5,
+      "problem": "The twelve truss moving heads throw no cones. The truss crop shows blown white lens dots on a black star field and nothing descending from them. The top-right corner, where the reference shows five clearly separated narrow cones - one amber-gold, two cyan, two lavender, each starting at a blown lens and running 150 to 250 px - shows only a couple of hairline pink streaks. There is no amber anywhere in the render even though BEAM_TINTS_RIGHT carries it. The upper half of the frame is therefore empty black where the reference's cones are what make it read as a lit stage. The two spot cones did survive, but as a defect of their own: see rank 10.",
+      "cause_hypothesis": "Round 1 asked for the washes to be cut and the cut overshot. BEAM_HEAD_LENGTH 2.2 m subtends far less than the reference's 150-250 px at the truss's distance from a 22mm lens, and BEAM_STRENGTH 1.8 against BEAM_LENGTH_FALLOFF 2.0 fades what is left before it reads. The start-up line confirms 14 cones are being built, so they are drawn and simply too short and too faint.",
+      "suggested_fix": "Bring BEAM_HEAD_LENGTH back to roughly double, 4.0-5.0, so a head cone reads 150-250 px on screen, and raise the head cones' strength until each one is plainly visible against the black void while its edges stay soft. Keep the half-angle where it is - round 1 already verified 0.19 rad gives the reference's 55-75 px width after 180 px. Verify the amber lands: MH_02 is the one right-hand truss cone this camera sees and index 2 of BEAM_TINTS_RIGHT is amber, so if the top-right corner has no warm cone the index mapping is off. Do not lengthen the two SPOT cones with them."
+    },
+    {
+      "rank": 4,
+      "crop": "rim_top, hub",
+      "target_file": "assets/scene.json",
+      "severity": 4,
+      "problem": "The bulb ring has fused. Where the reference has a thick stack of concentric gold bands - each bright band meeting a dark warm-brown groove on a hard line, about 45 px of crop height in rim_top - with discrete round bulbs sunk in the outer channel, the render has one continuous glowing gold tube about 14 px thick with a wide soft halo above it, and a second broad halo ringing the whole wheel. The rim's band-and-groove structure is gone, and the halo spills warm light over the top of the hub crop, which docs/look_target.md forbids: a hub that glows is wrong. The bulbs themselves read cool-white rather than pale lemon.",
+      "cause_hypothesis": "MAT_Bulb_Glass emission was raised to 1.7 and is now far enough above BLOOM_THRESHOLD 1.00 that the per-bulb halos overlap into a tube, and BLOOM_BLUR_SPREADS second tap at 5.0 with BLOOM_WIDE_STRENGTH 0.30 carries it out into the wheel-wide ring.",
+      "suggested_fix": "Separate the two. Keep the bulbs clipping - they should - but pull the wide bloom tap back so the halo around each bulb stays in the 4 to 8 px the reference shows and the rim's gold bands read individually again, with the dark groove between them intact. Warm the bulb colour so the channel clips pale lemon rather than white. The wheel-wide halo ring should disappear entirely; nothing in the reference glows at that radius."
+    },
+    {
+      "rank": 5,
+      "crop": "hub, rim_top",
+      "target_file": "assets/scene.json",
+      "severity": 4,
+      "problem": "The sector fan is pastel where the reference is near-fully saturated, and the sectors have lost their outlines. Side by side in the hub crop: the reference's hot magenta is a dusty rose here, its cobalt is a slate periwinkle, its cyan is mint, its gold is khaki. Only cream and white should be desaturated and in the render everything is. Separately, every sector in the reference is outlined by a thin bright gold hairline running its full length, which is what makes forty-eight wedges read as forty-eight wedges; the render's sectors butt directly against each other with no divider at all.",
+      "cause_hypothesis": "The sector base colours are being lifted toward white by the same flat light term as defect 1, which desaturates a diffuse surface, and then Filmic pulls the chroma down again. The missing hairline is either geometry the export carries but the material mapping flattens, or the gold divider strips reading at the same value as the sectors beside them.",
+      "suggested_fix": "Re-judge the sectors after defect 1 is cut, because a flat light term is the most likely cause of the desaturation and fixing it may restore them for free. If they are still pastel, push MAT_Sector_Pink, _Cyan, _Blue and _Gold back toward full chroma and leave _Cream and _White alone. For the hairline, check what geometry sits between two sectors in the GLB and make sure it takes MAT_Gold_Trim and reads brighter than both neighbours."
+    },
+    {
+      "rank": 6,
+      "crop": "podium",
+      "target_file": "assets/scene.json",
+      "severity": 4,
+      "problem": "The podium is unchanged from round 1 in the ways that matter. Its desk band - the brightest feature of the crop in the reference, a clipped lemon-white bar across crop (120-350, 100-135) - is a dull bronze-olive rim here with two small warm speculars and no clipping anywhere. The gold ring on the podium base is absent. The vertical gold ribs are dull bronze rather than bright gold lines with hard edges, so the podium does not read as a black form drawn with gold lines. The monitor at the back left is inverted: the render draws it as a pale grey-lavender slab, brighter than the body, where the reference makes it the darkest object in the crop with one thin bright gold top edge. And the podium casts no reflection - the reference gives it a short dark violet smear plus one warm gold streak from the base ring, about a third of its height.",
+      "cause_hypothesis": "MAT_Gold_Trim is rendering at metallic 0.75 per the note in assets/scene.json and the podium's gold is being read by the same flat ambient rather than by a directional source, so it never reaches clipping. The pale monitor is the same over-lighting as defect 1. The missing reflection is the podium falling outside the reflection pass's floor-contact search.",
+      "suggested_fix": "Give the desk band enough highlight to clip pale lemon across its middle with an 8 to 15 px halo and no smearing onto the body, and restore the base ring as a second bright gold line. Raise the gold ribs' contrast against the panels so the edge between them is hard. The monitor must fall to near-black once defect 1 is cut; verify it does. Then check why the podium gets no reflection - REFLECTION_SEARCH_PX 130 and FLOOR_PLANE_TOLERANCE 0.06 in src/postfx.rs are the two constants that would exclude it."
+    },
+    {
+      "rank": 7,
+      "crop": "floor, low_right (1050,600 620x341)",
+      "target_file": "src/postfx.rs",
+      "severity": 4,
+      "problem": "The floor reflects, which is new and right, but it reflects the wrong way. The reference's signature here is broad blurred vertical smears with crisp gold arcs laid over them: a warm gold column under the wheel reaching the frame's bottom edge, vertical magenta streaks under the beam pools, and two or three thin bright gold ring inlays. The render gives thin hard-edged coloured lines instead of smears - the reflected bulbs read as a row of discrete dashes, the reflected pillar as a bundle of separate vertical wires - and the gold column under the wheel is missing entirely. The ring inlays are the opposite problem: there are six or seven of them, they are hairline thin, and they read cyan and white rather than gold, where the reference has two or three broad bright gold arcs. The blown gold band along the base plate's top edge is a thin line rather than the reference's 20 to 35 px soft-glowing bar, which is the second-widest glow in the frame.",
+      "cause_hypothesis": "REFLECTION_BLUR_PX (2.5, 22.0) is not enough blur in either axis to turn point features into smears, and 9 REFLECTION_TAPS across 22 px leaves the taps visible as separate lines. The missing gold column is the wheel's own reflection being cut by REFLECTION_SEARCH_PX 130 or by the base drum occluding it. The cool inlays are MAT_Gold_Trim on Floor_Rings reading by the environment rather than by warm light.",
+      "suggested_fix": "Raise the vertical blur well past 22 px and raise the horizontal blur too - the reference lets no inverted geometry be recognisable at all - and add taps to match, so the smear is continuous. Then make sure the wheel's own gold reflection forms a single column under the base plate rather than a set of bulb dashes. Widen and soften the base plate's top-edge glow to the reference's 20-35 px. Warm the Floor_Rings inlays to gold, and if six or seven arcs are visible where the reference shows two or three, check that the inlays are not also being drawn in the blurred layer as well as over it."
+    },
+    {
+      "rank": 8,
+      "crop": "rim_top, crest (740,0 220x220)",
+      "target_file": "src/postfx.rs",
+      "severity": 3,
+      "problem": "The crest crystal has been eaten by its own glow. The reference is a crisp faceted magenta-violet chevron with readable hard bevels, a bright core, and a thin hard white spike running vertically out of the frame, wrapped in a halo of 25 to 40 px. The render is a soft pale-pink mushroom shape: no facets, no readable silhouette, no white spike, and a diffuse halo so wide it doubles the crystal's apparent size and smears upward rather than radially. It also reads pale pink where the reference is a saturated magenta-violet.",
+      "cause_hypothesis": "The same wide bloom tap as defect 4, applied to the frame's brightest small feature. The halo is swamping the geometry rather than surrounding it, and the vertical smear suggests the wide tap is being applied anisotropically or the flare pass is catching the crystal.",
+      "suggested_fix": "Pull the wide bloom back until the crystal's facets and its outline are readable again with a 25 to 40 px halo around them, then add the spike as a hard 4 to 6 px core wrapped in a 12 to 20 px magenta halo. Saturate the halo toward magenta-violet instead of pale pink. Judge it on the crest crop: the crystal's shape must be readable."
+    },
+    {
+      "rank": 9,
+      "crop": "hub",
+      "target_file": "src/scene.rs",
+      "severity": 3,
+      "problem": "The hub is much improved and two things are still off. Its bezel is a neutral pale grey ring dominated by a circle of near-black rivet dots; the reference's bezel is a warm gold-brown chrome ring carrying two thin continuous highlight lines with a dark blurred band between them, and no rivet ring reads at all at this scale. And the dome's brightening is centred and radially symmetric, so it reads as a small lamp behind the middle of the disc, where the reference puts a broad soft silver-white lobe off-centre toward ten o'clock with the lower-right quadrant falling to a dark plum-grey that still shows its brushed wedges.",
+      "cause_hypothesis": "The bezel is Wheel_HubRing on MAT_Dark_Trim rather than a gold material, and the rivets are Wheel_HubRivets rendering at high contrast against it. The symmetric dome glow is the sunburst being driven by radius alone with no directional light term.",
+      "suggested_fix": "Warm the bezel to gold-brown and give it the two circumferential highlight lines, and sink the rivets so they stop being the crop's highest-contrast feature. Make the dome's bright lobe directional, pointing toward ten o'clock, and let the lower-right quadrant fall to a dark plum-grey without losing the brushed wedges - docs/look_target.md is explicit that nothing in this crop goes to black."
+    },
+    {
+      "rank": 10,
+      "crop": "low_right (1050,600 620x341), whole frame",
+      "target_file": "src/postfx.rs",
+      "severity": 3,
+      "problem": "The two SPOT cones still reach the floor, and now that they are dim they read as a flat translucent grey veil with hard straight edges rather than as light. A lighter-value quadrilateral crosses the wall band and the floor to the right of the wheel with a crisp vertical boundary at about frame x 1270, and a mirrored one sits left of the wheel. docs/look_target.md is explicit that no cone lands a pool of light on the floor and that only the two in the upper right brush the fascia, so this geometry should not be down there at all. It also flattens the wall band it crosses.",
+      "cause_hypothesis": "BEAM_SPOT_LENGTH 2.5 combined with the two spots' height at z 7.2 still puts the cone's base circle at floor level, and BEAM_EDGE_SOFTNESS 1.6 is not enough to hide the base circle's silhouette once the cone is faint.",
+      "suggested_fix": "Shorten the SPOT cones so they die above the fascia, and raise the length falloff so the base circle fades out instead of terminating. The visible straight edge is the tell: no cone edge in the reference is a straight line across a wall."
+    },
+    {
+      "rank": 11,
+      "crop": "truss, rim_top, screen_left",
+      "target_file": "src/postfx.rs",
+      "severity": 3,
+      "problem": "The sparkles read as a night sky, not as glitter on a stage. They are uniform white dots of one size, spread evenly across the whole void and over the LED wall, at a density that makes the ceiling look like an outdoor starfield. The reference has dozens of white and magenta specks 1 to 3 px across mixed with larger soft blobs 6 to 10 px across, clustered around the lamps and the truss rather than spread flat, and mixed in with drifting violet debris. The render also has no magenta ones. Related: the anamorphic flares are hard thin pink scratches about 2 px tall, where the reference's are soft magenta blobs 40 to 60 px wide and three to five times wider than tall with a halo.",
+      "cause_hypothesis": "SPARKLE_CELLS (190, 52) at SPARKLE_RARITY 0.94 gives several hundred sparkles at one SPARKLE_SIZE, hence the even field, and SPARKLE_TINTS' magenta entry is not landing. FLARE_ASPECT 0.25 against FLARE_SPREAD 5.0 makes the flare one pixel row tall.",
+      "suggested_fix": "Thin the sparkle count out and vary the size, adding the reference's larger soft 6-10 px blobs alongside the 1-3 px specks, weight them toward the lamps rather than spreading them flat, and get the magenta ones to appear. Keep them off the LED wall. For the flares, widen the spread a lot and soften the vertical profile so each one reads as a soft horizontal magenta smear rather than a scratch. Both must stay deterministic at the shot's fixed time."
+    },
+    {
+      "rank": 12,
+      "crop": "screen_left, podium, truss",
+      "target_file": "assets/scene.json",
+      "severity": 3,
+      "problem": "The gold fascia bands read as broad matte olive-brown ribbons 25 to 30 px thick with no highlight. The reference draws each one as a single thin bright gold line with a dark band above and a dark band below, so the fascia reads as a high-contrast pinstripe that curves across the frame. In the render the fascia is one of the flattest, dullest surfaces in the image and it crosses both the screen_left and podium crops, so it costs more than its area suggests.",
+      "cause_hypothesis": "MAT_Gold_Trim and MAT_Gold_Dark on Wall_Fascia are being read almost entirely by the flat ambient term of defect 1, which gives a metal no highlight and no dark side.",
+      "suggested_fix": "After defect 1 is cut, give the fascia a narrow bright specular line along its curve with the dark MAT_Gold_Dark bands above and below it staying dark, so it reads as a pinstripe. Judge it on screen_left, where two of them cross the crop."
+    },
+    {
+      "rank": 13,
+      "crop": "rim_top, truss",
+      "target_file": "src/postfx.rs",
+      "severity": 2,
+      "problem": "The ceiling void is a neutral near-black. docs/look_target.md is explicit that blacks are lifted and tinted plum, never neutral and never fully crushed, and that even the darkest ceiling void keeps a violet tint. The reference's void also still holds readable dark-violet truss structure and drifting debris in the top corners, where the render's is empty. Round 1's defect was the opposite - a milky lavender haze - so this has crossed over rather than landed.",
+      "cause_hypothesis": "Filmic tone mapping at EXPOSURE 1.0 with nothing lifting the toe, once the beam washes that used to fill the void were removed.",
+      "suggested_fix": "Lift the toe slightly and tint it plum-violet, enough that the void is a dark violet rather than black and the truss silhouette in the top corners stays faintly readable. Keep it well below the screen band so the void still reads as unlit."
+    }
+  ],
+  "checked_and_innocent": [
+    "The source texture assets/…T_LEDWall_Sky.png (4096x1024) was pulled off disk and looked at. It is a good painterly sunset: navy zenith with its own faint stars, a strong magenta midband, coral and peach cloud tops with hard lobes. The washed-out wall is how the texture is windowed and gained, not the art.",
+    "The GLB material assignments were read directly. Pillar_L_Core is MAT_Pillar_Body alone, at base colour (0.09, 0.075, 0.11) and roughness 0.45 in assets/scene.json. A diffuse surface at that albedo cannot render pale grey, so the pale pillar is a lighting defect and not a wrong material.",
+    "BEAM_TINTS_RIGHT does contain the reference's amber-gold at index 0 and index 2, so the missing amber in the top-right corner is the cones not being visible at all, not a missing tint.",
+    "The start-up line reports 14 beam cones built (2 spots, 12 truss heads), so the head cones are constructed and drawn. They are too short and too faint, not absent from the pipeline.",
+    "The wheel still sits smaller and higher than in the painting and its base is a tall drum. Per round 1 this is the GLB camera and Blender geometry and is not to be chased."
+  ],
+  "fix_order": [
+    "Defect 1 first and alone, then re-render. It is lifting the pillars, the podium, the truss and the moving-head bodies out of black, and it is the most likely cause of the pastel sectors in defect 5 and the flat fascia in defect 12. None of those three can be judged until the set is dark again.",
+    "Then defect 2, the wall. It is the largest surface in the frame and it carries the left/right split.",
+    "Then defect 3, the head cones, which fill the upper half.",
+    "Then defects 4 and 8 together: they are the same bloom tap over-swelling the bulb ring and the crest.",
+    "Then 5, 6, 7 on the crops they belong to, then 9 through 13."
+  ]
+}

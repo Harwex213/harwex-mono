@@ -11,16 +11,27 @@
 //!    (`Texture2D::new_empty::<[f16; 4]>`). An RGBA8 target clamps at 1.0 and throws away
 //!    every bit of headroom the bloom needs, and this scene deliberately pushes emission
 //!    above 1.0 (`MAT_Lens_Glow` is 6.0 in Blender, see `src/scene.rs`).
-//! 2. Bright pass with a soft knee, at 1/[`BLOOM_DOWNSAMPLE`] resolution.
-//! 3. Four separable Gaussian blur passes, two spreads, ping-ponging between two half-res
-//!    targets. Two spreads because the reference has *wide soft halos* around the rim bulbs
+//! 2. The floor reflection, which reads that target plus its depth and writes a second
+//!    full-resolution target. Everything after this reads the reflected frame.
+//! 3. Bright pass with a soft knee, at 1/[`BLOOM_DOWNSAMPLE`] resolution.
+//! 4. Four separable Gaussian blur passes, two sigmas, ping-ponging between two half-res
+//!    targets. Two sigmas because the reference has *wide soft halos* around the rim bulbs
 //!    and the lens glows, not a thin fringe (`docs/look_target.md`, regions 2, 3 and 5),
 //!    and one narrow blur cannot produce a 30 px halo without going to a mip chain.
-//! 4. Composite: exposure, additive bloom, vignette, tone map, sRGB encode, into `target`.
+//! 5. Composite: exposure, additive bloom, shadow toe, vignette, tone map, sRGB encode, into
+//!    `target`.
 //!
-//! [`PostFx::apply`] is step 2 to 4 alone, over any colour texture the caller has already
-//! rendered. [`PostFx::beams`] hands the cone geometry to whoever wants to draw it in their
-//! own main pass instead; see [`Stages::beams`] before using it.
+//! [`PostFx::apply`] is step 3 to 5 alone, over any colour texture the caller has already
+//! rendered; the reflection needs the scene depth and so runs only inside [`PostFx::render`].
+//! [`PostFx::beams`] hands the cone geometry to whoever wants to draw it in their own main
+//! pass instead; see [`Stages::beams`] before using it.
+//!
+//! The five stages the chain has are the five [`Stages`] fields. Bloom, the additive beam
+//! cones, the floor reflection, the vignette and the tone map are the whole effect set this
+//! module is sanctioned to have (`docs/agent_plan.md`, "Cleanup pass"). The anamorphic streak,
+//! the crest spike and the sparkle-dust layers that look-dev added are gone: none of them is
+//! in `wheel_stage.blend`, and the sparkle layer gated itself to a screen-space y band, which
+//! is a per-region hack by construction. Nothing that stayed was retuned to compensate.
 //!
 //! The tone/colour-mapping rule: every intermediate pass runs with
 //! `camera.disable_tone_and_color_mapping()`, and the tone curve and the sRGB encode happen
@@ -85,15 +96,18 @@ pub const BACKGROUND_GAIN: f32 = 1.0;
 
 /// Luminance above which a pixel contributes to the bloom, in linear units.
 ///
-/// 1.0, and that is now a real ceiling rather than an artefact. It used to be 1.20 for a reason
-/// that has gone away: `PhysicalMaterial::emissive` is four `u8`s, so every glowing material
-/// arrived at exactly 1.0 and a threshold under it bloomed the whole LED wall into mush. Round 1
+/// 1.20, and it is a real ceiling now rather than an artefact of a clamped uniform.
+/// `PhysicalMaterial::emissive` is four `u8`s, so every glowing material used to arrive clamped
+/// at exactly 1.0 and a threshold under that clamp bloomed the whole LED wall into mush. Round 1
 /// closed that gap — `src/scene.rs`'s [`crate::scene::StageMaterial`] writes the real linear
-/// emission over the clamped uniform, so `MAT_Bulb_Glass` is 1.7, `MAT_Lens_Glow` 6.0 and
-/// `MAT_Crystal` 4.2, while `src/screen.rs` drives the wall as emission only at a gain that
-/// keeps its indigo top near 0.1 and lets only the cloud tops clip.
+/// emission over the clamped uniform, so the manifest's own numbers reach the frame:
+/// `MAT_Bulb_Glass` at `(3.0, 2.79, 2.22)`, `MAT_Lens_Glow` at `(6.0, 5.7, 4.92)` and `MAT_Crystal`
+/// at its alpha-compensated `(1.85, 1.31, 2.07)` (`assets/scene.json`, via
+/// `MaterialSpec::emitted_radiance`). `src/screen.rs` drives `Wall_Screen` from the author's own
+/// `T_LEDWall_Sky` texture at emissive strength 1.5, lit by the same shader as every other
+/// material rather than as a flat emission gain.
 ///
-/// So at 1.0 the things that bloom are the things the reference blooms: the bulb dashes, the
+/// So at 1.20 the things that bloom are the things the reference blooms: the bulb dashes, the
 /// crest, the lens cores, the gold speculars, the podium's hot desk band and the wall's cloud
 /// tops. Everything the frame is *made* of sits below it. Round 1's verdict was that nothing
 /// glowed at all — "every hot feature the reference blooms has a hard edge and nothing around
@@ -186,7 +200,9 @@ pub const BLOOM_DOWNSAMPLE: u32 = 2;
 /// then a halo about one and a half to two lens diameters wide", and a lens is 14 to 20 px across, so
 /// the halo is 20 to 40 px. The round-5 verdict: "The lens cores are small white capsules with a tight
 /// halo; the reference cores are round blown discs inside a halo one and a half to two diameters wide."
-/// The wide sigma is unchanged - that one is the wheel's wing and it is where round 4 left it.
+/// The wide sigma is 5.5, which is the wheel's wing and a further step past round 3's 3.2 that this
+/// history does not otherwise record; at 5.5 half-res texels the wing is about 33 frame pixels, inside
+/// the 25 to 40 px [`BLOOM_WIDE_STRENGTH`] gives the crest's own halo.
 pub const BLOOM_BLUR_SPREADS: [f32; 2] = [1.9, 5.5];
 
 /// Taps either side of centre in one separable blur pass. The kernel is
@@ -230,17 +246,20 @@ pub const VIGNETTE_OUTER_RADIUS: f32 = 1.0;
 /// this came down.
 ///
 /// The reason it was 3.0 has gone away with it. The note used to be that the LED wall sits behind
-/// every cone at a linear 0.8 to 1.0 and a lavender cone on a lavender wall has no contrast;
-/// `src/screen.rs` now drives the wall as emission only, and the cones are short enough that they
-/// no longer cross it at all.
+/// every cone at a linear 0.8 to 1.0 and a cone the same hue as the wall has no contrast against it;
+/// `src/screen.rs` now drives the wall from the author's own texture at emissive strength 1.5, lit
+/// by the same shader as every other material rather than as a flat emission gain, and the cones
+/// are short enough that they no longer cross it at all.
 ///
 /// Round 3 took it from 1.8 to 1.15, and the *cream* half of the paragraph above is why: "The five
 /// cones in top_right read grey-lavender, dull amber and grey-teal against the reference's saturated
 /// violet-magenta, amber-gold and cyan-blue." A cone is an additive term over a near-black void, so
 /// its own tint is the only colour it can have, and a tint whose brightest channel has run into
 /// Filmic's shoulder arrives with its other channels pulled up toward it. 1.15 keeps the brightest
-/// channel of each cone off the shoulder over most of the cone's length, and the chroma the cut costs
-/// is put back in [`BEAM_TINTS_LEFT`] and [`BEAM_TINTS_RIGHT`] rather than in the level.
+/// channel of each cone off the shoulder over most of the cone's length.
+///
+/// The value in force is 1.0, a further step down that this history does not otherwise record;
+/// nothing below re-tunes anything to make up the difference.
 pub const BEAM_STRENGTH: f32 = 1.0;
 
 /// What a truss moving-head cone multiplies [`BEAM_STRENGTH`] by.
@@ -261,8 +280,9 @@ pub const BEAM_STRENGTH: f32 = 1.0;
 /// carries the visibility, so the tint has no chroma left at the bright end ... the amber ones read pale
 /// khaki at their brightest third." An additive cone is summed through its own shell twice and then
 /// tone-mapped, so at 1.55 the amber tint's red and green both cleared Filmic's shoulder over the cone's
-/// first third and arrived together, which is a khaki. The loss goes into [`BEAM_TINTS_RIGHT`] and
-/// [`BEAM_TINTS_LEFT`], whose weakest channels came down again in the same edit. Measured down to
+/// first third and arrived together, which is a khaki. The loss went into the tint tables of the
+/// time; those are gone now, and a cone's colour comes straight off its own fixture in
+/// `assets/scene.json` instead (see [`beam_specs`]). Measured down to
 /// 1.05 first and back up: at 1.05 with [`BEAM_EDGE_SOFTNESS`] raised at the same time, the cones lost so
 /// much body that `docs/look_target.md`'s "each cone still reads as a cone with a discernible boundary"
 /// stopped holding.
@@ -532,12 +552,14 @@ pub const REFLECTION_SEARCH_PX: u32 = 130;
 /// frame pixels. The reference's reflections are "stretched vertically and heavily blurred", and
 /// a blur that grows with depth is what dissolves the shape as it goes down: the gold column
 /// stays a column, but nothing in it is recognisable.
-/// Round 2 took the pair from `(2.5, 22.0)` to `(9.0, 75.0)`. The verdict: "The render gives thin
+/// Round 2 took the pair from `(2.5, 22.0)` toward wider blur. The verdict: "The render gives thin
 /// hard-edged coloured lines instead of smears — the reflected bulbs read as a row of discrete
 /// dashes, the reflected pillar as a bundle of separate vertical wires". `docs/look_target.md` is
 /// absolute about this: "No inverted geometry is recognisable. The wheel's shape cannot be read in
 /// its reflection." 22 px of vertical blur cannot dissolve a 20 px bulb pitch, and 2.5 px at the
-/// contact line leaves everything there readable.
+/// contact line leaves everything there readable. The pair now in force is `(10.0, 48.0)`, a step
+/// back down from a wider figure this history does not otherwise record; 10 px at the contact line
+/// and 48 px at the end of the fade still dissolve the bulb pitch and the pillar's flutes.
 pub const REFLECTION_BLUR_PX: (f32, f32) = (10.0, 48.0);
 
 /// Horizontal blur half-width of the reflection, in frame pixels. Constant with depth, unlike the
@@ -552,10 +574,13 @@ pub const REFLECTION_BLUR_PX: (f32, f32) = (10.0, 48.0);
 pub const REFLECTION_BLUR_H_PX: f32 = 14.0;
 
 /// Number of taps in the reflection's vertical blur. Odd, so one tap sits on the mirrored
-/// position itself. Round 2 took it from 9 to 17: at 9 taps over the new 75 px the taps read as
-/// separate lines, which is the other half of "9 REFLECTION_TAPS across 22 px leaves the taps
-/// visible as separate lines". Each tap is also sampled at three horizontal offsets, so this is 51
-/// samples per floor pixel and nothing else in the frame pays for it.
+/// position itself. Round 2 raised it off too few, on the same reasoning
+/// [`REFLECTION_BLUR_PX`] documents: too few taps over a wide blur read as separate lines rather
+/// than a smear. 41 is the value in force, a further step this history does not otherwise record.
+/// Each tap is also sampled at nine horizontal offsets (see the shader's own
+/// `for (int k = -4; k <= 4; k++)`), so this is 369 samples per floor pixel and nothing else in
+/// the frame pays for it — see [`REFLECTION_SATURATION`] and [`REFLECTION_JITTER`], which both
+/// depend on that count.
 pub const REFLECTION_TAPS: u32 = 41;
 
 /// Whether each pixel's reflection taps are offset by a deterministic per-pixel fraction of one
@@ -601,19 +626,21 @@ pub const REFLECTION_JITTER: bool = true;
 /// `renders/d_f8/ref_refl_4x.png` is why. At 4.0 a floor pixel 100 px below a contact line reads the
 /// frame 400 px above it, and 400 px above the podium is not the podium — it is the LED wall. So the
 /// floor to the right of the podium was reflecting the wall's midband, and reflecting it *four times
-/// magnified vertically*, which turned `crate::screen::SCREEN_POSTERISE`'s flat colour steps into six
-/// hard hot-magenta horizontal stripes across the floor with visibly stepped edges. That is the
-/// round-4 verdict's "stepped horizontal bands rather than a smooth vertical smear", and it also
-/// explains the grain beside them: the jitter's residual noise is proportional to the contrast the
-/// taps average over, and a posterised wall magnified 4x is nothing but contrast.
+/// magnified vertically*, which turned the flat colour steps of a posterise pass `src/screen.rs`
+/// carried at the time (`SCREEN_POSTERISE`, since removed by the cleanup pass) into six hard
+/// hot-magenta horizontal stripes across the floor with visibly stepped edges. That is the round-4
+/// verdict's "stepped horizontal bands rather than a smooth vertical smear", and it also explains the
+/// grain beside them: the jitter's residual noise is proportional to the contrast the taps average
+/// over, and a posterised wall magnified 4x is nothing but contrast.
 ///
 /// The round-2 arithmetic above is still right about the *wheel*, whose reflection is an eighth of its
-/// height, and 1.6 does not reach the rim's bulb channel. What reaches the floor under the wheel
-/// instead is the base plate's own blown gold top edge, which `crate::scene::NODE_LIFTS` now lifts on
-/// `Wheel_BasePlate` — `docs/look_target.md` region 3 names that edge as the source of the gold there
-/// ("a white-pink hot spot at the base centre ... A warm gold reflection column runs down from it"),
-/// not the rim 400 px higher up. Getting the column from the object at the contact line is what makes
-/// it a reflection rather than a coincidence.
+/// height, and 1.6 does not reach the rim's bulb channel. The paragraph this constant used to justify
+/// itself by claimed the floor instead picked up the base plate's own blown gold top edge, lifted there
+/// by a `NODE_LIFTS` entry on `Wheel_BasePlate` — that entry is gone, the cleanup pass having found no
+/// glTF-transport defect it was restoring, and `Wheel_BasePlate` is a flat dark slab with no lifted
+/// highlight left for the reflection to carry. 1.6 therefore has no verified source of gold left to
+/// point at; it is the figure the cleanup pass inherited from look-dev, kept because this pass does not
+/// retune a surviving constant to compensate for what was removed out from under it.
 pub const REFLECTION_SQUASH: f32 = 1.6;
 
 /// World `y` of the floor plane, in metres. `Floor_Disc` spans Blender z −0.14 to 0.00
@@ -625,224 +652,6 @@ pub const FLOOR_PLANE_Y: f32 = 0.0;
 /// crisp gold inlays are — and the lowest thing that must be excluded is the wheel's base plate
 /// at 0.14 m, so 0.06 m clears both by a wide margin.
 pub const FLOOR_PLANE_TOLERANCE: f32 = 0.06;
-
-// ---------------------------------------------------------------------------------------
-// Anamorphic streaks and sparkles. Both are painted into the reference and neither exists in
-// the scene (`docs/look_target.md`, "The reference is a painting"), and round 1 shipped without
-// either: "The render has neither; the upper half is empty haze."
-// ---------------------------------------------------------------------------------------
-
-/// Linear luminance a pixel needs to throw a streak. Well above [`BLOOM_THRESHOLD`], because a
-/// streak belongs to a lamp and not to everything that glows: at 2.6 the moving-head lenses
-/// (6.0), the bulb dashes (9.0) and the crest's core clear it, while the LED wall's cloud tops
-/// and the gold speculars do not. Getting this wrong is what would smear the whole wall.
-///
-/// Round 3 took it from 5.5 to 3.4, because at 5.5 the only thing in the frame that cleared it was a
-/// moving-head lens at exactly 6.0, i.e. a handful of pixels per lamp, and the verdict was that "the
-/// anamorphic flares are still thin diagonal pink scratches, two or three of them ... a streak starts
-/// from a near-point and never gains width". 2.9 admits the lens cores with room over them, the crest
-/// crystal's stacked core, and the base plate's hot gold edge.
-///
-/// It cannot go lower than that, and the ceiling is the LED wall: `src/screen.rs` drives its cloud tops
-/// to about 2.3 linear in red, and a streak pass seeded off the wall would smear the largest surface in
-/// the frame sideways across everything in front of it. 2.9 sits above the wall's hottest pixel and
-/// below every lamp. The gap is 0.6 of a linear stop and it is the reason `SCREEN_EMISSION_GAIN` has a
-/// ceiling as well as a floor.
-///
-/// Round 4 took it from 2.9 to 3.7. The verdict: "the podium desk band throws long pale horizontal
-/// streaks the full width of its crop", where `docs/look_target.md` region 6 keeps that band's halo at
-/// 8 to 15 px. `crate::scene::NODE_LIFTS` gives `Podium_Top` a radiance of 1.62 and the rig adds a
-/// specular on top, so the band was clearing 2.9 along its whole length. 3.7 leaves it under the
-/// streak pass and keeps `MAT_Lens_Glow` at 6.0 and the crest's stacked core well over it.
-///
-/// Round 5 took it from 3.7 to 5.3, and the reason is `src/screen.rs`: the wall's own
-/// [`crate::screen::SCREEN_CONTRAST`] expansion puts its brightest cloud tops at about 4.3 linear in
-/// red on the left and 4.5 in blue on the right, so at 3.7 the largest surface in the frame started
-/// seeding the streak pass and came back stained with [`FLARE_TINT`]'s magenta. That is the failure the
-/// note above says this constant exists to prevent, and the ceiling it names moved when the wall's
-/// range widened. 5.3 sits over the wall's hottest pixel and under `MAT_Lens_Glow` at 6.0 and
-/// `MAT_Bulb_Glass`, which are the two things in this frame that are meant to flare. The coupling runs
-/// both ways: raising the wall's contrast or its gain again means raising this with it.
-pub const FLARE_THRESHOLD: f32 = 5.3;
-
-/// Half-reach of the streak's long axis, in half-res texels. Two frame pixels to the texel and two
-/// arms to the streak, so 14.0 is a 56-frame-pixel smear — the middle of the "40 to 60 px across"
-/// agent C measured on the reference's flares.
-///
-/// Round 4 changed what this constant *means*, because the old meaning is what produced that round's
-/// worst defect. It used to be a tap *spacing*: the kernel walked 24 taps out to `spread * 6` texels,
-/// so at 15.0 the reach was 90 texels and the stride 3.75 texels, i.e. 7.5 frame pixels. A stride that
-/// wide does not smear a lamp, it replicates it — every bright feature came out as a comb of discrete
-/// ghosts 7.5 px apart, and with the spike arm combing at 8.25 px vertically the two made "a regular
-/// lattice of small soft dashes ... woven over the whole bright half of the frame". It lay over the
-/// sector fan, the LED wall, the wheel's halo and the near-black void at once. Verified by rendering
-/// with [`FLARE_STRENGTH`] at 0: the lattice went with it, the fan came back saturated and flat, and
-/// the gold hairlines between the wedges appeared.
-///
-/// So this is a reach now, and [`FLARE_TAPS_HALF`] is what guarantees the stride: 14 texels over 16
-/// taps is 0.875 of a texel, below one, which is the condition for a smear rather than a comb.
-pub const FLARE_SPREAD: f32 = 14.0;
-
-/// Half-reach of the streak's short axis, as a fraction of [`FLARE_SPREAD`]. The reference's flares
-/// are "three to five times wider than tall".
-///
-/// 0.28 of 14 texels is 3.9 texels, i.e. 8 frame pixels each way against the long axis's 28, so the
-/// smear is 56 px by 16 px and the ratio is 3.5 to 1. Round 3's 0.09 was a compensation for the
-/// broken stride above — both arms were combs, and a comb reads at its ghost's size rather than at its
-/// reach — and it is not needed once the kernel actually smears.
-pub const FLARE_ASPECT: f32 = 0.28;
-
-/// Taps each way along either arm of the streak.
-///
-/// This is the constant that keeps the pass a smear rather than a comb: the stride is
-/// `FLARE_SPREAD / FLARE_TAPS_HALF` texels, so this has to be at least [`FLARE_SPREAD`] for the stride
-/// to stay at or below one texel. 16 against 14 leaves headroom for the reach to be raised a little
-/// without the lattice coming back.
-pub const FLARE_TAPS_HALF: i32 = 16;
-
-/// How much of the streak pass is added back in the composite.
-///
-/// Round 4 took it from 1.5 to 0.42. The number is tied to [`FLARE_SPREAD`] and has to move with it:
-/// the pass is a normalised weighted mean, so shortening the reach from 180 frame pixels to 56
-/// concentrates what one lamp contributes at the streak's core by about the same factor. 1.5 over a
-/// 56 px reach would put a lamp's own radiance back onto the frame three times over.
-pub const FLARE_STRENGTH: f32 = 0.42;
-
-/// Half-reach of the crest's vertical spike, in half-res texels of the source, and how much of it
-/// is added back. `0.0` in either component switches the spike off.
-///
-/// `docs/look_target.md` region 2 gives the crest "a vertical white spike running up out of the
-/// frame", 4 to 6 px of hard core inside a 12 to 20 px magenta halo, and ranks the crest fifth of the
-/// five features that make the reference read as itself because it "anchors the vertical axis". Round
-/// 2 and round 3 both shipped without it: "The white spike exists as neither geometry nor effect."
-///
-/// It is an effect and not geometry, because geometry would have to be modelled and
-/// `docs/agent_plan.md` invariant 2 forbids that. What it is is the same directional smear the
-/// anamorphic streak is, run up the frame instead of across it, off the same bright pass, and gated to
-/// pixels whose blue is at least 1.15 times their red. That gate is what makes it the crest's spike
-/// rather than a spike
-/// on every lamp: `MAT_Crystal` emits magenta-violet, blue over red, and every other thing in this
-/// frame that clears [`FLARE_THRESHOLD`] is warm — `MAT_Lens_Glow` at `(6.0, 5.7, 4.92)` and the gold
-/// speculars. It is a hue test over the frame, not a per-object exception.
-///
-/// The one part of the reference this cannot reproduce is the core's width. A directional blur is as
-/// wide as what it blurs, the crystal's core is about 30 px across on screen, so the spike reads at
-/// 20 to 30 px rather than the reference's 4 to 6. Narrowing it needs a source that is narrow, which
-/// means the spike modelled in the .blend.
-///
-/// Round 4 turned the first component from a tap spacing into a half-reach, for the reason
-/// [`FLARE_SPREAD`] gives: at 22.0 the old kernel strode 4.1 texels, 8.25 frame pixels, so the spike
-/// was a vertical comb of ghosts and it was half of the dash lattice the round-4 verdict led with.
-/// 58 half-res texels is 116 frame pixels of reach, which takes the crest's core at frame y 120 out
-/// through the top edge. [`FLARE_SPIKE_TAPS_HALF`] holds the stride under a texel.
-pub const FLARE_SPIKE: (f32, f32) = (58.0, 3.1);
-
-/// Taps each way along the spike. At least [`FLARE_SPIKE`]'s reach, so the stride stays at or below
-/// one texel: 58 over 64 is 0.91.
-pub const FLARE_SPIKE_TAPS_HALF: i32 = 64;
-
-/// Tint of the streaks. Magenta, because every flare in the reference is: "it carries anamorphic
-/// magenta flares", and the crest's vertical spike is "a hard white core wrapped in a magenta
-/// halo".
-pub const FLARE_TINT: [f32; 3] = [1.0, 0.42, 0.85];
-
-/// Peak linear radiance a sparkle adds. `docs/look_target.md` region 5: "A fine dust of bright
-/// specks covers the whole crop ... They read as glitter in the air."
-/// Round 5 took it from 1.7 to 2.1 with the count: the reference's flecks read as bright, and a speck 1
-/// to 3 px across on a plum void has to be well over it to register at all.
-pub const SPARKLE_STRENGTH: f32 = 2.1;
-
-/// Sparkle cells across the frame width, for the fine layer and for the soft-blob layer. At 1672
-/// px wide, 190 cells put the fine layer's cells 8.8 px apart and 52 put the blobs' 32 px apart.
-/// Round 2 took the pair from `(190, 52)` to `(150, 40)`: 11 px and 42 px apart.
-/// Round 3 took it to `(130, 26)`: 12.9 px apart for the fine layer and 64 px apart for the blobs.
-/// The verdict was that the two layers still read as one population — "a uniform field of tiny white
-/// dots of one size, spread evenly, with no 6-10 px soft blobs" — and the cell pitch is half of what
-/// decides that. A blob has to have a cell big enough to be 6 to 10 px inside it after its falloff has
-/// run, and at 42 px it did not.
-pub const SPARKLE_CELLS: (f32, f32) = (130.0, 26.0);
-
-/// Fraction of cells that hold no sparkle, for each layer. The reference has "dozens" of specks
-/// across a 500 x 260 crop, which is a few per cent of the cells at this density.
-/// Round 2 took it from `(0.94, 0.965)` to `(0.972, 0.986)`, a bit over a third of the count. The
-/// verdict was that "the sparkles read as an outdoor night sky, not glitter on a stage ... uniform
-/// white dots of one size spread evenly across the whole void".
-/// Round 3 took it to `(0.972, 0.905)`, which is the two layers pulled apart rather than both thinned:
-/// the fine layer drops from 4.5% of its cells to 2.8% — the round asked for the small one thinned out
-/// — and the blob layer rises from 2.2% to 9.5%, because the reference has the blobs as a *readable
-/// population* and one per 45 cells of a 64 px grid is a blob every 430 px, which is two in the truss
-/// crop.
-/// Round 5 took it to `(0.902, 0.796)`, about three and a half times the count of each layer. Round 4's thinning
-/// overshot: "About six faint specks cover the whole truss crop where the reference carries dozens of
-/// bright white and magenta flecks plus larger soft blobs, a confetti dust filling the region."
-/// `renders/j5/ref_void.png` is confetti, not a starfield, and the difference between the two is
-/// clustering rather than count - which [`SPARKLE_LAMP_WEIGHT`] carries. Measured through
-/// `(0.938, 0.858)` first, which was still under a dozen specks in the truss crop.
-pub const SPARKLE_RARITY: (f32, f32) = (0.902, 0.796);
-
-/// Radius of a sparkle as a fraction of its cell, for each layer. 0.16 of an 8.8 px cell is a
-/// 2.8 px speck and 0.22 of a 32 px cell is a 14 px blob before its falloff, which reads as the
-/// reference's "soft blobs 6 to 10 px".
-/// Round 2 took it from `(0.16, 0.22)` to `(0.13, 0.30)`, which at the new cell pitch is a 1.4 px
-/// speck and a 25 px blob before falloff — about 8 px once the squared falloff has run. The round
-/// asked for the reference's two sizes rather than one: "dozens of white AND magenta specks 1 to
-/// 3 px across mixed with larger soft blobs 6 to 10 px across". The two layers had been close
-/// enough in size to read as one.
-/// Round 3 took it to `(0.11, 0.17)`. In frame pixels that is a 1.4 px speck on a 12.9 px cell and an
-/// 11 px blob on a 64 px cell, about 7 px once the squared falloff has run — the reference's "1 to 3 px
-/// across" and "6 to 10 px" respectively, and eight times the area between them rather than the two
-/// times round 2 left.
-pub const SPARKLE_SIZE: (f32, f32) = (0.11, 0.17);
-
-/// Where the sparkle field fades in and reaches full strength, in frame height from the bottom.
-/// The reference dusts "the whole upper half of the frame" and leaves the floor clean, and a
-/// sparkle on the floor would read as dirt rather than glitter.
-///
-/// Round 2 took it from `(0.42, 0.72)` to `(0.74, 0.90)`. At 0.42 the field faded in at the middle
-/// of the frame and was at full strength from 0.72 up, which put most of it on the LED wall — "a
-/// field of small white dots is also sprayed across the whole wall including its lower magenta band,
-/// which reads as dirt on a wall", and the round asked for them kept off the wall. The wall's top
-/// edge sits at about `uvs.y = 0.82` behind the wheel and lower at the frame's sides, so the band
-/// now fades in above it and reaches full strength in the ceiling void where the truss and the
-/// lamps are. That is also the "weight them toward the lamps rather than spreading them flat" the
-/// round asked for: in this frame the lamps are what is up there.
-/// Round 3 took it to `(0.66, 0.84)`. The reference dusts the whole upper half and round 2's band
-/// started at 0.74, which is 245 px from the top — above the truss's lower chords in the `truss` crop,
-/// so the crop's own lower half had no glitter in it at all. The wall is now kept clean by
-/// [`SPARKLE_LAMP_WEIGHT`] instead of by the band, which is the right tool for it: the band is a
-/// function of height and the wall's top edge is not.
-pub const SPARKLE_BAND: (f32, f32) = (0.66, 0.84);
-
-/// The two sparkle colours, warm-white and magenta, chosen per cell by its own hash.
-/// Round 2 deepened the magenta from `(1, 0.45, 0.9)` to `(1, 0.28, 0.86)`. The verdict was "the
-/// render has no magenta ones", and the hash that picks between the two already gives magenta the
-/// majority of cells — the miss is that at 1 to 3 px a tint whose green is at 0.45 of its red reads
-/// as white. Dropping the green is what makes the same dot read pink at that size.
-/// Round 3 scaled the magenta up rather than changing its hue again: `(1.75, 0.42, 1.45)`. The verdict
-/// after round 2's deepening was still "no magenta among them", and the reason is photometric, not
-/// chromatic. A tint is a multiplier on [`SPARKLE_STRENGTH`], so `(1, 0.28, 0.86)` carries a luminance
-/// of 0.49 where the warm tint carries 0.97 — the magenta specks were there and were half as bright as
-/// the white ones, which at 1 to 3 px is the difference between visible and not. Scaled by 1.7 the two
-/// populations are equally visible and the hue is unchanged.
-pub const SPARKLE_TINTS: ([f32; 3], [f32; 3]) = ([1.0, 0.97, 0.92], [1.75, 0.42, 1.45]);
-
-/// Base sparkle density away from any lamp, and how much the lamps add on top, as multipliers on the
-/// dust the two layers produce.
-///
-/// The round-3 verdict: the sparkles "read as an outdoor starfield ... spread evenly, with no
-/// clustering toward the lamps. The reference has ... drifting violet debris, and it is denser near
-/// the fixtures." What tells this pass where the fixtures are without being told is the streak pass's
-/// own source: the flare map is a smear of every pixel over [`FLARE_THRESHOLD`], which in this frame is
-/// the lamps and nothing else, and the composite already has it bound. So the density is weighted by
-/// the flare map's luminance at the pixel — `0.4` everywhere plus `1.5` where a lamp's streak reaches.
-/// The LED wall stays clean by the same property that keeps the streaks off it: it does not clear the
-/// flare threshold.
-/// Round 5 raised the base from 0.10 to 0.34 and left the lamp term where it is. At 0.10 the dust away
-/// from a lamp was a tenth of full strength, which at 1 to 3 px is invisible, so the field only existed
-/// in the few places a streak reached and the round-5 verdict counted six specks in the whole truss
-/// crop. 0.34 puts the empty void's dust at a third and keeps the clustering: near a lamp the density is
-/// still six times the base.
-pub const SPARKLE_LAMP_WEIGHT: (f32, f32) = (0.34, 1.8);
 
 /// Linear radiance added to the darkest pixels of the frame, before the tone curve, and the hue it
 /// is added in.
@@ -867,8 +676,8 @@ pub const SPARKLE_LAMP_WEIGHT: (f32, f32) = (0.34, 1.8);
 /// background alone, `(0.01, 0.008, 0.02)`, and 0.026 in plum-violet is `(0.0143, 0.0062, 0.026)` — the
 /// same order as the background, so the void reads as a violet that is lifted rather than as either a
 /// crushed black or a haze.
-/// Round 5 took it from 0.026 to 0.044 and [`SHADOW_LIFT_RANGE`] with it: "The ceiling void has lost
-/// almost all of its sparkle dust and its black is brown rather than plum." The brown is what is left of
+/// Round 5 took it from 0.026 to 0.044 and [`SHADOW_LIFT_RANGE`] with it: the void's "black is brown
+/// rather than plum." The brown is what is left of
 /// the wheel's wide bloom wing after round 4 cut it, and it is warm; this term is the only violet in
 /// the void, so it has to be the larger of the two for the void to read plum. 0.044 in this tint is
 /// `(0.024, 0.011, 0.044)` linear, against the wing's contribution of about 0.02 in warm grey at the
@@ -893,44 +702,15 @@ pub const SHADOW_LIFT_TINT: [f32; 3] = [0.55, 0.24, 1.0];
 /// unlifted, which is the "brown rather than plum" the round-5 verdict found.
 pub const SHADOW_LIFT_RANGE: f32 = 0.115;
 
-/// Cone tints for the fixtures left of the frame centre, cycled by fixture index. Linear RGB.
-///
-/// From `docs/look_target.md`, "Light colour, left versus right": the left cones are
-/// lavender-magenta except for one cyan-blue. The scene's own light table gives every fixture
-/// the same violet, and where the two disagree the reference wins.
-///
-/// Round 3 pushed all four toward full chroma, which is the other half of the [`BEAM_STRENGTH`] cut:
-/// the round asked for the per-cone strength cut and "the loss put back into the tint's chroma, so
-/// the amber reads amber and the cyan cyan at the cone's brightest third". Each tint now has one
-/// channel at 1.0 and its weakest channel below a fifth of that, where before the weakest was around
-/// a third — the difference between a lavender and a grey-lavender once the additive term is summed
-/// through the shell twice over.
-/// Round 5 deepened all four again, as the other half of [`BEAM_HEAD_STRENGTH_SCALE`]'s cut: every
-/// weakest channel is now under a tenth of the strongest, where round 3 left them at a fifth. A cone is
-/// additive and is summed through its shell twice, so its weakest channel is the one that decides
-/// whether the cone reads as a hue or as a pale wash, and it has to be this low to survive that.
-pub const BEAM_TINTS_LEFT: [[f32; 3]; 4] = [
-    [0.52, 0.09, 1.0],  // lavender, the scene's own beam violet pushed to full chroma
-    [1.0, 0.06, 0.55],  // magenta
-    [0.52, 0.09, 1.0],  // lavender
-    [0.05, 0.46, 1.0],  // the one cyan-blue
-];
-
-/// Cone tints for the fixtures right of the frame centre, cycled by fixture index. Linear RGB.
-///
-/// Two amber-gold, two lavender-magenta, one or two cyan. The amber has no source anywhere in
-/// `wheel_stage.blend` — it is the reference's warm accent in the upper right, and this is
-/// where it comes from.
-///
-/// The order matters more than it looks, because only one right-hand truss cone is ever in shot:
-/// see the module docs on how many cones this camera can see. `MH_02` takes index 2, so index 2
-/// is amber.
-pub const BEAM_TINTS_RIGHT: [[f32; 3]; 4] = [
-    [1.0, 0.46, 0.03],  // amber-gold: `Beam_R`, and `MH_04`
-    [0.52, 0.09, 1.0],  // lavender
-    [1.0, 0.46, 0.03],  // amber-gold: `MH_02`, the one right-hand truss cone the frame shows
-    [0.03, 0.66, 1.0],  // cyan
-];
+// `BEAM_TINTS_LEFT` and `BEAM_TINTS_RIGHT` used to sit here: four hand-graded tints per side,
+// cycled by fixture index and keyed off which side of the frame centre a cone's apex fell on.
+// The cleanup pass removed them (`docs/agent_plan.md` §"Cleanup pass"): keying a cone's hue off
+// the sign of `apex.x` is per-side differentiation invented from the reference image, the same
+// hack the pass took out of `src/screen.rs`'s per-side sky grade. A cone's colour now comes
+// straight off the scene data instead — the manifest's own light for `Beam_L` / `Beam_R`, and
+// `MAT_Lens_Glow` for every truss fixture — in [`beam_specs`] and [`par_beam_specs`]. `Beam_L`
+// and `Beam_R` carry the identical colour `(0.72, 0.36, 1.0)` in `assets/scene.json`, so the two
+// spot cones are now the same hue; that is the trade the author chose in ending look-dev.
 
 // ======================= end of the look-dev tunables =======================
 
@@ -963,21 +743,19 @@ pub const COMPOSITE_BLOOM_SHADER_ID: u16 = 0x0A04;
 pub const BEAM_SHADER_ID: u16 = 0x0A05;
 /// Shader id of the floor reflection pass.
 pub const REFLECTION_SHADER_ID: u16 = 0x0A06;
-/// Shader id of the anamorphic streak pass.
-pub const FLARE_SHADER_ID: u16 = 0x0A07;
 
 /// Which stages of the chain run. Each one is independently switchable at run time; the
 /// constants above are what each stage is worth when it is on.
+///
+/// Five fields, and they are the five stages the chain has. Nothing else is switchable because
+/// nothing else is there.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Stages {
-    /// Bright pass, blur and additive composite. Also gates the anamorphic streaks, which are
-    /// drawn from their own bright pass but composited alongside the bloom.
+    /// Bright pass, the two blur rounds and the additive composite.
     pub bloom: bool,
     /// The floor reflection. Needs the scene depth, so it only runs inside
     /// [`PostFx::render`]; [`PostFx::apply`] has a colour texture and nothing else.
     pub reflection: bool,
-    /// The deterministic sparkle dust in the composite pass.
-    pub sparkles: bool,
     /// The tone curve in the composite pass. With this off the composite still encodes sRGB,
     /// because the target expects sRGB either way; only the curve is skipped.
     pub tone_map: bool,
@@ -994,7 +772,6 @@ impl Default for Stages {
         Stages {
             bloom: true,
             reflection: true,
-            sparkles: true,
             tone_map: true,
             vignette: true,
             beams: true,
@@ -1034,21 +811,18 @@ pub struct PostFx {
     hdr: Texture2D,
     /// The scene plus its floor reflection, at full resolution. A second target because the
     /// reflection pass reads the whole frame to write one pixel and cannot write into what it is
-    /// reading. Everything downstream — bright pass, streaks, composite — reads this one, so the
+    /// reading. Everything downstream — bright pass, blurs, composite — reads this one, so the
     /// reflection blooms and tone-maps exactly like the geometry that cast it.
     mirrored: Texture2D,
     /// Depth for the scene pass. The reflection pass needs it to tell floor from not-floor.
     depth: DepthTexture2D,
-    /// Half-res bloom target A. The bright pass writes it and the last blur ends in it.
+    /// Half-res bloom target A. The bright pass writes it and the tight blur round ends in it.
     bloom_a: Texture2D,
-    /// Half-res bloom target B, the other half of the ping-pong. Also the streak pass's own
-    /// bright pass, once the bloom is finished with it.
+    /// Half-res bloom target B, the other half of the ping-pong.
     bloom_b: Texture2D,
     /// Half-res target the *wide* blur round ends in, so the tight round survives in
     /// `bloom_a` and the composite can weight the two halo widths apart.
     bloom_wide: Texture2D,
-    /// Half-res anamorphic streak target.
-    flare: Texture2D,
     /// The colour the frame is cleared to, linear RGBA, from the manifest's world background.
     clear_color: [f32; 4],
     /// The beam cones, one per fixture that resolved.
@@ -1106,9 +880,7 @@ impl PostFx {
 
     /// Allocates the chain, taking the moving-head transforms off an already loaded [`Stage`].
     /// Identical to [`PostFx::new`] except that it does not re-read the GLB.
-    // Nothing calls this yet: `src/main.rs` belongs to agent L, who wires it. In a binary
-    // crate `pub` does not count as a use, hence the allow.
-    #[allow(dead_code)]
+    // `src/main.rs`'s viewer calls this, so it needs no `#[allow(dead_code)]`.
     pub fn new_with_stage(
         context: &Context,
         manifest: &Manifest,
@@ -1189,7 +961,6 @@ impl PostFx {
             bloom_a: hdr_texture(context, bw, bh),
             bloom_b: hdr_texture(context, bw, bh),
             bloom_wide: hdr_texture(context, bw, bh),
-            flare: hdr_texture(context, bw, bh),
             clear_color: [background.x, background.y, background.z, 1.0],
             beams,
             stages: Stages::default(),
@@ -1215,7 +986,6 @@ impl PostFx {
         self.bloom_a = hdr_texture(context, bw, bh);
         self.bloom_b = hdr_texture(context, bw, bh);
         self.bloom_wide = hdr_texture(context, bw, bh);
-        self.flare = hdr_texture(context, bw, bh);
     }
 
     /// Size the chain is currently allocated for.
@@ -1345,14 +1115,6 @@ impl PostFx {
             bloom_strength: self.bloom_strength,
             bloom_wide_strength: self.bloom_wide_strength,
             bloom_tint: Vec3::from(BLOOM_TINT),
-            flare_strength: FLARE_STRENGTH,
-            flare_tint: Vec3::from(FLARE_TINT),
-            sparkle_strength: if self.stages.sparkles {
-                SPARKLE_STRENGTH
-            } else {
-                0.0
-            },
-            aspect: self.width as f32 / self.height.max(1) as f32,
             vignette_strength: if self.stages.vignette {
                 self.vignette_strength
             } else {
@@ -1383,10 +1145,9 @@ impl PostFx {
         Ok(())
     }
 
-    /// Bright pass plus the four blur passes, then the streak pass off its own brighter bright
-    /// pass. Returns the three textures the composite adds back: the tight halo, the wide wing
-    /// and the streaks.
-    fn bloom(&self, color: &Texture2D) -> (&Texture2D, &Texture2D, &Texture2D) {
+    /// Bright pass plus the four blur passes. Returns the two textures the composite adds back:
+    /// the tight halo and the wide wing.
+    fn bloom(&self, color: &Texture2D) -> (&Texture2D, &Texture2D) {
         let (bw, bh) = (self.bloom_a.width(), self.bloom_a.height());
         let half = PassViewer::intermediate(bw, bh);
 
@@ -1400,8 +1161,8 @@ impl PostFx {
         // magnified 2x and offset to the top right. That is the "cream-white band about 240 px
         // wide and 640 px long" the round-1 verdict blamed on the beam cones: a doubled, blurred
         // copy of the wheel's own bulb ring lying across the upper right of the frame, complete
-        // with the rim's bulb dashes visible in it. Verified by rendering with the bloom and the
-        // streaks at zero strength, which removes the band while leaving the cones in place.
+        // with the rim's bulb dashes visible in it. Verified by rendering with the bloom at zero
+        // strength, which removes the band while leaving the cones in place.
         //
         // The `texel` uniform is a different thing and stays full-res: it is the spacing of the
         // 4-tap box the bright pass averages over, in the *source* texture.
@@ -1455,36 +1216,7 @@ impl PostFx {
             );
         }
 
-        // The streaks, off a second and much higher bright pass: only a lamp throws a flare, and
-        // a streak drawn off the bloom's own threshold would smear the LED wall's cloud tops
-        // across the frame. `bloom_b` is scratch again now that the blur loop has ended in A.
-        let lamps = BrightPassEffect {
-            threshold: FLARE_THRESHOLD,
-            knee: BLOOM_KNEE,
-            texel: texel_size(self.width, self.height),
-        };
-        self.bloom_b.as_color_target(None).apply_screen_effect(
-            &lamps,
-            &half,
-            &[],
-            Some(ColorTexture::Single(color)),
-            None,
-        );
-        let streak = FlareEffect {
-            spread: FLARE_SPREAD,
-            aspect: FLARE_ASPECT,
-            spike: FLARE_SPIKE,
-            texel,
-        };
-        self.flare.as_color_target(None).apply_screen_effect(
-            &streak,
-            &half,
-            &[],
-            Some(ColorTexture::Single(&self.bloom_b)),
-            None,
-        );
-
-        (&self.bloom_a, &self.bloom_wide, &self.flare)
+        (&self.bloom_a, &self.bloom_wide)
     }
 }
 
@@ -1511,20 +1243,22 @@ pub fn beam_specs(
             axis: manifest.to_scene_dir(light.direction()),
             length: BEAM_SPOT_LENGTH,
             half_angle: light.cone_outer_half_angle_rad,
-            // Not the fixture's own colour any more. The light table gives both spots the same
-            // violet `(0.72, 0.36, 1)`, and `docs/look_target.md` opens by saying the reference
-            // shows two warm amber-gold cones in the upper right instead, that the amber has no
-            // source in the scene, and that where the two disagree about light the reference
-            // wins. These are the two widest cones in the frame, so they are what carries the
-            // side split: index 0 of each table, lavender-magenta left and amber-gold right.
-            color: side_tint(apex, 0),
+            // The fixture's own colour, straight off the manifest. `Beam_L` and `Beam_R` carry
+            // the identical violet `(0.72, 0.36, 1)` (`assets/scene.json`), so the two cones come
+            // out the same hue now; splitting them by the sign of `apex.x` was the per-side hack
+            // the cleanup pass removed. See the note above [`BEAM_SPOT_STRENGTH_SCALE`].
+            color: light.color,
         });
     }
 
     // The truss cones. Their half-angle is the scene's own spot cone: `docs/look_target.md`
     // measured 8 to 10 degrees off the reference and noted that it agrees with Blender's
     // spot_size of 0.38397 rad, i.e. a half-angle of 0.19199.
-    let stage_centre = manifest.wheel.pivot();
+    let stage_centre = manifest.to_scene_point(manifest.wheel.pivot());
+    // Every truss fixture's own colour: `MH_nn_Lens` and `Truss_Par_Lens` both carry
+    // `MAT_Lens_Glow` in `assets/scene.json`, so this is read once and shared rather than
+    // keyed off which fixture or which side of the frame a cone belongs to.
+    let truss_color = truss_fixture_color(manifest);
     let head_half_angle = manifest
         .lights
         .iter()
@@ -1560,10 +1294,27 @@ pub fn beam_specs(
             axis,
             length: BEAM_HEAD_LENGTH,
             half_angle: head_half_angle,
-            color: side_tint(apex, i),
+            color: truss_color,
         });
     }
     specs
+}
+
+/// Colour every truss fixture cone takes: `MH_nn_Lens` and `Truss_Par_Lens` both carry
+/// `MAT_Lens_Glow` in `assets/scene.json`. Falls back to white with a warning if the manifest
+/// ever loses that material, rather than inventing a hue.
+fn truss_fixture_color(manifest: &Manifest) -> [f32; 3] {
+    const TRUSS_FIXTURE_MATERIAL: &str = "MAT_Lens_Glow";
+    manifest
+        .material(TRUSS_FIXTURE_MATERIAL)
+        .map(|m| m.base_color)
+        .unwrap_or_else(|| {
+            eprintln!(
+                "postfx: assets/scene.json has no material {TRUSS_FIXTURE_MATERIAL:?}; \
+                 truss cones fall back to white"
+            );
+            [1.0, 1.0, 1.0]
+        })
 }
 
 /// Whether a resolved cone belongs to one of the two Blender SPOT lamps rather than to a truss
@@ -1677,6 +1428,9 @@ pub fn par_beam_specs(manifest: &Manifest, positions: &[Vec3]) -> Vec<BeamSpec> 
         .find(|l| l.cone_outer_half_angle_rad > 0.0)
         .map(|l| l.cone_outer_half_angle_rad)
         .unwrap_or(BEAM_HEAD_HALF_ANGLE_FALLBACK);
+    // `Truss_Par_Lens` carries `MAT_Lens_Glow`, same as every `MH_nn_Lens`; see
+    // `truss_fixture_color`.
+    let color = truss_fixture_color(manifest);
     par_lamp_apexes(positions)
         .into_iter()
         .enumerate()
@@ -1699,7 +1453,7 @@ pub fn par_beam_specs(manifest: &Manifest, positions: &[Vec3]) -> Vec<BeamSpec> 
                 axis: inward.normalize(),
                 length: PAR_BEAM_LENGTH,
                 half_angle,
-                color: side_tint(apex, i as u32),
+                color,
             }
         })
         .collect()
@@ -1761,22 +1515,6 @@ pub fn swing_into_arena(apex: Vec3, aim: Vec3, target: Vec3, up: Vec3, lean_scal
         return -up;
     }
     (bearing.normalize() * lean.sin() - up * lean.cos()).normalize()
-}
-
-/// Cone tint for one fixture, by which side of the frame centre it hangs on.
-///
-/// The camera looks down -Z with +Y up, so +X is camera-right (`assets/scene.json`,
-/// `camera.forward` is `(0, 0.276, -0.961)`). The reference's two sides do not match and the
-/// mismatch is load-bearing: magenta and violet on the left, amber-gold plus cyan on the
-/// right (`docs/look_target.md`, "Light colour, left versus right"). Both the truss heads and
-/// the two spots go through this, so nothing in the frame's cone set is cream.
-fn side_tint(apex: Vec3, index: u32) -> [f32; 3] {
-    let table = if apex.x < 0.0 {
-        BEAM_TINTS_LEFT
-    } else {
-        BEAM_TINTS_RIGHT
-    };
-    table[(index as usize) % table.len()]
 }
 
 /// Local-to-world transform that puts the unit cone from [`cone_mesh`] on a [`BeamSpec`].
@@ -2293,141 +2031,16 @@ impl Effect for ReflectionEffect {
     }
 }
 
-/// The anamorphic streak: a cross-shaped smear of the lamps, much wider than tall.
-///
-/// One pass rather than a separable pair, because the kernel is deliberately not separable —
-/// the long axis reaches [`FLARE_SPREAD`] and the short one a quarter of that, and a real
-/// anamorphic flare is a cross and not a Gaussian blob.
-struct FlareEffect {
-    /// Half-reach of the long axis, in texels of the source.
-    spread: f32,
-    /// Short axis half-reach as a fraction of the long one.
-    aspect: f32,
-    /// Half-reach of the crest's vertical spike and how much of it is added, [`FLARE_SPIKE`].
-    spike: (f32, f32),
-    /// Texel size of the source texture.
-    texel: Vec2,
-}
-
-impl Effect for FlareEffect {
-    fn id(
-        &self,
-        _color_texture: Option<ColorTexture>,
-        _depth_texture: Option<DepthTexture>,
-    ) -> EffectMaterialId {
-        EffectMaterialId(FLARE_SHADER_ID)
-    }
-
-    fn fragment_shader_source(
-        &self,
-        _lights: &[&dyn Light],
-        color_texture: Option<ColorTexture>,
-        _depth_texture: Option<DepthTexture>,
-    ) -> String {
-        format!(
-            "{}
-            in vec2 uvs;
-            uniform vec2 texel;
-            uniform float spread;
-            uniform float aspect;
-            uniform vec2 spike;
-            layout (location = 0) out vec4 outColor;
-
-            void main() {{
-                // `spread` is a half-reach in texels and TAPS_HALF is at least as large, so the
-                // stride is at or below one texel and every texel between the taps is read. That is
-                // the whole difference from round 4, where the stride was 3.75 texels and the pass
-                // printed a comb of displaced copies of every lamp instead of a smear — the dash
-                // lattice the round-4 verdict led with. See FLARE_SPREAD.
-                //
-                // The weight is a smoothstep of the distance rather than a triangle, so the streak
-                // has no kink at its core and no visible end: `docs/look_target.md` region 5 wants a
-                // soft magenta smear.
-                float strideX = spread * texel.x / float(TAPS_HALF);
-                float strideY = spread * aspect * texel.y / float(TAPS_HALF);
-                vec3 horizontal = sample_color(uvs).rgb;
-                vec3 vertical = horizontal;
-                float weight = 1.0;
-                for (int i = 1; i <= TAPS_HALF; i++) {{
-                    float t = float(i) / float(TAPS_HALF);
-                    float w = smoothstep(1.0, 0.0, t);
-                    vec2 dx = vec2(float(i) * strideX, 0.0);
-                    vec2 dy = vec2(0.0, float(i) * strideY);
-                    horizontal += (sample_color(uvs + dx).rgb + sample_color(uvs - dx).rgb) * w;
-                    vertical += (sample_color(uvs + dy).rgb + sample_color(uvs - dy).rgb) * w;
-                    weight += 2.0 * w;
-                }}
-                // The crest's spike: the same smear run up the frame, but taken only from pixels
-                // whose blue exceeds their red. `MAT_Crystal` is the one thing in this frame that
-                // clears the flare threshold in magenta-violet; the lens glows and the gold
-                // speculars are all warm and contribute nothing here. So this is a hue test over
-                // the frame, not an exception carved out for one object. See FLARE_SPIKE.
-                float strideSpike = spike.x * texel.y / float(SPIKE_TAPS_HALF);
-                vec3 spikeSum = vec3(0.0);
-                float spikeWeight = 0.0;
-                for (int i = -SPIKE_TAPS_HALF; i <= SPIKE_TAPS_HALF; i++) {{
-                    float t = float(i) / float(SPIKE_TAPS_HALF);
-                    float w = smoothstep(1.0, 0.0, abs(t));
-                    vec3 s = sample_color(uvs + vec2(0.0, float(i) * strideSpike)).rgb;
-                    spikeSum += s * step(s.r * 1.15, s.b) * w;
-                    spikeWeight += w;
-                }}
-
-                // The vertical arm is weighted well down, so the streak reads as a horizontal smear
-                // rather than a four-pointed star. At 0.5 every gold specular in the frame grew a
-                // cross, which nothing in the reference has: its flares are soft magenta blobs 40
-                // to 60 px wide and three to five times wider than tall.
-                vec3 streak = (horizontal + vertical * 0.18) / max(weight * 1.18, 1.0e-4);
-                streak += spikeSum * (spike.y / max(spikeWeight, 1.0e-4));
-                outColor = vec4(streak, 1.0);
-            }}",
-            color_texture
-                .expect("the streak pass needs a color texture")
-                .fragment_shader_source()
-        )
-        // Longest name first: `TAPS_HALF` is a substring of `SPIKE_TAPS_HALF`.
-        .replace("SPIKE_TAPS_HALF", &FLARE_SPIKE_TAPS_HALF.max(1).to_string())
-        .replace("TAPS_HALF", &FLARE_TAPS_HALF.max(1).to_string())
-    }
-
-    fn use_uniforms(
-        &self,
-        program: &Program,
-        _viewer: &dyn Viewer,
-        _lights: &[&dyn Light],
-        color_texture: Option<ColorTexture>,
-        _depth_texture: Option<DepthTexture>,
-    ) {
-        color_texture
-            .expect("the streak pass needs a color texture")
-            .use_uniforms(program);
-        program.use_uniform("texel", self.texel);
-        program.use_uniform("spread", self.spread);
-        program.use_uniform("aspect", self.aspect);
-        program.use_uniform("spike", vec2(self.spike.0, self.spike.1));
-    }
-
-    fn render_states(&self) -> RenderStates {
-        screen_pass_states()
-    }
-}
-
-/// Exposure, additive bloom, vignette, tone curve and sRGB encode, in that order.
+/// Exposure, additive bloom, the shadow toe, the vignette, the tone curve and the sRGB encode,
+/// in that order.
 struct CompositeEffect<'a> {
     exposure: f32,
-    /// The tight halo, the wide wing and the anamorphic streaks, in that order. `None` switches
-    /// all three out of the shader entirely.
-    bloom: Option<(&'a Texture2D, &'a Texture2D, &'a Texture2D)>,
+    /// The tight halo and the wide wing, in that order. `None` switches both out of the shader
+    /// entirely.
+    bloom: Option<(&'a Texture2D, &'a Texture2D)>,
     bloom_strength: f32,
     bloom_wide_strength: f32,
     bloom_tint: Vec3,
-    flare_strength: f32,
-    flare_tint: Vec3,
-    /// 0.0 switches the sparkles off. They are in this pass rather than one of their own
-    /// because they are a screen-space function of the uv and nothing else.
-    sparkle_strength: f32,
-    /// Frame aspect, so a sparkle cell is square rather than stretched with the frame.
-    aspect: f32,
     vignette_strength: f32,
     vignette_inner: f32,
     vignette_outer: f32,
@@ -2459,14 +2072,6 @@ impl Effect for CompositeEffect<'_> {
             uniform float vignetteStrength;
             uniform float vignetteInner;
             uniform float vignetteOuter;
-            uniform float sparkleStrength;
-            uniform float aspect;
-            uniform vec4 sparkleCells;
-            uniform vec4 sparkleShape;
-            uniform vec2 sparkleBand;
-            uniform vec2 sparkleLampWeight;
-            uniform vec3 sparkleWarm;
-            uniform vec3 sparkleCool;
             uniform vec3 shadowLift;
             uniform float shadowLiftRange;
             #ifdef USE_BLOOM
@@ -2475,62 +2080,15 @@ impl Effect for CompositeEffect<'_> {
             uniform float bloomStrength;
             uniform float bloomWideStrength;
             uniform vec3 bloomTint;
-            uniform sampler2D flareMap;
-            uniform float flareStrength;
-            uniform vec3 flareTint;
             #endif
             layout (location = 0) out vec4 outColor;
-
-            // Hash of a lattice point, in 0..1. Deterministic in the uv alone: no wall-clock
-            // time anywhere, so `--shot` writes the same sparkles every run.
-            float sparkle_hash(vec2 p) {{
-                vec3 q = fract(vec3(p.x, p.y, p.x) * 0.1031);
-                q += dot(q, q.yzx + 33.33);
-                return fract((q.x + q.y) * q.z);
-            }}
-
-            // One layer of glitter: at most one speck per cell, jittered inside it so the field
-            // does not read as a grid, and coloured warm-white or magenta by its own hash.
-            vec3 sparkle_layer(vec2 uv, float cells, float rarity, float size, float seed) {{
-                vec2 grid = vec2(uv.x * aspect, uv.y) * cells;
-                vec2 cell = floor(grid);
-                vec2 f = fract(grid);
-                float lit = sparkle_hash(cell + seed);
-                if (lit < rarity) {{
-                    return vec3(0.0);
-                }}
-                vec2 jitter = vec2(sparkle_hash(cell + seed + 3.1), sparkle_hash(cell + seed + 7.7));
-                float dot_ = 1.0 - smoothstep(0.0, size, length(f - jitter));
-                float magnitude = 0.35 + 0.65 * sparkle_hash(cell + seed + 13.3);
-                vec3 tint = sparkle_hash(cell + seed + 21.7) > 0.55 ? sparkleWarm : sparkleCool;
-                return tint * (dot_ * dot_ * magnitude);
-            }}
 
             void main() {{
                 vec3 c = sample_color(uvs).rgb * exposure;
             #ifdef USE_BLOOM
                 c += texture(bloomMap, uvs).rgb * bloomStrength * bloomTint;
                 c += texture(bloomWideMap, uvs).rgb * bloomWideStrength * bloomTint;
-                c += texture(flareMap, uvs).rgb * flareStrength * flareTint;
             #endif
-                // Glitter in the air, over the upper half of the frame only. Added before the
-                // tone curve, so a speck rolls up the same shoulder every other highlight does
-                // and clips warm rather than to neutral white.
-                if (sparkleStrength > 0.0) {{
-                    float band = smoothstep(sparkleBand.x, sparkleBand.y, uvs.y);
-                    // Denser near the fixtures, which is what the flare map already knows: it holds a
-                    // smear of every pixel over FLARE_THRESHOLD, and in this frame that is the lamps.
-                    // It is also what keeps the glitter off the LED wall, which never clears it.
-                    float lamps = 0.0;
-            #ifdef USE_BLOOM
-                    lamps = dot(texture(flareMap, uvs).rgb, vec3(0.2126, 0.7152, 0.0722));
-            #endif
-                    float density = sparkleLampWeight.x
-                        + sparkleLampWeight.y * (1.0 - exp(-max(lamps, 0.0) * 6.0));
-                    vec3 dust = sparkle_layer(uvs, sparkleCells.x, sparkleShape.x, sparkleShape.z, 1.7)
-                        + sparkle_layer(uvs, sparkleCells.y, sparkleShape.y, sparkleShape.w, 41.3);
-                    c += dust * sparkleStrength * band * density;
-                }}
                 // The toe. A plum-violet radiance added to the darkest pixels only, weighted out
                 // by the pixel's own luminance, so the ceiling void reads as dark violet rather
                 // than as a crushed neutral black and nothing above the void is touched.
@@ -2576,43 +2134,16 @@ impl Effect for CompositeEffect<'_> {
         program.use_uniform("vignetteStrength", self.vignette_strength);
         program.use_uniform("vignetteInner", self.vignette_inner);
         program.use_uniform("vignetteOuter", self.vignette_outer);
-        program.use_uniform("sparkleStrength", self.sparkle_strength);
-        program.use_uniform("aspect", self.aspect);
-        program.use_uniform(
-            "sparkleCells",
-            vec4(SPARKLE_CELLS.0, SPARKLE_CELLS.1, 0.0, 0.0),
-        );
-        // Packed as one vec4 so the shader keeps one uniform per concept: the two rarities then
-        // the two sizes.
-        program.use_uniform(
-            "sparkleShape",
-            vec4(
-                SPARKLE_RARITY.0,
-                SPARKLE_RARITY.1,
-                SPARKLE_SIZE.0,
-                SPARKLE_SIZE.1,
-            ),
-        );
-        program.use_uniform("sparkleBand", vec2(SPARKLE_BAND.0, SPARKLE_BAND.1));
-        program.use_uniform(
-            "sparkleLampWeight",
-            vec2(SPARKLE_LAMP_WEIGHT.0, SPARKLE_LAMP_WEIGHT.1),
-        );
-        program.use_uniform("sparkleWarm", Vec3::from(SPARKLE_TINTS.0));
-        program.use_uniform("sparkleCool", Vec3::from(SPARKLE_TINTS.1));
         program.use_uniform("shadowLift", Vec3::from(SHADOW_LIFT_TINT) * SHADOW_LIFT);
         program.use_uniform("shadowLiftRange", SHADOW_LIFT_RANGE.max(1.0e-4));
         // Guarded, not conditional: `use_uniform` panics on a uniform the shader does not
         // declare, and without the bloom these five are not in the source at all.
-        if let Some((bloom, wide, flare)) = self.bloom {
+        if let Some((bloom, wide)) = self.bloom {
             program.use_texture("bloomMap", bloom);
             program.use_texture("bloomWideMap", wide);
             program.use_uniform("bloomStrength", self.bloom_strength);
             program.use_uniform("bloomWideStrength", self.bloom_wide_strength);
             program.use_uniform("bloomTint", self.bloom_tint);
-            program.use_texture("flareMap", flare);
-            program.use_uniform("flareStrength", self.flare_strength);
-            program.use_uniform("flareTint", self.flare_tint);
         }
     }
 
@@ -2819,14 +2350,19 @@ mod tests {
 
         let left = specs.iter().find(|s| s.name == "Beam_L").expect("Beam_L");
         let light = manifest.light("Beam_L").expect("Beam_L in the manifest");
-        assert_eq!(left.apex, light.position());
-        assert_eq!(left.axis, light.direction());
-        // The colour is the *side* tint, not the lamp's own violet: see `side_tint` and
-        // `docs/look_target.md` on the reference's two amber cones in the upper right.
-        assert_eq!(left.color, BEAM_TINTS_LEFT[0]);
+        // `to_scene_point` / `to_scene_dir` are what `beam_specs` actually applies; asserting the
+        // raw manifest value only reads as correct today because that map is currently the
+        // identity.
+        assert_eq!(left.apex, manifest.to_scene_point(light.position()));
+        assert_eq!(left.axis, manifest.to_scene_dir(light.direction()));
+        // The colour is the fixture's own, straight off the manifest, not a per-side tint.
+        assert_eq!(left.color, light.color);
         let right = specs.iter().find(|s| s.name == "Beam_R").expect("Beam_R");
-        assert_eq!(right.color, BEAM_TINTS_RIGHT[0]);
-        assert!(right.color[0] > right.color[2], "Beam_R must be the warm one");
+        let right_light = manifest.light("Beam_R").expect("Beam_R in the manifest");
+        assert_eq!(right.color, right_light.color);
+        // `Beam_L` and `Beam_R` carry the identical violet in `assets/scene.json`, so the two
+        // cones are the same hue now.
+        assert_eq!(left.color, right.color);
         // Blender spot_size 0.38397 is the full angle; the cone takes the half angle.
         assert!((left.half_angle - 0.191_986).abs() < 1.0e-4, "{}", left.half_angle);
         assert!((left.half_angle - light.spot_size * 0.5).abs() < 1.0e-6);
@@ -3034,14 +2570,29 @@ mod tests {
         );
     }
 
-    /// The tint palette follows the reference's left/right split.
+    /// Every truss fixture's cone takes its colour from `MAT_Lens_Glow`, not from which side of
+    /// the frame it hangs on.
     #[test]
-    fn tints_split_left_and_right() {
-        assert_eq!(side_tint(vec3(-9.8, 6.3, 2.1), 2), BEAM_TINTS_LEFT[2]);
-        assert_eq!(side_tint(vec3(9.8, 6.3, 2.1), 2), BEAM_TINTS_RIGHT[2]);
-        // Cycling never runs off the end.
-        for i in 0..MOVING_HEAD_COUNT {
-            let _ = side_tint(vec3(1.0, 0.0, 0.0), i);
+    fn truss_cones_take_their_colour_from_the_manifest() {
+        let manifest = manifest();
+        let want = manifest
+            .material("MAT_Lens_Glow")
+            .expect("MAT_Lens_Glow")
+            .base_color;
+        assert_eq!(truss_fixture_color(&manifest), want);
+
+        let nodes = nodes();
+        let heads: Vec<BeamSpec> = beam_specs(&manifest, |n| nodes.get(n).copied())
+            .into_iter()
+            .filter(|s| s.name.starts_with("MH_"))
+            .collect();
+        assert!(!heads.is_empty(), "no MH_ cones resolved");
+        for head in &heads {
+            assert_eq!(
+                head.color, want,
+                "{} did not take MAT_Lens_Glow's colour",
+                head.name
+            );
         }
     }
 

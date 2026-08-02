@@ -32,6 +32,26 @@
 //! adding or editing a note never breaks the load. There is no `Default` impl on purpose —
 //! `assets/scene.json` is the single source of these numbers, and a fallback copy of them
 //! in Rust would silently diverge from the export.
+//!
+//! A few keys the manifest records purely for cross-checking are also skipped, for the same
+//! reason a `Default` impl is: a field nothing reads is dead weight. `camera.blender.angle_y_rad`,
+//! `wheel.blender.rotation_euler` and `flapper.blender.local_min` / `local_max` are in the file
+//! and not in these structs.
+//!
+//! # The manifest is the single source of the material table
+//!
+//! `assets/scene.json` was regenerated in the cleanup pass of 2026-07-30 from two ground
+//! truths and nothing else: a read-only `blender --background` run over `wheel_stage.blend`,
+//! and a parse of `assets/wheel_stage.glb`. No look-dev value survives in it. Every field of
+//! [`MaterialSpec`] is what the .blend holds, so a constant in Rust that duplicates one of
+//! them is a defect even when the two agree — they will drift.
+//!
+//! The `glb_*` fields of [`MaterialSpec`] say what glTF transport actually did to each value.
+//! `glb_base_color_factor`, `glb_metallic` and `glb_roughness` equal the .blend's own
+//! `base_color`, `metallic` and `roughness` for all 19 materials, so transport loses none of
+//! the three and no per-node override of them can be justified as a repair. What transport
+//! does lose is emission: the exporter normalises the emissive factor to a maximum of 1 and
+//! puts the rest into `KHR_materials_emissive_strength`, which `three-d-asset` 0.10 ignores.
 
 use serde::{Deserialize, Serialize};
 use std::path::Path;
@@ -98,11 +118,11 @@ pub struct CameraSpec {
     pub up: [f32; 3],
     /// View direction, glTF frame.
     pub forward: [f32; 3],
-    /// `|target - position|` = 7.99468291 m. The orbit radius of the hero view.
+    /// `|target - position|` = 7.994683 m. The orbit radius of the hero view.
     pub orbit_radius: f32,
     pub fov_y_deg: f32,
-    /// Vertical field of view in radians at [`RenderSpec::aspect`]. 0.86305638, which is
-    /// also the `yfov` the exporter wrote into the GLB.
+    /// Vertical field of view in radians at [`RenderSpec::aspect`]. 0.8630564, which is also
+    /// the `yfov` the exporter wrote into the GLB, recorded as `glb_yfov_rad`.
     pub fov_y_rad: f32,
     pub z_near: f32,
     pub z_far: f32,
@@ -111,9 +131,14 @@ pub struct CameraSpec {
     /// wrong for this fit; see the manifest's own note.
     pub sensor_fit: String,
     pub sensor_width_mm: f32,
-    /// Horizontal field of view in radians, 1.37145902. Hold this, not `fov_y_rad`, to keep
+    /// Horizontal field of view in radians, 1.371459. Hold this, not `fov_y_rad`, to keep
     /// the framing when the window aspect changes.
     pub fov_x_rad: f32,
+    /// The `yfov` the exporter wrote into the GLB. Equal to `fov_y_rad`; recorded so a test
+    /// can prove the derivation and the export agree.
+    pub glb_yfov_rad: f32,
+    /// The `aspectRatio` the exporter wrote into the GLB. Equal to [`RenderSpec::aspect`].
+    pub glb_aspect_ratio: f32,
     /// The Blender Z-up source values, for cross-checking only.
     pub blender: CameraBlender,
 }
@@ -172,6 +197,8 @@ pub struct LightSpec {
     pub color: [f32; 3],
     /// Full edge length of a SQUARE AREA light, in metres. Zero for SPOT.
     pub size: f32,
+    /// Blender area shape, `SQUARE` on all four AREA lights. Empty for SPOT.
+    pub shape: String,
     /// Blender `spot_size`, the FULL cone angle, radians. Zero for AREA.
     #[serde(rename = "spot_size_rad")]
     pub spot_size: f32,
@@ -181,6 +208,9 @@ pub struct LightSpec {
     pub cone_outer_half_angle_rad: f32,
     /// `outer * (1 - blend)`.
     pub cone_inner_half_angle_rad: f32,
+    /// Blender's own shadow flag, true on all six. Which lights actually get a shadow map is
+    /// `src/lighting.rs`'s decision, because `three-d` takes one map per light.
+    pub casts_shadow: bool,
     /// False for the four AREA lights: `KHR_lights_punctual` has no area light, so the
     /// exporter wrote their nodes without light data.
     pub in_glb: bool,
@@ -217,42 +247,156 @@ pub struct LightBlender {
     pub direction: [f32; 3],
 }
 
-/// One Blender material. Authoritative: the GLB's own values arrive wrong, see
-/// `src/scene.rs`.
+/// One Blender material, exactly as the .blend's Principled BSDF holds it. Authoritative:
+/// nothing in Rust may hold a second copy of any of these numbers.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MaterialSpec {
     pub name: String,
     /// Linear RGB. `PhysicalMaterial::albedo` is sRGB-encoded — encode before assigning.
+    /// On a material whose Base Color is textured this is the socket default *behind* the
+    /// image, so it is the fallback and not the picture. See [`MaterialSpec::is_textured`].
     pub base_color: [f32; 3],
     pub metallic: f32,
     pub roughness: f32,
     /// Below 1.0 only on `MAT_Crystal`.
     pub alpha: f32,
-    /// `OPAQUE` or `BLEND`. `MAT_Crystal` is the only `BLEND`.
+    /// `OPAQUE` or `BLEND`, as the GLB declares it. `MAT_Crystal` is the only `BLEND`.
+    /// Blender 5's `material.blend_method` reads `HASHED` on all 19 and is no signal.
     pub alpha_mode: String,
     pub emission_strength: f32,
-    /// Linear RGB.
+    /// Linear RGB. Also a socket default behind an image when `emission_texture` is set.
     pub emission_color: [f32; 3],
-    /// `emission_color * emission_strength`, linear RGB. This is the value the Blender
-    /// shader emits, and the one to use.
+    /// `emission_color * emission_strength`, linear RGB. The radiance the Blender shader
+    /// emits, and the one to use for a material with no emission texture.
     pub effective_emission: [f32; 3],
+    /// Blender image driving Base Color, empty when the socket holds a flat colour.
+    /// `T_LEDWall_Sky` on `MAT_LED_Screen`, which is the only textured material.
+    pub base_color_texture: String,
+    /// Blender image driving Emission Color, empty when the socket holds a flat colour.
+    pub emission_texture: String,
+    /// The mesh UV layer the texture is addressed through, `UVMap`. Empty when untextured.
+    pub uv_map: String,
+    /// Every object and slot in the .blend that carries this material. Read this instead of
+    /// hardcoding a node name: `MAT_Metal_Polished` carries `Wheel_Hub`, and
+    /// `MAT_LED_Screen` carries `Podium_Riser` as well as `Wall_Screen`.
+    pub used_by: Vec<MaterialUse>,
+    /// RGBA `baseColorFactor` in the GLB. Equal to `base_color` plus `alpha` on every
+    /// untextured material, and `(1, 1, 1, 1)` on the textured one.
+    pub glb_base_color_factor: [f32; 4],
+    /// `metallicFactor` in the GLB. Equal to `metallic` on all 19.
+    pub glb_metallic: f32,
+    /// `roughnessFactor` in the GLB. Equal to `roughness` on all 19.
+    pub glb_roughness: f32,
+    /// `alphaMode` in the GLB, where `alpha_mode` comes from.
+    pub glb_alpha_mode: String,
     /// What the GLB holds. The exporter normalised the factor to a maximum of 1 and put the
     /// rest into `KHR_materials_emissive_strength`, which `three-d-asset` ignores.
     pub glb_emissive_factor: [f32; 3],
     /// The strength that goes with `glb_emissive_factor`.
     pub glb_emissive_strength: f32,
+    /// True when the GLB gives this material a `baseColorTexture`.
+    pub glb_has_base_color_texture: bool,
+    /// True when the GLB gives this material an `emissiveTexture`.
+    pub glb_has_emissive_texture: bool,
+}
+
+/// One object slot that carries a material.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MaterialUse {
+    /// Blender object name, e.g. `Wall_Screen`.
+    pub node: String,
+    /// Material slot index on that object.
+    pub slot: u32,
 }
 
 impl MaterialSpec {
     /// True when the material glows.
     pub fn emits(&self) -> bool {
-        self.effective_emission.iter().any(|c| *c > 0.0)
+        self.emission_strength > 0.0 && self.effective_emission.iter().any(|c| *c > 0.0)
     }
 
     /// True when the material must be blended rather than written opaquely.
     pub fn is_blend(&self) -> bool {
         self.alpha_mode == "BLEND" || self.alpha < 1.0
     }
+
+    /// True when an image, not a flat colour, drives Base Color or Emission Color.
+    /// The shader multiplies the factor by the image, so writing a flat colour over one
+    /// stains the picture.
+    pub fn is_textured(&self) -> bool {
+        !self.base_color_texture.is_empty() || !self.emission_texture.is_empty()
+    }
+
+    /// The radiance that has to reach the frame, linear RGB.
+    ///
+    /// `effective_emission` for an opaque material. A blended one is multiplied by its own
+    /// alpha by `Blend::TRANSPARENCY`, emission included, so `MAT_Crystal` at alpha 0.55
+    /// would otherwise put only 55% of its declared radiance on the frame. Meaningless for a
+    /// material with an emission texture, where the radiance is the image times
+    /// `emission_strength`.
+    pub fn emitted_radiance(&self) -> Vec3 {
+        let e = Vec3::from(self.effective_emission);
+        if self.is_blend() {
+            e / self.alpha.clamp(0.05, 1.0)
+        } else {
+            e
+        }
+    }
+
+    /// True when this material is on that object, whatever the slot.
+    pub fn is_on(&self, node: &str) -> bool {
+        self.used_by.iter().any(|u| u.node == node)
+    }
+}
+
+/// The one image the .blend uses, as the .blend and the GLB both hold it.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TextureSpec {
+    /// Blender image name, `T_LEDWall_Sky`, which is also the GLB image name.
+    pub name: String,
+    /// The source PNG, relative to the monorepo root. Authored by the scene's author; it is
+    /// not in this crate, and the app never reads it — the GLB carries the pixels.
+    pub source_png: String,
+    pub width: u32,
+    pub height: u32,
+    /// Blender colour space, `sRGB`.
+    pub colorspace: String,
+    pub mime_type: String,
+    /// True when the GLB embeds the pixels in its binary chunk, as this one does.
+    pub embedded_in_glb: bool,
+    /// The GLB texture indices that point at this image: `[0, 1]`, one per sampler use.
+    pub glb_texture_indices: Vec<u32>,
+    /// Blender's Image Texture extension, `REPEAT`.
+    pub wrap: String,
+    /// Blender's Image Texture interpolation, `Linear`.
+    pub interpolation: String,
+    /// The UV layer the texture is addressed through, `UVMap`.
+    pub uv_map: String,
+}
+
+/// The LED wall: which node shows the author's sky, and how.
+///
+/// The .blend drives `MAT_LED_Screen`'s Base Color and Emission Color from `T_LEDWall_Sky`
+/// through a UV Map node, and the fixed export carries the image. So the texture is the
+/// primary path: show it as the mesh's own `uv_map` addresses it, with no re-windowing, no
+/// magnification and no per-side grade, because none of that is in the scene.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ScreenSpec {
+    /// The object the sky belongs to, `Wall_Screen`.
+    pub node: String,
+    /// Its material, `MAT_LED_Screen`.
+    pub material: String,
+    /// The image driving it, `T_LEDWall_Sky`.
+    pub texture: String,
+    /// The UV layer that addresses the image, `UVMap`.
+    pub uv_map: String,
+    /// Blender emission strength, 1.5, which is also what the GLB declares.
+    pub emission_strength: f32,
+    /// True when the GLB carries the image, as it now does.
+    pub in_glb: bool,
+    /// Other objects on the same material: `Podium_Riser`. Bind a screen-specific treatment
+    /// by object, never by material name alone, or the podium riser gets painted with sky.
+    pub also_on: Vec<String>,
 }
 
 /// The spinning part of the wheel. Vectors are glTF frame.
@@ -275,11 +419,14 @@ pub struct WheelSpec {
     pub peg_count: u32,
     /// Radius of the peg-body island centres, 2.245 m.
     pub peg_ring_radius: f32,
+    /// Inner radius of a peg body, 2.189 m.
+    pub peg_inner_radius: f32,
     /// Outer radius of a peg body, 2.301 m.
     pub peg_outer_radius: f32,
     pub peg_pitch_deg: f32,
     /// Angle of peg 0, 3.75 deg: the pegs sit on the sector boundaries.
     pub peg_first_angle_deg: f32,
+    /// Radial span of a peg body, `peg_outer_radius - peg_inner_radius`.
     pub peg_stud_size: f32,
     /// Idle spin rate, radians per second. A look-dev choice, not a measurement;
     /// `src/spin.rs` owns it. Renamed from `idle_rate_rad_per_s`.
@@ -326,8 +473,11 @@ pub struct FlapperSpec {
     pub local_translation: [f32; 3],
     /// Deflection axis, glTF frame: the same axis the wheel spins about.
     pub deflection_axis: [f32; 3],
+    /// Hinge-to-tip distance, 1.132 m.
     pub blade_length: f32,
     pub striker_lever_arm: f32,
+    /// Distance from the hinge to `Wheel_Root`, 2.75 m.
+    pub hinge_to_wheel_centre: f32,
     /// The deflection at which the striker tab clears a peg tip, 32.2 deg. An upper bound
     /// on a tick amplitude, not a target.
     pub clearance_deflection_deg: f32,
@@ -361,6 +511,8 @@ pub struct FlapperBlender {
 }
 
 /// One crop rectangle at 1672x941. `x, y` is the top-left corner and y grows downward.
+///
+/// `src/shot.rs` cuts `--crops` from these and holds no copy of them.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CropRect {
     pub name: String,
@@ -368,11 +520,12 @@ pub struct CropRect {
     pub y: u32,
     pub w: u32,
     pub h: u32,
-    /// What the look-dev rounds check in this rectangle.
+    /// What this rectangle is cut out to look at.
     pub checks: String,
 }
 
-/// Counts measured from the GLB. `tools/validate_export.py` asserts them.
+/// Counts measured from the GLB. `tools/validate_export.py` asserts them, and so does
+/// `the_glb_audit_matches_the_file_on_disk` for the byte count.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GlbAudit {
     pub nodes: u32,
@@ -386,9 +539,15 @@ pub struct GlbAudit {
     pub cameras: u32,
     /// 2: only `Beam_L` and `Beam_R` survived as punctual lights.
     pub punctual_lights: u32,
+    /// 1: the embedded `T_LEDWall_Sky` PNG. Zero before the export was fixed.
     pub images: u32,
+    /// 2: `MAT_LED_Screen`'s `baseColorTexture` and `emissiveTexture`, both on that one image.
     pub textures: u32,
+    pub samplers: u32,
     pub animations: u32,
+    /// Size of `assets/wheel_stage.glb` on disk. A test compares it against the real file, so
+    /// a re-export that changes the model fails the suite until this file is regenerated.
+    pub file_bytes: u64,
     pub extensions_used: Vec<String>,
     pub extensions_required: Vec<String>,
 }
@@ -397,8 +556,12 @@ pub struct GlbAudit {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Manifest {
     pub generated_by: String,
+    /// The date the file was last regenerated from the .blend and the GLB.
+    pub generated_on: String,
     pub source_blend: String,
     pub blender_version: String,
+    /// Blender render engine, `BLENDER_EEVEE`.
+    pub render_engine: String,
     /// Path of the model, relative to the crate root.
     pub glb: String,
     /// Blender scene name, `Stage`.
@@ -414,6 +577,10 @@ pub struct Manifest {
     /// All 19 materials. `MAT_Rubber_Black` from `docs/agent_plan.md` does not exist in the
     /// .blend and must not be created.
     pub materials: Vec<MaterialSpec>,
+    /// The one image the scene uses. The GLB embeds it.
+    pub textures: Vec<TextureSpec>,
+    /// The LED wall and the author's own sky on it.
+    pub screen: ScreenSpec,
     pub wheel: WheelSpec,
     pub flapper: FlapperSpec,
     pub crops: Vec<CropRect>,
@@ -498,14 +665,48 @@ impl Manifest {
     pub fn crop(&self, name: &str) -> Option<&CropRect> {
         self.crops.iter().find(|c| c.name == name)
     }
+
+    /// The texture entry with this name, if the manifest has one.
+    pub fn texture(&self, name: &str) -> Option<&TextureSpec> {
+        self.textures.iter().find(|t| t.name == name)
+    }
+
+    /// The material on that object's slot, if the manifest knows of one.
+    ///
+    /// This is the honest way to ask "what is `Wheel_Hub` made of": the .blend's own slot
+    /// table, not a node name written into Rust.
+    pub fn material_on(&self, node: &str, slot: u32) -> Option<&MaterialSpec> {
+        self.materials
+            .iter()
+            .find(|m| m.used_by.iter().any(|u| u.node == node && u.slot == slot))
+    }
 }
 
+/// What these tests may and may not assert
+///
+/// Two kinds of assertion are legitimate here, and one is not.
+///
+/// Legitimate: the manifest against **ground truth** — the .blend, or `assets/wheel_stage.glb`,
+/// or its own internal arithmetic. Legitimate: the manifest against what the **renderer
+/// actually applies**, by calling the renderer's own function and comparing.
+///
+/// Not legitimate: pinning a manifest number that nothing reads. A test like that is green
+/// while the frame is drawn from a different number somewhere in Rust, which is the exact
+/// failure the cleanup pass was called to fix. The old `material_table_matches_the_plan`
+/// asserted `MAT_Gold_Trim`'s metallic 1.0 and `MAT_Crystal`'s emission while `src/scene.rs`
+/// drew both from constants of its own, and it passed for five look-dev rounds.
 #[cfg(test)]
 mod tests {
     use super::*;
 
     fn manifest() -> Manifest {
         Manifest::load(crate::asset_path(MANIFEST_PATH)).expect("assets/scene.json")
+    }
+
+    /// Compares two linear RGB triples at f32 precision.
+    fn close(a: Vec3, b: Vec3, what: &str) {
+        let d = (a - b).magnitude();
+        assert!(d < 1.0e-5, "{what}: {a:?} vs {b:?}, distance {d}");
     }
 
     /// The real file on disk must deserialise. It is a hard error in `World::build`, so a
@@ -523,7 +724,29 @@ mod tests {
         assert_eq!(m.materials.len(), 19);
         assert!(m.material("MAT_Rubber_Black").is_none());
         assert_eq!(m.crops.len(), 6);
+        assert_eq!(m.textures.len(), 1);
         assert_eq!(m.glb_audit.nodes, 163);
+        assert_eq!(m.glb_audit.materials as usize, m.materials.len());
+        // The fixed export carries the author's sky: 1 image, 2 textures. Both were 0 in the
+        // manifest this pass replaced, which is what misled a reviewer into calling the
+        // screen procedural.
+        assert_eq!((m.glb_audit.images, m.glb_audit.textures), (1, 2));
+    }
+
+    /// `glb_audit` describes the GLB that is on disk right now, not an older export.
+    #[test]
+    fn the_glb_audit_matches_the_file_on_disk() {
+        let m = manifest();
+        let path = crate::asset_path(&m.glb);
+        let len = std::fs::metadata(&path)
+            .unwrap_or_else(|e| panic!("{}: {e}", path.display()))
+            .len();
+        assert_eq!(
+            len, m.glb_audit.file_bytes,
+            "{} is {len} bytes and the manifest says {}; regenerate assets/scene.json",
+            path.display(),
+            m.glb_audit.file_bytes
+        );
     }
 
     /// The camera is the hero camera of `docs/export_notes.md` §5, in the glTF frame.
@@ -535,8 +758,17 @@ mod tests {
         assert_eq!(m.camera.blender.location, [0.0, -6.4, 1.0]);
         assert_eq!(m.camera.z_near, 0.05);
         assert_eq!(m.camera.z_far, 200.0);
-        // The yfov the exporter wrote into the GLB is 0.86305637.
-        assert!((m.camera.fov_y_rad - 0.863_056_4).abs() < 1.0e-6);
+        // The derived fov_y and the yfov the exporter wrote into the GLB must agree, or one
+        // of the two is wrong about the sensor fit.
+        assert!((m.camera.fov_y_rad - m.camera.glb_yfov_rad).abs() < 1.0e-6);
+        assert!((m.camera.glb_aspect_ratio - m.render.aspect).abs() < 1.0e-6);
+        // fov_y follows from the 22 mm lens on the 36 mm HORIZONTAL sensor at this aspect.
+        let fov_x = 2.0 * (m.camera.sensor_width_mm / (2.0 * m.camera.lens_mm)).atan();
+        let fov_y = 2.0 * ((fov_x * 0.5).tan() / m.render.aspect).atan();
+        assert!((m.camera.fov_x_rad - fov_x).abs() < 1.0e-6);
+        assert!((m.camera.fov_y_rad - fov_y).abs() < 1.0e-6);
+        // Not Blender's camera.angle_y, 0.9987 rad, which is the wrong fit for this sensor.
+        assert!((m.camera.fov_y_rad - 0.998_693_5).abs() > 0.1);
         // A top-level vector is already in the geometry frame, so the map is the identity.
         assert_eq!(m.to_scene_point(m.camera.position()), m.camera.position());
         // The Blender sub-object is not, and converts to exactly the top-level value.
@@ -572,25 +804,59 @@ mod tests {
         assert_eq!(m.flapper.pivot, [0.0, 6.22, -0.795]);
     }
 
-    /// The four materials that glow and the one that blends, per the plan's table.
+    /// The material table's own arithmetic. Nothing here is transcribed from a document: each
+    /// assertion is a relation the file must satisfy whatever the .blend says.
     #[test]
-    fn material_table_matches_the_plan() {
+    fn the_material_table_is_internally_consistent() {
         let m = manifest();
-        let emitting: Vec<&str> = m
-            .materials
-            .iter()
-            .filter(|s| s.emits())
-            .map(|s| s.name.as_str())
-            .collect();
-        assert_eq!(
-            emitting,
-            [
-                "MAT_Bulb_Glass",
-                "MAT_Lens_Glow",
-                "MAT_Crystal",
-                "MAT_LED_Screen"
-            ]
-        );
+        for s in &m.materials {
+            assert!(
+                (0.0..=1.0).contains(&s.metallic),
+                "{}: metallic {}",
+                s.name,
+                s.metallic
+            );
+            assert!(
+                (0.0..=1.0).contains(&s.roughness),
+                "{}: roughness {}",
+                s.name,
+                s.roughness
+            );
+            assert!((0.0..=1.0).contains(&s.alpha), "{}: alpha {}", s.name, s.alpha);
+            // effective_emission is the product, by definition of the field.
+            close(
+                Vec3::from(s.effective_emission),
+                Vec3::from(s.emission_color) * s.emission_strength,
+                &format!("{} effective_emission", s.name),
+            );
+            assert_eq!(
+                s.emission_strength > 0.0,
+                s.emits(),
+                "{}: emits() disagrees with emission_strength",
+                s.name
+            );
+            // A material blends exactly when it is not fully opaque, so the two signals
+            // cannot disagree without one of them being wrong.
+            assert_eq!(
+                s.alpha_mode == "BLEND",
+                s.alpha < 1.0,
+                "{}: alpha_mode {} at alpha {}",
+                s.name,
+                s.alpha_mode,
+                s.alpha
+            );
+            assert_eq!(s.alpha_mode, s.glb_alpha_mode, "{}: alpha mode", s.name);
+            // A textured socket has a UV layer and vice versa.
+            assert_eq!(
+                s.is_textured(),
+                !s.uv_map.is_empty(),
+                "{}: uv_map {:?}",
+                s.name,
+                s.uv_map
+            );
+            assert!(!s.used_by.is_empty(), "{}: no object carries it", s.name);
+        }
+        // Exactly one material blends, and it is the crystal at the .blend's own alpha.
         let blending: Vec<&str> = m
             .materials
             .iter()
@@ -598,16 +864,183 @@ mod tests {
             .map(|s| s.name.as_str())
             .collect();
         assert_eq!(blending, ["MAT_Crystal"]);
+        assert_eq!(m.material("MAT_Crystal").unwrap().alpha, 0.55);
+    }
 
-        let crystal = m.material("MAT_Crystal").unwrap();
-        assert_eq!(crystal.alpha, 0.55);
-        assert_eq!(crystal.alpha_mode, "BLEND");
-        assert_eq!(crystal.effective_emission, [1.02, 0.72, 1.14]);
+    /// The manifest against `assets/wheel_stage.glb`, which is what the importer reads.
+    ///
+    /// This is the evidence for the cleanup pass's rule on per-node overrides: an override is
+    /// honest only when it restores something glTF transport lost. Transport loses none of the
+    /// three PBR factors, so no override of a metallic or a roughness can claim to be a repair.
+    #[test]
+    fn transport_preserves_every_pbr_factor_except_emission() {
+        let m = manifest();
+        for s in &m.materials {
+            if s.is_textured() {
+                // The exporter drops the socket default and writes white, because the image is
+                // the colour. MAT_LED_Screen is the only one.
+                assert_eq!(
+                    s.glb_base_color_factor,
+                    [1.0, 1.0, 1.0, 1.0],
+                    "{}: textured, so the GLB factor should be white",
+                    s.name
+                );
+                assert!(s.glb_has_base_color_texture, "{}: baseColorTexture", s.name);
+                assert_eq!(
+                    s.glb_has_emissive_texture,
+                    !s.emission_texture.is_empty(),
+                    "{}: emissiveTexture",
+                    s.name
+                );
+            } else {
+                let f = s.glb_base_color_factor;
+                close(
+                    vec3(f[0], f[1], f[2]),
+                    Vec3::from(s.base_color),
+                    &format!("{} base colour", s.name),
+                );
+                assert!((f[3] - s.alpha).abs() < 1.0e-6, "{}: alpha", s.name);
+                assert!(!s.glb_has_base_color_texture, "{}: no texture", s.name);
+                assert!(!s.glb_has_emissive_texture, "{}: no texture", s.name);
+            }
+            assert!(
+                (s.glb_metallic - s.metallic).abs() < 1.0e-6,
+                "{}: metallic {} in the .blend, {} in the GLB",
+                s.name,
+                s.metallic,
+                s.glb_metallic
+            );
+            assert!(
+                (s.glb_roughness - s.roughness).abs() < 1.0e-6,
+                "{}: roughness {} in the .blend, {} in the GLB",
+                s.name,
+                s.roughness,
+                s.glb_roughness
+            );
+            // Emission survives transport only as a product: the exporter normalises the
+            // factor to a maximum of 1 and puts the rest into an extension three-d-asset
+            // ignores, so an importer that reads the factor alone sees a fraction of it. On a
+            // textured emitter the factor is white and the image carries the colour, so there
+            // is no product to compare.
+            if !s.is_textured() {
+                close(
+                    Vec3::from(s.glb_emissive_factor) * s.glb_emissive_strength,
+                    Vec3::from(s.effective_emission),
+                    &format!("{} glb emission", s.name),
+                );
+                assert!(
+                    s.glb_emissive_factor.iter().all(|c| *c <= 1.0),
+                    "{}: the GLB factor is not normalised",
+                    s.name
+                );
+            }
+        }
+    }
 
-        let gold = m.material("MAT_Gold_Trim").unwrap();
-        assert_eq!(gold.base_color, [0.72, 0.52, 0.18]);
-        assert_eq!(gold.metallic, 1.0);
-        assert_eq!(gold.roughness, 0.22);
+    /// What `src/scene.rs` actually puts on the frame for an emissive material has to be what
+    /// this file says. The renderer's own function is called, so a constant in Rust that
+    /// overrides the manifest fails here.
+    #[test]
+    fn the_renderer_emits_what_the_manifest_says() {
+        let m = manifest();
+        let mut wrong = Vec::new();
+        for s in &m.materials {
+            if !s.emits() {
+                assert!(
+                    crate::scene::hdr_emissive(s).is_none(),
+                    "{} does not glow, so nothing should be written over its emissive",
+                    s.name
+                );
+                continue;
+            }
+            // Skipped on purpose: for a textured emitter the radiance is the image times
+            // emission_strength, and effective_emission is only the socket-default fallback,
+            // so there is no single triple to compare against.
+            if !s.emission_texture.is_empty() {
+                continue;
+            }
+            let want = s.emitted_radiance();
+            match crate::scene::hdr_emissive(s) {
+                Some(got) if (got - want).magnitude() < 1.0e-4 => {}
+                Some(got) => wrong.push(format!(
+                    "{}: the renderer emits {:?} where the manifest says {:?}",
+                    s.name, got, want
+                )),
+                // No HDR override is right only when the clamped sRGB value already carries
+                // the whole radiance, which needs every channel at or under 1.0.
+                None if want.x <= 1.0 && want.y <= 1.0 && want.z <= 1.0 => {}
+                None => wrong.push(format!(
+                    "{}: the renderer clamps to sRGB where the manifest says {:?}",
+                    s.name, want
+                )),
+            }
+        }
+        assert!(
+            wrong.is_empty(),
+            "the renderer does not read the manifest for {} of its emissive materials:\n  {}",
+            wrong.len(),
+            wrong.join("\n  ")
+        );
+    }
+
+    /// The screen block and `MAT_LED_Screen` must tell the same story, and it must be the
+    /// texture-driven one. `images: 0, textures: 0` in the manifest this pass replaced is what
+    /// made a reviewer call the screen procedural.
+    #[test]
+    fn the_screen_is_driven_by_the_authors_texture() {
+        let m = manifest();
+        let led = m
+            .material(&m.screen.material)
+            .expect("the screen material is in the table");
+        assert_eq!(led.name, "MAT_LED_Screen");
+        assert!(led.is_textured());
+        assert_eq!(led.base_color_texture, m.screen.texture);
+        assert_eq!(led.emission_texture, m.screen.texture);
+        assert_eq!(led.uv_map, m.screen.uv_map);
+        assert_eq!(led.emission_strength, m.screen.emission_strength);
+        assert!(led.glb_has_base_color_texture && led.glb_has_emissive_texture);
+        assert!((led.glb_emissive_strength - m.screen.emission_strength).abs() < 1.0e-6);
+        // The image is in the GLB, so the app needs no file at run time.
+        let tex = m.texture(&m.screen.texture).expect("the texture is recorded");
+        assert!(tex.embedded_in_glb && m.screen.in_glb);
+        assert_eq!(tex.glb_texture_indices.len(), m.glb_audit.textures as usize);
+        assert_eq!(tex.uv_map, led.uv_map);
+        // Two objects share the material, so nothing may bind by material name alone.
+        assert!(led.is_on(&m.screen.node));
+        for other in &m.screen.also_on {
+            assert!(led.is_on(other), "{other} is not on {}", led.name);
+        }
+        assert_eq!(led.used_by.len(), 1 + m.screen.also_on.len());
+        // Wheel_Hub is polished metal in the .blend, which is what `used_by` is for.
+        let hub = m.material_on("Wheel_Hub", 0).expect("Wheel_Hub has a material");
+        assert_eq!(hub.name, "MAT_Metal_Polished");
+    }
+
+    /// `src/shot.rs` reads these six rectangles and keeps no copy, so they have to be here and
+    /// they have to fit inside the frame.
+    #[test]
+    fn crops_cover_the_six_named_regions_inside_the_frame() {
+        let m = manifest();
+        let names: Vec<&str> = m.crops.iter().map(|c| c.name.as_str()).collect();
+        assert_eq!(
+            names,
+            ["hub", "rim_top", "floor", "screen_left", "truss", "podium"]
+        );
+        for c in &m.crops {
+            assert!(c.w > 0 && c.h > 0, "{}: empty rectangle", c.name);
+            assert!(
+                c.x + c.w <= m.render.width && c.y + c.h <= m.render.height,
+                "{} at {},{} {}x{} does not fit in {}x{}",
+                c.name,
+                c.x,
+                c.y,
+                c.w,
+                c.h,
+                m.render.width,
+                m.render.height
+            );
+            assert!(m.crop(&c.name).is_some());
+        }
     }
 
     /// The lights agent H builds: six of them, only two in the GLB, cones are half angles.

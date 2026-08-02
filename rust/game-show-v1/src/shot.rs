@@ -29,31 +29,19 @@
 //! The frame depends on nothing but the manifest and the model: the camera is `Cam_Hero`
 //! from the manifest, `World::update(0.0)` puts the wheel at rotation 0 and the sky at time
 //! 0, and no wall-clock value is read anywhere in this file.
+//!
+//! ## Where the crop rectangles come from
+//!
+//! `assets/scene.json`: the `crops` field of [`Manifest`], an array of
+//! [`CropRect`]. This file holds no copy of them. It used to hold a
+//! `CROPS` table of six literals beside the manifest's own `crops` array, which is two
+//! sources for one set of numbers and so a defect even while the two agreed.
 
+use crate::manifest::{CropRect, Manifest};
 use crate::{World, RENDER_HEIGHT, RENDER_WIDTH};
 use std::path::Path;
 use three_d::*;
 use three_d_asset::io::Serialize;
-
-/// One crop region from `docs/agent_plan.md`. `x, y` is the top-left corner and y grows
-/// downward, the same convention as the reference image.
-pub struct Crop {
-    pub name: &'static str,
-    pub x: u32,
-    pub y: u32,
-    pub width: u32,
-    pub height: u32,
-}
-
-/// The six crop regions the look-dev rounds compare.
-pub const CROPS: [Crop; 6] = [
-    Crop { name: "hub", x: 700, y: 300, width: 300, height: 300 },
-    Crop { name: "rim_top", x: 620, y: 110, width: 460, height: 210 },
-    Crop { name: "floor", x: 420, y: 760, width: 620, height: 180 },
-    Crop { name: "screen_left", x: 0, y: 240, width: 420, height: 400 },
-    Crop { name: "truss", x: 150, y: 0, width: 500, height: 260 },
-    Crop { name: "podium", x: 130, y: 600, width: 390, height: 300 },
-];
 
 /// Owns everything an offscreen render needs. Drop it only when the render is finished.
 pub struct HiddenContext {
@@ -116,7 +104,7 @@ pub fn run(path: &Path, crops: Option<&Path>) -> crate::Result<()> {
     println!("wrote {} ({}x{})", path.display(), image.width, image.height);
 
     if let Some(dir) = crops {
-        for written in write_crops(&image, dir)? {
+        for written in write_crops(&image, dir, &world.manifest)? {
             println!("wrote {}", written.display());
         }
     }
@@ -173,11 +161,20 @@ pub fn save_png(image: &CpuTexture, path: &Path) -> crate::Result<()> {
     Ok(())
 }
 
-/// Writes the six crop regions into `dir` as `<name>.png`. Returns the paths written.
-pub fn write_crops(image: &CpuTexture, dir: &Path) -> crate::Result<Vec<std::path::PathBuf>> {
+/// Writes every crop region the manifest declares into `dir` as `<name>.png`. Returns the
+/// paths written.
+///
+/// The rectangles are the manifest's, in the manifest's order. An empty `crops` array writes
+/// nothing and is not an error, but it is also not a thing `assets/scene.json` may hold: a
+/// test in `src/manifest.rs` asserts the six named regions are there.
+pub fn write_crops(
+    image: &CpuTexture,
+    dir: &Path,
+    manifest: &Manifest,
+) -> crate::Result<Vec<std::path::PathBuf>> {
     std::fs::create_dir_all(dir)?;
-    let mut written = Vec::with_capacity(CROPS.len());
-    for region in &CROPS {
+    let mut written = Vec::with_capacity(manifest.crops.len());
+    for region in &manifest.crops {
         let cropped = crop(image, region)?;
         let path = dir.join(format!("{}.png", region.name));
         save_png(&cropped, &path)?;
@@ -187,33 +184,27 @@ pub fn write_crops(image: &CpuTexture, dir: &Path) -> crate::Result<Vec<std::pat
 }
 
 /// Cuts one region out of an RGBA8 CPU image. `region.y` counts from the top.
-pub fn crop(image: &CpuTexture, region: &Crop) -> crate::Result<CpuTexture> {
+pub fn crop(image: &CpuTexture, region: &CropRect) -> crate::Result<CpuTexture> {
     let pixels = match &image.data {
         TextureData::RgbaU8(p) => p,
         _ => return Err(crate::Error::from("crop needs an RGBA8 image")),
     };
-    if region.x + region.width > image.width || region.y + region.height > image.height {
+    if region.x + region.w > image.width || region.y + region.h > image.height {
         return Err(format!(
             "crop {} at {},{} {}x{} does not fit in {}x{}",
-            region.name,
-            region.x,
-            region.y,
-            region.width,
-            region.height,
-            image.width,
-            image.height
+            region.name, region.x, region.y, region.w, region.h, image.width, image.height
         )
         .into());
     }
-    let mut out = Vec::with_capacity((region.width * region.height) as usize);
-    for row in 0..region.height {
+    let mut out = Vec::with_capacity((region.w * region.h) as usize);
+    for row in 0..region.h {
         let start = ((region.y + row) * image.width + region.x) as usize;
-        out.extend_from_slice(&pixels[start..start + region.width as usize]);
+        out.extend_from_slice(&pixels[start..start + region.w as usize]);
     }
     Ok(CpuTexture {
         data: TextureData::RgbaU8(out),
-        width: region.width,
-        height: region.height,
+        width: region.w,
+        height: region.h,
         ..Default::default()
     })
 }

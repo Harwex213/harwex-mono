@@ -21,7 +21,9 @@
 //!   is the irradiance `E` arriving at the surface, in whatever linear unit the renderer
 //!   works in.** The watt conversion below follows from that identity and is not a guess.
 //! - `Attenuation::default()` is no falloff at all, and the shader's `max(1.0, att)` means
-//!   attenuation can only ever dim. See [`Rig::build`] for why every light keeps the default.
+//!   attenuation can only ever dim. The three spots and the bulb-ring lamps carry a quadratic
+//!   term normalised at their own reference distance; a `DirectionalLight` has no position, so it
+//!   cannot carry one at all. See [`spot_attenuation`] and [`BULB_RING_ATTENUATION`].
 //! - Only `DirectionalLight` and `SpotLight` can carry a shadow map.
 //! - `SpotLight::cutoff` is the HALF angle. Blender's `spot_size` is the FULL angle, and
 //!   `assets/scene.json` already halves it into `cone_outer_half_angle_rad`.
@@ -50,8 +52,8 @@
 //! `Attenuation`'s `max(1.0, att)` clamp.
 //!
 //! The six constants below are the result. Each one is `1 / (PI * d²)` or
-//! `1 / (4 * PI * d²)` with the arithmetic spelled out, and each is the single number
-//! look-dev retunes for that light.
+//! `1 / (4 * PI * d²)` with the arithmetic spelled out, and each is the whole of that lamp's
+//! conversion: `intensity = CONSTANT * energy_watts`, with nothing multiplying it afterwards.
 //!
 //! # The ambient term
 //!
@@ -69,29 +71,38 @@
 //! emission, the Blender world background above it, and the wall colour times the floor
 //! albedo below it. Every colour and every angle in it comes out of `assets/scene.json` or
 //! out of `docs/scene_audit.md`'s measurements of the wall. [`AMBIENT_INTENSITY`] is the one
-//! scalar that sets the level, and its doc comment says why it is 0.28.
+//! scalar that sets the level, and its doc comment says why it is 0.18.
 //!
-//! # What look-dev round 1 changed here
+//! # What deviates from the .blend, and what does not
 //!
-//! Four things, each behind a named constant so the physical derivation above is still what the
-//! numbers come from:
+//! Every lamp's intensity is now `watts * its own conversion constant` and nothing else. Five
+//! things look-dev added are gone: the per-lamp look gains on the key, the fill and the two rims;
+//! the azimuthal hue swing that tinted the environment probe's wall band magenta toward
+//! camera-left and cobalt toward camera-right; the invented violet-magenta ceiling radiance that
+//! replaced the Blender world background overhead; the 2.6x gain on the probe's wall band; and a
+//! hardcoded bulb-ring colour that did not match the material it claimed to come from. None of
+//! them is in `wheel_stage.blend`, and each existed to move the frame toward
+//! `docs/wheel_stage.png`. A sixth number went back to its own documented measurement:
+//! [`ENVIRONMENT_BAND_TOP`] shipped at 0.52 against the 0.2445 its comment derives. The frame is
+//! further from the reference for all of this and nothing else was raised to compensate
+//! (`docs/agent_plan.md`, "Cleanup pass"). `docs/api/lighting.md` lists every one with its old
+//! value.
 //!
-//! - [`RIM_LOOK_GAIN`], [`KEY_LOOK_GAIN`] and [`FILL_LOOK_GAIN`] scale three of the six lamps.
-//!   The rims carry the reference's left/right colour split and were too weak to;
-//!   the key and the fill were between them making the frame read as pastel daylight.
-//! - [`AMBIENT_INTENSITY`] came down from 0.45.
-//! - [`ENVIRONMENT_LEFT_TINT`] and [`ENVIRONMENT_RIGHT_TINT`] give the environment cube map an
-//!   azimuthal hue swing, which is what puts that split onto the metals.
-//! - [`BULB_RING_INTENSITY`] adds a seventh light that is not in the .blend: the wheel's own
-//!   96-bulb channel, which `docs/look_target.md` names as the source of the truss's rim light
-//!   and of the floor's bright patch.
+//! One deviation stays, and it is a stand-in rather than an invention. `three-d` gives emissive
+//! geometry no ability to light anything, so the wheel's 96 bulbs of `MAT_Bulb_Glass` — really
+//! emissive in the .blend, at emission strength 3.0 on `Wheel_Bulbs`, which `assets/scene.json`
+//! records — cast no light at all. [`BULB_RING_INTENSITY`] stands in for them with
+//! [`BULB_RING_LAMPS`] point lights on the ring the bulbs occupy. `assets/scene.json`'s
+//! `lighting_notes` sets the rule this follows and requires the lamp to be documented as a
+//! stand-in wherever it is described; `docs/api/lighting.md` does that too.
 
 use crate::manifest::{LightSpec, Manifest};
 use crate::scene::linear_to_srgba;
 use three_d::*;
 
 // ---------------------------------------------------------------------------------------
-// Watts to intensity: one constant per light. These are what look-dev retunes.
+// Watts to intensity: one constant per light, and the whole of the conversion. No gain sits on
+// top of these; an `intensity` is `CONSTANT * energy_watts` and nothing else.
 //
 // Every constant is `intensity = CONSTANT * energy_watts`, with `energy_watts` read from
 // `assets/scene.json`. The module docs derive the two formulas; the arithmetic for each
@@ -127,134 +138,40 @@ pub const RIM_R_WATTS_TO_INTENSITY: f32 = 0.004_594;
 /// which is what a 120 W fill against a 900 W key should be.
 pub const FILL_FRONT_WATTS_TO_INTENSITY: f32 = 0.004_084;
 
-// ---------------------------------------------------------------------------------------
-// Look-dev round 1 gains. These sit on top of the physical conversion above rather than
-// replacing it, so `the_constants_match_the_documented_arithmetic` still checks the physics
-// and every deviation from the .blend is one named multiplier.
-// ---------------------------------------------------------------------------------------
-
-/// Multiplier on `Rim_L` and `Rim_R`'s converted intensity.
+/// Intensity of the `BULB_RING` lights: the wheel's own bulb channel, **stood in for by lamps**.
 ///
-/// `renders/verdict_r1.json`: "the frame has no left/right colour split ... Rim_L (blue) and
-/// Rim_R (pink) are only a sixth of the key's strength, so nothing puts the split onto the
-/// metals or the wall". `docs/look_target.md` calls that split load-bearing. The two rims are
-/// the only lamps whose colour differs by side — `(0.35, 0.55, 1)` against `(1, 0.3, 0.65)` —
-/// so they are what carries it, and at 1.84 against the key's 6.41 they could not. 2.4 puts
-/// them at 4.4, which is the same order as the key and still under it: the key stays the
-/// light that shapes the wheel and the rims tint the sides.
+/// There is no seventh lamp in `wheel_stage.blend` and this is not one. It is a stand-in for
+/// emissive geometry, and it is faithful for exactly one reason: `Wheel_Bulbs` carries
+/// `MAT_Bulb_Glass`, which really is emissive in the .blend — emission strength 3.0, colour
+/// `(1, 0.93, 0.74)`, so an effective radiance of `(3.0, 2.79, 2.22)`, all of which
+/// `assets/scene.json` records — and `three-d` lets emissive geometry light nothing at all. In
+/// Blender's EEVEE those 96 spheres are a real source; here they would be 96 bright dots that
+/// leave the rim, the pegs and the floor under the wheel unlit. `assets/scene.json`'s
+/// `lighting_notes` states the rule: a lamp may stand in for geometry that really is emissive,
+/// and MAT_Bulb_Glass on Wheel_Bulbs is the one such case in this scene. It must be described as
+/// a stand-in wherever it appears, which is what this comment and `docs/api/lighting.md` do.
 ///
-/// Round 2 took it from 2.4 to 1.30. The round's severity-5 defect was that nothing in the set is
-/// dark — "the pillar in `screen_left` is a pale grey-lavender fluted column, plainly brighter
-/// than the wall behind it ... the podium body panels read mid-brown and half translucent ... the
-/// truss chords read as fully shaded solid tubes" — and the rims are half of the cause. They are
-/// `DirectionalLight`s, so they cannot fall off with distance the way [`spot_attenuation`] now
-/// makes the three spots do: a rim at 4.4 lights the pillar half a metre from it exactly as hard
-/// as it lights the wheel 8 m away, and `MAT_Pillar_Body`'s albedo is 0.09. At 1.30 the pair land
-/// at 2.4, which still tints the side of every metal and no longer form-shades the set.
+/// `docs/look_target.md` §"Light directions" says what the ring does in the frame: "The truss
+/// tubes are rim-lit from below and in front, and the source for that is the wheel's own bulb ring
+/// rather than any lamp. The floor's brightest area sits directly under the wheel."
 ///
-/// Round 3 took it from 1.30 to 1.95, and it is the one constant of this file the round asked to move.
-/// Round 2 cut this and [`AMBIENT_INTENSITY`] together and the verdict was that only half of what it
-/// asked for landed: "Both pillars lost their highlights. Each is a flat near-black fluted column with
-/// only a faint bronze collar ... ours reads as a hole cut in the wall. Round 2 asked for a pillar
-/// darker than the screen that keeps that gold highlight and got only the first half."
+/// **The ring is a ring, not a point.** It is [`BULB_RING_LAMPS`] point lights spaced round a
+/// circle of [`BULB_RING_RADIUS`], which is where the 96 bulbs are; the intensity here is the
+/// ring's total and each lamp takes a [`BULB_RING_LAMPS`]-th of it. One lamp on the wheel's axis
+/// instead — which is what the first version was — floods the hub and the inner ends of the 48
+/// sectors from 0.35 m, because `attenuate` divides by `max(1.0, 1 + q·d²)` and so cannot dim
+/// anything nearer than the reference distance. A flat frontal white term over a saturated albedo
+/// is the definition of pastel. From the ring the same total arrives at the hub from 2.45 m out on
+/// every side, so the disc is lit across rather than flooded.
 ///
-/// The two terms are not interchangeable and that is why the fix is to separate them. The ambient is
-/// an environment probe: it reaches every surface from every direction, so it can only raise a form's
-/// general level and can never draw a line on it. The rims are two `DirectionalLight`s from `(-8, 3.5,
-/// 3.5)` and `(8, 3.5, 3.5)`, so what they make is a specular — the pillar's vertical gold stripe just
-/// right of its centre, the podium's rib highlights, the small white specular on the upper left of each
-/// chrome peg. Round 2's ambient cut was right and is kept; this is the specular put back without it.
-/// At 1.95 the pair land at 3.6, still under the key's 5.6 and well under the 4.4 round 1 shipped,
-/// where they form-shaded the whole set.
-///
-/// Round 5 took it from 1.95 to 2.85, and this is the fourth-asking pillar highlight finally landing. The
-/// verdict offered this constant or the environment band; the band was ruled out by measurement, because
-/// at [`ENVIRONMENT_BAND_GAIN`] = 20, eight times what ships, the pillar was still black. What draws the
-/// reference's vertical stripe on a chrome cylinder is a *punctual* specular, and the two rims are the
-/// only lamps placed to put one down a pillar's front-inner face. `crate::scene::NODE_LIFTS` widened
-/// `MAT_Pillar_Body`'s roughness in the same edit so that lobe is broad enough to read as a stripe rather
-/// than a hairline. Round 2's reason for cutting this — that the rims form-shaded the whole set — is
-/// answered by the metallic in the same lift: the surfaces this now reaches hardest are metals, whose
-/// ambient diffuse is zero, so what it adds to them is a highlight and not a fill. The pair land at 5.3,
-/// just under the key's 5.6.
-pub const RIM_LOOK_GAIN: f32 = 2.85;
-
-/// Multiplier on `Key_Wheel`'s converted intensity.
-///
-/// Below 1.0. The physical conversion puts a white sector at radiance 2.04, well into Filmic's
-/// shoulder, and round 1 was judged "a pale pastel daylight render": on the shoulder a gold
-/// sector's red and green channels converge and `(0.95, 0.64, 0.08)` reads khaki instead of
-/// gold. Pulling the key back to 4.5 keeps the cream and white sectors near-white while the
-/// coloured ones stay off the shoulder, which is where their saturation lives. The reference's
-/// own note is that the run from a lit metal edge to its shadow side is short and that
-/// saturation is high.
-///
-/// Round 2 took it from 0.70 to 0.95. Nothing about the shoulder argument changed; what changed
-/// under it is [`spot_attenuation`], which now divides the key by `(d / 6.685)²` past the wheel.
-/// The wheel itself sits at the reference distance and is undimmed, so the sectors need the gain
-/// back to stay where round 2 judged them ("much improved ... the cobalt sector is back"), while
-/// the wall 17 m away now takes a sixth of what it used to and the pillars at 11 m a third.
-pub const KEY_LOOK_GAIN: f32 = 0.88;
-
-/// Multiplier on `Fill_Front`'s converted intensity. The reference's blacks are lifted and
-/// plum-tinted rather than crushed, but 0.49 of flat frontal fill on top of a full ambient was
-/// part of what flattened the pillars and the podium panels — the reference reads both as dark
-/// silhouettes drawn with gold lines. A third of it still keeps the hub and the pegs off black,
-/// which is the fill's stated job.
-///
-/// Round 2 took it from 0.35 to 0.16. It is the last flat term in the rig — a `DirectionalLight`
-/// pointed straight at the camera-facing side of everything — so it is what was left holding the
-/// podium panels, the moving-head bodies and the pillars off black once the ambient came down.
-/// 0.16 of 0.49 is 0.08, which still keeps the chrome pegs and the hub off pure black (its stated
-/// job) and no longer form-shades a 0.05-albedo fixture body into a pale grey box.
-pub const FILL_LOOK_GAIN: f32 = 0.16;
-
-/// Intensity of the `BULB_RING` point light, the wheel's own bulb channel acting as a lamp.
-///
-/// This light is not in `wheel_stage.blend` and it is not invented either: 96 emissive spheres
-/// of `MAT_Bulb_Glass` ring the wheel at radius 2.48 m, and after look-dev round 1 raised that
-/// material to an emission of 9.0 they are by far the brightest thing in the room.
-/// `docs/look_target.md` §"Light directions" is explicit about what they do — "The truss tubes
-/// are rim-lit from below and in front, and the source for that is the wheel's own bulb ring
-/// rather than any lamp. The floor's brightest area sits directly under the wheel, so the
-/// wheel's bulb ring plus the front key dominate what reaches the floor" — and
-/// `renders/verdict_r1.json` asks for exactly that: "let that ring be what rim-lights the
-/// underside of the rim, the pegs and the floor".
-///
-/// **Round 2 stopped collapsing the ring to one point.** The paragraph below describes what round 1
-/// did and what it cost: a single lamp on the wheel's axis 0.35 m in front of the hub, whose
-/// attenuation `max(1.0, 1 + q·d²)` cannot dim anything nearer than its reference distance, so the
-/// hub and the inner ends of the 48 sectors took the full intensity head-on from 0.35 m while the
-/// rim 2.5 m away took a fraction of it. That is a flat frontal white term over saturated albedo,
-/// exactly the thing round 2's verdict named for the sector fan — "the reference's hot magenta is a
-/// dusty rose here, its cobalt a slate periwinkle, its cyan a mint, its gold a khaki" — and it is
-/// also why the round found the hub's lobe "centred and radially symmetric, reading as a small lamp
-/// behind the middle of the disc". It was one.
-///
-/// The ring is now [`BULB_RING_LAMPS`] point lights spaced round a circle of
-/// [`BULB_RING_RADIUS`], which is where the 96 bulbs are. The intensity below is the ring's total
-/// and each lamp takes a [`BULB_RING_LAMPS`]-th of it. Same flux at the floor and at the truss,
-/// where the ring's own extent does not matter; at the hub the light now arrives from 2.45 m out on
-/// every side instead of from 0.35 m in front, so the disc is lit across rather than flooded, and
-/// the sectors keep their chroma.
-///
-/// A ring cannot be a point source, so the ring is collapsed to its centre and the intensity
-/// starts from what the ring delivers at the floor 3.5 m below: 96 bulbs of area ~0.0113 m² at
-/// radiance 1.7 is a flux of about 1.8 W-equivalent, which over the hemisphere it can reach is
-/// `1.8 / (PI * 3.5²) = 0.047`. It is 0.9 rather than that, and the factor is not free: the
-/// collapse to a point throws away the ring's 5 m span, [`BULB_RING_ATTENUATION`] dims it again
-/// by 1.6 at that distance, and the bulbs also carry the frame's bloom, which the derivation of
-/// a Lambertian flux does not. This is the light every gold surface in the frame is read by, so
-/// it is judged on the rim_top, floor and podium crops rather than on that number.
-///
-/// Round 2 took it from 0.9 to 2.1 and raised [`BULB_RING_ATTENUATION`] with it. The reference
-/// gives every gold surface in the frame a bright warm line with a dark side, and after round 2
-/// cut the ambient and the fill there is nothing else warm and local in the room to make one:
-/// `MAT_Gold_Trim` is `metallic = 0.75`, and a metal with no light on it is black, which is what
-/// round 1 was judged on ("the podium desk band ... a dark maroon-brown rim", "the floor inlays
-/// thin cool cyan lines rather than crisp warm gold arcs"). Raising the ring and steepening its
-/// falloff together is what puts a warm highlight on the rim, the base plate, the podium trim and
-/// the floor inlays while leaving the LED wall and the pillars where the reference has them.
+/// Where the level comes from. 96 bulbs of area about 0.0113 m² at the .blend's radiance of 3.0
+/// carry a flux of roughly 3.3 W-equivalent, which over the hemisphere they reach is
+/// `3.3 / (PI * 3.5²) = 0.086` at the floor 3.5 m below. This is 0.95, an order over that, and the
+/// gap is what the stand-in costs rather than a free gain: collapsing 96 emitters onto 8 points
+/// throws away the channel's 5 m span, [`BULB_RING_ATTENUATION`] dims the result again by 2.1 at
+/// that distance, and the bulbs' own bloom is not in a Lambertian flux derivation. The number is
+/// where look-dev left it and this pass did not move it in either direction; nothing here was
+/// retuned to make up for what the rollbacks cost.
 pub const BULB_RING_INTENSITY: f32 = 0.95;
 
 /// How many point lights stand in for the ring of 96 bulbs. See [`BULB_RING_INTENSITY`].
@@ -272,9 +189,12 @@ pub const BULB_RING_LAMPS: usize = 8;
 /// local radius 2.424 to 2.484 about the wheel's own axis, so the channel's centre line is 2.454.
 pub const BULB_RING_RADIUS: f32 = 2.454;
 
-/// Colour of the `BULB_RING` light: `MAT_Bulb_Glass`'s own emission colour, normalised.
-/// Warm lemon, the hue the reference's rim channel and its gold speculars clip to.
-pub const BULB_RING_COLOR: [f32; 3] = [1.0, 0.9, 0.62];
+/// The material the `BULB_RING` lamps stand in for. Its emission colour is the ring's colour and
+/// its emission strength is what makes the stand-in legitimate at all: with no emission there is
+/// no geometry to stand in for and [`Rig::build`] builds no ring. The colour is read from
+/// `assets/scene.json` rather than repeated here, because a constant that duplicates a manifest
+/// value drifts from it (`docs/agent_plan.md`, "The manifest is the single source of truth").
+pub const BULB_RING_MATERIAL: &str = "MAT_Bulb_Glass";
 
 /// Attenuation of the `BULB_RING` light: `constant`, `linear`, `quadratic`.
 ///
@@ -297,20 +217,23 @@ pub const BULB_RING_ATTENUATION: [f32; 3] = [1.0, 0.0, 0.09];
 ///
 /// The bulbs face the camera on the front of the rim, so their light belongs in front of the
 /// pivot rather than at it: at the pivot the wheel's own back plate would take half of it and
-/// the rim would be lit from inside. 0.35 m is the rim channel's own offset from the wheel
-/// plane (`docs/scene_audit.md` §1: `Wheel_Bulbs` spans y −0.33 to −0.27 in Blender, i.e.
+/// the rim would be lit from inside. The offset is the bulb channel's own, measured from the
+/// scene (`docs/scene_audit.md` §1: `Wheel_Bulbs` spans y −0.33 to −0.27 in Blender, i.e.
 /// 0.27 to 0.33 m toward the camera in the exported frame).
 ///
-/// Round 4 took it from 0.35 to 0.80, which is further forward than any bulb actually is, and the
-/// reason is the `N-L` gradient across the sector fan rather than the bulbs' own position. Eight point
-/// lights sitting 0.35 m in front of a ring of radius 2.45 m are nearly *in the plane* of the fan: a
-/// wedge's outer end has a lamp 0.4 m away and almost face-on, its inner end has one 2.5 m away and at
-/// 8 degrees of grazing, so the fan is lit about ten times harder at the rim than at the hub. That
-/// gradient is what the round-4 verdict saw as "a wide warm halo washes about 40 px up into the lower
-/// sectors" and as "the magenta washes toward salmon on its inner half" - one wash, read twice. At
-/// 0.80 m the same ratio is 2.8, so the fan keeps its chroma from rim to hub, and the ring still
-/// reaches the truss underside and the floor, which is this light's stated job.
-pub const BULB_RING_FORWARD: f32 = 0.80;
+/// 0.30 m is the centre of that measured 0.27-to-0.33 channel, so the stand-in sits where the
+/// bulbs are.
+///
+/// Look-dev had this at 0.80, which is further forward than any bulb in the scene, and the
+/// stated reason was the `N-L` gradient across the sector fan rather than the bulbs' own
+/// position. The cleanup pass rolled it back: a light standing in for emissive geometry is
+/// faithful only where the geometry is. The gradient it was hiding is real and returns with
+/// it. Point lights this close to the fan's plane light a wedge's outer end from 0.4 m nearly
+/// face-on and its inner end from 2.5 m at about 8 degrees of grazing, so the fan is lit
+/// several times harder at the rim than at the hub, and the lower sectors carry a warm wash on
+/// their outer half. That is what a ring of bulbs in this position does. Widening the offset
+/// to flatten it is a look-dev decision, not a correction.
+pub const BULB_RING_FORWARD: f32 = 0.30;
 
 /// Whether the three spot lights fall off with distance past the reference distance their
 /// watts-to-intensity constant was calibrated at. See [`spot_attenuation`].
@@ -363,136 +286,25 @@ pub const KEY_WHEEL_CUTOFF: f32 = 0.8;
 
 /// Ambient environment level: the multiplier on the generated environment map.
 ///
-/// The map holds the room's own linear radiance, so 1.0 would be the fully physical answer
-/// and needs no free gain at all. It is 0.45 because the band radiance the map is built
-/// from, `MAT_LED_Screen`'s `effective_emission` of `(0.525, 0.45, 0.9)`, is the *pre-texture*
-/// node value: the shader multiplies emission by `T_LEDWall_Sky`, whose mean is well below
-/// 1.0 (dark cobalt over most of its area, bright only in the cloud tops). 0.45 is a mid
-/// estimate of that mean, and it also covers the truss, the pillars and the fascia
-/// occluding part of the wall.
+/// The map holds the room's own linear radiance, so 1.0 would be the fully physical answer and
+/// would need no free gain at all. It is under 1.0 for one honest reason: the band the map is built
+/// from is `MAT_LED_Screen`'s `effective_emission` of `(0.525, 0.45, 0.9)`, which is the
+/// *pre-texture* node value, and the shader multiplies that emission by `T_LEDWall_Sky`, whose mean
+/// is well below 1.0 — dark cobalt over most of its area, bright only in the cloud tops. The truss,
+/// the fascia and the pillars also occlude part of the wall from most of the room.
 ///
-/// The consequence to check on a crop: gold at roughness 0.22 whose reflection vector points
-/// at the band comes out near `0.28 * 0.9 * 0.7 = 0.18` and reads as a dark warm-violet
-/// tint, while gold facing the ceiling void reflects `0.28 * 0.02 = 0.006` and stays black.
-/// Shadowed metal stays dark; it just stops being pure black. Raising this washes the
-/// metals out flat, which is the failure mode to watch for.
+/// 0.18 is that estimate. It is also the level at which the environment stops filling the set in:
+/// an environment probe is the one term in the rig that reaches every surface from every direction
+/// at once, so it can raise a form's general level and can never draw a line on it. The reference's
+/// whole contrast structure is saturated coloured light on near-black forms, and `MAT_Pillar_Body`
+/// at albedo 0.09 only reads as a form with a dark side while this stays low.
 ///
-/// Look-dev round 1 took it from 0.45 to 0.28. That failure mode is what the round was judged
-/// on: "the sector fan is pastel", "a saturated albedo plus a large white additive term always
-/// reads pastel", and a hub that had become "a violet-magenta ball" because a near-mirror metal
-/// in a violet room can be nothing else. Two things changed under it at the same time, and both
-/// argue for less: `src/screen.rs` stopped drawing the LED wall as albedo *plus* emission, so
-/// the room is genuinely darker than the band value suggests, and [`BULB_RING_INTENSITY`] now
-/// supplies the warm local light the ambient was standing in for.
-/// Round 2 took it from 0.28 to 0.10, and the failure mode named above is exactly what the round
-/// was judged on again, one step further along: "Nothing in the set is dark ... All four use dark
-/// materials in scene.json already, so the light reaching them is wrong, not their albedo." An
-/// environment term is the one term in the rig that reaches every surface from every direction at
-/// once, so it is the term that cannot make a silhouette. The reference's whole contrast structure
-/// is saturated coloured light on near-black forms, and 0.10 is the level at which
-/// `MAT_Pillar_Body` at albedo 0.09 goes back to reading as a form with a dark side.
+/// What to check: gold at roughness 0.22 whose reflection vector points at the band comes out near
+/// `0.18 * 0.9 * 0.7 = 0.11` and reads as a dark warm-violet tint, while gold facing the ceiling
+/// void reflects `0.18 * 0.02 = 0.004` and stays black. Shadowed metal stays dark; it just stops
+/// being pure black. Raising this washes the metals out flat, which is the failure mode to watch
+/// for, and `shadowed_metal_stays_dark` pins both bounds.
 pub const AMBIENT_INTENSITY: f32 = 0.18;
-
-/// Multiplier on the wall band of the environment probe, and on that band alone.
-///
-/// The band's radiance comes from `MAT_LED_Screen`'s `effective_emission`, `(0.525, 0.45, 0.9)`, and
-/// [`AMBIENT_INTENSITY`]'s own note explains why 0.18 was chosen on top of it: that emission is the
-/// *pre-texture* node value and the picture that multiplies it has a mean well below 1.0. Both halves
-/// of that reasoning are right and the conclusion from them was wrong, because `src/screen.rs` does
-/// not draw the wall at the node value either. It draws it at
-/// `art * EMISSIVE_STRENGTH * SCREEN_EMISSION_GAIN * sideTint` with a contrast expansion before that,
-/// so the wall's own midband arrives on the frame at 1.5 to 2.5 linear — three to five times the
-/// number the probe is built from. The probe has been understating the room's largest light source by
-/// that factor for four rounds.
-///
-/// Which matters for exactly one class of surface, and it is the class that keeps failing: a metal has
-/// no diffuse term, so the environment *is* its light, and a metal whose reflection vector points at
-/// the wall can be no brighter than the band. Both pillars are that surface —
-/// `renders/j5/skyright.png` and the `screen_left` crop have them as black silhouettes for the fourth
-/// round running — and so are the rim's inner chrome band and the truss's inward faces.
-///
-/// This multiplies the band and the floor bounce under it, and leaves [`ENVIRONMENT_CEILING`] alone.
-/// The floor bounce is `band * MAT_Floor_Gloss`'s albedo, so it has to move with the wall that lights
-/// it — and it is what a downward-facing mirror sees, which is most of the wheel's base plate:
-/// `docs/look_target.md` region 3 calls that face "a dark chrome" and it can only ever be as bright as
-/// what it reflects. The ceiling stays put, which is what keeps this from becoming another
-/// [`AMBIENT_INTENSITY`] rise: the void is not lit by the wall, a truss tube's upper face still
-/// reflects near-black, and round 2's lesson — that a term reaching every surface from every direction
-/// cannot make a silhouette — is not undone. 2.6 rather than the 3 to 5 the arithmetic above allows,
-/// because the truss and the fascia occlude part of the wall from most of the room.
-pub const ENVIRONMENT_BAND_GAIN: f32 = 2.6;
-
-/// Multiplier on the environment band toward camera-left, `-X`. Magenta-coral.
-///
-/// `docs/look_target.md` §"Light colour, left versus right": "The two sides do not match, and
-/// the mismatch is load-bearing ... the frame reads magenta and coral on the left, cobalt and
-/// cyan on the right". The generated environment used to vary with elevation only, which
-/// `renders/verdict_r1.json` names as the reason no metal picks up a different hue depending on
-/// which side of the frame it is on. Multiplying the band by these two tints by azimuth is what
-/// puts the split onto the rim, the pillars and the truss, because for a metal the environment
-/// is the only thing there is to reflect.
-///
-/// The pair is normalised by eye so that their average is close to neutral: the split shifts
-/// hue, it does not change the room's level.
-///
-/// Round 3 dropped the green of both tints, from `(1.45, 0.62, 1.0)` and `(0.5, 0.9, 1.5)` to
-/// `(1.55, 0.50, 1.05)` and `(0.55, 0.72, 1.55)`. The pair's *average* is what a surface facing the
-/// middle of the room reflects, and the truss is such a surface: at the old values the average was
-/// `(0.975, 0.76, 1.25)`, whose green is three quarters of its blue, and the round-3 verdict on the
-/// truss was "its chords are steel-grey-blue tubes rim-lit from a cool source, where the reference
-/// lights the whole lattice violet-magenta". Green is what separates a steel blue from a violet, and
-/// nothing else in the pair had to change to fix it. The new average is `(1.05, 0.61, 1.30)`.
-pub const ENVIRONMENT_LEFT_TINT: [f32; 3] = [1.55, 0.50, 1.05];
-
-/// Multiplier on the environment band toward camera-right, `+X`. Cobalt-cyan. See
-/// [`ENVIRONMENT_LEFT_TINT`].
-///
-/// Round 5 took it from `(0.55, 0.72, 1.55)` to `(0.86, 0.66, 1.42)`, which is the same blue with half
-/// again as much red and a touch less green. The verdict: "The truss rim light is the right
-/// violet-magenta on the left of the frame but reads cool steel-blue-white on the right: in
-/// `renders/j5/void.png` every tube's rim highlight is a pale blue-grey line ... The reference
-/// rim-lights the right-hand truss in violet-brown with warm amber where the two amber cones sit." The
-/// verdict guessed `Rim_R` was innocent and it is: `Rim_R` is a `DirectionalLight` from `(8, 3.5, 3.5)`
-/// aimed into the arena, so what it lights on a truss tube 5.5 m up is the tube's *lower* face, and the
-/// rim line the crop shows on the tube's upper face can only be the probe. A tint whose red is a third
-/// of its blue makes that line a steel blue however bright it is; at 0.86 against 1.42 it is a
-/// violet-brown, which is what the reference draws. The pair's average moves from `(1.05, 0.61, 1.30)`
-/// to `(1.20, 0.58, 1.24)`, so the middle of the room stays violet and gains a little warmth.
-///
-/// What this cannot fix, and what a later round should take up: `Rim_L` and `Rim_R` are Blender AREA
-/// lights and this file builds them as `DirectionalLight`s, which carry a direction and no position. So
-/// `Rim_L`'s blue lands on every surface whose normal faces camera-left, the right-hand truss tubes
-/// included, and no change to the probe can stop it. Confining each rim to its own side of the room needs
-/// them rebuilt as positional lights with an attenuation, which is a change to the rig rather than to a
-/// constant.
-pub const ENVIRONMENT_RIGHT_TINT: [f32; 3] = [0.86, 0.66, 1.42];
-
-/// Linear radiance of the environment probe above [`ENVIRONMENT_BAND_TOP`]: the ceiling void as the
-/// truss sees it.
-///
-/// This used to be `RenderSpec::background()`, the Blender world colour `(0.01, 0.008, 0.02)`, on the
-/// argument that the void is what a tube pointing up reflects and the void is near-black. That is
-/// right about the *frame's* void, which is still cleared to exactly that colour, and wrong about what
-/// reaches the truss. The round-3 verdict: "The environment probe's azimuthal tint reaches the wall
-/// band but not the ceiling: `ENVIRONMENT_BAND_TOP` 0.2445 and `ENVIRONMENT_BAND_BOTTOM` 0.2322
-/// confine the coloured band to a narrow elevation, so a tube up at the truss ring sees the neutral
-/// part of the probe and takes its colour from `MAT_Truss_Metal`'s neutral (0.55, 0.56, 0.58)."
-///
-/// `docs/look_target.md` region 5 says the truss is edge-lit only and that the fix must keep it "nine
-/// parts silhouette to one part rim light", so the answer is not to widen the band — that would raise
-/// what reaches every surface in the room and undo round 2's darkening. It is to give the part of the
-/// probe a tube's *upper* face reflects a colour, and the honest colour for it is the light the
-/// twenty-four PAR cans and the twelve moving heads throw up into the ceiling. `(0.15, 0.045, 0.24)` is
-/// a fifth of the wall band's luminance in violet-magenta: enough to put the frame's dominant hue on
-/// the rim line of every tube, one seventieth of the band on a diffuse surface elsewhere, and
-/// `MAT_Pillar_Body` at albedo 0.09 gains 0.0015 from it.
-///
-/// Round 5 took it from `(0.15, 0.045, 0.24)` to `(0.22, 0.058, 0.27)`: the same violet-magenta with more
-/// red in it. The verdict was that the right-hand truss tubes' rim highlights "read cool
-/// steel-blue-white" where the reference has violet-brown. A tube's *upper* face reflects this and
-/// nothing else, so this is half of what those highlights are made of and
-/// [`ENVIRONMENT_RIGHT_TINT`] is the other half. Neither is the whole cause; see that constant's note.
-pub const ENVIRONMENT_CEILING: [f32; 3] = [0.22, 0.058, 0.27];
 
 /// Edge length of one face of the generated environment cube map, in texels.
 ///
@@ -508,7 +320,12 @@ pub const ENVIRONMENT_FACE_SIZE: u32 = 64;
 /// (`docs/scene_audit.md` §1), and `Wheel_Root` is 3.5 m up. So the top edge is at
 /// `atan((6.35 - 3.5) / 11.3) = 14.15°` and `sin(14.15°) = 0.2445`. Above it the
 /// environment fades to the Blender world background.
-pub const ENVIRONMENT_BAND_TOP: f32 = 0.52;
+///
+/// It shipped at 0.52 — twice the measured elevation, so the coloured band covered 31° of the sky
+/// instead of 14° — with no note saying why and with this derivation still written above it. The
+/// widening put more of the wall's radiance on every upward-facing surface in the room, which is a
+/// look change and not a measurement. The measurement is what the constant is for, so it is back.
+pub const ENVIRONMENT_BAND_TOP: f32 = 0.2445;
 
 /// Sine of the elevation of the LED wall's bottom edge, seen from the wheel centre:
 /// `atan((3.5 - 0.8) / 11.3) = 13.43°`, `sin(13.43°) = 0.2322`. Below it the environment
@@ -559,7 +376,9 @@ pub struct Rig {
     ambient: AmbientLight,
     /// `Rim_L`, `Rim_R` and `Fill_Front`, in manifest order.
     directionals: Vec<DirectionalLight>,
-    /// The wheel's own bulb channel as a lamp. One entry; see [`BULB_RING_INTENSITY`].
+    /// The lamps standing in for the wheel's own emissive bulb channel: [`BULB_RING_LAMPS`]
+    /// entries, or none when the manifest says the bulbs do not emit. See
+    /// [`BULB_RING_INTENSITY`].
     points: Vec<PointLight>,
     /// `Key_Wheel`, `Beam_L` and `Beam_R`, in manifest order.
     spots: Vec<SpotLight>,
@@ -624,7 +443,8 @@ impl Rig {
         for spec in &manifest.lights {
             let color = linear_to_srgba(spec.color, 1.0);
             let factor = watts_to_intensity(spec, manifest);
-            let intensity = factor * spec.energy * look_gain(&spec.name);
+            // The watt conversion and nothing else: no per-lamp look gain sits on top of it.
+            let intensity = factor * spec.energy;
             // Top-level manifest vectors are already in the geometry's frame; going through
             // these two keeps the code correct if `vectors_in` ever changes.
             let position = manifest.to_scene_point(spec.position());
@@ -694,8 +514,14 @@ impl Rig {
             )));
         }
 
-        // The wheel's own bulb ring as a lamp. See [`BULB_RING_INTENSITY`] for why it exists
-        // and `docs/look_target.md` §"Light directions" for what it is doing in the frame.
+        // The wheel's own bulb channel, stood in for by lamps because `three-d` lets emissive
+        // geometry light nothing. See [`BULB_RING_INTENSITY`] for the rule this follows and
+        // `docs/look_target.md` §"Light directions" for what the ring does in the frame.
+        //
+        // The stand-in is conditional on the geometry really being emissive in the .blend, which
+        // is `assets/scene.json`'s own rule. So the colour and the go/no-go both come from the
+        // manifest: no emissive `MAT_Bulb_Glass`, no ring.
+        let ring_colour = bulb_ring_colour(manifest);
         let ring_centre = manifest.to_scene_point(manifest.wheel.pivot())
             + vec3(0.0, 0.0, BULB_RING_FORWARD);
         let lamps = BULB_RING_LAMPS.max(1);
@@ -705,39 +531,50 @@ impl Rig {
             linear: BULB_RING_ATTENUATION[1],
             quadratic: BULB_RING_ATTENUATION[2],
         };
-        let points: Vec<PointLight> = (0..lamps)
-            .map(|k| {
-                // The wheel disc lies in the exported frame's XY plane and spins about Z
-                // (`assets/scene.json`, `wheel.spin_axis`), so the ring is a circle in x and y.
-                // The half-step offset keeps a lamp off the ring's apex, where the crest crystal
-                // and its bloom already are.
-                let angle = std::f32::consts::TAU * (k as f32 + 0.5) / lamps as f32;
-                let offset = vec3(
-                    BULB_RING_RADIUS * angle.cos(),
-                    BULB_RING_RADIUS * angle.sin(),
-                    0.0,
-                );
-                PointLight::new(
-                    context,
-                    per_lamp,
-                    linear_to_srgba(BULB_RING_COLOR, 1.0),
-                    ring_centre + offset,
-                    attenuation,
-                )
-            })
-            .collect();
+        let points: Vec<PointLight> = match ring_colour {
+            // Nothing emissive to stand in for, so no lamp. There is no default colour to fall
+            // back on: a colour of this module's own choosing would be the invention the rule
+            // exists to prevent.
+            None => Vec::new(),
+            Some(colour) => {
+                let colour = linear_to_srgba(colour, 1.0);
+                (0..lamps)
+                    .map(|k| {
+                        // The wheel disc lies in the exported frame's XY plane and spins about Z
+                        // (`assets/scene.json`, `wheel.spin_axis`), so the ring is a circle in x
+                        // and y. The half-step offset keeps a lamp off the ring's apex, where the
+                        // crest crystal and its bloom already are.
+                        let angle = std::f32::consts::TAU * (k as f32 + 0.5) / lamps as f32;
+                        let offset = vec3(
+                            BULB_RING_RADIUS * angle.cos(),
+                            BULB_RING_RADIUS * angle.sin(),
+                            0.0,
+                        );
+                        PointLight::new(
+                            context,
+                            per_lamp,
+                            colour,
+                            ring_centre + offset,
+                            attenuation,
+                        )
+                    })
+                    .collect()
+            }
+        };
         if audit {
             println!(
                 "light {:11} {:5} -> {} PointLights   total intensity {:.3} ({:.3} each)  \
-                 ring centre {:?} radius {:.3}  attenuation {:?}  (MAT_Bulb_Glass as a lamp)",
+                 ring centre {:?} radius {:.3}  attenuation {:?}  colour {:?}  \
+                 (stand-in for {BULB_RING_MATERIAL} on the wheel's bulbs)",
                 "BULB_RING",
                 "-",
-                lamps,
-                BULB_RING_INTENSITY,
-                per_lamp,
+                points.len(),
+                if points.is_empty() { 0.0 } else { BULB_RING_INTENSITY },
+                if points.is_empty() { 0.0 } else { per_lamp },
                 round3(ring_centre),
                 BULB_RING_RADIUS,
                 BULB_RING_ATTENUATION,
+                ring_colour,
             );
         }
 
@@ -858,15 +695,29 @@ fn spot_attenuation(spec: &LightSpec, manifest: &Manifest) -> Attenuation {
     }
 }
 
-/// The look-dev gain that sits on top of one light's physical conversion. 1.0 for anything the
-/// round did not move, so the physical rule is still what every number is derived from.
-fn look_gain(name: &str) -> f32 {
-    match name {
-        "Key_Wheel" => KEY_LOOK_GAIN,
-        "Rim_L" | "Rim_R" => RIM_LOOK_GAIN,
-        "Fill_Front" => FILL_LOOK_GAIN,
-        _ => 1.0,
+/// The colour of the bulb-ring stand-in, or `None` when there is nothing to stand in for.
+///
+/// [`BULB_RING_MATERIAL`]'s own emission colour out of `assets/scene.json`, normalised so its
+/// largest channel is 1.0 — the intensity carries the level, so the colour must carry only the
+/// hue. `None` when the manifest has no such material or its emission strength is zero, which is
+/// the condition the stand-in rests on: emissive geometry that casts no light is a `three-d`
+/// limitation, and a lamp standing in for geometry that does not emit would be an invention.
+fn bulb_ring_colour(manifest: &Manifest) -> Option<[f32; 3]> {
+    let material = manifest.material(BULB_RING_MATERIAL)?;
+    if material.emission_strength <= 0.0 {
+        eprintln!(
+            "warning: {BULB_RING_MATERIAL} has emission strength {} in assets/scene.json, so it \
+             is not emissive and the bulb-ring stand-in is not built",
+            material.emission_strength,
+        );
+        return None;
     }
+    let c = material.emission_color;
+    let peak = c[0].max(c[1]).max(c[2]);
+    if peak <= 0.0 {
+        return None;
+    }
+    Some([c[0] / peak, c[1] / peak, c[2] / peak])
 }
 
 /// The watts-to-intensity constant for one light.
@@ -920,12 +771,13 @@ fn watts_to_intensity(spec: &LightSpec, manifest: &Manifest) -> f32 {
 ///   albedo, a single floor bounce, which is what tints the underside of the rim and the
 ///   pegs.
 ///
-/// On top of that elevation gradient the band and the floor bounce are tinted by *azimuth*,
-/// magenta-coral toward camera-left and cobalt-cyan toward camera-right. That is
-/// [`ENVIRONMENT_LEFT_TINT`] and [`ENVIRONMENT_RIGHT_TINT`], and it is the look-dev decision
-/// round 1 asked for: the split is load-bearing in the reference and for a metal the
-/// environment is the only thing there is to reflect. The zenith is left untinted, because the
-/// ceiling void is the one part of the reference that is the same colour on both sides.
+/// The map is a function of elevation and nothing else. It used to carry an azimuthal hue swing
+/// as well — magenta-coral toward camera-left, cobalt-cyan toward camera-right — and a violet
+/// ceiling radiance in place of the world background. Both were look-dev's, both were chosen to
+/// match `docs/wheel_stage.png`, and neither is in `wheel_stage.blend`: the .blend's world is one
+/// flat Background node and its wall is one material with one emission. They are gone, so a metal's
+/// hue no longer depends on which side of the frame it is on and a tube's upper face reflects the
+/// near-black void again.
 ///
 /// `[f16; 4]` data, so values above 1.0 survive and `TextureCubeMap` generates the mip maps
 /// `prefilter.frag`'s `textureLod` needs. A three-channel float format would silently skip
@@ -937,19 +789,15 @@ pub fn environment_cube_map(context: &Context, manifest: &Manifest) -> TextureCu
         // The wall's emission if the material table ever loses the entry: the manifest's own
         // base colour for it, unlit. Dark violet, so the metals go dark rather than wrong.
         .unwrap_or_else(|| vec3(0.35, 0.3, 0.6));
-    // Not `manifest.render.background()` any more: that is what the *frame* is cleared to and it is
-    // still exactly that, but it is not what a truss tube's upper face reflects. See
-    // [`ENVIRONMENT_CEILING`].
-    let zenith = Vec3::from(ENVIRONMENT_CEILING);
+    // The Blender world colour, which is what the frame is cleared to and what anything looking
+    // up in that room sees. There is nothing else overhead in the .blend.
+    let zenith = manifest.render.background();
     let floor_albedo = manifest
         .material(ENVIRONMENT_FLOOR_MATERIAL)
         .map(|m| Vec3::from(m.base_color))
         .unwrap_or_else(|| vec3(0.055, 0.05, 0.075));
-    // The band, at the radiance `src/screen.rs` actually draws the wall at rather than the pre-texture
-    // node value. See [`ENVIRONMENT_BAND_GAIN`]. The floor bounce is taken off the gained value,
-    // because the floor is lit by the wall and gets brighter with it; the zenith is not, because the
-    // ceiling void is not lit by anything.
-    let band = band * ENVIRONMENT_BAND_GAIN;
+    // One floor bounce: the wall's own radiance times the floor's albedo. No gain sits on the band
+    // — `AMBIENT_INTENSITY` is the one scalar that sets the probe's level.
     let nadir = vec3(
         band.x * floor_albedo.x,
         band.y * floor_albedo.y,
@@ -969,16 +817,7 @@ pub fn environment_cube_map(context: &Context, manifest: &Manifest) -> TextureCu
                     let sc = 2.0 * (col as f32 + 0.5) / size as f32 - 1.0;
                     let tc = 2.0 * (row as f32 + 0.5) / size as f32 - 1.0;
                     let dir = face_direction(side, sc, tc).normalize();
-                    // The azimuthal split. `+X` is camera-right, because the hero camera looks
-                    // down `-Z` (`assets/scene.json`, `camera.forward`). `dir.x` already runs
-                    // -1 to +1 across the room, so it is the swing itself.
-                    let tint = azimuth_tint(dir.x);
-                    let c = environment_radiance(
-                        dir.y,
-                        modulate(band, tint),
-                        zenith,
-                        modulate(nadir, tint),
-                    );
+                    let c = environment_radiance(dir.y, band, zenith, nadir);
                     data.push([
                         f16::from_f32(c.x),
                         f16::from_f32(c.y),
@@ -1009,22 +848,6 @@ pub fn environment_cube_map(context: &Context, manifest: &Manifest) -> TextureCu
         &faces[4], // +Z, `front`
         &faces[5], // -Z, `back`
     )
-}
-
-/// Channel-by-channel product of two colours. `cgmath`'s `ElementWise` is not in `three_d`'s
-/// prelude, and `Vec3 * Vec3` is not defined, so spell it out.
-fn modulate(a: Vec3, b: Vec3) -> Vec3 {
-    vec3(a.x * b.x, a.y * b.y, a.z * b.z)
-}
-
-/// The hue multiplier for one azimuth. `x` is the direction's normalised `x`, so `-1` is fully
-/// camera-left and `+1` fully camera-right; `smoothstep` rather than a straight lerp keeps the
-/// two sides distinct and hands the middle of the frame the average of the pair.
-fn azimuth_tint(x: f32) -> Vec3 {
-    let t = smoothstep(-1.0, 1.0, x);
-    let left = Vec3::from(ENVIRONMENT_LEFT_TINT);
-    let right = Vec3::from(ENVIRONMENT_RIGHT_TINT);
-    left + (right - left) * t
 }
 
 /// The environment's linear radiance at one elevation, `up` being `+Y`.
@@ -1199,25 +1022,6 @@ mod tests {
         }
     }
 
-    /// The azimuthal split must run magenta-coral to camera-left and cobalt-cyan to
-    /// camera-right, and it must not change the room's overall level. A sign error here would
-    /// mirror the reference's two sides, which is worse than having no split at all.
-    #[test]
-    fn the_azimuth_split_runs_left_to_right() {
-        let left = azimuth_tint(-1.0);
-        let right = azimuth_tint(1.0);
-        assert_eq!(left, Vec3::from(ENVIRONMENT_LEFT_TINT));
-        assert_eq!(right, Vec3::from(ENVIRONMENT_RIGHT_TINT));
-        // Left is the warm side: more red than blue. Right is the cool side: more blue than red.
-        assert!(left.x > left.z, "camera-left must be the magenta-coral side");
-        assert!(right.z > right.x, "camera-right must be the cobalt-cyan side");
-        // The middle of the frame is the average of the two, and the pair is level-neutral to
-        // within a fifth of a stop, so the split shifts hue rather than brightness.
-        let middle = azimuth_tint(0.0);
-        let mean = (middle.x + middle.y + middle.z) / 3.0;
-        assert!((mean - 1.0).abs() < 0.15, "the split changes the level: {mean}");
-    }
-
     /// The bulb-ring light is a local source, so it must be dimmed by distance — otherwise it
     /// lights the LED wall and the pillars, which the reference keeps as dark silhouettes.
     #[test]
@@ -1263,19 +1067,61 @@ mod tests {
 
     /// The ambient level has to leave shadowed metal dark. A metal only ever reflects the
     /// environment, so its shadow-side radiance is bounded by the ambient times the void.
+    ///
+    /// Both bounds are taken off the values `environment_cube_map` actually builds the probe from —
+    /// the manifest's world background overhead and `MAT_LED_Screen`'s own emission at the horizon
+    /// — rather than off numbers written here, or the test could pass while the probe diverged.
     #[test]
     fn shadowed_metal_stays_dark() {
-        // The ceiling term is what a tube's upper face reflects; it carries the frame's violet, and
-        // the bound it must respect is that it stays a rim line rather than filling the tube in.
-        let zenith_radiance = AMBIENT_INTENSITY * ENVIRONMENT_CEILING[2];
+        let manifest = Manifest::load_from_assets().expect("assets/scene.json must load");
+        let zenith = manifest.render.background();
+        let zenith_radiance = AMBIENT_INTENSITY * zenith.z;
         assert!(
             zenith_radiance < 0.06,
             "metal facing the ceiling void would read at {zenith_radiance}, not a rim line"
         );
-        let band_radiance = AMBIENT_INTENSITY * 0.9;
+        let band = manifest
+            .material(ENVIRONMENT_BAND_MATERIAL)
+            .expect("MAT_LED_Screen in the manifest")
+            .effective_emission;
+        let band_radiance = AMBIENT_INTENSITY * band[2];
         assert!(
             band_radiance < 0.5,
             "metal facing the LED wall would read at {band_radiance}, which washes the hub"
         );
+    }
+
+    /// The bulb-ring lamps stand in for emissive geometry, so the geometry has to be emissive.
+    /// This is the condition `assets/scene.json`'s `lighting_notes` puts on the stand-in, and
+    /// `bulb_ring_colour` is where the renderer checks it: no emission, no ring.
+    #[test]
+    fn the_bulb_ring_stands_in_for_emissive_geometry() {
+        let manifest = Manifest::load_from_assets().expect("assets/scene.json must load");
+        let material = manifest
+            .material(BULB_RING_MATERIAL)
+            .unwrap_or_else(|| panic!("manifest has no {BULB_RING_MATERIAL}"));
+        assert!(
+            material.emission_strength > 0.0,
+            "{BULB_RING_MATERIAL} emits {} in the .blend, so a lamp standing in for it would be an \
+             invention",
+            material.emission_strength
+        );
+        assert!(
+            material.is_on("Wheel_Bulbs"),
+            "{BULB_RING_MATERIAL} is not on Wheel_Bulbs, so the ring is not where the lamps are"
+        );
+        // The colour is the material's own emission colour, normalised: the hue comes from the
+        // manifest and the level from BULB_RING_INTENSITY.
+        let colour = bulb_ring_colour(&manifest).expect("an emissive bulb material gives a colour");
+        let peak = colour[0].max(colour[1]).max(colour[2]);
+        assert!((peak - 1.0).abs() < 1e-6, "not normalised: {colour:?}");
+        let want = material.emission_color;
+        let want_peak = want[0].max(want[1]).max(want[2]);
+        for k in 0..3 {
+            assert!(
+                (colour[k] - want[k] / want_peak).abs() < 1e-6,
+                "channel {k}: {colour:?} against {want:?}"
+            );
+        }
     }
 }

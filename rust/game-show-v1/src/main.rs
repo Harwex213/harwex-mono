@@ -176,17 +176,33 @@ impl World {
         // does. The *procedural* sky belongs on the cyclorama alone; painting the riser front
         // with drifting clouds and stars is wrong. So the filter follows the art choice
         // (`docs/api/screen.md`).
+        //
+        // Both values come off the manifest, which `docs/agent_plan.md` makes the single source
+        // of truth: the flat base colour of `MAT_LED_Screen`, and the name of the node the
+        // procedural sky is allowed on. No literal copy of either lives here, so neither can
+        // drift away from `assets/scene.json`.
+        let screen_material = manifest.screen.material.as_str();
         let base = manifest
-            .material(screen::SCREEN_MATERIAL)
-            .map(|m| m.base_color)
-            .unwrap_or([0.35, 0.3, 0.6]);
+            .material(screen_material)
+            .ok_or_else(|| {
+                Error::from(format!(
+                    "assets/scene.json has no material {screen_material:?}"
+                ))
+            })?
+            .base_color;
+        let sky_node = manifest.screen.node.as_str();
         let mut skies = Vec::new();
         if SCREEN_DRAWN_BY_SCREEN_RS {
-            for i in stage.indices_with_material(screen::SCREEN_MATERIAL) {
-                if screen::FORCE_PROCEDURAL_SKY && stage.parts[i].name != scene::SCREEN_NODE {
+            for i in stage.indices_with_material(screen_material) {
+                if screen::FORCE_PROCEDURAL_SKY && stage.parts[i].name != sky_node {
                     continue;
                 }
-                skies.push(screen::SkyScreen::new(context, &stage.parts[i], base)?);
+                skies.push(screen::SkyScreen::new(
+                    context,
+                    &stage.parts[i],
+                    base,
+                    manifest.screen.emission_strength,
+                )?);
                 stage.parts[i].visible = false;
             }
         }

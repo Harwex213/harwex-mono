@@ -97,6 +97,15 @@ WHEEL_ROOT_CHILDREN = 56
 EXPECT_LIGHT_EXTENSION = True
 LIGHT_EXTENSION = "KHR_lights_punctual"
 
+# export_notes section 6.3: the exporter normalises `emissiveFactor` to a maximum of 1 and
+# puts the rest in KHR_materials_emissive_strength. MAT_LED_Screen's 1.5 lives there, and
+# assets/scene.json re-applies it, so the GLB has to actually carry it. Without the
+# extension the wall imports at 1.0 and nothing else complains.
+EMISSIVE_STRENGTH_EXTENSION = "KHR_materials_emissive_strength"
+SCREEN_MATERIAL = "MAT_LED_Screen"
+SCREEN_EMISSIVE_STRENGTH = 1.5
+STRENGTH_EPSILON = 1e-6
+
 GLTF_UNSIGNED_SHORT = 5123
 GLTF_MODE_TRIANGLES = 4
 
@@ -240,16 +249,25 @@ def validate(path, verbose):
     # regression cannot pass again.
     rep.equal("image count", len(gltf.get("images", [])), 1)
     rep.equal("texture count", len(gltf.get("textures", [])), 2)
-    led = next((m for m in materials if m.get("name") == "MAT_LED_Screen"), {})
+    led = next((m for m in materials if m.get("name") == SCREEN_MATERIAL), {})
     rep.check(
         "baseColorTexture" in led.get("pbrMetallicRoughness", {}),
-        "MAT_LED_Screen carries a baseColorTexture",
+        f"{SCREEN_MATERIAL} carries a baseColorTexture",
         f"got {sorted(led.get('pbrMetallicRoughness', {}))}",
     )
     rep.check(
         "emissiveTexture" in led,
-        "MAT_LED_Screen carries an emissiveTexture",
+        f"{SCREEN_MATERIAL} carries an emissiveTexture",
         f"got {sorted(led)}",
+    )
+    strength = (
+        led.get("extensions", {}).get(EMISSIVE_STRENGTH_EXTENSION, {}).get("emissiveStrength")
+    )
+    rep.check(
+        strength is not None
+        and abs(strength - SCREEN_EMISSIVE_STRENGTH) <= STRENGTH_EPSILON,
+        f"{SCREEN_MATERIAL} {EMISSIVE_STRENGTH_EXTENSION} is {SCREEN_EMISSIVE_STRENGTH}",
+        f"got {strength!r}",
     )
 
     print("\n[triangles]")

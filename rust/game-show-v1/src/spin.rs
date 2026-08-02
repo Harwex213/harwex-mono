@@ -570,12 +570,17 @@ mod tests {
 
     #[test]
     fn geometry_comes_from_the_manifest() {
-        let w = wheel();
+        let manifest = Manifest::load_from_assets().expect("assets/scene.json");
+        let w = Wheel::detached(&manifest);
         assert_eq!(w.peg_count(), 48);
         assert!(near(w.peg_pitch().to_degrees(), 7.5, 1.0e-4));
-        // One stud width of arc, 38% of the pitch.
-        assert!(near(w.window, 0.112 / 2.245, 1.0e-6));
-        assert!(near(w.amplitude.to_degrees(), 0.62 * 32.2, 1.0e-3));
+        // One stud width of arc, 38% of the pitch. Derived from the manifest rather than
+        // copied out of it: this assertion held `0.112 / 2.245`, and the rounded stud width
+        // failed the moment the manifest was regenerated from the .blend at full precision.
+        let window = manifest.wheel.peg_stud_size / manifest.wheel.peg_ring_radius;
+        assert!(near(w.window, window, 1.0e-6));
+        let amplitude = TICK_AMPLITUDE * manifest.flapper.clearance_deflection_deg;
+        assert!(near(w.amplitude.to_degrees(), amplitude, 1.0e-3));
         // The pegs straddle the flapper at angle 0, so a pass is half a pitch away.
         assert!(near(w.pass, w.peg_pitch() * 0.5, 1.0e-6));
     }
