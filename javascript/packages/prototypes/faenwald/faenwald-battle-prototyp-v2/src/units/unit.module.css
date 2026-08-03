@@ -149,25 +149,62 @@
 
 /* The step. The marker is already drawn on the hex it has arrived at, so the
    animation opens it back on the hex it left — that offset is what comes in as
-   the two custom properties — and walks it home. Ease out, so the unit sets off
-   at once and settles onto the new hex. */
+   the two custom properties — and walks it home. Ease in and out, so the unit
+   pushes off the hex it leaves and settles onto the one it reaches.
+
+   Two keyframes and nothing in between. An easing curve is applied to every gap
+   between keyframes, not to the run as a whole, so a keyframe halfway across is
+   eased into and then eased out of again — the marker sets off, slows to a near
+   stop in the middle of the gap, and sets off a second time. That is what made
+   the step read as two lurches rather than one walk. The hop the middle keyframe
+   used to carry is on `.stepLift` below, which has a transform of its own to
+   write and cannot break the travel.
+
+   `both` holds the marker on the hex it left for the frame it is mounted on, and
+   on the hex it has reached until the state clearing the step catches up. */
 .stepping {
-  animation: step var(--unit-step, 280ms) cubic-bezier(0.22, 0.7, 0.25, 1);
+  animation: step var(--unit-step, 280ms) cubic-bezier(0.4, 0.05, 0.2, 1) both;
+  /* Every part of the marker — outlines, plates, the text on them — is repainted
+     on each frame of the travel, so the step is worth a layer of its own for as
+     long as it lasts. */
+  will-change: transform;
 }
 
 @keyframes step {
-  0% {
+  from {
     transform: translate(var(--step-dx), var(--step-dy));
   }
 
-  /* A shade taller halfway across, so the marker reads as carried over the gap
-     rather than dragged through it. */
-  55% {
-    transform: translate(calc(var(--step-dx) * 0.4), calc(var(--step-dy) * 0.4)) scale(1.05);
+  to {
+    transform: translate(0, 0);
+  }
+}
+
+/* A shade taller halfway across, so the marker reads as carried over the gap
+   rather than dragged through it. This is a second element because an animation
+   replaces the whole transform of the element it runs on: the hop and the travel
+   cannot share one. Here a middle keyframe is what is wanted — the easing on the
+   way up and the easing on the way down are the arc. */
+.stepLift {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.stepping .stepLift {
+  animation: stepLift var(--unit-step, 280ms) ease-in-out both;
+}
+
+@keyframes stepLift {
+  from {
+    transform: scale(1);
   }
 
-  100% {
-    transform: translate(0, 0);
+  50% {
+    transform: scale(1.05);
+  }
+
+  to {
+    transform: scale(1);
   }
 }
 

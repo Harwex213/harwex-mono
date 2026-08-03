@@ -329,50 +329,56 @@ function UnitMarker({
       transform={`translate(${cell.x.toFixed(2)} ${cell.y.toFixed(2)})`}
     >
       <g className={bodyClass} key={replayKey} style={motionStyle}>
-        <polygon className={`${styles.body} ${styles[unit.side]}`} points={UNIT_POINTS} />
-        {/* The glyph is the only part of the marker that says which way the unit
-            faces, so a turn is animated on it alone: the bars and the plates
-            stand still while it comes round. The outer group drops it into the
-            middle of the band left for it, the inner one carries the turn, and
-            the path reads right to left as before — centred on its own viewBox,
-            scaled, then stood upright. */}
-        <g transform={`translate(0 ${ICON_CENTER_Y.toFixed(2)})`}>
-          <g className={styles.iconTurn} style={{ transform: `rotate(${angle}deg)` }}>
-            <circle className={styles.iconAnchor} r={ICON_ANCHOR_RADIUS.toFixed(2)} />
-            <path
-              className={styles.icon}
-              d={icon.path}
-              transform={`rotate(${icon.rotation}) scale(${ICON_SCALE}) translate(${-ICON_VIEWBOX / 2} ${-ICON_VIEWBOX / 2})`}
-            />
+        {/* Everything the marker draws, under one more group. A CSS animation
+            replaces the whole transform of the element it runs on, so the hop a
+            step is carried over the gap with has nowhere to go on the group
+            above — that one is busy walking the marker across. See `.stepLift`. */}
+        <g className={styles.stepLift}>
+          <polygon className={`${styles.body} ${styles[unit.side]}`} points={UNIT_POINTS} />
+          {/* The glyph is the only part of the marker that says which way the
+              unit faces, so a turn is animated on it alone: the bars and the
+              plates stand still while it comes round. The outer group drops it
+              into the middle of the band left for it, the inner one carries the
+              turn, and the path reads right to left as before — centred on its
+              own viewBox, scaled, then stood upright. */}
+          <g transform={`translate(0 ${ICON_CENTER_Y.toFixed(2)})`}>
+            <g className={styles.iconTurn} style={{ transform: `rotate(${angle}deg)` }}>
+              <circle className={styles.iconAnchor} r={ICON_ANCHOR_RADIUS.toFixed(2)} />
+              <path
+                className={styles.icon}
+                d={icon.path}
+                transform={`rotate(${icon.rotation}) scale(${ICON_SCALE}) translate(${-ICON_VIEWBOX / 2} ${-ICON_VIEWBOX / 2})`}
+              />
+            </g>
           </g>
+          <StatBar
+            doomed={damage?.health ?? 0}
+            fillClass={styles.health}
+            value={unit.stats.health}
+            x={-BAR_OFFSET}
+          />
+          <StatBar
+            doomed={damage?.morale ?? 0}
+            fillClass={styles.morale}
+            value={unit.stats.morale}
+            x={BAR_OFFSET}
+          />
+          <Plate
+            y={DAMAGE_PLATE_Y}
+            width={DAMAGE_PLATE_WIDTH}
+            fontSize={DAMAGE_FONT_SIZE}
+            label={String(unit.stats.attack)}
+          />
+          <Plate
+            y={NAME_PLATE_Y}
+            width={NAME_PLATE_WIDTH}
+            fontSize={NAME_FONT_SIZE}
+            label={unit.name}
+          />
+          {/* Last, so the blow washes over the whole marker. Only mounted for
+              the length of the animation. */}
+          {struck ? <polygon className={styles.flash} points={UNIT_POINTS} /> : null}
         </g>
-        <StatBar
-          doomed={damage?.health ?? 0}
-          fillClass={styles.health}
-          value={unit.stats.health}
-          x={-BAR_OFFSET}
-        />
-        <StatBar
-          doomed={damage?.morale ?? 0}
-          fillClass={styles.morale}
-          value={unit.stats.morale}
-          x={BAR_OFFSET}
-        />
-        <Plate
-          y={DAMAGE_PLATE_Y}
-          width={DAMAGE_PLATE_WIDTH}
-          fontSize={DAMAGE_FONT_SIZE}
-          label={String(unit.stats.attack)}
-        />
-        <Plate
-          y={NAME_PLATE_Y}
-          width={NAME_PLATE_WIDTH}
-          fontSize={NAME_FONT_SIZE}
-          label={unit.name}
-        />
-        {/* Last, so the blow washes over the whole marker. Only mounted for the
-            length of the animation. */}
-        {struck ? <polygon className={styles.flash} points={UNIT_POINTS} /> : null}
       </g>
     </g>
   );

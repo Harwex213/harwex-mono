@@ -1,6 +1,7 @@
 import { AlertDialog, Button, Drawer, Tooltip } from "@hw/faenwald-uikit";
 import { useSignals } from "@preact/signals-react/runtime";
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
+import { playUnitSelect } from "../../audio/sounds";
 import { AttackTargetLayer } from "../../hex/AttackTargetLayer";
 import { HexCanvas } from "../../hex/HexCanvas";
 import { HexGridLayer } from "../../hex/HexGridLayer";
@@ -53,7 +54,7 @@ import {
   unitIdAt,
   type BattleUnit,
 } from "../../state/battle-state";
-import { grid, hoverCell, selectCell } from "../../state/grid-state";
+import { grid, hoverCell, selectCell, selectedKey } from "../../state/grid-state";
 import { SCENARIOS, selectedScenario } from "../../state/scenario-state";
 import { players } from "../../state/session-state";
 import { InfoIcon } from "../../ui/icons";
@@ -296,6 +297,22 @@ function onCellClick(key: string): void {
   }
 
   selectCell(key);
+
+  // The sound answers the selection, not the click. `selectCell` toggles, so a
+  // second click on the selected unit lets it go, and a unit being let go has no
+  // selection to answer.
+  if (selectedKey.value === key) {
+    playUnitSelect();
+  }
+}
+
+// Selects a unit from a control outside the canvas — an army roster card or a
+// turn order card. The sound is played here rather than inside `selectUnit`: the
+// same call hands the round on at the end of a turn, and that selection is the
+// board's own rather than a click on a unit.
+function onUnitCardClick(unitId: string): void {
+  selectUnit(unitId);
+  playUnitSelect();
 }
 
 // The bar over the board: battle-wide controls, as opposed to the turn order
@@ -427,7 +444,7 @@ function ArmyRow({ unit }: { unit: BattleUnit }) {
   const stats = statsOf(unit.id);
 
   return (
-    <button className={className} onClick={() => selectUnit(unit.id)} type="button">
+    <button className={className} onClick={() => onUnitCardClick(unit.id)} type="button">
       <img alt="" className={styles.unitAvatar} src={UNIT_AVATARS[unit.code]} />
       <span className={styles.unitBody}>
         <span className={styles.unitName}>
@@ -561,7 +578,7 @@ function TurnCard({
   return (
     <button
       className={className}
-      onClick={() => selectUnit(unit.id)}
+      onClick={() => onUnitCardClick(unit.id)}
       title={unit.title}
       type="button"
     >

@@ -1,6 +1,7 @@
 import { Button } from "@hw/faenwald-uikit";
 import { useSignals } from "@preact/signals-react/runtime";
 import { useRef } from "react";
+import { playUnitSelect } from "../../audio/sounds";
 import { HexCanvas, type HexCanvasHandle } from "../../hex/HexCanvas";
 import { HexGridLayer } from "../../hex/HexGridLayer";
 import { HexInfoPanel } from "../../hex/HexInfoPanel";
@@ -11,6 +12,7 @@ import {
   hoverCell,
   selectCell,
   selectedCell,
+  selectedKey,
   terrainOf,
 } from "../../state/grid-state";
 import { unitAt, units } from "../../state/units-state";
@@ -64,6 +66,13 @@ function selectOccupiedCell(key: string): void {
   }
 
   selectCell(key);
+
+  // The sound answers the selection, not the click. `selectCell` toggles, so a
+  // second click on the selected unit lets it go, and a unit being let go has no
+  // selection to answer.
+  if (selectedKey.value === key) {
+    playUnitSelect();
+  }
 }
 
 export { HexGridPage };

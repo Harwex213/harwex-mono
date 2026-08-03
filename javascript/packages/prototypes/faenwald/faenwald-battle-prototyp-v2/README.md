@@ -48,9 +48,12 @@ extra call.
   (`unit-avatars.ts`)
 - `src/session/` — panels every page shares, currently the chat
 - `src/state/` — signal stores, no React imports
+- `src/audio/` — the UI sounds (`sounds.ts`), one element per clip and one function per
+  event the board answers with a sound
 - `src/*.module.css` — component styles, built on the uikit's `--uk-*` tokens
 - `assets/units-avatars/` — 1:1 unit portraits, imported through the `asset/resource`
   rule in `rspack.config.mjs`
+- `assets/sounds/` — sound effects, imported through the same rule
 
 ## Adding a page
 

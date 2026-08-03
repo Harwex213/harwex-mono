@@ -1,5 +1,6 @@
 import { Button, Tooltip } from "@hw/faenwald-uikit";
 import { useSignals } from "@preact/signals-react/runtime";
+import { playUnitSelect } from "../../audio/sounds";
 import { HexCanvas } from "../../hex/HexCanvas";
 import { HexGridLayer } from "../../hex/HexGridLayer";
 import { HexInfoPanel } from "../../hex/HexInfoPanel";
@@ -36,7 +37,7 @@ import {
   unitIdAt,
   type RosterUnit,
 } from "../../state/disposition-state";
-import { focusCell, grid, hoverCell, selectCell } from "../../state/grid-state";
+import { focusCell, grid, hoverCell, selectCell, selectedKey } from "../../state/grid-state";
 import { players } from "../../state/session-state";
 import { InfoIcon } from "../../ui/icons";
 import { UnitActionsPanel } from "../../units/UnitActionsPanel";
@@ -123,6 +124,13 @@ function onCellClick(key: string): void {
   // two different units.
   cancelPick();
   selectCell(key);
+
+  // The sound answers the selection, not the click. `selectCell` toggles, so a
+  // second click on the selected unit lets it go, and a unit being let go has no
+  // selection to answer.
+  if (selectedKey.value === key) {
+    playUnitSelect();
+  }
 }
 
 function RosterPanel() {
@@ -202,6 +210,7 @@ function onRosterClick(unitId: string): void {
     cancelMove();
     cancelRotate();
     focusCell(placement);
+    playUnitSelect();
     return;
   }
 

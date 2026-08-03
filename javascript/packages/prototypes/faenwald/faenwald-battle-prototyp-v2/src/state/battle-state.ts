@@ -152,6 +152,13 @@ const movement = signal<Movement | null>(null);
 // the movement above and the animation it drives cannot drift apart.
 const STEP_MS = 280;
 
+// What the timer waits on top of that. The timer is started the moment the step
+// is written, and the animation only starts on the frame the marker carrying it
+// is painted on — so a timer of exactly `STEP_MS` takes the marker off the board
+// a frame or two short of the hex it is walking to. Two frames at 60Hz, rounded
+// up, is enough to let the animation finish first.
+const STEP_TAIL_MS = 40;
+
 let movementSeq = 0;
 
 let movementTimer = 0;
@@ -586,7 +593,7 @@ function moveUnit(key: string): void {
   window.clearTimeout(movementTimer);
   movementTimer = window.setTimeout(() => {
     movement.value = null;
-  }, STEP_MS);
+  }, STEP_MS + STEP_TAIL_MS);
 }
 
 // Hands the round on to the next unit in the queue and selects it, so the

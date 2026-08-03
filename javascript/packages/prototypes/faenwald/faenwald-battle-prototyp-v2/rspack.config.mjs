@@ -48,6 +48,13 @@ export default {
         test: /\.png$/i,
         type: "asset/resource",
       },
+      // Sound effects. Emitted as files for the same reason: a clip inlined as a
+      // data URI is carried by the bundle on every load, and no sound plays
+      // before the page has taken a click.
+      {
+        test: /\.mp3$/i,
+        type: "asset/resource",
+      },
     ],
   },
   plugins: [
