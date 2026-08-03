@@ -1,0 +1,7 @@
+{
+  "name": "@hw/faenwald-battle-prototype-themes",
+  "type": "module",
+  "scripts": {
+    "dev": "yarn :static"
+  }
+}

@@ -764,11 +764,13 @@ body {
   width: 100%;
 }
 
-/* The code sits on the sill of the lancet, on glass dark enough to read over. */
+/* Both labels lie on the portrait, not on the page, so neither follows the
+   theme's ink: a portrait is dark in daylight too, and gold on it reads either
+   way. */
 .turnCode {
-  background: linear-gradient(180deg, rgba(11, 8, 6, 0.55), rgba(11, 8, 6, 0.92));
+  background: linear-gradient(180deg, rgba(11, 8, 6, 0.55), rgba(11, 8, 6, 0.94));
   bottom: 0;
-  color: var(--brass-hi);
+  color: #f3ddaa;
   font-family: var(--font-display);
   font-size: 11px;
   left: 0;
@@ -780,15 +782,15 @@ body {
 }
 
 .turnInitiative {
-  color: var(--ink-subtle);
+  color: #e6d3a6;
   font-family: var(--font-num);
   font-size: 9px;
   left: 0;
   position: absolute;
   right: 0;
   text-align: center;
-  top: 3px;
   text-shadow: 0 1px 3px #000;
+  top: 3px;
 }
 
 /* --- Players and chat --------------------------------------------------- */
@@ -906,17 +908,24 @@ body {
 
 .hex {
   stroke: var(--came);
-  stroke-width: 2.4;
-  transition: filter var(--duration) var(--ease);
+  stroke-linejoin: round;
+  stroke-width: 3;
 }
 
-/* The thin bright line just inside a came, where the glass edge catches the
-   light. Drawn as its own pass so it never takes the pointer. */
+/* Light sliding off the face of one pane. Per hex, because that is the whole
+   point: a window is pieces, and each piece takes the light on its own. */
+.hexShine {
+  fill: url(#gShine);
+  pointer-events: none;
+}
+
+/* The thin bright line just inside a came, where the cut edge of the glass
+   catches it. */
 .hexGlint {
   fill: none;
   pointer-events: none;
   stroke: var(--came-lit);
-  stroke-width: 0.9;
+  stroke-width: 1.1;
 }
 
 .band {
@@ -940,18 +949,32 @@ body {
   stroke: var(--brass-hi);
 }
 
-/* Mottle: the imperfection that separates glass from paint. One pass over the
-   whole board rather than a filter per pane, which would cost 195 of them. */
+/* Mottle: the imperfection that separates glass from paint. */
 .mottle {
   mix-blend-mode: overlay;
-  opacity: 0.5;
+  opacity: 0.44;
   pointer-events: none;
 }
 
-/* The light behind the window, pooled where the sun would be. */
+.tooth {
+  mix-blend-mode: soft-light;
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+/* The light behind the window, pooled where the sun would be. Kept low: the
+   terrain has to stay five distinguishable colours, and a wash strong enough to
+   read as a sunbeam takes three of them to the same amber. */
 .backlight {
   mix-blend-mode: screen;
-  opacity: 0.55;
+  opacity: 0.42;
+  pointer-events: none;
+}
+
+/* A marker never takes the pointer: the hex under it does, and answers for both.
+   Everything on the board is reached through a hex, which is what lets one
+   handler on the canvas read every click. */
+.marker {
   pointer-events: none;
 }
 
@@ -1002,13 +1025,14 @@ body {
 
 .attackTarget {
   cursor: pointer;
-  fill: rgba(179, 18, 44, 0.32);
+  fill: url(#gStrike);
+  fill-opacity: 0.62;
   stroke: #ff5a6e;
   stroke-width: 2;
 }
 
 .attackTarget:hover {
-  fill: rgba(255, 60, 90, 0.5);
+  fill-opacity: 0.85;
 }
 
 .handleDisc {
@@ -1396,39 +1420,90 @@ const BAND_POINTS = hexRingPoints(BAND_WIDTH, -BAND_START);
 
 const HEX_POINTS = hexPoints(HEX_SIZE - HEX_INSET);
 const GLINT_POINTS = hexPoints(HEX_SIZE - HEX_INSET - 1.8);
+// Inside the came by more than half its stroke, so a clipped wash cannot reach
+// the lead.
+const CLIP_POINTS = hexPoints(HEX_SIZE - HEX_INSET - 1.4);
+// A pane recut in another colour — an offered move, a unit in reach. Sized so it
+// covers the terrain under it without touching the came around it.
+const OVERLAY_POINTS = hexPoints(HEX_SIZE - HEX_INSET - 1);
 
 // ---------------------------------------------------------------------------
 // Defs. Every jewel in the window is one of these gradients.
 // ---------------------------------------------------------------------------
 
 const GLASS = {
-  plain: ["#f3f6ef", "#a9bcae", "#7d9587"],
-  path: ["#ffe08a", "#e5a716", "#a16c07"],
-  arcane: ["#b673ff", "#7226cd", "#370d78"],
-  hills: ["#f0b846", "#c07d0f", "#7a4a05"],
-  crag: ["#9a6a1e", "#5c3a0a", "#2e1b03"],
-  ruby: ["#ff6274", "#b3122c", "#5c0716"],
-  cobalt: ["#6f96ff", "#1e46bd", "#0b1f63"],
+  plain: ["#fcfefa", "#cbdccf", "#96aea1"],
+  path: ["#ffeda8", "#f5b81c", "#b07705"],
+  arcane: ["#c084ff", "#7226cd", "#320b70"],
+  hills: ["#e79a2c", "#a4620a", "#5b3403"],
+  crag: ["#7d5415", "#3c2405", "#150a00"],
+  ruby: ["#ff6274", "#b3122c", "#540614"],
+  cobalt: ["#6f96ff", "#1e46bd", "#091b5c"],
 };
 
-function glassGradient(id, stops) {
+// No two pieces in a window are cut from the same sheet. Each pane takes one of
+// these three castings of its terrain's colour, picked off its own coordinates
+// so the board looks assembled rather than filled.
+const CASTINGS = [
+  { light: 1.1, angle: 24 },
+  { light: 0.92, angle: 78 },
+  { light: 1.0, angle: 132 },
+];
+
+function shade(color, factor) {
+  const value = parseInt(color.slice(1), 16);
+  const channels = [(value >> 16) & 255, (value >> 8) & 255, value & 255];
+  return "#" + channels
+    .map((channel) => Math.round(Math.min(255, channel * factor)).toString(16).padStart(2, "0"))
+    .join("");
+}
+
+// A gradient run along `angle` degrees, so a pane's light does not fall the same
+// way as its neighbour's.
+function glassGradient(id, stops, angle, light) {
+  const radians = (Math.PI / 180) * (angle === undefined ? 55 : angle);
+  const dx = Math.cos(radians) / 2;
+  const dy = Math.sin(radians) / 2;
+  const factor = light === undefined ? 1 : light;
   return (
-    '<linearGradient id="' + id + '" x1="0.15" y1="0" x2="0.85" y2="1">' +
-    '<stop offset="0%" stop-color="' + stops[0] + '"/>' +
-    '<stop offset="46%" stop-color="' + stops[1] + '"/>' +
-    '<stop offset="100%" stop-color="' + stops[2] + '"/>' +
+    '<linearGradient id="' + id + '"' +
+    ' x1="' + (0.5 - dx).toFixed(3) + '" y1="' + (0.5 - dy).toFixed(3) +
+    '" x2="' + (0.5 + dx).toFixed(3) + '" y2="' + (0.5 + dy).toFixed(3) + '">' +
+    '<stop offset="0%" stop-color="' + shade(stops[0], factor) + '"/>' +
+    '<stop offset="46%" stop-color="' + shade(stops[1], factor) + '"/>' +
+    '<stop offset="100%" stop-color="' + shade(stops[2], factor) + '"/>' +
     "</linearGradient>"
   );
+}
+
+// Which casting a hex is cut from. Deterministic, so a re-render never reshuffles
+// the window.
+function castingOf(cell) {
+  return (cell.col * 7 + cell.row * 13 + ((cell.col * cell.row) % 5)) % CASTINGS.length;
 }
 
 function buildDefs() {
   const parts = [];
   Object.keys(GLASS).forEach((name) => {
+    CASTINGS.forEach((casting, index) => {
+      parts.push(glassGradient("g-" + name + "-" + index, GLASS[name], casting.angle, casting.light));
+    });
     parts.push(glassGradient("g-" + name, GLASS[name]));
   });
 
+  // The sheen on a single pane: light sliding off its face, not through it.
+  parts.push(
+    '<linearGradient id="gShine" x1="0.1" y1="0" x2="0.6" y2="1">' +
+    '<stop offset="0%" stop-color="#ffffff" stop-opacity="0.5"/>' +
+    '<stop offset="38%" stop-color="#ffffff" stop-opacity="0.09"/>' +
+    '<stop offset="39%" stop-color="#000000" stop-opacity="0.05"/>' +
+    '<stop offset="100%" stop-color="#000000" stop-opacity="0.28"/>' +
+    "</linearGradient>"
+  );
+
   parts.push(glassGradient("gMove", ["#c8ff8e", "#5fbe22", "#2f6d0c"]));
   parts.push(glassGradient("gMoveHot", ["#e6ffbe", "#8ede2c", "#4e9412"]));
+  parts.push(glassGradient("gStrike", ["#ff8fa0", "#d3102b", "#6b0817"]));
   parts.push(glassGradient("gHealth", ["#ff8b99", "#d3102b", "#7a0817"]));
   parts.push(glassGradient("gMorale", ["#7bf0ac", "#17924a", "#0a5227"]));
 
@@ -1462,13 +1537,35 @@ function buildDefs() {
     "</radialGradient>"
   );
 
-  // Mottle. Two frequencies: the coarse one is the pour of the glass, the fine
-  // one its surface.
+  // The pour of the glass: drawn antique, so the grain runs long in one
+  // direction and short across it. Saturation is dropped and the curve pushed
+  // hard, because an overlay blend needs the noise to swing well past mid grey
+  // before it shows on a jewel colour.
   parts.push(
     '<filter id="fMottle" x="0" y="0" width="100%" height="100%">' +
-    '<feTurbulence type="fractalNoise" baseFrequency="0.012 0.03" numOctaves="4" seed="11" result="coarse"/>' +
+    '<feTurbulence type="turbulence" baseFrequency="0.006 0.042" numOctaves="3" seed="11"/>' +
     '<feColorMatrix type="saturate" values="0"/>' +
-    '<feComponentTransfer><feFuncA type="linear" slope="0.9" intercept="0"/></feComponentTransfer>' +
+    "<feComponentTransfer>" +
+    '<feFuncR type="linear" slope="2.1" intercept="-0.45"/>' +
+    '<feFuncG type="linear" slope="2.1" intercept="-0.45"/>' +
+    '<feFuncB type="linear" slope="2.1" intercept="-0.45"/>' +
+    '<feFuncA type="linear" slope="0" intercept="1"/>' +
+    "</feComponentTransfer>" +
+    "</filter>"
+  );
+
+  // The surface: the fine tooth cast glass keeps, which is what stops a pane
+  // from reading as a flat fill at any zoom.
+  parts.push(
+    '<filter id="fTooth" x="0" y="0" width="100%" height="100%">' +
+    '<feTurbulence type="fractalNoise" baseFrequency="0.22" numOctaves="3" seed="4"/>' +
+    '<feColorMatrix type="saturate" values="0"/>' +
+    "<feComponentTransfer>" +
+    '<feFuncR type="linear" slope="0.9" intercept="0.05"/>' +
+    '<feFuncG type="linear" slope="0.9" intercept="0.05"/>' +
+    '<feFuncB type="linear" slope="0.9" intercept="0.05"/>' +
+    '<feFuncA type="linear" slope="0" intercept="1"/>' +
+    "</feComponentTransfer>" +
     "</filter>"
   );
 
@@ -1480,6 +1577,14 @@ function buildDefs() {
     "<feMerge><feMergeNode in=\"halo\"/><feMergeNode in=\"SourceGraphic\"/></feMerge>" +
     "</filter>"
   );
+
+  // The glass, as one shape. A hair inside the panes, so a wash clipped to it
+  // stops short of the came rather than lifting the inner half of the line.
+  parts.push('<clipPath id="panes">');
+  grid.cells.forEach((cell) => {
+    parts.push('<polygon points="' + CLIP_POINTS + '" transform="' + translate(cell) + '"/>');
+  });
+  parts.push("</clipPath>");
 
   return "<defs>" + parts.join("") + "</defs>";
 }
@@ -1599,7 +1704,7 @@ function markerFor(unit) {
   const selected = state.selectedUnitId === unit.id;
 
   return (
-    '<g class="' + (selected ? "selectedMarker" : "") + '" transform="' + translate(cell) + '">' +
+    '<g class="marker' + (selected ? " selectedMarker" : "") + '" transform="' + translate(cell) + '">' +
     '<polygon class="markerRim" points="' + UNIT_POINTS + '"/>' +
     '<polygon points="' + UNIT_POINTS + '" fill="url(#' + glass + ')" stroke="#c9a24c" stroke-width="1.8"/>' +
     '<g transform="translate(0 ' + ICON_CENTER_Y.toFixed(2) + ') rotate(' + unit.facing + ')">' +
@@ -1658,11 +1763,20 @@ function renderBoard() {
   const parts = [buildDefs(), '<g id="viewport">'];
   const world = grid.bounds;
 
-  // The light first: it is behind the glass.
-  parts.push(
-    '<rect class="backlight" x="' + world.x + '" y="' + world.y + '" width="' + world.width +
-    '" height="' + world.height + '" fill="url(#gBacklight)"/>'
-  );
+  // Clipped to the glass, and to a hair inside it. A came is lead, and lead does
+  // not take a highlight from the sun behind the window — an unclipped wash lifts
+  // it to brown and the board stops reading as leadwork.
+  //
+  // The clip goes on the rect and never on a group around it: a clipped group is
+  // a stacking context, and a stacking context isolates what is inside it from
+  // the backdrop. The blend modes below would then have nothing to blend against,
+  // and the noise would land as flat grey paint over every pane.
+  function wash(className, extra) {
+    return (
+      '<rect class="' + className + '" clip-path="url(#panes)" x="' + world.x + '" y="' + world.y +
+      '" width="' + world.width + '" height="' + world.height + '" ' + extra + "/>"
+    );
+  }
 
   // Both bands come before every hex, so each one is trimmed by the panes around
   // it rather than running over them.
@@ -1672,27 +1786,33 @@ function renderBoard() {
   grid.cells.forEach((cell) => {
     parts.push(
       '<polygon class="hex" data-cell-key="' + cell.key + '" points="' + HEX_POINTS +
-      '" fill="url(#g-' + terrainOf(cell.key) + ')" transform="' + translate(cell) + '"/>'
+      '" fill="url(#g-' + terrainOf(cell.key) + "-" + castingOf(cell) + ')" transform="' + translate(cell) + '"/>'
     );
   });
 
-  // The glass edge catching the light, one pass over every pane.
+  // Mottle, tooth and sunlight over the panes: the pour of the glass, its
+  // surface, and the light behind it. Three washes for the whole board rather
+  // than a filter on each of the 195 panes.
+  parts.push(wash("mottle", 'filter="url(#fMottle)"'));
+  parts.push(wash("tooth", 'filter="url(#fTooth)"'));
+  parts.push(wash("backlight", 'fill="url(#gBacklight)"'));
+
+  // Per-pane sheen, then the light line just inside the came. Both are per hex,
+  // which is what keeps each piece reading as its own piece of glass.
   grid.cells.forEach((cell) => {
+    parts.push('<polygon class="hexShine" points="' + GLINT_POINTS + '" transform="' + translate(cell) + '"/>');
     parts.push('<polygon class="hexGlint" points="' + GLINT_POINTS + '" transform="' + translate(cell) + '"/>');
   });
 
-  // Mottle over the panes, under the markers: the units are enamel on the glass,
-  // not the glass itself.
-  parts.push(
-    '<rect class="mottle" x="' + world.x + '" y="' + world.y + '" width="' + world.width +
-    '" height="' + world.height + '" filter="url(#fMottle)"/>'
-  );
-
+  // A hex the armed unit may step onto: the pane recut in green glass, sheen and
+  // all, so an offered move stays part of the window rather than a sticker on it.
   moveTargets().forEach((target) => {
     const cell = cellOf(target.key);
     parts.push(
       '<g transform="' + translate(cell) + '">' +
-      '<polygon class="moveTarget" data-move-key="' + target.key + '" points="' + hexPoints(HEX_SIZE - HEX_INSET - 1) + '"/>' +
+      '<polygon class="moveTarget" data-move-key="' + target.key + '" points="' + OVERLAY_POINTS + '"/>' +
+      '<polygon class="hexShine" points="' + GLINT_POINTS + '"/>' +
+      '<polygon class="hexGlint" points="' + GLINT_POINTS + '"/>' +
       '<polygon class="moveArrow" points="' + ARROW_POINTS + '" transform="rotate(' + target.direction + ') scale(1.4)"/>' +
       "</g>"
     );
@@ -1706,7 +1826,7 @@ function renderBoard() {
     attackTargets(unitById.get(state.armed.unitId)).forEach((target) => {
       const cell = cellOf(target.cellKey);
       parts.push(
-        '<polygon class="attackTarget" data-attack-id="' + target.id + '" points="' + hexPoints(HEX_SIZE - HEX_INSET - 1) +
+        '<polygon class="attackTarget" data-attack-id="' + target.id + '" points="' + OVERLAY_POINTS +
         '" transform="' + translate(cell) + '"/>'
       );
     });

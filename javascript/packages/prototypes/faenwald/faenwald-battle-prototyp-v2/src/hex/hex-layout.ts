@@ -12,7 +12,7 @@ const HEX_INSET = 2;
 // Width of that gap, measured perpendicular to an edge — the distance from one
 // hex outline to its neighbour's. The inset shortens the circumradius, and an
 // edge sits `SQRT3 / 2` of that closer to the centre, from both hexes at once.
-const HEX_GAP = HEX_INSET * SQRT3;
+const HEX_GAP = HEX_INSET * 1.479;
 
 // A facing is clockwise degrees from straight up, and it points at a corner of
 // the hex. Neighbours sit across the edges instead, and an edge lies halfway
