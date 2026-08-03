@@ -1,5 +1,5 @@
 import { computed, signal } from "@preact/signals-react";
-import { focusCell, hoveredKey, selectedKey } from "./grid-state";
+import { cellOf, clearSelection, focusCell, grid, hoveredKey, selectedKey } from "./grid-state";
 import type { Unit, UnitKind, UnitSide, UnitStats } from "./units-state";
 
 // A unit the local player owns and has to place before the battle starts.
@@ -15,6 +15,11 @@ type RosterUnit = {
 
 // Everything on this page belongs to one player, so the side is fixed.
 const PLAYER_SIDE: UnitSide = "blue";
+
+// The player deploys inside a band along their own edge of the board: the rows
+// this many from the top. A hex outside the band takes no unit, whether the unit
+// is being placed from the roster or moved from another hex.
+const DEPLOY_ROWS = 3;
 
 const roster: RosterUnit[] = [
   {
@@ -97,7 +102,7 @@ const previewUnit = computed<Unit | null>(() => {
     return null;
   }
 
-  if (unitIdAt(cellKey) !== null) {
+  if (unitIdAt(cellKey) !== null || !isDeployCell(cellKey)) {
     return null;
   }
 
@@ -107,6 +112,30 @@ const previewUnit = computed<Unit | null>(() => {
   }
 
   return markerFor(unit, cellKey);
+});
+
+// The hexes a click could put the armed unit on: the free ones inside the
+// deployment band. Empty while nothing is armed, which is what stops the
+// highlight from standing on the board all the time.
+//
+// A hex the band already has a unit on is left out, even for a move, which may
+// swap the two units standing on it and its own hex. The swap has an overlay of
+// its own, and a highlight under a marker would read as an empty hex.
+const placeableCellKeys = computed<string[]>(() => {
+  if (movingUnitId.value === null && pickedUnitId.value === null) {
+    return [];
+  }
+
+  const taken = new Set(Object.values(placementByUnitId.value));
+  const keys: string[] = [];
+  for (const cell of grid.cells) {
+    if (cell.row >= DEPLOY_ROWS || taken.has(cell.key)) {
+      continue;
+    }
+    keys.push(cell.key);
+  }
+
+  return keys;
 });
 
 // The hex a move would trade places with: the one under the pointer, holding
@@ -176,6 +205,17 @@ const selectedUnit = computed<RosterUnit | null>(() => {
   return roster.find((unit) => unit.id === unitId) ?? null;
 });
 
+// Whether a hex lies in the band the player deploys into. A key the grid does
+// not know is not a hex at all, so it takes nothing either.
+function isDeployCell(key: string): boolean {
+  const cell = cellOf(key);
+  if (cell === null) {
+    return false;
+  }
+
+  return cell.row < DEPLOY_ROWS;
+}
+
 function isPlaced(unitId: string): boolean {
   return placementByUnitId.value[unitId] !== undefined;
 }
@@ -202,10 +242,19 @@ function unitIdAt(cellKey: string): string | null {
 
 // Clicking the roster arms a unit for the next hex click; clicking it again
 // disarms it.
+//
+// The selection is dropped along with it. It stands on some other unit — the
+// board has nothing of this one on it yet — and leaving it would keep that unit's
+// actions panel open next to a roster row talking about a different unit.
 function pickUnit(unitId: string): void {
   pickedUnitId.value = pickedUnitId.value === unitId ? null : unitId;
   movingUnitId.value = null;
   cancelRotate();
+  clearSelection();
+}
+
+function cancelPick(): void {
+  pickedUnitId.value = null;
 }
 
 // Arms the selected unit for a move, or calls the move off if it is already
@@ -283,6 +332,10 @@ function rotateUnit(facing: number): void {
 // Sends the unit being moved to `cellKey`. Another unit standing there is not
 // pushed off the board: the two trade places, so the move never costs a unit its
 // spot. Either way the move ends and the selection follows the unit.
+//
+// A hex outside the deployment band takes nothing, and the unit stays where it
+// is. The move still ends: a click that lands off the band is the user calling
+// it off.
 function moveUnit(cellKey: string): void {
   const unitId = movingUnitId.value;
   if (unitId === null) {
@@ -292,7 +345,7 @@ function moveUnit(cellKey: string): void {
   movingUnitId.value = null;
 
   const from = placementOf(unitId);
-  if (from === null || from === cellKey) {
+  if (from === null || from === cellKey || !isDeployCell(cellKey)) {
     return;
   }
 
@@ -318,6 +371,12 @@ function placeUnit(cellKey: string): void {
     return;
   }
 
+  // A hex outside the deployment band takes nothing, and the unit stays armed for
+  // a hex that does.
+  if (!isDeployCell(cellKey)) {
+    return;
+  }
+
   placementByUnitId.value = { ...placementByUnitId.value, [unitId]: cellKey };
   pickedUnitId.value = null;
   ready.value = false;
@@ -340,6 +399,7 @@ function toggleReady(): void {
 export {
   cancelActions,
   cancelMove,
+  cancelPick,
   cancelRotate,
   hoverFacing,
   isPlaced,
@@ -348,6 +408,7 @@ export {
   pickUnit,
   pickedUnitId,
   placeUnit,
+  placeableCellKeys,
   placedCount,
   placedUnitAt,
   placedUnits,

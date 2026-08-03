@@ -151,6 +151,10 @@ function focusCell(key: string): void {
   selectedKey.value = key;
 }
 
+function clearSelection(): void {
+  selectedKey.value = null;
+}
+
 function hoverCell(key: string | null): void {
   hoveredKey.value = key;
 }
@@ -159,6 +163,7 @@ export {
   COLS,
   ROWS,
   cellOf,
+  clearSelection,
   focusCell,
   grid,
   hoverCell,

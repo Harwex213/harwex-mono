@@ -1,4 +1,7 @@
+import { useRef, type CSSProperties } from "react";
 import { HEX_INSET, HEX_SIZE, hexPoints, hexWidth } from "../hex/hex-layout";
+import type { AttackDamage } from "../state/attack-strategies";
+import type { Movement, Strike } from "../state/battle-state";
 import { cellOf } from "../state/grid-state";
 import type { Unit } from "../state/units-state";
 import { ICON_VIEWBOX, SWAP_ICON, UNIT_ICONS } from "./unit-icons";
@@ -68,6 +71,16 @@ const GLYPH_REACH = 0.85;
 const ICON_SIZE = ICON_SPAN / (Math.SQRT2 * GLYPH_REACH);
 const ICON_SCALE = ICON_SIZE / ICON_VIEWBOX;
 
+// A turn is animated on the glyph, and a CSS transform needs somewhere to turn
+// about. `fill-box` puts that in the middle of what the group draws, which is
+// only the middle of the glyph if the glyph is centred on its box — and none of
+// them quite are. So the group also holds an unpainted circle around the point
+// the glyph is meant to turn about: a circle is its own centre, and one big
+// enough to swallow the glyph makes the group's box symmetric about that point.
+// Half the diagonal of the scaled viewBox is `√2 / 2` of its side, so this
+// clears the glyph in every rotation.
+const ICON_ANCHOR_RADIUS = ICON_SIZE * 0.75;
+
 // The swap glyph is drawn upright and reaches the edges of its own viewBox, so it
 // needs none of the diagonal arithmetic above — just a size that stays inside the
 // marker it covers.
@@ -92,6 +105,20 @@ const ARROW_POINTS = [
   `${(-ARROW_WIDTH).toFixed(2)},${(ARROW_LENGTH * 0.72).toFixed(2)}`,
 ].join(" ");
 
+// How far the arrow inside a hovered handle creeps the way it points. The
+// handle is turned to its facing, so straight up in the arrow's own frame is
+// outwards on the board, and the stylesheet only has to know the distance.
+const ARROW_NUDGE = ARROW_LENGTH * 0.32;
+
+const HANDLE_MOTION = {
+  "--handle-nudge": `${(-ARROW_NUDGE).toFixed(2)}px`,
+} as CSSProperties;
+
+// How far the attacker leans into the blow, as a share of the distance to the
+// unit it hits. Far enough to read as a lunge, short enough that the marker
+// never leaves the hex it is standing on.
+const PUNCH_REACH = hexWidth(HEX_SIZE) * 0.3;
+
 type UnitLayerProps = {
   units: Unit[];
   // A unit that is not standing where it is drawn: the one being placed or
@@ -104,6 +131,17 @@ type UnitLayerProps = {
   rotateCellKey?: string | null;
   onFacingHover?: (facing: number | null) => void;
   onFacingPick?: (facing: number) => void;
+  // The unit an armed attack is pointed at, and what the blow would take off
+  // it. The marker answers the pointer, and blinks the slices of its bars it is
+  // about to lose.
+  threatenedUnitId?: string | null;
+  threatenedDamage?: AttackDamage | null;
+  // The blow being played out, if any: the attacker lunges, the unit it lands on
+  // is knocked about and flashed.
+  strike?: Strike | null;
+  // The step being played out, if any: the unit that has moved is drawn on the
+  // hex it has arrived at and slid in from the one it left.
+  movement?: Movement | null;
 };
 
 // World-space content for `HexCanvas`, drawn after the terrain hexes. The
@@ -115,11 +153,22 @@ function UnitLayer({
   rotateCellKey,
   onFacingHover,
   onFacingPick,
+  threatenedUnitId,
+  threatenedDamage,
+  strike,
+  movement,
 }: UnitLayerProps) {
   return (
     <>
       {units.map((unit) => (
-        <UnitMarker key={unit.id} unit={unit} />
+        <UnitMarker
+          damage={unit.id === threatenedUnitId ? threatenedDamage : null}
+          key={unit.id}
+          movement={movement}
+          strike={strike}
+          threatened={unit.id === threatenedUnitId}
+          unit={unit}
+        />
       ))}
       {/* All three last, so they sit over the markers they cover. */}
       {preview === undefined || preview === null ? null : (
@@ -169,8 +218,13 @@ function RotateHandles({
             onClick={() => onPick?.(facing)}
             onPointerEnter={() => onHover?.(facing)}
             onPointerLeave={() => onHover?.(null)}
+            style={HANDLE_MOTION}
             transform={`translate(${x.toFixed(2)} ${y.toFixed(2)}) rotate(${facing})`}
           >
+            {/* A ring under the disc, at the same size, which the pointer sends
+                pulsing out past it. Drawn first so the disc covers it while the
+                handle is at rest. */}
+            <circle className={styles.handleHalo} r={HANDLE_RADIUS.toFixed(2)} />
             <circle className={styles.handleDisc} r={HANDLE_RADIUS.toFixed(2)} />
             <polygon className={styles.handleArrow} points={ARROW_POINTS} />
           </g>
@@ -201,44 +255,156 @@ function SwapOverlay({ cellKey }: { cellKey: string }) {
   );
 }
 
-function UnitMarker({ unit, className }: { unit: Unit; className?: string }) {
+function UnitMarker({
+  unit,
+  className,
+  damage,
+  threatened = false,
+  strike,
+  movement,
+}: {
+  unit: Unit;
+  className?: string;
+  damage?: AttackDamage | null;
+  threatened?: boolean;
+  strike?: Strike | null;
+  movement?: Movement | null;
+}) {
+  // Called before the early return below, because a hook cannot be skipped. The
+  // angle it keeps belongs to the unit, not to the hex it stands on.
+  const angle = useTurnedAngle(unit.facing ?? 0);
+
   const cell = cellOf(unit.cellKey);
   if (cell === null) {
     return null;
   }
 
   const icon = UNIT_ICONS[unit.kind];
+  const punching = strike !== undefined && strike !== null && strike.attackerId === unit.id;
+  const struck = strike !== undefined && strike !== null && strike.targetId === unit.id;
+
+  // The lunge is a CSS animation, and a CSS transform on the group would throw
+  // away the `transform` attribute that puts the marker on its hex. So the
+  // translate stays on the outer group and everything that animates hangs off an
+  // inner one. A facing is clockwise from straight up, and the y axis points
+  // down, which is where the sign on the second line comes from.
+  const radians = strike === undefined || strike === null ? 0 : (Math.PI / 180) * strike.direction;
+
+  // Where the step started, as an offset from the hex the unit now stands on.
+  // The animation opens the marker there and brings it home.
+  const stepping = movement !== undefined && movement !== null && movement.unitId === unit.id;
+  const from = stepping ? cellOf(movement.fromKey) : null;
+
+  const motionStyle = {
+    "--punch-dx": `${(PUNCH_REACH * Math.sin(radians)).toFixed(2)}px`,
+    "--punch-dy": `${(-PUNCH_REACH * Math.cos(radians)).toFixed(2)}px`,
+    "--step-dx": from === null ? "0px" : `${(from.x - cell.x).toFixed(2)}px`,
+    "--step-dy": from === null ? "0px" : `${(from.y - cell.y).toFixed(2)}px`,
+  } as CSSProperties;
+
+  const bodyClass = [
+    styles.marker,
+    threatened ? styles.threatened : "",
+    punching ? styles.punching : "",
+    struck ? styles.struck : "",
+    from === null ? "" : styles.stepping,
+  ]
+    .filter((part) => part !== "")
+    .join(" ");
+
+  // Keyed on whatever is being played out, so a unit that strikes or steps twice
+  // in a row plays the animation twice: same class, same element, and CSS would
+  // run it once. A blow wins the slot, because a unit cannot be told to strike
+  // and to step at the same time — only one order is armed.
+  let replayKey = "still";
+  if (punching || struck) {
+    replayKey = `strike-${strike?.seq}`;
+  } else if (from !== null) {
+    replayKey = `step-${movement?.seq}`;
+  }
 
   return (
     <g
       className={className === undefined ? styles.unit : `${styles.unit} ${className}`}
       transform={`translate(${cell.x.toFixed(2)} ${cell.y.toFixed(2)})`}
     >
-      <polygon className={`${styles.body} ${styles[unit.side]}`} points={UNIT_POINTS} />
-      {/* Read right to left: the glyph is centred on its own viewBox first,
-          then scaled, then turned upright — plus whichever way the unit faces —
-          and last dropped into the middle of the band left for it. */}
-      <path
-        className={styles.icon}
-        d={icon.path}
-        transform={`translate(0 ${ICON_CENTER_Y.toFixed(2)}) rotate(${icon.rotation + (unit.facing ?? 0)}) scale(${ICON_SCALE}) translate(${-ICON_VIEWBOX / 2} ${-ICON_VIEWBOX / 2})`}
-      />
-      <StatBar x={-BAR_OFFSET} value={unit.stats.health} fillClass={styles.health} />
-      <StatBar x={BAR_OFFSET} value={unit.stats.morale} fillClass={styles.morale} />
-      <Plate
-        y={DAMAGE_PLATE_Y}
-        width={DAMAGE_PLATE_WIDTH}
-        fontSize={DAMAGE_FONT_SIZE}
-        label={String(unit.stats.attack)}
-      />
-      <Plate
-        y={NAME_PLATE_Y}
-        width={NAME_PLATE_WIDTH}
-        fontSize={NAME_FONT_SIZE}
-        label={unit.name}
-      />
+      <g className={bodyClass} key={replayKey} style={motionStyle}>
+        <polygon className={`${styles.body} ${styles[unit.side]}`} points={UNIT_POINTS} />
+        {/* The glyph is the only part of the marker that says which way the unit
+            faces, so a turn is animated on it alone: the bars and the plates
+            stand still while it comes round. The outer group drops it into the
+            middle of the band left for it, the inner one carries the turn, and
+            the path reads right to left as before — centred on its own viewBox,
+            scaled, then stood upright. */}
+        <g transform={`translate(0 ${ICON_CENTER_Y.toFixed(2)})`}>
+          <g className={styles.iconTurn} style={{ transform: `rotate(${angle}deg)` }}>
+            <circle className={styles.iconAnchor} r={ICON_ANCHOR_RADIUS.toFixed(2)} />
+            <path
+              className={styles.icon}
+              d={icon.path}
+              transform={`rotate(${icon.rotation}) scale(${ICON_SCALE}) translate(${-ICON_VIEWBOX / 2} ${-ICON_VIEWBOX / 2})`}
+            />
+          </g>
+        </g>
+        <StatBar
+          doomed={damage?.health ?? 0}
+          fillClass={styles.health}
+          value={unit.stats.health}
+          x={-BAR_OFFSET}
+        />
+        <StatBar
+          doomed={damage?.morale ?? 0}
+          fillClass={styles.morale}
+          value={unit.stats.morale}
+          x={BAR_OFFSET}
+        />
+        <Plate
+          y={DAMAGE_PLATE_Y}
+          width={DAMAGE_PLATE_WIDTH}
+          fontSize={DAMAGE_FONT_SIZE}
+          label={String(unit.stats.attack)}
+        />
+        <Plate
+          y={NAME_PLATE_Y}
+          width={NAME_PLATE_WIDTH}
+          fontSize={NAME_FONT_SIZE}
+          label={unit.name}
+        />
+        {/* Last, so the blow washes over the whole marker. Only mounted for the
+            length of the animation. */}
+        {struck ? <polygon className={styles.flash} points={UNIT_POINTS} /> : null}
+      </g>
     </g>
   );
+}
+
+// The angle the glyph is drawn at, which is not the facing it stands for. A
+// facing runs 0 to 300 and wraps, so a unit turning from 300 to 0 has turned 60
+// degrees to the right — while the number it is drawn at fell by 300, and the
+// animation would carry it the long way round. So the drawn angle is kept here
+// and only ever moved by the shorter of the two ways to the new facing, which
+// leaves it free to run past 360 or below zero.
+//
+// Written during the render that reads it: the value is worked out from the
+// facing handed in rather than held as state, so there is nothing to re-render
+// for. A render the facing slept through leaves it where it was.
+function useTurnedAngle(facing: number): number {
+  const angle = useRef(facing);
+  const drawnFacing = useRef(facing);
+
+  if (drawnFacing.current !== facing) {
+    angle.current += shorterTurn(drawnFacing.current, facing);
+    drawnFacing.current = facing;
+  }
+
+  return angle.current;
+}
+
+// Degrees from one facing to another, taking whichever way round is shorter.
+// Positive is clockwise. Two opposite facings are the same distance either way,
+// and this takes them counter-clockwise.
+function shorterTurn(from: number, to: number): number {
+  return ((to - from + 540) % 360) - 180;
 }
 
 // A label in a corner of the marker: a light rounded plate with the text
@@ -273,9 +439,27 @@ function Plate({
 
 // A vertical gauge drawn around (`x`, 0): an empty track, a fill that grows from
 // the bottom, and the outline last so the fill never paints over it.
-function StatBar({ x, value, fillClass }: { x: number; value: number; fillClass: string }) {
-  const ratio = Math.min(Math.max(value / STAT_MAX, 0), 1);
+//
+// `doomed` is how much of the value a blow under the pointer would take. That
+// much of the fill, counted down from its top, is blinked to the empty track
+// colour — the bar drains and comes back for as long as the pointer rests on
+// the unit, which is what says the blow has not landed yet.
+function StatBar({
+  x,
+  value,
+  doomed = 0,
+  fillClass,
+}: {
+  x: number;
+  value: number;
+  doomed?: number;
+  fillClass: string;
+}) {
+  const ratio = clampRatio(value / STAT_MAX);
   const fillHeight = BAR_HEIGHT * ratio;
+  // A blow bigger than what is left takes what is left, so the slice never runs
+  // past the top of the fill.
+  const doomedHeight = BAR_HEIGHT * Math.min(clampRatio(doomed / STAT_MAX), ratio);
 
   return (
     <g transform={`translate(${x.toFixed(2)} 0)`}>
@@ -286,13 +470,27 @@ function StatBar({ x, value, fillClass }: { x: number; value: number; fillClass:
         width={BAR_WIDTH}
         height={BAR_HEIGHT}
       />
+      {/* Drawn at full height and squashed to the value, rather than drawn at
+          the value: a height is a geometry attribute and not every browser
+          transitions one, while every browser transitions a transform. That is
+          what lets the bar slide down as a blow lands instead of jumping. */}
       <rect
-        className={fillClass}
+        className={`${styles.barFill} ${fillClass}`}
         x={-BAR_WIDTH / 2}
-        y={BAR_HEIGHT / 2 - fillHeight}
+        y={-BAR_HEIGHT / 2}
         width={BAR_WIDTH}
-        height={fillHeight}
+        height={BAR_HEIGHT}
+        style={{ transform: `scaleY(${ratio.toFixed(4)})` }}
       />
+      {doomedHeight === 0 ? null : (
+        <rect
+          className={styles.barDoomed}
+          x={-BAR_WIDTH / 2}
+          y={BAR_HEIGHT / 2 - fillHeight}
+          width={BAR_WIDTH}
+          height={doomedHeight}
+        />
+      )}
       <rect
         className={styles.barFrame}
         x={-BAR_WIDTH / 2}
@@ -302,6 +500,10 @@ function StatBar({ x, value, fillClass }: { x: number; value: number; fillClass:
       />
     </g>
   );
+}
+
+function clampRatio(value: number): number {
+  return Math.min(Math.max(value, 0), 1);
 }
 
 export { UnitLayer };

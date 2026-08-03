@@ -10,16 +10,45 @@ type ActionsUnit = {
   stats: UnitStats;
 };
 
+// What the unit has left to spend on the board this turn, against what it
+// started the turn with.
+type Moves = {
+  left: number;
+  total: number;
+};
+
 type UnitActionsPanelProps = {
   unit: ActionsUnit;
   // Whether this unit is already waiting for the hex to move to.
   moving: boolean;
   // Whether its rotation handles are already out.
   rotating: boolean;
+  // Whether it is already waiting for the unit to strike.
+  attacking?: boolean;
+  // Whether there is anyone in reach at all. An attack with nobody to swing at
+  // stays silent, so the button goes quiet rather than arming an empty board.
+  // Left out by a page whose attack is unconditional.
+  canAttack?: boolean;
   onMove: () => void;
   onRotate: () => void;
   // Disarms whatever is armed, leaving the unit as it stands.
   onCancel: () => void;
+  // Left out by a page that does not ration movement — the disposition board
+  // lets a unit be nudged as often as the player likes. Where it is given, the
+  // card reports it, and a unit down to nothing can neither step nor turn.
+  moves?: Moves;
+  // Orders only the battle takes. Each one is left out where the page has no
+  // handler for it, button and shortcut alike.
+  onAccelerate?: () => void;
+  // Accelerate has a price of its own — morale, and something left to spend this
+  // turn — so it goes quiet on its own terms rather than with the two orders
+  // that move the unit. The page works out whether the unit can pay.
+  accelerateDisabled?: boolean;
+  onAttack?: () => void;
+  onFind?: () => void;
+  // The unit is on screen to be read, not commanded. The card stays, the
+  // buttons and their shortcuts go quiet.
+  disabled?: boolean;
 };
 
 // What a selected unit can be told to do. Overlays a canvas corner, so it needs
@@ -29,16 +58,37 @@ function UnitActionsPanel({
   unit,
   moving,
   rotating,
+  attacking = false,
+  canAttack = true,
   onMove,
   onRotate,
   onCancel,
+  moves,
+  onAccelerate,
+  accelerateDisabled = false,
+  onAttack,
+  onFind,
+  disabled = false,
 }: UnitActionsPanelProps) {
+  // A unit that has spent its allowance stays on screen and stays selected. It
+  // is the two orders that take it across the board that go quiet.
+  const spent = moves !== undefined && moves.left === 0;
+
   // The panel is on screen exactly while a unit is selected, so the shortcuts can
-  // live with the buttons they stand for: mounting the panel arms them.
+  // live with the buttons they stand for: mounting the panel arms them. A key is
+  // dropped wherever the button it stands for is muted or absent, so a shortcut
+  // never does what the panel says cannot be done.
   useEffect(() => {
-    const handlers: Record<Action, () => void> = {
-      move: onMove,
-      rotate: onRotate,
+    if (disabled) {
+      return;
+    }
+
+    const handlers: Record<Action, (() => void) | undefined> = {
+      move: spent ? undefined : onMove,
+      rotate: spent ? undefined : onRotate,
+      accelerate: accelerateDisabled ? undefined : onAccelerate,
+      attack: canAttack ? onAttack : undefined,
+      find: onFind,
       cancel: onCancel,
     };
 
@@ -52,8 +102,13 @@ function UnitActionsPanel({
         return;
       }
 
+      const handler = handlers[action];
+      if (handler === undefined) {
+        return;
+      }
+
       event.preventDefault();
-      handlers[action]();
+      handler();
     }
 
     window.addEventListener("keydown", onKeyDown);
@@ -61,7 +116,18 @@ function UnitActionsPanel({
     return () => {
       window.removeEventListener("keydown", onKeyDown);
     };
-  }, [onCancel, onMove, onRotate]);
+  }, [
+    accelerateDisabled,
+    canAttack,
+    disabled,
+    onAccelerate,
+    onAttack,
+    onCancel,
+    onFind,
+    onMove,
+    onRotate,
+    spent,
+  ]);
 
   return (
     <div className={styles.panel}>
@@ -72,12 +138,21 @@ function UnitActionsPanel({
           <span>{unit.stats.attack} ⚔️</span>
           <span>{unit.stats.morale} 🎺</span>
         </div>
+        {moves === undefined ? null : (
+          <div className={spent ? `${styles.moves} ${styles.movesSpent}` : styles.moves}>
+            <span className={styles.movesLabel}>Moves left</span>
+            <span className={styles.movesValue}>
+              {moves.left} / {moves.total}
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Lit while armed, so the panel says what the next click on the board
           means. */}
       <Button.Root
         className={styles.action}
+        disabled={disabled || spent}
         onClick={onMove}
         variant={moving ? "primary" : "secondary"}
       >
@@ -86,21 +161,65 @@ function UnitActionsPanel({
 
       <Button.Root
         className={styles.action}
+        disabled={disabled || spent}
         onClick={onRotate}
         variant={rotating ? "primary" : "secondary"}
       >
         Rotate (R)
       </Button.Root>
+
+      {/* The three below are drawn only where the page passes a handler, so the
+          disposition board keeps the two orders it has always had. Two of them
+          answer nothing yet. */}
+      {/* Quiet where the unit cannot pay for the order — out of morale, or with
+          nothing left this turn for the order to double. */}
+      {onAccelerate === undefined ? null : (
+        <Button.Root
+          className={styles.action}
+          disabled={disabled || accelerateDisabled}
+          onClick={onAccelerate}
+          variant="secondary"
+        >
+          Accelerate (C)
+        </Button.Root>
+      )}
+
+      {/* Lit while armed, the way Move and Rotate are: the panel says what the
+          next click on the board means. Quiet with nobody in reach. */}
+      {onAttack === undefined ? null : (
+        <Button.Root
+          className={styles.action}
+          disabled={disabled || !canAttack}
+          onClick={onAttack}
+          variant={attacking ? "primary" : "secondary"}
+        >
+          Attack (A)
+        </Button.Root>
+      )}
+
+      {onFind === undefined ? null : (
+        <Button.Root
+          className={styles.action}
+          disabled={disabled}
+          onClick={onFind}
+          variant="secondary"
+        >
+          Find (F)
+        </Button.Root>
+      )}
     </div>
   );
 }
 
-type Action = "move" | "rotate" | "cancel";
+type Action = "move" | "rotate" | "accelerate" | "attack" | "find" | "cancel";
 
 // `event.key` lowercased, so `Escape` arrives as `escape`.
 const SHORTCUTS: Record<string, Action> = {
   w: "move",
   r: "rotate",
+  c: "accelerate",
+  a: "attack",
+  f: "find",
   escape: "cancel",
 };
 

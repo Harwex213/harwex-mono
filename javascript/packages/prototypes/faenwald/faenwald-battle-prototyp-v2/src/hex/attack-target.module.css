@@ -1,0 +1,54 @@
+/* One unit the armed attack may hit: the hex it stands on, the ring around that
+   hex, and the arrow reaching it. Nothing here takes the pointer by default —
+   the two shapes a player would aim at ask for it back below. The handlers sit
+   on this group, so those two are one target between them and a pointer
+   crossing from one onto the other never reads as leaving. */
+.target {
+  pointer-events: none;
+}
+
+/* The hex of the target, invisible and laid over its marker. A marker lets
+   clicks through to the terrain, so without this the hex would answer the way
+   any other hex does. No `cursor` here, for the reason `.hex` gives. */
+.hit {
+  fill: transparent;
+  pointer-events: auto;
+  stroke: none;
+}
+
+/* Lights the target hex up while the pointer rests on it. Kept out of the way
+   until then rather than mounted on hover, so the fade runs both ways. */
+.ring {
+  fill: none;
+  opacity: 0;
+  pointer-events: none;
+  stroke: var(--map-attack-ring);
+  transition: opacity var(--uk-duration) var(--uk-ease);
+}
+
+.hovered .ring {
+  opacity: 1;
+}
+
+/* Drawn over both markers, so it carries the outline every other marker shape
+   does — otherwise the red would sink into the red unit it points at. It takes
+   the pointer as well as the hex: the arrow is the thing that says who is being
+   hit, so aiming at it has to count as aiming at the target. It only ever grows
+   under the pointer, which is what keeps the hover from flickering. */
+.arrow {
+  fill: var(--map-attack);
+  pointer-events: auto;
+  stroke: var(--unit-outline);
+  stroke-linejoin: round;
+  stroke-width: 2;
+  transform-box: fill-box;
+  transform-origin: center;
+  transition:
+    fill var(--uk-duration) var(--uk-ease),
+    transform var(--uk-duration) var(--uk-ease);
+}
+
+.hovered .arrow {
+  fill: var(--map-attack-hover);
+  transform: scale(1.2);
+}

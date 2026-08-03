@@ -10,7 +10,8 @@ Current content, one page per tab:
 - **Units disposition** — the local player places a roster on the grid, then moves and
   turns what is already down.
 - **Active battle** — both armies deployed, the round in a turn order bar under the
-  board, and move/rotate on whichever unit is up.
+  board, and move/rotate on whichever unit is up. A header over the board opens the
+  scenarios drawer, which names the position the battle is fought on.
 
 ```bash
 yarn workspace @hw/faenwald-battle-prototyp-v2 dev        # rspack dev server, random free port

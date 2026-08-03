@@ -1,0 +1,27 @@
+/* A hex the armed unit may step onto. The fill is the only shape here that
+   takes the pointer, so hovering the group and hovering the fill are the same
+   thing — the arrow is driven from the group the way a rotation handle drives
+   its disc. */
+.fill {
+  fill: var(--map-move);
+  transition: fill var(--uk-duration) var(--uk-ease);
+}
+
+.target:hover .fill {
+  fill: var(--map-move-hover);
+}
+
+/* Scaled from its own box rather than the SVG origin: the group above has
+   already turned the arrow to its direction, and a scale about the viewport
+   origin would slide it across the board instead of growing it in place. */
+.arrow {
+  fill: var(--map-move-arrow);
+  pointer-events: none;
+  transform-box: fill-box;
+  transform-origin: center;
+  transition: transform var(--uk-duration) var(--uk-ease);
+}
+
+.target:hover .arrow {
+  transform: scale(1.15);
+}

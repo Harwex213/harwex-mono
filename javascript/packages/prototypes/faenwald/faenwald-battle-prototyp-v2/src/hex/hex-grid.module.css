@@ -8,22 +8,32 @@
   transition: fill var(--uk-duration) var(--uk-ease);
 }
 
-/* Colour only, no `stroke-width`: a thicker stroke grows on both sides of the
-   outline, so the hex reads as shifting under the pointer. */
-.hex:hover {
+/* The band a hover or select state carries across the gap, drawn under the grid.
+   It has no `stroke-width` of its own: that is set on the element, next to the
+   corners it is measured against. Nothing is drawn over the gap, so the band
+   would take the pointer there and the hex under it would never answer — hence
+   `pointer-events`. */
+.band {
+  fill: none;
+  pointer-events: none;
+}
+
+/* The two state colours, worn by a band and by the outline of the hex it runs
+   around. Both rules have to come after `.hex`: they are single classes, like it
+   is, so the later one wins the `stroke` between them. */
+.hoverLine {
   stroke: var(--map-line-hover);
 }
 
-/* The selected hex keeps its terrain fill and ticks its outline instead. The
-   animation also overrides the hover stroke above, so the tick keeps running
-   while the pointer sits on the selected hex. */
-.hex.selected {
+.selectedLine {
   animation: tick 800ms ease-in-out infinite alternate;
 }
 
 /* One leg of the tick per run, so `alternate` gives a 500ms fade each way. The
-   `from` colour repeats `--map-line` rather than being left out: an implicit
-   start would take the hover colour whenever the pointer is on the hex. */
+   line starts on the grid line colour, which is what the hex already wears, so
+   the select state reads as that line lighting up. Spelling the colour out
+   matters: `.selectedLine` sets no `stroke` of its own, so an implicit start
+   would fade in from the SVG default of black. */
 @keyframes tick {
   0% {
     stroke: var(--map-line);

@@ -41,6 +41,25 @@ body {
   /* Far end of the tick on the selected hex outline. Bright enough to carry the
      cue on a 2px stroke over any terrain fill. */
   --map-selected-line: #ffc400;
+  /* Hexes an armed move may step onto. The fill covers the terrain whole, so
+     the green has to read as "you may go here" against every one of the five
+     terrains above; the hover shade is the same green with the light turned up.
+     The arrow on it is the unit outline colour, the way a rotation handle's is. */
+  --map-move: #8ede2c;
+  --map-move-hover: #b6f45e;
+  --map-move-arrow: var(--unit-outline);
+  /* Units an armed attack may hit. Red against the green a move is offered in,
+     so the two orders are never read for one another: the arrow pointing at a
+     unit, the brighter shade it takes under the pointer, and the ring that
+     lights up the hex it stands on. The arrow is drawn over both markers and
+     carries the unit outline, which is what keeps it off the red army. */
+  --map-attack: #e01b24;
+  --map-attack-hover: #ff5252;
+  --map-attack-ring: #ff2d2d;
+  /* Hexes the armed unit may be placed on. The same green as a move target, so
+     the board says "you may go here" in one language, laid on as a translucent
+     wash — see `placement.module.css` for why it cannot cover the terrain. */
+  --map-place: var(--map-move);
 
   --unit-outline: #2e2e2e;
   --unit-glyph: #101010;
@@ -60,4 +79,8 @@ body {
   --unit-swap-glyph: #ffffff;
   --unit-health: #ee1c25;
   --unit-morale: #12ab3c;
+  /* The wash a marker takes for the instant a blow lands on it. White rather
+     than red: it has to read as a hit on either army, and the red one already
+     wears the attack colour. */
+  --unit-strike-flash: #ffffff;
 }

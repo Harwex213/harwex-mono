@@ -47,6 +47,36 @@
   white-space: nowrap;
 }
 
+/* What the unit has left to spend this turn. Ruled off from the stats above it:
+   those describe the unit, this one describes its turn, and the two run down
+   as the battle goes on for different reasons. */
+.moves {
+  border-top: 1px solid var(--uk-border);
+  display: flex;
+  font-size: 13px;
+  gap: var(--uk-space-2);
+  justify-content: space-between;
+  margin-top: var(--uk-space-1);
+  padding-top: var(--uk-space-2);
+  white-space: nowrap;
+}
+
+.movesLabel {
+  color: var(--uk-fg-muted);
+}
+
+.movesValue {
+  color: var(--uk-fg);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+/* Nothing left. The two orders that cross the board are muted at the same
+   moment, so the count says why they went quiet. */
+.movesSpent .movesValue {
+  color: var(--uk-danger);
+}
+
 .action {
   justify-content: center;
   width: 100%;

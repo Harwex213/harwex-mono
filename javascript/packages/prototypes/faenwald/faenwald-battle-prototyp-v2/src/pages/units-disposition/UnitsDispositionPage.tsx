@@ -3,10 +3,12 @@ import { useSignals } from "@preact/signals-react/runtime";
 import { HexCanvas } from "../../hex/HexCanvas";
 import { HexGridLayer } from "../../hex/HexGridLayer";
 import { HexInfoPanel } from "../../hex/HexInfoPanel";
+import { PlacementLayer } from "../../hex/PlacementLayer";
 import { ChatPanel } from "../../session/ChatPanel";
 import {
   cancelActions,
   cancelMove,
+  cancelPick,
   cancelRotate,
   hoverFacing,
   isPlaced,
@@ -15,6 +17,7 @@ import {
   pickUnit,
   pickedUnitId,
   placeUnit,
+  placeableCellKeys,
   placedCount,
   placedUnitAt,
   placedUnits,
@@ -54,6 +57,9 @@ function UnitsDispositionPage() {
       <div className={styles.canvas}>
         <HexCanvas onCellClick={onCellClick} onCellHover={hoverCell} world={grid.bounds}>
           <HexGridLayer>
+            {/* Under the markers, so the preview of the unit being placed is
+                drawn on top of the hex it would land on. */}
+            <PlacementLayer cellKeys={placeableCellKeys.value} />
             <UnitLayer
               onFacingHover={hoverFacing}
               onFacingPick={rotateUnit}
@@ -111,6 +117,11 @@ function onCellClick(key: string): void {
     return;
   }
 
+  // The click landed on a unit already on the board, so a unit still armed from
+  // the roster was aimed at some other hex. It is disarmed for the same reason
+  // arming one clears the selection: the panel and the roster must not talk about
+  // two different units.
+  cancelPick();
   selectCell(key);
 }
 
@@ -183,10 +194,11 @@ function RosterRow({ unit }: { unit: RosterUnit }) {
 function onRosterClick(unitId: string): void {
   const placement = placementOf(unitId);
   if (placement !== null) {
-    // A move or rotation armed on some other unit was aimed at the board, and the
-    // roster row is not the board. Selecting a different unit while one stayed
-    // armed would leave the panel and the canvas talking about two different
-    // units.
+    // A pick, move or rotation armed on some other unit was aimed at the board,
+    // and the roster row is not the board. Selecting a different unit while one
+    // stayed armed would leave the panel and the canvas talking about two
+    // different units.
+    cancelPick();
     cancelMove();
     cancelRotate();
     focusCell(placement);
