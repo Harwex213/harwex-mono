@@ -18,7 +18,8 @@ import {
 import type { Unit, UnitSide, UnitStats } from "./units-state";
 
 // The seat the local player sits in. Their army is the one the left panel
-// lists and the only one the End turn button ever answers for.
+// lists. The player still gives orders to both armies — nothing drives the
+// other one — so the seat only decides what the panels call "yours".
 const LOCAL_SIDE: UnitSide = "blue";
 
 // Both armies as they stand in the scenario the battle is fought on. Derived
@@ -700,14 +701,17 @@ function battleUnitAt(key: string): Unit | null {
   return battleUnits.value.find((unit) => unit.cellKey === key) ?? null;
 }
 
-// Whether the local player is the one to move. The End turn button and the
-// actions panel both hang on this: the other army is watched, not played.
+// Whether the local player's unit is the one to move. The round still says
+// whose side the turn belongs to: the button label under the roster and the
+// players panel read this.
 const localTurn = computed(() => activeUnit.value.side === LOCAL_SIDE);
 
-// Whether the local player may give an order at all. Their turn is one half of
-// it; the other is that no Оппортун is standing open. A window belongs to the
-// enemy holding it, and the board is watched until the swing is answered.
-const takingOrders = computed(() => localTurn.value && !opportunityOpen.value);
+// Whether the active unit may be given an order. Nothing drives the other army,
+// so the local player gives orders to both sides: the enemy's turn is played by
+// hand rather than skipped. The one thing that takes the board away is an open
+// Оппортун. The window belongs to the unit holding the swing, and every order
+// waits until the swing is answered.
+const takingOrders = computed(() => !opportunityOpen.value);
 
 // Arms the active unit for a move, or calls the move off if it is already
 // armed. Nothing to arm on the enemy's turn: their units are watched, not

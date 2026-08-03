@@ -554,6 +554,44 @@
   padding-bottom: calc(var(--turn-inset) + var(--turn-label-room));
 }
 
+/* --- a window opening, played out over the strip --- */
+
+/* The turn handover, run the other way round. The cards cut in at the front take
+   slots the round was standing in, so the strip is pinned one slot to the left
+   per card they have taken. That is where the round stood a moment ago, and the
+   transition below carries the strip right into its new place. */
+.turnOrder[data-interrupt-phase="start"] .turnTrack {
+  transform: translateX(calc(var(--turn-step) * var(--interrupt-shift, 0) * -1));
+}
+
+.turnOrder[data-interrupt-phase="run"] .turnTrack {
+  transition: transform var(--turn-slide) var(--uk-ease);
+}
+
+/* The enemy that has just been handed a swing, rising into its slot from under
+   the bar. The same motion the unit that has just moved comes back in at the tail
+   of the queue with.
+
+   The card stands in the strip, so the pin above would carry it off to the left
+   along with the round, and the card would fade in half outside the bar. This
+   gives the sideways half of the pin back. The card and the strip run under the
+   same transition, so the two cancel each other out frame by frame, and the card
+   rises straight up. */
+.interruptEnter {
+  will-change: opacity, transform;
+}
+
+.turnOrder[data-interrupt-phase="start"] .interruptEnter {
+  opacity: 0;
+  transform: translate(calc(var(--turn-step) * var(--interrupt-shift, 0)), 120%);
+}
+
+.turnOrder[data-interrupt-phase="run"] .interruptEnter {
+  transition:
+    opacity var(--turn-slide) var(--uk-ease),
+    transform var(--turn-slide) var(--uk-ease);
+}
+
 /* The round line, drawn as a card of its own so the strip counts it as a slot:
    the cards in front of it are what this round has left to run. Nobody stands
    on it, so it wears neither of the army colours and takes no clicks. */
@@ -699,7 +737,9 @@
    along, and the unit that has moved is not drawn twice. */
 @media (prefers-reduced-motion: reduce) {
   .turnOrder[data-phase="start"] .turnTrack,
-  .turnOrder[data-phase="start"] .turnEnter {
+  .turnOrder[data-phase="start"] .turnEnter,
+  .turnOrder[data-interrupt-phase="start"] .turnTrack,
+  .turnOrder[data-interrupt-phase="start"] .interruptEnter {
     opacity: 1;
     transform: none;
   }
