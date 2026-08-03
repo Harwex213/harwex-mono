@@ -1,0 +1,15 @@
+/* The cross on a hex the armed unit is refused. Nothing here covers the terrain:
+   the whole board outside the deployment band wears one of these at once, and the
+   hexes under them still have to read.
+
+   The cross lets the pointer through, unlike the wash a placeable hex takes. The
+   canvas reads the hex off whatever the pointer lands on, so a shape that took
+   the pointer without carrying a cell key would leave the hex under it unable to
+   answer hover or click. */
+.cross {
+  fill: none;
+  pointer-events: none;
+  stroke: var(--map-place-blocked);
+  stroke-linecap: round;
+  stroke-opacity: 0.65;
+}

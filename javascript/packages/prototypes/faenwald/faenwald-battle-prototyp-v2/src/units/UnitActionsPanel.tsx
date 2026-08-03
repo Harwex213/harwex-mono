@@ -10,7 +10,7 @@ import {
   MoveIcon,
   RotateIcon,
 } from "../ui/icons";
-import { isTyping } from "../ui/keyboard";
+import { isTyping, matchShortcut } from "../ui/keyboard";
 import { ModifierList } from "../ui/ModifierList";
 import styles from "./unit-actions-panel.module.css";
 
@@ -129,7 +129,7 @@ function UnitActionsPanel({
         return;
       }
 
-      const action = SHORTCUTS[event.key.toLowerCase()];
+      const action = matchShortcut(event, SHORTCUTS);
       if (action === undefined) {
         return;
       }
@@ -356,7 +356,8 @@ const NO_TARGET_HINT = "Nobody in reach";
 
 type Action = "move" | "rotate" | "accelerate" | "attack" | "cone" | "find" | "cancel";
 
-// `event.key` lowercased, so `Escape` arrives as `escape`.
+// Keyed by the lowercased name of a key, the way `matchShortcut` spells one:
+// a letter key is the letter printed on it, and `Escape` arrives as `escape`.
 const SHORTCUTS: Record<string, Action> = {
   w: "move",
   r: "rotate",

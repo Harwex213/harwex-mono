@@ -2,6 +2,7 @@ import { Button, Tooltip } from "@hw/faenwald-uikit";
 import { useSignals } from "@preact/signals-react/runtime";
 import type { CSSProperties } from "react";
 import { playUnitSelect } from "../../audio/sounds";
+import { BlockedLayer } from "../../hex/BlockedLayer";
 import { HexCanvas } from "../../hex/HexCanvas";
 import { HexGridLayer } from "../../hex/HexGridLayer";
 import { HexInfoPanel } from "../../hex/HexInfoPanel";
@@ -9,6 +10,7 @@ import { PlacementLayer } from "../../hex/PlacementLayer";
 import { ChatPanel } from "../../session/ChatPanel";
 import {
   STEP_MS,
+  blockedCellKeys,
   cancelActions,
   cancelMove,
   cancelPick,
@@ -69,7 +71,10 @@ function UnitsDispositionPage() {
         <HexCanvas onCellClick={onCellClick} onCellHover={hoverCell} world={grid.bounds}>
           <HexGridLayer>
             {/* Under the markers, so the preview of the unit being placed is
-                drawn on top of the hex it would land on. */}
+                drawn on top of the hex it would land on. The two lists never
+                share a hex: one holds the hexes that take the armed unit, the
+                other the hexes that refuse it. */}
+            <BlockedLayer cellKeys={blockedCellKeys.value} />
             <PlacementLayer cellKeys={placeableCellKeys.value} />
             <UnitLayer
               movement={movements.value}

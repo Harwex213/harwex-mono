@@ -172,6 +172,30 @@ const placeableCellKeys = computed<string[]>(() => {
   return keys;
 });
 
+// The hexes a click would refuse the armed unit: the ones outside the deployment
+// band. Empty while nothing is armed, on the same terms as the list above — the
+// board only says where a unit may not go while one is waiting for a hex.
+//
+// A taken hex inside the band refuses a placement too, and it is left out all the
+// same: the marker standing on it already says the hex is taken, and a cross
+// drawn under that marker would not be seen. Nothing crossed here can carry a
+// unit anyway, because every placed unit stands inside the band.
+const blockedCellKeys = computed<string[]>(() => {
+  if (movingUnitId.value === null && pickedUnitId.value === null) {
+    return [];
+  }
+
+  const keys: string[] = [];
+  for (const cell of grid.cells) {
+    if (cell.row < DEPLOY_ROWS) {
+      continue;
+    }
+    keys.push(cell.key);
+  }
+
+  return keys;
+});
+
 // The hex a move would trade places with: the one under the pointer, holding
 // some other unit. Empty over the moving unit's own hex, which a click just
 // leaves it on.
@@ -435,6 +459,7 @@ function toggleReady(): void {
 
 export {
   STEP_MS,
+  blockedCellKeys,
   cancelActions,
   cancelMove,
   cancelPick,

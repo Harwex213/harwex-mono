@@ -72,6 +72,10 @@ body {
      the board says "you may go here" in one language, laid on as a translucent
      wash — see `placement.module.css` for why it cannot cover the terrain. */
   --map-place: var(--map-move);
+  /* The cross on a hex that takes no unit at all, drawn while the wash above is
+     out. Red against that green: one of the two says "you may go here", the other
+     says "not here". */
+  --map-place-blocked: #e01b24;
 
   --unit-outline: #2e2e2e;
   --unit-glyph: #101010;
