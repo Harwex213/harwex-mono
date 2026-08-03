@@ -21,3 +21,24 @@ body {
   margin: 0;
   overflow: hidden;
 }
+
+/* Map palette. The terrain reads as the same board in either theme, so these
+   are deliberately fixed and have no `.dark` override — only the app chrome
+   around the canvas follows the uikit tokens. In dark mode the panel showing
+   through the gaps between hexes turns the grid into a dark-grouted mosaic. */
+:root {
+  --map-line: #5e5e5e;
+  /* Carries the whole hover cue on its own now that the width stays put, so it
+     goes near-black for the strongest contrast against `--map-line`. */
+  --map-line-hover: #0d0d0d;
+  --map-plain: #ececec;
+  --map-path: #f9e94a;
+  --map-arcane: #7a22d6;
+  --map-hills: #b5720d;
+  --map-crag: #6b4407;
+
+  --unit-outline: #101010;
+  --unit-glyph: #101010;
+  --unit-red: #9e1327;
+  --unit-blue: #1c4fbe;
+}

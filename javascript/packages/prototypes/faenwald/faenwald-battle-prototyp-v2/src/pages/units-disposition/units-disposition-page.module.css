@@ -1,0 +1,247 @@
+.page {
+  display: grid;
+  flex: 1;
+  gap: var(--uk-space-3);
+  grid-template-columns: 260px minmax(0, 1fr) 280px;
+  /* `min-height: 0` lets the columns shrink instead of pushing the page past
+     the viewport. */
+  min-height: 0;
+}
+
+/* --- shared panel chrome --- */
+
+.panel {
+  background: var(--uk-panel);
+  border: 1px solid var(--uk-border);
+  border-radius: var(--uk-radius-lg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--uk-space-2);
+  min-height: 0;
+  padding: var(--uk-space-3);
+}
+
+/* --- left panel: title + roster + ready --- */
+
+.left {
+  background: var(--uk-panel);
+  border: 1px solid var(--uk-border);
+  border-radius: var(--uk-radius-lg);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: var(--uk-space-3);
+}
+
+.leftHeader {
+  align-items: center;
+  display: flex;
+  flex-shrink: 0;
+  gap: var(--uk-space-2);
+  padding-bottom: var(--uk-space-3);
+}
+
+.leftTitle {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0;
+}
+
+/* The uikit trigger is styled as a full button; an inline icon wants none of
+   that chrome. */
+.infoTrigger {
+  background: none;
+  border: none;
+  border-radius: var(--uk-radius-full);
+  color: var(--uk-fg-subtle);
+  cursor: help;
+  display: inline-flex;
+  font-size: 16px;
+  padding: 0;
+}
+
+.infoTrigger:hover {
+  background: none;
+  color: var(--uk-fg);
+}
+
+.roster {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--uk-space-2);
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.unit {
+  background: transparent;
+  border: 1px solid var(--uk-border);
+  border-radius: var(--uk-radius);
+  color: inherit;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  font: inherit;
+  gap: var(--uk-space-1);
+  padding: var(--uk-space-2);
+  text-align: left;
+  transition:
+    background var(--uk-duration) var(--uk-ease),
+    border-color var(--uk-duration) var(--uk-ease);
+}
+
+.unit:hover {
+  background: var(--uk-hover);
+}
+
+.unitPicked {
+  border-color: var(--uk-primary);
+  box-shadow: 0 0 0 1px var(--uk-primary);
+}
+
+.unitPlaced {
+  color: var(--uk-fg-muted);
+}
+
+.unitName {
+  align-items: center;
+  display: flex;
+  font-size: 13px;
+  gap: var(--uk-space-2);
+  justify-content: space-between;
+}
+
+.unitBadge {
+  border: 1px solid var(--uk-border);
+  border-radius: var(--uk-radius-full);
+  color: var(--uk-fg-subtle);
+  font-size: 10px;
+  padding: 0 var(--uk-space-2);
+  text-transform: uppercase;
+}
+
+.unitStats {
+  color: var(--uk-fg-muted);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.readyBar {
+  border-top: 1px solid var(--uk-border);
+  flex-shrink: 0;
+  margin-top: var(--uk-space-3);
+  padding-top: var(--uk-space-3);
+}
+
+.readyButton {
+  width: 100%;
+}
+
+/* --- middle column: the board, with no chrome above it --- */
+
+.canvas {
+  border: 1px solid var(--uk-border);
+  border-radius: var(--uk-radius-lg);
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* --- right column: players + chat --- */
+
+.right {
+  display: flex;
+  flex-direction: column;
+  gap: var(--uk-space-3);
+  min-height: 0;
+}
+
+.players {
+  display: flex;
+  flex-direction: column;
+  gap: var(--uk-space-2);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.player {
+  align-items: center;
+  border: 1px solid var(--uk-border);
+  border-radius: var(--uk-radius);
+  display: flex;
+  font-size: 13px;
+  gap: var(--uk-space-2);
+  justify-content: space-between;
+  padding: var(--uk-space-2);
+}
+
+.playerState {
+  color: var(--uk-fg-subtle);
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+.playerReady {
+  color: var(--uk-success);
+}
+
+.chat {
+  flex: 1;
+}
+
+.chatLog {
+  border: 1px solid var(--uk-border);
+  border-radius: var(--uk-radius);
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--uk-space-2);
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--uk-space-2);
+}
+
+.message {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.messageAuthor {
+  color: var(--uk-fg-subtle);
+  font-size: 11px;
+}
+
+.messageMine {
+  color: var(--uk-primary);
+}
+
+.messageText {
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.chatForm {
+  display: flex;
+  flex-shrink: 0;
+  gap: var(--uk-space-2);
+}
+
+.chatInput {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Square, so the glyph sits centred instead of inside a label-width box. */
+.sendButton {
+  flex-shrink: 0;
+  padding: 0;
+  width: 32px;
+}
+
+.sendIcon {
+  font-size: 16px;
+}

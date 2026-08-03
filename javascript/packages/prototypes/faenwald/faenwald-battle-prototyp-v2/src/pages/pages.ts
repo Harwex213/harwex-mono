@@ -1,5 +1,6 @@
 import type { ComponentType } from "react";
 import { HexGridPage } from "./hex-grid/HexGridPage";
+import { UnitsDispositionPage } from "./units-disposition/UnitsDispositionPage";
 
 type Page = {
   id: string;
@@ -10,6 +11,7 @@ type Page = {
 // One entry per page. The first one is the default route.
 const PAGES: Page[] = [
   { id: "hex-grid", title: "Hex grid", Component: HexGridPage },
+  { id: "units-disposition", title: "Units disposition", Component: UnitsDispositionPage },
 ];
 
 function pageFor(id: string): Page {

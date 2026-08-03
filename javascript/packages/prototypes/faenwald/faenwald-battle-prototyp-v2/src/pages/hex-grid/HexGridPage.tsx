@@ -3,7 +3,18 @@ import { useSignals } from "@preact/signals-react/runtime";
 import { useRef } from "react";
 import { HexCanvas, type HexCanvasHandle } from "../../hex/HexCanvas";
 import { HexGridLayer } from "../../hex/HexGridLayer";
-import { COLS, ROWS, grid, selectCell, selectedCell, terrainOf } from "../../state/grid-state";
+import { HexInfoPanel } from "../../hex/HexInfoPanel";
+import {
+  COLS,
+  ROWS,
+  grid,
+  hoverCell,
+  selectCell,
+  selectedCell,
+  terrainOf,
+} from "../../state/grid-state";
+import { units } from "../../state/units-state";
+import { UnitLayer } from "../../units/UnitLayer";
 import styles from "./hex-grid-page.module.css";
 
 function HexGridPage() {
@@ -27,9 +38,17 @@ function HexGridPage() {
       </div>
 
       <div className={styles.canvas}>
-        <HexCanvas handleRef={canvasRef} onCellClick={selectCell} world={grid.bounds}>
-          <HexGridLayer />
+        <HexCanvas
+          handleRef={canvasRef}
+          onCellClick={selectCell}
+          onCellHover={hoverCell}
+          world={grid.bounds}
+        >
+          <HexGridLayer>
+            <UnitLayer units={units.value} />
+          </HexGridLayer>
         </HexCanvas>
+        <HexInfoPanel />
       </div>
     </div>
   );

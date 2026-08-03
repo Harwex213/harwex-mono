@@ -1,0 +1,22 @@
+.unit {
+  /* Clicks fall through to the terrain hex underneath, so selecting an
+     occupied cell works the same as selecting an empty one. */
+  pointer-events: none;
+}
+
+.body {
+  stroke: var(--unit-outline);
+  stroke-width: 2;
+}
+
+.red {
+  fill: var(--unit-red);
+}
+
+.blue {
+  fill: var(--unit-blue);
+}
+
+.icon {
+  fill: var(--unit-glyph);
+}

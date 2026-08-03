@@ -1,13 +1,17 @@
 .hex {
-  /* No `cursor` here: the canvas owns the grab cursor while panning. */
-  stroke: #3a3a3a;
+  /* No `cursor` here, and none on any other shape in the canvas. `cursor`
+     inherits and the deepest element under the pointer wins, so the canvas can
+     only swap to `grabbing` for the whole grid while nothing inside overrides
+     it — a `pointer` on the hex would show through mid-pan. */
+  stroke: var(--map-line);
   stroke-width: 2;
   transition: fill var(--uk-duration) var(--uk-ease);
 }
 
+/* Colour only, no `stroke-width`: a thicker stroke grows on both sides of the
+   outline, so the hex reads as shifting under the pointer. */
 .hex:hover {
-  stroke: #101010;
-  stroke-width: 3;
+  stroke: var(--map-line-hover);
 }
 
 .selected {
@@ -18,21 +22,21 @@
 }
 
 .plain {
-  fill: #ececec;
+  fill: var(--map-plain);
 }
 
 .path {
-  fill: #f9e94a;
+  fill: var(--map-path);
 }
 
 .arcane {
-  fill: #7a22d6;
+  fill: var(--map-arcane);
 }
 
 .hills {
-  fill: #b5720d;
+  fill: var(--map-hills);
 }
 
 .crag {
-  fill: #6b4407;
+  fill: var(--map-crag);
 }

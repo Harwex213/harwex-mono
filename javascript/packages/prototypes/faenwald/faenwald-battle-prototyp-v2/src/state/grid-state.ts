@@ -92,6 +92,8 @@ const CRAG: Array<[number, number]> = [
 
 const terrainByKey = buildTerrainMap();
 
+const cellByKey = new Map(grid.cells.map((cell) => [cell.key, cell]));
+
 const selectedKey = signal<string | null>(null);
 
 const selectedCell = computed<HexCell | null>(() => {
@@ -99,7 +101,17 @@ const selectedCell = computed<HexCell | null>(() => {
   if (key === null) {
     return null;
   }
-  return grid.cells.find((cell) => cell.key === key) ?? null;
+  return cellOf(key);
+});
+
+const hoveredKey = signal<string | null>(null);
+
+const hoveredCell = computed<HexCell | null>(() => {
+  const key = hoveredKey.value;
+  if (key === null) {
+    return null;
+  }
+  return cellOf(key);
 });
 
 function buildTerrainMap(): Map<string, Terrain> {
@@ -120,6 +132,10 @@ function buildTerrainMap(): Map<string, Terrain> {
   return map;
 }
 
+function cellOf(key: string): HexCell | null {
+  return cellByKey.get(key) ?? null;
+}
+
 function terrainOf(key: string): Terrain {
   return terrainByKey.get(key) ?? "plain";
 }
@@ -128,5 +144,21 @@ function selectCell(key: string): void {
   selectedKey.value = selectedKey.value === key ? null : key;
 }
 
-export { COLS, ROWS, grid, selectCell, selectedCell, selectedKey, terrainOf };
+function hoverCell(key: string | null): void {
+  hoveredKey.value = key;
+}
+
+export {
+  COLS,
+  ROWS,
+  cellOf,
+  grid,
+  hoverCell,
+  hoveredCell,
+  hoveredKey,
+  selectCell,
+  selectedCell,
+  selectedKey,
+  terrainOf,
+};
 export type { Terrain };

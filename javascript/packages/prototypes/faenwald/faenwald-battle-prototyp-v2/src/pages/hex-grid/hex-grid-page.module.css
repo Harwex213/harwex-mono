@@ -29,4 +29,7 @@
 .canvas {
   flex: 1;
   min-height: 0;
+  /* Anchors the terrain panel, which overlays the canvas rather than sitting
+     inside the SVG. */
+  position: relative;
 }

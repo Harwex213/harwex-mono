@@ -1,6 +1,7 @@
 import { useSignals } from "@preact/signals-react/runtime";
 import { PAGES, pageFor } from "./pages/pages";
 import { hrefFor, route } from "./router/route-state";
+import { ThemeSwitch } from "./theme/ThemeSwitch";
 import styles from "./app.module.css";
 
 function App() {
@@ -27,6 +28,7 @@ function App() {
             </a>
           ))}
         </nav>
+        <ThemeSwitch />
       </header>
 
       <main className={styles.main}>

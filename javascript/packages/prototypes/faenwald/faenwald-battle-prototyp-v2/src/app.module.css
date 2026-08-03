@@ -4,7 +4,9 @@
   gap: var(--uk-space-4);
   height: 100%;
   margin: 0 auto;
-  max-width: 1200px;
+  /* Wide enough for the three-column disposition page; the single-column
+     pages just get more room for the canvas. */
+  max-width: 1440px;
   min-height: 0;
   padding: var(--uk-space-5) var(--uk-space-4);
 }
@@ -25,6 +27,8 @@
 .nav {
   display: flex;
   gap: var(--uk-space-2);
+  /* Takes the slack in the header row, so the theme switch sits hard right. */
+  flex: 1;
 }
 
 .tab {
