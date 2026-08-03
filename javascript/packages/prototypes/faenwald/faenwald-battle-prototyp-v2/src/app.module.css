@@ -1,88 +1,53 @@
 .app {
   display: flex;
   flex-direction: column;
-  gap: var(--uk-space-5);
+  gap: var(--uk-space-4);
+  height: 100%;
   margin: 0 auto;
-  max-width: 880px;
-  padding: var(--uk-space-6) var(--uk-space-4);
+  max-width: 1200px;
+  min-height: 0;
+  padding: var(--uk-space-5) var(--uk-space-4);
 }
 
 .header {
   align-items: center;
   display: flex;
-  gap: var(--uk-space-4);
+  flex-shrink: 0;
+  gap: var(--uk-space-5);
 }
 
 .title {
-  flex: 1;
-  font-size: 20px;
+  font-size: 18px;
   font-weight: 600;
   margin: 0;
 }
 
-.round {
-  color: var(--uk-fg-muted);
-  font-variant-numeric: tabular-nums;
+.nav {
+  display: flex;
+  gap: var(--uk-space-2);
 }
 
-.sides {
-  display: grid;
-  gap: var(--uk-space-5);
-  grid-template-columns: 1fr 1fr;
-}
-
-.roster {
-  display: grid;
-  gap: var(--uk-space-3);
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-}
-
-.unit {
-  background: var(--uk-panel);
-  border: 1px solid var(--uk-border);
+.tab {
+  border: 1px solid transparent;
   border-radius: var(--uk-radius);
-  color: inherit;
-  cursor: pointer;
+  color: var(--uk-fg-muted);
+  font-size: 13px;
+  padding: var(--uk-space-1) var(--uk-space-3);
+  text-decoration: none;
+}
+
+.tab:hover {
+  color: var(--uk-fg);
+}
+
+.tabActive {
+  border-color: var(--uk-border);
+  color: var(--uk-fg);
+}
+
+.main {
   display: flex;
+  flex: 1;
   flex-direction: column;
-  font: inherit;
-  gap: var(--uk-space-1);
-  padding: var(--uk-space-3);
-  text-align: left;
-  transition: border-color var(--uk-duration) var(--uk-ease);
-}
-
-.unit:hover {
-  border-color: var(--uk-border-strong);
-}
-
-.unitSelected {
-  border-color: var(--uk-primary);
-  box-shadow: 0 0 0 3px var(--uk-ring);
-}
-
-.unitName {
-  font-weight: 600;
-}
-
-.unitSide {
-  color: var(--uk-fg-subtle);
-  font-size: 12px;
-  text-transform: uppercase;
-}
-
-.unitHp {
-  color: var(--uk-fg-muted);
-  font-variant-numeric: tabular-nums;
-}
-
-.footer {
-  align-items: center;
-  display: flex;
-  gap: var(--uk-space-4);
-  min-height: 40px;
-}
-
-.hint {
-  color: var(--uk-fg-muted);
+  min-height: 0;
 }

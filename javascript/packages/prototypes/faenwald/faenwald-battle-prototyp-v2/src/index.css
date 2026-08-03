@@ -1,6 +1,23 @@
+/* Padding has to stay inside the 100% heights below, otherwise the app grows
+   past the viewport and the bottom of the page is clipped away. */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+/* The app owns the whole viewport and never scrolls: every page fits into the
+   space left by the header. */
+html,
+body,
+.root {
+  height: 100%;
+}
+
 body {
   background: var(--uk-bg);
   color: var(--uk-fg);
   font-family: var(--uk-font-sans);
   margin: 0;
+  overflow: hidden;
 }

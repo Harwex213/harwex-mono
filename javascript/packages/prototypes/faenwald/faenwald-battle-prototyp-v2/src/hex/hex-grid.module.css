@@ -1,0 +1,38 @@
+.hex {
+  /* No `cursor` here: the canvas owns the grab cursor while panning. */
+  stroke: #3a3a3a;
+  stroke-width: 2;
+  transition: fill var(--uk-duration) var(--uk-ease);
+}
+
+.hex:hover {
+  stroke: #101010;
+  stroke-width: 3;
+}
+
+.selected {
+  fill: none;
+  pointer-events: none;
+  stroke: var(--uk-primary);
+  stroke-width: 5;
+}
+
+.plain {
+  fill: #ececec;
+}
+
+.path {
+  fill: #f9e94a;
+}
+
+.arcane {
+  fill: #7a22d6;
+}
+
+.hills {
+  fill: #b5720d;
+}
+
+.crag {
+  fill: #6b4407;
+}
