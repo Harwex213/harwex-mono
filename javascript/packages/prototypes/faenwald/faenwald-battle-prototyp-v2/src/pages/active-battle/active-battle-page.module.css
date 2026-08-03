@@ -343,14 +343,37 @@
 /* The panel chrome only. The strip inside it does the scrolling, the clipping
    and the animation. */
 .turnOrder {
-  align-items: center;
   background: var(--uk-panel);
   border: 1px solid var(--uk-border);
   border-radius: var(--uk-radius-lg);
   display: flex;
+  /* The title sits over the strip rather than beside it: the strip is the one
+     thing in the bar that is allowed to take the whole width. */
+  flex-direction: column;
   flex-shrink: 0;
+  gap: var(--uk-space-1);
   min-width: 0;
   padding: var(--uk-space-2) var(--uk-space-3);
+}
+
+/* Which round the battle is on. Counted per pass down the whole queue, so the
+   number only moves when every unit of both armies has had its turn. */
+.turnHeader {
+  align-items: baseline;
+  display: flex;
+  gap: var(--uk-space-2);
+}
+
+.turnHeaderTitle {
+  color: var(--uk-fg-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.turnHeaderRound {
+  color: var(--uk-fg);
+  font-size: 14px;
+  font-weight: 700;
 }
 
 /* A long round scrolls sideways inside the bar; the board above it never
@@ -364,6 +387,12 @@
   /* Room for the ring the head of the queue is drawn with and for the pop it
      is flashed with, both of which the scroll box would clip otherwise. */
   --turn-inset: 9px;
+  /* Height of the word under an Оппортун card, plus the gap over it. Taken out
+     of the bar only while such a card is on the strip. */
+  --turn-label-room: 22px;
+  /* How long one beat of the Оппортун pulse lasts. The markers on the board keep
+     the same beat, so the cards and the board read as one cue. */
+  --opportunity-beat: 900ms;
 
   flex: 1;
   min-width: 0;
@@ -419,6 +448,134 @@
   box-shadow: 0 0 0 3px var(--map-selected-line);
 }
 
+/* --- Оппортун --- */
+
+/* The panel over the board. It says the board has been taken over, so it sits
+   where nothing else on the canvas does — across the top, in the middle — and
+   takes no clicks: everything it talks about is answered on the board under it
+   or with the button under the roster. */
+.opportunityBanner {
+  background: var(--uk-panel);
+  border: 2px solid var(--unit-opportunity);
+  border-radius: var(--uk-radius-lg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--uk-space-1);
+  left: 50%;
+  max-width: calc(100% - var(--uk-space-3) * 2);
+  padding: var(--uk-space-2) var(--uk-space-3);
+  pointer-events: none;
+  position: absolute;
+  text-align: center;
+  top: var(--uk-space-3);
+  /* Over the two read-only panels in the canvas corners, which it may cross. */
+  transform: translateX(-50%);
+  z-index: 2;
+}
+
+.opportunityTitle {
+  color: var(--unit-opportunity);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.opportunityHint {
+  color: var(--uk-fg-muted);
+  font-size: 12px;
+}
+
+/* A card in the strip and the word under it, as one slot. The label is outside
+   the frame rather than on the portrait: the frame already carries a colour
+   that means something, and the word has to be read against the cards around it
+   rather than against the picture. */
+.opportunitySlot {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  gap: 4px;
+  width: var(--turn-card-size);
+}
+
+.opportunityCard {
+  border-color: var(--unit-opportunity);
+  /* Not a unit of the round, so there is nothing here to select. */
+  cursor: default;
+}
+
+/* The enemy being asked now, picked out the way the head of the queue is — in
+   the colour the whole cue is drawn in rather than the gold, because this card
+   is not a turn. */
+.opportunityCardActive {
+  animation: opportunityRing var(--opportunity-beat) ease-in-out infinite;
+  /* The weight the beat runs around, carried as a value of its own: the ring
+     has to be there where the animation is not — a background tab, or a browser
+     told to leave motion alone. */
+  box-shadow: 0 0 0 4px var(--unit-opportunity);
+}
+
+.opportunityLabel {
+  border: 1px solid var(--unit-opportunity);
+  border-radius: var(--uk-radius);
+  color: var(--unit-opportunity);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  padding: 1px 0;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+/* The unit the swing is aimed at, in the same beat the two markers on the board
+   keep. It is the head of the queue as well, so this has to win over the gold
+   ring `.turnCardActive` gives it — an animation does, whatever the order the
+   two rules are written in. */
+.turnCardThreatened {
+  animation: opportunityRing var(--opportunity-beat) ease-in-out infinite;
+  box-shadow: 0 0 0 4px var(--unit-opportunity);
+}
+
+@keyframes opportunityRing {
+  0% {
+    box-shadow: 0 0 0 2px var(--unit-opportunity);
+  }
+
+  50% {
+    box-shadow: 0 0 0 6px var(--unit-opportunity);
+  }
+
+  100% {
+    box-shadow: 0 0 0 2px var(--unit-opportunity);
+  }
+}
+
+/* Room under the strip for the labels, and only while there are labels to make
+   room for: the bar is a card tall the rest of the time. */
+.turnOrder[data-opportunity="true"] .turnCards {
+  padding-bottom: calc(var(--turn-inset) + var(--turn-label-room));
+}
+
+/* The round line, drawn as a card of its own so the strip counts it as a slot:
+   the cards in front of it are what this round has left to run. Nobody stands
+   on it, so it wears neither of the army colours and takes no clicks. */
+.turnRound {
+  align-items: center;
+  background: var(--uk-hover);
+  border-color: var(--uk-border-strong);
+  border-style: dashed;
+  cursor: default;
+  display: flex;
+  justify-content: center;
+}
+
+.turnRoundLabel {
+  color: var(--uk-fg-muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-align: center;
+  text-transform: uppercase;
+}
+
 .turnAvatar {
   display: block;
   height: 100%;
@@ -428,11 +585,14 @@
 
 /* --- the turn handover, played out over the strip above --- */
 
-/* The whole strip slides one card to the left. It starts a step to the right
-   of where the new round wants it, which is exactly where the round before it
-   left the cards. */
+/* The whole strip slides to the left, one step per card that has just dropped
+   off its front. It starts that far to the right of where the new round wants
+   it, which is exactly where the round before it left the cards.
+
+   One card on an ordinary turn. Two on the last turn of a round: the unit goes
+   and the round line behind it goes with it. */
 .turnOrder[data-phase="start"] .turnTrack {
-  transform: translateX(var(--turn-step));
+  transform: translateX(calc(var(--turn-step) * var(--turn-shift, 1)));
 }
 
 .turnOrder[data-phase="run"] .turnTrack {
@@ -456,10 +616,11 @@
     transform var(--turn-slide) var(--uk-ease);
 }
 
-/* The same unit one more time, over the head slot it is giving up. It leaves
-   straight up and the scroll box cuts it off at the top of the bar. */
+/* The cards the strip has just dropped, each over the slot it is giving up.
+   They leave straight up and the scroll box cuts them off at the top of the
+   bar. */
 .turnLeave {
-  left: var(--turn-inset);
+  left: calc(var(--turn-inset) + var(--turn-step) * var(--turn-leave-slot, 0));
   pointer-events: none;
   position: absolute;
   top: var(--turn-inset);
@@ -550,6 +711,15 @@
   .turnOrder[data-phase="run"] .turnTrack .turnCardActive,
   .turnOrder[data-phase="run"] .turnTrack .turnCardActive .turnAvatar {
     animation: none;
+  }
+
+  /* The Оппортун rings stop beating and stand at their full weight instead. The
+     window is still a wait, and the cards still have to say which two units it
+     is between. */
+  .opportunityCardActive,
+  .turnCardThreatened {
+    animation: none;
+    box-shadow: 0 0 0 4px var(--unit-opportunity);
   }
 }
 

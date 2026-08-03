@@ -15,6 +15,12 @@ const UNIT_HEX_INSET = 5;
 const UNIT_HEX_SIZE = HEX_SIZE - HEX_INSET - UNIT_HEX_INSET;
 const UNIT_POINTS = hexPoints(UNIT_HEX_SIZE);
 
+// The Оппортун ring runs in the gap the inset above leaves, rather than on the
+// marker outline. Both armies wear a strong colour, and a red ring drawn on the
+// red one would be a red line on a red field — out here it is drawn against the
+// terrain instead, and reads the same on either side.
+const OPPORTUNITY_POINTS = hexPoints(UNIT_HEX_SIZE + UNIT_HEX_INSET / 2);
+
 // Health on the left of the marker, morale on the right. Both stats are read as
 // a percentage, so a full bar means 100.
 const STAT_MAX = 100;
@@ -143,7 +149,16 @@ type UnitLayerProps = {
   // The step being played out, if any: the unit that has moved is drawn on the
   // hex it has arrived at and slid in from the one it left.
   movement?: Movement | null;
+  // The two units an open Оппортун stands between: the enemy holding the swing
+  // and the unit that provoked it. Both are ringed in a pulsing red for as long
+  // as the window is open, so the board says who is about to be hit and by whom
+  // before anything moves.
+  opportunityAttackerId?: string | null;
+  opportunityVictimId?: string | null;
 };
+
+// Which end of an open Оппортун a marker is on, if either.
+type OpportunityRole = "attacker" | "victim";
 
 // World-space content for `HexCanvas`, drawn after the terrain hexes. The
 // units arrive as a prop so each page can feed the layer its own roster.
@@ -158,6 +173,8 @@ function UnitLayer({
   threatenedDamage,
   strike,
   movement,
+  opportunityAttackerId,
+  opportunityVictimId,
 }: UnitLayerProps) {
   return (
     <>
@@ -166,6 +183,7 @@ function UnitLayer({
           damage={unit.id === threatenedUnitId ? threatenedDamage : null}
           key={unit.id}
           movement={movement}
+          opportunity={opportunityRole(unit.id, opportunityAttackerId, opportunityVictimId)}
           strike={strike}
           unit={unit}
         />
@@ -182,6 +200,24 @@ function UnitLayer({
       )}
     </>
   );
+}
+
+// Which end of the open Оппортун this unit is on. Nothing at all with no window
+// open, which is what the two ids being absent stands for.
+function opportunityRole(
+  unitId: string,
+  attackerId: string | null | undefined,
+  victimId: string | null | undefined,
+): OpportunityRole | null {
+  if (unitId === attackerId) {
+    return "attacker";
+  }
+
+  if (unitId === victimId) {
+    return "victim";
+  }
+
+  return null;
 }
 
 // A circle on every corner of the marker, each carrying an arrow that points the
@@ -261,12 +297,14 @@ function UnitMarker({
   damage,
   strike,
   movement,
+  opportunity,
 }: {
   unit: Unit;
   className?: string;
   damage?: AttackDamage | null;
   strike?: Strike | null;
   movement?: Movement | null;
+  opportunity?: OpportunityRole | null;
 }) {
   // Called before the early return below, because a hook cannot be skipped. The
   // angle it keeps belongs to the unit, not to the hex it stands on.
@@ -385,9 +423,34 @@ function UnitMarker({
             fontSize={NAME_FONT_SIZE}
             label={unit.name}
           />
-          {/* Last, so the blow washes over the whole marker. Only mounted for
-              the length of the animation. */}
+          {/* The two below are last, so they lie over the whole marker.
+              The wash a blow lands with, mounted only for the length of the
+              animation. */}
           {struck ? <polygon className={styles.flash} points={UNIT_POINTS} /> : null}
+          {/* The Оппортун ring. Drawn as a shape of its own rather than as
+              anything on the marker: the marker may be stepping or lunging at
+              the same moment, and the two must not fight over one transform. */}
+          {opportunity === undefined || opportunity === null ? null : (
+            <>
+              {/* The unit the swing is aimed at takes the colour over the whole
+                  of it as well. The ring says an Оппортун is open; the wash says
+                  which end of it this marker is on. */}
+              {opportunity === "victim" ? (
+                <polygon className={styles.opportunityWash} points={UNIT_POINTS} />
+              ) : null}
+              {/* A dark ring under the red one, at a weight that leaves the red
+                  showing through the middle of it. The gap the ring runs in is a
+                  couple of px of whatever terrain the unit stands on, and the
+                  board has five of those to read against. */}
+              <polygon className={styles.opportunityShade} points={OPPORTUNITY_POINTS} />
+              <polygon
+                className={`${styles.opportunity} ${
+                  opportunity === "victim" ? styles.opportunityVictim : styles.opportunityAttacker
+                }`}
+                points={OPPORTUNITY_POINTS}
+              />
+            </>
+          )}
         </g>
       </g>
     </g>

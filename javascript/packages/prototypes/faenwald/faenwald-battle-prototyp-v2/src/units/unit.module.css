@@ -324,6 +324,125 @@
   }
 }
 
+/* An open Оппортун, on both units it stands between: the enemy holding the
+   swing and the unit that provoked it. A ring pulsing over the marker, which
+   goes on beating for as long as the window is open — a window is a wait, and a
+   cue that plays once and stops would be over before the wait is.
+
+   The two ends are told apart by weight rather than by colour. The enemy about
+   to swing is a ring; the unit under it wears the same ring with the red washed
+   over it as well, because that is the marker the blow is coming to. */
+.opportunity,
+.opportunityShade,
+.opportunityWash {
+  fill: none;
+  /* All three lie over the marker, and everything under them — the hex, the
+     rotation handles — has to go on taking the pointer through. */
+  pointer-events: none;
+}
+
+/* Every one of the three carries the weight it beats around as its own value,
+   not just as a keyframe. A cue that says the board is waiting has to be legible
+   the whole time it is up — including where the animation never runs, which is a
+   background tab, a paused compositor, or a browser told to leave motion
+   alone. */
+.opportunity {
+  stroke: var(--unit-opportunity);
+  stroke-opacity: 0.8;
+  stroke-width: 3.5;
+}
+
+/* Beats with the ring over it, a shade wider throughout, so the red never
+   touches the terrain directly and the whole thing keeps its edge over the five
+   fills the board is drawn in. */
+.opportunityShade {
+  animation: opportunityShade 900ms ease-in-out infinite;
+  stroke: var(--unit-outline);
+  stroke-opacity: 0.8;
+  stroke-width: 6;
+}
+
+.opportunityAttacker,
+.opportunityVictim {
+  animation: opportunityRing 900ms ease-in-out infinite;
+}
+
+.opportunityWash {
+  animation: opportunityWash 900ms ease-in-out infinite;
+  fill: var(--unit-opportunity);
+  fill-opacity: 0.2;
+}
+
+@keyframes opportunityRing {
+  0% {
+    stroke-opacity: 0.4;
+    stroke-width: 2;
+  }
+
+  50% {
+    stroke-opacity: 1;
+    stroke-width: 5;
+  }
+
+  100% {
+    stroke-opacity: 0.4;
+    stroke-width: 2;
+  }
+}
+
+@keyframes opportunityShade {
+  0% {
+    stroke-opacity: 0.4;
+    stroke-width: 4;
+  }
+
+  50% {
+    stroke-opacity: 1;
+    stroke-width: 8;
+  }
+
+  100% {
+    stroke-opacity: 0.4;
+    stroke-width: 4;
+  }
+}
+
+@keyframes opportunityWash {
+  0% {
+    fill-opacity: 0.06;
+  }
+
+  50% {
+    fill-opacity: 0.3;
+  }
+
+  100% {
+    fill-opacity: 0.06;
+  }
+}
+
+/* Told without the beat: everything stands at its full weight and stays there.
+   The window it belongs to is still a wait, and the marker still says so. */
+@media (prefers-reduced-motion: reduce) {
+  .opportunityAttacker,
+  .opportunityVictim {
+    animation: none;
+    stroke-opacity: 1;
+    stroke-width: 4;
+  }
+
+  .opportunityShade {
+    animation: none;
+    stroke-opacity: 1;
+    stroke-width: 7;
+  }
+
+  .opportunityWash {
+    animation: none;
+    fill-opacity: 0.22;
+  }
+}
+
 /* One outline, in one colour, whatever the board is asking of the unit. Nothing
    repaints it, so there is nothing for a transition to carry. */
 .body {

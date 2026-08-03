@@ -21,6 +21,36 @@ between them. The card of a shooter carries a switch that washes that cone over 
 board; pointing at a unit inside it draws the flight the shot would take, and committing
 it sends an arrow along that same curve.
 
+## Оппортун
+
+Walking within reach of the enemy is paid for. A step hands the enemies who cover the
+hexes it runs between a swing of their own, taken out of turn. Three things provoke one:
+
+- **Leaving.** The unit is about to step off its hex. Everybody who could strike it
+  there swings first, and the step is held back until the last of them has answered.
+- **Arriving, by bow.** The unit has landed on its new hex. Every shooter whose cone
+  covers that hex looses at once.
+- **Arriving, by hand.** The same landing, answered by a melee enemy — which waits until
+  the unit's whole turn is over and swings as it closes. A unit that stood still all
+  turn provokes nobody.
+
+An enemy gets one swing per turn of the unit that provoked it, whichever trigger handed
+it out. That is why the second and third triggers are only ever answered by somebody the
+unit walked *into* reach of: an enemy that already covered the hex it set off from has
+spent its swing on the first trigger.
+
+While a swing is open the board belongs to the enemy holding it. A panel over the board
+says so, the turn order bar puts a card in front of the round for every enemy still to
+answer — each under the word the mechanic is named after — and the two units the swing
+stands between are ringed in a beating red. Every order the local player has is muted.
+Two things end it: the blow, clicked on the unit under the ring, or the button under the
+roster, which is that enemy letting the swing go. Either way the swing is spent, and the
+step or the end of turn it was holding back happens next.
+
+`battle-state.ts` holds all of it. A swing costs the enemy nothing of its own turn, and
+the reach it is read against is the enemy's ordinary attack — so an Оппортун is a blow
+the unit could have landed anyway, taken at a moment it does not own.
+
 ```bash
 yarn workspace @hw/faenwald-battle-prototyp-v2 dev        # rspack dev server, random free port
 yarn workspace @hw/faenwald-battle-prototyp-v2 build      # bundle into dist/

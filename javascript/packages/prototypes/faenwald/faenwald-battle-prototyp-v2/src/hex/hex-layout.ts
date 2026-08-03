@@ -114,8 +114,115 @@ function hexRingPoints(width: number, inset = 0): string {
   return hexPoints(HEX_SIZE - HEX_INSET + (width - 2 * inset) / SQRT3);
 }
 
+// The six corners of a pointy-top hex around (0, 0), at the size the hexes tile
+// at rather than the smaller size they are drawn at. Three hexes meet at each of
+// these corners, and every one of the three lands its copy on the same point —
+// which is what lets the outline of a group of hexes be chained corner to
+// corner. Corner 0 is the one up and to the right, and the rest run clockwise.
+const HEX_CORNERS = Array.from({ length: 6 }, (_unused, index) => {
+  const angle = (Math.PI / 180) * (60 * index - 30);
+  return { x: HEX_SIZE * Math.cos(angle), y: HEX_SIZE * Math.sin(angle) };
+});
+
 function normalizeAngle(angle: number): number {
   return ((angle % 360) + 360) % 360;
+}
+
+// The neighbour direction across the edge that leaves corner `index` clockwise.
+// The edge out of corner 0 runs down the right-hand side of the hex, so the
+// neighbour across it is the eastern one.
+function edgeDirection(index: number): number {
+  return normalizeAngle(90 + 60 * index);
+}
+
+function cornerOf(center: { x: number; y: number }, index: number): { x: number; y: number } {
+  const corner = HEX_CORNERS[index % 6];
+  return { x: center.x + corner.x, y: center.y + corner.y };
+}
+
+// Corners are matched by a key rounded to a tenth of a px. Each of the three
+// hexes that meet at a corner works it out from its own centre, so the three
+// copies agree only up to floating-point noise. No two distinct corners are
+// closer than 20px, so the rounding cannot fuse two of them into one.
+function cornerKey(point: { x: number; y: number }): string {
+  return `${point.x.toFixed(1)},${point.y.toFixed(1)}`;
+}
+
+type OutlineEdge = {
+  from: { x: number; y: number };
+  to: { x: number; y: number };
+};
+
+// The outline of a group of hexes, as SVG path data — one closed loop per run of
+// them, so a group broken in two is answered with two loops. An edge is on the
+// outline when the hex across it is outside the group.
+//
+// The loops are drawn on the tiling size, which puts them in the middle of the
+// gap between the hexes inside the group and the ones outside it: the border
+// runs between the two rather than over either.
+//
+// Every edge is taken clockwise around its own hex, which is what makes the
+// chaining work — the corner one edge ends on is the corner the next one starts
+// from, and each corner on the outline has exactly one edge leaving it.
+function hexRegionOutline(cells: Array<{ col: number; row: number }>): string[] {
+  const inside = new Set(cells.map((cell) => cellKey(cell.col, cell.row)));
+  const leaving = new Map<string, OutlineEdge[]>();
+
+  for (const cell of cells) {
+    const center = hexCenter(cell.col, cell.row, HEX_SIZE);
+
+    for (let index = 0; index < 6; index += 1) {
+      const across = neighborCell(cell.col, cell.row, edgeDirection(index));
+      if (across !== null && inside.has(cellKey(across.col, across.row))) {
+        continue;
+      }
+
+      const edge = { from: cornerOf(center, index), to: cornerOf(center, index + 1) };
+      const key = cornerKey(edge.from);
+      const edges = leaving.get(key);
+      if (edges === undefined) {
+        leaving.set(key, [edge]);
+        continue;
+      }
+
+      edges.push(edge);
+    }
+  }
+
+  // Each edge is taken out of the map as it is walked, so a corner two loops
+  // pass through hands one edge to each of them. Only the arrays are emptied and
+  // no key is ever added or dropped, which is what makes it safe to walk the map
+  // while the loops are being pulled out of it.
+  const loops: string[] = [];
+  for (const start of leaving.values()) {
+    while (start.length > 0) {
+      const points: Array<{ x: number; y: number }> = [];
+      let edges: OutlineEdge[] | undefined = start;
+
+      while (edges !== undefined && edges.length > 0) {
+        const edge = edges.pop();
+        if (edge === undefined) {
+          break;
+        }
+
+        points.push(edge.from);
+        edges = leaving.get(cornerKey(edge.to));
+      }
+
+      loops.push(outlinePath(points));
+    }
+  }
+
+  return loops;
+}
+
+// The corners of one loop as a closed path. The last corner joins back to the
+// first, which `Z` draws — so the closing edge is left out of the list.
+function outlinePath(points: Array<{ x: number; y: number }>): string {
+  const steps = points.map(
+    (point, index) => `${index === 0 ? "M" : "L"}${point.x.toFixed(2)} ${point.y.toFixed(2)}`,
+  );
+  return `${steps.join(" ")} Z`;
 }
 
 // The two directions a unit looks between. The facing itself points at a
@@ -232,6 +339,7 @@ export {
   forwardCone,
   frontDirections,
   hexPoints,
+  hexRegionOutline,
   hexRingPoints,
   hexWidth,
   neighborCell,

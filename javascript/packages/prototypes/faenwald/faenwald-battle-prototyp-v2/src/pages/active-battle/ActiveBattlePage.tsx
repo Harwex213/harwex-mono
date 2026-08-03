@@ -44,10 +44,17 @@ import {
   movesLeftOf,
   movesTotalOf,
   movingUnitId,
+  opportunityAttacker,
+  opportunityAttackerId,
+  opportunityOpen,
+  opportunityUnits,
+  opportunityVictimId,
   pendingDamage,
   rotateCellKey,
   rotateUnit,
   rotatingUnitId,
+  roundBreakOffset,
+  roundNumber,
   selectScenario,
   selectUnit,
   selectedAttack,
@@ -116,9 +123,15 @@ function ActiveBattlePage() {
   // read off it. Orders are another matter: only the unit to move takes them,
   // and only while the turn is the local player's. Every other unit gets the
   // same panel with its commands muted — the enemy army is watched, not played.
+  // An open Оппортун takes the board away from the local player on top of all
+  // that: the swing is the enemy's to answer, and the only thing the card is
+  // good for while it stands is reading the unit that is about to be hit.
   const selected = selectedUnit.value;
   const commandable =
-    selected !== null && localTurn.value && selected.id === activeUnit.value.id;
+    selected !== null &&
+    localTurn.value &&
+    !opportunityOpen.value &&
+    selected.id === activeUnit.value.id;
 
   // Accelerate is the one order that is asked about before it is carried out: it
   // spends morale, and morale does not come back the way an armed move does. The
@@ -189,8 +202,8 @@ function ActiveBattlePage() {
                 in place of the hover one, so the board answers a pointer resting
                 on a target with one ring rather than two. */}
             <HexGridLayer attackKey={hoveredTargetKey.value}>
-              {/* Under everything: a wash over a whole cone of hexes, which says
-                  where a shot could come down rather than what the board is
+              {/* Under everything: a border around a whole cone of hexes, which
+                  says where a shot could come down rather than what the board is
                   waiting for. An order armed on one of those hexes has to be read
                   over the top of it. */}
               <CanopyConeLayer cellKeys={canopyConeKeys.value} />
@@ -201,6 +214,8 @@ function ActiveBattlePage() {
                 movement={movement.value}
                 onFacingHover={hoverFacing}
                 onFacingPick={rotateUnit}
+                opportunityAttackerId={opportunityAttackerId.value}
+                opportunityVictimId={opportunityVictimId.value}
                 rotateCellKey={rotateCellKey.value}
                 strike={strike.value}
                 threatenedDamage={pendingDamage.value?.damage ?? null}
@@ -245,6 +260,7 @@ function ActiveBattlePage() {
             />
           )}
           <HexInfoPanel threat={threat} unitAt={battleUnitAt} />
+          <OpportunityBanner />
         </div>
 
         <TurnOrderBar />
@@ -339,7 +355,43 @@ function AccelerateDialog({
 // is not — `moveUnit` decides which, and follows the unit with the selection.
 // Otherwise a hex with a unit on it selects that unit, and an empty one is
 // dropped so the panels stay put while the pointer wanders the board.
+// The panel that says the board has been taken over. It stands over the top of
+// the board for as long as an Оппортун is open, names the enemy holding the
+// swing, and says the two ways the swing can end — because neither of them is
+// an order the local player gives.
+//
+// Nothing at all while no window is open: the board is the player's, and a
+// panel saying so would be in the way of it.
+function OpportunityBanner() {
+  useSignals();
+
+  const attacker = opportunityAttacker.value;
+  if (attacker === null) {
+    return null;
+  }
+
+  return (
+    <div className={styles.opportunityBanner} role="status">
+      <span className={styles.opportunityTitle}>
+        Оппортун! Вас могут атаковать вражеские юниты
+      </span>
+      <span className={styles.opportunityHint}>
+        Ход за противником: <strong>{attacker.title}</strong> бьёт по отряду в красной рамке или
+        отказывается от удара.
+      </span>
+    </div>
+  );
+}
+
 function onCellClick(key: string): void {
+  // The board belongs to the enemy holding the swing while an Оппортун is open.
+  // A click that lands on a hex missed the unit the swing may be taken at —
+  // those take their own clicks — so it is not the swing, and there is nothing
+  // else on the board for a click to mean.
+  if (opportunityOpen.value) {
+    return;
+  }
+
   if (movingUnitId.value !== null) {
     moveUnit(key);
     return;
@@ -515,18 +567,33 @@ function ArmyPanel() {
 
       {/* Nothing drives the other army yet, so the button hands its turn on
           too — a disabled one would leave the round stuck on the enemy. The
-          label says which turn is being ended. */}
+          label says which turn is being ended.
+
+          With an Оппортун open the button is the enemy's rather than the
+          player's: pressing it is that enemy letting its swing go. The same one
+          button, because the same key has always stood for "I am done", and
+          whoever the board is waiting on is who it is done for. */}
       <div className={styles.turnBar}>
         <Button.Root
           className={styles.turnButton}
           onClick={endTurn}
-          variant={localTurn.value ? "primary" : "secondary"}
+          variant={localTurn.value && !opportunityOpen.value ? "primary" : "secondary"}
         >
-          {localTurn.value ? "End turn (Space)" : "Skip enemy turn (Space)"}
+          {turnButtonLabel()}
         </Button.Root>
       </div>
     </aside>
   );
+}
+
+// What the one button under the roster is for at this moment. Read during a
+// render that tracks signals, so it follows the board.
+function turnButtonLabel(): string {
+  if (opportunityOpen.value) {
+    return "Отказаться от оппортуна (Space)";
+  }
+
+  return localTurn.value ? "End turn (Space)" : "Skip enemy turn (Space)";
 }
 
 function ArmyRow({ unit }: { unit: BattleUnit }) {
@@ -560,31 +627,75 @@ function ArmyRow({ unit }: { unit: BattleUnit }) {
   );
 }
 
+// A card in the turn order bar: a unit of either army, or the line the next
+// round begins on.
+type TurnEntry =
+  | { key: string; kind: "unit"; unit: BattleUnit }
+  | { key: string; kind: "round"; round: number };
+
+// The key the round line is drawn under. Fixed rather than tied to the round it
+// stands for, so the line slides along the strip with the cards around it
+// instead of being thrown away and built again every turn.
+const ROUND_ENTRY_KEY = "round-break";
+
 // The round, left to right, with the unit to move at the head of it. The frame
 // around a card says which army the unit belongs to; the head of the queue is
-// picked out in the same gold the board selects a hex with.
+// picked out in the same gold the board selects a hex with. The round line sits
+// between the last unit of this round and the first of the next, so the bar says
+// how far the round has left to run as well as who is up.
 //
 // Ending a turn rotates the queue by one, and the bar plays that out instead of
 // jumping to it: the unit that has just moved leaves the head slot upwards, the
 // strip slides one card to the left, the same unit comes back in from below at
 // the tail, and the new head is flashed.
+//
+// The last turn of a round takes the round line off the head of the strip along
+// with the unit, so two cards leave at once and the strip slides two along. The
+// line comes back at the tail once the new round's first unit has moved.
+//
+// An open Оппортун puts its own cards in front of all of that, one per enemy
+// still to answer, each under the word the mechanic is named after. They are
+// not part of the round and are kept out of `entries` for that reason: the
+// handover above is worked out by comparing one round against the round before
+// it, and a card that belongs to neither would be read as the queue rotating.
 function TurnOrderBar() {
   useSignals();
 
   const queue = turnQueue.value;
   const head = queue[0];
+  const round = roundNumber.value;
+  const breakOffset = roundBreakOffset.value;
+  const interrupts = opportunityUnits.value;
+  const victimId = opportunityVictimId.value;
 
-  // The unit that has just moved, drawn one last time in the slot it is
-  // leaving. The queue already carries it as the tail card, so the card going
-  // out and the card coming in have to be two elements.
-  const [leaving, setLeaving] = useState<BattleUnit | null>(null);
+  // The strip as cards, the round line among them. Everything behind the line
+  // belongs to the round after this one, so the line carries that number.
+  const entries: TurnEntry[] = [];
+  queue.forEach((unit, index) => {
+    if (index === breakOffset) {
+      entries.push({ key: ROUND_ENTRY_KEY, kind: "round", round: round + 1 });
+    }
+
+    entries.push({ key: unit.id, kind: "unit", unit });
+  });
+
+  // The cards that have dropped off the front of the strip, drawn one last time
+  // in the slots they are leaving. The unit that has just moved is already back
+  // in the strip as the tail card, so the card going out and the card coming in
+  // have to be two elements.
+  const [leaving, setLeaving] = useState<TurnEntry[]>([]);
+
+  // Where the cards coming in from below start: every card from this index to
+  // the end of the strip is new this turn. One of them on an ordinary turn, and
+  // two on the turn the round line comes back with the unit behind it.
+  const [enteringFrom, setEnteringFrom] = useState(entries.length);
 
   // "start" pins every card where the round before it left them; "run" is the
   // same strip a card further along, and the transitions carry it there. The
   // bar sits in "idle" between turns, with nothing animating.
   const [phase, setPhase] = useState<"idle" | "start" | "run">("idle");
 
-  const previousHead = useRef(head);
+  const previousEntries = useRef(entries);
 
   const trackRef = useRef<HTMLDivElement>(null);
 
@@ -593,19 +704,28 @@ function TurnOrderBar() {
   // the animation already. Pinning it back has to land in that same frame — a
   // passive effect would let the finished strip be painted first, and the turn
   // would read as a jump forwards, a jump back, and only then the slide.
+  //
+  // Run on every render rather than on the head alone: the strip is compared
+  // against the one last painted, so a strip that changed for some other reason
+  // is still the one the next turn is played out from.
   useLayoutEffect(() => {
-    const previous = previousHead.current;
-    previousHead.current = head;
+    const previous = previousEntries.current;
+    previousEntries.current = entries;
 
-    // The first render has nothing to play out, and neither does a re-render
-    // the queue slept through.
-    if (previous.id === head.id) {
+    // How far along the strip the new head of the queue was standing. The first
+    // render has nothing to play out, and neither does a re-render the queue
+    // slept through — the head is where it was, so the shift is nothing.
+    const shift = previous.findIndex(
+      (entry) => entry.kind === "unit" && entry.unit.id === head.id,
+    );
+    if (shift < 1) {
       return;
     }
 
-    setLeaving(previous);
+    setLeaving(previous.slice(0, shift));
+    setEnteringFrom(entries.length - (previous.length - shift));
     setPhase("start");
-  }, [head]);
+  });
 
   // A transition needs a value to start from, so the pinned styles have to be
   // a state the browser has already worked out. Reading the layout back forces
@@ -632,45 +752,105 @@ function TurnOrderBar() {
 
     const timer = window.setTimeout(() => {
       setPhase("idle");
-      setLeaving(null);
+      setLeaving([]);
     }, HIGHLIGHT_MS);
 
     return () => window.clearTimeout(timer);
   }, [phase]);
 
+  // How far the strip is pinned back to start the slide from: one slot per card
+  // that has just dropped off its front. One slot between turns, when no card
+  // has — nothing is pinned then, and an ordinary turn is the better guess than
+  // no slide at all.
+  const shiftStyle = {
+    "--turn-shift": String(Math.max(1, leaving.length)),
+  } as CSSProperties;
+
   return (
-    <div className={styles.turnOrder} data-phase={phase} style={TURN_TIMINGS}>
+    <div
+      className={styles.turnOrder}
+      data-opportunity={interrupts.length > 0 ? "true" : undefined}
+      data-phase={phase}
+      style={TURN_TIMINGS}
+    >
+      <div className={styles.turnHeader}>
+        <span className={styles.turnHeaderTitle}>Текущий ход</span>
+        <span className={styles.turnHeaderRound}>{round}</span>
+      </div>
+
       <div className={styles.turnCards}>
-        <div className={styles.turnTrack} ref={trackRef}>
-          {queue.map((unit, index) => (
-            <TurnCard
+        <div className={styles.turnTrack} ref={trackRef} style={shiftStyle}>
+          {/* In front of the round, because that is where they come in the
+              playing of it: the round is on hold until the last of them has
+              answered. The one at the head is the enemy being asked now. */}
+          {interrupts.map((unit, index) => (
+            <OpportunityCard acting={index === 0} key={`opportunity-${unit.id}`} unit={unit} />
+          ))}
+          {entries.map((entry, index) => (
+            <TurnEntryCard
               acting={index === 0}
-              entering={index === queue.length - 1}
-              key={unit.id}
-              unit={unit}
+              entering={index >= enteringFrom}
+              entry={entry}
+              key={entry.key}
+              threatened={entry.kind === "unit" && entry.unit.id === victimId}
             />
           ))}
         </div>
 
-        {leaving === null ? null : <LeavingCard unit={leaving} />}
+        {leaving.map((entry, slot) => (
+          <LeavingCard entry={entry} key={entry.key} slot={slot} />
+        ))}
       </div>
     </div>
+  );
+}
+
+// A card in the strip, whichever of the two kinds it is. The round line takes no
+// clicks: it stands for a moment in the round rather than for anybody on the
+// board.
+function TurnEntryCard({
+  acting,
+  entering,
+  entry,
+  threatened,
+}: {
+  acting: boolean;
+  entering: boolean;
+  entry: TurnEntry;
+  threatened: boolean;
+}) {
+  if (entry.kind === "round") {
+    return <RoundCard entering={entering} round={entry.round} />;
+  }
+
+  return (
+    <TurnCard
+      acting={acting}
+      entering={entering}
+      threatened={threatened}
+      unit={entry.unit}
+    />
   );
 }
 
 function TurnCard({
   acting,
   entering,
+  threatened,
   unit,
 }: {
   acting: boolean;
   entering: boolean;
+  threatened: boolean;
   unit: BattleUnit;
 }) {
   const className = [
     styles.turnCard,
     styles[unit.side],
     acting ? styles.turnCardActive : "",
+    // Over the gold the head of the queue wears: the unit is still the one to
+    // move, and it is about to be swung at. Red wins while that is true.
+    threatened ? styles.turnCardThreatened : "",
     entering ? styles.turnEnter : "",
   ]
     .filter((part) => part !== "")
@@ -688,19 +868,77 @@ function TurnCard({
   );
 }
 
-// The card of the unit that has just moved, left over the head slot for the
-// length of the animation. It is a ghost of a card that is already back in the
-// strip, so it takes no clicks and answers no screen reader.
-function LeavingCard({ unit }: { unit: BattleUnit }) {
-  const className = [styles.turnCard, styles[unit.side], styles.turnCardActive, styles.turnLeave]
+// An enemy holding a swing, drawn in front of the round it is interrupting. Not
+// a turn and not a unit of the queue: it is on the strip for as long as the
+// window is, and takes no clicks — the swing is answered on the board or with
+// the button under the roster, not here.
+function OpportunityCard({ acting, unit }: { acting: boolean; unit: BattleUnit }) {
+  const className = [
+    styles.turnCard,
+    styles.opportunityCard,
+    acting ? styles.opportunityCardActive : "",
+  ]
     .filter((part) => part !== "")
     .join(" ");
 
   return (
-    <div aria-hidden="true" className={className}>
-      <TurnCardFace unit={unit} />
+    <div className={styles.opportunitySlot}>
+      <div className={className} title={unit.title}>
+        <TurnCardFace unit={unit} />
+      </div>
+      <span className={styles.opportunityLabel}>Оппортун</span>
     </div>
   );
+}
+
+// The line the round after this one begins on. Not a unit and not a turn: the
+// cards in front of it are what the round has left to run, and it goes when the
+// round it names has come round.
+function RoundCard({ entering, round }: { entering: boolean; round: number }) {
+  const className = [styles.turnCard, styles.turnRound, entering ? styles.turnEnter : ""]
+    .filter((part) => part !== "")
+    .join(" ");
+
+  return (
+    <div className={className}>
+      <RoundCardFace round={round} />
+    </div>
+  );
+}
+
+// A card that has just dropped off the front of the strip, left over the slot it
+// held for the length of the animation. It is a ghost of a card the strip has
+// either taken back at its tail or dropped altogether, so it takes no clicks and
+// answers no screen reader.
+//
+// `slot` is how far along the strip the card was standing, which is where the
+// ghost is drawn: the unit that has just moved was at the head, and the round
+// line ending a round was the card behind it.
+function LeavingCard({ entry, slot }: { entry: TurnEntry; slot: number }) {
+  const className = [
+    styles.turnCard,
+    styles.turnLeave,
+    entry.kind === "unit" ? styles[entry.unit.side] : styles.turnRound,
+    entry.kind === "unit" ? styles.turnCardActive : "",
+  ]
+    .filter((part) => part !== "")
+    .join(" ");
+
+  const slotStyle = { "--turn-leave-slot": String(slot) } as CSSProperties;
+
+  return (
+    <div aria-hidden="true" className={className} style={slotStyle}>
+      {entry.kind === "unit" ? (
+        <TurnCardFace unit={entry.unit} />
+      ) : (
+        <RoundCardFace round={entry.round} />
+      )}
+    </div>
+  );
+}
+
+function RoundCardFace({ round }: { round: number }) {
+  return <span className={styles.turnRoundLabel}>Ход {round}</span>;
 }
 
 function TurnCardFace({ unit }: { unit: BattleUnit }) {

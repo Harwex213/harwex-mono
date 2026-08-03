@@ -50,6 +50,12 @@ const turnOrder = computed<string[]>(() =>
 // the queue at the end of a round.
 const turnIndex = signal(0);
 
+// Which round the battle is on. A round is one pass down the queue: every unit
+// of both armies has had its turn, and the unit with the highest initiative is
+// up again. Counted up on that wrap and nowhere else, so a turn handed on
+// mid-round leaves the number alone.
+const roundNumber = signal(1);
+
 // Cell key per unit. Every unit has one: this page opens with both armies on
 // the board.
 const cellByUnitId = signal<Record<string, string>>(
@@ -195,6 +201,88 @@ let movementSeq = 0;
 
 let movementTimer = 0;
 
+// --- Оппортун ---
+
+// A swing an enemy is handed outside its own turn, because a unit moved where
+// it could reach. Three things provoke one:
+//
+//  "leave"    — the unit is about to step off its hex. Everybody who can reach
+//               it there swings before it goes.
+//  "arrive"   — the unit has landed on its new hex. Every shooter covering that
+//               hex answers at once.
+//  "turn-end" — the same landing, answered by hand: a melee enemy waits until
+//               the unit's whole turn is over and swings then.
+type OpportunityTrigger = "leave" | "arrive" | "turn-end";
+
+type Opportunity = {
+  // The enemy holding the swing.
+  attackerId: string;
+  // The unit that provoked it, and the only one the swing may land on.
+  victimId: string;
+  trigger: OpportunityTrigger;
+};
+
+// The swings still to be answered, the one at the head first. Empty means no
+// window is open and the board is the local player's again.
+const opportunities = signal<Opportunity[]>([]);
+
+// One swing per enemy per turn of the unit that provoked it. Without this a
+// unit walking three hexes past the same spearman would be swung at three
+// times, and the board would spend the turn asking rather than playing. Emptied
+// whenever the turn is handed on.
+const spentOpportunities = signal<Record<string, true>>({});
+
+// The step a "leave" window is holding back. The swing lands first and the unit
+// walks after it, which is the whole point of that trigger — so the step is
+// parked here and taken from `closeOpportunities`.
+const heldMove = signal<{ unitId: string; key: string } | null>(null);
+
+// Whether the end of the turn is being held back the same way, by a "turn-end"
+// window.
+const heldTurnEnd = signal(false);
+
+// Whether the unit whose turn it is has stepped at all. Only a unit that moved
+// provokes the melee swing at the end of its turn: standing still all turn is
+// not what the trigger answers.
+const movedThisTurn = signal(false);
+
+let opportunityTimer = 0;
+
+// The swing being answered now.
+const currentOpportunity = computed<Opportunity | null>(() => opportunities.value[0] ?? null);
+
+// Whether a window is open. The board is the enemy's until it closes: every
+// order the local player has is muted, and the only things that answer are the
+// swing itself and the button that passes it up.
+const opportunityOpen = computed<boolean>(() => opportunities.value.length > 0);
+
+// The enemy holding the swing, and the unit under it. Both markers are ringed
+// in red for as long as the window is open.
+const opportunityAttackerId = computed<string | null>(
+  () => currentOpportunity.value?.attackerId ?? null,
+);
+
+const opportunityVictimId = computed<string | null>(
+  () => currentOpportunity.value?.victimId ?? null,
+);
+
+const opportunityAttacker = computed<BattleUnit | null>(() => {
+  const attackerId = opportunityAttackerId.value;
+  if (attackerId === null) {
+    return null;
+  }
+
+  return unitsById.value.get(attackerId) ?? null;
+});
+
+// Everybody still to answer, in the order they will be asked. The turn order
+// bar draws one card per entry, in front of the round it is interrupting.
+const opportunityUnits = computed<BattleUnit[]>(() =>
+  opportunities.value
+    .map((entry) => unitsById.value.get(entry.attackerId))
+    .filter((unit) => unit !== undefined),
+);
+
 // The unit to move. Never empty: the queue is built from the army itself, so
 // every id in it answers.
 const activeUnit = computed<BattleUnit>(
@@ -216,6 +304,22 @@ const turnQueue = computed<BattleUnit[]>(() => {
   }
 
   return queue;
+});
+
+// Where the next round begins in that queue: the offset of the card the round
+// line is drawn before. Everything behind the line belongs to the round after
+// this one.
+//
+// `null` at the top of a round. The line then falls on the head of the queue,
+// and a line there would stand for the round the bar already counts — so the
+// bar drops it, and it comes back at the tail as soon as the first unit has
+// moved.
+const roundBreakOffset = computed<number | null>(() => {
+  if (turnIndex.value === 0) {
+    return null;
+  }
+
+  return turnOrder.value.length - turnIndex.value;
 });
 
 // The shape `UnitLayer` draws, rebuilt whenever a unit moves or turns.
@@ -310,13 +414,22 @@ function targetsFor(unitId: string): AttackTarget[] {
 
 // What the armed attack may land on. Empty unless a unit has its attack armed,
 // the way the move targets are.
+//
+// An Оппортун is the exception: the swing is one blow at the unit that provoked
+// it, so everybody else the enemy could reach from where it stands is dropped.
 const attackTargets = computed<AttackTarget[]>(() => {
   const unitId = attackingUnitId.value;
   if (unitId === null) {
     return [];
   }
 
-  return targetsFor(unitId);
+  const targets = targetsFor(unitId);
+  const victimId = opportunityVictimId.value;
+  if (victimId === null) {
+    return targets;
+  }
+
+  return targets.filter((target) => target.unitId === victimId);
 });
 
 // The hex the arrows are drawn from: the one the armed attacker stands on.
@@ -345,7 +458,7 @@ const armedAttack = computed<AttackStrategy | null>(() => {
 // reach stays silent rather than arming an empty board, so the button that
 // stands for it goes quiet too.
 const canAttack = computed<boolean>(() => {
-  if (!localTurn.value) {
+  if (!takingOrders.value) {
     return false;
   }
 
@@ -363,7 +476,7 @@ const canAttack = computed<boolean>(() => {
 // button that stands for the order goes quiet in either case, which is what
 // keeps the confirmation from opening on an order that would do nothing.
 const canAccelerate = computed<boolean>(() => {
-  if (!localTurn.value) {
+  if (!takingOrders.value) {
     return false;
   }
 
@@ -591,13 +704,18 @@ function battleUnitAt(key: string): Unit | null {
 // actions panel both hang on this: the other army is watched, not played.
 const localTurn = computed(() => activeUnit.value.side === LOCAL_SIDE);
 
+// Whether the local player may give an order at all. Their turn is one half of
+// it; the other is that no Оппортун is standing open. A window belongs to the
+// enemy holding it, and the board is watched until the swing is answered.
+const takingOrders = computed(() => localTurn.value && !opportunityOpen.value);
+
 // Arms the active unit for a move, or calls the move off if it is already
 // armed. Nothing to arm on the enemy's turn: their units are watched, not
 // played. Nothing to arm on a spent unit either — calling an armed move off
 // stays open to it, or the last step of a turn would leave the board waiting
 // for a click that can no longer land.
 function toggleMove(): void {
-  if (!localTurn.value) {
+  if (!takingOrders.value) {
     return;
   }
 
@@ -626,7 +744,7 @@ function cancelActions(): void {
 // already out. Gated on the local turn and on the allowance, the same way a
 // move is: turning on the spot is work too.
 function toggleRotate(): void {
-  if (!localTurn.value) {
+  if (!takingOrders.value) {
     return;
   }
 
@@ -685,16 +803,40 @@ function moveUnit(key: string): void {
   }
 
   const reachable = moveTargets.value.some((target) => target.key === key);
-  const from = cellOfUnit(unitId);
   movingUnitId.value = null;
 
-  if (!reachable || from === null) {
+  if (!reachable) {
+    return;
+  }
+
+  // The first trigger. The unit is still on the hex it is leaving, so everybody
+  // who can reach it there is asked before it goes — a swing at a unit turning
+  // its back. The step is parked until the last of them has answered.
+  if (openOpportunities(unitId, ATTACK_KINDS, "leave")) {
+    heldMove.value = { unitId, key };
+    return;
+  }
+
+  stepUnit(unitId, key);
+}
+
+// Puts the unit on `key` and plays the step out. Split off `moveUnit` because
+// a step held back by an Оппортун is taken from `closeOpportunities` instead,
+// once the swings it provoked are done with.
+function stepUnit(unitId: string, key: string): void {
+  const from = cellOfUnit(unitId);
+
+  // The hex was free when the step was armed. Nothing that happens inside a
+  // window moves anybody onto it, but the step is now written from two places
+  // and the guard is a line.
+  if (from === null || unitIdAt(key) !== null) {
     return;
   }
 
   cellByUnitId.value = { ...cellByUnitId.value, [unitId]: key };
   spendMove(unitId);
   focusCell(key);
+  movedThisTurn.value = true;
 
   // The unit stands on the new hex from here on, and the hex it left is handed
   // to the layer so the marker can be slid in from it. A step taken while the
@@ -707,16 +849,179 @@ function moveUnit(key: string): void {
   movementTimer = window.setTimeout(() => {
     movement.value = null;
   }, STEP_MS + STEP_TAIL_MS);
+
+  // The third trigger. A shooter covering the hex the unit has walked onto does
+  // not wait for anything: the volley is loosed the moment the unit lands.
+  openOpportunities(unitId, ["canopy"], "arrive");
+}
+
+// Ends the turn, or answers whatever is standing in the way of ending it.
+//
+// Three things can come of one press. With an Оппортун open the button belongs
+// to the enemy holding the swing, and pressing it is that enemy passing the
+// swing up. With a unit that has walked into somebody's reach, the press opens
+// the last window of the turn instead of ending it. Otherwise the round is
+// handed on.
+function endTurn(): void {
+  if (opportunityOpen.value) {
+    passOpportunity();
+    return;
+  }
+
+  // The second trigger. A melee enemy covering the hex the unit walked onto has
+  // waited the whole turn out, and swings as the turn closes. Only a unit that
+  // moved provoked one — standing still provokes nobody.
+  if (movedThisTurn.value && openOpportunities(activeUnit.value.id, ["melee"], "turn-end")) {
+    heldTurnEnd.value = true;
+    return;
+  }
+
+  handTurnOn();
 }
 
 // Hands the round on to the next unit in the queue and selects it, so the
 // board says who is up without a click. The unit coming up starts its turn on
 // a full allowance, whatever it had left at the end of its last one.
-function endTurn(): void {
+function handTurnOn(): void {
   cancelActions();
-  turnIndex.value = (turnIndex.value + 1) % turnOrder.value.length;
+
+  // The wrap back to the head of the queue is the end of a round, and the only
+  // thing that moves the round count on.
+  const next = (turnIndex.value + 1) % turnOrder.value.length;
+  if (next === 0) {
+    roundNumber.value += 1;
+  }
+
+  turnIndex.value = next;
   refillMoves(activeUnit.value.id);
+
+  // A new unit is up, so the Оппортун bookkeeping starts over: nobody has
+  // moved yet this turn, and every enemy has its swing back.
+  movedThisTurn.value = false;
+  spentOpportunities.value = {};
+
   selectUnit(activeUnit.value.id);
+}
+
+// Both kinds of attack, for the trigger that asks everybody rather than one
+// sort of enemy.
+const ATTACK_KINDS: AttackKind[] = ["melee", "canopy"];
+
+// Everybody on the other side who could strike `victimId` where it stands right
+// now, through an attack of one of the given kinds. The reach is the enemy's
+// own attack, read off the same strategy its turn would use — so an Оппортун is
+// a blow the unit could have landed anyway, taken out of turn.
+//
+// In initiative order, the way the round itself runs, so two enemies swinging
+// at the same unit are asked in the order the turn order bar would have asked
+// them.
+function opportunityAttackers(victimId: string, kinds: AttackKind[]): string[] {
+  const victim = unitsById.value.get(victimId);
+  if (victim === undefined) {
+    return [];
+  }
+
+  return [...army.value]
+    .sort((first, second) => second.initiative - first.initiative)
+    .filter((unit) => unit.side !== victim.side)
+    .filter((unit) => kinds.includes(attackStrategyOf(unit.id).kind))
+    .filter((unit) => spentOpportunities.value[unit.id] === undefined)
+    .filter((unit) => targetsFor(unit.id).some((target) => target.unitId === victimId))
+    .map((unit) => unit.id);
+}
+
+// Opens a window on everybody the trigger has handed a swing to, and says
+// whether it opened one at all — a trigger nobody answers leaves the board
+// alone, and the caller carries on as if it had never fired.
+//
+// Whatever the local player had armed goes: the board is the enemy's from here
+// until the last swing has been answered.
+function openOpportunities(
+  victimId: string,
+  kinds: AttackKind[],
+  trigger: OpportunityTrigger,
+): boolean {
+  const attackers = opportunityAttackers(victimId, kinds);
+  if (attackers.length === 0) {
+    return false;
+  }
+
+  cancelActions();
+  opportunities.value = attackers.map((attackerId) => ({ attackerId, trigger, victimId }));
+  armOpportunity();
+
+  return true;
+}
+
+// Arms the swing at the head of the queue on the board, so the enemy holding it
+// has an arrow pointing at the unit it may hit and a click to land it with. The
+// target list is cut down to that one unit — see `attackTargets`.
+function armOpportunity(): void {
+  const current = currentOpportunity.value;
+  if (current === null) {
+    return;
+  }
+
+  attackingUnitId.value = current.attackerId;
+  hoveredTargetId.value = null;
+}
+
+// The enemy holding the swing lets it go. Nothing is struck, and the swing is
+// still spent: an Оппортун offered and turned down does not come round again.
+function passOpportunity(): void {
+  advanceOpportunity();
+}
+
+// Drops the swing at the head of the queue, taken or passed, and asks the next
+// enemy. The window closes when there is nobody left to ask.
+function advanceOpportunity(): void {
+  const current = currentOpportunity.value;
+  if (current === null) {
+    return;
+  }
+
+  spentOpportunities.value = { ...spentOpportunities.value, [current.attackerId]: true };
+
+  const rest = opportunities.value.slice(1);
+  opportunities.value = rest;
+
+  if (rest.length > 0) {
+    armOpportunity();
+    return;
+  }
+
+  closeOpportunities();
+}
+
+// The last swing has been answered, so whatever the window was holding back
+// happens now: the step the unit was interrupted on, or the end of its turn.
+// A step taken here can provoke a window of its own — a shooter covering the
+// hex it lands on — and that one opens on top of this one closing.
+function closeOpportunities(): void {
+  cancelAttack();
+
+  const held = heldMove.value;
+  if (held !== null) {
+    heldMove.value = null;
+    stepUnit(held.unitId, held.key);
+    return;
+  }
+
+  if (heldTurnEnd.value) {
+    heldTurnEnd.value = false;
+    handTurnOn();
+  }
+}
+
+// Drops every window and everything one was holding back. For a position being
+// left behind: the swings belonged to units the next scenario does not have.
+function clearOpportunities(): void {
+  window.clearTimeout(opportunityTimer);
+  opportunities.value = [];
+  spentOpportunities.value = {};
+  heldMove.value = null;
+  heldTurnEnd.value = false;
+  movedThisTurn.value = false;
 }
 
 // Fights the battle on another scenario: the armies the derivations above read
@@ -741,6 +1046,7 @@ function selectScenario(scenarioId: string): void {
   window.clearTimeout(movementTimer);
   strike.value = null;
   movement.value = null;
+  clearOpportunities();
 
   const { deployment } = selectedScenario.value;
   cellByUnitId.value = openingCells(deployment);
@@ -749,6 +1055,7 @@ function selectScenario(scenarioId: string): void {
   movesLeftByUnitId.value = openingMoves(deployment);
   movesTotalByUnitId.value = openingMoves(deployment);
   turnIndex.value = 0;
+  roundNumber.value = 1;
 
   // Disarms every command on the way, the same as any other selection from
   // outside the board.
@@ -761,7 +1068,7 @@ function selectScenario(scenarioId: string): void {
 // swing at: with nobody in reach the order is not refused, it simply has nothing
 // to arm, and the board is left as it stands.
 function attackUnit(): void {
-  if (!localTurn.value) {
+  if (!takingOrders.value) {
     return;
   }
 
@@ -830,8 +1137,15 @@ function strikeUnit(targetUnitId: string): void {
   const damage = strategy.damage(statsOf(attackerId), statsOf(targetUnitId));
   const flying = strategy.kind === "canopy";
 
+  // Whether this is the swing an open Оппортун is offering. One is taken out of
+  // the unit's own turn and costs it nothing of that turn's allowance — and the
+  // window it belongs to moves on once the blow has played out.
+  const counter = currentOpportunity.value?.attackerId === attackerId;
+
   cancelAttack();
-  spendMove(attackerId);
+  if (!counter) {
+    spendMove(attackerId);
+  }
 
   strikeSeq += 1;
   const seq = strikeSeq;
@@ -853,6 +1167,8 @@ function strikeUnit(targetUnitId: string): void {
   //
   // A shot is the two waits one after the other: the flight, and then the same
   // reaction a lunge ends on, less the wind-up the lunge spends before landing.
+  const overMs = flying ? SHOT_MS + PUNCH_MS - PUNCH_IMPACT_MS : PUNCH_MS;
+
   window.clearTimeout(impactTimer);
   window.clearTimeout(strikeTimer);
   impactTimer = window.setTimeout(
@@ -864,12 +1180,28 @@ function strikeUnit(targetUnitId: string): void {
     },
     flying ? SHOT_MS : PUNCH_IMPACT_MS,
   );
-  strikeTimer = window.setTimeout(
-    () => {
-      strike.value = null;
-    },
-    flying ? SHOT_MS + PUNCH_MS - PUNCH_IMPACT_MS : PUNCH_MS,
-  );
+  strikeTimer = window.setTimeout(() => {
+    strike.value = null;
+  }, overMs);
+
+  // The next enemy is asked once this blow is off the board, not the moment the
+  // click lands: two swings answered back to back would otherwise play over the
+  // top of each other.
+  //
+  // Read against the enemy the wait belongs to. The button under the roster
+  // still answers while the blow is in the air, and a press of it moves the
+  // queue on by itself — so a timer arriving after that must find its own swing
+  // still at the head, or it would take a second one nobody answered.
+  if (counter) {
+    window.clearTimeout(opportunityTimer);
+    opportunityTimer = window.setTimeout(() => {
+      if (currentOpportunity.value?.attackerId !== attackerId) {
+        return;
+      }
+
+      advanceOpportunity();
+    }, overMs);
+  }
 }
 
 // Says the arrow has arrived: it comes off the board, and the unit it came down
@@ -943,7 +1275,14 @@ function selectUnit(unitId: string): void {
 
   // A move or rotation armed on some other unit was aimed at the board, and
   // neither the roster nor the turn bar is the board.
-  cancelActions();
+  //
+  // A swing an Оппортун has armed survives it: that one is not the local
+  // player's to call off, and reading a unit's card while the window is open
+  // must not take the enemy's blow off the board.
+  if (!opportunityOpen.value) {
+    cancelActions();
+  }
+
   focusCell(cell);
 }
 
@@ -982,10 +1321,17 @@ export {
   movesLeftOf,
   movesTotalOf,
   movingUnitId,
+  opportunityAttacker,
+  opportunityAttackerId,
+  opportunityOpen,
+  opportunityUnits,
+  opportunityVictimId,
   pendingDamage,
   rotateCellKey,
   rotateUnit,
   rotatingUnitId,
+  roundBreakOffset,
+  roundNumber,
   selectScenario,
   selectUnit,
   selectedAttack,
@@ -1000,4 +1346,4 @@ export {
   turnQueue,
   unitIdAt,
 };
-export type { BattleUnit, MoveTarget, Movement, Strike };
+export type { BattleUnit, MoveTarget, Movement, Opportunity, OpportunityTrigger, Strike };
