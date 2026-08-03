@@ -4,6 +4,31 @@
   pointer-events: none;
 }
 
+/* The marker a click would drop, drawn on the hex under the pointer. Faded, so
+   it never reads as a unit already standing there. `.unit` already lets clicks
+   through, which the preview needs too. */
+.preview {
+  opacity: 0.45;
+}
+
+/* Sits over the marker of the unit a move would trade places with. Clicks fall
+   through to the terrain hex, the way `.unit` lets them. */
+.swap {
+  pointer-events: none;
+}
+
+.swapScrim {
+  fill: var(--unit-swap-scrim);
+  opacity: 0.7;
+}
+
+.swapGlyph {
+  fill: none;
+  stroke: var(--unit-swap-glyph);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
 .body {
   stroke: var(--unit-outline);
   stroke-width: 2;

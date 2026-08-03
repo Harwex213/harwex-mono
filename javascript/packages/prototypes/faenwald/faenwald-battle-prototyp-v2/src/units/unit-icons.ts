@@ -29,5 +29,12 @@ const UNIT_ICONS: Record<UnitKind, UnitIcon> = {
   },
 };
 
-export { ICON_VIEWBOX, UNIT_ICONS };
+// `assets/swap-bold.svg`. Not a unit kind: it marks the unit a move would trade
+// places with, so it is stroked rather than filled and keeps the source width.
+const SWAP_ICON = {
+  path: "M11 8L7 4m0 0L3 8m4-4v16m6-4l4 4m0 0l4-4m-4 4V4",
+  strokeWidth: 2.5,
+};
+
+export { ICON_VIEWBOX, SWAP_ICON, UNIT_ICONS };
 export type { UnitIcon };

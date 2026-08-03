@@ -49,6 +49,10 @@ body {
   /* Stat gauges flanking a unit marker. Their colours say health and morale,
      not side, so they stay the same on red and blue units alike. */
   --unit-bar-track: #ececec;
+  /* Overlay on the unit a move would trade places with: a dark wash over its
+     marker, with the swap glyph on top. */
+  --unit-swap-scrim: #101010;
+  --unit-swap-glyph: #ffffff;
   --unit-health: #ee1c25;
   --unit-morale: #12ab3c;
 }

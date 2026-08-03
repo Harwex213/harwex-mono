@@ -1,7 +1,7 @@
 import { HEX_INSET, HEX_SIZE, hexPoints, hexWidth } from "../hex/hex-layout";
 import { cellOf } from "../state/grid-state";
 import type { Unit } from "../state/units-state";
-import { ICON_VIEWBOX, UNIT_ICONS } from "./unit-icons";
+import { ICON_VIEWBOX, SWAP_ICON, UNIT_ICONS } from "./unit-icons";
 import styles from "./unit.module.css";
 
 // The marker stops just short of the terrain hex it stands on, so that hex
@@ -68,19 +68,61 @@ const GLYPH_REACH = 0.85;
 const ICON_SIZE = ICON_SPAN / (Math.SQRT2 * GLYPH_REACH);
 const ICON_SCALE = ICON_SIZE / ICON_VIEWBOX;
 
+// The swap glyph is drawn upright and reaches the edges of its own viewBox, so it
+// needs none of the diagonal arithmetic above — just a size that stays inside the
+// marker it covers.
+const SWAP_ICON_SCALE = (UNIT_HEX_SIZE * 1.2) / ICON_VIEWBOX;
+
+type UnitLayerProps = {
+  units: Unit[];
+  // A unit that is not standing where it is drawn: the one being placed or
+  // moved, shown on the hex under the pointer.
+  preview?: Unit | null;
+  // Cell of the unit a move would trade places with.
+  swapCellKey?: string | null;
+};
+
 // World-space content for `HexCanvas`, drawn after the terrain hexes. The
 // units arrive as a prop so each page can feed the layer its own roster.
-function UnitLayer({ units }: { units: Unit[] }) {
+function UnitLayer({ units, preview, swapCellKey }: UnitLayerProps) {
   return (
     <>
       {units.map((unit) => (
         <UnitMarker key={unit.id} unit={unit} />
       ))}
+      {/* Both last, so they sit over the markers they cover. */}
+      {preview === undefined || preview === null ? null : (
+        <UnitMarker unit={preview} className={styles.preview} />
+      )}
+      {swapCellKey === undefined || swapCellKey === null ? null : (
+        <SwapOverlay cellKey={swapCellKey} />
+      )}
     </>
   );
 }
 
-function UnitMarker({ unit }: { unit: Unit }) {
+// Washes out the marker on `cellKey` and stamps the swap glyph on it.
+function SwapOverlay({ cellKey }: { cellKey: string }) {
+  const cell = cellOf(cellKey);
+  if (cell === null) {
+    return null;
+  }
+
+  return (
+    <g className={styles.swap} transform={`translate(${cell.x.toFixed(2)} ${cell.y.toFixed(2)})`}>
+      <polygon className={styles.swapScrim} points={UNIT_POINTS} />
+      {/* Same reading as the unit glyph: centred on its viewBox, then scaled. */}
+      <path
+        className={styles.swapGlyph}
+        d={SWAP_ICON.path}
+        strokeWidth={SWAP_ICON.strokeWidth}
+        transform={`scale(${SWAP_ICON_SCALE.toFixed(4)}) translate(${-ICON_VIEWBOX / 2} ${-ICON_VIEWBOX / 2})`}
+      />
+    </g>
+  );
+}
+
+function UnitMarker({ unit, className }: { unit: Unit; className?: string }) {
   const cell = cellOf(unit.cellKey);
   if (cell === null) {
     return null;
@@ -89,7 +131,10 @@ function UnitMarker({ unit }: { unit: Unit }) {
   const icon = UNIT_ICONS[unit.kind];
 
   return (
-    <g className={styles.unit} transform={`translate(${cell.x.toFixed(2)} ${cell.y.toFixed(2)})`}>
+    <g
+      className={className === undefined ? styles.unit : `${styles.unit} ${className}`}
+      transform={`translate(${cell.x.toFixed(2)} ${cell.y.toFixed(2)})`}
+    >
       <polygon className={`${styles.body} ${styles[unit.side]}`} points={UNIT_POINTS} />
       {/* Read right to left: the glyph is centred on its own viewBox first,
           then scaled, then turned upright — plus whichever way the unit faces —

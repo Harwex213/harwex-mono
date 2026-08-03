@@ -5,7 +5,10 @@ import { HexCanvas } from "../../hex/HexCanvas";
 import { HexGridLayer } from "../../hex/HexGridLayer";
 import { HexInfoPanel } from "../../hex/HexInfoPanel";
 import {
+  cancelMove,
   isPlaced,
+  moveUnit,
+  movingUnitId,
   pickUnit,
   pickedUnitId,
   placeUnit,
@@ -13,9 +16,12 @@ import {
   placedUnitAt,
   placedUnits,
   placementOf,
+  previewUnit,
   ready,
   roster,
   selectedUnit,
+  swapCellKey,
+  toggleMove,
   toggleReady,
   type RosterUnit,
 } from "../../state/disposition-state";
@@ -31,6 +37,8 @@ const ROSTER_HINT = "Pick a unit from the list, then click a hex";
 function UnitsDispositionPage() {
   useSignals();
 
+  const unit = selectedUnit.value;
+
   return (
     <div className={styles.page}>
       <RosterPanel />
@@ -38,10 +46,16 @@ function UnitsDispositionPage() {
       <div className={styles.canvas}>
         <HexCanvas onCellClick={onCellClick} onCellHover={hoverCell} world={grid.bounds}>
           <HexGridLayer>
-            <UnitLayer units={placedUnits.value} />
+            <UnitLayer
+              preview={previewUnit.value}
+              swapCellKey={swapCellKey.value}
+              units={placedUnits.value}
+            />
           </HexGridLayer>
         </HexCanvas>
-        {selectedUnit.value === null ? null : <UnitActionsPanel unit={selectedUnit.value} />}
+        {unit === null ? null : (
+          <UnitActionsPanel moving={movingUnitId.value === unit.id} onMove={toggleMove} unit={unit} />
+        )}
         <HexInfoPanel unitAt={placedUnitAt} />
       </div>
 
@@ -53,10 +67,17 @@ function UnitsDispositionPage() {
   );
 }
 
-// A hex click drops the armed roster unit, if one is armed. Nothing else: a
-// click on a unit selects its hex and leaves the unit where it stands, which is
-// what opens the actions panel.
+// One click, three readings. An armed move sends its unit to the hex — the
+// selection is left to `moveUnit`, which follows the unit. Otherwise the click
+// selects the hex, and drops the armed roster unit on it if one is armed. A click
+// on a unit with nothing armed just selects it, which is what opens the actions
+// panel.
 function onCellClick(key: string): void {
+  if (movingUnitId.value !== null) {
+    moveUnit(key);
+    return;
+  }
+
   selectCell(key);
 
   if (pickedUnitId.value !== null) {
@@ -133,6 +154,10 @@ function RosterRow({ unit }: { unit: RosterUnit }) {
 function onRosterClick(unitId: string): void {
   const placement = placementOf(unitId);
   if (placement !== null) {
+    // A move armed on some other unit was aimed at a hex, and the roster row is
+    // not one. Selecting a different unit while it stayed armed would leave the
+    // panel and the ghost talking about two different units.
+    cancelMove();
     focusCell(placement);
     return;
   }
