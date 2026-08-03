@@ -28,6 +28,18 @@ type Unit = {
   stats: UnitStats;
 };
 
+// A step being played out. The unit already stands on the hex it has arrived
+// at, so what the layer needs is the hex it left: the marker is opened there and
+// slid home. Written by whichever page moved the unit and cleared once the
+// animation it drives is over.
+type Movement = {
+  unitId: string;
+  fromKey: string;
+  // Bumped per step, so a unit that walks two hexes in a row plays the
+  // animation twice — same class, same element, and CSS would run it once.
+  seq: number;
+};
+
 const FACINGS = [0, 60, 120, 180, 240, 300];
 
 // The first column each row of facings starts on.
@@ -71,4 +83,4 @@ function unitAt(key: string): Unit | null {
 }
 
 export { unitAt, units };
-export type { Unit, UnitKind, UnitSide, UnitStats };
+export type { Movement, Unit, UnitKind, UnitSide, UnitStats };

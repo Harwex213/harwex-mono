@@ -416,6 +416,147 @@ const RANGED_TEST: Deployment[] = [
   },
 ];
 
+// Two walls of spears, laid out for Сомкнутый Строй to be read off the board. A
+// formation is two spearmen of one army standing on each other's flank hex and
+// looking the same way, so the position holds one of each case the rule has to
+// answer:
+//
+// - Blue holds a run of three spearmen on row 9, all looking up the board. The
+//   two edges inside that run carry a chain, and the middle unit is in formation
+//   on both sides at once.
+// - A light infantryman closes the blue line on `(7, 9)`. It stands where a
+//   fourth spearman would, and no chain is drawn to it: the modifier belongs to
+//   spearmen and to nobody else.
+// - Red answers with two spearmen on `(4, 8)` and `(5, 8)`, so a formation is on
+//   the board for both armies.
+// - The red spearman on `(6, 8)` stands beside `(5, 8)` but looks off to one
+//   side. The two are neighbours and both spearmen, and they hold no formation —
+//   which is the one case the facing decides on its own. Turning it back to 180
+//   closes the line, and the chain appears.
+//
+// The two lines are on adjacent rows, so a melee reaches across from the first
+// turn: a formation can be broken by the units holding it being made to move.
+// Blue moves first — the light spearman on `(6, 9)` has the highest initiative.
+const SPEAR_WALL: Deployment[] = [
+  {
+    col: 4,
+    row: 8,
+    facing: 180,
+    unit: {
+      id: "red-sko",
+      title: "Средний копейщик",
+      code: "СКо",
+      kind: "spear",
+      side: "red",
+      initiative: 66,
+      stats: { health: 70, attack: 16, morale: 70 },
+    },
+  },
+  {
+    col: 5,
+    row: 8,
+    facing: 180,
+    unit: {
+      id: "red-tko",
+      title: "Тяжёлый копейщик",
+      code: "ТКо",
+      kind: "spear",
+      side: "red",
+      initiative: 54,
+      stats: { health: 90, attack: 20, morale: 75 },
+    },
+  },
+  // Beside the heavy spearman, looking away down the board's left flank. No
+  // formation, on either unit, until somebody turns it.
+  {
+    col: 6,
+    row: 8,
+    facing: 120,
+    unit: {
+      id: "red-lko",
+      title: "Лёгкий копейщик",
+      code: "ЛКо",
+      kind: "spear",
+      side: "red",
+      initiative: 72,
+      stats: { health: 50, attack: 12, morale: 65 },
+    },
+  },
+  {
+    col: 8,
+    row: 8,
+    facing: 180,
+    unit: {
+      id: "red-tpo",
+      title: "Тяжёлый пехотинец",
+      code: "ТПо",
+      kind: "sword",
+      side: "red",
+      initiative: 62,
+      stats: { health: 95, attack: 26, morale: 80 },
+    },
+  },
+  {
+    col: 4,
+    row: 9,
+    facing: 0,
+    unit: {
+      id: "blue-tko",
+      title: "Тяжёлый копейщик",
+      code: "ТКо",
+      kind: "spear",
+      side: "blue",
+      initiative: 58,
+      stats: { health: 90, attack: 20, morale: 75 },
+    },
+  },
+  // The middle of the blue run: in formation with the unit on either side of it.
+  {
+    col: 5,
+    row: 9,
+    facing: 0,
+    unit: {
+      id: "blue-sko",
+      title: "Средний копейщик",
+      code: "СКо",
+      kind: "spear",
+      side: "blue",
+      initiative: 70,
+      stats: { health: 70, attack: 16, morale: 70 },
+    },
+  },
+  {
+    col: 6,
+    row: 9,
+    facing: 0,
+    unit: {
+      id: "blue-lko",
+      title: "Лёгкий копейщик",
+      code: "ЛКо",
+      kind: "spear",
+      side: "blue",
+      initiative: 90,
+      stats: { health: 50, attack: 12, morale: 65 },
+    },
+  },
+  // On the end of the blue line, and not a spearman: the line closes here as far
+  // as the formation is concerned.
+  {
+    col: 7,
+    row: 9,
+    facing: 0,
+    unit: {
+      id: "blue-lpo",
+      title: "Лёгкий пехотинец",
+      code: "ЛПо",
+      kind: "sword",
+      side: "blue",
+      initiative: 80,
+      stats: { health: 55, attack: 18, morale: 60 },
+    },
+  },
+];
+
 const SCENARIOS: Scenario[] = [
   {
     id: "line-clash",
@@ -434,6 +575,12 @@ const SCENARIOS: Scenario[] = [
     name: "Перестрелка",
     summary: "Стрелки всех видов и цели в двух, четырёх и шести гексах: расстановка под проверку дальнего боя.",
     deployment: RANGED_TEST,
+  },
+  {
+    id: "spear-wall",
+    name: "Стена копий",
+    summary: "Копейщики плечом к плечу: расстановка под проверку сомкнутого строя.",
+    deployment: SPEAR_WALL,
   },
 ];
 

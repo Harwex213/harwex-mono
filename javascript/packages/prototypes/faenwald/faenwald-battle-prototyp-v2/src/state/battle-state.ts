@@ -8,6 +8,14 @@ import {
   type AttackStrategy,
   type AttackTarget,
 } from "./attack-strategies";
+import {
+  CLOSED_FORMATION,
+  closedFormation,
+  type Formation,
+  type FormationLink,
+  type FormationUnit,
+  type UnitModifier,
+} from "./formations";
 import { cellOf, focusCell, selectedKey } from "./grid-state";
 import {
   selectedScenario,
@@ -15,7 +23,7 @@ import {
   type BattleUnit,
   type Deployment,
 } from "./scenario-state";
-import type { Unit, UnitSide, UnitStats } from "./units-state";
+import type { Movement, Unit, UnitSide, UnitStats } from "./units-state";
 
 // The seat the local player sits in. Their army is the one the left panel
 // lists. The player still gives orders to both armies — nothing drives the
@@ -172,19 +180,9 @@ let impactTimer = 0;
 
 let strikeTimer = 0;
 
-// A step being played out. Written when a unit moves and cleared once the
-// animation it drives is over, the same way a strike is.
-type Movement = {
-  unitId: string;
-  // The hex the unit has left. Its marker is drawn on the hex it has arrived at
-  // and slid in from this one, so a step reads as travel rather than as a marker
-  // appearing somewhere else.
-  fromKey: string;
-  // Bumped per step, so a unit that walks two hexes in a row plays the animation
-  // twice — the same reason a strike carries one.
-  seq: number;
-};
-
+// The step being played out, if any. Written when a unit moves and cleared once
+// the animation it drives is over, the same way a strike is. Only ever one: a
+// battle moves one unit at a time.
 const movement = signal<Movement | null>(null);
 
 // How long that slide lasts. The stylesheet is handed it, so the timer clearing
@@ -589,13 +587,65 @@ const canopyConeKeys = computed<string[]>(() => {
   // The facing a hovered rotation handle stands for wins over the stored one, so
   // the cone swings round with the marker while the handles are out — the same
   // preview `markerFor` draws, answered by the hexes the unit would shoot.
-  const preview = unit.id === rotatingUnitId.value ? hoveredFacing.value : null;
-  const facing = preview ?? facingByUnitId.value[unit.id] ?? 0;
-
-  return canopyCone(cell.col, cell.row, facing)
+  return canopyCone(cell.col, cell.row, facingOf(unit.id))
     .map((coneCell) => cellKey(coneCell.col, coneCell.row))
     .filter((key) => cellOf(key) !== null);
 });
+
+// --- Сомкнутый Строй ---
+
+// Every closed formation on the board: which units hold one, and the hex edges
+// the chains are drawn on. Two spearmen of one army standing shoulder to
+// shoulder and looking the same way hold one — `closedFormation` is where that
+// rule is written out.
+//
+// Built off the army and the maps saying where each unit stands and which way it
+// looks, not off `battleUnits`: the markers ask this whether their unit is in
+// formation, and reading them back here would be a circle.
+//
+// A unit off the board is left out. Nothing in the battle takes a unit off it,
+// but the shape below needs a hex to work with and dropping one is a line.
+const formation = computed<Formation>(() =>
+  closedFormation(
+    army.value.flatMap<FormationUnit>((unit) => {
+      const key = cellOfUnit(unit.id);
+      const cell = key === null ? null : cellOf(key);
+      if (cell === null) {
+        return [];
+      }
+
+      return [
+        {
+          id: unit.id,
+          col: cell.col,
+          row: cell.row,
+          kind: unit.kind,
+          side: unit.side,
+          facing: facingOf(unit.id),
+        },
+      ];
+    }),
+  ),
+);
+
+// What the board draws: one chain per pair, on the edge between the two hexes.
+const formationLinks = computed<FormationLink[]>(() => formation.value.links);
+
+// What the panels list under the unit they answer for. Read straight rather than
+// as a `computed`, because it is asked of one unit at a time: the card asks about
+// the selected unit, the terrain panel about whoever stands on the hex under the
+// pointer.
+//
+// Сомкнутый Строй is the only modifier the prototype has. The list is what the
+// panels draw, so the next one is an entry here rather than a second row on two
+// panels.
+function modifiersOf(unitId: string): UnitModifier[] {
+  if (formation.value.unitIds.has(unitId)) {
+    return [CLOSED_FORMATION];
+  }
+
+  return [];
+}
 
 // The marker that stands for a unit on its hex. It carries the short code, not
 // the full title.
@@ -603,21 +653,31 @@ const canopyConeKeys = computed<string[]>(() => {
 // The facing a hovered handle stands for wins over the stored one, so the unit
 // is already turned that way while the pointer rests on the handle.
 function markerFor(unit: BattleUnit): Unit {
-  const preview = unit.id === rotatingUnitId.value ? hoveredFacing.value : null;
-
   return {
     id: unit.id,
     cellKey: cellByUnitId.value[unit.id],
     kind: unit.kind,
     side: unit.side,
     name: unit.code,
-    facing: preview ?? facingByUnitId.value[unit.id] ?? 0,
+    facing: facingOf(unit.id),
     stats: statsOf(unit.id),
   };
 }
 
 function cellOfUnit(unitId: string): string | null {
   return cellByUnitId.value[unitId] ?? null;
+}
+
+// Which way a unit looks, for everything drawn from the facing rather than
+// ordered by it. The facing a hovered rotation handle stands for wins over the
+// stored one, so the marker, the canopy cone and the formations around the unit
+// all answer the handle before the click that commits it.
+//
+// The orders themselves read `facingByUnitId` straight: a move armed on the
+// stored facing must not have its target hexes moved out from under the pointer.
+function facingOf(unitId: string): number {
+  const preview = unitId === rotatingUnitId.value ? hoveredFacing.value : null;
+  return preview ?? facingByUnitId.value[unitId] ?? 0;
 }
 
 // The attack a unit on the board makes, which is its kind's. Melee for a unit
@@ -1313,12 +1373,14 @@ export {
   cancelRotate,
   canopyConeKeys,
   endTurn,
+  formationLinks,
   hoverAttackTarget,
   hoverFacing,
   hoveredTargetId,
   hoveredTargetKey,
   localArmy,
   localTurn,
+  modifiersOf,
   movement,
   moveTargets,
   moveUnit,
@@ -1350,4 +1412,4 @@ export {
   turnQueue,
   unitIdAt,
 };
-export type { BattleUnit, MoveTarget, Movement, Opportunity, OpportunityTrigger, Strike };
+export type { BattleUnit, MoveTarget, Opportunity, OpportunityTrigger, Strike };

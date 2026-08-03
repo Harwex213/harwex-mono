@@ -1,9 +1,9 @@
 import { useRef, type CSSProperties } from "react";
 import { HEX_INSET, HEX_SIZE, hexPoints, hexWidth } from "../hex/hex-layout";
 import type { AttackDamage } from "../state/attack-strategies";
-import type { Movement, Strike } from "../state/battle-state";
+import type { Strike } from "../state/battle-state";
 import { cellOf } from "../state/grid-state";
-import type { Unit } from "../state/units-state";
+import type { Movement, Unit } from "../state/units-state";
 import { ICON_VIEWBOX, SWAP_ICON, UNIT_ICONS } from "./unit-icons";
 import styles from "./unit.module.css";
 
@@ -147,8 +147,9 @@ type UnitLayerProps = {
   // is knocked about and flashed.
   strike?: Strike | null;
   // The step being played out, if any: the unit that has moved is drawn on the
-  // hex it has arrived at and slid in from the one it left.
-  movement?: Movement | null;
+  // hex it has arrived at and slid in from the one it left. A list, because a
+  // swap walks two units at once — each one back along the way the other came.
+  movement?: Movement | Movement[] | null;
   // The two units an open Оппортун stands between: the enemy holding the swing
   // and the unit that provoked it. Both are ringed in a pulsing red for as long
   // as the window is open, so the board says who is about to be hit and by whom
@@ -182,7 +183,7 @@ function UnitLayer({
         <UnitMarker
           damage={unit.id === threatenedUnitId ? threatenedDamage : null}
           key={unit.id}
-          movement={movement}
+          movement={movementOf(unit.id, movement)}
           opportunity={opportunityRole(unit.id, opportunityAttackerId, opportunityVictimId)}
           strike={strike}
           unit={unit}
@@ -200,6 +201,24 @@ function UnitLayer({
       )}
     </>
   );
+}
+
+// The step this unit is taking, out of the one or several being played out.
+// Nothing at all for a unit standing still, which is what every marker but the
+// one or two that have moved is doing.
+function movementOf(
+  unitId: string,
+  movement: Movement | Movement[] | null | undefined,
+): Movement | null {
+  if (movement === undefined || movement === null) {
+    return null;
+  }
+
+  if (Array.isArray(movement)) {
+    return movement.find((step) => step.unitId === unitId) ?? null;
+  }
+
+  return movement.unitId === unitId ? movement : null;
 }
 
 // Which end of the open Оппортун this unit is on. Nothing at all with no window
@@ -339,8 +358,7 @@ function UnitMarker({
 
   // Where the step started, as an offset from the hex the unit now stands on.
   // The animation opens the marker there and brings it home.
-  const stepping = movement !== undefined && movement !== null && movement.unitId === unit.id;
-  const from = stepping ? cellOf(movement.fromKey) : null;
+  const from = movement === undefined || movement === null ? null : cellOf(movement.fromKey);
 
   const motionStyle = {
     "--punch-dx": `${(PUNCH_REACH * Math.sin(radians)).toFixed(2)}px`,

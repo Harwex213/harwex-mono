@@ -1,9 +1,10 @@
-import { AlertDialog, Button, Drawer, Tooltip } from "@hw/faenwald-uikit";
+import { AlertDialog, Drawer, Tooltip } from "@hw/faenwald-uikit";
 import { useSignals } from "@preact/signals-react/runtime";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { playUnitSelect } from "../../audio/sounds";
 import { AttackTargetLayer } from "../../hex/AttackTargetLayer";
 import { CanopyConeLayer } from "../../hex/CanopyConeLayer";
+import { FormationLayer } from "../../hex/FormationLayer";
 import { HexCanvas, type HexCanvasHandle } from "../../hex/HexCanvas";
 import { HexGridLayer } from "../../hex/HexGridLayer";
 import { HexInfoPanel } from "../../hex/HexInfoPanel";
@@ -32,12 +33,14 @@ import {
   cancelRotate,
   canopyConeKeys,
   endTurn,
+  formationLinks,
   hoverAttackTarget,
   hoverFacing,
   hoveredTargetId,
   hoveredTargetKey,
   localArmy,
   localTurn,
+  modifiersOf,
   movement,
   moveTargets,
   moveUnit,
@@ -95,6 +98,13 @@ const HIGHLIGHT_MS = 700;
 const TURN_TIMINGS = {
   "--turn-slide": `${SLIDE_MS}ms`,
   "--turn-highlight": `${HIGHLIGHT_MS}ms`,
+} as CSSProperties;
+
+// How long the sweep across the End turn button takes to cross it. The same
+// length as the slide above, so the button finishes filling as the turn order
+// strip settles on the unit that is now up: one turn handed on, told twice.
+const FILL_TIMING = {
+  "--turn-fill": `${SLIDE_MS}ms`,
 } as CSSProperties;
 
 // How long a unit takes to come round to a new facing. Nothing is timed against
@@ -171,6 +181,21 @@ function ActiveBattlePage() {
     canvasRef.current?.centerOn(cell.x, cell.y);
   }, []);
 
+  // A roster row selects the unit and finds it in one go: the row says nothing
+  // about where the unit stands, so picking one off the list is the player
+  // asking where it is. The selection lands before the view is moved, so the
+  // hex the view travels to is the one the row has just selected.
+  //
+  // The board's own controls are left alone. A click on a hex is already aimed
+  // at a unit in view, and a turn order card is read rather than looked for.
+  const selectFromRoster = useCallback(
+    (unitId: string) => {
+      onUnitCardClick(unitId);
+      findSelected();
+    },
+    [findSelected],
+  );
+
   // A question asked of a unit that is no longer taking orders is no longer a
   // question. Nothing in the prototype can hand the turn on while the dialog is
   // up, but a question left standing would open by itself the next time one is
@@ -183,7 +208,7 @@ function ActiveBattlePage() {
 
   return (
     <div className={styles.page}>
-      <ArmyPanel />
+      <ArmyPanel onUnitClick={selectFromRoster} />
 
       <div className={styles.center}>
         <BattleHeader />
@@ -204,6 +229,10 @@ function ActiveBattlePage() {
                   waiting for. An order armed on one of those hexes has to be read
                   over the top of it. */}
               <CanopyConeLayer cellKeys={canopyConeKeys.value} />
+              {/* Also under the markers, and in the gap between two of them: a
+                  chain says how a pair of spearmen is standing, which is worth
+                  less than anything an order has put on the board. */}
+              <FormationLayer links={formationLinks.value} />
               {/* Before the markers, so a unit is never drawn under the hexes
                   its neighbour may step onto. */}
               <MoveTargetLayer targets={moveTargets.value} />
@@ -243,6 +272,7 @@ function ActiveBattlePage() {
               canAttack={canAttack.value}
               coneShown={showCanopyCone.value}
               disabled={!commanding}
+              modifiers={modifiersOf(selected.id)}
               moves={{ left: movesLeftOf(selected.id), total: movesTotalOf(selected.id) }}
               moving={movingUnitId.value === selected.id}
               onAccelerate={() => setConfirmingAccelerate(true)}
@@ -256,7 +286,7 @@ function ActiveBattlePage() {
               unit={selected}
             />
           )}
-          <HexInfoPanel threat={threat} unitAt={battleUnitAt} />
+          <HexInfoPanel modifiersOf={modifiersOf} threat={threat} unitAt={battleUnitAt} />
           <OpportunityBanner />
         </div>
 
@@ -498,12 +528,92 @@ function ScenariosDrawer() {
 
 // The local player's army, and the button that hands the round on. The other
 // side is on the board and in the turn order, but never in here.
-function ArmyPanel() {
+//
+// What a row does with the unit on it is the page's to say — a row selects the
+// unit and brings it into view, and the view is the canvas's rather than the
+// state's — so the handler comes in from outside.
+function ArmyPanel({ onUnitClick }: { onUnitClick: (unitId: string) => void }) {
   useSignals();
 
-  // Space hands the round on, the way the button below does. The default is
-  // taken over rather than left alone: space on a focused button clicks it, and
-  // on the page it scrolls, so both would fire alongside the turn ending.
+  return (
+    <aside className={styles.left}>
+      <div className={styles.leftHeader}>
+        <h2 className={styles.leftTitle}>Ваши войска</h2>
+        <Tooltip.Root>
+          {/* No wait before the hint is shown. The trigger is an ⓘ and stands
+              for nothing but the hint behind it, so a pointer resting on it has
+              already asked the question the delay is there to wait for. */}
+          <Tooltip.Trigger className={styles.infoTrigger} delay={0}>
+            <InfoIcon />
+          </Tooltip.Trigger>
+          <Tooltip.Portal>
+            <Tooltip.Positioner>
+              <Tooltip.Popup>
+                {ARMY_HINT}
+                <Tooltip.Arrow />
+              </Tooltip.Popup>
+            </Tooltip.Positioner>
+          </Tooltip.Portal>
+        </Tooltip.Root>
+      </div>
+
+      <div className={styles.roster}>
+        {localArmy.value.map((unit) => (
+          <ArmyRow key={unit.id} onClick={onUnitClick} unit={unit} />
+        ))}
+      </div>
+
+      {/* The button ends whichever turn is being played. Nothing drives the
+          other army, so the enemy's turn is the player's to play and to end
+          too — the label says whose turn it is.
+
+          With an Оппортун open the button belongs to the swing instead:
+          pressing it is the unit holding the swing letting it go. The same one
+          button, because the same key has always stood for "I am done", and
+          whoever the board is waiting on is who it is done for. */}
+      <div className={styles.turnBar}>
+        <TurnButton />
+      </div>
+    </aside>
+  );
+}
+
+// The button that hands the round on, and the key that stands for it. Both mean
+// "I am done", so both go through one handler here — and both are answered the
+// same way: a bar sweeps the button from its left edge to its right one, so a
+// press reads as a turn closed rather than as a click that may or may not have
+// landed.
+//
+// The button is the page's own rather than the uikit one: the sweep is drawn
+// inside it, under the label, and a button with no layer to draw in has nowhere
+// to put it.
+function TurnButton() {
+  useSignals();
+
+  // Which sweep is running, rather than whether one is. The bar is drawn keyed
+  // on this number, so a press during a sweep starts a new one from the left
+  // edge — the same element under the same class would leave CSS running the
+  // animation once, and the second press would go unanswered.
+  const [sweep, setSweep] = useState(0);
+
+  // A press is not always a turn ended. With an Оппортун open it gives the swing
+  // up, and a swing provoked by the closing turn holds the turn open instead of
+  // handing it on — `endTurn` reads the board and picks between the three. So
+  // the sweep answers the unit that is up having changed, which is the one thing
+  // only a turn handed on does.
+  const handOn = useCallback(() => {
+    const acting = activeUnit.value.id;
+
+    endTurn();
+
+    if (activeUnit.value.id !== acting) {
+      setSweep((previous) => previous + 1);
+    }
+  }, []);
+
+  // Space hands the round on, the way the button does. The default is taken over
+  // rather than left alone: space on a focused button clicks it, and on the page
+  // it scrolls, so both would fire alongside the turn ending.
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
       if (event.key !== " ") {
@@ -527,7 +637,7 @@ function ArmyPanel() {
         return;
       }
 
-      endTurn();
+      handOn();
     }
 
     window.addEventListener("keydown", onKeyDown);
@@ -535,51 +645,36 @@ function ArmyPanel() {
     return () => {
       window.removeEventListener("keydown", onKeyDown);
     };
-  }, []);
+  }, [handOn]);
+
+  // The bar is taken off once it has crossed, so the button waits for the next
+  // turn as a button rather than as a filled bar. A turn ended mid-sweep bumps
+  // the number above, and this timer is dropped with the sweep it belonged to.
+  useEffect(() => {
+    if (sweep === 0) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => setSweep(0), SLIDE_MS);
+
+    return () => window.clearTimeout(timer);
+  }, [sweep]);
+
+  // While the board is waiting on a swing the button is not what the player is
+  // meant to reach for — the blow is answered on the board — so it steps back
+  // out of the primary colour, the way the uikit secondary button does.
+  const className = [styles.turnButton, opportunityOpen.value ? styles.turnButtonQuiet : ""]
+    .filter((part) => part !== "")
+    .join(" ");
 
   return (
-    <aside className={styles.left}>
-      <div className={styles.leftHeader}>
-        <h2 className={styles.leftTitle}>Ваши войска</h2>
-        <Tooltip.Root>
-          <Tooltip.Trigger className={styles.infoTrigger}>
-            <InfoIcon />
-          </Tooltip.Trigger>
-          <Tooltip.Portal>
-            <Tooltip.Positioner>
-              <Tooltip.Popup>
-                {ARMY_HINT}
-                <Tooltip.Arrow />
-              </Tooltip.Popup>
-            </Tooltip.Positioner>
-          </Tooltip.Portal>
-        </Tooltip.Root>
-      </div>
-
-      <div className={styles.roster}>
-        {localArmy.value.map((unit) => (
-          <ArmyRow key={unit.id} unit={unit} />
-        ))}
-      </div>
-
-      {/* The button ends whichever turn is being played. Nothing drives the
-          other army, so the enemy's turn is the player's to play and to end
-          too — the label says whose turn it is.
-
-          With an Оппортун open the button belongs to the swing instead:
-          pressing it is the unit holding the swing letting it go. The same one
-          button, because the same key has always stood for "I am done", and
-          whoever the board is waiting on is who it is done for. */}
-      <div className={styles.turnBar}>
-        <Button.Root
-          className={styles.turnButton}
-          onClick={endTurn}
-          variant={opportunityOpen.value ? "secondary" : "primary"}
-        >
-          {turnButtonLabel()}
-        </Button.Root>
-      </div>
-    </aside>
+    <button className={className} onClick={handOn} style={FILL_TIMING} type="button">
+      {/* Under the label, which is why the label is positioned too: the bar is
+          positioned and would otherwise be painted over the words it runs
+          behind. */}
+      {sweep === 0 ? null : <span aria-hidden="true" className={styles.turnFill} key={sweep} />}
+      <span className={styles.turnLabel}>{turnButtonLabel()}</span>
+    </button>
   );
 }
 
@@ -593,7 +688,13 @@ function turnButtonLabel(): string {
   return localTurn.value ? "End turn (Space)" : "End enemy turn (Space)";
 }
 
-function ArmyRow({ unit }: { unit: BattleUnit }) {
+function ArmyRow({
+  onClick,
+  unit,
+}: {
+  onClick: (unitId: string) => void;
+  unit: BattleUnit;
+}) {
   useSignals();
 
   // The badge says whose turn it is; the frame says which unit the panels are
@@ -609,7 +710,7 @@ function ArmyRow({ unit }: { unit: BattleUnit }) {
   const stats = statsOf(unit.id);
 
   return (
-    <button className={className} onClick={() => onUnitCardClick(unit.id)} type="button">
+    <button className={className} onClick={() => onClick(unit.id)} type="button">
       <img alt="" className={styles.unitAvatar} src={UNIT_AVATARS[unit.code]} />
       <span className={styles.unitBody}>
         <span className={styles.unitName}>

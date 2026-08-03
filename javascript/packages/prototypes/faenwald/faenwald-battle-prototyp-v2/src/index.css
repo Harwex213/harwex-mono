@@ -61,6 +61,13 @@ body {
      shot reaches here" rather than "you may go here", and the two are on the board
      at the same time whenever a shooter is asked to walk. */
   --map-canopy: #5ce89a;
+  /* The chain on the border between two spearmen holding a closed formation.
+     Iron rather than one of the order colours above: the chain says how the two
+     units are standing, and nothing on the board is waiting on it. The dark ring
+     under each link is what carries the chain across terrain as pale as the plain
+     and as dark as the crag. */
+  --map-formation: #e2e8ef;
+  --map-formation-shadow: #23282f;
   /* Hexes the armed unit may be placed on. The same green as a move target, so
      the board says "you may go here" in one language, laid on as a translucent
      wash — see `placement.module.css` for why it cannot cover the terrain. */

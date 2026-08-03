@@ -1,6 +1,6 @@
 import { computed, signal } from "@preact/signals-react";
 import { cellOf, clearSelection, focusCell, grid, hoveredKey, selectedKey } from "./grid-state";
-import type { Unit, UnitKind, UnitSide, UnitStats } from "./units-state";
+import type { Movement, Unit, UnitKind, UnitSide, UnitStats } from "./units-state";
 
 // A unit the local player owns and has to place before the battle starts.
 type RosterUnit = {
@@ -75,6 +75,40 @@ const rotatingUnitId = signal<string | null>(null);
 const hoveredFacing = signal<number | null>(null);
 
 const ready = signal(false);
+
+// The steps being played out, if any. A plain move writes one. A swap writes
+// two: the unit standing on the hex walks back along the way the mover came,
+// rather than appearing on the hex the mover left.
+const movements = signal<Movement[]>([]);
+
+// How long a step lasts. The stylesheet is handed this number, so the timer
+// clearing the steps above and the animation it drives cannot drift apart.
+const STEP_MS = 280;
+
+// What the timer waits on top of that. It is started the moment the steps are
+// written, and the animation only starts on the frame the markers carrying it
+// are painted on — so a timer of exactly `STEP_MS` takes the markers off the
+// board a frame or two short of the hexes they are walking to.
+const STEP_TAIL_MS = 40;
+
+// Bumped per move, so a unit that walks twice in a row plays the animation
+// twice. Both units of a swap share one number: they set off together.
+let movementSeq = 0;
+
+let movementTimer = 0;
+
+// Plays the steps out and takes them off once they are over. A move taken while
+// the one before it is still playing drops that one's timer and plays out on its
+// own.
+function playSteps(steps: Array<Omit<Movement, "seq">>): void {
+  movementSeq += 1;
+  movements.value = steps.map((step) => ({ ...step, seq: movementSeq }));
+
+  window.clearTimeout(movementTimer);
+  movementTimer = window.setTimeout(() => {
+    movements.value = [];
+  }, STEP_MS + STEP_TAIL_MS);
+}
 
 // The shape `UnitLayer` draws, rebuilt from the placement map.
 const placedUnits = computed<Unit[]>(() => {
@@ -351,11 +385,14 @@ function moveUnit(cellKey: string): void {
 
   const next = { ...placementByUnitId.value, [unitId]: cellKey };
   const occupant = unitIdAt(cellKey);
+  const steps = [{ unitId, fromKey: from }];
   if (occupant !== null) {
     next[occupant] = from;
+    steps.push({ unitId: occupant, fromKey: cellKey });
   }
 
   placementByUnitId.value = next;
+  playSteps(steps);
   ready.value = false;
   focusCell(cellKey);
 }
@@ -397,6 +434,7 @@ function toggleReady(): void {
 }
 
 export {
+  STEP_MS,
   cancelActions,
   cancelMove,
   cancelPick,
@@ -404,6 +442,7 @@ export {
   hoverFacing,
   isPlaced,
   moveUnit,
+  movements,
   movingUnitId,
   pickUnit,
   pickedUnitId,

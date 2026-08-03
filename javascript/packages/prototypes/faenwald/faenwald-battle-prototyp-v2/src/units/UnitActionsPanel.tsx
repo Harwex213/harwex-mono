@@ -1,7 +1,9 @@
 import { Button, Checkbox } from "@hw/faenwald-uikit";
 import { useEffect } from "react";
+import type { UnitModifier } from "../state/formations";
 import type { UnitStats } from "../state/units-state";
 import { isTyping } from "../ui/keyboard";
+import { ModifierList } from "../ui/ModifierList";
 import styles from "./unit-actions-panel.module.css";
 
 // Only what the card shows. Each page keeps its own unit shape — a roster entry
@@ -38,6 +40,11 @@ type UnitActionsPanelProps = {
   // lets a unit be nudged as often as the player likes. Where it is given, the
   // card reports it, and a unit down to nothing can neither step nor turn.
   moves?: Moves;
+  // What the unit is carrying because of where it stands — Сомкнутый Строй and
+  // whatever comes after it. Listed rather than acted on: the card reports the
+  // modifiers, and the board is what gives and takes them away. Empty for a unit
+  // carrying none, and left out by a page with no modifiers of its own.
+  modifiers?: UnitModifier[];
   // Orders only the battle takes. Each one is left out where the page has no
   // handler for it, button and shortcut alike.
   onAccelerate?: () => void;
@@ -76,6 +83,7 @@ function UnitActionsPanel({
   onRotate,
   onCancel,
   moves,
+  modifiers = NO_MODIFIERS,
   onAccelerate,
   accelerateDisabled = false,
   onAttack,
@@ -156,6 +164,10 @@ function UnitActionsPanel({
           <span>{unit.stats.attack} ⚔️</span>
           <span>{unit.stats.morale} 🎺</span>
         </div>
+        {/* Between the stats and the turn: a modifier is something about the unit
+            rather than about what it has left to spend, and the rule under it is
+            already drawn by the row below. */}
+        <ModifierList modifiers={modifiers} />
         {moves === undefined ? null : (
           <div className={spent ? `${styles.moves} ${styles.movesSpent}` : styles.moves}>
             <span className={styles.movesLabel}>Moves left</span>
@@ -165,6 +177,19 @@ function UnitActionsPanel({
           </div>
         )}
       </div>
+
+      {/* Over the orders rather than among them, because it is not one: every
+          button below turns something on the board into something else, and this
+          switch only changes what the board is drawing. Only there for a unit
+          that shoots. */}
+      {onConeToggle === undefined ? null : (
+        <label className={styles.toggle}>
+          <Checkbox.Root checked={coneShown} onCheckedChange={onConeToggle}>
+            <Checkbox.Indicator />
+          </Checkbox.Root>
+          Canopy cone (E)
+        </label>
+      )}
 
       {/* Lit while armed, so the panel says what the next click on the board
           means. */}
@@ -215,18 +240,6 @@ function UnitActionsPanel({
         </Button.Root>
       )}
 
-      {/* Under the order it belongs to, and a switch rather than a button: it
-          turns something on and leaves it on, while every button above it does one
-          thing and is done. Only drawn for a unit that shoots. */}
-      {onConeToggle === undefined ? null : (
-        <label className={styles.toggle}>
-          <Checkbox.Root checked={coneShown} onCheckedChange={onConeToggle}>
-            <Checkbox.Indicator />
-          </Checkbox.Root>
-          Canopy cone (E)
-        </label>
-      )}
-
       {/* Live on a muted card, for the reason the shortcut above is. */}
       {onFind === undefined ? null : (
         <Button.Root className={styles.action} onClick={onFind} variant="secondary">
@@ -236,6 +249,10 @@ function UnitActionsPanel({
     </div>
   );
 }
+
+// A unit carrying nothing. One value rather than a fresh empty array per render,
+// so the card a page passes no modifiers to is handed the same list every time.
+const NO_MODIFIERS: UnitModifier[] = [];
 
 type Action = "move" | "rotate" | "accelerate" | "attack" | "cone" | "find" | "cancel";
 

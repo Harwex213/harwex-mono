@@ -1,5 +1,6 @@
 import { Button, Tooltip } from "@hw/faenwald-uikit";
 import { useSignals } from "@preact/signals-react/runtime";
+import type { CSSProperties } from "react";
 import { playUnitSelect } from "../../audio/sounds";
 import { HexCanvas } from "../../hex/HexCanvas";
 import { HexGridLayer } from "../../hex/HexGridLayer";
@@ -7,6 +8,7 @@ import { HexInfoPanel } from "../../hex/HexInfoPanel";
 import { PlacementLayer } from "../../hex/PlacementLayer";
 import { ChatPanel } from "../../session/ChatPanel";
 import {
+  STEP_MS,
   cancelActions,
   cancelMove,
   cancelPick,
@@ -14,6 +16,7 @@ import {
   hoverFacing,
   isPlaced,
   moveUnit,
+  movements,
   movingUnitId,
   pickUnit,
   pickedUnitId,
@@ -46,6 +49,13 @@ import styles from "./units-disposition-page.module.css";
 
 const ROSTER_HINT = "Pick a unit from the list, then click a hex";
 
+// The length of every animation played out on the board, handed to the canvas
+// the markers are drawn in. The state clears a step on its own timer, so the
+// animation and the timer that ends it read one number between them.
+const CANVAS_TIMINGS = {
+  "--unit-step": `${STEP_MS}ms`,
+} as CSSProperties;
+
 function UnitsDispositionPage() {
   useSignals();
 
@@ -55,13 +65,14 @@ function UnitsDispositionPage() {
     <div className={styles.page}>
       <RosterPanel />
 
-      <div className={styles.canvas}>
+      <div className={styles.canvas} style={CANVAS_TIMINGS}>
         <HexCanvas onCellClick={onCellClick} onCellHover={hoverCell} world={grid.bounds}>
           <HexGridLayer>
             {/* Under the markers, so the preview of the unit being placed is
                 drawn on top of the hex it would land on. */}
             <PlacementLayer cellKeys={placeableCellKeys.value} />
             <UnitLayer
+              movement={movements.value}
               onFacingHover={hoverFacing}
               onFacingPick={rotateUnit}
               preview={previewUnit.value}

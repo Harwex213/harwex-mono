@@ -161,8 +161,121 @@
   padding-top: var(--uk-space-3);
 }
 
+/* The uikit primary button, restated so the sweep below has somewhere to live:
+   the bar is clipped to the button and drawn under its label, and that needs a
+   positioned box the uikit button does not give out. */
 .turnButton {
+  align-items: center;
+  background: var(--uk-primary);
+  border: 1px solid transparent;
+  border-radius: var(--uk-radius);
+  color: var(--uk-primary-fg);
+  cursor: pointer;
+  display: flex;
+  font-family: var(--uk-font-sans);
+  font-size: 14px;
+  font-weight: 600;
+  height: 40px;
+  justify-content: center;
+  line-height: 1;
+  /* Holds the bar inside the button, corners and all. */
+  overflow: hidden;
+  padding: 0 var(--uk-space-4);
+  position: relative;
+  transition:
+    background var(--uk-duration) var(--uk-ease),
+    border-color var(--uk-duration) var(--uk-ease),
+    color var(--uk-duration) var(--uk-ease);
+  user-select: none;
+  white-space: nowrap;
   width: 100%;
+}
+
+.turnButton:hover {
+  background: var(--uk-primary-hover);
+}
+
+.turnButton:active {
+  background: var(--uk-primary-active);
+}
+
+.turnButton:focus-visible {
+  box-shadow: 0 0 0 3px var(--uk-ring);
+  outline: none;
+}
+
+/* Stepped back while the board waits on a swing. */
+.turnButtonQuiet {
+  background: var(--uk-panel);
+  border-color: var(--uk-border-strong);
+  color: var(--uk-fg);
+}
+
+.turnButtonQuiet:hover {
+  background: var(--uk-hover);
+}
+
+.turnButtonQuiet:active {
+  background: var(--uk-active);
+}
+
+/* What says the turn has been handed on: a bar crossing the button from its left
+   edge to its right one, once, and gone. Scaled from the left rather than
+   widened, so the whole sweep runs on the compositor.
+
+   The last stretch of it is spent fading rather than travelling — a bar that
+   filled the button and then vanished would read as one more thing to answer. */
+.turnFill {
+  animation: turnFill var(--turn-fill) var(--uk-ease) forwards;
+  background: rgb(255 255 255 / 30%);
+  inset: 0;
+  position: absolute;
+  transform-origin: left center;
+}
+
+/* Positioned, so the label is painted over the bar rather than under it. */
+.turnLabel {
+  position: relative;
+}
+
+@keyframes turnFill {
+  0% {
+    opacity: 1;
+    transform: scaleX(0);
+  }
+
+  70% {
+    opacity: 1;
+    transform: scaleX(1);
+  }
+
+  100% {
+    opacity: 0;
+    transform: scaleX(1);
+  }
+}
+
+/* The turn is still worth saying, so the button is filled rather than left
+   blank — it is simply filled at once and faded out from there. */
+@media (prefers-reduced-motion: reduce) {
+  .turnFill {
+    animation: turnFillFade var(--turn-fill) var(--uk-ease) forwards;
+    transform: none;
+  }
+}
+
+@keyframes turnFillFade {
+  0% {
+    opacity: 1;
+  }
+
+  70% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 0;
+  }
 }
 
 /* --- middle column: the header, the board, the turn order under it --- */

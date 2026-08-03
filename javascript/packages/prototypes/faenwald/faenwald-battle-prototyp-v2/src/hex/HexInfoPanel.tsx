@@ -1,16 +1,18 @@
 import { useSignals } from "@preact/signals-react/runtime";
 import type { AttackDamage } from "../state/attack-strategies";
-import { cellOf, hoveredCell, selectedCell, terrainOf, type Terrain } from "../state/grid-state";
+import type { UnitModifier } from "../state/formations";
+import { cellOf, hoveredCell, selectedCell, type Terrain, terrainOf } from "../state/grid-state";
 import type { Unit } from "../state/units-state";
 import { InfoPanel } from "../ui/InfoPanel";
+import { ModifierList } from "../ui/ModifierList";
 import type { HexCell } from "./hex-layout";
 
 const TERRAIN_LABELS: Record<Terrain, string> = {
   plain: "Равнина",
   path: "Дорога",
   arcane: "Поселение",
-  hills: "Холм",
-  crag: "Гора",
+  hills: "Предхольме",
+  crag: "Холм",
 };
 
 const EMPTY_LABEL = "—";
@@ -30,9 +32,15 @@ type HexThreat = {
 // Who stands on a hex is the page's business — one page draws a fixed roster,
 // another whatever the player has placed — so the lookup arrives as a prop.
 function HexInfoPanel({
+  modifiersOf,
   threat = null,
   unitAt,
 }: {
+  // What the unit on the hex is carrying because of where it stands. A second
+  // lookup rather than something read off the unit: the marker shape is what the
+  // board draws with, and a modifier is nothing the board draws on a marker.
+  // Left out by a page that has no modifiers, which draws none.
+  modifiersOf?: (unitId: string) => UnitModifier[];
   threat?: HexThreat | null;
   unitAt: (key: string) => Unit | null;
 }) {
@@ -62,6 +70,12 @@ function HexInfoPanel({
           <span>{unit.stats.attack} ⚔️</span>
           <StatValue icon="📯" loss={damage?.morale ?? 0} value={unit.stats.morale} />
         </InfoPanel.Row>
+      )}
+      {/* Under the stats, the same order the card on the other side of the board
+          lists them in — so a modifier is found in the same place whichever panel
+          the unit is being read off. */}
+      {unit === null || modifiersOf === undefined ? null : (
+        <ModifierList modifiers={modifiersOf(unit.id)} />
       )}
     </InfoPanel.Root>
   );

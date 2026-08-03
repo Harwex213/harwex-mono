@@ -32,6 +32,11 @@ const NEIGHBOR_STEPS: Record<number, { even: [number, number]; odd: [number, num
   330: { even: [-1, -1], odd: [0, -1] },
 };
 
+type Point = {
+  x: number;
+  y: number;
+};
+
 type HexCell = {
   key: string;
   col: number;
@@ -235,6 +240,39 @@ function frontDirections(facing: number): [number, number] {
   ];
 }
 
+// The two directions a unit's flanks face: the hex beside its left shoulder and
+// the one beside its right. A facing points at a corner, `frontDirections` gives
+// the pair of hexes it looks between, and these are the pair standing alongside
+// them — which is what a unit in a line of battle has a neighbour on.
+function flankDirections(facing: number): [number, number] {
+  return [normalizeAngle(facing - 90), normalizeAngle(facing + 90)];
+}
+
+// The length of one side of a hex. A pointy-top hex is six equilateral triangles
+// around its centre, so a side is exactly the circumradius.
+const HEX_EDGE = HEX_SIZE;
+
+// The edge the hex at (`col`, `row`) shares with the neighbour across
+// `direction`, as its two endpoints. `null` for anything that is not a
+// neighbour direction — a facing points at a corner, and a corner is not an
+// edge.
+//
+// Measured on the size the hexes tile at, the same as `hexRegionOutline`, so the
+// segment runs down the middle of the gap between the two hexes rather than over
+// either of them.
+function sharedEdge(col: number, row: number, direction: number): [Point, Point] | null {
+  // `edgeDirection` is the inverse of this: the edge leaving corner `index`
+  // clockwise is the one the neighbour at `90 + 60 * index` lies across.
+  const offset = normalizeAngle(direction - 90);
+  if (offset % 60 !== 0) {
+    return null;
+  }
+
+  const index = offset / 60;
+  const center = hexCenter(col, row, HEX_SIZE);
+  return [cornerOf(center, index), cornerOf(center, index + 1)];
+}
+
 // The cell one step from (`col`, `row`) in `direction`. Offset coordinates
 // only: whether the board actually has that cell is the grid's question, not
 // this one's.
@@ -329,6 +367,7 @@ function buildGrid(cols: number, rows: number, size = HEX_SIZE): HexGrid {
 }
 
 export {
+  HEX_EDGE,
   HEX_FILL_POINTS,
   HEX_GAP,
   HEX_INSET,
@@ -336,6 +375,7 @@ export {
   bearingBetween,
   buildGrid,
   cellKey,
+  flankDirections,
   forwardCone,
   frontDirections,
   hexPoints,
@@ -343,5 +383,6 @@ export {
   hexRingPoints,
   hexWidth,
   neighborCell,
+  sharedEdge,
 };
-export type { Bounds, ConeCell, HexCell, HexGrid };
+export type { Bounds, ConeCell, HexCell, HexGrid, Point };
