@@ -1,0 +1,6 @@
+body {
+  background: var(--uk-bg);
+  color: var(--uk-fg);
+  font-family: var(--uk-font-sans);
+  margin: 0;
+}
