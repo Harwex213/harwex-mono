@@ -1,7 +1,15 @@
-import { Button, Checkbox } from "@hw/faenwald-uikit";
-import { useEffect } from "react";
+import { Tooltip } from "@hw/faenwald-uikit";
+import { useEffect, type ReactNode } from "react";
 import type { UnitModifier } from "../state/formations";
 import type { UnitStats } from "../state/units-state";
+import {
+  AccelerateIcon,
+  AttackIcon,
+  CanopyIcon,
+  FindIcon,
+  MoveIcon,
+  RotateIcon,
+} from "../ui/icons";
 import { isTyping } from "../ui/keyboard";
 import { ModifierList } from "../ui/ModifierList";
 import styles from "./unit-actions-panel.module.css";
@@ -178,81 +186,173 @@ function UnitActionsPanel({
         )}
       </div>
 
-      {/* Over the orders rather than among them, because it is not one: every
-          button below turns something on the board into something else, and this
-          switch only changes what the board is drawing. Only there for a unit
-          that shoots. */}
-      {onConeToggle === undefined ? null : (
-        <label className={styles.toggle}>
-          <Checkbox.Root checked={coneShown} onCheckedChange={onConeToggle}>
-            <Checkbox.Indicator />
-          </Checkbox.Root>
-          Canopy cone (E)
-        </label>
-      )}
+      {/* One row of icons rather than a stack of named buttons, so the card is
+          short enough to leave the board it overlays readable. A button says
+          only what it does, and the name behind it is a hover away. The
+          shortcut is in the same hint, so the two ways of giving an order are
+          learnt together. */}
+      <Tooltip.Provider delay={TOOLTIP_DELAY}>
+        <div className={styles.actions}>
+          {/* Lit while armed, so the panel says what the next click on the board
+              means. */}
+          <ActionButton
+            armed={moving}
+            disabled={disabled || spent}
+            hint={spent ? SPENT_HINT : undefined}
+            icon={<MoveIcon />}
+            label="Move"
+            onClick={onMove}
+            shortcut="W"
+          />
 
-      {/* Lit while armed, so the panel says what the next click on the board
-          means. */}
-      <Button.Root
-        className={styles.action}
-        disabled={disabled || spent}
-        onClick={onMove}
-        variant={moving ? "primary" : "secondary"}
-      >
-        Move (W)
-      </Button.Root>
+          <ActionButton
+            armed={rotating}
+            disabled={disabled || spent}
+            hint={spent ? SPENT_HINT : undefined}
+            icon={<RotateIcon />}
+            label="Rotate"
+            onClick={onRotate}
+            shortcut="R"
+          />
 
-      <Button.Root
-        className={styles.action}
-        disabled={disabled || spent}
-        onClick={onRotate}
-        variant={rotating ? "primary" : "secondary"}
-      >
-        Rotate (R)
-      </Button.Root>
+          {/* The four below are drawn only where the page passes a handler, so
+              the disposition board keeps the two orders it has always had. */}
+          {/* Quiet where the unit cannot pay for the order — out of morale, or
+              with nothing left this turn for the order to double. */}
+          {onAccelerate === undefined ? null : (
+            <ActionButton
+              disabled={disabled || accelerateDisabled}
+              icon={<AccelerateIcon />}
+              label="Accelerate"
+              onClick={onAccelerate}
+              shortcut="C"
+            />
+          )}
 
-      {/* The three below are drawn only where the page passes a handler, so the
-          disposition board keeps the two orders it has always had. */}
-      {/* Quiet where the unit cannot pay for the order — out of morale, or with
-          nothing left this turn for the order to double. */}
-      {onAccelerate === undefined ? null : (
-        <Button.Root
-          className={styles.action}
-          disabled={disabled || accelerateDisabled}
-          onClick={onAccelerate}
-          variant="secondary"
-        >
-          Accelerate (C)
-        </Button.Root>
-      )}
+          {/* Lit while armed, the way Move and Rotate are: the panel says what
+              the next click on the board means. Quiet with nobody in reach. The
+              name in the hint is the attack's own, so the card says which one
+              the key arms. */}
+          {onAttack === undefined ? null : (
+            <ActionButton
+              armed={attacking}
+              disabled={disabled || !canAttack}
+              hint={canAttack ? undefined : NO_TARGET_HINT}
+              icon={<AttackIcon />}
+              label={attackLabel}
+              onClick={onAttack}
+              shortcut="A"
+            />
+          )}
 
-      {/* Lit while armed, the way Move and Rotate are: the panel says what the
-          next click on the board means. Quiet with nobody in reach. The label is
-          the attack's own, so the card says which one the key arms. */}
-      {onAttack === undefined ? null : (
-        <Button.Root
-          className={styles.action}
-          disabled={disabled || !canAttack}
-          onClick={onAttack}
-          variant={attacking ? "primary" : "secondary"}
-        >
-          {attackLabel} (A)
-        </Button.Root>
-      )}
+          {/* Apart from the orders, because neither one is: the buttons on the
+              left turn something on the board into something else, while these
+              two only change what the board draws and where it is looking. */}
+          {onConeToggle === undefined && onFind === undefined ? null : (
+            <div className={styles.aids}>
+              {/* Only there for a unit that shoots. Lit while the cone is
+                  drawn, so the button says what is on the board. */}
+              {onConeToggle === undefined ? null : (
+                <ActionButton
+                  armed={coneShown}
+                  icon={<CanopyIcon />}
+                  label="Canopy cone"
+                  onClick={() => onConeToggle(!coneShown)}
+                  shortcut="E"
+                />
+              )}
 
-      {/* Live on a muted card, for the reason the shortcut above is. */}
-      {onFind === undefined ? null : (
-        <Button.Root className={styles.action} onClick={onFind} variant="secondary">
-          Find (F)
-        </Button.Root>
-      )}
+              {/* Live on a muted card, for the reason the shortcut above is. */}
+              {onFind === undefined ? null : (
+                <ActionButton
+                  icon={<FindIcon />}
+                  label="Find"
+                  onClick={onFind}
+                  shortcut="F"
+                />
+              )}
+            </div>
+          )}
+        </div>
+      </Tooltip.Provider>
     </div>
+  );
+}
+
+type ActionButtonProps = {
+  icon: ReactNode;
+  // What the button would be called if it were still named on the card. The
+  // hint carries it, and a screen reader reads it off the button itself.
+  label: string;
+  // The key that gives the same order, as `SHORTCUTS` spells it.
+  shortcut: string;
+  // Why the button is quiet, where the panel knows. Left out where it is not
+  // quiet at all, and where the reason is the page's rather than the panel's.
+  hint?: string;
+  // Lit, because the next click on the board belongs to this order.
+  armed?: boolean;
+  disabled?: boolean;
+  onClick: () => void;
+};
+
+// One icon, one order. The button carries its own hint, because an icon with no
+// name needs one: a player who does not know the shape reads it here.
+//
+// `aria-disabled` rather than `disabled`, so a quiet button still answers the
+// pointer. A disabled button takes no pointer events at all, and the hint over
+// the one order the unit cannot afford is the hint most worth reading.
+function ActionButton({
+  icon,
+  label,
+  shortcut,
+  hint,
+  armed = false,
+  disabled = false,
+  onClick,
+}: ActionButtonProps) {
+  return (
+    <Tooltip.Root>
+      <Tooltip.Trigger
+        aria-disabled={disabled}
+        aria-label={label}
+        className={armed ? `${styles.action} ${styles.actionArmed}` : styles.action}
+        onClick={disabled ? undefined : onClick}
+      >
+        {icon}
+      </Tooltip.Trigger>
+      {/* Under the button rather than over it. The row is the bottom of the
+          card, and a hint above it would cover the unit it belongs to. */}
+      <Tooltip.Portal>
+        <Tooltip.Positioner side="bottom">
+          <Tooltip.Popup className={styles.tip}>
+            <Tooltip.Arrow />
+            <span className={styles.tipTitle}>
+              {label}
+              <kbd className={styles.tipKey}>{shortcut}</kbd>
+            </span>
+            {hint === undefined ? null : <span className={styles.tipHint}>{hint}</span>}
+          </Tooltip.Popup>
+        </Tooltip.Positioner>
+      </Tooltip.Portal>
+    </Tooltip.Root>
   );
 }
 
 // A unit carrying nothing. One value rather than a fresh empty array per render,
 // so the card a page passes no modifiers to is handed the same list every time.
 const NO_MODIFIERS: UnitModifier[] = [];
+
+// No wait before a hint is shown. An icon stands for nothing but the order
+// behind it, so a pointer resting on one has already asked what it is — the same
+// reason the ⓘ beside the army list answers at once.
+const TOOLTIP_DELAY = 0;
+
+// Why the two orders that cross the board are quiet. The count on the card says
+// the same thing, and a pointer on the button it disarmed should not have to
+// look for it.
+const SPENT_HINT = "Nothing left to spend this turn";
+
+const NO_TARGET_HINT = "Nobody in reach";
 
 type Action = "move" | "rotate" | "accelerate" | "attack" | "cone" | "find" | "cancel";
 

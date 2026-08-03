@@ -38,16 +38,24 @@
   transform: scale(0.96);
 }
 
+/* Offsets for the reason `tooltip.module.css` gives: the arrow is the same svg
+   in the same box, and Base UI leaves the main axis to the stylesheet. */
 .arrow {
   color: var(--uk-border);
 }
+.arrow[data-side="top"] {
+  bottom: -8px;
+}
 .arrow[data-side="bottom"] {
+  top: -8px;
   transform: rotate(180deg);
 }
 .arrow[data-side="left"] {
+  right: -8px;
   transform: rotate(-90deg);
 }
 .arrow[data-side="right"] {
+  left: -8px;
   transform: rotate(90deg);
 }
 

@@ -1,0 +1,20 @@
+# Copied to the droplet by deploy.sh, into $REMOTE_DIR.
+#
+# The image is put into the droplet's local store by `docker load`, so there is
+# no registry to fetch it from. `pull_policy: never` stops compose from trying
+# Docker Hub and failing.
+#
+# To roll back, pick an older tag from `docker images faenwald-battle`:
+#   FAENWALD_TAG=1a6a96e docker compose up -d
+services:
+  web:
+    image: faenwald-battle:${FAENWALD_TAG:-latest}
+    pull_policy: never
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      # Cloudflare Origin CA certificate, placed on the droplet by hand once.
+      # nginx will not start without both files.
+      - /etc/ssl/origin:/etc/ssl/origin:ro

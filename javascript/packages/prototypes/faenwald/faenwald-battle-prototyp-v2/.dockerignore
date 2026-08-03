@@ -1,0 +1,13 @@
+# Only `dist/`, `nginx.conf` and the Dockerfile belong in the build context. The
+# sources are built on the host, and the raw assets are already in `dist/` under
+# their hashed names.
+src
+assets
+node_modules
+dist/.cache
+*.md
+tsconfig.json
+rspack.config.mjs
+package.json
+deploy.sh
+compose.yaml

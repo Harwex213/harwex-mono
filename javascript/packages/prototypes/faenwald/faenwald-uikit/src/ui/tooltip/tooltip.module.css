@@ -48,16 +48,28 @@
   transition: none;
 }
 
+/* Base UI places the arrow along the cross axis only — it sets `left` for a popup
+   above or below the anchor, `top` for one beside it. The offset on the other
+   axis is this stylesheet's to give, and without it the arrow stays where it was
+   laid out: inside the popup, over the text. The svg is a 6px triangle in a 12px
+   box, so `8px` past the edge puts its base flush with the popup and its tip in
+   the gap `sideOffset` leaves. */
 .arrow {
   color: var(--uk-border);
 }
+.arrow[data-side="top"] {
+  bottom: -8px;
+}
 .arrow[data-side="bottom"] {
+  top: -8px;
   transform: rotate(180deg);
 }
 .arrow[data-side="left"] {
+  right: -8px;
   transform: rotate(-90deg);
 }
 .arrow[data-side="right"] {
+  left: -8px;
   transform: rotate(90deg);
 }
 
