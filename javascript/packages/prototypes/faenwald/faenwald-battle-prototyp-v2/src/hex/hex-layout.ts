@@ -4,7 +4,7 @@
 const SQRT3 = Math.sqrt(3);
 
 // Circumradius: distance from the hex centre to a corner, in px.
-const HEX_SIZE = 34;
+const HEX_SIZE = 40;
 
 // Corners are drawn on a slightly smaller hex so neighbours keep a visible gap.
 const HEX_INSET = 2;
@@ -82,5 +82,5 @@ function buildGrid(cols: number, rows: number, size = HEX_SIZE): HexGrid {
   return { cells, bounds };
 }
 
-export { HEX_INSET, HEX_SIZE, buildGrid, cellKey, hexPoints };
+export { HEX_INSET, HEX_SIZE, buildGrid, cellKey, hexPoints, hexWidth };
 export type { Bounds, HexCell, HexGrid };

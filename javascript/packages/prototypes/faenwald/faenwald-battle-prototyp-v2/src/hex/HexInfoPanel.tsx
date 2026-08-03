@@ -1,6 +1,6 @@
 import { useSignals } from "@preact/signals-react/runtime";
 import { hoveredCell, selectedCell, terrainOf, type Terrain } from "../state/grid-state";
-import { unitAt, type Unit } from "../state/units-state";
+import type { Unit } from "../state/units-state";
 import { InfoPanel } from "../ui/InfoPanel";
 import type { HexCell } from "./hex-layout";
 
@@ -17,7 +17,10 @@ const EMPTY_LABEL = "—";
 // Reads the hex, not the panel: `InfoPanel` handles the looks, this decides what
 // goes in it. A unit takes the whole panel over, because its name and stats say
 // more about the hex than the ground under it.
-function HexInfoPanel() {
+//
+// Who stands on a hex is the page's business — one page draws a fixed roster,
+// another whatever the player has placed — so the lookup arrives as a prop.
+function HexInfoPanel({ unitAt }: { unitAt: (key: string) => Unit | null }) {
   useSignals();
 
   // The hex under the pointer wins, and the selection is what the panel falls

@@ -147,6 +147,9 @@
   min-height: 0;
   min-width: 0;
   overflow: hidden;
+  /* Anchors the unit actions panel, which overlays the canvas rather than
+     sitting inside the SVG. */
+  position: relative;
 }
 
 /* --- right column: players + chat --- */

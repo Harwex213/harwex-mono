@@ -20,3 +20,35 @@
 .icon {
   fill: var(--unit-glyph);
 }
+
+.barTrack {
+  fill: var(--unit-bar-track);
+}
+
+.barFrame {
+  fill: none;
+  stroke: var(--unit-outline);
+  stroke-width: 1;
+}
+
+.plate {
+  fill: var(--unit-bar-track);
+  stroke: var(--unit-outline);
+  stroke-width: 1;
+}
+
+.plateText {
+  dominant-baseline: central;
+  fill: var(--unit-glyph);
+  font-family: var(--uk-font-sans);
+  font-weight: 700;
+  text-anchor: middle;
+}
+
+.health {
+  fill: var(--unit-health);
+}
+
+.morale {
+  fill: var(--unit-morale);
+}

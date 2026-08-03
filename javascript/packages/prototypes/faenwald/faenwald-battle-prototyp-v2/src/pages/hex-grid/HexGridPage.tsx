@@ -13,7 +13,7 @@ import {
   selectedCell,
   terrainOf,
 } from "../../state/grid-state";
-import { units } from "../../state/units-state";
+import { unitAt, units } from "../../state/units-state";
 import { UnitLayer } from "../../units/UnitLayer";
 import styles from "./hex-grid-page.module.css";
 
@@ -40,7 +40,7 @@ function HexGridPage() {
       <div className={styles.canvas}>
         <HexCanvas
           handleRef={canvasRef}
-          onCellClick={selectCell}
+          onCellClick={selectOccupiedCell}
           onCellHover={hoverCell}
           world={grid.bounds}
         >
@@ -48,10 +48,22 @@ function HexGridPage() {
             <UnitLayer units={units.value} />
           </HexGridLayer>
         </HexCanvas>
-        <HexInfoPanel />
+        <HexInfoPanel unitAt={unitAt} />
       </div>
     </div>
   );
+}
+
+// Only a hex with a unit on it can be selected here. A click on an empty one is
+// dropped rather than clearing the selection, so the panel keeps showing the
+// unit while the pointer wanders over the board. Placing units is the
+// disposition page's job, and that one still selects any cell.
+function selectOccupiedCell(key: string): void {
+  if (unitAt(key) === null) {
+    return;
+  }
+
+  selectCell(key);
 }
 
 export { HexGridPage };

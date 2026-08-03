@@ -3,23 +3,26 @@ import { useSignals } from "@preact/signals-react/runtime";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { HexCanvas } from "../../hex/HexCanvas";
 import { HexGridLayer } from "../../hex/HexGridLayer";
+import { HexInfoPanel } from "../../hex/HexInfoPanel";
 import {
   isPlaced,
   pickUnit,
   pickedUnitId,
   placeUnit,
   placedCount,
+  placedUnitAt,
   placedUnits,
+  placementOf,
   ready,
-  recallUnit,
   roster,
+  selectedUnit,
   toggleReady,
-  unitIdAt,
   type RosterUnit,
 } from "../../state/disposition-state";
-import { grid, selectCell } from "../../state/grid-state";
+import { focusCell, grid, hoverCell, selectCell } from "../../state/grid-state";
 import { LOCAL_PLAYER, messages, players, sendMessage } from "../../state/session-state";
 import { InfoIcon, SendIcon } from "../../ui/icons";
+import { UnitActionsPanel } from "../../units/UnitActionsPanel";
 import { UnitLayer } from "../../units/UnitLayer";
 import styles from "./units-disposition-page.module.css";
 
@@ -33,11 +36,13 @@ function UnitsDispositionPage() {
       <RosterPanel />
 
       <div className={styles.canvas}>
-        <HexCanvas onCellClick={onCellClick} world={grid.bounds}>
+        <HexCanvas onCellClick={onCellClick} onCellHover={hoverCell} world={grid.bounds}>
           <HexGridLayer>
             <UnitLayer units={placedUnits.value} />
           </HexGridLayer>
         </HexCanvas>
+        {selectedUnit.value === null ? null : <UnitActionsPanel unit={selectedUnit.value} />}
+        <HexInfoPanel unitAt={placedUnitAt} />
       </div>
 
       <div className={styles.right}>
@@ -48,19 +53,14 @@ function UnitsDispositionPage() {
   );
 }
 
-// A hex click either drops the armed roster unit or takes back whatever stands
-// on the cell.
+// A hex click drops the armed roster unit, if one is armed. Nothing else: a
+// click on a unit selects its hex and leaves the unit where it stands, which is
+// what opens the actions panel.
 function onCellClick(key: string): void {
   selectCell(key);
 
   if (pickedUnitId.value !== null) {
     placeUnit(key);
-    return;
-  }
-
-  const occupant = unitIdAt(key);
-  if (occupant !== null) {
-    recallUnit(occupant);
   }
 }
 
@@ -128,12 +128,15 @@ function RosterRow({ unit }: { unit: RosterUnit }) {
   );
 }
 
-// A placed unit has nothing to arm, so its row recalls it instead.
+// A placed unit has nothing to arm, so its row selects it on the canvas
+// instead — the same state a click on its hex leaves behind.
 function onRosterClick(unitId: string): void {
-  if (isPlaced(unitId)) {
-    recallUnit(unitId);
+  const placement = placementOf(unitId);
+  if (placement !== null) {
+    focusCell(placement);
     return;
   }
+
   pickUnit(unitId);
 }
 

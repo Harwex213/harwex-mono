@@ -144,6 +144,13 @@ function selectCell(key: string): void {
   selectedKey.value = selectedKey.value === key ? null : key;
 }
 
+// Selects without the toggle above. A control outside the canvas — a roster row
+// pointing at a placed unit, say — uses this: clicking it twice should leave the
+// unit selected rather than blink the selection off.
+function focusCell(key: string): void {
+  selectedKey.value = key;
+}
+
 function hoverCell(key: string | null): void {
   hoveredKey.value = key;
 }
@@ -152,6 +159,7 @@ export {
   COLS,
   ROWS,
   cellOf,
+  focusCell,
   grid,
   hoverCell,
   hoveredCell,

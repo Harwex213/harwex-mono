@@ -1,7 +1,7 @@
 import { signal } from "@preact/signals-react";
 import { cellKey } from "../hex/hex-layout";
 
-type UnitKind = "spear" | "sword";
+type UnitKind = "spear" | "sword" | "bow";
 
 type UnitSide = "red" | "blue";
 
@@ -16,33 +16,55 @@ type Unit = {
   cellKey: string;
   kind: UnitKind;
   side: UnitSide;
-  // Short code, shown on the first row of the info panel. A roster keeps the
-  // full title alongside its code and passes only the code through to here.
+  // Short code from the roster — `ТКо` for тяжелый копейщик, `Луч` for лучник,
+  // and so on. Shown on the marker itself and on the first row of the info
+  // panel. A roster keeps the full title alongside its code and passes only the
+  // code through to here.
   name: string;
+  // Clockwise degrees the glyph is turned by, on top of the upright pose the
+  // icon itself defines. One hex neighbour is 60 degrees away. Absent means
+  // upright.
+  facing?: number;
   stats: UnitStats;
 };
 
-// Two hand-placed units on plain hexes near the middle of the grid, on
-// neighbouring cells so they face each other. A signal, so a later step can
-// move them without touching the layer.
+const FACINGS = [0, 60, 120, 180, 240, 300];
+
+// The first column each row of facings starts on.
+const ROTATION_ROW_COL = 4;
+
+// One row per kind, one unit per hex facing, so the six rotations of a glyph
+// can be read off against each other. A signal, so a later step can move them
+// without touching the layer.
 const units = signal<Unit[]>([
-  {
-    id: "spearman",
-    cellKey: cellKey(6, 7),
+  ...rotationRow(5, {
     kind: "spear",
     side: "red",
-    name: "ТКО",
+    name: "ТКо",
     stats: { health: 80, attack: 12, morale: 70 },
-  },
-  {
-    id: "swordsman",
-    cellKey: cellKey(7, 8),
+  }),
+  ...rotationRow(7, {
     kind: "sword",
     side: "blue",
-    name: "МЧН",
+    name: "СПо",
     stats: { health: 65, attack: 22, morale: 80 },
-  },
+  }),
+  ...rotationRow(9, {
+    kind: "bow",
+    side: "red",
+    name: "Луч",
+    stats: { health: 55, attack: 18, morale: 60 },
+  }),
 ]);
+
+function rotationRow(row: number, unit: Omit<Unit, "id" | "cellKey" | "facing">): Unit[] {
+  return FACINGS.map((facing, index) => ({
+    ...unit,
+    id: `${unit.kind}-${facing}`,
+    cellKey: cellKey(ROTATION_ROW_COL + index, row),
+    facing,
+  }));
+}
 
 function unitAt(key: string): Unit | null {
   return units.value.find((unit) => unit.cellKey === key) ?? null;

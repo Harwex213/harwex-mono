@@ -14,11 +14,28 @@
   stroke: var(--map-line-hover);
 }
 
-.selected {
-  fill: none;
-  pointer-events: none;
-  stroke: var(--uk-primary);
-  stroke-width: 5;
+/* The selected hex keeps its terrain fill and ticks its outline instead. The
+   animation also overrides the hover stroke above, so the tick keeps running
+   while the pointer sits on the selected hex. */
+.hex.selected {
+  animation: tick 800ms ease-in-out infinite alternate;
+}
+
+/* One leg of the tick per run, so `alternate` gives a 500ms fade each way. The
+   `from` colour repeats `--map-line` rather than being left out: an implicit
+   start would take the hover colour whenever the pointer is on the hex. */
+@keyframes tick {
+  0% {
+    stroke: var(--map-line);
+  }
+
+  80% {
+    stroke: var(--map-selected-line);
+  }
+
+  100% {
+    stroke: var(--map-selected-line);
+  }
 }
 
 .plain {

@@ -1,0 +1,53 @@
+.panel {
+  background: var(--uk-panel-elevated);
+  border: 1px solid var(--uk-border-strong);
+  border-radius: var(--uk-radius-lg);
+  bottom: var(--uk-space-3);
+  box-shadow: var(--uk-shadow);
+  display: flex;
+  flex-direction: column;
+  gap: var(--uk-space-2);
+  /* Bottom left of the canvas, leaving the opposite corner to the read-only
+     terrain panel. */
+  left: var(--uk-space-3);
+  /* One width for every unit, so the panel does not resize as the selection
+     moves between units with longer or shorter titles. */
+  min-width: 200px;
+  padding: var(--uk-space-3);
+  position: absolute;
+}
+
+/* The unit itself, boxed off from the actions under it. */
+.card {
+  border: 1px solid var(--uk-border);
+  border-radius: var(--uk-radius);
+  display: flex;
+  flex-direction: column;
+  gap: var(--uk-space-1);
+  padding: var(--uk-space-2);
+}
+
+.title {
+  color: var(--uk-fg);
+  font-size: 14px;
+  font-weight: 600;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.stats {
+  color: var(--uk-fg-muted);
+  display: flex;
+  font-size: 13px;
+  /* Stats are numbers that change with the selection; tabular figures stop them
+     shuffling sideways. */
+  font-variant-numeric: tabular-nums;
+  gap: var(--uk-space-3);
+  justify-content: center;
+  white-space: nowrap;
+}
+
+.action {
+  justify-content: center;
+  width: 100%;
+}

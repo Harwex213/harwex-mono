@@ -1,4 +1,5 @@
 import { computed, signal } from "@preact/signals-react";
+import { selectedKey } from "./grid-state";
 import type { Unit, UnitKind, UnitSide, UnitStats } from "./units-state";
 
 // A unit the local player owns and has to place before the battle starts.
@@ -80,8 +81,36 @@ const placedUnits = computed<Unit[]>(() => {
 
 const placedCount = computed(() => Object.keys(placementByUnitId.value).length);
 
+// The placed unit standing on the selected hex, if there is one. The roster
+// entry, not the `Unit` the canvas draws: the actions panel shows the full title
+// and the marker only carries the short code.
+const selectedUnit = computed<RosterUnit | null>(() => {
+  const key = selectedKey.value;
+  if (key === null) {
+    return null;
+  }
+
+  const unitId = unitIdAt(key);
+  if (unitId === null) {
+    return null;
+  }
+
+  return roster.find((unit) => unit.id === unitId) ?? null;
+});
+
 function isPlaced(unitId: string): boolean {
   return placementByUnitId.value[unitId] !== undefined;
+}
+
+// The marker shape on a cell, for the read-only info panel. `selectedUnit` above
+// answers with the roster entry instead, because the actions panel needs the
+// full title.
+function placedUnitAt(cellKey: string): Unit | null {
+  return placedUnits.value.find((unit) => unit.cellKey === cellKey) ?? null;
+}
+
+function placementOf(unitId: string): string | null {
+  return placementByUnitId.value[unitId] ?? null;
 }
 
 function unitIdAt(cellKey: string): string | null {
@@ -135,10 +164,13 @@ export {
   pickedUnitId,
   placeUnit,
   placedCount,
+  placedUnitAt,
   placedUnits,
+  placementOf,
   ready,
   recallUnit,
   roster,
+  selectedUnit,
   toggleReady,
   unitIdAt,
 };

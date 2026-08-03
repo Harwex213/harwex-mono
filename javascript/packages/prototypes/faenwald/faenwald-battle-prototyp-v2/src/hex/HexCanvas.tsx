@@ -1,13 +1,13 @@
 import {
+  type MouseEvent as ReactMouseEvent,
+  type PointerEvent as ReactPointerEvent,
+  type ReactNode,
+  type Ref,
   useCallback,
   useEffect,
   useImperativeHandle,
   useRef,
   useState,
-  type MouseEvent as ReactMouseEvent,
-  type PointerEvent as ReactPointerEvent,
-  type ReactNode,
-  type Ref,
 } from "react";
 import type { Bounds } from "./hex-layout";
 import styles from "./hex-canvas.module.css";
@@ -18,11 +18,7 @@ const MAX_SCALE = 4;
 // Leaves a small margin around the content when the view is fitted.
 const FIT_PADDING = 0.94;
 
-// How much the fitted view is zoomed past "whole grid on screen", which is what
-// sets the on-screen size of a hex. `HEX_SIZE` cannot do it: fitting divides it
-// straight back out, so a bigger world only ever gets a smaller scale. Above 1
-// the grid overflows the canvas and the user pans to reach the rest.
-const FIT_ZOOM = 1.5;
+const FIT_ZOOM = 1.8;
 
 // A pointer that travelled further than this counts as a pan, not a click.
 const CLICK_SLOP = 4;
@@ -50,7 +46,15 @@ type HexCanvasProps = {
 // differ by nothing but that transform, which keeps the wheel math short.
 function HexCanvas({ children, handleRef, onCellClick, onCellHover, world }: HexCanvasProps) {
   const svgRef = useRef<SVGSVGElement>(null);
-  const dragRef = useRef<{ pointerId: number; x: number; y: number } | null>(null);
+  // `origin` is where the gesture started and never moves; `x`/`y` follow the
+  // pointer so each move can apply its own delta.
+  const dragRef = useRef<{
+    pointerId: number;
+    originX: number;
+    originY: number;
+    x: number;
+    y: number;
+  } | null>(null);
   const pannedRef = useRef(false);
   const touchedRef = useRef(false);
   const [view, setView] = useState<View>({ x: 0, y: 0, k: 1 });
@@ -149,9 +153,18 @@ function HexCanvas({ children, handleRef, onCellClick, onCellHover, world }: Hex
       return;
     }
 
-    dragRef.current = { pointerId: event.pointerId, x: event.clientX, y: event.clientY };
+    dragRef.current = {
+      pointerId: event.pointerId,
+      originX: event.clientX,
+      originY: event.clientY,
+      x: event.clientX,
+      y: event.clientY,
+    };
     pannedRef.current = false;
-    event.currentTarget.setPointerCapture(event.pointerId);
+    // The pointer is deliberately not captured here. Capturing retargets the
+    // compat `pointerup` and `click` to the SVG, and the click handler below
+    // needs the hex under the cursor as the event target. A pan takes the
+    // capture instead, once it is clear the gesture is not a click.
   }
 
   function onPointerMove(event: ReactPointerEvent<SVGSVGElement>) {
@@ -160,16 +173,24 @@ function HexCanvas({ children, handleRef, onCellClick, onCellHover, world }: Hex
       return;
     }
 
-    const dx = event.clientX - drag.x;
-    const dy = event.clientY - drag.y;
-    if (Math.abs(dx) > CLICK_SLOP || Math.abs(dy) > CLICK_SLOP) {
+    // Measured from where the gesture started, not from the previous move: a
+    // slow drag covers plenty of ground in steps of a pixel or two, and per-move
+    // deltas would never pass the slop.
+    const travelX = Math.abs(event.clientX - drag.originX);
+    const travelY = Math.abs(event.clientY - drag.originY);
+    if (!pannedRef.current && (travelX > CLICK_SLOP || travelY > CLICK_SLOP)) {
       pannedRef.current = true;
       touchedRef.current = true;
       // React bails out when the value is unchanged, so calling this on every
       // move of the drag costs one render at the start and nothing after.
       setPanning(true);
+      // Now that the gesture is a pan, capture it, so it keeps its moves when
+      // the pointer runs off the canvas.
+      event.currentTarget.setPointerCapture(event.pointerId);
     }
 
+    const dx = event.clientX - drag.x;
+    const dy = event.clientY - drag.y;
     drag.x = event.clientX;
     drag.y = event.clientY;
     setView((current) => ({ ...current, x: current.x + dx, y: current.y + dy }));
@@ -183,7 +204,10 @@ function HexCanvas({ children, handleRef, onCellClick, onCellHover, world }: Hex
 
     dragRef.current = null;
     setPanning(false);
-    event.currentTarget.releasePointerCapture(event.pointerId);
+    // Only a pan ever took the capture.
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
   }
 
   // Clicks are read off the group instead of per-cell handlers: the canvas

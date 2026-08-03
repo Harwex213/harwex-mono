@@ -28,17 +28,27 @@ body {
    through the gaps between hexes turns the grid into a dark-grouted mosaic. */
 :root {
   --map-line: #5e5e5e;
-  /* Carries the whole hover cue on its own now that the width stays put, so it
-     goes near-black for the strongest contrast against `--map-line`. */
-  --map-line-hover: #0d0d0d;
+  /* Carries the whole hover cue on its own now that the width stays put. Same
+     gold as the selection tick, so hovering previews what selecting looks like.
+     Custom properties resolve where they are used, so pointing at a variable
+     declared further down is fine. */
+  --map-line-hover: var(--map-selected-line);
   --map-plain: #ececec;
   --map-path: #f9e94a;
   --map-arcane: #7a22d6;
   --map-hills: #b5720d;
   --map-crag: #6b4407;
+  /* Far end of the tick on the selected hex outline. Bright enough to carry the
+     cue on a 2px stroke over any terrain fill. */
+  --map-selected-line: #ffc400;
 
-  --unit-outline: #101010;
+  --unit-outline: #2e2e2e;
   --unit-glyph: #101010;
   --unit-red: #9e1327;
   --unit-blue: #1c4fbe;
+  /* Stat gauges flanking a unit marker. Their colours say health and morale,
+     not side, so they stay the same on red and blue units alike. */
+  --unit-bar-track: #ececec;
+  --unit-health: #ee1c25;
+  --unit-morale: #12ab3c;
 }
