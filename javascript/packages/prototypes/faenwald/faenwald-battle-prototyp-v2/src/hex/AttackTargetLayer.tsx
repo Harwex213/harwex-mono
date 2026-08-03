@@ -8,12 +8,6 @@ import styles from "./attack-target.module.css";
 // it, so without this the target hex would answer as any other hex does.
 const HIT_POINTS = hexPoints(HEX_SIZE - HEX_INSET);
 
-// The ring that lights the hex up while the pointer rests on it. Drawn just
-// inside the outline, so it reads as the hex itself being singled out.
-const RING_INSET = 3;
-const RING_WIDTH = 4;
-const RING_POINTS = hexPoints(HEX_SIZE - HEX_INSET - RING_INSET - RING_WIDTH / 2);
-
 // The dart pointing at the target: tip, one barb, the notch between them, the
 // other barb. Drawn pointing straight up and turned to the direction the blow
 // travels in, the same way a move arrow is.
@@ -109,12 +103,18 @@ function AttackArrow({
       onPointerEnter={() => onHover(target.unitId)}
       onPointerLeave={() => onHover(null)}
     >
-      <g transform={`translate(${cell.x.toFixed(2)} ${cell.y.toFixed(2)})`}>
-        <polygon className={styles.ring} points={RING_POINTS} strokeWidth={RING_WIDTH} />
-        {/* Carries the cell key, so the hex readout still answers for the hex
-            this shape has taken the pointer away from. */}
-        <polygon className={styles.hit} data-cell-key={target.key} points={HIT_POINTS} />
-      </g>
+      {/* Carries the cell key, so the hex readout still answers for the hex this
+          shape has taken the pointer away from. */}
+      <polygon
+        className={styles.hit}
+        data-cell-key={target.key}
+        points={HIT_POINTS}
+        transform={`translate(${cell.x.toFixed(2)} ${cell.y.toFixed(2)})`}
+      />
+      {/* The ring that lights the target hex up is not drawn here. It is the hex
+          outline itself, in the attack colour — see `attackKey` in
+          `HexGridLayer`. Anything drawn inside the hex would land on the marker
+          standing on it and cover the bars flanking that marker. */}
       <g transform={`translate(${midX.toFixed(2)} ${midY.toFixed(2)}) rotate(${target.direction})`}>
         <polygon className={styles.arrow} points={ARROW_POINTS} />
       </g>

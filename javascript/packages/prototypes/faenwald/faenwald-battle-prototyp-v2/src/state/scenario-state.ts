@@ -237,6 +237,185 @@ const MELEE_LOCK: Deployment[] = [
   },
 ];
 
+// Every kind of shooter the roster has, laid out for a ranged attack to be
+// tried against. Blue holds the bottom of the board and looks up it; the red
+// units it is pointed at are targets, not an army meant to fight back.
+//
+// A unit shoots along the seam its facing points at, and that seam zig-zags
+// between two columns in offset coordinates. So the lane in front of a blue
+// unit on row 10 runs up through the column to its left and back again:
+// `(5, 10)` looks up `(4, 9)`, `(5, 8)`, `(4, 7)`, and on. Every red unit below
+// stands on such a lane, at a distance written out beside it — a ranged strategy
+// is then read off the board rather than counted out on it.
+//
+// Three things a shot has to answer are already on the board:
+//
+// - A ladder of distances up the archer's lane: 2, 4 and 6 hexes from `(5, 10)`.
+//   A short bow reaches the first rung, a long one all three.
+// - A friendly unit in the line of fire. The heavy infantryman on `(6, 9)`
+//   stands in the crossbowman's front hex, so the lane behind that hex is only
+//   open if a shot may pass over an own unit's head.
+// - Red shooters of their own, on the lanes blue's right flank is pointed at, so
+//   a return shot has somewhere to come from once the enemy is driven.
+//
+// Rows 4 to 10 are the band the whole position is laid out in, the same band the
+// two scenarios above use. The canvas fits the grid by width and opens on a view
+// that is shorter than the grid is tall, so a unit outside that band has to be
+// panned to before it can be seen.
+//
+// The whole of the blue army moves before the whole of the red one: no enemy
+// turn has to be skipped through between two shots being tried.
+const RANGED_TEST: Deployment[] = [
+  {
+    col: 3,
+    row: 10,
+    facing: 0,
+    unit: {
+      id: "blue-kluch",
+      title: "Конный лучник",
+      code: "КЛуч",
+      kind: "bow",
+      side: "blue",
+      initiative: 96,
+      stats: { health: 55, attack: 16, morale: 70 },
+    },
+  },
+  {
+    col: 5,
+    row: 10,
+    facing: 0,
+    unit: {
+      id: "blue-luch",
+      title: "Лучник",
+      code: "Луч",
+      kind: "bow",
+      side: "blue",
+      initiative: 92,
+      stats: { health: 45, attack: 14, morale: 55 },
+    },
+  },
+  {
+    col: 7,
+    row: 10,
+    facing: 0,
+    unit: {
+      id: "blue-arb",
+      title: "Арбалетчик",
+      code: "Арб",
+      kind: "bow",
+      side: "blue",
+      initiative: 88,
+      stats: { health: 50, attack: 26, morale: 60 },
+    },
+  },
+  {
+    col: 9,
+    row: 10,
+    facing: 0,
+    unit: {
+      id: "blue-long",
+      title: "Лонгбоумен",
+      code: "Лонг",
+      kind: "bow",
+      side: "blue",
+      initiative: 84,
+      stats: { health: 50, attack: 22, morale: 70 },
+    },
+  },
+  {
+    col: 6,
+    row: 9,
+    facing: 0,
+    unit: {
+      id: "blue-tpo",
+      title: "Тяжёлый пехотинец",
+      code: "ТПо",
+      kind: "sword",
+      side: "blue",
+      initiative: 80,
+      stats: { health: 95, attack: 26, morale: 80 },
+    },
+  },
+  // Two hexes up the archer's lane: the near rung of the ladder, and the one
+  // target a bow of any reach at all can be pointed at.
+  {
+    col: 5,
+    row: 8,
+    facing: 180,
+    unit: {
+      id: "red-lpo",
+      title: "Лёгкий пехотинец",
+      code: "ЛПо",
+      kind: "sword",
+      side: "red",
+      initiative: 60,
+      stats: { health: 55, attack: 18, morale: 60 },
+    },
+  },
+  // Four hexes up the same lane: the middle rung.
+  {
+    col: 5,
+    row: 6,
+    facing: 180,
+    unit: {
+      id: "red-sko",
+      title: "Средний копейщик",
+      code: "СКо",
+      kind: "spear",
+      side: "red",
+      initiative: 56,
+      stats: { health: 70, attack: 16, morale: 70 },
+    },
+  },
+  // Six hexes up it: the far rung, and the top of the band the position fits in.
+  // A short bow is out of range of this one, which is the point of it.
+  {
+    col: 5,
+    row: 4,
+    facing: 180,
+    unit: {
+      id: "red-tko",
+      title: "Тяжёлый копейщик",
+      code: "ТКо",
+      kind: "spear",
+      side: "red",
+      initiative: 52,
+      stats: { health: 90, attack: 20, morale: 75 },
+    },
+  },
+  // Four hexes up the crossbowman's lane — the lane its own escort stands in.
+  {
+    col: 7,
+    row: 6,
+    facing: 180,
+    unit: {
+      id: "red-luch",
+      title: "Лучник",
+      code: "Луч",
+      kind: "bow",
+      side: "red",
+      initiative: 48,
+      stats: { health: 45, attack: 14, morale: 55 },
+    },
+  },
+  // Six hexes up the longbowman's lane: the second shooter red can answer with,
+  // and the farthest target the right flank is pointed at.
+  {
+    col: 9,
+    row: 4,
+    facing: 180,
+    unit: {
+      id: "red-arb",
+      title: "Арбалетчик",
+      code: "Арб",
+      kind: "bow",
+      side: "red",
+      initiative: 44,
+      stats: { health: 50, attack: 26, morale: 60 },
+    },
+  },
+];
+
 const SCENARIOS: Scenario[] = [
   {
     id: "line-clash",
@@ -249,6 +428,12 @@ const SCENARIOS: Scenario[] = [
     name: "Сшибка",
     summary: "Три пары уже сошлись вплотную: каждый отряд бьёт в ближнем бою, не сходя с места.",
     deployment: MELEE_LOCK,
+  },
+  {
+    id: "ranged-test",
+    name: "Перестрелка",
+    summary: "Стрелки всех видов и цели в двух, четырёх и шести гексах: расстановка под проверку дальнего боя.",
+    deployment: RANGED_TEST,
   },
 ];
 

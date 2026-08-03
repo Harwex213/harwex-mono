@@ -1,6 +1,7 @@
 import { Button } from "@hw/faenwald-uikit";
 import { useEffect } from "react";
 import type { UnitStats } from "../state/units-state";
+import { isTyping } from "../ui/keyboard";
 import styles from "./unit-actions-panel.module.css";
 
 // Only what the card shows. Each page keeps its own unit shape — a roster entry
@@ -45,6 +46,8 @@ type UnitActionsPanelProps = {
   // that move the unit. The page works out whether the unit can pay.
   accelerateDisabled?: boolean;
   onAttack?: () => void;
+  // Brings the unit into view. Not an order — nothing on the board changes — so
+  // this one answers whether or not the unit is taking orders.
   onFind?: () => void;
   // The unit is on screen to be read, not commanded. The card stays, the
   // buttons and their shortcuts go quiet.
@@ -79,17 +82,15 @@ function UnitActionsPanel({
   // dropped wherever the button it stands for is muted or absent, so a shortcut
   // never does what the panel says cannot be done.
   useEffect(() => {
-    if (disabled) {
-      return;
-    }
-
+    // A muted card keeps its F: the unit is on screen to be read, and looking
+    // for it on the board is part of reading it.
     const handlers: Record<Action, (() => void) | undefined> = {
-      move: spent ? undefined : onMove,
-      rotate: spent ? undefined : onRotate,
-      accelerate: accelerateDisabled ? undefined : onAccelerate,
-      attack: canAttack ? onAttack : undefined,
+      move: disabled || spent ? undefined : onMove,
+      rotate: disabled || spent ? undefined : onRotate,
+      accelerate: disabled || accelerateDisabled ? undefined : onAccelerate,
+      attack: !disabled && canAttack ? onAttack : undefined,
       find: onFind,
-      cancel: onCancel,
+      cancel: disabled ? undefined : onCancel,
     };
 
     function onKeyDown(event: KeyboardEvent) {
@@ -169,8 +170,7 @@ function UnitActionsPanel({
       </Button.Root>
 
       {/* The three below are drawn only where the page passes a handler, so the
-          disposition board keeps the two orders it has always had. Two of them
-          answer nothing yet. */}
+          disposition board keeps the two orders it has always had. */}
       {/* Quiet where the unit cannot pay for the order — out of morale, or with
           nothing left this turn for the order to double. */}
       {onAccelerate === undefined ? null : (
@@ -197,13 +197,9 @@ function UnitActionsPanel({
         </Button.Root>
       )}
 
+      {/* Live on a muted card, for the reason the shortcut above is. */}
       {onFind === undefined ? null : (
-        <Button.Root
-          className={styles.action}
-          disabled={disabled}
-          onClick={onFind}
-          variant="secondary"
-        >
+        <Button.Root className={styles.action} onClick={onFind} variant="secondary">
           Find (F)
         </Button.Root>
       )}
@@ -222,20 +218,5 @@ const SHORTCUTS: Record<string, Action> = {
   f: "find",
   escape: "cancel",
 };
-
-// The page has a chat box on it, so a letter typed into a field must not reach
-// the board.
-function isTyping(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) {
-    return false;
-  }
-
-  return (
-    target.isContentEditable ||
-    target.tagName === "INPUT" ||
-    target.tagName === "TEXTAREA" ||
-    target.tagName === "SELECT"
-  );
-}
 
 export { UnitActionsPanel };

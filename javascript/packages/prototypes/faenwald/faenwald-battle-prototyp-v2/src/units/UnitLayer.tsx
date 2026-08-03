@@ -131,9 +131,10 @@ type UnitLayerProps = {
   rotateCellKey?: string | null;
   onFacingHover?: (facing: number | null) => void;
   onFacingPick?: (facing: number) => void;
-  // The unit an armed attack is pointed at, and what the blow would take off
-  // it. The marker answers the pointer, and blinks the slices of its bars it is
-  // about to lose.
+  // The unit an armed attack is pointed at, and what the blow would take off it.
+  // The marker itself is left alone — the board answers the pointer around it —
+  // and the one thing it does is blink the slices of its bars it is about to
+  // lose.
   threatenedUnitId?: string | null;
   threatenedDamage?: AttackDamage | null;
   // The blow being played out, if any: the attacker lunges, the unit it lands on
@@ -166,7 +167,6 @@ function UnitLayer({
           key={unit.id}
           movement={movement}
           strike={strike}
-          threatened={unit.id === threatenedUnitId}
           unit={unit}
         />
       ))}
@@ -259,14 +259,12 @@ function UnitMarker({
   unit,
   className,
   damage,
-  threatened = false,
   strike,
   movement,
 }: {
   unit: Unit;
   className?: string;
   damage?: AttackDamage | null;
-  threatened?: boolean;
   strike?: Strike | null;
   movement?: Movement | null;
 }) {
@@ -304,7 +302,6 @@ function UnitMarker({
 
   const bodyClass = [
     styles.marker,
-    threatened ? styles.threatened : "",
     punching ? styles.punching : "",
     struck ? styles.struck : "",
     from === null ? "" : styles.stepping,

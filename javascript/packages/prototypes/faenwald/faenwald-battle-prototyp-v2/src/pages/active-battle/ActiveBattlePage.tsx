@@ -1,9 +1,9 @@
 import { AlertDialog, Button, Drawer, Tooltip } from "@hw/faenwald-uikit";
 import { useSignals } from "@preact/signals-react/runtime";
-import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { playUnitSelect } from "../../audio/sounds";
 import { AttackTargetLayer } from "../../hex/AttackTargetLayer";
-import { HexCanvas } from "../../hex/HexCanvas";
+import { HexCanvas, type HexCanvasHandle } from "../../hex/HexCanvas";
 import { HexGridLayer } from "../../hex/HexGridLayer";
 import { HexInfoPanel } from "../../hex/HexInfoPanel";
 import { MoveTargetLayer } from "../../hex/MoveTargetLayer";
@@ -26,10 +26,10 @@ import {
   cancelAttack,
   cancelRotate,
   endTurn,
-  findUnit,
   hoverAttackTarget,
   hoverFacing,
   hoveredTargetId,
+  hoveredTargetKey,
   localArmy,
   localTurn,
   movement,
@@ -54,10 +54,11 @@ import {
   unitIdAt,
   type BattleUnit,
 } from "../../state/battle-state";
-import { grid, hoverCell, selectCell, selectedKey } from "../../state/grid-state";
+import { grid, hoverCell, selectCell, selectedCell, selectedKey } from "../../state/grid-state";
 import { SCENARIOS, selectedScenario } from "../../state/scenario-state";
 import { players } from "../../state/session-state";
 import { InfoIcon } from "../../ui/icons";
+import { isInOverlay, isTyping } from "../../ui/keyboard";
 import { UNIT_AVATARS } from "../../units/unit-avatars";
 import { UnitActionsPanel } from "../../units/UnitActionsPanel";
 import { UnitLayer } from "../../units/UnitLayer";
@@ -116,6 +117,22 @@ function ActiveBattlePage() {
   // shortcut key from arming something behind the answer.
   const commanding = commandable && !confirmingAccelerate;
 
+  // Find is the one order on the card the board never hears about: it moves the
+  // view rather than the unit. That makes it the page's own — the canvas owns
+  // the pan and zoom, and `battle-state` has no way to reach them.
+  const canvasRef = useRef<HexCanvasHandle>(null);
+
+  // The unit is found by the hex it stands on, so a unit mid-step is followed to
+  // the hex it is walking to rather than the one it has left.
+  const findSelected = useCallback(() => {
+    const cell = selectedCell.value;
+    if (cell === null) {
+      return;
+    }
+
+    canvasRef.current?.centerOn(cell.x, cell.y);
+  }, []);
+
   // A question asked of a unit that is no longer taking orders is no longer a
   // question. Nothing in the prototype can hand the turn on while the dialog is
   // up, but a question left standing would open by itself the next time one is
@@ -134,8 +151,16 @@ function ActiveBattlePage() {
         <BattleHeader />
 
         <div className={styles.canvas} style={CANVAS_TIMINGS}>
-          <HexCanvas onCellClick={onCellClick} onCellHover={hoverCell} world={grid.bounds}>
-            <HexGridLayer>
+          <HexCanvas
+            handleRef={canvasRef}
+            onCellClick={onCellClick}
+            onCellHover={hoverCell}
+            world={grid.bounds}
+          >
+            {/* The hex of the target under the pointer wears the attack colour
+                in place of the hover one, so the board answers a pointer resting
+                on a target with one ring rather than two. */}
+            <HexGridLayer attackKey={hoveredTargetKey.value}>
               {/* Before the markers, so a unit is never drawn under the hexes
                   its neighbour may step onto. */}
               <MoveTargetLayer targets={moveTargets.value} />
@@ -172,7 +197,7 @@ function ActiveBattlePage() {
               onAccelerate={() => setConfirmingAccelerate(true)}
               onAttack={attackUnit}
               onCancel={cancelActions}
-              onFind={findUnit}
+              onFind={findSelected}
               onMove={toggleMove}
               onRotate={toggleRotate}
               rotating={rotatingUnitId.value === selected.id}
@@ -387,6 +412,42 @@ function ScenariosDrawer() {
 function ArmyPanel() {
   useSignals();
 
+  // Space hands the round on, the way the button below does. The default is
+  // taken over rather than left alone: space on a focused button clicks it, and
+  // on the page it scrolls, so both would fire alongside the turn ending.
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key !== " ") {
+        return;
+      }
+
+      if (
+        event.metaKey ||
+        event.ctrlKey ||
+        event.altKey ||
+        isTyping(event.target) ||
+        isInOverlay(event.target)
+      ) {
+        return;
+      }
+
+      event.preventDefault();
+
+      // A held key repeats. One press ends one turn.
+      if (event.repeat) {
+        return;
+      }
+
+      endTurn();
+    }
+
+    window.addEventListener("keydown", onKeyDown);
+
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, []);
+
   return (
     <aside className={styles.left}>
       <div className={styles.leftHeader}>
@@ -421,7 +482,7 @@ function ArmyPanel() {
           onClick={endTurn}
           variant={localTurn.value ? "primary" : "secondary"}
         >
-          {localTurn.value ? "End turn" : "Skip enemy turn"}
+          {localTurn.value ? "End turn (Space)" : "Skip enemy turn (Space)"}
         </Button.Root>
       </div>
     </aside>

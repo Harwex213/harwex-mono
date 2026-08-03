@@ -1,8 +1,8 @@
-/* One unit the armed attack may hit: the hex it stands on, the ring around that
-   hex, and the arrow reaching it. Nothing here takes the pointer by default —
-   the two shapes a player would aim at ask for it back below. The handlers sit
-   on this group, so those two are one target between them and a pointer
-   crossing from one onto the other never reads as leaving. */
+/* One unit the armed attack may hit: the hex it stands on and the arrow reaching
+   it. Nothing here takes the pointer by default — the two shapes a player would
+   aim at ask for it back below. The handlers sit on this group, so those two are
+   one target between them and a pointer crossing from one onto the other never
+   reads as leaving. */
 .target {
   pointer-events: none;
 }
@@ -14,20 +14,6 @@
   fill: transparent;
   pointer-events: auto;
   stroke: none;
-}
-
-/* Lights the target hex up while the pointer rests on it. Kept out of the way
-   until then rather than mounted on hover, so the fade runs both ways. */
-.ring {
-  fill: none;
-  opacity: 0;
-  pointer-events: none;
-  stroke: var(--map-attack-ring);
-  transition: opacity var(--uk-duration) var(--uk-ease);
-}
-
-.hovered .ring {
-  opacity: 1;
 }
 
 /* Drawn over both markers, so it carries the outline every other marker shape

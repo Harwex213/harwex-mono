@@ -25,6 +25,15 @@
   stroke: var(--map-line-hover);
 }
 
+/* A unit the armed attack is pointed at, lit up on the hex it stands on. It
+   stands in the hover state's place rather than beside it: the pointer is on
+   that hex, and one ring around a hex is one answer to the pointer. Out here
+   the cue also clears the marker, so the bars flanking it stay readable — a
+   ring drawn inside the marker paints over them. */
+.attackLine {
+  stroke: var(--map-attack-ring);
+}
+
 .selectedLine {
   animation: tick 800ms ease-in-out infinite alternate;
 }

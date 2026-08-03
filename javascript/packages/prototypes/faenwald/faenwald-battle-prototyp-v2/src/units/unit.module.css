@@ -105,26 +105,26 @@
 }
 
 /* Everything the marker is made of, inside the group that puts it on its hex.
-   The two are separate elements because a CSS transform — a lunge, a shake, a
-   lean towards the pointer — would otherwise replace the `transform` attribute
-   holding the marker on the board. */
+   The two are separate elements because a CSS transform — a lunge, a shake —
+   would otherwise replace the `transform` attribute holding the marker on the
+   board. Every transform written here is a keyframe of one of those, so there is
+   nothing left for a transition to carry. */
 .marker {
   transform-box: fill-box;
   transform-origin: center;
-  transition: transform var(--uk-duration) var(--uk-ease);
 }
 
-/* A unit the armed attack is pointed at. It leans forward under the pointer and
-   takes a thicker outline in the attack colour, so the answer is on the unit
-   itself and not only on the arrow that reaches it. */
-.threatened {
-  transform: scale(1.08);
-}
+/* A unit the armed attack is pointed at wears nothing of its own. The marker is
+   left exactly as it stands, and the answer to the pointer is drawn around it:
+   the hex lit up in the attack colour, the arrow reaching it, and the slices of
+   its bars the blow would take. Nothing on the marker means nothing over the
+   bars — a stroke straddles the line it is drawn on, and the bars are laid
+   against the marker outline from the inside.
 
-.threatened .body {
-  stroke: var(--map-attack-ring);
-  stroke-width: 4;
-}
+   The lean it used to take is gone with it. A marker stands `UNIT_HEX_INSET`
+   inside its terrain hex, which is a couple of px: growing it spent that gap and
+   pushed it onto the hex outline, and the hex outline is where the attack colour
+   is now drawn. */
 
 /* The lunge. The distance and direction come in as custom properties, worked out
    from the way the blow travels — a shared keyframe cannot know which way its
@@ -283,12 +283,11 @@
   }
 }
 
+/* One outline, in one colour, whatever the board is asking of the unit. Nothing
+   repaints it, so there is nothing for a transition to carry. */
 .body {
   stroke: var(--unit-outline);
   stroke-width: 2;
-  transition:
-    stroke var(--uk-duration) var(--uk-ease),
-    stroke-width var(--uk-duration) var(--uk-ease);
 }
 
 .red {

@@ -356,6 +356,21 @@ const pendingDamage = computed<{ unitId: string; damage: AttackDamage } | null>(
   };
 });
 
+// The hex the target under the pointer stands on. The board lights that hex up
+// in the attack colour, in place of the hover ring it would otherwise wear.
+//
+// Read off the target list rather than off the unit, and so `null` while the
+// pointer rests where a target stood a moment ago — the same guard
+// `pendingDamage` makes, for the same reason.
+const hoveredTargetKey = computed<string | null>(() => {
+  const targetId = hoveredTargetId.value;
+  if (targetId === null) {
+    return null;
+  }
+
+  return attackTargets.value.find((target) => target.unitId === targetId)?.key ?? null;
+});
+
 // The unit standing on the selected hex, if there is one. Its stats are the
 // ones the battle has left it with, not the ones the scenario opened on.
 const selectedUnit = computed<BattleUnit | null>(() => {
@@ -776,11 +791,6 @@ function accelerateUnit(): void {
   };
 }
 
-// The one order the panel offers that the prototype does not answer yet. It
-// lives here rather than in the page so every command the board takes is found
-// in one file, and so filling it in later is an edit to this file alone.
-function findUnit(): void {}
-
 // Selects a unit on the board from a control outside the canvas — a roster row
 // or a card in the turn order bar.
 function selectUnit(unitId: string): void {
@@ -814,10 +824,10 @@ export {
   cancelAttack,
   cancelRotate,
   endTurn,
-  findUnit,
   hoverAttackTarget,
   hoverFacing,
   hoveredTargetId,
+  hoveredTargetKey,
   localArmy,
   localTurn,
   movement,
