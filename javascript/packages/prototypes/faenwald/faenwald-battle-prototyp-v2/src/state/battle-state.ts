@@ -1,6 +1,13 @@
 import { computed, signal } from "@preact/signals-react";
 import { cellKey, frontDirections, neighborCell } from "../hex/hex-layout";
-import { attackStrategyFor, type AttackDamage, type AttackTarget } from "./attack-strategies";
+import {
+  attackStrategyFor,
+  canopyCone,
+  type AttackDamage,
+  type AttackKind,
+  type AttackStrategy,
+  type AttackTarget,
+} from "./attack-strategies";
 import { cellOf, focusCell, selectedKey } from "./grid-state";
 import {
   selectedScenario,
@@ -106,13 +113,32 @@ const attackingUnitId = signal<string | null>(null);
 // the pointer, and the slices of its bars the blow would take are blinked on it.
 const hoveredTargetId = signal<string | null>(null);
 
+// Whether the board draws the canopy cone of the unit the panels answer for.
+// A view setting rather than an order: nothing on the board changes, no attack
+// has to be armed for it, and it stays on as the selection moves — so two
+// shooters can be read against each other, and an enemy shooter's reach can be
+// looked at before walking into it.
+const showCanopyCone = signal(false);
+
 // A blow being played out. Written when a strike is committed and cleared once
 // the animation it drives is over.
 type Strike = {
   attackerId: string;
   targetId: string;
-  // The way the blow travels, so the attacker lunges towards the unit it hits.
+  // Which attack landed it. A blow by hand is a lunge, a volley is an arrow in
+  // the air, and the two are drawn nothing like each other.
+  kind: AttackKind;
+  // The hexes the blow travels between. A lunge only needs the direction below,
+  // but a shot has a whole flight to draw across the board.
+  fromKey: string;
+  toKey: string;
+  // The way the blow travels: the attacker lunges that way, and the unit it hits
+  // is thrown that way.
   direction: number;
+  // Whether the blow is still on its way. A shot spends `SHOT_MS` in the air
+  // before it lands, and the unit under it answers nothing until it does; a
+  // lunge is written landed, because its own animation carries the wind-up.
+  phase: "flight" | "impact";
   // Bumped per blow. Two strikes on the same pair carry the same ids otherwise,
   // and the layer would have nothing to restart its animation on.
   seq: number;
@@ -126,6 +152,12 @@ const strike = signal<Strike | null>(null);
 const PUNCH_MS = 420;
 
 const PUNCH_IMPACT_MS = 170;
+
+// How long an arrow spends in the air, whatever the distance: a volley at four
+// hexes is a longer shot, not a slower one. The stylesheet is handed this too —
+// the arrow crosses the board on it, and the timer below takes the arrow off the
+// board when it runs out.
+const SHOT_MS = 520;
 
 let strikeSeq = 0;
 
@@ -297,6 +329,18 @@ const attackFromKey = computed<string | null>(() => {
   return cellOfUnit(unitId);
 });
 
+// The attack the armed unit is about to make, if one is armed. The layer drawing
+// the targets reads its kind: a blow by hand is offered as a dart on the seam it
+// would cross, a volley as an arc over the board.
+const armedAttack = computed<AttackStrategy | null>(() => {
+  const unitId = attackingUnitId.value;
+  if (unitId === null) {
+    return null;
+  }
+
+  return attackStrategyOf(unitId);
+});
+
 // Whether the Attack command has anything to offer. An attack with nobody in
 // reach stays silent rather than arming an empty board, so the button that
 // stands for it goes quiet too.
@@ -392,6 +436,53 @@ const selectedUnit = computed<BattleUnit | null>(() => {
   return { ...unit, stats: statsOf(unitId) };
 });
 
+// The attack the unit the panels answer for makes. The card names it on the
+// command button, and offers the cone switch on the strength of its kind — the
+// switch belongs to a shooter and to nobody else.
+const selectedAttack = computed<AttackStrategy | null>(() => {
+  const unit = selectedUnit.value;
+  if (unit === null) {
+    return null;
+  }
+
+  return attackStrategyFor(unit.kind);
+});
+
+// The hexes a canopy shot from the selected unit could come down on, or nothing
+// at all: with the cone switched off, with a unit that does not shoot, and with
+// no unit selected. Off-board hexes are dropped here rather than in the cone
+// itself, which knows nothing about the board it is read against.
+const canopyConeKeys = computed<string[]>(() => {
+  if (!showCanopyCone.value) {
+    return [];
+  }
+
+  const unit = selectedUnit.value;
+  if (unit === null || selectedAttack.value?.kind !== "canopy") {
+    return [];
+  }
+
+  const from = cellOfUnit(unit.id);
+  if (from === null) {
+    return [];
+  }
+
+  const cell = cellOf(from);
+  if (cell === null) {
+    return [];
+  }
+
+  // The facing a hovered rotation handle stands for wins over the stored one, so
+  // the cone swings round with the marker while the handles are out — the same
+  // preview `markerFor` draws, answered by the hexes the unit would shoot.
+  const preview = unit.id === rotatingUnitId.value ? hoveredFacing.value : null;
+  const facing = preview ?? facingByUnitId.value[unit.id] ?? 0;
+
+  return canopyCone(cell.col, cell.row, facing)
+    .map((coneCell) => cellKey(coneCell.col, coneCell.row))
+    .filter((key) => cellOf(key) !== null);
+});
+
 // The marker that stands for a unit on its hex. It carries the short code, not
 // the full title.
 //
@@ -413,6 +504,13 @@ function markerFor(unit: BattleUnit): Unit {
 
 function cellOfUnit(unitId: string): string | null {
   return cellByUnitId.value[unitId] ?? null;
+}
+
+// The attack a unit on the board makes, which is its kind's. Melee for a unit
+// the army no longer has, so a caller always has a strategy to work with.
+function attackStrategyOf(unitId: string): AttackStrategy {
+  const unit = unitsById.value.get(unitId);
+  return attackStrategyFor(unit?.kind ?? "sword");
 }
 
 // Health and morale as the battle has left them. The scenario numbers are the
@@ -698,13 +796,22 @@ function hoverAttackTarget(unitId: string | null): void {
   hoveredTargetId.value = unitId;
 }
 
+// Draws the canopy cone on the board, or takes it off. Not gated on the turn or
+// on the side: the cone says where a shot could come down, and that is worth
+// reading whoever the shooter is.
+function setCanopyCone(shown: boolean): void {
+  showCanopyCone.value = shown;
+}
+
 // Strikes `targetUnitId`, which has to be one of the units the armed attack
 // reaches. A click on anything else is not a blow the unit can land, so it reads
 // as calling the attack off — the same bargain a move click makes.
 //
-// The blow is committed here and lands a moment later: the attacker lunges from
-// the click, and the damage is written when the marker connects, so the bars
-// come down on the impact rather than ahead of it.
+// The blow is committed here and lands a moment later: the attacker lunges or
+// looses its arrow from the click, and the damage is written when the blow
+// arrives, so the bars come down on the impact rather than ahead of it. A lunge
+// connects part of the way into its own animation; an arrow connects when it
+// finishes crossing the board.
 function strikeUnit(targetUnitId: string): void {
   const attackerId = attackingUnitId.value;
   if (attackerId === null) {
@@ -713,34 +820,69 @@ function strikeUnit(targetUnitId: string): void {
 
   const target = attackTargets.value.find((entry) => entry.unitId === targetUnitId);
   const attacker = unitsById.value.get(attackerId);
-  if (target === undefined || attacker === undefined) {
+  const from = cellOfUnit(attackerId);
+  if (target === undefined || attacker === undefined || from === null) {
     cancelAttack();
     return;
   }
 
-  const damage = attackStrategyFor(attacker.kind).damage(statsOf(attackerId), statsOf(targetUnitId));
+  const strategy = attackStrategyFor(attacker.kind);
+  const damage = strategy.damage(statsOf(attackerId), statsOf(targetUnitId));
+  const flying = strategy.kind === "canopy";
 
   cancelAttack();
   spendMove(attackerId);
 
   strikeSeq += 1;
+  const seq = strikeSeq;
   strike.value = {
     attackerId,
     targetId: targetUnitId,
+    kind: strategy.kind,
+    fromKey: from,
+    toKey: target.key,
     direction: target.direction,
-    seq: strikeSeq,
+    phase: flying ? "flight" : "impact",
+    seq,
   };
 
   // Timers rather than animation callbacks: the markers are drawn from this
   // state, so this state is what has to say when the blow lands and when the
   // animation is over. A second strike started mid-animation drops the first
   // one's timers and plays out on its own.
+  //
+  // A shot is the two waits one after the other: the flight, and then the same
+  // reaction a lunge ends on, less the wind-up the lunge spends before landing.
   window.clearTimeout(impactTimer);
   window.clearTimeout(strikeTimer);
-  impactTimer = window.setTimeout(() => applyDamage(targetUnitId, damage), PUNCH_IMPACT_MS);
-  strikeTimer = window.setTimeout(() => {
-    strike.value = null;
-  }, PUNCH_MS);
+  impactTimer = window.setTimeout(
+    () => {
+      applyDamage(targetUnitId, damage);
+      if (flying) {
+        landStrike(seq);
+      }
+    },
+    flying ? SHOT_MS : PUNCH_IMPACT_MS,
+  );
+  strikeTimer = window.setTimeout(
+    () => {
+      strike.value = null;
+    },
+    flying ? SHOT_MS + PUNCH_MS - PUNCH_IMPACT_MS : PUNCH_MS,
+  );
+}
+
+// Says the arrow has arrived: it comes off the board, and the unit it came down
+// on is thrown and flashed. Read against the sequence number the shot was
+// written with, so a shot whose state has been replaced — by the next blow, or
+// by a scenario being picked — lands on nothing.
+function landStrike(seq: number): void {
+  const current = strike.value;
+  if (current === null || current.seq !== seq) {
+    return;
+  }
+
+  strike.value = { ...current, phase: "impact" };
 }
 
 // Takes a blow off a unit's health and morale. Neither goes below nothing.
@@ -808,10 +950,13 @@ function selectUnit(unitId: string): void {
 export {
   ACCELERATE_MORALE_COST,
   MOVE_ALLOWANCE,
+  PUNCH_IMPACT_MS,
   PUNCH_MS,
+  SHOT_MS,
   STEP_MS,
   accelerateUnit,
   activeUnit,
+  armedAttack,
   attackFromKey,
   attackTargets,
   attackUnit,
@@ -823,6 +968,7 @@ export {
   cancelActions,
   cancelAttack,
   cancelRotate,
+  canopyConeKeys,
   endTurn,
   hoverAttackTarget,
   hoverFacing,
@@ -842,7 +988,10 @@ export {
   rotatingUnitId,
   selectScenario,
   selectUnit,
+  selectedAttack,
   selectedUnit,
+  setCanopyCone,
+  showCanopyCone,
   statsOf,
   strike,
   strikeUnit,

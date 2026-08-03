@@ -1,4 +1,4 @@
-import { Button } from "@hw/faenwald-uikit";
+import { Button, Checkbox } from "@hw/faenwald-uikit";
 import { useEffect } from "react";
 import type { UnitStats } from "../state/units-state";
 import { isTyping } from "../ui/keyboard";
@@ -46,6 +46,15 @@ type UnitActionsPanelProps = {
   // that move the unit. The page works out whether the unit can pay.
   accelerateDisabled?: boolean;
   onAttack?: () => void;
+  // What the unit's attack is called, for the button that arms it. Every unit
+  // has one attack, and which one it is worth saying: a blow landed by hand and a
+  // volley lobbed over four hexes are armed with the same key.
+  attackLabel?: string;
+  // Whether the board is drawing the unit's canopy cone. Left out — along with
+  // the switch itself — for a unit that does not shoot, and by a page with no
+  // cone to draw.
+  coneShown?: boolean;
+  onConeToggle?: (shown: boolean) => void;
   // Brings the unit into view. Not an order — nothing on the board changes — so
   // this one answers whether or not the unit is taking orders.
   onFind?: () => void;
@@ -70,6 +79,9 @@ function UnitActionsPanel({
   onAccelerate,
   accelerateDisabled = false,
   onAttack,
+  attackLabel = "Attack",
+  coneShown = false,
+  onConeToggle,
   onFind,
   disabled = false,
 }: UnitActionsPanelProps) {
@@ -89,6 +101,9 @@ function UnitActionsPanel({
       rotate: disabled || spent ? undefined : onRotate,
       accelerate: disabled || accelerateDisabled ? undefined : onAccelerate,
       attack: !disabled && canAttack ? onAttack : undefined,
+      // Live on a muted card, the way F is: the cone says what the board draws,
+      // not what the unit does, so it answers for a unit that takes no orders.
+      cone: onConeToggle === undefined ? undefined : () => onConeToggle(!coneShown),
       find: onFind,
       cancel: disabled ? undefined : onCancel,
     };
@@ -120,10 +135,12 @@ function UnitActionsPanel({
   }, [
     accelerateDisabled,
     canAttack,
+    coneShown,
     disabled,
     onAccelerate,
     onAttack,
     onCancel,
+    onConeToggle,
     onFind,
     onMove,
     onRotate,
@@ -185,7 +202,8 @@ function UnitActionsPanel({
       )}
 
       {/* Lit while armed, the way Move and Rotate are: the panel says what the
-          next click on the board means. Quiet with nobody in reach. */}
+          next click on the board means. Quiet with nobody in reach. The label is
+          the attack's own, so the card says which one the key arms. */}
       {onAttack === undefined ? null : (
         <Button.Root
           className={styles.action}
@@ -193,8 +211,20 @@ function UnitActionsPanel({
           onClick={onAttack}
           variant={attacking ? "primary" : "secondary"}
         >
-          Attack (A)
+          {attackLabel} (A)
         </Button.Root>
+      )}
+
+      {/* Under the order it belongs to, and a switch rather than a button: it
+          turns something on and leaves it on, while every button above it does one
+          thing and is done. Only drawn for a unit that shoots. */}
+      {onConeToggle === undefined ? null : (
+        <label className={styles.toggle}>
+          <Checkbox.Root checked={coneShown} onCheckedChange={onConeToggle}>
+            <Checkbox.Indicator />
+          </Checkbox.Root>
+          Canopy cone (E)
+        </label>
       )}
 
       {/* Live on a muted card, for the reason the shortcut above is. */}
@@ -207,7 +237,7 @@ function UnitActionsPanel({
   );
 }
 
-type Action = "move" | "rotate" | "accelerate" | "attack" | "find" | "cancel";
+type Action = "move" | "rotate" | "accelerate" | "attack" | "cone" | "find" | "cancel";
 
 // `event.key` lowercased, so `Escape` arrives as `escape`.
 const SHORTCUTS: Record<string, Action> = {
@@ -215,6 +245,7 @@ const SHORTCUTS: Record<string, Action> = {
   r: "rotate",
   c: "accelerate",
   a: "attack",
+  e: "cone",
   f: "find",
   escape: "cancel",
 };

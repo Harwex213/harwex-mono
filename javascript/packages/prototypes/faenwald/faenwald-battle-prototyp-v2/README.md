@@ -10,8 +10,16 @@ Current content, one page per tab:
 - **Units disposition** — the local player places a roster on the grid, then moves and
   turns what is already down.
 - **Active battle** — both armies deployed, the round in a turn order bar under the
-  board, and move/rotate on whichever unit is up. A header over the board opens the
-  scenarios drawer, which names the position the battle is fought on.
+  board, and move/rotate/attack on whichever unit is up. A header over the board opens
+  the scenarios drawer, which names the position the battle is fought on.
+
+Two attacks are on offer, one per kind of unit: a melee, which reaches the two hexes
+the unit faces, and a canopy shot, which every bow makes instead. A shot is lobbed over
+whatever stands in the way and comes down anywhere in the cone in front of the shooter,
+four steps deep — `attack-strategies.ts` holds both, and a unit's kind is what picks
+between them. The card of a shooter carries a switch that washes that cone over the
+board; pointing at a unit inside it draws the flight the shot would take, and committing
+it sends an arrow along that same curve.
 
 ```bash
 yarn workspace @hw/faenwald-battle-prototyp-v2 dev        # rspack dev server, random free port

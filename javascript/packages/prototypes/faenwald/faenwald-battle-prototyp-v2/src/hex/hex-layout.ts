@@ -40,6 +40,15 @@ type HexCell = {
   y: number;
 };
 
+// A hex inside a cone in front of a unit, and how many steps into the cone it
+// lies. Offset coordinates only, the same as `neighborCell` — whether the board
+// has the cell is the grid's question.
+type ConeCell = {
+  col: number;
+  row: number;
+  distance: number;
+};
+
 type Bounds = {
   x: number;
   y: number;
@@ -132,6 +141,64 @@ function neighborCell(col: number, row: number, direction: number): { col: numbe
   return { col: col + dcol, row: row + drow };
 }
 
+// The wedge of hexes in front of a unit, out to `range` steps. Both hexes the
+// facing lies between are one step away, and every step after that spreads the
+// wedge one hex wider — so the whole of it is a triangle of
+// `range * (range + 3) / 2` hexes, growing from the pair in front of the unit.
+// The hex the unit stands on is not in it.
+//
+// Read out ring by ring, walking each ring's cells one step in both front
+// directions. A cell reached twice in the same ring is kept once, which is what
+// makes the two edges of the wedge meet in a triangle rather than double up
+// through the middle of it.
+function forwardCone(col: number, row: number, facing: number, range: number): ConeCell[] {
+  const directions = frontDirections(facing);
+  const cone: ConeCell[] = [];
+  const seen = new Set<string>([cellKey(col, row)]);
+  let ring: Array<{ col: number; row: number }> = [{ col, row }];
+
+  for (let distance = 1; distance <= range; distance += 1) {
+    const next: Array<{ col: number; row: number }> = [];
+
+    for (const cell of ring) {
+      for (const direction of directions) {
+        const step = neighborCell(cell.col, cell.row, direction);
+        if (step === null) {
+          continue;
+        }
+
+        const key = cellKey(step.col, step.row);
+        if (seen.has(key)) {
+          continue;
+        }
+
+        seen.add(key);
+        next.push(step);
+        cone.push({ col: step.col, row: step.row, distance });
+      }
+    }
+
+    ring = next;
+  }
+
+  return cone;
+}
+
+// Clockwise degrees from straight up, from one hex's centre to another's. A
+// facing and a neighbour direction are both measured that way, so a bearing can
+// go wherever one of those does — the arrow drawn at a target, the way a blow
+// travels. For two neighbouring hexes it comes out as exactly the direction
+// between them.
+function bearingBetween(fromCol: number, fromRow: number, toCol: number, toRow: number): number {
+  const from = hexCenter(fromCol, fromRow, HEX_SIZE);
+  const to = hexCenter(toCol, toRow, HEX_SIZE);
+  // The y axis points down, so the northward leg is measured the other way
+  // round. `atan2` is handed the sideways leg first, which is what turns the
+  // usual counter-clockwise-from-east angle into clockwise-from-north.
+  const degrees = (Math.atan2(to.x - from.x, from.y - to.y) * 180) / Math.PI;
+  return normalizeAngle(degrees);
+}
+
 function buildGrid(cols: number, rows: number, size = HEX_SIZE): HexGrid {
   const cells: HexCell[] = [];
   for (let row = 0; row < rows; row += 1) {
@@ -159,12 +226,14 @@ export {
   HEX_GAP,
   HEX_INSET,
   HEX_SIZE,
+  bearingBetween,
   buildGrid,
   cellKey,
+  forwardCone,
   frontDirections,
   hexPoints,
   hexRingPoints,
   hexWidth,
   neighborCell,
 };
-export type { Bounds, HexCell, HexGrid };
+export type { Bounds, ConeCell, HexCell, HexGrid };

@@ -29,7 +29,21 @@ function Row({ children }: { children: ReactNode }) {
   return <div className={styles.row}>{children}</div>;
 }
 
-const InfoPanel = { Root, Title, Row };
+// A number the panel expects to change, shown as what it stands at now and what
+// it would stand at afterwards. The number it would become is the one picked
+// out: the current one is already on the panel every other moment, and the
+// reading being offered is the one that is not.
+function Projection({ from, to }: { from: number; to: number }) {
+  return (
+    <>
+      {from}
+      <span className={styles.arrow}>→</span>
+      <span className={styles.projected}>{to}</span>
+    </>
+  );
+}
+
+const InfoPanel = { Root, Title, Row, Projection };
 
 export { InfoPanel };
 export type { InfoPanelCorner };

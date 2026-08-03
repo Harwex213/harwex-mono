@@ -147,6 +147,47 @@
   }
 }
 
+/* The volley. The shooter never leaves its hex: it leans back into the draw,
+   flicks forward as the string goes, and settles while the arrow crosses the
+   board. Measured against the way the shot travels, the same two properties the
+   lunge is worked out from — so the lean is back along the flight and the flick
+   is after it.
+
+   The whole of it lasts the flight, which is what makes the settle read as the
+   shooter watching its arrow away. */
+.shooting {
+  animation: shoot var(--unit-shot, 520ms) ease-out;
+}
+
+@keyframes shoot {
+  0% {
+    transform: translate(0, 0);
+  }
+
+  18% {
+    transform: translate(calc(var(--punch-dx) * -0.3), calc(var(--punch-dy) * -0.3));
+  }
+
+  34% {
+    transform: translate(calc(var(--punch-dx) * 0.14), calc(var(--punch-dy) * 0.14));
+  }
+
+  100% {
+    transform: translate(0, 0);
+  }
+}
+
+/* A blow that has already travelled: an arrow coming down, as against a weapon
+   swung by hand. The two animations below open with a still stretch, because a
+   lunge is committed and lands a moment later — and an arrow has done its
+   travelling in the air, so that stretch is spent before it is mounted. A
+   negative delay of exactly the wind-up is what drops it: the animation starts
+   the frame it is mounted on, at the point the blow connects. */
+.landed.struck,
+.landed .flash {
+  animation-delay: calc(-1 * var(--unit-punch-impact, 170ms));
+}
+
 /* The step. The marker is already drawn on the hex it has arrived at, so the
    animation opens it back on the hex it left — that offset is what comes in as
    the two custom properties — and walks it home. Ease in and out, so the unit

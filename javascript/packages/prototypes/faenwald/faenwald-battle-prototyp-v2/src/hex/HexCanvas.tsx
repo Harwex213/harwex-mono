@@ -24,24 +24,34 @@ const FIT_ZOOM = 1.8;
 const CLICK_SLOP = 4;
 
 // How long the view takes to travel to a point it has been sent to.
-const CENTER_MS = 420;
+const CENTER_MS = 520;
 
 // A journey shorter than this is already where it was going. Animating it would
 // spend a fifth of a second saying nothing.
 const CENTER_SLOP = 0.5;
 
+// The view does not sit on the pointer. It closes half of the distance to the
+// hand every this many milliseconds, which files off the corners of a gesture
+// the pointer reports as steps. The lag is proportional to speed, so a careful
+// drag still lands where it was aimed while a fast one reads as weight.
+const PAN_FOLLOW_HALF_LIFE_MS = 30;
+
+// The chase ends here. Halving a gap this small again would spend frames moving
+// the board a fraction of a pixel.
+const PAN_SETTLE_SLOP = 0.5;
+
 // How much of the newest sample goes into the pan velocity. A single move can
 // land a pixel off the line the hand is drawing, so the velocity is an average
 // over the last few — but a stale one would launch the glide in the direction
 // the gesture used to have.
-const VELOCITY_BLEND = 0.4;
+const VELOCITY_BLEND = 0.3;
 
 // The glide velocity halves every this many milliseconds. Speed is carried in
 // pixels per millisecond throughout.
-const GLIDE_HALF_LIFE_MS = 110;
+const GLIDE_HALF_LIFE_MS = 75;
 
 // A release slower than this is a hand setting the board down, not a throw.
-const GLIDE_LAUNCH_SPEED = 0.08;
+const GLIDE_LAUNCH_SPEED = 0.14;
 
 // The glide ends here. Below a pixel every few frames the motion has stopped
 // reading as motion and is only keeping a frame loop alive.
@@ -95,6 +105,17 @@ function HexCanvas({ children, handleRef, onCellClick, onCellHover, world }: Hex
     vx: number;
     vy: number;
   } | null>(null);
+  // The point the view is chasing, and the speed that point carries once the
+  // hand has let go. Holding the hand and the throw in one place is what makes
+  // the release smooth: the moment the pointer leaves changes only who moves
+  // this point, and the view goes on closing on it either way.
+  const panRef = useRef<{
+    x: number;
+    y: number;
+    vx: number;
+    vy: number;
+    gliding: boolean;
+  } | null>(null);
   const pannedRef = useRef(false);
   const touchedRef = useRef(false);
   const [view, setView] = useState<View>({ x: 0, y: 0, k: 1 });
@@ -116,7 +137,11 @@ function HexCanvas({ children, handleRef, onCellClick, onCellHover, world }: Hex
     viewRef.current = view;
   }, [view]);
 
+  // Drops everything that is moving the view on its own. Whoever calls this is
+  // about to set the view themselves, and a chase left running would keep
+  // pulling it back towards a point that no longer means anything.
   const stopTravel = useCallback(() => {
+    panRef.current = null;
     if (frameRef.current !== null) {
       window.cancelAnimationFrame(frameRef.current);
       frameRef.current = null;
@@ -187,7 +212,7 @@ function HexCanvas({ children, handleRef, onCellClick, onCellHover, world }: Hex
       // A view that slides across the board is the whole point of the order, so
       // a reader who has asked for less motion is given the destination instead
       // of the journey.
-      if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      if (prefersReducedMotion()) {
         setView((current) => ({ ...current, x: targetX, y: targetY }));
         return;
       }
@@ -201,7 +226,7 @@ function HexCanvas({ children, handleRef, onCellClick, onCellHover, world }: Hex
         startedAt ??= now;
 
         const progress = Math.min(1, (now - startedAt) / CENTER_MS);
-        const eased = easeOut(progress);
+        const eased = easeInOut(progress);
         setView((current) => ({
           ...current,
           x: from.x + dx * eased,
@@ -216,15 +241,27 @@ function HexCanvas({ children, handleRef, onCellClick, onCellHover, world }: Hex
     [stopTravel],
   );
 
-  // Carries the pan on after the hand has left, slowing down at a fixed rate.
-  // The velocity is not aimed at any destination, so this one integrates a speed
-  // per frame instead of easing along a known distance the way `centerOn` does.
-  const glide = useCallback((velocityX: number, velocityY: number) => {
-    let vx = velocityX;
-    let vy = velocityY;
+  // Runs the whole pan: the view closes on the point in `panRef` while the hand
+  // drags that point around, and then while the throw carries it. Both halves
+  // integrate a rate per frame rather than easing along a known distance the way
+  // `centerOn` does, because neither one knows where it will end up.
+  //
+  // Calling this again while it is already running does nothing, so every move
+  // of the drag can ask for it without booking a second loop.
+  const runPan = useCallback(() => {
+    if (frameRef.current !== null) {
+      return;
+    }
+
     let previous: number | null = null;
 
     const step = (now: number) => {
+      const pan = panRef.current;
+      if (pan === null) {
+        frameRef.current = null;
+        return;
+      }
+
       // The first frame has no elapsed time to spend, so it only marks the
       // clock. Measuring from the call instead would count the wait for that
       // frame as travel the hand never made.
@@ -237,14 +274,48 @@ function HexCanvas({ children, handleRef, onCellClick, onCellHover, world }: Hex
       const elapsed = Math.min(now - previous, MAX_FRAME_MS);
       previous = now;
 
-      setView((current) => ({ ...current, x: current.x + vx * elapsed, y: current.y + vy * elapsed }));
+      if (pan.gliding) {
+        pan.x += pan.vx * elapsed;
+        pan.y += pan.vy * elapsed;
+        const decay = 0.5 ** (elapsed / GLIDE_HALF_LIFE_MS);
+        pan.vx *= decay;
+        pan.vy *= decay;
+        // The throw is spent. The view is still short of the point it was
+        // aimed at, so the chase below carries on and lands it.
+        if (Math.hypot(pan.vx, pan.vy) < GLIDE_STOP_SPEED) {
+          pan.gliding = false;
+        }
+      }
 
-      const decay = 0.5 ** (elapsed / GLIDE_HALF_LIFE_MS);
-      vx *= decay;
-      vy *= decay;
+      // The view is read a frame behind, because the update below has not been
+      // painted yet. The gap only decides whether to book another frame, and the
+      // branch that takes it lands the view exactly either way.
+      const settled =
+        !pan.gliding &&
+        Math.abs(pan.x - viewRef.current.x) < PAN_SETTLE_SLOP &&
+        Math.abs(pan.y - viewRef.current.y) < PAN_SETTLE_SLOP;
 
-      const speed = Math.hypot(vx, vy);
-      frameRef.current = speed > GLIDE_STOP_SPEED ? window.requestAnimationFrame(step) : null;
+      if (settled) {
+        setView((current) => ({ ...current, x: pan.x, y: pan.y }));
+        // A hand still holding the board has caught up with it, which happens
+        // whenever it pauses mid-drag. The point it was aiming at is kept so the
+        // next move can add to it, and only the loop needs starting again —
+        // otherwise a held pointer would spend a frame a tick going nowhere.
+        if (dragRef.current === null) {
+          panRef.current = null;
+        }
+        frameRef.current = null;
+        return;
+      }
+
+      const follow = 1 - 0.5 ** (elapsed / PAN_FOLLOW_HALF_LIFE_MS);
+      setView((current) => ({
+        ...current,
+        x: current.x + (pan.x - current.x) * follow,
+        y: current.y + (pan.y - current.y) * follow,
+      }));
+
+      frameRef.current = window.requestAnimationFrame(step);
     };
 
     frameRef.current = window.requestAnimationFrame(step);
@@ -333,6 +404,10 @@ function HexCanvas({ children, handleRef, onCellClick, onCellHover, world }: Hex
       vx: 0,
       vy: 0,
     };
+    // Seeded on the view rather than started as a chase: the loop only begins
+    // once the gesture has passed the click slop, so a press that turns out to
+    // be a click never books a frame.
+    panRef.current = { gliding: false, vx: 0, vy: 0, x: viewRef.current.x, y: viewRef.current.y };
     pannedRef.current = false;
     // The pointer is deliberately not captured here. Capturing retargets the
     // compat `pointerup` and `click` to the SVG, and the click handler below
@@ -377,7 +452,24 @@ function HexCanvas({ children, handleRef, onCellClick, onCellHover, world }: Hex
       drag.movedAt = now;
     }
 
-    setView((current) => ({ ...current, x: current.x + dx, y: current.y + dy }));
+    // A reader who has asked for less motion gets the board pinned to the
+    // pointer: the chase is motion the hand did not draw, however small.
+    if (prefersReducedMotion()) {
+      setView((current) => ({ ...current, x: current.x + dx, y: current.y + dy }));
+      return;
+    }
+
+    const pan = panRef.current;
+    if (pan === null) {
+      // A wheel tick in the middle of the drag has taken the view over and
+      // dropped the chase. Pick it up from wherever the zoom left the view.
+      panRef.current = { gliding: false, vx: 0, vy: 0, x: viewRef.current.x + dx, y: viewRef.current.y + dy };
+    } else {
+      pan.x += dx;
+      pan.y += dy;
+    }
+
+    runPan();
   }
 
   function onPointerUp(event: ReactPointerEvent<SVGSVGElement>) {
@@ -386,6 +478,7 @@ function HexCanvas({ children, handleRef, onCellClick, onCellHover, world }: Hex
       return;
     }
 
+    const pan = panRef.current;
     dragRef.current = null;
     setPanning(false);
     // Only a pan ever took the capture.
@@ -393,15 +486,24 @@ function HexCanvas({ children, handleRef, onCellClick, onCellHover, world }: Hex
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
 
-    // A cancel is the browser taking the gesture away, not a throw. A click
-    // never moved the board and has nothing to carry on.
-    if (event.type !== "pointerup" || !pannedRef.current) {
+    // A click never moved the board and has nothing to settle or carry on.
+    if (!pannedRef.current) {
+      panRef.current = null;
       return;
     }
 
-    // The board keeps moving after the hand has left, so a reader who has asked
-    // for less motion gets the pan they drew and nothing more.
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    // Every path below this point leaves the chase running if it is short of
+    // the point the hand left off at. Cutting it there would put a stop into
+    // the one moment of the gesture the hand did not ask to be interrupted.
+    if (pan === null) {
+      return;
+    }
+
+    // A cancel is the browser taking the gesture away, not a throw. Neither is a
+    // hand that had already parked the board before letting go, nor one that set
+    // it down slowly. And the board carrying on after the hand has left is
+    // exactly the motion a reader asking for less of it does not want.
+    if (event.type !== "pointerup" || prefersReducedMotion()) {
       return;
     }
 
@@ -413,7 +515,10 @@ function HexCanvas({ children, handleRef, onCellClick, onCellHover, world }: Hex
       return;
     }
 
-    glide(drag.vx, drag.vy);
+    pan.vx = drag.vx;
+    pan.vy = drag.vy;
+    pan.gliding = true;
+    runPan();
   }
 
   // Clicks are read off the group instead of per-cell handlers: the canvas
@@ -474,11 +579,15 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
-// Cubic ease-out: the view sets off at once and settles into the point it was
-// sent to. The eye follows the board itself, so the arrival is what has to be
-// gentle — a slow start would only delay it.
-function easeOut(progress: number): number {
-  return 1 - (1 - progress) ** 3;
+// Cubic ease-in-out: the view is at rest at both ends of the journey and carries
+// its speed through the middle. Nobody asked this travel to start, so it must
+// not announce itself the way a jump to full speed does.
+function easeInOut(progress: number): number {
+  return progress * progress * (3 - 2 * progress);
+}
+
+function prefersReducedMotion(): boolean {
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
 
 export { HexCanvas };

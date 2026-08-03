@@ -1,0 +1,109 @@
+/* The arrow crossing the board. Drawn over every marker, so it carries the same
+   outline they do — otherwise it would sink into whichever unit it flies over. */
+.shot {
+  pointer-events: none;
+}
+
+.bolt {
+  fill: var(--map-attack);
+  stroke: var(--unit-outline);
+  stroke-linejoin: round;
+  stroke-width: 1.5;
+}
+
+/* The straight run from the shooter to its target, at a steady pace: a volley
+   crosses four hexes in the same time it crosses one, so the distance is in the
+   travel and not in the timing. */
+.travel {
+  animation: shotTravel var(--unit-shot, 520ms) linear both;
+  will-change: transform;
+}
+
+@keyframes shotTravel {
+  from {
+    transform: translate(0, 0);
+  }
+
+  to {
+    transform: translate(var(--shot-dx), var(--shot-dy));
+  }
+}
+
+/* Off to the side of that run and back, which bends the flight into the curve
+   the hover feedback drew. The offsets are the control point of that curve, and a
+   quadratic curve is `2t(1 - t)` of it away from the straight line at any point —
+   so these are the multipliers, a tenth of the flight apart. Steady pace here as
+   well: the curve is in the numbers, not in the easing. */
+.arc {
+  animation: shotArc var(--unit-shot, 520ms) linear both;
+}
+
+@keyframes shotArc {
+  0% {
+    transform: translate(0, 0);
+  }
+
+  10% {
+    transform: translate(calc(var(--shot-arc-x) * 0.18), calc(var(--shot-arc-y) * 0.18));
+  }
+
+  20% {
+    transform: translate(calc(var(--shot-arc-x) * 0.32), calc(var(--shot-arc-y) * 0.32));
+  }
+
+  30% {
+    transform: translate(calc(var(--shot-arc-x) * 0.42), calc(var(--shot-arc-y) * 0.42));
+  }
+
+  40% {
+    transform: translate(calc(var(--shot-arc-x) * 0.48), calc(var(--shot-arc-y) * 0.48));
+  }
+
+  50% {
+    transform: translate(calc(var(--shot-arc-x) * 0.5), calc(var(--shot-arc-y) * 0.5));
+  }
+
+  60% {
+    transform: translate(calc(var(--shot-arc-x) * 0.48), calc(var(--shot-arc-y) * 0.48));
+  }
+
+  70% {
+    transform: translate(calc(var(--shot-arc-x) * 0.42), calc(var(--shot-arc-y) * 0.42));
+  }
+
+  80% {
+    transform: translate(calc(var(--shot-arc-x) * 0.32), calc(var(--shot-arc-y) * 0.32));
+  }
+
+  90% {
+    transform: translate(calc(var(--shot-arc-x) * 0.18), calc(var(--shot-arc-y) * 0.18));
+  }
+
+  100% {
+    transform: translate(0, 0);
+  }
+}
+
+/* Bigger towards the middle of the flight and back down as it comes in. A board
+   seen from above cannot show an arrow going up, and this is the one thing it can
+   say instead: the arrow is nearer the eye at the top of its arc than at either
+   end of it. */
+.rise {
+  animation: shotRise var(--unit-shot, 520ms) ease-in-out both;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+@keyframes shotRise {
+  from {
+    transform: scale(1);
+  }
+
+  50% {
+    transform: scale(1.45);
+  }
+
+  to {
+    transform: scale(1);
+  }
+}

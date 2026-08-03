@@ -1,0 +1,13 @@
+/* A hex a canopy shot could come down on. Fourteen of them are on at once, so
+   the wash has to be light: the terrain under the cone still has to read, and so
+   does every other cue the board draws on those hexes. A move target covers its
+   terrain instead — that one is a single hex an order is waiting on.
+
+   The pointer is not answered here at all, not even with a hover shade. The cone
+   says where a shot could land, and the hex under it goes on answering the way
+   every other hex does. */
+.fill {
+  fill: var(--map-canopy);
+  fill-opacity: 0.28;
+  pointer-events: none;
+}

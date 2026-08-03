@@ -1,6 +1,7 @@
-import type { AttackTarget } from "../state/attack-strategies";
+import type { AttackKind, AttackTarget } from "../state/attack-strategies";
 import { cellOf } from "../state/grid-state";
-import { HEX_INSET, HEX_SIZE, hexPoints } from "./hex-layout";
+import { HEX_INSET, HEX_SIZE, hexPoints, hexWidth } from "./hex-layout";
+import { shotArc } from "./shot-arc";
 import styles from "./attack-target.module.css";
 
 // The whole hex, less its own outline: the shape that takes the pointer over a
@@ -20,10 +21,22 @@ const ARROW_POINTS = [
   `${(-ARROW_WIDTH).toFixed(2)},${(ARROW_LENGTH * 0.72).toFixed(2)}`,
 ].join(" ");
 
+// How far back from the target the dart sits, measured along the way the blow
+// travels. One hex width is the distance between two neighbouring centres, so
+// for a blow landed by hand this is the seam the blow crosses — and for a shot
+// four hexes up the board it is the same distance short of the unit it comes down
+// on. Either way the dart's tip reaches into the target's marker.
+const ARROW_STANDOFF = hexWidth(HEX_SIZE) / 2;
+
 type AttackTargetLayerProps = {
   // The hex the armed attacker stands on. Null while no attack is armed, which
   // is also when the list of targets is empty.
   fromKey: string | null;
+  // Which attack is armed. A blow landed by hand is offered as the dart alone:
+  // the target is the next hex over, and a line to it would say nothing the dart
+  // does not. A volley is offered as the flight it would take, drawn while the
+  // pointer rests on the unit it would come down on.
+  kind: AttackKind;
   targets: AttackTarget[];
   hoveredUnitId: string | null;
   onHover: (unitId: string | null) => void;
@@ -35,6 +48,7 @@ type AttackTargetLayerProps = {
 // layer is handed an empty list then, the way the move targets are.
 function AttackTargetLayer({
   fromKey,
+  kind,
   targets,
   hoveredUnitId,
   onHover,
@@ -49,10 +63,10 @@ function AttackTargetLayer({
     <>
       {targets.map((target) => (
         <AttackArrow
-          fromX={from.x}
-          fromY={from.y}
+          from={from}
           hovered={target.unitId === hoveredUnitId}
           key={target.unitId}
+          lobbed={kind === "canopy"}
           onHover={onHover}
           onPick={onPick}
           target={target}
@@ -63,16 +77,16 @@ function AttackTargetLayer({
 }
 
 function AttackArrow({
-  fromX,
-  fromY,
+  from,
   hovered,
+  lobbed,
   onHover,
   onPick,
   target,
 }: {
-  fromX: number;
-  fromY: number;
+  from: { x: number; y: number };
   hovered: boolean;
+  lobbed: boolean;
   onHover: (unitId: string | null) => void;
   onPick: (unitId: string) => void;
   target: AttackTarget;
@@ -82,17 +96,23 @@ function AttackArrow({
     return null;
   }
 
-  // The dart sits halfway between the two hexes, which is the seam the blow
-  // crosses: its tip reaches into the target's marker and its tail rests on the
-  // attacker's, so the arrow says who is hitting whom without a line between
-  // them.
-  const midX = (fromX + cell.x) / 2;
-  const midY = (fromY + cell.y) / 2;
+  // The dart stands one standoff short of the target, along the way the blow
+  // travels: its tip reaches into the target's marker and, for a blow landed by
+  // hand, its tail rests on the attacker's. So the arrow says who is hitting whom
+  // without a line between them.
+  const radians = (Math.PI / 180) * target.direction;
+  const dartX = cell.x - ARROW_STANDOFF * Math.sin(radians);
+  const dartY = cell.y + ARROW_STANDOFF * Math.cos(radians);
 
-  // Handlers on the group, so the hex and the arrow are one target between
-  // them: a pointer crossing from one onto the other must not read as leaving.
-  // The click is stopped here, or the canvas underneath would take the hex it
-  // landed on as a plain selection and the attack would be called off.
+  // The flight a volley would take, drawn only under the pointer: a shot four
+  // hexes up the board needs the whole line said out loud, and every target
+  // saying it at once would bury the board in arcs.
+  const flight = lobbed && hovered ? shotArc(from, cell) : null;
+
+  // Handlers on the group, so the hex and the arrow are one target between them:
+  // a pointer crossing from one onto the other must not read as leaving. The
+  // click is stopped here, or the canvas underneath would take the hex it landed
+  // on as a plain selection and the attack would be called off.
   return (
     <g
       className={hovered ? `${styles.target} ${styles.hovered}` : styles.target}
@@ -111,11 +131,21 @@ function AttackArrow({
         points={HIT_POINTS}
         transform={`translate(${cell.x.toFixed(2)} ${cell.y.toFixed(2)})`}
       />
+      {/* The line the arrow would fly, from the shooter's hex. Dashes running the
+          way the shot goes, so the feedback says which end is the shooter — and
+          the same curve the arrow is carried along once the shot is committed. */}
+      {flight === null ? null : (
+        <path
+          className={styles.flight}
+          d={flight.path}
+          transform={`translate(${from.x.toFixed(2)} ${from.y.toFixed(2)})`}
+        />
+      )}
       {/* The ring that lights the target hex up is not drawn here. It is the hex
           outline itself, in the attack colour — see `attackKey` in
           `HexGridLayer`. Anything drawn inside the hex would land on the marker
           standing on it and cover the bars flanking that marker. */}
-      <g transform={`translate(${midX.toFixed(2)} ${midY.toFixed(2)}) rotate(${target.direction})`}>
+      <g transform={`translate(${dartX.toFixed(2)} ${dartY.toFixed(2)}) rotate(${target.direction})`}>
         <polygon className={styles.arrow} points={ARROW_POINTS} />
       </g>
     </g>

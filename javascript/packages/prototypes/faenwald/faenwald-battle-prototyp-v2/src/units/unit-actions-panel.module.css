@@ -81,3 +81,16 @@
   justify-content: center;
   width: 100%;
 }
+
+/* The one control on the card that is not an order: it says what the board draws
+   rather than what the unit does. So it is a switch on a plain row instead of a
+   full-width button, and it reads in the muted colour the card's own labels use. */
+.toggle {
+  align-items: center;
+  color: var(--uk-fg-muted);
+  cursor: pointer;
+  display: flex;
+  font-size: 13px;
+  gap: var(--uk-space-2);
+  white-space: nowrap;
+}

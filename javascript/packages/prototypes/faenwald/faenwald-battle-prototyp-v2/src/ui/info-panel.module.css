@@ -55,3 +55,19 @@
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
+
+/* Between the number a stat stands at and the one it would stand at. Quieter
+   than either, the way the arrow in the Accelerate dialog is: it joins the two
+   readings rather than being one of them. */
+.arrow {
+  color: var(--uk-fg-subtle);
+  padding: 0 2px;
+}
+
+/* What the stat would be left at. Carries the danger colour rather than the map
+   attack red: the panel is app chrome and follows the uikit tokens, so the
+   number reads on either theme. */
+.projected {
+  color: var(--uk-danger);
+  font-weight: 600;
+}

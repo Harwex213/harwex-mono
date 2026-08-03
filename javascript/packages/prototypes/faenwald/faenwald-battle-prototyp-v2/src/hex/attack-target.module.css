@@ -38,3 +38,23 @@
   fill: var(--map-attack-hover);
   transform: scale(1.2);
 }
+
+/* The flight a volley would take, drawn while the pointer rests on the unit it
+   would come down on. Dashed rather than solid: the arrow is not there yet, and a
+   line drawn whole would read as one that is. The dashes march the way the shot
+   goes — a negative offset moves them along the path, and one full pattern per
+   run is what keeps the motion seamless as it loops. */
+.flight {
+  animation: march 560ms linear infinite;
+  fill: none;
+  stroke: var(--map-attack);
+  stroke-dasharray: 7 7;
+  stroke-linecap: round;
+  stroke-width: 2.5;
+}
+
+@keyframes march {
+  to {
+    stroke-dashoffset: -14;
+  }
+}

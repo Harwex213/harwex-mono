@@ -278,15 +278,26 @@ function UnitMarker({
   }
 
   const icon = UNIT_ICONS[unit.kind];
-  const punching = strike !== undefined && strike !== null && strike.attackerId === unit.id;
-  const struck = strike !== undefined && strike !== null && strike.targetId === unit.id;
+  const blow = strike ?? null;
+  const attacking = blow !== null && blow.attackerId === unit.id;
+  // A blow landed by hand is a lunge. A volley is loosed instead: the shooter
+  // leans back into the draw and settles while its arrow crosses the board, and
+  // never leaves the hex it is standing on.
+  const punching = attacking && blow.kind === "melee";
+  const shooting = attacking && blow.kind === "canopy" && blow.phase === "flight";
+  // The unit under the blow answers when the blow arrives. For a lunge that is
+  // the moment it is committed — the lunge carries its own wind-up. For a volley
+  // it is the moment the arrow comes down, so the marker stands still while the
+  // arrow is in the air and `landed` cuts the wind-up the keyframes open with.
+  const struck = blow !== null && blow.targetId === unit.id && blow.phase === "impact";
+  const landed = struck && blow.kind === "canopy";
 
   // The lunge is a CSS animation, and a CSS transform on the group would throw
   // away the `transform` attribute that puts the marker on its hex. So the
   // translate stays on the outer group and everything that animates hangs off an
   // inner one. A facing is clockwise from straight up, and the y axis points
   // down, which is where the sign on the second line comes from.
-  const radians = strike === undefined || strike === null ? 0 : (Math.PI / 180) * strike.direction;
+  const radians = blow === null ? 0 : (Math.PI / 180) * blow.direction;
 
   // Where the step started, as an offset from the hex the unit now stands on.
   // The animation opens the marker there and brings it home.
@@ -303,7 +314,9 @@ function UnitMarker({
   const bodyClass = [
     styles.marker,
     punching ? styles.punching : "",
+    shooting ? styles.shooting : "",
     struck ? styles.struck : "",
+    landed ? styles.landed : "",
     from === null ? "" : styles.stepping,
   ]
     .filter((part) => part !== "")
@@ -314,8 +327,8 @@ function UnitMarker({
   // run it once. A blow wins the slot, because a unit cannot be told to strike
   // and to step at the same time — only one order is armed.
   let replayKey = "still";
-  if (punching || struck) {
-    replayKey = `strike-${strike?.seq}`;
+  if (punching || shooting || struck) {
+    replayKey = `strike-${blow?.seq}`;
   } else if (from !== null) {
     replayKey = `step-${movement?.seq}`;
   }

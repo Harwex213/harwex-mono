@@ -3,17 +3,22 @@ import { useSignals } from "@preact/signals-react/runtime";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { playUnitSelect } from "../../audio/sounds";
 import { AttackTargetLayer } from "../../hex/AttackTargetLayer";
+import { CanopyConeLayer } from "../../hex/CanopyConeLayer";
 import { HexCanvas, type HexCanvasHandle } from "../../hex/HexCanvas";
 import { HexGridLayer } from "../../hex/HexGridLayer";
 import { HexInfoPanel } from "../../hex/HexInfoPanel";
 import { MoveTargetLayer } from "../../hex/MoveTargetLayer";
+import { ProjectileLayer } from "../../hex/ProjectileLayer";
 import { ChatPanel } from "../../session/ChatPanel";
 import {
   ACCELERATE_MORALE_COST,
+  PUNCH_IMPACT_MS,
   PUNCH_MS,
+  SHOT_MS,
   STEP_MS,
   accelerateUnit,
   activeUnit,
+  armedAttack,
   attackFromKey,
   attackTargets,
   attackUnit,
@@ -25,6 +30,7 @@ import {
   cancelActions,
   cancelAttack,
   cancelRotate,
+  canopyConeKeys,
   endTurn,
   hoverAttackTarget,
   hoverFacing,
@@ -44,7 +50,10 @@ import {
   rotatingUnitId,
   selectScenario,
   selectUnit,
+  selectedAttack,
   selectedUnit,
+  setCanopyCone,
+  showCanopyCone,
   statsOf,
   strike,
   strikeUnit,
@@ -91,6 +100,11 @@ const TURN_MS = 260;
 // the animation and the timer that ends it read one number between them.
 const CANVAS_TIMINGS = {
   "--unit-punch": `${PUNCH_MS}ms`,
+  // How far into a lunge the blow lands. A shot has already travelled by the time
+  // it comes down, so the unit under it is handed this much of the reaction as a
+  // negative delay — see `.landed` in `unit.module.css`.
+  "--unit-punch-impact": `${PUNCH_IMPACT_MS}ms`,
+  "--unit-shot": `${SHOT_MS}ms`,
   "--unit-step": `${STEP_MS}ms`,
   "--unit-turn": `${TURN_MS}ms`,
 } as CSSProperties;
@@ -116,6 +130,20 @@ function ActiveBattlePage() {
   // a modal backdrop, so the mouse cannot reach it anyway — this is what stops a
   // shortcut key from arming something behind the answer.
   const commanding = commandable && !confirmingAccelerate;
+
+  // What the info panel reads the target's stats against while an attack is
+  // armed and the pointer rests on somebody it may hit. Both halves come off the
+  // same hover, so they are either both there or both gone — the hex says which
+  // unit the panel answers for, the damage what the blow would leave it at.
+  const damage = pendingDamage.value;
+  const threatKey = hoveredTargetKey.value;
+  const threat =
+    damage === null || threatKey === null ? null : { damage: damage.damage, key: threatKey };
+
+  // The cone switch belongs to a shooter and to nobody else: a unit that fights
+  // by hand has no cone to draw, and is handed no handler to draw one with — which
+  // is what keeps the switch off its card.
+  const coneToggle = selectedAttack.value?.kind === "canopy" ? setCanopyCone : undefined;
 
   // Find is the one order on the card the board never hears about: it moves the
   // view rather than the unit. That makes it the page's own — the canvas owns
@@ -161,6 +189,11 @@ function ActiveBattlePage() {
                 in place of the hover one, so the board answers a pointer resting
                 on a target with one ring rather than two. */}
             <HexGridLayer attackKey={hoveredTargetKey.value}>
+              {/* Under everything: a wash over a whole cone of hexes, which says
+                  where a shot could come down rather than what the board is
+                  waiting for. An order armed on one of those hexes has to be read
+                  over the top of it. */}
+              <CanopyConeLayer cellKeys={canopyConeKeys.value} />
               {/* Before the markers, so a unit is never drawn under the hexes
                   its neighbour may step onto. */}
               <MoveTargetLayer targets={moveTargets.value} />
@@ -180,23 +213,30 @@ function ActiveBattlePage() {
               <AttackTargetLayer
                 fromKey={attackFromKey.value}
                 hoveredUnitId={hoveredTargetId.value}
+                kind={armedAttack.value?.kind ?? "melee"}
                 onHover={hoverAttackTarget}
                 onPick={strikeUnit}
                 targets={attackTargets.value}
               />
+              {/* Last of all: an arrow in the air is over every unit it flies
+                  across, and over the cues drawn on their hexes. */}
+              <ProjectileLayer strike={strike.value} />
             </HexGridLayer>
           </HexCanvas>
           {selected === null ? null : (
             <UnitActionsPanel
               accelerateDisabled={!canAccelerate.value}
+              attackLabel={selectedAttack.value?.label}
               attacking={attackingUnitId.value === selected.id}
               canAttack={canAttack.value}
+              coneShown={showCanopyCone.value}
               disabled={!commanding}
               moves={{ left: movesLeftOf(selected.id), total: movesTotalOf(selected.id) }}
               moving={movingUnitId.value === selected.id}
               onAccelerate={() => setConfirmingAccelerate(true)}
               onAttack={attackUnit}
               onCancel={cancelActions}
+              onConeToggle={coneToggle}
               onFind={findSelected}
               onMove={toggleMove}
               onRotate={toggleRotate}
@@ -204,7 +244,7 @@ function ActiveBattlePage() {
               unit={selected}
             />
           )}
-          <HexInfoPanel unitAt={battleUnitAt} />
+          <HexInfoPanel threat={threat} unitAt={battleUnitAt} />
         </div>
 
         <TurnOrderBar />
