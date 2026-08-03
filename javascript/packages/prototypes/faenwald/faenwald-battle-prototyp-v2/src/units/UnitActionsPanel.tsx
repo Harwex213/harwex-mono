@@ -1,40 +1,59 @@
 import { Button } from "@hw/faenwald-uikit";
 import { useEffect } from "react";
-import type { RosterUnit } from "../state/disposition-state";
+import type { UnitStats } from "../state/units-state";
 import styles from "./unit-actions-panel.module.css";
 
-// Still wireframe: what these two do to the board is the next step. `Move` has
-// its own row below, because it is the one that works.
-const IDLE_ACTIONS = [
-  { label: "Rotate", shortcut: "R" },
-  { label: "Attack", shortcut: "A" },
-];
-
-const MOVE_KEY = "w";
+// Only what the card shows. Each page keeps its own unit shape — a roster entry
+// before the battle, a deployed unit during it — and both answer this much.
+type ActionsUnit = {
+  title: string;
+  stats: UnitStats;
+};
 
 type UnitActionsPanelProps = {
-  unit: RosterUnit;
+  unit: ActionsUnit;
   // Whether this unit is already waiting for the hex to move to.
   moving: boolean;
+  // Whether its rotation handles are already out.
+  rotating: boolean;
   onMove: () => void;
+  onRotate: () => void;
+  // Disarms whatever is armed, leaving the unit as it stands.
+  onCancel: () => void;
 };
 
 // What a selected unit can be told to do. Overlays a canvas corner, so it needs
 // a positioned box around the canvas — same requirement as `InfoPanel`.
 // Prop-driven, so the page decides which unit it belongs to.
-function UnitActionsPanel({ unit, moving, onMove }: UnitActionsPanelProps) {
-  // The panel is on screen exactly while a unit is selected, so the shortcut can
-  // live with the button it stands for: mounting the panel arms it.
+function UnitActionsPanel({
+  unit,
+  moving,
+  rotating,
+  onMove,
+  onRotate,
+  onCancel,
+}: UnitActionsPanelProps) {
+  // The panel is on screen exactly while a unit is selected, so the shortcuts can
+  // live with the buttons they stand for: mounting the panel arms them.
   useEffect(() => {
+    const handlers: Record<Action, () => void> = {
+      move: onMove,
+      rotate: onRotate,
+      cancel: onCancel,
+    };
+
     function onKeyDown(event: KeyboardEvent) {
       if (event.metaKey || event.ctrlKey || event.altKey || isTyping(event.target)) {
         return;
       }
 
-      if (event.key.toLowerCase() === MOVE_KEY) {
-        event.preventDefault();
-        onMove();
+      const action = SHORTCUTS[event.key.toLowerCase()];
+      if (action === undefined) {
+        return;
       }
+
+      event.preventDefault();
+      handlers[action]();
     }
 
     window.addEventListener("keydown", onKeyDown);
@@ -42,7 +61,7 @@ function UnitActionsPanel({ unit, moving, onMove }: UnitActionsPanelProps) {
     return () => {
       window.removeEventListener("keydown", onKeyDown);
     };
-  }, [onMove]);
+  }, [onCancel, onMove, onRotate]);
 
   return (
     <div className={styles.panel}>
@@ -55,8 +74,8 @@ function UnitActionsPanel({ unit, moving, onMove }: UnitActionsPanelProps) {
         </div>
       </div>
 
-      {/* Lit while the move is armed, so the panel says the next hex click goes
-          to this unit. */}
+      {/* Lit while armed, so the panel says what the next click on the board
+          means. */}
       <Button.Root
         className={styles.action}
         onClick={onMove}
@@ -65,14 +84,25 @@ function UnitActionsPanel({ unit, moving, onMove }: UnitActionsPanelProps) {
         Move (W)
       </Button.Root>
 
-      {IDLE_ACTIONS.map((action) => (
-        <Button.Root className={styles.action} key={action.shortcut} variant="secondary">
-          {action.label} ({action.shortcut})
-        </Button.Root>
-      ))}
+      <Button.Root
+        className={styles.action}
+        onClick={onRotate}
+        variant={rotating ? "primary" : "secondary"}
+      >
+        Rotate (R)
+      </Button.Root>
     </div>
   );
 }
+
+type Action = "move" | "rotate" | "cancel";
+
+// `event.key` lowercased, so `Escape` arrives as `escape`.
+const SHORTCUTS: Record<string, Action> = {
+  w: "move",
+  r: "rotate",
+  escape: "cancel",
+};
 
 // The page has a chat box on it, so a letter typed into a field must not reach
 // the board.

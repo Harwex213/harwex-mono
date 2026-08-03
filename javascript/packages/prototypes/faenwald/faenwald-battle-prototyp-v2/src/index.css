@@ -49,6 +49,11 @@ body {
   /* Stat gauges flanking a unit marker. Their colours say health and morale,
      not side, so they stay the same on red and blue units alike. */
   --unit-bar-track: #ececec;
+  /* Rotation handles on the corners of a marker. The hover colour is the gold the
+     selected hex ticks to, so a handle answers the pointer in the same language
+     the board does. */
+  --unit-handle: #f7e2a4;
+  --unit-handle-hover: var(--map-selected-line);
   /* Overlay on the unit a move would trade places with: a dark wash over its
      marker, with the swap glyph on top. */
   --unit-swap-scrim: #101010;

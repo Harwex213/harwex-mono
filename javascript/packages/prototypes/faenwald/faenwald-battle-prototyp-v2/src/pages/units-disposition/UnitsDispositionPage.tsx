@@ -1,11 +1,14 @@
-import { Button, Input, Tooltip } from "@hw/faenwald-uikit";
+import { Button, Tooltip } from "@hw/faenwald-uikit";
 import { useSignals } from "@preact/signals-react/runtime";
-import { useEffect, useRef, useState, type FormEvent } from "react";
 import { HexCanvas } from "../../hex/HexCanvas";
 import { HexGridLayer } from "../../hex/HexGridLayer";
 import { HexInfoPanel } from "../../hex/HexInfoPanel";
+import { ChatPanel } from "../../session/ChatPanel";
 import {
+  cancelActions,
   cancelMove,
+  cancelRotate,
+  hoverFacing,
   isPlaced,
   moveUnit,
   movingUnitId,
@@ -18,16 +21,21 @@ import {
   placementOf,
   previewUnit,
   ready,
+  rotateCellKey,
+  rotateUnit,
+  rotatingUnitId,
   roster,
   selectedUnit,
   swapCellKey,
   toggleMove,
   toggleReady,
+  toggleRotate,
+  unitIdAt,
   type RosterUnit,
 } from "../../state/disposition-state";
 import { focusCell, grid, hoverCell, selectCell } from "../../state/grid-state";
-import { LOCAL_PLAYER, messages, players, sendMessage } from "../../state/session-state";
-import { InfoIcon, SendIcon } from "../../ui/icons";
+import { players } from "../../state/session-state";
+import { InfoIcon } from "../../ui/icons";
 import { UnitActionsPanel } from "../../units/UnitActionsPanel";
 import { UnitLayer } from "../../units/UnitLayer";
 import styles from "./units-disposition-page.module.css";
@@ -47,14 +55,24 @@ function UnitsDispositionPage() {
         <HexCanvas onCellClick={onCellClick} onCellHover={hoverCell} world={grid.bounds}>
           <HexGridLayer>
             <UnitLayer
+              onFacingHover={hoverFacing}
+              onFacingPick={rotateUnit}
               preview={previewUnit.value}
+              rotateCellKey={rotateCellKey.value}
               swapCellKey={swapCellKey.value}
               units={placedUnits.value}
             />
           </HexGridLayer>
         </HexCanvas>
         {unit === null ? null : (
-          <UnitActionsPanel moving={movingUnitId.value === unit.id} onMove={toggleMove} unit={unit} />
+          <UnitActionsPanel
+            moving={movingUnitId.value === unit.id}
+            onCancel={cancelActions}
+            onMove={toggleMove}
+            onRotate={toggleRotate}
+            rotating={rotatingUnitId.value === unit.id}
+            unit={unit}
+          />
         )}
         <HexInfoPanel unitAt={placedUnitAt} />
       </div>
@@ -68,21 +86,32 @@ function UnitsDispositionPage() {
 }
 
 // One click, three readings. An armed move sends its unit to the hex — the
-// selection is left to `moveUnit`, which follows the unit. Otherwise the click
-// selects the hex, and drops the armed roster unit on it if one is armed. A click
-// on a unit with nothing armed just selects it, which is what opens the actions
-// panel.
+// selection is left to `moveUnit`, which follows the unit. An armed roster unit
+// is dropped on the hex. A click on a unit with nothing armed selects it, which
+// is what opens the actions panel.
 function onCellClick(key: string): void {
   if (movingUnitId.value !== null) {
     moveUnit(key);
     return;
   }
 
-  selectCell(key);
+  // A click that lands on a hex missed the handles, so it is not a rotation. The
+  // handles take their own clicks and never reach this.
+  cancelRotate();
 
   if (pickedUnitId.value !== null) {
     placeUnit(key);
   }
+
+  // Only a hex with a unit on it can be selected: an empty one has nothing to
+  // show in the actions panel. A click on one is dropped rather than clearing the
+  // selection, so the panel stays while the pointer wanders the board. Read after
+  // the placement above, so the hex a unit just landed on selects itself.
+  if (unitIdAt(key) === null) {
+    return;
+  }
+
+  selectCell(key);
 }
 
 function RosterPanel() {
@@ -154,10 +183,12 @@ function RosterRow({ unit }: { unit: RosterUnit }) {
 function onRosterClick(unitId: string): void {
   const placement = placementOf(unitId);
   if (placement !== null) {
-    // A move armed on some other unit was aimed at a hex, and the roster row is
-    // not one. Selecting a different unit while it stayed armed would leave the
-    // panel and the ghost talking about two different units.
+    // A move or rotation armed on some other unit was aimed at the board, and the
+    // roster row is not the board. Selecting a different unit while one stayed
+    // armed would leave the panel and the canvas talking about two different
+    // units.
     cancelMove();
+    cancelRotate();
     focusCell(placement);
     return;
   }
@@ -183,68 +214,6 @@ function PlayersPanel() {
           );
         })}
       </ul>
-    </section>
-  );
-}
-
-function ChatPanel() {
-  useSignals();
-
-  const [draft, setDraft] = useState("");
-  const logRef = useRef<HTMLDivElement>(null);
-  const count = messages.value.length;
-
-  // Keep the newest message in view after every send.
-  useEffect(() => {
-    const log = logRef.current;
-    if (log === null) {
-      return;
-    }
-    log.scrollTop = log.scrollHeight;
-  }, [count]);
-
-  function onSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    sendMessage(draft);
-    setDraft("");
-  }
-
-  return (
-    <section className={`${styles.panel} ${styles.chat}`}>
-      <div className={styles.chatLog} ref={logRef}>
-        {messages.value.map((message) => (
-          <div className={styles.message} key={message.id}>
-            <span
-              className={
-                message.author === LOCAL_PLAYER
-                  ? `${styles.messageAuthor} ${styles.messageMine}`
-                  : styles.messageAuthor
-              }
-            >
-              {message.author}
-            </span>
-            <span className={styles.messageText}>{message.text}</span>
-          </div>
-        ))}
-      </div>
-
-      <form className={styles.chatForm} onSubmit={onSubmit}>
-        <Input.Root
-          className={styles.chatInput}
-          onChange={(event) => setDraft(event.currentTarget.value)}
-          placeholder="Message…"
-          value={draft}
-        />
-        <Button.Root
-          aria-label="Send"
-          className={styles.sendButton}
-          disabled={draft.trim().length === 0}
-          size="sm"
-          type="submit"
-        >
-          <SendIcon className={styles.sendIcon} />
-        </Button.Root>
-      </form>
     </section>
   );
 }

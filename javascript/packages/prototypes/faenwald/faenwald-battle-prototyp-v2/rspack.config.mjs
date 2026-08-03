@@ -41,6 +41,13 @@ export default {
         test: /\.css$/i,
         type: "css/auto",
       },
+      // Unit portraits. Emitted as files rather than inlined: they are 1:1
+      // renders of about a megabyte each, and a data URI that size would land
+      // in the JS bundle.
+      {
+        test: /\.png$/i,
+        type: "asset/resource",
+      },
     ],
   },
   plugins: [

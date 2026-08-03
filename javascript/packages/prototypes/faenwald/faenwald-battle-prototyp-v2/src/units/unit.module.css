@@ -11,6 +11,28 @@
   opacity: 0.45;
 }
 
+/* Rotation handle on a corner of the marker: a disc with an arrow on it. The only
+   shape on the canvas that takes the pointer itself — the hex under it must not
+   answer instead, or clicking a handle would select a cell. `.unit` has no say
+   here, the handles are drawn outside it. */
+.handleDisc {
+  fill: var(--unit-handle);
+  stroke: var(--unit-outline);
+  stroke-width: 2;
+  transition: fill var(--uk-duration) var(--uk-ease);
+}
+
+/* Driven from the group, so the disc stays lit while the pointer sits on the
+   arrow. `:hover` on the disc alone would drop as the pointer crossed onto it —
+   the arrow is its sibling, not its child. */
+.handle:hover .handleDisc {
+  fill: var(--unit-handle-hover);
+}
+
+.handleArrow {
+  fill: var(--unit-outline);
+}
+
 /* Sits over the marker of the unit a move would trade places with. Clicks fall
    through to the terrain hex, the way `.unit` lets them. */
 .swap {

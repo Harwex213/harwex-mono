@@ -1,4 +1,5 @@
 import type { ComponentType } from "react";
+import { ActiveBattlePage } from "./active-battle/ActiveBattlePage";
 import { HexGridPage } from "./hex-grid/HexGridPage";
 import { UnitsDispositionPage } from "./units-disposition/UnitsDispositionPage";
 
@@ -12,6 +13,7 @@ type Page = {
 const PAGES: Page[] = [
   { id: "hex-grid", title: "Hex grid", Component: HexGridPage },
   { id: "units-disposition", title: "Units disposition", Component: UnitsDispositionPage },
+  { id: "active-battle", title: "Active battle", Component: ActiveBattlePage },
 ];
 
 function pageFor(id: string): Page {

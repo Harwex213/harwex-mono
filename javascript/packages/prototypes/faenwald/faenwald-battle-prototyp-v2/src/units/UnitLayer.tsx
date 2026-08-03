@@ -73,6 +73,25 @@ const ICON_SCALE = ICON_SIZE / ICON_VIEWBOX;
 // marker it covers.
 const SWAP_ICON_SCALE = (UNIT_HEX_SIZE * 1.2) / ICON_VIEWBOX;
 
+// One handle per hex facing. A pointy-top hex has a corner in each of these
+// directions, so a handle sits on the corner the unit would face.
+const FACINGS = [0, 60, 120, 180, 240, 300];
+
+// Handles ride on the marker outline, and are wide enough to be an easy target
+// at the fitted zoom.
+const HANDLE_RADIUS = UNIT_HEX_SIZE * 0.34;
+
+// A dart inside the handle, drawn pointing straight up and turned to the facing
+// with the handle: tip, one barb, the notch between them, the other barb.
+const ARROW_LENGTH = HANDLE_RADIUS * 0.62;
+const ARROW_WIDTH = HANDLE_RADIUS * 0.46;
+const ARROW_POINTS = [
+  `0,${(-ARROW_LENGTH).toFixed(2)}`,
+  `${ARROW_WIDTH.toFixed(2)},${(ARROW_LENGTH * 0.72).toFixed(2)}`,
+  `0,${(ARROW_LENGTH * 0.28).toFixed(2)}`,
+  `${(-ARROW_WIDTH).toFixed(2)},${(ARROW_LENGTH * 0.72).toFixed(2)}`,
+].join(" ");
+
 type UnitLayerProps = {
   units: Unit[];
   // A unit that is not standing where it is drawn: the one being placed or
@@ -80,24 +99,84 @@ type UnitLayerProps = {
   preview?: Unit | null;
   // Cell of the unit a move would trade places with.
   swapCellKey?: string | null;
+  // Cell of the unit being turned, which is where the handles go. The three
+  // callbacks below are only ever used with it.
+  rotateCellKey?: string | null;
+  onFacingHover?: (facing: number | null) => void;
+  onFacingPick?: (facing: number) => void;
 };
 
 // World-space content for `HexCanvas`, drawn after the terrain hexes. The
 // units arrive as a prop so each page can feed the layer its own roster.
-function UnitLayer({ units, preview, swapCellKey }: UnitLayerProps) {
+function UnitLayer({
+  units,
+  preview,
+  swapCellKey,
+  rotateCellKey,
+  onFacingHover,
+  onFacingPick,
+}: UnitLayerProps) {
   return (
     <>
       {units.map((unit) => (
         <UnitMarker key={unit.id} unit={unit} />
       ))}
-      {/* Both last, so they sit over the markers they cover. */}
+      {/* All three last, so they sit over the markers they cover. */}
       {preview === undefined || preview === null ? null : (
         <UnitMarker unit={preview} className={styles.preview} />
       )}
       {swapCellKey === undefined || swapCellKey === null ? null : (
         <SwapOverlay cellKey={swapCellKey} />
       )}
+      {rotateCellKey === undefined || rotateCellKey === null ? null : (
+        <RotateHandles cellKey={rotateCellKey} onHover={onFacingHover} onPick={onFacingPick} />
+      )}
     </>
+  );
+}
+
+// A circle on every corner of the marker, each carrying an arrow that points the
+// way the unit would face.
+function RotateHandles({
+  cellKey,
+  onHover,
+  onPick,
+}: {
+  cellKey: string;
+  onHover?: (facing: number | null) => void;
+  onPick?: (facing: number) => void;
+}) {
+  const cell = cellOf(cellKey);
+  if (cell === null) {
+    return null;
+  }
+
+  return (
+    <g transform={`translate(${cell.x.toFixed(2)} ${cell.y.toFixed(2)})`}>
+      {FACINGS.map((facing) => {
+        // Facing is clockwise from straight up, and the y axis points down.
+        const radians = (Math.PI / 180) * facing;
+        const x = UNIT_HEX_SIZE * Math.sin(radians);
+        const y = -UNIT_HEX_SIZE * Math.cos(radians);
+
+        // Handlers on the group, not the circle: the arrow lies over the circle,
+        // and a pointer that crosses onto it must not read as leaving the handle.
+        // `rotate` turns the arrow to the facing; the circle does not mind.
+        return (
+          <g
+            className={styles.handle}
+            key={facing}
+            onClick={() => onPick?.(facing)}
+            onPointerEnter={() => onHover?.(facing)}
+            onPointerLeave={() => onHover?.(null)}
+            transform={`translate(${x.toFixed(2)} ${y.toFixed(2)}) rotate(${facing})`}
+          >
+            <circle className={styles.handleDisc} r={HANDLE_RADIUS.toFixed(2)} />
+            <polygon className={styles.handleArrow} points={ARROW_POINTS} />
+          </g>
+        );
+      })}
+    </g>
   );
 }
 

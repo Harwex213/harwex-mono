@@ -3,12 +3,11 @@
   flex-direction: column;
   gap: var(--uk-space-4);
   height: 100%;
-  margin: 0 auto;
-  /* Wide enough for the three-column disposition page; the single-column
-     pages just get more room for the canvas. */
-  max-width: 1440px;
+  /* No `max-width`: the app takes the whole viewport, so the canvas gets every
+     pixel the side panels do not need. */
   min-height: 0;
   padding: var(--uk-space-5) var(--uk-space-4);
+  width: 100%;
 }
 
 .header {

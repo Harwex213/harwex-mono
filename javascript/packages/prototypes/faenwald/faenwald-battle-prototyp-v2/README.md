@@ -3,8 +3,14 @@
 Faenwald battle prototype, second iteration. React + TypeScript + rspack, state in
 `@preact/signals-react`, UI from `@hw/faenwald-uikit`.
 
-Current content: the hex grid page — pointy-top hexes in an odd-r offset layout, drawn
-as one SVG, with click-to-select cells and a pan/zoom canvas.
+Current content, one page per tab:
+
+- **Hex grid** — pointy-top hexes in an odd-r offset layout, drawn as one SVG, with
+  click-to-select cells and a pan/zoom canvas.
+- **Units disposition** — the local player places a roster on the grid, then moves and
+  turns what is already down.
+- **Active battle** — both armies deployed, the round in a turn order bar under the
+  board, and move/rotate on whichever unit is up.
 
 ```bash
 yarn workspace @hw/faenwald-battle-prototyp-v2 dev        # rspack dev server, random free port
@@ -37,8 +43,13 @@ extra call.
   the default route
 - `src/hex/` — hex primitives: layout math (`hex-layout.ts`), the pan/zoom `HexCanvas`,
   and the grid layer drawn inside it
+- `src/units/` — the marker layer, the actions panel, and the portrait map
+  (`unit-avatars.ts`)
+- `src/session/` — panels every page shares, currently the chat
 - `src/state/` — signal stores, no React imports
 - `src/*.module.css` — component styles, built on the uikit's `--uk-*` tokens
+- `assets/units-avatars/` — 1:1 unit portraits, imported through the `asset/resource`
+  rule in `rspack.config.mjs`
 
 ## Adding a page
 

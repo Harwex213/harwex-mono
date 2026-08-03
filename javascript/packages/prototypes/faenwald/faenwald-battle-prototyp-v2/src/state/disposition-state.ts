@@ -58,6 +58,17 @@ const pickedUnitId = signal<string | null>(null);
 // same time as `pickedUnitId`: one hex click cannot both place and move.
 const movingUnitId = signal<string | null>(null);
 
+// Clockwise degrees each unit is turned by. A unit missing from the map faces
+// straight up, which is how it lands on the board.
+const facingByUnitId = signal<Record<string, number>>({});
+
+// The placed unit showing its rotation handles, if any.
+const rotatingUnitId = signal<string | null>(null);
+
+// The facing under the pointer while the handles are out. The unit is drawn
+// turned this way before the click commits it, so the handle previews the result.
+const hoveredFacing = signal<number | null>(null);
+
 const ready = signal(false);
 
 // The shape `UnitLayer` draws, rebuilt from the placement map.
@@ -116,15 +127,32 @@ const swapCellKey = computed<string | null>(() => {
   return cellKey;
 });
 
+// Where the rotation handles go: the hex of the unit being turned. Empty unless
+// a unit has its handles out.
+const rotateCellKey = computed<string | null>(() => {
+  const unitId = rotatingUnitId.value;
+  if (unitId === null) {
+    return null;
+  }
+
+  return placementOf(unitId);
+});
+
 // A roster entry says what a unit is; this is the marker that stands for it on a
 // hex. The marker carries the short code, not the full title.
+//
+// The facing a hovered handle stands for wins over the stored one, so the unit is
+// already turned that way while the pointer rests on the handle.
 function markerFor(unit: RosterUnit, cellKey: string): Unit {
+  const preview = unit.id === rotatingUnitId.value ? hoveredFacing.value : null;
+
   return {
     id: unit.id,
     cellKey,
     kind: unit.kind,
     side: PLAYER_SIDE,
     name: unit.code,
+    facing: preview ?? facingByUnitId.value[unit.id] ?? 0,
     stats: unit.stats,
   };
 }
@@ -177,6 +205,7 @@ function unitIdAt(cellKey: string): string | null {
 function pickUnit(unitId: string): void {
   pickedUnitId.value = pickedUnitId.value === unitId ? null : unitId;
   movingUnitId.value = null;
+  cancelRotate();
 }
 
 // Arms the selected unit for a move, or calls the move off if it is already
@@ -190,10 +219,65 @@ function toggleMove(): void {
 
   movingUnitId.value = movingUnitId.value === unit.id ? null : unit.id;
   pickedUnitId.value = null;
+  cancelRotate();
 }
 
 function cancelMove(): void {
   movingUnitId.value = null;
+}
+
+// Disarms every command at once, for the one key that means "never mind".
+function cancelActions(): void {
+  cancelMove();
+  cancelRotate();
+}
+
+// Puts the rotation handles on the selected unit, or takes them back if they are
+// already out. Nothing to do while the selection holds no unit.
+function toggleRotate(): void {
+  const unit = selectedUnit.value;
+  if (unit === null) {
+    cancelRotate();
+    return;
+  }
+
+  if (rotatingUnitId.value === unit.id) {
+    cancelRotate();
+    return;
+  }
+
+  rotatingUnitId.value = unit.id;
+  hoveredFacing.value = null;
+  pickedUnitId.value = null;
+  movingUnitId.value = null;
+}
+
+function cancelRotate(): void {
+  rotatingUnitId.value = null;
+  hoveredFacing.value = null;
+}
+
+// The handle under the pointer, or `null` once the pointer leaves it. Drives the
+// preview in `markerFor`.
+function hoverFacing(facing: number | null): void {
+  hoveredFacing.value = facing;
+}
+
+// Commits the facing a handle stands for and puts the handles away.
+function rotateUnit(facing: number): void {
+  const unitId = rotatingUnitId.value;
+  if (unitId === null) {
+    return;
+  }
+
+  cancelRotate();
+
+  if (facingByUnitId.value[unitId] === facing) {
+    return;
+  }
+
+  facingByUnitId.value = { ...facingByUnitId.value, [unitId]: facing };
+  ready.value = false;
 }
 
 // Sends the unit being moved to `cellKey`. Another unit standing there is not
@@ -254,7 +338,10 @@ function toggleReady(): void {
 }
 
 export {
+  cancelActions,
   cancelMove,
+  cancelRotate,
+  hoverFacing,
   isPlaced,
   moveUnit,
   movingUnitId,
@@ -268,11 +355,15 @@ export {
   previewUnit,
   ready,
   recallUnit,
+  rotateCellKey,
+  rotateUnit,
+  rotatingUnitId,
   roster,
   selectedUnit,
   swapCellKey,
   toggleMove,
   toggleReady,
+  toggleRotate,
   unitIdAt,
 };
 export type { RosterUnit };

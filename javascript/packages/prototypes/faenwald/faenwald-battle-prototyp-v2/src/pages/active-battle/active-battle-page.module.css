@@ -2,7 +2,7 @@
   display: grid;
   flex: 1;
   gap: var(--uk-space-3);
-  grid-template-columns: 260px minmax(0, 1fr) 280px;
+  grid-template-columns: 280px minmax(0, 1fr) 280px;
   /* `min-height: 0` lets the columns shrink instead of pushing the page past
      the viewport. */
   min-height: 0;
@@ -21,7 +21,7 @@
   padding: var(--uk-space-3);
 }
 
-/* --- left panel: title + roster + ready --- */
+/* --- left panel: title + army + end turn --- */
 
 .left {
   background: var(--uk-panel);
@@ -56,6 +56,7 @@
   color: var(--uk-fg-subtle);
   cursor: help;
   display: inline-flex;
+  flex-shrink: 0;
   font-size: 16px;
   padding: 0;
 }
@@ -74,17 +75,19 @@
   overflow-y: auto;
 }
 
+/* A row is the portrait and the text beside it, so the list reads as the same
+   army the turn order bar draws. */
 .unit {
+  align-items: center;
   background: transparent;
   border: 1px solid var(--uk-border);
   border-radius: var(--uk-radius);
   color: inherit;
   cursor: pointer;
   display: flex;
-  flex-direction: column;
   flex-shrink: 0;
   font: inherit;
-  gap: var(--uk-space-1);
+  gap: var(--uk-space-2);
   padding: var(--uk-space-2);
   text-align: left;
   transition:
@@ -96,13 +99,29 @@
   background: var(--uk-hover);
 }
 
-.unitPicked {
-  border-color: var(--uk-primary);
-  box-shadow: 0 0 0 1px var(--uk-primary);
+/* The unit whose turn it is, picked out in the gold the board selects with. */
+.unitActive {
+  border-color: var(--map-selected-line);
+  box-shadow: 0 0 0 1px var(--map-selected-line);
 }
 
-.unitPlaced {
-  color: var(--uk-fg-muted);
+.unitAvatar {
+  border: 1px solid var(--uk-border);
+  border-radius: var(--uk-radius);
+  display: block;
+  flex-shrink: 0;
+  height: 40px;
+  /* The portraits are 1:1 renders; the frame is square too, so nothing is cut
+     off and nothing is stretched. */
+  object-fit: cover;
+  width: 40px;
+}
+
+.unitBody {
+  display: flex;
+  flex-direction: column;
+  gap: var(--uk-space-1);
+  min-width: 0;
 }
 
 .unitName {
@@ -114,9 +133,9 @@
 }
 
 .unitBadge {
-  border: 1px solid var(--uk-border);
+  border: 1px solid var(--map-selected-line);
   border-radius: var(--uk-radius-full);
-  color: var(--uk-fg-subtle);
+  color: var(--uk-fg);
   font-size: 10px;
   padding: 0 var(--uk-space-2);
   text-transform: uppercase;
@@ -128,28 +147,115 @@
   font-variant-numeric: tabular-nums;
 }
 
-.readyBar {
+.turnBar {
   border-top: 1px solid var(--uk-border);
   flex-shrink: 0;
   margin-top: var(--uk-space-3);
   padding-top: var(--uk-space-3);
 }
 
-.readyButton {
+.turnButton {
   width: 100%;
 }
 
-/* --- middle column: the board, with no chrome above it --- */
+/* --- middle column: the board, with the turn order under it --- */
+
+.center {
+  display: flex;
+  flex-direction: column;
+  gap: var(--uk-space-3);
+  min-height: 0;
+  min-width: 0;
+}
 
 .canvas {
   border: 1px solid var(--uk-border);
   border-radius: var(--uk-radius-lg);
+  flex: 1;
   min-height: 0;
   min-width: 0;
   overflow: hidden;
   /* Anchors the unit actions panel, which overlays the canvas rather than
      sitting inside the SVG. */
   position: relative;
+}
+
+.turnOrder {
+  align-items: center;
+  background: var(--uk-panel);
+  border: 1px solid var(--uk-border);
+  border-radius: var(--uk-radius-lg);
+  display: flex;
+  flex-shrink: 0;
+  gap: var(--uk-space-2);
+  min-width: 0;
+  padding: var(--uk-space-2) var(--uk-space-3);
+}
+
+/* A long round scrolls sideways inside the bar; the board above it never
+   moves. */
+.turnCards {
+  display: flex;
+  flex: 1;
+  gap: var(--uk-space-2);
+  min-width: 0;
+  overflow-x: auto;
+  /* Room for the ring the head of the queue is drawn with, which would be
+     clipped by the scroll box otherwise. */
+  padding: 3px;
+}
+
+.turnCard {
+  background: none;
+  /* Side colour. The frame is the only thing on the card that says which army
+     the unit fights for — the portraits are shared. */
+  border: 2px solid var(--uk-border);
+  border-radius: var(--uk-radius);
+  cursor: pointer;
+  display: block;
+  flex-shrink: 0;
+  height: 76px;
+  overflow: hidden;
+  padding: 0;
+  position: relative;
+  transition: box-shadow var(--uk-duration) var(--uk-ease);
+  width: 76px;
+}
+
+.red {
+  border-color: var(--unit-red);
+}
+
+.blue {
+  border-color: var(--unit-blue);
+}
+
+/* The unit to move, in the gold the board selects a hex with. */
+.turnCardActive {
+  box-shadow: 0 0 0 3px var(--map-selected-line);
+}
+
+.turnAvatar {
+  display: block;
+  height: 100%;
+  object-fit: cover;
+  width: 100%;
+}
+
+/* The code sits on the portrait rather than under it, so every card is exactly
+   as tall as its picture. */
+.turnCode {
+  background: rgb(0 0 0 / 65%);
+  bottom: 0;
+  color: #ffffff;
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  left: 0;
+  padding: 1px 0;
+  position: absolute;
+  right: 0;
+  text-align: center;
 }
 
 /* --- right column: players + chat --- */
@@ -187,7 +293,6 @@
   text-transform: uppercase;
 }
 
-.playerReady {
+.playerMoving {
   color: var(--uk-success);
 }
-
