@@ -4,6 +4,7 @@ import type { VkArticle, VkArticleAuthor } from "../model/article.js";
 import { FaenwaldParserError } from "../model/parser-error.js";
 import { cleanText, normalizeUrl } from "../utils.js";
 import { extractBlocks } from "./extract-blocks.js";
+import { repairInlineNesting } from "./repair-inline-nesting.js";
 
 const metaContent = (root: HTMLElement, property: string): string | null =>
   root.querySelector(`meta[property="${property}"]`)?.getAttribute("content")?.trim() ?? null;
@@ -50,7 +51,7 @@ export type ParseArticleOptions = {
 };
 
 export const parseArticle = (html: string, options: ParseArticleOptions = {}): VkArticle => {
-  const root = parse(html);
+  const root = parse(repairInlineNesting(html));
 
   const article =
     root.querySelector("div.article.article_view") ?? root.querySelector(".article");

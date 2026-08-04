@@ -19,6 +19,8 @@ reference fixture the parser is validated against.
   root, builds `meta` (id, ownerId, title, url, author, publishedAt, source, parsedAt).
 - `src/parser/extract-blocks.ts` — `extractBlocks(articleEl)`. Maps the **direct
   children** of `div.article` to ordered blocks. All DOM-shape logic lives here.
+- `src/parser/repair-inline-nesting.ts` — pre-parse fixup for misnested inline
+  formatting; `parseArticle` runs it on the raw HTML.
 - `src/client/vk-client.ts` — `VkClient`, a rate-limited fetcher (uses `undici`).
 - `src/utils.ts` — `cleanText`, `normalizeUrl`, `parseVkDate`, `decodeEntities`.
 - `src/index.ts` — the public barrel; update it when adding exports.
@@ -38,6 +40,11 @@ reference fixture the parser is validated against.
   (HTML-entity-decode first); canonical url prefers the `base` key, else the widest.
 - Headings: strip `span.article_anchor_button` before reading text, but keep its
   `id` as the block `anchor`.
+- **The VK editor emits misnested inline tags** (`<strong><em>X</strong>rest</em>`),
+  and `node-html-parser` reacts by dropping nodes — including `div.article`, which
+  surfaces as "article container not found". `repairInlineNesting` rewrites those
+  runs the way a browser would before the HTML is parsed. Do not remove it; the
+  bundled fixture happens to be clean, so `parse:fixture` will not catch it.
 - URLs are normalized to absolute against `https://vk.com`.
 - The VK fixture renders dates in German (`26. Dez. 2025`); `parseVkDate` is
   best-effort for the `DD. Mon. YYYY` shape.
