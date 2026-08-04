@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { COUNTRY_BORDER, PROVINCE_BORDER } from "./border-layer";
+import { buildBorderTiles } from "../map/borders";
 import { clampView, fitView, snapView, sourceRect } from "../map/view";
 import { drawOverlay, drawScene } from "./render";
+import type { BorderPaths } from "./border-layer";
+import type { BorderTiles } from "../map/borders";
 import type { Size, View } from "../map/view";
 
 // These are NOT canvas tests. There is no canvas and no DOM here: the context is
@@ -28,6 +32,8 @@ function createRecorder(): Recorder {
     imageSmoothingQuality: "low",
     strokeStyle: "",
     lineWidth: 0,
+    lineCap: "butt",
+    lineJoin: "miter",
     setTransform: (...args: number[]): void => {
       calls.push({ name: "setTransform", source: null, args });
     },
@@ -40,8 +46,34 @@ function createRecorder(): Recorder {
     strokeRect: (...args: number[]): void => {
       calls.push({ name: "strokeRect", source: null, args });
     },
+    stroke: (source: unknown): void => {
+      calls.push({ name: "stroke", source, args: [] });
+    },
+  };
+  // Assigned after the literal so the closure can read the width and style that
+  // were live at the moment of the call. The hairline overwrites both afterwards.
+  ctx.stroke = (source: unknown): void => {
+    calls.push({ name: "stroke", source, args: [ctx.lineWidth] });
   };
   return { ctx: ctx as unknown as CanvasRenderingContext2D, calls };
+}
+
+// Stand-in Path2D objects. Building real ones needs a DOM; what is under test
+// here is which path is stroked, under which transform, at which width.
+function fakeBorderPaths(tiles: BorderTiles, label: string): BorderPaths {
+  const paths: Path2D[] = [];
+  for (let t = 0; t < tiles.cols * tiles.rows; t += 1) {
+    paths.push({ label, tile: t } as unknown as Path2D);
+  }
+  return { tiles, paths };
+}
+
+function borderFixture(label: string): BorderPaths {
+  const runs = {
+    vertical: new Int32Array([100, 40, 90]),
+    horizontal: new Int32Array([200, 10, 60]),
+  };
+  return fakeBorderPaths(buildBorderTiles(runs, MAP.width, MAP.height), label);
 }
 
 function bitmap(size: Size): ImageBitmap {
@@ -320,6 +352,141 @@ test("the overlay and the scene snap the view identically", () => {
     "the scene's destination y sits on the overlay's grid",
   );
   assert.notEqual(snapped.x, view.x, "the fixture really does exercise the snap");
+});
+
+test("drawOverlay with the T04 fields omitted draws exactly what T03 drew", () => {
+  // Every field T04 added is optional, and this is what keeps the rest of this
+  // file honest: passing them as null/empty must change nothing at all.
+  const view = fitView(MAP, WIDE);
+
+  const bare = createRecorder();
+  drawOverlay({ ctx: bare.ctx, view, viewport: WIDE, dpr: 1, mapSize: MAP });
+
+  const explicit = createRecorder();
+  drawOverlay({
+    ctx: explicit.ctx,
+    view,
+    viewport: WIDE,
+    dpr: 1,
+    mapSize: MAP,
+    provinceBorders: null,
+    countryBorders: null,
+    highlights: [],
+    provinceIndex: null,
+  });
+
+  assert.deepEqual(explicit.calls, bare.calls);
+});
+
+test("borders draw under the map transform and the hairline still comes last", () => {
+  const dpr = 2;
+  const view = clampView({ scale: 2.5, x: -1234.567, y: -987.654 }, MAP, WIDE);
+  const snapped = snapView(view, dpr);
+  const province = borderFixture("province");
+  const country = borderFixture("country");
+
+  const recorder = createRecorder();
+  drawOverlay({
+    ctx: recorder.ctx,
+    view,
+    viewport: WIDE,
+    dpr,
+    mapSize: MAP,
+    provinceBorders: province,
+    countryBorders: country,
+  });
+
+  const strokes = named(recorder.calls, "stroke");
+  assert.ok(strokes.length > 0, "something must be stroked");
+
+  const labels = strokes.map((call) => {
+    return (call.source as { label: string }).label;
+  });
+  const firstCountry = labels.indexOf("country");
+  assert.ok(firstCountry > 0, "province borders are stroked first");
+  assert.ok(
+    labels.slice(firstCountry).every((label) => {
+      return label === "country";
+    }),
+    "a country line must cover the province line under it, so it goes second",
+  );
+
+  // The map -> screen transform, built from the SNAPPED view. The raw view would
+  // put the borders up to half a device pixel off the art.
+  const mapTransform = recorder.calls.find((call) => {
+    return call.name === "setTransform" && call.args[0] === snapped.scale * dpr;
+  });
+  assert.ok(mapTransform, "a map-space transform must be installed");
+  assert.deepEqual(mapTransform.args, [
+    snapped.scale * dpr,
+    0,
+    0,
+    snapped.scale * dpr,
+    snapped.x * dpr,
+    snapped.y * dpr,
+  ]);
+
+  // The hairline draws in CSS pixels, so the map transform must be undone first.
+  const last = recorder.calls[recorder.calls.length - 1];
+  assert.equal(last.name, "strokeRect", "the bounds hairline is still last");
+  const beforeLast = recorder.calls[recorder.calls.length - 2];
+  assert.equal(beforeLast.name, "setTransform");
+  assert.deepEqual(beforeLast.args, [dpr, 0, 0, dpr, 0, 0]);
+  assert.equal(recorder.ctx.lineWidth, 1, "and the hairline is 1 CSS px again");
+});
+
+test("stroke width is screen space: lineWidth is the CSS width divided by the scale", () => {
+  // A width that grows with zoom means `lineWidth` was set to `widthCss` instead
+  // of `widthCss / view.scale`. At the 25x zoom range this project has, that is
+  // the difference between a dashed line at the fit scale and an 8 px slab at the
+  // cap.
+  for (const scale of [0.5, 1, 8]) {
+    const view = clampView({ scale, x: -2000, y: -1500 }, MAP, WIDE);
+    assert.equal(view.scale, scale, "the fixture scale must survive the clamp");
+
+    const recorder = createRecorder();
+    drawOverlay({
+      ctx: recorder.ctx,
+      view,
+      viewport: WIDE,
+      dpr: 1,
+      mapSize: MAP,
+      provinceBorders: borderFixture("province"),
+      countryBorders: borderFixture("country"),
+    });
+
+    const strokes = named(recorder.calls, "stroke");
+    const widths = new Set(
+      strokes.map((call) => {
+        return call.args[0];
+      }),
+    );
+    assert.deepEqual(
+      Array.from(widths).sort((a, b) => {
+        return a - b;
+      }),
+      [PROVINCE_BORDER.widthCss / scale, COUNTRY_BORDER.widthCss / scale],
+      "at scale " + scale,
+    );
+  }
+});
+
+test("highlights are skipped when no province index is supplied", () => {
+  const view = fitView(MAP, WIDE);
+  const recorder = createRecorder();
+
+  drawOverlay({
+    ctx: recorder.ctx,
+    view,
+    viewport: WIDE,
+    dpr: 1,
+    mapSize: MAP,
+    highlights: [{ province: null as never, role: "hover" }],
+    provinceIndex: null,
+  });
+
+  assert.equal(named(recorder.calls, "drawImage").length, 0, "nothing is stamped");
+  assert.equal(named(recorder.calls, "strokeRect").length, 1, "the hairline still draws");
 });
 
 test("drawOverlay clears and returns for a degenerate scale", () => {

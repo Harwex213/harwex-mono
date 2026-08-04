@@ -1,5 +1,10 @@
+import { COUNTRY_BORDER, PROVINCE_BORDER, drawBorders } from "./border-layer";
+import { drawProvinceHighlight } from "./highlight-layer";
 import { mapToScreen, shouldSmooth, snapView, sourceRect } from "../map/view";
+import type { BorderPaths } from "./border-layer";
 import type { DrawRect, Size, View } from "../map/view";
+import type { HighlightRequest } from "./highlight-layer";
+import type { ProvinceIndex } from "../map/province-index";
 
 // Canvas drawing, kept out of React. Both functions take a context and plain
 // values — no signals, no refs, no hooks. Both assume `MapCanvas` has already
@@ -14,12 +19,19 @@ type SceneInput = {
   mapSize: Size;
 };
 
+// Every field T04 added is OPTIONAL, and with all of them omitted `drawOverlay`
+// produces byte-identical output to the T03 version.
 type OverlayInput = {
   ctx: CanvasRenderingContext2D;
   view: View;
   viewport: Size;
   dpr: number;
   mapSize: Size;
+  provinceBorders?: BorderPaths | null;
+  countryBorders?: BorderPaths | null;
+  // Drawn in array order, so the caller puts "select" last.
+  highlights?: readonly HighlightRequest[];
+  provinceIndex?: ProvinceIndex | null;
 };
 
 const BOUNDS_STROKE = "rgba(216, 162, 74, 0.35)";
@@ -83,11 +95,16 @@ function drawScene(input: SceneInput): void {
   drawEdgeColumn(ctx, view, art, input.mapSize, rect);
 }
 
-// T03 draws exactly one thing here: a 1 CSS px hairline around the
-// authoritative map bounds, in screen space, so it stays one pixel wide at
-// every zoom. It is an instrument, not decoration — if it ever detaches from
-// the art edge, the scene and overlay transforms have diverged.
-// T04 appends border drawing to this function and keeps the hairline.
+// Draw order: highlights, province borders, country borders, then the bounds
+// hairline. A country line covers the province line underneath it, which is why
+// it goes second.
+//
+// The hairline is an instrument, not decoration — if it ever detaches from the
+// art edge, the scene and overlay transforms have diverged. Keep it.
+//
+// Everything below draws from `snapView(input.view, ratio)`, the same value
+// `drawScene` uses. The raw view would put the borders up to half a device pixel
+// off the art.
 function drawOverlay(input: OverlayInput): void {
   const { ctx, dpr: ratio, viewport, mapSize } = input;
   prepare(ctx, viewport, ratio);
@@ -95,6 +112,20 @@ function drawOverlay(input: OverlayInput): void {
   const view = snapView(input.view, ratio);
   if (!Number.isFinite(view.scale) || view.scale <= 0) {
     return;
+  }
+
+  const index = input.provinceIndex;
+  if (index && input.highlights) {
+    for (const request of input.highlights) {
+      drawProvinceHighlight(ctx, index, request, view, ratio);
+    }
+  }
+
+  if (input.provinceBorders) {
+    drawBorders(ctx, input.provinceBorders, view, viewport, ratio, PROVINCE_BORDER);
+  }
+  if (input.countryBorders) {
+    drawBorders(ctx, input.countryBorders, view, viewport, ratio, COUNTRY_BORDER);
   }
 
   const topLeft = mapToScreen(view, 0, 0);

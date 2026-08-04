@@ -4,6 +4,25 @@ import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent }
 import { drawOverlay, drawScene } from "./render";
 import { getMapAssets, loadPhase, mapSize, provinceAt, provinceById } from "../state/map-store";
 import {
+  applyDemoCountries,
+  borderError,
+  borderPhase,
+  borderStats,
+  bordersVersion,
+  clearDemoCountries,
+  countryBorderStats,
+  disposeBorders,
+  ensureBordersScanned,
+  getCountryBorderPaths,
+  getProvinceBorderPaths,
+} from "../state/borders-store";
+import {
+  hoveredProvinceId,
+  selectedProvinceId,
+  setHoveredProvince,
+  setSelectedProvince,
+} from "../state/selection-store";
+import {
   cursorMap,
   dpr,
   mapPixelAt,
@@ -17,6 +36,7 @@ import {
   viewport,
   zoomAtPoint,
 } from "../state/view-store";
+import type { HighlightRequest } from "./highlight-layer";
 import styles from "./map-canvas.module.css";
 
 // `deltaMode` 0 = pixel, 1 = line, 2 = page. The conversion is not optional:
@@ -41,9 +61,22 @@ type Gesture =
 
 const IDLE: Gesture = { kind: "idle" };
 
-// T03 VERIFICATION UI — T08 replaces this with the real selection panels. It
-// exists to prove the screen->map transform has not drifted: at 8x, map pixel
-// (1382, 1329) must report province 1000.
+// The HUD lives inside the host, and `.hudActions` deliberately takes pointer
+// events back so its buttons are clickable. A pointerdown on a button still
+// bubbles to the host, so without this guard the host would `preventDefault` and
+// `setPointerCapture` on it: pointer capture retargets the compatibility mouse
+// events and `click` to the capture element, so the button's `onClick` never
+// runs, and `onPointerUp` then reads the press as a click on the map and moves
+// the selection. Every host handler that starts or ends a gesture checks it.
+function isHudControl(target: EventTarget | null): boolean {
+  return target instanceof Element && target.closest("[data-hud-control]") !== null;
+}
+
+// T03/T04 VERIFICATION UI — T08 replaces this with the real selection panels,
+// and T06 deletes the two demo-country buttons. It exists to prove the
+// screen->map transform has not drifted (at 8x, map pixel (1382, 1329) must
+// report province 1000), that the scan runs off the main thread, and that the
+// country recompute is cheap.
 function Hud() {
   useSignals();
 
@@ -51,25 +84,67 @@ function Hud() {
   const cursor = cursorMap.value;
   const id = cursor ? provinceAt(cursor.x, cursor.y) : null;
   const province = id === null ? null : provinceById(id);
+  const scan = borderStats.value;
+  const country = countryBorderStats.value;
+  const selected = selectedProvinceId.value;
+  // Without the message a failed scan is indistinguishable from a slow one.
+  const failure = borderError.value;
 
+  // The readouts and the buttons are two separate anchored boxes on purpose. In
+  // one flex row the province name grows and shrinks as the pointer crosses the
+  // map, which slides the buttons sideways while the user is reaching for them.
   return (
-    <div className={styles.hud}>
-      <span>
-        zoom <span className={styles.hudValue}>
-          {current ? Math.round(current.scale * 100) + "%" : "—"}
+    <>
+      <div className={styles.hud}>
+        <span>
+          zoom <span className={styles.hudValue}>
+            {current ? Math.round(current.scale * 100) + "%" : "—"}
+          </span>
         </span>
-      </span>
-      <span>
-        px <span className={styles.hudValue}>
-          {cursor ? cursor.x + ", " + cursor.y : "—"}
+        <span>
+          px <span className={styles.hudValue}>
+            {cursor ? cursor.x + ", " + cursor.y : "—"}
+          </span>
         </span>
-      </span>
-      <span>
-        province <span className={styles.hudProvince}>
-          {id === null ? "—" : id + (province ? " " + province.name : "")}
+        <span>
+          province <span className={styles.hudProvince}>
+            {id === null ? "—" : id + (province ? " " + province.name : "")}
+          </span>
         </span>
-      </span>
-    </div>
+        <span>
+          selected <span className={styles.hudProvince}>{selected === null ? "—" : selected}</span>
+        </span>
+        <span>
+          border <span className={styles.hudValue}>{borderPhase.value}</span>
+        </span>
+        {failure === null ? null : (
+          <span>
+            reason <span className={styles.hudValue}>{failure}</span>
+          </span>
+        )}
+        <span>
+          scan <span className={styles.hudValue}>
+            {scan ? Math.round(scan.elapsedMs) + " ms" : "—"}
+          </span>
+        </span>
+        <span>
+          segs <span className={styles.hudValue}>{scan ? scan.segments : "—"}</span>
+        </span>
+        <span>
+          country <span className={styles.hudValue}>
+            {country ? Math.round(country.elapsedMs) + " ms / " + country.segments : "—"}
+          </span>
+        </span>
+      </div>
+      <div className={styles.hudActions} data-hud-control="">
+        <button className={styles.hudButton} type="button" onClick={applyDemoCountries}>
+          demo countries
+        </button>
+        <button className={styles.hudButton} type="button" onClick={clearDemoCountries}>
+          clear
+        </button>
+      </div>
+    </>
   );
 }
 
@@ -139,7 +214,36 @@ function MapCanvas() {
       art: assets.art,
       mapSize: size,
     });
-    drawOverlay({ ctx: overlayCtx, view: current, viewport: port, dpr: ratio, mapSize: size });
+
+    // Hover is skipped when it names the selected province, so the two fills
+    // never stack. "select" goes last, so it wins if a future role overlaps.
+    const highlights: HighlightRequest[] = [];
+    const hovered = hoveredProvinceId.value;
+    const selected = selectedProvinceId.value;
+    if (hovered !== null && hovered !== selected) {
+      const province = provinceById(hovered);
+      if (province) {
+        highlights.push({ province, role: "hover" });
+      }
+    }
+    if (selected !== null) {
+      const province = provinceById(selected);
+      if (province) {
+        highlights.push({ province, role: "select" });
+      }
+    }
+
+    drawOverlay({
+      ctx: overlayCtx,
+      view: current,
+      viewport: port,
+      dpr: ratio,
+      mapSize: size,
+      provinceBorders: getProvinceBorderPaths(),
+      countryBorders: getCountryBorderPaths(),
+      highlights,
+      provinceIndex: assets.index,
+    });
   }
 
   function scheduleDraw(): void {
@@ -157,11 +261,22 @@ function MapCanvas() {
   // signal change would mean a wheel burst repeatedly cancels the frame it just
   // scheduled. The single guarded handle already yields exactly one paint per
   // frame no matter how many events land.
+  //
+  // ONE draw path on purpose. A hover change repaints the scene canvas too,
+  // which is one `drawImage` (0.8-4 ms measured). Both selection setters
+  // deduplicate, so a repaint only happens when the cursor actually crosses a
+  // province boundary — a handful of times a second at most. Two rAF handles and
+  // two effects would not pay for themselves.
   useSignalEffect(() => {
     void view.value;
     void viewport.value;
     void dpr.value;
     void loadPhase.value;
+    void hoveredProvinceId.value;
+    void selectedProvinceId.value;
+    // The Path2D sets are plain module variables — identity-only objects a signal
+    // would gain nothing from — so the draw subscribes to their version counter.
+    void bordersVersion.value;
     scheduleDraw();
   });
 
@@ -171,6 +286,7 @@ function MapCanvas() {
         cancelAnimationFrame(frameRef.current);
         frameRef.current = 0;
       }
+      disposeBorders();
     };
   }, []);
 
@@ -178,6 +294,12 @@ function MapCanvas() {
   // `syncView` is the single initialisation point and is called from both paths.
   useEffect(() => {
     syncView();
+  }, [phase]);
+
+  // A plain effect, not a `useSignalEffect`: it writes signals. Idempotent, and
+  // it returns immediately while the map is still loading.
+  useEffect(() => {
+    ensureBordersScanned();
   }, [phase]);
 
   useEffect(() => {
@@ -251,7 +373,7 @@ function MapCanvas() {
   }
 
   function onPointerDown(event: ReactPointerEvent<HTMLDivElement>): void {
-    if (event.button !== 0) {
+    if (event.button !== 0 || isHudControl(event.target)) {
       return;
     }
     const current = view.value;
@@ -274,7 +396,9 @@ function MapCanvas() {
 
   function onPointerMove(event: ReactPointerEvent<HTMLDivElement>): void {
     const rect = event.currentTarget.getBoundingClientRect();
-    setCursor(mapPixelAt(event.clientX - rect.left, event.clientY - rect.top));
+    const pixel = mapPixelAt(event.clientX - rect.left, event.clientY - rect.top);
+    setCursor(pixel);
+    setHoveredProvince(pixel ? provinceAt(pixel.x, pixel.y) : null);
 
     const gesture = gestureRef.current;
     if (gesture.kind !== "pan" || gesture.pointerId !== event.pointerId) {
@@ -307,12 +431,40 @@ function MapCanvas() {
     panTo(gesture.originX + dx, gesture.originY + dy);
   }
 
+  // T04 PLACEHOLDER — T08 owns selection semantics (right click selects the
+  // country, selection drives the panels). This is here to prove the highlight
+  // path works. The province is read from the pointer position rather than from
+  // `cursorMap`, so a click with no preceding move still selects. A drag past the
+  // 3 px threshold deliberately does not.
   function onPointerUp(event: ReactPointerEvent<HTMLDivElement>): void {
+    // While a pan holds pointer capture the pointerup retargets to the host, so
+    // `event.target` is only a HUD control when the press started on one and
+    // `onPointerDown` already declined it. Nothing to end in that case.
+    if (isHudControl(event.target)) {
+      return;
+    }
+    const gesture = gestureRef.current;
+    if (
+      event.button === 0 &&
+      gesture.kind === "pan" &&
+      gesture.pointerId === event.pointerId &&
+      !gesture.moved
+    ) {
+      const rect = event.currentTarget.getBoundingClientRect();
+      const pixel = mapPixelAt(event.clientX - rect.left, event.clientY - rect.top);
+      setSelectedProvince(pixel ? provinceAt(pixel.x, pixel.y) : null);
+    }
+    endGesture(event.currentTarget, event.pointerId);
+  }
+
+  // A cancelled pointer is not a click, so it must not select.
+  function onPointerCancel(event: ReactPointerEvent<HTMLDivElement>): void {
     endGesture(event.currentTarget, event.pointerId);
   }
 
   function onPointerLeave(event: ReactPointerEvent<HTMLDivElement>): void {
     setCursor(null);
+    setHoveredProvince(null);
     endGesture(event.currentTarget, event.pointerId);
   }
 
@@ -324,6 +476,10 @@ function MapCanvas() {
   }
 
   function onDoubleClick(event: ReactMouseEvent<HTMLDivElement>): void {
+    // Two fast presses on "demo countries" must not zoom the map.
+    if (isHudControl(event.target)) {
+      return;
+    }
     const rect = event.currentTarget.getBoundingClientRect();
     zoomAtPoint(event.clientX - rect.left, event.clientY - rect.top, DOUBLE_CLICK_FACTOR);
   }
@@ -342,7 +498,7 @@ function MapCanvas() {
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
-      onPointerCancel={onPointerUp}
+      onPointerCancel={onPointerCancel}
       onPointerLeave={onPointerLeave}
       onLostPointerCapture={onLostPointerCapture}
       onDoubleClick={onDoubleClick}

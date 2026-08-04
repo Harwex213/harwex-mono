@@ -102,10 +102,16 @@ is no export or import UI and no server.
 | `src/map/province-index.ts` | Colour packing and the packed-colour to province-id lookup. |
 | `src/map/map-assets.ts` | Asset URLs and the three-request load pipeline. |
 | `src/map/view.ts` | The pure view transform. Fit, clamp, zoom, screen to map, draw rect. |
+| `src/map/borders.ts` | Pure border extraction. Scan, country recompute, tiling, tile culling. |
+| `src/map/borders.worker.ts` | The worker shell around `borders.ts`. Holds the ids and the crossings. |
 | `src/state/map-store.ts` | Load-status signals and the app-facing lookup functions. |
 | `src/state/view-store.ts` | View signals and the guarded actions that write them. |
+| `src/state/borders-store.ts` | Worker lifecycle, border signals, and the `Path2D` accessors. |
+| `src/state/selection-store.ts` | Hovered and selected province ids, with deduplicating setters. |
 | `src/ui/MapCanvas.tsx` | The two canvases, the input handlers and the frame loop. |
 | `src/ui/render.ts` | Canvas drawing. `drawScene` for the art, `drawOverlay` for the overlay. |
+| `src/ui/border-layer.ts` | `Path2D` tiles, the border stroke, and the two border styles. |
+| `src/ui/highlight-layer.ts` | The province highlight stamp and its cache. |
 | `src/scaffold.test.ts` | Pins the build and workspace contract. |
 | `src/assets.test.ts` | Pins the asset dimensions and the manifest facts above. |
 
@@ -287,3 +293,96 @@ Traps for later tasks:
   so the listener has to be re-armed at the new ratio each time it fires.
 - T04 appends border drawing to `drawOverlay` and keeps the bounds hairline.
 - The HUD in `MapCanvas.tsx` is T03 verification UI. T08 replaces it.
+
+## Borders and highlights
+
+Borders are extracted in a worker and drawn as stroked paths on the overlay canvas.
+The scan runs once. A country reassignment reuses that scan instead of rescanning.
+
+### Extraction
+
+`src/map/borders.ts` holds every algorithm and touches no DOM, so Node tests cover
+all of it.
+
+`mapPixelsToIds` turns the packed-colour bitmap into a `Uint16Array` of province ids.
+It builds a transient 33.5 MB `Uint16Array(1 << 24)` lookup table, so each pixel costs
+one indexed read instead of a hash lookup. The table is dropped straight after.
+
+`scanBorders` makes one row-major pass. A crossing exists where a pixel's province id
+differs from the id of its right or bottom neighbour. `NO_PROVINCE` is id 0 and takes
+part in the comparison, which is what outlines the landmass against the sea. The scan
+merges collinear crossings into runs on the way past. The real bitmap yields 215 177
+crossings and 132 190 runs.
+
+A run's geometry sits on the grid line between the two provinces, not on the up-left
+pixel. A grid line straddles both provinces equally, and a stroke needs that.
+
+`countryRuns` walks the retained crossing list and never reads the bitmap. A country
+boundary is always a subset of the province crossings, so the recompute is a few
+milliseconds against tens of milliseconds for a full scan. A test pins that subset
+property on the real bitmap.
+
+`buildBorderTiles` sorts the segments into 256 px tiles. The output is a flat
+`Float32Array` of endpoints plus a `Uint32Array` offset table, so both buffers
+transfer to the main thread with no object allocation. A segment crossing a tile edge
+is split, not duplicated, which keeps the culling exact.
+
+`visibleTiles` maps a view to a tile range and keeps a one-tile margin on every side.
+
+### The worker
+
+`src/map/borders.worker.ts` is a shell with no logic of its own. It keeps the id
+bitmap and the crossing list for its whole life, and it answers two messages.
+
+- `scan` converts the pixels, scans, tiles, and returns the province tiles.
+- `countries` takes a `countryOf` array indexed by province id and returns country
+  tiles.
+
+The worker forces `countryOf[0] = 0` on receipt. Index 0 is `NO_PROVINCE`, not a
+province. It wraps both handlers in `try`/`catch` and reports a failure as a normal
+response.
+
+`src/state/borders-store.ts` owns the worker. `ensureBordersScanned` is idempotent.
+`setCountryAssignment` is latest-wins and coalesces a request that arrives while
+another is in flight. `disposeBorders` terminates the worker. The signals are
+`borderPhase`, `borderError`, `borderStats`, `countryBorderStats` and
+`bordersVersion`. `applyDemoCountries` and `clearDemoCountries` exist only to drive
+the T04 HUD, and T06 deletes them.
+
+The store passes `index.pixels.slice()` to the worker. A transfer would detach the
+buffer and every later `provinceAt` would read zeroes.
+
+### Drawing
+
+`src/ui/border-layer.ts` builds one `Path2D` per tile and strokes only the visible
+ones. `drawBorders` installs the map-to-screen transform, then sets
+`lineWidth = style.widthCss / view.scale`. The stroke width is therefore constant in
+screen space over the whole 25x zoom range. A map-space width does not work: one map
+pixel is 0.32 CSS px at the fit scale and 8 CSS px at the 8x cap.
+
+Province borders are 1 CSS px. Country borders are 2.25 CSS px. `drawBorders`
+restores the CSS-pixel transform before it returns, because the bounds hairline that
+follows draws in CSS pixels.
+
+`src/ui/highlight-layer.ts` fills the hovered and the selected province. It builds an
+`ImageData` stamp over the province's bounding box and caches the last 32 stamps. The
+largest bounding box is 12 642 pixels, so a stamp costs well under a millisecond. The
+select fill is the hover fill at twice the alpha. A province that is both hovered and
+selected is filled once.
+
+`drawOverlay` draws the highlights, then the province borders, then the country
+borders, then the bounds hairline. Every T04 field on `OverlayInput` is optional, so
+`drawOverlay` with none of them draws exactly what T03 drew.
+
+Traps for later tasks:
+
+- Pass `snapView(view, dpr)` into the border draw, the same value `drawScene` uses.
+  The raw view puts borders up to half a device pixel off the art.
+- The border scan takes the map size 3653 x 2855. Only `sourceRect` takes the art
+  width 3652.
+- Province ids run 1 to 1650 for 1648 provinces. Ids 1318 and 1458 do not exist.
+  Size `countryOf` by the highest id and leave the holes at 0.
+- The left-click select in `MapCanvas.tsx` is a placeholder. T08 owns selection and
+  extends `selection-store.ts`.
+- The HUD buttons carry `data-hud-control`. The pointer handlers return early for a
+  target inside one, so a button press cannot pan or select.

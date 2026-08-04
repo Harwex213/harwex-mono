@@ -430,3 +430,67 @@ $ yarn test
 
 No source file was changed to make a test pass; the only edits outside the three test
 files were the mutants, all reverted.
+
+---
+
+## Docs & commit
+
+Commit: `4af248b2619987086e7a13df8b97bc4964dd1a8d` — "civitas interactive map — T03 renderer with zoom and pan".
+
+### Verification before committing
+
+All three green. Nothing needed fixing.
+
+```
+yarn typecheck   exit 0 (no output)
+yarn build       exit 0, the same 2 asset-size warnings T02 recorded (not silenced)
+yarn test        135 pass, 0 fail, exit 0
+```
+
+### README
+
+Appended, not rewritten. Two edits to earlier text and one new section:
+
+- The `Files so far` table gained `src/map/view.ts`, `src/state/view-store.ts`,
+  `src/ui/MapCanvas.tsx` and `src/ui/render.ts`.
+- `src/App.tsx`'s row no longer describes the deleted probe scaffolding.
+- New `## Rendering, zoom and pan` section at the end: the two-canvas layout, the
+  view transform (scale units, the fit minimum, the two pan regimes, cursor-anchored
+  zoom, the same-reference guard, the snapped source rect), drawing (`prepare`,
+  the 9-argument `drawImage`, `shouldSmooth` in device pixels, `drawEdgeColumn`,
+  the bounds hairline as an instrument), input (non-passive wheel, `deltaMode`
+  conversion, the 3 px drag threshold, double-click zoom, the rAF coalescing),
+  the view store's three action rules, and five traps for later tasks.
+
+### Files committed (14)
+
+```
+.plan/T02/memory.md          (T02's own docs section, left uncommitted by T02)
+.plan/T03/DESIGN.md
+.plan/T03/memory.md
+README.md
+src/App.tsx
+src/app.module.css
+src/map/view.ts
+src/map/view.test.ts
+src/state/view-store.ts
+src/state/view-store.test.ts
+src/ui/MapCanvas.tsx
+src/ui/map-canvas.module.css
+src/ui/render.ts
+src/ui/render.test.ts
+```
+
+`javascript/package.json` and `javascript/yarn.lock` were **not** committed. T03
+added no dependency. The only diff in `yarn.lock` is still the unrelated
+`@hw/civitas-beautiful-map` workspace entry that T01 and T02 both flagged. It
+belongs to that other package's commit.
+
+### Trap the next docs agent must repeat
+
+The repo index holds ~120 pre-existing staged files from unrelated work
+(`.yarn/cache` zips, a skill file). Always commit with an explicit pathspec:
+`git commit -F <msg> -- <PKG>`. A bare `git commit` sweeps them all in.
+
+This section is appended after the commit, so `.plan/T03/memory.md` shows as
+modified until T04 sweeps it in. Same pattern as T01 and T02.
