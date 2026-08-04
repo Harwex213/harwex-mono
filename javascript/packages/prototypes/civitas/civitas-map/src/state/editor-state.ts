@@ -498,26 +498,13 @@ async function detectFromBaseMap(options: Partial<DetectOptions> = {}): Promise<
 
     currentLayer.loadPixels(new Uint32Array(response.pixels));
 
-    let land = 0;
-    let lakes = 0;
-
-    provinces.value = response.provinces.map((province) => {
-      const kind: ProvinceKind = province.lake ? "lake" : "land";
-
-      if (province.lake) {
-        lakes += 1;
-      } else {
-        land += 1;
-      }
-
-      return {
-        id: province.index,
-        name: `${province.lake ? "Lake" : "Province"} ${province.index}`,
-        kind,
-        color: province.color,
-        hex: toHex(unpack(province.color)),
-      };
-    });
+    provinces.value = response.provinces.map((province) => ({
+      id: province.index,
+      name: `Province ${province.index}`,
+      kind: "land" as ProvinceKind,
+      color: province.color,
+      hex: toHex(unpack(province.color)),
+    }));
     nextProvinceId = response.provinces.length + 1;
     activeProvinceId.value = provinces.value[0]?.id ?? null;
     hoverPixel.value = null;
@@ -526,7 +513,9 @@ async function detectFromBaseMap(options: Partial<DetectOptions> = {}): Promise<
     markLayerChanged();
 
     const { stats } = response;
-    const parts = [`${land} provinces and ${lakes} lakes across ${stats.keptBodies} landmasses`];
+    const parts = [
+      `${response.provinces.length} land provinces across ${stats.keptBodies} landmasses`,
+    ];
 
     if (stats.edgeBodies > 0) {
       parts.push(

@@ -1,11 +1,17 @@
 // Recovers provinces from a map whose borders are painted into the image itself,
-// the way `assets/Karta_provintsiy.png` has them. The pipeline is six passes over
-// the pixels; each one exists because of something a real scanned map does.
+// the way `assets/Karta_provintsiy.png` has them. Land only: every province it
+// returns is land, and water is either left alone or handed to the province around
+// it. The pipeline is five passes, each one there because of something a real
+// scanned map does.
 //
-//   1. water     Blue-dominant pixels. An opening (erode, then dilate by the same
-//                radius) deletes water features thinner than twice that radius,
-//                which is what rivers are: water-coloured, but a few pixels wide.
-//                Without this every river would cut its province in half.
+//   1. water     Blue-dominant pixels that are not dark. Both halves matter: the
+//                border ink on this map is blue-dominant too, at luminance 20-27
+//                against 40 and up for real water, so without the luminance floor
+//                the ink lands in the water mask and thick stretches of it survive
+//                as "enclosed water". An opening (erode, then dilate by the same
+//                radius) then deletes water thinner than twice that radius, which
+//                is what rivers are: water-coloured, but a few pixels wide.
+//                Without it every river would cut its province in half.
 //   2. bodies    Connected runs of not-water. A body that reaches the edge of the
 //                image is not a landmass — the scanned paper the map sits on does
 //                exactly that, and it carries land-coloured speckle that no colour
@@ -20,45 +26,37 @@
 //                seed a province of its own.
 //   5. watershed Every province expands into the leftover pixels of its body at
 //                one pixel per round, so two provinces meet along the centre line
-//                of the ink between them and rivers, dropped specks and dithering
-//                are absorbed by whoever is nearest.
-//   5b. coast    The shore is drawn with the same ink, but that ring sits in the
-//                water mask, so the watershed stops short of it and leaves every
-//                island with an unpainted rim. The ink is much darker than the
-//                water beside it, so a short bounded expansion into dark pixels
-//                claims the outline without reaching open sea.
-//   6. lakes     Water that never reaches the edge of the image is enclosed by
-//                land. Above `minLake` it becomes a province of its own; below it,
-//                it is handed to the watershed so a pond leaves no hole.
+//                of the ink between them, and ink, rivers, dropped specks and
+//                dithering go to whoever is nearest. Water enclosed by land joins
+//                the leftovers, so a lake is shared out between the provinces
+//                around it instead of leaving a hole. Open water is untouched: it
+//                reaches the frame, so it is never enclosed.
 
 type DetectOptions = {
   // Green minus blue at or below which a pixel counts as water. Sea sits near
   // -18 on this map, terrain at +4 and above.
   waterGb: number;
+  // Luminance below which a blue-dominant pixel is ink rather than water.
+  waterLum: number;
   // Half-width of the widest river to erase from the water mask.
   riverWidth: number;
   landLum: number;
   landGb: number;
   minBody: number;
   minArea: number;
-  minLake: number;
   // Keep landmasses that touch the edge of the image. Off by default, which is
   // what discards a scanned-paper background; turn it on for a map whose land
   // genuinely runs off the frame.
   keepEdgeBodies: boolean;
-  coastInkLum: number;
-  coastGrow: number;
 };
 
 type DetectStats = {
   bodies: number;
   keptBodies: number;
   edgeBodies: number;
-  landProvinces: number;
-  lakes: number;
   discardedSpecks: number;
   riverPixels: number;
-  coastInkPixels: number;
+  enclosedWaterPixels: number;
   unassignedInsideLand: number;
   largestArea: number;
   medianArea: number;
@@ -69,22 +67,18 @@ type DetectResult = {
   labels: Int32Array;
   count: number;
   areas: Int32Array;
-  // Which labels came from enclosed water rather than land.
-  isLake: Uint8Array;
   stats: DetectStats;
 };
 
 const DEFAULT_OPTIONS: DetectOptions = {
   waterGb: -6,
+  waterLum: 34,
   riverWidth: 2,
   landLum: 45,
   landGb: 0,
   minBody: 200,
   minArea: 48,
-  minLake: 120,
   keepEdgeBodies: false,
-  coastInkLum: 40,
-  coastGrow: 6,
 };
 
 // A queue that grows on demand. The passes below are breadth-first over up to tens
@@ -200,7 +194,7 @@ function detectProvinces(
   const rawWater = new Uint8Array(count);
 
   for (let i = 0; i < count; i += 1) {
-    rawWater[i] = gb[i] <= opt.waterGb ? 1 : 0;
+    rawWater[i] = gb[i] <= opt.waterGb && lum[i] >= opt.waterLum ? 1 : 0;
   }
 
   const water = new Uint8Array(count);
@@ -302,7 +296,6 @@ function detectProvinces(
   // --- 3 and 4. province seeds ------------------------------------------
   const labels = new Int32Array(count);
   const areaList: number[] = [0];
-  const lakeFlags: number[] = [0];
   let discardedSpecks = 0;
   let next = 0;
 
@@ -356,14 +349,14 @@ function detectProvinces(
     }
 
     areaList.push(members.length);
-    lakeFlags.push(0);
   }
 
-  const landProvinces = next;
-
-  // --- 6. enclosed water ------------------------------------------------
+  // --- enclosed water joins the leftovers -------------------------------
+  // Water that never reaches the frame is surrounded by land, so the watershed
+  // shares it out between the provinces around it. Nothing here becomes a province
+  // of its own: this detector returns land only.
   const waterSeen = new Uint8Array(count);
-  let lakes = 0;
+  let enclosedWaterPixels = 0;
 
   for (let seed = 0; seed < count; seed += 1) {
     if (!water[seed] || waterSeen[seed]) {
@@ -412,28 +405,14 @@ function detectProvinces(
       continue;
     }
 
-    if (members.length >= opt.minLake) {
-      next += 1;
-      lakes += 1;
-      areaList.push(members.length);
-      lakeFlags.push(1);
+    enclosedWaterPixels += members.length;
 
-      for (const p of members) {
-        labels[p] = next;
-      }
-
-      continue;
-    }
-
-    // Too small to be worth a province of its own: let the watershed take it, so
-    // it does not stay as a hole in the province around it.
     for (const p of members) {
       inBody[p] = 1;
     }
   }
 
   const areas = new Int32Array(areaList);
-  const isLake = new Uint8Array(lakeFlags);
 
   // --- 5. watershed ------------------------------------------------------
   {
@@ -464,46 +443,6 @@ function detectProvinces(
     }
   }
 
-  // --- 5b. the coastline outline ----------------------------------------
-  let coastInkPixels = 0;
-
-  if (opt.coastGrow > 0) {
-    const dist = new Uint8Array(count);
-    const queue = new PixelQueue();
-
-    for (let i = 0; i < count; i += 1) {
-      if (labels[i] !== 0) {
-        queue.push(i);
-      }
-    }
-
-    while (!queue.empty) {
-      const p = queue.shift();
-      const d = dist[p];
-
-      if (d >= opt.coastGrow) {
-        continue;
-      }
-
-      const label = labels[p];
-      const list = fillNeighbours(p);
-
-      for (let k = 0; k < 4; k += 1) {
-        const n = list[k];
-
-        if (n < 0 || labels[n] !== 0 || lum[n] >= opt.coastInkLum) {
-          continue;
-        }
-
-        labels[n] = label;
-        dist[n] = d + 1;
-        areas[label] += 1;
-        coastInkPixels += 1;
-        queue.push(n);
-      }
-    }
-  }
-
   let unassignedInsideLand = 0;
 
   for (let i = 0; i < count; i += 1) {
@@ -518,16 +457,13 @@ function detectProvinces(
     labels,
     count: next,
     areas,
-    isLake,
     stats: {
       bodies,
       keptBodies,
       edgeBodies,
-      landProvinces,
-      lakes,
       discardedSpecks,
       riverPixels,
-      coastInkPixels,
+      enclosedWaterPixels,
       unassignedInsideLand,
       largestArea: sorted.length > 0 ? sorted[sorted.length - 1] : 0,
       medianArea: sorted.length > 0 ? sorted[Math.floor(sorted.length / 2)] : 0,

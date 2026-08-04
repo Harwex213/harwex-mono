@@ -15,7 +15,6 @@ type DetectRequest = {
 type DetectedProvince = {
   index: number;
   color: number;
-  lake: boolean;
 };
 
 type DetectResponse =
@@ -52,7 +51,7 @@ scope.onmessage = (event: MessageEvent<DetectRequest>) => {
 
       taken.add(color);
       colorOfLabel[label] = color;
-      provinces.push({ index: label, color, lake: result.isLake[label] === 1 });
+      provinces.push({ index: label, color });
     }
 
     const pixels = new Uint32Array(width * height);
