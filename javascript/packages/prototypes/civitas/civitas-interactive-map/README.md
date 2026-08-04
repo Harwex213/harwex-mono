@@ -95,13 +95,17 @@ is no export or import UI and no server.
 | Path | What it is |
 |---|---|
 | `src/main.tsx` | Entry. Mounts `App`. |
-| `src/App.tsx` | Load-status scaffolding. Shows the map facts and a province lookup probe. T03 replaces the body. |
+| `src/App.tsx` | Mounts `MapCanvas` and overlays the load status until the assets are ready. |
 | `src/index.css` | Dark theme tokens, reset, base control styling. Copied from `../civitas-map`. |
 | `src/env.d.ts` | Ambient declarations for `*.module.css` and `*.css`. |
 | `src/map/manifest.ts` | Manifest types and the strict parser. |
 | `src/map/province-index.ts` | Colour packing and the packed-colour to province-id lookup. |
 | `src/map/map-assets.ts` | Asset URLs and the three-request load pipeline. |
+| `src/map/view.ts` | The pure view transform. Fit, clamp, zoom, screen to map, draw rect. |
 | `src/state/map-store.ts` | Load-status signals and the app-facing lookup functions. |
+| `src/state/view-store.ts` | View signals and the guarded actions that write them. |
+| `src/ui/MapCanvas.tsx` | The two canvases, the input handlers and the frame loop. |
+| `src/ui/render.ts` | Canvas drawing. `drawScene` for the art, `drawOverlay` for the overlay. |
 | `src/scaffold.test.ts` | Pins the build and workspace contract. |
 | `src/assets.test.ts` | Pins the asset dimensions and the manifest facts above. |
 
@@ -170,3 +174,116 @@ Traps for later tasks:
   is a ratio test for that reason. Do not tighten it into an all-must-match test.
 - `yarn build` prints two size warnings for the copied assets. The warnings are
   accurate and are not silenced.
+
+## Rendering, zoom and pan
+
+The map is drawn on two stacked canvases inside one host element. The lower
+canvas holds the art. The upper canvas holds the overlay. Both are painted in
+the same animation frame from the same view, so the overlay can never slide
+against the art during a pan.
+
+### The view transform
+
+`src/map/view.ts` is pure. It has no DOM, no canvas and no signals, so every
+function is unit tested in Node.
+
+A view is `{ scale, x, y }`. `scale` is CSS pixels per map pixel, not device
+pixels. `x` and `y` say where map pixel (0, 0) sits inside the viewport, in CSS
+pixels. `MAX_SCALE` is 8, which is 16 device pixels per map pixel on a 2x
+display. The device pixel ratio enters only at `snapView` and at draw time.
+
+The minimum scale is the fit scale with no padding. `fitScale` takes the smaller
+of the two axis ratios, so at minimum zoom the whole map is visible and one axis
+touches both viewport edges.
+
+`clampTranslate` runs two regimes per axis. An axis larger than the viewport is
+clamped to the map edges, so no background gap opens. An axis smaller than the
+viewport is locked to its centred value. The second regime is not hypothetical.
+It applies to one axis at and near minimum zoom.
+
+`zoomAt` reads the anchor point through the old scale, then solves the
+translation for the new clamped scale. The map point under the cursor therefore
+stays under the cursor. `zoomAt` returns the same object reference when the
+scale did not change, and `view-store` uses `!==` to skip the signal write. That
+guard is what stops a wheel held at the 8x cap from repainting forever.
+
+`sourceRect` snaps the source rectangle to whole source pixels and derives the
+destination from those integers. `dw / sw` is therefore exactly `scale`. A
+fractional source rectangle makes the browser resample with a shifting phase,
+which shimmers during a pan.
+
+### Drawing
+
+`src/ui/render.ts` owns the canvas calls. `prepare` sets the transform to the
+device pixel ratio and clears the frame, so a leaked transform cannot
+accumulate. `drawScene` calls the 9-argument `drawImage` with the rectangle
+`sourceRect` computed. At scale 8 that reads about one viewport divided by 8 of
+source pixels, not the whole 10.4 megapixel image.
+
+`shouldSmooth` is `scale * dpr < 1`. Smoothing is decided in device pixels. At
+scale 0.7 on a 2x display each map pixel already covers 1.4 device pixels, and
+smoothing there turns the flat province colours to mush. The sibling package
+`../civitas-map` tests `scale < 1` instead. Do not copy that line.
+
+`map.png` is 3652 px wide and the authoritative map is 3653 px wide, so map
+column 3652 has no art. `drawEdgeColumn` repeats the art's last column into that
+gap. It is guarded on `gap > 0`, so a future re-export at the full width draws
+nothing extra.
+
+`drawOverlay` strokes a 1 CSS px hairline around the map bounds. The hairline is
+an instrument, not decoration. Both canvases snap the view with the same
+function and the same ratio, so the hairline and the art edge coincide to the
+pixel. A hairline that detaches from the art means the two transforms have
+diverged.
+
+### Input
+
+`src/ui/MapCanvas.tsx` handles the gestures.
+
+- The wheel zooms toward the cursor. The listener is native with
+  `{ passive: false }`, because React registers `onWheel` passively and ignores
+  `preventDefault` there. `deltaMode` is converted through `[1, 16, 100]`.
+  Firefox reports one notch as `deltaY: 3, deltaMode: 1`, and treating that as 3
+  pixels makes the wheel feel dead.
+- A left drag pans. The gesture starts after 3 px of movement. The pan is always
+  the origin plus the total delta, never an accumulation of per-move deltas.
+- A double click zooms 2x toward the clicked point, with no animation.
+- The context menu is suppressed. T08 puts right-click country selection there.
+
+Every draw goes through one `requestAnimationFrame` handle. `scheduleDraw` is a
+no-op while a frame is pending, so a burst of wheel events yields one paint per
+frame. `draw` reads every input fresh instead of closing over values, so a
+coalesced frame paints the newest state.
+
+### The view store
+
+`src/state/view-store.ts` holds `view`, `viewport`, `dpr`, `cursorMap` and
+`panning`. The view lives in a store rather than in component state because T04,
+T07 and T08 all need it.
+
+`view.value` is `View | null`. It stays null until both the map size and a
+non-zero viewport exist, because those arrive from two independent async
+sources. `syncView()` is the single initialisation point and runs from both
+paths. Guard the null; do not invent a default.
+
+Three rules govern the actions:
+
+- Every action returns without writing when the map size is null or either
+  viewport dimension is at most 0.
+- Every action skips the write when nothing changed. A fresh object is never
+  `Object.is`-equal, so a write always notifies.
+- No action may be called from inside a `useSignalEffect`. Each one writes
+  signals it also reads, which is a loop. Call them from DOM handlers and plain
+  `useEffect`s.
+
+Traps for later tasks:
+
+- `sourceRect` takes the ART size, 3652 x 2855. Every other call takes the MAP
+  size, 3653 x 2855. Mixing them asks `drawImage` for a column the bitmap does
+  not have.
+- Assigning `canvas.width` reallocates and clears the backing store even when
+  the value is unchanged. Guard the assignment with `!==`.
+- A `resolution` media query fires only when the ratio leaves its current value,
+  so the listener has to be re-armed at the new ratio each time it fires.
+- T04 appends border drawing to `drawOverlay` and keeps the bounds hairline.
+- The HUD in `MapCanvas.tsx` is T03 verification UI. T08 replaces it.

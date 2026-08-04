@@ -539,3 +539,67 @@ only apostrophes inside double-quoted test names — no single-quoted string lit
   rely on it never returning `undefined`.
 - The 1634/1648 centroid-hit count is asserted exactly. If T06 or a regenerated manifest
   moves centroids, that assertion is the one that will fail, and it is a real signal.
+
+---
+
+## Docs & commit
+
+Commit: `ba81adf1b813be5a6f334035a0a5da2aeb12a234` — "civitas interactive map — T02 manifest and asset loading".
+
+### Verification before committing
+
+All three green. Nothing needed fixing.
+
+```
+yarn typecheck   exit 0 (no output)
+yarn build       exit 0, 2 asset-size warnings (expected, not silenced)
+yarn test        81 pass, 0 fail, exit 0
+```
+
+### README
+
+Appended, not rewritten. Two edits to T01's text and one new section:
+
+- The `Assets` section said the production build does not carry the assets. That
+  is now false, so the line names `rspack.CopyRspackPlugin` and `dist/assets`.
+- The `Files so far` table gained the four new modules. `src/App.tsx` is no longer
+  described as a placeholder.
+- New `## Asset loading` section at the end: the parser, the packing rules
+  (`0x00RRGGBB`, `UNPAINTED = 0xffffffff`, alpha below 255 is unpainted), the
+  three-request load and its two guards, the `map-store` surface, and four traps
+  for later tasks.
+
+### Files committed (16)
+
+```
+.plan/T01/memory.md          (T01's own docs section, left uncommitted by T01)
+.plan/T02/DESIGN.md
+.plan/T02/memory.md
+README.md
+rspack.config.mjs
+src/App.tsx
+src/app.module.css
+src/scaffold.test.ts
+src/map/manifest.ts
+src/map/manifest.test.ts
+src/map/map-assets.ts
+src/map/map-assets.test.ts
+src/map/province-index.ts
+src/map/province-index.test.ts
+src/map/province-pixels.test.ts
+src/state/map-store.ts
+```
+
+`javascript/package.json` and `javascript/yarn.lock` were **not** committed. T02
+added no dependency. The only diff in `yarn.lock` is the unrelated
+`@hw/civitas-beautiful-map` workspace entry that T01 already flagged. It still sits
+in the working tree, and it belongs to that other package's commit.
+
+### Trap the next docs agent must repeat
+
+The repo index holds ~120 pre-existing staged files from unrelated work
+(`.yarn/cache` zips, a skill file). Always commit with an explicit pathspec:
+`git commit -F <msg> -- <PKG>`. A bare `git commit` sweeps them all in.
+
+This section itself is appended after the commit, so `.plan/T02/memory.md` shows as
+modified until T03 sweeps it in. Same pattern as T01.
