@@ -6,18 +6,24 @@ import { createRoot } from "react-dom/client";
 
 type TWidgetStrategy = "strategy1" | "strategy2";
 
-interface IWidgetContainerContext {
-  WidgetTitleContainer: ComponentType<IWidgetTitleContainerProps>;
+type TWidgetContainer<TProps> = (props: TProps) => React.ReactNode;
+
+interface IWidgetContainerPropsMap {
+  WidgetTitleContainer: IWidgetTitleContainerProps;
 }
+
+type TWidgetContainerName = keyof IWidgetContainerPropsMap;
+
+type TWidgetContainerProps<TName extends TWidgetContainerName> =
+  IWidgetContainerPropsMap[TName];
+
+type IWidgetContainerContext = {
+  [TName in TWidgetContainerName]: TWidgetContainer<TWidgetContainerProps<TName>>;
+};
 
 const WidgetContainerContext = createContext<IWidgetContainerContext>(
   null!
 );
-
-type TWidgetContainerName = keyof IWidgetContainerContext;
-
-type TWidgetContainerProps<TName extends TWidgetContainerName> =
-  IWidgetContainerContext[TName] extends ComponentType<infer TProps> ? TProps : never;
 
 type TWidgetContainerOwnProps<TName extends TWidgetContainerName> = {
   name: TName;
@@ -53,14 +59,14 @@ interface IWidgetTitleContainerProps {
   children: (props: IWidgetTitleProps) => React.ReactNode;
 }
 
-const WidgetTitleContainerStrategyOne: ComponentType<IWidgetTitleContainerProps> = (({ children }) => {
+const WidgetTitleContainerStrategyOne: TWidgetContainer<IWidgetTitleContainerProps> = (({ children }) => {
     const title = "Strategy1ContainerData";
 
     return children({ title });
   }
 );
 
-const WidgetTitleContainerStrategyTwo: ComponentType<IWidgetTitleContainerProps> = (({ children }) => {
+const WidgetTitleContainerStrategyTwo: TWidgetContainer<IWidgetTitleContainerProps> = (({ children }) => {
     const title = "Strategy2ContainerData";
 
     return children({ title });
@@ -69,7 +75,7 @@ const WidgetTitleContainerStrategyTwo: ComponentType<IWidgetTitleContainerProps>
 
 const WIDGET_TITLE_CONTAINER_STRATEGY_MAP: Record<
   TWidgetStrategy,
-  ComponentType<IWidgetTitleContainerProps>
+  TWidgetContainer<IWidgetTitleContainerProps>
 > = {
   ["strategy1"]: WidgetTitleContainerStrategyOne,
   ["strategy2"]: WidgetTitleContainerStrategyTwo,
