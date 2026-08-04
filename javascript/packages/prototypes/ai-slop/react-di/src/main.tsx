@@ -14,13 +14,21 @@ const WidgetContainerContext = createContext<IWidgetContainerContext>(
   null!
 );
 
-type TWidgetContainerProps = {
-  name: keyof IWidgetContainerContext;
-};
+type TWidgetContainerName = keyof IWidgetContainerContext;
 
-const WidgetContainer: ComponentType<TWidgetContainerProps> = ({ name, ...props }) => {
+type TWidgetContainerProps<TName extends TWidgetContainerName> =
+  IWidgetContainerContext[TName] extends ComponentType<infer TProps> ? TProps : never;
+
+type TWidgetContainerOwnProps<TName extends TWidgetContainerName> = {
+  name: TName;
+} & TWidgetContainerProps<TName>;
+
+const WidgetContainer = <TName extends TWidgetContainerName>(
+  { name, ...props }: TWidgetContainerOwnProps<TName>,
+) => {
   const Containers = useContext(WidgetContainerContext);
-  const Container = Containers[name];
+
+  const Container: ComponentType<any> = Containers[name];
 
   return createElement(Container, props);
 };
@@ -91,4 +99,4 @@ export default function App() {
   );
 }
 
-createRoot(document.getElementById("root")!).render(<App />);
+createRoot(document.querySelector("body")!).render(<App />);
