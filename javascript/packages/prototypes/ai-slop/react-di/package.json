@@ -1,0 +1,34 @@
+{
+  "name": "@hw/react-di",
+  "private": true,
+  "type": "module",
+  "browserslist": [
+    "last 1 version",
+    "> 1%",
+    "not dead"
+  ],
+  "scripts": {
+    "dev": "yarn vite dev",
+    "dev:studio": "KIT=studio yarn vite dev",
+    "build": "yarn vite build",
+    "build:studio": "KIT=studio yarn vite build",
+    "build:solo": "HARNESS=off yarn vite build --outDir dist-solo-base-ui",
+    "build:solo:studio": "KIT=studio HARNESS=off yarn vite build --outDir dist-solo-studio",
+    "preview": "yarn vite preview",
+    "typecheck": "tsc --noEmit",
+    "check:boundaries": "node scripts/check-boundaries.mjs",
+    "check": "yarn check:boundaries && yarn typecheck"
+  },
+  "dependencies": {
+    "react": "19.2.0",
+    "react-dom": "19.2.0"
+  },
+  "devDependencies": {
+    "@rspack/cli": "2.1.4",
+    "@rspack/core": "2.1.4",
+    "@rspack/dev-server": "2.1.0",
+    "@types/react": "19.2.0",
+    "@types/react-dom": "19.2.0",
+    "typescript": "5.9.3"
+  }
+}
