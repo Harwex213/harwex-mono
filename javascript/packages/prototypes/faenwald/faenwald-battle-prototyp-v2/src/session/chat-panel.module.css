@@ -1,0 +1,67 @@
+/* Same panel chrome the pages give their own side panels, plus `flex: 1`: the
+   chat is the box that takes whatever height the column has left. */
+.chat {
+  background: var(--uk-panel);
+  border: 1px solid var(--uk-border);
+  border-radius: var(--uk-radius-lg);
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--uk-space-2);
+  min-height: 0;
+  padding: var(--uk-space-3);
+}
+
+.chatLog {
+  border: 1px solid var(--uk-border);
+  border-radius: var(--uk-radius);
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--uk-space-2);
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--uk-space-2);
+}
+
+.message {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.messageAuthor {
+  color: var(--uk-fg-subtle);
+  font-size: 11px;
+}
+
+.messageMine {
+  color: var(--uk-primary);
+}
+
+.messageText {
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.chatForm {
+  display: flex;
+  flex-shrink: 0;
+  gap: var(--uk-space-2);
+}
+
+.chatInput {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Square, so the glyph sits centred instead of inside a label-width box. */
+.sendButton {
+  flex-shrink: 0;
+  padding: 0;
+  width: 32px;
+}
+
+.sendIcon {
+  font-size: 16px;
+}

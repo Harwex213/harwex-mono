@@ -1,0 +1,59 @@
+/* The border around the cone a canopy shot could come down in. Nothing is laid
+   over the hexes inside it: fourteen of them are on at once, and a wash that
+   light enough to leave the terrain readable is too light to say much, while one
+   strong enough to read fights every other cue the board draws on those hexes.
+   A move target covers its terrain instead — that one is a single hex an order is
+   waiting on.
+
+   The loop is drawn on the size the hexes tile at, which is the middle of the gap
+   between the hexes inside the cone and the ones outside it. So the border runs
+   between the two rather than over either.
+
+   The pointer is not answered here at all, not even with a hover shade. The cone
+   says where a shot could land, and the hex under it goes on answering the way
+   every other hex does. */
+.cone {
+  pointer-events: none;
+}
+
+/* A soft band under the border, so the cone still reads as one area rather than
+   as a line with hexes on both sides of it. It breathes rather than marches: the
+   two together say "this is live" without either of them having to shout. */
+.glow {
+  animation: breathe 2400ms ease-in-out infinite alternate;
+  fill: none;
+  stroke: var(--map-canopy);
+  stroke-linejoin: round;
+  stroke-width: 6;
+}
+
+/* The border itself. Dashed rather than solid, and marching the way the loop is
+   drawn — clockwise around the cone. A negative offset moves the dashes along the
+   path, and one full pattern per run is what keeps the motion seamless as it
+   loops. */
+.edge {
+  animation: march 900ms linear infinite;
+  fill: none;
+  stroke: var(--map-canopy);
+  stroke-dasharray: 9 7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
+}
+
+@keyframes march {
+  to {
+    stroke-dashoffset: -16;
+  }
+}
+
+/* One leg of the breath per run, so `alternate` gives a 2.4s fade each way. */
+@keyframes breathe {
+  from {
+    stroke-opacity: 0.1;
+  }
+
+  to {
+    stroke-opacity: 0.32;
+  }
+}

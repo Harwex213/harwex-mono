@@ -1,0 +1,20 @@
+.wrap {
+  align-items: center;
+  cursor: pointer;
+  display: inline-flex;
+  gap: var(--uk-space-2);
+  user-select: none;
+}
+
+.icon {
+  font-size: 14px;
+  line-height: 1;
+}
+
+.label {
+  color: var(--uk-fg-muted);
+  font-size: 13px;
+  /* Both labels are short, but "Light" is wider than "Dark" — a fixed width
+     stops the header shifting when the switch is flipped. */
+  min-width: 34px;
+}

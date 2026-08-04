@@ -1,0 +1,193 @@
+.panel {
+  background: var(--uk-panel-elevated);
+  border: 1px solid var(--uk-border-strong);
+  border-radius: var(--uk-radius-lg);
+  bottom: var(--uk-space-3);
+  box-shadow: var(--uk-shadow);
+  display: flex;
+  flex-direction: column;
+  gap: var(--uk-space-2);
+  /* Bottom left of the canvas, leaving the opposite corner to the read-only
+     terrain panel. */
+  left: var(--uk-space-3);
+  /* One width for every unit, so the panel does not resize as the selection
+     moves between units with longer or shorter titles. Wide enough for the
+     fullest row of buttons — the four orders and the two aids a shooter has —
+     so a unit with fewer of them is held to the same width. */
+  min-width: 270px;
+  padding: var(--uk-space-3);
+  position: absolute;
+}
+
+/* The unit itself, boxed off from the actions under it. */
+.card {
+  border: 1px solid var(--uk-border);
+  border-radius: var(--uk-radius);
+  display: flex;
+  flex-direction: column;
+  gap: var(--uk-space-1);
+  padding: var(--uk-space-2);
+}
+
+.title {
+  color: var(--uk-fg);
+  font-size: 14px;
+  font-weight: 600;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.stats {
+  color: var(--uk-fg-muted);
+  display: flex;
+  font-size: 13px;
+  /* Stats are numbers that change with the selection; tabular figures stop them
+     shuffling sideways. */
+  font-variant-numeric: tabular-nums;
+  gap: var(--uk-space-3);
+  justify-content: center;
+  white-space: nowrap;
+}
+
+/* What the unit has left to spend this turn. Ruled off from the stats above it:
+   those describe the unit, this one describes its turn, and the two run down
+   as the battle goes on for different reasons. */
+.moves {
+  border-top: 1px solid var(--uk-border);
+  display: flex;
+  font-size: 13px;
+  gap: var(--uk-space-2);
+  justify-content: space-between;
+  margin-top: var(--uk-space-1);
+  padding-top: var(--uk-space-2);
+  white-space: nowrap;
+}
+
+.movesLabel {
+  color: var(--uk-fg-muted);
+}
+
+.movesValue {
+  color: var(--uk-fg);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+/* Nothing left. The two orders that cross the board are muted at the same
+   moment, so the count says why they went quiet. */
+.movesSpent .movesValue {
+  color: var(--uk-danger);
+}
+
+/* Every order on one row. The orders sit together on the left, and the two
+   buttons that are not orders are pushed to the right end by `.aids`. */
+.actions {
+  align-items: center;
+  display: flex;
+  gap: var(--uk-space-1);
+}
+
+/* The two buttons that only change what the board draws. Ruled off from the
+   orders and pushed to the far end of the row, so the two groups are read as
+   two. */
+.aids {
+  border-left: 1px solid var(--uk-border);
+  display: flex;
+  gap: var(--uk-space-1);
+  margin-left: auto;
+  padding-left: var(--uk-space-2);
+}
+
+/* One order, one square. Each button is a `Tooltip.Trigger`, which carries a
+   look of its own from the kit — a padded, bordered pill. Every property it sets
+   is set again here, and under two classes rather than one, so the button is the
+   square this panel wants however the two stylesheets happen to be ordered. */
+.panel .action {
+  align-items: center;
+  background: var(--uk-panel);
+  border: 1px solid var(--uk-border-strong);
+  border-radius: var(--uk-radius);
+  color: var(--uk-fg);
+  cursor: pointer;
+  display: flex;
+  /* A square, whatever else is on the row: the icon inside it is drawn to a
+     square, and a button squeezed narrower would squash it. */
+  flex-shrink: 0;
+  /* The icons follow the font size, and they are drawn to fill their box. */
+  font-size: 17px;
+  font-weight: 400;
+  gap: 0;
+  height: 34px;
+  justify-content: center;
+  padding: 0;
+  transition:
+    background var(--uk-duration) var(--uk-ease),
+    border-color var(--uk-duration) var(--uk-ease),
+    color var(--uk-duration) var(--uk-ease);
+  width: 34px;
+}
+
+.panel .action:hover {
+  background: var(--uk-hover);
+}
+
+.panel .action:active {
+  background: var(--uk-active);
+}
+
+.panel .action:focus-visible {
+  box-shadow: 0 0 0 3px var(--uk-ring);
+  outline: none;
+}
+
+/* Armed: the next click on the board belongs to this order. */
+.panel .actionArmed,
+.panel .actionArmed:hover,
+.panel .actionArmed:active {
+  background: var(--uk-primary);
+  border-color: var(--uk-primary);
+  color: var(--uk-primary-fg);
+}
+
+/* Quiet. The button still answers the pointer, because the hint behind it says
+   why it is quiet — so it is only the look that goes dead, not the hover. */
+.panel .action[aria-disabled="true"],
+.panel .action[aria-disabled="true"]:hover,
+.panel .action[aria-disabled="true"]:active {
+  background: var(--uk-panel);
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+/* The name behind an icon, and the key that gives the same order. */
+.tip {
+  display: flex;
+  flex-direction: column;
+  gap: var(--uk-space-1);
+}
+
+.tipTitle {
+  align-items: center;
+  display: flex;
+  font-weight: 600;
+  gap: var(--uk-space-2);
+}
+
+.tipKey {
+  background: var(--uk-panel);
+  border: 1px solid var(--uk-border);
+  border-radius: var(--uk-radius-sm);
+  color: var(--uk-fg-muted);
+  font-family: var(--uk-font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 16px;
+  min-width: 18px;
+  padding: 0 var(--uk-space-1);
+  text-align: center;
+}
+
+/* Why the button above is quiet. */
+.tipHint {
+  color: var(--uk-fg-muted);
+}

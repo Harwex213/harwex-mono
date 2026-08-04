@@ -1,0 +1,35 @@
+.page {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--uk-space-3);
+  /* `min-height: 0` lets the canvas row shrink instead of pushing the page
+     past the viewport. */
+  min-height: 0;
+}
+
+.toolbar {
+  align-items: center;
+  display: flex;
+  flex-shrink: 0;
+  gap: var(--uk-space-4);
+}
+
+.status {
+  color: var(--uk-fg-muted);
+  flex: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.hint {
+  color: var(--uk-fg-subtle);
+  font-size: 12px;
+}
+
+.canvas {
+  flex: 1;
+  min-height: 0;
+  /* Anchors the terrain panel, which overlays the canvas rather than sitting
+     inside the SVG. */
+  position: relative;
+}

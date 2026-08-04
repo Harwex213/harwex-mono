@@ -1,0 +1,12 @@
+/* A hex the armed unit may be placed on. The wash is translucent: a whole band
+   of hexes wears it at once, and the terrain under them still has to read. A move
+   target is one hex at a time and covers its terrain instead. */
+.fill {
+  fill: var(--map-place);
+  fill-opacity: 0.35;
+  transition: fill-opacity var(--uk-duration) var(--uk-ease);
+}
+
+.fill:hover {
+  fill-opacity: 0.7;
+}

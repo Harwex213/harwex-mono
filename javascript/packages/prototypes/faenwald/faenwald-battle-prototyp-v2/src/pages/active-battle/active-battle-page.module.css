@@ -1,0 +1,932 @@
+.page {
+  display: grid;
+  flex: 1;
+  gap: var(--uk-space-3);
+  grid-template-columns: 280px minmax(0, 1fr) 280px;
+  /* `min-height: 0` lets the columns shrink instead of pushing the page past
+     the viewport. */
+  min-height: 0;
+}
+
+/* --- shared panel chrome --- */
+
+.panel {
+  background: var(--uk-panel);
+  border: 1px solid var(--uk-border);
+  border-radius: var(--uk-radius-lg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--uk-space-2);
+  min-height: 0;
+  padding: var(--uk-space-3);
+}
+
+/* --- left panel: title + army + end turn --- */
+
+.left {
+  background: var(--uk-panel);
+  border: 1px solid var(--uk-border);
+  border-radius: var(--uk-radius-lg);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: var(--uk-space-3);
+}
+
+.leftHeader {
+  align-items: center;
+  display: flex;
+  flex-shrink: 0;
+  gap: var(--uk-space-2);
+  padding-bottom: var(--uk-space-3);
+}
+
+.leftTitle {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0;
+}
+
+/* The uikit trigger is styled as a full button; an inline icon wants none of
+   that chrome. */
+.infoTrigger {
+  background: none;
+  border: none;
+  border-radius: var(--uk-radius-full);
+  color: var(--uk-fg-subtle);
+  cursor: help;
+  display: inline-flex;
+  flex-shrink: 0;
+  font-size: 16px;
+  padding: 0;
+}
+
+.infoTrigger:hover {
+  background: none;
+  color: var(--uk-fg);
+}
+
+.roster {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--uk-space-2);
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* A row is the portrait and the text beside it, so the list reads as the same
+   army the turn order bar draws. */
+.unit {
+  align-items: center;
+  background: transparent;
+  border: 1px solid var(--uk-border);
+  border-radius: var(--uk-radius);
+  color: inherit;
+  cursor: pointer;
+  display: flex;
+  flex-shrink: 0;
+  font: inherit;
+  gap: var(--uk-space-2);
+  padding: var(--uk-space-2);
+  text-align: left;
+  transition:
+    background var(--uk-duration) var(--uk-ease),
+    border-color var(--uk-duration) var(--uk-ease);
+}
+
+.unit:hover {
+  background: var(--uk-hover);
+}
+
+/* The unit the panels are answering for. Every row is clickable, so the frame
+   marks the selection, not the turn — the badge in the row says that. */
+.unitSelected {
+  background: var(--uk-primary-subtle);
+  border-color: var(--uk-primary);
+}
+
+/* Hover must not read as the selection: a hovered row goes on being the row it
+   was, so the selected one keeps its own background. */
+.unitSelected:hover {
+  background: var(--uk-primary-subtle);
+}
+
+.unitAvatar {
+  border: 1px solid var(--uk-border);
+  border-radius: var(--uk-radius);
+  display: block;
+  flex-shrink: 0;
+  height: 40px;
+  /* The portraits are 1:1 renders; the frame is square too, so nothing is cut
+     off and nothing is stretched. */
+  object-fit: cover;
+  width: 40px;
+}
+
+.unitBody {
+  display: flex;
+  flex-direction: column;
+  gap: var(--uk-space-1);
+  min-width: 0;
+}
+
+.unitName {
+  align-items: center;
+  display: flex;
+  font-size: 13px;
+  gap: var(--uk-space-2);
+  justify-content: space-between;
+}
+
+.unitBadge {
+  border: 1px solid var(--map-selected-line);
+  border-radius: var(--uk-radius-full);
+  color: var(--uk-fg);
+  font-size: 10px;
+  padding: 0 var(--uk-space-2);
+  text-transform: uppercase;
+}
+
+.unitStats {
+  color: var(--uk-fg-muted);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.turnBar {
+  border-top: 1px solid var(--uk-border);
+  flex-shrink: 0;
+  margin-top: var(--uk-space-3);
+  padding-top: var(--uk-space-3);
+}
+
+/* The uikit primary button, restated so the sweep below has somewhere to live:
+   the bar is clipped to the button and drawn under its label, and that needs a
+   positioned box the uikit button does not give out. */
+.turnButton {
+  align-items: center;
+  background: var(--uk-primary);
+  border: 1px solid transparent;
+  border-radius: var(--uk-radius);
+  color: var(--uk-primary-fg);
+  cursor: pointer;
+  display: flex;
+  font-family: var(--uk-font-sans);
+  font-size: 14px;
+  font-weight: 600;
+  height: 40px;
+  justify-content: center;
+  line-height: 1;
+  /* Holds the bar inside the button, corners and all. */
+  overflow: hidden;
+  padding: 0 var(--uk-space-4);
+  position: relative;
+  transition:
+    background var(--uk-duration) var(--uk-ease),
+    border-color var(--uk-duration) var(--uk-ease),
+    color var(--uk-duration) var(--uk-ease);
+  user-select: none;
+  white-space: nowrap;
+  width: 100%;
+}
+
+.turnButton:hover {
+  background: var(--uk-primary-hover);
+}
+
+.turnButton:active {
+  background: var(--uk-primary-active);
+}
+
+.turnButton:focus-visible {
+  box-shadow: 0 0 0 3px var(--uk-ring);
+  outline: none;
+}
+
+/* Stepped back while the board waits on a swing. */
+.turnButtonQuiet {
+  background: var(--uk-panel);
+  border-color: var(--uk-border-strong);
+  color: var(--uk-fg);
+}
+
+.turnButtonQuiet:hover {
+  background: var(--uk-hover);
+}
+
+.turnButtonQuiet:active {
+  background: var(--uk-active);
+}
+
+/* What says the turn has been handed on: a bar crossing the button from its left
+   edge to its right one, once, and gone. Scaled from the left rather than
+   widened, so the whole sweep runs on the compositor.
+
+   The last stretch of it is spent fading rather than travelling — a bar that
+   filled the button and then vanished would read as one more thing to answer. */
+.turnFill {
+  animation: turnFill var(--turn-fill) var(--uk-ease) forwards;
+  background: rgb(255 255 255 / 30%);
+  inset: 0;
+  position: absolute;
+  transform-origin: left center;
+}
+
+/* Positioned, so the label is painted over the bar rather than under it. */
+.turnLabel {
+  position: relative;
+}
+
+@keyframes turnFill {
+  0% {
+    opacity: 1;
+    transform: scaleX(0);
+  }
+
+  70% {
+    opacity: 1;
+    transform: scaleX(1);
+  }
+
+  100% {
+    opacity: 0;
+    transform: scaleX(1);
+  }
+}
+
+/* The turn is still worth saying, so the button is filled rather than left
+   blank — it is simply filled at once and faded out from there. */
+@media (prefers-reduced-motion: reduce) {
+  .turnFill {
+    animation: turnFillFade var(--turn-fill) var(--uk-ease) forwards;
+    transform: none;
+  }
+}
+
+@keyframes turnFillFade {
+  0% {
+    opacity: 1;
+  }
+
+  70% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 0;
+  }
+}
+
+/* --- middle column: the header, the board, the turn order under it --- */
+
+.center {
+  display: flex;
+  flex-direction: column;
+  gap: var(--uk-space-3);
+  min-height: 0;
+  min-width: 0;
+}
+
+/* The bar over the board, in the same panel chrome as the turn order bar under
+   it. `flex-shrink: 0` keeps the board, not the header, giving up the height. */
+.header {
+  align-items: center;
+  background: var(--uk-panel);
+  border: 1px solid var(--uk-border);
+  border-radius: var(--uk-radius-lg);
+  display: flex;
+  flex-shrink: 0;
+  gap: var(--uk-space-2);
+  min-width: 0;
+  padding: var(--uk-space-2) var(--uk-space-3);
+}
+
+/* The uikit trigger is sized for a page of its own; the bar wants the compact
+   button the rest of this page uses. */
+.scenariosTrigger {
+  align-items: baseline;
+  display: flex;
+  font-size: 13px;
+  gap: var(--uk-space-2);
+  min-width: 0;
+  padding: var(--uk-space-1) var(--uk-space-3);
+}
+
+/* The trigger names the scenario the battle runs on, so the button reads as a
+   state, not just a way in. The word "Сценарии" recedes to a label for it. */
+.scenariosTriggerLabel {
+  color: var(--uk-fg-muted);
+  flex-shrink: 0;
+}
+
+/* A long name shortens rather than stretching the bar past the board. */
+.scenariosTriggerName {
+  font-weight: 600;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scenarioList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--uk-space-2);
+}
+
+/* One card per scenario, and every one of them a button: a card that cannot be
+   picked is the exception here, not the rule. The current one is marked rather
+   than dropped out of the list, so the list reads as a choice with an answer
+   already in it. */
+.scenarioCard {
+  background: none;
+  border: 1px solid var(--uk-border);
+  border-radius: var(--uk-radius);
+  color: inherit;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  font: inherit;
+  gap: var(--uk-space-1);
+  padding: var(--uk-space-3);
+  text-align: left;
+}
+
+.scenarioCard:hover {
+  background: var(--uk-hover);
+  border-color: var(--uk-border-strong);
+}
+
+.scenarioCard[aria-pressed="true"] {
+  background: var(--uk-primary-subtle);
+  border-color: var(--uk-primary);
+  cursor: default;
+}
+
+.scenarioLabel {
+  color: var(--uk-fg-subtle);
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+.scenarioName {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.scenarioSummary {
+  color: var(--uk-fg-muted);
+  font-size: 13px;
+}
+
+/* --- the Accelerate confirmation --- */
+
+/* The trade the order makes, one line per number it touches. The popup around
+   this comes from the uikit; only the table inside it is the page's own. */
+.trade {
+  border: 1px solid var(--uk-border);
+  border-radius: var(--uk-radius);
+  display: flex;
+  flex-direction: column;
+  gap: var(--uk-space-1);
+  margin: 0;
+  padding: var(--uk-space-3);
+}
+
+.tradeRow {
+  align-items: baseline;
+  display: flex;
+  justify-content: space-between;
+}
+
+.tradeLabel {
+  color: var(--uk-fg-muted);
+  font-size: 13px;
+}
+
+/* A `dd` carries a margin of its own, which would push the value off the line it
+   shares with the label. */
+.tradeValue {
+  font-size: 15px;
+  font-weight: 600;
+  margin: 0;
+}
+
+.tradeArrow {
+  color: var(--uk-fg-subtle);
+  font-weight: 400;
+  padding: 0 2px;
+}
+
+.dialogActions {
+  display: flex;
+  gap: var(--uk-space-2);
+  justify-content: flex-end;
+  margin-top: var(--uk-space-1);
+}
+
+/* The uikit styles `Close` as the quiet way out, which is what Cancel wants. The
+   order itself is what the dialog was opened for, so it wears the same accent an
+   armed command does. Both classes land on the one button, and which stylesheet
+   is inserted first is not this file's to know — so the selector is doubled to
+   settle it on specificity instead. */
+.dialogConfirm.dialogConfirm {
+  background: var(--uk-primary);
+  border-color: transparent;
+  color: var(--uk-primary-fg);
+}
+
+.dialogConfirm.dialogConfirm:hover {
+  background: var(--uk-primary-hover);
+}
+
+.canvas {
+  border: 1px solid var(--uk-border);
+  border-radius: var(--uk-radius-lg);
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+  /* Anchors the unit actions panel, which overlays the canvas rather than
+     sitting inside the SVG. */
+  position: relative;
+}
+
+/* The panel chrome only. The strip inside it does the scrolling, the clipping
+   and the animation. */
+.turnOrder {
+  background: var(--uk-panel);
+  border: 1px solid var(--uk-border);
+  border-radius: var(--uk-radius-lg);
+  display: flex;
+  /* The title sits over the strip rather than beside it: the strip is the one
+     thing in the bar that is allowed to take the whole width. */
+  flex-direction: column;
+  flex-shrink: 0;
+  gap: var(--uk-space-1);
+  min-width: 0;
+  padding: var(--uk-space-2) var(--uk-space-3);
+}
+
+/* Which round the battle is on. Counted per pass down the whole queue, so the
+   number only moves when every unit of both armies has had its turn. */
+.turnHeader {
+  align-items: baseline;
+  display: flex;
+  gap: var(--uk-space-2);
+}
+
+.turnHeaderTitle {
+  color: var(--uk-fg-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.turnHeaderRound {
+  color: var(--uk-fg);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+/* A long round scrolls sideways inside the bar; the board above it never
+   moves. The box also clips the card leaving the head slot upwards at the end
+   of a turn, which is what the vertical overflow is for. */
+.turnCards {
+  --turn-card-size: 76px;
+  --turn-gap: var(--uk-space-2);
+  /* One card and the gap after it: how far the strip slides left per turn. */
+  --turn-step: calc(var(--turn-card-size) + var(--turn-gap));
+  /* Room for the ring the head of the queue is drawn with and for the pop it
+     is flashed with, both of which the scroll box would clip otherwise. */
+  --turn-inset: 9px;
+  /* Height of the word under an Оппортун card, plus the gap over it. Taken out
+     of the bar only while such a card is on the strip. */
+  --turn-label-room: 22px;
+  /* How long one beat of the Оппортун pulse lasts. The markers on the board keep
+     the same beat, so the cards and the board read as one cue. */
+  --opportunity-beat: 900ms;
+
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: var(--turn-inset);
+  /* Anchors the card leaving the head slot, which is drawn over the strip
+     rather than in it. */
+  position: relative;
+}
+
+/* The cards themselves. `max-content` keeps the row as wide as its cards, so
+   the scroll box has something to scroll and the trailing padding survives. */
+.turnTrack {
+  display: flex;
+  gap: var(--turn-gap);
+  width: max-content;
+  /* The strip and its cards are handed to the compositor once and left there.
+     A layer taken and given back around each turn is a layer redrawn twice,
+     and a redraw here means the portraits are rescaled again — the flicker
+     this is here to stop. */
+  will-change: transform;
+}
+
+.turnCard {
+  background: none;
+  /* Side colour. The frame is the only thing on the card that says which army
+     the unit fights for — the portraits are shared. */
+  border: 2px solid var(--uk-border);
+  border-radius: var(--uk-radius);
+  cursor: pointer;
+  display: block;
+  flex-shrink: 0;
+  height: var(--turn-card-size);
+  overflow: hidden;
+  padding: 0;
+  position: relative;
+  transition: box-shadow var(--uk-duration) var(--uk-ease);
+  width: var(--turn-card-size);
+  will-change: transform;
+}
+
+.red {
+  border-color: var(--unit-red);
+}
+
+.blue {
+  border-color: var(--unit-blue);
+}
+
+/* The unit to move, in the gold the board selects a hex with. */
+.turnCardActive {
+  box-shadow: 0 0 0 3px var(--map-selected-line);
+}
+
+/* --- Оппортун --- */
+
+/* The panel over the board. It says the board has been taken over, so it sits
+   where nothing else on the canvas does — across the top, in the middle — and
+   takes no clicks: everything it talks about is answered on the board under it
+   or with the button under the roster. */
+.opportunityBanner {
+  background: var(--uk-panel);
+  border: 2px solid var(--unit-opportunity);
+  border-radius: var(--uk-radius-lg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--uk-space-1);
+  left: 50%;
+  max-width: calc(100% - var(--uk-space-3) * 2);
+  padding: var(--uk-space-2) var(--uk-space-3);
+  pointer-events: none;
+  position: absolute;
+  text-align: center;
+  top: var(--uk-space-3);
+  /* Over the two read-only panels in the canvas corners, which it may cross. */
+  transform: translateX(-50%);
+  z-index: 2;
+}
+
+.opportunityTitle {
+  color: var(--unit-opportunity);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.opportunityHint {
+  color: var(--uk-fg-muted);
+  font-size: 12px;
+}
+
+/* A card in the strip and the word under it, as one slot. The label is outside
+   the frame rather than on the portrait: the frame already carries a colour
+   that means something, and the word has to be read against the cards around it
+   rather than against the picture. */
+.opportunitySlot {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  gap: 4px;
+  width: var(--turn-card-size);
+}
+
+.opportunityCard {
+  border-color: var(--unit-opportunity);
+  /* Not a unit of the round, so there is nothing here to select. */
+  cursor: default;
+}
+
+/* The enemy being asked now, picked out the way the head of the queue is — in
+   the colour the whole cue is drawn in rather than the gold, because this card
+   is not a turn. */
+.opportunityCardActive {
+  animation: opportunityRing var(--opportunity-beat) ease-in-out infinite;
+  /* The weight the beat runs around, carried as a value of its own: the ring
+     has to be there where the animation is not — a background tab, or a browser
+     told to leave motion alone. */
+  box-shadow: 0 0 0 4px var(--unit-opportunity);
+}
+
+.opportunityLabel {
+  border: 1px solid var(--unit-opportunity);
+  border-radius: var(--uk-radius);
+  color: var(--unit-opportunity);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  padding: 1px 0;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+/* The unit the swing is aimed at, in the same beat the two markers on the board
+   keep. It is the head of the queue as well, so this has to win over the gold
+   ring `.turnCardActive` gives it — an animation does, whatever the order the
+   two rules are written in. */
+.turnCardThreatened {
+  animation: opportunityRing var(--opportunity-beat) ease-in-out infinite;
+  box-shadow: 0 0 0 4px var(--unit-opportunity);
+}
+
+@keyframes opportunityRing {
+  0% {
+    box-shadow: 0 0 0 2px var(--unit-opportunity);
+  }
+
+  50% {
+    box-shadow: 0 0 0 6px var(--unit-opportunity);
+  }
+
+  100% {
+    box-shadow: 0 0 0 2px var(--unit-opportunity);
+  }
+}
+
+/* Room under the strip for the labels, and only while there are labels to make
+   room for: the bar is a card tall the rest of the time. */
+.turnOrder[data-opportunity="true"] .turnCards {
+  padding-bottom: calc(var(--turn-inset) + var(--turn-label-room));
+}
+
+/* --- a window opening, played out over the strip --- */
+
+/* The turn handover, run the other way round. The cards cut in at the front take
+   slots the round was standing in, so the strip is pinned one slot to the left
+   per card they have taken. That is where the round stood a moment ago, and the
+   transition below carries the strip right into its new place. */
+.turnOrder[data-interrupt-phase="start"] .turnTrack {
+  transform: translateX(calc(var(--turn-step) * var(--interrupt-shift, 0) * -1));
+}
+
+.turnOrder[data-interrupt-phase="run"] .turnTrack {
+  transition: transform var(--turn-slide) var(--uk-ease);
+}
+
+/* The enemy that has just been handed a swing, rising into its slot from under
+   the bar. The same motion the unit that has just moved comes back in at the tail
+   of the queue with.
+
+   The card stands in the strip, so the pin above would carry it off to the left
+   along with the round, and the card would fade in half outside the bar. This
+   gives the sideways half of the pin back. The card and the strip run under the
+   same transition, so the two cancel each other out frame by frame, and the card
+   rises straight up. */
+.interruptEnter {
+  will-change: opacity, transform;
+}
+
+.turnOrder[data-interrupt-phase="start"] .interruptEnter {
+  opacity: 0;
+  transform: translate(calc(var(--turn-step) * var(--interrupt-shift, 0)), 120%);
+}
+
+.turnOrder[data-interrupt-phase="run"] .interruptEnter {
+  transition:
+    opacity var(--turn-slide) var(--uk-ease),
+    transform var(--turn-slide) var(--uk-ease);
+}
+
+/* The round line, drawn as a card of its own so the strip counts it as a slot:
+   the cards in front of it are what this round has left to run. Nobody stands
+   on it, so it wears neither of the army colours and takes no clicks. */
+.turnRound {
+  align-items: center;
+  background: var(--uk-hover);
+  border-color: var(--uk-border-strong);
+  border-style: dashed;
+  cursor: default;
+  display: flex;
+  justify-content: center;
+}
+
+.turnRoundLabel {
+  color: var(--uk-fg-muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.turnAvatar {
+  display: block;
+  height: 100%;
+  object-fit: cover;
+  width: 100%;
+}
+
+/* --- the turn handover, played out over the strip above --- */
+
+/* The whole strip slides to the left, one step per card that has just dropped
+   off its front. It starts that far to the right of where the new round wants
+   it, which is exactly where the round before it left the cards.
+
+   One card on an ordinary turn. Two on the last turn of a round: the unit goes
+   and the round line behind it goes with it. */
+.turnOrder[data-phase="start"] .turnTrack {
+  transform: translateX(calc(var(--turn-step) * var(--turn-shift, 1)));
+}
+
+.turnOrder[data-phase="run"] .turnTrack {
+  transition: transform var(--turn-slide) var(--uk-ease);
+}
+
+/* The unit that has just moved, back at the tail of the queue. It rises into
+   the last slot from under the bar while the strip carries it left. */
+.turnEnter {
+  will-change: opacity, transform;
+}
+
+.turnOrder[data-phase="start"] .turnEnter {
+  opacity: 0;
+  transform: translateY(120%);
+}
+
+.turnOrder[data-phase="run"] .turnEnter {
+  transition:
+    opacity var(--turn-slide) var(--uk-ease),
+    transform var(--turn-slide) var(--uk-ease);
+}
+
+/* The cards the strip has just dropped, each over the slot it is giving up.
+   They leave straight up and the scroll box cuts them off at the top of the
+   bar. */
+.turnLeave {
+  left: calc(var(--turn-inset) + var(--turn-step) * var(--turn-leave-slot, 0));
+  pointer-events: none;
+  position: absolute;
+  top: var(--turn-inset);
+  will-change: opacity, transform;
+}
+
+.turnOrder[data-phase="run"] .turnLeave {
+  opacity: 0;
+  transform: translateY(-130%);
+  transition:
+    opacity var(--turn-slide) var(--uk-ease),
+    transform var(--turn-slide) var(--uk-ease);
+}
+
+/* The new unit to move, picked out once the strip is on its way. The ghost
+   above wears the same gold ring, so the flash is aimed at the strip only. */
+.turnOrder[data-phase="run"] .turnTrack .turnCardActive {
+  animation: turnHighlight var(--turn-highlight) var(--uk-ease);
+}
+
+/* No `will-change` here: it would be taken back the moment the flash ends, and
+   a layer handed back is a portrait redrawn. The card around it is on the
+   compositor already, which is enough. */
+.turnOrder[data-phase="run"] .turnTrack .turnCardActive .turnAvatar {
+  animation: turnFlash var(--turn-highlight) var(--uk-ease);
+}
+
+/* A pop and a smaller echo of it, on the ring the card already wears. Nothing
+   here reaches further than `--turn-inset`, or the scroll box would cut the
+   ring off mid-pop. */
+@keyframes turnHighlight {
+  0% {
+    box-shadow: 0 0 0 3px var(--map-selected-line);
+    transform: scale(1);
+  }
+
+  30% {
+    box-shadow: 0 0 0 5px var(--map-selected-line);
+    transform: scale(1.07);
+  }
+
+  60% {
+    box-shadow: 0 0 0 3px var(--map-selected-line);
+    transform: scale(1);
+  }
+
+  78% {
+    box-shadow: 0 0 0 4px var(--map-selected-line);
+    transform: scale(1.03);
+  }
+
+  100% {
+    box-shadow: 0 0 0 3px var(--map-selected-line);
+    transform: scale(1);
+  }
+}
+
+/* `brightness(1)` rather than `none` at either end: a filter that switches off
+   drops the portrait out of the filtered path, and the frame it is handed back
+   on is the frame that blinks. */
+@keyframes turnFlash {
+  0% {
+    filter: brightness(2.6) saturate(50%);
+  }
+
+  45% {
+    filter: brightness(1) saturate(100%);
+  }
+
+  100% {
+    filter: brightness(1) saturate(100%);
+  }
+}
+
+/* Same handover, told without the motion: the strip is simply a card further
+   along, and the unit that has moved is not drawn twice. */
+@media (prefers-reduced-motion: reduce) {
+  .turnOrder[data-phase="start"] .turnTrack,
+  .turnOrder[data-phase="start"] .turnEnter,
+  .turnOrder[data-interrupt-phase="start"] .turnTrack,
+  .turnOrder[data-interrupt-phase="start"] .interruptEnter {
+    opacity: 1;
+    transform: none;
+  }
+
+  .turnLeave {
+    display: none;
+  }
+
+  .turnOrder[data-phase="run"] .turnTrack .turnCardActive,
+  .turnOrder[data-phase="run"] .turnTrack .turnCardActive .turnAvatar {
+    animation: none;
+  }
+
+  /* The Оппортун rings stop beating and stand at their full weight instead. The
+     window is still a wait, and the cards still have to say which two units it
+     is between. */
+  .opportunityCardActive,
+  .turnCardThreatened {
+    animation: none;
+    box-shadow: 0 0 0 4px var(--unit-opportunity);
+  }
+}
+
+/* The code sits on the portrait rather than under it, so every card is exactly
+   as tall as its picture. */
+.turnCode {
+  background: rgb(0 0 0 / 65%);
+  bottom: 0;
+  color: #ffffff;
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  left: 0;
+  padding: 1px 0;
+  position: absolute;
+  right: 0;
+  text-align: center;
+}
+
+/* --- right column: players + chat --- */
+
+.right {
+  display: flex;
+  flex-direction: column;
+  gap: var(--uk-space-3);
+  min-height: 0;
+}
+
+.players {
+  display: flex;
+  flex-direction: column;
+  gap: var(--uk-space-2);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.player {
+  align-items: center;
+  border: 1px solid var(--uk-border);
+  border-radius: var(--uk-radius);
+  display: flex;
+  font-size: 13px;
+  gap: var(--uk-space-2);
+  justify-content: space-between;
+  padding: var(--uk-space-2);
+}
+
+.playerState {
+  color: var(--uk-fg-subtle);
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+.playerMoving {
+  color: var(--uk-success);
+}

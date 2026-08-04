@@ -1,0 +1,525 @@
+.unit {
+  /* Clicks fall through to the terrain hex underneath, so selecting an
+     occupied cell works the same as selecting an empty one. */
+  pointer-events: none;
+}
+
+/* The marker a click would drop, drawn on the hex under the pointer. Faded, so
+   it never reads as a unit already standing there. `.unit` already lets clicks
+   through, which the preview needs too. */
+.preview {
+  opacity: 0.45;
+}
+
+/* Rotation handle on a corner of the marker: a disc with an arrow on it. The only
+   shape on the canvas that takes the pointer itself — the hex under it must not
+   answer instead, or clicking a handle would select a cell. `.unit` has no say
+   here, the handles are drawn outside it. */
+.handleDisc {
+  fill: var(--unit-handle);
+  stroke: var(--unit-outline);
+  stroke-width: 2;
+  /* A circle is its own centre, so the disc can be grown in place. */
+  transform-box: fill-box;
+  transform-origin: center;
+  transition:
+    fill var(--uk-duration) var(--uk-ease),
+    transform 160ms var(--uk-ease);
+}
+
+/* Every part of the answer is driven from the group, so the handle stays lit
+   while the pointer sits on the arrow. `:hover` on the disc alone would drop as
+   the pointer crossed onto it — the arrow is its sibling, not its child. */
+.handle:hover .handleDisc {
+  fill: var(--unit-handle-hover);
+  transform: scale(1.16);
+}
+
+.handleArrow {
+  fill: var(--unit-outline);
+}
+
+/* The arrow creeps the way it points and comes back, over and over, for as long
+   as the pointer rests on the handle. The handle is already turned to its
+   facing, so straight up here is outwards on the board: the cue says which way
+   the click would leave the unit looking. */
+.handle:hover .handleArrow {
+  animation: handleNudge 900ms ease-in-out infinite;
+}
+
+@keyframes handleNudge {
+  0% {
+    transform: translate(0, 0);
+  }
+
+  45% {
+    transform: translate(0, var(--handle-nudge, -3px));
+  }
+
+  100% {
+    transform: translate(0, 0);
+  }
+}
+
+/* Under the disc and the same size as it, so it is out of sight until the
+   pointer sends it out past the disc and fades it away. */
+.handleHalo {
+  fill: var(--unit-handle-hover);
+  opacity: 0;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.handle:hover .handleHalo {
+  animation: handleHalo 1300ms ease-out infinite;
+}
+
+@keyframes handleHalo {
+  0% {
+    opacity: 0.55;
+    transform: scale(1);
+  }
+
+  100% {
+    opacity: 0;
+    transform: scale(1.9);
+  }
+}
+
+/* Sits over the marker of the unit a move would trade places with. Clicks fall
+   through to the terrain hex, the way `.unit` lets them. */
+.swap {
+  pointer-events: none;
+}
+
+.swapScrim {
+  fill: var(--unit-swap-scrim);
+  opacity: 0.7;
+}
+
+.swapGlyph {
+  fill: none;
+  stroke: var(--unit-swap-glyph);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* Everything the marker is made of, inside the group that puts it on its hex.
+   The two are separate elements because a CSS transform — a lunge, a shake —
+   would otherwise replace the `transform` attribute holding the marker on the
+   board. Every transform written here is a keyframe of one of those, so there is
+   nothing left for a transition to carry. */
+.marker {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+/* A unit the armed attack is pointed at wears nothing of its own. The marker is
+   left exactly as it stands, and the answer to the pointer is drawn around it:
+   the hex lit up in the attack colour, the arrow reaching it, and the slices of
+   its bars the blow would take. Nothing on the marker means nothing over the
+   bars — a stroke straddles the line it is drawn on, and the bars are laid
+   against the marker outline from the inside.
+
+   The lean it used to take is gone with it. A marker stands `UNIT_HEX_INSET`
+   inside its terrain hex, which is a couple of px: growing it spent that gap and
+   pushed it onto the hex outline, and the hex outline is where the attack colour
+   is now drawn. */
+
+/* The lunge. The distance and direction come in as custom properties, worked out
+   from the way the blow travels — a shared keyframe cannot know which way its
+   unit is swinging. Out fast, back slow: the going is the blow. */
+.punching {
+  animation: punch var(--unit-punch, 420ms) cubic-bezier(0.3, 0, 0.2, 1);
+}
+
+@keyframes punch {
+  0% {
+    transform: translate(0, 0);
+  }
+
+  40% {
+    transform: translate(var(--punch-dx), var(--punch-dy));
+  }
+
+  100% {
+    transform: translate(0, 0);
+  }
+}
+
+/* The volley. The shooter never leaves its hex: it leans back into the draw,
+   flicks forward as the string goes, and settles while the arrow crosses the
+   board. Measured against the way the shot travels, the same two properties the
+   lunge is worked out from — so the lean is back along the flight and the flick
+   is after it.
+
+   The whole of it lasts the flight, which is what makes the settle read as the
+   shooter watching its arrow away. */
+.shooting {
+  animation: shoot var(--unit-shot, 520ms) ease-out;
+}
+
+@keyframes shoot {
+  0% {
+    transform: translate(0, 0);
+  }
+
+  18% {
+    transform: translate(calc(var(--punch-dx) * -0.3), calc(var(--punch-dy) * -0.3));
+  }
+
+  34% {
+    transform: translate(calc(var(--punch-dx) * 0.14), calc(var(--punch-dy) * 0.14));
+  }
+
+  100% {
+    transform: translate(0, 0);
+  }
+}
+
+/* A blow that has already travelled: an arrow coming down, as against a weapon
+   swung by hand. The two animations below open with a still stretch, because a
+   lunge is committed and lands a moment later — and an arrow has done its
+   travelling in the air, so that stretch is spent before it is mounted. A
+   negative delay of exactly the wind-up is what drops it: the animation starts
+   the frame it is mounted on, at the point the blow connects. */
+.landed.struck,
+.landed .flash {
+  animation-delay: calc(-1 * var(--unit-punch-impact, 170ms));
+}
+
+/* The step. The marker is already drawn on the hex it has arrived at, so the
+   animation opens it back on the hex it left — that offset is what comes in as
+   the two custom properties — and walks it home. Ease in and out, so the unit
+   pushes off the hex it leaves and settles onto the one it reaches.
+
+   Two keyframes and nothing in between. An easing curve is applied to every gap
+   between keyframes, not to the run as a whole, so a keyframe halfway across is
+   eased into and then eased out of again — the marker sets off, slows to a near
+   stop in the middle of the gap, and sets off a second time. That is what made
+   the step read as two lurches rather than one walk. The hop the middle keyframe
+   used to carry is on `.stepLift` below, which has a transform of its own to
+   write and cannot break the travel.
+
+   `both` holds the marker on the hex it left for the frame it is mounted on, and
+   on the hex it has reached until the state clearing the step catches up. */
+.stepping {
+  animation: step var(--unit-step, 280ms) cubic-bezier(0.4, 0.05, 0.2, 1) both;
+  /* Every part of the marker — outlines, plates, the text on them — is repainted
+     on each frame of the travel, so the step is worth a layer of its own for as
+     long as it lasts. */
+  will-change: transform;
+}
+
+@keyframes step {
+  from {
+    transform: translate(var(--step-dx), var(--step-dy));
+  }
+
+  to {
+    transform: translate(0, 0);
+  }
+}
+
+/* A shade taller halfway across, so the marker reads as carried over the gap
+   rather than dragged through it. This is a second element because an animation
+   replaces the whole transform of the element it runs on: the hop and the travel
+   cannot share one. Here a middle keyframe is what is wanted — the easing on the
+   way up and the easing on the way down are the arc. */
+.stepLift {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.stepping .stepLift {
+  animation: stepLift var(--unit-step, 280ms) ease-in-out both;
+}
+
+@keyframes stepLift {
+  from {
+    transform: scale(1);
+  }
+
+  50% {
+    transform: scale(1.05);
+  }
+
+  to {
+    transform: scale(1);
+  }
+}
+
+/* The turn: the glyph comes round to the new facing. The angle is set inline,
+   this only says how it gets there. It is the group around the glyph that turns,
+   and `fill-box` is what makes the middle of that group the point it turns
+   about — see the anchor circle in `UnitLayer`. */
+.iconTurn {
+  transform-box: fill-box;
+  transform-origin: center;
+  transition: transform var(--unit-turn, 260ms) cubic-bezier(0.3, 0, 0.2, 1);
+}
+
+/* Geometry only: it is in the group to hold the turning point steady, and must
+   never be seen. */
+.iconAnchor {
+  fill: none;
+  stroke: none;
+}
+
+/* The unit the blow lands on: knocked off its feet for a moment. Same direction
+   as the lunge, so it is thrown the way it was hit, and then shaken. */
+.struck {
+  animation: struck var(--unit-punch, 420ms) ease-out;
+}
+
+@keyframes struck {
+  0% {
+    transform: translate(0, 0);
+  }
+
+  40% {
+    transform: translate(0, 0);
+  }
+
+  55% {
+    transform: translate(calc(var(--punch-dx) * 0.5), calc(var(--punch-dy) * 0.5)) scale(0.94);
+  }
+
+  70% {
+    transform: translate(calc(var(--punch-dx) * -0.22), calc(var(--punch-dy) * -0.22));
+  }
+
+  85% {
+    transform: translate(calc(var(--punch-dx) * 0.12), calc(var(--punch-dy) * 0.12));
+  }
+
+  100% {
+    transform: translate(0, 0);
+  }
+}
+
+/* The wash over a marker as the blow connects. Mounted only while the strike is
+   playing, so the keyframe runs once from nothing and back to nothing. */
+.flash {
+  animation: flash var(--unit-punch, 420ms) ease-out;
+  fill: var(--unit-strike-flash);
+  opacity: 0;
+}
+
+@keyframes flash {
+  0% {
+    opacity: 0;
+  }
+
+  40% {
+    opacity: 0;
+  }
+
+  50% {
+    opacity: 0.75;
+  }
+
+  100% {
+    opacity: 0;
+  }
+}
+
+/* An open Оппортун, on both units it stands between: the enemy holding the
+   swing and the unit that provoked it. A ring pulsing over the marker, which
+   goes on beating for as long as the window is open — a window is a wait, and a
+   cue that plays once and stops would be over before the wait is.
+
+   The two ends are told apart by weight rather than by colour. The enemy about
+   to swing is a ring; the unit under it wears the same ring with the red washed
+   over it as well, because that is the marker the blow is coming to. */
+.opportunity,
+.opportunityShade,
+.opportunityWash {
+  fill: none;
+  /* All three lie over the marker, and everything under them — the hex, the
+     rotation handles — has to go on taking the pointer through. */
+  pointer-events: none;
+}
+
+/* Every one of the three carries the weight it beats around as its own value,
+   not just as a keyframe. A cue that says the board is waiting has to be legible
+   the whole time it is up — including where the animation never runs, which is a
+   background tab, a paused compositor, or a browser told to leave motion
+   alone. */
+.opportunity {
+  stroke: var(--unit-opportunity);
+  stroke-opacity: 0.8;
+  stroke-width: 3.5;
+}
+
+/* Beats with the ring over it, a shade wider throughout, so the red never
+   touches the terrain directly and the whole thing keeps its edge over the five
+   fills the board is drawn in. */
+.opportunityShade {
+  animation: opportunityShade 900ms ease-in-out infinite;
+  stroke: var(--unit-outline);
+  stroke-opacity: 0.8;
+  stroke-width: 6;
+}
+
+.opportunityAttacker,
+.opportunityVictim {
+  animation: opportunityRing 900ms ease-in-out infinite;
+}
+
+.opportunityWash {
+  animation: opportunityWash 900ms ease-in-out infinite;
+  fill: var(--unit-opportunity);
+  fill-opacity: 0.2;
+}
+
+@keyframes opportunityRing {
+  0% {
+    stroke-opacity: 0.4;
+    stroke-width: 2;
+  }
+
+  50% {
+    stroke-opacity: 1;
+    stroke-width: 5;
+  }
+
+  100% {
+    stroke-opacity: 0.4;
+    stroke-width: 2;
+  }
+}
+
+@keyframes opportunityShade {
+  0% {
+    stroke-opacity: 0.4;
+    stroke-width: 4;
+  }
+
+  50% {
+    stroke-opacity: 1;
+    stroke-width: 8;
+  }
+
+  100% {
+    stroke-opacity: 0.4;
+    stroke-width: 4;
+  }
+}
+
+@keyframes opportunityWash {
+  0% {
+    fill-opacity: 0.06;
+  }
+
+  50% {
+    fill-opacity: 0.3;
+  }
+
+  100% {
+    fill-opacity: 0.06;
+  }
+}
+
+/* Told without the beat: everything stands at its full weight and stays there.
+   The window it belongs to is still a wait, and the marker still says so. */
+@media (prefers-reduced-motion: reduce) {
+  .opportunityAttacker,
+  .opportunityVictim {
+    animation: none;
+    stroke-opacity: 1;
+    stroke-width: 4;
+  }
+
+  .opportunityShade {
+    animation: none;
+    stroke-opacity: 1;
+    stroke-width: 7;
+  }
+
+  .opportunityWash {
+    animation: none;
+    fill-opacity: 0.22;
+  }
+}
+
+/* One outline, in one colour, whatever the board is asking of the unit. Nothing
+   repaints it, so there is nothing for a transition to carry. */
+.body {
+  stroke: var(--unit-outline);
+  stroke-width: 2;
+}
+
+.red {
+  fill: var(--unit-red);
+}
+
+.blue {
+  fill: var(--unit-blue);
+}
+
+.icon {
+  fill: var(--unit-glyph);
+}
+
+.barTrack {
+  fill: var(--unit-bar-track);
+}
+
+/* Drawn full height and squashed to the value it stands for, which is what lets
+   it slide down as a blow lands. Scaled from the foot of the bar, so the fill
+   still grows out of the bottom. */
+.barFill {
+  transform-box: fill-box;
+  transform-origin: bottom;
+  transition: transform var(--unit-punch, 420ms) ease-out;
+}
+
+/* The slice of the fill a hovered blow would take, blinking between the fill
+   underneath it and the empty track. */
+.barDoomed {
+  animation: doomed 620ms ease-in-out infinite;
+  fill: var(--unit-bar-track);
+}
+
+@keyframes doomed {
+  0% {
+    opacity: 0.15;
+  }
+
+  50% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 0.15;
+  }
+}
+
+.barFrame {
+  fill: none;
+  stroke: var(--unit-outline);
+  stroke-width: 1;
+}
+
+.plate {
+  fill: var(--unit-bar-track);
+  stroke: var(--unit-outline);
+  stroke-width: 1;
+}
+
+.plateText {
+  dominant-baseline: central;
+  fill: var(--unit-glyph);
+  font-family: var(--uk-font-sans);
+  font-weight: 700;
+  text-anchor: middle;
+}
+
+.health {
+  fill: var(--unit-health);
+}
+
+.morale {
+  fill: var(--unit-morale);
+}

@@ -1,0 +1,109 @@
+/* Padding has to stay inside the 100% heights below, otherwise the app grows
+   past the viewport and the bottom of the page is clipped away. */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+/* The app owns the whole viewport and never scrolls: every page fits into the
+   space left by the header. */
+html,
+body,
+.root {
+  height: 100%;
+}
+
+body {
+  background: var(--uk-bg);
+  color: var(--uk-fg);
+  font-family: var(--uk-font-sans);
+  margin: 0;
+  overflow: hidden;
+}
+
+/* Map palette. The terrain reads as the same board in either theme, so these
+   are deliberately fixed and have no `.dark` override — only the app chrome
+   around the canvas follows the uikit tokens. In dark mode the panel showing
+   through the gaps between hexes turns the grid into a dark-grouted mosaic. */
+:root {
+  --map-line: #5e5e5e;
+  /* Carries the whole hover cue on its own now that the width stays put. Same
+     gold as the selection tick, so hovering previews what selecting looks like.
+     Custom properties resolve where they are used, so pointing at a variable
+     declared further down is fine. */
+  --map-line-hover: var(--map-selected-line);
+  --map-plain: #ececec;
+  --map-path: #f9e94a;
+  --map-arcane: #7a22d6;
+  --map-hills: #b5720d;
+  --map-crag: #6b4407;
+  /* Far end of the tick on the selected hex outline. Bright enough to carry the
+     cue on a 2px stroke over any terrain fill. */
+  --map-selected-line: #ffc400;
+  /* Hexes an armed move may step onto. The fill covers the terrain whole, so
+     the green has to read as "you may go here" against every one of the five
+     terrains above; the hover shade is the same green with the light turned up.
+     The arrow on it is the unit outline colour, the way a rotation handle's is. */
+  --map-move: #8ede2c;
+  --map-move-hover: #b6f45e;
+  --map-move-arrow: var(--unit-outline);
+  /* Units an armed attack may hit. Red against the green a move is offered in,
+     so the two orders are never read for one another: the arrow pointing at a
+     unit, the brighter shade it takes under the pointer, and the ring that
+     lights up the hex it stands on. The arrow is drawn over both markers and
+     carries the unit outline, which is what keeps it off the red army. */
+  --map-attack: #e01b24;
+  --map-attack-hover: #ff5252;
+  --map-attack-ring: #ff2d2d;
+  /* The border around the hexes a canopy shot could come down on, drawn while the
+     cone is switched on. A lighter, cooler green than a move target: it says "a
+     shot reaches here" rather than "you may go here", and the two are on the board
+     at the same time whenever a shooter is asked to walk. */
+  --map-canopy: #5ce89a;
+  /* The chain on the border between two spearmen holding a closed formation.
+     Iron rather than one of the order colours above: the chain says how the two
+     units are standing, and nothing on the board is waiting on it. The dark ring
+     under each link is what carries the chain across terrain as pale as the plain
+     and as dark as the crag. */
+  --map-formation: #e2e8ef;
+  --map-formation-shadow: #23282f;
+  /* Hexes the armed unit may be placed on. The same green as a move target, so
+     the board says "you may go here" in one language, laid on as a translucent
+     wash — see `placement.module.css` for why it cannot cover the terrain. */
+  --map-place: var(--map-move);
+  /* The cross on a hex that takes no unit at all, drawn while the wash above is
+     out. Red against that green: one of the two says "you may go here", the other
+     says "not here". */
+  --map-place-blocked: #e01b24;
+
+  --unit-outline: #2e2e2e;
+  --unit-glyph: #101010;
+  --unit-red: #9e1327;
+  --unit-blue: #1c4fbe;
+  /* Stat gauges flanking a unit marker. Their colours say health and morale,
+     not side, so they stay the same on red and blue units alike. */
+  --unit-bar-track: #ececec;
+  /* Rotation handles on the corners of a marker. The hover colour is the gold the
+     selected hex ticks to, so a handle answers the pointer in the same language
+     the board does. */
+  --unit-handle: #f7e2a4;
+  --unit-handle-hover: var(--map-selected-line);
+  /* Overlay on the unit a move would trade places with: a dark wash over its
+     marker, with the swap glyph on top. */
+  --unit-swap-scrim: #101010;
+  --unit-swap-glyph: #ffffff;
+  --unit-health: #ee1c25;
+  --unit-morale: #12ab3c;
+  /* The wash a marker takes for the instant a blow lands on it. White rather
+     than red: it has to read as a hit on either army, and the red one already
+     wears the attack colour. */
+  --unit-strike-flash: #ffffff;
+  /* An Оппортун standing open: the ring on the enemy about to swing and on the
+     unit it may swing at, the frames of the cards the turn order bar puts in
+     front of the round, and the panel over the board. One colour across all
+     three, so the whole cue reads as one thing happening. A hotter red than the
+     red army wears, or a red unit holding the swing would wear its own side
+     colour twice over. */
+  --unit-opportunity: #ff2d2d;
+}

@@ -1,0 +1,20 @@
+.canvas {
+  background: var(--uk-panel);
+  border: 1px solid var(--uk-border-strong);
+  border-radius: var(--uk-radius);
+  cursor: pointer;
+  display: block;
+  height: 100%;
+  /* The pointer drives panning, so the browser must not claim the gesture. */
+  touch-action: none;
+  user-select: none;
+  width: 100%;
+}
+
+/* Not `:active`: that also fires for a press that turns out to be a click, and
+   it drops as soon as the button is released even if the drag is still being
+   delivered through pointer capture. Both classes sit on the same element, so
+   the two of them together outrank `.canvas` whatever the rule order is. */
+.canvas.panning {
+  cursor: grabbing;
+}

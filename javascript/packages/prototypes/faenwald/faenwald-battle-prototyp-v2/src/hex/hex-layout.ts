@@ -1,0 +1,388 @@
+// Pointy-top hexes in an odd-r offset layout: every odd row is shifted half a
+// hex to the right, which is what gives the grid its brick-like interlock.
+
+const SQRT3 = Math.sqrt(3);
+
+// Circumradius: distance from the hex centre to a corner, in px.
+const HEX_SIZE = 40;
+
+// Corners are drawn on a slightly smaller hex so neighbours keep a visible gap.
+const HEX_INSET = 2;
+
+// Width of that gap, measured perpendicular to an edge — the distance from one
+// hex outline to its neighbour's. The inset shortens the circumradius, and an
+// edge sits `SQRT3 / 2` of that closer to the centre, from both hexes at once.
+const HEX_GAP = HEX_INSET * 1.479;
+
+// A facing is clockwise degrees from straight up, and it points at a corner of
+// the hex. Neighbours sit across the edges instead, and an edge lies halfway
+// between the two corners it joins — which is why every neighbour direction is
+// a facing turned by this much.
+const NEIGHBOR_OFFSET = 30;
+
+// Column and row step to the neighbour in each direction. Odd rows are shifted
+// half a hex to the right, so a step that crosses a row leaves an odd row one
+// column further along than it leaves an even one.
+const NEIGHBOR_STEPS: Record<number, { even: [number, number]; odd: [number, number] }> = {
+  30: { even: [0, -1], odd: [1, -1] },
+  90: { even: [1, 0], odd: [1, 0] },
+  150: { even: [0, 1], odd: [1, 1] },
+  210: { even: [-1, 1], odd: [0, 1] },
+  270: { even: [-1, 0], odd: [-1, 0] },
+  330: { even: [-1, -1], odd: [0, -1] },
+};
+
+type Point = {
+  x: number;
+  y: number;
+};
+
+type HexCell = {
+  key: string;
+  col: number;
+  row: number;
+  x: number;
+  y: number;
+};
+
+// A hex inside a cone in front of a unit, and how many steps into the cone it
+// lies. Offset coordinates only, the same as `neighborCell` — whether the board
+// has the cell is the grid's question.
+type ConeCell = {
+  col: number;
+  row: number;
+  distance: number;
+};
+
+type Bounds = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
+type HexGrid = {
+  cells: HexCell[];
+  bounds: Bounds;
+};
+
+function cellKey(col: number, row: number): string {
+  return `${col},${row}`;
+}
+
+function hexWidth(size: number): number {
+  return SQRT3 * size;
+}
+
+function hexHeight(size: number): number {
+  return 2 * size;
+}
+
+function hexCenter(col: number, row: number, size: number): { x: number; y: number } {
+  const isOddRow = row % 2 === 1;
+  const x = hexWidth(size) * (col + (isOddRow ? 0.5 : 0));
+  const y = 1.5 * size * row;
+  return { x, y };
+}
+
+// Six corners of a pointy-top hex around (0, 0), as an SVG `points` string.
+function hexPoints(size: number): string {
+  const corners: string[] = [];
+  for (let index = 0; index < 6; index += 1) {
+    const angle = (Math.PI / 180) * (60 * index - 30);
+    const x = size * Math.cos(angle);
+    const y = size * Math.sin(angle);
+    corners.push(`${x.toFixed(2)},${y.toFixed(2)}`);
+  }
+  return corners.join(" ");
+}
+
+// A highlight fill stops this far inside the hex outline, measured perpendicular
+// to an edge. The outline is a 2px stroke straddling the edge, so its inner half
+// reaches one px in: a fill that ran the whole way would paint over the line, and
+// one that stopped at it would leave a hairline of terrain between the two.
+// Ending a quarter px past the line covers the seam, and the hover and select
+// bands start half a px further in still, so neither of them is touched.
+const FILL_INSET = 0.75;
+
+// Corners for a fill that covers a hex's terrain. One px perpendicular to an
+// edge is `2 / SQRT3` of circumradius, and `hexWidth(1)` is that SQRT3.
+const HEX_FILL_POINTS = hexPoints(HEX_SIZE - HEX_INSET - (FILL_INSET * 2) / hexWidth(1));
+
+// Corners for a highlight ring drawn around a hex. `width` is the stroke width
+// the ring will be given, `inset` how far inside the hex outline its inner edge
+// should start. An SVG stroke straddles its outline, so the corners go out by
+// half a stroke less the inset, measured perpendicular to an edge — one px of
+// that distance is `2 / SQRT3` of circumradius. Whatever is left over past the
+// inset grows outward, into the gap between neighbours.
+function hexRingPoints(width: number, inset = 0): string {
+  return hexPoints(HEX_SIZE - HEX_INSET + (width - 2 * inset) / SQRT3);
+}
+
+// The six corners of a pointy-top hex around (0, 0), at the size the hexes tile
+// at rather than the smaller size they are drawn at. Three hexes meet at each of
+// these corners, and every one of the three lands its copy on the same point —
+// which is what lets the outline of a group of hexes be chained corner to
+// corner. Corner 0 is the one up and to the right, and the rest run clockwise.
+const HEX_CORNERS = Array.from({ length: 6 }, (_unused, index) => {
+  const angle = (Math.PI / 180) * (60 * index - 30);
+  return { x: HEX_SIZE * Math.cos(angle), y: HEX_SIZE * Math.sin(angle) };
+});
+
+function normalizeAngle(angle: number): number {
+  return ((angle % 360) + 360) % 360;
+}
+
+// The neighbour direction across the edge that leaves corner `index` clockwise.
+// The edge out of corner 0 runs down the right-hand side of the hex, so the
+// neighbour across it is the eastern one.
+function edgeDirection(index: number): number {
+  return normalizeAngle(90 + 60 * index);
+}
+
+function cornerOf(center: { x: number; y: number }, index: number): { x: number; y: number } {
+  const corner = HEX_CORNERS[index % 6];
+  return { x: center.x + corner.x, y: center.y + corner.y };
+}
+
+// Corners are matched by a key rounded to a tenth of a px. Each of the three
+// hexes that meet at a corner works it out from its own centre, so the three
+// copies agree only up to floating-point noise. No two distinct corners are
+// closer than 20px, so the rounding cannot fuse two of them into one.
+function cornerKey(point: { x: number; y: number }): string {
+  return `${point.x.toFixed(1)},${point.y.toFixed(1)}`;
+}
+
+type OutlineEdge = {
+  from: { x: number; y: number };
+  to: { x: number; y: number };
+};
+
+// The outline of a group of hexes, as SVG path data — one closed loop per run of
+// them, so a group broken in two is answered with two loops. An edge is on the
+// outline when the hex across it is outside the group.
+//
+// The loops are drawn on the tiling size, which puts them in the middle of the
+// gap between the hexes inside the group and the ones outside it: the border
+// runs between the two rather than over either.
+//
+// Every edge is taken clockwise around its own hex, which is what makes the
+// chaining work — the corner one edge ends on is the corner the next one starts
+// from, and each corner on the outline has exactly one edge leaving it.
+function hexRegionOutline(cells: Array<{ col: number; row: number }>): string[] {
+  const inside = new Set(cells.map((cell) => cellKey(cell.col, cell.row)));
+  const leaving = new Map<string, OutlineEdge[]>();
+
+  for (const cell of cells) {
+    const center = hexCenter(cell.col, cell.row, HEX_SIZE);
+
+    for (let index = 0; index < 6; index += 1) {
+      const across = neighborCell(cell.col, cell.row, edgeDirection(index));
+      if (across !== null && inside.has(cellKey(across.col, across.row))) {
+        continue;
+      }
+
+      const edge = { from: cornerOf(center, index), to: cornerOf(center, index + 1) };
+      const key = cornerKey(edge.from);
+      const edges = leaving.get(key);
+      if (edges === undefined) {
+        leaving.set(key, [edge]);
+        continue;
+      }
+
+      edges.push(edge);
+    }
+  }
+
+  // Each edge is taken out of the map as it is walked, so a corner two loops
+  // pass through hands one edge to each of them. Only the arrays are emptied and
+  // no key is ever added or dropped, which is what makes it safe to walk the map
+  // while the loops are being pulled out of it.
+  const loops: string[] = [];
+  for (const start of leaving.values()) {
+    while (start.length > 0) {
+      const points: Array<{ x: number; y: number }> = [];
+      let edges: OutlineEdge[] | undefined = start;
+
+      while (edges !== undefined && edges.length > 0) {
+        const edge = edges.pop();
+        if (edge === undefined) {
+          break;
+        }
+
+        points.push(edge.from);
+        edges = leaving.get(cornerKey(edge.to));
+      }
+
+      loops.push(outlinePath(points));
+    }
+  }
+
+  return loops;
+}
+
+// The corners of one loop as a closed path. The last corner joins back to the
+// first, which `Z` draws — so the closing edge is left out of the list.
+function outlinePath(points: Array<{ x: number; y: number }>): string {
+  const steps = points.map(
+    (point, index) => `${index === 0 ? "M" : "L"}${point.x.toFixed(2)} ${point.y.toFixed(2)}`,
+  );
+  return `${steps.join(" ")} Z`;
+}
+
+// The two directions a unit looks between. The facing itself points at a
+// corner, so it has no neighbour of its own: the unit faces the seam between
+// the two hexes these directions lead to.
+function frontDirections(facing: number): [number, number] {
+  return [
+    normalizeAngle(facing - NEIGHBOR_OFFSET),
+    normalizeAngle(facing + NEIGHBOR_OFFSET),
+  ];
+}
+
+// The two directions a unit's flanks face: the hex beside its left shoulder and
+// the one beside its right. A facing points at a corner, `frontDirections` gives
+// the pair of hexes it looks between, and these are the pair standing alongside
+// them — which is what a unit in a line of battle has a neighbour on.
+function flankDirections(facing: number): [number, number] {
+  return [normalizeAngle(facing - 90), normalizeAngle(facing + 90)];
+}
+
+// The length of one side of a hex. A pointy-top hex is six equilateral triangles
+// around its centre, so a side is exactly the circumradius.
+const HEX_EDGE = HEX_SIZE;
+
+// The edge the hex at (`col`, `row`) shares with the neighbour across
+// `direction`, as its two endpoints. `null` for anything that is not a
+// neighbour direction — a facing points at a corner, and a corner is not an
+// edge.
+//
+// Measured on the size the hexes tile at, the same as `hexRegionOutline`, so the
+// segment runs down the middle of the gap between the two hexes rather than over
+// either of them.
+function sharedEdge(col: number, row: number, direction: number): [Point, Point] | null {
+  // `edgeDirection` is the inverse of this: the edge leaving corner `index`
+  // clockwise is the one the neighbour at `90 + 60 * index` lies across.
+  const offset = normalizeAngle(direction - 90);
+  if (offset % 60 !== 0) {
+    return null;
+  }
+
+  const index = offset / 60;
+  const center = hexCenter(col, row, HEX_SIZE);
+  return [cornerOf(center, index), cornerOf(center, index + 1)];
+}
+
+// The cell one step from (`col`, `row`) in `direction`. Offset coordinates
+// only: whether the board actually has that cell is the grid's question, not
+// this one's.
+function neighborCell(col: number, row: number, direction: number): { col: number; row: number } | null {
+  const step = NEIGHBOR_STEPS[normalizeAngle(direction)];
+  if (step === undefined) {
+    return null;
+  }
+
+  const [dcol, drow] = row % 2 === 1 ? step.odd : step.even;
+  return { col: col + dcol, row: row + drow };
+}
+
+// The wedge of hexes in front of a unit, out to `range` steps. Both hexes the
+// facing lies between are one step away, and every step after that spreads the
+// wedge one hex wider — so the whole of it is a triangle of
+// `range * (range + 3) / 2` hexes, growing from the pair in front of the unit.
+// The hex the unit stands on is not in it.
+//
+// Read out ring by ring, walking each ring's cells one step in both front
+// directions. A cell reached twice in the same ring is kept once, which is what
+// makes the two edges of the wedge meet in a triangle rather than double up
+// through the middle of it.
+function forwardCone(col: number, row: number, facing: number, range: number): ConeCell[] {
+  const directions = frontDirections(facing);
+  const cone: ConeCell[] = [];
+  const seen = new Set<string>([cellKey(col, row)]);
+  let ring: Array<{ col: number; row: number }> = [{ col, row }];
+
+  for (let distance = 1; distance <= range; distance += 1) {
+    const next: Array<{ col: number; row: number }> = [];
+
+    for (const cell of ring) {
+      for (const direction of directions) {
+        const step = neighborCell(cell.col, cell.row, direction);
+        if (step === null) {
+          continue;
+        }
+
+        const key = cellKey(step.col, step.row);
+        if (seen.has(key)) {
+          continue;
+        }
+
+        seen.add(key);
+        next.push(step);
+        cone.push({ col: step.col, row: step.row, distance });
+      }
+    }
+
+    ring = next;
+  }
+
+  return cone;
+}
+
+// Clockwise degrees from straight up, from one hex's centre to another's. A
+// facing and a neighbour direction are both measured that way, so a bearing can
+// go wherever one of those does — the arrow drawn at a target, the way a blow
+// travels. For two neighbouring hexes it comes out as exactly the direction
+// between them.
+function bearingBetween(fromCol: number, fromRow: number, toCol: number, toRow: number): number {
+  const from = hexCenter(fromCol, fromRow, HEX_SIZE);
+  const to = hexCenter(toCol, toRow, HEX_SIZE);
+  // The y axis points down, so the northward leg is measured the other way
+  // round. `atan2` is handed the sideways leg first, which is what turns the
+  // usual counter-clockwise-from-east angle into clockwise-from-north.
+  const degrees = (Math.atan2(to.x - from.x, from.y - to.y) * 180) / Math.PI;
+  return normalizeAngle(degrees);
+}
+
+function buildGrid(cols: number, rows: number, size = HEX_SIZE): HexGrid {
+  const cells: HexCell[] = [];
+  for (let row = 0; row < rows; row += 1) {
+    for (let col = 0; col < cols; col += 1) {
+      const { x, y } = hexCenter(col, row, size);
+      cells.push({ key: cellKey(col, row), col, row, x, y });
+    }
+  }
+
+  // The first centre sits at (0, 0), so the grid reaches half a hex up and to
+  // the left of the origin. Odd rows stick out half a hex to the right, which
+  // makes the box one half-hex wider than the plain column count suggests.
+  const bounds: Bounds = {
+    x: -hexWidth(size) / 2,
+    y: -size,
+    width: hexWidth(size) * (cols + (rows > 1 ? 0.5 : 0)),
+    height: 1.5 * size * (rows - 1) + hexHeight(size),
+  };
+
+  return { cells, bounds };
+}
+
+export {
+  HEX_EDGE,
+  HEX_FILL_POINTS,
+  HEX_GAP,
+  HEX_INSET,
+  HEX_SIZE,
+  bearingBetween,
+  buildGrid,
+  cellKey,
+  flankDirections,
+  forwardCone,
+  frontDirections,
+  hexPoints,
+  hexRegionOutline,
+  hexRingPoints,
+  hexWidth,
+  neighborCell,
+  sharedEdge,
+};
+export type { Bounds, ConeCell, HexCell, HexGrid, Point };

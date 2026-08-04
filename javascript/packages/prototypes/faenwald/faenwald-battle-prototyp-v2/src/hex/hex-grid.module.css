@@ -1,0 +1,78 @@
+.hex {
+  /* No `cursor` here, and none on any other shape in the canvas. `cursor`
+     inherits and the deepest element under the pointer wins, so the canvas can
+     only swap to `grabbing` for the whole grid while nothing inside overrides
+     it — a `pointer` on the hex would show through mid-pan. */
+  stroke: var(--map-line);
+  stroke-width: 2;
+  transition: fill var(--uk-duration) var(--uk-ease);
+}
+
+/* The band a hover or select state carries across the gap, drawn under the grid.
+   It has no `stroke-width` of its own: that is set on the element, next to the
+   corners it is measured against. Nothing is drawn over the gap, so the band
+   would take the pointer there and the hex under it would never answer — hence
+   `pointer-events`. */
+.band {
+  fill: none;
+  pointer-events: none;
+}
+
+/* The two state colours, worn by a band and by the outline of the hex it runs
+   around. Both rules have to come after `.hex`: they are single classes, like it
+   is, so the later one wins the `stroke` between them. */
+.hoverLine {
+  stroke: var(--map-line-hover);
+}
+
+/* A unit the armed attack is pointed at, lit up on the hex it stands on. It
+   stands in the hover state's place rather than beside it: the pointer is on
+   that hex, and one ring around a hex is one answer to the pointer. Out here
+   the cue also clears the marker, so the bars flanking it stay readable — a
+   ring drawn inside the marker paints over them. */
+.attackLine {
+  stroke: var(--map-attack-ring);
+}
+
+.selectedLine {
+  animation: tick 800ms ease-in-out infinite alternate;
+}
+
+/* One leg of the tick per run, so `alternate` gives a 500ms fade each way. The
+   line starts on the grid line colour, which is what the hex already wears, so
+   the select state reads as that line lighting up. Spelling the colour out
+   matters: `.selectedLine` sets no `stroke` of its own, so an implicit start
+   would fade in from the SVG default of black. */
+@keyframes tick {
+  0% {
+    stroke: var(--map-line);
+  }
+
+  80% {
+    stroke: var(--map-selected-line);
+  }
+
+  100% {
+    stroke: var(--map-selected-line);
+  }
+}
+
+.plain {
+  fill: var(--map-plain);
+}
+
+.path {
+  fill: var(--map-path);
+}
+
+.arcane {
+  fill: var(--map-arcane);
+}
+
+.hills {
+  fill: var(--map-hills);
+}
+
+.crag {
+  fill: var(--map-crag);
+}

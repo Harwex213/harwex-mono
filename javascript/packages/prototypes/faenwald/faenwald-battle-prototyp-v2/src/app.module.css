@@ -1,0 +1,56 @@
+.app {
+  display: flex;
+  flex-direction: column;
+  gap: var(--uk-space-4);
+  height: 100%;
+  /* No `max-width`: the app takes the whole viewport, so the canvas gets every
+     pixel the side panels do not need. */
+  min-height: 0;
+  padding: var(--uk-space-5) var(--uk-space-4);
+  width: 100%;
+}
+
+.header {
+  align-items: center;
+  display: flex;
+  flex-shrink: 0;
+  gap: var(--uk-space-5);
+}
+
+.title {
+  font-size: 18px;
+  font-weight: 600;
+  margin: 0;
+}
+
+.nav {
+  display: flex;
+  gap: var(--uk-space-2);
+  /* Takes the slack in the header row, so the theme switch sits hard right. */
+  flex: 1;
+}
+
+.tab {
+  border: 1px solid transparent;
+  border-radius: var(--uk-radius);
+  color: var(--uk-fg-muted);
+  font-size: 13px;
+  padding: var(--uk-space-1) var(--uk-space-3);
+  text-decoration: none;
+}
+
+.tab:hover {
+  color: var(--uk-fg);
+}
+
+.tabActive {
+  border-color: var(--uk-border);
+  color: var(--uk-fg);
+}
+
+.main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}

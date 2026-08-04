@@ -1,0 +1,26 @@
+/* The chain drawn on the border two spearmen in a closed formation share. It sits
+   in the gap between their hexes, so it covers no terrain and takes nothing away
+   from either marker.
+
+   The pointer is not answered at all. The hexes under the chain go on hovering and
+   selecting exactly as they do anywhere else — see `FormationLayer` for why. */
+.chain {
+  pointer-events: none;
+}
+
+/* Under each link, and wider than it: the dark ring is what keeps a pale chain
+   readable on the pale plain, and what cuts a link in front out of the link it is
+   threaded through. */
+.halo {
+  fill: none;
+  stroke: var(--map-formation-shadow);
+  stroke-width: 2.1;
+}
+
+/* The link itself. Iron rather than any of the colours the board gives an order,
+   so a formation is never read as something the board is waiting on. */
+.link {
+  fill: none;
+  stroke: var(--map-formation);
+  stroke-width: 1.05;
+}

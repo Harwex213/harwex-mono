@@ -1,0 +1,40 @@
+/* One row of chips, wrapping once a unit carries more than the row holds. */
+.list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--uk-space-1);
+  justify-content: center;
+}
+
+/* Outlined rather than filled. A panel already carries a filled button or two,
+   and a modifier is something the unit has rather than something to press. The
+   whole chip is one colour, so the sign classes below only have to set that. */
+.chip {
+  align-items: center;
+  border: 1px solid currentColor;
+  border-radius: var(--uk-radius-full);
+  display: inline-flex;
+  font-size: 11px;
+  font-weight: 600;
+  gap: 3px;
+  line-height: 1.5;
+  padding: 0 var(--uk-space-2);
+  white-space: nowrap;
+}
+
+/* The same shape the board draws the modifier with, so the chip and the cue on
+   the hexes are read as one thing. Left at its own colour: an emoji ignores
+   `color`, and the ring around it is what carries the sign. */
+.icon {
+  font-size: 10px;
+}
+
+/* Good for the unit. Green in either theme, following the uikit token, so the two
+   signs are never told apart by brightness alone. */
+.positive {
+  color: var(--uk-success);
+}
+
+.negative {
+  color: var(--uk-danger);
+}
