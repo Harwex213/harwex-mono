@@ -821,3 +821,188 @@ while painting" check.
   touch while the mode is on. This is a desktop prototype.
 - Province ids run 1 to 1650 over 1648 provinces. An aggregate skips an
   unresolvable id and never throws.
+
+## Country labels
+
+A country's name is drawn across its territory in the style of a political map:
+uppercase, letter-spaced, dark type inside a light casing. The label sits on a map
+point that is proved to be inside the country. It never sits in the sea.
+
+Labels add no storage key and no schema field. Every value below is derived.
+
+### Files
+
+| Path | What it is |
+|---|---|
+| `src/map/label-layout.ts` | Pure. The font ramp, the anchor chain, the pole search, the fit test, the greedy layout. |
+| `src/ui/label-layer.ts` | The only file that calls `measureText`. Metrics, the layout call, the two-pass draw. |
+| `src/state/label-store.ts` | `showLabels`, the `countryLabelSources` computed, the anchor cache, the contains predicate. |
+
+The split follows purity. `label-layout.ts` takes text widths as **numbers**, so
+the whole of the maths runs under Node with no canvas. `label-layer.ts` supplies
+those numbers. `label-store.ts` supplies the country data.
+
+`CountryLabelSource` is declared in `src/map/label-layout.ts`, not in the store.
+`src/ui/render.ts` names the type and imports only from `./` and `../map/`.
+Declaring it in the store would pull a `ui -> state` import into the renderer.
+
+### The anchor
+
+`resolveLabelAnchor` walks three steps and returns the first point that the
+`contains` callback accepts:
+
+1. The country's area-weighted centroid, from `countryAggregates`.
+2. Each province's centre of mass, largest province first, capped at
+   `ANCHOR_CANDIDATE_LIMIT` = 8 tries.
+3. A pole of inaccessibility searched inside the **largest province's** bounding
+   box.
+
+If all three fail the function returns `null` and the country gets no label.
+There is no bounding-box-centre fallback. A guessed point is exactly the failure
+mode the chain exists to prevent.
+
+Step 2 is what saves a ring-shaped country. Its centroid falls in the hole, and a
+province centre of mass lies inside its own province for 1634 of the 1648
+provinces. A province of the country is by construction inside the country.
+
+Step 3 searches the largest province's box, never the country's union box. A
+union box reaches 3119 x 2427 map px, and a 24 x 24 grid over it samples every
+130 px and misses a thin arm. A province box covers at most 12 642 px of area,
+which the same grid resolves.
+
+The search is a coarse grid plus a chamfer distance transform plus 2 refinement
+levels, so `GRID_LEVELS` x `GRID_CELLS`² = 3 x 24² = 1728 `contains` calls.
+`chamferDistance` weights a diagonal step at √2, not 1. Manhattan iso-contours are
+diamonds and push the label toward a diagonal tip.
+
+`src/state/label-store.ts` caches the resolved anchor per country and validates
+the entry against **`country.provinceIds` array identity**. `assignProvinces`
+returns the same `Country` object for every country it did not touch, so identity
+is an exact "the territory is unchanged" test with no hashing. A rename therefore
+costs no recompute, and a paint drag recomputes only the countries it changed.
+
+`countryLabelSources` gates on `loadPhase.value === "ready"`. That read does two
+jobs. It subscribes the computed to the map load, because `getMapAssets()` is a
+plain module variable that notifies nobody. It also stops an anchor from being
+computed while `provinceAt` returns `null` for every pixel, which would fill the
+cache with `null` and leave every country unlabelled for the rest of the session.
+
+`countryContainsPoint` reads `countryOfProvince.peek()`, not `.value`. It runs
+inside the computed and inside a `requestAnimationFrame` callback. `.peek()` is
+correct in both and cannot widen a dependency set.
+
+### Type size
+
+`labelFontSize(scale)` is `basePx * (scale / referenceScale) ** exponent`, clamped
+to `minPx..maxPx`.
+
+| Field | Value | Why |
+|---|---|---|
+| `referenceScale` | 0.32 | The fit scale of the 3653 x 2855 map in a typical viewport. |
+| `basePx` | 13 | The size at the opening view. |
+| `exponent` | 0.45 | Sub-linear. The zoom range is 25x, and a linear ramp gives 328 px type at the cap. |
+| `minPx` | 9 | Below this the tracked caps stop reading. |
+| `maxPx` | 34 | Above this the label billboards over its country. |
+
+The ramp produces 9.00 px at scale 0.1, 13.00 at 0.32, 21.71 at 1, and 34.00 at
+both 3 and 8.
+
+### Text measurement
+
+Text is drawn **glyph by glyph with a manual advance**, and measured the same way.
+`ctx.letterSpacing` is engine-dependent, and `measureText(wholeString).width`
+includes kerning the draw never applies. The measured width must equal the drawn
+width, or the fit test and every collision rect are wrong.
+
+`LETTER_SPACING_EM` is 0.18. Tracking adds `n - 1` gaps, never `n`. There is no
+trailing space after the last glyph, and `labelTextWidth` floors the gap count at
+0 so an empty name cannot return a negative width.
+
+Advances are measured once per name at `METRIC_FONT_PX` = 100 and scaled linearly
+to the live size, so a wheel notch costs zero `measureText` calls. The cache holds
+`METRIC_CACHE_LIMIT` = 256 names and evicts the oldest. `measureLabelMetrics` runs
+inside `drawCountryLabels`, after the draw font is set, so it saves and restores
+`ctx.font`. Without that a cache miss renders its label at 100 px.
+
+The string is walked with `Array.from(text)`, never `text.split("")`. A split
+surrogate pair measures and draws as two replacement glyphs.
+
+### The fit test and the greedy layout
+
+`layoutLabels` sorts a **copy** of the candidates by area descending, with
+`countryId` breaking a tie, then walks the list once.
+
+A candidate is dropped when its on-screen bounding box cannot hold its text:
+`bounds.width * view.scale < textWidth * FIT_WIDTH_RATIO` (1.05) or
+`bounds.height * view.scale < fontSize * FIT_HEIGHT_RATIO` (1.6). That is the
+"hidden when the country is too small at this zoom" rule, and the width it
+compares against is measured, never estimated from a character count.
+
+A surviving candidate tries the 7 entries of `NUDGE_OFFSETS` in order: the anchor,
+then up, down, left, right in units of font size and text width. The first offset
+whose rect collides with no already-placed rect wins. Offset 0 is trusted, because
+`resolveLabelAnchor` already proved the anchor is in-country; every other offset is
+back-projected through `screenToMap` and re-tested with `contains`, or a nudge
+would push the label into the water. A candidate whose every offset collides or
+leaves the country is dropped. The larger country already owns that space.
+
+`rectsOverlap` uses strict `<`, so two flush rects do not collide.
+
+**The collision pass runs over every candidate that passed the fit test, including
+the off-screen ones.** Culling off-screen candidates first is a bug, not an
+optimisation: a label that scrolls out would free its slot, a neighbour would pop
+in, and scrolling back would pop it out again. Every pan would make labels jump.
+`LabelPlacement.visible` decides only what is drawn. A test pins that two view
+translations give the same placed set and the same `offsetIndex` per label.
+
+There is no layout cache. The layout is a pure function of the sources, the view
+and the viewport, and all three change on every pan. Once the metrics are warm the
+pass is one sort and at most 7 rect trials per candidate.
+
+### Drawing
+
+`drawCountryLabels` strokes the casing on **all** glyphs first, then fills them
+all. A per-glyph stroke-then-fill lets glyph N's halo eat glyph N-1's fill under
+tight tracking. The casing is `strokeText`, not `shadowBlur`: a blur is the slow
+path and gives a soft glow instead of a political-map casing.
+
+`LABEL_FILL` is `rgba(24, 20, 14, 0.92)` and `LABEL_HALO` is
+`rgba(248, 246, 240, 0.80)`. Dark type inside a light casing, matching T04's dark
+border ink. The art is dark-ish and the casing is what carries the contrast.
+
+`LABEL_FONT_STACK` duplicates `--font` from `src/index.css`. Canvas cannot read a
+CSS custom property without a `getComputedStyle` call per frame. Change both lines
+together.
+
+Labels draw **last** in `drawOverlay`, after the tint, the highlights, the province
+borders, the country borders and the bounds hairline. They take
+`snapView(input.view, ratio)`, the same value every other overlay step uses.
+
+`drawCountryLabels` leaves `font`, `fillStyle`, `lineJoin` and `miterLimit` set. It
+is currently the last step, and `prepare` resets the transform every frame. Any
+step appended after it must set its own type and stroke state.
+
+### The toggle
+
+`L` toggles `showLabels`. `MapCanvas.tsx` owns the listener and ignores the key
+inside an `INPUT`, a `TEXTAREA`, a `SELECT`, a `contentEditable` element, and any
+modifier chord. The toggle is deliberately not persisted. It is the instrument for
+the "the label is not in the sea" check: press `L` and see what is underneath.
+
+### Traps for later tasks
+
+- Never pass `input.view` into the label layout. Only `snapView(view, dpr)`.
+- Every field `T07` added to `OverlayInput` is optional. `render.test.ts` asserts
+  that an overlay drawn without them is byte-identical to the T06 output.
+- The fit test uses the country's union **bounding box**. A long thin country
+  passes the width test even where no part of it is that wide, so a label can
+  overhang into water at its ends. A run-length probe is the next refinement.
+- `getLastLabelStats()` is one frame stale by construction. The HUD `placed`
+  readout always reports the previous frame.
+- `src/state/label-store.ts` has only 4 tests and cannot have more. In Node the
+  manifest never loads, `loadPhase` never reaches `"ready"`, and
+  `countryLabelSources` can only return `[]`. The maths under the store is covered
+  in full by `label-layout.test.ts`. Do not fake a `ProvinceIndex` to reach
+  further; that tests the fake.
+- The HUD `labels` and `placed` readouts are T07 verification UI. T08 replaces
+  the whole HUD.

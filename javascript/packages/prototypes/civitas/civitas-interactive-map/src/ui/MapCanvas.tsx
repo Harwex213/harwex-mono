@@ -26,6 +26,13 @@ import {
 } from "../state/assign-store";
 import { countryTintWords } from "../state/country-store";
 import { countryById } from "../state/world-store";
+import { getLastLabelStats } from "./label-layer";
+import {
+  countryContainsPoint,
+  countryLabelSources,
+  showLabels,
+  toggleLabels,
+} from "../state/label-store";
 import { samplePathPixels } from "../map/paint-path";
 import {
   hoveredProvinceId,
@@ -106,6 +113,11 @@ function Hud() {
   const failure = borderError.value;
   const activeId = activeCountryId.value;
   const activeCountry = activeId === null ? null : countryById.value.get(activeId);
+  // A plain module variable, one frame stale by construction. That is fine for
+  // an instrument: `Hud` re-renders on every `cursorMap` change, so the number
+  // is live while anyone is looking at it.
+  const labelStats = getLastLabelStats();
+  const labelsOn = showLabels.value;
 
   return (
     <>
@@ -155,6 +167,14 @@ function Hud() {
         <span>
           active <span className={styles.hudProvince}>
             {activeCountry ? activeCountry.name : "—"}
+          </span>
+        </span>
+        <span>
+          labels <span className={styles.hudValue}>{labelsOn ? "on" : "off"}</span>
+        </span>
+        <span>
+          placed <span className={styles.hudValue}>
+            {labelStats.drawn + "/" + labelStats.candidates}
           </span>
         </span>
       </div>
@@ -263,6 +283,10 @@ function MapCanvas() {
       tint: getTintCanvas(),
       // The MAP size, never the art's 3652.
       tintSize: size,
+      // Read fresh inside `draw`, like every other input here. `draw` runs from
+      // a requestAnimationFrame callback, outside any tracking context.
+      labelSources: countryLabelSources.value,
+      countryContains: countryContainsPoint,
     });
   }
 
@@ -297,6 +321,9 @@ function MapCanvas() {
     // The Path2D sets are plain module variables — identity-only objects a signal
     // would gain nothing from — so the draw subscribes to their version counter.
     void bordersVersion.value;
+    // Without this a rename repaints nothing: no other signal in this effect
+    // changes when only `country.name` changes.
+    void countryLabelSources.value;
     scheduleDraw();
   });
 
@@ -353,6 +380,36 @@ function MapCanvas() {
     setViewport(initial.width, initial.height);
     return () => {
       observer.disconnect();
+    };
+  }, []);
+
+  // `L` toggles the country labels. It is the verification instrument for "the
+  // label is not in the sea": press it and see what is underneath.
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.altKey || event.ctrlKey || event.metaKey) {
+        return;
+      }
+      if (event.key !== "l" && event.key !== "L") {
+        return;
+      }
+      // `CountryPanel` has text inputs. Typing an "l" into a country name must
+      // not blank the map.
+      const target = event.target;
+      if (target instanceof HTMLElement) {
+        if (target.isContentEditable) {
+          return;
+        }
+        const tag = target.tagName;
+        if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") {
+          return;
+        }
+      }
+      toggleLabels();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
     };
   }, []);
 

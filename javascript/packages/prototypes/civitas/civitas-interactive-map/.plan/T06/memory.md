@@ -395,3 +395,73 @@ apostrophes are inside prose comments and message strings), no inline `export`, 
   `buildCountryAssignment`, already covered by `world-store.test.ts`.
 - Everything in DESIGN section 13 (labels, right-click selection, flags, the province list,
   economics) belongs to later tasks.
+
+---
+
+## Docs & commit
+
+Commit: `327c6af6` — "civitas interactive map — T06 country model and province assignment".
+
+### Verification before committing
+
+All three green on the first run. Nothing needed fixing.
+
+```
+yarn typecheck   exit 0, no output
+yarn test        348 pass, 0 fail
+yarn build       exit 0, the same three asset-size warnings T02 recorded (not silenced)
+```
+
+### README
+
+Appended, not rewritten. One new section, `## Countries and province assignment`,
+after `## Persistent state`. It covers the file map, the tint layer and its word
+format, the derived store and the 120 ms border push, the aggregates, the stroke
+state machine, the input map in assignment mode, the panel, and the traps.
+
+No new storage key and no schema change. The section says so explicitly, because
+a reader arriving at T09 will look for one.
+
+### Committed files (22)
+
+```
+README.md
+.plan/T06/DESIGN.md
+.plan/T06/memory.md
+.plan/T06/review-1.md
+src/App.tsx
+src/map/country-aggregate.ts
+src/map/country-aggregate.test.ts
+src/map/paint-path.ts
+src/map/paint-path.test.ts
+src/state/assign-store.ts
+src/state/assign-store.test.ts
+src/state/borders-store.ts
+src/state/country-store.ts
+src/state/country-store.test.ts
+src/ui/CountryPanel.tsx
+src/ui/country-panel.module.css
+src/ui/tint-layer.ts
+src/ui/tint-layer.test.ts
+src/ui/MapCanvas.tsx
+src/ui/map-canvas.module.css
+src/ui/render.ts
+src/ui/render.test.ts
+```
+
+### Deliberately NOT committed
+
+The working tree carries changes this task did not make. They stay uncommitted:
+
+- `.plan/PLAN.md` — the T11 economics material the planner added after the T05 commit.
+- `.plan/T05/memory.md` — the T05 docs agent's own `## Docs & commit` section.
+- `.plan/T11/` — untracked. The rulebook digest, the image transcriptions and the images.
+- `javascript/yarn.lock` — a `@hw/react-di` workspace entry from an unrelated package.
+
+The repository index also carried a large pre-existing staged set from before this
+session: `javascript/.yarn/cache/*`, `javascript/.claude/skills/`, and files under
+`faenwald-*` and `colony-sim-*`. **The commit was made with explicit pathspecs**
+(`git commit -F <msg> -- <path>…`), which builds a temporary index from HEAD plus
+the named paths. That is what kept those 120 staged entries out of the commit and
+left them staged afterwards. A bare `git commit` here would have swept all of them
+in. Any later agent in this tree must use the same pathspec form.

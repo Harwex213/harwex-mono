@@ -1,7 +1,9 @@
 import { COUNTRY_BORDER, PROVINCE_BORDER, drawBorders } from "./border-layer";
+import { drawCountryLabels, layoutCountryLabels } from "./label-layer";
 import { drawProvinceHighlight } from "./highlight-layer";
 import { mapToScreen, shouldSmooth, snapView, sourceRect } from "../map/view";
 import type { BorderPaths } from "./border-layer";
+import type { ContainsFn, CountryLabelSource } from "../map/label-layout";
 import type { DrawRect, Size, View } from "../map/view";
 import type { HighlightRequest } from "./highlight-layer";
 import type { ProvinceIndex } from "../map/province-index";
@@ -39,6 +41,10 @@ type OverlayInput = {
   // `ProvinceIndex`, which is map-sized; only `drawScene`'s `sourceRect` call
   // takes the art size, and `drawEdgeColumn` has no analogue here.
   tintSize?: Size | null;
+  // T07. In MAP pixels. `drawOverlay` measures and lays out; the caller only
+  // supplies the sources, so no store type crosses into this module.
+  labelSources?: readonly CountryLabelSource[] | null;
+  countryContains?: ContainsFn | null;
 };
 
 const BOUNDS_STROKE = "rgba(216, 162, 74, 0.35)";
@@ -167,6 +173,22 @@ function drawOverlay(input: OverlayInput): void {
     mapSize.width * view.scale,
     mapSize.height * view.scale,
   );
+
+  // LAST. Labels sit on top of the tint, the highlights and both border layers,
+  // because nothing may obscure them. They also draw in CSS pixels, which is
+  // the transform `drawBorders` restored and the hairline used.
+  //
+  // `view`, not `input.view`: the label positions must agree with the art to the
+  // device pixel for the same reason the tint and the borders must.
+  if (input.labelSources && input.labelSources.length > 0) {
+    const placements = layoutCountryLabels(ctx, {
+      sources: input.labelSources,
+      view,
+      viewport,
+      contains: input.countryContains ?? undefined,
+    });
+    drawCountryLabels(ctx, placements);
+  }
 }
 
 export { drawOverlay, drawScene, type OverlayInput, type SceneInput };

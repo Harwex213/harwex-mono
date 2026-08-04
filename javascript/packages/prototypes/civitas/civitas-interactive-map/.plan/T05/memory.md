@@ -473,3 +473,83 @@ $ grep -n "'" src/state/schema-limits.test.ts src/state/persistence-recovery.tes
 - `persistence-recovery.test.ts` installs and then deletes a fake
   `globalThis.localStorage`. Any test added after it in that file inherits a clean
   global, and the test asserts as much before finishing.
+
+---
+
+## Docs & commit
+
+Commit: `0823beb0b015e0fda947a6639b205a46501091a4` — "civitas interactive map — T05 persistent state store".
+
+### Verification before committing
+
+All three green on the first run. Nothing needed fixing.
+
+```
+yarn typecheck   exit 0 (no output)
+yarn test        271 pass, 0 fail
+yarn build       exit 0, the same asset-size warning T02 recorded (not silenced)
+```
+
+### README
+
+Appended, not rewritten. The implement agent had already written the
+`## Persistent state` section. This pass added the parts a consumer needs and
+that section stated only in prose:
+
+- The stored `civitas.state.v1` document as a `jsonc` block, with the note that
+  an economics slot carries its own `version` separate from the document's.
+- A caps table: `NAME_MAX` 120, `SLOGAN_MAX` 160, `LORE_MAX` 8000,
+  `IMAGE_DATA_URL_MAX` 600 000, `MAX_JSON_DEPTH` 8, `MAX_COUNTRY_ID` 65535,
+  `STORAGE_BUDGET_BYTES` 4 000 000.
+- The public surface: 12 signals and 13 actions, named.
+- A new `### Warnings` subsection. All seven `WarningKind`s, their cause, and
+  what each leaves `statePersistent` at. `quota` keeps persistence on and
+  `unavailable` turns it off, and the table says why.
+- Three traps: the store is a module singleton reset only by `initWorldStore`,
+  and `world-store-lifecycle.test.ts` needs its own process, so its first test
+  must stay first.
+
+### Files committed
+
+20 files, all under the package.
+
+```
+.plan/T04/memory.md          (T04's own "Docs & commit" addendum, left uncommitted by T04)
+.plan/T05/DESIGN.md
+.plan/T05/memory.md
+.plan/T05/review-1.md
+README.md
+src/App.tsx
+src/app.module.css
+src/state/image.test.ts
+src/state/image.ts
+src/state/migrations.test.ts
+src/state/migrations.ts
+src/state/persistence-recovery.test.ts
+src/state/persistence.test.ts
+src/state/persistence.ts
+src/state/schema-limits.test.ts
+src/state/schema.test.ts
+src/state/schema.ts
+src/state/world-store-lifecycle.test.ts
+src/state/world-store.test.ts
+src/state/world-store.ts
+```
+
+### Four things a later agent should know
+
+- **The repo index still holds pre-existing staged changes from outside this
+  package** (`.yarn/cache` deletions, a skills edit, other prototypes), exactly as
+  T04 recorded. The commit was therefore `git commit -F <file> -- <paths>`, a
+  path-scoped partial commit. A plain `git commit` would sweep all of it in. Use
+  the same form next time.
+- **`javascript/yarn.lock` is modified and was NOT committed.** The diff adds a
+  `@hw/react-di` workspace entry from `packages/prototypes/ai-slop/`, unrelated to
+  this package. T05 added no dependency.
+- **`.plan/PLAN.md` and `.plan/T11/` are uncommitted on purpose.** Both are T11
+  preparation: the plan's expanded economics decisions, and the rulebook digest,
+  the screenshot transcriptions and 40-odd images. They belong to T11's own
+  commit, not to a persistence commit.
+- **This "Docs & commit" section is itself uncommitted**, because the hash it
+  records did not exist when the commit was made. T03 and T04 left theirs the same
+  way. Stage `.plan/T05/memory.md` with the next task's commit.

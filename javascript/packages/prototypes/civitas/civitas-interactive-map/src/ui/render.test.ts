@@ -34,6 +34,24 @@ function createRecorder(): Recorder {
     lineWidth: 0,
     lineCap: "butt",
     lineJoin: "miter",
+    // T07 label state. `measureText` returns a width proportional to the px
+    // size parsed out of the live `font`, so the 100 px reference measurement
+    // behaves as it does in a real context.
+    font: "10px sans-serif",
+    textAlign: "start",
+    textBaseline: "alphabetic",
+    miterLimit: 10,
+    fillStyle: "",
+    measureText: (text: string): TextMetrics => {
+      calls.push({ name: "measureText", source: text, args: [] });
+      return { width: Array.from(text).length * 50 } as TextMetrics;
+    },
+    fillText: (text: string, x: number, y: number): void => {
+      calls.push({ name: "fillText", source: text, args: [x, y] });
+    },
+    strokeText: (text: string, x: number, y: number): void => {
+      calls.push({ name: "strokeText", source: text, args: [x, y] });
+    },
     setTransform: (...args: number[]): void => {
       calls.push({ name: "setTransform", source: null, args });
     },
@@ -54,6 +72,15 @@ function createRecorder(): Recorder {
   // were live at the moment of the call. The hairline overwrites both afterwards.
   ctx.stroke = (source: unknown): void => {
     calls.push({ name: "stroke", source, args: [ctx.lineWidth] });
+  };
+  // Same trick for the label metrics: the width has to follow the px size that
+  // is live at the moment of the call, and `ctx` cannot be read from inside its
+  // own initializer.
+  ctx.measureText = (text: string): TextMetrics => {
+    const match = /(\d+(?:\.\d+)?)px/.exec(ctx.font);
+    const px = match ? Number(match[1]) : 10;
+    calls.push({ name: "measureText", source: text, args: [px] });
+    return { width: (Array.from(text).length * 50 * px) / 100 } as TextMetrics;
   };
   return { ctx: ctx as unknown as CanvasRenderingContext2D, calls };
 }
@@ -560,6 +587,73 @@ test("highlights are skipped when no province index is supplied", () => {
 
   assert.equal(named(recorder.calls, "drawImage").length, 0, "nothing is stamped");
   assert.equal(named(recorder.calls, "strokeRect").length, 1, "the hairline still draws");
+});
+
+test("country labels draw LAST, after the bounds hairline", () => {
+  // Nothing may obscure a label, so it goes on top of the tint, the highlights
+  // and both border layers.
+  const view = clampView({ scale: 2, x: -2000, y: -1500 }, MAP, WIDE);
+  const recorder = createRecorder();
+
+  drawOverlay({
+    ctx: recorder.ctx,
+    view,
+    viewport: WIDE,
+    dpr: 1,
+    mapSize: MAP,
+    provinceBorders: borderFixture("province"),
+    countryBorders: borderFixture("country"),
+    labelSources: [
+      {
+        countryId: 1,
+        text: "AURELIA",
+        anchor: { x: 1100, y: 820 },
+        bounds: { x: 0, y: 0, width: 3000, height: 2000 },
+        area: 500000,
+      },
+    ],
+  });
+
+  const hairline = recorder.calls.findIndex((call) => {
+    return call.name === "strokeRect";
+  });
+  const firstFill = recorder.calls.findIndex((call) => {
+    return call.name === "fillText";
+  });
+  assert.ok(hairline >= 0, "the hairline must still draw");
+  assert.ok(firstFill > hairline, "the label must draw after the hairline");
+  assert.equal(named(recorder.calls, "fillText").length, 7, "one call per glyph of AURELIA");
+});
+
+test("omitting labelSources leaves the overlay byte-identical to the T06 output", () => {
+  const view = clampView({ scale: 2, x: -2000, y: -1500 }, MAP, WIDE);
+
+  function callsFor(extra: Partial<Parameters<typeof drawOverlay>[0]>): Call[] {
+    const recorder = createRecorder();
+    drawOverlay({
+      ctx: recorder.ctx,
+      view,
+      viewport: WIDE,
+      dpr: 1,
+      mapSize: MAP,
+      provinceBorders: borderFixture("province"),
+      countryBorders: borderFixture("country"),
+      ...extra,
+    });
+    return recorder.calls;
+  }
+
+  const bare = callsFor({});
+  assert.deepEqual(callsFor({ labelSources: null }), bare, "an explicit null draws nothing");
+  assert.deepEqual(callsFor({ labelSources: [] }), bare, "an empty list draws nothing");
+  assert.deepEqual(
+    callsFor({ countryContains: null }),
+    bare,
+    "a contains callback with no sources draws nothing",
+  );
+  for (const name of ["fillText", "strokeText", "measureText"]) {
+    assert.equal(named(bare, name).length, 0, "the T06 overlay issues no " + name);
+  }
 });
 
 test("drawOverlay clears and returns for a degenerate scale", () => {
