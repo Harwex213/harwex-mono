@@ -382,3 +382,77 @@ $ du -sh dist
   array, so `node:test` and `node:assert/strict` resolve without any tsconfig change.
 - **The province id range is 1..1650 for 1648 provinces.** Build the T02 lookup as
   `Map<number, Province>` keyed by id. Array position is not id minus one.
+
+---
+
+## Docs & commit
+
+Commit: `7a8b66d5c53315ca0cb5d809b8bfa88178981d43` — "civitas interactive map — T01 package scaffold".
+
+### Verification before committing
+
+All three green, nothing needed fixing:
+
+```
+yarn typecheck   exit 0 (no output)
+yarn build       Rspack compiled successfully in 63 ms, exit 0
+yarn test        29 pass, 0 fail, exit 0
+```
+
+### README
+
+`README.md` is new. Sections: what the app is, the four scripts and how to run them
+from either directory, the `assets/` table, the manifest contract with the facts the
+tests pin, and the architecture so far (boot path, opt-in `useSignals()`,
+`localStorage`-only persistence, a file table, and the conventions).
+
+Two facts are called out in the README because a later task will trip on them:
+
+- Province ids run 1..1650 for 1648 provinces. Index by a `Map` keyed on id.
+- No file under `src/` may import from `assets/`. `src/scaffold.test.ts` enforces it,
+  and the rule is what keeps `dist/` at 196K.
+
+Later tasks should **append** their own sections rather than rewrite these.
+
+### Files committed (21)
+
+```
+.gitignore
+.plan/PLAN.md
+.plan/T01/DESIGN.md
+.plan/T01/memory.md
+README.md
+assets/country-flag.jpg
+assets/map.png
+assets/provinces_manifest.json
+assets/provinces_map.png
+index.html
+package.json
+rspack.config.mjs
+src/App.tsx
+src/app.module.css
+src/assets.test.ts
+src/env.d.ts
+src/index.css
+src/main.tsx
+src/scaffold.test.ts
+tsconfig.json
+javascript/yarn.lock          (+17 lines, the one workspace entry)
+```
+
+`javascript/package.json` was not committed, because it was never changed.
+
+### Trap the next docs agent must repeat
+
+The repo index holds ~120 pre-existing staged files from unrelated work
+(`.yarn/cache` zips, a skill file). `git commit` with no pathspec would sweep them all
+in. **Always commit with an explicit pathspec**: `git commit -F <msg> -- <PKG> javascript/yarn.lock`.
+
+`javascript/yarn.lock` also carried an unrelated workspace entry for
+`@hw/civitas-beautiful-map` (an untracked sibling package `civitas-beautiful-mao/`).
+The first commit swept it in. It was stripped by amending through a temporary index
+(`GIT_INDEX_FILE=<tmp> git read-tree HEAD; git add ...; git commit --amend`), which
+avoids touching the real index. The entry is still in the working-tree `yarn.lock`,
+so `git status` shows that file modified. That is correct — it belongs to the other
+package's commit. Check the yarn.lock diff before committing; T01's own hunk is
+exactly 17 lines.

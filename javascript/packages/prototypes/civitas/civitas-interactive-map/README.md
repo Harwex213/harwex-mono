@@ -23,7 +23,9 @@ from `javascript/`. The workspace uses the `node-modules` linker and hoists to
 ## Assets
 
 Four files live in `assets/`. The dev server serves that directory at `/assets`.
-The production build does not carry them yet — T02 picks that mechanism.
+The production build copies the same directory to `dist/assets` through
+`rspack.CopyRspackPlugin`. Both paths answer the same URLs, so the code requests
+`assets/map.png` with no leading slash.
 
 | File | What it is |
 |---|---|
@@ -93,9 +95,13 @@ is no export or import UI and no server.
 | Path | What it is |
 |---|---|
 | `src/main.tsx` | Entry. Mounts `App`. |
-| `src/App.tsx` | Placeholder. Renders the title. |
+| `src/App.tsx` | Load-status scaffolding. Shows the map facts and a province lookup probe. T03 replaces the body. |
 | `src/index.css` | Dark theme tokens, reset, base control styling. Copied from `../civitas-map`. |
 | `src/env.d.ts` | Ambient declarations for `*.module.css` and `*.css`. |
+| `src/map/manifest.ts` | Manifest types and the strict parser. |
+| `src/map/province-index.ts` | Colour packing and the packed-colour to province-id lookup. |
+| `src/map/map-assets.ts` | Asset URLs and the three-request load pipeline. |
+| `src/state/map-store.ts` | Load-status signals and the app-facing lookup functions. |
 | `src/scaffold.test.ts` | Pins the build and workspace contract. |
 | `src/assets.test.ts` | Pins the asset dimensions and the manifest facts above. |
 
@@ -110,3 +116,57 @@ is no export or import UI and no server.
 - CSS modules sit beside their component as `*.module.css`.
 - Tests use Node's built-in runner through `tsx` and sit beside the file they test.
   They cover pure logic only. There is no jsdom, so DOM and canvas go untested.
+
+## Asset loading
+
+`src/map/manifest.ts` parses the manifest. `parseManifest` takes a parsed JSON
+value and `parseManifestText` takes the raw body. Both validate every field and
+throw on the first problem. A `format` other than `civitas.province-map` and a
+`version` other than the number `1` are rejected. The parser builds new objects,
+so an unvalidated key cannot reach a caller. The parser does not check colours;
+`buildColorIndex` owns that check.
+
+`src/map/province-index.ts` turns the province bitmap into a lookup.
+`decodeProvincePixels` draws the `ImageBitmap` to a canvas and reads the RGBA
+bytes. `packPixels` packs each pixel into one `0x00RRGGBB` word. `buildColorIndex`
+maps each packed colour to its province id. `ProvinceIndex.provinceAt(x, y)`
+returns the province id under a map pixel, or `null` outside the map and on bare
+canvas.
+
+Three rules govern the packing:
+
+- The packing reads the four bytes one at a time. It never takes a `Uint32Array`
+  view over the buffer, because such a view has a machine-dependent byte order.
+  The layout is therefore `0x00RRGGBB` on every platform.
+- `UNPAINTED` is `0xffffffff`, not `0`. Black is a legal province colour, so a
+  sentinel of `0` would collide with it.
+- Any alpha below 255 counts as unpainted. A canvas stores pixels premultiplied,
+  so a part-transparent pixel cannot be read back at its original colour.
+
+`src/map/map-assets.ts` runs the load. `loadMapAssets` starts all three requests
+together, then awaits the manifest, the province bitmap and the art in that
+order. It reports each step through an optional callback. It closes the province
+bitmap once the pixels are packed, and it keeps the art bitmap open as the render
+source for T03. Two checks guard the result. A centroid sample must place at
+least 90% of sampled provinces inside their own colour; a lower score means the
+image was colour-converted on decode. `map.png` must match the manifest height
+exactly and the manifest width within one pixel.
+
+`src/state/map-store.ts` is the app-facing surface. `ensureMapLoaded()` is
+idempotent and never rejects. A failure lands in the `loadError` and `loadPhase`
+signals instead. The signals are `loadPhase`, `loadStep`, `loadError`, `mapSize`,
+`provinceCount` and the computed `loadProgress`. The 42 MB pixel array is a plain
+module variable, not a signal. `provinceAt(x, y)` and `provinceById(id)` return
+`null` until the load finishes, so a caller that runs during loading needs no
+guard. Render off `loadPhase === "ready"`, not off a truthy check of the art
+bitmap.
+
+Traps for later tasks:
+
+- `provinceAt` floors its arguments. Pass screen-to-map floats straight in.
+- Never transfer `ProvinceIndex.pixels` to a worker. A transfer detaches the
+  buffer, and every later `provinceAt` then reads zeroes.
+- 14 of the 1648 centroids fall outside their own province. The integrity check
+  is a ratio test for that reason. Do not tighten it into an all-must-match test.
+- `yarn build` prints two size warnings for the copied assets. The warnings are
+  accurate and are not silenced.

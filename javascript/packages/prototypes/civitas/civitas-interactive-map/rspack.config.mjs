@@ -52,6 +52,20 @@ export default {
     new rspack.HtmlRspackPlugin({
       template: "./index.html",
     }),
+    // Copied, not imported. `map.png` is 2.6 MB and `provinces_map.png` 566 KB;
+    // an `asset/resource` import would hash the filenames for no benefit here,
+    // and an inlined data URL would be catastrophic. Copying keeps
+    // `assets/<name>` as one stable URL that `devServer.static` already answers
+    // in dev. `noErrorOnMissing` stays at its default false, so a missing
+    // `assets/` fails the build instead of shipping a broken app.
+    new rspack.CopyRspackPlugin({
+      patterns: [
+        {
+          from: "assets",
+          to: "assets",
+        },
+      ],
+    }),
   ],
   devServer: {
     hot: true,

@@ -1,8 +1,12 @@
 .app {
   align-items: center;
   display: flex;
+  flex-direction: column;
+  gap: 18px;
   height: 100%;
   justify-content: center;
+  overflow: auto;
+  padding: 24px;
 }
 
 .title {
@@ -12,4 +16,96 @@
   letter-spacing: 0.14em;
   margin: 0;
   text-transform: uppercase;
+}
+
+.status {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-dim);
+  font-family: var(--mono);
+  margin: 0;
+  padding: 6px 12px;
+}
+
+.status[data-phase="ready"] {
+  color: var(--accent);
+}
+
+.status[data-phase="failed"] {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.facts {
+  column-gap: 16px;
+  display: grid;
+  font-family: var(--mono);
+  grid-template-columns: auto auto;
+  margin: 0;
+  row-gap: 4px;
+}
+
+.facts dt {
+  color: var(--text-dim);
+}
+
+.facts dd {
+  color: var(--text);
+  margin: 0;
+}
+
+.probes {
+  border: 1px solid var(--border);
+  border-collapse: collapse;
+  font-family: var(--mono);
+}
+
+.probes th,
+.probes td {
+  border: 1px solid var(--border);
+  padding: 4px 10px;
+  text-align: left;
+}
+
+.probes th {
+  color: var(--text-dim);
+  font-weight: 500;
+}
+
+.probes tr[data-ok="yes"] td:last-child {
+  color: var(--accent);
+}
+
+.probes tr[data-ok="no"] td:last-child {
+  color: var(--danger);
+  font-weight: 600;
+}
+
+.lookup {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+}
+
+.lookupField {
+  align-items: center;
+  color: var(--text-dim);
+  display: flex;
+  gap: 6px;
+}
+
+.lookupField input {
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  font: inherit;
+  padding: 4px 6px;
+  width: 90px;
+}
+
+.lookupResult {
+  color: var(--accent);
+  font-family: var(--mono);
 }

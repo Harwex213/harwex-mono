@@ -209,5 +209,12 @@ test("rspack config keeps the settings CSS modules and JSX depend on", async () 
   assert.equal(config.devServer.port, 0);
   assert.equal(config.devServer.static.directory, "./assets");
   assert.equal(config.devServer.static.publicPath, "/assets");
-  assert.equal(config.plugins.length, 1);
+
+  // T02 added CopyRspackPlugin. Assets are copied, never imported — the import
+  // guard above still holds.
+  assert.equal(config.plugins.length, 2);
+  const copyPlugin = config.plugins.find((plugin: { constructor: { name: string } }) => {
+    return plugin.constructor.name.includes("Copy");
+  });
+  assert.ok(copyPlugin, "assets must be copied into the build");
 });
