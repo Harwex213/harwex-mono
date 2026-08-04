@@ -14,6 +14,14 @@
   cursor: grabbing;
 }
 
+.host[data-mode="assign"] {
+  cursor: crosshair;
+}
+
+.host[data-mode="assign"][data-painting="true"] {
+  cursor: cell;
+}
+
 .canvas {
   display: block;
   inset: 0;
@@ -43,24 +51,4 @@
 
 .hudProvince {
   color: var(--accent);
-}
-
-/* Anchored to the host, NOT laid out after the readouts: the province name
-   changes width as the pointer crosses the map, and inside the same flex row
-   that slides the buttons away from the cursor reaching for them.
-   The readout panel stays pointer-transparent; only the buttons take events
-   back, and `data-hud-control` keeps those events out of the map gesture. */
-.hudActions {
-  bottom: 12px;
-  display: flex;
-  gap: 6px;
-  pointer-events: auto;
-  position: absolute;
-  right: 12px;
-}
-
-.hudButton {
-  font-family: var(--mono);
-  font-size: 11px;
-  padding: 2px 6px;
 }

@@ -19,8 +19,8 @@ type SceneInput = {
   mapSize: Size;
 };
 
-// Every field T04 added is OPTIONAL, and with all of them omitted `drawOverlay`
-// produces byte-identical output to the T03 version.
+// Every field T04 and T06 added is OPTIONAL, and with all of them omitted
+// `drawOverlay` produces byte-identical output to the T03 version.
 type OverlayInput = {
   ctx: CanvasRenderingContext2D;
   view: View;
@@ -32,6 +32,13 @@ type OverlayInput = {
   // Drawn in array order, so the caller puts "select" last.
   highlights?: readonly HighlightRequest[];
   provinceIndex?: ProvinceIndex | null;
+  // T06's country tint: one map-sized offscreen canvas, drawn with a single
+  // `drawImage`. There is no second on-screen canvas and no second render path.
+  tint?: CanvasImageSource | null;
+  // The MAP size 3653 x 2855, not the art's 3652. The tint canvas is built from
+  // `ProvinceIndex`, which is map-sized; only `drawScene`'s `sourceRect` call
+  // takes the art size, and `drawEdgeColumn` has no analogue here.
+  tintSize?: Size | null;
 };
 
 const BOUNDS_STROKE = "rgba(216, 162, 74, 0.35)";
@@ -95,9 +102,10 @@ function drawScene(input: SceneInput): void {
   drawEdgeColumn(ctx, view, art, input.mapSize, rect);
 }
 
-// Draw order: highlights, province borders, country borders, then the bounds
-// hairline. A country line covers the province line underneath it, which is why
-// it goes second.
+// Draw order: the country tint, highlights, province borders, country borders,
+// then the bounds hairline. A country line covers the province line underneath
+// it, which is why it goes second. The tint goes FIRST, under the highlights,
+// so a hovered province still reads on top of its country colour.
 //
 // The hairline is an instrument, not decoration — if it ever detaches from the
 // art edge, the scene and overlay transforms have diverged. Keep it.
@@ -112,6 +120,28 @@ function drawOverlay(input: OverlayInput): void {
   const view = snapView(input.view, ratio);
   if (!Number.isFinite(view.scale) || view.scale <= 0) {
     return;
+  }
+
+  // `view` is the SNAPPED view, the same one the art uses. Passing `input.view`
+  // here would put the tint half a device pixel off the map.
+  if (input.tint && input.tintSize) {
+    const tintRect = sourceRect(view, viewport, input.tintSize);
+    if (tintRect) {
+      // The same smoothing rule the art uses. A magnified tint has to be
+      // nearest-neighbour or its edges blur off the province boundaries.
+      ctx.imageSmoothingEnabled = shouldSmooth(view.scale, ratio);
+      ctx.drawImage(
+        input.tint,
+        tintRect.sx,
+        tintRect.sy,
+        tintRect.sw,
+        tintRect.sh,
+        tintRect.dx,
+        tintRect.dy,
+        tintRect.dw,
+        tintRect.dh,
+      );
+    }
   }
 
   const index = input.provinceIndex;

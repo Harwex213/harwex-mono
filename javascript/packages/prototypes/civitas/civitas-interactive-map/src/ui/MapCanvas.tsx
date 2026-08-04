@@ -2,20 +2,31 @@ import { useEffect, useRef } from "react";
 import { useSignalEffect, useSignals } from "@preact/signals-react/runtime";
 import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from "react";
 import { drawOverlay, drawScene } from "./render";
+import { disposeTintLayer, getTintCanvas, syncTintLayer } from "./tint-layer";
 import { getMapAssets, loadPhase, mapSize, provinceAt, provinceById } from "../state/map-store";
 import {
-  applyDemoCountries,
   borderError,
   borderPhase,
   borderStats,
   bordersVersion,
-  clearDemoCountries,
   countryBorderStats,
   disposeBorders,
   ensureBordersScanned,
   getCountryBorderPaths,
   getProvinceBorderPaths,
 } from "../state/borders-store";
+import {
+  activeCountryId,
+  assignMode,
+  beginStroke,
+  cancelStroke,
+  endStroke,
+  extendStroke,
+  painting,
+} from "../state/assign-store";
+import { countryTintWords } from "../state/country-store";
+import { countryById } from "../state/world-store";
+import { samplePathPixels } from "../map/paint-path";
 import {
   hoveredProvinceId,
   selectedProvinceId,
@@ -37,6 +48,7 @@ import {
   zoomAtPoint,
 } from "../state/view-store";
 import type { HighlightRequest } from "./highlight-layer";
+import type { View } from "../map/view";
 import styles from "./map-canvas.module.css";
 
 // `deltaMode` 0 = pixel, 1 = line, 2 = page. The conversion is not optional:
@@ -57,26 +69,29 @@ type Gesture =
       originX: number;
       originY: number;
       moved: boolean;
-    };
+    }
+  // `lastX` / `lastY` are MAP pixels: the start point of the next line walk.
+  | { kind: "paint"; pointerId: number; lastX: number; lastY: number };
 
 const IDLE: Gesture = { kind: "idle" };
 
-// The HUD lives inside the host, and `.hudActions` deliberately takes pointer
-// events back so its buttons are clickable. A pointerdown on a button still
-// bubbles to the host, so without this guard the host would `preventDefault` and
-// `setPointerCapture` on it: pointer capture retargets the compatibility mouse
-// events and `click` to the capture element, so the button's `onClick` never
-// runs, and `onPointerUp` then reads the press as a click on the map and moves
-// the selection. Every host handler that starts or ends a gesture checks it.
+// T06 moved the country controls out to `CountryPanel`, a SIBLING of the host,
+// so nothing inside the host takes pointer events today. The guard stays for the
+// next control that does: a pointerdown on a descendant button bubbles to the
+// host, and without it the host would `preventDefault` and `setPointerCapture`
+// on the press. Pointer capture retargets the compatibility mouse events and
+// `click` to the capture element, so the button's `onClick` would never run and
+// `onPointerUp` would read the press as a click on the map. Mark such a control
+// with `data-hud-control`. Every handler that starts or ends a gesture checks it.
 function isHudControl(target: EventTarget | null): boolean {
   return target instanceof Element && target.closest("[data-hud-control]") !== null;
 }
 
-// T03/T04 VERIFICATION UI — T08 replaces this with the real selection panels,
-// and T06 deletes the two demo-country buttons. It exists to prove the
-// screen->map transform has not drifted (at 8x, map pixel (1382, 1329) must
-// report province 1000), that the scan runs off the main thread, and that the
-// country recompute is cheap.
+// T03/T04/T06 VERIFICATION UI — T08 replaces this with the real selection
+// panels. It exists to prove the screen->map transform has not drifted (at 8x,
+// map pixel (1382, 1329) must report province 1000), that the scan runs off the
+// main thread, and that the country recompute is cheap. The `country` readout
+// is the instrument for the "no freeze while painting" check.
 function Hud() {
   useSignals();
 
@@ -89,10 +104,9 @@ function Hud() {
   const selected = selectedProvinceId.value;
   // Without the message a failed scan is indistinguishable from a slow one.
   const failure = borderError.value;
+  const activeId = activeCountryId.value;
+  const activeCountry = activeId === null ? null : countryById.value.get(activeId);
 
-  // The readouts and the buttons are two separate anchored boxes on purpose. In
-  // one flex row the province name grows and shrinks as the pointer crosses the
-  // map, which slides the buttons sideways while the user is reaching for them.
   return (
     <>
       <div className={styles.hud}>
@@ -135,14 +149,14 @@ function Hud() {
             {country ? Math.round(country.elapsedMs) + " ms / " + country.segments : "—"}
           </span>
         </span>
-      </div>
-      <div className={styles.hudActions} data-hud-control="">
-        <button className={styles.hudButton} type="button" onClick={applyDemoCountries}>
-          demo countries
-        </button>
-        <button className={styles.hudButton} type="button" onClick={clearDemoCountries}>
-          clear
-        </button>
+        <span>
+          mode <span className={styles.hudValue}>{assignMode.value ? "assign" : "pan"}</span>
+        </span>
+        <span>
+          active <span className={styles.hudProvince}>
+            {activeCountry ? activeCountry.name : "—"}
+          </span>
+        </span>
       </div>
     </>
   );
@@ -243,6 +257,12 @@ function MapCanvas() {
       countryBorders: getCountryBorderPaths(),
       highlights,
       provinceIndex: assets.index,
+      // Read fresh inside `draw`, exactly as `getProvinceBorderPaths()` is, so
+      // no signal carries the canvas. `null` while nothing is tinted, and the
+      // overlay then costs exactly what T04's did.
+      tint: getTintCanvas(),
+      // The MAP size, never the art's 3652.
+      tintSize: size,
     });
   }
 
@@ -280,6 +300,20 @@ function MapCanvas() {
     scheduleDraw();
   });
 
+  // Writes no signal, so it is legal inside `useSignalEffect`. `void
+  // loadPhase.value` is required for the same reason `maxProvinceId` reads it —
+  // `getMapAssets()` is a plain module variable and notifies nobody.
+  useSignalEffect(() => {
+    const words = countryTintWords.value;
+    void loadPhase.value;
+    const assets = getMapAssets();
+    if (!assets) {
+      return;
+    }
+    syncTintLayer(assets.index, words, provinceById);
+    scheduleDraw();
+  });
+
   useEffect(() => {
     return () => {
       if (frameRef.current !== 0) {
@@ -287,6 +321,7 @@ function MapCanvas() {
         frameRef.current = 0;
       }
       disposeBorders();
+      disposeTintLayer();
     };
   }, []);
 
@@ -372,16 +407,7 @@ function MapCanvas() {
     }
   }
 
-  function onPointerDown(event: ReactPointerEvent<HTMLDivElement>): void {
-    if (event.button !== 0 || isHudControl(event.target)) {
-      return;
-    }
-    const current = view.value;
-    if (!current) {
-      return;
-    }
-    // Stops text selection and the native image drag.
-    event.preventDefault();
+  function startPan(event: ReactPointerEvent<HTMLDivElement>, current: View): void {
     event.currentTarget.setPointerCapture(event.pointerId);
     gestureRef.current = {
       kind: "pan",
@@ -394,6 +420,52 @@ function MapCanvas() {
     };
   }
 
+  function onPointerDown(event: ReactPointerEvent<HTMLDivElement>): void {
+    if (isHudControl(event.target)) {
+      return;
+    }
+    const current = view.value;
+    if (!current) {
+      return;
+    }
+    // Stops text selection, the native image drag, and Chrome's middle-button
+    // autoscroll.
+    event.preventDefault();
+
+    // The middle button always pans, which is what keeps the map navigable
+    // while assignment mode holds the left button.
+    if (event.button === 1) {
+      startPan(event, current);
+      return;
+    }
+    if (event.button !== 0) {
+      return;
+    }
+
+    if (assignMode.value) {
+      const rect = event.currentTarget.getBoundingClientRect();
+      const pixel = mapPixelAt(event.clientX - rect.left, event.clientY - rect.top);
+      // A press outside the map bounds starts no stroke; it falls through to a
+      // pan.
+      if (pixel) {
+        const id = provinceAt(pixel.x, pixel.y);
+        if (beginStroke(id, event.altKey) !== null) {
+          event.currentTarget.setPointerCapture(event.pointerId);
+          gestureRef.current = {
+            kind: "paint",
+            pointerId: event.pointerId,
+            lastX: pixel.x,
+            lastY: pixel.y,
+          };
+          return;
+        }
+      }
+      // No active country, so the map stays usable: fall through to a pan.
+    }
+
+    startPan(event, current);
+  }
+
   function onPointerMove(event: ReactPointerEvent<HTMLDivElement>): void {
     const rect = event.currentTarget.getBoundingClientRect();
     const pixel = mapPixelAt(event.clientX - rect.left, event.clientY - rect.top);
@@ -401,6 +473,31 @@ function MapCanvas() {
     setHoveredProvince(pixel ? provinceAt(pixel.x, pixel.y) : null);
 
     const gesture = gestureRef.current;
+
+    if (gesture.kind === "paint" && gesture.pointerId === event.pointerId) {
+      // The pointer left the map. The stroke waits rather than painting a line
+      // to a clamped edge pixel.
+      if (!pixel) {
+        return;
+      }
+      // The line walk, not the event's own pixel: a 60 Hz pointermove during a
+      // flick jumps hundreds of map pixels and would leave holes.
+      const ids: number[] = [];
+      samplePathPixels(gesture.lastX, gesture.lastY, pixel.x, pixel.y, (x, y) => {
+        const id = provinceAt(x, y);
+        if (id !== null) {
+          ids.push(id);
+        }
+      });
+      // One `assignProvinces` per event, not per province. `extendStroke`
+      // dedupes, so pushing the same id many times along one line costs a
+      // `Set.has` each.
+      extendStroke(ids);
+      gesture.lastX = pixel.x;
+      gesture.lastY = pixel.y;
+      return;
+    }
+
     if (gesture.kind !== "pan" || gesture.pointerId !== event.pointerId) {
       return;
     }
@@ -444,6 +541,15 @@ function MapCanvas() {
       return;
     }
     const gesture = gestureRef.current;
+
+    if (gesture.kind === "paint" && gesture.pointerId === event.pointerId) {
+      // Flushes the debounced border push, so releasing the mouse updates the
+      // country outline within one worker round trip.
+      endStroke();
+      endGesture(event.currentTarget, event.pointerId);
+      return;
+    }
+
     if (
       event.button === 0 &&
       gesture.kind === "pan" &&
@@ -457,27 +563,49 @@ function MapCanvas() {
     endGesture(event.currentTarget, event.pointerId);
   }
 
-  // A cancelled pointer is not a click, so it must not select.
+  // A cancelled pointer is not a click, so it must not select. A cancelled
+  // stroke keeps whatever it already applied — those writes are in the store —
+  // but forces no extra worker round trip.
   function onPointerCancel(event: ReactPointerEvent<HTMLDivElement>): void {
+    cancelStroke();
     endGesture(event.currentTarget, event.pointerId);
   }
 
+  // Pointer capture normally keeps the events coming, so the `cancelStroke`
+  // here is belt and braces.
   function onPointerLeave(event: ReactPointerEvent<HTMLDivElement>): void {
     setCursor(null);
     setHoveredProvince(null);
+    if (gestureRef.current.kind === "paint") {
+      cancelStroke();
+    }
     endGesture(event.currentTarget, event.pointerId);
   }
 
   function onLostPointerCapture(): void {
+    if (gestureRef.current.kind === "paint") {
+      cancelStroke();
+    }
     gestureRef.current = IDLE;
     if (panning.value) {
       panning.value = false;
     }
   }
 
+  // Chrome pops the autoscroll widget on a middle click otherwise.
+  function onAuxClick(event: ReactMouseEvent<HTMLDivElement>): void {
+    event.preventDefault();
+  }
+
   function onDoubleClick(event: ReactMouseEvent<HTMLDivElement>): void {
-    // Two fast presses on "demo countries" must not zoom the map.
+    // Two fast presses on a control must not zoom the map.
     if (isHudControl(event.target)) {
+      return;
+    }
+    // In assign mode the left button is the paint tool. A double click there is
+    // two strokes, and zooming under them would move the map out from under the
+    // second one. The wheel and the middle drag still work.
+    if (assignMode.value) {
       return;
     }
     const rect = event.currentTarget.getBoundingClientRect();
@@ -493,8 +621,11 @@ function MapCanvas() {
   return (
     <div
       className={styles.host}
+      data-mode={assignMode.value ? "assign" : "pan"}
+      data-painting={painting.value ? "true" : "false"}
       data-panning={panning.value ? "true" : "false"}
       ref={hostRef}
+      onAuxClick={onAuxClick}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}

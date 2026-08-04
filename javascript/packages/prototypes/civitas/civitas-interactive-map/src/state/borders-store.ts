@@ -1,5 +1,5 @@
 import { signal } from "@preact/signals-react";
-import { TILE_SIZE, buildCountryOf } from "../map/borders";
+import { TILE_SIZE } from "../map/borders";
 import { buildBorderPaths } from "../ui/border-layer";
 import { getMapAssets, loadPhase } from "./map-store";
 import type { BorderRequest, BorderResponse, BorderStats } from "../map/borders.worker";
@@ -21,9 +21,6 @@ const borderStats = signal<BorderStats | null>(null);
 const countryBorderStats = signal<BorderStats | null>(null);
 // Bumped whenever either Path2D set is replaced.
 const bordersVersion = signal(0);
-
-const DEMO_COLS = 4;
-const DEMO_ROWS = 2;
 
 let worker: Worker | null = null;
 let nextRequestId = 1;
@@ -220,45 +217,11 @@ function disposeBorders(): void {
   bordersVersion.value += 1;
 }
 
-// T04 VERIFICATION SCAFFOLDING — T06 deletes both of these along with the HUD
-// buttons that call them. There is no country data anywhere yet, so this invents
-// eight large contiguous blocks by bucketing each province's centroid into a
-// 4 x 2 grid. That is enough to see country borders drawn thicker and darker than
-// province borders and to time the recompute path.
-function applyDemoCountries(): void {
-  const assets = getMapAssets();
-  if (!assets) {
-    return;
-  }
-
-  const width = Math.max(1, assets.manifest.map.width);
-  const height = Math.max(1, assets.manifest.map.height);
-  const assignment = new Map<number, number>();
-  let maxProvinceId = 0;
-
-  for (const province of assets.manifest.provinces) {
-    const col = Math.min(DEMO_COLS - 1, Math.floor((province.centroid.x / width) * DEMO_COLS));
-    const row = Math.min(DEMO_ROWS - 1, Math.floor((province.centroid.y / height) * DEMO_ROWS));
-    assignment.set(province.id, row * DEMO_COLS + col + 1);
-    if (province.id > maxProvinceId) {
-      maxProvinceId = province.id;
-    }
-  }
-
-  setCountryAssignment(buildCountryOf(assignment, maxProvinceId));
-}
-
-function clearDemoCountries(): void {
-  setCountryAssignment(null);
-}
-
 export {
-  applyDemoCountries,
   borderError,
   borderPhase,
   borderStats,
   bordersVersion,
-  clearDemoCountries,
   countryBorderStats,
   disposeBorders,
   ensureBordersScanned,

@@ -606,3 +606,218 @@ Traps for later tasks:
 - `src/state/world-store-lifecycle.test.ts` observes a store that has never been
   initialised, so it needs its own process. `tsx --test` gives each file one, which
   is why that file exists separately and why its first test must stay first.
+
+## Countries and province assignment
+
+A country is created in the app, painted onto the map province by province, and
+tinted in its own colour. The model adds no storage key and no schema field. T05
+already shipped `Country` with `colorHex` and `provinceIds`, and T06 fills them.
+
+### Files
+
+| Path | What it is |
+|---|---|
+| `src/map/country-aggregate.ts` | Pure. Province count, pixel count, union bounds and the area-weighted centroid. |
+| `src/map/paint-path.ts` | Pure. The integer line walk between two pointer samples. |
+| `src/ui/tint-layer.ts` | The offscreen tint canvas, its word format, and the per-box repaint. |
+| `src/state/country-store.ts` | The derived signals and the debounced push into the border worker. |
+| `src/state/assign-store.ts` | Assignment mode, the active country, and the stroke state machine. |
+| `src/ui/CountryPanel.tsx` | Country CRUD, the mode toggle, and the colour picker. |
+| `src/ui/country-panel.module.css` | The panel styles. |
+
+`assignProvinces` in `src/state/world-store.ts` stays the only writer of an
+assignment. `assign-store.ts` decides what to write and calls it. The one-owner
+invariant therefore lives in one place, exactly where T05 put it.
+
+### The tint layer
+
+The tint is one map-sized offscreen canvas of 3653 x 2855, and `drawOverlay`
+draws it with a single `drawImage`. A stamp per province, the way
+`highlight-layer.ts` works, would cost 1648 `drawImage` calls per frame at fit
+zoom. The per-frame cost is the one that matters, because a pan pays it 60 times
+a second.
+
+An update repaints one province bounding box at a time through `putImageData`.
+The median box is 2 961 px and the sum of all 1648 boxes is 5 126 902 px, which
+is half a map scan. A whole-canvas rebuild is 10.4 M pixels with a lookup on
+each. A per-box repaint is therefore always cheaper. Do not add a "rebuild
+everything above N provinces" threshold.
+
+`buildTintPixels` resolves the province that **owns** each pixel, not the
+province being repainted. Bounding boxes overlap and `putImageData` replaces the
+destination rectangle including its alpha, so a tile built the way
+`buildStampPixels` builds one would erase a neighbour's tint. The consequence is
+a useful property: a box repaint leaves the rectangle globally correct, so
+repainting the same box twice in one batch changes nothing.
+
+A tint word is `0xAARRGGBB`, forced unsigned with `>>> 0`. **`0` means "no
+tint"** and cannot be confused with a colour, because a tinted province always
+has alpha at least 1. `tintWordFor` returns `0` for a malformed hex, a
+non-finite alpha and an alpha at or below 0.
+
+`TINT_ALPHA` is 0.32. It sits between the T04 hover fill at 0.22 and the select
+fill at 0.44, so a hovered province still reads as hovered on top of its country
+colour.
+
+The module writes each pixel as four separate bytes. It never takes a
+`Uint32Array` view over the `ImageData` buffer, because such a view has a
+machine-dependent byte order. This is the same rule `province-index.ts` states
+at its top.
+
+`syncTintLayer` has an all-zero fast path. Deleting the last country is one
+`clearRect`, not 5.1 M pixel writes. `getTintCanvas()` returns `null` while
+nothing is tinted, so a project with no countries pays exactly the T04 overlay
+cost.
+
+`drawOverlay` draws the tint first, then the highlights, then the province
+borders, then the country borders, then the bounds hairline. The tint takes the
+**map** size 3653 x 2855. Only `drawScene`'s `sourceRect` takes the art width
+3652, and the tint has no `drawEdgeColumn` analogue.
+
+### The derived store
+
+`src/state/country-store.ts` holds three computeds and one effect.
+
+- `maxProvinceId` is the highest id in the manifest, or 0 before the load
+  finishes.
+- `countryTintWords` is one 32-bit word per province id. Index 0 stays 0,
+  because `NO_PROVINCE` is never tinted. The hex is parsed once per country, not
+  once per province.
+- `countryAggregates` maps a country id to its `CountryAggregate`. **The
+  `computed` is the cache.** It recomputes only when the countries array
+  identity changes, and a full recompute is 1648 `Map` lookups. T07 places its
+  labels on `aggregate.centroid`.
+
+`initCountrySync()` registers the effect that pushes the assignment into the T04
+border worker. `App.tsx` calls it once and disposes it on unmount.
+
+The push is debounced 120 ms, on top of the latest-wins coalescing already in
+`borders-store.ts`. The coalescing bounds the worker at one request in flight,
+but every response still costs `buildBorderPaths` on the main thread — T04
+measured 5.7 ms for 180 tiles. At 30 pointermove events a second that is 17% of
+the frame budget plus 180 discarded `Path2D` per response. `BORDER_PUSH_MS` is
+120 and T05's `DEBOUNCE_MS` is 400; the border has to stay visibly live during a
+drag, and a `localStorage` write does not.
+
+`flushCountryBorders()` fires the pending push at once. `endStroke` calls it, so
+releasing the mouse updates the country outline within one worker round trip.
+The debouncer is T05's `createStateWriter` from `persistence.ts`. That function
+is a generic fixed-window trailing debounce with injectable timers, and reusing
+it beats a second copy.
+
+### Aggregates
+
+`aggregateCountry(countryId, provinceIds, lookup)` takes a province **lookup**,
+not a `Country`. The module then imports nothing from `src/state/`, and the
+maths is testable in Node where the manifest never loads.
+
+The centroid is **area-weighted**: each province's centre of mass counts for its
+`pixelCount`. A plain mean puts a label between a country's islands instead of
+over its mainland. Two provinces of 1000 px and 9000 px at x 0 and x 100 give a
+centroid at x 90, not x 50. The result is not rounded, because T07 wants the
+sub-pixel value.
+
+`unionBounds` computes `max(ax + aw, bx + bw) - x`, never `max(aw, bw)`. It
+returns a copy when the accumulator is null, so widening a country's box cannot
+rewrite the manifest's own `bounds` object through an alias.
+
+`provinceCount` counts the ids the user assigned. `resolvedCount` counts the ids
+the manifest carries. The two differ when a stored document names a phantom id.
+An empty or fully phantom country has a null `bounds` and a null `centroid`. A
+manifest whose `pixelCount` is 0 everywhere falls back to an unweighted mean
+rather than returning `NaN`.
+
+### Assignment mode and the stroke
+
+`src/state/assign-store.ts` exposes `assignMode`, `activeCountryId` and
+`painting`, plus `beginStroke`, `extendStroke`, `endStroke` and `cancelStroke`.
+
+`activeCountryId` is a `computed` over `countryById`. Deleting the active
+country disarms assignment with no extra wiring, and no stale id can reach
+`assignProvinces`. The mode itself stays on and is simply inert.
+
+**The stroke action is decided once, at `beginStroke`, and held for the whole
+drag.** Deciding it per province makes a drag that re-enters a province toggle
+it back, and a drag across a rival country leaves a trail of half-assigned
+provinces. `strokeActionFor` is the whole rule: Alt always erases, clicking a
+province the active country already owns removes it, and anything else assigns
+it away from its previous owner.
+
+`extendStroke` takes a **batch** of ids, one call per pointermove. Each
+`assignProvinces` replaces the countries array and invalidates
+`countryOfProvince`, `countryTintWords` and `countryAggregates`, so batching
+removes a straight N-times multiplier. The stroke keeps a `visited` set, so an
+id repeated along one line costs a `Set.has`.
+
+`applyStroke` checks `countryById.peek().has(stroke.countryId)` before it
+writes. T05 pinned that `assignProvinces` with an id naming no country still
+strips the provinces from their owners, so without the check a country deleted
+mid-drag would turn the rest of the stroke into a silent mass unassign.
+
+`samplePathPixels` walks the integer line between two pointer samples. A
+pointermove at 60 Hz during a flick jumps over 300 map pixels at the 0.317 fit
+scale, and sampling only the event's own pixel leaves holes through the painted
+region. `MAX_PATH_SAMPLES` is 4096, which a full-viewport flick of about 3 000
+map pixels never reaches.
+
+### Input in assignment mode
+
+`MapCanvas.tsx` gains a `paint` gesture beside the existing `pan` one.
+
+- **The middle button always pans.** That is what keeps the map navigable while
+  the left button paints.
+- A left drag paints. Alt held at press erases.
+- A left press falls through to a pan whenever no stroke started — no active
+  country, or a press outside the map bounds. The map is never unusable.
+- Double-click zoom is suppressed while the mode is on. The left button is the
+  paint tool there, so a double click is two strokes.
+- The wheel still zooms.
+- Escape leaves the mode. `CountryPanel` owns that listener.
+- The host carries `data-mode` and `data-painting`, which drive the crosshair
+  and cell cursors.
+
+A pointer that leaves the map pauses the stroke instead of painting a line to a
+clamped edge pixel. A cancelled pointer keeps whatever the stroke already
+applied — those writes are in the store — and forces no extra worker round trip.
+
+### The panel
+
+`CountryPanel` is mounted as a sibling of `MapCanvas`, so its pointer events
+never reach the map host and it needs no `data-hud-control` guard. It is
+deliberately plain: T08 restyles it inside the real shell and T09 replaces it
+with the country overview panel.
+
+`input type="color"` fires React's `onChange` on every native `input` event, and
+dragging the OS picker emits dozens a second. Each one would replace the
+countries array and repaint every province of that country, which is about 20 ms
+at 300 provinces. The panel debounces a colour edit 80 ms in a fixed window and
+shows the pending value locally, so the input stays responsive. The unmount
+handler commits the last pending value. Name edits need no debounce.
+
+Delete arms on the first click and only deletes on a second click within 3
+seconds. A misclick that destroys a 300-province country has no undo.
+
+The T04 demo-country buttons are gone. `applyDemoCountries`, `clearDemoCountries`
+and the `.hudActions` styles were deleted with them. The HUD now reports `mode`
+and `active`, and its `country` readout is the instrument for the "no freeze
+while painting" check.
+
+### Traps for later tasks
+
+- **`getMapAssets()` is a plain module variable and notifies nobody.** Every
+  computed and every effect that touches the manifest must also read
+  `loadPhase.value`. Without that read, a country hydrated from `localStorage`
+  never tints until something else invalidates.
+- The tint canvas takes the map width 3653. Only `sourceRect` takes the art
+  width 3652.
+- Pass `snapView(view, dpr)` into `drawOverlay`, the same value `drawScene`
+  uses. The raw view puts the tint half a device pixel off the art.
+- `syncTintLayer`, `getTintCanvas` and `disposeTintLayer` are untested. They
+  need `document.createElement`, `getContext("2d")` and `putImageData`, and the
+  repo has no jsdom. The pure pieces they are built from are covered.
+- `CountryPanel.tsx` and the `MapCanvas.tsx` pointer handling are untested for
+  the same reason.
+- Touch is not handled. A one-finger drag paints, and pan is unreachable on
+  touch while the mode is on. This is a desktop prototype.
+- Province ids run 1 to 1650 over 1648 provinces. An aggregate skips an
+  unresolvable id and never throws.

@@ -1,0 +1,124 @@
+/* Minimal chrome on purpose. T08 restyles this inside the real EU-style shell
+   and T09 replaces it with the country overview panel. */
+.panel {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  left: 12px;
+  max-height: calc(100% - 24px);
+  padding: 10px;
+  position: absolute;
+  top: 12px;
+  width: 260px;
+  z-index: 2;
+}
+
+.header {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+}
+
+.title {
+  color: var(--text);
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.action {
+  font-family: var(--mono);
+  font-size: 11px;
+  padding: 3px 8px;
+}
+
+.action[data-on="true"] {
+  border-color: var(--accent-dim);
+  color: var(--accent);
+}
+
+.modeRow {
+  display: flex;
+  gap: 6px;
+}
+
+.hint {
+  color: var(--text-dim);
+  font-family: var(--mono);
+  font-size: 10px;
+  margin: 0;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  overflow-y: auto;
+}
+
+.empty {
+  color: var(--text-dim);
+  font-family: var(--mono);
+  font-size: 11px;
+  margin: 0;
+}
+
+.row {
+  align-items: center;
+  background: var(--bg-raised);
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  cursor: pointer;
+  display: flex;
+  gap: 6px;
+  padding: 5px 6px;
+}
+
+.row[data-active="true"] {
+  border-color: var(--accent-dim);
+}
+
+.color {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  flex: none;
+  height: 24px;
+  padding: 1px;
+  width: 28px;
+}
+
+.rowBody {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.name {
+  padding: 2px 4px;
+}
+
+.stats {
+  color: var(--text-dim);
+  font-family: var(--mono);
+  font-size: 10px;
+}
+
+.delete {
+  flex: none;
+  font-family: var(--mono);
+  font-size: 10px;
+  padding: 3px 6px;
+}
+
+.delete[data-armed="true"] {
+  border-color: var(--danger);
+  color: var(--danger);
+}

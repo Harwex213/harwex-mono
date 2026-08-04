@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { useSignals } from "@preact/signals-react/runtime";
+import { CountryPanel } from "./ui/CountryPanel";
 import { MapCanvas } from "./ui/MapCanvas";
 import { ensureMapLoaded, loadError, loadPhase, loadProgress, loadStep } from "./state/map-store";
 import {
@@ -8,6 +9,7 @@ import {
   installStateFlush,
   stateWarning,
 } from "./state/world-store";
+import { initCountrySync } from "./state/country-store";
 import styles from "./app.module.css";
 
 function statusLine(phase: string, step: string, progress: number, error: string | null): string {
@@ -31,9 +33,15 @@ function App() {
     // not await anything.
     initWorldStore();
     const uninstall = installStateFlush();
+    // Registers the effect that pushes the province -> country assignment into
+    // the T04 border worker, debounced.
+    const stopCountrySync = initCountrySync();
     // Never rejects; a failure lands in `loadError`.
     ensureMapLoaded();
-    return uninstall;
+    return () => {
+      stopCountrySync();
+      uninstall();
+    };
   }, []);
 
   const phase = loadPhase.value;
@@ -44,6 +52,7 @@ function App() {
       {/* Mounted unconditionally, so the viewport is measured while the assets
           are still loading and the first painted frame is already fitted. */}
       <MapCanvas />
+      <CountryPanel />
 
       {warning === null ? null : (
         <div className={styles.warning} data-kind={warning.kind}>

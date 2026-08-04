@@ -378,6 +378,79 @@ test("drawOverlay with the T04 fields omitted draws exactly what T03 drew", () =
   assert.deepEqual(explicit.calls, bare.calls);
 });
 
+test("the country tint draws FIRST, from the map size, under the snapped view", () => {
+  // Order matters: the tint has to sit under the hover and select fills, or a
+  // hovered province stops reading. The size matters too — the tint canvas is
+  // map-sized 3653, not the art's 3652, so an art-sized source rect would lose
+  // its last column and drift against the map at high zoom.
+  const dpr = 2;
+  const view = clampView({ scale: 2.5, x: -1234.567, y: -987.654 }, MAP, WIDE);
+  const tint = bitmap(MAP);
+
+  const recorder = createRecorder();
+  drawOverlay({
+    ctx: recorder.ctx,
+    view,
+    viewport: WIDE,
+    dpr,
+    mapSize: MAP,
+    tint,
+    tintSize: MAP,
+    provinceBorders: borderFixture("province"),
+    countryBorders: borderFixture("country"),
+  });
+
+  const draws = named(recorder.calls, "drawImage");
+  assert.equal(draws.length, 1, "one drawImage — a single map-sized layer, not a stamp per province");
+  assert.equal(draws[0].source, tint);
+
+  const expected = sourceRect(snapView(view, dpr), WIDE, MAP);
+  assert.ok(expected, "the fixture view must produce a rect");
+  assert.deepEqual(draws[0].args, [
+    expected.sx,
+    expected.sy,
+    expected.sw,
+    expected.sh,
+    expected.dx,
+    expected.dy,
+    expected.dw,
+    expected.dh,
+  ]);
+
+  const tintAt = recorder.calls.indexOf(draws[0]);
+  const firstStroke = recorder.calls.findIndex((call) => {
+    return call.name === "stroke";
+  });
+  assert.ok(tintAt < firstStroke, "the tint goes under the borders");
+});
+
+test("omitting the tint leaves the overlay byte-identical to the T04 output", () => {
+  const view = clampView({ scale: 2.5, x: -1234.567, y: -987.654 }, MAP, WIDE);
+
+  function callsFor(extra: { tint?: ImageBitmap | null; tintSize?: Size | null }): Call[] {
+    const recorder = createRecorder();
+    drawOverlay({
+      ctx: recorder.ctx,
+      view,
+      viewport: WIDE,
+      dpr: 1,
+      mapSize: MAP,
+      provinceBorders: borderFixture("province"),
+      countryBorders: borderFixture("country"),
+      ...extra,
+    });
+    return recorder.calls;
+  }
+
+  const bare = callsFor({});
+  assert.deepEqual(callsFor({ tint: null, tintSize: MAP }), bare, "a null tint draws nothing");
+  assert.deepEqual(
+    callsFor({ tint: bitmap(MAP), tintSize: null }),
+    bare,
+    "a tint with no size draws nothing",
+  );
+});
+
 test("borders draw under the map transform and the hairline still comes last", () => {
   const dpr = 2;
   const view = clampView({ scale: 2.5, x: -1234.567, y: -987.654 }, MAP, WIDE);
