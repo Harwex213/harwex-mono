@@ -252,6 +252,25 @@ class ProvinceLayer {
   clear(): void {
     this.pixels.fill(TRANSPARENT);
     this.ctx.clearRect(0, 0, this.width, this.height);
+    this.resetHistory();
+  }
+
+  // Replaces the whole layer, for loading a province image back in. History is
+  // dropped rather than recorded: opening a document is not an edit, and the
+  // strokes on the stack belong to pixels that no longer exist.
+  loadPixels(source: Readonly<Uint32Array>): void {
+    if (source.length !== this.pixels.length) {
+      throw new Error(
+        `province image holds ${source.length} pixels, the layer holds ${this.pixels.length}`,
+      );
+    }
+
+    this.pixels.set(source);
+    this.resetHistory();
+    this.flush({ x: 0, y: 0, w: this.width, h: this.height });
+  }
+
+  private resetHistory(): void {
     this.undoStack = [];
     this.redoStack = [];
     this.pending = null;

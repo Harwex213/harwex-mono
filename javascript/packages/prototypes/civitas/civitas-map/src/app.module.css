@@ -30,7 +30,8 @@
   z-index: 5;
 }
 
-.error {
+.error,
+.notice {
   align-items: center;
   background: var(--bg-raised);
   border: 1px solid var(--danger);
@@ -44,4 +45,9 @@
   position: absolute;
   transform: translateX(-50%);
   z-index: 6;
+}
+
+.notice {
+  border-color: var(--accent-dim);
+  max-width: 70%;
 }

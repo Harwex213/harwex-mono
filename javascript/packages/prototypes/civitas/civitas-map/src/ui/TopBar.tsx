@@ -5,6 +5,7 @@ import {
   exportAll,
   exporting,
   fitToViewport,
+  importProvinces,
   loading,
   mapInfo,
   openMapFile,
@@ -23,6 +24,7 @@ function TopBar() {
   useSignals();
 
   const fileRef = useRef<HTMLInputElement>(null);
+  const importRef = useRef<HTMLInputElement>(null);
   const info = mapInfo.value;
   const busy = loading.value || exporting.value;
 
@@ -49,6 +51,25 @@ function TopBar() {
         type="file"
       />
 
+      {/* One picker for both halves of an export: `multiple`, so the PNG and the
+          JSON can be selected together in a single pass. */}
+      <input
+        accept=".png,.json,application/json"
+        className={styles.hidden}
+        multiple
+        onChange={(event) => {
+          const files = [...(event.target.files ?? [])];
+
+          if (files.length > 0) {
+            void importProvinces(files);
+          }
+
+          event.target.value = "";
+        }}
+        ref={importRef}
+        type="file"
+      />
+
       <div className={styles.group}>
         <button
           disabled={busy}
@@ -58,6 +79,16 @@ function TopBar() {
           type="button"
         >
           {loading.value ? "Loading…" : "Load map…"}
+        </button>
+        <button
+          disabled={!info || busy}
+          onClick={() => {
+            importRef.current?.click();
+          }}
+          title="Load a previous export back in: the provinces PNG, its JSON manifest, or both"
+          type="button"
+        >
+          Load provinces…
         </button>
         {IS_DEV && (
           <button

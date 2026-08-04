@@ -1,8 +1,14 @@
 import { computed, signal } from "@preact/signals-react";
 import { clampSize, type BrushShape } from "../map/brush";
-import { generateColor, packOpaque, toHex, type Rgb } from "../map/colors";
+import { generateColor, packOpaque, toHex, unpack, type Rgb } from "../map/colors";
 import { baseName, downloadJson, downloadPng } from "../map/export-file";
-import { buildManifest, type ProvinceKind, type ProvinceRecord } from "../map/manifest";
+import { decodePixels, isJsonFile, isPngFile, parseManifest } from "../map/import-provinces";
+import {
+  buildManifest,
+  scanColors,
+  type ProvinceKind,
+  type ProvinceRecord,
+} from "../map/manifest";
 import { loadMapFile, loadMapUrl, type LoadedMap } from "../map/map-image";
 import { ProvinceLayer } from "../map/province-layer";
 import { fit, type View } from "../map/view";
@@ -23,6 +29,10 @@ let layer: ProvinceLayer | null = null;
 const mapInfo = signal<{ name: string; width: number; height: number } | null>(null);
 const loading = signal(false);
 const error = signal<string | null>(null);
+// Non-fatal outcome of the last import. An import can succeed and still have
+// something the operator needs to know — colours adopted, entries skipped — and
+// silently dropping that would make the editor disagree with their file.
+const notice = signal<string | null>(null);
 const exporting = signal(false);
 
 const view = signal<View>({ scale: 1, x: 0, y: 0 });
@@ -235,6 +245,12 @@ function setBrushSize(size: number): void {
   brushSize.value = clampSize(size);
 }
 
+// A map can finish loading before the canvas has been measured — an upload
+// decodes faster than the first `ResizeObserver` callback arrives. Fitting
+// against a 1x1 viewport clamps the zoom to the minimum and leaves the map
+// invisible, so an unmeasured viewport defers the fit to `measureViewport`.
+let fitPending = false;
+
 function fitToViewport(): void {
   const info = mapInfo.value;
 
@@ -242,7 +258,24 @@ function fitToViewport(): void {
     return;
   }
 
-  view.value = fit(info, viewport.value);
+  const size = viewport.value;
+
+  if (size.width <= 1 || size.height <= 1) {
+    fitPending = true;
+
+    return;
+  }
+
+  fitPending = false;
+  view.value = fit(info, size);
+}
+
+function measureViewport(width: number, height: number): void {
+  viewport.value = { width: Math.max(1, width), height: Math.max(1, height) };
+
+  if (fitPending) {
+    fitToViewport();
+  }
 }
 
 function adoptMap(loaded: LoadedMap): void {
@@ -251,6 +284,7 @@ function adoptMap(loaded: LoadedMap): void {
   layer = new ProvinceLayer(loaded.width, loaded.height);
 
   mapInfo.value = { name: loaded.name, width: loaded.width, height: loaded.height };
+  notice.value = null;
   provinces.value = [];
   nextProvinceId = 1;
   activeProvinceId.value = null;
@@ -284,6 +318,112 @@ function openMapFile(file: File): Promise<void> {
 
 function openMapUrl(url: string): Promise<void> {
   return openMap(() => loadMapUrl(url));
+}
+
+function withHex(record: ProvinceRecord): Province {
+  return { ...record, hex: toHex(unpack(record.color)) };
+}
+
+// Colours sitting in the layer that no manifest entry claims. They are adopted
+// as provinces instead of being left as orphan paint: the alternative is an
+// export whose image holds colours its manifest does not describe.
+function adoptStrayColors(current: Province[]): Province[] {
+  const currentLayer = layer;
+
+  if (!currentLayer) {
+    return current;
+  }
+
+  const known = new Set(current.map((province) => province.color));
+  const strays = [...scanColors(currentLayer).keys()].filter((color) => !known.has(color));
+
+  if (strays.length === 0) {
+    return current;
+  }
+
+  let id = current.reduce((highest, province) => Math.max(highest, province.id), 0);
+
+  return [
+    ...current,
+    ...strays.map((color) => {
+      id += 1;
+
+      return withHex({ id, name: `Province ${id}`, kind: "land", color });
+    }),
+  ];
+}
+
+// Loads an export back in: the province PNG, its manifest, or both. The base map
+// has to be open first, because the layer is sized from it and a province image
+// of another size cannot be placed.
+async function importProvinces(files: readonly File[]): Promise<void> {
+  const currentLayer = layer;
+  const info = mapInfo.value;
+
+  if (!currentLayer || !info) {
+    error.value = "Load the map image before loading provinces into it";
+
+    return;
+  }
+
+  const imageFile = files.find(isPngFile);
+  const manifestFile = files.find(isJsonFile);
+
+  if (!imageFile && !manifestFile) {
+    error.value = "Pick an exported provinces PNG, its JSON manifest, or both";
+
+    return;
+  }
+
+  loading.value = true;
+  error.value = null;
+  notice.value = null;
+
+  try {
+    // Both files are read before either is applied, so a broken manifest leaves
+    // the layer as it was instead of half-loading over it.
+    const parsed = manifestFile
+      ? parseManifest(await manifestFile.text(), info.width, info.height)
+      : null;
+    const decoded = imageFile ? await decodePixels(imageFile, info.width, info.height) : null;
+
+    if (decoded) {
+      currentLayer.loadPixels(decoded.pixels);
+    }
+
+    const listed = (parsed?.records ?? []).map(withHex);
+    const next = adoptStrayColors(listed);
+
+    provinces.value = next;
+    nextProvinceId = next.reduce((highest, province) => Math.max(highest, province.id), 0) + 1;
+    activeProvinceId.value = next[0]?.id ?? null;
+    hoverPixel.value = null;
+    hoverColor.value = 0;
+    historyRevision.value += 1;
+    markLayerChanged();
+
+    const parts = [`${listed.length} province${listed.length === 1 ? "" : "s"} from the manifest`];
+    const adopted = next.length - listed.length;
+
+    if (adopted > 0) {
+      parts.push(`${adopted} unlisted colour${adopted === 1 ? "" : "s"} adopted`);
+    }
+    if (parsed && parsed.skipped > 0) {
+      parts.push(`${parsed.skipped} unusable entr${parsed.skipped === 1 ? "y" : "ies"} skipped`);
+    }
+    if (decoded && decoded.dropped > 0) {
+      parts.push(`${decoded.dropped} part-transparent pixels dropped`);
+    }
+    if (parsed?.source && parsed.source !== info.name) {
+      parts.push(`manifest was exported from "${parsed.source}"`);
+    }
+
+    notice.value = `Loaded ${parts.join(", ")}.`;
+  } catch (cause) {
+    error.value = cause instanceof Error ? cause.message : String(cause);
+  } finally {
+    loading.value = false;
+  }
 }
 
 async function exportAll(): Promise<void> {
@@ -320,6 +460,10 @@ function dismissError(): void {
   error.value = null;
 }
 
+function dismissNotice(): void {
+  notice.value = null;
+}
+
 export {
   activeProvince,
   activeProvinceId,
@@ -332,6 +476,7 @@ export {
   commitStroke,
   deleteProvince,
   dismissError,
+  dismissNotice,
   error,
   exportAll,
   exporting,
@@ -341,12 +486,15 @@ export {
   hoverColor,
   hoverPixel,
   hoverProvince,
+  importProvinces,
   layerOpacity,
   layerRevision,
   layerVisible,
   loading,
   mapInfo,
   markLayerChanged,
+  measureViewport,
+  notice,
   openMapFile,
   openMapUrl,
   provinces,

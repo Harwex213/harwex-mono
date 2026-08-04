@@ -1,7 +1,15 @@
 import { useSignals } from "@preact/signals-react/runtime";
 import { useState } from "react";
+import { isJsonFile } from "./map/import-provinces";
 import { isAccepted } from "./map/map-image";
-import { dismissError, error, openMapFile } from "./state/editor-state";
+import {
+  dismissError,
+  dismissNotice,
+  error,
+  importProvinces,
+  notice,
+  openMapFile,
+} from "./state/editor-state";
 import { MapCanvas } from "./ui/MapCanvas";
 import { ProvincePanel } from "./ui/ProvincePanel";
 import { StatusBar } from "./ui/StatusBar";
@@ -34,19 +42,31 @@ function App() {
         event.preventDefault();
         setDragging(false);
 
-        const file = event.dataTransfer.files[0];
+        const files = [...event.dataTransfer.files];
 
-        if (!file) {
+        if (files.length === 0) {
           return;
         }
 
-        if (!isAccepted(file)) {
-          error.value = `${file.name} is not a png, jpg or webp image`;
+        // A manifest in the drop means the whole drop is an export being
+        // reopened. An image on its own is the base map — that is the ambiguous
+        // case, and the drop is not the place to guess, so a provinces PNG
+        // without its manifest goes through `Load provinces…`.
+        if (files.some(isJsonFile)) {
+          void importProvinces(files);
 
           return;
         }
 
-        void openMapFile(file);
+        const image = files.find(isAccepted);
+
+        if (!image) {
+          error.value = `${files[0].name} is not a png, jpg or webp image`;
+
+          return;
+        }
+
+        void openMapFile(image);
       }}
     >
       <TopBar />
@@ -61,12 +81,23 @@ function App() {
 
       <StatusBar />
 
-      {dragging && <div className={styles.dropzone}>Drop a map image</div>}
+      {dragging && (
+        <div className={styles.dropzone}>Drop a map image, or an export to reopen</div>
+      )}
 
       {error.value && (
         <div className={styles.error} role="alert">
           <span>{error.value}</span>
           <button onClick={dismissError} type="button">
+            Dismiss
+          </button>
+        </div>
+      )}
+
+      {!error.value && notice.value && (
+        <div className={styles.notice} role="status">
+          <span>{notice.value}</span>
+          <button onClick={dismissNotice} type="button">
             Dismiss
           </button>
         </div>

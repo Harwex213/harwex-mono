@@ -18,6 +18,7 @@ import {
   layerVisible,
   mapInfo,
   markLayerChanged,
+  measureViewport,
   selectProvinceByColor,
   showBaseMap,
   tool,
@@ -63,7 +64,7 @@ function MapCanvas() {
     const observer = new ResizeObserver(() => {
       const rect = host.getBoundingClientRect();
 
-      viewport.value = { width: Math.max(1, rect.width), height: Math.max(1, rect.height) };
+      measureViewport(rect.width, rect.height);
     });
 
     observer.observe(host);

@@ -17,6 +17,8 @@ yarn typecheck
 1. **Load a map** — `Load map…`, or drop a png/jpg/webp anywhere on the window.
    `assets/map.png` is served at `/assets/map.png` in dev, so the `Sample` button
    skips the file picker.
+   To carry on from an earlier session, `Load provinces…` after the map — see
+   [Reopening an export](#reopening-an-export).
 2. **Outline a province** with the brush. Every province owns one exact RGB, and
    the first one is created for you.
 3. **Fill it** with the bucket. The fill spreads through the connected run of
@@ -74,6 +76,35 @@ marker belongs — the centre of the bounding box can fall outside a curved
 province. `unregisteredColors` lists paint whose province is gone from the
 registry; it should stay empty.
 
+## Reopening an export
+
+`Load provinces…` reads a previous export back in. Select the PNG, the JSON, or
+both at once; dropping a manifest onto the window imports the whole drop. The base
+map has to be open first, since the layer is sized from it — a dropped image on its
+own is always taken as a new base map, never as a province layer.
+
+Each half carries what the other cannot: the PNG holds the shapes, the manifest
+holds the names, kinds and ids. Both are read before either is applied, so a broken
+manifest leaves the layer as it was.
+
+The rules it applies, all reported in a notice after the import:
+
+- **Size must match the map.** A province image or manifest of another size is
+  refused, because every province in it would land somewhere else.
+- **Unlisted colours are adopted** as new provinces. Paint the manifest does not
+  describe would otherwise export as `unregisteredColors`.
+- **Unusable manifest entries are skipped** — no colour, or a colour another entry
+  already claimed. Repeated or missing ids are renumbered rather than dropped.
+- **Part-transparent pixels are dropped.** A canvas stores pixels premultiplied, so
+  reading one back cannot return its original colour — `rgba(192,64,64,200)` comes
+  out as `193,64,64` — and a province is identified by an exact colour, so such a
+  pixel would invent a province matching no entry. Exports from this editor are
+  always fully opaque or fully clear; this only fires on images from elsewhere,
+  including anti-aliased province edges.
+
+History is dropped on import: opening a document is not an edit, and the strokes on
+the stack belong to pixels that no longer exist.
+
 ## Implementation notes
 
 - The province layer keeps a `Uint32Array` mirror of its pixels as the source of
@@ -88,8 +119,7 @@ registry; it should stay empty.
 
 ## Not implemented
 
-- Reopening a previous export. Loading an existing province PNG plus manifest back
-  into the editor is the obvious next step, and nothing in the format blocks it.
-- No sessions are persisted: a reload starts empty.
+- No sessions are persisted: a reload starts empty, and the base map has to be
+  picked again before its provinces can be reloaded.
 - The bucket has no tolerance and ignores the terrain underneath, so coastlines
   have to be traced by hand rather than snapped to.

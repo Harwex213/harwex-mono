@@ -5,6 +5,6 @@
   "version": "1.0.0",
   "type": "module",
   "dependencies": {
-    "@hw/utils": "1.0.0"
+    "@hw/utils": "workspace:*"
   }
 }
