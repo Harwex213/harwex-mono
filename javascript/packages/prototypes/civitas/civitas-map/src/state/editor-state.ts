@@ -1,6 +1,8 @@
 import { computed, signal } from "@preact/signals-react";
 import { clampSize, type BrushShape } from "../map/brush";
 import { generateColor, packOpaque, toHex, unpack, type Rgb } from "../map/colors";
+import type { DetectOptions } from "../map/detect-provinces";
+import type { DetectRequest, DetectResponse } from "../map/detect-worker";
 import { baseName, downloadJson, downloadPng } from "../map/export-file";
 import { decodePixels, isJsonFile, isPngFile, parseManifest } from "../map/import-provinces";
 import {
@@ -34,6 +36,7 @@ const error = signal<string | null>(null);
 // silently dropping that would make the editor disagree with their file.
 const notice = signal<string | null>(null);
 const exporting = signal(false);
+const detecting = signal(false);
 
 const view = signal<View>({ scale: 1, x: 0, y: 0 });
 const viewport = signal({ width: 1, height: 1 });
@@ -426,6 +429,123 @@ async function importProvinces(files: readonly File[]): Promise<void> {
   }
 }
 
+// Reads the loaded map back out of its bitmap. The base map is opaque, so this is
+// exact — unlike reading a part-transparent layer, where the canvas store is
+// premultiplied.
+function readBaseMapPixels(width: number, height: number): Uint8ClampedArray {
+  const canvas = document.createElement("canvas");
+
+  canvas.width = width;
+  canvas.height = height;
+
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+
+  if (!ctx || !bitmap) {
+    throw new Error("cannot read the map image back");
+  }
+
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(bitmap, 0, 0);
+
+  return ctx.getImageData(0, 0, width, height).data;
+}
+
+// Rebuilds the province layer from borders drawn into the base map. Replaces the
+// layer and the registry wholesale, so it asks first when there is work to lose.
+async function detectFromBaseMap(options: Partial<DetectOptions> = {}): Promise<void> {
+  const currentLayer = layer;
+  const info = mapInfo.value;
+
+  if (!currentLayer || !info) {
+    error.value = "Load a map image first";
+
+    return;
+  }
+
+  detecting.value = true;
+  error.value = null;
+  notice.value = null;
+
+  try {
+    const rgba = readBaseMapPixels(info.width, info.height);
+    const worker = new Worker(new URL("../map/detect-worker.ts", import.meta.url), {
+      type: "module",
+    });
+
+    const response = await new Promise<DetectResponse>((resolve, reject) => {
+      worker.onmessage = (event: MessageEvent<DetectResponse>) => {
+        resolve(event.data);
+      };
+      worker.onerror = (event) => {
+        reject(new Error(event.message || "the detection worker failed"));
+      };
+
+      const request: DetectRequest = {
+        rgba: rgba.buffer as ArrayBuffer,
+        width: info.width,
+        height: info.height,
+        options,
+      };
+
+      worker.postMessage(request, [request.rgba]);
+    });
+
+    worker.terminate();
+
+    if (!response.ok) {
+      throw new Error(response.message);
+    }
+
+    currentLayer.loadPixels(new Uint32Array(response.pixels));
+
+    let land = 0;
+    let lakes = 0;
+
+    provinces.value = response.provinces.map((province) => {
+      const kind: ProvinceKind = province.lake ? "lake" : "land";
+
+      if (province.lake) {
+        lakes += 1;
+      } else {
+        land += 1;
+      }
+
+      return {
+        id: province.index,
+        name: `${province.lake ? "Lake" : "Province"} ${province.index}`,
+        kind,
+        color: province.color,
+        hex: toHex(unpack(province.color)),
+      };
+    });
+    nextProvinceId = response.provinces.length + 1;
+    activeProvinceId.value = provinces.value[0]?.id ?? null;
+    hoverPixel.value = null;
+    hoverColor.value = 0;
+    historyRevision.value += 1;
+    markLayerChanged();
+
+    const { stats } = response;
+    const parts = [`${land} provinces and ${lakes} lakes across ${stats.keptBodies} landmasses`];
+
+    if (stats.edgeBodies > 0) {
+      parts.push(
+        `${stats.edgeBodies} region${stats.edgeBodies === 1 ? "" : "s"} touching the frame ignored`,
+      );
+    }
+    if (stats.discardedSpecks > 0) {
+      parts.push(`${stats.discardedSpecks} specks discarded`);
+    }
+
+    parts.push(`largest ${stats.largestArea.toLocaleString()} px, median ${stats.medianArea.toLocaleString()} px`);
+    notice.value = `Detected ${parts.join(", ")}.`;
+  } catch (cause) {
+    error.value = cause instanceof Error ? cause.message : String(cause);
+  } finally {
+    detecting.value = false;
+  }
+}
+
 async function exportAll(): Promise<void> {
   const currentLayer = layer;
   const info = mapInfo.value;
@@ -475,6 +595,8 @@ export {
   clearLayer,
   commitStroke,
   deleteProvince,
+  detectFromBaseMap,
+  detecting,
   dismissError,
   dismissNotice,
   error,

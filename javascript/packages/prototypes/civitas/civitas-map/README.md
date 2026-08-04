@@ -18,7 +18,9 @@ yarn typecheck
    `assets/map.png` is served at `/assets/map.png` in dev, so the `Sample` button
    skips the file picker.
    To carry on from an earlier session, `Load provinces…` after the map — see
-   [Reopening an export](#reopening-an-export).
+   [Reopening an export](#reopening-an-export). If the map already has its borders
+   drawn on it, `Detect borders` does steps 2 to 4 for you — see
+   [Detecting borders](#detecting-borders-already-drawn-on-the-map).
 2. **Outline a province** with the brush. Every province owns one exact RGB, and
    the first one is created for you.
 3. **Fill it** with the bucket. The fill spreads through the connected run of
@@ -76,6 +78,39 @@ marker belongs — the centre of the bounding box can fall outside a curved
 province. `unregisteredColors` lists paint whose province is gone from the
 registry; it should stay empty.
 
+## Detecting borders already drawn on the map
+
+`assets/Karta_provintsiy.png` has its province borders painted into the image. Load
+it as the base map and press `Detect borders`: the editor reads the borders back out
+and fills the province layer, which on that map is 1635 provinces and 209 lakes
+across 49 landmasses, in about a second.
+
+It runs in a worker, since it touches every pixel a dozen times over and would
+otherwise freeze the editor. Detection replaces the layer and the registry
+wholesale, and asks first if there is anything to lose. Thresholds live in
+`DEFAULT_OPTIONS` in `src/map/detect-provinces.ts`; `detectFromBaseMap` takes
+overrides, though nothing in the UI passes any yet.
+
+Six passes, each answering something a hand-drawn map does:
+
+| Pass | What it does | Why |
+|---|---|---|
+| water | blue-dominant pixels, then an opening of radius `riverWidth` | Rivers are water-coloured and a few pixels wide. Left in the water mask they cut their province in half; the opening deletes water thinner than twice the radius and keeps coastlines. |
+| bodies | connected runs of not-water; a run touching the frame is not land | The scanned paper this map sits on runs off the frame and carries land-coloured speckle that forms clusters of thousands of pixels — no colour or size test separates those from a small island. A framed map has water all round its land, so this one rule drops the whole artifact. |
+| seeds | land-coloured pixels inside a body | Border ink is far darker than terrain, so it fails the test and each walled-off area is left as its own component. |
+| provinces | connected runs of seeds; runs under `minArea` dropped | Dithering and texture leave specks. Dropping them *before* the watershed matters: a surviving speck seeds a province of its own. |
+| watershed | every province expands one pixel per round into the leftovers of its body | Two provinces meet on the centre line of the ink between them, and rivers, dropped specks and dithering go to whoever is nearest. Bounded by the body, so it cannot cross open water. |
+| coast | short bounded expansion into pixels darker than `coastInkLum` | The shore is drawn with the same ink, but that ring is inside the water mask, so the watershed stops short and leaves every island an unpainted rim. Ink is luminance 24 against water at 65, so this claims the outline and cannot reach open sea. |
+
+Enclosed water — water that never reaches the frame — becomes a `lake` province
+above `minLake`, and below it is handed to the watershed so a pond leaves no hole.
+
+What it cannot do is invent a border that was never drawn. The southern continent on
+that map has no internal borders, only rivers, so it comes back as one province of
+308k pixels. The notice reports the largest and median province area, which is how
+you spot those: paint the missing borders with the brush and run the bucket, or
+split them by hand.
+
 ## Reopening an export
 
 `Load provinces…` reads a previous export back in. Select the PNG, the JSON, or
@@ -122,4 +157,8 @@ the stack belong to pixels that no longer exist.
 - No sessions are persisted: a reload starts empty, and the base map has to be
   picked again before its provinces can be reloaded.
 - The bucket has no tolerance and ignores the terrain underneath, so coastlines
-  have to be traced by hand rather than snapped to.
+  have to be traced by hand rather than snapped to. `Detect borders` is the way to
+  get provinces off a map that already has borders on it.
+- Detection thresholds are not exposed in the UI. They are tuned for a map with
+  blue water, green-to-neutral land and dark ink; a map that inverts any of those
+  needs the values in `DEFAULT_OPTIONS` changed.

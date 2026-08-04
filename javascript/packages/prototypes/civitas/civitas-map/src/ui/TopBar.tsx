@@ -2,6 +2,9 @@ import { useSignals } from "@preact/signals-react/runtime";
 import { useRef } from "react";
 import { ACCEPT_ATTRIBUTE } from "../map/map-image";
 import {
+  canUndo,
+  detectFromBaseMap,
+  detecting,
   exportAll,
   exporting,
   fitToViewport,
@@ -26,7 +29,7 @@ function TopBar() {
   const fileRef = useRef<HTMLInputElement>(null);
   const importRef = useRef<HTMLInputElement>(null);
   const info = mapInfo.value;
-  const busy = loading.value || exporting.value;
+  const busy = loading.value || exporting.value || detecting.value;
 
   return (
     <header className={styles.bar}>
@@ -116,6 +119,25 @@ function TopBar() {
       <div className={styles.spacer} />
 
       <div className={styles.group}>
+        <button
+          disabled={!info || busy}
+          onClick={() => {
+            // Loading a map creates one empty province, so the province count
+            // alone is not evidence of work. An undo entry, or more provinces than
+            // that starter, is.
+            const hasWork = canUndo.value || provinces.value.length > 1;
+
+            if (hasWork && !window.confirm("Replace the provinces layer with detected borders?")) {
+              return;
+            }
+
+            void detectFromBaseMap();
+          }}
+          title="Find provinces from borders drawn into the map image"
+          type="button"
+        >
+          {detecting.value ? "Detecting…" : "Detect borders"}
+        </button>
         <button disabled={!info} onClick={fitToViewport} type="button">
           Fit
         </button>

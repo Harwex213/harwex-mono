@@ -34,25 +34,36 @@
   letter-spacing: 0;
 }
 
-.list {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  list-style: none;
-  margin: 0;
+.scroller {
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
   padding: 8px;
+}
+
+/* Rows are absolutely positioned inside a spacer of the full list height, so the
+   scrollbar reflects every province while only the visible ones are mounted. */
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  position: relative;
 }
 
 .item {
   background: var(--bg-raised);
   border: 1px solid transparent;
   border-radius: var(--radius);
+  box-sizing: border-box;
   cursor: pointer;
   display: flex;
   flex-direction: column;
   gap: 6px;
+  height: 62px;
+  left: 0;
   padding: 7px;
+  position: absolute;
+  right: 0;
 }
 
 .itemActive {
