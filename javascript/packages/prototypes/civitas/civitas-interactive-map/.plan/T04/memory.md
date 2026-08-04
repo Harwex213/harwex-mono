@@ -675,3 +675,69 @@ $ yarn test
 `src/map/borders.test.ts`. `src/map/borders.ts` is untracked at this point in the task,
 so a `git diff` on it proves nothing — the evidence that it is unchanged is the
 SHA-256 taken before the mutation run and again after, quoted above.
+
+---
+
+## Docs & commit
+
+Commit: `fad4af7c1cd52056916a15f9f82576f1fcdb8b38` — "civitas interactive map — T04 border extraction and rendering".
+
+### Verification before committing
+
+All three green on the first run. Nothing needed fixing.
+
+```
+yarn typecheck   exit 0 (no output)
+yarn build       exit 0, the same 2 asset-size warnings T02 recorded (not silenced);
+                 dist still contains the separate worker chunk 84.37e5f932b7b1a078.js
+yarn test        186 pass, 0 fail, exit 0
+```
+
+### README
+
+Appended, not rewritten. One edit to an earlier table and one new section:
+
+- The `Files so far` table gained `src/map/borders.ts`, `src/map/borders.worker.ts`,
+  `src/state/borders-store.ts`, `src/state/selection-store.ts`,
+  `src/ui/border-layer.ts` and `src/ui/highlight-layer.ts`.
+- New `## Borders and highlights` section at the end: extraction (`mapPixelsToIds`'s
+  transient LUT, the one-pass scan with `NO_PROVINCE` participating, runs on the grid
+  line, `countryRuns` walking the crossings, tiles as two transferable buffers with
+  segments split not duplicated, the one-tile margin), the worker and store contract
+  (two messages, `countryOf[0] = 0`, latest-wins coalescing, `pixels.slice()` not
+  transfer), drawing (per-tile `Path2D`, `lineWidth = widthCss / view.scale`, the two
+  styles, the stamp cache, the overlay draw order, optional `OverlayInput` fields),
+  and five traps for later tasks.
+
+### Files committed
+
+16 files, all under the package. Nothing else in the working tree was touched.
+
+```
+.plan/T03/memory.md          (T03's own "Docs & commit" addendum, left uncommitted by T03)
+.plan/T04/DESIGN.md
+.plan/T04/memory.md
+README.md
+src/map/borders.test.ts
+src/map/borders.ts
+src/map/borders.worker.ts
+src/state/borders-store.ts
+src/state/selection-store.ts
+src/ui/MapCanvas.tsx
+src/ui/border-layer.ts
+src/ui/highlight-layer.test.ts
+src/ui/highlight-layer.ts
+src/ui/map-canvas.module.css
+src/ui/render.test.ts
+src/ui/render.ts
+```
+
+### Two things a later agent should know
+
+- **`javascript/yarn.lock` is modified in the working tree and was NOT committed.**
+  The diff adds a `@hw/react-di` workspace entry from `packages/prototypes/ai-slop/`,
+  which has nothing to do with this package. T04 added no dependency.
+- **The repo index held pre-existing staged changes from outside this package** when
+  T04 started (`.yarn/cache` deletions, a skills edit, other prototypes). The commit
+  was therefore made as `git commit -- <package path>`, a path-scoped partial commit.
+  A plain `git commit` would have swept all of it in. Use the same form next time.

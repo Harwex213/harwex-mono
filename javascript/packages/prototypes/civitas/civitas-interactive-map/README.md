@@ -108,6 +108,11 @@ is no export or import UI and no server.
 | `src/state/view-store.ts` | View signals and the guarded actions that write them. |
 | `src/state/borders-store.ts` | Worker lifecycle, border signals, and the `Path2D` accessors. |
 | `src/state/selection-store.ts` | Hovered and selected province ids, with deduplicating setters. |
+| `src/state/schema.ts` | The document types, the sparse serialiser and the repairing parser. |
+| `src/state/migrations.ts` | The ordered migration chain and its runner. Shipped empty. |
+| `src/state/persistence.ts` | Storage injection, `readState`, `writeState` and the debounced writer. |
+| `src/state/world-store.ts` | The world signals, the actions, and the mutation-to-write wiring. |
+| `src/state/image.ts` | Upload downscaling and the two pure size helpers. |
 | `src/ui/MapCanvas.tsx` | The two canvases, the input handlers and the frame loop. |
 | `src/ui/render.ts` | Canvas drawing. `drawScene` for the art, `drawOverlay` for the overlay. |
 | `src/ui/border-layer.ts` | `Path2D` tiles, the border stroke, and the two border styles. |
@@ -386,3 +391,218 @@ Traps for later tasks:
   extends `selection-store.ts`.
 - The HUD buttons carry `data-hud-control`. The pointer handlers return early for a
   target inside one, so a button press cannot pan or select.
+
+## Persistent state
+
+One JSON document in one `localStorage` key. `src/state/` holds it in four layers:
+the shape, the migration chain, the storage, and the signals.
+
+### The document
+
+`src/state/schema.ts` is pure. `CivitasState` is the in-memory shape and `StateDoc`
+is the stored one. The two `Map`s become records keyed by the decimal id, because
+JSON has no map.
+
+```jsonc
+{
+  "version": 1,                    // the SCHEMA version, not the key's v1
+  "provinceOverrides": {
+    "1": { "name": "Verified", "lore": "...", "imageDataUrl": "data:image/webp;..." }
+  },
+  "countries": [
+    {
+      "id": 1,
+      "name": "Testland",
+      "slogan": "",
+      "lore": "",
+      "flagDataUrl": null,
+      "provinceIds": [12, 13, 44],  // sorted ascending
+      "colorHex": "#c0563f"
+    }
+  ],
+  "economics": { "1": { "version": 1, "data": {} } },
+  "nextCountryId": 2
+}
+```
+
+Every field on a province override is optional and an empty one is absent. A
+country carries all seven fields always. An economics slot keeps its own
+`version`, separate from the document's, so a T11 economics migration can run on
+its own schedule.
+
+The caps, all enforced on write and again on load:
+
+| Constant | Value | Applies to |
+|---|---|---|
+| `NAME_MAX` | 120 chars | Province and country name |
+| `SLOGAN_MAX` | 160 chars | Country slogan |
+| `LORE_MAX` | 8000 chars | Province and country lore |
+| `IMAGE_DATA_URL_MAX` | 600 000 chars | Province image and country flag |
+| `MAX_JSON_DEPTH` | 8 levels | The economics bag |
+| `MAX_COUNTRY_ID` | 65535 | Country id, because `buildCountryOf` returns a `Uint16Array` |
+| `STORAGE_BUDGET_BYTES` | 4 000 000 | The whole document, at 80% of a 5 MB quota |
+
+- **Province overrides are sparse.** `serializeState` writes a key only for a
+  province whose override has a non-empty field, and it drops an override that has
+  none left. A session that edits two provinces writes two keys, not 1648. A test
+  pins that.
+- **Countries are an array, overrides and economics are `Map`s.** The country order
+  is user-visible in T06's panel, and the array is that order.
+- **`provinceIds` is sorted on serialisation.** Two states that reached the same
+  assignment therefore stringify identically.
+- **Economics is an opaque JSON bag** — `{ version, data }`. T11 defines the field
+  set. Until then anything JSON-safe survives a round trip untouched.
+
+`normalizeState` **repairs and never throws**, the opposite policy from
+`parseManifest`. The manifest is a build artefact where a mismatch is a bug. This
+document is user data a browser or an older build may have damaged, and losing one
+malformed override must not lose the other forty. It reports what it repaired as a
+short list of aggregated notes, never one note per bad record.
+
+Its rules: keys must match `/^[1-9][0-9]*$/`; strings are truncated to their caps;
+an image must be a `data:image/` URL under 600 000 chars, so a remote URL never
+enters the document; a country id must be an integer in `1..65535`; a province
+claimed twice stays with the first claimant; an economics slot without a country is
+dropped; `nextCountryId` is forced above the highest surviving country id. Every
+object is rebuilt field by field and every record is walked with `Object.keys`, so
+a `__proto__` key in the payload cannot reach anything.
+
+`normalizeState` must **not** read the manifest. State is read synchronously at
+startup while the map load is still in flight, so `provinceById` returns `null`
+then. An override for an id the manifest lacks is kept and never looked up.
+
+### Storage
+
+`src/state/persistence.ts` takes the storage as an argument everywhere. Only
+`defaultStorage` reaches for a global, and it wraps the **property access** to
+`globalThis.localStorage`, because Safari with cookies blocked throws there rather
+than on `setItem`. In Node the same fallback runs, which is why the whole layer is
+testable with a three-method fake.
+
+The key is `civitas.state.v1`. **The `v1` is a namespace and never changes.** The
+schema version is the `version` field inside the document, and that is what the
+migration chain reads. Bumping the key would orphan every user's data, which is the
+exact thing the chain exists to prevent.
+
+`readState` never throws. Its five failure modes:
+
+| Payload | Result |
+|---|---|
+| Missing | Empty state, no warning. A first run is not a problem. |
+| Unparseable, or valid JSON that is not an object | Quarantined to `civitas.state.v1.corrupt`, empty state, `corrupt` warning. |
+| `version` missing or not a positive integer | Same as corrupt. |
+| `version` newer than this build | Empty state, `future` warning, **`writable: false`**. Nothing is quarantined, cleared or rewritten. |
+| `version` older with no migration | Quarantined, empty state, `unmigratable` warning. |
+
+A repaired payload still loads and still writes back: `repaired` warning,
+`writable: true`.
+
+`writeState` returns a result and **never throws, never retries and never evicts**.
+Silently dropping the image the user just uploaded is worse than telling them the
+save failed, and the in-memory state survives either way. `isQuotaExceeded` is
+duck-typed over `QuotaExceededError`, `NS_ERROR_DOM_QUOTA_REACHED`, `code 22` and
+`code 1014` — `DOMException` is absent in some runtimes.
+
+`utf16Bytes` is `length * 2`. Browsers account `localStorage` in UTF-16 code units,
+so `new Blob([text]).size` measures UTF-8 and understates a base64 payload by up to
+half.
+
+`createStateWriter` is a **fixed-window trailing debounce at 400 ms, not a
+restarting one**. A `schedule()` inside an open window is absorbed and does not push
+the deadline out. A restarting debounce starves: lore typed at one keystroke every
+300 ms would postpone the write for as long as the user keeps typing. The timers are
+injectable, and the test counts `set` calls — `armed()` alone cannot tell a fixed
+window from a restarting one.
+
+### The signals
+
+`src/state/world-store.ts` exports every signal as a `ReadonlySignal` computed over
+a private writable one. An action is therefore the only way to change state, so a
+mutation cannot bypass `markDirty()`. Every action **replaces** its container: a
+`Map` mutated in place is `Object.is`-equal to itself and no subscriber re-renders.
+
+`initWorldStore(options)` is the injection seam and the re-init point. Production
+calls it with no arguments; a test calls it with a fake storage and fake timers, and
+that call is the reset. `installStateFlush()` adds `pagehide` **and**
+`visibilitychange`, because iOS Safari can kill a backgrounded tab without ever
+firing `pagehide`.
+
+`markDirty()` returns early when `statePersistent` is false, which is what stops a
+future-version document from being overwritten. A quota failure keeps the in-memory
+state, sets a `quota` warning and leaves `persistent` true, so the next dirty mark
+retries — a later delete may free the space. A non-quota write failure turns
+persistence off, because retrying a broken storage every 400 ms is noise.
+
+Actions: three explicit province setters (a patch object would need `undefined` to
+mean "leave" and `null` to mean "clear", and a panel gets that tri-state wrong),
+`addCountry` / `updateCountry` / `deleteCountry`, `assignProvinces`, and the two
+economics writers. `assignProvinces` is the single entry point that keeps the
+one-owner invariant: it strips the ids from every other country before adding them.
+`provinceDisplayName(id)` layers the override name over the manifest name over
+`"Province N"`.
+
+`buildCountryAssignment(maxProvinceId)` returns the `Uint16Array` that
+`setCountryAssignment` in `borders-store.ts` takes. **T05 does not call it.** T06
+owns the effect that pushes the array to the border worker.
+
+The public surface is 12 signals and 13 actions. The signals are
+`provinceOverrides`, `countries`, `economics`, `nextCountryId`, `countryById`,
+`countryOfProvince`, `stateWarning`, `statePersistent` and `stateBytes`, plus the
+three lookups `provinceOverrideOf(id)`, `economicsOf(countryId)` and
+`provinceDisplayName(id)`.
+
+### Warnings
+
+`stateWarning` is `{ kind, message, at }` or `null`. `dismissStateWarning()`
+clears it. Seven kinds exist and each one names a distinct recovery:
+
+| Kind | Cause | `statePersistent` after |
+|---|---|---|
+| `corrupt` | The payload did not parse, or its `version` was not a positive integer. | true |
+| `unmigratable` | The `version` is older and no migration covers it. | true |
+| `future` | The `version` is newer than this build. | **false** |
+| `repaired` | The payload loaded, and `normalizeState` fixed something. | true |
+| `quota` | A write hit the storage quota, or the country ceiling was reached. | true |
+| `unavailable` | `localStorage` is absent or throws, or a write failed for a non-quota reason. | false |
+| `budget` | The document passed `STORAGE_BUDGET_BYTES`. Nothing is deleted. | true |
+
+`quota` keeps persistence on, so the next edit retries — a later delete may free
+the space. `unavailable` turns it off, because retrying a broken storage every
+400 ms is noise. `future` turns it off to protect a newer document.
+
+### Images
+
+`src/state/image.ts` bounds each image at ~256 KB. `downscaleImage(file, maxEdge,
+quality)` resizes through a canvas and **always re-encodes, even when it does not
+resize** — a 200 x 200 PNG can still be 700 KB, so the re-encode is what bounds the
+bytes. It tries WebP first and falls back to JPEG by checking the returned data
+URL's prefix, because `toDataURL` silently returns PNG for a type the browser cannot
+encode. WebP keeps alpha; a flag with a transparent background turns black under
+JPEG. The quality ladder is bounded at five encodes with one half-size redraw, never
+a `while` on size.
+
+`fitDownscale` never upscales and clamps each axis with `Math.max(1, ...)`. A
+1 x 4000 strip rounds its short edge to 0 and `drawImage` then throws.
+
+`downscaleImage` is the only way an image enters the store. `setProvinceImage` and
+`updateCountry` validate a prefix and a length; they do not resize. Verified in
+Chrome: `assets/country-flag.jpg` (735 x 490, 98 KB) becomes a 256 x 171 WebP of
+13 KB, and the whole document is then 34 KB.
+
+Traps for later tasks:
+
+- **Reactivity is opt-in.** A component reading these signals calls `useSignals()`.
+- **No action may run inside a `useSignalEffect`.** Each writes signals a computed
+  derived from them reads.
+- The warning banner in `App.tsx` is the minimum that makes `stateWarning` visible.
+  T08 restyles it inside the real shell.
+- Two tabs clobber each other. There is no `storage` listener and no merge, by
+  decision, not by oversight.
+- `readState` takes an optional `targetVersion`. It exists so the migration branch
+  is exercised while the shipped schema is still at version 1 and no stored document
+  can legally be older than it. Production never passes it.
+- The store is a module singleton. A test resets it with
+  `initWorldStore({ storage, timers })` and there is no other reset.
+- `src/state/world-store-lifecycle.test.ts` observes a store that has never been
+  initialised, so it needs its own process. `tsx --test` gives each file one, which
+  is why that file exists separately and why its first test must stay first.
