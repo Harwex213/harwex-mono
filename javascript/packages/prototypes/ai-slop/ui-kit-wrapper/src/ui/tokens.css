@@ -1,0 +1,160 @@
+/*
+ * The app's semantic tokens. Owned by the app, not by any kit.
+ *
+ * Two separate axes get confused constantly, so they are split here:
+ *
+ *   theme  = these values. Change them and every kit re-colours.
+ *   kit    = which components render. Change it and the anatomy changes.
+ *
+ * "I want a project-specific theme" is almost always this file plus one
+ * `data-palette` block. It is not a reason to swap kits.
+ *
+ * Every adapter maps these into whatever private variables its kit reads. App
+ * CSS uses `--app-*` directly, so app CSS survives a kit swap untouched.
+ */
+:root {
+  --app-font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+    Helvetica, Arial, sans-serif;
+  --app-font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
+    monospace;
+
+  --app-radius-sm: 4px;
+  --app-radius-md: 8px;
+  --app-radius-lg: 14px;
+
+  --app-surface: #ffffff;
+  --app-surface-sunken: #f6f7f9;
+  --app-surface-raised: #ffffff;
+
+  --app-text: #171a1f;
+  --app-text-muted: #5c6270;
+  --app-text-faint: #8b919d;
+
+  --app-border: #e4e6eb;
+  --app-border-strong: #cbcfd7;
+
+  --app-hover: #f1f2f5;
+  --app-active: #e7e9ee;
+
+  --app-accent: #4f46e5;
+  --app-accent-hover: #4338ca;
+  --app-accent-active: #3730a3;
+  --app-accent-text: #ffffff;
+  --app-accent-soft: #eef2ff;
+
+  --app-danger: #dc2626;
+  --app-danger-hover: #b91c1c;
+  --app-danger-text: #ffffff;
+  --app-danger-soft: #fef2f2;
+
+  --app-success: #16a34a;
+  --app-warning: #d97706;
+
+  --app-focus: color-mix(in srgb, var(--app-accent) 45%, transparent);
+  --app-overlay: rgba(15, 18, 22, 0.45);
+
+  --app-shadow-sm: 0 1px 2px rgba(16, 18, 22, 0.06),
+    0 1px 3px rgba(16, 18, 22, 0.08);
+  --app-shadow-md: 0 4px 12px rgba(16, 18, 22, 0.1),
+    0 2px 4px rgba(16, 18, 22, 0.06);
+  --app-shadow-lg: 0 12px 32px rgba(16, 18, 22, 0.16),
+    0 4px 8px rgba(16, 18, 22, 0.08);
+}
+
+:root[data-mode="dark"] {
+  --app-surface: #0f1216;
+  --app-surface-sunken: #0a0c0f;
+  --app-surface-raised: #171b21;
+
+  --app-text: #eef0f3;
+  --app-text-muted: #a2a9b5;
+  --app-text-faint: #6d7480;
+
+  --app-border: #262b33;
+  --app-border-strong: #363c46;
+
+  --app-hover: #1c2128;
+  --app-active: #242a33;
+
+  --app-accent: #6f74f5;
+  --app-accent-hover: #8286f8;
+  --app-accent-active: #9497fa;
+  --app-accent-text: #ffffff;
+  --app-accent-soft: #1d1f3a;
+
+  --app-danger: #ef4444;
+  --app-danger-hover: #f87171;
+  --app-danger-text: #ffffff;
+  --app-danger-soft: #2b1616;
+
+  --app-success: #22c55e;
+  --app-warning: #f59e0b;
+
+  --app-overlay: rgba(0, 0, 0, 0.6);
+
+  --app-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --app-shadow-md: 0 6px 16px rgba(0, 0, 0, 0.45);
+  --app-shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.55);
+}
+
+/*
+ * A second theme. No component, adapter, or kit knows this block exists.
+ * This is what "the same product with a project-specific theme" costs.
+ */
+:root[data-palette="sunset"] {
+  --app-surface: #fffaf6;
+  --app-surface-sunken: #fdf2ea;
+  --app-surface-raised: #ffffff;
+
+  --app-text: #2b1a12;
+  --app-text-muted: #6d564a;
+  --app-text-faint: #9c8477;
+
+  --app-border: #f0dcd0;
+  --app-border-strong: #dcc0ae;
+
+  --app-hover: #fdf0e6;
+  --app-active: #f8e3d4;
+
+  --app-accent: #d9480f;
+  --app-accent-hover: #b8380a;
+  --app-accent-active: #992d06;
+  --app-accent-text: #ffffff;
+  --app-accent-soft: #fff1e8;
+
+  --app-danger: #c92a2a;
+  --app-danger-hover: #a61e1e;
+  --app-danger-soft: #fdf0ef;
+
+  --app-success: #2f9e44;
+  --app-warning: #e8590c;
+}
+
+:root[data-palette="sunset"][data-mode="dark"] {
+  --app-surface: #16100d;
+  --app-surface-sunken: #0f0a08;
+  --app-surface-raised: #1f1611;
+
+  --app-text: #f6ece5;
+  --app-text-muted: #b39c8e;
+  --app-text-faint: #83695b;
+
+  --app-border: #33251d;
+  --app-border-strong: #46332a;
+
+  --app-hover: #241a14;
+  --app-active: #2e211a;
+
+  --app-accent: #f0803c;
+  --app-accent-hover: #f79556;
+  --app-accent-active: #fba86f;
+  --app-accent-text: #241205;
+  --app-accent-soft: #2a1a10;
+
+  --app-danger: #f26060;
+  --app-danger-hover: #f78383;
+  --app-danger-soft: #2c1513;
+
+  --app-success: #51cf66;
+  --app-warning: #ffa94d;
+}

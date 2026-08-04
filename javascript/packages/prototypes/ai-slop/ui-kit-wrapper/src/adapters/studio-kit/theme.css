@@ -1,0 +1,40 @@
+/*
+ * Token bridge for the studio kit.
+ *
+ * Same job as the Base UI bridge, different variable names on the right-hand
+ * side. This is the whole reason app CSS uses `--app-*`: the app's colour
+ * decisions survive a kit swap because only this file knew the kit's names.
+ *
+ * What is *not* bridged is as important. `--sk-radius` stays at 2px and
+ * `--sk-control-height` stays at 34px, so the studio kit keeps its sharper,
+ * denser look. Tokens carry colour and type; they do not carry a design
+ * language. Swap kits and the product will look different on purpose.
+ */
+:root[data-kit="studio"] {
+  --sk-font: var(--app-font-sans);
+
+  --sk-paper: var(--app-surface-raised);
+  --sk-paper-2: var(--app-surface-sunken);
+
+  --sk-ink: var(--app-text);
+  --sk-ink-2: var(--app-text-muted);
+  --sk-ink-3: var(--app-text-faint);
+
+  --sk-rule: var(--app-border);
+  --sk-rule-2: var(--app-border-strong);
+  --sk-wash: var(--app-hover);
+
+  --sk-accent: var(--app-accent);
+  --sk-accent-2: var(--app-accent-hover);
+  --sk-accent-ink: var(--app-accent-text);
+  --sk-accent-wash: var(--app-accent-soft);
+
+  --sk-critical: var(--app-danger);
+  --sk-critical-2: var(--app-danger-hover);
+  --sk-critical-ink: var(--app-danger-text);
+  --sk-critical-wash: var(--app-danger-soft);
+
+  --sk-good: var(--app-success);
+  --sk-shade: var(--app-overlay);
+  --sk-lift: var(--app-shadow-lg);
+}

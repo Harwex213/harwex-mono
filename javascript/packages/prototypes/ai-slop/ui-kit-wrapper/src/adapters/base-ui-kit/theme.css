@@ -1,0 +1,60 @@
+/*
+ * Token bridge for the Base UI kit.
+ *
+ * The kit reads `--uk-*`. The app owns `--app-*`. This file is the only place
+ * the two names meet, so a rename on either side breaks one file instead of
+ * two hundred call sites.
+ *
+ * Scoped on `[data-kit="base-ui"]` for two reasons: both adapters can be loaded
+ * at once without colliding, and `:root[data-kit]` outranks the kit's own
+ * `.dark` block, so light/dark comes from `--app-*` alone. The kit's `.dark`
+ * class is never applied here — dark mode is a token concern now, not a kit
+ * concern.
+ *
+ * Spacing and motion are deliberately not bridged. Bridge what your token set
+ * actually defines; let the kit keep its own opinions about the rest.
+ */
+:root[data-kit="base-ui"] {
+  --uk-font-sans: var(--app-font-sans);
+  --uk-font-mono: var(--app-font-mono);
+
+  --uk-radius-sm: var(--app-radius-sm);
+  --uk-radius: var(--app-radius-md);
+  --uk-radius-lg: var(--app-radius-lg);
+
+  --uk-bg: var(--app-surface);
+  --uk-bg-subtle: var(--app-surface-sunken);
+  --uk-panel: var(--app-surface-raised);
+  --uk-panel-elevated: var(--app-surface-raised);
+
+  --uk-fg: var(--app-text);
+  --uk-fg-muted: var(--app-text-muted);
+  --uk-fg-subtle: var(--app-text-faint);
+
+  --uk-border: var(--app-border);
+  --uk-border-strong: var(--app-border-strong);
+  --uk-hover: var(--app-hover);
+  --uk-active: var(--app-active);
+
+  --uk-primary: var(--app-accent);
+  --uk-primary-hover: var(--app-accent-hover);
+  --uk-primary-active: var(--app-accent-active);
+  --uk-primary-fg: var(--app-accent-text);
+  --uk-primary-subtle: var(--app-accent-soft);
+
+  --uk-danger: var(--app-danger);
+  --uk-danger-hover: var(--app-danger-hover);
+  --uk-danger-fg: var(--app-danger-text);
+  --uk-danger-subtle: var(--app-danger-soft);
+
+  --uk-success: var(--app-success);
+  --uk-warning: var(--app-warning);
+
+  --uk-ring: var(--app-focus);
+
+  --uk-shadow-sm: var(--app-shadow-sm);
+  --uk-shadow: var(--app-shadow-md);
+  --uk-shadow-lg: var(--app-shadow-lg);
+
+  --uk-overlay: var(--app-overlay);
+}

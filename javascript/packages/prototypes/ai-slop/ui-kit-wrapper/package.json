@@ -1,0 +1,36 @@
+{
+  "name": "@hw/ui-kit-wrapper",
+  "description": "Wrapping a third-party UI kit behind an app-owned contract so the kit can be swapped later",
+  "private": true,
+  "type": "module",
+  "browserslist": [
+    "last 1 version",
+    "> 1%",
+    "not dead"
+  ],
+  "scripts": {
+    "dev": "yarn vite dev",
+    "dev:studio": "KIT=studio yarn vite dev",
+    "build": "yarn vite build",
+    "build:studio": "KIT=studio yarn vite build",
+    "build:solo": "HARNESS=off yarn vite build --outDir dist-solo-base-ui",
+    "build:solo:studio": "KIT=studio HARNESS=off yarn vite build --outDir dist-solo-studio",
+    "preview": "yarn vite preview",
+    "typecheck": "tsc --noEmit",
+    "check:boundaries": "node scripts/check-boundaries.mjs",
+    "check": "yarn check:boundaries && yarn typecheck"
+  },
+  "dependencies": {
+    "@base-ui/react": "1.6.0",
+    "@hw/ui-kit-over-base-ui": "workspace:*",
+    "react": "19.2.0",
+    "react-dom": "19.2.0"
+  },
+  "devDependencies": {
+    "@types/react": "19.2.0",
+    "@types/react-dom": "19.2.0",
+    "@vitejs/plugin-react-swc": "4.1.0",
+    "typescript": "5.9.3",
+    "vite": "7.1.10"
+  }
+}

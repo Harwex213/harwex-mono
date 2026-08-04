@@ -1,0 +1,113 @@
+/*
+ * Styling the adapter adds on top of the kit.
+ *
+ * Anything here is glue: a state the kit does not have (button `loading`), or a
+ * layout opinion the kit ships that the app disagrees with (fields capped at
+ * 360px). Doubled class selectors like `.field.field` bump specificity so the
+ * wrapper wins no matter which CSS file the bundler emits first. Needing this
+ * at all is one of the real costs of wrapping someone else's kit.
+ */
+.field.field {
+  max-width: none;
+}
+
+/*
+ * The kit's Tabs are sized for its own demo page (460px) and its Panel ships a
+ * border, a background, and muted body text. The app puts its own cards inside a
+ * panel, so the adapter strips the chrome and the cap.
+ *
+ * Finding this took opening the kit's CSS. Budget for it: wrapping a kit means
+ * owning the difference between "styled for a component gallery" and "styled for
+ * your product".
+ */
+.tabsRoot.tabsRoot {
+  max-width: none;
+}
+
+/* Without the cap the tab strip would stretch across the page. */
+.tabsList.tabsList {
+  width: fit-content;
+}
+
+.tabsPanel.tabsPanel {
+  margin-top: 24px;
+  padding: 0;
+  color: inherit;
+  font-size: inherit;
+  background: none;
+  border: none;
+}
+
+.hint {
+  font-size: 13px;
+  color: var(--app-text-muted);
+}
+
+.error {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--app-danger);
+}
+
+.required {
+  margin-left: 2px;
+  color: var(--app-danger);
+}
+
+/* Button `loading` is synthesised: the kit has no such state. */
+.loading {
+  gap: 8px;
+}
+
+.spinner {
+  width: 13px;
+  height: 13px;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation-duration: 2s;
+  }
+}
+
+.selectField {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.dialogBody {
+  margin-top: 12px;
+  font-size: 14px;
+  color: var(--app-text-muted);
+}
+
+.dialogActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 24px;
+}
+
+.toastText {
+  flex: 1;
+  min-width: 0;
+}
+
+.toast[data-type="success"] {
+  border-left: 3px solid var(--app-success);
+}
+
+.toast[data-type="danger"] {
+  border-left: 3px solid var(--app-danger);
+}
