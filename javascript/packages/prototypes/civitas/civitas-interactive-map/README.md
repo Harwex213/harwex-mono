@@ -2219,13 +2219,11 @@ own country. That duplication is deliberate.
 
 ### Known limitations
 
-- **The economics panel is still the T11 stub.** The engine returns numbers and
-  formats nothing. Rendering, the editability split, the End Turn control and the
-  history view are all T12.
-- **Nothing is wired to the store yet.** `economyToJson` and `economyFromJson`
-  exist and are tested, but no component calls them. `ECONOMY_SCHEMA_VERSION` is
-  1 and there is no earlier economy document, so `src/state/migrations.ts` is
-  untouched.
+- **The engine formats nothing and stores nothing itself.** It returns numbers.
+  Rendering, the editability split, the End Turn control, the history view and the
+  write to `localStorage` all belong to the panel — see "Economics panel and End
+  Turn" below. `ECONOMY_SCHEMA_VERSION` is 1 and there is no earlier economy
+  document, so `src/state/migrations.ts` stays untouched.
 - **A fresh country starts with zero deposits**, so it reads a full resource
   shortage until a judge sets its geology. The spec states no starting geology and
   the engine may not invent one. This is correct, and it is not a bug.
@@ -2236,3 +2234,377 @@ own country. That duplication is deliberate.
 - A loan whose next principal rounds to 0 is removed from `loans[]`. The spec says
   a loan closes at exactly 0 but never says to remove it, and a kept zero loan
   would demand 0 forever while the array grew without bound.
+
+## Economics panel and End Turn
+
+The economics panel is the sheet a player fills in and the button that advances a
+turn. It renders all twelve areas of `.plan/T11/FORMULA-SPEC.md`, it decides who
+may type into which field, and it shows the record of what the last turn moved.
+
+**No formula lives in `src/ui/Econom*`.** Every number on the sheet comes from one
+memoised `deriveEconomy` call, and every advance comes from one `resolveTurn`
+call. The panel formats numbers and gates inputs, and it does nothing else. The
+engine in `src/economy/` was frozen for this task: T12 added no formula, changed
+no constant, and touched no file under `src/economy/`.
+
+### Files
+
+| Path | What it is |
+|---|---|
+| `src/state/economy-store.ts` | The bridge: hydrate, hold, derive, write through, End Turn, judge mode. |
+| `src/ui/economics-format.ts` | Every number the panel prints. Pure. |
+| `src/ui/economics-fields.ts` | The tag table, number parsing, the step window, the ledger array edits. Pure. |
+| `src/ui/economics-history.ts` | A `TurnRecord[]` becomes a readable view. Pure. |
+| `src/ui/EconomyReadout.tsx` | `Readout` — an `[A]` cell. Contains no input at all. |
+| `src/ui/EconomyField.tsx` | `NumberField`, `SelectField`, `ToggleField`, `TextField`, and `SectionProps`. |
+| `src/ui/EconomySectors.tsx` | Areas 1 and 2: GDP, the 5+2 sectors, per-sector and overall growth. |
+| `src/ui/EconomyStanding.tsx` | Areas 3, 4 and 9: credit rating, control scale, both step limits. |
+| `src/ui/EconomyBudget.tsx` | Areas 5, 7 and 8: emission, military share, FR and MIC generation, the four ledgers. |
+| `src/ui/EconomySavings.tsx` | Area 6: the FR reserve and the MIC stockpile. |
+| `src/ui/EconomyResources.tsx` | Area 10: the eight resources and the dependency matrix. |
+| `src/ui/EconomyDebt.tsx` | Area 11: capacity, borrowing, the loan table, servicing. |
+| `src/ui/EconomyFlags.tsx` | Area 12: mobilization, region, actions, concessions, cooldowns, timed modifiers. |
+| `src/ui/EconomyTurn.tsx` | End Turn, the pre-flight error list, the turn history. |
+| `src/ui/EconomicsPanel.tsx` | The shell: notices, the legend, the judge toggle, the eight sections. |
+| `src/ui/economics.module.css` | Tokens only. No hardcoded colour, gap, radius or font size. |
+
+`src/App.tsx` installs `initEconomySync()` beside `initCountrySync()` and disposes
+it first.
+
+### Editability comes from the tag
+
+The spec tags every field `[P]`, `[V]` or `[A]`, and the tag is the only thing
+that decides whether a player may type into the field.
+
+| Tag | Meaning | Judge mode off | Judge mode on |
+|---|---|---|---|
+| `[P]` | player — you set it directly | editable | editable |
+| `[V]` | verdict — a judge, an event or a dice roll sets it | locked | editable |
+| `[A]` | auto — the engine computes it | never an input | never an input |
+
+`fieldAccess(tag, judge)` in `economics-fields.ts` is that table as a function,
+and it is one of the most-tested things in the package.
+
+**An `[A]` field never becomes editable, in either mode.** Two mechanisms enforce
+that. `fieldAccess` returns `auto` for every `[A]` tag, and `EconomyReadout.tsx`
+contains no `<input>`, no `<select>`, no `<textarea>` and no `contentEditable`.
+There is no code path through which an `[A]` value becomes typeable.
+
+**A locked `[V]` field is a `disabled` input.** A disabled input cannot be
+focused, typed into, pasted into or dropped on, so a player cannot edit a verdict
+field by accident. No click handler guards it, because a handler can be bypassed
+and a `disabled` attribute cannot.
+
+Judge mode is a checkbox at the top of the panel. The panel root carries
+`data-judge`, so one CSS rule outlines every unlocked `[V]` field. **Judge mode is
+not persisted.** It is view state, not world state, and it resets to off on every
+reload. A player who reloads the page therefore cannot inherit a judge's unlocked
+sheet. Judge mode is an honesty toggle in one browser, not authentication — the
+prototype has no backend, no roles and no audit.
+
+A field can also be unavailable for a reason that has nothing to do with its tag.
+A borrow field is disabled while the country is in default, and an enterprise
+select is disabled while no action is pending. Each such field names its reason
+rather than silently accepting a number the turn would reject.
+
+### A typed number is rejected, never clamped
+
+`parseNumberInput(text, spec)` refuses a value instead of trimming it. Spec
+section 12 requires that for the step limit, and the panel applies the same rule
+to every range on the sheet:
+
+1. An empty field is not zero. Clearing a field reports "enter a number", because
+   a silent zero is how a player wipes their GDP without noticing.
+2. Only digits, one optional sign and one decimal point pass. `"1e9"`, `"12px"`
+   and `"1,000"` all fail cleanly.
+3. A non-finite value fails. `sanitizeRecord` **drops** a `NaN` key, so such a
+   value would make the field disappear from the saved document on the next
+   reload.
+4. A fractional value fails on a whole-number field.
+5. A value outside the range fails, and the message quotes the range. The check
+   is written negated, `!(value >= min && value <= max)`, so a `NaN` that slipped
+   through the earlier checks still fails.
+
+A rejected value is never written. `useFieldCommit` clears its draft after the
+200 ms commit window, so the input snaps back to the last committed number. While
+the draft is illegal the input carries `aria-invalid="true"` and shows the reason.
+The `min`, `max` and `step` attributes come from the same spec, so the browser's
+own spinner agrees with the parser instead of contradicting it.
+
+Every field carries a `key` containing the country id. Switching country remounts
+the field and drops the buffered draft, so a draft for one country can never land
+on another country's sheet.
+
+### The step cap
+
+Emission and the military share may each move only so far in one turn. The control
+band sets the limit, and mobilization widens the military limit by 10 pp.
+
+`stepWindow(last, limitPp, min, max)` turns that limit into the field's own range:
+`[max(min, last - limit), min(max, last + limit)]`. The emission and military
+fields take their `spec.min` and `spec.max` from that window, so an over-large
+value fails `parseNumberInput` and is never written. **V3 and V4 cannot be
+produced by typing.** `stepWindowText` prints the window under both fields, for
+example `step this turn: 10.00 pp — you may set 0.00% to 14.00% (now 4.00%)`.
+
+The window is exactly V3, neither looser nor tighter, and a test pins both edges
+against `deriveEconomy`. A looser field would accept a value End Turn refuses. A
+tighter field would make a legal move unreachable.
+
+The engine's own check stays the authority, because the window alone cannot catch
+every case. A judge who lowers the control position narrows the window while
+nothing is typed, and the already-committed emission can fall outside it. Then
+`derived.errors` carries V3, the emission field shows it, the pre-flight list
+names it, and End Turn refuses.
+
+### The store bridge
+
+`src/state/economy-store.ts` exists for three reasons the panel cannot solve on
+its own.
+
+- **`economyFromJson` repairs what it reads.** A round trip through JSON on every
+  keystroke would let the reader rewrite a half-typed value. So the hydrated
+  `EconomyState` is held in memory, in a draft map, and that object is the live
+  truth for the session.
+- **`deriveEconomy` must run once per change, not once per readout.** A `computed`
+  memoises it.
+- **`setCountryEconomics` silently no-ops for an unknown country id.** One guarded
+  writer keeps that from being a hazard scattered across eleven components.
+
+`selectedEconomy` is a `computed` that writes nothing. It returns the draft when a
+draft exists, and otherwise it hydrates from the saved slot. Three properties of
+that shape are load bearing:
+
+- **No signal is written during render.** An effect that hydrated into a signal
+  would fire during a render pass, which is the classic way to get an infinite
+  loop here.
+- **Once a draft exists the computed stops subscribing to `economics`.** A
+  `computed` tracks dependencies dynamically, so after the first edit another
+  country's save does not re-hydrate this one.
+- **A country the user only looks at is never written.** The standard opening
+  sheet renders from `createInitialEconomy()`, and nothing reaches storage until
+  the first edit or an End Turn. A 60-country document therefore does not gain 60
+  economies nobody touched.
+
+`selectedDerived` calls `deriveEconomy` with `{ provinceCount }` read from
+`countryById`. That subscribes the panel to province painting, which is correct: a
+concession costs total GDP divided by the province count, so painting a province
+changes what a concession costs.
+
+Every writer reads through `.peek()`, never `.value`, because each one runs inside
+an event handler and must not subscribe anything to anything. Every collection
+helper replaces its array instead of mutating it — a mutated array is
+`Object.is`-equal to itself, and nothing would re-render.
+
+Write-through is synchronous and there is no second debounce. `setCountryEconomics`
+marks the state dirty, the T05 writer already coalesces the `localStorage` write
+at 400 ms, and the inputs are already buffered at 200 ms. A second debounce here
+would only add a window in which a closing panel loses the last edit.
+
+The store refuses to create an invalid state where it can. `addOtherSector`
+returns early without grounds, because spec section 4.1 makes such a sector
+illegal through V10. `removeOtherSector` also clears a pending concession that
+names the removed sector, because the concession would otherwise raise V11 on
+every later turn with no field left to point at.
+
+### End Turn
+
+The pre-flight list sits above the button and is always visible. Every entry of
+`derived.errors` renders as its code, its field and its message, and every warning
+renders in a quieter tone. So a player sees what blocks the turn before pressing
+anything.
+
+**The button is two-stage, because an End Turn cannot be undone.** `resolveTurn`
+is synchronous, so a fast double click would advance two turns with no way back.
+The first press arms the button and the label becomes `confirm turn N`. A second
+press within five seconds resolves the turn. The arm is dropped by the timeout, by
+a change of country and on unmount.
+
+The button is disabled when saving is off, and it names the reason. Resolving a
+turn that could never be saved is the worst outcome in this panel.
+
+`endEconomyTurn` then does five things:
+
+1. It calls `resolveTurn(state, { provinceCount })`.
+2. On failure it records the errors and writes nothing. The engine guarantees that
+   an aborted turn changes no state, and the store relies on that guarantee.
+3. On success it commits the next state through the single writer.
+4. It calls `flushState()`. **This is the only `flushState()` call in T12** — a
+   keystroke never flushes. An End Turn that did not reach disk is real data loss,
+   and learning about it 400 ms later reads as "it worked, then a banner appeared".
+5. It reports whether the write reached storage.
+
+A banner then shows the outcome. A failed turn says nothing changed and lists
+every error under `role="alert"`. A resolved turn names the turn, the realised
+growth and the rating move. When the write did not reach storage the banner adds
+an error-toned line: the economy advanced in memory but did not reach storage, and
+the player should free some space and edit any field to retry.
+
+### Turn history
+
+`buildHistoryView(records)` turns the engine's `TurnRecord[]` into something a
+player reads. The engine stores the newest record last, and the view reverses the
+array, because a player reads the newest turn first.
+
+Each turn renders as a `<details>` element. The newest turn is open, the rest are
+closed. Inside sit the closing headline numbers and then all fifteen pipeline
+steps in the engine's own order, each with a readable title, its surviving rows
+and its notes. A warning renders as its V-code in a chip plus a sentence, split
+out of the engine's own warning string.
+
+**A zero-valued row is dropped.** A fifteen-step dump in which twelve rows read
+`0.00` is a raw dump and not a record. A step that loses every row is marked quiet
+and renders as one line, `no change`, so the step order stays visible and a reader
+can still see that the step ran.
+
+`humanizeLabel` maps every engine label the panel knows to a phrase, and it splits
+camelCase for anything else. So a step added to the engine later degrades to a
+readable row instead of disappearing.
+
+The engine keeps the last twelve turns, and the footer says so.
+
+Three display bugs were found by reading the rendered sheet rather than by the
+unit tests, and all three would have shipped as numbers that lie:
+
+1. **A drag rendered as a bonus.** `growth.ts` *subtracts* `inflationGrowthPp`,
+   `defenceGrowthPp` and `reservePenaltyPp`, and the engine stores all three as
+   positive magnitudes. A signed format therefore printed `+0.60 pp` for what is a
+   0.60 pp cut. `formatDrag` flips the sign for display only. Two tests pin it, and
+   one of them greps `growth.ts` for the three subtractions, so a later engine
+   change breaks a test instead of the display.
+2. **A closing level signed as if it were a change.** A step record mixes genuine
+   deltas, such as a rating losing 2 points to emission, with closing levels, such
+   as GDP or a debt limit, and it carries no flag telling the two apart. A blanket
+   `+` claimed every level had just risen by its own value. Step rows and headline
+   levels now print unsigned, and only overall growth keeps its sign, because
+   growth is unambiguously a rate. The sign still drives the colour, so direction
+   is not lost.
+3. **A percentage-point figure printed as a percentage.**
+
+### Where the economy is persisted
+
+`localStorage`, key `civitas.state.v1`, in the per-country `economics` slot the
+T05 writer already owns. `economyToJson` produces that document and
+`economyFromJson` reads it back.
+
+T12 added no storage key, no schema field and no migration.
+`ECONOMY_SCHEMA_VERSION` is 1, there is no earlier economy document, and
+`src/state/migrations.ts` is untouched.
+
+A repairing reader is the reason a damaged field costs one value instead of a
+whole economy. When `economyFromJson` repaired something, the panel says so in a
+notice at the top. That notice is naturally present only until the first edit: after
+it the draft wins, and the repairs have been superseded.
+
+A quota failure on a keystroke renders as the same save notice the other panels
+use. It is not fatal, the in-memory state stands, and the next write retries. A
+quota failure on End Turn gets error tone instead, because that write is the one
+in this panel a player cannot repeat by typing.
+
+`initEconomySync()` drops a draft whose country was deleted. `deleteCountry`
+already removes the `economics` slot, but it knows nothing about the draft map. A
+stale draft is currently unreachable, because ids are never reused inside a
+session and the map is empty after a reload — but "unreachable" there rests on a
+counter in another file, and ten lines removes the dependency.
+
+### Formatting
+
+Every number the panel prints goes through `economics-format.ts`, so a readout and
+a history row can never disagree about how a percentage looks.
+
+- **`.` for the decimal separator and `,` for thousands.** The spec writes European
+  commas and the rest of this package does not. Matching the package wins, because
+  two conventions in one app are worse than either one.
+- **`groupDigits` from `country-overview.ts` is reused** rather than copied. It
+  clamps to non-negative, so `formatObor` splits the sign off first.
+- **No `toLocaleString`.** A test asserting `"18,687"` against `toLocaleString`
+  asserts whatever ICU data the test runner shipped with.
+- **A non-finite value prints an em dash, never `NaN`.** `deriveEconomy` guards
+  every value already, so this is defence in depth for a loaded document.
+
+### Tests
+
+**86 tests across the four pure modules**, and the suite as a whole is at 882. The
+engine suite is still exactly 203, which is the proof that T12 changed no engine
+behaviour.
+
+| File | Tests | What it covers |
+|---|---|---|
+| `src/ui/economics-fields.test.ts` | 32 | The tag table, the step cap, ledger edits. |
+| `src/state/economy-store.test.ts` | 22 | Hydration, write-through, End Turn, judge mode, draft pruning, the persistence round trip. |
+| `src/ui/economics-history.test.ts` | 19 | Spec section 19's worked turn, row by row. |
+| `src/ui/economics-format.test.ts` | 13 | Every formatter, including the drag sign. |
+
+Two of those deserve naming.
+
+**The classification table is transcribed from the spec and checked against the
+rendered panel.** `economics-fields.test.ts` carries spec section 18 as two
+tables, 39 `EconomyState` fields and 37 nested fields, giving 76 tagged paths.
+Four container fields carry no tag in the spec and are tagged by who may change
+their membership, with the clause named in a comment. The tables then drive four
+assertions. Every field of a fully populated state must appear in the table, so a
+field added later without a tag fails. `fieldAccess` is checked over all 76 paths.
+A scanner reads the eleven component sources, finds each field element, pulls its
+literal `tag="…"` and the state field its `onCommit` writes, and checks the tag
+against the table — 32 elements and 30 committed names, both counts pinned, so a
+scanner that silently stopped matching cannot pass. And every `[P]` or `[V]` path
+is either rendered by the panel or listed on an explicit omissions table with its
+reason, so a field dropped from the sheet fails unless someone removes it
+deliberately.
+
+**The persistence round trip runs through a fake storage.** Two countries go out
+through `economyToJson` and the T05 writer and come back through a fresh
+`initWorldStore`. The rich one sets every remaining field of section 18 away from
+its opening value, including a turn record carrying a step with a delta and a
+note — seven container levels, one below the depth at which `sanitizeRecord`
+truncates. Both come back deep-equal with an empty repair list. A repair would
+mean the writer and the reader disagree about the document's own shape.
+
+One expectation in the history tests was wrong and the code was right. A resource
+shortage does not raise a warning on its own. Spec section 17 raises one at V18,
+when a shortage starves a sector all the way to zero growth. The spec's own worked
+example is short on six resources and warns about none, which is what the spec
+says it should do.
+
+**There are no `.tsx` unit tests.** The monorepo has no jsdom, so a component test
+cannot run at all. The four pure modules carry every test, and the components were
+verified in the running app.
+
+### Verified in the browser
+
+`.tsx` files cannot be unit-tested here, so each condition below was checked in the
+running app, on a country with seven painted provinces.
+
+| Condition | Result |
+|---|---|
+| Every `[A]` value updates as a `[P]` value changes | Committing emission 0 → 4 moved FR generated 10,017.00 → 12,017.00 and the inflation drag 0.00 → -0.60 pp on the same commit. |
+| A player cannot edit a `[V]` field | All 48 `[V]` fields rendered `disabled`. |
+| An `[A]` field is never an input | `label[data-tag="A"] input, label[data-tag="A"] select` matched **0 elements**, with judge mode both off and on. |
+| Judge mode unlocks `[V]` and nothing else | Toggling it on unlocked 46 of the 48. The other two were blocked for a stated reason, not by a tag. |
+| The step cap blocks an over-large change | Emission committed at 4 with a window of 0 to 10. Typing 30 marked the field invalid, named the window, and snapped back to 4 on blur. Nothing was written. |
+| End Turn runs the pipeline and records it readably | Two presses resolved turn 1. The history showed all fifteen steps, four of them marked "no change", with their notes. |
+| The economy survives a reload | After a reload: the turn number, emission, rating, control position, all five sector volumes and the turn-1 record were unchanged, and the step window had recentred on the new last value. |
+| Judge mode does not survive a reload | After a reload all 48 `[V]` fields were locked again. |
+
+### Known limitations
+
+- **`main.js` now exceeds the 300 KiB advisory limit** at 351 KiB minified, so the
+  build's existing asset-size warning gained a fourth entry. It is one advisory
+  warning and not an error, and the three asset entries are unchanged. Nothing in
+  the panel can be trimmed to get back under the limit.
+- **A range input bypasses the 200 ms commit buffer** and writes on every drag
+  event. Only the rating score and the control position use one, and both are
+  `[V]`, so only a judge can trigger it.
+- **`privatizationFrDrag` and `privatizationMicDrag` are not rendered.** The spec
+  tags both `[A]`, but they are locals inside `generation.ts` and never reach
+  `DerivedEconomy`. Surfacing them needs an engine change, and the engine was
+  frozen for T12.
+- **A sector's grounds text and a granted concession's sector are shown but not
+  editable.** Both are `[V]`. Editing was scoped to the creation control and to a
+  concession's `active` toggle.
+- **No undo, and no editing a resolved turn.** The history is a record, not a save
+  state.
+- **No chart, no sparkline and no export.** The history is numbers and text.
+- **No dice rolling.** A roll is an input a judge types after throwing it in chat,
+  exactly as the rulebook has it. There is no `Math.random` anywhere in the
+  package.

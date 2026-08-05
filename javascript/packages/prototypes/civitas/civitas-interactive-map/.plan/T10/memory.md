@@ -436,3 +436,61 @@ $ git status --porcelain -- ../civitas-map
 - `ImageUpload`'s in-flight drop on unmount (§8.7) — still a known limitation.
 - The hard-quota `setItem` throw in a real browser, as the implementation agent
   recorded. `imageSaveNoticeFor(quota, true)` covers the branch.
+
+---
+
+## Docs & commit
+
+Commit: `bc509e67d5ee56dd27aadda1ac1aa463aad084a6` — "civitas interactive map — T10
+provinces overview panel". 11 files, every one inside the package.
+
+### Verification before committing
+
+All three green on the first run. Nothing needed fixing.
+
+```
+$ yarn typecheck
+exit=0            (no output)
+
+$ yarn test
+ℹ tests 593
+ℹ pass 593
+ℹ fail 0
+ℹ duration_ms 570.244541
+
+$ yarn build
+WARNING in ⚠ asset size limit: assets/map.png (2.530 MiB),
+  assets/provinces_map.png (552.626 KiB), assets/provinces_manifest.json (586.891 KiB)
+Rspack compiled with 1 warning in 82 ms
+```
+
+### README
+
+One new section, `## Provinces overview panel`, appended after T09's. 286 lines.
+No earlier section was rewritten. It covers the files table, the pure half, the
+virtual window and the 196 px budget, search, the two-way selection sync,
+sparseness, the row, the always-mounted viewport, the footer render prop, the
+image budget, quota and the save notice, the tests, and eleven traps.
+
+### Committed, and what was deliberately left out
+
+Committed: `README.md`, the three `.plan/T10/` files, and the seven source files.
+
+**The commit used an explicit pathspec, not the index.** The working tree carried
+staged changes from other packages when this agent started — `javascript/.yarn/cache`
+(about 120 zips), `javascript/.claude/skills/prototype-manager/SKILL.md`, and files
+under `ai-slop/` and `faenwald/`. `git commit -- <paths>` bypasses the index for
+everything else, so those entries stayed staged and untouched. A plain `git commit`
+would have swept all of them in.
+
+Left uncommitted on purpose, all unrelated to T10:
+
+- `javascript/yarn.lock` — adds the `@hw/react-di` workspace from `ai-slop/`.
+- `.plan/PLAN.md` — the T11 economics brief expansion.
+- `.plan/T08/memory.md`, `.plan/T08-FIX/memory.md`, `.plan/T09/memory.md` — each is
+  its own docs agent's "Docs & commit" section, appended after that task's commit.
+  This file follows the same pattern, so it is dirty now too.
+- `.plan/T11/` — the rulebook digest, the image transcriptions and the images.
+
+`git status --porcelain -- ../civitas-map` is empty. Nothing under the sibling
+package was read-modified or committed.

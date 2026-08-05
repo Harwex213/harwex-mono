@@ -273,3 +273,60 @@ $ yarn test
 ℹ todo 0
 ℹ duration_ms 593.824042
 ```
+
+---
+
+## Docs & commit
+
+Commit `cf552d1` — "civitas interactive map — T08-FIX view resize ratchet fix and
+reset control".
+
+### README
+
+Appended `## The T08-FIX pass` at the end. It names the three defects from
+`.plan/VISUAL-CHECK-PHASE2.md`, maps each to its fix and to the subsection that
+describes it, lists the nine files changed, records the opt-in probe deviation and
+why the two T07 tests were not weakened, and carries the traps. The three
+subsections the implementer wrote in place — "The fitted policy (T08-FIX)" under the
+view store, "Keyboard and the reset control" under the shell, and "The end probe
+(T08-FIX)" under the label layout — were left where they are. No earlier section was
+rewritten.
+
+### Verification before the commit
+
+```
+$ yarn typecheck
+(no output, exit 0)
+
+$ yarn test
+ℹ tests 521
+ℹ pass 521
+ℹ fail 0
+
+$ yarn build
+WARNING in ⚠ asset size limit: assets/map.png, assets/provinces_map.png,
+assets/provinces_manifest.json
+Rspack compiled with 1 warning in 80 ms
+```
+
+The three asset warnings are the known ones from T02 and are not silenced.
+
+### What was committed, and what was not
+
+18 files: the 14 sources and tests the implementation and the test pass touched,
+`README.md`, the three `.plan/T08-FIX/` documents, and
+`.plan/VISUAL-CHECK-PHASE2.md`.
+
+Deliberately left in the working tree:
+
+- `.plan/PLAN.md` and the untracked `.plan/T11/` tree. Both are T11 rulebook prep
+  written outside this task. T07 and T08 left them for the same reason.
+- `.plan/T08/memory.md`. Its 118 uncommitted lines are T08's own trailing sections,
+  not this task's work.
+- `javascript/yarn.lock`. Its only change adds `@hw/react-di`, an unrelated
+  prototype. No dependency changed here.
+- Everything under `javascript/.yarn/cache` and every other package's changes. The
+  index arrived dirty, so the commit used `git commit --only -- <paths>` and left
+  the pre-staged entries staged and untouched.
+
+`git status --porcelain` over `../civitas-map` prints nothing. Nothing was pushed.

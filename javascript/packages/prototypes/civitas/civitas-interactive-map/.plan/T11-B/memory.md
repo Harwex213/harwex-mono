@@ -302,3 +302,75 @@ $ yarn test
 - Assert `frGenerated` and everything downstream of it with a tolerance, never by equality: 10 000 ×
   1,06 × 0,90 × 1,05 does not land on exactly 10 017 in IEEE-754. Whole-obor volumes and integer
   ratings are the only safe equality assertions.
+
+---
+
+## Docs & commit
+
+Commit: `56a7888e92c96ae2b98727bda91c8c147d1de5e9` — "civitas interactive map — T11-B economics
+calculator engine". 68 files, every one inside the package.
+
+### Verification before committing
+
+All three green on the first run. Nothing needed fixing.
+
+```
+$ yarn typecheck
+exit=0            (no output)
+
+$ yarn test
+ℹ tests 796
+ℹ pass 796
+ℹ fail 0
+ℹ duration_ms 955.248084
+
+$ yarn tsx --test src/economy/*.test.ts
+ℹ tests 203
+ℹ pass 203
+ℹ fail 0
+
+$ yarn build
+Rspack compiled with 1 warning in 85 ms
+                  # the pre-existing asset-size warning on map.png,
+                  # provinces_map.png and provinces_manifest.json
+```
+
+### What was committed
+
+- `src/economy/` — 18 source files and 23 test files.
+- `README.md` — the new "Economics calculator engine" section, appended. Earlier sections untouched.
+- `.plan/PLAN.md` — the T11 scope edits that were sitting uncommitted.
+- `.plan/T11/` — `FORMULA-SPEC.md`, `RULEBOOK-DIGEST.md`, `RULEBOOK-IMAGES.md`, `SPEC-REVIEW.md`,
+  `SPEC-SUMMARY.md`, `memory.md`, and `images/`.
+- `.plan/T11-B/` — `DESIGN.md`, `review-1.md`, `memory.md`.
+
+### The images
+
+`.plan/T11/images/` held 42 files. Only 16 are the record: `img01.jpg` … `img15.jpg` and
+`urls.txt`, which lists exactly those 15 source URLs in that order. The other 26 were
+intermediate crops and upscales an earlier agent made while reading the screenshots, and they
+were deleted before the commit: `c04*.png`, `c08*.png`, `c11.png`, `c14*.png`, `crop*.png` and
+the six `img*_big.png`. `c11.png` was byte-identical to `img11.jpg` — same MD5 — which is what
+confirmed the `c*` family is copies rather than originals.
+
+### The README section
+
+It documents the two entry points, the fifteen-step order and why the order is load-bearing, the
+running FR balance, the `plannedGrowthPct` anti-circularity device, the numeric rules, one
+paragraph per stage, the error/warning split, the persistence seam, the test layout, and the
+known limitations. The test-count claim was corrected from a first draft's 196/17 to the measured
+203 tests in 23 files.
+
+### Left uncommitted on purpose
+
+`.plan/T08/memory.md`, `.plan/T09/memory.md`, `.plan/T10/memory.md` and
+`.plan/T08-FIX/memory.md` each carry a "Docs & commit" section their own docs agent appended
+*after* committing, so the section never landed. They are unrelated to T11-B. The repo also holds
+a large unrelated staged change set — 119 deletions under `javascript/.yarn/cache`,
+`javascript/.claude/skills/prototype-manager/SKILL.md`, `yarn.lock`, `install-state.gz` and a
+Unity `.blend` — which was already in the index before this task started.
+
+**Committing with a pathspec is what kept that separate.** `git commit -F msg -- <paths>` commits
+the working-tree content of those paths through a temporary index and leaves everything else
+staged exactly as it was. A plain `git add` plus `git commit` would have swept all 119 cache
+deletions into this commit. Whoever commits next in this repo should do the same.

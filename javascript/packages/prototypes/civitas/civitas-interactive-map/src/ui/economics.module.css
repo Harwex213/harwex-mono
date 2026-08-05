@@ -1,0 +1,777 @@
+/* The economics sheet. Tokens only — no hardcoded colour, gap, radius or font
+   size lives in this file, per T08's rule.
+
+   Register: the same parchment sheet as the other panels, denser. The sheet
+   carries about two hundred fields, so the density is the point; the grouping
+   into sections is what keeps it readable. */
+
+.sheet {
+  display: flex;
+  flex-direction: column;
+  gap: var(--civ-space-5);
+}
+
+/* --- notices ------------------------------------------------------------- */
+
+.notice {
+  border: var(--civ-border-hair);
+  border-radius: var(--civ-radius-sm);
+  color: var(--civ-ink-dim);
+  font-family: var(--civ-font-sans);
+  font-size: var(--civ-text-sm);
+  line-height: var(--civ-leading-body);
+  margin: 0;
+  padding: var(--civ-space-3);
+}
+
+.notice[data-kind="error"] {
+  border-color: var(--civ-danger);
+  color: var(--civ-danger);
+}
+
+.notice[data-kind="warn"] {
+  border-color: var(--civ-gild);
+  color: var(--civ-gild);
+}
+
+/* --- the legend and the judge toggle ------------------------------------- */
+
+.head {
+  border-bottom: var(--civ-border-hair);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--civ-space-4);
+  justify-content: space-between;
+  padding-bottom: var(--civ-space-4);
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--civ-space-4);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.legendItem {
+  align-items: baseline;
+  color: var(--civ-ink-dim);
+  display: flex;
+  font-family: var(--civ-font-sans);
+  font-size: var(--civ-text-xs);
+  gap: var(--civ-space-2);
+  line-height: var(--civ-leading-tight);
+}
+
+.legendTitle {
+  color: var(--civ-ink);
+  letter-spacing: var(--civ-tracking-caps);
+  text-transform: uppercase;
+}
+
+.judgeToggle {
+  align-items: center;
+  color: var(--civ-ink);
+  cursor: pointer;
+  display: flex;
+  font-family: var(--civ-font-sans);
+  font-size: var(--civ-text-sm);
+  gap: var(--civ-space-2);
+  letter-spacing: var(--civ-tracking-caps);
+  text-transform: uppercase;
+}
+
+.judgeToggle[data-on="true"] {
+  color: var(--civ-gild);
+}
+
+/* --- the [P] / [V] / [A] chip -------------------------------------------- */
+
+.tag {
+  border: 1px solid currentcolor;
+  border-radius: var(--civ-radius-sm);
+  flex: none;
+  font-family: var(--civ-font-mono);
+  font-size: var(--civ-text-xs);
+  line-height: 1;
+  padding: var(--civ-space-1) var(--civ-space-2);
+}
+
+.tag[data-tag="P"] {
+  color: var(--civ-gild);
+}
+
+.tag[data-tag="V"] {
+  color: var(--civ-gild-soft);
+}
+
+.tag[data-tag="A"] {
+  color: var(--civ-ink-faint);
+}
+
+/* --- sections ------------------------------------------------------------ */
+
+.section {
+  border-bottom: var(--civ-border-hair);
+  display: flex;
+  flex-direction: column;
+  gap: var(--civ-space-4);
+  padding-bottom: var(--civ-space-5);
+}
+
+.section:last-child {
+  border-bottom: none;
+}
+
+.sectionTitle {
+  color: var(--civ-ink);
+  font-family: var(--civ-font-display);
+  font-size: var(--civ-text-md);
+  letter-spacing: var(--civ-tracking-caps);
+  margin: 0;
+  text-transform: uppercase;
+}
+
+.sectionSub {
+  color: var(--civ-ink-faint);
+  font-family: var(--civ-font-mono);
+  font-size: var(--civ-text-xs);
+  margin: 0;
+}
+
+.subhead {
+  color: var(--civ-ink-dim);
+  font-family: var(--civ-font-sans);
+  font-size: var(--civ-text-sm);
+  letter-spacing: var(--civ-tracking-caps);
+  margin: 0;
+  text-transform: uppercase;
+}
+
+.grid {
+  display: grid;
+  gap: var(--civ-space-3);
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+}
+
+.gridWide {
+  display: grid;
+  gap: var(--civ-space-3);
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+}
+
+.note {
+  color: var(--civ-ink-faint);
+  font-family: var(--civ-font-sans);
+  font-size: var(--civ-text-xs);
+  line-height: var(--civ-leading-body);
+  margin: 0;
+}
+
+/* A standing consequence line, not a dismissible notice: an unjustified
+   mobilization costs rating every turn it stands. */
+.note[data-kind="error"] {
+  color: var(--civ-danger);
+}
+
+.empty {
+  color: var(--civ-ink-faint);
+  font-family: var(--civ-font-sans);
+  font-size: var(--civ-text-md);
+  line-height: var(--civ-leading-body);
+  margin: 0;
+}
+
+/* --- readouts: the [A] cell ---------------------------------------------- */
+
+.readout {
+  display: flex;
+  flex-direction: column;
+  gap: var(--civ-space-1);
+  min-width: 0;
+}
+
+.readoutLabel {
+  align-items: baseline;
+  color: var(--civ-ink-dim);
+  display: flex;
+  font-family: var(--civ-font-sans);
+  font-size: var(--civ-text-xs);
+  gap: var(--civ-space-2);
+  letter-spacing: var(--civ-tracking-caps);
+  text-transform: uppercase;
+}
+
+.readoutValue {
+  color: var(--civ-ink);
+  font-family: var(--civ-font-mono);
+  font-size: var(--civ-text-md);
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.readoutValue[data-tone="good"] {
+  color: var(--civ-gild);
+}
+
+.readoutValue[data-tone="bad"] {
+  color: var(--civ-danger);
+}
+
+.readoutValue[data-tone="muted"] {
+  color: var(--civ-ink-faint);
+}
+
+.readoutHint {
+  color: var(--civ-ink-faint);
+  font-family: var(--civ-font-sans);
+  font-size: var(--civ-text-xs);
+  line-height: var(--civ-leading-tight);
+}
+
+/* --- inputs: the [P] and [V] cells --------------------------------------- */
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--civ-space-1);
+  min-width: 0;
+}
+
+.field[data-locked="true"] {
+  cursor: default;
+  opacity: 0.7;
+}
+
+/* An unlocked verdict field must be unmistakable. The sheet root carries
+   `data-judge`, so ONE rule marks every one of them — no prop threaded through
+   eleven components, and no `:global` needed because the root is a class from
+   this same module. */
+.sheet[data-judge="true"] .field[data-tag="V"] .input,
+.sheet[data-judge="true"] .field[data-tag="V"] .select,
+.sheet[data-judge="true"] .field[data-tag="V"] .checkbox {
+  border-color: var(--civ-gild);
+  box-shadow: inset 0 0 0 1px var(--civ-gild-soft);
+}
+
+.caption {
+  align-items: baseline;
+  color: var(--civ-ink-dim);
+  display: flex;
+  font-family: var(--civ-font-sans);
+  font-size: var(--civ-text-xs);
+  gap: var(--civ-space-2);
+  letter-spacing: var(--civ-tracking-caps);
+  text-transform: uppercase;
+}
+
+.captionText {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lock {
+  color: var(--civ-ink-faint);
+  flex: none;
+  font-family: var(--civ-font-mono);
+  font-size: var(--civ-text-xs);
+}
+
+.inputRow {
+  align-items: center;
+  display: flex;
+  gap: var(--civ-space-2);
+}
+
+.input {
+  background: var(--civ-vellum);
+  border: var(--civ-border-hair);
+  border-radius: var(--civ-radius-sm);
+  color: var(--civ-ink);
+  font-family: var(--civ-font-mono);
+  font-size: var(--civ-text-md);
+  font-variant-numeric: tabular-nums;
+  min-width: 0;
+  padding: var(--civ-space-1) var(--civ-space-2);
+  width: 100%;
+}
+
+.input:focus {
+  border-color: var(--civ-gild);
+  outline: none;
+}
+
+.input:disabled {
+  background: var(--civ-parchment-dim);
+  color: var(--civ-ink-faint);
+  cursor: default;
+}
+
+.input[data-invalid="true"] {
+  border-color: var(--civ-danger);
+  color: var(--civ-danger);
+}
+
+.select {
+  background: var(--civ-vellum);
+  border: var(--civ-border-hair);
+  border-radius: var(--civ-radius-sm);
+  color: var(--civ-ink);
+  font-family: var(--civ-font-sans);
+  font-size: var(--civ-text-md);
+  padding: var(--civ-space-1) var(--civ-space-2);
+  width: 100%;
+}
+
+.select:disabled {
+  background: var(--civ-parchment-dim);
+  color: var(--civ-ink-faint);
+  cursor: default;
+}
+
+.checkbox {
+  accent-color: var(--civ-gild);
+  margin: 0;
+}
+
+.range {
+  accent-color: var(--civ-gild);
+  width: 100%;
+}
+
+.suffix {
+  color: var(--civ-ink-faint);
+  flex: none;
+  font-family: var(--civ-font-mono);
+  font-size: var(--civ-text-xs);
+}
+
+.message {
+  color: var(--civ-danger);
+  font-family: var(--civ-font-sans);
+  font-size: var(--civ-text-xs);
+  line-height: var(--civ-leading-tight);
+}
+
+.hint {
+  color: var(--civ-ink-faint);
+  font-family: var(--civ-font-sans);
+  font-size: var(--civ-text-xs);
+  line-height: var(--civ-leading-tight);
+}
+
+/* --- tables -------------------------------------------------------------- */
+
+/* Every table lives inside one of these. The panel body scrolls only
+   vertically; a wide table scrolls inside itself. */
+.tableWrap {
+  overflow-x: auto;
+}
+
+.table {
+  border-collapse: collapse;
+  font-family: var(--civ-font-mono);
+  font-size: var(--civ-text-sm);
+  font-variant-numeric: tabular-nums;
+  width: 100%;
+}
+
+.table th {
+  border-bottom: var(--civ-border-strong);
+  color: var(--civ-ink-dim);
+  font-family: var(--civ-font-sans);
+  font-size: var(--civ-text-xs);
+  font-weight: normal;
+  letter-spacing: var(--civ-tracking-caps);
+  padding: var(--civ-space-2);
+  text-align: right;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.table th:first-child {
+  text-align: left;
+}
+
+.table td {
+  border-bottom: var(--civ-border-hair);
+  color: var(--civ-ink);
+  padding: var(--civ-space-2);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.table td:first-child {
+  color: var(--civ-ink);
+  font-family: var(--civ-font-sans);
+  text-align: left;
+}
+
+.cellInput {
+  min-width: 96px;
+}
+
+.cellBad {
+  color: var(--civ-danger);
+}
+
+.cellMuted {
+  color: var(--civ-ink-faint);
+}
+
+.groupRow td {
+  color: var(--civ-ink-dim);
+  font-family: var(--civ-font-sans);
+  font-size: var(--civ-text-xs);
+  letter-spacing: var(--civ-tracking-caps);
+  text-transform: uppercase;
+}
+
+/* --- band strips: the rating tiers and the control scale ----------------- */
+
+.strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--civ-space-1);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.band {
+  border: var(--civ-border-hair);
+  border-radius: var(--civ-radius-sm);
+  color: var(--civ-ink-dim);
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  font-family: var(--civ-font-mono);
+  font-size: var(--civ-text-xs);
+  gap: var(--civ-space-1);
+  min-width: 88px;
+  padding: var(--civ-space-2);
+}
+
+.band[data-on="true"] {
+  background: var(--civ-vellum);
+  border-color: var(--civ-gild);
+  color: var(--civ-ink);
+}
+
+.bandName {
+  font-family: var(--civ-font-sans);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bandMeta {
+  color: var(--civ-ink-faint);
+}
+
+/* --- lists, checks, ledgers --------------------------------------------- */
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--civ-space-2);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.listRow {
+  align-items: baseline;
+  color: var(--civ-ink);
+  display: flex;
+  font-family: var(--civ-font-sans);
+  font-size: var(--civ-text-sm);
+  gap: var(--civ-space-3);
+  justify-content: space-between;
+}
+
+.listValue {
+  color: var(--civ-ink-dim);
+  flex: none;
+  font-family: var(--civ-font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.check {
+  color: var(--civ-ink-dim);
+  font-family: var(--civ-font-sans);
+  font-size: var(--civ-text-xs);
+}
+
+.check[data-on="true"] {
+  color: var(--civ-gild);
+}
+
+.ledger {
+  display: flex;
+  flex-direction: column;
+  gap: var(--civ-space-2);
+}
+
+.ledgerRow {
+  align-items: end;
+  display: grid;
+  gap: var(--civ-space-2);
+  grid-template-columns: minmax(0, 3fr) minmax(0, 1fr) auto;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--civ-space-3);
+}
+
+.button {
+  background: var(--civ-vellum);
+  border: var(--civ-border-strong);
+  border-radius: var(--civ-radius-sm);
+  color: var(--civ-ink);
+  cursor: pointer;
+  font-family: var(--civ-font-sans);
+  font-size: var(--civ-text-xs);
+  letter-spacing: var(--civ-tracking-caps);
+  padding: var(--civ-space-2) var(--civ-space-3);
+  text-transform: uppercase;
+}
+
+.button:hover:not(:disabled) {
+  border-color: var(--civ-gild);
+  color: var(--civ-gild);
+}
+
+.button:disabled {
+  color: var(--civ-ink-faint);
+  cursor: default;
+}
+
+.buttonArmed {
+  border-color: var(--civ-danger);
+  color: var(--civ-danger);
+}
+
+.iconButton {
+  background: transparent;
+  border: var(--civ-border-hair);
+  border-radius: var(--civ-radius-sm);
+  color: var(--civ-ink-dim);
+  cursor: pointer;
+  font-family: var(--civ-font-mono);
+  font-size: var(--civ-text-sm);
+  line-height: 1;
+  padding: var(--civ-space-2);
+}
+
+.iconButton:hover:not(:disabled) {
+  border-color: var(--civ-danger);
+  color: var(--civ-danger);
+}
+
+.iconButton:disabled {
+  color: var(--civ-ink-faint);
+  cursor: default;
+}
+
+.details {
+  border: var(--civ-border-hair);
+  border-radius: var(--civ-radius-sm);
+  padding: var(--civ-space-3);
+}
+
+.summary {
+  color: var(--civ-ink-dim);
+  cursor: pointer;
+  font-family: var(--civ-font-sans);
+  font-size: var(--civ-text-sm);
+  letter-spacing: var(--civ-tracking-caps);
+  text-transform: uppercase;
+}
+
+/* --- End Turn and the turn history -------------------------------------- */
+
+.turnBar {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--civ-space-4);
+}
+
+.endTurn {
+  background: var(--civ-vellum);
+  border: var(--civ-border-plaque);
+  border-radius: var(--civ-radius-sm);
+  color: var(--civ-ink);
+  cursor: pointer;
+  font-family: var(--civ-font-display);
+  font-size: var(--civ-text-md);
+  letter-spacing: var(--civ-tracking-caps);
+  padding: var(--civ-space-3) var(--civ-space-5);
+  text-transform: uppercase;
+}
+
+.endTurn:hover:not(:disabled) {
+  border-color: var(--civ-gild);
+}
+
+.endTurn:disabled {
+  color: var(--civ-ink-faint);
+  cursor: default;
+}
+
+/* The armed state must be visibly different: the second press cannot be
+   undone. */
+.endTurn[data-armed="true"] {
+  background: var(--civ-gild);
+  border-color: var(--civ-gild);
+  color: var(--civ-ink-invert);
+}
+
+.errorList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--civ-space-2);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.errorRow {
+  align-items: baseline;
+  color: var(--civ-danger);
+  display: flex;
+  font-family: var(--civ-font-sans);
+  font-size: var(--civ-text-sm);
+  gap: var(--civ-space-2);
+  line-height: var(--civ-leading-body);
+}
+
+.errorRow[data-tone="warn"] {
+  color: var(--civ-gild);
+}
+
+.chip {
+  border: 1px solid currentcolor;
+  border-radius: var(--civ-radius-sm);
+  flex: none;
+  font-family: var(--civ-font-mono);
+  font-size: var(--civ-text-xs);
+  line-height: 1;
+  padding: var(--civ-space-1) var(--civ-space-2);
+}
+
+.errorField {
+  color: var(--civ-ink-faint);
+  flex: none;
+  font-family: var(--civ-font-mono);
+  font-size: var(--civ-text-xs);
+}
+
+.historyList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--civ-space-3);
+}
+
+.historyTurn {
+  border: var(--civ-border-hair);
+  border-radius: var(--civ-radius-sm);
+  padding: var(--civ-space-3);
+}
+
+.historySummary {
+  color: var(--civ-ink);
+  cursor: pointer;
+  font-family: var(--civ-font-display);
+  font-size: var(--civ-text-md);
+  letter-spacing: var(--civ-tracking-caps);
+  text-transform: uppercase;
+}
+
+.historyHeadline {
+  display: grid;
+  gap: var(--civ-space-2);
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  margin-top: var(--civ-space-3);
+}
+
+.historyStep {
+  border-top: var(--civ-border-hair);
+  display: flex;
+  flex-direction: column;
+  gap: var(--civ-space-2);
+  padding: var(--civ-space-3) 0;
+}
+
+.historyStepTitle {
+  color: var(--civ-ink-dim);
+  font-family: var(--civ-font-sans);
+  font-size: var(--civ-text-xs);
+  letter-spacing: var(--civ-tracking-caps);
+  text-transform: uppercase;
+}
+
+.historyDeltas {
+  display: grid;
+  gap: var(--civ-space-1) var(--civ-space-4);
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.historyDelta {
+  align-items: baseline;
+  color: var(--civ-ink);
+  display: flex;
+  font-family: var(--civ-font-sans);
+  font-size: var(--civ-text-sm);
+  gap: var(--civ-space-3);
+  justify-content: space-between;
+}
+
+.historyDeltaValue {
+  color: var(--civ-ink);
+  flex: none;
+  font-family: var(--civ-font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.historyDeltaValue[data-sign="1"] {
+  color: var(--civ-gild);
+}
+
+.historyDeltaValue[data-sign="-1"] {
+  color: var(--civ-danger);
+}
+
+.historyNote {
+  color: var(--civ-ink-faint);
+  font-family: var(--civ-font-sans);
+  font-size: var(--civ-text-xs);
+  line-height: var(--civ-leading-body);
+  margin: 0;
+}
+
+.historyQuiet {
+  color: var(--civ-ink-faint);
+  font-family: var(--civ-font-mono);
+  font-size: var(--civ-text-xs);
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--civ-space-2);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}

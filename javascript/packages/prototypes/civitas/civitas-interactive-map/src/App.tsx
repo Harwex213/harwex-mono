@@ -9,6 +9,7 @@ import {
   stateWarning,
 } from "./state/world-store";
 import { initCountrySync } from "./state/country-store";
+import { initEconomySync } from "./state/economy-store";
 import styles from "./app.module.css";
 
 function statusLine(phase: string, step: string, progress: number, error: string | null): string {
@@ -35,9 +36,12 @@ function App() {
     // Registers the effect that pushes the province -> country assignment into
     // the T04 border worker, debounced.
     const stopCountrySync = initCountrySync();
+    // Drops the economy draft of a country that no longer exists.
+    const stopEconomySync = initEconomySync();
     // Never rejects; a failure lands in `loadError`.
     ensureMapLoaded();
     return () => {
+      stopEconomySync();
       stopCountrySync();
       uninstall();
     };

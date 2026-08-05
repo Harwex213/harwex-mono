@@ -300,3 +300,65 @@ test that would enshrine the garbage.
 ```
 
 537 before, 547 after: +10, 0 failing.
+
+---
+
+## Docs & commit
+
+Commit: `87d53c48bb7d8565271a7fa163238d01535c0389` — "civitas interactive map — T09
+country overview panel". 20 files, every one inside the package.
+
+### Verification before committing
+
+All three green on the first run. Nothing needed fixing.
+
+```
+yarn typecheck   exit 0, no output
+yarn test        exit 0, tests 547, pass 547, fail 0, duration 621 ms
+yarn build       exit 0, the same three asset-size warnings T02 recorded (not silenced)
+```
+
+547 reproduces the tests agent's figure exactly.
+
+### README
+
+Appended `## Country overview panel` at the end. No earlier section was rewritten.
+It covers the file list, the pure/`.tsx` split and why it exists, `groupDigits`
+against `toLocaleString`, the `countryDisplayName` fallback and the three surfaces
+it repairs, `FLAG_MAX_EDGE` 384 with its reason and its cost, `ImageUpload`'s four
+new props and the `previewClassName` specificity rule, the `saveNoticeFor` warning
+table, `flushState()` on a flag write only, the silent-rejection read-back through
+`.peek()`, the id-tagged flag message, and the Territory facts.
+
+The traps section carries the review's non-blocking observations, so none of them
+is lost: the `flag` fact reports decoded bytes and understates the localStorage
+cost by about 2.7x, the hint advertises `svg` which `createImageBitmap` rejects,
+`saveNoticeFor`'s trailing `return null` defeats exhaustiveness in the source and
+the typed table in the test carries that guard instead, `flag.touched` stays true
+after a successful upload, and `.status[data-kind="warn"]` is currently unused.
+
+### What was deliberately left out of the commit
+
+The working tree also held changes that do not belong to T09. None was staged:
+
+- `.plan/PLAN.md`, `.plan/T11/` — the T11 rulebook digest and the expanded T11
+  brief. Orchestrator work for a later task.
+- `.plan/T08/memory.md`, `.plan/T08-FIX/memory.md` — the "Docs & commit"
+  appendices those tasks' docs agents wrote *after* their own commits, so they
+  never landed. Same pattern as this section.
+- `javascript/yarn.lock` — a lock entry for `@hw/react-di`, an unrelated prototype.
+  T09 added no dependency, so nothing here needed it.
+- Everything outside `javascript/packages/prototypes/civitas/civitas-interactive-map`,
+  including the large pre-existing staged set under `javascript/.yarn/cache`. The
+  commit was made with `git commit --only -- <paths>`, which builds the commit from
+  HEAD plus the named paths and ignores the rest of the index.
+
+`git status --porcelain -- .../civitas/civitas-map` prints nothing. The read-only
+sibling was never touched.
+
+### Next task
+
+T10 — provinces overview panel. It reuses `EditableText`, `EditableTextArea`,
+`ImageUpload` and `useFieldCommit` the same way T09 did, and it owns
+`PROVINCE_IMAGE_MAX_EDGE`, which T09 left at 320 on purpose. The virtualised list
+is its real problem; `ProvincesOverviewPanel.tsx` still caps at 50 rows.

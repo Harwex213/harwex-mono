@@ -531,3 +531,121 @@ $ npx tsx --test src/ui/use-field-commit.test.ts
 
 `src/ui/use-field-commit.ts` was restored immediately afterwards and the suite
 is back at 493 / 493.
+
+---
+
+## Docs & commit
+
+Commit: `f56a66f3e473461e9edbcdf64932bc9c03ba1b62` — "civitas interactive map — T08
+selection interaction and UI shell". 40 files, all under the package.
+
+### Verification before committing
+
+All three green on the first run. Nothing needed fixing.
+
+```
+yarn typecheck   exit 0 (no output)
+yarn test        exit 0, tests 493, pass 493, fail 0
+yarn build       exit 0, the same three asset-size warnings T02 recorded (not silenced)
+```
+
+### README
+
+Appended a `## Selection and the UI shell` section. No earlier section was
+rewritten. It covers:
+
+- The files table, and the explicit list of what was NOT touched
+  (`render.ts`, `OverlayInput`, `src/map/`, `borders-store`, `label-store`,
+  `assign-store`), so T09's reviewer can see the byte-identical assertion still
+  holds.
+- The selection model: three slots in one signal, the pure `nextSelection`, the
+  two easy-to-get-wrong rows of the transition table, the `sameSelection` guard,
+  and the reason `selectedCountryId` is a computed and never stored.
+- Click semantics: `isContextPress`, the `onPointerDown` decline before its
+  `preventDefault`, why declining in `onPointerDown` is what stops a ctrl+click
+  from painting, the `onContextMenu` idle guard, and the `onPointerUp` branch for
+  the platforms that fire no `contextmenu`.
+- The tint-alpha emphasis, the byte-identity of the no-emphasis table, and why
+  `diffTintWords` makes it cheap.
+- The shell: the sibling-of-the-host rule, the pointer-events rule on the plaque
+  rail, the one Escape listener and its order, and the focus restore.
+- The theme: the token block, the legacy-alias re-point, and the three
+  constraints (`--bg-sunken`, `color-scheme`, `--font` vs `LABEL_FONT_STACK`).
+- The panels: `role="region"` not `dialog`, `PANEL_DOM_ID`, the conditional
+  `aria-controls`, and the read-only chip.
+- The fields: the fixed 200 ms window, why it exists at all when `markDirty`
+  already debounces, the per-render `commitRef`, and the `key`-per-target rule.
+- The `updateCountry` `provinceIds` identity change and the label-anchor cost it
+  removes.
+- Seven traps, including the corrected claim about the HUD: earlier README
+  sections say T08 replaces it, and T08 kept it instead.
+
+No new storage key, no schema field and no migration, so there was no persistence
+contract to document. The new contracts are `PanelId`, `PANEL_DOM_ID`, the
+selection signal set, `SELECTED_TINT_ALPHA` and `FIELD_COMMIT_MS`.
+
+### Files committed
+
+40 files. `git add` was used for the untracked ones, then `git commit -- <paths>`
+in partial-commit mode, because the index already held a large set of unrelated
+staged changes (`javascript/.yarn/cache`, other packages). A path-limited commit
+leaves that index untouched. This is the same procedure T07 used.
+
+```
+.plan/T07/memory.md            (T07's own "Docs & commit" addendum, left uncommitted by T07)
+.plan/T08/DESIGN.md
+.plan/T08/memory.md
+.plan/T08/review-1.md
+.plan/T08/review-2.md
+README.md
+src/App.tsx
+src/app.module.css
+src/main.tsx
+src/state/country-store.ts
+src/state/country-store.test.ts
+src/state/panel-store.ts
+src/state/panel-store.test.ts
+src/state/selection-store.ts
+src/state/selection-store.test.ts
+src/state/world-store.ts
+src/state/world-store.test.ts
+src/ui/CountryOverviewPanel.tsx
+src/ui/CountryPanel.tsx
+src/ui/CountryPlaque.tsx
+src/ui/EconomicsPanel.tsx
+src/ui/EditableText.tsx
+src/ui/EditableTextArea.tsx
+src/ui/ImageUpload.tsx
+src/ui/MapCanvas.tsx
+src/ui/Panel.tsx
+src/ui/PanelHost.tsx
+src/ui/ProvincesOverviewPanel.tsx
+src/ui/Shell.tsx
+src/ui/tint-layer.ts
+src/ui/use-field-commit.ts
+src/ui/use-field-commit.test.ts
+src/ui/country-panel.module.css
+src/ui/country-plaque.module.css
+src/ui/fields.module.css
+src/ui/map-canvas.module.css
+src/ui/panel-bodies.module.css
+src/ui/panel.module.css
+src/ui/shell.module.css
+src/ui/theme.css
+```
+
+### Deliberately NOT committed
+
+- `.plan/PLAN.md` and the untracked `.plan/T11/` tree. Those are T11 rulebook prep
+  written outside this task, and T07 left them for the same reason. They stay in
+  the working tree for whoever owns T11.
+- Everything under `javascript/.yarn/cache` and every other package's changes.
+- `../civitas-map` is untouched: `git status --porcelain` over it prints nothing.
+- Nothing was pushed.
+
+### Left for T09
+
+- The plaque and the panel dock overlap between roughly 900 and 1200 px.
+- `.hud`'s `max-width` is wrong below roughly 760 px.
+
+Both were raised in `review-1.md` as non-blocking and assigned to T09 there.
