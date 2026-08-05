@@ -136,3 +136,18 @@
 .status[data-kind="error"] {
   color: var(--civ-danger);
 }
+
+/* Saved, but close to the browser limit. Gild rather than danger: the data is
+   on disk. */
+.status[data-kind="warn"] {
+  color: var(--civ-gild);
+}
+
+/* A standing line under the upload actions. Not an error and never dismissed. */
+.hint {
+  color: var(--civ-ink-faint);
+  font-family: var(--civ-font-mono);
+  font-size: var(--civ-text-xs);
+  line-height: var(--civ-leading-body);
+  margin: 0;
+}

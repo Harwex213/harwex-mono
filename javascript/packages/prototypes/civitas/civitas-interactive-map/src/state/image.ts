@@ -5,7 +5,10 @@
 // in `src/map/province-index.ts`, so `image.test.ts` can import this module in
 // Node and test the pure halves.
 
-const FLAG_MAX_EDGE = 256;
+// 384, not 256. The largest surface a flag is drawn on is the 288 px panel
+// preview, which is 576 device px at DPR 2; 256 cannot cover it. The cost is
+// about 70 KB of localStorage per flag against a 4 MB budget.
+const FLAG_MAX_EDGE = 384;
 const PROVINCE_IMAGE_MAX_EDGE = 320;
 const IMAGE_QUALITY = 0.82;
 // 256 KB of decoded payload per image.

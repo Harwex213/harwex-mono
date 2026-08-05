@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { FLAG_MAX_EDGE, dataUrlBytes, fitDownscale } from "./image";
+import { FLAG_MAX_EDGE, PROVINCE_IMAGE_MAX_EDGE, dataUrlBytes, fitDownscale } from "./image";
 
 // The pure halves only. `downscaleImage` needs `createImageBitmap` and a canvas,
 // and PLAN section 4 rules out DOM tests, so the browser check in the T05 design
@@ -49,4 +49,29 @@ test("dataUrlBytes measures the decoded payload without decoding it", () => {
   assert.equal(dataUrlBytes("not a data url"), 0);
   assert.equal(dataUrlBytes("data:image/svg+xml,<svg/>"), 0);
   assert.equal(dataUrlBytes("data:image/webp;base64,"), 0);
+});
+
+test("a flag is stored large enough for the panel preview and no larger", () => {
+  // T09 raised the cap from 256 to 384. The largest surface a flag is drawn on
+  // is the 288 px panel preview, which 256 could not fill at any DPR. Lowering
+  // the constant again visibly blurs that preview, so it is pinned.
+  assert.equal(FLAG_MAX_EDGE, 384);
+  assert.ok(FLAG_MAX_EDGE >= 288, "the preview box is 288 CSS px and must not upscale");
+
+  // The sample flag, `assets/country-flag.jpg`, is 735 x 490.
+  assert.deepEqual(fitDownscale(735, 490, FLAG_MAX_EDGE), {
+    width: 384,
+    height: 256,
+    scaled: true,
+  });
+  // A wide flag keeps its shape: `fitDownscale` scales the LONG edge, so a 2:1
+  // ensign is never squashed into the 3:2 preview box.
+  const wide = fitDownscale(2000, 1000, FLAG_MAX_EDGE);
+  assert.deepEqual(wide, { width: 384, height: 192, scaled: true });
+  assert.equal(wide.width / wide.height, 2);
+});
+
+test("the province image cap is T10's and T09 left it where it was", () => {
+  assert.equal(PROVINCE_IMAGE_MAX_EDGE, 320);
+  assert.notEqual(PROVINCE_IMAGE_MAX_EDGE, FLAG_MAX_EDGE, "the two caps are decided separately");
 });

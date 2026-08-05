@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useSignals } from "@preact/signals-react/runtime";
 import { countryAggregates } from "../state/country-store";
+import { countryDisplayName } from "../state/schema";
 import { provinceDisplayName } from "../state/world-store";
 import {
   selectedCountry,
@@ -56,6 +57,9 @@ function CountryPlaque() {
 
   const flag = country.flagDataUrl;
   const showFlag = flag !== null && flag !== "" && flag !== brokenFlag;
+  // An emptied name must not render a blank gold plaque. The panel and the map
+  // label fall back to the same string.
+  const shownName = countryDisplayName(country.id, country.name);
   const aggregate = countryAggregates.value.get(country.id);
   const count = aggregate ? aggregate.provinceCount : country.provinceIds.length;
   const subline =
@@ -65,12 +69,11 @@ function CountryPlaque() {
 
   return (
     <section className={styles.plaque} aria-label="selected country" data-scope={scope}>
-      {/* A flat swatch of the country's colour when there is no flag, or when
-          `onError` fires on a corrupt stored data URL. */}
-      <div
-        className={styles.flag}
-        style={showFlag ? undefined : { background: country.colorHex }}
-      >
+      {/* The country's colour is ALWAYS behind the box: it letterboxes a
+          contained flag whose ratio is not 3:2, and the no-flag state — no flag
+          at all, or `onError` on a corrupt stored data URL — is then the same
+          element with nothing in it rather than a second visual treatment. */}
+      <div className={styles.flag} style={{ background: country.colorHex }}>
         {showFlag ? (
           <img
             className={styles.flagImage}
@@ -83,8 +86,8 @@ function CountryPlaque() {
         ) : null}
       </div>
       <div className={styles.body}>
-        <p className={styles.name} title={country.name}>
-          {country.name}
+        <p className={styles.name} title={shownName}>
+          {shownName}
         </p>
         {country.slogan === "" ? null : (
           <p className={styles.slogan} title={country.slogan}>

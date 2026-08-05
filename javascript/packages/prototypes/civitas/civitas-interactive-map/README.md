@@ -1498,3 +1498,194 @@ Each new test was proved to fail against a real mutation of the source, and
   and reachability stays a browser check.
 - The reset is an instant jump with no easing. There are no zoom buttons, no zoom
   slider, no minimap and no keyboard panning.
+
+## Country overview panel
+
+The country's identity sheet: flag, name, slogan, lore, and two read-only
+territory facts. Every field writes through `updateCountry`, which T05 made the
+only writer, and the store debounces the `localStorage` write behind it.
+
+T09 adds no storage key, no schema field and no migration. It builds no second
+field component, no second store and no second panel system. T08 had already
+wired four fields to the store to prove the contract, and T09 completes that
+body.
+
+### Files
+
+| Path | What it is |
+|---|---|
+| `src/ui/country-overview.ts` | New. The panel's pure half: digit grouping, the three formatters, the lore counter and the warning-to-sentence table. |
+| `src/ui/country-overview.test.ts` | New. 18 cases over that module, including every row of the warning table. |
+| `src/ui/country-overview.module.css` | New. The panel's own styles. Tokens only. |
+| `src/ui/CountryOverviewPanel.tsx` | Rewritten body. Notice, flag, name, slogan, lore, counter, Territory. |
+| `src/state/schema.ts` | Added `countryDisplayName(id, name)`. `createCountry` routes its name through it. |
+| `src/state/image.ts` | `FLAG_MAX_EDGE` 256 -> 384. |
+| `src/state/label-store.ts` | The label text goes through `countryDisplayName`. |
+| `src/ui/ImageUpload.tsx` | Four optional props: `chooseLabel`, `replaceLabel`, `hint`, `previewClassName`. |
+| `src/ui/CountryPlaque.tsx` | The name goes through `countryDisplayName`. The country colour now sits behind the flag box always. |
+| `src/ui/CountryPanel.tsx` | The row's name input gained the same fallback as its placeholder. |
+| `src/ui/fields.module.css` | Added `.hint` and `.status[data-kind="warn"]`. |
+| `src/ui/country-plaque.module.css` | `.flagImage` `object-fit` `cover` -> `contain`. |
+
+Nothing under `src/map/`, and none of `render.ts`, `border-layer.ts`,
+`label-layer.ts`, `MapCanvas.tsx`, `persistence.ts`, `migrations.ts`,
+`borders-store.ts`, `assign-store.ts`, `selection-store.ts`, `use-field-commit.ts`,
+`EditableText.tsx` or `EditableTextArea.tsx` was touched.
+
+### The pure half
+
+`src/ui/country-overview.ts` has no React, no signals and no DOM. The repo has no
+jsdom, so a `.tsx` cannot be tested. Everything in the panel worth an assertion
+was pushed into this module instead, which is the same split T08 used for
+`nextSelection` and T07 used for `label-layout.ts`.
+
+`groupDigits` is hand-rolled and does not call `toLocaleString()`. A test that
+asserts `"18,687"` against `toLocaleString` asserts whatever ICU the test runner
+shipped with. The comma also has to match `CountryPanel`'s existing `18,687 px`
+row, and the two must not disagree.
+
+`formatBytes` reports kilobytes only and floors a non-empty image at `1 KB`. A
+flag is never megabytes, because `IMAGE_TARGET_BYTES` caps it at 256 KB, and a
+second unit is a second thing to get wrong. A flag that is visibly on screen must
+never read `0 KB`.
+
+`loreCounterText` stays silent until the text reaches `LORE_COUNTER_AT`, which is
+90% of the cap. A counter that is always on is noise in a field meant for prose.
+It reads the cap from `LORE_MAX` rather than from a copy of 8000.
+
+### The name fallback
+
+`countryDisplayName(id, name)` lives in `src/state/schema.ts`, next to
+`createCountry`, so the string `"Country N"` exists once.
+
+An empty name is reachable: `updateCountry` accepts `""` and stores it. Before
+T09 that blanked the plaque, **deleted the country's label off the map** — the
+`text === ""` guard in `label-store.ts` skipped the country — and was then
+silently rewritten to `"Country N"` by `normalizeState` on the next reload.
+Memory and disk disagreed. One function fixes all three surfaces.
+
+The function does not clamp and does not trim the name it returns. Clamping is
+`updateCountry`'s job, and trimming while the user types `" New"` would fight the
+field. `CountryPanel`'s row input and the overview panel's Name field keep their
+raw `value` and show the fallback as a **placeholder**, because a controlled input
+has to let the user clear it.
+
+### The flag
+
+`FLAG_MAX_EDGE` is 384, up from 256. The largest surface a flag is drawn on is the
+panel preview at 288 CSS px, which is 576 device px on a 2x display, and 256
+cannot cover it. The measured cost is about 70 KB of `localStorage` per flag
+against the 4 MB budget, so roughly 57 flags. `IMAGE_TARGET_BYTES` still bounds
+the pathological case.
+
+The panel never encodes an image itself. It passes `maxEdge={FLAG_MAX_EDGE}` to
+`ImageUpload`, which runs T05's `downscaleImage`. There is no `FileReader`, no
+`toDataURL` and no `createObjectURL` anywhere in the panel. A test asserts that by
+reading the source.
+
+`ImageUpload` gained four optional props and no new behaviour. `chooseLabel` and
+`replaceLabel` let the primary button read `replace…` once an image exists, `hint`
+draws a standing line under the actions, and `previewClassName` swaps the preview
+box. The hint paragraph sits **before** the error paragraph, so a fresh error is
+the last thing in the block and sits closest to the button that produced it. The
+request counter, the `mountedRef` guard, `MAX_UPLOAD_BYTES` and the error handling
+are untouched.
+
+**`previewClassName` replaces `styles.preview`; it never adds to it.** Two
+single-class selectors from two CSS modules have equal specificity, so the winner
+is whatever order rspack emits the modules in. That is a coin flip that looks
+correct until a rebuild.
+
+The plaque draws its flag with `object-fit: contain` and keeps the country colour
+behind the box unconditionally. `cover` crops a 2:1 flag's left and right ends,
+which is where the charge usually sits. The colour behind does the letterboxing,
+so the no-flag state is the same element with nothing in it rather than a second
+visual treatment.
+
+### Save failures
+
+`saveNoticeFor(warning, afterFlagWrite)` turns a `StateWarning` into a sentence,
+or into `null`. The notice is **panel-level and sits at the top of the body**, not
+inside the flag field: a quota failure caused by lore should not appear under a
+flag picker, so `ImageUpload` needs no `notice` prop.
+
+| Warning kind | What the panel says |
+|---|---|
+| `quota` | Storage is full and the change was not saved. Two texts — one names the flag, the other does not. |
+| `budget` | The store's own message, styled as a warning rather than an error. The data is on disk. |
+| `unavailable` | Saving is off, plus the store's reason. |
+| `future` | A newer build wrote this document, so nothing typed here is saved. |
+| `corrupt`, `unmigratable`, `repaired` | Nothing. |
+
+The last three are load-time events about the whole document. `App.tsx` already
+shows them in the top banner with a dismiss control, and repeating them inside a
+panel would say the same thing twice about something the panel cannot fix.
+
+Two rules make a flag write honest:
+
+- **`flushState()` runs after a flag commit and after a flag removal, never after
+  a keystroke.** A quota failure is only discovered inside `writeNow`. Without the
+  flush it lands 400 ms later and reads as "it worked, then a banner appeared".
+- **The store is read back after a flag commit.** `updateCountry` rejects a data
+  URL over `IMAGE_DATA_URL_MAX` **silently** — no return value, no warning, no
+  timer armed. Comparing `countryById.peek().get(id).flagDataUrl` against the
+  committed URL is the only way to know. It is `.peek()` and not `.value`, because
+  this runs in an event handler and must not subscribe.
+
+The flag message is **tagged with the country id and derived**, not cleared in an
+effect. The panel does not remount when the selection moves; only its keyed
+children do. A message produced for country 3 is therefore simply not country 4's
+message.
+
+### Territory
+
+Two read-only facts, plus a third when a flag exists: province count, pixel area
+and flag size. They come from `countryAggregates`, the T06 computed that already
+caches them. **A component never calls `aggregateCountry`.**
+
+The facts render as a `<section>` holding a heading and a `<dl>`. A `<dl>` may
+only contain `dt`, `dd` and `div`, so the heading sits outside the list.
+
+### Traps for later tasks
+
+- **Every field call site keeps `key={"<field>-" + country.id}`.** Without the key
+  a draft typed for one country is displayed over, and then committed into, the
+  next one. T08 set that rule and T09 follows it for all four fields.
+- `updateCountry` still does not copy `provinceIds`. `label-store.ts` validates
+  its anchor cache on that array's identity, so a rename costs no anchor
+  recompute. Do not "fix" it.
+- `useFieldCommit`'s window is fixed at 200 ms and is not restarting.
+  `use-field-commit.test.ts` fails if it is made restarting. Do not change 200 ms
+  or the store's 400 ms.
+- `src/scaffold.test.ts` rejects an inline `export` keyword and an
+  `export type { … }` clause. Write `export { type Foo };` at the end of the file.
+- The `flag` fact reports **decoded** bytes, from `dataUrlBytes`. The real
+  `localStorage` cost is about 2.7x that, because the base64 payload is stored as
+  UTF-16. The number therefore understates what the quota notice asks the user to
+  reduce.
+- The flag hint advertises `svg`, but `createImageBitmap` on an SVG blob is
+  rejected by Chrome and Safari. Such a pick fails gracefully with "the file is
+  not a readable image"; the wording overpromises.
+- `saveNoticeFor` ends with a `return null` after its `switch`, so a new
+  `WarningKind` compiles and goes quiet instead of failing the build. The guard is
+  in the test instead: the expectation table is typed
+  `Record<WarningKind, SaveNoticeKind | null>`, so a new kind fails `yarn typecheck`
+  there.
+- `flag.touched` stays true after a **successful** upload, so a later quota
+  failure caused by a lore keystroke still reads "the flag was not saved" until the
+  selection moves.
+- `.status[data-kind="warn"]` in `fields.module.css` is currently unused. The live
+  warning styling is `.notice[data-kind="warn"]` in the panel's own module.
+- The panel imports only `country-overview.module.css`. `panel-bodies.module.css`
+  stays for T10 and T12.
+- Country colour, creation, deletion and assignment stay in the left
+  `CountryPanel`. T09 moved none of them.
+- Two shell layout defects from T08 are still open, because both are chrome shared
+  by all three panels: the plaque and the panel dock overlap between roughly 900
+  and 1200 px, and the HUD's `max-width` is wrong below roughly 760 px.
+- No `.tsx` in this task is unit tested, for the usual reason. The wiring that
+  cannot be reached without jsdom is pinned by source-text assertions in
+  `country-overview.test.ts` — `flushState()` present, `countryById.peek()`
+  present, `countryById.value` absent, `maxEdge={FLAG_MAX_EDGE}` passed, no
+  encoder call, and the four `key` props. `src/scaffold.test.ts` set that
+  precedent.

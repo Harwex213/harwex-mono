@@ -1,7 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { STATE_KEY, createMemoryStorage } from "./persistence";
-import { createCountry, createEmptyState, serializeState } from "./schema";
+import {
+  IMAGE_DATA_URL_MAX,
+  countryDisplayName,
+  createCountry,
+  createEmptyState,
+  serializeState,
+} from "./schema";
 import {
   addCountry,
   assignProvinces,
@@ -251,6 +257,44 @@ test("a quota failure keeps the in-memory state and clears once a write succeeds
   assert.equal(storedDoc(storage)?.provinceOverrides["7"]?.lore, "A border keep.");
 });
 
+test("a flag that will not fit stays on screen, and removing it saves and clears the warning", () => {
+  // T09's flag path: `updateCountry` then `flushState()`, so the quota outcome
+  // is known at the moment of the upload instead of 400 ms later.
+  let full = true;
+  const storage = fakeStorage((key) => {
+    if (full && key === STATE_KEY) {
+      throw quotaError();
+    }
+  });
+  const timers = fakeTimers();
+  initWorldStore({ storage, timers });
+
+  const country = addCountry("Testland");
+  updateCountry(country.id, { flagDataUrl: IMAGE });
+  assert.doesNotThrow(() => {
+    flushState();
+  });
+
+  assert.equal(stateWarning.value?.kind, "quota");
+  assert.equal(
+    countryById.value.get(country.id)?.flagDataUrl,
+    IMAGE,
+    "the upload survives a failed save, so the panel can still offer to remove it",
+  );
+  assert.equal(statePersistent.value, true);
+  assert.equal(storedDoc(storage), null);
+
+  // Removing the flag IS the recovery action, so it flushes too and the warning
+  // has to clear at that moment.
+  full = false;
+  updateCountry(country.id, { flagDataUrl: null });
+  flushState();
+
+  assert.equal(stateWarning.value, null);
+  assert.equal(countryById.value.get(country.id)?.flagDataUrl, null);
+  assert.equal(storedDoc(storage)?.countries[0]?.flagDataUrl, null);
+});
+
 test("country ids keep counting up across a reload", () => {
   const storage = fakeStorage();
   const timers = fakeTimers();
@@ -439,4 +483,62 @@ test("a patch that changes nothing does not replace the countries array", () => 
 
   updateCountry(country.id, { name: "Changed" });
   assert.notEqual(countries.value, before, "a real change still lands");
+});
+
+test("an over-cap flag is dropped without a word, and the store read-back is what catches it", () => {
+  // T09 DESIGN 8.3. `updateCountry` returns nothing and raises no warning when a
+  // data URL fails `isImageDataUrl`, so the panel compares what it committed
+  // against what the store now holds. This is that comparison, at the store.
+  const timers = fakeTimers();
+  initWorldStore({ storage: fakeStorage(), timers });
+  const country = addCountry("Testland");
+  updateCountry(country.id, { flagDataUrl: IMAGE });
+  timers.run();
+
+  const head = "data:image/webp;base64,";
+  const overCap = head + "A".repeat(IMAGE_DATA_URL_MAX - head.length + 1);
+  assert.equal(overCap.length, IMAGE_DATA_URL_MAX + 1);
+
+  updateCountry(country.id, { flagDataUrl: overCap });
+
+  // The exact expression `CountryOverviewPanel.onFlag` runs after every commit.
+  const stored = countryById.peek().get(country.id)?.flagDataUrl ?? null;
+  assert.equal(stored, IMAGE, "the previous flag is untouched");
+  assert.equal(stored !== overCap, true, "so the panel knows the upload never landed");
+  assert.equal(timers.armed(), 0, "and a refused patch schedules no write");
+
+  // A legal URL reads back equal, so the same check does not cry wolf.
+  const other = "data:image/webp;base64,UklGRhIAAABXRUJQVlA4TAYAAAAvAAAAAAfQ//73v/+BiOh/AAB=";
+  updateCountry(country.id, { flagDataUrl: other });
+  assert.equal(countryById.peek().get(country.id)?.flagDataUrl, other);
+});
+
+test("an emptied country name is kept as empty on disk and reads back as the fallback", () => {
+  // T09 DESIGN 8.10. The store deliberately keeps "" — rewriting it into the
+  // document would be a silent edit of the user's data — and every surface shows
+  // `countryDisplayName` instead. The test that matters is that a reload agrees
+  // with what the panel, the plaque and the map label were already showing.
+  const storage = fakeStorage();
+  const timers = fakeTimers();
+  initWorldStore({ storage, timers });
+  const country = addCountry("Testland");
+
+  updateCountry(country.id, { name: "" });
+  timers.run();
+
+  assert.equal(countryById.value.get(country.id)?.name, "");
+  assert.equal(storedDoc(storage)?.countries[0]?.name, "");
+
+  initWorldStore({ storage, timers });
+  assert.equal(countryById.value.get(country.id)?.name, "Country 1");
+  assert.equal(countryById.value.get(country.id)?.name, countryDisplayName(country.id, ""));
+
+  // A name of pure whitespace is stored verbatim for the same reason, and it
+  // still displays as the fallback.
+  updateCountry(country.id, { name: "   " });
+  timers.run();
+  initWorldStore({ storage, timers });
+
+  assert.equal(countryById.value.get(country.id)?.name, "   ", "no silent edit on reload");
+  assert.equal(countryDisplayName(country.id, "   "), "Country 1");
 });

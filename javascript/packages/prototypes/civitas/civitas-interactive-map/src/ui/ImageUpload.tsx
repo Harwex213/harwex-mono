@@ -21,6 +21,19 @@ type ImageUploadProps = {
   maxEdge: number;
   onCommit: (dataUrl: string | null) => void;
   disabled?: boolean;
+  // "choose file…" by default. Shown when there is no image.
+  chooseLabel?: string;
+  // "replace…" by default. Shown when there IS one, so the primary control reads
+  // as what it does rather than repeating "choose file…" next to a picture.
+  replaceLabel?: string;
+  // A static line under the actions: what the field accepts and what it does to
+  // the file. It is not an error and it never disappears.
+  hint?: string;
+  // REPLACES `styles.preview`, it does not add to it. Two single-class selectors
+  // from two different CSS modules have equal specificity, so which one wins
+  // depends on the order rspack happens to emit the modules in. Replacing is
+  // deterministic; appending is a coin flip that looks fine until a rebuild.
+  previewClassName?: string;
 };
 
 function ImageUpload(props: ImageUploadProps) {
@@ -87,14 +100,15 @@ function ImageUpload(props: ImageUploadProps) {
     props.onCommit(null);
   }
 
-  const showImage = props.value !== null && props.value !== "" && !broken;
+  const hasImage = props.value !== null && props.value !== "";
+  const showImage = hasImage && !broken;
 
   return (
     <div className={styles.field}>
       <span className={styles.caption}>{props.label}</span>
 
       <div className={styles.upload}>
-        <div className={styles.preview}>
+        <div className={props.previewClassName ?? styles.preview}>
           {showImage ? (
             <img
               className={styles.previewImage}
@@ -120,9 +134,13 @@ function ImageUpload(props: ImageUploadProps) {
               inputRef.current?.click();
             }}
           >
-            {busy ? "working…" : "choose file…"}
+            {busy
+              ? "working…"
+              : hasImage
+                ? (props.replaceLabel ?? "replace…")
+                : (props.chooseLabel ?? "choose file…")}
           </button>
-          {props.value === null || props.value === "" ? null : (
+          {!hasImage ? null : (
             <button
               className={styles.uploadButton}
               disabled={props.disabled === true}
@@ -133,6 +151,10 @@ function ImageUpload(props: ImageUploadProps) {
             </button>
           )}
         </div>
+
+        {/* Before the error paragraph, so a fresh error is the last thing in the
+            block and sits closest to the button that produced it. */}
+        {props.hint === undefined ? null : <p className={styles.hint}>{props.hint}</p>}
 
         {error === null ? null : (
           <p className={styles.status} data-kind="error">

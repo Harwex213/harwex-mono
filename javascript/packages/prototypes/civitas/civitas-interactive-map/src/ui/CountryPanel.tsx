@@ -8,6 +8,7 @@ import {
 } from "../state/assign-store";
 import { addCountry, countries, deleteCountry, updateCountry } from "../state/world-store";
 import { countryAggregates } from "../state/country-store";
+import { countryDisplayName } from "../state/schema";
 import { selectCountry, selectedCountryId } from "../state/selection-store";
 import type { MouseEvent as ReactMouseEvent } from "react";
 import styles from "./country-panel.module.css";
@@ -77,6 +78,10 @@ function CountryRow(props: {
       <div className={styles.rowBody}>
         <input
           className={styles.name}
+          // The `value` stays raw: a controlled input has to let the user clear
+          // it. Only the placeholder shows the fallback the rest of the app
+          // renders for an empty name.
+          placeholder={countryDisplayName(props.countryId, "")}
           type="text"
           value={props.name}
           onChange={(event) => {

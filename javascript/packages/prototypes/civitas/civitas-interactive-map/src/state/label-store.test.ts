@@ -1,5 +1,8 @@
+import { fileURLToPath } from "node:url";
+import { readFileSync } from "node:fs";
 import assert from "node:assert/strict";
 import test from "node:test";
+import { countryDisplayName } from "./schema";
 import { createMemoryStorage } from "./persistence";
 import { loadPhase } from "./map-store";
 import {
@@ -69,6 +72,22 @@ test("countryContainsPoint is false for every argument before the map loads", ()
       false,
       "at " + point.x + ", " + point.y,
     );
+  }
+});
+
+test("a cleared country name cannot drop the label off the map", () => {
+  // Before T09 the source list skipped any country whose name trimmed to empty,
+  // so clearing the field in the panel DELETED the label until a name was
+  // retyped. `loadPhase` never reaches "ready" in Node, so the loop itself is out
+  // of reach; what a regression would look like is the fallback disappearing
+  // from the text derivation, and that is checkable.
+  const source = readFileSync(fileURLToPath(new URL("./label-store.ts", import.meta.url)), "utf8");
+  assert.match(source, /countryDisplayName\(country\.id, country\.name\)/);
+
+  // And the `text === ""` guard below it can no longer fire for any name a user
+  // can type into the field, which is why deleting the fallback would be silent.
+  for (const name of ["", " ", "   ", "\n\t", "\u00a0"]) {
+    assert.notEqual(countryDisplayName(7, name).trim().toUpperCase(), "", JSON.stringify(name));
   }
 });
 

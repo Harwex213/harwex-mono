@@ -31,10 +31,13 @@
   width: 64px;
 }
 
+/* `contain`, not `cover`. A 2:1 flag cropped into a 3:2 box loses its left and
+   right ends, which is where the charge usually is. The country colour behind
+   the box does the letterboxing. */
 .flagImage {
   display: block;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
   width: 100%;
 }
 

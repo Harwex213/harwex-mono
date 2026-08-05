@@ -123,10 +123,25 @@ function createEmptyState(): CivitasState {
   };
 }
 
+// The name every surface shows. A country whose name is empty or blank still has
+// to read as something: the plaque, the map label and the panel all fall back to
+// the same string `createCountry` and `normalizeState` would produce.
+//
+// It does NOT clamp and it does NOT trim the returned name. Clamping is
+// `updateCountry`'s job, and trimming a name while the user is typing " New"
+// would fight the field.
+function countryDisplayName(id: number, name: string): string {
+  if (typeof name !== "string" || name.trim() === "") {
+    return "Country " + id;
+  }
+  return name;
+}
+
 function createCountry(id: number, name?: string): Country {
+  const requested = name === undefined ? "" : clampText(name, NAME_MAX);
   return {
     id,
-    name: name === undefined || name === "" ? "Country " + id : clampText(name, NAME_MAX),
+    name: countryDisplayName(id, requested),
     slogan: "",
     lore: "",
     flagDataUrl: null,
@@ -472,6 +487,7 @@ export {
   SLOGAN_MAX,
   STATE_VERSION,
   clampText,
+  countryDisplayName,
   createCountry,
   createEmptyState,
   defaultCountryColor,

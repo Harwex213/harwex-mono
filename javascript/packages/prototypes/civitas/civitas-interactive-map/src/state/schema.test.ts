@@ -5,6 +5,7 @@ import {
   LORE_MAX,
   NAME_MAX,
   STATE_VERSION,
+  countryDisplayName,
   createCountry,
   createEmptyState,
   defaultCountryColor,
@@ -53,6 +54,29 @@ test("createEmptyState hands out fresh containers on every call", () => {
   assert.equal(second.countries.length, 0);
   assert.equal(second.economics.size, 0);
   assert.equal(second.nextCountryId, 1);
+});
+
+test("countryDisplayName falls back for an empty or blank name and leaves a real one alone", () => {
+  // The one string the plaque, the map label and the panel placeholder all
+  // share, so an emptied name reads the same everywhere and agrees with what a
+  // reload would produce.
+  assert.equal(countryDisplayName(1, "Testland"), "Testland");
+  assert.equal(countryDisplayName(1, ""), "Country 1");
+  assert.equal(countryDisplayName(3, "   "), "Country 3");
+  assert.equal(countryDisplayName(3, "\n\t"), "Country 3");
+  // It does NOT trim what it returns: trimming while the user types " New"
+  // would fight the field.
+  assert.equal(countryDisplayName(3, " New"), " New");
+  assert.equal(countryDisplayName(4, undefined as unknown as string), "Country 4");
+  assert.equal(countryDisplayName(4, 7 as unknown as string), "Country 4");
+});
+
+test("createCountry routes its name through the same fallback", () => {
+  assert.equal(createCountry(3).name, "Country 3");
+  assert.equal(createCountry(3, "").name, "Country 3");
+  assert.equal(createCountry(3, "   ").name, "Country 3");
+  assert.equal(createCountry(3, "Testland").name, "Testland");
+  assert.equal(createCountry(3, "x".repeat(NAME_MAX + 40)).name.length, NAME_MAX);
 });
 
 test("an empty state serialises to a tiny document carrying the schema version", () => {

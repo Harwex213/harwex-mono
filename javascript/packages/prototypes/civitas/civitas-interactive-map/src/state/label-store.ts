@@ -1,6 +1,7 @@
 import { computed, signal } from "@preact/signals-react";
 import { countryAggregates, maxProvinceId } from "./country-store";
 import { countries, countryOfProvince } from "./world-store";
+import { countryDisplayName } from "./schema";
 import { loadPhase, provinceAt, provinceById } from "./map-store";
 import { resolveLabelAnchor } from "../map/label-layout";
 import type { AnchorCandidate, CountryLabelSource } from "../map/label-layout";
@@ -114,7 +115,11 @@ const countryLabelSources: ReadonlySignal<readonly CountryLabelSource[]> = compu
     if (!aggregate || aggregate.bounds === null || aggregate.centroid === null) {
       continue;
     }
-    const text = country.name.trim().toUpperCase();
+    // Through the shared fallback, so clearing the name in the panel does not
+    // delete the label off the map. The guard below can no longer fire — a
+    // guard that cannot fire is cheaper than a label layout handed a
+    // zero-width string.
+    const text = countryDisplayName(country.id, country.name).trim().toUpperCase();
     if (text === "") {
       continue;
     }
