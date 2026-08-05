@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { TINT_ALPHA, tintWordFor } from "../ui/tint-layer";
+import { SELECTED_TINT_ALPHA, TINT_ALPHA, tintWordFor } from "../ui/tint-layer";
 import { DEBOUNCE_MS, createMemoryStorage } from "./persistence";
 import { borderPhase } from "./borders-store";
 import { createCountry } from "./schema";
@@ -273,6 +273,63 @@ test("the disposer initCountrySync returns stops the push", () => {
 
   assignProvinces(a.id, [7]);
   assert.equal(timers.sets, baseline, "the returned disposer is the real one");
+});
+
+test("the emphasis argument raises one country's alpha and leaves the rest alone", () => {
+  const list = [country(1, "#c0563f", [1]), country(2, "#4f7fb5", [2])];
+  const words = buildTintWordTable(list, 3, 1, SELECTED_TINT_ALPHA);
+
+  assert.equal(words[1], tintWordFor("#c0563f", SELECTED_TINT_ALPHA));
+  assert.equal(words[2], tintWordFor("#4f7fb5", TINT_ALPHA));
+  assert.ok(SELECTED_TINT_ALPHA > TINT_ALPHA, "emphasis has to be a step UP, or it is invisible");
+});
+
+test("no emphasis argument is byte-identical to the pre-T08 table", () => {
+  // What keeps the seven existing call sites above honest: adding the two
+  // optional parameters changed no existing output.
+  const list = [country(1, "#c0563f", [1, 2]), country(2, "#4f7fb5", [3])];
+
+  const plain = buildTintWordTable(list, 4);
+  const explicitNone = buildTintWordTable(list, 4, null, SELECTED_TINT_ALPHA);
+
+  assert.deepEqual(Array.from(plain), Array.from(explicitNone));
+  assert.equal(plain[1], tintWordFor("#c0563f", TINT_ALPHA));
+});
+
+test("an emphasis id that names no country tints nothing differently", () => {
+  // The path a deleted or never-created selection takes. `selectedCountryId`
+  // already returns null for a deleted country, but an id that survives one
+  // frame longer must not produce a table nobody expects.
+  const list = [country(1, "#c0563f", [1, 2]), country(2, "#4f7fb5", [3])];
+
+  const missing = buildTintWordTable(list, 4, 99, SELECTED_TINT_ALPHA);
+  assert.deepEqual(Array.from(missing), Array.from(buildTintWordTable(list, 4)));
+});
+
+test("the emphasis alpha defaults to SELECTED_TINT_ALPHA when it is left off", () => {
+  // `countryTintWords` passes it explicitly, but the parameter is optional and
+  // the default has to be the same constant the map is tuned against.
+  const list = [country(1, "#c0563f", [1]), country(2, "#4f7fb5", [2])];
+
+  const implied = buildTintWordTable(list, 2, 1);
+  assert.equal(implied[1], tintWordFor("#c0563f", SELECTED_TINT_ALPHA));
+  assert.equal(implied[2], tintWordFor("#4f7fb5", TINT_ALPHA));
+  assert.deepEqual(
+    Array.from(implied),
+    Array.from(buildTintWordTable(list, 2, 1, SELECTED_TINT_ALPHA)),
+  );
+});
+
+test("emphasis only changes the alpha channel, never the colour", () => {
+  // The map reads the selected country as the SAME country, only deeper. If
+  // emphasis moved a colour byte the country would appear to change identity.
+  const list = [country(1, "#c0563f", [1])];
+
+  const plain = buildTintWordTable(list, 1)[1] as number;
+  const deep = buildTintWordTable(list, 1, 1, SELECTED_TINT_ALPHA)[1] as number;
+
+  assert.equal(deep & 0x00ffffff, plain & 0x00ffffff, "r, g and b are untouched");
+  assert.ok((deep >>> 24) > (plain >>> 24), "and only the alpha goes up");
 });
 
 test("flushCountryBorders before any init is a no-op, not a crash", () => {

@@ -24,6 +24,13 @@ import type { ProvinceIndex } from "../map/province-index";
 // hovered province still reads as hovered on top of its country tint.
 const TINT_ALPHA = 0.32;
 
+// T08's selected country. A visible step up from `TINT_ALPHA` that still does
+// not swallow the T04 select fill (alpha 112/255 = 0.44 accent gold) drawn on
+// top of it. Emphasis costs no new draw call: it only changes the country's word
+// in the tint table, and `diffTintWords` then repaints exactly the provinces
+// whose word changed.
+const SELECTED_TINT_ALPHA = 0.48;
+
 const COLOR_HEX = /^#[0-9a-f]{6}$/i;
 
 type TintSync = { repainted: number; cleared: boolean; created: boolean };
@@ -230,6 +237,7 @@ function disposeTintLayer(): void {
 }
 
 export {
+  SELECTED_TINT_ALPHA,
   TINT_ALPHA,
   buildTintPixels,
   diffTintWords,

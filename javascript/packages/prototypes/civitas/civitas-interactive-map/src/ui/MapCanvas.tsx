@@ -36,9 +36,11 @@ import {
 import { samplePathPixels } from "../map/paint-path";
 import {
   hoveredProvinceId,
+  selectCountryOfProvince,
+  selectProvince,
   selectedProvinceId,
+  selectionScope,
   setHoveredProvince,
-  setSelectedProvince,
 } from "../state/selection-store";
 import {
   cursorMap,
@@ -65,6 +67,20 @@ const DELTA_TO_PIXELS = [1, 16, 100];
 const WHEEL_STEP = 1.0015;
 const DOUBLE_CLICK_FACTOR = 2;
 const DRAG_THRESHOLD = 3;
+
+// A CONTEXT PRESS: button 2 everywhere, plus a ctrl+left press, which is the
+// right click of macOS. There the button stays 0 and `ctrlKey` is the only
+// thing that tells the two apart, so a press that is only checked against
+// `button === 2` starts a pan or a paint stroke and the country selection never
+// happens.
+//
+// Applied on every platform on purpose. Windows and Linux fire no `contextmenu`
+// for a ctrl+click, so `onPointerUp` runs the selection there instead; making
+// the press mean the same thing everywhere is cheaper than sniffing the
+// platform and getting it wrong on one.
+function isContextPress(event: { button: number; ctrlKey: boolean }): boolean {
+  return event.button === 2 || (event.button === 0 && event.ctrlKey);
+}
 
 type Gesture =
   | { kind: "idle" }
@@ -94,11 +110,12 @@ function isHudControl(target: EventTarget | null): boolean {
   return target instanceof Element && target.closest("[data-hud-control]") !== null;
 }
 
-// T03/T04/T06 VERIFICATION UI — T08 replaces this with the real selection
-// panels. It exists to prove the screen->map transform has not drifted (at 8x,
-// map pixel (1382, 1329) must report province 1000), that the scan runs off the
-// main thread, and that the country recompute is cheap. The `country` readout
-// is the instrument for the "no freeze while painting" check.
+// VERIFICATION UI, kept deliberately. The shell now carries the product-facing
+// readouts, but this instrument is what proves the screen->map transform has not
+// drifted (at 8x, map pixel (1382, 1329) must report province 1000), that the
+// scan runs off the main thread, and that the country recompute is cheap. The
+// `country` readout is the instrument for the "no freeze while painting" check.
+// It sits bottom-LEFT so it never lands under the shell's button bar.
 function Hud() {
   useSignals();
 
@@ -139,6 +156,9 @@ function Hud() {
         </span>
         <span>
           selected <span className={styles.hudProvince}>{selected === null ? "—" : selected}</span>
+        </span>
+        <span>
+          scope <span className={styles.hudValue}>{selectionScope.value}</span>
         </span>
         <span>
           border <span className={styles.hudValue}>{borderPhase.value}</span>
@@ -464,6 +484,15 @@ function MapCanvas() {
     }
   }
 
+  // Screen point -> map pixel -> province id. `provinceAt` returns `null` for
+  // the sea and for bare canvas alike, so "clicking empty sea clears the
+  // selection" needs no separate branch at any call site.
+  function provinceAtClient(host: HTMLDivElement, clientX: number, clientY: number): number | null {
+    const rect = host.getBoundingClientRect();
+    const pixel = mapPixelAt(clientX - rect.left, clientY - rect.top);
+    return pixel ? provinceAt(pixel.x, pixel.y) : null;
+  }
+
   function startPan(event: ReactPointerEvent<HTMLDivElement>, current: View): void {
     event.currentTarget.setPointerCapture(event.pointerId);
     gestureRef.current = {
@@ -479,6 +508,20 @@ function MapCanvas() {
 
   function onPointerDown(event: ReactPointerEvent<HTMLDivElement>): void {
     if (isHudControl(event.target)) {
+      return;
+    }
+    // A context press starts no gesture at all: it is handled in
+    // `onContextMenu`, or in `onPointerUp` on the platforms that fire no
+    // `contextmenu` for a ctrl+click. Declining it HERE is what keeps a
+    // ctrl+click from painting — `beginStroke` assigns the pressed province
+    // immediately, so a stroke started here could not be taken back later.
+    //
+    // The return is BEFORE the `preventDefault` below on purpose: preventing a
+    // pointerdown's default suppresses the compatibility mouse events, and an
+    // engine that derives `contextmenu` from `mousedown` would then never fire
+    // it. Nothing about a context press needs the text-selection or drag
+    // suppression that call gives.
+    if (isContextPress(event)) {
       return;
     }
     const current = view.value;
@@ -585,11 +628,17 @@ function MapCanvas() {
     panTo(gesture.originX + dx, gesture.originY + dy);
   }
 
-  // T04 PLACEHOLDER — T08 owns selection semantics (right click selects the
-  // country, selection drives the panels). This is here to prove the highlight
-  // path works. The province is read from the pointer position rather than from
+  // The province is read from the pointer position rather than from
   // `cursorMap`, so a click with no preceding move still selects. A drag past the
   // 3 px threshold deliberately does not.
+  //
+  // WHICH MODE OWNS THE LEFT CLICK. The paint tool owns the left button whenever
+  // it can actually paint — assign mode on AND a country active. The paint
+  // branch below returns before the selection branch, so painting never moves
+  // the selection. With no active country `onPointerDown` already falls through
+  // to a pan, and the click at the end of that fall-through selects, so the map
+  // is never a dead surface. A ctrl+left click belongs to NEITHER: it is a
+  // context press, and it selects the country in both modes.
   function onPointerUp(event: ReactPointerEvent<HTMLDivElement>): void {
     // While a pan holds pointer capture the pointerup retargets to the host, so
     // `event.target` is only a HUD control when the press started on one and
@@ -607,15 +656,25 @@ function MapCanvas() {
       return;
     }
 
+    // A CTRL+CLICK, on a platform that fires no `contextmenu` for one. The
+    // gesture is idle because `onPointerDown` declined the press, so the pan
+    // branch below cannot fire and there is nothing to end. On macOS
+    // `onContextMenu` has already run this exact intent and `sameSelection`
+    // swallows the repeat, so the click means the same thing everywhere.
+    if (event.button === 0 && event.ctrlKey && gesture.kind === "idle") {
+      selectCountryOfProvince(
+        provinceAtClient(event.currentTarget, event.clientX, event.clientY),
+      );
+      return;
+    }
+
     if (
       event.button === 0 &&
       gesture.kind === "pan" &&
       gesture.pointerId === event.pointerId &&
       !gesture.moved
     ) {
-      const rect = event.currentTarget.getBoundingClientRect();
-      const pixel = mapPixelAt(event.clientX - rect.left, event.clientY - rect.top);
-      setSelectedProvince(pixel ? provinceAt(pixel.x, pixel.y) : null);
+      selectProvince(provinceAtClient(event.currentTarget, event.clientX, event.clientY));
     }
     endGesture(event.currentTarget, event.pointerId);
   }
@@ -669,10 +728,28 @@ function MapCanvas() {
     zoomAtPoint(event.clientX - rect.left, event.clientY - rect.top, DOUBLE_CLICK_FACTOR);
   }
 
+  // RIGHT CLICK SELECTS THE PROVINCE'S COUNTRY, in both modes. `contextmenu` is
+  // the one event that means "the user asked for the context action" on every
+  // platform, including macOS ctrl+click where the pointer button is 0 — and it
+  // is the handler that must `preventDefault` anyway.
+  //
+  // `contextmenu` is derived from `mousedown`, which follows `pointerdown`, so
+  // by the time this runs `onPointerDown` has already decided what the press
+  // was. A ctrl+click therefore arrives with an IDLE gesture only because
+  // `onPointerDown` declines a ctrl+left press exactly as it declines button 2.
+  // The guard below then turns away what it is actually for: a genuine right
+  // press made DURING a left pan or a paint stroke, which inspects nothing.
   function onContextMenu(event: ReactMouseEvent<HTMLDivElement>): void {
-    // T08 puts right-click country selection here; the browser menu must not
-    // pop for it or for a right-drag.
+    // Unconditional, and first: the browser menu must not pop even when the
+    // press is declined below, and not on a right-drag either.
     event.preventDefault();
+    if (isHudControl(event.target)) {
+      return;
+    }
+    if (gestureRef.current.kind !== "idle") {
+      return;
+    }
+    selectCountryOfProvince(provinceAtClient(event.currentTarget, event.clientX, event.clientY));
   }
 
   return (

@@ -402,7 +402,13 @@ function updateCountry(id: number, patch: CountryPatch): void {
   }
 
   const current = list[at] as Country;
-  const next: Country = { ...current, provinceIds: [...current.provinceIds] };
+  // `provinceIds` is NOT copied. `assignProvinces` is the only writer and it
+  // always builds a fresh array, so a copy here defends against nothing — and
+  // `label-store.ts` validates its anchor cache on this array's IDENTITY. With
+  // a copy, every keystroke in a country name re-ran `resolveLabelAnchor`, up to
+  // 1728 `contains` probes. T08 makes renaming a per-keystroke operation, so the
+  // difference is load bearing.
+  const next: Country = { ...current };
   let changed = false;
 
   if (typeof patch.name === "string") {

@@ -387,3 +387,56 @@ test("updateCountry validates its patch and provinceDisplayName layers the name"
   setProvinceName(7, "Alnwick");
   assert.equal(provinceDisplayName(7), "Alnwick");
 });
+
+test("updateCountry leaves provinceIds at the SAME array, not a copy", () => {
+  // `label-store.ts` validates its anchor cache on this array's IDENTITY. A
+  // defensive copy here made every keystroke in a country name re-run
+  // `resolveLabelAnchor`, up to 1728 `contains` probes. `assignProvinces` is the
+  // only writer and always builds a fresh array, so the copy defended nothing.
+  initWorldStore({ storage: fakeStorage(), timers: fakeTimers() });
+  const country = addCountry("Testland");
+  assignProvinces(country.id, [3, 4, 5]);
+
+  const before = countryById.value.get(country.id)?.provinceIds;
+  updateCountry(country.id, { name: "Renamed" });
+  const after = countryById.value.get(country.id)?.provinceIds;
+
+  assert.equal(after, before, "a rename must not invalidate the label anchor cache");
+});
+
+test("every editable field keeps provinceIds at the same array", () => {
+  // T08's panel commits name, slogan, lore and the flag one keystroke at a
+  // time, so the identity has to hold on every branch of `updateCountry`, not
+  // just the one the test above happens to take.
+  initWorldStore({ storage: fakeStorage(), timers: fakeTimers() });
+  const country = addCountry("Testland");
+  assignProvinces(country.id, [3, 4, 5]);
+  const before = countryById.value.get(country.id)?.provinceIds;
+
+  updateCountry(country.id, { slogan: "Ever onward" });
+  updateCountry(country.id, { lore: "Founded in the long winter." });
+  updateCountry(country.id, { flagDataUrl: IMAGE });
+  updateCountry(country.id, { colorHex: "#123456" });
+
+  const after = countryById.value.get(country.id)?.provinceIds;
+  assert.equal(after, before);
+  assert.deepEqual(after, [3, 4, 5], "and the contents are untouched");
+});
+
+test("a patch that changes nothing does not replace the countries array", () => {
+  // Committing a field the user did not actually change must not invalidate
+  // `countryById`, `countryOfProvince`, `countryTintWords`, `countryAggregates`
+  // and the label layout for nothing. The 200 ms field debounce assumes it.
+  initWorldStore({ storage: fakeStorage(), timers: fakeTimers() });
+  const country = addCountry("Testland");
+  const before = countries.value;
+
+  updateCountry(country.id, { name: "Testland" });
+  assert.equal(countries.value, before, "the same name is a no-op");
+
+  updateCountry(country.id, { colorHex: "#nothex" });
+  assert.equal(countries.value, before, "and so is a patch that fails validation");
+
+  updateCountry(country.id, { name: "Changed" });
+  assert.notEqual(countries.value, before, "a real change still lands");
+});

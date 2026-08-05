@@ -4,11 +4,11 @@ import {
   activeCountryId,
   assignMode,
   setActiveCountry,
-  setAssignMode,
   toggleAssignMode,
 } from "../state/assign-store";
 import { addCountry, countries, deleteCountry, updateCountry } from "../state/world-store";
 import { countryAggregates } from "../state/country-store";
+import { selectCountry, selectedCountryId } from "../state/selection-store";
 import type { MouseEvent as ReactMouseEvent } from "react";
 import styles from "./country-panel.module.css";
 
@@ -34,6 +34,7 @@ function CountryRow(props: {
   provinceCount: number;
   pixelCount: number;
   active: boolean;
+  selected: boolean;
   armed: boolean;
   onArm: (id: number | null) => void;
   onColor: (id: number, hex: string) => void;
@@ -43,6 +44,10 @@ function CountryRow(props: {
       return;
     }
     setActiveCountry(props.countryId);
+    // A row click also SELECTS the country, so the plaque and the three panels
+    // follow. `selectCountry` keeps the currently selected province only when
+    // that province is inside this country.
+    selectCountry(props.countryId);
   }
 
   function onDelete(): void {
@@ -58,6 +63,7 @@ function CountryRow(props: {
     <div
       className={styles.row}
       data-active={props.active ? "true" : "false"}
+      data-selected={props.selected ? "true" : "false"}
       onClick={onRowClick}
     >
       <input
@@ -108,6 +114,7 @@ function CountryPanel() {
 
   const list = countries.value;
   const active = activeCountryId.value;
+  const selected = selectedCountryId.value;
   const mode = assignMode.value;
   const aggregates = countryAggregates.value;
 
@@ -159,18 +166,10 @@ function CountryPanel() {
     };
   }, [armedId]);
 
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.key !== "Escape") {
-        return;
-      }
-      setAssignMode(false);
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => {
-      window.removeEventListener("keydown", onKeyDown);
-    };
-  }, []);
+  // NO Escape listener here. T08 moved it to `Shell`, which owns the single
+  // window handler: it closes the open panel first and leaves assign mode
+  // second. Two independent listeners on one key means a press does two things
+  // and neither is predictable.
 
   function onNew(): void {
     const country = addCountry();
@@ -223,6 +222,7 @@ function CountryPanel() {
                 provinceCount={aggregate ? aggregate.provinceCount : country.provinceIds.length}
                 pixelCount={aggregate ? aggregate.pixelCount : 0}
                 active={active === country.id}
+                selected={selected === country.id}
                 armed={armedId === country.id}
                 onArm={setArmedId}
                 onColor={onColor}

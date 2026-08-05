@@ -1,7 +1,6 @@
 import { useEffect } from "react";
 import { useSignals } from "@preact/signals-react/runtime";
-import { CountryPanel } from "./ui/CountryPanel";
-import { MapCanvas } from "./ui/MapCanvas";
+import { Shell } from "./ui/Shell";
 import { ensureMapLoaded, loadError, loadPhase, loadProgress, loadStep } from "./state/map-store";
 import {
   dismissStateWarning,
@@ -49,10 +48,11 @@ function App() {
 
   return (
     <div className={styles.app}>
-      {/* Mounted unconditionally, so the viewport is measured while the assets
-          are still loading and the first painted frame is already fitted. */}
-      <MapCanvas />
-      <CountryPanel />
+      {/* `App` stays lifecycle-shaped and renders one child. `Shell` owns the
+          layout, and the map inside it is mounted unconditionally, so the
+          viewport is measured while the assets are still loading and the first
+          painted frame is already fitted. */}
+      <Shell />
 
       {warning === null ? null : (
         <div className={styles.warning} data-kind={warning.kind}>

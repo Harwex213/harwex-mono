@@ -464,3 +464,80 @@ $ yarn test
 
 Style self-checks on the two new files printed nothing except prose apostrophes inside
 comments and test names, and no line exceeds 100 columns.
+
+---
+
+## Docs & commit
+
+Commit: `2e40e530ea4ca475bab421745c0a3add5d475a17` — "civitas interactive map — T07 EU-style country labels".
+
+### Verification before committing
+
+All three green on the first run. Nothing needed fixing.
+
+```
+yarn typecheck   exit 0 (no output)
+yarn test        exit 0, tests 440, pass 440, fail 0
+yarn build       exit 0, the same three asset-size warnings T02 recorded (not silenced)
+```
+
+`yarn test` was re-run after the README edit and still reported 440 / 440.
+
+### README
+
+Appended a `## Country labels` section. No earlier section was rewritten. It covers:
+
+- The three-file split and why `CountryLabelSource` is declared in
+  `src/map/label-layout.ts` rather than in the store.
+- The anchor chain, all three steps, with the reason step 2 saves the ring case
+  and the reason the pole search uses the largest PROVINCE's box.
+- The font ramp as a table, with the four values it produces across the zoom range.
+- Glyph-by-glyph measurement, the `n - 1` tracking rule, the 100 px metric cache,
+  and the `ctx.font` save/restore.
+- The fit test, the 7 nudge offsets, and the rule that the collision pass must run
+  over off-screen candidates too. That is written up as the non-obvious correctness
+  point, the way the think agent recorded it.
+- The two-pass halo, the fill and casing colours, and the fact that labels leave
+  type state set for whatever is appended after them.
+- The `L` toggle and its text-field guard.
+- Six traps: never pass the raw view, every `OverlayInput` field stays optional, the
+  bounding-box fit test lets a thin country overhang, `getLastLabelStats()` is one
+  frame stale, `label-store.ts` cannot be tested past 4 tests in Node, and the HUD
+  is T08's to replace.
+
+No new storage key and no new schema field, so there was no contract to document
+beyond the `CountryLabelSource` shape and the `OverlayInput` additions.
+
+### Files committed
+
+17 files, all under the package. `git commit -- <paths>` was used rather than
+`git add`, because the index already held a large set of unrelated pre-existing
+staged changes (`javascript/.yarn/cache`, other prototypes). A path-limited commit
+leaves that index untouched.
+
+```
+.plan/T05/memory.md          (T05's own "Docs & commit" addendum, left uncommitted by T05)
+.plan/T06/memory.md          (T06's own addendum, same)
+.plan/T07/DESIGN.md
+.plan/T07/memory.md
+.plan/T07/review-1.md
+README.md
+src/map/label-layout-edges.test.ts
+src/map/label-layout.test.ts
+src/map/label-layout.ts
+src/state/label-store.test.ts
+src/state/label-store.ts
+src/ui/MapCanvas.tsx
+src/ui/label-layer-cache.test.ts
+src/ui/label-layer.test.ts
+src/ui/label-layer.ts
+src/ui/render.test.ts
+src/ui/render.ts
+```
+
+### Deliberately NOT committed
+
+- `.plan/PLAN.md` and the untracked `.plan/T11/` tree. Those are T11 rulebook prep
+  written outside this task. They stay in the working tree for whoever owns T11.
+- Everything under `javascript/.yarn/cache` and every other package's changes.
+- `../civitas-map` is untouched: `git status --porcelain` over it prints nothing.

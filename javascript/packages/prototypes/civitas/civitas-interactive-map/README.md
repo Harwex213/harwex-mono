@@ -1006,3 +1006,327 @@ the "the label is not in the sea" check: press `L` and see what is underneath.
   further; that tests the fake.
 - The HUD `labels` and `placed` readouts are T07 verification UI. T08 replaces
   the whole HUD.
+
+## Selection and the UI shell
+
+A left click selects a province. A right click selects that province's country.
+The selection drives a top plaque and three docked panels. T08 also ships the
+theme tokens, the panel chrome and the editable-field components that T09 to T12
+build on.
+
+T08 adds no `localStorage` key, no schema field and no migration. The selection,
+the open panel and assign mode are session state and are never written.
+
+### Files
+
+| Path | What it is |
+|---|---|
+| `src/state/selection-store.ts` | One selection signal, the pure transition table, six read-only computeds, five actions. Rewritten from T03's placeholder. |
+| `src/state/panel-store.ts` | `openPanelId`, `PANEL_DOM_ID`, and the three panel actions. |
+| `src/ui/theme.css` | The `--civ-*` token block, plus the re-point of T01's legacy aliases. |
+| `src/ui/Shell.tsx` | The layout frame. Owns the one window Escape listener and the bar-button ref map. |
+| `src/ui/CountryPlaque.tsx` | Flag, name, slogan and sub-line, with three empty states. |
+| `src/ui/Panel.tsx` | The panel chrome: heading, close button, scrollable body, read-only chip. |
+| `src/ui/PanelHost.tsx` | Renders the panel named by `openPanelId`. |
+| `src/ui/CountryOverviewPanel.tsx` | Placeholder body. T09 owns it. |
+| `src/ui/ProvincesOverviewPanel.tsx` | Placeholder body. T10 owns it. |
+| `src/ui/EconomicsPanel.tsx` | Placeholder body. T12 owns it. |
+| `src/ui/use-field-commit.ts` | The buffered-commit hook the two text fields share. |
+| `src/ui/EditableText.tsx` | Single-line field. |
+| `src/ui/EditableTextArea.tsx` | Multiline field. |
+| `src/ui/ImageUpload.tsx` | File picker, `downscaleImage`, preview, remove, inline error. |
+
+Four modules changed. `src/state/country-store.ts` reads the selected country so
+it can raise that country's tint. `src/ui/tint-layer.ts` gained
+`SELECTED_TINT_ALPHA`. `src/ui/MapCanvas.tsx` gained the click semantics.
+`src/state/world-store.ts` stopped copying `provinceIds`, which is explained
+below.
+
+`src/ui/render.ts`, `OverlayInput`, every file under `src/map/`, `borders-store.ts`,
+`label-store.ts` and `assign-store.ts` are untouched. `render.test.ts`'s
+byte-identical assertions therefore still hold as T07 wrote them.
+
+### The selection model
+
+The selection is three slots inside **one** signal: a province id, a country id,
+and a scope of `"none"`, `"province"` or `"country"`. One signal means one write
+per click, so no `batch` is needed and no subscriber ever sees a half-applied
+selection.
+
+`nextSelection(current, intent, ownerOf)` is pure and holds the whole rule. It is
+the same split `strokeActionFor` uses in `assign-store.ts`, so the transition
+table is unit tested in Node with no signal involved. There are four intents:
+`province` (a left click), `countryOfProvince` (a right click), `country` (a list
+row) and `clear`.
+
+Two rows of that table are easy to get wrong:
+
+- **A right click on an unassigned province does not clear the selection.** There
+  is no country to select, so the intent degrades to a province selection. Two
+  thirds of the map belongs to nobody, and clearing there makes the right click
+  feel broken.
+- **A `country` intent keeps the current province only when that province is
+  inside that country.** Otherwise the province slot would name a province of one
+  country while the plaque named another.
+
+`apply` compares the next state with the current one through `sameSelection` and
+skips an equal write. A fresh object always notifies, so without that guard a
+click on the already-selected province repaints the map and re-runs the tint diff.
+
+**`selectedCountryId` is a computed and is never stored.** At scope `"country"` it
+is the stored id validated against `countryById`, the same trick `activeCountryId`
+uses in `assign-store.ts`. At any other scope it reads `countryOfProvince` live.
+That kills two bugs at once: a deleted country cannot linger in the selection, and
+a province repainted into another country updates the plaque while the drag is
+still running.
+
+`selectionScope` downgrades rather than reporting a state the data no longer
+supports. A country scope whose country is gone reports `"province"` when a
+province is still selected, and `"none"` otherwise.
+
+The public surface is six signals — `hoveredProvinceId`, `selectedProvinceId`,
+`selectedCountryId`, `selectedCountry`, `selectedProvince`, `selectionScope` — and
+five actions: `setHoveredProvince`, `selectProvince`, `selectCountryOfProvince`,
+`selectCountry` and `clearSelection`.
+
+`selectedProvince` is `null` until the map load finishes. Every readout built on
+it carries a `—` fallback.
+
+### Click semantics
+
+`src/ui/MapCanvas.tsx` decides what a press means.
+
+**A context press is button 2 everywhere, plus a ctrl+left press.** macOS reports
+its right click as button 0 with `ctrlKey` set, so a check against `button === 2`
+alone starts a pan or a paint stroke and the country selection never happens.
+`isContextPress` covers both forms on every platform. Sniffing the platform is
+more code and gets one of them wrong.
+
+- `onPointerDown` returns for a context press and starts no gesture. The return
+  is **before** its `preventDefault()`. Preventing a `pointerdown` default
+  suppresses the compatibility mouse events, and an engine that derives
+  `contextmenu` from `mousedown` would then never fire it.
+- Declining the press in `onPointerDown` is also what stops a ctrl+click from
+  painting. `beginStroke` assigns the pressed province immediately, so a stroke
+  started there cannot be taken back by a later `cancelStroke`.
+- `onContextMenu` calls `preventDefault()` unconditionally and first, so no menu
+  pops for a right-drag either. It then selects the country, unless the gesture is
+  already a pan or a paint stroke.
+- `onPointerUp` runs the same selection for a ctrl+click on an idle gesture.
+  Windows and Linux fire no `contextmenu` for a ctrl+click, and without that
+  branch the press would be dead there. On macOS both handlers run, and
+  `sameSelection` swallows the second call because it carries the identical intent
+  on the identical pixel.
+
+**The paint tool owns the left button only when it can actually paint.** With
+assign mode on and a country active, the paint branch returns before the selection
+branch, so painting never moves the selection. With no active country
+`onPointerDown` already falls through to a pan, and the click at the end of that
+fall-through selects. The map is never a dead surface.
+
+`provinceAtClient(host, clientX, clientY)` is the one screen-to-province helper
+all three call sites use. `provinceAt` returns `null` for the sea and for bare
+canvas alike, so "a click on empty sea clears the selection" needs no separate
+branch anywhere.
+
+### The selected country on the map
+
+The selected country is emphasised by **raising its tint alpha**, from
+`TINT_ALPHA` 0.32 to `SELECTED_TINT_ALPHA` 0.48. There is no new draw call and no
+new overlay layer.
+
+`buildTintWordTable` gained two optional parameters, `emphasisCountryId` and
+`emphasisAlpha`. Both default to no emphasis, so a two-argument call is
+byte-identical to the pre-T08 output, and a test pins that.
+
+Emphasis changes the alpha byte alone. The red, green and blue bytes stay
+bit-identical, so a country never appears to change identity when it is selected.
+The cost is small because `diffTintWords` repaints only the ids whose word
+changed: one click repaints the old country's boxes and the new country's boxes
+once, not once per frame.
+
+0.48 is a visible step up from 0.32 and still does not swallow the T04 select
+fill, which is accent gold at alpha 0.44 drawn on top of it. A selected province
+therefore still reads as selected inside its own selected country.
+
+### The shell
+
+`src/ui/Shell.tsx` is a full-bleed map with the chrome positioned absolutely over
+it. The stacking order comes from the `--civ-z-*` tokens: map 0, button bar 2,
+panel dock 3, plaque 4, assign banner 5, warning 6.
+
+**Every shell control is a sibling of the map host and never a descendant.** That
+is the rule T06 set for `CountryPanel`. A pointer event on shell chrome therefore
+never reaches the map's handlers, and none of this needs `data-hud-control`. That
+attribute stays reserved for a control placed inside the host, and T08 adds none.
+
+The plaque rail spans the window, so it is `pointer-events: none` and only the
+plaque box inside it is `auto`. Without that it would eat every map click along
+the top of the window.
+
+**`Shell` owns the one window Escape listener in the app.** It closes the open
+panel first and leaves assign mode second. `CountryPanel`'s own Escape listener
+was deleted: two listeners on one key means a press does two things and neither is
+predictable. Escape is not suppressed inside a text field, because a field commits
+on a debounce, on blur and on unmount, so there is no draft to protect.
+
+Focus is never trapped while a panel is open. It is only **restored** to the bar
+button when the element holding it is about to be unmounted, which `Shell` detects
+with `closest("#" + PANEL_DOM_ID)`.
+
+Assign mode shows two marks: a banner beside the plaque naming the active country,
+and an inset ring around the whole viewport. The ring exists so the mode is
+visible when the pointer is nowhere near the banner.
+
+### The plaque
+
+`CountryPlaque` is **not interactive**. Wrapping a button around a block that
+holds an image invites a nested-interactive accessibility problem for no gain, and
+the button bar sits one row below it.
+
+It has three states. With a country selected it shows the flag, the name, the
+slogan in quotes and a sub-line of `<province> · <n> provinces`. With a province
+selected and no owner it shows the province name and the hint that a right click
+selects a country. With nothing selected it shows `no selection`.
+
+A missing flag falls back to a flat swatch of the country's colour. A stored data
+URL that fails to decode falls back the same way. The broken-flag state holds
+**the failed URL, not a boolean**, so the fallback clears itself when the
+selection moves to a country whose flag is fine.
+
+### Theme tokens
+
+`src/ui/theme.css` is global CSS, not a module. Custom properties have to reach
+every subtree, and a module would need an import in every file for no gain.
+`src/main.tsx` imports it after `./index.css`, so its `:root` block wins on equal
+specificity.
+
+The register is a political map: parchment surfaces, ink text, a dark sea. The
+tokens cover surfaces, ink, lines, space, radii, type, elevation and z-index. **No
+CSS written from T08 on hardcodes a colour, a gap, a radius or a font size.**
+
+The file also re-points T01's legacy aliases — `--bg`, `--text`, `--accent` and
+the rest — onto the `--civ-*` tokens. One file therefore moves the whole palette,
+instead of four CSS files each being rewritten. New CSS uses `--civ-*` only.
+
+Three constraints the tokens have to respect:
+
+- **`--bg-sunken` cannot map to the sea colour.** `index.css` styles
+  `input[type="text"]` with it together with `color: var(--text)`, so the sea
+  there would put ink text on a near-black field. It maps to parchment-dim, and
+  `.host` in `map-canvas.module.css` sets its own explicit
+  `background: var(--civ-sea)`.
+- `color-scheme` is `dark` at the root and `light` on the parchment panels. Without
+  that the panel scrollbar and the colour and file inputs render dark on light.
+- **`--font` stays on the sans stack.** `LABEL_FONT_STACK` in `label-layer.ts`
+  duplicates it and canvas cannot read a custom property, so pointing `--font` at
+  `--civ-font-display` would silently diverge the canvas labels from the DOM.
+  `--civ-font-display` is DOM chrome only.
+
+### Panels
+
+One panel is open at a time, because the three share the right dock.
+`panel-store.ts` holds `openPanelId` as a computed over a private signal, and
+exposes `openPanel`, `closePanel` and `togglePanel`. `togglePanel` closes the same
+id and switches to a different one. `PanelId` is `"country" | "provinces" |
+"economics"`.
+
+`PANEL_DOM_ID` is `"civ-panel"`. One id is enough because one panel is mounted at
+a time, and the bar buttons point `aria-controls` at it. **`aria-controls` is set
+only on the button whose panel is open.** An `aria-controls` naming an id that is
+not in the document is worse than none: a screen reader offers a jump to an
+element that is not there.
+
+`Panel` is `role="region"` and **not** `role="dialog"`. A dialog role implies a
+focus trap, and the brief forbids one. Tab walks out of an open panel normally.
+`Panel` registers no key listener; `Shell` owns Escape.
+
+`Panel` shows a `read-only` chip when `statePersistent` is false. A future-version
+document puts the store in read-only mode and `markDirty` then drops every write.
+A field that looks saved and is not is the worst outcome, so the panel says so.
+
+The three bodies are placeholders. `CountryOverviewPanel` carries four real fields
+because the round trip through the T05 store cannot be demonstrated otherwise.
+`ProvincesOverviewPanel` caps its list at 50 rows on purpose: a 300-row
+unvirtualised list is the exact performance trap T10 exists to solve.
+`EconomicsPanel` shows the country name and `turn —`.
+
+### Editable fields
+
+`use-field-commit.ts` buffers a field locally and commits it on a **fixed 200 ms
+window**, plus blur, plus unmount.
+
+The debounce is not there for `localStorage`; `markDirty` already batches that at
+400 ms. It is there because `updateCountry` replaces the countries array, which
+invalidates `countryById`, `countryOfProvince`, `countryTintWords`,
+`countryAggregates` and `countryLabelSources`, and re-runs the label layout on the
+next frame. 200 ms turns a burst of twenty keystrokes into two of those.
+
+The window is fixed and not restarting, the same shape as `createStateWriter` in
+`persistence.ts`. A restarting debounce starves: continuous typing would postpone
+the write for as long as the user keeps typing.
+
+`commitRef.current` is assigned on **every** render. `onCommit` is an arrow
+function in the parent's JSX and its identity changes each render, so an unmount
+flush that used the first render's callback would write into the previously
+selected country.
+
+A commit clears the draft. The store write is synchronous, so `props.value` then
+holds the committed text, or the clamped text when it passed the cap. The field
+visibly snaps back in that case, which is the correct feedback.
+
+**Every field call site must pass a `key` containing the target id**, for example
+`key={"name-" + country.id}`. Switching the selection then remounts the field and
+drops the pending draft. Without the key a draft for country 3 is displayed over,
+and then committed into, country 4.
+
+`EditableText` and `EditableTextArea` call no `useSignals()`. They read no signal,
+and the call would subscribe a component to nothing. Both pass `maxLength` down to
+the DOM element, so the browser stops an over-long paste before `clampText`
+truncates it silently at the store.
+
+`ImageUpload` runs T05's `downscaleImage` and hands the parent a data URL. It
+never calls `toDataURL`, `FileReader` or `URL.createObjectURL` itself, which keeps
+the ~256 KB bound and the WebP-with-JPEG-fallback behaviour in one place. It
+rejects a file over `MAX_UPLOAD_BYTES` (20 MB) **before** anything is decoded, so
+a 200 MB TIFF never reaches `createImageBitmap`. The in-flight request is a
+counter and not a boolean, so two picks in flight cannot let the older one win. A
+failed pick keeps the previous image.
+
+### `updateCountry` no longer copies `provinceIds`
+
+`assignProvinces` is the only writer of that array and it always builds a fresh
+one, so the copy defended against nothing. `label-store.ts` validates its anchor
+cache on **the array's identity**, and with the copy every keystroke in a country
+name re-ran `resolveLabelAnchor`, which is up to 1728 `contains` probes. T08 makes
+renaming a per-keystroke operation, so the difference is load bearing. A test pins
+the identity on every branch of `updateCountry`.
+
+### Traps for later tasks
+
+- **No `.tsx` file in T08 is unit tested.** The repo has no jsdom, and faking one
+  to assert on a rendered plaque tests the fake. The logic worth testing was
+  pushed into `nextSelection`, `panel-store.ts`, `buildTintWordTable` and
+  `useFieldCommit`.
+- `MapCanvas`'s gesture semantics are covered by a browser run, not by a test.
+  `isContextPress`, the `onPointerDown` decline, the `onContextMenu` idle guard
+  and the `onPointerUp` ctrl+click branch live inside a `.tsx` with no exported
+  seam. **If a later task extracts the gesture rule into a pure predicate the way
+  `nextSelection` was extracted, test it there.**
+- `src/ui/use-field-commit.test.ts` drives the hook on a hand-written React
+  dispatcher and reads React's internal dispatcher slot
+  `__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE.H`.
+  `reactInternals()` throws a named error if that slot disappears, so a React
+  upgrade fails with a legible message. React is pinned exactly in `package.json`.
+- `countryTintWords` cannot be tested end to end. In Node the manifest never
+  loads, `maxProvinceId` is 0, and the computed can only produce a length-1 array.
+  `buildTintWordTable` is exported for exactly that reason.
+- **The HUD in `MapCanvas.tsx` stays.** Earlier sections say T08 replaces it;
+  T08 kept it instead. It moved to the bottom left and gained a `scope` readout.
+  It is the instrument that proves the screen-to-map transform has not drifted,
+  and it is not product chrome. The shell now carries every product-facing
+  readout.
+- Two layout cases are known and left to T09: the plaque and the panel dock
+  overlap between roughly 900 and 1200 px, and the HUD's `max-width` is wrong
+  below roughly 760 px. Both are cosmetic.
+- Touch is still unhandled, unchanged from T06. This is a desktop prototype.

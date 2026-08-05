@@ -5,73 +5,81 @@
   width: 100%;
 }
 
+/* Over the sea, not on a panel: the map has not finished loading when this
+   shows, so there is nothing parchment-coloured underneath it yet. */
 .status {
-  background: var(--bg-panel);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  color: var(--text-dim);
-  font-family: var(--mono);
+  background: var(--civ-scrim);
+  border: 1px solid var(--civ-rule-strong);
+  border-radius: var(--civ-radius-sm);
+  color: var(--civ-ink-invert);
+  font-family: var(--civ-font-mono);
+  font-size: var(--civ-text-sm);
   left: 50%;
   margin: 0;
-  padding: 8px 14px;
+  padding: var(--civ-space-3) var(--civ-space-5);
   pointer-events: none;
   position: absolute;
   top: 50%;
   transform: translate(-50%, -50%);
+  z-index: var(--civ-z-warning);
 }
 
 .status[data-phase="ready"] {
-  color: var(--accent);
+  color: var(--civ-gild-soft);
 }
 
 .status[data-phase="failed"] {
-  border-color: var(--danger);
-  color: var(--danger);
+  border-color: var(--civ-danger);
+  color: var(--civ-danger);
   pointer-events: auto;
 }
 
-/* T08 restyles this inside the real shell. It is the minimum that makes the
-   warning signal visible. */
+/* The state warning. Top-centre, ABOVE the plaque and covering it while it
+   shows. That is deliberate: `unavailable` and `future` mean edits are not being
+   saved, which matters more than the name of the selected country. It is
+   dismissible, and dismissing it uncovers the plaque. */
 .warning {
   align-items: center;
-  background: var(--bg-panel);
-  border: 1px solid var(--accent-dim);
-  border-radius: var(--radius);
+  background: var(--civ-plaque);
+  border: 2px solid var(--civ-gild);
+  border-radius: var(--civ-radius-sm);
+  top: var(--civ-space-4);
+  color: var(--civ-ink);
+  color-scheme: light;
   display: flex;
-  font-family: var(--mono);
-  font-size: 12px;
-  gap: 12px;
+  font-family: var(--civ-font-mono);
+  font-size: var(--civ-text-sm);
+  gap: var(--civ-space-4);
   left: 50%;
-  max-width: 640px;
-  padding: 8px 10px;
+  max-width: min(640px, calc(100vw - var(--civ-space-7)));
+  padding: var(--civ-space-3) var(--civ-space-4);
   position: absolute;
-  top: 12px;
   transform: translateX(-50%);
-  z-index: 3;
+  z-index: var(--civ-z-warning);
 }
 
 .warning[data-kind="quota"],
 .warning[data-kind="unavailable"] {
-  border-color: var(--danger);
+  border-color: var(--civ-danger);
 }
 
 .warningText {
-  color: var(--text);
+  color: var(--civ-ink);
 }
 
 .warningDismiss {
-  background: transparent;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  color: var(--text-dim);
+  background: var(--civ-vellum);
+  border: var(--civ-border-strong);
+  border-radius: var(--civ-radius-sm);
+  color: var(--civ-ink-dim);
   cursor: pointer;
   flex: none;
-  font-family: var(--mono);
-  font-size: 11px;
-  padding: 3px 8px;
+  font-family: var(--civ-font-mono);
+  font-size: var(--civ-text-sm);
+  padding: var(--civ-space-1) var(--civ-space-3);
 }
 
 .warningDismiss:hover {
-  border-color: var(--border-strong);
-  color: var(--text);
+  border-color: var(--civ-gild);
+  color: var(--civ-ink);
 }

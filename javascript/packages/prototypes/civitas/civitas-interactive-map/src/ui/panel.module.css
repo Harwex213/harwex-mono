@@ -1,0 +1,99 @@
+/* The panel chrome. The map is dark and this surface is not, so the panel sets
+   `color-scheme: light` — otherwise its scrollbar and any colour or file input
+   inside it render dark on parchment. */
+
+.panel {
+  background: var(--civ-parchment);
+  border: var(--civ-border-plaque);
+  border-radius: var(--civ-radius-md);
+  box-shadow: var(--civ-shadow-panel);
+  color: var(--civ-ink);
+  color-scheme: light;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+  width: 100%;
+}
+
+.header {
+  align-items: flex-start;
+  background: var(--civ-plaque);
+  border-bottom: var(--civ-border-strong);
+  display: flex;
+  flex: none;
+  gap: var(--civ-space-3);
+  padding: var(--civ-space-4) var(--civ-space-5);
+}
+
+.headingBlock {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--civ-space-1);
+  min-width: 0;
+}
+
+.title {
+  color: var(--civ-ink);
+  font-family: var(--civ-font-display);
+  font-size: var(--civ-text-lg);
+  font-weight: 600;
+  letter-spacing: var(--civ-tracking-caps);
+  line-height: var(--civ-leading-tight);
+  margin: 0;
+  text-transform: uppercase;
+}
+
+.subtitle {
+  color: var(--civ-ink-faint);
+  font-family: var(--civ-font-mono);
+  font-size: var(--civ-text-xs);
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.readonly {
+  border: 1px solid var(--civ-danger);
+  border-radius: var(--civ-radius-sm);
+  color: var(--civ-danger);
+  flex: none;
+  font-family: var(--civ-font-mono);
+  font-size: var(--civ-text-xs);
+  letter-spacing: var(--civ-tracking-caps);
+  padding: var(--civ-space-1) var(--civ-space-2);
+  text-transform: uppercase;
+}
+
+.close {
+  background: transparent;
+  border: var(--civ-border-hair);
+  border-radius: var(--civ-radius-sm);
+  color: var(--civ-ink-dim);
+  cursor: pointer;
+  flex: none;
+  font-family: var(--civ-font-sans);
+  font-size: var(--civ-text-lg);
+  line-height: 1;
+  padding: 0 var(--civ-space-3);
+}
+
+.close:hover {
+  border-color: var(--civ-gild);
+  color: var(--civ-gild);
+}
+
+/* `min-height: 0` as well as `overflow-y: auto`. Without it a flex child refuses
+   to shrink below its content and the panel grows past the dock instead of
+   scrolling. This is the single most common failure in this component. */
+.body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--civ-space-5);
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--civ-space-5);
+}

@@ -1,8 +1,9 @@
 import { computed, effect } from "@preact/signals-react";
-import { TINT_ALPHA, tintWordFor } from "../ui/tint-layer";
+import { SELECTED_TINT_ALPHA, TINT_ALPHA, tintWordFor } from "../ui/tint-layer";
 import { aggregateCountry } from "../map/country-aggregate";
 import { borderPhase, setCountryAssignment } from "./borders-store";
 import { getMapAssets, loadPhase, provinceById } from "./map-store";
+import { selectedCountryId } from "./selection-store";
 import { buildCountryAssignment, countries, countryOfProvince } from "./world-store";
 import { createStateWriter } from "./persistence";
 import type { CountryAggregate } from "../map/country-aggregate";
@@ -50,13 +51,22 @@ const maxProvinceId: ReadonlySignal<number> = computed(() => {
 //
 // One 32-bit word per province id. Index 0 stays 0 — `NO_PROVINCE` is never
 // tinted. The hex is parsed once per COUNTRY, not once per province.
+//
+// `emphasisCountryId` is T08's selected country: it gets a higher alpha and
+// nothing else. Both extra parameters are optional and default to no emphasis,
+// so a call with two arguments is byte-identical to the pre-T08 output.
 function buildTintWordTable(
   list: readonly Country[],
   max: number,
+  emphasisCountryId?: number | null,
+  emphasisAlpha?: number,
 ): Uint32Array {
   const out = new Uint32Array(Math.max(0, max) + 1);
+  const emphasisId = emphasisCountryId ?? null;
   for (const country of list) {
-    const word = tintWordFor(country.colorHex, TINT_ALPHA);
+    const alpha =
+      country.id === emphasisId ? (emphasisAlpha ?? SELECTED_TINT_ALPHA) : TINT_ALPHA;
+    const word = tintWordFor(country.colorHex, alpha);
     if (word === 0) {
       continue;
     }
@@ -69,8 +79,17 @@ function buildTintWordTable(
   return out;
 }
 
+// Reading `selectedCountryId` here is what makes the selected country deepen on
+// the map. It is cheap: `diffTintWords` repaints only the ids whose word
+// changed, which is the previously-selected country's provinces plus the newly
+// selected one's, once, on the click — not per frame.
 const countryTintWords: ReadonlySignal<Uint32Array> = computed(() => {
-  return buildTintWordTable(countries.value, maxProvinceId.value);
+  return buildTintWordTable(
+    countries.value,
+    maxProvinceId.value,
+    selectedCountryId.value,
+    SELECTED_TINT_ALPHA,
+  );
 });
 
 // THE `computed` IS THE CACHE the brief asks for. It recomputes only when the
