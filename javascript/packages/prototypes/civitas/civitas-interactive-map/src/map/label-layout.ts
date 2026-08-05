@@ -90,6 +90,11 @@ type LayoutOptions = {
   view: View;
   viewport: Size;
   contains?: ContainsFn;
+  // OPT-IN, default false. See `chooseOffset`. It is off by default because it
+  // spends `contains` calls at offset 0, which T07 pinned as free; the render
+  // path turns it on and the layout is identical either way whenever the probe
+  // finds nothing.
+  probeEnds?: boolean;
   fitWidthRatio?: number;
   fitHeightRatio?: number;
   paddingX?: number;
@@ -347,6 +352,82 @@ function rectsOverlap(a: LabelRect, b: LabelRect): boolean {
   );
 }
 
+// The 7-offset trial for one candidate, or `null` when every offset is
+// rejected. Pulled out of `layoutLabels` so it can be run twice: once demanding
+// that the two ends of the text span land in-country, then once without.
+//
+// THE END PROBE (`requireEndsInside`). The fit test uses the country's UNION
+// bounding box, so a long thin country passes it even where no part of it is
+// that wide, and the label then spills sideways into a neighbour. The probe
+// back-projects `(cx +- textWidth / 2, cy)` — the ends of the TEXT SPAN, not the
+// padded box corners, because the padding is casing and is allowed to overhang —
+// and requires `contains` on both.
+//
+// It runs at offset 0 too, unlike the in-country test below it. The anchor being
+// in-country says nothing about where the text ENDS land, and offset 0 is
+// exactly the case that overhangs. That is also why the probe is opt-in: two
+// T07 tests pin "offset 0 consults `contains` zero times", and the probe cannot
+// honour that and still fix the overhang. Those tests keep pinning the default.
+//
+// PAN INVARIANCE holds: `mapToScreen` then `screenToMap` of an offset from the
+// anchor gives `anchor + offset / scale`, independent of `view.x` and `view.y`,
+// so the probe is a function of the scale alone.
+function chooseOffset(
+  candidate: LabelCandidate,
+  base: Point,
+  boxW: number,
+  boxH: number,
+  view: View,
+  contains: ContainsFn,
+  placed: readonly LabelRect[],
+  requireEndsInside: boolean,
+): { rect: LabelRect; index: number; centreY: number } | null {
+  for (let i = 0; i < NUDGE_OFFSETS.length; i += 1) {
+    const offset = NUDGE_OFFSETS[i];
+    const cx = base.x + offset.x * candidate.textWidth;
+    const cy = base.y + offset.y * candidate.fontSize;
+    // Offset 0 IS the anchor, and `resolveLabelAnchor` already proved the
+    // anchor is in-country. Re-testing it would cost a bitmap read per label
+    // per frame for nothing. Every other offset MUST be tested, or a nudge
+    // pushes the label into the sea.
+    if (i > 0) {
+      const back = screenToMap(view, cx, cy);
+      if (!contains(candidate.countryId, back.x, back.y)) {
+        continue;
+      }
+    }
+    if (requireEndsInside) {
+      const half = candidate.textWidth / 2;
+      const left = screenToMap(view, cx - half, cy);
+      if (!contains(candidate.countryId, left.x, left.y)) {
+        continue;
+      }
+      const right = screenToMap(view, cx + half, cy);
+      if (!contains(candidate.countryId, right.x, right.y)) {
+        continue;
+      }
+    }
+    const trial: LabelRect = {
+      x: cx - boxW / 2,
+      y: cy - boxH / 2,
+      width: boxW,
+      height: boxH,
+    };
+    let hit = false;
+    for (const other of placed) {
+      if (rectsOverlap(trial, other)) {
+        hit = true;
+        break;
+      }
+    }
+    if (hit) {
+      continue;
+    }
+    return { rect: trial, index: i, centreY: cy };
+  }
+  return null;
+}
+
 // PAN INVARIANCE. The collision pass runs over EVERY candidate that passes the
 // fit test, on-screen or not; `visible` decides only what gets drawn. Culling
 // off-screen candidates first looks like an optimisation and is a bug: a label
@@ -360,6 +441,7 @@ function layoutLabels(options: LayoutOptions): LabelPlacement[] {
     (() => {
       return true;
     });
+  const probeEnds = options.probeEnds ?? false;
   const fitW = options.fitWidthRatio ?? FIT_WIDTH_RATIO;
   const fitH = options.fitHeightRatio ?? FIT_HEIGHT_RATIO;
   const padX = options.paddingX ?? LABEL_PADDING_X;
@@ -411,51 +493,23 @@ function layoutLabels(options: LayoutOptions): LabelPlacement[] {
     const boxW = candidate.textWidth + padX * 2;
     const boxH = candidate.fontSize + padY * 2;
 
-    let rect: LabelRect | null = null;
-    let chosen = -1;
-    let centreY = base.y;
-
-    for (let i = 0; i < NUDGE_OFFSETS.length; i += 1) {
-      const offset = NUDGE_OFFSETS[i];
-      const cx = base.x + offset.x * candidate.textWidth;
-      const cy = base.y + offset.y * candidate.fontSize;
-      // Offset 0 IS the anchor, and `resolveLabelAnchor` already proved the
-      // anchor is in-country. Re-testing it would cost a bitmap read per label
-      // per frame for nothing. Every other offset MUST be tested, or a nudge
-      // pushes the label into the sea.
-      if (i > 0) {
-        const back = screenToMap(view, cx, cy);
-        if (!contains(candidate.countryId, back.x, back.y)) {
-          continue;
-        }
-      }
-      const trial: LabelRect = {
-        x: cx - boxW / 2,
-        y: cy - boxH / 2,
-        width: boxW,
-        height: boxH,
-      };
-      let hit = false;
-      for (const other of placed) {
-        if (rectsOverlap(trial, other)) {
-          hit = true;
-          break;
-        }
-      }
-      if (hit) {
-        continue;
-      }
-      rect = trial;
-      chosen = i;
-      centreY = cy;
-      break;
-    }
+    // The end probe first, then the same trial without it. The FALLBACK is what
+    // makes the probe safe: it can only change WHICH offset wins, never whether
+    // a label is placed at all.
+    const probed = probeEnds
+      ? chooseOffset(candidate, base, boxW, boxH, view, contains, placed, true)
+      : null;
+    const trial =
+      probed ?? chooseOffset(candidate, base, boxW, boxH, view, contains, placed, false);
 
     // Every offset collided or left the country. The larger countries already
     // own this space; drop the label rather than draw it on top of one.
-    if (rect === null) {
+    if (trial === null) {
       continue;
     }
+    const rect = trial.rect;
+    const chosen = trial.index;
+    const centreY = trial.centreY;
 
     placed.push(rect);
     out.push({

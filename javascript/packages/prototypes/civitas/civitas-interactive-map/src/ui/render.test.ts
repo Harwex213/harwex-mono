@@ -667,3 +667,42 @@ test("drawOverlay clears and returns for a degenerate scale", () => {
     assert.equal(named(recorder.calls, "strokeRect").length, 0, "no hairline at scale " + scale);
   }
 });
+
+test("drawOverlay turns the end probe ON for the production label path", () => {
+  // T08-FIX D3. The probe is opt-in — two T07 tests pin the plain pass's
+  // `contains` call pattern and neither may be weakened — so `drawOverlay` is
+  // the one caller that opts in, and this is the only test that pins that line.
+  // Without it the overhang fix would be dead code in production.
+  const view = clampView({ scale: 2, x: -2000, y: -1500 }, MAP, WIDE);
+  const recorder = createRecorder();
+  const probes: { x: number; y: number }[] = [];
+
+  drawOverlay({
+    ctx: recorder.ctx,
+    view,
+    viewport: WIDE,
+    dpr: 1,
+    mapSize: MAP,
+    labelSources: [
+      {
+        countryId: 1,
+        text: "AURELIA",
+        anchor: { x: 1100, y: 820 },
+        bounds: { x: 0, y: 0, width: 3000, height: 2000 },
+        area: 500000,
+      },
+    ],
+    countryContains: (_id, x, y) => {
+      probes.push({ x, y });
+      return true;
+    },
+  });
+
+  // Offset 0 consults `contains` exactly twice in the probing pass — once per
+  // END of the text span — and not at all in the plain pass. Two calls here is
+  // therefore the signature of `probeEnds: true` reaching `layoutLabels`.
+  assert.equal(probes.length, 2, "the two ends of the text span, at offset 0");
+  assert.equal(probes[0].y, probes[1].y, "both ends sit on the label's own line");
+  assert.ok(probes[1].x > probes[0].x, "the left end is probed first, then the right");
+  assert.equal(named(recorder.calls, "fillText").length, 7, "and the label still draws");
+});

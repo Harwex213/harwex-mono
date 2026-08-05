@@ -48,11 +48,13 @@ import {
   mapPixelAt,
   panTo,
   panning,
+  resetView,
   setCursor,
   setDpr,
   setViewport,
   syncView,
   view,
+  viewFitted,
   viewport,
   zoomAtPoint,
 } from "../state/view-store";
@@ -110,6 +112,20 @@ function isHudControl(target: EventTarget | null): boolean {
   return target instanceof Element && target.closest("[data-hud-control]") !== null;
 }
 
+// A keydown inside a text field is TEXT, not a shortcut. `CountryPanel` and
+// every T09-T12 field would otherwise blank the map or jump the view mid-word.
+// Shared by every map shortcut, so there is one answer to "is the user typing".
+function isTypingTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+  if (target.isContentEditable) {
+    return true;
+  }
+  const tag = target.tagName;
+  return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
+}
+
 // VERIFICATION UI, kept deliberately. The shell now carries the product-facing
 // readouts, but this instrument is what proves the screen->map transform has not
 // drifted (at 8x, map pixel (1382, 1329) must report province 1000), that the
@@ -143,6 +159,12 @@ function Hud() {
           zoom <span className={styles.hudValue}>
             {current ? Math.round(current.scale * 100) + "%" : "—"}
           </span>
+        </span>
+        {/* The instrument for the resize policy: resize the window and watch
+            whether this stays `yes`. A fitted view re-fits on a resize; a
+            deliberate zoom reads `no` and keeps its scale. */}
+        <span>
+          fit <span className={styles.hudValue}>{viewFitted.value ? "yes" : "no"}</span>
         </span>
         <span>
           px <span className={styles.hudValue}>
@@ -403,29 +425,29 @@ function MapCanvas() {
     };
   }, []);
 
-  // `L` toggles the country labels. It is the verification instrument for "the
-  // label is not in the sea": press it and see what is underneath.
+  // THE ONE window keydown listener for map keys. `L` toggles the country
+  // labels — the verification instrument for "the label is not in the sea",
+  // press it and see what is underneath. `0` resets the view to the fit scale,
+  // the same action as the shell's `Reset view` button, and the escape hatch
+  // from any deep zoom. `Escape` belongs to `Shell` and is not handled here.
+  //
+  // No `preventDefault`: neither key has a default action outside a text field,
+  // and `isTypingTarget` has already turned those away.
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.altKey || event.ctrlKey || event.metaKey) {
         return;
       }
-      if (event.key !== "l" && event.key !== "L") {
+      if (isTypingTarget(event.target)) {
         return;
       }
-      // `CountryPanel` has text inputs. Typing an "l" into a country name must
-      // not blank the map.
-      const target = event.target;
-      if (target instanceof HTMLElement) {
-        if (target.isContentEditable) {
-          return;
-        }
-        const tag = target.tagName;
-        if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") {
-          return;
-        }
+      if (event.key === "l" || event.key === "L") {
+        toggleLabels();
+        return;
       }
-      toggleLabels();
+      if (event.key === "0") {
+        resetView();
+      }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => {

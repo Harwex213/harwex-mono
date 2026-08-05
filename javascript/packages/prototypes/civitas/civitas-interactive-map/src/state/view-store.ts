@@ -1,5 +1,12 @@
 import { signal } from "@preact/signals-react";
-import { clampView, fitView, screenToMap, translateTo, zoomAt } from "../map/view";
+import {
+  fitView,
+  isFittedScale,
+  resizeView,
+  screenToMap,
+  translateTo,
+  zoomAt,
+} from "../map/view";
 import { mapSize } from "./map-store";
 import type { Point, View } from "../map/view";
 
@@ -29,11 +36,34 @@ const dpr = signal(1);
 const cursorMap = signal<Point | null>(null);
 const panning = signal(false);
 
+// SESSION STATE, never persisted, exactly like `view` itself. True while the
+// view sits at the fit scale — that is, while the user has not deliberately
+// zoomed away from it. A fresh load is fitted. A resize re-fits a fitted view
+// and preserves the absolute scale of one that is not.
+//
+// DERIVED, not set by hand: `writeView` recomputes it from the scale it is
+// about to store, so a wheel notch, a double click, `resetView` and any future
+// zoom control all maintain it with no per-action wiring, and it cannot go
+// stale.
+const viewFitted = signal(true);
+
 function sameView(a: View, b: View): boolean {
   return a.scale === b.scale && a.x === b.x && a.y === b.y;
 }
 
 function writeView(next: View): void {
+  // `peek`, never `.value`: `writeView` runs from DOM handlers and from plain
+  // effects and must not widen anyone's dependency set.
+  const size = mapSize.peek();
+  const port = viewport.peek();
+  // BEFORE the `sameView` early return. A resize that leaves the view untouched
+  // still has to re-evaluate the flag against the NEW viewport.
+  if (size && port.width > 0 && port.height > 0) {
+    const fitted = isFittedScale(next.scale, size, port);
+    if (viewFitted.value !== fitted) {
+      viewFitted.value = fitted;
+    }
+  }
   const current = view.value;
   if (current && sameView(current, next)) {
     return;
@@ -43,8 +73,10 @@ function writeView(next: View): void {
 
 // The single initialisation point. Called from `setViewport` and from an effect
 // keyed on the load phase, because either source can be the second to arrive.
-// Re-clamping on resize is required: shrinking the window raises the fit scale,
-// and the old scale may now sit below the new minimum.
+//
+// The resize path deliberately does NOT go through `clampView`. `clampScale`
+// floors the scale at the fit scale, and across a resize that floor is a one-way
+// ratchet that leaves the map cropped (`.plan/VISUAL-CHECK-PHASE2.md` defect 1).
 function syncView(): void {
   const size = mapSize.value;
   const port = viewport.value;
@@ -52,11 +84,21 @@ function syncView(): void {
     return;
   }
   const current = view.value;
+  // A fresh load, and a fresh load is fitted. Through `writeView` so the flag is
+  // derived here too.
   if (!current) {
-    view.value = fitView(size, port);
+    writeView(fitView(size, port));
     return;
   }
-  writeView(clampView(current, size, port));
+  // `viewFitted` still describes the PREVIOUS viewport at this point —
+  // `setViewport` wrote the new one one line earlier. That deliberate staleness
+  // is the whole mechanism: the question here is "was the user fitted BEFORE
+  // this resize".
+  if (viewFitted.peek()) {
+    writeView(fitView(size, port));
+    return;
+  }
+  writeView(resizeView(current, size, port));
 }
 
 function setViewport(width: number, height: number): void {
@@ -169,6 +211,7 @@ export {
   setViewport,
   syncView,
   view,
+  viewFitted,
   viewport,
   zoomAtPoint,
   type Viewport,

@@ -2,12 +2,16 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   MAX_SCALE,
+  MIN_SCALE,
   clampScale,
   clampTranslate,
   clampView,
   fitScale,
+  fittedScale,
   fitView,
+  isFittedScale,
   mapToScreen,
+  resizeView,
   screenToMap,
   shouldSmooth,
   snapView,
@@ -414,4 +418,145 @@ test("a square viewport exercises the other fit axis end to end", () => {
   near(tallView.scale, 900 / 4000, "the tall map fits on height");
   near(tallView.y, 0, "no slack on the fitting axis", 1e-6);
   near(tallView.x, (900 - 500 * (900 / 4000)) / 2, "the narrow axis is centred", 1e-6);
+});
+
+// --- resizeView and the fitted scale (T08-FIX D1) -------------------------
+
+test("resizeView preserves the scale where clampView would raise it", () => {
+  // The pure twin of the browser repro. A view fitted to a 906 px tall host,
+  // then the host grows to 1400. `clampView` raises the scale to the new fit
+  // and never lowers it again when the host shrinks back; `resizeView` leaves
+  // the scale exactly where the user put it.
+  const short: Size = { width: 1728, height: 906 };
+  const tall: Size = { width: 1728, height: 1400 };
+  const zoomed: View = clampView({ scale: 0.47, x: -100, y: -200 }, MAP, short);
+
+  const raised = clampView(zoomed, MAP, tall);
+  const kept = resizeView(zoomed, MAP, tall);
+
+  assert.ok(raised.scale > zoomed.scale, "precondition: clampView raises this scale");
+  assert.equal(kept.scale, zoomed.scale, "resizeView does not");
+  assert.notEqual(kept.scale, raised.scale, "the two disagree on exactly this input");
+
+  // And the translate is still clamped: at this scale the map is smaller than
+  // the tall host on the y axis, so it must be centred, not left where it was.
+  near(kept.y, (tall.height - MAP.height * kept.scale) / 2, "the translate is re-clamped");
+});
+
+test("resizeView clamps to MIN_SCALE and MAX_SCALE and never returns NaN", () => {
+  const huge = resizeView({ scale: 500, x: 0, y: 0 }, MAP, WIDE);
+  assert.equal(huge.scale, MAX_SCALE, "capped at MAX_SCALE");
+
+  const tiny = resizeView({ scale: 1e-9, x: 0, y: 0 }, MAP, WIDE);
+  assert.equal(tiny.scale, MIN_SCALE, "floored at MIN_SCALE, not at the fit scale");
+
+  for (const scale of [Number.NaN, Number.POSITIVE_INFINITY, 0, -3]) {
+    const out = resizeView({ scale, x: 10, y: 10 }, MAP, WIDE);
+    assert.equal(out.scale, fittedScale(MAP, WIDE), "a degenerate scale falls back to the fit");
+    assert.ok(Number.isFinite(out.x) && Number.isFinite(out.y), "and the translate is finite");
+  }
+});
+
+test("isFittedScale agrees with fitView on both fit axes and for a huge viewport", () => {
+  for (const viewport of [WIDE, SQUARE, { width: 400, height: 4000 }]) {
+    assert.equal(
+      isFittedScale(fitView(MAP, viewport).scale, MAP, viewport),
+      true,
+      "the fitted view reads as fitted at " + viewport.width + "x" + viewport.height,
+    );
+    assert.equal(
+      isFittedScale(fitView(MAP, viewport).scale * 2, MAP, viewport),
+      false,
+      "and a zoomed scale does not",
+    );
+  }
+
+  // A viewport more than 8x the map. `fittedScale` caps at MAX_SCALE, and so
+  // does `fitView`. Comparing against the RAW `fitScale` here would read false
+  // forever and the view would never re-fit again.
+  const tiny: Size = { width: 10, height: 10 };
+  const roomy: Size = { width: 1200, height: 800 };
+  assert.ok(fitScale(tiny, roomy) > MAX_SCALE, "precondition: the raw fit exceeds the cap");
+  assert.equal(fittedScale(tiny, roomy), MAX_SCALE);
+  assert.equal(isFittedScale(fitView(tiny, roomy).scale, tiny, roomy), true);
+});
+
+test("MIN_SCALE is 0.02, and 0.02 still leaves a map on screen", () => {
+  // A pinned number, not a tunable. It is the floor `resizeView` uses instead of
+  // the fit scale, so it is the only thing standing between a pathological
+  // resize sequence and a 0, NaN or negative scale.
+  assert.equal(MIN_SCALE, 0.02);
+  assert.ok(MIN_SCALE > 0, "a 0 scale propagates Infinity through screenToMap");
+  assert.ok(MIN_SCALE < MAX_SCALE, "the range can never invert");
+  // 3653 x 2855 at MIN_SCALE is 73 x 57 CSS px: tiny, but visible and one
+  // keypress from a re-fit.
+  assert.equal(Math.round(MAP.width * MIN_SCALE), 73);
+  assert.equal(Math.round(MAP.height * MIN_SCALE), 57);
+  // And it is well below the fit scale of even a phone-sized viewport, so no
+  // real fitted view can ever be sitting on the floor.
+  assert.ok(MIN_SCALE < fitScale(MAP, { width: 320, height: 240 }));
+});
+
+test("resizeView returns every legal scale unchanged, at every viewport, idempotently", () => {
+  // THE CONTRACT. A resize report is not a zoom: it may re-clamp the
+  // translation and it may not move the scale. `clampView` fails this test by
+  // construction, which is why the resize path stopped using it.
+  const viewports: Size[] = [
+    WIDE,
+    SQUARE,
+    { width: 1728, height: 906 },
+    { width: 1728, height: 1400 },
+    { width: 320, height: 240 },
+    { width: 3600, height: 2800 },
+  ];
+  for (const viewport of viewports) {
+    for (const scale of [MIN_SCALE, 0.05, 0.317338003502627, 1, 3.5, MAX_SCALE]) {
+      const label = "scale " + scale + " at " + viewport.width + "x" + viewport.height;
+      const out = resizeView({ scale, x: -321.5, y: -87.25 }, MAP, viewport);
+      assert.equal(out.scale, scale, label + ": the scale moved");
+      assert.ok(Number.isFinite(out.x) && Number.isFinite(out.y), label + ": non-finite translate");
+      // A ResizeObserver flurry reports the same size several times. The second
+      // report must be a no-op, or the view drifts while the window settles.
+      assert.deepEqual(resizeView(out, MAP, viewport), out, label + ": not idempotent");
+    }
+  }
+});
+
+test("THE RATCHET: a grow-then-shrink round trip moves clampView and not resizeView", () => {
+  // `.plan/VISUAL-CHECK-PHASE2.md` defect 1, as a pure property. `clampScale`
+  // floors at the fit scale, so growing the viewport raises the floor and drags
+  // the scale up, and shrinking it back leaves the scale high with the map
+  // cropped. `resizeView` has no such floor.
+  const base: Size = { width: 1728, height: 906 };
+  const start = fitView(MAP, base);
+  for (const grown of [
+    { width: 1728, height: 1400 },
+    { width: 1900, height: 1000 },
+    { width: 2600, height: 2000 },
+  ]) {
+    const label = grown.width + "x" + grown.height;
+    assert.ok(fitScale(MAP, grown) > start.scale, label + ": precondition, the fit really grows");
+
+    const ratcheted = clampView(clampView(start, MAP, grown), MAP, base);
+    assert.ok(ratcheted.scale > start.scale, label + ": clampView must ratchet, or nothing is proven");
+
+    const round = resizeView(resizeView(start, MAP, grown), MAP, base);
+    assert.equal(round.scale, start.scale, label + ": resizeView ratcheted too");
+    assert.deepEqual(round, start, label + ": the round trip did not land on the original view");
+  }
+});
+
+test("isFittedScale rejects a non-finite scale and the UNCAPPED fit scale", () => {
+  for (const scale of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
+    assert.equal(isFittedScale(scale, MAP, WIDE), false, "scale " + scale + " is not fitted");
+  }
+
+  // A viewport more than 8x the map. `fitView` caps at MAX_SCALE, so the RAW
+  // fit scale is a scale no view can ever hold. Comparing against it would make
+  // the flag read false forever and the view would never re-fit again.
+  const tiny: Size = { width: 10, height: 10 };
+  const roomy: Size = { width: 1200, height: 800 };
+  assert.ok(fitScale(tiny, roomy) > MAX_SCALE, "precondition: the raw fit is past the cap");
+  assert.equal(isFittedScale(fitScale(tiny, roomy), tiny, roomy), false);
+  assert.equal(isFittedScale(MAX_SCALE, tiny, roomy), true);
 });

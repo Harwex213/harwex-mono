@@ -13,6 +13,7 @@ import {
   setViewport,
   syncView,
   view,
+  viewFitted,
   viewport,
   zoomAtPoint,
 } from "./view-store";
@@ -37,6 +38,9 @@ function reset(): void {
   mapSize.value = null;
   dpr.value = 1;
   cursorMap.value = null;
+  // Without this a `false` left by an earlier test leaks into the next one and
+  // its first resize preserves the scale instead of re-fitting.
+  viewFitted.value = true;
 }
 
 function ready(width: number, height: number): void {
@@ -369,4 +373,238 @@ test("mapPixelAt agrees with screenToMap on the live view", () => {
     assert.equal(picked.x, Math.floor(direct.x), "x agrees with the pure transform");
     assert.equal(picked.y, Math.floor(direct.y), "y agrees with the pure transform");
   }
+});
+
+// --- the resize ratchet (T08-FIX D1) --------------------------------------
+
+test("a viewport that grows and shrinks back returns to the fit scale", () => {
+  // THE REGRESSION. `.plan/VISUAL-CHECK-PHASE2.md` drove exactly this sequence
+  // in the browser and the zoom read 32% -> 47% -> 47%, because `clampScale`
+  // floors at the fit scale: growing the host raised the floor and dragged the
+  // scale up, and shrinking it back left the scale high with the map cropped.
+  ready(HOST.width, HOST.height);
+  const fitAt906 = fitScale(MAP, HOST);
+  const grown = { width: HOST.width, height: 1400 };
+
+  assert.equal(view.value?.scale, fitAt906, "the load starts at the 906 fit");
+  assert.equal(viewFitted.value, true, "and a fresh load is fitted");
+
+  setViewport(grown.width, grown.height);
+  const middle = view.value;
+  assert.ok(middle);
+  assert.equal(middle.scale, fitScale(MAP, grown), "the fitted view takes the new fit scale");
+  // Without this the test would still pass under "a resize never touches the
+  // scale", which is a different bug.
+  assert.ok(middle.scale > fitAt906, "precondition: the grown fit really is larger");
+
+  setViewport(HOST.width, HOST.height);
+  assert.deepEqual(view.value, fitView(MAP, HOST), "and shrinking back returns to the fit view");
+  assert.equal(viewFitted.value, true, "still fitted at the end");
+});
+
+test("a deliberate zoom survives the same grow-and-shrink sequence", () => {
+  // The other half of the policy. Re-fitting on every resize would be a wrong
+  // fix: it would throw away the user's zoom whenever the window changed.
+  ready(HOST.width, HOST.height);
+  zoomAtPoint(800, 400, 4);
+  const zoomed = view.value;
+  assert.ok(zoomed);
+  assert.equal(viewFitted.value, false, "a zoom clears the fitted flag");
+
+  setViewport(HOST.width, 1400);
+  assert.equal(view.value?.scale, zoomed.scale, "growing the host preserves the zoom");
+  setViewport(HOST.width, HOST.height);
+  assert.equal(view.value?.scale, zoomed.scale, "and so does shrinking it back");
+  assert.equal(viewFitted.value, false, "the flag is still clear");
+});
+
+test("a resize preserves a scale that is now below the new fit scale", () => {
+  // The documented consequence of the briefed policy: the map letterboxes on
+  // all four sides rather than being re-fitted behind the user's back. One
+  // press of `0` recovers it.
+  ready(HOST.width, HOST.height);
+  const fitAt906 = fitScale(MAP, HOST);
+  zoomAtPoint(800, 400, 1.2);
+  const zoomed = view.value;
+  assert.ok(zoomed);
+  assert.ok(zoomed.scale > fitAt906, "precondition: the user zoomed in");
+
+  const huge = { width: 3600, height: 2800 };
+  setViewport(huge.width, huge.height);
+  const after = view.value;
+  assert.ok(after);
+  assert.ok(zoomed.scale < fitScale(MAP, huge), "precondition: the new fit is above the scale");
+  assert.equal(after.scale, zoomed.scale, "the scale is preserved, not raised to the new fit");
+  assert.ok(Number.isFinite(after.x) && Number.isFinite(after.y), "the translate stays finite");
+  near(after.x, (huge.width - MAP.width * after.scale) / 2, "centred on x");
+  near(after.y, (huge.height - MAP.height * after.scale) / 2, "centred on y");
+});
+
+test("zooming back to the fit scale re-arms the re-fit", () => {
+  ready(HOST.width, HOST.height);
+  for (let step = 0; step < 6; step += 1) {
+    zoomAtPoint(400, 300, 1.4);
+  }
+  assert.equal(viewFitted.value, false);
+  for (let step = 0; step < 60; step += 1) {
+    zoomAtPoint(400, 300, 1 / 1.4);
+  }
+  assert.equal(view.value?.scale, fitScale(MAP, HOST), "the zoom out lands back on the fit");
+  assert.equal(viewFitted.value, true, "which re-arms the flag with no extra wiring");
+
+  const grown = { width: HOST.width, height: 1400 };
+  setViewport(grown.width, grown.height);
+  assert.equal(view.value?.scale, fitScale(MAP, grown), "so the next resize re-fits again");
+});
+
+test("resetView re-arms the re-fit", () => {
+  ready(HOST.width, HOST.height);
+  zoomAtPoint(800, 400, 4);
+  assert.equal(viewFitted.value, false);
+
+  resetView();
+  assert.equal(viewFitted.value, true, "the reset control puts the view back in the fitted state");
+
+  const grown = { width: HOST.width, height: 1400 };
+  setViewport(grown.width, grown.height);
+  assert.equal(view.value?.scale, fitScale(MAP, grown), "and the view re-fits on the next resize");
+});
+
+test("a fitted view survives a viewport report it must ignore", () => {
+  // The zero-sized report is the ancestor going `display: none`. It must not
+  // clear the flag, or the map would stop re-fitting after any panel toggle
+  // that hides the host.
+  ready(HOST.width, HOST.height);
+  setViewport(0, 0);
+  assert.equal(viewFitted.value, true, "a 0 x 0 report changes nothing");
+
+  const grown = { width: HOST.width, height: 1400 };
+  setViewport(grown.width, grown.height);
+  assert.equal(view.value?.scale, fitScale(MAP, grown), "and the view still re-fits");
+});
+
+// A map other than the shipped one, for the two cases the real 3653 x 2855 map
+// cannot express: an exact scale coincidence, and a viewport past the 8x cap.
+function readyWith(map: { width: number; height: number }, width: number, height: number): void {
+  reset();
+  mapSize.value = { ...map };
+  setViewport(width, height);
+}
+
+test("a resize that leaves the view identical still re-derives the fitted flag", () => {
+  // THE TRAP. `writeView` derives the flag BEFORE its `sameView` early return.
+  // Derived after, a resize whose clamped view happens to equal the current one
+  // would keep the stale `false`, and this view would never re-fit again.
+  const map = { width: 1000, height: 1000 };
+  readyWith(map, 500, 500);
+  zoomAtPoint(250, 250, 1.8);
+  // Pan flush to the top-left, so the 900 x 900 resize below produces exactly
+  // this view again and `sameView` bites.
+  panTo(1e9, 1e9);
+  const zoomed = view.value;
+  assert.ok(zoomed);
+  assert.deepEqual(zoomed, { scale: 0.9, x: 0, y: 0 }, "precondition: the exact view");
+  assert.equal(viewFitted.value, false, "precondition: 0.9 is not the 500 x 500 fit");
+
+  const writes = countWrites(view);
+  setViewport(900, 900);
+  assert.equal(view.value, zoomed, "the resize produced the very same view, by reference");
+  assert.equal(writes(), 0, "so nothing was written");
+  assert.equal(viewFitted.value, true, "but 0.9 IS the 900 x 900 fit scale, so the flag re-armed");
+
+  setViewport(1800, 1800);
+  assert.equal(view.value?.scale, 1.8, "and the next resize re-fits");
+});
+
+test("fractional viewport jitter re-fits in BOTH directions and leaves no residue", () => {
+  // `getBoundingClientRect` reports fractions, and a scrollbar or a font swap
+  // moves the host by a fraction of a pixel. Under the old floor every one of
+  // those was a one-way step up.
+  ready(HOST.width, HOST.height);
+  for (const height of [906.4, 905.6, 907.25, 904.125, HOST.height]) {
+    setViewport(HOST.width, height);
+    const port = { width: HOST.width, height };
+    assert.equal(
+      view.value?.scale,
+      fitScale(MAP, port),
+      "the scale tracks the viewport at height " + height,
+    );
+    assert.equal(viewFitted.value, true, "and the view is still fitted at height " + height);
+  }
+  assert.deepEqual(view.value, fitView(MAP, HOST), "the jitter left no residue at all");
+});
+
+test("a viewport more than 8x the map is still a FITTED view and still re-fits", () => {
+  // `isFittedScale` compares against `fittedScale`, the fit scale CAPPED at
+  // MAX_SCALE. Against the raw `fitScale` the flag would read false here
+  // forever, every later resize would preserve instead of fit, and the map
+  // would never come back.
+  const tiny = { width: 100, height: 100 };
+  const roomy = { width: 1200, height: 1000 };
+  readyWith(tiny, roomy.width, roomy.height);
+  assert.ok(fitScale(tiny, roomy) > MAX_SCALE, "precondition: the raw fit is past the cap");
+  assert.equal(view.value?.scale, MAX_SCALE, "the load is capped at MAX_SCALE");
+  assert.equal(viewFitted.value, true, "and a capped fit is still fitted");
+
+  setViewport(400, 400);
+  assert.equal(view.value?.scale, 4, "shrinking below the cap re-fits to the new fit scale");
+  assert.equal(viewFitted.value, true);
+});
+
+test("a dpr change never touches the view or the fitted flag", () => {
+  // `dpr` enters at draw time only; it is not part of the scale.
+  ready(HOST.width, HOST.height);
+  const fitted = view.value;
+  assert.ok(fitted);
+  const writes = countWrites(view);
+
+  setDpr(2);
+  assert.equal(view.value, fitted, "a fitted view is untouched");
+  assert.equal(viewFitted.value, true);
+
+  zoomAtPoint(800, 400, 3);
+  const zoomed = view.value;
+  assert.ok(zoomed);
+  assert.equal(viewFitted.value, false);
+
+  setDpr(3);
+  assert.equal(view.value, zoomed, "and so is a deliberate zoom");
+  assert.equal(viewFitted.value, false, "a dpr change cannot re-arm the re-fit");
+  assert.equal(writes(), 1, "only the zoom ever wrote the view");
+});
+
+test("a 0 x 0 report does not re-arm a zoomed view", () => {
+  // The complement of the fitted case: hiding the host must not silently put
+  // the view back to the fit scale when the panel closes again.
+  ready(HOST.width, HOST.height);
+  zoomAtPoint(800, 400, 4);
+  const zoomed = view.value;
+  assert.ok(zoomed);
+
+  setViewport(0, 0);
+  assert.equal(viewFitted.value, false, "the flag survives the hidden host");
+  assert.equal(view.value, zoomed, "and so does the view");
+
+  setViewport(HOST.width, HOST.height);
+  assert.deepEqual(view.value, zoomed, "the zoom is intact when the host comes back");
+  assert.equal(viewFitted.value, false);
+});
+
+test("a pan never re-arms the re-fit", () => {
+  // The flag is derived from the SCALE alone. A pan that happened to land on a
+  // centred translate must not read as "fitted" and throw the zoom away on the
+  // next resize.
+  ready(HOST.width, HOST.height);
+  zoomAtPoint(800, 400, 4);
+  const zoomed = view.value;
+  assert.ok(zoomed);
+
+  panTo(-500, -300);
+  panTo(1e9, 1e9);
+  panTo(-1e9, -1e9);
+  assert.equal(viewFitted.value, false, "panning is not zooming");
+
+  const grown = { width: HOST.width, height: 1400 };
+  setViewport(grown.width, grown.height);
+  assert.equal(view.value?.scale, zoomed.scale, "so the resize still preserves the zoom");
 });

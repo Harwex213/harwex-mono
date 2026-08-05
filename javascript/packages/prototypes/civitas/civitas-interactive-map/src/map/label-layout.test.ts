@@ -20,10 +20,12 @@ import type {
   AnchorCandidate,
   ContainsFn,
   LabelCandidate,
+  LabelPlacement,
   LabelRect,
 } from "./label-layout";
+import { screenToMap } from "./view";
 import type { Bounds } from "./manifest";
-import type { Size, View } from "./view";
+import type { Point, Size, View } from "./view";
 
 // PURE tests. No canvas, no DOM, no measureText — every text width below is a
 // number the caller supplies, which is the whole reason the layout lives in its
@@ -808,4 +810,287 @@ test("empty text, zero width and zero size are each skipped", () => {
       JSON.stringify(patch),
     );
   }
+});
+
+// --- the end probe (T08-FIX D3) -------------------------------------------
+
+// A tall narrow vertical strip in MAP coordinates, centred on the anchor. This
+// is the long thin country of `.plan/VISUAL-CHECK-PHASE2.md` defect 3: it
+// passes the union-bbox fit test but is nowhere near wide enough to hold the
+// label horizontally.
+function verticalStrip(anchor: Point, halfWidth: number): ContainsFn {
+  return (_id, x, y) => {
+    return Math.abs(x - anchor.x) <= halfWidth && Math.abs(y - anchor.y) <= 4000;
+  };
+}
+
+// A "T": a thin vertical stem through the anchor, and one wide horizontal arm a
+// short way ABOVE it. The anchor row cannot hold the text, the arm can. Every
+// nudge is in units of textWidth on x and fontSize on y, so only a VERTICAL
+// nudge can reach the arm.
+function stemWithArm(anchor: Point, armTop: number, armBottom: number): ContainsFn {
+  return (_id, x, y) => {
+    if (y >= anchor.y + armTop && y <= anchor.y + armBottom) {
+      return Math.abs(x - anchor.x) <= 200;
+    }
+    return Math.abs(x - anchor.x) <= 10 && Math.abs(y - anchor.y) <= 4000;
+  };
+}
+
+test("a label whose ends leave the country moves to an offset where they do not", () => {
+  const anchor = { x: 500, y: 400 };
+  const scale = 1;
+  const textWidth = 100;
+  const fontSize = 20;
+  // NUDGE_OFFSETS[1] is y = -1.25, i.e. -25 px at this font size, which lands in
+  // the arm. Offset 0 sits on the 20 px wide stem, where the 100 px of text
+  // overhangs by 40 px on each side — the defect, in miniature.
+  const contains = stemWithArm(anchor, -40, -15);
+  const options = {
+    candidates: [candidate({ anchor, textWidth, fontSize })],
+    view: view(scale, 0, 0),
+    viewport: VIEWPORT,
+    contains,
+  };
+
+  const without = layoutLabels(options);
+  assert.equal(without.length, 1);
+  assert.equal(without[0].offsetIndex, 0, "without the probe the label sits on the stem");
+
+  const probed = layoutLabels({ ...options, probeEnds: true });
+  assert.equal(probed.length, 1, "the label is still placed");
+  const placement = probed[0];
+  assert.ok(placement.offsetIndex > 0, "the probe moved it off the anchor");
+  assert.equal(
+    NUDGE_OFFSETS[placement.offsetIndex].x,
+    0,
+    "and it moved VERTICALLY — a horizontal shift drifts toward a neighbour",
+  );
+
+  // Both ends of the TEXT SPAN — not the padded box, whose padding is casing and
+  // is allowed to overhang — back-project inside the country.
+  const centreX = placement.rect.x + placement.rect.width / 2;
+  for (const end of [centreX - textWidth / 2, centreX + textWidth / 2]) {
+    const back = screenToMap(view(scale, 0, 0), end, placement.y);
+    assert.equal(contains(placement.countryId, back.x, back.y), true, "end " + end + " is inside");
+  }
+});
+
+test("the end probe never costs a label — the fallback pass places it anyway", () => {
+  // A country narrower than the text at EVERY offset. The probe can find
+  // nothing, so the plain pass runs and produces exactly the pre-change layout.
+  const anchor = { x: 500, y: 400 };
+  const options = {
+    candidates: [candidate({ anchor, textWidth: 100 })],
+    view: view(1, 0, 0),
+    viewport: VIEWPORT,
+    contains: verticalStrip(anchor, 1),
+  };
+
+  const withProbe = layoutLabels({ ...options, probeEnds: true });
+  const without = layoutLabels(options);
+
+  assert.equal(withProbe.length, 1, "the label is still placed");
+  assert.equal(withProbe[0].offsetIndex, 0, "on its anchor, exactly as before");
+  assert.deepEqual(withProbe, without, "the probe changed nothing it could not improve");
+});
+
+test("the end probe does not depend on the translation", () => {
+  // PAN INVARIANCE. `mapToScreen` then `screenToMap` of an offset from the
+  // anchor is `anchor + offset / scale`, independent of `view.x` and `view.y`,
+  // so the probe is a function of the scale alone.
+  const anchor = { x: 500, y: 400 };
+  // The same T as above, so the probe actually bites and the assertion has
+  // something to be invariant about.
+  const contains = stemWithArm(anchor, -40, -15);
+  const candidates = [candidate({ anchor, textWidth: 100, fontSize: 20 })];
+
+  const left = layoutLabels({
+    candidates,
+    view: view(1, 0, 0),
+    viewport: VIEWPORT,
+    contains,
+    probeEnds: true,
+  });
+  const right = layoutLabels({
+    candidates,
+    view: view(1, -400, 250),
+    viewport: VIEWPORT,
+    contains,
+    probeEnds: true,
+  });
+
+  assert.equal(left.length, right.length);
+  assert.deepEqual(
+    right.map((placement) => {
+      return placement.offsetIndex;
+    }),
+    left.map((placement) => {
+      return placement.offsetIndex;
+    }),
+    "a pan moved the label to a different nudge",
+  );
+  assert.ok(left[0].offsetIndex > 0, "the fixture must exercise the probe, or it proves nothing");
+});
+
+test("probeEnds defaults to off, so the plain pass is what the default gives", () => {
+  // The two T07 tests that pin "offset 0 consults `contains` zero times" are
+  // why the probe is opt-in. This pins the default they rely on.
+  const anchor = { x: 500, y: 400 };
+  let probes = 0;
+  const placements = layoutLabels({
+    candidates: [candidate({ anchor })],
+    view: view(1, 0, 0),
+    viewport: VIEWPORT,
+    contains: () => {
+      probes += 1;
+      return true;
+    },
+  });
+  assert.equal(placements.length, 1);
+  assert.equal(placements[0].offsetIndex, 0);
+  assert.equal(probes, 0, "the default pass still reads no bitmap at offset 0");
+});
+
+// Do both ends of a placement's TEXT SPAN back-project inside the country? This
+// is the question the probe asks, restated for the assertions below.
+function endsInside(
+  contains: ContainsFn,
+  placement: LabelPlacement,
+  textWidth: number,
+  at: View,
+): boolean {
+  const centreX = placement.rect.x + placement.rect.width / 2;
+  const left = screenToMap(at, centreX - textWidth / 2, placement.y);
+  const right = screenToMap(at, centreX + textWidth / 2, placement.y);
+  return (
+    contains(placement.countryId, left.x, left.y) &&
+    contains(placement.countryId, right.x, right.y)
+  );
+}
+
+test("the probe never costs a placement — 100 seeded random countries", () => {
+  // THE SAFETY PROPERTY. With one candidate there is nothing to collide with,
+  // so the fallback pass is the only thing standing between the probe and a
+  // lost label. It must hold for every shape, not just the fixtures above.
+  const random = lcg(90210);
+  const at = view(1, 0, 0);
+  const textWidth = 100;
+  let moved = 0;
+
+  for (let iteration = 0; iteration < 100; iteration += 1) {
+    const anchor = { x: 400 + random() * 400, y: 300 + random() * 200 };
+    const discs: { x: number; y: number; r: number }[] = [];
+    for (let i = 0; i < 3; i += 1) {
+      discs.push({
+        x: anchor.x + (random() - 0.5) * 220,
+        y: anchor.y + (random() - 0.5) * 140,
+        r: 10 + random() * 90,
+      });
+    }
+    // The anchor is always in-country, exactly as `resolveLabelAnchor`
+    // guarantees. Everything else is random.
+    const contains: ContainsFn = (_id, x, y) => {
+      if (Math.hypot(x - anchor.x, y - anchor.y) <= 8) {
+        return true;
+      }
+      for (const disc of discs) {
+        if (Math.hypot(x - disc.x, y - disc.y) <= disc.r) {
+          return true;
+        }
+      }
+      return false;
+    };
+
+    const options = {
+      candidates: [candidate({ anchor, textWidth, fontSize: 20 })],
+      view: at,
+      viewport: VIEWPORT,
+      contains,
+    };
+    const plain = layoutLabels(options);
+    const probed = layoutLabels({ ...options, probeEnds: true });
+
+    assert.equal(plain.length, 1, "iteration " + iteration + ": the plain pass must place it");
+    assert.equal(probed.length, 1, "iteration " + iteration + ": the probe cost a label");
+    if (probed[0].offsetIndex === plain[0].offsetIndex) {
+      continue;
+    }
+    moved += 1;
+    // The probe only ever moves a label whose ends were outside, and only to
+    // somewhere they are inside. Anything else is churn.
+    assert.equal(
+      endsInside(contains, plain[0], textWidth, at),
+      false,
+      "iteration " + iteration + ": the probe moved a label that was already fine",
+    );
+    assert.equal(
+      endsInside(contains, probed[0], textWidth, at),
+      true,
+      "iteration " + iteration + ": the probe moved a label to somewhere no better",
+    );
+  }
+
+  assert.ok(moved > 0, "the fixtures never exercised the probe, so this proves nothing");
+});
+
+test("the probe measures the TEXT SPAN, not the padded box, and it runs at offset 0", () => {
+  const anchor = { x: 500, y: 400 };
+  const textWidth = 100;
+
+  function trial(halfWidth: number): { offsetIndex: number; probes: number } {
+    const strip = verticalStrip(anchor, halfWidth);
+    let probes = 0;
+    const placements = layoutLabels({
+      candidates: [candidate({ anchor, textWidth, fontSize: 20 })],
+      view: view(1, 0, 0),
+      viewport: VIEWPORT,
+      contains: (id, x, y) => {
+        probes += 1;
+        return strip(id, x, y);
+      },
+      probeEnds: true,
+    });
+    assert.equal(placements.length, 1, "halfWidth " + halfWidth + ": the label is always placed");
+    return { offsetIndex: placements[0].offsetIndex, probes };
+  }
+
+  // A country exactly as wide as the TEXT. The padded box is textWidth + 2 *
+  // LABEL_PADDING_X wide, and probing its corners instead would reject this.
+  // The padding is casing and is allowed to overhang.
+  const exact = trial(textWidth / 2);
+  assert.equal(exact.offsetIndex, 0, "the ends land on the border, and that counts as inside");
+  assert.equal(exact.probes, 2, "one probe per END of the span, at offset 0, and nothing else");
+  assert.ok(LABEL_PADDING_X > 0, "precondition: the padded box really is wider than the text");
+
+  // A hair narrower than the text. Now every offset fails the probe and the
+  // fallback pass puts the label back on its anchor.
+  const narrow = trial(textWidth / 2 - 0.1);
+  assert.equal(narrow.offsetIndex, 0, "the fallback pass places it anyway");
+  assert.ok(narrow.probes > 2, "but only after the probe rejected every offset");
+});
+
+test("with no country predicate the probe changes nothing at all", () => {
+  // `drawOverlay` turns the probe on unconditionally, and every `render.test.ts`
+  // label fixture passes no `countryContains`. The default accept-everything
+  // predicate must therefore make the probe completely invisible, or those
+  // byte-identical assertions would have flipped.
+  const random = lcg(20260805);
+  const candidates: LabelCandidate[] = [];
+  for (let i = 0; i < 30; i += 1) {
+    candidates.push(
+      candidate({
+        countryId: i + 1,
+        anchor: { x: random() * 2000, y: random() * 1500 },
+        area: Math.round(random() * 100000),
+        textWidth: 40 + random() * 120,
+        fontSize: 10 + random() * 20,
+      }),
+    );
+  }
+  const options = { candidates, view: view(0.8, -120, 45), viewport: VIEWPORT };
+  const plain = layoutLabels(options);
+
+  assert.ok(plain.length > 1, "the fixture must place several labels");
+  assert.deepEqual(layoutLabels({ ...options, probeEnds: true }), plain);
 });

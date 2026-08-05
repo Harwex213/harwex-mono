@@ -292,3 +292,43 @@ test("layoutCountryLabels forwards contains to the collision pass", () => {
   assert.equal(closed[0].countryId, 1);
   assert.deepEqual(new Set(asked), new Set([2]), "only the nudged country is ever asked about");
 });
+
+test("layoutCountryLabels forwards probeEnds, and defaults it to off", () => {
+  // `drawOverlay` is the caller that turns the end probe on, so the forwarding
+  // is production behaviour and has to be pinned somewhere. The default stays
+  // off, which is what the `contains` call-pattern test above relies on.
+  clearLabelMetricsCache();
+  const recorder = createRecorder();
+  const anchor = { x: 400, y: 300 };
+  const sources = [source({ countryId: 1, anchor })];
+
+  // A thin vertical stem through the anchor with one wide arm above it: the
+  // text cannot fit on the anchor row, and only a vertical nudge reaches the
+  // arm. The arm is generous on y so it catches whichever vertical nudge the
+  // live font ramp produces.
+  const contains = (_id: number, x: number, y: number): boolean => {
+    if (y >= anchor.y - 200 && y <= anchor.y - 5) {
+      return Math.abs(x - anchor.x) <= 900;
+    }
+    return Math.abs(x - anchor.x) <= 1;
+  };
+
+  const plain = layoutCountryLabels(recorder.ctx, {
+    sources,
+    view: view(1),
+    viewport: VIEWPORT,
+    contains,
+  });
+  assert.equal(plain.length, 1);
+  assert.equal(plain[0].offsetIndex, 0, "the default leaves the label on its anchor");
+
+  const probed = layoutCountryLabels(recorder.ctx, {
+    sources,
+    view: view(1),
+    viewport: VIEWPORT,
+    contains,
+    probeEnds: true,
+  });
+  assert.equal(probed.length, 1, "the label is still placed");
+  assert.ok(probed[0].offsetIndex > 0, "probeEnds reached layoutLabels and moved it");
+});

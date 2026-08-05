@@ -186,6 +186,13 @@ function drawOverlay(input: OverlayInput): void {
       view,
       viewport,
       contains: input.countryContains ?? undefined,
+      // THE PRODUCTION PATH OPTS IN. The end probe keeps a long thin country's
+      // name from spilling out of its own shape. It is off by default because
+      // two T07 tests pin the exact `contains` call pattern of the plain pass,
+      // and weakening a pinned test to fit a cosmetic improvement is not on the
+      // table. With no `countryContains` supplied the probe costs nothing: the
+      // default predicate accepts every point.
+      probeEnds: true,
     });
     drawCountryLabels(ctx, placements);
   }

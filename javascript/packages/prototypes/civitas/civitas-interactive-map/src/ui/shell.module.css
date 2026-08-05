@@ -85,6 +85,35 @@
   color: var(--civ-ink-invert);
 }
 
+/* Separates the panel toggles from the view actions. Decorative only. */
+.barDivider {
+  align-self: stretch;
+  background: var(--civ-rule-strong);
+  display: block;
+  flex: none;
+  width: 1px;
+}
+
+/* The `.barButton` shape with no toggled state: it is an action, so it has no
+   `data-on` rule and no pressed colour. */
+.barAction {
+  background: var(--civ-plaque);
+  border: var(--civ-border-plaque);
+  border-radius: var(--civ-radius-sm);
+  color: var(--civ-ink-dim);
+  cursor: pointer;
+  font-family: var(--civ-font-display);
+  font-size: var(--civ-text-sm);
+  letter-spacing: var(--civ-tracking-caps);
+  padding: var(--civ-space-3) var(--civ-space-5);
+  text-transform: uppercase;
+}
+
+.barAction:hover {
+  border-color: var(--civ-gild);
+  color: var(--civ-ink);
+}
+
 .panelDock {
   bottom: var(--civ-space-4);
   position: absolute;

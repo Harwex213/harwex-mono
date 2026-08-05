@@ -38,6 +38,9 @@ type LabelLayoutInput = {
   view: View;
   viewport: Size;
   contains?: ContainsFn;
+  // Forwarded verbatim to `layoutLabels`. Default false, and `drawOverlay` is
+  // the caller that turns it on.
+  probeEnds?: boolean;
 };
 
 type LabelStats = { candidates: number; placed: number; drawn: number };
@@ -127,6 +130,7 @@ function layoutCountryLabels(
     view: input.view,
     viewport: input.viewport,
     contains: input.contains,
+    probeEnds: input.probeEnds,
   });
 
   let drawn = 0;

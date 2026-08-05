@@ -287,7 +287,51 @@ Three rules govern the actions:
   signals it also reads, which is a loop. Call them from DOM handlers and plain
   `useEffect`s.
 
+#### The fitted policy (T08-FIX)
+
+`viewFitted` is a fourth signal, and it decides what a viewport resize does.
+
+The view is *fitted* while it sits at the fit scale — that is, while the user
+has not deliberately zoomed away from it. A fresh load is fitted. On a resize a
+fitted view recomputes and takes the new fit scale; a view that is not fitted
+keeps its absolute scale and only re-clamps its translation.
+
+The flag is **derived, never set by hand**. `writeView` recomputes it as
+`isFittedScale(next.scale, mapSize, viewport)` on every write, so a wheel notch,
+a double click, `resetView` and any zoom control added later all maintain it
+with no per-action wiring. It cannot go stale. `writeView` derives it **before**
+its `sameView` early return, because a resize that leaves the view untouched
+still has to re-evaluate the flag against the new viewport. It reads `mapSize`
+and `viewport` with `.peek()`, never `.value`, because `writeView` runs from DOM
+handlers and must not widen anyone's dependency set.
+
+`syncView` reads the flag **one viewport stale on purpose**. `setViewport`
+writes the new viewport a line before it calls `syncView`, so the stored flag
+still describes the previous viewport — which is exactly the question being
+asked: *was the user fitted before this resize.*
+
+The resize path calls `resizeView`, **not** `clampView`. `clampScale` floors the
+scale at the fit scale, and across a resize that floor is a one-way ratchet:
+growing the viewport raises the floor and drags the scale up, shrinking it back
+lowers the floor and leaves the scale high, and the map ends up cropped
+(`.plan/VISUAL-CHECK-PHASE2.md` defect 1, reproduced at 906 -> 1400 -> 906).
+`resizeView` clamps to `MIN_SCALE .. MAX_SCALE` instead and re-clamps the
+translation. The fit floor is still correct for **user zoom**, so `clampScale`,
+`clampView` and `zoomAt` are unchanged and zooming out still terminates at
+exactly the fit view.
+
 Traps for later tasks:
+
+- A view that is not fitted and whose scale is **below** the new fit scale keeps
+  that scale, so the map letterboxes on all four sides. That is the policy, not
+  a bug — a resize must never change a deliberate zoom. `0` re-fits it.
+- `isFittedScale` compares against `fittedScale`, the fit scale capped at
+  `MAX_SCALE`, never against the raw `fitScale`. A viewport more than 8x the map
+  would otherwise read "not fitted" forever and never re-fit again.
+- `MIN_SCALE` is defensive only. No user action reaches it: zooming out floors
+  at the fit scale and `resizeView` never lowers a scale.
+- The HUD's `fit yes|no` readout is the browser instrument for all of this.
+  Resize the window and watch whether it stays `yes`.
 
 - `sourceRect` takes the ART size, 3652 x 2855. Every other call takes the MAP
   size, 3653 x 2855. Mixing them asks `drawImage` for a column the bitmap does
@@ -946,6 +990,31 @@ back-projected through `screenToMap` and re-tested with `contains`, or a nudge
 would push the label into the water. A candidate whose every offset collides or
 leaves the country is dropped. The larger country already owns that space.
 
+#### The end probe (T08-FIX)
+
+The 7-offset trial lives in `chooseOffset`, which `layoutLabels` can run twice.
+With `requireEndsInside` on, a trial also back-projects the two ends of the
+**text span** — `(cx ± textWidth / 2, cy)`, not the padded box corners, because
+the padding is casing and is allowed to overhang — and requires `contains` on
+both. It runs at offset 0 too, unlike the in-country test, because offset 0 is
+exactly the case that overhangs.
+
+`layoutLabels` runs the probe pass first and, **if it finds nothing, runs the
+plain pass**. That fallback is what makes the probe safe: it can only change
+*which* offset wins, never *whether* a label is placed. No label is ever lost to
+it and `placed` in the HUD cannot go down.
+
+Pan invariance survives. `mapToScreen` then `screenToMap` of an offset from the
+anchor is `anchor + offset / scale`, independent of `view.x` and `view.y`, so
+the probe is a function of the scale alone.
+
+The probe is **opt-in**: `LayoutOptions.probeEnds`, default false, forwarded by
+`layoutCountryLabels` and turned on by `drawOverlay`. It is off by default
+because it spends `contains` calls at offset 0, and two T07 tests pin that
+offset 0 reads no bitmap at all. Weakening a pinned test to fit a cosmetic
+improvement was not on the table, so the flag carries the difference and both
+settings are tested.
+
 `rectsOverlap` uses strict `<`, so two flush rects do not collide.
 
 **The collision pass runs over every candidate that passed the fit test, including
@@ -994,9 +1063,11 @@ the "the label is not in the sea" check: press `L` and see what is underneath.
 - Never pass `input.view` into the label layout. Only `snapView(view, dpr)`.
 - Every field `T07` added to `OverlayInput` is optional. `render.test.ts` asserts
   that an overlay drawn without them is byte-identical to the T06 output.
-- The fit test uses the country's union **bounding box**. A long thin country
-  passes the width test even where no part of it is that wide, so a label can
-  overhang into water at its ends. A run-length probe is the next refinement.
+- The fit test still uses the country's union **bounding box**, so a long thin
+  country passes the width test even where no part of it is that wide. The
+  overhang that follows is handled at the **placement** stage instead, by the
+  end probe below — not by widening `FIT_WIDTH_RATIO`, which would hide labels
+  that are fine today.
 - `getLastLabelStats()` is one frame stale by construction. The HUD `placed`
   readout always reports the previous frame.
 - `src/state/label-store.ts` has only 4 tests and cannot have more. In Node the
@@ -1178,6 +1249,30 @@ Assign mode shows two marks: a banner beside the plaque naming the active countr
 and an inset ring around the whole viewport. The ring exists so the mode is
 visible when the pointer is nowhere near the banner.
 
+### Keyboard and the reset control
+
+| Key | What it does | Owner |
+|---|---|---|
+| `L` | Toggles the country labels | `MapCanvas.tsx` |
+| `0` | Resets the view to the fit scale | `MapCanvas.tsx` |
+| `Esc` | Closes the open panel, else leaves assign mode | `Shell.tsx` |
+
+There are exactly **two** window keydown listeners: `MapCanvas` owns the map
+keys and `Shell` owns Escape. Add a map key to the existing effect; do not add a
+third listener.
+
+Every map shortcut is ignored inside an `INPUT`, `TEXTAREA`, `SELECT` or
+`contentEditable` element, and under any `alt` / `ctrl` / `meta` chord. One
+shared `isTypingTarget` helper in `MapCanvas.tsx` answers "is the user typing"
+for all of them, so a new key cannot get that guard subtly wrong. Neither key
+calls `preventDefault`; outside a text field neither has a default action.
+
+The bar's **`Reset view`** button runs the same `resetView()` action as `0`. It
+is an action, not a toggle, so it carries no `aria-pressed` and no `data-on`,
+and it is never disabled — `resetView` already writes nothing when the view is
+already fitted, and a control that greys itself out on a zoom is more confusing
+than a click that does nothing.
+
 ### The plaque
 
 `CountryPlaque` is **not interactive**. Wrapping a button around a block that
@@ -1330,3 +1425,76 @@ the identity on every branch of `updateCountry`.
   overlap between roughly 900 and 1200 px, and the HUD's `max-width` is wrong
   below roughly 760 px. Both are cosmetic.
 - Touch is still unhandled, unchanged from T06. This is a desktop prototype.
+
+## The T08-FIX pass
+
+`.plan/VISUAL-CHECK-PHASE2.md` is an independent browser check of Phase 2. It
+reported three defects. T08-FIX closes all three. It adds no source file, no
+`localStorage` key, no schema field and no migration. Every value it introduces is
+session state or derived.
+
+| Defect | The fix | Described in |
+|---|---|---|
+| D1. A grow-then-shrink resize left the map cropped. | The resize path calls `resizeView` instead of `clampView`, and `viewFitted` decides whether a resize re-fits. | "The fitted policy (T08-FIX)" |
+| D2. Nothing called `resetView`, so the view could not be re-fitted. | The `0` key and the button bar's `Reset view` button. | "Keyboard and the reset control" |
+| D3. A long thin country's label spilled out of its own shape. | The end probe inside `layoutLabels`, which `drawOverlay` turns on. | "The end probe (T08-FIX)" |
+
+### Files changed
+
+| Path | What changed |
+|---|---|
+| `src/map/view.ts` | Added `MIN_SCALE`, `fittedScale`, `isFittedScale` and `resizeView`. `fitView` now builds on `fittedScale`. |
+| `src/state/view-store.ts` | Added the `viewFitted` signal. `writeView` derives it, and `syncView` branches on it. |
+| `src/ui/MapCanvas.tsx` | Lifted `isTypingTarget` to module scope, added the `0` key to the existing keydown effect, and added the HUD's `fit` readout. |
+| `src/ui/Shell.tsx` | Added the `Reset view` button and a divider to the existing bar. |
+| `src/ui/shell.module.css` | Added `.barDivider` and `.barAction`. |
+| `src/map/label-layout.ts` | Extracted the 7-offset trial to `chooseOffset` and added `LayoutOptions.probeEnds`. |
+| `src/ui/label-layer.ts` | Forwards `probeEnds` verbatim. |
+| `src/ui/render.ts` | `drawOverlay` passes `probeEnds: true`. |
+
+`clampScale`, `clampView`, `zoomAt`, `fitScale` and `MAX_SCALE` are untouched. The
+fit floor is still the right rule for user zoom, and zooming out still terminates
+at exactly the fit view. `clampView` stays exported and is now called by tests
+alone. Do not delete it and do not route a resize back through it.
+
+### The probe is opt-in, and only production opts in
+
+The design called for the end probe to run always, with the plain pass as a
+fallback. That broke two T07 tests, and both pin the same thing: offset 0 consults
+`contains` zero times. The probe cannot honour that and still fix the overhang,
+because the overhang is offset 0. Neither test was weakened. The flag carries the
+difference instead.
+
+The opt-in sits one level above where the design put it. `layoutCountryLabels`
+forwards `probeEnds` and `drawOverlay` sets it, because
+`src/ui/label-layer-cache.test.ts` calls `layoutCountryLabels` itself and an opt-in
+there would still have failed. Both settings are tested at both levels. The cost is
+that the two pinned tests now describe a configuration production does not use.
+
+### Tests
+
+`yarn test` goes from 493 to 521. No existing test was edited, weakened or deleted.
+Each new test was proved to fail against a real mutation of the source, and
+`.plan/T08-FIX/memory.md` lists the seven mutations and what each one broke.
+
+### Traps for later tasks
+
+- **A resize never changes a deliberate zoom.** A view that is not fitted keeps its
+  absolute scale even when that scale is below the new fit scale, so the map
+  letterboxes on all four sides. That is the policy. `0` re-fits it.
+- `viewFitted` is derived inside `writeView` and is never assigned by an action. A
+  new zoom control needs no wiring. Assigning the flag by hand reintroduces the
+  staleness the derivation removes.
+- `view-store.test.ts`'s `reset()` sets `viewFitted.value = true`. A new test file
+  that drives the view store needs the same line, or a leftover `false` leaks into
+  the tests that follow.
+- The HUD's `fit yes|no` readout is the browser instrument for D1. Resize the window
+  and watch whether it stays `yes`.
+- The label fit test still measures the country's union bounding box. Only the
+  placement stage probes the ends. Widening `FIT_WIDTH_RATIO` instead would hide
+  labels that are correct today.
+- `MapCanvas`'s `0` shortcut, `isTypingTarget` and `Shell`'s `Reset view` button are
+  untested. The repo has no jsdom. `resetView` itself is pinned by the store tests,
+  and reachability stays a browser check.
+- The reset is an instant jump with no easing. There are no zoom buttons, no zoom
+  slider, no minimap and no keyboard panning.

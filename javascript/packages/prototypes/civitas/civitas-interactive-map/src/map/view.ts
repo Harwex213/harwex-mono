@@ -24,6 +24,13 @@ type DrawRect = {
 
 const MAX_SCALE = 8;
 
+// Defensive only. No user action can reach it: zooming out floors at the fit
+// scale and `resizeView` never lowers a scale. It exists so a preserved scale
+// cannot be driven to 0, NaN or negative by a pathological resize sequence. At
+// 0.02 the 3653 x 2855 map is still 73 x 57 CSS px and one keypress from a
+// re-fit.
+const MIN_SCALE = 0.02;
+
 // The `max(1, ...)` guards keep a degenerate 0-sized viewport or map from
 // producing `0`, `Infinity` or `NaN`. A `0` scale propagates `Infinity` through
 // `screenToMap` and then `NaN` into `provinceAt`.
@@ -80,11 +87,45 @@ function clampView(view: View, map: Size, viewport: Size): View {
   return clampTranslate({ scale, x: view.x, y: view.y }, map, viewport);
 }
 
+// The scale a FITTED view has: the fit scale capped at MAX_SCALE, which is
+// exactly the number `clampScale(fitScale(...), ...)` already returned. Pulled
+// out so the store can ask "is this the fit scale" without building a View.
+function fittedScale(map: Size, viewport: Size): number {
+  return Math.min(MAX_SCALE, fitScale(map, viewport));
+}
+
+// Exact `===` is safe. `fitScale` is `Math.min(w / mw, h / mh)` over identical
+// inputs and is bit-identical between two calls, and `zoomAt` returns the floor
+// value itself when the clamp bites, so a zoom out lands on the fit scale to the
+// last bit.
+function isFittedScale(scale: number, map: Size, viewport: Size): boolean {
+  return scale === fittedScale(map, viewport);
+}
+
 // The clamp centres both axes at the fit scale, so no separate centring maths
 // is needed here.
 function fitView(map: Size, viewport: Size): View {
-  const scale = clampScale(fitScale(map, viewport), map, viewport);
-  return clampTranslate({ scale, x: 0, y: 0 }, map, viewport);
+  return clampTranslate({ scale: fittedScale(map, viewport), x: 0, y: 0 }, map, viewport);
+}
+
+// THE RESIZE CLAMP. Unlike `clampView` it does NOT floor the scale at the fit
+// scale. That floor is a one-way ratchet across a resize: growing the viewport
+// raises the floor and drags the scale up with it, and shrinking the viewport
+// back lowers the floor and leaves the scale high, so the map ends up cropped.
+// The translation is clamped exactly as before.
+//
+// The floor stays correct for USER zoom and `clampScale` is unchanged. Only the
+// resize path stops going through it.
+function resizeView(view: View, map: Size, viewport: Size): View {
+  let scale: number;
+  if (Number.isFinite(view.scale) && view.scale > 0) {
+    scale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, view.scale));
+  } else {
+    // The same fallback `clampScale` makes: a non-finite scale becomes the fit
+    // scale, never NaN and never a 73 px map at MIN_SCALE.
+    scale = clampScale(view.scale, map, viewport);
+  }
+  return clampTranslate({ scale, x: view.x, y: view.y }, map, viewport);
 }
 
 function translateTo(view: View, x: number, y: number, map: Size, viewport: Size): View {
@@ -194,12 +235,16 @@ function snapView(view: View, dpr: number): View {
 
 export {
   MAX_SCALE,
+  MIN_SCALE,
   clampScale,
   clampTranslate,
   clampView,
   fitScale,
+  fittedScale,
   fitView,
+  isFittedScale,
   mapToScreen,
+  resizeView,
   screenToMap,
   shouldSmooth,
   snapView,

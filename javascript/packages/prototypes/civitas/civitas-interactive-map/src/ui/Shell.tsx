@@ -7,6 +7,7 @@ import { PANEL_DOM_ID, closePanel, openPanelId, togglePanel } from "../state/pan
 import { PanelHost } from "./PanelHost";
 import { activeCountryId, assignMode, setAssignMode } from "../state/assign-store";
 import { countryById } from "../state/world-store";
+import { resetView } from "../state/view-store";
 import type { PanelId } from "../state/panel-store";
 import styles from "./shell.module.css";
 
@@ -129,6 +130,23 @@ function Shell() {
             </button>
           );
         })}
+
+        {/* An ACTION, not a toggle: no `aria-pressed`, no `data-on`. Never
+            disabled either — a control that greys out the moment the view is
+            fitted is more confusing than a click that does nothing, and
+            `resetView` already writes no signal when the view is already the
+            fitted one. Same action as the `0` key, which `MapCanvas` owns. */}
+        <span className={styles.barDivider} />
+        <button
+          className={styles.barAction}
+          title="Reset view (0)"
+          type="button"
+          onClick={() => {
+            resetView();
+          }}
+        >
+          Reset view
+        </button>
       </div>
 
       {open === null ? null : (
