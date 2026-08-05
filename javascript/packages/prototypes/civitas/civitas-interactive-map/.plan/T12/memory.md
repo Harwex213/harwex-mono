@@ -309,3 +309,63 @@ Rspack compiled with 1 warning in 99 ms
 $ git status --porcelain -- ../civitas-map src/economy src/state/migrations.ts
                                         # nothing — all three untouched
 ```
+
+## Docs & commit
+
+Commit: **4555542307a206b2d2aed9d29f14618b8f581326** — "civitas interactive map — T12
+economics panel and End Turn". 30 files, +8 461 / -26. NOT pushed.
+
+### README
+
+Appended `## Economics panel and End Turn` (373 lines) after `## Economics calculator
+engine`. Covers the panel and its file table, the tag-driven editability rule, the
+reject-never-clamp parser, the step cap, the store bridge, End Turn, the turn history,
+persistence, formatting, the tests, the browser pass, and the known limitations.
+
+**One earlier section was corrected, not rewritten.** The engine section's "Known
+limitations" opened with "The economics panel is still the T11 stub" and "Nothing is
+wired to the store yet". Both became false with this commit, so the two bullets were
+replaced by one that says the engine formats and stores nothing itself and points
+forward to the new section. Every other line of every earlier section is untouched.
+
+### Verification before the commit — actual output
+
+```
+$ yarn typecheck
+                                        # silent, exit 0
+$ yarn test
+ℹ tests 882
+ℹ pass 882
+ℹ fail 0
+$ yarn build
+Rspack compiled with 1 warning in 100 ms   # the asset-size advisory, as expected
+```
+
+### What was staged, and what was deliberately left out
+
+The branch's index arrived carrying a large amount of pre-existing unrelated staged
+content: ~120 `javascript/.yarn/cache/*.zip` entries, `javascript/.claude/skills/
+prototype-manager/SKILL.md`, a colony-sim `types.d.ts`, and two faenwald files. A plain
+`git commit` would have swept all of it in.
+
+**The commit was therefore made with explicit pathspecs** (`git commit -F msg -- <30
+paths>`), which records only the named paths and leaves the rest of the index exactly as
+it was. `git show --name-only HEAD | grep -v civitas-interactive-map/` is empty.
+
+`javascript/yarn.lock` is modified but was NOT committed. Its only change adds the
+unrelated workspace `@hw/react-di` at `packages/prototypes/ai-slop/react-di`. Nothing in
+T12 touched a dependency.
+
+Also committed with this work, as instructed: the T12 documents (`DESIGN.md`,
+`memory.md`, `review-2.md`) and the five handoff `memory.md` files left modified by T08,
+T08-FIX, T09, T10 and T11-B.
+
+`.plan/T11/images/` needed nothing. All fifteen `img*.jpg`, `urls.txt` and both
+transcriptions (`RULEBOOK-IMAGES.md`, `RULEBOOK-DIGEST.md`) were already committed with
+T11-B, and no intermediate crop exists on disk.
+
+### Note for the next agent
+
+This file is intentionally left uncommitted, because it records the hash of the commit
+that contains it. That is the same handoff convention T08 through T11-B followed, and it
+is why this task committed their five `memory.md` files.
