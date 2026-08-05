@@ -1689,3 +1689,289 @@ only contain `dt`, `dd` and `div`, so the heading sits outside the list.
   present, `countryById.value` absent, `maxEdge={FLAG_MAX_EDGE}` passed, no
   encoder call, and the four `key` props. `src/scaffold.test.ts` set that
   precedent.
+
+## Provinces overview panel
+
+The selected country's provinces, one editable row each: an image, a name and a
+lore box. The list is virtualised. At most thirteen rows exist in the DOM at any
+moment, whatever the country holds.
+
+T10 adds no storage key, no schema field and no migration. It builds no second
+field component, no second store and no second panel system. Every write goes
+through T05's three province setters, and those are already sparse.
+
+### Files
+
+| Path | What it is |
+|---|---|
+| `src/ui/province-list.ts` | New. The panel's pure half: the window arithmetic, the search predicate, the row assembly, the budget and the quota notice. |
+| `src/ui/province-list.test.ts` | New. 46 cases over that module, plus the source assertions listed below. |
+| `src/ui/province-list.module.css` | New. The panel's own styles. Tokens only. |
+| `src/ui/ProvinceList.tsx` | New. The search box, the scroll viewport, the sliding window, and the two-way selection sync. |
+| `src/ui/ProvinceRow.tsx` | New. One row. Reads no signal. |
+| `src/ui/ProvincesOverviewPanel.tsx` | Rewritten body. Two empty states, the save notice, the keyed list, the footer. |
+| `src/ui/EditableTextArea.tsx` | One optional prop, `areaClassName`. |
+
+Nothing under `src/map/` or `src/state/` changed. `Panel.tsx`, `ImageUpload.tsx`,
+`EditableText.tsx`, `use-field-commit.ts`, `country-overview.ts` and
+`fields.module.css` are untouched. `panel-bodies.module.css` stays, because
+`EconomicsPanel` still imports it.
+
+### The pure half
+
+`src/ui/province-list.ts` has no React, no signals and no DOM. The repo has no
+jsdom, so a `.tsx` cannot be tested. Everything in the panel worth an assertion
+lives in this module instead. That is the same split T07 used for
+`label-layout.ts`, T08 for `nextSelection` and T09 for `country-overview.ts`.
+
+### The virtual window
+
+**Rows are a uniform fixed height, `PROVINCE_ROW_HEIGHT` = 196.** A uniform
+height makes the index-to-offset arithmetic O(1) in both directions, so there is
+no offset table, no per-row measurement and no per-row `ResizeObserver`.
+
+The constant is applied as an inline `height` on the row element, and
+`province-list.module.css` declares no height at all. The two therefore cannot
+disagree. A test pins both halves of that.
+
+The number comes from the row's internal budget: 2 px of border, 16 px of
+padding, a 24 px header strip, an 8 px gap, and 144 px for the taller of the two
+body columns. That is 194, and 196 leaves 2 px of slack. The row clips its
+overflow, so a preview grown past the budget cuts the fields off silently rather
+than pushing the row taller.
+
+**The component's whole scroll state is one integer, `first`.** The `scroll`
+handler calls `windowStart(scrollTop, …)` and React bails when the integer is
+unchanged, so scrolling inside one row costs zero renders.
+
+`windowGeometry(first, …)` returns the window. It **re-clamps `first`** to
+`rowCount - visible - overscan`, which is exactly the value a real scroll to the
+bottom produces. The clamp therefore never fights the user, and it removes the
+blank frame between a filter shrinking the list and the browser's own `scrollTop`
+clamp firing a `scroll` event.
+
+`visible` is `ceil(height / rowHeight) + 1`. The `+ 1` covers a partially
+scrolled first row. `OVERSCAN_ROWS` is 4 above and 4 below, which is generous on
+purpose: a row that unmounts under a fast scroll aborts an in-flight
+`downscaleImage` inside it.
+
+The rendered rows are **one translated block of contiguous rows**, not one
+absolute position per row. A scroll step is a single `transform` write.
+`.rows` must carry no `gap`. A gap adds height the geometry does not know about,
+and the window then drifts away from the scrollbar.
+
+Measured in Chrome on a 400-province country at a 678 px viewport: 13 rows in the
+DOM at every scroll position, 9 at the very bottom, a spacer of 78 400 px, and a
+measured row height of exactly 196. `ceil(678 / 196) + 1 + 2 * 4` is 13.
+
+### Search
+
+The filter matches the display name as a case-insensitive substring, and the id
+as a **prefix**. Typing `41` surfaces province 41 and 412, not every province
+whose id contains those digits.
+
+The lore is deliberately not searched. It is up to 8000 characters per province,
+and a full-text match over prose is unpredictable where a name-plus-id match is
+not. There is no debounce either, because the filter is one `includes` over a few
+hundred short strings.
+
+`filterRows` returns the **same array reference** for an empty query. That
+identity keeps an unfiltered list free through the `useMemo` chain.
+
+### Selection, both ways
+
+A click on a row's header strip calls `selectProvince`. Focus entering any field
+in the row does the same, so typing moves the map highlight to the province being
+edited. `selectProvince` deduplicates through `sameSelection`, so a focus move
+inside one row writes nothing.
+
+**A row click sets scope `"province"`, and the panel does not empty.**
+`selectedCountryId` at any non-country scope reads `countryOfProvince` live, so
+`selectedCountry` still returns the same country. That looks like a bug waiting
+to happen. It is not.
+
+The map-to-list scroll is **guarded on the selection id held in a ref**, not on a
+render. Hand-scrolling therefore never re-scrolls, and the `scrollTop` write
+cannot loop: the `scroll` event it fires re-renders, and `syncedRef` already
+holds the id.
+
+`scrollTopForIndex` returns `null` for a row that is already fully visible, so a
+click on a visible row never jumps the list under the cursor. A jump of more than
+one viewport centres the target row instead of gluing it to an edge. A row the
+filter hides is **not** recorded as synced, so clearing the query scrolls to it
+then.
+
+`<ProvinceList key={country.id}>` resets the query and the scroll position when
+the selection moves to another country, with no effect and no cleanup.
+`country.id` does not change when provinces are painted into that same country,
+so painting never resets the list.
+
+### Sparseness
+
+Sparseness is inherited, not re-implemented. `writeOverrideField` in
+`world-store.ts` already skips an unchanged value, and it deletes an override
+once its last field is emptied. T10's only duty is to call a setter from a commit
+handler and never from render. `useFieldCommit`'s unmount flush is safe: `flush()`
+returns early unless `onChange` assigned something.
+
+**The name input is controlled on the raw override value, not on the resolved
+name.** A controlled input has to let the user clear the field, and
+`setProvinceName("")` removes the override — which is exactly how a province
+returns to its manifest name. The resolved name shows as the placeholder and in
+the header strip.
+
+The footer's `edited` count is the in-app instrument for all of this. Open a
+300-province country, scroll the whole list, and it must still read `0 edited`.
+Verified in Chrome: after two full sweeps `provinceOverrides` is `{}`. Typing one
+name writes `{"350":{"name":"Alta Verde"}}` — one key, one field.
+
+**`overrideSummary` is computed over all rows, never over the filtered ones.**
+The `edited` count must not drop when a filter hides the edited provinces.
+
+### The row
+
+`ProvinceRow` reads no signal and imports nothing from `@preact/signals-react`.
+`ProvinceList` holds the only subscription and hands each row plain props.
+Thirteen rows each subscribing to `provinceOverrides` would re-render all
+thirteen on every keystroke anyway, because the parent re-renders too.
+
+Rows are keyed by the province id. A sliding window therefore unmounts the
+leaving id and mounts the entering one fresh. The inner fields need no keys of
+their own, and a buffered draft can never land on the wrong province.
+
+`ImageUpload` gained no new prop. `chooseLabel="add…"` and
+`replaceLabel="change…"` are short enough to sit beside `remove` in the 136 px
+image column, and `choose file…` is not. That is the whole reason for the short
+labels. The format line sits in the panel footer once instead of in every row.
+
+`EditableTextArea` gained one optional prop, `areaClassName`, because
+`fields.module.css`'s `.area` sets `min-height: 6em` and `resize: vertical` and
+both break a fixed row height. **It replaces `styles.area` and never adds to
+it.** Two single-class selectors from two CSS modules have equal specificity, so
+appending makes the winner depend on the order rspack emits the modules in. That
+is the same rule and the same wording T09 wrote for `previewClassName`.
+
+`PROVINCE_LORE_ROWS` is 3. The full `LORE_MAX` cap of 8000 characters still
+applies, and the box scrolls internally.
+
+### The viewport is always mounted
+
+The "no province matches" line renders **inside** the scroll viewport, not in
+place of it. Unmounting the viewport would drop the `ResizeObserver` registered
+against that element in a `[]`-dependency effect, and `viewportHeight` would then
+be stale for the rest of the session.
+
+The panel body needs no change to scroll correctly. `Panel`'s `.body` is already
+a flex column with `min-height: 0`, so `.viewport` becomes the scroller with
+`flex: 1; min-height: 0; overflow-y: auto`. **Every sibling of the viewport is
+`flex: none`.**
+
+### The footer is a render prop
+
+`shown` is a function of the query, and the query lives inside `ProvinceList`
+under the `key={country.id}` remount. `ProvinceList` therefore takes
+`footer: (shown, summary) => ReactNode` and calls it during render. The sentence
+and its styling stay in the panel, with no effect and no extra render.
+
+### The image budget
+
+`PROVINCE_IMAGE_MAX_EDGE` stays 320. The row preview is 96 CSS px, which is 192
+device px at DPR 2, so 320 already has headroom for a larger preview later.
+Raising it multiplies stored bytes by the square of the ratio for a surface
+nothing draws. T09 pinned 320 in `image.test.ts`.
+
+`localStorage` is accounted in UTF-16 code units, so one base64 character costs 2
+bytes. A 320-edge WebP is about 24 000 characters, which is about 48 KB stored.
+That is `PROVINCE_IMAGE_STORE_BYTES`. Against `STORAGE_BUDGET_BYTES` of
+4 000 000 that is **about 80 province images** before the `budget` warning, and
+roughly 100 before a real 5 MB quota throws.
+
+The worst case is much smaller. `IMAGE_TARGET_BYTES` caps one image at 256 KB
+decoded, which is about 700 KB stored, so five such images exhaust the budget.
+250 full 8000-character lores do too. A live test with 300 lores hit the warning
+at 4701 KB, and the panel stayed usable at 13 rows.
+
+`imagesRemaining` floors at 0, so a document already over budget reads "room for
+about 0" rather than a negative count.
+
+### Quota and the save notice
+
+Quota is surfaced exactly the way T09 surfaces it for the flag.
+
+- **`flushState()` runs after an image write and after an image removal, never
+  after a keystroke.** A quota failure is only discovered inside `writeNow`.
+  Without the flush it lands 400 ms later and reads as "it worked, then a banner
+  appeared".
+- **`isImageDataUrl` is called before `setProvinceImage`, not after.** The store
+  rejects an over-cap data URL silently — no return value, no warning, no timer
+  armed. Running the store's own predicate first turns the silent drop into a
+  sentence, with no read-back and no `.peek()` question.
+- The notice sits at the top of the panel body, never inside a row. A quota
+  failure caused by lore must not appear under one province's file picker.
+- `imageSaveNoticeFor` **delegates to T09's `saveNoticeFor`** and overrides one
+  branch only: `quota` after an image write. The warning-to-sentence table stays
+  in one place, so a new `WarningKind` still has exactly one home.
+
+The message is tagged with the province id and derived, not reset in an effect.
+The panel does not remount when the selection moves; only its keyed child does.
+The panel therefore checks `country.provinceIds.includes(notice.provinceId)`, and
+a notice produced for another country's province is simply not shown.
+
+### Tests
+
+`yarn test` goes from 547 to 593. Every new case is in
+`src/ui/province-list.test.ts`. No existing test was edited, weakened or deleted.
+
+The geometry is pinned by a **full scroll sweep**: `windowStart` composed into
+`windowGeometry` the way the component composes them, over 6 row counts, 5
+viewport heights and every row boundary plus a 97 px comb. The sweep runs at
+overscan 0 as well as 4. Four spare rows on each side hide an off-by-one, and at
+0 the `+ 1` for a partially scrolled row is load bearing.
+
+Six mutations were applied to the source and each one broke a test: dropping the
+`+ 1` from `visible`, dropping the trailing overscan from `last`, ceiling instead
+of flooring in `windowStart`, restoring a `ROW_CAP` slice in the panel, making
+`.rowArea` resizable, and controlling the name input on `row.name`.
+
+The wiring jsdom cannot reach is pinned by source assertions, the precedent being
+`scaffold.test.ts` and `country-overview.test.ts`. They cover the three setters,
+the absence of any effect in the row, `areaClassName` replacing rather than
+appending, the viewport rendering before the empty branch, the flex rules in the
+CSS module, the row's internal pixel budget, and the panel carrying no `ROW_CAP`
+and no `slice(`.
+
+### Traps for later tasks
+
+- **`PROVINCE_ROW_HEIGHT` is inline and the CSS declares no height.** Add a
+  border, a padding or a taller preview to a row and the fields are clipped, not
+  pushed down. Change the constant and the internal budget comment together.
+- **`.rows` must carry no `gap`.** A gap drifts the window away from the
+  scrollbar, and nothing on screen says why.
+- `ProvinceList` reads `provinceOverrides`, `selectedProvinceId` and `loadPhase`
+  in the **component body**, never only inside a `useMemo`. A render where the
+  memo does not re-execute would read nothing and quietly unsubscribe. The
+  `loadPhase` read is what stops the names from staying `"Province N"` for the
+  whole session, because `getMapAssets()` is a plain module variable and notifies
+  nobody.
+- `country.provinceIds` is stable by identity. `updateCountry` deliberately does
+  not copy it, and both `label-store.ts` and this list depend on that. Do not
+  "fix" it.
+- **`ImageUpload` drops an in-flight upload when its row unmounts**, through its
+  `mountedRef` guard. `OVERSCAN_ROWS = 4` widens the safe band. Fixing it means
+  lifting the busy flag out of a component three panels share, so it is recorded
+  and not fixed.
+- The hard-quota branch, where `setItem` itself throws, was never reproduced in a
+  browser. Chrome accepted a 4.7 MB document plus 1.3 MB of ballast without
+  throwing. `imageSaveNoticeFor(quota, true)` covers the branch, and it renders
+  through the same element the `budget` warning was seen rendering through.
+- A phantom province id stays listed and stays editable. Ids 1318 and 1458 are
+  absent from the manifest, and a stored document may name others. Such a row
+  carries `data-known="false"`. Hiding it would make its override unreachable.
+- Not built, deliberately: no camera move on selection, no assignment,
+  reordering, multi-select or bulk edit from this panel, no "all provinces" view
+  for unassigned provinces, and no lore full-text search. A camera move needs a
+  new `view-store` action and would reopen the fitted policy.
+- Still open from T08 and T09, because both are chrome shared by all three
+  panels: the plaque and the panel dock overlap between roughly 900 and 1200 px,
+  and the HUD's `max-width` is wrong below roughly 760 px.
+- Touch is still unhandled. This is a desktop prototype.

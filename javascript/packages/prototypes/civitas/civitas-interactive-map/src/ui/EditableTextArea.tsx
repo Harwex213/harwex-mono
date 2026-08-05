@@ -15,6 +15,12 @@ type EditableTextAreaProps = {
   placeholder?: string;
   disabled?: boolean;
   rows?: number;
+  // REPLACES `styles.area`, it does not add to it. Two single-class selectors
+  // from two different CSS modules have equal specificity, so which one wins
+  // depends on the order rspack happens to emit the modules in. Replacing is
+  // deterministic; appending is a coin flip that looks fine until a rebuild.
+  // The same rule and the same wording T09 established for `previewClassName`.
+  areaClassName?: string;
 };
 
 function EditableTextArea(props: EditableTextAreaProps) {
@@ -24,7 +30,7 @@ function EditableTextArea(props: EditableTextAreaProps) {
     <label className={styles.field}>
       <span className={styles.caption}>{props.label}</span>
       <textarea
-        className={styles.area}
+        className={props.areaClassName ?? styles.area}
         disabled={props.disabled === true}
         maxLength={props.maxLength}
         placeholder={props.placeholder}
