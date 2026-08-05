@@ -1975,3 +1975,264 @@ and no `slice(`.
   panels: the plaque and the panel dock overlap between roughly 900 and 1200 px,
   and the HUD's `max-width` is wrong below roughly 760 px.
 - Touch is still unhandled. This is a desktop prototype.
+
+## Economics calculator engine
+
+The economy is a real calculator, not a stub. `src/economy/` computes a country's
+GDP, growth, spending points, savings, debt, resources, credit rating and control
+scale, and it advances all of that by one turn.
+
+The rules come from `.plan/T11/FORMULA-SPEC.md`. That file is the authority, and
+T11-B implements it literally. The spec itself was reconstructed from a Russian
+rulebook article and fifteen screenshots of the original spreadsheet, both
+preserved under `.plan/T11/`. The article states no formulas, so every formula in
+the spec is either recovered from a screenshot or invented. The spec labels each
+constant `SOURCED` or `INVENTED`, and `src/economy/constants.ts` carries the same
+split in its comments.
+
+T11-B adds no UI, no store field, no storage key and no migration. Nothing
+outside `src/economy/` was created or modified. T12 wires the engine to a panel.
+
+### Files
+
+| Path | What it is |
+|---|---|
+| `src/economy/types.ts` | Every shape the engine reads or returns. No runtime code. |
+| `src/economy/constants.ts` | `ECONOMY_CONSTANTS`, the rating tiers, the eleven control bands, the per-tier debt table, the resource matrix and its computed inversion. The only place a balance number is written. |
+| `src/economy/num.ts` | `roundTo`, `clamp`, `finiteOr`, `safeDivide` and the two range predicates. |
+| `src/economy/control.ts` | The control band index, its name, and its three generated effects. |
+| `src/economy/rating.ts` | The tier lookup, the FR rating factor, the per-tier debt terms, the clean-turn predicate, and step 13. |
+| `src/economy/resources.ts` | Step 2: need, extraction, imports, exports, supply, shortage, and the per-sector penalty. |
+| `src/economy/generation.ts` | Step 3: FR and MIC generation, emission, inflation and the two step limits. |
+| `src/economy/actions.ts` | Step 4: nationalization, privatization and the concession grant. |
+| `src/economy/debt.ts` | Step 5 borrowing and step 7 servicing. |
+| `src/economy/savings.ts` | Step 6 reserve and stockpile, step 8 upkeep, step 10 auto-investment. |
+| `src/economy/growth.ts` | Step 11: the modifier sum, the per-sector rate, and the GDP-weighted overall rate. |
+| `src/economy/gdp.ts` | Step 12: the next-turn volumes and the concession cost. |
+| `src/economy/validate.ts` | V1 to V13, the errors that abort a turn. |
+| `src/economy/derive.ts` | `deriveEconomy` — the read-only form of steps 2 to 13. |
+| `src/economy/pipeline.ts` | `resolveTurn` — the fifteen steps as data, and the draft fold. |
+| `src/economy/history.ts` | The turn record, its stored precision, and the twelve-record cap. |
+| `src/economy/economy-state.ts` | `createInitialEconomy` and the two row factories. |
+| `src/economy/serialize.ts` | `economyToJson` and the repairing `economyFromJson`. |
+
+There is no barrel file. The package has none anywhere, so a caller imports the
+module it needs.
+
+### The engine is pure, and a test enforces that
+
+`src/economy/` is plain TypeScript over plain data. It imports no React, no
+signals, no stylesheet and nothing from `src/ui/`. It touches no DOM, no
+`localStorage`, no clock and no random source. The dice roll for an action is an
+input the caller supplies, exactly as the rulebook has a judge throw it in a chat.
+
+`src/economy/purity.test.ts` scans the directory and asserts all of that. It also
+asserts the one import that leaves the directory is type-only — `serialize.ts`
+reuses `JsonRecord` and `JsonValue` from `src/state/schema.ts`, and a type-only
+import erases at build time. The same file checks the repo's export convention:
+one grouped named export, last in the file, on every source module.
+
+Purity is what makes every formula testable without a browser. The repo has no
+jsdom, so a module that reached for the DOM could not be tested at all.
+
+### Two entry points
+
+```ts
+deriveEconomy(state: EconomyState, context?: EconomyContext): DerivedEconomy
+resolveTurn(state: EconomyState, context?: EconomyContext): TurnResolution
+```
+
+`deriveEconomy` answers "what does this sheet say right now". It is **total**: it
+computes through step 13 even on invalid input and it never throws. That is what
+lets T12 show live derived values while a field is half-typed, and it is what lets
+step 1 report every error at once instead of stopping at the first.
+
+`resolveTurn` answers "advance to the next turn". It calls `deriveEconomy` once
+as step 1. If that pass reports errors, the turn aborts and nothing is written.
+Otherwise the remaining fourteen steps fold a draft state and the call returns the
+next state plus a turn record.
+
+Both functions are pure. Neither writes to its argument. `determinism.test.ts`
+pins this three ways: the same input gives a deep-equal output twice, the input
+deep-equals its own snapshot afterwards, and a deep-frozen state resolves without
+a throw.
+
+`context` is `{ provinceCount }` and defaults to 0. The concession cost divides
+total GDP by the province count, and the engine may not read a store to find that
+number. A count of 0 makes a concession free, which is the documented guard.
+
+### The turn pipeline
+
+`TURN_STEPS` is an ordered array of fifteen named step descriptors:
+
+```
+derive-and-validate  resources  generation  actions  borrowing  savings
+debt-service  upkeep  spending  auto-invest  growth  gdp  rating  flags  commit
+```
+
+**The order is load-bearing.** Steps 6, 7, 8 and 9 all draw on one running FR
+balance, so moving any of them changes every number after it. The order is
+therefore data rather than control flow, and `pipeline.test.ts` asserts the
+fifteen names deep-equal the spec's list in the spec's order.
+
+Every step returns a new draft. No step mutates. Each step also returns a record
+of what it changed, and those records are what the turn history stores.
+
+Only step 1 can abort. There is no second validation site anywhere in the engine.
+
+### The running FR balance
+
+Money is charged in a fixed order, and the order has consequences a player can
+feel. A reserve addition is charged at step 6, **before** debt service at step 7.
+So banking money can starve an auto-serviced loan and cost rating points. That is
+deliberate and it is never silent: warnings V14 and V17 both fire.
+
+The balance is exposed at three points — `frBalanceAfterSavings`,
+`frBalanceAfterDebt` and `frBalanceAfterUpkeep` — so a panel can show where the
+money went. `frAvailable - frSpent` is the same set of terms in a different
+order, and a test asserts the two agree.
+
+### Anti-circularity
+
+FR generation reads growth, and growth reads unspent FR. That is a cycle.
+
+The cycle is broken by `plannedGrowthPct`, which depends only on the sector
+volumes and the two growth columns. Generation at step 3 reads
+`plannedGrowthPct`. Growth at step 11 reads the FR left over. Nothing iterates to
+a fixed point, and the pipeline stays a straight line.
+
+Total GDP is likewise frozen once, at the top of `deriveEconomy`. Every quantity
+that divides by GDP sees that one number.
+
+### Numbers
+
+Internal arithmetic runs at full double precision with no intermediate rounding.
+**A rounded value is never an input to further arithmetic.** Rounding is a view,
+applied at exactly two boundaries: the turn record and the commit step.
+
+`roundTo` is symmetric half-up on the magnitude. `Math.round` alone breaks ties
+upward, so `-0,125` would land on `-0,12` while `+0,125` landed on `+0,13`.
+Growth and rating deltas are signed, so the asymmetry would show.
+
+Every division goes through `safeDivide`, which returns 0 on a zero or non-finite
+denominator. Every number written to a draft or a record passes `finiteOr` first,
+because `sanitizeRecord` in `src/state/schema.ts` **drops** a key whose value is
+`NaN` or `Infinity` — the field does not become null, it disappears from the saved
+document. Every range check is written negated, `!(x >= 0 && x <= max)`, so a
+`NaN` fails it instead of sailing through.
+
+### What a turn computes
+
+**Generation.** FR is a 20% tax on GDP, scaled by the credit rating, the control
+band, planned growth, the military share and the light-industry share. Emission is
+added on top rather than multiplied in, because printing money creates money in
+proportion to the money base and needs no creditor. MIC is generated from the
+military share, scaled by planned growth and the heavy-industry share. At the
+standard start this gives 10 017,00 FR and 233,20 MIC.
+
+**Credit rating.** Seven tiers from A+ down to F. The rating sets the FR factor,
+the borrowing limit as a multiple of annual income, the interest rate and the loan
+term. Five effects subtract points and exactly one adds: a **clean turn** earns
++1. A turn is clean when emission is zero, no debt payment was missed, and
+realised growth is strictly positive. The recovery is one more term in the same
+sum, not a gate on the others, so a clean turn that also nationalises is -4 + 1.
+
+**Control scale.** Eleven bands from total control to minarchism. All three
+effects are generated from the band index, so band 50 stays neutral however the
+coefficients are retuned. The scale sets a growth bonus, an FR multiplier, and the
+**step limit** — the most a player may move emission or military spending in one
+turn. The step limit is a hard cap, never a clamp: a value past it aborts the turn
+through V3 or V4 rather than being quietly trimmed.
+
+**Resources.** Eight resources feed sectors through a fixed dependency matrix.
+One deposit yields 50 units a turn. A shortage penalty is a weighted, normalised
+mean of the shortages of the resources a sector depends on, so a total shortage of
+everything gives exactly 1. The penalty is multiplicative and applies only when
+pre-shortage growth is positive. Both halves of the original rule therefore hold
+exactly: a full shortage lands the sector on 0, and a sector already shrinking is
+untouched. A shortage can never on its own drive growth negative.
+
+**Debt.** Loans amortise straight-line over the remaining term, so the last
+payment is the whole remaining principal and a loan closes at exactly 0. Interest
+is paid before principal, and unpaid interest capitalises — that is the whole
+mechanism behind a debt spiral, with no extra rule. Loans are serviced in array
+order, so a thin balance starves the newest loan rather than short-paying all of
+them. A loan created this turn is not serviced this turn.
+
+**Actions.** Nationalization always succeeds structurally; the roll scales only
+the payout. Privatization succeeds on a roll of 6 or more and drags future FR or
+MIC generation for three turns. Both sit behind a two-turn cooldown, tracked
+separately, and each is locked out at one end of the control scale. A concession
+adds +1,50 pp of growth and costs total GDP divided by the province count.
+
+**Growth and GDP.** One modifier sum applies equally to every sector, and the
+shortage is the only per-sector term. Next-turn volumes are rounded per sector,
+and the total is the sum of the rounded parts. Rounding the total on its own would
+let it disagree with the parts a player reads.
+
+### Errors and warnings
+
+V1 to V13 are **errors**. Any one of them aborts the turn and nothing is written.
+V14 to V20 are **warnings**. They report something the engine absorbed — a
+clipped export, a clipped reserve movement, a debt shortfall, lost MIC points, a
+zeroed sector, a clamped concession cost. A warning never stops a turn. Each
+warning string starts with its own code, so a panel can group them.
+
+### Persistence
+
+`economyToJson` produces the document `setCountryEconomics` persists.
+`economyFromJson` reads arbitrary JSON back and **repairs** rather than rejects,
+the same contract `normalizeState` follows. It never throws. Without a repairing
+reader one damaged field would lose a country's whole economy.
+
+Turn history is capped at twelve records. A record holds the closing headline
+numbers, the per-step deltas and the warnings, never a state snapshot. It also has
+to stay flat: `sanitizeRecord` allows eight levels of containers, and the path
+from the slot down to a single delta already uses seven.
+
+### Tests
+
+**203 tests across 23 files**, and the suite as a whole is at 796. Every
+source file except `types.ts` and `derive.ts` has a test file of its own, and
+`purity.test.ts` asserts that pairing.
+
+Four files carry most of the weight:
+
+- `fixture.test.ts` walks the spec's worked example table by table, one test per
+  pipeline step. `fixture-detail.test.ts` pins the columns behind those headlines.
+- `boundaries.test.ts` sweeps both edges of all seven rating tiers and all eleven
+  control bands through the whole engine. The lookup functions have their own
+  tests; this file checks the wiring, which is where an off-by-one would bite.
+- `guards.test.ts` reaches every degeneracy the way a player would: a country with
+  zero GDP, a total resource shortage, a starved loan, a matured loan, a rating at
+  its clamp, and a step-limit breach that is rejected rather than clamped.
+- `clean-turn.test.ts` and `guards.test.ts` between them drive each clause of the
+  clean-turn predicate separately, with the other two clauses asserted to hold.
+
+**Assert derived numbers with a tolerance, never by equality.** `10 000 × 1,06 ×
+0,90 × 1,05` does not land on exactly `10 017` in IEEE-754. Whole-obor volumes and
+integer ratings are the only safe equality assertions.
+
+**A test file may not export anything** — `purity.test.ts` enforces that. So a
+fixture builder cannot be shared between test files, and each file rebuilds its
+own country. That duplication is deliberate.
+
+### Known limitations
+
+- **The economics panel is still the T11 stub.** The engine returns numbers and
+  formats nothing. Rendering, the editability split, the End Turn control and the
+  history view are all T12.
+- **Nothing is wired to the store yet.** `economyToJson` and `economyFromJson`
+  exist and are tested, but no component calls them. `ECONOMY_SCHEMA_VERSION` is
+  1 and there is no earlier economy document, so `src/state/migrations.ts` is
+  untouched.
+- **A fresh country starts with zero deposits**, so it reads a full resource
+  shortage until a judge sets its geology. The spec states no starting geology and
+  the engine may not invent one. This is correct, and it is not a bug.
+- **Most constants are invented.** The rulebook publishes no formulas, and the
+  screenshots were all captured in a resource-starved state. `constants.ts` is the
+  single retuning surface, and every scalar in it can be changed without touching
+  a formula.
+- A loan whose next principal rounds to 0 is removed from `loans[]`. The spec says
+  a loan closes at exactly 0 but never says to remove it, and a kept zero loan
+  would demand 0 forever while the array grew without bound.

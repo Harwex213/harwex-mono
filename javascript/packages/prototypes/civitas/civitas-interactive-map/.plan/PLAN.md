@@ -60,8 +60,46 @@ rspack config, canvas layering, and the `ProvinceLayer` tile-upload pattern.
 
 1. **Persistence: `localStorage` only.** No export/import UI. Versioned schema key
    `civitas.state.v1`. Uploaded images are stored as data URLs.
-2. **Economics: a full calculator engine.** Real formulas, not stubs. The formula
-   spec is authored in T11-A and must be approved by the user before T11-B implements it.
+2. **Economics: a full calculator engine.** Real formulas, not stubs.
+   - Source material, all under `.plan/T11/`:
+     `RULEBOOK-DIGEST.md` (the prose rules) and `RULEBOOK-IMAGES.md` (transcriptions of 15
+     calculator screenshots, with the images themselves in `.plan/T11/images/`).
+   - **Fidelity to the original calculator is NOT a goal.** The user decided this explicitly.
+     Design a clean, coherent, internally consistent economy. Do NOT curve-fit the single
+     observed FR/MIC data point, and do not contort formulas to reproduce screenshot values.
+   - What IS binding: the structural rules and the recovered constants. Honour them exactly.
+     - 7 credit tiers with thresholds A+ 95-100, A 85-94, B 70-84, C 50-69, D 30-49,
+       E 10-29, F 0-9.
+     - The control scale's 11 bands: 0-5, 6-20, 21-30, 31-44, 45-49, 50, 51-55, 56-69,
+       70-79, 80-94, 95-100. Band 50 is neutral: no bonus, no penalty.
+     - FR reserve cap = 2x annual income. The reserve penalty is 1.5x the growth the same
+       point would have added through auto-investment.
+     - MIC stockpiles have no cap, cost 2 FR per point per turn, and are LOST if unpaid.
+     - The emission and military step is 10 percentage points each at scale position 50.
+       Design the other 10 bands around that anchor. The step is a hard cap.
+     - Mobilization: military step +10pp, FR generation x0.5, MIC generation x2, growth -2pp.
+     - Nationalization: -0.75pp growth, -4 rating, up to +26.25% income.
+       Privatization: up to +0.75pp growth; on failure -0.25pp and -2 rating.
+       Cooldown is 2 turns, tracked per action separately. The rulebook's "once a year"
+       line is WRONG — the 2-turn cooldown is authoritative.
+     - Debt at tier B: limit 22,500 FR at 12.00%. Extrapolate the other 6 tiers sensibly.
+     - Resources: 1 deposit yields 50 units per turn. A shortage caps sector growth at 0
+       and can NEVER by itself push growth negative.
+     - The resource-to-sector dependency matrix in the digest is exact. Reproduce it verbatim.
+     - Concessions: +1.5% growth to all sectors, limited to Bengo, Aglan, Sudhara, Badiyat.
+   - Two known contradictions in the source. Resolve them in the spec and say how:
+     - The concession worked example computes 1/20 of TOTAL GDP while the rule text says
+       one sector's turnover.
+     - GDP is denominated in "obor" and FR in "arlings" with no exchange rate given. The
+       engine needs one as soon as FR spending moves GDP. Define it.
+   - Caveat on the screenshots: every one was captured in a resource-starved state with all
+     8 stocks at zero, so four of five sectors read 0.00% growth. Those are not baselines.
+   - The formula spec is authored in T11-A and must be approved by the user before
+     T11-B implements it.
+6. **The economy advances in explicit turns.** There is an End Turn action. The engine
+   needs a resolution pipeline that runs the per-turn steps in a fixed order, plus turn
+   history so a player can see what changed. Derived `[A]` values still recompute live
+   from `[P]`/`[V]` edits within the current turn.
 3. **Countries live in their own store**, shaped like a `countries.json` document:
    country id -> `{ name, slogan, lore, flag, provinceIds[], economy }`. Seeded empty;
    the user builds countries in-app.
@@ -193,6 +231,9 @@ The list of provinces in the selected country. Each row has an editable image pr
 name and lore. Must stay responsive with hundreds of rows — virtualise the list.
 
 **T11-A — Economics formula spec (DESIGN ONLY, no code)**
+Start from `.plan/T11/RULEBOOK-DIGEST.md`. Where the rulebook specifies a rule, implement
+it exactly. Where the digest marks a gap, invent a coherent rule and mark it clearly as
+invented, so the user can correct it at the approval gate.
 Author `.plan/T11/FORMULA-SPEC.md` covering all 12 sections of the brief: exact
 formulas, units, ranges, rounding, and the [P]/[V]/[A] classification of every field.
 Cover: GDP as the sum of 5 base sectors plus up to 2 custom ones; per-sector and
@@ -205,6 +246,9 @@ position and enforced as a hard cap; 8 resources with extraction, consumption an
 shortage, where a full shortage zeroes dependent-sector growth; debt terms derived
 from the credit rating; and the state flags including the once-per-2-years
 nationalisation/privatisation 1-10 roll.
+Also specify the **turn pipeline**: the exact ordered list of steps that End Turn runs
+(income, growth, upkeep, interest, shortages, flag expiry), what a turn represents in game
+time, and what turn history records.
 **This spec is a gate. It stops for user approval before T11-B runs.**
 
 **T11-B — Economics calculator engine**
@@ -216,7 +260,10 @@ project.
 The EU-style sheet rendering all 12 sections. Editability is driven by the tag:
 [P] fields are directly editable, [V] fields are locked behind a judge/event action,
 [A] fields are read-only and recomputed by the engine. Show the legend.
-Done when: every [A] value visibly updates as [P] inputs change.
+Includes the **End Turn** control and a turn-history view showing what each step of the
+last resolution changed.
+Done when: every [A] value visibly updates as [P] inputs change, and End Turn advances the
+economy through the full pipeline with a readable record of what happened.
 
 ## 6. Out of scope
 
