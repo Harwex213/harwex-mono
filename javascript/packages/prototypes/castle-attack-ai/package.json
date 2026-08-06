@@ -12,7 +12,7 @@
     "start": "yarn vite"
   },
   "dependencies": {
-    "@hw/utils": "1.0.0",
+    "@hw/utils": "workspace:*",
     "@types/pixi.js": "5.0.0",
     "@types/react": "19.2.0",
     "@types/react-dom": "19.2.0",

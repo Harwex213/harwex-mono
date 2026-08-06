@@ -1,0 +1,173 @@
+/* The left dock: country CRUD and the assign-mode toggle. On the `--civ-*`
+   tokens like every other panel from T08 on. T09 replaces the body of this
+   panel; the geometry stays.
+
+   `color-scheme: light` for the same reason `panel.module.css` sets it: the
+   surface is parchment and the document root is dark, so without it the colour
+   input and the list scrollbar render dark on light. */
+.panel {
+  background: var(--civ-parchment);
+  border: var(--civ-border-plaque);
+  border-radius: var(--civ-radius-md);
+  box-shadow: var(--civ-shadow-panel);
+  color: var(--civ-ink);
+  color-scheme: light;
+  display: flex;
+  flex-direction: column;
+  gap: var(--civ-space-3);
+  left: var(--civ-space-4);
+  max-height: calc(100% - var(--civ-space-6));
+  padding: var(--civ-space-4);
+  position: absolute;
+  top: var(--civ-space-4);
+  width: 260px;
+  z-index: var(--civ-z-chrome);
+}
+
+.header {
+  align-items: center;
+  display: flex;
+  gap: var(--civ-space-3);
+  justify-content: space-between;
+}
+
+.title {
+  color: var(--civ-ink);
+  font-family: var(--civ-font-display);
+  font-size: var(--civ-text-md);
+  letter-spacing: var(--civ-tracking-caps);
+  text-transform: uppercase;
+}
+
+.action {
+  background: var(--civ-vellum);
+  border: var(--civ-border-strong);
+  border-radius: var(--civ-radius-sm);
+  color: var(--civ-ink);
+  cursor: pointer;
+  font-family: var(--civ-font-mono);
+  font-size: var(--civ-text-sm);
+  padding: var(--civ-space-1) var(--civ-space-3);
+}
+
+.action:hover:not(:disabled) {
+  border-color: var(--civ-gild);
+}
+
+.action:disabled {
+  color: var(--civ-ink-faint);
+  cursor: default;
+  opacity: 0.55;
+}
+
+.action[data-on="true"] {
+  background: var(--civ-gild);
+  border-color: var(--civ-gild);
+  color: var(--civ-ink-invert);
+}
+
+.modeRow {
+  display: flex;
+  gap: var(--civ-space-2);
+}
+
+.hint {
+  color: var(--civ-ink-faint);
+  font-family: var(--civ-font-mono);
+  font-size: var(--civ-text-xs);
+  margin: 0;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--civ-space-2);
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.empty {
+  color: var(--civ-ink-faint);
+  font-family: var(--civ-font-mono);
+  font-size: var(--civ-text-sm);
+  margin: 0;
+}
+
+.row {
+  align-items: center;
+  background: var(--civ-vellum);
+  border: 1px solid transparent;
+  border-radius: var(--civ-radius-sm);
+  cursor: pointer;
+  display: flex;
+  gap: var(--civ-space-2);
+  padding: var(--civ-space-2) var(--civ-space-2);
+}
+
+/* Two independent marks: `active` is the paint target, `selected` is what the
+   plaque and the panels show. They are usually the same row and need not be. */
+.row[data-active="true"] {
+  border-color: var(--civ-gild-soft);
+}
+
+.row[data-selected="true"] {
+  border-color: var(--civ-gild);
+}
+
+.color {
+  background: none;
+  border: var(--civ-border-hair);
+  border-radius: var(--civ-radius-sm);
+  cursor: pointer;
+  flex: none;
+  height: 24px;
+  padding: 1px;
+  width: 28px;
+}
+
+.rowBody {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--civ-space-1);
+  min-width: 0;
+}
+
+.name {
+  background: var(--civ-parchment-dim);
+  border: var(--civ-border-hair);
+  border-radius: var(--civ-radius-sm);
+  color: var(--civ-ink);
+  font-family: var(--civ-font-sans);
+  font-size: var(--civ-text-md);
+  padding: var(--civ-space-1) var(--civ-space-2);
+  width: 100%;
+}
+
+.name:focus {
+  border-color: var(--civ-gild);
+  outline: none;
+}
+
+.stats {
+  color: var(--civ-ink-faint);
+  font-family: var(--civ-font-mono);
+  font-size: var(--civ-text-xs);
+}
+
+.delete {
+  background: var(--civ-vellum);
+  border: var(--civ-border-hair);
+  border-radius: var(--civ-radius-sm);
+  color: var(--civ-ink-dim);
+  cursor: pointer;
+  flex: none;
+  font-family: var(--civ-font-mono);
+  font-size: var(--civ-text-xs);
+  padding: var(--civ-space-1) var(--civ-space-2);
+}
+
+.delete[data-armed="true"] {
+  border-color: var(--civ-danger);
+  color: var(--civ-danger);
+}

@@ -1,0 +1,382 @@
+/* Studio kit internals. Reads `--sk-*` only — it has never heard of `--app-*`. */
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  height: var(--sk-control-height);
+  padding: 0 16px;
+  font-family: var(--sk-font);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  border: var(--sk-line) solid transparent;
+  border-radius: var(--sk-radius);
+  white-space: nowrap;
+  transition: background 120ms linear, border-color 120ms linear;
+}
+
+.button:focus-visible {
+  outline: 2px solid var(--sk-accent);
+  outline-offset: 2px;
+}
+
+.button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.compact {
+  height: 28px;
+  padding: 0 11px;
+  font-size: 11px;
+}
+
+.accent {
+  color: var(--sk-accent-ink);
+  background: var(--sk-accent);
+  border-color: var(--sk-accent);
+}
+
+.accent:hover:not(:disabled) {
+  background: var(--sk-accent-2);
+  border-color: var(--sk-accent-2);
+}
+
+.outline {
+  color: var(--sk-ink);
+  background: var(--sk-paper);
+  border-color: var(--sk-rule-2);
+}
+
+.outline:hover:not(:disabled) {
+  background: var(--sk-wash);
+}
+
+.quiet {
+  color: var(--sk-ink-2);
+  background: transparent;
+}
+
+.quiet:hover:not(:disabled) {
+  color: var(--sk-ink);
+  background: var(--sk-wash);
+}
+
+.critical {
+  color: var(--sk-critical-ink);
+  background: var(--sk-critical);
+  border-color: var(--sk-critical);
+}
+
+.critical:hover:not(:disabled) {
+  background: var(--sk-critical-2);
+  border-color: var(--sk-critical-2);
+}
+
+.busyDot {
+  width: 12px;
+  height: 12px;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: skSpin 0.8s linear infinite;
+}
+
+@keyframes skSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.control {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-family: var(--sk-font);
+}
+
+.caption {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--sk-ink-2);
+}
+
+.star {
+  color: var(--sk-critical);
+}
+
+.input,
+.picker {
+  width: 100%;
+  height: var(--sk-control-height);
+  padding: 0 11px;
+  font-family: var(--sk-font);
+  font-size: 13.5px;
+  color: var(--sk-ink);
+  background: var(--sk-paper);
+  border: var(--sk-line) solid var(--sk-rule-2);
+  border-radius: var(--sk-radius);
+}
+
+.input::placeholder {
+  color: var(--sk-ink-3);
+}
+
+.input:focus-visible,
+.picker:focus-visible {
+  outline: 2px solid var(--sk-accent);
+  outline-offset: -1px;
+  border-color: var(--sk-accent);
+}
+
+.input:disabled,
+.picker:disabled {
+  cursor: not-allowed;
+  color: var(--sk-ink-3);
+  background: var(--sk-paper-2);
+}
+
+.bad {
+  border-color: var(--sk-critical);
+  background: var(--sk-critical-wash);
+}
+
+.pickerWrap {
+  position: relative;
+  display: flex;
+}
+
+.picker {
+  appearance: none;
+  padding-right: 30px;
+}
+
+.chevron {
+  position: absolute;
+  top: 50%;
+  right: 10px;
+  color: var(--sk-ink-2);
+  pointer-events: none;
+  transform: translateY(-50%);
+}
+
+.note {
+  font-size: 12px;
+  color: var(--sk-ink-2);
+}
+
+.problem {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--sk-critical);
+}
+
+.toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  font-family: var(--sk-font);
+  cursor: pointer;
+}
+
+.toggleBox {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  margin-top: 1px;
+  display: grid;
+  place-items: center;
+  color: transparent;
+  background: var(--sk-paper);
+  border: var(--sk-line) solid var(--sk-rule-2);
+  border-radius: var(--sk-radius);
+  transition: background 120ms linear, border-color 120ms linear;
+}
+
+.toggleBox:focus-visible {
+  outline: 2px solid var(--sk-accent);
+  outline-offset: 2px;
+}
+
+.toggleBox[aria-checked="true"] {
+  color: var(--sk-accent-ink);
+  background: var(--sk-accent);
+  border-color: var(--sk-accent);
+}
+
+.toggleBox:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.toggleText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.toggleCaption {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--sk-ink);
+}
+
+.tabset {
+  display: flex;
+  flex-direction: column;
+}
+
+.tablist {
+  display: flex;
+  gap: 2px;
+  border-bottom: var(--sk-line) solid var(--sk-rule);
+}
+
+.tab {
+  padding: 9px 15px;
+  font-family: var(--sk-font);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--sk-ink-3);
+  border-bottom: 2px solid transparent;
+  margin-bottom: calc(var(--sk-line) * -1);
+}
+
+.tab:hover {
+  color: var(--sk-ink);
+  background: var(--sk-wash);
+}
+
+.tabOn {
+  color: var(--sk-accent);
+  border-bottom-color: var(--sk-accent);
+}
+
+.tabbody {
+  padding-top: 24px;
+}
+
+.modal {
+  width: min(460px, calc(100vw - 32px));
+  /* A `* { margin: 0 }` reset in the host app kills the UA's centring. */
+  margin: auto;
+  padding: 0;
+  color: var(--sk-ink);
+  background: var(--sk-paper);
+  border: var(--sk-line) solid var(--sk-rule-2);
+  border-radius: var(--sk-radius);
+  box-shadow: var(--sk-lift);
+  font-family: var(--sk-font);
+}
+
+.modal::backdrop {
+  background: var(--sk-shade);
+}
+
+.modalHead {
+  padding: 18px 20px 0;
+}
+
+.modalHeading {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--sk-ink);
+}
+
+.modalBody {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 20px 20px;
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: var(--sk-ink-2);
+}
+
+.modalFoot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 20px;
+  border-top: var(--sk-line) solid var(--sk-rule);
+  background: var(--sk-paper-2);
+}
+
+.rail {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: min(340px, calc(100vw - 32px));
+  font-family: var(--sk-font);
+}
+
+.slip {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 12px 12px 14px;
+  color: var(--sk-ink);
+  background: var(--sk-paper);
+  border: var(--sk-line) solid var(--sk-rule-2);
+  border-left: 3px solid var(--sk-ink-3);
+  border-radius: var(--sk-radius);
+  box-shadow: var(--sk-lift);
+  animation: skSlip 160ms ease-out;
+}
+
+@keyframes skSlip {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+.slipGood {
+  border-left-color: var(--sk-good);
+}
+
+.slipBad {
+  border-left-color: var(--sk-critical);
+}
+
+.slipText {
+  flex: 1;
+  min-width: 0;
+}
+
+.slipTitle {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.slipDetail {
+  margin-top: 3px;
+  font-size: 13px;
+  color: var(--sk-ink-2);
+}
+
+.slipClose {
+  flex: none;
+  padding: 2px;
+  color: var(--sk-ink-3);
+}
+
+.slipClose:hover {
+  color: var(--sk-ink);
+}

@@ -1,0 +1,100 @@
+/* The legend plaque. Parchment, a heavy frame, and display type in tracked caps
+   — the register of a printed political map. `color-scheme: light` for the same
+   reason the panel sets it: the surface is parchment and the root is dark. */
+
+.plaque {
+  align-items: center;
+  background: var(--civ-plaque);
+  border: var(--civ-border-plaque);
+  border-radius: var(--civ-radius-md);
+  box-shadow: var(--civ-shadow-plaque);
+  color: var(--civ-ink);
+  color-scheme: light;
+  display: flex;
+  gap: var(--civ-space-4);
+  max-width: min(560px, calc(100vw - var(--civ-space-7)));
+  padding: var(--civ-space-3) var(--civ-space-5);
+  pointer-events: auto;
+}
+
+/* The one visual difference between the two scopes, and the visible answer to
+   "did my right click do something". */
+.plaque[data-scope="country"] {
+  border-color: var(--civ-gild);
+}
+
+.flag {
+  border: var(--civ-border-strong);
+  flex: none;
+  height: 43px;
+  overflow: hidden;
+  width: 64px;
+}
+
+/* `contain`, not `cover`. A 2:1 flag cropped into a 3:2 box loses its left and
+   right ends, which is where the charge usually is. The country colour behind
+   the box does the letterboxing. */
+.flagImage {
+  display: block;
+  height: 100%;
+  object-fit: contain;
+  width: 100%;
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--civ-space-1);
+  min-width: 0;
+}
+
+.name {
+  color: var(--civ-ink);
+  font-family: var(--civ-font-display);
+  font-size: var(--civ-text-xl);
+  letter-spacing: var(--civ-tracking-plaque);
+  line-height: var(--civ-leading-tight);
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.nameEmpty {
+  color: var(--civ-ink-faint);
+  font-family: var(--civ-font-display);
+  font-size: var(--civ-text-lg);
+  letter-spacing: var(--civ-tracking-plaque);
+  line-height: var(--civ-leading-tight);
+  margin: 0;
+  text-transform: uppercase;
+}
+
+.slogan {
+  color: var(--civ-ink-dim);
+  font-family: var(--civ-font-display);
+  font-size: var(--civ-text-md);
+  font-style: italic;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.subline {
+  color: var(--civ-ink-faint);
+  font-family: var(--civ-font-mono);
+  font-size: var(--civ-text-xs);
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hint {
+  color: var(--civ-ink-faint);
+  font-family: var(--civ-font-mono);
+  font-size: var(--civ-text-xs);
+  margin: 0;
+}

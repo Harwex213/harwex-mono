@@ -1,0 +1,66 @@
+/* EXPLICIT, not inherited. T08's `theme.css` re-points `--bg-sunken` at
+   parchment-dim, because `index.css` styles `input[type="text"]` with it and the
+   sea colour there would put ink text on a near-black field. The sea belongs to
+   this element and nothing else. */
+.host {
+  background: var(--civ-sea);
+  contain: strict;
+  cursor: grab;
+  height: 100%;
+  overflow: hidden;
+  position: relative;
+  touch-action: none;
+  user-select: none;
+  width: 100%;
+}
+
+.host[data-panning="true"] {
+  cursor: grabbing;
+}
+
+.host[data-mode="assign"] {
+  cursor: crosshair;
+}
+
+.host[data-mode="assign"][data-painting="true"] {
+  cursor: cell;
+}
+
+.canvas {
+  display: block;
+  inset: 0;
+  pointer-events: none;
+  position: absolute;
+}
+
+/* Bottom-LEFT, so it never sits under the shell's centred button bar. It is
+   instrumentation over the sea, so it stays on the dark register rather than
+   taking the parchment surface the panels use. */
+.hud {
+  background: var(--civ-scrim);
+  border: 1px solid var(--civ-rule-strong);
+  border-radius: var(--civ-radius-sm);
+  bottom: var(--civ-space-4);
+  color: var(--civ-ink-faint);
+  display: flex;
+  flex-wrap: wrap;
+  font-family: var(--civ-font-mono);
+  font-size: var(--civ-text-xs);
+  gap: var(--civ-space-4);
+  left: var(--civ-space-4);
+  /* Stops short of the shell's centred button bar, which is about 340 px wide,
+     and wraps instead of sliding underneath it. */
+  max-width: calc(50% - 190px);
+  padding: var(--civ-space-2) var(--civ-space-3);
+  pointer-events: none;
+  position: absolute;
+  white-space: pre;
+}
+
+.hudValue {
+  color: var(--civ-ink-invert);
+}
+
+.hudProvince {
+  color: var(--civ-gild-soft);
+}

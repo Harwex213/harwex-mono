@@ -21,7 +21,7 @@
   "scripts": {
     "dev": "rspack serve",
     "build": "rslib build",
-    "prepare": "rslib build",
+    "prepack": "rslib build",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

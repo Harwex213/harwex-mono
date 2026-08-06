@@ -1,0 +1,105 @@
+/* The design tokens every panel from T08 on consumes. Global CSS, not a module:
+   custom properties have to reach every subtree, and a module would need an
+   import in every file for no gain.
+
+   Imported from `src/main.tsx` AFTER `./index.css`, so this `:root` block wins
+   on equal specificity.
+
+   The register is a political map: parchment surfaces, ink text, a dark sea.
+   No panel written from here on hardcodes a colour, a gap, a radius or a font
+   size. */
+
+:root {
+  /* surfaces */
+  --civ-sea: #0e1218;
+  --civ-parchment: #ece3d0;
+  --civ-parchment-dim: #ded2b9;
+  --civ-vellum: #f6f1e4;
+  --civ-plaque: #f2ead8;
+  --civ-scrim: rgba(14, 18, 24, 0.45);
+
+  /* ink */
+  --civ-ink: #241d14;
+  --civ-ink-dim: #574a39;
+  --civ-ink-faint: #8a7c66;
+  --civ-ink-invert: #f0ead9;
+
+  /* lines and marks */
+  --civ-rule: #c8b896;
+  --civ-rule-strong: #9d8a64;
+  --civ-gild: #9a6b1f;
+  --civ-gild-soft: #d8a24a;
+  --civ-danger: #8f3a2e;
+
+  /* space */
+  --civ-space-1: 2px;
+  --civ-space-2: 4px;
+  --civ-space-3: 8px;
+  --civ-space-4: 12px;
+  --civ-space-5: 16px;
+  --civ-space-6: 24px;
+  --civ-space-7: 32px;
+
+  /* radius and borders */
+  --civ-radius-sm: 2px;
+  --civ-radius-md: 4px;
+  --civ-border-hair: 1px solid var(--civ-rule);
+  --civ-border-strong: 1px solid var(--civ-rule-strong);
+  --civ-border-plaque: 2px solid var(--civ-rule-strong);
+
+  /* type */
+  --civ-font-sans: "Inter", "Segoe UI", system-ui, sans-serif;
+  --civ-font-display: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  --civ-font-mono: "SF Mono", "JetBrains Mono", ui-monospace, monospace;
+  --civ-text-xs: 10px;
+  --civ-text-sm: 11px;
+  --civ-text-md: 13px;
+  --civ-text-lg: 16px;
+  --civ-text-xl: 22px;
+  --civ-leading-tight: 1.2;
+  --civ-leading-body: 1.5;
+  --civ-tracking-caps: 0.14em;
+  --civ-tracking-plaque: 0.22em;
+
+  /* elevation */
+  --civ-shadow-panel: 0 6px 20px rgba(8, 10, 14, 0.45);
+  --civ-shadow-plaque: 0 4px 14px rgba(8, 10, 14, 0.4);
+
+  /* layers */
+  --civ-z-map: 0;
+  --civ-z-chrome: 2;
+  --civ-z-panel: 3;
+  --civ-z-plaque: 4;
+  --civ-z-banner: 5;
+  --civ-z-warning: 6;
+}
+
+/* T01's palette re-pointed onto the tokens above, so one file moves the whole
+   theme instead of four CSS files each being rewritten. New CSS uses `--civ-*`
+   only.
+
+   `--bg-sunken` maps to parchment-dim and NOT to the sea: `index.css` styles
+   `input[type="text"]` with it and `color: var(--text)`, so the sea colour there
+   would put ink text on a near-black field. `.host` in `map-canvas.module.css`
+   therefore sets its own explicit `background: var(--civ-sea)`.
+
+   `--font` stays on the sans stack. `LABEL_FONT_STACK` in `label-layer.ts`
+   duplicates it and canvas cannot read a custom property, so pointing it at
+   `--civ-font-display` would silently diverge the canvas labels from the DOM. */
+
+:root {
+  --bg: var(--civ-sea);
+  --bg-panel: var(--civ-parchment);
+  --bg-raised: var(--civ-vellum);
+  --bg-sunken: var(--civ-parchment-dim);
+  --border: var(--civ-rule);
+  --border-strong: var(--civ-rule-strong);
+  --text: var(--civ-ink);
+  --text-dim: var(--civ-ink-dim);
+  --accent: var(--civ-gild);
+  --accent-dim: var(--civ-gild-soft);
+  --danger: var(--civ-danger);
+  --radius: var(--civ-radius-md);
+  --font: var(--civ-font-sans);
+  --mono: var(--civ-font-mono);
+}

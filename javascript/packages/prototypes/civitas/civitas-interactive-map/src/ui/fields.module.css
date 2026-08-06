@@ -1,0 +1,153 @@
+/* The shared field styles. Tokens only — no hardcoded colour, gap, radius or
+   font size lives in this file. */
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--civ-space-2);
+}
+
+.caption {
+  color: var(--civ-ink-dim);
+  font-family: var(--civ-font-sans);
+  font-size: var(--civ-text-sm);
+  letter-spacing: var(--civ-tracking-caps);
+  text-transform: uppercase;
+}
+
+.input {
+  background: var(--civ-vellum);
+  border: var(--civ-border-hair);
+  border-radius: var(--civ-radius-sm);
+  color: var(--civ-ink);
+  font-family: var(--civ-font-sans);
+  font-size: var(--civ-text-md);
+  padding: var(--civ-space-2) var(--civ-space-3);
+  width: 100%;
+}
+
+.input:focus {
+  border-color: var(--civ-gild);
+  outline: none;
+}
+
+.input:disabled {
+  color: var(--civ-ink-faint);
+  cursor: default;
+}
+
+.area {
+  background: var(--civ-vellum);
+  border: var(--civ-border-hair);
+  border-radius: var(--civ-radius-sm);
+  color: var(--civ-ink);
+  font-family: var(--civ-font-sans);
+  font-size: var(--civ-text-md);
+  line-height: var(--civ-leading-body);
+  min-height: 6em;
+  padding: var(--civ-space-3);
+  resize: vertical;
+  width: 100%;
+}
+
+.area:focus {
+  border-color: var(--civ-gild);
+  outline: none;
+}
+
+.upload {
+  display: flex;
+  flex-direction: column;
+  gap: var(--civ-space-3);
+}
+
+.preview {
+  align-items: center;
+  background: var(--civ-parchment-dim);
+  border: var(--civ-border-strong);
+  border-radius: var(--civ-radius-sm);
+  display: flex;
+  height: 96px;
+  justify-content: center;
+  overflow: hidden;
+  width: 100%;
+}
+
+.previewImage {
+  display: block;
+  max-height: 100%;
+  max-width: 100%;
+  object-fit: contain;
+}
+
+.previewEmpty {
+  color: var(--civ-ink-faint);
+  font-family: var(--civ-font-mono);
+  font-size: var(--civ-text-sm);
+}
+
+.uploadActions {
+  display: flex;
+  gap: var(--civ-space-3);
+}
+
+.uploadButton {
+  background: var(--civ-vellum);
+  border: var(--civ-border-strong);
+  border-radius: var(--civ-radius-sm);
+  color: var(--civ-ink);
+  cursor: pointer;
+  font-family: var(--civ-font-sans);
+  font-size: var(--civ-text-sm);
+  letter-spacing: var(--civ-tracking-caps);
+  padding: var(--civ-space-2) var(--civ-space-4);
+  text-transform: uppercase;
+}
+
+.uploadButton:hover:not(:disabled) {
+  border-color: var(--civ-gild);
+  color: var(--civ-gild);
+}
+
+.uploadButton:disabled {
+  color: var(--civ-ink-faint);
+  cursor: default;
+}
+
+/* Visually hidden, still focusable by the file dialog. A bare file input is not
+   styleable and looks wrong on a parchment panel, so a real button drives it. */
+.hiddenInput {
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  height: 1px;
+  overflow: hidden;
+  position: absolute;
+  white-space: nowrap;
+  width: 1px;
+}
+
+.status {
+  color: var(--civ-ink-faint);
+  font-family: var(--civ-font-mono);
+  font-size: var(--civ-text-xs);
+  margin: 0;
+}
+
+.status[data-kind="error"] {
+  color: var(--civ-danger);
+}
+
+/* Saved, but close to the browser limit. Gild rather than danger: the data is
+   on disk. */
+.status[data-kind="warn"] {
+  color: var(--civ-gild);
+}
+
+/* A standing line under the upload actions. Not an error and never dismissed. */
+.hint {
+  color: var(--civ-ink-faint);
+  font-family: var(--civ-font-mono);
+  font-size: var(--civ-text-xs);
+  line-height: var(--civ-leading-body);
+  margin: 0;
+}

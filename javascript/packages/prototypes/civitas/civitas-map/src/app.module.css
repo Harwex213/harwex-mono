@@ -1,0 +1,53 @@
+.app {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  height: 100%;
+  position: relative;
+}
+
+.body {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  min-height: 0;
+}
+
+.stage {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.dropzone {
+  align-items: center;
+  background: rgba(10, 12, 17, 0.78);
+  border: 2px dashed var(--accent);
+  color: var(--accent);
+  display: flex;
+  font-size: 18px;
+  inset: 0;
+  justify-content: center;
+  pointer-events: none;
+  position: absolute;
+  z-index: 5;
+}
+
+.error,
+.notice {
+  align-items: center;
+  background: var(--bg-raised);
+  border: 1px solid var(--danger);
+  border-radius: var(--radius);
+  bottom: 44px;
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.45);
+  display: flex;
+  gap: 12px;
+  left: 50%;
+  padding: 9px 12px;
+  position: absolute;
+  transform: translateX(-50%);
+  z-index: 6;
+}
+
+.notice {
+  border-color: var(--accent-dim);
+  max-width: 70%;
+}

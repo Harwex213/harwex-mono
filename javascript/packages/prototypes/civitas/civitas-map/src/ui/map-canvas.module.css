@@ -1,0 +1,40 @@
+.host {
+  background:
+    repeating-conic-gradient(
+      var(--bg-sunken) 0% 25%,
+      #0e1116 25% 50%
+    )
+    0 0 / 24px 24px;
+  contain: strict;
+  height: 100%;
+  overflow: hidden;
+  position: relative;
+  touch-action: none;
+  width: 100%;
+}
+
+.canvas {
+  inset: 0;
+  position: absolute;
+}
+
+.cursorPaint {
+  cursor: crosshair;
+}
+
+.cursorPicker {
+  cursor: copy;
+}
+
+.cursorPan {
+  cursor: grab;
+}
+
+.empty {
+  color: var(--text-dim);
+  left: 50%;
+  margin: 0;
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+}

@@ -2044,7 +2044,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@hw/castle-attack-ai@workspace:packages/prototypes/castle-attack-ai"
   dependencies:
-    "@hw/utils": "npm:1.0.0"
+    "@hw/utils": "workspace:*"
     "@types/pixi.js": "npm:5.0.0"
     "@types/react": "npm:19.2.0"
     "@types/react-dom": "npm:19.2.0"
@@ -2068,6 +2068,39 @@ __metadata:
     "@hw/signals": "workspace:*"
     "@hw/utils": "workspace:*"
     vite: "npm:7.1.10"
+  languageName: unknown
+  linkType: soft
+
+"@hw/civitas-interactive-map@workspace:packages/prototypes/civitas/civitas-interactive-map":
+  version: 0.0.0-use.local
+  resolution: "@hw/civitas-interactive-map@workspace:packages/prototypes/civitas/civitas-interactive-map"
+  dependencies:
+    "@preact/signals-react": "npm:3.9.0"
+    "@rspack/cli": "npm:2.1.4"
+    "@rspack/core": "npm:2.1.4"
+    "@rspack/dev-server": "npm:2.1.0"
+    "@types/react": "npm:19.2.0"
+    "@types/react-dom": "npm:19.2.0"
+    react: "npm:19.2.0"
+    react-dom: "npm:19.2.0"
+    tsx: "npm:4.19.4"
+    typescript: "npm:5.9.3"
+  languageName: unknown
+  linkType: soft
+
+"@hw/civitas-map@workspace:packages/prototypes/civitas/civitas-map":
+  version: 0.0.0-use.local
+  resolution: "@hw/civitas-map@workspace:packages/prototypes/civitas/civitas-map"
+  dependencies:
+    "@preact/signals-react": "npm:3.9.0"
+    "@rspack/cli": "npm:2.1.4"
+    "@rspack/core": "npm:2.1.4"
+    "@rspack/dev-server": "npm:2.1.0"
+    "@types/react": "npm:19.2.0"
+    "@types/react-dom": "npm:19.2.0"
+    react: "npm:19.2.0"
+    react-dom: "npm:19.2.0"
+    typescript: "npm:5.9.3"
   languageName: unknown
   linkType: soft
 
@@ -2444,11 +2477,11 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@hw/html-lib@npm:1.0.0, @hw/html-lib@workspace:*, @hw/html-lib@workspace:packages/infrastructure/html-lib":
+"@hw/html-lib@workspace:*, @hw/html-lib@workspace:packages/infrastructure/html-lib":
   version: 0.0.0-use.local
   resolution: "@hw/html-lib@workspace:packages/infrastructure/html-lib"
   dependencies:
-    "@hw/signals": "npm:1.0.0"
+    "@hw/signals": "workspace:*"
   languageName: unknown
   linkType: soft
 
@@ -2498,7 +2531,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@hw/notes-app-backend@workspace:packages/prototypes/notes-app/notes-app-backend"
   dependencies:
-    "@hw/utils": "npm:1.0.0"
+    "@hw/utils": "workspace:*"
   languageName: unknown
   linkType: soft
 
@@ -2506,7 +2539,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@hw/notes-app-frontend@workspace:packages/prototypes/notes-app/notes-app-frontend"
   dependencies:
-    "@hw/utils": "npm:1.0.0"
+    "@hw/utils": "workspace:*"
   languageName: unknown
   linkType: soft
 
@@ -2514,7 +2547,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@hw/notes-app-shared@workspace:packages/prototypes/notes-app/notes-app-shared"
   dependencies:
-    "@hw/utils": "npm:1.0.0"
+    "@hw/utils": "workspace:*"
   languageName: unknown
   linkType: soft
 
@@ -2528,7 +2561,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@hw/playground@workspace:packages/learning/playground"
   dependencies:
-    "@hw/utils": "npm:1.0.0"
+    "@hw/utils": "workspace:*"
   languageName: unknown
   linkType: soft
 
@@ -2542,7 +2575,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@hw/project-april@workspace:packages/prototypes/project-april"
   dependencies:
-    "@hw/utils": "npm:1.0.0"
+    "@hw/utils": "workspace:*"
     "@preact/signals-react": "npm:3.0.1"
     "@types/pixi.js": "npm:5.0.0"
     "@types/react": "npm:19.2.0"
@@ -2562,9 +2595,9 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@hw/project-february@workspace:packages/prototypes/project-february"
   dependencies:
-    "@hw/html-lib": "npm:1.0.0"
-    "@hw/signals": "npm:1.0.0"
-    "@hw/utils": "npm:1.0.0"
+    "@hw/html-lib": "workspace:*"
+    "@hw/signals": "workspace:*"
+    "@hw/utils": "workspace:*"
     "@types/pixi.js": "npm:5.0.0"
     pixi-viewport: "npm:6.0.3"
     pixi.js: "npm:8.8.0"
@@ -2612,6 +2645,21 @@ __metadata:
     "@typescript-eslint/parser": "npm:8.36.0"
     "@typescript-eslint/types": "npm:8.36.0"
     tsx: "npm:4.19.4"
+    typescript: "npm:5.9.3"
+  languageName: unknown
+  linkType: soft
+
+"@hw/react-di@workspace:packages/prototypes/ai-slop/react-di":
+  version: 0.0.0-use.local
+  resolution: "@hw/react-di@workspace:packages/prototypes/ai-slop/react-di"
+  dependencies:
+    "@rspack/cli": "npm:2.1.4"
+    "@rspack/core": "npm:2.1.4"
+    "@rspack/dev-server": "npm:2.1.0"
+    "@types/react": "npm:19.2.0"
+    "@types/react-dom": "npm:19.2.0"
+    react: "npm:19.2.0"
+    react-dom: "npm:19.2.0"
     typescript: "npm:5.9.3"
   languageName: unknown
   linkType: soft
@@ -2695,7 +2743,7 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@hw/signals@npm:1.0.0, @hw/signals@workspace:*, @hw/signals@workspace:packages/infrastructure/signals":
+"@hw/signals@workspace:*, @hw/signals@workspace:packages/infrastructure/signals":
   version: 0.0.0-use.local
   resolution: "@hw/signals@workspace:packages/infrastructure/signals"
   dependencies:
@@ -2707,7 +2755,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@hw/sqlite-builder@workspace:packages/infrastructure/sqlite-builder"
   dependencies:
-    "@hw/utils": "npm:1.0.0"
+    "@hw/utils": "workspace:*"
   languageName: unknown
   linkType: soft
 
@@ -2765,7 +2813,7 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@hw/ui-kit-over-base-ui@workspace:packages/prototypes/ai-slop/ui-kit-over-base-ui":
+"@hw/ui-kit-over-base-ui@workspace:*, @hw/ui-kit-over-base-ui@workspace:packages/prototypes/ai-slop/ui-kit-over-base-ui":
   version: 0.0.0-use.local
   resolution: "@hw/ui-kit-over-base-ui@workspace:packages/prototypes/ai-slop/ui-kit-over-base-ui"
   dependencies:
@@ -2778,7 +2826,23 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@hw/utils@npm:1.0.0, @hw/utils@workspace:*, @hw/utils@workspace:packages/infrastructure/utils":
+"@hw/ui-kit-wrapper@workspace:packages/prototypes/ai-slop/ui-kit-wrapper":
+  version: 0.0.0-use.local
+  resolution: "@hw/ui-kit-wrapper@workspace:packages/prototypes/ai-slop/ui-kit-wrapper"
+  dependencies:
+    "@base-ui/react": "npm:1.6.0"
+    "@hw/ui-kit-over-base-ui": "workspace:*"
+    "@types/react": "npm:19.2.0"
+    "@types/react-dom": "npm:19.2.0"
+    "@vitejs/plugin-react-swc": "npm:4.1.0"
+    react: "npm:19.2.0"
+    react-dom: "npm:19.2.0"
+    typescript: "npm:5.9.3"
+    vite: "npm:7.1.10"
+  languageName: unknown
+  linkType: soft
+
+"@hw/utils@workspace:*, @hw/utils@workspace:packages/infrastructure/utils":
   version: 0.0.0-use.local
   resolution: "@hw/utils@workspace:packages/infrastructure/utils"
   languageName: unknown

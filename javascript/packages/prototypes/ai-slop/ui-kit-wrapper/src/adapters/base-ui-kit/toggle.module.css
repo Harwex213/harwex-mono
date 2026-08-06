@@ -1,0 +1,28 @@
+.toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  cursor: pointer;
+}
+
+.toggle:has(button:disabled) {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.label {
+  font-size: 14px;
+  font-weight: 550;
+  color: var(--app-text);
+}
+
+.hint {
+  font-size: 13px;
+  color: var(--app-text-muted);
+}

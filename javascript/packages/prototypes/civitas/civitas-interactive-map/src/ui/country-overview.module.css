@@ -1,0 +1,105 @@
+/* The country overview panel's own styles. Tokens only — no hardcoded colour,
+   gap, radius or font size.
+
+   This panel deliberately does NOT import `panel-bodies.module.css`: that sheet
+   is shared by the two remaining Phase-3 placeholders, and T10 and T12 will each
+   rewrite their own half of it. Twenty repeated lines cost less than three
+   panels overriding one sheet. */
+
+.empty {
+  color: var(--civ-ink-faint);
+  font-family: var(--civ-font-sans);
+  font-size: var(--civ-text-md);
+  line-height: var(--civ-leading-body);
+  margin: 0;
+}
+
+.notice {
+  border: 1px solid var(--civ-danger);
+  border-radius: var(--civ-radius-sm);
+  color: var(--civ-danger);
+  font-family: var(--civ-font-mono);
+  font-size: var(--civ-text-xs);
+  line-height: var(--civ-leading-body);
+  margin: 0;
+  padding: var(--civ-space-3);
+}
+
+/* Saved, but close to the browser limit. Gild, not danger. */
+.notice[data-kind="warn"] {
+  border-color: var(--civ-gild);
+  color: var(--civ-gild);
+}
+
+/* Replaces `.preview` from `fields.module.css` — see the note on
+   `previewClassName`. 3:2 is the commonest flag ratio; `object-fit: contain` on
+   the image inside letterboxes anything else rather than cropping a canton off
+   the edge. The dock is 380px wide with 16px of body padding, so 288px never
+   overflows and never upscales a 384px flag. */
+.flagPreview {
+  align-items: center;
+  aspect-ratio: 3 / 2;
+  background: var(--civ-parchment-dim);
+  border: var(--civ-border-strong);
+  border-radius: var(--civ-radius-sm);
+  display: flex;
+  justify-content: center;
+  max-width: 288px;
+  overflow: hidden;
+  width: 100%;
+}
+
+.counter {
+  color: var(--civ-ink-faint);
+  font-family: var(--civ-font-mono);
+  font-size: var(--civ-text-xs);
+  margin: 0;
+}
+
+.facts {
+  border-top: var(--civ-border-hair);
+  display: flex;
+  flex-direction: column;
+  gap: var(--civ-space-3);
+  margin: 0;
+  padding-top: var(--civ-space-4);
+}
+
+.factList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--civ-space-2);
+  margin: 0;
+}
+
+.factsTitle {
+  color: var(--civ-ink-dim);
+  font-family: var(--civ-font-sans);
+  font-size: var(--civ-text-sm);
+  letter-spacing: var(--civ-tracking-caps);
+  margin: 0;
+  text-transform: uppercase;
+}
+
+.fact {
+  display: flex;
+  gap: var(--civ-space-4);
+  justify-content: space-between;
+}
+
+.factTerm {
+  color: var(--civ-ink-faint);
+  font-family: var(--civ-font-sans);
+  font-size: var(--civ-text-sm);
+}
+
+.factValue {
+  color: var(--civ-ink);
+  font-family: var(--civ-font-mono);
+  font-size: var(--civ-text-sm);
+  margin: 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

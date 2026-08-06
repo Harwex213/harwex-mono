@@ -1,0 +1,280 @@
+/* The provinces panel's own styles. Tokens only — no hardcoded colour, gap,
+   radius or font size, except the four pixel sizes the fixed row height is built
+   from (the row's own height is INLINE, from `PROVINCE_ROW_HEIGHT`).
+
+   `.row` deliberately declares NO height. `PROVINCE_ROW_HEIGHT` in
+   `province-list.ts` is the single source of truth for it, and a height here
+   could silently disagree with the virtual-window arithmetic. */
+
+.list {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--civ-space-3);
+  min-height: 0;
+}
+
+.search {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: var(--civ-space-2);
+}
+
+.searchRow {
+  align-items: center;
+  display: flex;
+  gap: var(--civ-space-3);
+}
+
+.searchInput {
+  background: var(--civ-vellum);
+  border: var(--civ-border-hair);
+  border-radius: var(--civ-radius-sm);
+  color: var(--civ-ink);
+  flex: 1;
+  font-family: var(--civ-font-sans);
+  font-size: var(--civ-text-md);
+  min-width: 0;
+  padding: var(--civ-space-2) var(--civ-space-3);
+}
+
+.searchInput:focus {
+  border-color: var(--civ-gild);
+  outline: none;
+}
+
+.clear {
+  background: var(--civ-vellum);
+  border: var(--civ-border-strong);
+  border-radius: var(--civ-radius-sm);
+  color: var(--civ-ink);
+  cursor: pointer;
+  flex: none;
+  font-family: var(--civ-font-sans);
+  font-size: var(--civ-text-sm);
+  letter-spacing: var(--civ-tracking-caps);
+  padding: var(--civ-space-2) var(--civ-space-3);
+  text-transform: uppercase;
+}
+
+.clear:hover {
+  border-color: var(--civ-gild);
+  color: var(--civ-gild);
+}
+
+.hint {
+  color: var(--civ-ink-faint);
+  font-family: var(--civ-font-mono);
+  font-size: var(--civ-text-xs);
+  margin: 0;
+}
+
+/* The line that says the selected province is hidden by the filter. Gild, not
+   danger: nothing failed. */
+.filtered {
+  color: var(--civ-gild);
+  flex: none;
+  font-family: var(--civ-font-mono);
+  font-size: var(--civ-text-xs);
+  margin: 0;
+}
+
+/* `Panel`'s `.body` is already a flex column with `min-height: 0`, so this
+   becomes the scroller and the panel body itself never scrolls. Every sibling
+   inside `.list` is `flex: none` for the same reason. */
+.viewport {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  position: relative;
+}
+
+/* Its height is inline: `rowCount * PROVINCE_ROW_HEIGHT`. */
+.spacer {
+  position: relative;
+}
+
+/* Its transform is inline: `translateY(first * PROVINCE_ROW_HEIGHT)`. Absolute,
+   so it contributes nothing to `.spacer`'s height. */
+.window {
+  inset-inline: 0;
+  position: absolute;
+  top: 0;
+}
+
+/* NO `gap`. A gap adds height the geometry does not know about and the window
+   drifts away from the scrollbar. */
+.rows {
+  display: flex;
+  flex-direction: column;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.row {
+  background: var(--civ-vellum);
+  border: 1px solid transparent;
+  border-radius: var(--civ-radius-sm);
+  display: flex;
+  flex-direction: column;
+  gap: var(--civ-space-3);
+  overflow: hidden;
+  padding: var(--civ-space-3);
+}
+
+.row[data-selected="true"] {
+  border-color: var(--civ-gild);
+}
+
+.row[data-known="false"] {
+  border-style: dashed;
+}
+
+.rowHead {
+  align-items: baseline;
+  background: transparent;
+  border: none;
+  border-radius: var(--civ-radius-sm);
+  color: var(--civ-ink);
+  cursor: pointer;
+  display: flex;
+  flex: none;
+  font-family: var(--civ-font-sans);
+  font-size: var(--civ-text-md);
+  gap: var(--civ-space-3);
+  height: 24px;
+  padding: 0;
+  text-align: left;
+  width: 100%;
+}
+
+.rowHead:hover {
+  color: var(--civ-gild);
+}
+
+.rowName {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The sparseness instrument: it is on only when the province has a stored
+   override. */
+.rowDot {
+  background: var(--civ-gild);
+  border-radius: 50%;
+  flex: none;
+  height: 6px;
+  width: 6px;
+}
+
+.rowId {
+  color: var(--civ-ink-faint);
+  flex: none;
+  font-family: var(--civ-font-mono);
+  font-size: var(--civ-text-xs);
+  margin-left: auto;
+}
+
+/* 136px is what fits `change…` beside `remove` at `--civ-text-sm`. */
+.rowBody {
+  display: grid;
+  flex: 1;
+  gap: var(--civ-space-4);
+  grid-template-columns: 136px minmax(0, 1fr);
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Replaces `.preview` from `fields.module.css` — see the note on
+   `previewClassName`. Shorter, because the row height is fixed. */
+.rowPreview {
+  align-items: center;
+  background: var(--civ-parchment-dim);
+  border: var(--civ-border-strong);
+  border-radius: var(--civ-radius-sm);
+  display: flex;
+  height: 72px;
+  justify-content: center;
+  overflow: hidden;
+  width: 100%;
+}
+
+.rowFields {
+  display: grid;
+  gap: var(--civ-space-4);
+  grid-template-rows: auto minmax(0, 1fr);
+  min-height: 0;
+  min-width: 0;
+}
+
+.rowFields > label {
+  min-height: 0;
+  min-width: 0;
+}
+
+/* Replaces `.area` from `fields.module.css`. `.area` sets `min-height: 6em` and
+   `resize: vertical`, and both break a fixed row height. Everything else is
+   re-declared from the same tokens.
+
+   `flex: 1` rather than `height: 100%`: the textarea's flex parent also holds
+   the caption, so a percentage height would resolve past the row and overflow. */
+.rowArea {
+  background: var(--civ-vellum);
+  border: var(--civ-border-hair);
+  border-radius: var(--civ-radius-sm);
+  color: var(--civ-ink);
+  flex: 1;
+  font-family: var(--civ-font-sans);
+  font-size: var(--civ-text-md);
+  line-height: var(--civ-leading-body);
+  min-height: 0;
+  padding: var(--civ-space-2) var(--civ-space-3);
+  resize: none;
+  width: 100%;
+}
+
+.rowArea:focus {
+  border-color: var(--civ-gild);
+  outline: none;
+}
+
+.empty {
+  color: var(--civ-ink-faint);
+  font-family: var(--civ-font-sans);
+  font-size: var(--civ-text-md);
+  line-height: var(--civ-leading-body);
+  margin: 0;
+}
+
+.note {
+  border-top: var(--civ-border-hair);
+  color: var(--civ-ink-faint);
+  flex: none;
+  font-family: var(--civ-font-mono);
+  font-size: var(--civ-text-xs);
+  line-height: var(--civ-leading-body);
+  margin: 0;
+  padding-top: var(--civ-space-3);
+}
+
+.notice {
+  border: 1px solid var(--civ-danger);
+  border-radius: var(--civ-radius-sm);
+  color: var(--civ-danger);
+  flex: none;
+  font-family: var(--civ-font-mono);
+  font-size: var(--civ-text-xs);
+  line-height: var(--civ-leading-body);
+  margin: 0;
+  padding: var(--civ-space-3);
+}
+
+/* Saved, but close to the browser limit. Gild, not danger. */
+.notice[data-kind="warn"] {
+  border-color: var(--civ-gild);
+  color: var(--civ-gild);
+}

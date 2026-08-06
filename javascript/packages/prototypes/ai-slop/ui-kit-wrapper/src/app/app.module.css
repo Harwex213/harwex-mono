@@ -1,0 +1,83 @@
+/*
+ * App CSS reads `--app-*` and nothing else.
+ *
+ * No `--uk-*`, no `--sk-*`. This file is the same under both kits, which is the
+ * CSS half of the same idea as `@ui`: name what you mean, let one bridge file
+ * translate.
+ */
+.page {
+  width: 100%;
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 40px 24px 96px;
+}
+
+.head {
+  margin-bottom: 28px;
+}
+
+.crumb {
+  margin: 0 0 6px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--app-text-faint);
+}
+
+.title {
+  margin: 0 0 8px;
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--app-text);
+}
+
+.lede {
+  max-width: 60ch;
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--app-text-muted);
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* Buttons in a column stack must not stretch. Layout is the app's job. */
+.inline {
+  display: flex;
+  gap: 10px;
+}
+
+.pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+}
+
+@media (max-width: 620px) {
+  .pair {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.toggles {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.note {
+  margin: 0;
+  font-size: 13px;
+  color: var(--app-text-muted);
+}
+
+.note strong {
+  font-weight: 600;
+  color: var(--app-text);
+}

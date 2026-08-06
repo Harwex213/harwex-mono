@@ -12,9 +12,9 @@
     "start": "yarn vite"
   },
   "dependencies": {
-    "@hw/html-lib": "1.0.0",
-    "@hw/signals": "1.0.0",
-    "@hw/utils": "1.0.0",
+    "@hw/html-lib": "workspace:*",
+    "@hw/signals": "workspace:*",
+    "@hw/utils": "workspace:*",
     "@types/pixi.js": "5.0.0",
     "pixi-viewport": "6.0.3",
     "pixi.js": "8.8.0"
