@@ -1,6 +1,5 @@
 import { config } from "@hw/ostrov-prototype-v2-config";
 import { effect } from "@preact/signals-react";
-import { useSignals } from "@preact/signals-react/runtime";
 import { useEffect, useRef } from "react";
 import type { Axial } from "../hex/coords";
 import { hexKey } from "../hex/coords";
@@ -9,8 +8,10 @@ import type { IslandMap } from "../map/island";
 import { Renderer } from "../render/renderer";
 import type { Camera } from "../state/camera";
 import { clampScale, screenToWorld, zoomAt } from "../state/camera";
+import { IdleFloat } from "../state/float";
 import { PanGlide, PanVelocity } from "../state/inertia";
 import { camera, dragging, hovered, island, selected } from "../state/signals";
+import { ZoomEase } from "../state/zoom";
 
 const DRAG_SLOP = config.camera.dragSlop;
 
@@ -71,9 +72,7 @@ function readPinch(pointers: Map<number, PointerSpot>): Pinch | null {
 }
 
 function MapCanvas(): React.JSX.Element {
-  useSignals();
   const ref = useRef<HTMLCanvasElement>(null);
-  const grabbing = dragging.value;
 
   useEffect(() => {
     const canvas = ref.current;
@@ -95,6 +94,13 @@ function MapCanvas(): React.JSX.Element {
     let lastY = 0;
     const velocity = new PanVelocity();
     const glide = new PanGlide();
+    const float = new IdleFloat();
+    const zoom = new ZoomEase();
+    // The float offset the last drawn frame used, in screen pixels. Picking and
+    // every zoom anchor subtract it, so they read the picture that is on screen
+    // rather than the one the camera alone would describe.
+    let floatX = 0;
+    let floatY = 0;
     // Where the cursor sits right now, so a glide can keep the hover honest.
     let cursorX = 0;
     let cursorY = 0;
@@ -111,7 +117,15 @@ function MapCanvas(): React.JSX.Element {
 
     const pickAt = (clientX: number, clientY: number): Axial | null => {
       const rect = canvas.getBoundingClientRect();
-      const point = screenToWorld(camera.peek(), rect.width, rect.height, clientX - rect.left, clientY - rect.top);
+      // The island is drawn at `float`, so the same offset comes off the cursor
+      // before the inverse transform. Skip it and every pick drifts by a few pixels.
+      const point = screenToWorld(
+        camera.peek(),
+        rect.width,
+        rect.height,
+        clientX - rect.left - floatX,
+        clientY - rect.top - floatY,
+      );
       const hex = worldToHex(point.x, point.y);
       return island.peek().byKey.has(hexKey(hex.q, hex.r)) ? hex : null;
     };
@@ -169,8 +183,10 @@ function MapCanvas(): React.JSX.Element {
       }
       // Keeps the browser from turning the touch into a scroll or a text selection.
       event.preventDefault();
-      // Touching the map takes the camera back, wherever the glide had got to.
+      // Touching the map takes the camera back, wherever the glide or the eased
+      // wheel zoom had got to.
       glide.stop();
+      zoom.stop();
       cursorX = event.clientX;
       cursorY = event.clientY;
       cursorInside = true;
@@ -209,8 +225,8 @@ function MapCanvas(): React.JSX.Element {
           panned,
           rect.width,
           rect.height,
-          next.x - rect.left,
-          next.y - rect.top,
+          next.x - rect.left - floatX,
+          next.y - rect.top - floatY,
           next.distance / pinch.distance,
         );
         pinch = next;
@@ -276,17 +292,21 @@ function MapCanvas(): React.JSX.Element {
       glide.stop();
       const rect = canvas.getBoundingClientRect();
       // A trackpad pinch arrives as a wheel event with `ctrlKey` set.
+      const trackpadPinch = event.ctrlKey;
       const lines = event.deltaMode === 1 ? 16 : 1;
-      const intensity = event.ctrlKey ? config.camera.pinchZoomSensitivity : config.camera.wheelZoomSensitivity;
+      const intensity = trackpadPinch ? config.camera.pinchZoomSensitivity : config.camera.wheelZoomSensitivity;
       const factor = Math.exp(-event.deltaY * lines * intensity);
-      camera.value = zoomAt(
-        camera.peek(),
-        rect.width,
-        rect.height,
-        event.clientX - rect.left,
-        event.clientY - rect.top,
-        factor,
-      );
+      const px = event.clientX - rect.left;
+      const py = event.clientY - rect.top;
+      if (trackpadPinch) {
+        // A pinch follows the fingers, so it applies straight away. Easing it
+        // would put the picture behind the hands.
+        zoom.stop();
+        camera.value = zoomAt(camera.peek(), rect.width, rect.height, px - floatX, py - floatY, factor);
+      } else {
+        // A wheel notch is a discrete step, so it rides there over a few frames.
+        zoom.retarget(camera.peek(), rect.width, rect.height, px, py, floatX, floatY, factor);
+      }
       const hex = pick(event);
       if (!sameHex(hex, hovered.peek())) {
         hovered.value = hex;
@@ -316,11 +336,31 @@ function MapCanvas(): React.JSX.Element {
     let lastStamp = 0;
     const loop = (stamp: number): void => {
       frame = requestAnimationFrame(loop);
-      const delta = lastStamp === 0 ? 0 : (stamp - lastStamp) / 1000;
+      // A long frame is clamped once, here, so a stalled tab cannot jump anything.
+      const delta = lastStamp === 0 ? 0 : Math.min((stamp - lastStamp) / 1000, 0.1);
       lastStamp = stamp;
+      // The drift only shows while nothing else owns the camera: no finger down,
+      // no glide still running, no wheel zoom on its way to a new scale.
+      const atRest = pointers.size === 0 && !glide.active && !zoom.active;
+      float.update(delta, atRest);
+      const offset = float.offset();
+      if (offset.x !== floatX || offset.y !== floatY) {
+        // Drawing is driven by the offset changing, not by the drift being on.
+        // The frame that lands the fade back on zero repaints too, and once the
+        // offset stops moving the loop goes quiet again.
+        floatX = offset.x;
+        floatY = offset.y;
+        dirty = true;
+      }
+      if (zoom.active) {
+        const next = zoom.step(delta, cssWidth, cssHeight, floatX, floatY);
+        if (next) {
+          camera.value = next;
+          refreshHover();
+        }
+      }
       if (glide.active) {
-        // A long frame is clamped so a stalled tab cannot teleport the camera.
-        const step = glide.step(Math.min(delta, 0.1));
+        const step = glide.step(delta);
         if (step) {
           const current = camera.peek();
           camera.value = {
@@ -347,6 +387,7 @@ function MapCanvas(): React.JSX.Element {
         camera: camera.peek(),
         hovered: hovered.peek(),
         selected: selected.peek(),
+        float: { x: floatX, y: floatY },
       });
     };
     frame = requestAnimationFrame(loop);
@@ -364,7 +405,7 @@ function MapCanvas(): React.JSX.Element {
     };
   }, []);
 
-  return <canvas ref={ref} className={grabbing ? "map-canvas grabbing" : "map-canvas"} />;
+  return <canvas ref={ref} className="map-canvas" />;
 }
 
 export { MapCanvas };

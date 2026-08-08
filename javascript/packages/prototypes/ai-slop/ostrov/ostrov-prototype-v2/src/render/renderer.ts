@@ -15,6 +15,11 @@ type Frame = {
   camera: Camera;
   hovered: Axial | null;
   selected: Axial | null;
+  /**
+   * Idle drift of the island, in screen pixels, applied on top of the camera.
+   * Anything turning a screen point back into a world point has to subtract it.
+   */
+  float: Point;
 };
 
 class Renderer {
@@ -63,7 +68,7 @@ class Renderer {
     ctx.clearRect(0, 0, this.width, this.height);
 
     ctx.save();
-    ctx.translate(this.width / 2, this.height / 2);
+    ctx.translate(this.width / 2 + frame.float.x, this.height / 2 + frame.float.y);
     ctx.scale(frame.camera.scale, frame.camera.scale);
     ctx.translate(-frame.camera.x, -frame.camera.y);
 

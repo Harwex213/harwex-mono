@@ -9,7 +9,8 @@ import { read, resetField, setField, values } from "./state";
  */
 
 type FieldRowProps = {
-  group: string;
+  /** `"hex"` for a plain group, `"buildings.castle1"` for one entity of a collection. */
+  owner: string;
   name: string;
   field: Field;
 };
@@ -28,20 +29,20 @@ function roundToStep(value: number, step: number): number {
 }
 
 type NumberControlProps = {
-  group: string;
+  owner: string;
   name: string;
   field: NumberField;
 };
 
-function NumberControl({ group, name, field }: NumberControlProps): React.JSX.Element {
-  const current = read(values.value, group, name) as number;
+function NumberControl({ owner, name, field }: NumberControlProps): React.JSX.Element {
+  const current = read(values.value, owner, name) as number;
   const step = stepOf(field);
   const commit = (raw: number): void => {
     if (!Number.isFinite(raw)) {
       return;
     }
     const clamped = Math.min(field.max, Math.max(field.min, raw));
-    setField(group, name, field.type === "int" ? Math.round(clamped) : roundToStep(clamped, step));
+    setField(owner, name, field.type === "int" ? Math.round(clamped) : roundToStep(clamped, step));
   };
   return (
     <div className="control number">
@@ -66,8 +67,8 @@ function NumberControl({ group, name, field }: NumberControlProps): React.JSX.El
   );
 }
 
-function Control({ group, name, field }: FieldRowProps): React.JSX.Element {
-  const current = read(values.value, group, name);
+function Control({ owner, name, field }: FieldRowProps): React.JSX.Element {
+  const current = read(values.value, owner, name);
   if (field.type === "boolean") {
     return (
       <div className="control">
@@ -75,7 +76,7 @@ function Control({ group, name, field }: FieldRowProps): React.JSX.Element {
           <input
             type="checkbox"
             checked={current === true}
-            onChange={(event) => setField(group, name, event.currentTarget.checked)}
+            onChange={(event) => setField(owner, name, event.currentTarget.checked)}
           />
           <span>{current === true ? "включено" : "выключено"}</span>
         </label>
@@ -88,14 +89,14 @@ function Control({ group, name, field }: FieldRowProps): React.JSX.Element {
         <input
           type="color"
           value={String(current)}
-          onChange={(event) => setField(group, name, event.currentTarget.value.toLowerCase())}
+          onChange={(event) => setField(owner, name, event.currentTarget.value.toLowerCase())}
         />
         <input
           type="text"
           className="text-input mono"
           value={String(current)}
           spellCheck={false}
-          onChange={(event) => setField(group, name, event.currentTarget.value.trim().toLowerCase())}
+          onChange={(event) => setField(owner, name, event.currentTarget.value.trim().toLowerCase())}
         />
       </div>
     );
@@ -103,7 +104,7 @@ function Control({ group, name, field }: FieldRowProps): React.JSX.Element {
   if (field.type === "enum") {
     return (
       <div className="control">
-        <select value={String(current)} onChange={(event) => setField(group, name, event.currentTarget.value)}>
+        <select value={String(current)} onChange={(event) => setField(owner, name, event.currentTarget.value)}>
           {field.options.map((option) => (
             <option key={option.value} value={option.value}>
               {option.label}
@@ -121,18 +122,18 @@ function Control({ group, name, field }: FieldRowProps): React.JSX.Element {
           className="text-input wide"
           value={String(current)}
           maxLength={field.maxLength ?? 64}
-          onChange={(event) => setField(group, name, event.currentTarget.value)}
+          onChange={(event) => setField(owner, name, event.currentTarget.value)}
         />
       </div>
     );
   }
-  return <NumberControl group={group} name={name} field={field} />;
+  return <NumberControl owner={owner} name={name} field={field} />;
 }
 
-function FieldRow({ group, name, field }: FieldRowProps): React.JSX.Element {
+function FieldRow({ owner, name, field }: FieldRowProps): React.JSX.Element {
   useSignals();
-  const current = read(values.value, group, name);
-  const fallback = read(DEFAULTS, group, name);
+  const current = read(values.value, owner, name);
+  const fallback = read(DEFAULTS, owner, name);
   const changed = current !== fallback;
 
   return (
@@ -142,16 +143,16 @@ function FieldRow({ group, name, field }: FieldRowProps): React.JSX.Element {
           {field.label}
           {changed ? <i className="dot" title="Отличается от значения по умолчанию" /> : null}
         </span>
-        <span className="field-key mono">{`${group}.${name}`}</span>
+        <span className="field-key mono">{`${owner}.${name}`}</span>
       </div>
       <p className="field-note">{field.description}</p>
-      <Control group={group} name={name} field={field} />
+      <Control owner={owner} name={name} field={field} />
       <div className="field-foot">
         <span className="muted mono">
           по умолчанию: {formatValue(fallback)}
           {field.type === "int" || field.type === "number" ? ` · ${field.min}…${field.max}` : ""}
         </span>
-        <button type="button" className="link" disabled={!changed} onClick={() => resetField(group, name)}>
+        <button type="button" className="link" disabled={!changed} onClick={() => resetField(owner, name)}>
           сбросить
         </button>
       </div>

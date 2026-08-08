@@ -64,10 +64,38 @@ type FieldGroup = {
   fields: Record<string, Field>;
 };
 
-type Schema = Record<string, FieldGroup>;
-
 /** Every value a field can hold. */
 type ConfigValue = number | boolean | string;
+
+/**
+ * One entity of a collection group — a named instance of the group's field
+ * template. `overrides` replaces template defaults for this entity only; a key
+ * missing from the template is a schema bug and throws while defaults are built.
+ */
+type EntityDescriptor = {
+  label: string;
+  description: string;
+  overrides?: Record<string, ConfigValue>;
+};
+
+/**
+ * A group of many same-shaped entities: one field template plus the list of
+ * entities that fill it. Buildings, units and enemies are declared this way, so
+ * a new entity is one entry here and nothing else.
+ */
+type CollectionGroup = {
+  label: string;
+  description: string;
+  /** Word for one entity, shown above the list in the editor. */
+  entityLabel: string;
+  fields: Record<string, Field>;
+  entities: Record<string, EntityDescriptor>;
+};
+
+/** Either kind of group. A group with `entities` is a collection. */
+type Group = FieldGroup | CollectionGroup;
+
+type Schema = Record<string, Group>;
 
 /** Runtime type of one field, read off its literal schema entry. */
 type FieldValue<F> = F extends { type: "boolean" }
@@ -78,13 +106,23 @@ type FieldValue<F> = F extends { type: "boolean" }
       ? string
       : number;
 
-/** Turns a literal schema into the nested values type the game consumes. */
+/** Runtime type of one entity: the group's field template, filled in. */
+type EntityValues<F> = { [K in keyof F]: FieldValue<F[K]> };
+
+/**
+ * Turns a literal schema into the nested values type the game consumes. A plain
+ * group becomes `group.field`, a collection becomes `group.entityId.field`.
+ */
 type ConfigOf<S> = {
-  [G in keyof S]: S[G] extends { fields: infer F } ? { [K in keyof F]: FieldValue<F[K]> } : never;
+  [G in keyof S]: S[G] extends { entities: infer E; fields: infer F }
+    ? { [Id in keyof E]: EntityValues<F> }
+    : S[G] extends { fields: infer F }
+      ? EntityValues<F>
+      : never;
 };
 
 type ValidationIssue = {
-  /** `group` or `group.field`. */
+  /** `group`, `group.field`, `group.entityId` or `group.entityId.field`. */
   path: string;
   message: string;
 };
@@ -101,14 +139,18 @@ type ValidationResult<T> =
 
 export type {
   BooleanField,
+  CollectionGroup,
   ColorField,
   ConfigOf,
   ConfigValue,
+  EntityDescriptor,
+  EntityValues,
   EnumField,
   EnumOption,
   Field,
   FieldGroup,
   FieldValue,
+  Group,
   NumberField,
   Schema,
   StringField,

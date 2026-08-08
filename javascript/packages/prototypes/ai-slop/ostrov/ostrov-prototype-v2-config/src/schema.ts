@@ -1,6 +1,7 @@
 import type {
   ConfigOf,
   ConfigValue,
+  EntityDescriptor,
   Field,
   Schema,
   ValidationIssue,
@@ -25,6 +26,32 @@ const TERRAIN_OPTIONS = [
   { value: "ice", label: "Лёд" },
   { value: "forest", label: "Лес" },
   { value: "sand", label: "Пустошь" },
+] as const;
+
+/** Where a building may stand. `any` means the biome does not matter. */
+const BUILD_TERRAIN_OPTIONS = [
+  { value: "any", label: "Любой" },
+  { value: "snow", label: "Снег" },
+  { value: "grass", label: "Луг" },
+  { value: "ice", label: "Лёд" },
+  { value: "forest", label: "Лес" },
+  { value: "sand", label: "Пустошь" },
+] as const;
+
+/** The island economy. `none` marks a building that produces nothing. */
+const RESOURCE_OPTIONS = [
+  { value: "none", label: "Нет" },
+  { value: "wood", label: "Дерево" },
+  { value: "stone", label: "Камень" },
+  { value: "food", label: "Еда" },
+  { value: "gold", label: "Золото" },
+] as const;
+
+/** Enemy units an enemy building can spawn. Ids match the `enemies` group. */
+const ENEMY_UNIT_OPTIONS = [
+  { value: "raider", label: "Разбойник" },
+  { value: "wolf", label: "Волк" },
+  { value: "brute", label: "Громила" },
 ] as const;
 
 const SCHEMA = {
@@ -649,7 +676,7 @@ const SCHEMA = {
         type: "number",
         label: "Облака: масштаб шума",
         description: "Больше — мельче и чаще клубы на экране.",
-        default: 2.4,
+        default: 4.2,
         min: 0.3,
         max: 12,
         step: 0.1,
@@ -666,7 +693,7 @@ const SCHEMA = {
         type: "number",
         label: "Облака: покрытие",
         description: "Порог плотности. Меньше — небо затянуто плотнее.",
-        default: 0.47,
+        default: 0.56,
         min: 0,
         max: 1,
         step: 0.01,
@@ -675,7 +702,7 @@ const SCHEMA = {
         type: "number",
         label: "Облака: мягкость края",
         description: "Ширина растушёвки края клуба. Меньше — жёсткие пятна.",
-        default: 0.24,
+        default: 0.18,
         min: 0.01,
         max: 0.6,
         step: 0.01,
@@ -684,7 +711,7 @@ const SCHEMA = {
         type: "number",
         label: "Облака: закрутка",
         description: "Сила искажения координат шума самим шумом. Даёт клубящуюся форму.",
-        default: 1.7,
+        default: 1.2,
         min: 0,
         max: 4,
         step: 0.05,
@@ -718,6 +745,547 @@ const SCHEMA = {
       },
     },
   },
+  buildings: {
+    label: "Здания",
+    description: "Постройки игрока: цена, стройка, живучесть и производство. Все здания делят один набор полей.",
+    entityLabel: "Здание",
+    fields: {
+      costWood: {
+        type: "int",
+        label: "Цена: дерево",
+        description: "Сколько дерева уходит на постройку.",
+        default: 60,
+        min: 0,
+        max: 5000,
+      },
+      costStone: {
+        type: "int",
+        label: "Цена: камень",
+        description: "Сколько камня уходит на постройку.",
+        default: 20,
+        min: 0,
+        max: 5000,
+      },
+      costGold: {
+        type: "int",
+        label: "Цена: золото",
+        description: "Сколько золота уходит на постройку.",
+        default: 0,
+        min: 0,
+        max: 5000,
+      },
+      buildTimeSec: {
+        type: "int",
+        label: "Время стройки",
+        description: "Секунды от закладки до готовности при одном рабочем.",
+        default: 45,
+        min: 1,
+        max: 3600,
+      },
+      maxHp: {
+        type: "int",
+        label: "Прочность",
+        description: "Запас здоровья готового здания.",
+        default: 400,
+        min: 10,
+        max: 20000,
+      },
+      workerSlots: {
+        type: "int",
+        label: "Рабочие места",
+        description: "Сколько рабочих здание вмещает. Добыча растёт с числом занятых мест.",
+        default: 2,
+        min: 0,
+        max: 20,
+      },
+      productionResource: {
+        type: "enum",
+        label: "Что производит",
+        description: "Ресурс, который здание кладёт в казну.",
+        default: "none",
+        options: RESOURCE_OPTIONS,
+      },
+      productionPerMin: {
+        type: "number",
+        label: "Добыча в минуту",
+        description: "Сколько единиц ресурса даёт здание за минуту на полном штате.",
+        default: 0,
+        min: 0,
+        max: 500,
+        step: 0.5,
+      },
+      terrain: {
+        type: "enum",
+        label: "Биом под постройку",
+        description: "Биом гекса, на котором здание разрешено ставить.",
+        default: "any",
+        options: BUILD_TERRAIN_OPTIONS,
+      },
+      claimRadius: {
+        type: "int",
+        label: "Радиус захвата",
+        description: "Сколько колец соседних гексов здание забирает под игрока. 0 — не забирает.",
+        default: 0,
+        min: 0,
+        max: 6,
+      },
+      note: {
+        type: "string",
+        label: "Роль",
+        description: "Одна строка о том, зачем здание нужно.",
+        default: "",
+        maxLength: 96,
+      },
+    },
+    entities: {
+      castle1: {
+        label: "Замок I ур.",
+        description: "Главное здание острова. Дорогое и долгое, зато держит удар и собирает налог.",
+        overrides: {
+          costWood: 800,
+          costStone: 600,
+          costGold: 200,
+          buildTimeSec: 600,
+          maxHp: 5000,
+          workerSlots: 6,
+          productionResource: "gold",
+          productionPerMin: 6,
+          claimRadius: 2,
+          note: "Центр острова: открывает постройки и хранит запасы.",
+        },
+      },
+      barracks1: {
+        label: "Казарма I ур.",
+        description: "Готовит отряды. Ресурсов не даёт, поэтому рабочих мест у неё нет.",
+        overrides: {
+          costWood: 260,
+          costStone: 140,
+          costGold: 60,
+          buildTimeSec: 180,
+          maxHp: 1400,
+          workerSlots: 0,
+          note: "Готовит отряды, ресурсов не даёт.",
+        },
+      },
+      hut1: {
+        label: "Хижина I ур.",
+        description: "Самая дешёвая постройка. Даёт крышу рабочим и ничего не добывает.",
+        overrides: {
+          costWood: 60,
+          costStone: 20,
+          buildTimeSec: 45,
+          maxHp: 400,
+          workerSlots: 3,
+          terrain: "grass",
+          note: "Дом на трёх рабочих.",
+        },
+      },
+      sawmill1: {
+        label: "Лесопилка I ур.",
+        description: "Рубит лес вокруг себя, поэтому стоит только на лесном гексе.",
+        overrides: {
+          costWood: 120,
+          costStone: 40,
+          costGold: 10,
+          buildTimeSec: 90,
+          maxHp: 700,
+          workerSlots: 3,
+          productionResource: "wood",
+          productionPerMin: 12,
+          terrain: "forest",
+          note: "Главный источник дерева.",
+        },
+      },
+      mill1: {
+        label: "Мельница I ур.",
+        description: "Мелет зерно с луга. Даёт еду, которой кормятся отряды.",
+        overrides: {
+          costWood: 140,
+          costStone: 60,
+          costGold: 15,
+          buildTimeSec: 110,
+          maxHp: 700,
+          workerSlots: 3,
+          productionResource: "food",
+          productionPerMin: 10,
+          terrain: "grass",
+          note: "Главный источник еды.",
+        },
+      },
+      mine1: {
+        label: "Шахта I ур.",
+        description: "Бьёт породу в пустоши. Камня даёт мало, но без него не растут стены.",
+        overrides: {
+          costWood: 100,
+          costStone: 90,
+          costGold: 25,
+          buildTimeSec: 150,
+          maxHp: 900,
+          workerSlots: 4,
+          productionResource: "stone",
+          productionPerMin: 8,
+          terrain: "sand",
+          note: "Главный источник камня.",
+        },
+      },
+      islandController1: {
+        label: "Контролёр острова I ур.",
+        description: "Ставится на границе и забирает соседние гексы под игрока. Сам ничего не добывает.",
+        overrides: {
+          costWood: 200,
+          costStone: 200,
+          costGold: 150,
+          buildTimeSec: 240,
+          maxHp: 1500,
+          workerSlots: 1,
+          claimRadius: 2,
+          note: "Расширяет территорию на два кольца гексов.",
+        },
+      },
+    },
+  },
+  units: {
+    label: "Отряды",
+    description: "Заготовка: состав и числа игрок ещё не задавал. Поля общие для всех отрядов.",
+    entityLabel: "Отряд",
+    fields: {
+      costFood: {
+        type: "int",
+        label: "Цена: еда",
+        description: "Сколько еды уходит на найм.",
+        default: 25,
+        min: 0,
+        max: 2000,
+      },
+      costWood: {
+        type: "int",
+        label: "Цена: дерево",
+        description: "Сколько дерева уходит на найм.",
+        default: 0,
+        min: 0,
+        max: 2000,
+      },
+      costGold: {
+        type: "int",
+        label: "Цена: золото",
+        description: "Сколько золота уходит на найм.",
+        default: 0,
+        min: 0,
+        max: 2000,
+      },
+      trainTimeSec: {
+        type: "int",
+        label: "Время найма",
+        description: "Секунды в очереди казармы.",
+        default: 20,
+        min: 1,
+        max: 600,
+      },
+      maxHp: {
+        type: "int",
+        label: "Здоровье",
+        description: "Запас здоровья отряда.",
+        default: 100,
+        min: 1,
+        max: 5000,
+      },
+      damage: {
+        type: "int",
+        label: "Урон",
+        description: "Урон одной атаки.",
+        default: 10,
+        min: 0,
+        max: 2000,
+      },
+      attackSpeed: {
+        type: "number",
+        label: "Скорость атаки",
+        description: "Атак в секунду.",
+        default: 1,
+        min: 0.1,
+        max: 5,
+        step: 0.05,
+      },
+      moveSpeed: {
+        type: "number",
+        label: "Скорость шага",
+        description: "Гексов в секунду.",
+        default: 1,
+        min: 0.1,
+        max: 5,
+        step: 0.05,
+      },
+      attackRangeHex: {
+        type: "number",
+        label: "Дальность",
+        description: "Дальность атаки в гексах. 1 — ближний бой.",
+        default: 1,
+        min: 0.5,
+        max: 12,
+        step: 0.5,
+      },
+      note: {
+        type: "string",
+        label: "Роль",
+        description: "Одна строка о том, зачем отряд нужен.",
+        default: "",
+        maxLength: 96,
+      },
+    },
+    entities: {
+      worker: {
+        label: "Рабочий",
+        description: "Заготовка. Строит и добывает, в бою почти бесполезен.",
+        overrides: {
+          costFood: 20,
+          trainTimeSec: 12,
+          maxHp: 80,
+          damage: 4,
+          attackSpeed: 0.8,
+          moveSpeed: 1.2,
+          note: "Строит и добывает.",
+        },
+      },
+      swordsman: {
+        label: "Мечник",
+        description: "Заготовка. Дешёвый ближний бой, держит линию.",
+        overrides: {
+          costFood: 40,
+          costGold: 10,
+          trainTimeSec: 25,
+          maxHp: 220,
+          damage: 18,
+          attackSpeed: 1.1,
+          note: "Держит линию.",
+        },
+      },
+      archer: {
+        label: "Лучник",
+        description: "Заготовка. Бьёт издалека, но мрёт в ближнем бою.",
+        overrides: {
+          costFood: 30,
+          costWood: 20,
+          trainTimeSec: 30,
+          maxHp: 130,
+          damage: 14,
+          attackSpeed: 0.9,
+          moveSpeed: 1.1,
+          attackRangeHex: 3.5,
+          note: "Бьёт из-за спины мечников.",
+        },
+      },
+    },
+  },
+  enemies: {
+    label: "Враги",
+    description: "Заготовка: состав и числа игрок ещё не задавал. Поля общие для всех врагов.",
+    entityLabel: "Враг",
+    fields: {
+      maxHp: {
+        type: "int",
+        label: "Здоровье",
+        description: "Запас здоровья врага.",
+        default: 120,
+        min: 1,
+        max: 20000,
+      },
+      damage: {
+        type: "int",
+        label: "Урон",
+        description: "Урон одной атаки.",
+        default: 12,
+        min: 0,
+        max: 2000,
+      },
+      attackSpeed: {
+        type: "number",
+        label: "Скорость атаки",
+        description: "Атак в секунду.",
+        default: 1,
+        min: 0.1,
+        max: 5,
+        step: 0.05,
+      },
+      moveSpeed: {
+        type: "number",
+        label: "Скорость шага",
+        description: "Гексов в секунду.",
+        default: 1,
+        min: 0.1,
+        max: 5,
+        step: 0.05,
+      },
+      aggroRadiusHex: {
+        type: "number",
+        label: "Радиус агра",
+        description: "С какого расстояния в гексах враг бросается на цель.",
+        default: 2,
+        min: 0,
+        max: 12,
+        step: 0.5,
+      },
+      rewardGold: {
+        type: "int",
+        label: "Награда: золото",
+        description: "Сколько золота падает за убийство.",
+        default: 10,
+        min: 0,
+        max: 2000,
+      },
+      rewardFood: {
+        type: "int",
+        label: "Награда: еда",
+        description: "Сколько еды падает за убийство.",
+        default: 0,
+        min: 0,
+        max: 2000,
+      },
+      note: {
+        type: "string",
+        label: "Роль",
+        description: "Одна строка о повадках врага.",
+        default: "",
+        maxLength: 96,
+      },
+    },
+    entities: {
+      raider: {
+        label: "Разбойник",
+        description: "Заготовка. Обычный пехотинец лагеря.",
+        overrides: {
+          maxHp: 140,
+          damage: 16,
+          moveSpeed: 1.1,
+          aggroRadiusHex: 3,
+          rewardGold: 14,
+          note: "Рядовой противник.",
+        },
+      },
+      wolf: {
+        label: "Волк",
+        description: "Заготовка. Быстрый и хрупкий, ходит стаей.",
+        overrides: {
+          maxHp: 90,
+          damage: 11,
+          attackSpeed: 1.4,
+          moveSpeed: 1.8,
+          aggroRadiusHex: 4.5,
+          rewardGold: 6,
+          rewardFood: 8,
+          note: "Догоняет отставших.",
+        },
+      },
+      brute: {
+        label: "Громила",
+        description: "Заготовка. Медленный, но бьёт очень больно.",
+        overrides: {
+          maxHp: 420,
+          damage: 34,
+          attackSpeed: 0.6,
+          moveSpeed: 0.7,
+          aggroRadiusHex: 2.5,
+          rewardGold: 40,
+          note: "Ломает стены и строй.",
+        },
+      },
+    },
+  },
+  enemyBuildings: {
+    label: "Здания врага",
+    description: "Заготовка: состав и числа игрок ещё не задавал. Источники волн на диких гексах.",
+    entityLabel: "Постройка врага",
+    fields: {
+      maxHp: {
+        type: "int",
+        label: "Прочность",
+        description: "Запас здоровья постройки.",
+        default: 600,
+        min: 1,
+        max: 40000,
+      },
+      spawnIntervalSec: {
+        type: "int",
+        label: "Интервал спавна",
+        description: "Секунды между выпусками врагов.",
+        default: 45,
+        min: 5,
+        max: 600,
+      },
+      spawnUnit: {
+        type: "enum",
+        label: "Кого выпускает",
+        description: "Враг из группы «Враги», который выходит из постройки.",
+        default: "raider",
+        options: ENEMY_UNIT_OPTIONS,
+      },
+      spawnBatch: {
+        type: "int",
+        label: "Размер выпуска",
+        description: "Сколько врагов выходит за один интервал.",
+        default: 1,
+        min: 1,
+        max: 10,
+      },
+      garrisonCap: {
+        type: "int",
+        label: "Потолок гарнизона",
+        description: "Сколько живых врагов постройка держит на карте. Дальше спавн ждёт.",
+        default: 4,
+        min: 1,
+        max: 40,
+      },
+      rewardGold: {
+        type: "int",
+        label: "Награда: золото",
+        description: "Сколько золота падает за снос постройки.",
+        default: 60,
+        min: 0,
+        max: 5000,
+      },
+      note: {
+        type: "string",
+        label: "Роль",
+        description: "Одна строка о том, чем постройка опасна.",
+        default: "",
+        maxLength: 96,
+      },
+    },
+    entities: {
+      camp: {
+        label: "Лагерь разбойников",
+        description: "Заготовка. Базовый источник разбойников.",
+        overrides: {
+          maxHp: 600,
+          note: "Ровный поток разбойников.",
+        },
+      },
+      den: {
+        label: "Волчье логово",
+        description: "Заготовка. Выпускает волков парами и часто.",
+        overrides: {
+          maxHp: 380,
+          spawnIntervalSec: 30,
+          spawnUnit: "wolf",
+          spawnBatch: 2,
+          garrisonCap: 6,
+          rewardGold: 45,
+          note: "Частые быстрые стаи.",
+        },
+      },
+      watchtower: {
+        label: "Сторожевая башня",
+        description: "Заготовка. Редко, но выпускает громил.",
+        overrides: {
+          maxHp: 1200,
+          spawnIntervalSec: 90,
+          spawnUnit: "brute",
+          garrisonCap: 2,
+          rewardGold: 120,
+          note: "Редкие, но тяжёлые гости.",
+        },
+      },
+    },
+  },
 } as const satisfies Schema;
 
 /** The values object the game consumes, typed straight off `SCHEMA`. */
@@ -727,26 +1295,75 @@ const COLOR_PATTERN = /^#[0-9a-f]{6}$/i;
 
 const DEFAULT_MAX_LENGTH = 64;
 
-type MutableConfig = Record<string, Record<string, ConfigValue>>;
+/** One filled-in field template: the values of a plain group or of one entity. */
+type MutableEntity = Record<string, ConfigValue>;
 
-function groupEntries(): [string, (typeof SCHEMA)[keyof typeof SCHEMA]][] {
+/** A plain group holds fields, a collection group holds entities. */
+type MutableGroup = Record<string, ConfigValue | MutableEntity>;
+
+type MutableConfig = Record<string, MutableGroup>;
+
+/** Both kinds of group read through one shape. `entities` marks a collection. */
+type AnyGroup = {
+  label: string;
+  description: string;
+  fields: Record<string, Field>;
+  entityLabel?: string;
+  entities?: Record<string, EntityDescriptor>;
+};
+
+function groupEntries(): [string, AnyGroup][] {
   return Object.entries(SCHEMA);
 }
 
-function fieldEntries(group: (typeof SCHEMA)[keyof typeof SCHEMA]): [string, Field][] {
+function fieldEntries(group: AnyGroup): [string, Field][] {
   return Object.entries(group.fields);
+}
+
+/** Entities of a collection group, or `null` when the group is a plain one. */
+function entityEntries(group: AnyGroup): [string, EntityDescriptor][] | null {
+  const entities = group.entities;
+  if (!entities) {
+    return null;
+  }
+  return Object.entries(entities);
+}
+
+/** Template defaults with this entity's overrides applied on top. */
+function entityDefaults(group: AnyGroup, entity: EntityDescriptor, path: string): MutableEntity {
+  const values: MutableEntity = {};
+  for (const [fieldKey, field] of fieldEntries(group)) {
+    values[fieldKey] = field.default;
+  }
+  for (const [key, value] of Object.entries(entity.overrides ?? {})) {
+    // A typo here would silently leave the template default in place, so it throws.
+    if (!Object.hasOwn(group.fields, key)) {
+      throw new Error(`Схема сломана: ${path}.${key} — такого поля нет в шаблоне`);
+    }
+    values[key] = value;
+  }
+  return values;
 }
 
 function buildDefaults(): GameConfig {
   const result: MutableConfig = {};
   for (const [groupKey, group] of groupEntries()) {
-    const values: Record<string, ConfigValue> = {};
+    const entities = entityEntries(group);
+    if (entities) {
+      const rows: MutableGroup = {};
+      for (const [entityKey, entity] of entities) {
+        rows[entityKey] = entityDefaults(group, entity, `${groupKey}.${entityKey}`);
+      }
+      result[groupKey] = rows;
+      continue;
+    }
+    const values: MutableEntity = {};
     for (const [fieldKey, field] of fieldEntries(group)) {
       values[fieldKey] = field.default;
     }
     result[groupKey] = values;
   }
-  return result as GameConfig;
+  return result as unknown as GameConfig;
 }
 
 /** Fresh copy of the schema defaults. Never shared, so callers can mutate it. */
@@ -817,9 +1434,64 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+/** Checks one filled-in field template — a plain group or one entity of a collection. */
+function checkFields(
+  group: AnyGroup,
+  raw: Record<string, unknown>,
+  prefix: string,
+  issues: ValidationIssue[],
+): MutableEntity {
+  for (const key of Object.keys(raw)) {
+    if (!Object.hasOwn(group.fields, key)) {
+      issues.push({ path: `${prefix}.${key}`, message: "неизвестное поле" });
+    }
+  }
+  const values: MutableEntity = {};
+  for (const [fieldKey, field] of fieldEntries(group)) {
+    const path = `${prefix}.${fieldKey}`;
+    if (!Object.hasOwn(raw, fieldKey)) {
+      issues.push({ path, message: "поле отсутствует" });
+      continue;
+    }
+    const checked = checkField(field, raw[fieldKey], path, issues);
+    if (checked !== undefined) {
+      values[fieldKey] = checked;
+    }
+  }
+  return values;
+}
+
+/** Checks every entity of a collection group. Unknown ids are rejected too. */
+function checkEntities(
+  group: AnyGroup,
+  entities: [string, EntityDescriptor][],
+  raw: Record<string, unknown>,
+  groupKey: string,
+  issues: ValidationIssue[],
+): MutableGroup {
+  const known = new Set(entities.map(([entityKey]) => entityKey));
+  for (const key of Object.keys(raw)) {
+    if (!known.has(key)) {
+      issues.push({ path: `${groupKey}.${key}`, message: "неизвестная сущность" });
+    }
+  }
+  const rows: MutableGroup = {};
+  for (const [entityKey] of entities) {
+    const path = `${groupKey}.${entityKey}`;
+    const rawEntity = raw[entityKey];
+    if (!isPlainObject(rawEntity)) {
+      issues.push({ path, message: "ожидался объект" });
+      continue;
+    }
+    rows[entityKey] = checkFields(group, rawEntity, path, issues);
+  }
+  return rows;
+}
+
 /**
- * Checks a raw values object against the schema. Unknown groups and unknown
- * keys are rejected rather than dropped: a typo in the file has to be loud.
+ * Checks a raw values object against the schema. Unknown groups, unknown
+ * entities and unknown keys are rejected rather than dropped: a typo in the
+ * file has to be loud.
  */
 function validateConfig(raw: unknown): ValidationResult<GameConfig> {
   if (!isPlainObject(raw)) {
@@ -838,29 +1510,17 @@ function validateConfig(raw: unknown): ValidationResult<GameConfig> {
       issues.push({ path: groupKey, message: "ожидался объект" });
       continue;
     }
-    for (const key of Object.keys(rawGroup)) {
-      if (!Object.hasOwn(group.fields, key)) {
-        issues.push({ path: `${groupKey}.${key}`, message: "неизвестное поле" });
-      }
+    const entities = entityEntries(group);
+    if (entities) {
+      result[groupKey] = checkEntities(group, entities, rawGroup, groupKey, issues);
+      continue;
     }
-    const values: Record<string, ConfigValue> = {};
-    for (const [fieldKey, field] of fieldEntries(group)) {
-      const path = `${groupKey}.${fieldKey}`;
-      if (!Object.hasOwn(rawGroup, fieldKey)) {
-        issues.push({ path, message: "поле отсутствует" });
-        continue;
-      }
-      const checked = checkField(field, rawGroup[fieldKey], path, issues);
-      if (checked !== undefined) {
-        values[fieldKey] = checked;
-      }
-    }
-    result[groupKey] = values;
+    result[groupKey] = checkFields(group, rawGroup, groupKey, issues);
   }
   if (issues.length > 0) {
     return { ok: false, issues };
   }
-  return { ok: true, value: result as GameConfig };
+  return { ok: true, value: result as unknown as GameConfig };
 }
 
 /** Same as `validateConfig`, but throws instead of reporting. */
@@ -877,9 +1537,22 @@ function cloneConfig(value: GameConfig): GameConfig {
   const source = value as unknown as MutableConfig;
   const result: MutableConfig = {};
   for (const [groupKey, group] of Object.entries(source)) {
-    result[groupKey] = { ...group };
+    const rows: MutableGroup = {};
+    for (const [key, entry] of Object.entries(group)) {
+      rows[key] = isPlainObject(entry) ? { ...(entry as MutableEntity) } : entry;
+    }
+    result[groupKey] = rows;
   }
-  return result as GameConfig;
+  return result as unknown as GameConfig;
+}
+
+/** One field template rewritten in schema order. */
+function orderFields(group: AnyGroup, source: MutableEntity): MutableEntity {
+  const values: MutableEntity = {};
+  for (const [fieldKey] of fieldEntries(group)) {
+    values[fieldKey] = source[fieldKey]!;
+  }
+  return values;
 }
 
 /**
@@ -890,14 +1563,31 @@ function serializeConfig(value: GameConfig): string {
   const source = value as unknown as MutableConfig;
   const ordered: MutableConfig = {};
   for (const [groupKey, group] of groupEntries()) {
-    const values: Record<string, ConfigValue> = {};
-    for (const [fieldKey] of fieldEntries(group)) {
-      values[fieldKey] = source[groupKey]![fieldKey]!;
+    const rawGroup = source[groupKey]!;
+    const entities = entityEntries(group);
+    if (entities) {
+      const rows: MutableGroup = {};
+      for (const [entityKey] of entities) {
+        rows[entityKey] = orderFields(group, rawGroup[entityKey] as MutableEntity);
+      }
+      ordered[groupKey] = rows;
+      continue;
     }
-    ordered[groupKey] = values;
+    ordered[groupKey] = orderFields(group, rawGroup as MutableEntity);
   }
   return `${JSON.stringify(ordered, null, 2)}\n`;
 }
 
-export type { GameConfig };
-export { DEFAULTS, SCHEMA, cloneConfig, parseConfig, serializeConfig, stepOf, validateConfig };
+export type { AnyGroup as SchemaGroup, GameConfig };
+export {
+  DEFAULTS,
+  SCHEMA,
+  cloneConfig,
+  entityEntries,
+  fieldEntries,
+  groupEntries,
+  parseConfig,
+  serializeConfig,
+  stepOf,
+  validateConfig,
+};

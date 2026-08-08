@@ -1,6 +1,17 @@
 import rawValues from "../data/config.json";
-import type { GameConfig } from "./schema";
-import { DEFAULTS, SCHEMA, cloneConfig, parseConfig, serializeConfig, stepOf, validateConfig } from "./schema";
+import type { GameConfig, SchemaGroup } from "./schema";
+import {
+  DEFAULTS,
+  SCHEMA,
+  cloneConfig,
+  entityEntries,
+  fieldEntries,
+  groupEntries,
+  parseConfig,
+  serializeConfig,
+  stepOf,
+  validateConfig,
+} from "./schema";
 
 /**
  * Library entry of `@hw/ostrov-prototype-v2-config`.
@@ -17,5 +28,17 @@ import { DEFAULTS, SCHEMA, cloneConfig, parseConfig, serializeConfig, stepOf, va
  */
 const config: GameConfig = parseConfig(rawValues);
 
-export type { GameConfig };
-export { DEFAULTS, SCHEMA, cloneConfig, config, parseConfig, serializeConfig, stepOf, validateConfig };
+export type { GameConfig, SchemaGroup };
+export {
+  DEFAULTS,
+  SCHEMA,
+  cloneConfig,
+  config,
+  entityEntries,
+  fieldEntries,
+  groupEntries,
+  parseConfig,
+  serializeConfig,
+  stepOf,
+  validateConfig,
+};

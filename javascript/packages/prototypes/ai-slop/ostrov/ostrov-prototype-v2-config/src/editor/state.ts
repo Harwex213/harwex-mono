@@ -1,12 +1,15 @@
 import { computed, signal } from "@preact/signals-react";
 import type { GameConfig } from "../schema";
-import { DEFAULTS, cloneConfig, validateConfig } from "../schema";
+import { DEFAULTS, cloneConfig, groupEntries, validateConfig } from "../schema";
 import type { ConfigValue } from "../types";
 
 /**
  * Editor state. The values shown in the form live here; the copy last known to
  * be on disk lives next to them, which is what "изменено" and the reload-from-
  * disk check compare against.
+ *
+ * The buffer holds the whole config, not the page in view, so edits survive
+ * navigation and one Save writes every page at once.
  */
 
 const ENDPOINT = "/api/config";
@@ -18,7 +21,11 @@ type Status = {
   text: string;
 };
 
-type MutableConfig = Record<string, Record<string, ConfigValue>>;
+type MutableEntity = Record<string, ConfigValue>;
+
+type MutableGroup = Record<string, ConfigValue | MutableEntity>;
+
+type MutableConfig = Record<string, MutableGroup>;
 
 const values = signal<GameConfig>(cloneConfig(DEFAULTS));
 const onDisk = signal<GameConfig>(cloneConfig(DEFAULTS));
@@ -28,18 +35,57 @@ const status = signal<Status | null>(null);
 
 const dirty = computed(() => JSON.stringify(values.value) !== JSON.stringify(onDisk.value));
 
-function read(config: GameConfig, group: string, field: string): ConfigValue {
-  return (config as unknown as MutableConfig)[group]![field]!;
+/** Which pages hold unsaved edits, so the nav can mark them. */
+const dirtyGroups = computed(() => {
+  const current = values.value as unknown as MutableConfig;
+  const saved = onDisk.value as unknown as MutableConfig;
+  const result: Record<string, boolean> = {};
+  for (const [groupKey] of groupEntries()) {
+    result[groupKey] = JSON.stringify(current[groupKey]) !== JSON.stringify(saved[groupKey]);
+  }
+  return result;
+});
+
+/**
+ * Resolves an owner path to the object that holds the fields: `"hex"` for a
+ * plain group, `"buildings.castle1"` for one entity of a collection.
+ */
+function ownerAt(config: MutableConfig, owner: string): MutableEntity {
+  const [groupKey, entityKey] = owner.split(".");
+  const group = config[groupKey!]!;
+  if (entityKey === undefined) {
+    return group as MutableEntity;
+  }
+  return group[entityKey] as MutableEntity;
 }
 
-function setField(group: string, field: string, value: ConfigValue): void {
+function read(config: GameConfig, owner: string, field: string): ConfigValue {
+  return ownerAt(config as unknown as MutableConfig, owner)[field]!;
+}
+
+function setField(owner: string, field: string, value: ConfigValue): void {
   const next = cloneConfig(values.peek()) as unknown as MutableConfig;
-  next[group]![field] = value;
+  ownerAt(next, owner)[field] = value;
   values.value = next as unknown as GameConfig;
 }
 
-function resetField(group: string, field: string): void {
-  setField(group, field, read(DEFAULTS, group, field));
+function resetField(owner: string, field: string): void {
+  setField(owner, field, read(DEFAULTS, owner, field));
+}
+
+/** True when nothing in the group differs from the schema defaults. */
+function groupIsDefault(groupKey: string): boolean {
+  const current = (values.value as unknown as MutableConfig)[groupKey];
+  const fallback = (DEFAULTS as unknown as MutableConfig)[groupKey];
+  return JSON.stringify(current) === JSON.stringify(fallback);
+}
+
+/** Puts one whole group — plain or collection — back to its schema defaults. */
+function resetGroup(groupKey: string): void {
+  const next = cloneConfig(values.peek()) as unknown as MutableConfig;
+  const fallback = cloneConfig(DEFAULTS) as unknown as MutableConfig;
+  next[groupKey] = fallback[groupKey]!;
+  values.value = next as unknown as GameConfig;
 }
 
 function resetAll(): void {
@@ -161,7 +207,9 @@ function startDiskWatch(): () => void {
 export type { Status };
 export {
   dirty,
+  dirtyGroups,
   exportJson,
+  groupIsDefault,
   importJson,
   loadFromDisk,
   loaded,
@@ -169,6 +217,7 @@ export {
   read,
   resetAll,
   resetField,
+  resetGroup,
   save,
   saving,
   setField,

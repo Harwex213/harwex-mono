@@ -95,5 +95,197 @@
     "cloudWarmColor": "#fdf1e2",
     "cloudShadowColor": "#7d9fbe",
     "parallax": 0.22
+  },
+  "buildings": {
+    "castle1": {
+      "costWood": 800,
+      "costStone": 600,
+      "costGold": 200,
+      "buildTimeSec": 600,
+      "maxHp": 5000,
+      "workerSlots": 6,
+      "productionResource": "gold",
+      "productionPerMin": 6,
+      "terrain": "any",
+      "claimRadius": 2,
+      "note": "Центр острова: открывает постройки и хранит запасы."
+    },
+    "barracks1": {
+      "costWood": 260,
+      "costStone": 140,
+      "costGold": 60,
+      "buildTimeSec": 180,
+      "maxHp": 1400,
+      "workerSlots": 0,
+      "productionResource": "none",
+      "productionPerMin": 0,
+      "terrain": "any",
+      "claimRadius": 0,
+      "note": "Готовит отряды, ресурсов не даёт."
+    },
+    "hut1": {
+      "costWood": 60,
+      "costStone": 20,
+      "costGold": 0,
+      "buildTimeSec": 45,
+      "maxHp": 400,
+      "workerSlots": 3,
+      "productionResource": "none",
+      "productionPerMin": 0,
+      "terrain": "grass",
+      "claimRadius": 0,
+      "note": "Дом на трёх рабочих."
+    },
+    "sawmill1": {
+      "costWood": 120,
+      "costStone": 40,
+      "costGold": 10,
+      "buildTimeSec": 90,
+      "maxHp": 700,
+      "workerSlots": 3,
+      "productionResource": "wood",
+      "productionPerMin": 12,
+      "terrain": "forest",
+      "claimRadius": 0,
+      "note": "Главный источник дерева."
+    },
+    "mill1": {
+      "costWood": 140,
+      "costStone": 60,
+      "costGold": 15,
+      "buildTimeSec": 110,
+      "maxHp": 700,
+      "workerSlots": 3,
+      "productionResource": "food",
+      "productionPerMin": 10,
+      "terrain": "grass",
+      "claimRadius": 0,
+      "note": "Главный источник еды."
+    },
+    "mine1": {
+      "costWood": 100,
+      "costStone": 90,
+      "costGold": 25,
+      "buildTimeSec": 150,
+      "maxHp": 900,
+      "workerSlots": 4,
+      "productionResource": "stone",
+      "productionPerMin": 8,
+      "terrain": "sand",
+      "claimRadius": 0,
+      "note": "Главный источник камня."
+    },
+    "islandController1": {
+      "costWood": 200,
+      "costStone": 200,
+      "costGold": 150,
+      "buildTimeSec": 240,
+      "maxHp": 1500,
+      "workerSlots": 1,
+      "productionResource": "none",
+      "productionPerMin": 0,
+      "terrain": "any",
+      "claimRadius": 2,
+      "note": "Расширяет территорию на два кольца гексов."
+    }
+  },
+  "units": {
+    "worker": {
+      "costFood": 20,
+      "costWood": 0,
+      "costGold": 0,
+      "trainTimeSec": 12,
+      "maxHp": 80,
+      "damage": 4,
+      "attackSpeed": 0.8,
+      "moveSpeed": 1.2,
+      "attackRangeHex": 1,
+      "note": "Строит и добывает."
+    },
+    "swordsman": {
+      "costFood": 40,
+      "costWood": 0,
+      "costGold": 10,
+      "trainTimeSec": 25,
+      "maxHp": 220,
+      "damage": 18,
+      "attackSpeed": 1.1,
+      "moveSpeed": 1,
+      "attackRangeHex": 1,
+      "note": "Держит линию."
+    },
+    "archer": {
+      "costFood": 30,
+      "costWood": 20,
+      "costGold": 0,
+      "trainTimeSec": 30,
+      "maxHp": 130,
+      "damage": 14,
+      "attackSpeed": 0.9,
+      "moveSpeed": 1.1,
+      "attackRangeHex": 3.5,
+      "note": "Бьёт из-за спины мечников."
+    }
+  },
+  "enemies": {
+    "raider": {
+      "maxHp": 140,
+      "damage": 16,
+      "attackSpeed": 1,
+      "moveSpeed": 1.1,
+      "aggroRadiusHex": 3,
+      "rewardGold": 14,
+      "rewardFood": 0,
+      "note": "Рядовой противник."
+    },
+    "wolf": {
+      "maxHp": 90,
+      "damage": 11,
+      "attackSpeed": 1.4,
+      "moveSpeed": 1.8,
+      "aggroRadiusHex": 4.5,
+      "rewardGold": 6,
+      "rewardFood": 8,
+      "note": "Догоняет отставших."
+    },
+    "brute": {
+      "maxHp": 420,
+      "damage": 34,
+      "attackSpeed": 0.6,
+      "moveSpeed": 0.7,
+      "aggroRadiusHex": 2.5,
+      "rewardGold": 40,
+      "rewardFood": 0,
+      "note": "Ломает стены и строй."
+    }
+  },
+  "enemyBuildings": {
+    "camp": {
+      "maxHp": 600,
+      "spawnIntervalSec": 45,
+      "spawnUnit": "raider",
+      "spawnBatch": 1,
+      "garrisonCap": 4,
+      "rewardGold": 60,
+      "note": "Ровный поток разбойников."
+    },
+    "den": {
+      "maxHp": 380,
+      "spawnIntervalSec": 30,
+      "spawnUnit": "wolf",
+      "spawnBatch": 2,
+      "garrisonCap": 6,
+      "rewardGold": 45,
+      "note": "Частые быстрые стаи."
+    },
+    "watchtower": {
+      "maxHp": 1200,
+      "spawnIntervalSec": 90,
+      "spawnUnit": "brute",
+      "spawnBatch": 1,
+      "garrisonCap": 2,
+      "rewardGold": 120,
+      "note": "Редкие, но тяжёлые гости."
+    }
   }
 }

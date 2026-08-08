@@ -261,4 +261,4 @@ class CloudLayer {
   }
 }
 
-export { CloudLayer, skyGradientCss };
+export { CloudLayer };

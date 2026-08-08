@@ -41,16 +41,21 @@ body {
   padding: 0 20px 60px;
 }
 
-.toolbar {
+.chrome {
   position: sticky;
   top: 0;
   z-index: 5;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--edge);
+  background: var(--bg);
+}
+
+.toolbar {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 12px;
   padding: 14px 0 12px;
-  background: linear-gradient(var(--bg) 78%, rgba(13, 26, 38, 0));
 }
 
 .brand {
@@ -153,12 +158,15 @@ button.link:hover:not(:disabled) {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  padding-bottom: 16px;
 }
 
 .nav a {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   padding: 5px 10px;
   font-size: 12.5px;
+  white-space: nowrap;
   color: var(--muted);
   text-decoration: none;
   border: 1px solid var(--edge);
@@ -168,6 +176,16 @@ button.link:hover:not(:disabled) {
 .nav a:hover {
   color: var(--text);
   background: rgba(127, 192, 255, 0.15);
+}
+
+.nav a.active {
+  color: var(--bg);
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.body {
+  padding-top: 18px;
 }
 
 .section {
@@ -247,10 +265,60 @@ button.link:hover:not(:disabled) {
 }
 
 .dot {
+  display: inline-block;
+  flex: none;
   width: 7px;
   height: 7px;
   border-radius: 50%;
   background: var(--gold);
+}
+
+.entities {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.entity-kind {
+  margin: 0;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.entity {
+  padding: 14px 15px 12px;
+  border: 1px solid var(--edge);
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.16);
+}
+
+.entity-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.entity-head h3 {
+  margin: 0;
+  font-size: 14px;
+  color: var(--gold);
+}
+
+.entity-state {
+  margin-left: auto;
+  font-size: 12px;
+}
+
+.entity-note {
+  margin: 4px 0 12px;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.entity-reset {
+  margin-top: 10px;
 }
 
 .field-note {
@@ -322,4 +390,34 @@ select {
   width: 16px;
   height: 16px;
   accent-color: var(--accent);
+}
+
+@media (max-width: 760px) {
+  .editor {
+    padding: 0 12px 60px;
+  }
+
+  .nav {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding-bottom: 4px;
+    scrollbar-width: thin;
+  }
+
+  .toolbar {
+    padding: 10px 0 8px;
+  }
+
+  .brand h1 {
+    font-size: 15px;
+  }
+
+  .actions {
+    margin-left: 0;
+  }
+
+  .chrome {
+    max-height: 62vh;
+    overflow-y: auto;
+  }
 }

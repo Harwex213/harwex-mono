@@ -48,11 +48,6 @@ body {
   height: 100%;
   display: block;
   touch-action: none;
-  cursor: grab;
-}
-
-.map-canvas.grabbing {
-  cursor: grabbing;
 }
 
 .overlay {

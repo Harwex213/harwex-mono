@@ -1,17 +1,22 @@
 import { useSignals } from "@preact/signals-react/runtime";
 import { useEffect, useRef } from "react";
-import { DEFAULTS, SCHEMA } from "../schema";
-import type { Field } from "../types";
+import type { SchemaGroup } from "../schema";
+import { DEFAULTS, entityEntries, fieldEntries, groupEntries } from "../schema";
+import type { EntityDescriptor, Field } from "../types";
 import { FieldRow } from "./FieldRow";
+import { hrefOf, page, startRouter } from "./router";
 import {
   dirty,
+  dirtyGroups,
   exportJson,
+  groupIsDefault,
   importJson,
   loadFromDisk,
   loaded,
   read,
   resetAll,
   resetField,
+  resetGroup,
   save,
   saving,
   startDiskWatch,
@@ -19,41 +24,111 @@ import {
   values,
 } from "./state";
 
-type GroupEntry = [string, { label: string; description: string; fields: Record<string, Field> }];
+/**
+ * The editor shell: a sticky toolbar and nav on top, one page per schema group
+ * below. Every control on every page comes from `FieldRow`, so a schema entry
+ * is the only thing a new knob needs.
+ */
 
-function groups(): GroupEntry[] {
-  return Object.entries(SCHEMA) as GroupEntry[];
+function groupAt(name: string): SchemaGroup {
+  const found = groupEntries().find(([key]) => key === name);
+  return found![1];
 }
 
-function Section({ name }: { name: string }): React.JSX.Element {
+/** Fields of one owner that differ from the schema defaults. */
+function changedFields(group: SchemaGroup, owner: string): string[] {
+  return fieldEntries(group)
+    .filter(([key]) => read(values.value, owner, key) !== read(DEFAULTS, owner, key))
+    .map(([key]) => key);
+}
+
+type FieldsProps = {
+  group: SchemaGroup;
+  owner: string;
+};
+
+function Fields({ group, owner }: FieldsProps): React.JSX.Element {
+  return (
+    <div className="fields">
+      {fieldEntries(group).map(([key, field]: [string, Field]) => (
+        <FieldRow key={key} owner={owner} name={key} field={field} />
+      ))}
+    </div>
+  );
+}
+
+/** One entity of a collection: the same field template, filled in. */
+function EntityCard({ group, name, entityKey, entity }: {
+  group: SchemaGroup;
+  name: string;
+  entityKey: string;
+  entity: EntityDescriptor;
+}): React.JSX.Element {
   useSignals();
-  const group = (SCHEMA as unknown as Record<string, GroupEntry[1]>)[name]!;
-  const fields = Object.entries(group.fields);
-  const changed = fields.filter(([key]) => read(values.value, name, key) !== read(DEFAULTS, name, key));
+  const owner = `${name}.${entityKey}`;
+  const changed = changedFields(group, owner);
 
   return (
-    <section className="section" id={`group-${name}`}>
-      <header className="section-head">
-        <h2>{group.label}</h2>
-        <span className="muted">{changed.length > 0 ? `${changed.length} изменено` : "как по умолчанию"}</span>
+    <article className="entity">
+      <header className="entity-head">
+        <h3>{entity.label}</h3>
+        <span className="muted mono">{owner}</span>
+        <span className="muted entity-state">
+          {changed.length > 0 ? `${changed.length} изменено` : "как по умолчанию"}
+        </span>
       </header>
-      <p className="section-note">{group.description}</p>
-      <div className="fields">
-        {fields.map(([key, field]) => (
-          <FieldRow key={key} group={name} name={key} field={field} />
-        ))}
-      </div>
+      <p className="entity-note">{entity.description}</p>
+      <Fields group={group} owner={owner} />
       <button
         type="button"
-        className="link section-reset"
+        className="link entity-reset"
         disabled={changed.length === 0}
         onClick={() => {
-          for (const [key] of changed) {
-            resetField(name, key);
+          for (const key of changed) {
+            resetField(owner, key);
           }
         }}
       >
-        сбросить группу
+        сбросить {entity.label}
+      </button>
+    </article>
+  );
+}
+
+function Page({ name }: { name: string }): React.JSX.Element {
+  useSignals();
+  const group = groupAt(name);
+  const entities = entityEntries(group);
+  const groupChanged = dirtyGroups.value[name] === true;
+
+  return (
+    <section className="section" id={`page-${name}`}>
+      <header className="section-head">
+        <h2>{group.label}</h2>
+        <span className={groupChanged ? "badge dirty" : "badge"}>
+          {groupChanged ? "есть несохранённые правки" : "совпадает с диском"}
+        </span>
+      </header>
+      <p className="section-note">{group.description}</p>
+      {entities ? (
+        <div className="entities">
+          <p className="entity-kind muted">
+            {group.entityLabel ?? "Сущность"} · {entities.length} шт., поля общие для всех
+          </p>
+          {entities.map(([entityKey, entity]) => (
+            <EntityCard key={entityKey} group={group} name={name} entityKey={entityKey} entity={entity} />
+          ))}
+        </div>
+      ) : (
+        <Fields group={group} owner={name} />
+      )}
+      <button
+        type="button"
+        className="link section-reset"
+        disabled={groupIsDefault(name)}
+        onClick={() => resetGroup(name)}
+      >
+        сбросить страницу к значениям по умолчанию
       </button>
     </section>
   );
@@ -108,6 +183,28 @@ function Toolbar(): React.JSX.Element {
   );
 }
 
+function Nav(): React.JSX.Element {
+  useSignals();
+  const current = page.value;
+  const marks = dirtyGroups.value;
+
+  return (
+    <nav className="nav">
+      {groupEntries().map(([name, group]) => (
+        <a
+          key={name}
+          className={name === current ? "active" : ""}
+          href={hrefOf(name)}
+          aria-current={name === current ? "page" : undefined}
+        >
+          {group.label}
+          {marks[name] === true ? <i className="dot" title="На странице есть несохранённые правки" /> : null}
+        </a>
+      ))}
+    </nav>
+  );
+}
+
 function Editor(): React.JSX.Element {
   useSignals();
 
@@ -116,21 +213,17 @@ function Editor(): React.JSX.Element {
     return startDiskWatch();
   }, []);
 
+  useEffect(() => startRouter(), []);
+
   return (
     <div className="editor">
-      <Toolbar />
-      <nav className="nav">
-        {groups().map(([name, group]) => (
-          <a key={name} href={`#group-${name}`}>
-            {group.label}
-          </a>
-        ))}
-      </nav>
+      <div className="chrome">
+        <Toolbar />
+        <Nav />
+      </div>
       <main className="body">
         {loaded.value ? null : <p className="muted">Читаю конфиг с диска…</p>}
-        {groups().map(([name]) => (
-          <Section key={name} name={name} />
-        ))}
+        <Page name={page.value} />
       </main>
     </div>
   );
