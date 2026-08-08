@@ -1,24 +1,26 @@
+import { config } from "@hw/ostrov-prototype-v2-config";
+
 type Rgb = {
   r: number;
   g: number;
   b: number;
 };
 
-const SKY_TOP = "#a4c6dd";
-const SKY_MID = "#c6dded";
-const SKY_BOTTOM = "#7ca2c0";
+const SKY_TOP = config.background.skyTopColor;
+const SKY_MID = config.background.skyMidColor;
+const SKY_BOTTOM = config.background.skyBottomColor;
 
 /** Cliff colours: a bright lip under the top face fading into deep wet rock. */
-const ROCK_TOP = "#adc2ce";
-const ROCK_BOTTOM = "#35536a";
+const ROCK_TOP = config.render.rockTopColor;
+const ROCK_BOTTOM = config.render.rockBottomColor;
 
-const BORDER_DARK = "#0b3f9c";
-const BORDER_BRIGHT = "#2f83f0";
-const BORDER_SHEEN = "#8fc4ff";
+const BORDER_DARK = config.render.borderOuterColor;
+const BORDER_BRIGHT = config.render.borderInnerColor;
+const BORDER_SHEEN = config.render.borderSheenColor;
 
-const HOVER_FILL = "rgba(255, 255, 255, 0.14)";
-const HOVER_LINE = "rgba(255, 255, 255, 0.85)";
-const SELECT_LINE = "#ffd479";
+const HOVER_FILL = withAlpha(config.render.hoverFillColor, config.render.hoverFillAlpha);
+const HOVER_LINE = withAlpha(config.render.hoverLineColor, config.render.hoverLineAlpha);
+const SELECT_LINE = config.render.selectColor;
 
 /** Accepts both `#rrggbb` and the `rgb(r, g, b)` strings this module produces. */
 function hexToRgb(colour: string): Rgb {
@@ -36,6 +38,12 @@ function hexToRgb(colour: string): Rgb {
     g: Number.parseFloat(parts[1] ?? "0"),
     b: Number.parseFloat(parts[2] ?? "0"),
   };
+}
+
+/** `#rrggbb` plus an alpha, as the `rgba(...)` string canvas wants. */
+function withAlpha(colour: string, alpha: number): string {
+  const rgb = hexToRgb(colour);
+  return `rgba(${clampByte(rgb.r)}, ${clampByte(rgb.g)}, ${clampByte(rgb.b)}, ${alpha})`;
 }
 
 function clampByte(value: number): number {
@@ -86,6 +94,7 @@ export {
   SKY_TOP,
   hexToRgb,
   mix,
+  withAlpha,
   rgbToCss,
   shade,
 };

@@ -1,3 +1,4 @@
+import { config } from "@hw/ostrov-prototype-v2-config";
 import { HEX_DIRECTIONS } from "../hex/coords";
 import type { Point } from "../hex/layout";
 import { WALL_DEPTH, WALL_EDGES } from "../hex/layout";
@@ -133,7 +134,7 @@ function drawTop(ctx: CanvasRenderingContext2D, tile: Tile, centre: Point, corne
 
   tracePath(ctx, corners);
   ctx.strokeStyle = shade(style.rim, 0.96);
-  ctx.lineWidth = 1.4;
+  ctx.lineWidth = config.render.tileRimWidth;
   ctx.stroke();
 }
 

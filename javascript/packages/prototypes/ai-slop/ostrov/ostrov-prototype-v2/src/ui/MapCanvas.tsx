@@ -1,3 +1,4 @@
+import { config } from "@hw/ostrov-prototype-v2-config";
 import { effect } from "@preact/signals-react";
 import { useSignals } from "@preact/signals-react/runtime";
 import { useEffect, useRef } from "react";
@@ -8,9 +9,10 @@ import type { IslandMap } from "../map/island";
 import { Renderer } from "../render/renderer";
 import type { Camera } from "../state/camera";
 import { clampScale, screenToWorld, zoomAt } from "../state/camera";
+import { PanGlide, PanVelocity } from "../state/inertia";
 import { camera, dragging, hovered, island, selected } from "../state/signals";
 
-const DRAG_SLOP = 5;
+const DRAG_SLOP = config.camera.dragSlop;
 
 /** Camera that shows the whole island with a margin, used on first layout. */
 function fitCamera(map: IslandMap, width: number, height: number): Camera {
@@ -41,6 +43,33 @@ function sameHex(left: Axial | null, right: Axial | null): boolean {
   return left.q === right.q && left.r === right.r;
 }
 
+/** Client-space position of one finger or the mouse. */
+type PointerSpot = {
+  x: number;
+  y: number;
+};
+
+/** Geometry of the two fingers that own a pinch, kept as the baseline for the next frame. */
+type Pinch = {
+  distance: number;
+  x: number;
+  y: number;
+};
+
+/** Reads the pinch geometry of the two oldest pointers, or null while fewer than two are down. */
+function readPinch(pointers: Map<number, PointerSpot>): Pinch | null {
+  if (pointers.size < 2) {
+    return null;
+  }
+  const [first, second] = [...pointers.values()];
+  return {
+    // A floor of one pixel keeps the frame-to-frame ratio finite when the fingers touch.
+    distance: Math.max(1, Math.hypot(second.x - first.x, second.y - first.y)),
+    x: (first.x + second.x) / 2,
+    y: (first.y + second.y) / 2,
+  };
+}
+
 function MapCanvas(): React.JSX.Element {
   useSignals();
   const ref = useRef<HTMLCanvasElement>(null);
@@ -57,10 +86,19 @@ function MapCanvas(): React.JSX.Element {
     let fitted = false;
     let cssWidth = canvas.clientWidth;
     let cssHeight = canvas.clientHeight;
-    let pointerId: number | null = null;
+    const pointers = new Map<number, PointerSpot>();
+    let dragId: number | null = null;
+    let pinch: Pinch | null = null;
+    let pinched = false;
     let travelled = 0;
     let lastX = 0;
     let lastY = 0;
+    const velocity = new PanVelocity();
+    const glide = new PanGlide();
+    // Where the cursor sits right now, so a glide can keep the hover honest.
+    let cursorX = 0;
+    let cursorY = 0;
+    let cursorInside = false;
 
     const stopWatching = effect(() => {
       // Reading the signals here subscribes the loop to every state change.
@@ -71,38 +109,120 @@ function MapCanvas(): React.JSX.Element {
       dirty = true;
     });
 
-    const pick = (event: PointerEvent | WheelEvent): Axial | null => {
+    const pickAt = (clientX: number, clientY: number): Axial | null => {
       const rect = canvas.getBoundingClientRect();
-      const point = screenToWorld(
-        camera.peek(),
-        rect.width,
-        rect.height,
-        event.clientX - rect.left,
-        event.clientY - rect.top,
-      );
+      const point = screenToWorld(camera.peek(), rect.width, rect.height, clientX - rect.left, clientY - rect.top);
       const hex = worldToHex(point.x, point.y);
       return island.peek().byKey.has(hexKey(hex.q, hex.r)) ? hex : null;
+    };
+
+    const pick = (event: PointerEvent | WheelEvent): Axial | null => {
+      cursorX = event.clientX;
+      cursorY = event.clientY;
+      cursorInside = true;
+      return pickAt(event.clientX, event.clientY);
+    };
+
+    /** Re-reads the hex under the cursor. Used after the camera moved on its own. */
+    const refreshHover = (): void => {
+      if (!cursorInside) {
+        return;
+      }
+      const hex = pickAt(cursorX, cursorY);
+      if (!sameHex(hex, hovered.peek())) {
+        hovered.value = hex;
+      }
+    };
+
+    /**
+     * Rebuilds the gesture baselines after the pointer count changed. Two pointers own the
+     * camera as a pinch, one owns it as a drag anchored at its current position, so neither
+     * adding nor lifting a finger makes the map jump.
+     */
+    const rebaseGesture = (): void => {
+      pinch = readPinch(pointers);
+      if (pinch) {
+        dragId = null;
+        dragging.value = false;
+        if (hovered.peek() !== null) {
+          hovered.value = null;
+        }
+        return;
+      }
+      const entries = [...pointers.entries()];
+      if (entries.length === 1) {
+        const [id, spot] = entries[0];
+        dragId = id;
+        lastX = spot.x;
+        lastY = spot.y;
+        velocity.reset(performance.now());
+        dragging.value = true;
+        return;
+      }
+      dragId = null;
+      dragging.value = false;
     };
 
     const onPointerDown = (event: PointerEvent): void => {
       if (event.button !== 0) {
         return;
       }
-      pointerId = event.pointerId;
-      travelled = 0;
-      lastX = event.clientX;
-      lastY = event.clientY;
-      dragging.value = true;
+      // Keeps the browser from turning the touch into a scroll or a text selection.
+      event.preventDefault();
+      // Touching the map takes the camera back, wherever the glide had got to.
+      glide.stop();
+      cursorX = event.clientX;
+      cursorY = event.clientY;
+      cursorInside = true;
+      pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
       canvas.setPointerCapture(event.pointerId);
+      if (pointers.size === 1) {
+        travelled = 0;
+      } else {
+        // A second finger turns the gesture into a pinch, and a pinch never selects a tile.
+        pinched = true;
+      }
+      rebaseGesture();
     };
 
     const onPointerMove = (event: PointerEvent): void => {
-      if (pointerId === event.pointerId) {
+      const spot = pointers.get(event.pointerId);
+      if (spot) {
+        spot.x = event.clientX;
+        spot.y = event.clientY;
+      }
+      if (pinch) {
+        event.preventDefault();
+        const next = readPinch(pointers);
+        if (!next) {
+          return;
+        }
+        const rect = canvas.getBoundingClientRect();
+        const current = camera.peek();
+        // The midpoint pans the map first, then the change in finger spread zooms around it.
+        const panned: Camera = {
+          x: current.x - (next.x - pinch.x) / current.scale,
+          y: current.y - (next.y - pinch.y) / current.scale,
+          scale: current.scale,
+        };
+        camera.value = zoomAt(
+          panned,
+          rect.width,
+          rect.height,
+          next.x - rect.left,
+          next.y - rect.top,
+          next.distance / pinch.distance,
+        );
+        pinch = next;
+        return;
+      }
+      if (dragId === event.pointerId) {
         const dx = event.clientX - lastX;
         const dy = event.clientY - lastY;
         lastX = event.clientX;
         lastY = event.clientY;
         travelled += Math.abs(dx) + Math.abs(dy);
+        velocity.sample(dx, dy, performance.now());
         const current = camera.peek();
         camera.value = {
           x: current.x - dx / current.scale,
@@ -117,15 +237,26 @@ function MapCanvas(): React.JSX.Element {
     };
 
     const onPointerUp = (event: PointerEvent): void => {
-      if (pointerId !== event.pointerId) {
+      if (!pointers.delete(event.pointerId)) {
         return;
       }
-      pointerId = null;
-      dragging.value = false;
       if (canvas.hasPointerCapture(event.pointerId)) {
         canvas.releasePointerCapture(event.pointerId);
       }
+      const wasDrag = dragId === event.pointerId;
+      const wasPinch = pinched;
+      if (pointers.size === 0) {
+        pinched = false;
+      }
+      rebaseGesture();
+      if (!wasDrag || wasPinch || event.type === "pointercancel") {
+        return;
+      }
       if (travelled > DRAG_SLOP) {
+        // Only a real drag hands the camera over to the glide; a click never does.
+        if (pointers.size === 0) {
+          glide.launch(velocity.release(performance.now()));
+        }
         return;
       }
       const hex = pick(event);
@@ -133,6 +264,7 @@ function MapCanvas(): React.JSX.Element {
     };
 
     const onPointerLeave = (): void => {
+      cursorInside = false;
       if (hovered.peek() !== null) {
         hovered.value = null;
       }
@@ -140,10 +272,12 @@ function MapCanvas(): React.JSX.Element {
 
     const onWheel = (event: WheelEvent): void => {
       event.preventDefault();
+      // Zooming takes the camera back too, so the glide never fights the wheel.
+      glide.stop();
       const rect = canvas.getBoundingClientRect();
       // A trackpad pinch arrives as a wheel event with `ctrlKey` set.
       const lines = event.deltaMode === 1 ? 16 : 1;
-      const intensity = event.ctrlKey ? 0.02 : 0.0022;
+      const intensity = event.ctrlKey ? config.camera.pinchZoomSensitivity : config.camera.wheelZoomSensitivity;
       const factor = Math.exp(-event.deltaY * lines * intensity);
       camera.value = zoomAt(
         camera.peek(),
@@ -170,16 +304,33 @@ function MapCanvas(): React.JSX.Element {
     });
     observer.observe(canvas);
 
-    canvas.addEventListener("pointerdown", onPointerDown);
-    canvas.addEventListener("pointermove", onPointerMove);
+    // `passive: false` on the two handlers that call `preventDefault` to block browser gestures.
+    canvas.addEventListener("pointerdown", onPointerDown, { passive: false });
+    canvas.addEventListener("pointermove", onPointerMove, { passive: false });
     canvas.addEventListener("pointerup", onPointerUp);
     canvas.addEventListener("pointercancel", onPointerUp);
     canvas.addEventListener("pointerleave", onPointerLeave);
     canvas.addEventListener("wheel", onWheel, { passive: false });
 
     let frame = 0;
-    const loop = (): void => {
+    let lastStamp = 0;
+    const loop = (stamp: number): void => {
       frame = requestAnimationFrame(loop);
+      const delta = lastStamp === 0 ? 0 : (stamp - lastStamp) / 1000;
+      lastStamp = stamp;
+      if (glide.active) {
+        // A long frame is clamped so a stalled tab cannot teleport the camera.
+        const step = glide.step(Math.min(delta, 0.1));
+        if (step) {
+          const current = camera.peek();
+          camera.value = {
+            x: current.x - step.x / current.scale,
+            y: current.y - step.y / current.scale,
+            scale: current.scale,
+          };
+          refreshHover();
+        }
+      }
       if (renderer.resize(cssWidth, cssHeight, window.devicePixelRatio || 1)) {
         dirty = true;
       }

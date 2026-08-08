@@ -1,24 +1,23 @@
 {
-  "name": "@hw/ostrov-prototype-v2",
+  "name": "@hw/ostrov-prototype-v2-config",
   "private": true,
+  "version": "1.0.0",
   "type": "module",
+  "exports": "./src/index.ts",
   "scripts": {
     "dev": "rspack serve",
     "build": "rspack build",
     "typecheck": "tsc --noEmit"
   },
-  "dependencies": {
-    "@hw/ostrov-prototype-v2-config": "workspace:*",
-    "@preact/signals-react": "3.9.0",
-    "react": "19.2.0",
-    "react-dom": "19.2.0"
-  },
   "devDependencies": {
+    "@preact/signals-react": "3.9.0",
     "@rspack/cli": "2.1.4",
     "@rspack/core": "2.1.4",
     "@rspack/dev-server": "2.1.0",
     "@types/react": "19.2.0",
     "@types/react-dom": "19.2.0",
+    "react": "19.2.0",
+    "react-dom": "19.2.0",
     "typescript": "5.9.3"
   },
   "browserslist": [

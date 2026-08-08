@@ -1,8 +1,23 @@
+import { config } from "@hw/ostrov-prototype-v2-config";
 import type { Axial } from "../hex/coords";
 import { hexKey, neighboursOf } from "../hex/coords";
 import type { Rng } from "./rng";
 import { createRng, hashCoords, weightedPick } from "./rng";
 import type { TerrainKind } from "./terrain";
+
+/**
+ * Weight of a frontier cell, indexed by how many placed hexes it already
+ * touches. Index 0 never comes up: a frontier cell touches at least one.
+ */
+const GROWTH_BIAS: readonly number[] = [
+  0,
+  config.island.growthBias1,
+  config.island.growthBias2,
+  config.island.growthBias3,
+  config.island.growthBias4,
+  config.island.growthBias5,
+  config.island.growthBias6,
+];
 
 /** Owner id 0 means "wild", 1 means "the player's kingdom". */
 const OWNER_WILD = 0;
@@ -59,14 +74,14 @@ function growCluster(rng: Rng, size: number): Axial[] {
           }
         }
         const spread = Math.max(Math.abs(candidate.q), Math.abs(candidate.r), Math.abs(candidate.q + candidate.r));
-        if (spread > 3) {
+        if (spread > config.island.maxSpread) {
           continue;
         }
         // Two- and three-neighbour cells win most rolls, which keeps the island
         // a compact blob; the occasional one-neighbour win grows an arm.
-        const armBias = [0, 2.6, 4.2, 2.4, 0.9, 0.4, 0.2][touching] ?? 0.2;
+        const armBias = GROWTH_BIAS[touching] ?? GROWTH_BIAS[GROWTH_BIAS.length - 1]!;
         frontier.push(candidate);
-        weights.push(armBias / (1 + 0.5 * spread));
+        weights.push(armBias / (1 + config.island.spreadPenalty * spread));
       }
     }
     if (frontier.length === 0) {
@@ -101,12 +116,23 @@ const ORDERED_KINDS: readonly TerrainKind[] = ["snow", "grass", "ice", "forest",
 
 function pickTerrain(rng: Rng, exposure: number, neighbourKinds: readonly TerrainKind[]): TerrainKind {
   // Patches: most tiles copy a neighbour, so terrain comes in clumps.
-  if (neighbourKinds.length > 0 && rng() < 0.42) {
+  if (neighbourKinds.length > 0 && rng() < config.island.patchChance) {
     return neighbourKinds[Math.floor(rng() * neighbourKinds.length)]!;
   }
   // Exposed tips are where the ice shelves sit in the reference.
-  const iceWeight = exposure >= 4 ? 2.6 : exposure >= 3 ? 1.4 : 0.5;
-  const weights = [1.5, 1.0, iceWeight, 0.85, 1.05];
+  const iceWeight =
+    exposure >= 4
+      ? config.island.terrainWeightIceExposed
+      : exposure >= 3
+        ? config.island.terrainWeightIceEdge
+        : config.island.terrainWeightIceInner;
+  const weights = [
+    config.island.terrainWeightSnow,
+    config.island.terrainWeightGrass,
+    iceWeight,
+    config.island.terrainWeightForest,
+    config.island.terrainWeightSand,
+  ];
   return ORDERED_KINDS[weightedPick(rng, weights)]!;
 }
 
@@ -206,7 +232,7 @@ function claimWilds(rng: Rng, hexes: readonly Axial[], byKey: Map<string, Tile>)
   let claimed = 0;
   for (const hex of pocket) {
     const tile = byKey.get(hexKey(hex.q, hex.r));
-    if (!tile || claimed >= 3) {
+    if (!tile || claimed >= config.island.wildPocketSize) {
       continue;
     }
     tile.owner = OWNER_WILD;

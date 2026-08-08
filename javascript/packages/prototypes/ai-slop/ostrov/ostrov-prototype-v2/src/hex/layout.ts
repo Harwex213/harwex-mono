@@ -1,18 +1,19 @@
+import { config } from "@hw/ostrov-prototype-v2-config";
 import type { Axial } from "./coords";
 import { roundAxial } from "./coords";
 
 /** Circumradius of a hex along the x axis, in world units. */
-const HEX_SIZE = 64;
+const HEX_SIZE = config.hex.size;
 
 /**
  * Vertical squash of the whole map. The reference art looks at the island from
  * a low angle, so every world y is multiplied by this factor and a hex top face
  * ends up about 0.6 as tall as it is wide.
  */
-const SQUASH = 0.6;
+const SQUASH = config.hex.squash;
 
 /** How far the rock walls drop below a top face, in world units. */
-const WALL_DEPTH = 46;
+const WALL_DEPTH = config.hex.wallDepth;
 
 const SQRT3 = Math.sqrt(3);
 

@@ -1,3 +1,4 @@
+import { config } from "@hw/ostrov-prototype-v2-config";
 import type { Point } from "../hex/layout";
 
 type Camera = {
@@ -7,8 +8,8 @@ type Camera = {
   scale: number;
 };
 
-const MIN_SCALE = 0.4;
-const MAX_SCALE = 4;
+const MIN_SCALE = config.camera.minScale;
+const MAX_SCALE = config.camera.maxScale;
 
 function clampScale(scale: number): number {
   return Math.min(MAX_SCALE, Math.max(MIN_SCALE, scale));

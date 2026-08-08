@@ -1,3 +1,4 @@
+import { config } from "@hw/ostrov-prototype-v2-config";
 import type { Point } from "../hex/layout";
 import { HEX_SIZE, SQUASH } from "../hex/layout";
 import type { Tile } from "../map/island";
@@ -232,7 +233,7 @@ function drawDecoration(ctx: CanvasRenderingContext2D, tile: Tile, centre: Point
 
 /** Terrain whose decoration is allowed to poke out above the tile rim. */
 function decorationOverflows(tile: Tile): boolean {
-  return tile.terrain === "forest";
+  return tile.terrain === config.render.decorOverflowTerrain;
 }
 
 export { decorationOverflows, drawDecoration, scatter };

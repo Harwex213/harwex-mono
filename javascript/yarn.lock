@@ -2591,6 +2591,22 @@ __metadata:
   languageName: unknown
   linkType: soft
 
+"@hw/ostrov-prototype-v2-config@workspace:packages/prototypes/ai-slop/ostrov/ostrov-prototype-v2-config":
+  version: 0.0.0-use.local
+  resolution: "@hw/ostrov-prototype-v2-config@workspace:packages/prototypes/ai-slop/ostrov/ostrov-prototype-v2-config"
+  dependencies:
+    "@preact/signals-react": "npm:3.9.0"
+    "@rspack/cli": "npm:2.1.4"
+    "@rspack/core": "npm:2.1.4"
+    "@rspack/dev-server": "npm:2.1.0"
+    "@types/react": "npm:19.2.0"
+    "@types/react-dom": "npm:19.2.0"
+    react: "npm:19.2.0"
+    react-dom: "npm:19.2.0"
+    typescript: "npm:5.9.3"
+  languageName: unknown
+  linkType: soft
+
 "@hw/ostrov-prototype-v2@workspace:packages/prototypes/ai-slop/ostrov/ostrov-prototype-v2":
   version: 0.0.0-use.local
   resolution: "@hw/ostrov-prototype-v2@workspace:packages/prototypes/ai-slop/ostrov/ostrov-prototype-v2"

@@ -1,3 +1,4 @@
+import { config } from "@hw/ostrov-prototype-v2-config";
 import { chainSegments, territoryEdges } from "../hex/borders";
 import type { Axial } from "../hex/coords";
 import { hexKey } from "../hex/coords";
@@ -6,8 +7,7 @@ import { hexCorners, hexToWorld } from "../hex/layout";
 import type { IslandMap } from "../map/island";
 import { OWNER_PLAYER } from "../map/island";
 import type { Camera } from "../state/camera";
-import { Background } from "./background";
-import { BORDER_BRIGHT, BORDER_DARK, BORDER_SHEEN, HOVER_FILL, HOVER_LINE, SELECT_LINE } from "./palette";
+import { BORDER_BRIGHT, BORDER_DARK, BORDER_SHEEN, HOVER_FILL, HOVER_LINE, SELECT_LINE, withAlpha } from "./palette";
 import { drawTop, drawWalls, tracePath } from "./tiles";
 
 type Frame = {
@@ -19,7 +19,6 @@ type Frame = {
 
 class Renderer {
   private readonly ctx: CanvasRenderingContext2D;
-  private readonly background = new Background();
   private borderSource: IslandMap | null = null;
   private borderChains: Point[][] = [];
   private width = 0;
@@ -60,8 +59,8 @@ class Renderer {
   draw(frame: Frame): void {
     const { ctx } = this;
     ctx.setTransform(this.ratio, 0, 0, this.ratio, 0, 0);
+    // Cleared, not filled: the sky belongs to the WebGL layer under this canvas.
     ctx.clearRect(0, 0, this.width, this.height);
-    this.background.draw(ctx, this.width, this.height, frame.camera);
 
     ctx.save();
     ctx.translate(this.width / 2, this.height / 2);
@@ -83,6 +82,9 @@ class Renderer {
   }
 
   private drawTerritory(island: IslandMap): void {
+    if (!config.render.territoryBorderEnabled) {
+      return;
+    }
     if (this.borderSource !== island) {
       this.borderSource = island;
       this.borderChains = chainSegments(territoryEdges(island.tiles, island.ownerAt, OWNER_PLAYER));
@@ -92,9 +94,9 @@ class Renderer {
     ctx.lineJoin = "round";
     ctx.lineCap = "round";
     const passes: readonly { width: number; colour: string; alpha: number }[] = [
-      { width: 11, colour: BORDER_DARK, alpha: 1 },
-      { width: 7.4, colour: BORDER_BRIGHT, alpha: 1 },
-      { width: 1.6, colour: BORDER_SHEEN, alpha: 0.28 },
+      { width: config.render.borderOuterWidth, colour: BORDER_DARK, alpha: 1 },
+      { width: config.render.borderInnerWidth, colour: BORDER_BRIGHT, alpha: 1 },
+      { width: config.render.borderSheenWidth, colour: BORDER_SHEEN, alpha: config.render.borderSheenAlpha },
     ];
     for (const pass of passes) {
       ctx.globalAlpha = pass.alpha;
@@ -121,16 +123,16 @@ class Renderer {
       ctx.fillStyle = HOVER_FILL;
       ctx.fill();
       ctx.strokeStyle = HOVER_LINE;
-      ctx.lineWidth = 2.5;
+      ctx.lineWidth = config.render.hoverLineWidth;
       ctx.stroke();
     }
     if (selected && frame.island.byKey.has(hexKey(selected.q, selected.r))) {
       const corners = hexCorners(hexToWorld(selected));
       tracePath(ctx, corners);
       ctx.strokeStyle = SELECT_LINE;
-      ctx.lineWidth = 5;
-      ctx.shadowColor = "rgba(255, 212, 121, 0.8)";
-      ctx.shadowBlur = 14;
+      ctx.lineWidth = config.render.selectLineWidth;
+      ctx.shadowColor = withAlpha(config.render.selectColor, 0.8);
+      ctx.shadowBlur = config.render.selectGlowBlur;
       ctx.stroke();
       ctx.shadowBlur = 0;
     }

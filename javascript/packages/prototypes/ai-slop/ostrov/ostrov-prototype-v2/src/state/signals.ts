@@ -1,3 +1,4 @@
+import { config } from "@hw/ostrov-prototype-v2-config";
 import { computed, signal } from "@preact/signals-react";
 import type { Axial } from "../hex/coords";
 import { hexKey } from "../hex/coords";
@@ -5,9 +6,9 @@ import type { IslandMap, Tile } from "../map/island";
 import { generateIsland } from "../map/island";
 import type { Camera } from "./camera";
 
-const ISLAND_SIZE = 21;
+const ISLAND_SIZE = config.island.tileCount;
 
-const seed = signal(20260808);
+const seed = signal(config.island.seed);
 const island = signal<IslandMap>(generateIsland({ seed: seed.value, size: ISLAND_SIZE }));
 const camera = signal<Camera>({ x: 0, y: 0, scale: 1 });
 const hovered = signal<Axial | null>(null);
