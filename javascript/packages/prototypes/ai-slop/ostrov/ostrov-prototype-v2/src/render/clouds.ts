@@ -1,5 +1,6 @@
 import { config } from "@hw/ostrov-prototype-v2-config";
 import type { Camera } from "../state/camera";
+import type { CloudFog } from "../state/fog";
 import { FRAGMENT_SOURCE, VERTEX_SOURCE } from "./cloudShader";
 import { SKY_BOTTOM, SKY_MID, SKY_TOP, hexToRgb } from "./palette";
 
@@ -24,6 +25,13 @@ const UNIFORMS = [
   "u_light",
   "u_warmTone",
   "u_shadow",
+  "u_fogDiscs",
+  "u_fogDiscCount",
+  "u_fogSoft",
+  "u_fogDensity",
+  "u_edgeInner",
+  "u_edgeOuter",
+  "u_edgeDensity",
 ] as const;
 
 type UniformName = (typeof UNIFORMS)[number];
@@ -102,6 +110,8 @@ class CloudLayer {
   constructor(
     private readonly canvas: HTMLCanvasElement,
     private readonly readCamera: () => Camera,
+    /** Where the known world ends and where the map does. Read once a frame. */
+    private readonly readFog: (now: number) => CloudFog,
   ) {
     // Always present, so a lost or missing context degrades to the sky gradient
     // instead of a hole in the page.
@@ -187,7 +197,7 @@ class CloudLayer {
       const delta = this.lastStamp === 0 ? 0 : (stamp - this.lastStamp) / 1000;
       this.lastStamp = stamp;
       this.elapsed += Math.min(delta, 0.1);
-      this.draw();
+      this.draw(stamp);
     };
     this.frame = requestAnimationFrame(loop);
   }
@@ -230,13 +240,14 @@ class CloudLayer {
     gl.viewport(0, 0, this.canvas.width, this.canvas.height);
   }
 
-  private draw(): void {
+  private draw(now: number): void {
     const gl = this.gl;
     if (!gl || !this.program) {
       return;
     }
     this.resize(gl);
     const camera = this.readCamera();
+    const fog = this.readFog(now);
     const at = this.locations;
     gl.uniform2f(at.u_resolution ?? null, this.width, this.height);
     gl.uniform1f(at.u_pixelRatio ?? null, this.ratio);
@@ -257,6 +268,14 @@ class CloudLayer {
     gl.uniform3fv(at.u_light ?? null, toVec3(config.background.cloudLightColor));
     gl.uniform3fv(at.u_warmTone ?? null, toVec3(config.background.cloudWarmColor));
     gl.uniform3fv(at.u_shadow ?? null, toVec3(config.background.cloudShadowColor));
+    // One `uniform3fv` on the first element sets the whole `vec3` array.
+    gl.uniform3fv(at.u_fogDiscs ?? null, fog.discs);
+    gl.uniform1f(at.u_fogDiscCount ?? null, fog.discCount);
+    gl.uniform1f(at.u_fogSoft ?? null, fog.softness);
+    gl.uniform1f(at.u_fogDensity ?? null, fog.density);
+    gl.uniform1f(at.u_edgeInner ?? null, fog.edgeInner);
+    gl.uniform1f(at.u_edgeOuter ?? null, fog.edgeOuter);
+    gl.uniform1f(at.u_edgeDensity ?? null, fog.edgeDensity);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
   }
 }

@@ -46,6 +46,12 @@ type Tile = {
   seed: number;
   /** Which island this tile belongs to. The renderer culls on it. */
   islandId: number;
+  /**
+   * Position of the tile in the world's painting order, filled in once the
+   * world is assembled. The fog field is a flat array indexed by it, so reading
+   * a tile's fog state costs one array read and no hashing.
+   */
+  index: number;
 };
 
 /**
@@ -192,6 +198,8 @@ function paintCluster(rng: Rng, options: PaintOptions): Tile[] {
       owner: options.owner,
       seed: hashCoords(hex.q, hex.r, options.seed),
       islandId: options.islandId,
+      // The world assigns the real one once every island is placed and sorted.
+      index: -1,
     });
   }
 

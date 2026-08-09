@@ -5,7 +5,7 @@
     "wallDepth": 46
   },
   "camera": {
-    "minScale": 0.15,
+    "minScale": 0.05,
     "maxScale": 4,
     "wheelZoomSensitivity": 0.0022,
     "pinchZoomSensitivity": 0.02,
@@ -35,16 +35,19 @@
   },
   "world": {
     "seed": 20260809,
-    "bossZoneRadius": 560,
-    "wildZoneRadius": 1800,
-    "peripheralZoneRadius": 3400,
+    "bossZoneRadius": 1150,
+    "wildZoneRadius": 3700,
+    "peripheralZoneRadius": 7000,
     "bossIslandSize": 12,
-    "wildIslandCount": 5,
+    "wildIslandCount": 30,
     "wildIslandSizeMin": 6,
     "wildIslandSizeMax": 9,
-    "peripheralIslandCount": 8,
+    "peripheralIslandCount": 47,
     "peripheralIslandSizeMin": 3,
     "peripheralIslandSizeMax": 6,
+    "largeIslandChance": 0.1,
+    "largeIslandSizeMin": 14,
+    "largeIslandSizeMax": 17,
     "startIslandSize": 9,
     "minIslandGap": 2,
     "enemyStartDistance": 900
@@ -71,7 +74,14 @@
     "rockTopColor": "#adc2ce",
     "rockBottomColor": "#35536a",
     "tileRimWidth": 1.4,
-    "decorOverflowTerrain": "forest"
+    "decorOverflowTerrain": "forest",
+    "islandShadowEnabled": true,
+    "islandShadowColor": "#123b57",
+    "islandShadowOpacity": 0.32,
+    "islandShadowOffsetX": 34,
+    "islandShadowOffsetY": 8,
+    "islandShadowSpread": 1.16,
+    "islandShadowBlur": 0.62
   },
   "terrain": {
     "snowLabel": "Снег",
@@ -110,15 +120,30 @@
     "cloudLightColor": "#ffffff",
     "cloudWarmColor": "#fdf1e2",
     "cloudShadowColor": "#7d9fbe",
-    "parallax": 0.22
+    "parallax": 0.22,
+    "edgeBankEnabled": true,
+    "edgeBankStart": 0.86,
+    "edgeBankWidth": 2600,
+    "edgeBankDensity": 1
+  },
+  "fog": {
+    "enabled": true,
+    "revealRadius": 1500,
+    "softness": 420,
+    "exploredDim": 0.42,
+    "tintStrength": 0.72,
+    "fogColor": "#a9c3d8",
+    "fadeSeconds": 0.9,
+    "cloudDensity": 0.92
   },
   "buildings": {
     "castle1": {
+      "category": "core",
       "requires": "none",
       "costWood": 800,
       "costStone": 600,
       "costGold": 200,
-      "buildTimeSec": 600,
+      "buildTimeSec": 500,
       "maxHp": 5000,
       "workerSlots": 6,
       "productionResource": "gold",
@@ -130,11 +155,12 @@
       "nodeY": 0
     },
     "barracks1": {
+      "category": "war",
       "requires": "castle1",
       "costWood": 260,
       "costStone": 140,
       "costGold": 60,
-      "buildTimeSec": 180,
+      "buildTimeSec": 500,
       "maxHp": 1400,
       "workerSlots": 0,
       "productionResource": "none",
@@ -146,11 +172,12 @@
       "nodeY": 0
     },
     "hut1": {
-      "requires": "none",
+      "category": "core",
+      "requires": "castle1",
       "costWood": 60,
       "costStone": 20,
       "costGold": 0,
-      "buildTimeSec": 45,
+      "buildTimeSec": 200,
       "maxHp": 400,
       "workerSlots": 3,
       "productionResource": "none",
@@ -158,15 +185,16 @@
       "terrain": "grass",
       "claimRadius": 0,
       "note": "Дом на трёх рабочих.",
-      "nodeX": 0,
-      "nodeY": 0
+      "nodeX": 364,
+      "nodeY": 299
     },
     "sawmill1": {
-      "requires": "none",
+      "category": "economics",
+      "requires": "castle1",
       "costWood": 120,
       "costStone": 40,
       "costGold": 10,
-      "buildTimeSec": 90,
+      "buildTimeSec": 700,
       "maxHp": 700,
       "workerSlots": 3,
       "productionResource": "wood",
@@ -174,15 +202,16 @@
       "terrain": "forest",
       "claimRadius": 0,
       "note": "Главный источник дерева.",
-      "nodeX": 0,
-      "nodeY": 0
+      "nodeX": 361,
+      "nodeY": 412
     },
     "mill1": {
-      "requires": "none",
+      "category": "economics",
+      "requires": "castle1",
       "costWood": 140,
       "costStone": 60,
       "costGold": 15,
-      "buildTimeSec": 110,
+      "buildTimeSec": 500,
       "maxHp": 700,
       "workerSlots": 3,
       "productionResource": "food",
@@ -190,15 +219,16 @@
       "terrain": "grass",
       "claimRadius": 0,
       "note": "Главный источник еды.",
-      "nodeX": 0,
-      "nodeY": 0
+      "nodeX": 356,
+      "nodeY": 520
     },
     "mine1": {
-      "requires": "none",
+      "category": "economics",
+      "requires": "castle1",
       "costWood": 100,
       "costStone": 90,
       "costGold": 25,
-      "buildTimeSec": 150,
+      "buildTimeSec": 500,
       "maxHp": 900,
       "workerSlots": 4,
       "productionResource": "stone",
@@ -206,15 +236,16 @@
       "terrain": "sand",
       "claimRadius": 0,
       "note": "Главный источник камня.",
-      "nodeX": 0,
-      "nodeY": 0
+      "nodeX": 352,
+      "nodeY": 628
     },
     "islandController1": {
+      "category": "core",
       "requires": "castle1",
       "costWood": 200,
       "costStone": 200,
       "costGold": 150,
-      "buildTimeSec": 240,
+      "buildTimeSec": 1000,
       "maxHp": 1500,
       "workerSlots": 1,
       "productionResource": "none",
@@ -222,8 +253,8 @@
       "terrain": "any",
       "claimRadius": 2,
       "note": "Расширяет территорию на два кольца гексов.",
-      "nodeX": 0,
-      "nodeY": 0
+      "nodeX": 367,
+      "nodeY": 172
     }
   },
   "units": {

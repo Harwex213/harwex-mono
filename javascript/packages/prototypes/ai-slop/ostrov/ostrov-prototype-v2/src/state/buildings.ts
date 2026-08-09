@@ -4,7 +4,9 @@ import { buildingLabel, buildingSpec, constructionSeconds, prerequisiteOf } from
 import type { Axial } from "../hex/coords";
 import { hexKey } from "../hex/coords";
 import { OWNER_PLAYER } from "../map/island";
+import { tileVisible } from "./fog";
 import { world } from "./signals";
+import { claimAround } from "./territory";
 
 /**
  * What is standing on the island, and what the build button is doing.
@@ -82,6 +84,13 @@ function placementCheck(id: BuildingId, hex: Axial | null): PlacementCheck {
   if (!tile) {
     return { valid: false, reason: "Вне острова" };
   }
+  // Nothing is built on ground the player cannot see. Owned tiles sit at the
+  // centre of their own reveal radius and are therefore always in sight, so this
+  // never refuses a legal hex — it is here so the rule is written down and holds
+  // whatever a designer does to the reveal radius.
+  if (!tileVisible(tile)) {
+    return { valid: false, reason: "Скрыто туманом" };
+  }
   if (tile.owner !== OWNER_PLAYER) {
     return { valid: false, reason: "Не ваш остров" };
   }
@@ -128,19 +137,34 @@ function placeBuilding(id: BuildingId, hex: Axial, now: number): boolean {
 /**
  * Flips every site whose clock has run out. Called once a frame; it only writes
  * the signal on the frame a building actually finishes.
+ *
+ * A finished building with a claim radius takes the ground around it, which is
+ * how the player's territory — and with it the fog — grows. The claim lands on
+ * completion rather than on placement, so a site under construction is not yet
+ * worth anything.
  */
 function advanceBuildings(now: number): void {
   const current = buildings.peek();
   let next: Map<string, PlacedBuilding> | null = null;
+  const finished: PlacedBuilding[] = [];
   for (const [key, building] of current) {
     if (building.state !== "constructing" || now < building.startedAt + building.durationMs) {
       continue;
     }
     next = next ?? new Map(current);
-    next.set(key, { ...building, state: "built", completedAt: building.startedAt + building.durationMs });
+    const done: PlacedBuilding = {
+      ...building,
+      state: "built",
+      completedAt: building.startedAt + building.durationMs,
+    };
+    next.set(key, done);
+    finished.push(done);
   }
   if (next) {
     buildings.value = next;
+  }
+  for (const building of finished) {
+    claimAround(building, buildingSpec(building.id).claimRadius);
   }
 }
 

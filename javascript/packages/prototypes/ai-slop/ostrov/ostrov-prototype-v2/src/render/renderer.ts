@@ -2,13 +2,15 @@ import { config } from "@hw/ostrov-prototype-v2-config";
 import type { BuildingId } from "../buildings/catalog";
 import { chainSegments, territoryEdges } from "../hex/borders";
 import type { Axial } from "../hex/coords";
-import { hexKey } from "../hex/coords";
+import { HEX_DIRECTIONS, hexKey } from "../hex/coords";
 import type { Point } from "../hex/layout";
-import { HEX_SIZE, SQUASH, WALL_DEPTH, hexCorners, hexToWorld } from "../hex/layout";
+import { HEX_SIZE, SQUASH, WALL_DEPTH, WALL_EDGES, hexCorners, hexToWorld } from "../hex/layout";
+import type { Tile } from "../map/island";
 import { OWNER_ENEMY, OWNER_PLAYER } from "../map/island";
-import type { Rect, WorldMap } from "../map/world";
+import type { Island, Rect, WorldMap } from "../map/world";
 import type { PlacedBuilding } from "../state/buildings";
 import type { Camera } from "../state/camera";
+import type { FogSnapshot } from "../state/fog";
 import {
   drawBuilding,
   drawBuildingHud,
@@ -30,6 +32,9 @@ import {
   SELECT_LINE,
   withAlpha,
 } from "./palette";
+import type { FogPaint } from "./fogTint";
+import { fogPaint } from "./fogTint";
+import { drawIslandShadow } from "./shadows";
 import { drawTop, drawWalls, tracePath } from "./tiles";
 
 /** The preview the map draws under the cursor while a building is being placed. */
@@ -55,16 +60,74 @@ type Frame = {
   now: number;
   buildings: readonly PlacedBuilding[];
   ghost: GhostPreview | null;
+  /** Fog levels of this frame, indexed by `Tile.index` and by island id. */
+  fog: FogSnapshot;
+  /** Bumped whenever ground changes hands; the territory outline caches on it. */
+  territoryVersion: number;
 };
 
 /** Far enough outside any island to stand in for "the whole world" in a clip path. */
 const WORLD_BOUND = 1e6;
+
+/**
+ * Camera scale below which tiles are painted flat.
+ *
+ * The world holds around eighty islands, and zoomed out far enough to see them
+ * all every tile is a few pixels across — where a tree is one pixel, a stratum
+ * in a cliff face is none, and both cost the same as they do close up. Under
+ * this scale a tile becomes a flat top face over a flat skirt: two fills, no
+ * gradients, no decoration, no clipping. The number is where a hex has shrunk to
+ * roughly forty pixels, which is about where the decoration stops being legible.
+ */
+const COARSE_SCALE = 0.3;
+
+/**
+ * A tile as it reads from far away: the top face in its terrain colour, and one
+ * flat skirt under whichever of its three lower edges is exposed.
+ *
+ * Drawn in the same back-to-front order as the detailed tile, so an island still
+ * covers the one behind it exactly as it does close up. The fog reaches it
+ * through `paint`, exactly as it reaches the detailed tile.
+ */
+function drawCoarseTile(
+  ctx: CanvasRenderingContext2D,
+  tile: Tile,
+  corners: readonly Point[],
+  hasNeighbour: (q: number, r: number) => boolean,
+  paint: FogPaint,
+): void {
+  let skirt = false;
+  ctx.beginPath();
+  for (const edge of WALL_EDGES) {
+    const offset = HEX_DIRECTIONS[edge]!;
+    if (hasNeighbour(tile.q + offset.q, tile.r + offset.r)) {
+      continue;
+    }
+    const from = corners[edge]!;
+    const to = corners[(edge + 1) % 6]!;
+    skirt = true;
+    ctx.moveTo(from.x, from.y);
+    ctx.lineTo(to.x, to.y);
+    ctx.lineTo(to.x, to.y + WALL_DEPTH);
+    ctx.lineTo(from.x, from.y + WALL_DEPTH);
+    ctx.closePath();
+  }
+  if (skirt) {
+    ctx.fillStyle = paint.rockBottom;
+    ctx.fill();
+  }
+  tracePath(ctx, corners);
+  ctx.fillStyle = paint.style.top;
+  ctx.fill();
+}
 
 /** One territory outline, already stitched into polylines. */
 type Territory = {
   chains: Point[][];
   outer: string;
   inner: string;
+  /** Island the outline belongs to, or null when it spans the player's holdings. */
+  island: Island | null;
 };
 
 function rectsOverlap(left: Rect, right: Rect): boolean {
@@ -74,6 +137,7 @@ function rectsOverlap(left: Rect, right: Rect): boolean {
 class Renderer {
   private readonly ctx: CanvasRenderingContext2D;
   private borderSource: WorldMap | null = null;
+  private borderVersion = -1;
   private territories: Territory[] = [];
   /** Indexed by island id; rebuilt once per frame from the island bounds. */
   private visible: boolean[] = [];
@@ -145,18 +209,33 @@ class Renderer {
     // included. The pass walks the whole world in one order — islands are not
     // batched — so an island that happens to sit half a row behind another still
     // lands behind it. Off-screen islands are skipped by the flag, which is one
-    // array read per tile.
+    // array read per tile, and below `COARSE_SCALE` the tiles that survive the
+    // cull are painted flat instead of in full.
+    const coarse = frame.camera.scale < COARSE_SCALE;
+    this.drawShadows(frame);
+    const levels = frame.fog.tile;
     let painted = 0;
     for (const tile of frame.world.tiles) {
       if (!this.visible[tile.islandId]) {
+        continue;
+      }
+      // Never seen: not drawn at all, so the cloud layer behind is what the
+      // player sees. This is also the cheapest fog state there is.
+      const level = levels[tile.index]!;
+      if (level <= 0) {
         continue;
       }
       painted += 1;
       const centre = hexToWorld(tile);
       const corners = hexCorners(centre);
       const key = hexKey(tile.q, tile.r);
-      drawWalls(ctx, tile, corners, hasTile);
-      drawTop(ctx, tile, centre, corners);
+      const paint = fogPaint(tile.terrain, level);
+      if (coarse) {
+        drawCoarseTile(ctx, tile, corners, hasTile, paint);
+      } else {
+        drawWalls(ctx, tile, corners, hasTile, paint);
+        drawTop(ctx, tile, centre, corners, paint);
+      }
       const building = byHex.get(key);
       if (building) {
         drawBuilding(ctx, building, centre, frame.now);
@@ -177,8 +256,9 @@ class Renderer {
       this.drawCursor(frame);
     });
 
-    if (this.visible[frame.world.bossIsland.id]) {
-      drawBossMarker(ctx, hexToWorld(frame.world.bossIsland.origin));
+    const bossLevel = frame.fog.island[frame.world.bossIsland.id] ?? 1;
+    if (this.visible[frame.world.bossIsland.id] && bossLevel > 0) {
+      drawBossMarker(ctx, hexToWorld(frame.world.bossIsland.origin), bossLevel);
     }
 
     // Labels last: a progress bar and a refusal pill read as captions on the
@@ -199,6 +279,9 @@ class Renderer {
    * The world is far larger than one screen, so most frames have most of it off
    * to the side. The test is one rectangle overlap per island, and the pad
    * covers the idle float, the cliff walls and the trees that reach past a tile.
+   *
+   * An island nobody has ever seen fails the same flag, so the fog costs the
+   * tile loop nothing and saves it everything an unknown island would have cost.
    */
   private markVisible(frame: Frame): void {
     const halfWidth = this.width / (2 * frame.camera.scale);
@@ -211,8 +294,30 @@ class Renderer {
       maxY: frame.camera.y + halfHeight + pad,
     };
     this.visible.length = frame.world.islands.length;
+    const known = frame.fog.islandExplored;
     for (const island of frame.world.islands) {
-      this.visible[island.id] = rectsOverlap(view, island.bounds);
+      this.visible[island.id] = known[island.id] === 1 && rectsOverlap(view, island.bounds);
+    }
+  }
+
+  /**
+   * The shade under every island on screen, laid down before a single tile.
+   *
+   * One pass for the whole world rather than one shadow per island interleaved
+   * with its tiles: a shadow belongs under everything, and painting them all
+   * first is what lets an island in front cover the shadow of an island behind.
+   * An island the player has never seen is not in `visible` at all, so it casts
+   * nothing — a lone blot of shade on empty cloud would say where it is.
+   */
+  private drawShadows(frame: Frame): void {
+    if (!config.render.islandShadowEnabled) {
+      return;
+    }
+    for (const island of frame.world.islands) {
+      if (!this.visible[island.id]) {
+        continue;
+      }
+      drawIslandShadow(this.ctx, island, frame.fog.island[island.id] ?? 1);
     }
   }
 
@@ -242,35 +347,50 @@ class Renderer {
   }
 
   /**
-   * The owned outlines: the player's island in blue, the enemy's in red. Wild
-   * land carries no line at all, which is what makes the two starts stand out
-   * from a periphery of a dozen other islands.
+   * The owned outlines: the player's holdings in blue, the enemy's island in
+   * red. Wild land carries no line at all, which is what makes the two starts
+   * stand out from a periphery of a dozen other islands.
+   *
+   * The player's line is stitched from every tile they own anywhere, not from
+   * the start island alone, so ground claimed on a second island gets an outline
+   * of its own. That is a walk over the whole world, which is why it is cached
+   * and rebuilt only when ground has actually changed hands.
+   *
+   * The enemy line is fog-gated: an island the player has never seen carries no
+   * red outline, or the outline would announce where the enemy lives.
    */
   private drawTerritories(frame: Frame): void {
     if (!config.render.territoryBorderEnabled) {
       return;
     }
-    if (this.borderSource !== frame.world) {
+    if (this.borderSource !== frame.world || this.borderVersion !== frame.territoryVersion) {
       this.borderSource = frame.world;
+      this.borderVersion = frame.territoryVersion;
       this.territories = [
         {
-          chains: chainSegments(territoryEdges(frame.world.playerIsland.tiles, frame.world.ownerAt, OWNER_PLAYER)),
+          chains: chainSegments(territoryEdges(frame.world.tiles, frame.world.ownerAt, OWNER_PLAYER)),
           outer: BORDER_DARK,
           inner: BORDER_BRIGHT,
+          island: null,
         },
         {
           chains: chainSegments(territoryEdges(frame.world.enemyIsland.tiles, frame.world.ownerAt, OWNER_ENEMY)),
           outer: ENEMY_BORDER_DARK,
           inner: ENEMY_BORDER_BRIGHT,
+          island: frame.world.enemyIsland,
         },
       ];
     }
     for (const territory of this.territories) {
-      this.strokeChains(territory);
+      const level = territory.island ? (frame.fog.island[territory.island.id] ?? 1) : 1;
+      if (level <= 0) {
+        continue;
+      }
+      this.strokeChains(territory, level);
     }
   }
 
-  private strokeChains(territory: Territory): void {
+  private strokeChains(territory: Territory, level: number): void {
     const { ctx } = this;
     ctx.save();
     ctx.lineJoin = "round";
@@ -281,7 +401,7 @@ class Renderer {
       { width: config.render.borderSheenWidth, colour: BORDER_SHEEN, alpha: config.render.borderSheenAlpha },
     ];
     for (const pass of passes) {
-      ctx.globalAlpha = pass.alpha;
+      ctx.globalAlpha = pass.alpha * level;
       ctx.strokeStyle = pass.colour;
       ctx.lineWidth = pass.width;
       for (const chain of territory.chains) {
@@ -329,9 +449,12 @@ class Renderer {
  * It is deliberately still. A pulse would keep asking the loop for frames for as
  * long as the island is on screen, and this is a map marker, not a creature.
  */
-function drawBossMarker(ctx: CanvasRenderingContext2D, centre: Point): void {
+function drawBossMarker(ctx: CanvasRenderingContext2D, centre: Point, level: number): void {
   const radius = HEX_SIZE * 0.28;
   ctx.save();
+  // The marker fades with the island it stands on, so a remembered boss island
+  // keeps its bead without it burning through the fog.
+  ctx.globalAlpha = level;
   ctx.beginPath();
   ctx.ellipse(centre.x, centre.y + radius * 0.55, radius * 1.15, radius * 1.15 * SQUASH, 0, 0, Math.PI * 2);
   ctx.fillStyle = "rgba(20, 8, 12, 0.45)";

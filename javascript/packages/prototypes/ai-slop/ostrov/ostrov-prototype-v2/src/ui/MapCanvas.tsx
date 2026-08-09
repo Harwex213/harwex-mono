@@ -19,8 +19,9 @@ import {
 import type { Camera } from "../state/camera";
 import { clampCamera, clampScale, screenToWorld, zoomAt } from "../state/camera";
 import { IdleFloat } from "../state/float";
+import { sampleFog } from "../state/fog";
 import { PanGlide, PanVelocity } from "../state/inertia";
-import { camera, dragging, hovered, selected, viewport, world } from "../state/signals";
+import { camera, dragging, hovered, selected, territoryVersion, viewport, world } from "../state/signals";
 import { ZoomEase } from "../state/zoom";
 
 const DRAG_SLOP = config.camera.dragSlop;
@@ -130,6 +131,7 @@ function MapCanvas(): React.JSX.Element {
       world.value;
       placing.value;
       placedBuildings.value;
+      territoryVersion.value;
       dirty = true;
     });
 
@@ -475,6 +477,14 @@ function MapCanvas(): React.JSX.Element {
       if (buildingsAnimating()) {
         dirty = true;
       }
+      // Sampled before the dirty test, not after: a region on its way from
+      // unexplored to lit is asking for frames nobody else asked for, and the
+      // sample is what knows it. A settled fog hands back its own arrays and
+      // costs a compare.
+      const fog = sampleFog(stamp);
+      if (!fog.settled) {
+        dirty = true;
+      }
       if (!dirty) {
         return;
       }
@@ -488,6 +498,8 @@ function MapCanvas(): React.JSX.Element {
         now: stamp,
         buildings: placedBuildings.peek(),
         ghost: currentGhost(),
+        fog,
+        territoryVersion: territoryVersion.peek(),
       });
     };
     frame = requestAnimationFrame(loop);

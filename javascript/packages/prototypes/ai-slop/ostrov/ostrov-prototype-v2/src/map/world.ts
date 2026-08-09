@@ -22,6 +22,13 @@ import { createRng } from "./rng";
  * `world.minIslandGap` hex steps away from every hex already placed. The check
  * runs against a dilated occupancy set rather than a pairwise sweep, so it stays
  * cheap however many islands the config asks for.
+ *
+ * A world of eighty islands is crowded enough that a single fixed budget of
+ * anchor draws stops being safe, so the search gives ground in a fixed order
+ * instead of giving up: first the island is pinned to its own angular sector,
+ * then the sectors are merged round by round until the whole ring is open, and
+ * only then is the island regrown one hex smaller. Every step is bounded and
+ * deterministic, so a seed still describes exactly one world.
  */
 
 const TAU = Math.PI * 2;
@@ -46,8 +53,18 @@ const START_QUOTA: TerrainQuota = { grass: 2, forest: 1, sand: 1 };
 
 const NO_QUOTA: TerrainQuota = {};
 
-/** How many anchors a single island is allowed to try before it is given up on. */
-const PLACEMENT_ATTEMPTS = 400;
+/** How many anchors one round of the search draws before it loosens the ring. */
+const ATTEMPTS_PER_ROUND = 120;
+
+/**
+ * How many times the search loosens the angular constraint before it shrinks the
+ * island. Round 0 keeps the island in its own sector, every later round merges
+ * four sectors into one, and the last round leaves the whole ring open.
+ */
+const RELAXATION_ROUNDS = 4;
+
+/** Smallest island the size fallback may shrink a scattered island down to. */
+const FALLBACK_MIN_SIZE = 3;
 
 type Rect = {
   minX: number;
@@ -62,6 +79,8 @@ type Island = {
   owner: number;
   /** True for the one island in the middle of the world. */
   boss: boolean;
+  /** True when the size roll came up a landmark instead of an ordinary island. */
+  large: boolean;
   /** Anchor hex; always a tile of the island, and the hex the boss marker sits on. */
   origin: Axial;
   /** World-space centre of the silhouette, used by the minimap. */
@@ -148,6 +167,21 @@ function sampleRing(rng: Rng, inner: number, outer: number, sector: number, sect
   return worldToHex(Math.cos(angle) * radius, Math.sin(angle) * radius);
 }
 
+/**
+ * How many sectors a zone is cut into on round `round` of the search.
+ *
+ * Round 0 gives every island a slice of its own, which is what keeps a zone of
+ * fifty islands from bunching into one quarter. Each later round merges four
+ * slices, so an island that cannot fit in its own slice looks in a wider and
+ * wider arc, and the last round hands it the whole ring.
+ */
+function sectorsForRound(count: number, round: number): number {
+  if (round >= RELAXATION_ROUNDS - 1) {
+    return 1;
+  }
+  return Math.max(1, Math.floor(count / 4 ** round));
+}
+
 /** Whether an anchor hex sits in the ring `inner`…`outer` around the world centre. */
 function insideRing(origin: Axial, inner: number, outer: number): boolean {
   const point = hexToWorld(origin);
@@ -158,11 +192,22 @@ function insideRing(origin: Axial, inner: number, outer: number): boolean {
 type Placement = {
   zone: ZoneId;
   size: number;
+  /**
+   * Smallest size the island may be regrown at once every anchor has been
+   * refused. Equal to `size` for an island whose size is part of the design —
+   * the boss island and the two starts — so those never quietly shrink.
+   */
+  minSize: number;
   owner: number;
   boss: boolean;
+  large: boolean;
   quota: TerrainQuota;
-  /** Draws one candidate anchor. Called until the gap check accepts one. */
-  sample: (rng: Rng) => Axial;
+  /**
+   * Draws one candidate anchor. Called until the gap check accepts one. `round`
+   * counts how many times the search has already loosened, so a sampler can open
+   * its angle or reach further out as the rounds go by.
+   */
+  sample: (rng: Rng, round: number) => Axial;
   /** Extra condition on an anchor, checked before the gap. Missing means anywhere. */
   accept?: (origin: Axial) => boolean;
 };
@@ -177,28 +222,50 @@ type Builder = {
 };
 
 /**
- * Grows one island, finds it an anchor and commits it. Returns null when no
- * anchor in `PLACEMENT_ATTEMPTS` tries kept the gap, which leaves the world one
- * island short rather than letting two clusters touch.
+ * Looks for an anchor that keeps `shape` clear of everything already placed.
+ *
+ * The budget is `RELAXATION_ROUNDS * ATTEMPTS_PER_ROUND` draws, spent from the
+ * tightest constraint to the loosest, so a spacious world still lands its
+ * islands in the intended sector and a tight one still lands them somewhere.
  */
-function addIsland(builder: Builder, placement: Placement): Island | null {
-  const shape = growCluster(builder.rng, placement.size);
-  let origin: Axial | null = null;
-  for (let attempt = 0; attempt < PLACEMENT_ATTEMPTS && origin === null; attempt += 1) {
-    const candidate = placement.sample(builder.rng);
-    if (placement.accept && !placement.accept(candidate)) {
-      continue;
-    }
-    let clear = true;
-    for (const hex of shape) {
-      if (builder.blocked.has(hexKey(candidate.q + hex.q, candidate.r + hex.r))) {
-        clear = false;
-        break;
+function findAnchor(builder: Builder, placement: Placement, shape: readonly Axial[]): Axial | null {
+  for (let round = 0; round < RELAXATION_ROUNDS; round += 1) {
+    for (let attempt = 0; attempt < ATTEMPTS_PER_ROUND; attempt += 1) {
+      const candidate = placement.sample(builder.rng, round);
+      if (placement.accept && !placement.accept(candidate)) {
+        continue;
+      }
+      let clear = true;
+      for (const hex of shape) {
+        if (builder.blocked.has(hexKey(candidate.q + hex.q, candidate.r + hex.r))) {
+          clear = false;
+          break;
+        }
+      }
+      if (clear) {
+        return candidate;
       }
     }
-    if (clear) {
-      origin = candidate;
-    }
+  }
+  return null;
+}
+
+/**
+ * Grows one island, finds it an anchor and commits it.
+ *
+ * A shape that will not fit anywhere is regrown one hex smaller and tried again,
+ * down to `placement.minSize`: a slightly smaller island reads as scattering,
+ * a missing one reads as a hole. Returns null only when even the smallest size
+ * was refused everywhere, which leaves the world one island short rather than
+ * letting two clusters touch.
+ */
+function addIsland(builder: Builder, placement: Placement): Island | null {
+  const floor = Math.min(placement.minSize, placement.size);
+  let shape: Axial[] = [];
+  let origin: Axial | null = null;
+  for (let size = placement.size; size >= floor && origin === null; size -= 1) {
+    shape = growCluster(builder.rng, size);
+    origin = findAnchor(builder, placement, shape);
   }
   if (!origin) {
     return null;
@@ -231,6 +298,7 @@ function addIsland(builder: Builder, placement: Placement): Island | null {
     zone: placement.zone,
     owner: placement.owner,
     boss: placement.boss,
+    large: placement.large,
     origin,
     centre: { x: sumX / tiles.length, y: sumY / tiles.length },
     tiles,
@@ -245,6 +313,30 @@ function sizeBetween(rng: Rng, min: number, max: number): number {
   const low = Math.min(min, max);
   const high = Math.max(min, max);
   return low + Math.floor(rng() * (high - low + 1));
+}
+
+/** How big one scattered island comes out, and whether it is a landmark. */
+type SizeRoll = {
+  size: number;
+  large: boolean;
+};
+
+/**
+ * Rolls the size of one scattered island.
+ *
+ * `world.largeIslandChance` of them come out at landmark size instead of the
+ * zone's ordinary range — roughly twice the hexes of anything around them, which
+ * is what makes one worth sailing to. The roll is offered to the wild lands and
+ * to the periphery, and to neither of the three islands whose size is a design
+ * decision: the boss arena in the middle and the two starts, which have to stay
+ * equal to each other.
+ */
+function rollSize(rng: Rng, min: number, max: number): SizeRoll {
+  const knobs = config.world;
+  if (rng() < knobs.largeIslandChance) {
+    return { size: sizeBetween(rng, knobs.largeIslandSizeMin, knobs.largeIslandSizeMax), large: true };
+  }
+  return { size: sizeBetween(rng, min, max), large: false };
 }
 
 function generateWorld(seed: number): WorldMap {
@@ -265,8 +357,10 @@ function generateWorld(seed: number): WorldMap {
   const boss = addIsland(builder, {
     zone: "boss",
     size: knobs.bossIslandSize,
+    minSize: knobs.bossIslandSize,
     owner: OWNER_WILD,
     boss: true,
+    large: false,
     quota: NO_QUOTA,
     sample: () => ({ q: 0, r: 0 }),
   });
@@ -277,13 +371,19 @@ function generateWorld(seed: number): WorldMap {
   const wildInner = knobs.bossZoneRadius + reach;
   const wildOuter = Math.max(wildInner + reach, knobs.wildZoneRadius - reach);
   for (let index = 0; index < knobs.wildIslandCount; index += 1) {
+    const roll = rollSize(rng, knobs.wildIslandSizeMin, knobs.wildIslandSizeMax);
     addIsland(builder, {
       zone: "wild",
-      size: sizeBetween(rng, knobs.wildIslandSizeMin, knobs.wildIslandSizeMax),
+      size: roll.size,
+      minSize: FALLBACK_MIN_SIZE,
       owner: OWNER_WILD,
       boss: false,
+      large: roll.large,
       quota: NO_QUOTA,
-      sample: (source) => sampleRing(source, wildInner, wildOuter, index, knobs.wildIslandCount),
+      sample: (source, round) => {
+        const sectors = sectorsForRound(knobs.wildIslandCount, round);
+        return sampleRing(source, wildInner, wildOuter, index % sectors, sectors);
+      },
     });
   }
 
@@ -292,8 +392,10 @@ function generateWorld(seed: number): WorldMap {
   const player = addIsland(builder, {
     zone: "peripheral",
     size: knobs.startIslandSize,
+    minSize: knobs.startIslandSize,
     owner: OWNER_PLAYER,
     boss: false,
+    large: false,
     quota: START_QUOTA,
     sample: (source) => sampleRing(source, rimInner, rimOuter, 0, 1),
   });
@@ -309,12 +411,18 @@ function generateWorld(seed: number): WorldMap {
   const enemy = addIsland(builder, {
     zone: "peripheral",
     size: knobs.startIslandSize,
+    minSize: knobs.startIslandSize,
     owner: OWNER_ENEMY,
     boss: false,
+    large: false,
     quota: START_QUOTA,
-    sample: (source) => {
+    sample: (source, round) => {
       const angle = source() * TAU;
-      const distance = knobs.enemyStartDistance * (0.85 + source() * 0.4);
+      // Each round of the search reaches a little further out. The first one
+      // holds the enemy at the distance the designer asked for; the later ones
+      // only widen it enough to clear whatever is in the way, so the two starts
+      // stay neighbours however tight the periphery has become.
+      const distance = knobs.enemyStartDistance * (0.85 + source() * 0.4) * (1 + round * 0.3);
       return worldToHex(player.centre.x + Math.cos(angle) * distance, player.centre.y + Math.sin(angle) * distance);
     },
     accept: (origin) => insideRing(origin, rimInner, rimOuter),
@@ -324,20 +432,30 @@ function generateWorld(seed: number): WorldMap {
   }
 
   for (let index = 0; index < knobs.peripheralIslandCount; index += 1) {
+    const roll = rollSize(rng, knobs.peripheralIslandSizeMin, knobs.peripheralIslandSizeMax);
     addIsland(builder, {
       zone: "peripheral",
-      size: sizeBetween(rng, knobs.peripheralIslandSizeMin, knobs.peripheralIslandSizeMax),
+      size: roll.size,
+      minSize: FALLBACK_MIN_SIZE,
       owner: OWNER_WILD,
       boss: false,
+      large: roll.large,
       quota: NO_QUOTA,
-      sample: (source) => sampleRing(source, rimInner, rimOuter, index, knobs.peripheralIslandCount),
+      sample: (source, round) => {
+        const sectors = sectorsForRound(knobs.peripheralIslandCount, round);
+        return sampleRing(source, rimInner, rimOuter, index % sectors, sectors);
+      },
     });
   }
 
   const tiles = builder.islands.flatMap((island) => island.tiles).sort(compareByRow);
   const byKey = new Map<string, Tile>();
   const bounds = emptyRect();
-  for (const tile of tiles) {
+  for (let index = 0; index < tiles.length; index += 1) {
+    const tile = tiles[index]!;
+    // The islands hold the same tile objects, so numbering them here numbers
+    // them everywhere. The fog field indexes its arrays on this.
+    tile.index = index;
     byKey.set(hexKey(tile.q, tile.r), tile);
   }
   for (const island of builder.islands) {

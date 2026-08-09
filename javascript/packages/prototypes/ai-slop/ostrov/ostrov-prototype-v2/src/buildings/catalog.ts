@@ -1,41 +1,32 @@
 import type { GameConfig } from "@hw/ostrov-prototype-v2-config";
-import { SCHEMA, config } from "@hw/ostrov-prototype-v2-config";
+import { BUILDING_CATEGORY_OPTIONS, SCHEMA, config } from "@hw/ostrov-prototype-v2-config";
 import { BUILD_TIME_MIN_SEC, BUILD_TIME_SPEEDUP } from "../tuning";
 
 /**
  * The building roster, read straight out of the config library.
  *
- * Labels, costs, build times and prerequisites all come from `config` and from
- * `SCHEMA.buildings.entities`. Nothing here retypes a number the designer owns.
- *
- * The one thing the config schema has no room for is the category a building
- * belongs to, so `CATEGORIES` below is local. It is a follow-up candidate for a
- * `category` enum field on the `buildings` group; once that field exists this
- * map goes away and the panel groups on `config.buildings[id].category`.
+ * Labels, costs, build times, prerequisites and the panel section all come from
+ * `config` and from `SCHEMA.buildings.entities`. Nothing here retypes a number
+ * or a grouping the designer owns.
  */
 
 type BuildingId = keyof GameConfig["buildings"];
 
 type BuildingValues = GameConfig["buildings"][BuildingId];
 
-type CategoryId = "core" | "economic" | "war" | "magic" | "defense";
+type CategoryId = BuildingValues["category"];
 
 type Category = {
   id: CategoryId;
-  /** Heading shown above the group. */
+  /** Name of the section, as the designer wrote it in the schema. */
   label: string;
-  /** Buildings of this category, in display order. May be empty. */
-  buildings: readonly BuildingId[];
 };
 
-/** Display order of the five groups. An empty group still renders, with a note. */
-const CATEGORIES: readonly Category[] = [
-  { id: "core", label: "Основа", buildings: ["castle1", "hut1", "islandController1"] },
-  { id: "economic", label: "Экономика", buildings: ["sawmill1", "mill1", "mine1"] },
-  { id: "war", label: "Война", buildings: ["barracks1"] },
-  { id: "magic", label: "Магия", buildings: [] },
-  { id: "defense", label: "Оборона", buildings: [] },
-];
+/** The five sections, in the order the schema declares them. */
+const CATEGORIES: readonly Category[] = BUILDING_CATEGORY_OPTIONS.map((option) => ({
+  id: option.value,
+  label: option.label,
+}));
 
 /** Value of `requires` for a building that is available from the first minute. */
 const NO_PREREQUISITE = "none";
@@ -46,10 +37,13 @@ const CASTLE_ID: BuildingId = "castle1";
 type BuildingSpec = BuildingValues & {
   id: BuildingId;
   label: string;
+  /** One paragraph from the schema, shown in the tooltip. */
+  description: string;
 };
 
 function buildingSpec(id: BuildingId): BuildingSpec {
-  return { id, label: SCHEMA.buildings.entities[id].label, ...config.buildings[id] };
+  const entity = SCHEMA.buildings.entities[id];
+  return { id, label: entity.label, description: entity.description, ...config.buildings[id] };
 }
 
 function buildingLabel(id: BuildingId): string {
@@ -70,9 +64,14 @@ function constructionSeconds(id: BuildingId): number {
   return Math.max(BUILD_TIME_MIN_SEC, config.buildings[id].buildTimeSec / BUILD_TIME_SPEEDUP);
 }
 
-/** Every building id the roster knows, in category order. */
+/** Every building id the roster knows, in schema order. */
 function allBuildingIds(): BuildingId[] {
-  return CATEGORIES.flatMap((category) => [...category.buildings]);
+  return Object.keys(config.buildings) as BuildingId[];
+}
+
+/** Buildings the designer put in this section, in schema order. */
+function buildingsOfCategory(category: CategoryId): BuildingId[] {
+  return allBuildingIds().filter((id) => config.buildings[id].category === category);
 }
 
 export type { BuildingId, BuildingSpec, Category, CategoryId };
@@ -83,6 +82,7 @@ export {
   allBuildingIds,
   buildingLabel,
   buildingSpec,
+  buildingsOfCategory,
   constructionSeconds,
   prerequisiteOf,
 };

@@ -90,11 +90,14 @@ const BUILDING_ART_SCALE = 0.8;
 /** Period of one flag wave, in seconds. */
 const FLAG_WAVE_PERIOD = 1.35;
 
-/** Time one smoke puff takes to rise and fade, in seconds. */
-const SMOKE_RISE_PERIOD = 3.4;
-
-/** How many puffs are in the air at once. */
-const SMOKE_PUFFS = 5;
+/**
+ * Seconds the sawmill wheel takes to turn once.
+ *
+ * It replaces the chimney smoke as the idle cue of a working building: smoke is
+ * a pale blob over pale stone and reads as nothing at map zoom, while a turning
+ * disc is legible even when the building is thirty pixels tall.
+ */
+const WHEEL_SPIN_PERIOD = 5.2;
 
 /** Period of the slow brightness pulse of the lit windows, in seconds. */
 const WINDOW_GLOW_PERIOD = 4.7;
@@ -123,8 +126,7 @@ export {
   IDLE_FLOAT_WOBBLE_PERIOD,
   IDLE_FLOAT_WOBBLE_PHASE,
   PLACEMENT_BEAT_SEC,
-  SMOKE_PUFFS,
-  SMOKE_RISE_PERIOD,
+  WHEEL_SPIN_PERIOD,
   WINDOW_GLOW_PERIOD,
   ZOOM_EASE_DURATION,
 };

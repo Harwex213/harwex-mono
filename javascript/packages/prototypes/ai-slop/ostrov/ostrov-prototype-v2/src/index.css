@@ -119,13 +119,13 @@ body {
 
 .build-panel {
   pointer-events: auto;
-  width: 306px;
+  width: 192px;
   min-height: 0;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 9px;
-  padding: 12px 14px;
+  padding: 10px;
   border: 1px solid var(--panel-edge);
   border-radius: 14px;
   background: var(--panel-bg);
@@ -133,100 +133,124 @@ body {
   box-shadow: 0 14px 40px rgba(6, 20, 34, 0.35);
 }
 
-.build-head h1 {
-  margin: 0;
-  font-size: 15px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.build-group {
-  display: flex;
-  flex-direction: column;
+.build-cats {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 30px;
   gap: 5px;
-  padding-top: 8px;
-  border-top: 1px solid var(--panel-edge);
+  padding-bottom: 9px;
+  border-bottom: 1px solid var(--panel-edge);
 }
 
-.build-group h2 {
-  margin: 0 0 2px;
-  font-size: 11px;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
+.build-cat {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  display: grid;
+  place-items: center;
   color: var(--muted);
-}
-
-.build-empty {
-  margin: 0;
-  padding: 6px 9px;
-  font-size: 12px;
-  font-style: italic;
-  color: var(--muted);
-  border: 1px dashed var(--panel-edge);
+  cursor: pointer;
+  border: 1px solid var(--panel-edge);
   border-radius: 9px;
+  background: rgba(255, 255, 255, 0.05);
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
 }
 
-.build-row {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  width: 100%;
-  padding: 6px 9px;
-  font: inherit;
-  text-align: left;
-  color: inherit;
+.build-cat:hover {
+  color: var(--text);
+  background: rgba(127, 192, 255, 0.2);
+}
+
+.build-cat[aria-selected="true"] {
+  color: #0b1b2a;
+  background: var(--gold);
+  border-color: rgba(255, 212, 121, 0.75);
+}
+
+.cat-glyph {
+  width: 18px;
+  height: 18px;
+  display: block;
+}
+
+.build-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 53px);
+  gap: 5px;
+}
+
+.build-tile {
+  position: relative;
+  width: 53px;
+  height: 53px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  color: var(--text);
   cursor: pointer;
   border: 1px solid var(--panel-edge);
   border-radius: 10px;
   background: rgba(255, 255, 255, 0.06);
-  transition: background 120ms ease, border-color 120ms ease;
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
 }
 
-.build-row:hover:not(:disabled) {
-  background: rgba(127, 192, 255, 0.18);
+.build-tile:hover {
+  background: rgba(127, 192, 255, 0.22);
+  border-color: rgba(127, 192, 255, 0.55);
 }
 
-.build-row[aria-pressed="true"] {
-  border-color: var(--gold);
-  background: rgba(255, 212, 121, 0.18);
+.build-tile[aria-pressed="true"] {
+  color: #0b1b2a;
+  background: var(--gold);
+  border-color: rgba(255, 212, 121, 0.75);
 }
 
-.build-row:disabled {
-  cursor: default;
-  opacity: 0.5;
+/* Already standing on the island. A dot, because a tile carries no words. */
+.build-tile[data-standing="true"]::after {
+  content: "";
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #7fe09a;
 }
 
-.build-row-top {
+.tile-glyph {
+  width: 29px;
+  height: 29px;
+  display: block;
+}
+
+.build-tip {
+  position: fixed;
+  z-index: 10;
+  width: 232px;
   display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 10px;
+  flex-direction: column;
+  gap: 6px;
+  padding: 9px 11px;
+  pointer-events: none;
+  border: 1px solid var(--panel-edge);
+  border-radius: 11px;
+  background: rgba(8, 20, 33, 0.95);
+  box-shadow: 0 14px 40px rgba(6, 20, 34, 0.45);
 }
 
-.build-row-name {
+.tip-name {
   font-size: 13px;
   font-weight: 600;
 }
 
-.build-row-note {
-  font-size: 11px;
-  line-height: 1.3;
-  color: var(--muted);
-}
-
-.build-row-costs {
+.tip-costs {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 10px;
-  margin-top: 1px;
-  font-size: 12px;
+  gap: 4px 11px;
 }
 
-.build-row-demo {
-  margin-left: auto;
-}
-
-.cost {
+.tip-cost {
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -234,56 +258,14 @@ body {
   font-size: 11.5px;
 }
 
-.dot {
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  border: 1px solid rgba(0, 0, 0, 0.3);
+.tip-icon {
+  width: 13px;
+  height: 13px;
+  display: block;
 }
 
-.dot.wood {
-  background: var(--wood);
-}
-
-.dot.stone {
-  background: var(--stone);
-}
-
-.dot.gold {
-  background: var(--gold);
-}
-
-.build-row-flag {
-  align-self: flex-start;
-  margin-top: 2px;
-  padding: 2px 7px;
-  font-size: 10.5px;
-  letter-spacing: 0.04em;
-  border-radius: 6px;
-}
-
-.build-row-flag.locked {
-  color: #ffd0c9;
-  background: rgba(190, 74, 62, 0.32);
-}
-
-.build-row-flag.standing {
-  color: #0b1b2a;
-  background: rgba(127, 224, 154, 0.85);
-}
-
-.mono {
-  font-family: ui-monospace, "SF Mono", Menlo, monospace;
-  font-size: 12.5px;
-}
-
-.muted {
-  color: var(--muted);
-}
-
-.hint {
-  margin: 3px 0 0;
-  font-size: 10.5px;
-  line-height: 1.4;
+.tip-desc {
+  font-size: 11.5px;
+  line-height: 1.35;
   color: var(--muted);
 }

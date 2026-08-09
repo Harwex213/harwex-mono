@@ -2,6 +2,7 @@ import type { Point } from "../hex/layout";
 import { OWNER_ENEMY, OWNER_PLAYER } from "../map/island";
 import type { Island, WorldMap } from "../map/world";
 import type { Camera, Viewport } from "../state/camera";
+import type { FogDisc, FogSnapshot } from "../state/fog";
 import { BOSS_MARKER, MINIMAP_ENEMY, MINIMAP_NEUTRAL, MINIMAP_PLAYER, withAlpha } from "./palette";
 
 /**
@@ -11,6 +12,14 @@ import { BOSS_MARKER, MINIMAP_ENEMY, MINIMAP_NEUTRAL, MINIMAP_PLAYER, withAlpha 
  * radius, taken in both axes, so the zone boundaries stay circles instead of
  * turning into ellipses. World y is already squashed by the hex layout, which is
  * why nothing squashes it again here.
+ *
+ * The fog reaches the overview too: an island nobody has seen leaves no mark at
+ * all, and one seen but not watched right now sits dimmer than one in sight.
+ * That empties most of the canvas in the opening minutes on purpose. What keeps
+ * it reading as a map rather than as a broken widget is everything that is not
+ * an island — the three zone rings, the viewport rectangle, and a pale wash over
+ * the ground the player has actually walked, which is the shape their own
+ * territory cuts out of the weather.
  */
 
 const TAU = Math.PI * 2;
@@ -24,6 +33,8 @@ const ZONE_FILL_WILD = "rgba(120, 170, 210, 0.1)";
 const ZONE_FILL_BOSS = "rgba(220, 110, 96, 0.16)";
 const VIEWPORT_LINE = "rgba(255, 255, 255, 0.92)";
 const VIEWPORT_FILL = "rgba(255, 255, 255, 0.1)";
+/** Ring around the rare landmark-sized islands. */
+const LANDMARK_RING = "rgba(255, 226, 158, 0.85)";
 
 /** Maps world space onto the minimap canvas and back. */
 type Projection = {
@@ -86,11 +97,37 @@ function strokeCircle(ctx: CanvasRenderingContext2D, projection: Projection, rad
   ctx.restore();
 }
 
+/** Pale halo over the ground the player has seen. */
+const KNOWN_CORE = "rgba(178, 214, 240, 0.22)";
+const KNOWN_EDGE = "rgba(178, 214, 240, 0)";
+
 type MinimapFrame = {
   world: WorldMap;
   camera: Camera;
   viewport: Viewport;
+  fog: FogSnapshot;
+  /** The explored discs, drawn as the wash that tells the player where they are. */
+  known: readonly FogDisc[];
 };
+
+/**
+ * The wash over the known world. A soft radial per disc rather than a hard
+ * circle: a crisp edge would claim the fog stops exactly there, and it does not.
+ */
+function drawKnown(ctx: CanvasRenderingContext2D, projection: Projection, discs: readonly FogDisc[]): void {
+  for (const disc of discs) {
+    const spot = toCanvas(projection, disc.x, disc.y);
+    const radius = Math.max(3, disc.radius * projection.scale);
+    const wash = ctx.createRadialGradient(spot.x, spot.y, 0, spot.x, spot.y, radius);
+    wash.addColorStop(0, KNOWN_CORE);
+    wash.addColorStop(0.62, KNOWN_CORE);
+    wash.addColorStop(1, KNOWN_EDGE);
+    ctx.fillStyle = wash;
+    ctx.beginPath();
+    ctx.arc(spot.x, spot.y, radius, 0, TAU);
+    ctx.fill();
+  }
+}
 
 function drawMinimap(ctx: CanvasRenderingContext2D, size: number, frame: MinimapFrame): void {
   const { world } = frame;
@@ -111,6 +148,10 @@ function drawMinimap(ctx: CanvasRenderingContext2D, size: number, frame: Minimap
   ctx.arc(projection.centreX, projection.centreY, world.zoneRadii.boss * projection.scale, 0, TAU);
   ctx.fill();
 
+  // The known world goes under the boundaries, so the rings stay readable
+  // through it and the player never loses their bearings to the fog.
+  drawKnown(ctx, projection, frame.known);
+
   // Three boundaries: the edge of the world, the dashed wild-lands line and the
   // solid boss-lands line.
   strokeCircle(ctx, projection, world.zoneRadii.peripheral, false);
@@ -118,26 +159,45 @@ function drawMinimap(ctx: CanvasRenderingContext2D, size: number, frame: Minimap
   strokeCircle(ctx, projection, world.zoneRadii.boss, false);
 
   for (const island of world.islands) {
+    const level = frame.fog.island[island.id] ?? 1;
+    // Never seen is never drawn: a mark here would hand over the position of an
+    // island the player has not found.
+    if (level <= 0) {
+      continue;
+    }
+    ctx.globalAlpha = 0.34 + 0.66 * level;
     const spot = toCanvas(projection, island.centre.x, island.centre.y);
-    // Bigger islands read bigger, but only just: the mark has to stay a mark.
-    const radius = 1.8 + Math.min(2.6, island.tiles.length * 0.16);
+    // Bigger islands read bigger, but only just: with eighty marks on one small
+    // canvas the difference has to be legible without the marks growing into
+    // each other, so the whole range spans about three pixels.
+    const radius = 1.1 + Math.min(1.9, island.tiles.length * 0.1);
     const colour = colourOf(island);
     ctx.beginPath();
-    ctx.arc(spot.x, spot.y, radius + 1.4, 0, TAU);
+    ctx.arc(spot.x, spot.y, radius + 1, 0, TAU);
     ctx.fillStyle = "rgba(6, 18, 30, 0.75)";
     ctx.fill();
     ctx.beginPath();
     ctx.arc(spot.x, spot.y, radius, 0, TAU);
     ctx.fillStyle = colour;
     ctx.fill();
+    // A landmark is worth a trip, so the overview says which marks are the big
+    // ones instead of leaving the player to find them by sailing over.
+    if (island.large) {
+      ctx.beginPath();
+      ctx.arc(spot.x, spot.y, radius + 2.6, 0, TAU);
+      ctx.strokeStyle = LANDMARK_RING;
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
     if (island.owner === OWNER_PLAYER || island.owner === OWNER_ENEMY || island.boss) {
       ctx.beginPath();
-      ctx.arc(spot.x, spot.y, radius + 3, 0, TAU);
+      ctx.arc(spot.x, spot.y, radius + 2.8, 0, TAU);
       ctx.strokeStyle = withAlpha(colour, 0.7);
       ctx.lineWidth = 1.2;
       ctx.stroke();
     }
   }
+  ctx.globalAlpha = 1;
 
   if (frame.viewport.width > 0 && frame.viewport.height > 0) {
     const halfWidth = frame.viewport.width / (2 * frame.camera.scale);

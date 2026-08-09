@@ -10,8 +10,7 @@ import {
   GHOST_DASH_PERIOD,
   HOIST_PERIOD,
   PLACEMENT_BEAT_SEC,
-  SMOKE_PUFFS,
-  SMOKE_RISE_PERIOD,
+  WHEEL_SPIN_PERIOD,
   WINDOW_GLOW_PERIOD,
 } from "../tuning";
 import type { PlacedBuilding } from "../state/buildings";
@@ -31,6 +30,11 @@ import { withAlpha } from "./palette";
  * squashed: the camera looks at the island from a low angle, so walls keep
  * their full height.
  *
+ * The abstraction level is deliberately the same as the terrain decoration in
+ * `decor.ts`: flat shapes, one gradient per mass, light from the upper left, and
+ * a single white accent on the lit side. No hatching, no per-brick detail — a
+ * building has to read at the zoom the island is normally looked at.
+ *
  * Every animated value is a function of absolute time, never of a per-frame
  * increment, so the motion is the same at 60 Hz and at 120 Hz.
  */
@@ -39,16 +43,42 @@ const TAU = Math.PI * 2;
 
 const UNIT = (HEX_SIZE / 64) * BUILDING_ART_SCALE;
 
-const STONE_TOP = "#eef4f9";
-const STONE_LIT = "#dce5ed";
-const STONE_MID = "#bfcbd8";
-const STONE_DARK = "#8b9bab";
-const STONE_LINE = "rgba(46, 68, 90, 0.26)";
-const ROOF_TOP = "#e0787c";
-const ROOF_LIT = "#cd5a62";
-const ROOF_DARK = "#8c3540";
+/** The four tones and the outline of one solid mass, lit from the upper left. */
+type Tone = {
+  /** Flat colour of the sliver of top face the low camera angle shows. */
+  top: string;
+  lit: string;
+  mid: string;
+  dark: string;
+  line: string;
+};
+
+const STONE: Tone = {
+  top: "#f0f5f9",
+  lit: "#dee7ef",
+  mid: "#c2ceda",
+  dark: "#94a3b2",
+  line: "rgba(46, 68, 90, 0.28)",
+};
+
+const TIMBER: Tone = {
+  top: "#c19163",
+  lit: "#ab7c50",
+  mid: "#8a6242",
+  dark: "#5f4229",
+  line: "rgba(50, 32, 18, 0.4)",
+};
+
+/** Beams drawn over a timber wall, and the scaffolding of every site. */
 const WOOD = "#8a6242";
 const WOOD_DARK = "rgba(92, 63, 39, 0.75)";
+const BEAM = "#6b4a2c";
+
+const ROOF_LIT = "#c9736a";
+const ROOF_MID = "#b25a55";
+const ROOF_DARK = "#7c3a3a";
+
+const SNOW = "rgba(255, 255, 255, 0.62)";
 
 /** Life of a finished building. `alive` is 0 while the site is still going up. */
 type Life = {
@@ -82,79 +112,124 @@ function fillEllipse(ctx: CanvasRenderingContext2D, x: number, y: number, rx: nu
 }
 
 /**
- * One stone block: a lit-to-shaded front face plus the sliver of its flat top
- * that the low camera angle shows. Returns the y of that top, which is where a
- * roof or a row of merlons goes.
+ * The slow warm pulse every lit opening shares. It is the one idle cue that runs
+ * on a finished building of any kind, so it is computed once per draw.
  */
-function drawBlock(ctx: CanvasRenderingContext2D, cx: number, width: number, height: number, depth: number): number {
+function glowOf(life: Life): number {
+  return life.alive * (0.55 + 0.45 * Math.sin((TAU * life.time) / WINDOW_GLOW_PERIOD));
+}
+
+/**
+ * One solid mass: a lit-to-shaded front face, the sliver of its flat top the low
+ * camera angle shows, and a soft shadow where it meets the ground. Returns the y
+ * of that top, which is where a roof or a row of merlons goes.
+ *
+ * There is deliberately no coursing on the face. Individual stones read as noise
+ * at the zoom the island is played at, and they put the buildings at a finer
+ * level of detail than the terrain under them.
+ */
+function drawMass(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  width: number,
+  height: number,
+  depth: number,
+  tone: Tone,
+): number {
   const top = -height;
   const cap = depth * SQUASH;
   const left = cx - width / 2;
 
   const face = ctx.createLinearGradient(left, 0, left + width, 0);
-  face.addColorStop(0, STONE_LIT);
-  face.addColorStop(0.5, STONE_MID);
-  face.addColorStop(1, STONE_DARK);
+  face.addColorStop(0, tone.lit);
+  face.addColorStop(0.55, tone.mid);
+  face.addColorStop(1, tone.dark);
   ctx.fillStyle = face;
   ctx.fillRect(left, top, width, height);
 
-  ctx.fillStyle = STONE_TOP;
+  // Contact shadow: the bottom of a wall never catches as much light as its
+  // middle, and this is what stops a mass looking pasted on the tile.
+  const foot = Math.min(height, 26);
+  const ground = ctx.createLinearGradient(0, -foot, 0, 0);
+  ground.addColorStop(0, "rgba(24, 42, 60, 0)");
+  ground.addColorStop(1, "rgba(24, 42, 60, 0.24)");
+  ctx.fillStyle = ground;
+  ctx.fillRect(left, -foot, width, foot);
+
+  ctx.fillStyle = tone.top;
   ctx.fillRect(left, top - cap, width, cap);
 
-  ctx.strokeStyle = STONE_LINE;
-  ctx.lineWidth = 1.1;
-  ctx.beginPath();
-  for (let course = 1; course * 14 < height; course += 1) {
-    const y = top + course * 14;
-    ctx.moveTo(left, y);
-    ctx.lineTo(left + width, y);
-  }
-  ctx.stroke();
+  ctx.strokeStyle = tone.line;
+  ctx.lineWidth = 1.2;
   ctx.strokeRect(left, top - cap, width, height + cap);
 
   return top - cap;
 }
 
-/** Battlements along the top of a block. */
-function drawMerlons(ctx: CanvasRenderingContext2D, cx: number, capTop: number, width: number, count: number): void {
+/** Battlements along the top of a mass. Returns the y of the merlon tops. */
+function drawMerlons(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  capTop: number,
+  width: number,
+  count: number,
+  height: number,
+): number {
   const step = width / (count * 2 - 1);
-  ctx.strokeStyle = STONE_LINE;
-  ctx.lineWidth = 1;
+  const top = capTop - height;
+  ctx.strokeStyle = STONE.line;
+  ctx.lineWidth = 1.1;
   for (let index = 0; index < count; index += 1) {
     const x = cx - width / 2 + index * step * 2;
-    ctx.fillStyle = STONE_MID;
-    ctx.fillRect(x, capTop - 9, step, 9);
-    ctx.strokeRect(x, capTop - 9, step, 9);
-    ctx.fillStyle = STONE_TOP;
-    ctx.fillRect(x, capTop - 10.6, step, 2);
+    ctx.fillStyle = STONE.mid;
+    ctx.fillRect(x, top, step, height);
+    ctx.strokeRect(x, top, step, height);
+    ctx.fillStyle = STONE.top;
+    ctx.fillRect(x, top - 1.8, step, 2.4);
   }
+  return top;
 }
 
-/** Conical tower roof. Returns the y of its apex. */
-function drawRoof(ctx: CanvasRenderingContext2D, cx: number, capTop: number, width: number, height: number): number {
-  const apex = capTop - height;
-  const half = width / 2 + 4;
+/**
+ * Gable roof over a rectangular mass, with the snow strip on its lit slope that
+ * the conifers on the tiles carry too. Returns the y of the ridge.
+ */
+function drawGable(ctx: CanvasRenderingContext2D, cx: number, capTop: number, half: number, rise: number): number {
+  const apex = capTop - rise;
   ctx.beginPath();
   ctx.moveTo(cx, apex);
   ctx.lineTo(cx + half, capTop);
   ctx.lineTo(cx - half, capTop);
   ctx.closePath();
   const shading = ctx.createLinearGradient(cx - half, 0, cx + half, 0);
-  shading.addColorStop(0, ROOF_TOP);
-  shading.addColorStop(0.5, ROOF_LIT);
+  shading.addColorStop(0, ROOF_LIT);
+  shading.addColorStop(0.5, ROOF_MID);
   shading.addColorStop(1, ROOF_DARK);
   ctx.fillStyle = shading;
   ctx.fill();
-  ctx.strokeStyle = "rgba(62, 24, 30, 0.35)";
-  ctx.lineWidth = 1.2;
+  ctx.strokeStyle = "rgba(58, 24, 26, 0.42)";
+  ctx.lineWidth = 1.3;
   ctx.stroke();
+
+  ctx.save();
+  ctx.clip();
+  ctx.fillStyle = SNOW;
+  ctx.beginPath();
+  ctx.moveTo(cx, apex);
+  ctx.lineTo(cx - half, capTop);
+  ctx.lineTo(cx - half + half * 0.3, capTop);
+  ctx.lineTo(cx + half * 0.06, apex + rise * 0.14);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+
   return apex;
 }
 
 /** Narrow arched window. `glow` runs 0..1 and drives how warmly it is lit. */
 function drawWindow(ctx: CanvasRenderingContext2D, x: number, baseY: number, glow: number): void {
-  const width = 6.4;
-  const height = 12;
+  const width = 7;
+  const height = 13;
   ctx.beginPath();
   ctx.moveTo(x - width / 2, baseY);
   ctx.lineTo(x - width / 2, baseY - height + width / 2);
@@ -169,25 +244,30 @@ function drawWindow(ctx: CanvasRenderingContext2D, x: number, baseY: number, glo
 }
 
 /** Rock the structure stands on, so it never looks pasted onto the tile. */
-function drawPlinth(ctx: CanvasRenderingContext2D, rx: number, ry: number): void {
+function drawPlinth(ctx: CanvasRenderingContext2D, rx: number, ry: number, base: string, cap: string): void {
   ctx.fillStyle = "rgba(28, 50, 70, 0.26)";
   fillEllipse(ctx, 3, 6, rx * 0.94, ry * 0.88);
-  ctx.fillStyle = "#93a2af";
+  ctx.fillStyle = base;
   fillEllipse(ctx, 0, 2, rx, ry);
-  ctx.fillStyle = "#c2cdda";
+  ctx.fillStyle = cap;
   fillEllipse(ctx, 0, -1.5, rx * 0.93, ry * 0.84);
 }
 
-function drawGate(ctx: CanvasRenderingContext2D, alive: number): void {
-  const width = 26;
-  const height = 34;
+/** Timber door or gate under a round arch, with the warm pool a lit one throws. */
+function drawArch(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  width: number,
+  height: number,
+  glow: number,
+): void {
   ctx.beginPath();
-  ctx.moveTo(-width / 2, 0);
-  ctx.lineTo(-width / 2, -height + width / 2);
-  ctx.arc(0, -height + width / 2, width / 2, Math.PI, 0);
-  ctx.lineTo(width / 2, 0);
+  ctx.moveTo(x - width / 2, 0);
+  ctx.lineTo(x - width / 2, -height + width / 2);
+  ctx.arc(x, -height + width / 2, width / 2, Math.PI, 0);
+  ctx.lineTo(x + width / 2, 0);
   ctx.closePath();
-  ctx.fillStyle = "#4a3524";
+  ctx.fillStyle = "#46311f";
   ctx.fill();
   ctx.strokeStyle = "#7a5c3c";
   ctx.lineWidth = 2.6;
@@ -198,56 +278,28 @@ function drawGate(ctx: CanvasRenderingContext2D, alive: number): void {
   ctx.lineWidth = 1.2;
   ctx.beginPath();
   for (let plank = -1; plank <= 1; plank += 1) {
-    ctx.moveTo(plank * 7, 0);
-    ctx.lineTo(plank * 7, -height);
+    ctx.moveTo(x + plank * (width / 3.4), 0);
+    ctx.lineTo(x + plank * (width / 3.4), -height);
   }
   ctx.stroke();
   ctx.restore();
-  if (alive > 0) {
-    ctx.fillStyle = `rgba(255, 205, 120, ${0.3 * alive})`;
-    fillEllipse(ctx, 0, -3, width * 0.4, 5);
+  if (glow > 0) {
+    ctx.fillStyle = `rgba(255, 205, 120, ${0.34 * glow})`;
+    fillEllipse(ctx, x, -3, width * 0.44, 5.5);
   }
 }
 
-function drawChimney(ctx: CanvasRenderingContext2D, x: number, baseY: number): number {
-  const top = baseY - 15;
-  ctx.fillStyle = STONE_MID;
-  ctx.fillRect(x - 4, top, 8, 15);
-  ctx.fillStyle = "#6f7d8b";
-  ctx.fillRect(x - 5, top - 3, 10, 3.4);
-  ctx.strokeStyle = STONE_LINE;
-  ctx.lineWidth = 1;
-  ctx.strokeRect(x - 4, top, 8, 15);
-  return top - 3;
-}
-
-function drawSmoke(ctx: CanvasRenderingContext2D, x: number, y: number, time: number): void {
-  for (let puff = 0; puff < SMOKE_PUFFS; puff += 1) {
-    const phase = (time / SMOKE_RISE_PERIOD + puff / SMOKE_PUFFS) % 1;
-    const rise = phase * 82;
-    // A steady lean on top of the wobble, so the column leaves the roofline for
-    // open sky instead of hanging over pale stone where it cannot be seen.
-    const drift = Math.sin(phase * 4.2 + puff) * 4 + phase * 26;
-    const radius = 6 + phase * 20;
-    // The `min` fades a puff in over its first fifth, so none of them pops out
-    // of the chimney at full size.
-    const alpha = 0.5 * (1 - phase * 0.85) * Math.min(1, phase * 5);
-    ctx.fillStyle = `rgba(176, 190, 205, ${alpha})`;
-    fillEllipse(ctx, x + drift, y - rise, radius, radius * 0.86);
-  }
-}
-
-function drawFlag(ctx: CanvasRenderingContext2D, apexY: number, time: number): void {
-  const topY = apexY - 21;
+function drawFlag(ctx: CanvasRenderingContext2D, x: number, baseY: number, time: number): void {
+  const topY = baseY - 24;
   ctx.strokeStyle = "#4d5a66";
   ctx.lineWidth = 3.2;
   ctx.lineCap = "round";
   ctx.beginPath();
-  ctx.moveTo(0, apexY + 3);
-  ctx.lineTo(0, topY);
+  ctx.moveTo(x, baseY + 3);
+  ctx.lineTo(x, topY);
   ctx.stroke();
   ctx.fillStyle = "#ffd479";
-  fillEllipse(ctx, 0, topY - 3, 3.2, 3.2);
+  fillEllipse(ctx, x, topY - 3, 3.2, 3.2);
 
   const phase = (TAU * time) / FLAG_WAVE_PERIOD;
   const near = 4.6 * Math.sin(phase);
@@ -255,108 +307,285 @@ function drawFlag(ctx: CanvasRenderingContext2D, apexY: number, time: number): v
   const top = topY + 3;
   const bottom = topY + 18;
   ctx.beginPath();
-  ctx.moveTo(0, top);
-  ctx.bezierCurveTo(10, top + near, 20, top - near, 28, top + far);
-  ctx.lineTo(28, bottom + far);
-  ctx.bezierCurveTo(20, bottom - near, 10, bottom + near, 0, bottom);
+  ctx.moveTo(x, top);
+  ctx.bezierCurveTo(x + 10, top + near, x + 20, top - near, x + 28, top + far);
+  ctx.lineTo(x + 28, bottom + far);
+  ctx.bezierCurveTo(x + 20, bottom - near, x + 10, bottom + near, x, bottom);
   ctx.closePath();
   ctx.fillStyle = "#d3504d";
   ctx.fill();
   ctx.strokeStyle = "rgba(88, 24, 24, 0.4)";
   ctx.lineWidth = 1;
   ctx.stroke();
-  ctx.save();
-  ctx.clip();
-  ctx.fillStyle = "rgba(255, 212, 121, 0.9)";
-  ctx.fillRect(0, top + 5.5 + far * 0.4, 28, 3);
-  ctx.restore();
 }
 
-const CASTLE_KEEP_HEIGHT = 96;
-const CASTLE_KEEP_DEPTH = 30;
-const CASTLE_HALL_HEIGHT = 46;
-const CASTLE_HALL_DEPTH = 26;
+/* --- Замок I ур. -----------------------------------------------------------
+ *
+ * Two masses and nothing else: a squat crenellated keep standing behind a low
+ * crenellated curtain wall with the gate in it. Both masses are battlemented
+ * because that notch is what carries the word "castle" at map zoom — a plain
+ * box in front of a plain tower reads as a lighthouse, which is what the first
+ * pass of this shape actually did. Level I is a starting keep, so the
+ * silhouette is deliberately short of everything a capital would carry; see the
+ * note over `CASTLE_SILHOUETTE`.
+ */
+
+/**
+ * Top of a mass, the same value `drawMass` returns. The silhouette needs these
+ * before anything is drawn, and deriving them keeps the outline on the walls
+ * when a designer changes `hex.squash`.
+ */
+function capOf(height: number, depth: number): number {
+  return -height - depth * SQUASH;
+}
+
+const KEEP_CX = -3;
+const KEEP_WIDTH = 54;
+const KEEP_HEIGHT = 74;
+const KEEP_DEPTH = 24;
+const KEEP_CAP = capOf(KEEP_HEIGHT, KEEP_DEPTH);
+const KEEP_MERLON_HEIGHT = 10;
+
+const WALL_WIDTH = 96;
+const WALL_HEIGHT = 28;
+const WALL_DEPTH_UNITS = 20;
+const WALL_CAP = capOf(WALL_HEIGHT, WALL_DEPTH_UNITS);
+const WALL_MERLON_HEIGHT = 8;
 
 function drawCastle(ctx: CanvasRenderingContext2D, life: Life): void {
-  const glow = life.alive * (0.55 + 0.45 * Math.sin((TAU * life.time) / WINDOW_GLOW_PERIOD));
+  const glow = glowOf(life);
 
-  drawPlinth(ctx, 62, 15);
+  drawPlinth(ctx, 58, 14, "#93a2af", "#c2cdda");
 
-  // Back to front: the keep stands behind the two towers, the great hall in front of all three.
-  const keepCap = drawBlock(ctx, 0, 48, CASTLE_KEEP_HEIGHT, CASTLE_KEEP_DEPTH);
-  const keepApex = drawRoof(ctx, 0, keepCap, 48, 34);
+  // Back to front: the keep, then the wall that hides its footing.
+  const keepCap = drawMass(ctx, KEEP_CX, KEEP_WIDTH, KEEP_HEIGHT, KEEP_DEPTH, STONE);
+  const merlonTop = drawMerlons(ctx, KEEP_CX, keepCap, KEEP_WIDTH, 5, KEEP_MERLON_HEIGHT);
+  drawWindow(ctx, KEEP_CX - 12, -58, glow);
+  drawWindow(ctx, KEEP_CX + 12, -58, glow);
 
-  const leftCap = drawBlock(ctx, -44, 26, 76, 20);
-  drawRoof(ctx, -44, leftCap, 26, 26);
-  const rightCap = drawBlock(ctx, 44, 26, 64, 20);
-  drawRoof(ctx, 44, rightCap, 26, 24);
+  const wallCap = drawMass(ctx, 0, WALL_WIDTH, WALL_HEIGHT, WALL_DEPTH_UNITS, STONE);
+  drawMerlons(ctx, 0, wallCap, WALL_WIDTH, 6, WALL_MERLON_HEIGHT);
+  // The keep drops a shadow across the walkway, which is the one cue that says
+  // the two masses stand at different depths rather than in one plane.
+  ctx.fillStyle = "rgba(38, 62, 88, 0.2)";
+  ctx.fillRect(KEEP_CX - KEEP_WIDTH / 2, wallCap, KEEP_WIDTH, -wallCap - WALL_HEIGHT);
 
-  const hallCap = drawBlock(ctx, 0, 86, CASTLE_HALL_HEIGHT, CASTLE_HALL_DEPTH);
-  drawMerlons(ctx, 0, hallCap, 86, 7);
+  drawArch(ctx, 0, 20, 22, glow);
 
-  drawGate(ctx, life.alive);
-  drawWindow(ctx, -13, -58, glow);
-  drawWindow(ctx, 13, -58, glow);
-  drawWindow(ctx, 0, -88, glow);
-  drawWindow(ctx, -44, -34, glow);
-  drawWindow(ctx, -44, -62, glow);
-  drawWindow(ctx, 44, -30, glow);
-  drawWindow(ctx, -30, -20, glow * 0.7);
-  drawWindow(ctx, 30, -20, glow * 0.7);
-
-  // The chimney sits in the gap between the keep and the right tower, which is
-  // the one column of open sky above the roofline.
-  const chimneyTop = drawChimney(ctx, 29, hallCap);
   if (life.alive > 0) {
-    drawSmoke(ctx, 29, chimneyTop, life.time);
-    drawFlag(ctx, keepApex, life.time);
+    drawFlag(ctx, KEEP_CX, merlonTop, life.time);
   }
 }
 
 /**
- * Outline of the castle, traced once round. The numbers follow the blocks drawn
- * above: tower caps at -88 and -76, the hall cap at -62, the keep roof apex at -148.
+ * Outline of the keep, traced once round as a staircase profile.
+ *
+ * What is missing from it is the point: the level-I keep is one tower and one
+ * wall, both of them flat-topped boxes. Levels II and III have corner towers to
+ * raise at the two ends of the wall, a gatehouse to push forward around the
+ * arch, a second storey and a spire to put on the keep, and the whole band
+ * above y = -100 to rise into.
  */
 const CASTLE_SILHOUETTE: readonly Point[] = [
-  { x: -62, y: 14 },
-  { x: -62, y: -6 },
-  { x: -57, y: -6 },
-  { x: -57, y: -88 },
-  { x: -61, y: -88 },
-  { x: -44, y: -114 },
-  { x: -27, y: -88 },
-  { x: -31, y: -88 },
-  { x: -31, y: -62 },
-  { x: -28, y: -62 },
-  { x: -28, y: -114 },
-  { x: 0, y: -148 },
-  { x: 28, y: -114 },
-  { x: 28, y: -76 },
-  { x: 27, y: -76 },
-  { x: 44, y: -100 },
-  { x: 61, y: -76 },
-  { x: 57, y: -76 },
-  { x: 57, y: -6 },
-  { x: 62, y: -6 },
-  { x: 62, y: 14 },
+  { x: -58, y: 14 },
+  { x: -58, y: -4 },
+  { x: -WALL_WIDTH / 2, y: -4 },
+  { x: -WALL_WIDTH / 2, y: WALL_CAP - WALL_MERLON_HEIGHT },
+  { x: KEEP_CX - KEEP_WIDTH / 2, y: WALL_CAP - WALL_MERLON_HEIGHT },
+  { x: KEEP_CX - KEEP_WIDTH / 2, y: KEEP_CAP - KEEP_MERLON_HEIGHT },
+  { x: KEEP_CX + KEEP_WIDTH / 2, y: KEEP_CAP - KEEP_MERLON_HEIGHT },
+  { x: KEEP_CX + KEEP_WIDTH / 2, y: WALL_CAP - WALL_MERLON_HEIGHT },
+  { x: WALL_WIDTH / 2, y: WALL_CAP - WALL_MERLON_HEIGHT },
+  { x: WALL_WIDTH / 2, y: -4 },
+  { x: 58, y: -4 },
+  { x: 58, y: 14 },
 ];
 
 const CASTLE_ART: BuildingArt = {
-  height: 148,
+  height: 100,
   draw: drawCastle,
   silhouette: CASTLE_SILHOUETTE,
-  siteHalfWidth: 62,
+  siteHalfWidth: 58,
+};
+
+/* --- Лесопилка I ур. -------------------------------------------------------
+ *
+ * A timber shed under a steep gable, a water wheel on its left flank and a stack
+ * of cut logs in front of the door. The wheel is the whole reason the silhouette
+ * cannot be confused with the keep: a wide low triangle with a disc on one side
+ * against a tall notched tower.
+ */
+
+const WHEEL_X = -34;
+const WHEEL_Y = -15;
+const WHEEL_RADIUS = 17;
+const WHEEL_PADDLES = 8;
+
+const SHED_CX = 8;
+const SHED_WIDTH = 56;
+const SHED_HEIGHT = 32;
+const SHED_DEPTH = 20;
+const SHED_CAP = capOf(SHED_HEIGHT, SHED_DEPTH);
+const ROOF_HALF = 36;
+const ROOF_RISE = 30;
+
+/** One log seen end-on: bark ring, pale end grain, two growth rings. */
+function drawLog(ctx: CanvasRenderingContext2D, x: number, y: number, radius: number): void {
+  ctx.fillStyle = "rgba(28, 50, 70, 0.2)";
+  fillEllipse(ctx, x + 1.5, y + 2, radius, radius * 0.94);
+  ctx.fillStyle = "#5d4128";
+  fillEllipse(ctx, x, y, radius, radius);
+  ctx.fillStyle = "#d8b483";
+  fillEllipse(ctx, x - radius * 0.08, y - radius * 0.08, radius * 0.78, radius * 0.78);
+  ctx.strokeStyle = "rgba(140, 100, 60, 0.75)";
+  ctx.lineWidth = 1.1;
+  ctx.beginPath();
+  ctx.arc(x - radius * 0.08, y - radius * 0.08, radius * 0.46, 0, TAU);
+  ctx.moveTo(x + radius * 0.12, y - radius * 0.08);
+  ctx.arc(x - radius * 0.08, y - radius * 0.08, radius * 0.2, 0, TAU);
+  ctx.stroke();
+}
+
+/**
+ * The mill wheel. `spin` is an absolute angle in radians, so the wheel is where
+ * the clock says it is rather than where the last frame left it.
+ */
+function drawWaterWheel(ctx: CanvasRenderingContext2D, spin: number): void {
+  const hub = WHEEL_RADIUS * 0.46;
+  const rim = WHEEL_RADIUS * 0.86;
+
+  ctx.save();
+  ctx.translate(WHEEL_X, WHEEL_Y);
+  ctx.rotate(spin);
+
+  // The paddles are narrow and stand proud of the rim, so open sky shows between
+  // them. A filled annulus turns the wheel into a second log end sitting next to
+  // the log pile, and the turn stops reading at all.
+  // The wheel hangs on the lit flank of the shed, so its timber is the light end
+  // of the wood ramp; a dark wheel there sank into the plinth shadow.
+  ctx.fillStyle = "#b0834f";
+  ctx.strokeStyle = "rgba(44, 28, 14, 0.6)";
+  ctx.lineWidth = 1.1;
+  for (let paddle = 0; paddle < WHEEL_PADDLES; paddle += 1) {
+    ctx.save();
+    ctx.rotate((TAU * paddle) / WHEEL_PADDLES);
+    ctx.fillRect(hub, -WHEEL_RADIUS * 0.16, WHEEL_RADIUS - hub, WHEEL_RADIUS * 0.32);
+    ctx.strokeRect(hub, -WHEEL_RADIUS * 0.16, WHEEL_RADIUS - hub, WHEEL_RADIUS * 0.32);
+    ctx.restore();
+  }
+
+  ctx.strokeStyle = "#6b4a2c";
+  ctx.lineWidth = 2.8;
+  ctx.beginPath();
+  ctx.arc(0, 0, rim, 0, TAU);
+  ctx.stroke();
+
+  ctx.fillStyle = "#5f4229";
+  fillEllipse(ctx, 0, 0, hub * 0.72, hub * 0.72);
+  ctx.fillStyle = "#c19163";
+  fillEllipse(ctx, -hub * 0.12, -hub * 0.16, hub * 0.34, hub * 0.34);
+  ctx.restore();
+}
+
+/** Beams over the plank wall: two posts, a rail and a brace in each outer bay. */
+function drawTimberFrame(ctx: CanvasRenderingContext2D): void {
+  const left = SHED_CX - SHED_WIDTH / 2;
+  const right = SHED_CX + SHED_WIDTH / 2;
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(left, -SHED_HEIGHT, SHED_WIDTH, SHED_HEIGHT);
+  ctx.clip();
+  ctx.strokeStyle = BEAM;
+  ctx.lineWidth = 3.4;
+  ctx.beginPath();
+  for (const x of [left + 3, SHED_CX, right - 3]) {
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, -SHED_HEIGHT);
+  }
+  ctx.moveTo(left, -SHED_HEIGHT + 3);
+  ctx.lineTo(right, -SHED_HEIGHT + 3);
+  ctx.stroke();
+  ctx.lineWidth = 2.6;
+  ctx.beginPath();
+  ctx.moveTo(left + 3, -2);
+  ctx.lineTo(SHED_CX, -SHED_HEIGHT + 3);
+  ctx.moveTo(right - 3, -2);
+  ctx.lineTo(SHED_CX, -SHED_HEIGHT + 3);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawSawmill(ctx: CanvasRenderingContext2D, life: Life): void {
+  const glow = glowOf(life);
+
+  drawPlinth(ctx, 50, 12, "#9d8a6c", "#c8b790");
+
+  // The wheel is behind the shed wall it is bolted to, so it goes down first.
+  drawWaterWheel(ctx, life.alive > 0 ? (TAU * life.time) / WHEEL_SPIN_PERIOD : 0);
+
+  // Sluice: the plank chute that explains what turns the wheel.
+  ctx.fillStyle = "#7a5c3c";
+  ctx.fillRect(WHEEL_X - 2, -SHED_HEIGHT - 2, 26, 5);
+  ctx.fillStyle = "rgba(180, 220, 238, 0.7)";
+  ctx.fillRect(WHEEL_X - 2, -SHED_HEIGHT - 2, 26, 1.8);
+
+  const shedCap = drawMass(ctx, SHED_CX, SHED_WIDTH, SHED_HEIGHT, SHED_DEPTH, TIMBER);
+  drawTimberFrame(ctx);
+  drawGable(ctx, SHED_CX, shedCap, ROOF_HALF, ROOF_RISE);
+
+  // Window left, door middle, stock right: nothing on the front wall overlaps
+  // anything else, which is what keeps the shed readable when it is small.
+  drawWindow(ctx, SHED_CX - 20, -16, glow);
+  drawArch(ctx, SHED_CX, 20, 24, glow);
+
+  // Cut stock, which is what makes it a sawmill and not a watermill: two logs on
+  // the ground and one riding on top.
+  drawLog(ctx, 28, -5, 6.8);
+  drawLog(ctx, 41, -5, 6.8);
+  drawLog(ctx, 34.5, -16, 6.8);
+}
+
+/** Traced once round: up the free side of the wheel, over the gable, past the logs. */
+function sawmillSilhouette(): Point[] {
+  const points: Point[] = [{ x: -50, y: 12 }];
+  const steps = 8;
+  for (let step = 0; step <= steps; step += 1) {
+    const angle = ((105 + (180 * step) / steps) * Math.PI) / 180;
+    points.push({
+      x: WHEEL_X + WHEEL_RADIUS * Math.cos(angle),
+      y: WHEEL_Y + WHEEL_RADIUS * Math.sin(angle),
+    });
+  }
+  points.push(
+    { x: SHED_CX - SHED_WIDTH / 2, y: -30 },
+    { x: SHED_CX - SHED_WIDTH / 2, y: SHED_CAP },
+    { x: SHED_CX - ROOF_HALF, y: SHED_CAP },
+    { x: SHED_CX, y: SHED_CAP - ROOF_RISE },
+    { x: SHED_CX + ROOF_HALF, y: SHED_CAP },
+    { x: SHED_CX + SHED_WIDTH / 2, y: SHED_CAP },
+    { x: SHED_CX + SHED_WIDTH / 2, y: -25 },
+    { x: 48, y: -25 },
+    { x: 48, y: 12 },
+  );
+  return points;
+}
+
+const SAWMILL_ART: BuildingArt = {
+  height: 76,
+  draw: drawSawmill,
+  silhouette: sawmillSilhouette(),
+  siteHalfWidth: 50,
 };
 
 /**
- * Placeholder for every building that is not the castle: a stone cottage under
- * a wooden gable. It shares the whole flow — ghost, beat, scaffolding, idle
- * smoke — so the panel is never a dead end.
+ * Placeholder for every building that has no art of its own yet: a stone cottage
+ * under a wooden gable. It shares the whole flow — ghost, beat, scaffolding,
+ * lit window — so the panel is never a dead end.
  */
 function drawCottage(ctx: CanvasRenderingContext2D, life: Life): void {
-  const glow = life.alive * (0.55 + 0.45 * Math.sin((TAU * life.time) / WINDOW_GLOW_PERIOD));
-  drawPlinth(ctx, 30, 8);
-  const cap = drawBlock(ctx, 0, 44, 30, 18);
+  const glow = glowOf(life);
+  drawPlinth(ctx, 30, 8, "#93a2af", "#c2cdda");
+  const cap = drawMass(ctx, 0, 44, 30, 18, STONE);
 
   const apex = cap - 22;
   ctx.beginPath();
@@ -365,27 +594,18 @@ function drawCottage(ctx: CanvasRenderingContext2D, life: Life): void {
   ctx.lineTo(-27, cap);
   ctx.closePath();
   const shading = ctx.createLinearGradient(-27, 0, 27, 0);
-  shading.addColorStop(0, "#a4794f");
-  shading.addColorStop(0.5, WOOD);
-  shading.addColorStop(1, "#5f4128");
+  shading.addColorStop(0, TIMBER.lit);
+  shading.addColorStop(0.5, TIMBER.mid);
+  shading.addColorStop(1, TIMBER.dark);
   ctx.fillStyle = shading;
   ctx.fill();
   ctx.strokeStyle = WOOD_DARK;
   ctx.lineWidth = 1.2;
   ctx.stroke();
 
-  ctx.fillStyle = "#4a3524";
-  ctx.fillRect(-6, -18, 12, 18);
-  ctx.strokeStyle = "#7a5c3c";
-  ctx.lineWidth = 1.8;
-  ctx.strokeRect(-6, -18, 12, 18);
+  drawArch(ctx, 0, 13, 18, glow);
   drawWindow(ctx, -14, -12, glow);
   drawWindow(ctx, 14, -12, glow);
-
-  const chimneyTop = drawChimney(ctx, 14, cap - 4);
-  if (life.alive > 0) {
-    drawSmoke(ctx, 14, chimneyTop, life.time);
-  }
 }
 
 const COTTAGE_SILHOUETTE: readonly Point[] = [
@@ -406,20 +626,43 @@ const COTTAGE_ART: BuildingArt = {
   siteHalfWidth: 32,
 };
 
+/** The building whose art is the sawmill. Kept local: `catalog.ts` is not this module's to extend. */
+const SAWMILL_ID: BuildingId = "sawmill1";
+
+const ART_BY_ID: Partial<Record<BuildingId, BuildingArt>> = {
+  [CASTLE_ID]: CASTLE_ART,
+  [SAWMILL_ID]: SAWMILL_ART,
+};
+
 function artOf(id: BuildingId): BuildingArt {
-  return id === CASTLE_ID ? CASTLE_ART : COTTAGE_ART;
+  return ART_BY_ID[id] ?? COTTAGE_ART;
 }
+
+/* --- Construction ----------------------------------------------------------
+ *
+ * The site, the scaffolding, the reveal and the completion beat are shared by
+ * every building and parameterised by nothing but `height` and `siteHalfWidth`.
+ * That was the choice over a bespoke sequence per building: five more buildings
+ * are coming, and each of them only has to declare those two numbers to get the
+ * whole flow. The deck count comes from the height, so a shed does not get the
+ * scaffolding of a keep.
+ */
 
 /** How far the scaffolding has been raised at this point of the build. */
 function scaffoldHeight(art: BuildingArt, progress: number): number {
   return 26 + (art.height - 20) * progress;
 }
 
+/** Levels of planking on a site this tall. A low building gets fewer. */
+function deckCount(art: BuildingArt): number {
+  return Math.max(2, Math.min(4, Math.round(art.height / 38)));
+}
+
 /** Scaffolding around a site. `height` is how far up it has already been raised. */
 function drawScaffold(ctx: CanvasRenderingContext2D, art: BuildingArt, height: number, time: number): void {
   const outer = art.siteHalfWidth - 6;
   const inner = outer * 0.42;
-  const decks = 3;
+  const decks = deckCount(art);
 
   ctx.lineCap = "round";
   ctx.strokeStyle = WOOD;

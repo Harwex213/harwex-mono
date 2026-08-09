@@ -1,6 +1,7 @@
 import rawValues from "../data/config.json";
 import type { GameConfig, SchemaGroup } from "./schema";
 import {
+  BUILDING_CATEGORY_OPTIONS,
   DEFAULTS,
   SCHEMA,
   cloneConfig,
@@ -30,6 +31,7 @@ const config: GameConfig = parseConfig(rawValues);
 
 export type { GameConfig, SchemaGroup };
 export {
+  BUILDING_CATEGORY_OPTIONS,
   DEFAULTS,
   SCHEMA,
   cloneConfig,

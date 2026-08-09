@@ -1,3 +1,5 @@
+import { MAX_DISCS } from "../state/fog";
+
 /**
  * GLSL of the cloud layer: one full-screen quad, sky gradient plus a domain-
  * warped FBM cloud field.
@@ -5,6 +7,12 @@
  * WebGL 1 / GLSL ES 1.00 on purpose — the layer is pure decoration and must
  * come up on every machine that can run the prototype at all. The octave count
  * is a uniform, so the loop runs to a constant bound and breaks early.
+ *
+ * The same field does the weather over the fog of war and the bank at the edge
+ * of the world. Neither is a separate layer or an overlay: both only push the
+ * coverage threshold of the one cloud field, so the thick parts drift, warp and
+ * catch the light exactly as the thin parts do, and there is no seam where one
+ * becomes the other.
  */
 
 const VERTEX_SOURCE = `
@@ -17,6 +25,8 @@ void main() {
 
 const FRAGMENT_SOURCE = `
 precision highp float;
+
+#define MAX_DISCS ${MAX_DISCS}
 
 /** Viewport in CSS pixels, so the layer lines up with the 2D canvas above it. */
 uniform vec2 u_resolution;
@@ -40,6 +50,22 @@ uniform float u_skyMidStop;
 uniform vec3 u_light;
 uniform vec3 u_warmTone;
 uniform vec3 u_shadow;
+/**
+ * The known world, as up to eight discs in world space: (centre x, centre y,
+ * radius). Inside them the sky is ordinary sky; outside them the cloud closes
+ * over, which is what makes an unexplored island read as weather rather than as
+ * a hole in the map.
+ */
+uniform vec3 u_fogDiscs[MAX_DISCS];
+uniform float u_fogDiscCount;
+/** Width of the soft edge of a disc, in world units. */
+uniform float u_fogSoft;
+/** How far the cloud thickens over the unknown. Zero switches the fog off. */
+uniform float u_fogDensity;
+/** World radii the bank at the edge of the map builds up between. */
+uniform float u_edgeInner;
+uniform float u_edgeOuter;
+uniform float u_edgeDensity;
 
 const int MAX_OCTAVES = 8;
 
@@ -80,6 +106,29 @@ float fbm(vec2 p) {
   return sum / max(norm, 0.0001);
 }
 
+/**
+ * How thickly the weather closes over this point, 0…1.
+ *
+ * Two reasons for it to close: the point is outside every disc the player has
+ * explored, or it is past the rim of the playable world. Both are measured in
+ * world units on the true world position of the fragment, so the mask is nailed
+ * to the map while the clouds themselves drift across it.
+ */
+float overcastAt(vec2 world) {
+  float known = 0.0;
+  for (int i = 0; i < MAX_DISCS; i++) {
+    if (float(i) >= u_fogDiscCount) {
+      break;
+    }
+    vec3 disc = u_fogDiscs[i];
+    float reach = length(world - disc.xy);
+    known = max(known, 1.0 - smoothstep(disc.z - u_fogSoft, disc.z + u_fogSoft, reach));
+  }
+  float unknown = (1.0 - known) * u_fogDensity;
+  float edge = smoothstep(u_edgeInner, u_edgeOuter, length(world)) * u_edgeDensity;
+  return clamp(max(unknown, edge), 0.0, 1.0);
+}
+
 vec3 skyAt(float t) {
   if (t < u_skyMidStop) {
     return mix(u_skyTop, u_skyMid, t / max(u_skyMidStop, 0.0001));
@@ -94,6 +143,12 @@ void main() {
   vec3 colour = skyAt(frag.y / max(u_resolution.y, 1.0));
 
   if (u_clouds > 0.5) {
+    // The world point this pixel sits on — the exact inverse of the transform
+    // the 2D map above is drawn with, so an island and the weather over it agree
+    // about where they are.
+    vec2 world = (frag - 0.5 * u_resolution) / max(u_camera.z, 0.0001) + u_camera.xy;
+    float overcast = overcastAt(world);
+
     // Clouds keep growing with the zoom, but slower than the island does.
     float zoom = 0.55 + u_camera.z * 0.45;
     // The island shifts by camera * scale, the clouds by a fraction of that.
@@ -112,7 +167,11 @@ void main() {
     );
     vec2 warped = p + u_warp * r;
     float d = fbm(warped);
-    float density = smoothstep(u_coverage - u_softness, u_coverage + u_softness, d);
+    // Thick weather is the same field with its threshold pushed down: every clump
+    // grows until the gaps between them close, so the bank is made of the clouds
+    // that were already there rather than laid over them.
+    float coverage = u_coverage * (1.0 - overcast);
+    float density = smoothstep(coverage - u_softness, coverage + u_softness, d);
 
     // A second sample from higher up: where the cloud thins out above us we are
     // near the sunlit top, where it thickens we are in the shaded belly.
@@ -121,6 +180,12 @@ void main() {
     vec3 cloud = mix(u_shadow, u_light, lit);
     cloud = mix(cloud, u_warmTone, 0.4 * smoothstep(0.3, 0.85, d));
     colour = mix(colour, cloud, density);
+
+    // The last of the sky only closes at the very back of the bank. Held to the
+    // top of the range on purpose: any earlier and the mask stops reading as
+    // cloud and starts reading as a wash of paint over the map.
+    float seal = smoothstep(0.72, 1.0, overcast);
+    colour = mix(colour, cloud, seal * 0.9);
   }
 
   gl_FragColor = vec4(colour, 1.0);

@@ -4,9 +4,9 @@ import type { Point } from "../hex/layout";
 import { WALL_DEPTH, WALL_EDGES } from "../hex/layout";
 import type { Tile } from "../map/island";
 import { createRng, hashCoords } from "../map/rng";
-import { TERRAIN_STYLES } from "../map/terrain";
 import { decorationOverflows, drawDecoration } from "./decor";
-import { ROCK_BOTTOM, ROCK_TOP, mix, shade } from "./palette";
+import type { FogPaint } from "./fogTint";
+import { mix, shade } from "./palette";
 
 /** Light comes from the upper left, so the down-left faces are the bright ones. */
 const EDGE_LIGHT: Record<number, number> = {
@@ -31,9 +31,18 @@ function tracePath(ctx: CanvasRenderingContext2D, points: readonly Point[]): voi
 /**
  * Cliff faces. Only the three downward edges can be seen, and only where the
  * island has no neighbour to hide them.
+ *
+ * `paint` carries the colours already mixed for this tile's fog level, so a
+ * remembered cliff costs the same as a lit one.
  */
-function drawWalls(ctx: CanvasRenderingContext2D, tile: Tile, corners: readonly Point[], hasNeighbour: NeighbourLookup): void {
-  const style = TERRAIN_STYLES[tile.terrain];
+function drawWalls(
+  ctx: CanvasRenderingContext2D,
+  tile: Tile,
+  corners: readonly Point[],
+  hasNeighbour: NeighbourLookup,
+  paint: FogPaint,
+): void {
+  const style = paint.style;
   for (const edge of WALL_EDGES) {
     const offset = HEX_DIRECTIONS[edge]!;
     if (hasNeighbour(tile.q + offset.q, tile.r + offset.r)) {
@@ -59,9 +68,9 @@ function drawWalls(ctx: CanvasRenderingContext2D, tile: Tile, corners: readonly 
     const light = EDGE_LIGHT[edge] ?? 1;
     const topY = Math.min(from.y, to.y);
     const gradient = ctx.createLinearGradient(0, topY, 0, topY + WALL_DEPTH * 1.15);
-    gradient.addColorStop(0, shade(mix(style.wall, ROCK_TOP, 0.7), light));
-    gradient.addColorStop(0.3, shade(mix(style.wall, ROCK_BOTTOM, 0.55), light));
-    gradient.addColorStop(1, shade(ROCK_BOTTOM, light * 0.96));
+    gradient.addColorStop(0, shade(mix(style.wall, paint.rockTop, 0.7), light));
+    gradient.addColorStop(0.3, shade(mix(style.wall, paint.rockBottom, 0.55), light));
+    gradient.addColorStop(1, shade(paint.rockBottom, light * 0.96));
 
     tracePath(ctx, polygon);
     ctx.fillStyle = gradient;
@@ -106,9 +115,22 @@ function drawWalls(ctx: CanvasRenderingContext2D, tile: Tile, corners: readonly 
   }
 }
 
-/** Top face: flat terrain colour, a hint of form, then the stylised decoration. */
-function drawTop(ctx: CanvasRenderingContext2D, tile: Tile, centre: Point, corners: readonly Point[]): void {
-  const style = TERRAIN_STYLES[tile.terrain];
+/**
+ * Top face: flat terrain colour, a hint of form, then the stylised decoration.
+ *
+ * The decoration is the live detail of the tile, so it is the first thing the
+ * fog takes away: it fades out with `paint.decorAlpha` and is skipped outright
+ * once that reaches zero, which is what leaves a remembered island as terrain
+ * without a single tree, cairn or drift on it.
+ */
+function drawTop(
+  ctx: CanvasRenderingContext2D,
+  tile: Tile,
+  centre: Point,
+  corners: readonly Point[],
+  paint: FogPaint,
+): void {
+  const style = paint.style;
   tracePath(ctx, corners);
   ctx.fillStyle = style.top;
   ctx.fill();
@@ -122,12 +144,15 @@ function drawTop(ctx: CanvasRenderingContext2D, tile: Tile, centre: Point, corne
   ctx.fillStyle = form;
   ctx.fill();
 
-  if (decorationOverflows(tile)) {
-    drawDecoration(ctx, tile, centre);
-  } else {
+  if (paint.decorAlpha > 0) {
     ctx.save();
-    tracePath(ctx, corners);
-    ctx.clip();
+    if (paint.decorAlpha < 1) {
+      ctx.globalAlpha = paint.decorAlpha;
+    }
+    if (!decorationOverflows(tile)) {
+      tracePath(ctx, corners);
+      ctx.clip();
+    }
     drawDecoration(ctx, tile, centre);
     ctx.restore();
   }

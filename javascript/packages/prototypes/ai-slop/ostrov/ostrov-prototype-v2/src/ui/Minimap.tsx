@@ -2,10 +2,17 @@ import { effect } from "@preact/signals-react";
 import { useEffect, useRef } from "react";
 import { drawMinimap, projectionFor, toWorld } from "../render/minimap";
 import { clampCamera } from "../state/camera";
-import { camera, viewport, world } from "../state/signals";
+import { exploredDiscs, sampleFog } from "../state/fog";
+import { camera, territoryVersion, viewport, world } from "../state/signals";
 
-/** Side of the minimap in CSS pixels. The canvas is square, so one number does. */
-const MINIMAP_SIZE = 190;
+/**
+ * Side of the minimap in CSS pixels. The canvas is square, so one number does.
+ *
+ * The world holds around eighty islands across three rings. At the old 190 the
+ * outer ring's marks sat about eight pixels apart and read as one grainy band;
+ * the extra pixels are what keep them countable.
+ */
+const MINIMAP_SIZE = 232;
 
 /**
  * The overview map in the bottom-left corner.
@@ -43,11 +50,19 @@ function Minimap(): React.JSX.Element {
         canvas.height = Math.round(MINIMAP_SIZE * ratio);
       }
       ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+      const fog = sampleFog(performance.now());
       drawMinimap(ctx, MINIMAP_SIZE, {
         world: world.peek(),
         camera: camera.peek(),
         viewport: viewport.peek(),
+        fog,
+        known: exploredDiscs(),
       });
+      // A region still fading in is the one thing here that moves on its own, so
+      // the overview asks for another frame only while that is true.
+      if (!fog.settled) {
+        invalidate();
+      }
     };
 
     const invalidate = (): void => {
@@ -57,10 +72,11 @@ function Minimap(): React.JSX.Element {
     };
 
     const stopWatching = effect(() => {
-      // Reading the three signals subscribes the redraw to them and to nothing else.
+      // Reading the four signals subscribes the redraw to them and to nothing else.
       camera.value;
       world.value;
       viewport.value;
+      territoryVersion.value;
       invalidate();
     });
 
