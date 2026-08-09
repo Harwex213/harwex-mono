@@ -63,12 +63,119 @@ body {
   gap: 14px;
 }
 
+/* The treasury. Absolute rather than a flex child, so it keeps the top edge to
+   itself whatever the two bottom corners grow to. */
+.resource-bar {
+  position: absolute;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: calc(100% - 28px);
+  pointer-events: auto;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+  padding: 12px 16px;
+  border: 1px solid var(--panel-edge);
+  border-radius: 20px;
+  background: var(--panel-bg);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 14px 40px rgba(6, 20, 34, 0.4);
+}
+
+.res {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 168px;
+  padding: 8px 18px 8px 12px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.res-icon {
+  width: 40px;
+  height: 40px;
+  display: block;
+  flex: none;
+  filter: drop-shadow(0 2px 4px rgba(4, 14, 24, 0.55));
+}
+
+.res-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  line-height: 1;
+}
+
+.res-name {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.res-value {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 30px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  animation: res-bump 420ms ease-out;
+}
+
+/* The arrival, floating off the count it was added to. It ends invisible, so
+   nothing has to come back and clear it. */
+.res-delta {
+  position: absolute;
+  top: 2px;
+  right: 10px;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--gold);
+  text-shadow: 0 2px 6px rgba(4, 14, 24, 0.8);
+  pointer-events: none;
+  animation: res-rise 900ms ease-out forwards;
+}
+
+@keyframes res-bump {
+  0% {
+    color: #ffffff;
+    transform: scale(1.22);
+  }
+  100% {
+    color: var(--text);
+    transform: scale(1);
+  }
+}
+
+@keyframes res-rise {
+  0% {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  25% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-16px);
+  }
+}
+
+/* Opaque on purpose: the sea and the islands under it are the same blues and
+   greens as the marks, and a translucent overview read through them. */
 .minimap {
   pointer-events: auto;
   flex: none;
   display: block;
   cursor: pointer;
   touch-action: none;
+  background: #0a1a2c;
   border: 1px solid var(--panel-edge);
   border-radius: 14px;
   box-shadow: 0 14px 40px rgba(6, 20, 34, 0.35);
@@ -131,6 +238,39 @@ body {
   background: var(--panel-bg);
   backdrop-filter: blur(10px);
   box-shadow: 0 14px 40px rgba(6, 20, 34, 0.35);
+  /* It grows out of the hammer button below it. The dock is anchored to the
+     bottom, so nothing here ever moves the button or the map. */
+  transform-origin: 100% 100%;
+  animation: build-panel-in var(--panel-anim) cubic-bezier(0.16, 0.9, 0.3, 1);
+}
+
+/* On its way out. It stops taking clicks the moment it is asked to leave, so a
+   click landing during the animation reaches the map instead of a fading tile. */
+.build-panel[data-open="false"] {
+  pointer-events: none;
+  animation: build-panel-out var(--panel-anim) ease-in forwards;
+}
+
+@keyframes build-panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.94);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes build-panel-out {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(8px) scale(0.95);
+  }
 }
 
 .build-cats {
@@ -205,16 +345,69 @@ body {
   border-color: rgba(255, 212, 121, 0.75);
 }
 
-/* Already standing on the island. A dot, because a tile carries no words. */
-.build-tile[data-standing="true"]::after {
+/* Priced out of reach. Dimmed, never hidden: the player has to be able to see
+   what they are saving for. Hiding is reserved for an unmet prerequisite. */
+.build-tile[data-affordable="false"] {
+  color: var(--muted);
+  opacity: 0.45;
+  border-style: dashed;
+}
+
+.build-tile[data-affordable="false"]:hover {
+  opacity: 0.7;
+  background: rgba(255, 122, 110, 0.18);
+  border-color: rgba(255, 122, 110, 0.5);
+}
+
+/* Just unlocked, and not yet looked at. Gold, because gold is this interface's
+   word for "yours now", and a pulse rather than a badge because the tile has to
+   be found in a grid the player already knows. Hovering it ends both rules. */
+.build-tile[data-attract="true"] {
+  border-color: rgba(255, 212, 121, 0.85);
+  animation: tile-attract var(--attract-period) ease-in-out infinite;
+}
+
+.build-tile[data-attract="true"]::after {
   content: "";
   position: absolute;
-  top: 4px;
-  right: 4px;
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: #7fe09a;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background-image: linear-gradient(
+    115deg,
+    rgba(255, 236, 187, 0) 38%,
+    rgba(255, 236, 187, 0.5) 50%,
+    rgba(255, 236, 187, 0) 62%
+  );
+  background-size: 260% 100%;
+  animation: tile-shimmer var(--attract-period) ease-in-out infinite;
+}
+
+@keyframes tile-attract {
+  0% {
+    background-color: rgba(255, 212, 121, 0.12);
+    box-shadow: 0 0 0 0 rgba(255, 212, 121, 0);
+  }
+  50% {
+    background-color: rgba(255, 212, 121, 0.3);
+    box-shadow: 0 0 13px 3px rgba(255, 212, 121, 0.5);
+  }
+  100% {
+    background-color: rgba(255, 212, 121, 0.12);
+    box-shadow: 0 0 0 0 rgba(255, 212, 121, 0);
+  }
+}
+
+@keyframes tile-shimmer {
+  0% {
+    background-position: 165% 0;
+  }
+  55% {
+    background-position: -65% 0;
+  }
+  100% {
+    background-position: -65% 0;
+  }
 }
 
 .tile-glyph {
@@ -256,6 +449,12 @@ body {
   gap: 4px;
   font-family: ui-monospace, "SF Mono", Menlo, monospace;
   font-size: 11.5px;
+}
+
+/* The resource the pile is short of, so the price says which one to go and get. */
+.tip-cost[data-short="true"] {
+  font-weight: 700;
+  color: #ff9a8e;
 }
 
 .tip-icon {

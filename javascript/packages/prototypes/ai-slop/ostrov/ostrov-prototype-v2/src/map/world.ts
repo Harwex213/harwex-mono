@@ -1,4 +1,5 @@
 import { config } from "@hw/ostrov-prototype-v2-config";
+import { startingTerrains } from "../buildings/catalog";
 import type { Axial } from "../hex/coords";
 import { hexKey } from "../hex/coords";
 import type { Point } from "../hex/layout";
@@ -7,6 +8,7 @@ import type { TerrainProfile, TerrainQuota, Tile } from "./island";
 import { OWNER_ENEMY, OWNER_PLAYER, OWNER_WILD, compareByRow, growCluster, paintCluster } from "./island";
 import type { Rng } from "./rng";
 import { createRng } from "./rng";
+import { TERRAIN_KINDS } from "./terrain";
 
 /**
  * The world: many separate floating islands laid out in three concentric zones
@@ -48,8 +50,35 @@ const ZONE_PROFILES: Record<ZoneId, TerrainProfile> = {
   boss: { snow: 0.5, grass: 0, ice: 1.5, forest: 0.1, sand: 3 },
 };
 
-/** The starting islands owe the build roster one hex of each buildable biome. */
-const START_QUOTA: TerrainQuota = { grass: 2, forest: 1, sand: 1 };
+/**
+ * What the starting islands owe the opening build roster.
+ *
+ * Every building available from the first minute that wants a particular biome
+ * — the sawmill its forest, the mine its wasteland, the mill and the hut their
+ * meadow — gets `world.startTerrainMinTiles` hexes of it, guaranteed. Read off
+ * the roster rather than typed out, so a designer who moves the sawmill onto
+ * snow does not also have to remember to come back here. Without it a start
+ * island is one unlucky roll away from a sawmill that can never be laid.
+ *
+ * The quota is applied by `ensureVariety`, which repaints tiles from the same
+ * seeded stream that painted them, so the guarantee costs no determinism.
+ */
+function startQuota(): TerrainQuota {
+  const quota: TerrainQuota = {};
+  const wanted = config.world.startTerrainMinTiles;
+  if (wanted <= 0) {
+    return quota;
+  }
+  for (const terrain of startingTerrains()) {
+    const kind = TERRAIN_KINDS.find((known) => known === terrain);
+    if (kind) {
+      quota[kind] = wanted;
+    }
+  }
+  return quota;
+}
+
+const START_QUOTA: TerrainQuota = startQuota();
 
 const NO_QUOTA: TerrainQuota = {};
 

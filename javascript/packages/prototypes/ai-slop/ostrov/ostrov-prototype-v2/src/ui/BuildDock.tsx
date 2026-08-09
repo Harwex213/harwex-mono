@@ -1,17 +1,13 @@
+import { config } from "@hw/ostrov-prototype-v2-config";
 import { signal } from "@preact/signals-react";
 import { useSignals } from "@preact/signals-react/runtime";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { BuildingId, CategoryId } from "../buildings/catalog";
 import { CATEGORIES, buildingSpec, buildingsOfCategory } from "../buildings/catalog";
-import {
-  availabilityOf,
-  buildPanelOpen,
-  builtIds,
-  cancelPlacing,
-  placing,
-  togglePlacing,
-} from "../state/buildings";
+import { attractsAttention, noticeBuilding } from "../state/attract";
+import { availabilityOf, buildPanelOpen, cancelPlacing, placing, togglePlacing } from "../state/buildings";
+import { canAfford, stock } from "../state/resources";
 import { BuildingGlyph, CategoryGlyph, ResourceIcon } from "./glyphs";
 import { HammerIcon } from "./HammerIcon";
 
@@ -32,6 +28,38 @@ const TIP_GAP = 10;
 
 /** How close the tooltip may come to the edge of the viewport, in pixels. */
 const TIP_MARGIN = 8;
+
+/** How long the panel takes to arrive and to leave, in milliseconds. */
+const PANEL_ANIM_MS = config.ui.panelAnimMs;
+
+/** Period of one beat of the golden pulse on a newly unlocked tile, in seconds. */
+const ATTRACT_PERIOD_SEC = config.ui.unlockGlowSeconds;
+
+/**
+ * Both durations, handed to the stylesheet as custom properties. The animations
+ * are CSS, so they are frame-rate independent and stop the moment the rule that
+ * carries them stops matching; only their lengths come from here.
+ */
+const DOCK_STYLE = {
+  "--panel-anim": `${PANEL_ANIM_MS}ms`,
+  "--attract-period": `${ATTRACT_PERIOD_SEC}s`,
+} as React.CSSProperties;
+
+/**
+ * Whether the keyboard belongs to a field right now. A hotkey that types over
+ * someone's text is worse than no hotkey.
+ */
+function editing(): boolean {
+  const active = document.activeElement;
+  if (!(active instanceof HTMLElement)) {
+    return false;
+  }
+  if (active.isContentEditable) {
+    return true;
+  }
+  const tag = active.tagName;
+  return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
+}
 
 /** Section the player is looking at. A module signal, so it survives a close. */
 const openCategory = signal<CategoryId>("core");
@@ -87,9 +115,11 @@ type TooltipProps = {
  * gets a whole tooltip.
  */
 function Tooltip({ target }: TooltipProps): React.JSX.Element {
+  useSignals();
   const ref = useRef<HTMLDivElement>(null);
   const [place, setPlace] = useState<{ left: number; top: number } | null>(null);
   const spec = target.id === null ? null : buildingSpec(target.id);
+  const held = stock.value;
 
   useLayoutEffect(() => {
     const node = ref.current;
@@ -124,19 +154,19 @@ function Tooltip({ target }: TooltipProps): React.JSX.Element {
       {spec ? (
         <span className="tip-costs">
           {spec.costWood > 0 ? (
-            <span className="tip-cost">
+            <span className="tip-cost" data-short={held.wood < spec.costWood}>
               <ResourceIcon kind="wood" />
               {spec.costWood}
             </span>
           ) : null}
           {spec.costStone > 0 ? (
-            <span className="tip-cost">
+            <span className="tip-cost" data-short={held.stone < spec.costStone}>
               <ResourceIcon kind="stone" />
               {spec.costStone}
             </span>
           ) : null}
           {spec.costGold > 0 ? (
-            <span className="tip-cost">
+            <span className="tip-cost" data-short={held.gold < spec.costGold}>
               <ResourceIcon kind="gold" />
               {spec.costGold}
             </span>
@@ -162,9 +192,17 @@ function BuildingTile({ id, onHover }: TileProps): React.JSX.Element {
   useSignals();
   const spec = buildingSpec(id);
   const carried = placing.value === id;
-  const standing = builtIds.value.has(id);
+  // Dimmed, not dropped. A building the player cannot pay for yet is something
+  // to save up for; only an unmet prerequisite takes a tile out of the panel.
+  const affordable = canAfford(id);
+  // Golden while this tile is news. It has to survive a close and a reopen, so
+  // the flag lives in the module, not in this component.
+  const attract = attractsAttention(id);
 
   const show = (event: React.PointerEvent<HTMLButtonElement> | React.FocusEvent<HTMLButtonElement>): void => {
+    // Reaching the tile is the whole point of the pulse, so reaching it ends it —
+    // for this building alone, and for the rest of the session.
+    noticeBuilding(id);
     onHover({ id, label: spec.label, rect: event.currentTarget.getBoundingClientRect() });
   };
 
@@ -174,7 +212,8 @@ function BuildingTile({ id, onHover }: TileProps): React.JSX.Element {
       className="build-tile"
       aria-pressed={carried}
       aria-label={spec.label}
-      data-standing={standing}
+      data-attract={attract}
+      data-affordable={affordable}
       onClick={() => togglePlacing(id)}
       onPointerEnter={show}
       onFocus={show}
@@ -186,7 +225,12 @@ function BuildingTile({ id, onHover }: TileProps): React.JSX.Element {
   );
 }
 
-function BuildPanel(): React.JSX.Element | null {
+type PanelProps = {
+  /** False while the panel is on its way out. It is still mounted until then. */
+  open: boolean;
+};
+
+function BuildPanel({ open }: PanelProps): React.JSX.Element | null {
   useSignals();
   const [hovered, setHovered] = useState<HoverTarget | null>(null);
   const sections = openSections();
@@ -202,12 +246,20 @@ function BuildPanel(): React.JSX.Element | null {
     }
   }, [activeId]);
 
+  // The tooltip is portalled to the body, so it would outlive the panel it
+  // describes for the length of the exit animation. It leaves with it instead.
+  useEffect(() => {
+    if (!open) {
+      setHovered(null);
+    }
+  }, [open]);
+
   if (!active) {
     return null;
   }
 
   return (
-    <aside className="build-panel">
+    <aside className="build-panel" data-open={open}>
       <div className="build-cats" role="tablist" aria-label="Разделы построек">
         {sections.map((section) => (
           <button
@@ -248,10 +300,50 @@ function BuildPanel(): React.JSX.Element | null {
  * Both sit in the overlay, which is `pointer-events: none` apart from its own
  * controls, so a click on either never reaches the canvas underneath: no pan,
  * no drag, no tile selection.
+ *
+ * The panel outlives its own close by the length of the exit animation, which is
+ * what `mounted` holds. The unmount is a timer rather than an `animationend`,
+ * because the tiles inside the panel run animations of their own whose events
+ * bubble through here, and because a timer cannot leave the panel stuck half
+ * gone: every new toggle cancels the pending one.
  */
 function BuildDock(): React.JSX.Element {
   useSignals();
   const open = buildPanelOpen.value;
+  const [mounted, setMounted] = useState(open);
+
+  useEffect(() => {
+    if (open) {
+      setMounted(true);
+      return;
+    }
+    const timer = window.setTimeout(() => setMounted(false), PANEL_ANIM_MS);
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [open]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent): void => {
+      // `code`, not `key`: this prototype is in Russian, and on a Russian layout
+      // the same physical key sends "и".
+      if (event.code !== "KeyB" || event.repeat || event.altKey || event.ctrlKey || event.metaKey) {
+        return;
+      }
+      if (editing()) {
+        return;
+      }
+      event.preventDefault();
+      // B is a toggle, and closing the panel takes any armed ghost with it: a
+      // cursor still carrying a building with no panel to put it back is a trap.
+      cancelPlacing();
+      buildPanelOpen.value = !buildPanelOpen.peek();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, []);
 
   const onToggle = (): void => {
     // The same button cancels a placement in progress, which is the third way
@@ -267,8 +359,8 @@ function BuildDock(): React.JSX.Element {
   };
 
   return (
-    <div className="build-dock">
-      {open ? <BuildPanel /> : null}
+    <div className="build-dock" style={DOCK_STYLE}>
+      {mounted ? <BuildPanel open={open} /> : null}
       <button
         type="button"
         className="build-button"

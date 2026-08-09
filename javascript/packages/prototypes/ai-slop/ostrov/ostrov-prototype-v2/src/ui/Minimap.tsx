@@ -1,3 +1,4 @@
+import { config } from "@hw/ostrov-prototype-v2-config";
 import { effect } from "@preact/signals-react";
 import { useEffect, useRef } from "react";
 import { drawMinimap, projectionFor, toWorld } from "../render/minimap";
@@ -8,11 +9,13 @@ import { camera, territoryVersion, viewport, world } from "../state/signals";
 /**
  * Side of the minimap in CSS pixels. The canvas is square, so one number does.
  *
- * The world holds around eighty islands across three rings. At the old 190 the
- * outer ring's marks sat about eight pixels apart and read as one grainy band;
- * the extra pixels are what keep them countable.
+ * The world holds around eighty islands across three rings, and the number that
+ * matters is how far apart two neighbouring marks of the outer ring land. At 190
+ * that gap was about eight pixels and the ring read as one grainy band; the
+ * designer's number lives in the config now, so the trade between a readable
+ * ring and a corner of the screen is theirs.
  */
-const MINIMAP_SIZE = 232;
+const MINIMAP_SIZE = config.ui.minimapSize;
 
 /**
  * The overview map in the bottom-left corner.

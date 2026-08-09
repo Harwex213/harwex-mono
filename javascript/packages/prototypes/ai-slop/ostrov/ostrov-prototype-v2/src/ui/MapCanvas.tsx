@@ -21,6 +21,15 @@ import { clampCamera, clampScale, screenToWorld, zoomAt } from "../state/camera"
 import { IdleFloat } from "../state/float";
 import { sampleFog } from "../state/fog";
 import { PanGlide, PanVelocity } from "../state/inertia";
+import {
+  advanceEconomy,
+  deliveryBeats,
+  economyAnimating,
+  parcelsInFlight,
+  roadLines,
+  stallsByHex,
+} from "../state/parcels";
+import { stock } from "../state/resources";
 import { camera, dragging, hovered, selected, territoryVersion, viewport, world } from "../state/signals";
 import { ZoomEase } from "../state/zoom";
 
@@ -132,6 +141,9 @@ function MapCanvas(): React.JSX.Element {
       placing.value;
       placedBuildings.value;
       territoryVersion.value;
+      // The pile is read by the placement check, so the preview under the cursor
+      // turns red the moment a purchase leaves the player unable to pay.
+      stock.value;
       dirty = true;
     });
 
@@ -474,7 +486,11 @@ function MapCanvas(): React.JSX.Element {
       // through the effect above. Sites and finished buildings both animate on
       // their own, so they keep asking for frames instead of starting a second loop.
       advanceBuildings(stamp);
-      if (buildingsAnimating()) {
+      // The haulage rides the same loop and the same clamped step: producers
+      // send, crates walk, arrivals are credited. Nothing here starts a second
+      // loop, and while a crate is on the road it keeps this one awake.
+      advanceEconomy(stamp, delta);
+      if (buildingsAnimating() || economyAnimating()) {
         dirty = true;
       }
       // Sampled before the dirty test, not after: a region on its way from
@@ -500,6 +516,10 @@ function MapCanvas(): React.JSX.Element {
         ghost: currentGhost(),
         fog,
         territoryVersion: territoryVersion.peek(),
+        parcels: parcelsInFlight(),
+        roads: roadLines(),
+        deliveries: deliveryBeats(),
+        stalls: stallsByHex(),
       });
     };
     frame = requestAnimationFrame(loop);

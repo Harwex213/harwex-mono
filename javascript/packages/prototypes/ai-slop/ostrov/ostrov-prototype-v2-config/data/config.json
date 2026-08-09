@@ -50,6 +50,7 @@
     "largeIslandSizeMax": 17,
     "startIslandSize": 9,
     "minIslandGap": 2,
+    "startTerrainMinTiles": 2,
     "enemyStartDistance": 900
   },
   "render": {
@@ -82,6 +83,12 @@
     "islandShadowOffsetY": 8,
     "islandShadowSpread": 1.16,
     "islandShadowBlur": 0.62
+  },
+  "ui": {
+    "minimapSize": 296,
+    "minimapPlayerMark": 5.4,
+    "unlockGlowSeconds": 1.5,
+    "panelAnimMs": 150
   },
   "terrain": {
     "snowLabel": "Снег",
@@ -256,6 +263,16 @@
       "nodeX": 367,
       "nodeY": 172
     }
+  },
+  "economy": {
+    "enabled": true,
+    "startStockHeadroom": 1.35,
+    "startStockFloor": 50,
+    "parcelSpeed": 170,
+    "parcelSpacing": 42,
+    "parcelCarry": 2,
+    "productionSpeedup": 4,
+    "stallStockpileCap": 12
   },
   "units": {
     "worker": {

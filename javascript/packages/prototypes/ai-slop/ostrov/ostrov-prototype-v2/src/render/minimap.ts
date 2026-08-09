@@ -1,3 +1,4 @@
+import { config } from "@hw/ostrov-prototype-v2-config";
 import type { Point } from "../hex/layout";
 import { OWNER_ENEMY, OWNER_PLAYER } from "../map/island";
 import type { Island, WorldMap } from "../map/world";
@@ -20,6 +21,12 @@ import { BOSS_MARKER, MINIMAP_ENEMY, MINIMAP_NEUTRAL, MINIMAP_PLAYER, withAlpha 
  * an island — the three zone rings, the viewport rectangle, and a pale wash over
  * the ground the player has actually walked, which is the shape their own
  * territory cuts out of the weather.
+ *
+ * Mark sizes are a legend, not decoration. Four sizes carry four meanings, and
+ * they are deliberately far apart: the player's own island is the largest and
+ * the only one wearing a white ring, so it is found at a glance rather than
+ * read; the boss comes next, then the enemy, and the neutral crowd is smallest,
+ * because eighty of them share one canvas and any two must stay countable.
  */
 
 const TAU = Math.PI * 2;
@@ -27,7 +34,11 @@ const TAU = Math.PI * 2;
 /** Blank ring between the outer zone boundary and the canvas edge, in pixels. */
 const EDGE_PAD = 8;
 
-const BACKDROP = "rgba(8, 22, 36, 0.72)";
+/**
+ * The ground of the overview. Opaque: the map underneath is the same blues and
+ * greens as the marks, and a translucent panel let it read through them.
+ */
+const BACKDROP = "#0a1a2c";
 const ZONE_LINE = "rgba(214, 234, 250, 0.55)";
 const ZONE_FILL_WILD = "rgba(120, 170, 210, 0.1)";
 const ZONE_FILL_BOSS = "rgba(220, 110, 96, 0.16)";
@@ -35,6 +46,30 @@ const VIEWPORT_LINE = "rgba(255, 255, 255, 0.92)";
 const VIEWPORT_FILL = "rgba(255, 255, 255, 0.1)";
 /** Ring around the rare landmark-sized islands. */
 const LANDMARK_RING = "rgba(255, 226, 158, 0.85)";
+
+/** The ring only the player's own island wears, which is what makes it findable. */
+const HOME_RING = "rgba(255, 255, 255, 0.95)";
+
+/** Dark cushion under every mark, so a pale island keeps its edge over the wash. */
+const MARK_HALO = "rgba(6, 18, 30, 0.8)";
+
+/** Radius of the player's own mark, in pixels. The designer's number. */
+const HOME_RADIUS = config.ui.minimapPlayerMark;
+
+/** Radius of the boss mark. Second largest: one island, and the point of the map. */
+const BOSS_RADIUS = 4;
+
+/** Radius of an enemy mark. Third: there are few of them and they matter. */
+const ENEMY_RADIUS = 3.2;
+
+/** Smallest neutral mark, before island size is added. */
+const NEUTRAL_RADIUS_MIN = 1;
+
+/** How much a neutral mark may grow with the island under it. */
+const NEUTRAL_RADIUS_RANGE = 1.5;
+
+/** How fast a neutral mark grows per hex of its island. */
+const NEUTRAL_RADIUS_PER_TILE = 0.09;
 
 /** Maps world space onto the minimap canvas and back. */
 type Projection = {
@@ -84,6 +119,28 @@ function colourOf(island: Island): string {
     return MINIMAP_ENEMY;
   }
   return MINIMAP_NEUTRAL;
+}
+
+/**
+ * How big this island's mark is drawn.
+ *
+ * Owner comes first and island size second: what the player needs off this
+ * canvas is whose island it is, and only the anonymous neutral crowd is left to
+ * say anything about its size.
+ */
+function radiusOf(island: Island): number {
+  if (island.owner === OWNER_PLAYER) {
+    return HOME_RADIUS;
+  }
+  if (island.boss) {
+    return BOSS_RADIUS;
+  }
+  if (island.owner === OWNER_ENEMY) {
+    return ENEMY_RADIUS;
+  }
+  return (
+    NEUTRAL_RADIUS_MIN + Math.min(NEUTRAL_RADIUS_RANGE, island.tiles.length * NEUTRAL_RADIUS_PER_TILE)
+  );
 }
 
 function strokeCircle(ctx: CanvasRenderingContext2D, projection: Projection, radius: number, dashed: boolean): void {
@@ -167,14 +224,12 @@ function drawMinimap(ctx: CanvasRenderingContext2D, size: number, frame: Minimap
     }
     ctx.globalAlpha = 0.34 + 0.66 * level;
     const spot = toCanvas(projection, island.centre.x, island.centre.y);
-    // Bigger islands read bigger, but only just: with eighty marks on one small
-    // canvas the difference has to be legible without the marks growing into
-    // each other, so the whole range spans about three pixels.
-    const radius = 1.1 + Math.min(1.9, island.tiles.length * 0.1);
+    const radius = radiusOf(island);
     const colour = colourOf(island);
+    const home = island.owner === OWNER_PLAYER;
     ctx.beginPath();
     ctx.arc(spot.x, spot.y, radius + 1, 0, TAU);
-    ctx.fillStyle = "rgba(6, 18, 30, 0.75)";
+    ctx.fillStyle = MARK_HALO;
     ctx.fill();
     ctx.beginPath();
     ctx.arc(spot.x, spot.y, radius, 0, TAU);
@@ -189,7 +244,15 @@ function drawMinimap(ctx: CanvasRenderingContext2D, size: number, frame: Minimap
       ctx.lineWidth = 1;
       ctx.stroke();
     }
-    if (island.owner === OWNER_PLAYER || island.owner === OWNER_ENEMY || island.boss) {
+    if (home) {
+      // Home wears a white ring nothing else wears. Size alone would leave the
+      // player comparing marks; a colour that appears once is found without one.
+      ctx.beginPath();
+      ctx.arc(spot.x, spot.y, radius + 2.6, 0, TAU);
+      ctx.strokeStyle = HOME_RING;
+      ctx.lineWidth = 1.6;
+      ctx.stroke();
+    } else if (island.owner === OWNER_ENEMY || island.boss) {
       ctx.beginPath();
       ctx.arc(spot.x, spot.y, radius + 2.8, 0, TAU);
       ctx.strokeStyle = withAlpha(colour, 0.7);

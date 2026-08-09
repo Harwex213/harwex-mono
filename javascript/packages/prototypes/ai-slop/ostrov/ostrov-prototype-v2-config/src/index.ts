@@ -3,6 +3,7 @@ import type { GameConfig, SchemaGroup } from "./schema";
 import {
   BUILDING_CATEGORY_OPTIONS,
   DEFAULTS,
+  RESOURCE_OPTIONS,
   SCHEMA,
   cloneConfig,
   entityEntries,
@@ -33,6 +34,7 @@ export type { GameConfig, SchemaGroup };
 export {
   BUILDING_CATEGORY_OPTIONS,
   DEFAULTS,
+  RESOURCE_OPTIONS,
   SCHEMA,
   cloneConfig,
   config,

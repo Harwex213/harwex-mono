@@ -33,6 +33,23 @@ const MINIMAP_ENEMY = "#ff6b5e";
 const MINIMAP_NEUTRAL = "#c3d2dd";
 const BOSS_MARKER = "#ff2f2f";
 
+/**
+ * One colour per resource plus the build clock, shared by the panel icons, the
+ * top readout and the crates walking the road. A green blob on the map and a
+ * green blob in the build panel have to be the same thing, so all three read
+ * this rather than each keeping its own swatch.
+ *
+ * The first four values are the ones the config editor draws its own icons with;
+ * food is this app's, kept clear of the gold coin it sits next to.
+ */
+const RESOURCE_COLOURS = {
+  wood: "#8ed07f",
+  stone: "#a9bccb",
+  gold: "#ffd479",
+  food: "#f0885d",
+  time: "#7fc0ff",
+} as const;
+
 const HOVER_FILL = withAlpha(config.render.hoverFillColor, config.render.hoverFillAlpha);
 const HOVER_LINE = withAlpha(config.render.hoverLineColor, config.render.hoverLineAlpha);
 const SELECT_LINE = config.render.selectColor;
@@ -107,6 +124,7 @@ export {
   MINIMAP_ENEMY,
   MINIMAP_NEUTRAL,
   MINIMAP_PLAYER,
+  RESOURCE_COLOURS,
   ROCK_BOTTOM,
   ROCK_TOP,
   SELECT_LINE,

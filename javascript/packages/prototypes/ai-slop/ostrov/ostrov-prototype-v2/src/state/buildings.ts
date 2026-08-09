@@ -5,6 +5,7 @@ import type { Axial } from "../hex/coords";
 import { hexKey } from "../hex/coords";
 import { OWNER_PLAYER } from "../map/island";
 import { tileVisible } from "./fog";
+import { paySpend, resourceLabel, shortfallOf } from "./resources";
 import { world } from "./signals";
 import { claimAround } from "./territory";
 
@@ -101,6 +102,13 @@ function placementCheck(id: BuildingId, hex: Axial | null): PlacementCheck {
   if (wanted !== "any" && wanted !== tile.terrain) {
     return { valid: false, reason: "Не тот биом" };
   }
+  // The price is checked last on purpose. It is the one refusal that has nothing
+  // to do with the hex under the cursor, and the build panel has already dimmed
+  // the tile, so the player meets it knowing why.
+  const missing = shortfallOf(id);
+  if (missing) {
+    return { valid: false, reason: `Не хватает: ${resourceLabel(missing)}` };
+  }
   return PLACEMENT_OK;
 }
 
@@ -115,9 +123,19 @@ function cancelPlacing(): void {
   }
 }
 
-/** Lays a site on `hex` and starts its clock. Returns false when the hex refuses it. */
+/**
+ * Lays a site on `hex` and starts its clock. Returns false when the hex refuses
+ * it, or when the pile does not cover the price.
+ *
+ * The price is taken the moment the site is laid, not when it is finished: the
+ * player is paying for the materials that go into the scaffolding, and a queue
+ * of free sites laid against money nobody has would make the panel a lie.
+ */
 function placeBuilding(id: BuildingId, hex: Axial, now: number): boolean {
   if (!placementCheck(id, hex).valid) {
+    return false;
+  }
+  if (!paySpend(id)) {
     return false;
   }
   const next = new Map(buildings.peek());

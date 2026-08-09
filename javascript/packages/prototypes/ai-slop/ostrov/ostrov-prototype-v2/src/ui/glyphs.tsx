@@ -1,4 +1,5 @@
 import type { BuildingId, CategoryId } from "../buildings/catalog";
+import { RESOURCE_COLOURS } from "../render/palette";
 
 /**
  * Every glyph the build panel draws, on one 24×24 grid.
@@ -8,50 +9,45 @@ import type { BuildingId, CategoryId } from "../buildings/catalog";
  * copied rather than imported: the editor module is a page of that app, not part
  * of the config library's public entry, and one shared icon package for four
  * paths is not worth building yet. They are a candidate for that package later;
- * until then the two apps speak one visual language by copy.
+ * until then the two apps speak one visual language by copy. Food is this app's
+ * own: the editor never had to draw it. The colours come from `palette.ts`,
+ * which the crates on the map read too.
  *
  * The category and building glyphs are the panel's own. Every one of them is a
  * silhouette rather than a picture: the tiles are 40 and 46 pixels wide, so a
  * shape either reads as one blob at that size or does not read at all.
  */
 
-type ResourceKind = "wood" | "stone" | "gold" | "time";
-
-type ResourceSpec = {
-  path: string;
-  colour: string;
-};
+type ResourceIconKind = "wood" | "stone" | "gold" | "food" | "time";
 
 /** Copied from `@hw/ostrov-prototype-v2-config` `src/editor/icons.tsx`. */
-const RESOURCES: Record<ResourceKind, ResourceSpec> = {
-  wood: {
-    path: "M12 2 L17.5 10.5 H14.6 L19.5 17.4 H4.5 L9.4 10.5 H6.5 Z M10.6 17.4 H13.4 V22 H10.6 Z",
-    colour: "#8ed07f",
-  },
-  stone: {
-    path: "M4.5 14.6 L7.6 6.4 L13.6 3.4 L20 9.6 L18 19.6 L8 20.6 Z",
-    colour: "#a9bccb",
-  },
-  gold: {
-    path:
-      "M2.6 12 A9.4 9.4 0 1 0 21.4 12 A9.4 9.4 0 1 0 2.6 12 Z" +
-      " M7.4 12 A4.6 4.6 0 1 0 16.6 12 A4.6 4.6 0 1 0 7.4 12 Z",
-    colour: "#ffd479",
-  },
-  time: {
-    path: "M5.6 2.4 H18.4 V4.6 L13.2 12 L18.4 19.4 V21.6 H5.6 V19.4 L10.8 12 L5.6 4.6 Z",
-    colour: "#7fc0ff",
-  },
+const RESOURCE_PATHS: Record<ResourceIconKind, string> = {
+  wood: "M12 2 L17.5 10.5 H14.6 L19.5 17.4 H4.5 L9.4 10.5 H6.5 Z M10.6 17.4 H13.4 V22 H10.6 Z",
+  stone: "M4.5 14.6 L7.6 6.4 L13.6 3.4 L20 9.6 L18 19.6 L8 20.6 Z",
+  gold:
+    "M2.6 12 A9.4 9.4 0 1 0 21.4 12 A9.4 9.4 0 1 0 2.6 12 Z" +
+    " M7.4 12 A4.6 4.6 0 1 0 16.6 12 A4.6 4.6 0 1 0 7.4 12 Z",
+  // An ear of wheat: a stalk with four pairs of grains. A loaf reads as a stone
+  // at this size, and a coin is already taken.
+  food:
+    "M11.2 22 V11.4 H12.8 V22 Z" +
+    " M12 3.2 C13.6 4.6 13.6 6.6 12 8 C10.4 6.6 10.4 4.6 12 3.2 Z" +
+    " M11.2 6.6 C11.2 8.6 10.2 9.8 8.2 10 C8.2 8 9.2 6.8 11.2 6.6 Z" +
+    " M12.8 6.6 C14.8 6.8 15.8 8 15.8 10 C13.8 9.8 12.8 8.6 12.8 6.6 Z" +
+    " M11.2 10.4 C11.2 12.4 10.2 13.6 8.2 13.8 C8.2 11.8 9.2 10.6 11.2 10.4 Z" +
+    " M12.8 10.4 C14.8 10.6 15.8 11.8 15.8 13.8 C13.8 13.6 12.8 12.4 12.8 10.4 Z",
+  time: "M5.6 2.4 H18.4 V4.6 L13.2 12 L18.4 19.4 V21.6 H5.6 V19.4 L10.8 12 L5.6 4.6 Z",
 };
 
 type ResourceIconProps = {
-  kind: ResourceKind;
+  kind: ResourceIconKind;
+  className?: string;
 };
 
-function ResourceIcon({ kind }: ResourceIconProps): React.JSX.Element {
+function ResourceIcon({ kind, className }: ResourceIconProps): React.JSX.Element {
   return (
-    <svg className="tip-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-      <path d={RESOURCES[kind].path} fill={RESOURCES[kind].colour} fillRule="evenodd" />
+    <svg className={className ?? "tip-icon"} viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path d={RESOURCE_PATHS[kind]} fill={RESOURCE_COLOURS[kind]} fillRule="evenodd" />
     </svg>
   );
 }
@@ -168,5 +164,5 @@ function BuildingGlyph({ id }: { id: BuildingId }): React.JSX.Element {
   return <Glyph className="tile-glyph">{BUILDING_GLYPHS[id]}</Glyph>;
 }
 
-export type { ResourceKind };
+export type { ResourceIconKind };
 export { BuildingGlyph, CategoryGlyph, ResourceIcon };

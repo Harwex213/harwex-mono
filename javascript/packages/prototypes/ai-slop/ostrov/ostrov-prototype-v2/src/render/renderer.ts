@@ -1,5 +1,6 @@
 import { config } from "@hw/ostrov-prototype-v2-config";
 import type { BuildingId } from "../buildings/catalog";
+import type { RoadLeg } from "../economy/routes";
 import { chainSegments, territoryEdges } from "../hex/borders";
 import type { Axial } from "../hex/coords";
 import { HEX_DIRECTIONS, hexKey } from "../hex/coords";
@@ -11,7 +12,9 @@ import type { Island, Rect, WorldMap } from "../map/world";
 import type { PlacedBuilding } from "../state/buildings";
 import type { Camera } from "../state/camera";
 import type { FogSnapshot } from "../state/fog";
+import type { Delivery, Parcel, Stall } from "../state/parcels";
 import {
+  buildingHeight,
   drawBuilding,
   drawBuildingHud,
   drawGhost,
@@ -20,6 +23,7 @@ import {
   traceBuildingOccluder,
   traceGhostOccluder,
 } from "./buildingArt";
+import { drawDelivery, drawParcel, drawRoads, drawStallBadge } from "./parcelArt";
 import {
   BORDER_BRIGHT,
   BORDER_DARK,
@@ -64,6 +68,14 @@ type Frame = {
   fog: FogSnapshot;
   /** Bumped whenever ground changes hands; the territory outline caches on it. */
   territoryVersion: number;
+  /** Crates on the road right now. Live data owned by `state/parcels.ts`. */
+  parcels: readonly Parcel[];
+  /** Every leg of every live road, each one exactly once. */
+  roads: readonly RoadLeg[];
+  /** Landings still playing their beat. */
+  deliveries: readonly Delivery[];
+  /** Producers with something to say, keyed by their hex. */
+  stalls: ReadonlyMap<string, Stall>;
 };
 
 /** Far enough outside any island to stand in for "the whole world" in a clip path. */
@@ -136,6 +148,8 @@ function rectsOverlap(left: Rect, right: Rect): boolean {
 
 class Renderer {
   private readonly ctx: CanvasRenderingContext2D;
+  /** Crates of this frame, grouped by the hex they are over. Reused, never rebuilt. */
+  private readonly byHexParcels = new Map<string, Parcel[]>();
   private borderSource: WorldMap | null = null;
   private borderVersion = -1;
   private territories: Territory[] = [];
@@ -201,6 +215,8 @@ class Renderer {
       byHex.set(hexKey(building.q, building.r), building);
     }
 
+    this.groupParcels(frame);
+
     const ghostKey = frame.ghost ? hexKey(frame.ghost.hex.q, frame.ghost.hex.r) : null;
     const hasTile = (q: number, r: number): boolean => frame.world.byKey.has(hexKey(q, r));
     // One back-to-front pass over every tile of the world, with each tile's
@@ -240,6 +256,14 @@ class Renderer {
       if (building) {
         drawBuilding(ctx, building, centre, frame.now);
       }
+      // Crates go down with the tile they are over, so a building in front of
+      // one covers it exactly as it covers the ground.
+      const carried = this.byHexParcels.get(key);
+      if (carried) {
+        for (const parcel of carried) {
+          drawParcel(ctx, parcel, frame.now / 1000, level);
+        }
+      }
       if (frame.ghost && key === ghostKey) {
         drawGhost(ctx, frame.ghost.id, centre, frame.ghost.valid, frame.now / 1000);
       }
@@ -249,6 +273,7 @@ class Renderer {
     // The territory line and the cursor lie on the ground, so both are kept out
     // of the ground the buildings stand on.
     this.withoutBuildings(frame, () => {
+      this.paintRoads(frame);
       this.drawTerritories(frame);
       if (frame.ghost) {
         drawGhostTile(ctx, hexToWorld(frame.ghost.hex), frame.ghost.valid, frame.now / 1000);
@@ -261,16 +286,60 @@ class Renderer {
       drawBossMarker(ctx, hexToWorld(frame.world.bossIsland.origin), bossLevel);
     }
 
-    // Labels last: a progress bar and a refusal pill read as captions on the
-    // scene, so nothing from the scene may run across them.
+    for (const delivery of frame.deliveries) {
+      drawDelivery(ctx, delivery, frame.now);
+    }
+
+    // Labels last: a progress bar, a stall pill and a refusal pill read as
+    // captions on the scene, so nothing from the scene may run across them.
     for (const building of frame.buildings) {
-      drawBuildingHud(ctx, building, hexToWorld(building), frame.now);
+      const centre = hexToWorld(building);
+      drawBuildingHud(ctx, building, centre, frame.now);
+      const stall = frame.stalls.get(hexKey(building.q, building.r));
+      if (stall && building.state === "built") {
+        drawStallBadge(ctx, centre, stall, buildingHeight(building.id) + HEX_SIZE * 0.42);
+      }
     }
     if (frame.ghost && !frame.ghost.valid) {
       drawRefusalLabel(ctx, hexToWorld(frame.ghost.hex), frame.ghost.reason);
     }
 
     ctx.restore();
+  }
+
+  /**
+   * Buckets the crates by the hex each is over. One pass, into a map that is
+   * kept between frames and cleared rather than rebuilt, so a hundred crates in
+   * flight allocate nothing.
+   */
+  private groupParcels(frame: Frame): void {
+    for (const bucket of this.byHexParcels.values()) {
+      bucket.length = 0;
+    }
+    for (const parcel of frame.parcels) {
+      const bucket = this.byHexParcels.get(parcel.hex);
+      if (bucket) {
+        bucket.push(parcel);
+        continue;
+      }
+      this.byHexParcels.set(parcel.hex, [parcel]);
+    }
+  }
+
+  /**
+   * The cart tracks, laid with the territory line on ground the buildings do not
+   * hide. A leg fades with the hex it runs across, so a road on remembered
+   * ground is as dim as the ground under it and one on unseen ground is not
+   * drawn at all.
+   */
+  private paintRoads(frame: Frame): void {
+    drawRoads(this.ctx, frame.roads, (leg) => {
+      const tile = frame.world.byKey.get(leg.hex);
+      if (!tile || !this.visible[tile.islandId]) {
+        return 0;
+      }
+      return frame.fog.tile[tile.index] ?? 1;
+    });
   }
 
   /**

@@ -105,11 +105,42 @@ const WINDOW_GLOW_PERIOD = 4.7;
 /** Period of one up-and-down trip of the construction hoist, in seconds. */
 const HOIST_PERIOD = 1.7;
 
+/* --- Hauling ---------------------------------------------------------------
+ *
+ * A producer sends its output to the castle as a crate that walks the road.
+ * Speed, spacing, carried amount and the production speed-up are the designer's
+ * and live in the `economy` group of the config; what is left here is the shape
+ * of the crate and the beat it lands on.
+ */
+
+/** Floor on the pause between two parcels, in seconds, whatever the speed-up asks for. */
+const PARCEL_MIN_INTERVAL_SEC = 0.2;
+
+/** Half-width of a crate, in world units. Roughly a third of a hex. */
+const PARCEL_SIZE = 11;
+
+/** How far above the ground the crate rides, in world units. */
+const PARCEL_LIFT = 13;
+
+/** Peak of the carried bob, in world units. */
+const PARCEL_BOB_AMPLITUDE = 2.6;
+
+/** Period of that bob, in seconds. */
+const PARCEL_BOB_PERIOD = 0.62;
+
+/** Length of the beat played at the castle when a parcel lands, in seconds. */
+const DELIVERY_BEAT_SEC = 0.85;
+
+/** How far the credited amount floats up over that beat, in world units. */
+const DELIVERY_RISE = 46;
+
 export {
   BUILDING_ART_SCALE,
   BUILD_TIME_MIN_SEC,
   BUILD_TIME_SPEEDUP,
   COMPLETION_BEAT_SEC,
+  DELIVERY_BEAT_SEC,
+  DELIVERY_RISE,
   FLAG_WAVE_PERIOD,
   GHOST_ALPHA,
   GHOST_DASH_PERIOD,
@@ -125,6 +156,11 @@ export {
   IDLE_FLOAT_WOBBLE_AMPLITUDE,
   IDLE_FLOAT_WOBBLE_PERIOD,
   IDLE_FLOAT_WOBBLE_PHASE,
+  PARCEL_BOB_AMPLITUDE,
+  PARCEL_BOB_PERIOD,
+  PARCEL_LIFT,
+  PARCEL_MIN_INTERVAL_SEC,
+  PARCEL_SIZE,
   PLACEMENT_BEAT_SEC,
   WHEEL_SPIN_PERIOD,
   WINDOW_GLOW_PERIOD,

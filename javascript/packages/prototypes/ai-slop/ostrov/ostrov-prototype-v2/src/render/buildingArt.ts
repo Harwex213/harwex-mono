@@ -1,5 +1,5 @@
 import type { BuildingId } from "../buildings/catalog";
-import { CASTLE_ID } from "../buildings/catalog";
+import { CASTLE_ID, SAWMILL_ID } from "../buildings/catalog";
 import type { Point } from "../hex/layout";
 import { HEX_SIZE, SQUASH, hexCorners } from "../hex/layout";
 import {
@@ -626,9 +626,6 @@ const COTTAGE_ART: BuildingArt = {
   siteHalfWidth: 32,
 };
 
-/** The building whose art is the sawmill. Kept local: `catalog.ts` is not this module's to extend. */
-const SAWMILL_ID: BuildingId = "sawmill1";
-
 const ART_BY_ID: Partial<Record<BuildingId, BuildingArt>> = {
   [CASTLE_ID]: CASTLE_ART,
   [SAWMILL_ID]: SAWMILL_ART,
@@ -636,6 +633,15 @@ const ART_BY_ID: Partial<Record<BuildingId, BuildingArt>> = {
 
 function artOf(id: BuildingId): BuildingArt {
   return ART_BY_ID[id] ?? COTTAGE_ART;
+}
+
+/**
+ * How far this building reaches above the centre of its tile, in world units.
+ * Whatever wants to hang a label over a roof needs it and has no business
+ * knowing the art units the roof was drawn in.
+ */
+function buildingHeight(id: BuildingId): number {
+  return artOf(id).height * UNIT;
 }
 
 /* --- Construction ----------------------------------------------------------
@@ -1027,6 +1033,7 @@ function traceBuildingOccluder(
 
 export type { BuildingArt };
 export {
+  buildingHeight,
   drawBuilding,
   drawBuildingHud,
   drawGhost,
