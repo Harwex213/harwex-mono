@@ -4,24 +4,40 @@ import { useEffect, useRef } from "react";
 import type { Axial } from "../hex/coords";
 import { hexKey } from "../hex/coords";
 import { WALL_DEPTH, hexToWorld, worldToHex } from "../hex/layout";
-import type { IslandMap } from "../map/island";
+import type { Tile } from "../map/island";
+import type { GhostPreview } from "../render/renderer";
 import { Renderer } from "../render/renderer";
+import {
+  advanceBuildings,
+  buildingsAnimating,
+  cancelPlacing,
+  placeBuilding,
+  placedBuildings,
+  placementCheck,
+  placing,
+} from "../state/buildings";
 import type { Camera } from "../state/camera";
-import { clampScale, screenToWorld, zoomAt } from "../state/camera";
+import { clampCamera, clampScale, screenToWorld, zoomAt } from "../state/camera";
 import { IdleFloat } from "../state/float";
 import { PanGlide, PanVelocity } from "../state/inertia";
-import { camera, dragging, hovered, island, selected } from "../state/signals";
+import { camera, dragging, hovered, selected, viewport, world } from "../state/signals";
 import { ZoomEase } from "../state/zoom";
 
 const DRAG_SLOP = config.camera.dragSlop;
 
-/** Camera that shows the whole island with a margin, used on first layout. */
-function fitCamera(map: IslandMap, width: number, height: number): Camera {
+/**
+ * Closest the opening camera is allowed to sit. Fitting the start island alone
+ * would fill the screen with six hexes and hide the fact there is a world.
+ */
+const OPENING_MAX_SCALE = 1.1;
+
+/** Camera that shows one island with a margin, used on first layout. */
+function fitCamera(tiles: readonly Tile[], width: number, height: number): Camera {
   let minX = Number.POSITIVE_INFINITY;
   let maxX = Number.NEGATIVE_INFINITY;
   let minY = Number.POSITIVE_INFINITY;
   let maxY = Number.NEGATIVE_INFINITY;
-  for (const tile of map.tiles) {
+  for (const tile of tiles) {
     const centre = hexToWorld(tile);
     minX = Math.min(minX, centre.x - 70);
     maxX = Math.max(maxX, centre.x + 70);
@@ -33,7 +49,7 @@ function fitCamera(map: IslandMap, width: number, height: number): Camera {
   return {
     x: (minX + maxX) / 2,
     y: (minY + maxY) / 2,
-    scale: clampScale(Math.min(width / (spanX + 160), height / (spanY + 160))),
+    scale: Math.min(OPENING_MAX_SCALE, clampScale(Math.min(width / (spanX + 160), height / (spanY + 160)))),
   };
 }
 
@@ -111,9 +127,24 @@ function MapCanvas(): React.JSX.Element {
       camera.value;
       hovered.value;
       selected.value;
-      island.value;
+      world.value;
+      placing.value;
+      placedBuildings.value;
       dirty = true;
     });
+
+    /**
+     * The one place the camera is written. Everything that moves it — a drag, a
+     * glide, a pinch, the eased wheel zoom — hands its result through here, so
+     * the world bounds hold whatever pushed at them. The return value says which
+     * axes the clamp had to take back, which is what lets a glide give up on an
+     * axis instead of grinding against the edge.
+     */
+    const applyCamera = (wanted: Camera): { stoppedX: boolean; stoppedY: boolean } => {
+      const next = clampCamera(wanted, world.peek().bounds, { width: cssWidth, height: cssHeight });
+      camera.value = next;
+      return { stoppedX: next.x !== wanted.x, stoppedY: next.y !== wanted.y };
+    };
 
     const pickAt = (clientX: number, clientY: number): Axial | null => {
       const rect = canvas.getBoundingClientRect();
@@ -127,7 +158,7 @@ function MapCanvas(): React.JSX.Element {
         clientY - rect.top - floatY,
       );
       const hex = worldToHex(point.x, point.y);
-      return island.peek().byKey.has(hexKey(hex.q, hex.r)) ? hex : null;
+      return world.peek().byKey.has(hexKey(hex.q, hex.r)) ? hex : null;
     };
 
     const pick = (event: PointerEvent | WheelEvent): Axial | null => {
@@ -135,6 +166,21 @@ function MapCanvas(): React.JSX.Element {
       cursorY = event.clientY;
       cursorInside = true;
       return pickAt(event.clientX, event.clientY);
+    };
+
+    /**
+     * The preview to draw this frame, or null when nothing is being placed. It
+     * rides on `hovered`, which comes out of `pickAt`, so the ghost sits on the
+     * same hex the click will use — float offset and all.
+     */
+    const currentGhost = (): GhostPreview | null => {
+      const carried = placing.peek();
+      const hex = hovered.peek();
+      if (carried === null || !hex) {
+        return null;
+      }
+      const check = placementCheck(carried, hex);
+      return { id: carried, hex, valid: check.valid, reason: check.reason };
     };
 
     /** Re-reads the hex under the cursor. Used after the camera moved on its own. */
@@ -221,13 +267,15 @@ function MapCanvas(): React.JSX.Element {
           y: current.y - (next.y - pinch.y) / current.scale,
           scale: current.scale,
         };
-        camera.value = zoomAt(
-          panned,
-          rect.width,
-          rect.height,
-          next.x - rect.left - floatX,
-          next.y - rect.top - floatY,
-          next.distance / pinch.distance,
+        applyCamera(
+          zoomAt(
+            panned,
+            rect.width,
+            rect.height,
+            next.x - rect.left - floatX,
+            next.y - rect.top - floatY,
+            next.distance / pinch.distance,
+          ),
         );
         pinch = next;
         return;
@@ -240,11 +288,11 @@ function MapCanvas(): React.JSX.Element {
         travelled += Math.abs(dx) + Math.abs(dy);
         velocity.sample(dx, dy, performance.now());
         const current = camera.peek();
-        camera.value = {
+        applyCamera({
           x: current.x - dx / current.scale,
           y: current.y - dy / current.scale,
           scale: current.scale,
-        };
+        });
       }
       const hex = pick(event);
       if (!sameHex(hex, hovered.peek())) {
@@ -276,7 +324,31 @@ function MapCanvas(): React.JSX.Element {
         return;
       }
       const hex = pick(event);
+      const carried = placing.peek();
+      if (carried !== null) {
+        // Placement mode owns the click: it never selects a tile, and a refused
+        // hex leaves the cursor carrying the building so the next try is free.
+        if (hex && placeBuilding(carried, hex, performance.now())) {
+          placing.value = null;
+        }
+        return;
+      }
       selected.value = hex && sameHex(hex, selected.peek()) ? null : hex;
+    };
+
+    const onContextMenu = (event: MouseEvent): void => {
+      if (placing.peek() === null) {
+        return;
+      }
+      event.preventDefault();
+      cancelPlacing();
+    };
+
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key !== "Escape" || placing.peek() === null) {
+        return;
+      }
+      cancelPlacing();
     };
 
     const onPointerLeave = (): void => {
@@ -302,7 +374,7 @@ function MapCanvas(): React.JSX.Element {
         // A pinch follows the fingers, so it applies straight away. Easing it
         // would put the picture behind the hands.
         zoom.stop();
-        camera.value = zoomAt(camera.peek(), rect.width, rect.height, px - floatX, py - floatY, factor);
+        applyCamera(zoomAt(camera.peek(), rect.width, rect.height, px - floatX, py - floatY, factor));
       } else {
         // A wheel notch is a discrete step, so it rides there over a few frames.
         zoom.retarget(camera.peek(), rect.width, rect.height, px, py, floatX, floatY, factor);
@@ -320,6 +392,9 @@ function MapCanvas(): React.JSX.Element {
       }
       cssWidth = entry.contentRect.width;
       cssHeight = entry.contentRect.height;
+      // The minimap draws the viewport rectangle from this, and the camera clamp
+      // needs it to know how much world one screen holds.
+      viewport.value = { width: cssWidth, height: cssHeight };
       dirty = true;
     });
     observer.observe(canvas);
@@ -331,6 +406,8 @@ function MapCanvas(): React.JSX.Element {
     canvas.addEventListener("pointercancel", onPointerUp);
     canvas.addEventListener("pointerleave", onPointerLeave);
     canvas.addEventListener("wheel", onWheel, { passive: false });
+    canvas.addEventListener("contextmenu", onContextMenu);
+    window.addEventListener("keydown", onKeyDown);
 
     let frame = 0;
     let lastStamp = 0;
@@ -351,11 +428,16 @@ function MapCanvas(): React.JSX.Element {
         floatX = offset.x;
         floatY = offset.y;
         dirty = true;
+        // The drift moves the picture under a cursor that has not moved, and a
+        // click reads the hex through the same offset. Re-picking here is what
+        // keeps the hover — and the placement preview riding on it — on the hex
+        // the click will actually land on.
+        refreshHover();
       }
       if (zoom.active) {
         const next = zoom.step(delta, cssWidth, cssHeight, floatX, floatY);
         if (next) {
-          camera.value = next;
+          applyCamera(next);
           refreshHover();
         }
       }
@@ -363,11 +445,16 @@ function MapCanvas(): React.JSX.Element {
         const step = glide.step(delta);
         if (step) {
           const current = camera.peek();
-          camera.value = {
+          const stopped = applyCamera({
             x: current.x - step.x / current.scale,
             y: current.y - step.y / current.scale,
             scale: current.scale,
-          };
+          });
+          // A glide that has reached a bound loses that axis on the spot, so the
+          // camera settles at the edge instead of pushing at it for another second.
+          if (stopped.stoppedX || stopped.stoppedY) {
+            glide.arrest(stopped.stoppedX, stopped.stoppedY);
+          }
           refreshHover();
         }
       }
@@ -376,18 +463,31 @@ function MapCanvas(): React.JSX.Element {
       }
       if (!fitted && renderer.viewportWidth > 1) {
         fitted = true;
-        camera.value = fitCamera(island.peek(), renderer.viewportWidth, renderer.viewportHeight);
+        // The player opens on their own island, not on the whole world.
+        applyCamera(
+          fitCamera(world.peek().playerIsland.tiles, renderer.viewportWidth, renderer.viewportHeight),
+        );
+      }
+      // A site that has run out its clock flips here, which marks the loop dirty
+      // through the effect above. Sites and finished buildings both animate on
+      // their own, so they keep asking for frames instead of starting a second loop.
+      advanceBuildings(stamp);
+      if (buildingsAnimating()) {
+        dirty = true;
       }
       if (!dirty) {
         return;
       }
       dirty = false;
       renderer.draw({
-        island: island.peek(),
+        world: world.peek(),
         camera: camera.peek(),
         hovered: hovered.peek(),
         selected: selected.peek(),
         float: { x: floatX, y: floatY },
+        now: stamp,
+        buildings: placedBuildings.peek(),
+        ghost: currentGhost(),
       });
     };
     frame = requestAnimationFrame(loop);
@@ -402,6 +502,8 @@ function MapCanvas(): React.JSX.Element {
       canvas.removeEventListener("pointercancel", onPointerUp);
       canvas.removeEventListener("pointerleave", onPointerLeave);
       canvas.removeEventListener("wheel", onWheel);
+      canvas.removeEventListener("contextmenu", onContextMenu);
+      window.removeEventListener("keydown", onKeyDown);
     };
   }, []);
 

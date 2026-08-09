@@ -18,6 +18,21 @@ const BORDER_DARK = config.render.borderOuterColor;
 const BORDER_BRIGHT = config.render.borderInnerColor;
 const BORDER_SHEEN = config.render.borderSheenColor;
 
+const ENEMY_BORDER_DARK = config.render.enemyBorderOuterColor;
+const ENEMY_BORDER_BRIGHT = config.render.enemyBorderInnerColor;
+
+/**
+ * Owner colours of the minimap and of the boss marker.
+ *
+ * They are local rather than config fields because they are a legend, not a
+ * look: the minimap has to keep telling four owners apart whatever a designer
+ * does to the territory line.
+ */
+const MINIMAP_PLAYER = "#4fa3ff";
+const MINIMAP_ENEMY = "#ff6b5e";
+const MINIMAP_NEUTRAL = "#c3d2dd";
+const BOSS_MARKER = "#ff2f2f";
+
 const HOVER_FILL = withAlpha(config.render.hoverFillColor, config.render.hoverFillAlpha);
 const HOVER_LINE = withAlpha(config.render.hoverLineColor, config.render.hoverLineAlpha);
 const SELECT_LINE = config.render.selectColor;
@@ -84,8 +99,14 @@ export {
   BORDER_BRIGHT,
   BORDER_DARK,
   BORDER_SHEEN,
+  BOSS_MARKER,
+  ENEMY_BORDER_BRIGHT,
+  ENEMY_BORDER_DARK,
   HOVER_FILL,
   HOVER_LINE,
+  MINIMAP_ENEMY,
+  MINIMAP_NEUTRAL,
+  MINIMAP_PLAYER,
   ROCK_BOTTOM,
   ROCK_TOP,
   SELECT_LINE,

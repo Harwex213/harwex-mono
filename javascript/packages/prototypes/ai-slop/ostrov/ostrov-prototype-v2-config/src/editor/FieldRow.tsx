@@ -1,6 +1,8 @@
 import { useSignals } from "@preact/signals-react/runtime";
+import { useRef, useState } from "react";
 import { DEFAULTS, stepOf } from "../schema";
 import type { ConfigValue, Field, NumberField } from "../types";
+import { ResourceIcon, iconOfField } from "./icons";
 import { read, resetField, setField, values } from "./state";
 
 /**
@@ -37,12 +39,46 @@ type NumberControlProps = {
 function NumberControl({ owner, name, field }: NumberControlProps): React.JSX.Element {
   const current = read(values.value, owner, name) as number;
   const step = stepOf(field);
+  /**
+   * Text of an edit in progress. `null` means the box just shows the committed
+   * value, so a slider drag or a reset elsewhere is reflected right away. A
+   * typed edit only reaches the config on blur or Enter: committing per
+   * keystroke clamps a half-typed number and makes direct entry impossible.
+   */
+  const [draft, setDraft] = useState<string | null>(null);
+  /**
+   * The same text, readable at once. Escape drops the edit and then blurs, and
+   * the blur handler runs before React has applied the state update, so it has
+   * to ask the ref whether an edit is still pending.
+   */
+  const draftRef = useRef<string | null>(draft);
+  const putDraft = (next: string | null): void => {
+    draftRef.current = next;
+    setDraft(next);
+  };
   const commit = (raw: number): void => {
     if (!Number.isFinite(raw)) {
       return;
     }
     const clamped = Math.min(field.max, Math.max(field.min, raw));
     setField(owner, name, field.type === "int" ? Math.round(clamped) : roundToStep(clamped, step));
+  };
+  /** Applies the typed text, or drops it when it is empty or not a number. */
+  const commitDraft = (): void => {
+    const pending = draftRef.current;
+    if (pending === null) {
+      return;
+    }
+    const text = pending.trim();
+    const parsed = Number(text);
+    putDraft(null);
+    if (text !== "" && Number.isFinite(parsed)) {
+      commit(parsed);
+    }
+  };
+  const commitSlider = (raw: number): void => {
+    putDraft(null);
+    commit(raw);
   };
   return (
     <div className="control number">
@@ -52,7 +88,7 @@ function NumberControl({ owner, name, field }: NumberControlProps): React.JSX.El
         max={field.max}
         step={step}
         value={current}
-        onChange={(event) => commit(event.currentTarget.valueAsNumber)}
+        onChange={(event) => commitSlider(event.currentTarget.valueAsNumber)}
       />
       <input
         type="number"
@@ -60,8 +96,19 @@ function NumberControl({ owner, name, field }: NumberControlProps): React.JSX.El
         min={field.min}
         max={field.max}
         step={step}
-        value={current}
-        onChange={(event) => commit(event.currentTarget.valueAsNumber)}
+        value={draft ?? formatValue(current)}
+        onChange={(event) => putDraft(event.currentTarget.value)}
+        onBlur={commitDraft}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") {
+            commitDraft();
+            return;
+          }
+          if (event.key === "Escape") {
+            putDraft(null);
+            event.currentTarget.blur();
+          }
+        }}
       />
     </div>
   );
@@ -135,23 +182,23 @@ function FieldRow({ owner, name, field }: FieldRowProps): React.JSX.Element {
   const current = read(values.value, owner, name);
   const fallback = read(DEFAULTS, owner, name);
   const changed = current !== fallback;
+  const icon = iconOfField(name);
 
   return (
     <div className={changed ? "field changed" : "field"}>
       <div className="field-head">
         <span className="field-label">
+          {icon ? <ResourceIcon kind={icon} /> : null}
           {field.label}
           {changed ? <i className="dot" title="Отличается от значения по умолчанию" /> : null}
         </span>
         <span className="field-key mono">{`${owner}.${name}`}</span>
       </div>
-      <p className="field-note">{field.description}</p>
       <Control owner={owner} name={name} field={field} />
       <div className="field-foot">
-        <span className="muted mono">
-          по умолчанию: {formatValue(fallback)}
-          {field.type === "int" || field.type === "number" ? ` · ${field.min}…${field.max}` : ""}
-        </span>
+        {field.type === "int" || field.type === "number" ? (
+          <span className="muted mono">{`${field.min}…${field.max}`}</span>
+        ) : null}
         <button type="button" className="link" disabled={!changed} onClick={() => resetField(owner, name)}>
           сбросить
         </button>

@@ -14,8 +14,6 @@ import type { ConfigValue } from "../types";
 
 const ENDPOINT = "/api/config";
 
-const POLL_INTERVAL_MS = 2000;
-
 type Status = {
   kind: "ok" | "error" | "info";
   text: string;
@@ -97,8 +95,16 @@ function replaceAll(next: GameConfig): void {
   values.value = cloneConfig(next);
 }
 
-/** Reads the file the dev server holds and adopts it as the on-disk copy. */
-async function loadFromDisk(quiet: boolean): Promise<void> {
+/**
+ * Reads the file the dev server holds and adopts it as the on-disk copy. Run
+ * once, when the editor mounts.
+ *
+ * Nothing re-reads the file afterwards. A poll has to choose between two bad
+ * moments: overwriting a form the user is filling in, or replacing it silently
+ * while they look away. Reading once means the form only ever changes because
+ * the user changed it.
+ */
+async function loadFromDisk(): Promise<void> {
   try {
     const response = await fetch(ENDPOINT, { headers: { accept: "application/json" } });
     if (!response.ok) {
@@ -109,27 +115,11 @@ async function loadFromDisk(quiet: boolean): Promise<void> {
     if (!parsed.ok) {
       throw new Error(parsed.issues.map((issue) => `${issue.path}: ${issue.message}`).join("; "));
     }
-    const first = !loaded.peek();
-    const changedOnDisk = JSON.stringify(parsed.value) !== JSON.stringify(onDisk.peek());
-    const hasEdits = dirty.peek();
-    loaded.value = true;
-    if (!first && !changedOnDisk) {
-      return;
-    }
     onDisk.value = parsed.value;
-    if (first || !hasEdits) {
-      values.value = cloneConfig(parsed.value);
-      if (!first) {
-        status.value = { kind: "info", text: "Файл изменился на диске — форма обновлена." };
-      }
-      return;
-    }
-    status.value = { kind: "info", text: "Файл изменился на диске, но в форме есть несохранённые правки." };
+    values.value = cloneConfig(parsed.value);
+    loaded.value = true;
   } catch (error) {
     loaded.value = true;
-    if (quiet) {
-      return;
-    }
     status.value = { kind: "error", text: `Не удалось прочитать конфиг: ${String(error)}` };
   }
 }
@@ -191,19 +181,6 @@ function importJson(text: string): void {
   status.value = { kind: "info", text: "Импортировано. Нажмите «Сохранить», чтобы записать на диск." };
 }
 
-/** Picks up edits made to the file by anything other than this tab. */
-function startDiskWatch(): () => void {
-  const timer = window.setInterval(() => {
-    if (saving.peek()) {
-      return;
-    }
-    void loadFromDisk(true);
-  }, POLL_INTERVAL_MS);
-  return () => {
-    window.clearInterval(timer);
-  };
-}
-
 export type { Status };
 export {
   dirty,
@@ -221,7 +198,6 @@ export {
   save,
   saving,
   setField,
-  startDiskWatch,
   status,
   values,
 };

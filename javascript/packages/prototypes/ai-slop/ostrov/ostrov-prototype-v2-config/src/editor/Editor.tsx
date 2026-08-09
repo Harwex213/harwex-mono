@@ -1,8 +1,9 @@
 import { useSignals } from "@preact/signals-react/runtime";
 import { useEffect, useRef } from "react";
 import type { SchemaGroup } from "../schema";
-import { DEFAULTS, entityEntries, fieldEntries, groupEntries } from "../schema";
+import { BUILDINGS_GROUP, DEFAULTS, entityEntries, fieldEntries, groupEntries } from "../schema";
 import type { EntityDescriptor, Field } from "../types";
+import { BuildingsGraph } from "./BuildingsGraph";
 import { FieldRow } from "./FieldRow";
 import { hrefOf, page, startRouter } from "./router";
 import {
@@ -19,7 +20,6 @@ import {
   resetGroup,
   save,
   saving,
-  startDiskWatch,
   status,
   values,
 } from "./state";
@@ -77,7 +77,6 @@ function EntityCard({ group, name, entityKey, entity }: {
           {changed.length > 0 ? `${changed.length} изменено` : "как по умолчанию"}
         </span>
       </header>
-      <p className="entity-note">{entity.description}</p>
       <Fields group={group} owner={owner} />
       <button
         type="button"
@@ -99,18 +98,15 @@ function Page({ name }: { name: string }): React.JSX.Element {
   useSignals();
   const group = groupAt(name);
   const entities = entityEntries(group);
-  const groupChanged = dirtyGroups.value[name] === true;
 
   return (
     <section className="section" id={`page-${name}`}>
       <header className="section-head">
         <h2>{group.label}</h2>
-        <span className={groupChanged ? "badge dirty" : "badge"}>
-          {groupChanged ? "есть несохранённые правки" : "совпадает с диском"}
-        </span>
       </header>
-      <p className="section-note">{group.description}</p>
-      {entities ? (
+      {name === BUILDINGS_GROUP ? (
+        <BuildingsGraph />
+      ) : entities ? (
         <div className="entities">
           <p className="entity-kind muted">
             {group.entityLabel ?? "Сущность"} · {entities.length} шт., поля общие для всех
@@ -209,8 +205,7 @@ function Editor(): React.JSX.Element {
   useSignals();
 
   useEffect(() => {
-    void loadFromDisk(false);
-    return startDiskWatch();
+    void loadFromDisk();
   }, []);
 
   useEffect(() => startRouter(), []);

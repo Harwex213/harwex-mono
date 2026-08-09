@@ -2,8 +2,18 @@ import { config } from "@hw/ostrov-prototype-v2-config";
 import type { Axial } from "../hex/coords";
 import { hexKey, neighboursOf } from "../hex/coords";
 import type { Rng } from "./rng";
-import { createRng, hashCoords, weightedPick } from "./rng";
+import { hashCoords, weightedPick } from "./rng";
 import type { TerrainKind } from "./terrain";
+import { TERRAIN_KINDS } from "./terrain";
+
+/**
+ * One island: an irregular hex cluster and the biomes painted onto it.
+ *
+ * Nothing here knows where the island sits in the world. `growCluster` grows a
+ * silhouette around the origin and `paintCluster` moves that silhouette to an
+ * anchor hex and fills it in, so `world.ts` can call the pair once per island
+ * and place the result wherever it likes.
+ */
 
 /**
  * Weight of a frontier cell, indexed by how many placed hexes it already
@@ -19,9 +29,13 @@ const GROWTH_BIAS: readonly number[] = [
   config.island.growthBias6,
 ];
 
-/** Owner id 0 means "wild", 1 means "the player's kingdom". */
+/**
+ * Owner ids. `OWNER_WILD` is the neutral land that makes up most of the world;
+ * the player and the enemy each own exactly one starting island.
+ */
 const OWNER_WILD = 0;
 const OWNER_PLAYER = 1;
+const OWNER_ENEMY = 2;
 
 type Tile = {
   q: number;
@@ -30,24 +44,34 @@ type Tile = {
   owner: number;
   /** Per-tile seed for decoration; never changes, so nothing shimmers on pan. */
   seed: number;
-};
-
-type IslandMap = {
-  /** Painting order: back to front. */
-  tiles: readonly Tile[];
-  byKey: ReadonlyMap<string, Tile>;
-  tileAt: (q: number, r: number) => Tile | null;
-  ownerAt: (q: number, r: number) => number | null;
-};
-
-type GenerateOptions = {
-  seed: number;
-  /** How many hexes the island should end up with. */
-  size: number;
+  /** Which island this tile belongs to. The renderer culls on it. */
+  islandId: number;
 };
 
 /**
- * Grows the island one hex at a time. Frontier cells that touch few existing
+ * Per-zone flavouring of the biome roll: each weight in the config is multiplied
+ * by the matching entry here. A zero shuts a biome out of the zone entirely.
+ */
+type TerrainProfile = Record<TerrainKind, number>;
+
+/** Lower bound on how many tiles of a biome an island ends up with. */
+type TerrainQuota = Partial<Record<TerrainKind, number>>;
+
+type PaintOptions = {
+  /** Silhouette from `growCluster`, still centred on the origin. */
+  shape: readonly Axial[];
+  /** Anchor hex the silhouette is moved to. */
+  origin: Axial;
+  islandId: number;
+  owner: number;
+  /** Salt of the per-tile decoration seeds. */
+  seed: number;
+  profile: TerrainProfile;
+  quota: TerrainQuota;
+};
+
+/**
+ * Grows an island one hex at a time. Frontier cells that touch few existing
  * hexes are strongly preferred, which is what produces the notches and the long
  * thin arms of the reference art instead of a compact blob.
  */
@@ -114,7 +138,12 @@ function fillHoles(placed: Map<string, Axial>): void {
 /** Terrain weights, indexed the same way as `ORDERED_KINDS`. */
 const ORDERED_KINDS: readonly TerrainKind[] = ["snow", "grass", "ice", "forest", "sand"];
 
-function pickTerrain(rng: Rng, exposure: number, neighbourKinds: readonly TerrainKind[]): TerrainKind {
+function pickTerrain(
+  rng: Rng,
+  exposure: number,
+  neighbourKinds: readonly TerrainKind[],
+  profile: TerrainProfile,
+): TerrainKind {
   // Patches: most tiles copy a neighbour, so terrain comes in clumps.
   if (neighbourKinds.length > 0 && rng() < config.island.patchChance) {
     return neighbourKinds[Math.floor(rng() * neighbourKinds.length)]!;
@@ -127,18 +156,18 @@ function pickTerrain(rng: Rng, exposure: number, neighbourKinds: readonly Terrai
         ? config.island.terrainWeightIceEdge
         : config.island.terrainWeightIceInner;
   const weights = [
-    config.island.terrainWeightSnow,
-    config.island.terrainWeightGrass,
-    iceWeight,
-    config.island.terrainWeightForest,
-    config.island.terrainWeightSand,
+    config.island.terrainWeightSnow * profile.snow,
+    config.island.terrainWeightGrass * profile.grass,
+    iceWeight * profile.ice,
+    config.island.terrainWeightForest * profile.forest,
+    config.island.terrainWeightSand * profile.sand,
   ];
   return ORDERED_KINDS[weightedPick(rng, weights)]!;
 }
 
-function generateIsland(options: GenerateOptions): IslandMap {
-  const rng = createRng(options.seed);
-  const hexes = growCluster(rng, options.size);
+/** Moves a silhouette onto its anchor hex and fills it in. Tiles come back back-to-front. */
+function paintCluster(rng: Rng, options: PaintOptions): Tile[] {
+  const hexes = options.shape.map((hex) => ({ q: hex.q + options.origin.q, r: hex.r + options.origin.r }));
   const present = new Set(hexes.map((hex) => hexKey(hex.q, hex.r)));
 
   const byKey = new Map<string, Tile>();
@@ -159,53 +188,56 @@ function generateIsland(options: GenerateOptions): IslandMap {
     byKey.set(hexKey(hex.q, hex.r), {
       q: hex.q,
       r: hex.r,
-      terrain: pickTerrain(rng, 6 - touching, neighbourKinds),
-      owner: OWNER_PLAYER,
+      terrain: pickTerrain(rng, 6 - touching, neighbourKinds, options.profile),
+      owner: options.owner,
       seed: hashCoords(hex.q, hex.r, options.seed),
+      islandId: options.islandId,
     });
   }
 
-  ensureVariety(rng, byKey);
-  claimWilds(rng, hexes, byKey);
+  ensureVariety(rng, [...byKey.values()], options.quota);
 
-  const tiles = [...byKey.values()].sort((left, right) => {
-    const leftRow = left.r + left.q / 2;
-    const rightRow = right.r + right.q / 2;
-    if (leftRow !== rightRow) {
-      return leftRow - rightRow;
-    }
-    return left.q - right.q;
-  });
+  return [...byKey.values()].sort(compareByRow);
+}
 
-  const tileAt = (q: number, r: number): Tile | null => byKey.get(hexKey(q, r)) ?? null;
-
-  return {
-    tiles,
-    byKey,
-    tileAt,
-    ownerAt: (q, r) => tileAt(q, r)?.owner ?? null,
-  };
+/** Back-to-front order: rows away from the camera first, then left to right. */
+function compareByRow(left: Tile, right: Tile): number {
+  const leftRow = left.r + left.q / 2;
+  const rightRow = right.r + right.q / 2;
+  if (leftRow !== rightRow) {
+    return leftRow - rightRow;
+  }
+  return left.q - right.q;
 }
 
 /**
- * Every terrain has to show up at least once, otherwise a roll of the dice can
- * hand back an island with no forest and no ice at all.
+ * Repaints tiles until every biome the quota asks for is present.
+ *
+ * The starting islands are the only ones with a quota: the build roster wants a
+ * meadow, a wood and a wasteland hex, and a run of unlucky rolls could leave an
+ * island without one. Wild islands carry no quota at all, so their zone profile
+ * decides the whole mix on its own and the three zones stay visibly different.
+ *
+ * A biome whose profile weight is zero can never be rolled and is never copied
+ * from a neighbour that does not have it, so nothing has to scrub it afterwards.
  */
-function ensureVariety(rng: Rng, byKey: Map<string, Tile>): void {
-  const tiles = [...byKey.values()];
-  const wanted: Record<TerrainKind, number> = { snow: 3, grass: 2, ice: 2, forest: 2, sand: 2 };
-  for (const kind of ORDERED_KINDS) {
+function ensureVariety(rng: Rng, tiles: readonly Tile[], quota: TerrainQuota): void {
+  for (const kind of TERRAIN_KINDS) {
+    const wanted = quota[kind] ?? 0;
     for (;;) {
       const present = tiles.filter((tile) => tile.terrain === kind).length;
-      if (present >= wanted[kind]) {
+      if (present >= wanted) {
         break;
       }
-      // Take from whichever terrain is currently the most over-represented.
+      // Take from whichever biome has the most tiles to spare, and never from
+      // one the quota is still short of.
       const counts = new Map<TerrainKind, number>();
       for (const tile of tiles) {
         counts.set(tile.terrain, (counts.get(tile.terrain) ?? 0) + 1);
       }
-      const donors = tiles.filter((tile) => tile.terrain !== kind && (counts.get(tile.terrain) ?? 0) > wanted[tile.terrain]);
+      const donors = tiles.filter(
+        (tile) => tile.terrain !== kind && (counts.get(tile.terrain) ?? 0) > (quota[tile.terrain] ?? 0),
+      );
       if (donors.length === 0) {
         break;
       }
@@ -214,31 +246,5 @@ function ensureVariety(rng: Rng, byKey: Map<string, Tile>): void {
   }
 }
 
-/**
- * Leaves a small pocket of unclaimed land so the territory outline also has to
- * run along an internal boundary, not just around the silhouette.
- */
-function claimWilds(rng: Rng, hexes: readonly Axial[], byKey: Map<string, Tile>): void {
-  const ranked = [...hexes].sort((left, right) => {
-    const leftSpread = Math.max(Math.abs(left.q), Math.abs(left.r), Math.abs(left.q + left.r));
-    const rightSpread = Math.max(Math.abs(right.q), Math.abs(right.r), Math.abs(right.q + right.r));
-    return rightSpread - leftSpread;
-  });
-  const anchor = ranked[Math.floor(rng() * Math.min(3, ranked.length))];
-  if (!anchor) {
-    return;
-  }
-  const pocket = [anchor, ...neighboursOf(anchor)];
-  let claimed = 0;
-  for (const hex of pocket) {
-    const tile = byKey.get(hexKey(hex.q, hex.r));
-    if (!tile || claimed >= config.island.wildPocketSize) {
-      continue;
-    }
-    tile.owner = OWNER_WILD;
-    claimed += 1;
-  }
-}
-
-export type { GenerateOptions, IslandMap, Tile };
-export { OWNER_PLAYER, OWNER_WILD, generateIsland };
+export type { PaintOptions, TerrainProfile, TerrainQuota, Tile };
+export { OWNER_ENEMY, OWNER_PLAYER, OWNER_WILD, compareByRow, growCluster, paintCluster };

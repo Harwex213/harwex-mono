@@ -60,7 +60,57 @@ const IDLE_FLOAT_FADE_OUT = 0.3;
 /** Length of the eased ride to the new scale, in seconds. */
 const ZOOM_EASE_DURATION = 0.16;
 
+/* --- Building placement and construction -----------------------------------
+ *
+ * `buildTimeSec` in the config is balance time, not demo time: the castle takes
+ * ten minutes. The prototype divides it, so the whole flow fits in one look.
+ */
+
+/** Divisor applied to `buildTimeSec`. The castle's 600 s becomes 6 s. */
+const BUILD_TIME_SPEEDUP = 100;
+
+/** Floor on a sped-up build, in seconds, so a cheap building still reads as built. */
+const BUILD_TIME_MIN_SEC = 2.5;
+
+/** Length of the confirmation beat played where a building was just laid, in seconds. */
+const PLACEMENT_BEAT_SEC = 0.62;
+
+/** Length of the beat played when a structure finishes, in seconds. */
+const COMPLETION_BEAT_SEC = 0.95;
+
+/** Opacity of the placement preview drawn under the cursor. */
+const GHOST_ALPHA = 0.55;
+
+/** Period of the marching dashes around the previewed hex, in seconds. */
+const GHOST_DASH_PERIOD = 1.6;
+
+/** Overall size of the drawn buildings, as a multiple of the hex-sized default. */
+const BUILDING_ART_SCALE = 0.8;
+
+/** Period of one flag wave, in seconds. */
+const FLAG_WAVE_PERIOD = 1.35;
+
+/** Time one smoke puff takes to rise and fade, in seconds. */
+const SMOKE_RISE_PERIOD = 3.4;
+
+/** How many puffs are in the air at once. */
+const SMOKE_PUFFS = 5;
+
+/** Period of the slow brightness pulse of the lit windows, in seconds. */
+const WINDOW_GLOW_PERIOD = 4.7;
+
+/** Period of one up-and-down trip of the construction hoist, in seconds. */
+const HOIST_PERIOD = 1.7;
+
 export {
+  BUILDING_ART_SCALE,
+  BUILD_TIME_MIN_SEC,
+  BUILD_TIME_SPEEDUP,
+  COMPLETION_BEAT_SEC,
+  FLAG_WAVE_PERIOD,
+  GHOST_ALPHA,
+  GHOST_DASH_PERIOD,
+  HOIST_PERIOD,
   IDLE_FLOAT_FADE_IN,
   IDLE_FLOAT_FADE_OUT,
   IDLE_FLOAT_RISE_AMPLITUDE,
@@ -72,5 +122,9 @@ export {
   IDLE_FLOAT_WOBBLE_AMPLITUDE,
   IDLE_FLOAT_WOBBLE_PERIOD,
   IDLE_FLOAT_WOBBLE_PHASE,
+  PLACEMENT_BEAT_SEC,
+  SMOKE_PUFFS,
+  SMOKE_RISE_PERIOD,
+  WINDOW_GLOW_PERIOD,
   ZOOM_EASE_DURATION,
 };

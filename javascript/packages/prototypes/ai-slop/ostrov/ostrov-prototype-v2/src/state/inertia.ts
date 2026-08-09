@@ -97,6 +97,26 @@ class PanGlide {
   }
 
   /**
+   * Kills the momentum on the axes that have just run into a camera bound.
+   *
+   * Without this the glide keeps pushing against the clamp for as long as its
+   * friction takes to run out: the camera cannot move, so the picture sits still
+   * while the loop redraws it, and any wobble on the free axis reads as a stall.
+   * A glide flicked into a corner loses both axes and ends there.
+   */
+  arrest(axisX: boolean, axisY: boolean): void {
+    if (axisX) {
+      this.x = 0;
+    }
+    if (axisY) {
+      this.y = 0;
+    }
+    if (this.x === 0 && this.y === 0) {
+      this.running = false;
+    }
+  }
+
+  /**
    * Advances the glide by `delta` seconds and returns the screen-pixel step for
    * this frame, or null once it has come to rest.
    */

@@ -1,6 +1,7 @@
+import { BuildDock } from "./ui/BuildDock";
 import { CloudCanvas } from "./ui/CloudCanvas";
-import { InfoPanel } from "./ui/InfoPanel";
 import { MapCanvas } from "./ui/MapCanvas";
+import { Minimap } from "./ui/Minimap";
 
 function App(): React.JSX.Element {
   return (
@@ -8,7 +9,8 @@ function App(): React.JSX.Element {
       <CloudCanvas />
       <MapCanvas />
       <div className="overlay">
-        <InfoPanel />
+        <Minimap />
+        <BuildDock />
       </div>
     </div>
   );

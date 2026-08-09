@@ -5,18 +5,17 @@
     "wallDepth": 46
   },
   "camera": {
-    "minScale": 0.4,
+    "minScale": 0.15,
     "maxScale": 4,
     "wheelZoomSensitivity": 0.0022,
     "pinchZoomSensitivity": 0.02,
     "dragSlop": 5,
     "panInertiaFriction": 4.2,
     "panInertiaMaxSpeed": 2600,
-    "panInertiaMinSpeed": 90
+    "panInertiaMinSpeed": 90,
+    "boundMargin": 420
   },
   "island": {
-    "seed": 20260808,
-    "tileCount": 21,
     "maxSpread": 3,
     "spreadPenalty": 0.5,
     "growthBias1": 2.6,
@@ -26,7 +25,6 @@
     "growthBias5": 0.4,
     "growthBias6": 0.2,
     "patchChance": 0.42,
-    "wildPocketSize": 3,
     "terrainWeightSnow": 1.5,
     "terrainWeightGrass": 1,
     "terrainWeightForest": 0.85,
@@ -34,6 +32,22 @@
     "terrainWeightIceInner": 0.5,
     "terrainWeightIceEdge": 1.4,
     "terrainWeightIceExposed": 2.6
+  },
+  "world": {
+    "seed": 20260809,
+    "bossZoneRadius": 560,
+    "wildZoneRadius": 1800,
+    "peripheralZoneRadius": 3400,
+    "bossIslandSize": 12,
+    "wildIslandCount": 5,
+    "wildIslandSizeMin": 6,
+    "wildIslandSizeMax": 9,
+    "peripheralIslandCount": 8,
+    "peripheralIslandSizeMin": 3,
+    "peripheralIslandSizeMax": 6,
+    "startIslandSize": 9,
+    "minIslandGap": 2,
+    "enemyStartDistance": 900
   },
   "render": {
     "territoryBorderEnabled": true,
@@ -44,6 +58,8 @@
     "borderSheenWidth": 1.6,
     "borderSheenColor": "#8fc4ff",
     "borderSheenAlpha": 0.28,
+    "enemyBorderOuterColor": "#7a1414",
+    "enemyBorderInnerColor": "#e2483c",
     "hoverFillColor": "#ffffff",
     "hoverFillAlpha": 0.14,
     "hoverLineColor": "#ffffff",
@@ -98,6 +114,7 @@
   },
   "buildings": {
     "castle1": {
+      "requires": "none",
       "costWood": 800,
       "costStone": 600,
       "costGold": 200,
@@ -108,9 +125,12 @@
       "productionPerMin": 6,
       "terrain": "any",
       "claimRadius": 2,
-      "note": "Центр острова: открывает постройки и хранит запасы."
+      "note": "Центр острова: открывает постройки и хранит запасы.",
+      "nodeX": 0,
+      "nodeY": 0
     },
     "barracks1": {
+      "requires": "castle1",
       "costWood": 260,
       "costStone": 140,
       "costGold": 60,
@@ -121,9 +141,12 @@
       "productionPerMin": 0,
       "terrain": "any",
       "claimRadius": 0,
-      "note": "Готовит отряды, ресурсов не даёт."
+      "note": "Готовит отряды, ресурсов не даёт.",
+      "nodeX": 0,
+      "nodeY": 0
     },
     "hut1": {
+      "requires": "none",
       "costWood": 60,
       "costStone": 20,
       "costGold": 0,
@@ -134,9 +157,12 @@
       "productionPerMin": 0,
       "terrain": "grass",
       "claimRadius": 0,
-      "note": "Дом на трёх рабочих."
+      "note": "Дом на трёх рабочих.",
+      "nodeX": 0,
+      "nodeY": 0
     },
     "sawmill1": {
+      "requires": "none",
       "costWood": 120,
       "costStone": 40,
       "costGold": 10,
@@ -147,9 +173,12 @@
       "productionPerMin": 12,
       "terrain": "forest",
       "claimRadius": 0,
-      "note": "Главный источник дерева."
+      "note": "Главный источник дерева.",
+      "nodeX": 0,
+      "nodeY": 0
     },
     "mill1": {
+      "requires": "none",
       "costWood": 140,
       "costStone": 60,
       "costGold": 15,
@@ -160,9 +189,12 @@
       "productionPerMin": 10,
       "terrain": "grass",
       "claimRadius": 0,
-      "note": "Главный источник еды."
+      "note": "Главный источник еды.",
+      "nodeX": 0,
+      "nodeY": 0
     },
     "mine1": {
+      "requires": "none",
       "costWood": 100,
       "costStone": 90,
       "costGold": 25,
@@ -173,9 +205,12 @@
       "productionPerMin": 8,
       "terrain": "sand",
       "claimRadius": 0,
-      "note": "Главный источник камня."
+      "note": "Главный источник камня.",
+      "nodeX": 0,
+      "nodeY": 0
     },
     "islandController1": {
+      "requires": "castle1",
       "costWood": 200,
       "costStone": 200,
       "costGold": 150,
@@ -186,7 +221,9 @@
       "productionPerMin": 0,
       "terrain": "any",
       "claimRadius": 2,
-      "note": "Расширяет территорию на два кольца гексов."
+      "note": "Расширяет территорию на два кольца гексов.",
+      "nodeX": 0,
+      "nodeY": 0
     }
   },
   "units": {

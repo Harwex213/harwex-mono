@@ -54,6 +54,37 @@ const ENEMY_UNIT_OPTIONS = [
   { value: "brute", label: "Громила" },
 ] as const;
 
+/** Group of the tech tree, so the page and the validation share one name. */
+const BUILDINGS_GROUP = "buildings";
+
+/** Field holding the prerequisite of a building. */
+const PREREQUISITE_FIELD = "requires";
+
+/** Value of `requires` for a building available from the first minute. */
+const NO_PREREQUISITE = "none";
+
+/** Fields holding the node position on the tech-tree canvas. */
+const NODE_X_FIELD = "nodeX";
+
+const NODE_Y_FIELD = "nodeY";
+
+/**
+ * What a building needs built first. `none` means the building is available from
+ * the start; every other value is an id of the `buildings` group. One building
+ * carries one prerequisite, which is why this is a single-select enum.
+ * `assertPrerequisiteOptions` keeps the list and the entity ids in step.
+ */
+const BUILDING_PREREQUISITE_OPTIONS = [
+  { value: "none", label: "С начала игры" },
+  { value: "castle1", label: "Замок I ур." },
+  { value: "barracks1", label: "Казарма I ур." },
+  { value: "hut1", label: "Хижина I ур." },
+  { value: "sawmill1", label: "Лесопилка I ур." },
+  { value: "mill1", label: "Мельница I ур." },
+  { value: "mine1", label: "Шахта I ур." },
+  { value: "islandController1", label: "Контроллер острова I ур." },
+] as const;
+
 const SCHEMA = {
   hex: {
     label: "Гексы",
@@ -95,8 +126,8 @@ const SCHEMA = {
       minScale: {
         type: "number",
         label: "Минимальный зум",
-        description: "Нижняя граница масштаба камеры.",
-        default: 0.4,
+        description: "Нижняя граница масштаба камеры. Должна быть мала настолько, чтобы мир влезал в экран целиком.",
+        default: 0.15,
         min: 0.1,
         max: 2,
         step: 0.05,
@@ -163,28 +194,21 @@ const SCHEMA = {
         max: 1000,
         step: 10,
       },
+      boundMargin: {
+        type: "number",
+        label: "Запас за краем мира",
+        description: "Сколько пустоты за габаритами мира камера ещё показывает, в мировых единицах.",
+        default: 420,
+        min: 0,
+        max: 4000,
+        step: 20,
+      },
     },
   },
   island: {
-    label: "Генерация острова",
-    description: "Форма острова, разбивка на территории и распределение биомов.",
+    label: "Форма острова",
+    description: "Шаблон одного острова: силуэт и распределение биомов. Общий для всех островов мира; сид и размеры живут в группе «Мир».",
     fields: {
-      seed: {
-        type: "int",
-        label: "Сид",
-        description: "Стартовый сид генератора. Кнопка «Новый остров» в прототипе его перебивает.",
-        default: 20260808,
-        min: 0,
-        max: 4294967295,
-      },
-      tileCount: {
-        type: "int",
-        label: "Число гексов",
-        description: "Сколько клеток вырастить, пока хватает места.",
-        default: 21,
-        min: 4,
-        max: 120,
-      },
       maxSpread: {
         type: "int",
         label: "Радиус разрастания",
@@ -265,14 +289,6 @@ const SCHEMA = {
         max: 1,
         step: 0.01,
       },
-      wildPocketSize: {
-        type: "int",
-        label: "Ничья земля",
-        description: "Сколько клеток на краю остаются без владельца.",
-        default: 3,
-        min: 0,
-        max: 7,
-      },
       terrainWeightSnow: {
         type: "number",
         label: "Вес снега",
@@ -335,6 +351,129 @@ const SCHEMA = {
         min: 0,
         max: 5,
         step: 0.05,
+      },
+    },
+  },
+  world: {
+    label: "Мир",
+    description:
+      "Три кольца островов вокруг центра мира: Земли босса, Дикие земли, Окраина. Радиусы заданы в мировых единицах, зазор — в шагах гекса.",
+    fields: {
+      seed: {
+        type: "int",
+        label: "Сид мира",
+        description: "Один сид на весь мир: и раскладка островов, и их форма, и биомы.",
+        default: 20260809,
+        min: 0,
+        max: 4294967295,
+      },
+      bossZoneRadius: {
+        type: "number",
+        label: "Радиус Земель босса",
+        description: "Граница внутренней зоны, в мировых единицах. Внутри стоит один остров с боссом.",
+        default: 560,
+        min: 200,
+        max: 4000,
+        step: 10,
+      },
+      wildZoneRadius: {
+        type: "number",
+        label: "Радиус Диких земель",
+        description: "Граница средней зоны. Дикие острова стоят между ней и границей Земель босса.",
+        default: 1800,
+        min: 400,
+        max: 8000,
+        step: 20,
+      },
+      peripheralZoneRadius: {
+        type: "number",
+        label: "Радиус Окраины",
+        description: "Внешний край мира: дальше островов не бывает.",
+        default: 3400,
+        min: 600,
+        max: 16000,
+        step: 20,
+      },
+      bossIslandSize: {
+        type: "int",
+        label: "Размер острова босса",
+        description: "Сколько гексов в центральном острове.",
+        default: 12,
+        min: 3,
+        max: 40,
+      },
+      wildIslandCount: {
+        type: "int",
+        label: "Диких островов",
+        description: "Сколько островов раскидать по Диким землям.",
+        default: 5,
+        min: 0,
+        max: 24,
+      },
+      wildIslandSizeMin: {
+        type: "int",
+        label: "Дикий остров: минимум гексов",
+        description: "Нижняя граница размера дикого острова.",
+        default: 6,
+        min: 3,
+        max: 40,
+      },
+      wildIslandSizeMax: {
+        type: "int",
+        label: "Дикий остров: максимум гексов",
+        description: "Верхняя граница размера дикого острова.",
+        default: 9,
+        min: 3,
+        max: 40,
+      },
+      peripheralIslandCount: {
+        type: "int",
+        label: "Островов на Окраине",
+        description: "Сколько нейтральных островов раскидать по Окраине, не считая двух стартовых.",
+        default: 8,
+        min: 0,
+        max: 40,
+      },
+      peripheralIslandSizeMin: {
+        type: "int",
+        label: "Остров Окраины: минимум гексов",
+        description: "Нижняя граница размера острова Окраины.",
+        default: 3,
+        min: 3,
+        max: 40,
+      },
+      peripheralIslandSizeMax: {
+        type: "int",
+        label: "Остров Окраины: максимум гексов",
+        description: "Верхняя граница размера острова Окраины.",
+        default: 6,
+        min: 3,
+        max: 40,
+      },
+      startIslandSize: {
+        type: "int",
+        label: "Размер стартового острова",
+        description: "Сколько гексов в острове игрока и в острове врага.",
+        default: 9,
+        min: 3,
+        max: 40,
+      },
+      minIslandGap: {
+        type: "int",
+        label: "Зазор между островами",
+        description: "Минимальное расстояние между клетками разных островов, в шагах гекса. 2 — ровно одна пустая клетка между ними.",
+        default: 2,
+        min: 1,
+        max: 8,
+      },
+      enemyStartDistance: {
+        type: "number",
+        label: "Враг: удаление от игрока",
+        description: "На каком расстоянии от стартового острова игрока ставится остров врага, в мировых единицах.",
+        default: 900,
+        min: 200,
+        max: 8000,
+        step: 20,
       },
     },
   },
@@ -401,6 +540,18 @@ const SCHEMA = {
         min: 0,
         max: 1,
         step: 0.01,
+      },
+      enemyBorderOuterColor: {
+        type: "color",
+        label: "Граница врага: внешняя",
+        description: "Тёмный слой контура территории врага.",
+        default: "#7a1414",
+      },
+      enemyBorderInnerColor: {
+        type: "color",
+        label: "Граница врага: внутренняя",
+        description: "Яркий слой контура территории врага.",
+        default: "#e2483c",
       },
       hoverFillColor: {
         type: "color",
@@ -750,6 +901,13 @@ const SCHEMA = {
     description: "Постройки игрока: цена, стройка, живучесть и производство. Все здания делят один набор полей.",
     entityLabel: "Здание",
     fields: {
+      requires: {
+        type: "enum",
+        label: "Что нужно построить раньше",
+        description: "Здание, без которого это не заложить. «С начала игры» — доступно сразу.",
+        default: "none",
+        options: BUILDING_PREREQUISITE_OPTIONS,
+      },
       costWood: {
         type: "int",
         label: "Цена: дерево",
@@ -836,6 +994,22 @@ const SCHEMA = {
         default: "",
         maxLength: 96,
       },
+      nodeX: {
+        type: "int",
+        label: "Узел: X",
+        description: "Положение карточки на дереве технологий. 0 вместе с Y — авто-раскладка.",
+        default: 0,
+        min: -4000,
+        max: 4000,
+      },
+      nodeY: {
+        type: "int",
+        label: "Узел: Y",
+        description: "Положение карточки на дереве технологий. 0 вместе с X — авто-раскладка.",
+        default: 0,
+        min: -4000,
+        max: 4000,
+      },
     },
     entities: {
       castle1: {
@@ -858,6 +1032,7 @@ const SCHEMA = {
         label: "Казарма I ур.",
         description: "Готовит отряды. Ресурсов не даёт, поэтому рабочих мест у неё нет.",
         overrides: {
+          requires: "castle1",
           costWood: 260,
           costStone: 140,
           costGold: 60,
@@ -929,9 +1104,10 @@ const SCHEMA = {
         },
       },
       islandController1: {
-        label: "Контролёр острова I ур.",
+        label: "Контроллер острова I ур.",
         description: "Ставится на границе и забирает соседние гексы под игрока. Сам ничего не добывает.",
         overrides: {
+          requires: "castle1",
           costWood: 200,
           costStone: 200,
           costGold: 150,
@@ -1366,6 +1542,63 @@ function buildDefaults(): GameConfig {
   return result as unknown as GameConfig;
 }
 
+/**
+ * The prerequisite options repeat the building ids, because a field template
+ * cannot point at the entity list that uses it. This catches the two lists
+ * drifting apart at load time instead of at play time.
+ */
+function assertPrerequisiteOptions(): void {
+  const ids = Object.keys(SCHEMA.buildings.entities);
+  const offered: string[] = BUILDING_PREREQUISITE_OPTIONS.map((option) => option.value).filter(
+    (value) => value !== NO_PREREQUISITE,
+  );
+  for (const id of ids) {
+    if (!offered.includes(id)) {
+      throw new Error(`Схема сломана: у здания ${id} нет варианта в списке требований`);
+    }
+  }
+  for (const value of offered) {
+    if (!ids.includes(value)) {
+      throw new Error(`Схема сломана: требование ${value} — такого здания нет`);
+    }
+  }
+}
+
+assertPrerequisiteOptions();
+
+/**
+ * Buildings that sit on a cycle of prerequisites, in schema order. A building
+ * carries one prerequisite at most, so one walk per building finds every ring.
+ * Nothing recurses and every walk stops on a repeat, so a cycle cannot hang the
+ * caller — the layout code on the tech-tree page relies on that.
+ */
+function prerequisiteCycleIds(config: GameConfig): string[] {
+  const rows = (config as unknown as MutableConfig)[BUILDINGS_GROUP] as Record<string, MutableEntity>;
+  const settled = new Set<string>();
+  const onCycle = new Set<string>();
+  for (const startId of Object.keys(rows)) {
+    const path: string[] = [];
+    const seenAt = new Map<string, number>();
+    let current = startId;
+    while (current !== NO_PREREQUISITE && Object.hasOwn(rows, current) && !settled.has(current)) {
+      const repeat = seenAt.get(current);
+      if (repeat !== undefined) {
+        for (const id of path.slice(repeat)) {
+          onCycle.add(id);
+        }
+        break;
+      }
+      seenAt.set(current, path.length);
+      path.push(current);
+      current = String(rows[current]![PREREQUISITE_FIELD]);
+    }
+    for (const id of path) {
+      settled.add(id);
+    }
+  }
+  return Object.keys(rows).filter((id) => onCycle.has(id));
+}
+
 /** Fresh copy of the schema defaults. Never shared, so callers can mutate it. */
 const DEFAULTS: GameConfig = buildDefaults();
 
@@ -1517,6 +1750,18 @@ function validateConfig(raw: unknown): ValidationResult<GameConfig> {
     }
     result[groupKey] = checkFields(group, rawGroup, groupKey, issues);
   }
+  // Only worth asking once every building holds a value: a cycle is a property
+  // of the whole group, not of one field, and it is rejected here rather than
+  // merely flagged in the UI, so no file on disk can ever hold an unbuildable tree.
+  if (issues.length === 0) {
+    const ring = prerequisiteCycleIds(result as unknown as GameConfig);
+    for (const id of ring) {
+      issues.push({
+        path: `${BUILDINGS_GROUP}.${id}.${PREREQUISITE_FIELD}`,
+        message: `требования зациклены: ${ring.join(" ↔ ")} — здание нельзя построить ни при каком порядке`,
+      });
+    }
+  }
   if (issues.length > 0) {
     return { ok: false, issues };
   }
@@ -1580,13 +1825,19 @@ function serializeConfig(value: GameConfig): string {
 
 export type { AnyGroup as SchemaGroup, GameConfig };
 export {
+  BUILDINGS_GROUP,
   DEFAULTS,
+  NODE_X_FIELD,
+  NODE_Y_FIELD,
+  NO_PREREQUISITE,
+  PREREQUISITE_FIELD,
   SCHEMA,
   cloneConfig,
   entityEntries,
   fieldEntries,
   groupEntries,
   parseConfig,
+  prerequisiteCycleIds,
   serializeConfig,
   stepOf,
   validateConfig,
