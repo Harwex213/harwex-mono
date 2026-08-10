@@ -3,8 +3,10 @@ import { useSignals } from "@preact/signals-react/runtime";
 import { useEffect, useRef, useState } from "react";
 import type { ResourceKind } from "../economy/stock";
 import { RESOURCE_KINDS } from "../economy/stock";
+import { armyLimit } from "../state/army";
 import { resourceLabel, stock } from "../state/resources";
-import { ResourceIcon } from "./glyphs";
+import { armyUsed } from "../state/units";
+import { ArmyIcon, ResourceIcon } from "./glyphs";
 
 /**
  * The treasury, across the top of the screen.
@@ -81,6 +83,19 @@ function ResourceBar(): React.JSX.Element {
           </div>
         );
       })}
+      {/* The army sits with the treasury because it is spent the same way: a
+          number the player plays against, and the one the barracks refuses on.
+          It is a limit rather than a pile, so it reads `have / room`. */}
+      <div className="res res-army" data-full={armyUsed.value >= armyLimit.value}>
+        <ArmyIcon className="res-icon" />
+        <span className="res-text">
+          <span className="res-name">Армия</span>
+          <span className="res-value" key={armyUsed.value}>
+            {armyUsed.value}
+            <span className="res-limit">/{armyLimit.value}</span>
+          </span>
+        </span>
+      </div>
     </div>
   );
 }

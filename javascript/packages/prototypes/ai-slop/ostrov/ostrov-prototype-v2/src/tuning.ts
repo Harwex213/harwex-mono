@@ -105,6 +105,60 @@ const WINDOW_GLOW_PERIOD = 4.7;
 /** Period of one up-and-down trip of the construction hoist, in seconds. */
 const HOIST_PERIOD = 1.7;
 
+/** Period of one lazy flap of the barracks pennant, in seconds. Slower than the castle flag. */
+const PENNANT_WAVE_PERIOD = 2.1;
+
+/** Period of the barracks brazier flicker, in seconds. Deliberately short: fire is nervous. */
+const BRAZIER_FLICKER_PERIOD = 0.47;
+
+/** How long one spark takes to rise off the brazier and fade, in seconds. */
+const BRAZIER_SPARK_PERIOD = 1.6;
+
+/** Period of one swing of the training dummy, in seconds. */
+const DUMMY_SWING_PERIOD = 2.9;
+
+/* --- Units -----------------------------------------------------------------
+ *
+ * `trainTimeSec` in the config is balance time, exactly as `buildTimeSec` is:
+ * a swordsman takes twenty-five seconds, which is a long time to watch a bar.
+ * The divisor and the floor are the demo's, so the designer's numbers stay the
+ * designer's. The rest of the unit knobs — speed, spacing, size, player colour —
+ * are the designer's and live in the `army` group of the config.
+ */
+
+/** Divisor applied to `trainTimeSec`. The swordsman's 25 s becomes 5 s. */
+const TRAIN_TIME_SPEEDUP = 5;
+
+/** Floor on a sped-up training run, in seconds, so the bar is still readable. */
+const TRAIN_TIME_MIN_SEC = 1.5;
+
+/**
+ * How long repeat training waits before trying again after it was refused.
+ *
+ * Without it the toggle asks the treasury once a frame forever. With it a
+ * blocked repeat costs one check every this many seconds, and the moment the
+ * block clears the next check starts the order.
+ */
+const REPEAT_RETRY_SEC = 0.5;
+
+/** Size of one unit on the map, in world units. About a fifth of a hex. */
+const UNIT_SIZE = 13;
+
+/** Peak of the walking bob, in world units. */
+const UNIT_BOB_AMPLITUDE = 2.2;
+
+/** Period of one step of that bob, in seconds. */
+const UNIT_BOB_PERIOD = 0.42;
+
+/** How long a unit keeps its arrival beat after it reaches its post, in seconds. */
+const UNIT_ARRIVAL_BEAT_SEC = 0.5;
+
+/** Period of the marching dashes on the rally line, in seconds. */
+const RALLY_DASH_PERIOD = 1.5;
+
+/** How long a refused rally point keeps saying why, in seconds. */
+const RALLY_NOTICE_SEC = 2.2;
+
 /* --- Hauling ---------------------------------------------------------------
  *
  * A producer sends its output to the castle as a crate that walks the road.
@@ -135,12 +189,15 @@ const DELIVERY_BEAT_SEC = 0.85;
 const DELIVERY_RISE = 46;
 
 export {
+  BRAZIER_FLICKER_PERIOD,
+  BRAZIER_SPARK_PERIOD,
   BUILDING_ART_SCALE,
   BUILD_TIME_MIN_SEC,
   BUILD_TIME_SPEEDUP,
   COMPLETION_BEAT_SEC,
   DELIVERY_BEAT_SEC,
   DELIVERY_RISE,
+  DUMMY_SWING_PERIOD,
   FLAG_WAVE_PERIOD,
   GHOST_ALPHA,
   GHOST_DASH_PERIOD,
@@ -161,7 +218,17 @@ export {
   PARCEL_LIFT,
   PARCEL_MIN_INTERVAL_SEC,
   PARCEL_SIZE,
+  PENNANT_WAVE_PERIOD,
   PLACEMENT_BEAT_SEC,
+  RALLY_DASH_PERIOD,
+  RALLY_NOTICE_SEC,
+  REPEAT_RETRY_SEC,
+  TRAIN_TIME_MIN_SEC,
+  TRAIN_TIME_SPEEDUP,
+  UNIT_ARRIVAL_BEAT_SEC,
+  UNIT_BOB_AMPLITUDE,
+  UNIT_BOB_PERIOD,
+  UNIT_SIZE,
   WHEEL_SPIN_PERIOD,
   WINDOW_GLOW_PERIOD,
   ZOOM_EASE_DURATION,

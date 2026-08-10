@@ -1,7 +1,7 @@
 import { config } from "@hw/ostrov-prototype-v2-config";
 import type { BuildingId } from "../buildings/catalog";
 import { CASTLE_ID, productionOf } from "../buildings/catalog";
-import type { Traveller } from "../economy/lanes";
+import type { Gate, Traveller } from "../economy/lanes";
 import { advanceTravellers, roomAtStart } from "../economy/lanes";
 import type { RoadLeg, Route, RouteTree } from "../economy/routes";
 import { buildRoutes, legsOf, spotOn } from "../economy/routes";
@@ -31,8 +31,17 @@ import { world } from "./signals";
  * for frames while anything is still moving.
  */
 
-/** Why a producer is sending nothing. */
-type StallReason = "none" | "noCastle" | "noRoute";
+/**
+ * Why a producer is sending nothing.
+ *
+ * A busy road is not on the list. It used to be, and it read as an error the
+ * player had to fix: three pills over three buildings saying "road busy", which
+ * is what a working economy at capacity looks like. Backpressure now shows
+ * itself the way it should — crates queueing on the road — and the pile behind
+ * the door still fills to `stallStockpileCap` and still drains, silently.
+ * What is left are the two states the player really can do something about.
+ */
+type StallReason = "noCastle" | "noRoute";
 
 type Producer = {
   key: string;
@@ -43,9 +52,16 @@ type Producer = {
   interval: number;
   /** `performance.now()` of the next crate. */
   nextAt: number;
-  stall: StallReason;
+  /** What is wrong, or null when the crates are simply queueing for the road. */
+  stall: StallReason | null;
   /** Crates banked at the building because nothing could carry them yet. */
   stored: number;
+  /**
+   * World units of road that have run past the door since the last crate left
+   * it. The door only asks traffic to give way once this has reached a whole
+   * spacing, which is what turns "the door always wins" into taking turns.
+   */
+  yielded: number;
   route: Route | null;
 };
 
@@ -83,6 +99,9 @@ const producers = new Map<string, Producer>();
 const parcels: Parcel[] = [];
 
 const deliveries: Delivery[] = [];
+
+/** Doors with a crate banked behind them this frame. Rebuilt by `loadOut`. */
+const gates: Gate[] = [];
 
 /** Every leg of every live road, each one exactly once, for the ground track. */
 let roads: RoadLeg[] = [];
@@ -142,6 +161,7 @@ function ensureTree(map: WorldMap, list: readonly PlacedBuilding[]): RouteTree {
     castles,
     isLand: (q, r) => map.byKey.has(hexKey(q, r)),
     toWorld: hexToWorld,
+    lanes: config.economy.castleIntakeLanes,
   });
   for (const producer of producers.values()) {
     producer.route = tree.routeOf(producer.hex);
@@ -158,6 +178,7 @@ function resetIfWorldChanged(map: WorldMap): void {
   producers.clear();
   parcels.length = 0;
   deliveries.length = 0;
+  gates.length = 0;
   roads = [];
   tree = null;
   treeCastles = "?";
@@ -188,8 +209,9 @@ function syncProducers(list: readonly PlacedBuilding[], now: number, current: Ro
       kind,
       interval,
       nextAt: now + interval * 1000,
-      stall: "none",
+      stall: null,
       stored: 0,
+      yielded: 0,
       route: current.routeOf(hex),
     });
   }
@@ -229,16 +251,29 @@ function emit(producer: Producer, route: Route, now: number): void {
  * ever quietly dropped on the floor.
  */
 function produce(producer: Producer, current: RouteTree): void {
-  producer.stall = producer.route ? "none" : current.empty ? "noCastle" : "noRoute";
+  producer.stall = producer.route ? null : current.empty ? "noCastle" : "noRoute";
   producer.stored = Math.min(config.economy.stallStockpileCap, producer.stored + 1);
 }
 
 /**
- * Puts as much of every producer's pile on the road as the road will take. Run
- * once a frame rather than once a production tick, so a pile banked during a
- * stall drains at the speed of the road instead of at the speed of the mine.
+ * Puts as much of every producer's pile on the road as the road will take, and
+ * collects a gate for every pile that is still not out. Run once a frame rather
+ * than once a production tick, so a pile banked during a stall drains at the
+ * speed of the road instead of at the speed of the mine.
+ *
+ * A refused door does not ask for right of way at once. It counts the road that
+ * runs past it — `speed * seconds`, so the count is in world units and a slow
+ * frame and a fast one add up to the same thing — and only puts a gate up once a
+ * whole spacing of traffic has gone by since its last crate. On a quiet road a
+ * producer is never refused, the count never starts and the gate never exists.
+ * On a road carrying its full load the door and the traffic end up taking one
+ * turn each, which is the only split that leaves neither of them starving.
+ *
+ * `gates` is filled rather than returned, and it is the module's own array, so
+ * a frame with nothing waiting allocates nothing.
  */
-function loadOut(current: RouteTree, now: number, spacing: number): void {
+function loadOut(current: RouteTree, now: number, seconds: number, spacing: number, speed: number): void {
+  gates.length = 0;
   for (const producer of producers.values()) {
     const route = producer.route;
     if (!route || producer.stored <= 0) {
@@ -247,6 +282,14 @@ function loadOut(current: RouteTree, now: number, spacing: number): void {
     while (producer.stored > 0 && roomAtStart(current, route, parcels, spacing)) {
       emit(producer, route, now);
       producer.stored -= 1;
+      producer.yielded = 0;
+    }
+    if (producer.stored <= 0) {
+      continue;
+    }
+    producer.yielded = Math.min(spacing, producer.yielded + speed * seconds);
+    if (producer.yielded >= spacing) {
+      gates.push({ route, remaining: route.length });
     }
   }
 }
@@ -308,10 +351,18 @@ function advanceEconomy(now: number, seconds: number): void {
       produce(producer, current);
     }
   }
-  loadOut(current, now, spacing);
+  loadOut(current, now, seconds, spacing, config.economy.parcelSpeed);
 
   if (parcels.length > 0) {
-    advanceTravellers(parcels, current, seconds, config.economy.parcelSpeed, spacing);
+    advanceTravellers(
+      parcels,
+      current,
+      seconds,
+      config.economy.parcelSpeed,
+      spacing,
+      config.economy.mergeLookahead,
+      gates,
+    );
     for (let index = parcels.length - 1; index >= 0; index -= 1) {
       const parcel = parcels[index]!;
       if (parcel.remaining > 0) {
@@ -357,19 +408,20 @@ function roadLines(): readonly RoadLeg[] {
   return roads;
 }
 
-/**
- * Smallest pile worth putting a number on the roof for. A working building
- * carries nought or one crate at the door and that is not news.
- */
-const BACKLOG_WORTH_SHOWING = 2;
-
 const stalls = new Map<string, Stall>();
 
-/** What each producer has to say for itself, keyed by its hex. Live data. */
+/**
+ * What each producer has to say for itself, keyed by its hex. Live data.
+ *
+ * Empty in every shipped configuration: both reasons need a producer with no
+ * castle to walk to, which the build panel does not let the player make. It is
+ * kept because a designer who turns the castle into something buildable
+ * elsewhere, or an island that a second castle cuts in half, brings them back.
+ */
 function stallsByHex(): ReadonlyMap<string, Stall> {
   stalls.clear();
   for (const producer of producers.values()) {
-    if (producer.stall === "none" && producer.stored < BACKLOG_WORTH_SHOWING) {
+    if (producer.stall === null) {
       continue;
     }
     stalls.set(producer.key, { reason: producer.stall, stored: producer.stored, kind: producer.kind });

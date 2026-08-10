@@ -1,5 +1,6 @@
 import type { BuildingId, CategoryId } from "../buildings/catalog";
 import { RESOURCE_COLOURS } from "../render/palette";
+import type { UnitId } from "../units/catalog";
 
 /**
  * Every glyph the build panel draws, on one 24×24 grid.
@@ -82,6 +83,15 @@ function filled(path: string): React.JSX.Element {
   return <path d={path} fill="currentColor" fillRule="evenodd" />;
 }
 
+/**
+ * One upright sword. The war section of the build panel wears it, and so does
+ * the army counter in the top bar — the same shape has to mean "soldiers" in
+ * both places or the counter is just another number.
+ */
+const SWORD_PATH =
+  "M12 1.4 L14.8 6.6 V13.2 H9.2 V6.6 Z M5.2 13.2 H18.8 V16.2 H5.2 Z" +
+  " M10.5 16.2 H13.5 V19.8 H10.5 Z M9.4 19.8 H14.6 V22.4 H9.4 Z";
+
 const CATEGORY_GLYPHS: Record<CategoryId, React.JSX.Element> = {
   // A crown, not a castle: the castle silhouette is taken by the building below it.
   core: (
@@ -100,12 +110,7 @@ const CATEGORY_GLYPHS: Record<CategoryId, React.JSX.Element> = {
   ),
   // One upright sword, not two crossed ones: at 18 pixels a pair of blades
   // collapses into a plain ✕, and a single silhouette keeps its edges.
-  war: filled(
-    "M12 1.4 L14.8 6.6 V13.2 H9.2 V6.6 Z" +
-      " M5.2 13.2 H18.8 V16.2 H5.2 Z" +
-      " M10.5 16.2 H13.5 V19.8 H10.5 Z" +
-      " M9.4 19.8 H14.6 V22.4 H9.4 Z",
-  ),
+  war: filled(SWORD_PATH),
   defense: filled("M12 2.4 L20.6 5.6 V12.2 C20.6 16.8 17 20.4 12 21.8 C7 20.4 3.4 16.8 3.4 12.2 V5.6 Z"),
   magic: filled("M12 1.8 C13.1 8.4 15.6 10.9 22.2 12 C15.6 13.1 13.1 15.6 12 22.2 C10.9 15.6 8.4 13.1 1.8 12 C8.4 10.9 10.9 8.4 12 1.8 Z"),
 };
@@ -143,6 +148,58 @@ const BUILDING_GLYPHS: Record<BuildingId, React.JSX.Element> = {
   ),
 };
 
+/**
+ * The units, on the same terms as the buildings: one silhouette each, told
+ * apart by the piece of kit rather than by the figure, because at 29 pixels
+ * every figure is the same figure.
+ */
+const UNIT_GLYPHS: Record<UnitId, React.JSX.Element> = {
+  // A pick over a shoulder. The barracks never shows it — a worker is labour —
+  // but the roster is complete, so a designer who flips its role gets a glyph.
+  worker: filled(
+    "M2.6 8.4 C7 4 17 4 21.4 8.4 L19.8 10.6 C16 7.4 8 7.4 4.2 10.6 Z" +
+      " M10.6 9.4 H13.4 L12.8 21.8 H11.2 Z",
+  ),
+  // A closed helm: dome, brow band and the slit. Not a sword — the sword is the
+  // war section of the build panel, and one glyph may only mean one thing.
+  swordsman: filled(
+    "M4.2 12.4 A7.8 7.8 0 0 1 19.8 12.4 V15.4 H15.2 V21.4 H8.8 V15.4 H4.2 Z" +
+      " M7.4 10.6 H16.6 V13 H7.4 Z",
+  ),
+  // A drawn bow: the stave, the string and the nocked arrow.
+  archer: (
+    <g>
+      <path
+        d="M7.6 2.8 A10.4 10.4 0 0 1 7.6 21.2"
+        stroke="currentColor"
+        strokeWidth="2.6"
+        strokeLinecap="round"
+        fill="none"
+      />
+      <path d="M7.6 2.8 L7.6 21.2" stroke="currentColor" strokeWidth="1.4" fill="none" />
+      {filled("M3.4 11 H17.4 V13 H3.4 Z M17 8.6 L21.8 12 L17 15.4 Z")}
+    </g>
+  ),
+};
+
+/**
+ * Two arrows chasing each other round a circle: the standing symbol for "keep
+ * doing this". Drawn as a stroked arc with a solid head, so it stays legible at
+ * the 22 pixels the toggle is.
+ */
+const REPEAT_GLYPH: React.JSX.Element = (
+  <g>
+    <path
+      d="M5.4 12 A6.6 6.6 0 0 1 16.9 7.6 M18.6 12 A6.6 6.6 0 0 1 7.1 16.4"
+      stroke="currentColor"
+      strokeWidth="2.4"
+      strokeLinecap="round"
+      fill="none"
+    />
+    {filled("M17.6 3.6 L18.6 9.2 L13.2 8 Z M6.4 20.4 L5.4 14.8 L10.8 16 Z")}
+  </g>
+);
+
 type GlyphProps = {
   className: string;
   children: React.ReactNode;
@@ -164,5 +221,22 @@ function BuildingGlyph({ id }: { id: BuildingId }): React.JSX.Element {
   return <Glyph className="tile-glyph">{BUILDING_GLYPHS[id]}</Glyph>;
 }
 
+function UnitGlyph({ id }: { id: UnitId }): React.JSX.Element {
+  return <Glyph className="tile-glyph">{UNIT_GLYPHS[id]}</Glyph>;
+}
+
+function RepeatIcon(): React.JSX.Element {
+  return <Glyph className="repeat-glyph">{REPEAT_GLYPH}</Glyph>;
+}
+
+/** The sword of the war section, at the size of a resource icon. */
+function ArmyIcon({ className }: { className?: string }): React.JSX.Element {
+  return (
+    <svg className={className ?? "tip-icon"} viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path d={SWORD_PATH} fill={RESOURCE_COLOURS.stone} fillRule="evenodd" />
+    </svg>
+  );
+}
+
 export type { ResourceIconKind };
-export { BuildingGlyph, CategoryGlyph, ResourceIcon };
+export { ArmyIcon, BuildingGlyph, CategoryGlyph, RepeatIcon, ResourceIcon, UnitGlyph };

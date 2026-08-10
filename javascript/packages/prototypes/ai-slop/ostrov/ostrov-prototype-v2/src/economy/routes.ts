@@ -5,17 +5,26 @@ import type { Point } from "../hex/layout";
 /**
  * The roads goods travel: one land path from every producer to a castle.
  *
- * The whole set is built as a breadth-first tree grown outwards from every
- * castle at once, over land hexes only. Multi-source breadth-first search hands
- * each hex the nearest castle for free, so a second castle simply takes over the
- * half of the island it is closer to, and a producer with no land route to any
- * castle is left out of the tree entirely.
+ * The set is a breadth-first FOREST rather than one tree. Each castle opens an
+ * intake lane on every hex direction it can be approached from — up to six — and
+ * the search is grown from those approach hexes, not from the castle itself. The
+ * castle hexes are marked before the search starts and are never expanded, so no
+ * road ever runs through a castle to reach another one. Every land hex therefore
+ * belongs to exactly one lane: the one whose approach hex is nearest.
  *
- * Growing one tree instead of running a search per producer buys the property
- * the parcel queue is built on: every hex has exactly one parent, so two routes
- * that meet once are identical from that hex onwards. Routes merge, they never
- * split, and the point where a pair merges is a property of the pair rather than
- * of where the two parcels happen to be.
+ * That is the whole of the throughput fix. Grown from the castle, every road on
+ * the island ended in the same final leg, and the queue rule that keeps crates a
+ * spacing apart on a shared stretch turned that leg into a single file whatever
+ * the island produced. Grown from the approach hexes, six roads reach the castle
+ * over six disjoint hex sets, and six files are admitted at once.
+ *
+ * Inside one lane nothing has changed: it is still a tree, every hex still has
+ * exactly one parent, so two routes of the same lane that meet once are
+ * identical from that hex onwards. Routes merge, they never split, and the point
+ * where a pair merges is a property of the pair. Two routes of DIFFERENT lanes
+ * share no hex at all — only the castle centre they both end on, which is the
+ * gate, not a stretch of road — so `mergeRemaining` reports no merge for them
+ * and the queue leaves them alone.
  *
  * Nothing here imports the config or any signal. It takes the land test and the
  * hex-to-world projection as arguments, which is what lets the verification
@@ -25,6 +34,12 @@ import type { Point } from "../hex/layout";
 type Route = {
   /** Hex key of the producer this route starts at. Also its cache key. */
   id: string;
+  /**
+   * Intake lane this road belongs to: the hex key of the castle approach it
+   * arrives by, or of the castle itself for a producer standing on one. Two
+   * roads can only ever share ground when their lane is the same.
+   */
+  lane: string;
   /** Every hex of the road, producer first, castle last. */
   hexes: readonly string[];
   /** Membership of `hexes`, for the merge test. */
@@ -67,6 +82,11 @@ type RouteOptions = {
   /** Whether a hex is land a parcel may walk over. */
   isLand: (q: number, r: number) => boolean;
   toWorld: (hex: Axial) => Point;
+  /**
+   * How many approach hexes one castle opens, at most. Six is every direction;
+   * one collapses the forest back into the single trunk this replaced.
+   */
+  lanes: number;
 };
 
 type RouteTree = {
@@ -80,16 +100,19 @@ type RouteTree = {
    * after that point, so it is the whole conflict test the queue needs.
    */
   mergeRemaining: (left: Route, right: Route) => number;
+  /** Hex keys of the intake lanes that were opened, for the harness and the tests. */
+  lanes: readonly string[];
 };
 
-/** One hex of the tree: where it is, and which hex leads from it to the castle. */
+/** One hex of the forest: where it is, what leads from it to the castle, whose lane it is. */
 type Step = {
   q: number;
   r: number;
   parent: string | null;
+  lane: string;
 };
 
-/** Roads never share a hex when they run to different castles. */
+/** Roads never share a hex across two intake lanes, nor across two castles. */
 const NO_MERGE = Number.NEGATIVE_INFINITY;
 
 function compareHexes(left: Axial, right: Axial): number {
@@ -100,24 +123,62 @@ function compareHexes(left: Axial, right: Axial): number {
 }
 
 /**
- * Grows the tree of roads. The cost is one breadth-first walk over the land the
- * castles can reach, which is a few hundred hexes on an island of nine — cheap
- * enough that the caller rebuilds the whole thing whenever a castle appears
- * rather than patching it.
+ * Grows the forest of roads. The cost is one breadth-first walk over the land
+ * the castles can reach, which is a few hundred hexes on an island of nine —
+ * cheap enough that the caller rebuilds the whole thing whenever a castle
+ * appears rather than patching it.
+ *
+ * The walk is seeded with the approach hexes rather than the castles, and it is
+ * still one walk: a hex is claimed by the first lane that reaches it, so the
+ * lanes carve the island into as many wedges as the castle has approaches, and a
+ * producer is served by the approach nearest to it. Nothing here looks at
+ * traffic, so the same island and the same castles always give the same forest
+ * and a producer's lane never changes under it.
  */
 function buildRoutes(options: RouteOptions): RouteTree {
   const { isLand, toWorld } = options;
   const parents = new Map<string, Step>();
   const queue: Step[] = [];
+  const lanes: string[] = [];
   // Sorted, so two castles equidistant from a hex always hand it to the same one.
-  for (const castle of [...options.castles].sort(compareHexes)) {
+  const castles = [...options.castles].sort(compareHexes);
+  const gates = new Set<string>();
+  // Every castle is laid down before any lane is opened. A castle is a terminal,
+  // never a step of a road, so marking them all first is what stops a lane of one
+  // castle from being grown through another.
+  for (const castle of castles) {
     const key = hexKey(castle.q, castle.r);
     if (parents.has(key) || !isLand(castle.q, castle.r)) {
       continue;
     }
-    const step: Step = { q: castle.q, r: castle.r, parent: null };
-    parents.set(key, step);
-    queue.push(step);
+    parents.set(key, { q: castle.q, r: castle.r, parent: null, lane: key });
+    gates.add(key);
+  }
+  const wanted = Math.max(1, Math.min(HEX_DIRECTIONS.length, Math.round(options.lanes)));
+  for (const castle of castles) {
+    const key = hexKey(castle.q, castle.r);
+    if (!gates.has(key)) {
+      continue;
+    }
+    let opened = 0;
+    // Direction order, so which approaches a castle opens is a property of the
+    // castle and of the island, never of the order the buildings were laid in.
+    for (const offset of HEX_DIRECTIONS) {
+      if (opened >= wanted) {
+        break;
+      }
+      const q = castle.q + offset.q;
+      const r = castle.r + offset.r;
+      const next = hexKey(q, r);
+      if (parents.has(next) || !isLand(q, r)) {
+        continue;
+      }
+      const step: Step = { q, r, parent: key, lane: next };
+      parents.set(next, step);
+      queue.push(step);
+      lanes.push(next);
+      opened += 1;
+    }
   }
   for (let head = 0; head < queue.length; head += 1) {
     const step = queue[head]!;
@@ -129,7 +190,7 @@ function buildRoutes(options: RouteOptions): RouteTree {
       if (parents.has(next) || !isLand(q, r)) {
         continue;
       }
-      const child: Step = { q, r, parent: key };
+      const child: Step = { q, r, parent: key, lane: step.lane };
       parents.set(next, child);
       queue.push(child);
     }
@@ -168,6 +229,7 @@ function buildRoutes(options: RouteOptions): RouteTree {
     }
     const route: Route = {
       id: start,
+      lane: first.lane,
       hexes,
       keys: new Set(hexes),
       points,
@@ -182,6 +244,12 @@ function buildRoutes(options: RouteOptions): RouteTree {
   const mergeRemaining = (left: Route, right: Route): number => {
     if (left === right) {
       return left.length;
+    }
+    // Different lanes are disjoint hex sets by construction. The only thing they
+    // have in common is the castle centre both end on, and a crate is credited
+    // and gone the instant it reaches it, so there is no stretch to share.
+    if (left.lane !== right.lane) {
+      return NO_MERGE;
     }
     // One entry per unordered pair: the join is a property of the two roads and
     // never of which of them asked.
@@ -201,7 +269,7 @@ function buildRoutes(options: RouteOptions): RouteTree {
     return found;
   };
 
-  return { empty: queue.length === 0, routeOf, mergeRemaining };
+  return { empty: gates.size === 0, routeOf, mergeRemaining, lanes };
 }
 
 /**

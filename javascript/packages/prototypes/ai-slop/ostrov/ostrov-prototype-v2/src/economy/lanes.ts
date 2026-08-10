@@ -6,9 +6,10 @@ import type { Route, RouteTree } from "./routes";
  * Every parcel is one number: `remaining`, the arc length between it and the
  * castle. That single coordinate is what makes the ordering tractable. Two
  * parcels on the same road are at the same place exactly when their `remaining`
- * is equal, and because the roads form a tree — see `routes.ts` — two roads that
- * ever meet are identical from the meeting hex onwards. So `remaining` is a
- * shared coordinate on every stretch two parcels can possibly share.
+ * is equal, and because each intake lane is a tree — see `routes.ts` — two roads
+ * of one lane that ever meet are identical from the meeting hex onwards. So
+ * `remaining` is a shared coordinate on every stretch two parcels can possibly
+ * share, and two parcels of different lanes share no stretch at all.
  *
  * One pass per frame, over the parcels sorted by `remaining`:
  *
@@ -16,6 +17,8 @@ import type { Route, RouteTree } from "./routes";
  * - Every other parcel finds its leader: the nearest parcel ahead of it whose
  *   road it shares. The leader has already been moved this frame, so the follower
  *   is measured against where the leader actually is, not against last frame.
+ * - A door with a crate banked behind it counts as a leader too, so through
+ *   traffic leaves a gap for the producer it is driving past.
  * - The follower may not come closer to its leader than `spacing`, and it may
  *   never move backwards. A parcel that is already too close — which happens the
  *   instant another parcel drops into the road ahead of it at a junction — holds
@@ -35,36 +38,84 @@ type Traveller = {
 };
 
 /**
- * How far before a junction two parcels on different roads start to matter to
- * each other, as a multiple of the spacing.
+ * A crate waiting inside a producer for room on the road.
  *
- * One would be enough to keep them apart along the road. It is not enough to
- * keep them apart on screen: two roads can meet at a shallow angle — the hex
- * grid squashed onto this camera has pairs of directions only 38° apart — and
- * two parcels a spacing apart along their own roads can be two thirds of that
- * apart in the picture. Ordering them a few spacings before the junction is what
- * turns a near miss into a merge: the two queues interleave on approach instead
- * of arriving abreast.
+ * It is not a parcel: it never moves and it is never drawn. It is put into the
+ * queue at the producer's door so that traffic coming down the road behind the
+ * door has to leave a gap for it, exactly as it would for a crate already out.
+ *
+ * Without it, through traffic has absolute priority over a doorway. A road
+ * carrying its full load has no gap of a whole spacing anywhere in it, so a
+ * producer standing on somebody else's road is refused every frame for as long
+ * as that road is busy — which is the stall the player watched pile up to the
+ * cap. With it and nothing else the priority is simply the other way round, and
+ * the producers further up the road are the ones that never get in. Which is why
+ * the caller only hands a door in once it has let a spacing of traffic past
+ * since its last crate went out; see `loadOut` in `state/parcels.ts`.
  */
-const MERGE_LOOKAHEAD = 2.5;
+type Gate = {
+  route: Route;
+  /** Arc length of the door, which is `route.length`. */
+  remaining: number;
+};
 
 /**
  * Whether `ahead` is in `behind`'s way.
  *
- * Two parcels on separate branches of the tree are simply not on the same road,
- * however close their `remaining` values happen to be, and holding one for the
- * other would read as an unexplained stall. They start to matter to each other
- * once the leader is near the hex where the two roads join: from there on the
- * follower is aiming at ground the leader is standing on.
+ * Two parcels on separate branches of the forest are simply not on the same
+ * road, however close their `remaining` values happen to be, and holding one for
+ * the other would read as an unexplained stall. They start to matter to each
+ * other once the leader is near the hex where the two roads join: from there on
+ * the follower is aiming at ground the leader is standing on.
+ *
+ * `lookahead` is how far before that junction the two start to matter, as a
+ * multiple of the spacing. One would be enough to keep them apart along the
+ * road. It is not enough to keep them apart on screen: two roads can meet at a
+ * shallow angle — the hex grid squashed onto this camera has pairs of directions
+ * only 38° apart — and two parcels a spacing apart along their own roads can be
+ * two thirds of that apart in the picture. Ordering them a few spacings before
+ * the junction is what turns a near miss into a merge.
  */
-function inTheWay(tree: RouteTree, ahead: Traveller, behind: Traveller, spacing: number): boolean {
-  return ahead.remaining <= tree.mergeRemaining(ahead.route, behind.route) + spacing * MERGE_LOOKAHEAD;
+function inTheWay(
+  tree: RouteTree,
+  ahead: Traveller,
+  behind: Traveller,
+  spacing: number,
+  lookahead: number,
+): boolean {
+  return ahead.remaining <= tree.mergeRemaining(ahead.route, behind.route) + spacing * lookahead;
+}
+
+/**
+ * Whether the crate waiting at `gate` is in `behind`'s way.
+ *
+ * Two conditions on top of the ordinary one. The gate only holds traffic that is
+ * still a clear spacing short of the door, which is what keeps the rule free of
+ * deadlock: a parcel that is already inside the door's spacing is waved through
+ * rather than pinned there, and pinning it there is precisely what would stop
+ * the door from ever opening. And the gate never holds a parcel that is level
+ * with it or past it, because that parcel came out of this very door.
+ */
+function gateInTheWay(
+  tree: RouteTree,
+  gate: Gate,
+  behind: Traveller,
+  spacing: number,
+  lookahead: number,
+): boolean {
+  if (behind.remaining < gate.remaining + spacing) {
+    return false;
+  }
+  return gate.remaining <= tree.mergeRemaining(gate.route, behind.route) + spacing * lookahead;
 }
 
 /**
  * Moves every parcel one step and returns them ordered from the castle
  * outwards. The returned array is a fresh one; the parcels in it are the
  * caller's own objects, moved in place.
+ *
+ * `gates` are the doors with a crate waiting behind them. They are read only,
+ * never moved, and never appear in the result.
  */
 function advanceTravellers(
   travellers: readonly Traveller[],
@@ -72,6 +123,8 @@ function advanceTravellers(
   seconds: number,
   speed: number,
   spacing: number,
+  lookahead: number,
+  gates: readonly Gate[] = [],
 ): Traveller[] {
   const order = [...travellers].sort((left, right) => left.remaining - right.remaining || left.id - right.id);
   const step = speed * seconds;
@@ -83,11 +136,23 @@ function advanceTravellers(
     // castle is the nearest leader there is, and its limit is the tightest.
     for (let ahead = index - 1; ahead >= 0; ahead -= 1) {
       const leader = order[ahead]!;
-      if (!inTheWay(tree, leader, self, spacing)) {
+      if (!inTheWay(tree, leader, self, spacing, lookahead)) {
         continue;
       }
       limit = leader.remaining + spacing;
       break;
+    }
+    // A waiting door counts too, and the tightest of the two wins. There are at
+    // most as many gates as there are producers, and only the ones with a crate
+    // banked are handed in at all.
+    for (const gate of gates) {
+      if (gate.remaining + spacing <= limit) {
+        continue;
+      }
+      if (!gateInTheWay(tree, gate, self, spacing, lookahead)) {
+        continue;
+      }
+      limit = gate.remaining + spacing;
     }
     self.remaining = Math.max(wanted, Math.min(self.remaining, limit));
   }
@@ -129,5 +194,5 @@ function roomAtStart(
   return true;
 }
 
-export type { Traveller };
+export type { Gate, Traveller };
 export { advanceTravellers, roomAtStart };

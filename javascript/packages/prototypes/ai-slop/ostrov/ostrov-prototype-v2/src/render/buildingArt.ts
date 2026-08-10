@@ -1,14 +1,18 @@
 import type { BuildingId } from "../buildings/catalog";
-import { CASTLE_ID, SAWMILL_ID } from "../buildings/catalog";
+import { BARRACKS_ID, CASTLE_ID, SAWMILL_ID } from "../buildings/catalog";
 import type { Point } from "../hex/layout";
 import { HEX_SIZE, SQUASH, hexCorners } from "../hex/layout";
 import {
+  BRAZIER_FLICKER_PERIOD,
+  BRAZIER_SPARK_PERIOD,
   BUILDING_ART_SCALE,
   COMPLETION_BEAT_SEC,
+  DUMMY_SWING_PERIOD,
   FLAG_WAVE_PERIOD,
   GHOST_ALPHA,
   GHOST_DASH_PERIOD,
   HOIST_PERIOD,
+  PENNANT_WAVE_PERIOD,
   PLACEMENT_BEAT_SEC,
   WHEEL_SPIN_PERIOD,
   WINDOW_GLOW_PERIOD,
@@ -577,6 +581,323 @@ const SAWMILL_ART: BuildingArt = {
   siteHalfWidth: 50,
 };
 
+/* --- Казарма I ур. ---------------------------------------------------------
+ *
+ * A long low hall under a hipped roof, standing inside a ring of pointed
+ * stakes, with a banner pole planted at one end of the yard.
+ *
+ * The silhouette is built to be told apart from the two buildings that already
+ * exist, at the zoom the island is played at and from the outline alone. The
+ * castle is tall, square-shouldered and notched; the sawmill is a wide triangle
+ * with a disc bolted to its flank. This is neither: a WIDE, LOW, FLAT-TOPPED
+ * roof — a trapezoid, not a gable — with a spiky palisade running out past it on
+ * both sides and one thin vertical spike well off centre. Nothing about it is
+ * symmetrical the way the keep is, and nothing on it is round the way the wheel
+ * is.
+ *
+ * Three things move once it is finished, and all three were picked for contrast
+ * rather than for realism, because the chimney smoke of the first attempt was a
+ * pale blob over pale stone and read as nothing at all:
+ *
+ * - the pennant, dark red against the sky, snapping on its pole;
+ * - the brazier by the gate — a warm flame against grey stone, flickering on a
+ *   short period, with sparks climbing off it;
+ * - the training dummy in the yard, swinging on its post.
+ */
+
+const YARD_TONE: Tone = {
+  top: "#e2dcc9",
+  lit: "#cfc7b0",
+  mid: "#b3aa92",
+  dark: "#8d856f",
+  line: "rgba(58, 50, 34, 0.32)",
+};
+
+const HALL_CX = 2;
+const HALL_WIDTH = 62;
+const HALL_HEIGHT = 27;
+const HALL_DEPTH = 18;
+const HALL_CAP = capOf(HALL_HEIGHT, HALL_DEPTH);
+
+/** Hipped roof: wider at the eaves than at the ridge, and flat on top. */
+const ROOF_EAVES_HALF = 34;
+const ROOF_RIDGE_HALF = 15;
+const BARRACKS_ROOF_RISE = 14;
+const ROOF_RIDGE_Y = HALL_CAP - BARRACKS_ROOF_RISE;
+
+/**
+ * The stockade reaches well past the roof on both sides. That overhang is the
+ * whole silhouette cue: a first pass had the wings hidden behind the eaves, and
+ * with nothing sticking out the building read as a cottage with a flag.
+ */
+const PALISADE_HALF = 54;
+const PALISADE_TOP = -31;
+const STAKE_STEP = 9.6;
+
+const POLE_X = -46;
+const POLE_HALF = 2.8;
+const POLE_TOP = -92;
+
+/**
+ * Slate, not the tile red of the sawmill gable.
+ *
+ * At play zoom the first pass of this roof and the sawmill's were the same red
+ * triangle-ish blob on the same island, and colour was doing nothing to separate
+ * them. A cold dark roof reads as a barrack block against grass, sand and snow
+ * alike, and it is the only roof on the island that is not warm.
+ */
+const SLATE_LIT = "#63798c";
+const SLATE_MID = "#4b5e6e";
+const SLATE_DARK = "#35434f";
+
+const DUMMY_X = -22;
+const BRAZIER_X = 38;
+
+/** The stockade the hall stands in. Drawn first, so the hall covers its middle. */
+function drawPalisade(ctx: CanvasRenderingContext2D): void {
+  const count = Math.round((PALISADE_HALF * 2) / STAKE_STEP);
+  const width = STAKE_STEP * 0.78;
+  for (let index = 0; index <= count; index += 1) {
+    const x = -PALISADE_HALF + index * STAKE_STEP;
+    // Every third stake is a shade darker, which is the only variation the row
+    // needs to stop reading as a comb.
+    ctx.fillStyle = index % 3 === 0 ? "#6b4a2c" : "#8a6242";
+    ctx.beginPath();
+    ctx.moveTo(x - width / 2, 4);
+    ctx.lineTo(x - width / 2, PALISADE_TOP + 6);
+    ctx.lineTo(x, PALISADE_TOP);
+    ctx.lineTo(x + width / 2, PALISADE_TOP + 6);
+    ctx.lineTo(x + width / 2, 4);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = "rgba(46, 30, 16, 0.5)";
+    ctx.lineWidth = 0.9;
+    ctx.stroke();
+  }
+  // The rail that ties them together, so the row is a fence and not a row.
+  ctx.fillStyle = "rgba(60, 40, 22, 0.55)";
+  ctx.fillRect(-PALISADE_HALF, PALISADE_TOP + 11, PALISADE_HALF * 2, 3.8);
+}
+
+/**
+ * The hipped roof. Flat-topped on purpose: a gable of the same width would be
+ * the sawmill seen from the other side.
+ */
+function drawHipRoof(ctx: CanvasRenderingContext2D): void {
+  ctx.beginPath();
+  ctx.moveTo(HALL_CX - ROOF_EAVES_HALF, HALL_CAP);
+  ctx.lineTo(HALL_CX - ROOF_RIDGE_HALF, ROOF_RIDGE_Y);
+  ctx.lineTo(HALL_CX + ROOF_RIDGE_HALF, ROOF_RIDGE_Y);
+  ctx.lineTo(HALL_CX + ROOF_EAVES_HALF, HALL_CAP);
+  ctx.closePath();
+  const shading = ctx.createLinearGradient(HALL_CX - ROOF_EAVES_HALF, 0, HALL_CX + ROOF_EAVES_HALF, 0);
+  shading.addColorStop(0, SLATE_LIT);
+  shading.addColorStop(0.5, SLATE_MID);
+  shading.addColorStop(1, SLATE_DARK);
+  ctx.fillStyle = shading;
+  ctx.fill();
+  ctx.strokeStyle = "rgba(20, 30, 40, 0.5)";
+  ctx.lineWidth = 1.3;
+  ctx.stroke();
+
+  // The one white accent, the same strip of snow the conifers and the sawmill
+  // gable carry, on the lit slope.
+  ctx.save();
+  ctx.clip();
+  ctx.fillStyle = SNOW;
+  ctx.beginPath();
+  ctx.moveTo(HALL_CX - ROOF_EAVES_HALF, HALL_CAP);
+  ctx.lineTo(HALL_CX - ROOF_RIDGE_HALF, ROOF_RIDGE_Y);
+  ctx.lineTo(HALL_CX + ROOF_RIDGE_HALF * 0.2, ROOF_RIDGE_Y);
+  ctx.lineTo(HALL_CX - ROOF_EAVES_HALF + 14, HALL_CAP);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+
+  // A pale ridge cap: the flat top has to be visible as flat, or the hipped roof
+  // reads as the sawmill's gable seen small.
+  ctx.fillStyle = "#e8eef3";
+  ctx.fillRect(HALL_CX - ROOF_RIDGE_HALF - 1.5, ROOF_RIDGE_Y - 3.2, ROOF_RIDGE_HALF * 2 + 3, 3.2);
+}
+
+/**
+ * The banner and its pole. `wave` is an absolute phase, so the cloth is where
+ * the clock says it is and not where the last frame left it.
+ */
+function drawPennant(ctx: CanvasRenderingContext2D, time: number): void {
+  ctx.fillStyle = "#5c6774";
+  ctx.fillRect(POLE_X - POLE_HALF, POLE_TOP, POLE_HALF * 2, 6 - POLE_TOP);
+  ctx.fillStyle = "#8b98a6";
+  ctx.fillRect(POLE_X - POLE_HALF, POLE_TOP, POLE_HALF * 0.9, 6 - POLE_TOP);
+  ctx.fillStyle = "#ffd479";
+  fillEllipse(ctx, POLE_X, POLE_TOP - 3.4, 3.4, 3.4);
+
+  const phase = (TAU * time) / PENNANT_WAVE_PERIOD;
+  const near = 5.8 * Math.sin(phase);
+  const far = 4.6 * Math.sin(phase + 1.35);
+  const top = POLE_TOP + 4;
+  const bottom = top + 19;
+  ctx.beginPath();
+  ctx.moveTo(POLE_X, top);
+  ctx.bezierCurveTo(POLE_X + 13, top + near, POLE_X + 25, top - near, POLE_X + 37, top + far * 0.6);
+  // A swallowtail rather than a rectangle: the notch is what says "banner" when
+  // the whole building is forty pixels tall.
+  ctx.lineTo(POLE_X + 28, top + 9.5 + far * 0.5);
+  ctx.lineTo(POLE_X + 37, bottom + far * 0.6);
+  ctx.bezierCurveTo(POLE_X + 25, bottom - near, POLE_X + 13, bottom + near, POLE_X, bottom);
+  ctx.closePath();
+  ctx.fillStyle = "#c0403c";
+  ctx.fill();
+  ctx.strokeStyle = "rgba(84, 20, 20, 0.45)";
+  ctx.lineWidth = 1;
+  ctx.stroke();
+}
+
+/** The straw man in the yard, swinging on its post. */
+function drawTrainingDummy(ctx: CanvasRenderingContext2D, time: number): void {
+  const swing = 0.14 * Math.sin((TAU * time) / DUMMY_SWING_PERIOD);
+  ctx.save();
+  ctx.translate(DUMMY_X, 2);
+  ctx.rotate(swing);
+  ctx.fillStyle = "rgba(28, 50, 70, 0.22)";
+  fillEllipse(ctx, 2, 1, 9, 3.4);
+  ctx.fillStyle = "#6b4a2c";
+  ctx.fillRect(-2.4, -28, 4.8, 28);
+  ctx.fillRect(-11, -22, 22, 4.4);
+  ctx.fillStyle = "#c9a45c";
+  fillEllipse(ctx, 0, -31, 5.6, 5.6);
+  ctx.strokeStyle = "rgba(70, 46, 20, 0.6)";
+  ctx.lineWidth = 1.1;
+  ctx.beginPath();
+  ctx.arc(0, -31, 5.6, 0, TAU);
+  ctx.stroke();
+  ctx.restore();
+}
+
+/**
+ * The brazier by the gate: a warm flame and its sparks, which is the cue that
+ * survives being twenty pixels tall. The flicker is two sines of unrelated
+ * periods, so the fire never pulses on an obvious beat.
+ */
+function drawBrazier(ctx: CanvasRenderingContext2D, time: number, alive: number): void {
+  ctx.strokeStyle = "#4a4038";
+  ctx.lineWidth = 2.4;
+  ctx.lineCap = "round";
+  ctx.beginPath();
+  ctx.moveTo(BRAZIER_X - 6, 2);
+  ctx.lineTo(BRAZIER_X, -11);
+  ctx.moveTo(BRAZIER_X + 6, 2);
+  ctx.lineTo(BRAZIER_X, -11);
+  ctx.stroke();
+  ctx.fillStyle = "#3f3730";
+  ctx.beginPath();
+  ctx.moveTo(BRAZIER_X - 8.5, -18);
+  ctx.lineTo(BRAZIER_X + 8.5, -18);
+  ctx.lineTo(BRAZIER_X + 5.5, -10);
+  ctx.lineTo(BRAZIER_X - 5.5, -10);
+  ctx.closePath();
+  ctx.fill();
+  if (alive <= 0) {
+    return;
+  }
+
+  const flicker =
+    0.5 +
+    0.3 * Math.sin((TAU * time) / BRAZIER_FLICKER_PERIOD) +
+    0.2 * Math.sin((TAU * time) / (BRAZIER_FLICKER_PERIOD * 1.7) + 1.1);
+  const height = 13 + 5 * flicker;
+
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  const halo = ctx.createRadialGradient(BRAZIER_X, -22, 0, BRAZIER_X, -22, 22);
+  halo.addColorStop(0, `rgba(255, 186, 92, ${0.34 + 0.16 * flicker})`);
+  halo.addColorStop(1, "rgba(255, 186, 92, 0)");
+  ctx.fillStyle = halo;
+  fillEllipse(ctx, BRAZIER_X, -22, 22, 22);
+  ctx.restore();
+
+  ctx.fillStyle = "#e8622c";
+  ctx.beginPath();
+  ctx.moveTo(BRAZIER_X - 6, -18);
+  ctx.quadraticCurveTo(BRAZIER_X - 5, -18 - height * 0.7, BRAZIER_X, -18 - height);
+  ctx.quadraticCurveTo(BRAZIER_X + 5, -18 - height * 0.7, BRAZIER_X + 6, -18);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = "#ffd05e";
+  ctx.beginPath();
+  ctx.moveTo(BRAZIER_X - 3, -18);
+  ctx.quadraticCurveTo(BRAZIER_X - 2.4, -18 - height * 0.5, BRAZIER_X + 0.6, -18 - height * 0.66);
+  ctx.quadraticCurveTo(BRAZIER_X + 3, -18 - height * 0.45, BRAZIER_X + 3, -18);
+  ctx.closePath();
+  ctx.fill();
+
+  for (let spark = 0; spark < 3; spark += 1) {
+    const t = ((time / BRAZIER_SPARK_PERIOD + spark * 0.37) % 1 + 1) % 1;
+    const rise = 30 * t;
+    const fade = 1 - t;
+    ctx.fillStyle = `rgba(255, 206, 120, ${0.85 * fade * fade})`;
+    fillEllipse(ctx, BRAZIER_X + Math.sin(t * 6 + spark) * 4, -20 - rise, 1.9 * fade + 0.6, 1.9 * fade + 0.6);
+  }
+}
+
+function drawBarracks(ctx: CanvasRenderingContext2D, life: Life): void {
+  const glow = glowOf(life);
+
+  drawPlinth(ctx, 50, 12, "#9a9079", "#cbc2a8");
+  drawPalisade(ctx);
+
+  drawMass(ctx, HALL_CX, HALL_WIDTH, HALL_HEIGHT, HALL_DEPTH, YARD_TONE);
+  // A timber sill along the foot of the wall, which is what stops the hall from
+  // reading as a second, wider keep.
+  ctx.fillStyle = "rgba(90, 62, 38, 0.55)";
+  ctx.fillRect(HALL_CX - HALL_WIDTH / 2, -7, HALL_WIDTH, 7);
+  drawHipRoof(ctx);
+
+  // Two shuttered openings and the gate, nothing overlapping anything else.
+  drawWindow(ctx, HALL_CX - 20, -11, glow);
+  drawWindow(ctx, HALL_CX + 20, -11, glow);
+  drawArch(ctx, HALL_CX, 19, 22, glow);
+
+  drawTrainingDummy(ctx, life.alive > 0 ? life.time : 0);
+  drawBrazier(ctx, life.time, life.alive);
+  if (life.alive > 0) {
+    drawPennant(ctx, life.time);
+  } else {
+    // The bare pole goes up with the walls; the banner is run up it on the
+    // completion beat, which is the moment the barracks becomes a barracks.
+    ctx.fillStyle = "#5c6774";
+    ctx.fillRect(POLE_X - POLE_HALF, POLE_TOP, POLE_HALF * 2, 6 - POLE_TOP);
+  }
+}
+
+/**
+ * Traced once round, left to right: the left palisade wing, the banner pole as
+ * a thin spike, the hipped roof, the right wing.
+ */
+const BARRACKS_SILHOUETTE: readonly Point[] = [
+  { x: -PALISADE_HALF, y: 12 },
+  { x: -PALISADE_HALF, y: PALISADE_TOP },
+  { x: POLE_X - POLE_HALF, y: PALISADE_TOP },
+  { x: POLE_X - POLE_HALF, y: POLE_TOP },
+  { x: POLE_X + POLE_HALF, y: POLE_TOP },
+  { x: POLE_X + POLE_HALF, y: PALISADE_TOP },
+  { x: HALL_CX - ROOF_EAVES_HALF, y: PALISADE_TOP },
+  { x: HALL_CX - ROOF_EAVES_HALF, y: HALL_CAP },
+  { x: HALL_CX - ROOF_RIDGE_HALF, y: ROOF_RIDGE_Y },
+  { x: HALL_CX + ROOF_RIDGE_HALF, y: ROOF_RIDGE_Y },
+  { x: HALL_CX + ROOF_EAVES_HALF, y: HALL_CAP },
+  { x: HALL_CX + ROOF_EAVES_HALF, y: PALISADE_TOP },
+  { x: PALISADE_HALF, y: PALISADE_TOP },
+  { x: PALISADE_HALF, y: 12 },
+];
+
+const BARRACKS_ART: BuildingArt = {
+  height: -POLE_TOP,
+  draw: drawBarracks,
+  silhouette: BARRACKS_SILHOUETTE,
+  siteHalfWidth: 54,
+};
+
 /**
  * Placeholder for every building that has no art of its own yet: a stone cottage
  * under a wooden gable. It shares the whole flow — ghost, beat, scaffolding,
@@ -629,6 +950,7 @@ const COTTAGE_ART: BuildingArt = {
 const ART_BY_ID: Partial<Record<BuildingId, BuildingArt>> = {
   [CASTLE_ID]: CASTLE_ART,
   [SAWMILL_ID]: SAWMILL_ART,
+  [BARRACKS_ID]: BARRACKS_ART,
 };
 
 function artOf(id: BuildingId): BuildingArt {

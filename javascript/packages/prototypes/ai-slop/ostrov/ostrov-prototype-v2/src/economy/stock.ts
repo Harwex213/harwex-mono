@@ -103,5 +103,49 @@ function missingOf(stock: Stock, cost: Cost): ResourceKind | null {
   return null;
 }
 
-export type { Cost, ResourceKind, StartOptions, Stock };
-export { RESOURCE_KINDS, ZERO_COST, affordable, costOf, emptyStock, missingOf, startingStock, totalOf, withoutCost };
+/**
+ * A price over any of the four resources. A building is priced in the three
+ * materials and never in food, which is what `Cost` says; a unit eats, so it is
+ * priced in food as well. Rather than widening `Cost` — and with it the opening
+ * pile derivation that reads it — a unit hands its price in as this.
+ */
+type Price = Partial<Record<ResourceKind, number>>;
+
+function canPay(stock: Stock, price: Price): boolean {
+  return missingFor(stock, price) === null;
+}
+
+/** The first resource the pile is short of for this price, or null when it covers it. */
+function missingFor(stock: Stock, price: Price): ResourceKind | null {
+  for (const kind of RESOURCE_KINDS) {
+    if (stock[kind] < (price[kind] ?? 0)) {
+      return kind;
+    }
+  }
+  return null;
+}
+
+/** The pile with the price taken out of it. Never called before `canPay`. */
+function afterPay(stock: Stock, price: Price): Stock {
+  const next = { ...stock };
+  for (const kind of RESOURCE_KINDS) {
+    next[kind] = stock[kind] - (price[kind] ?? 0);
+  }
+  return next;
+}
+
+export type { Cost, Price, ResourceKind, StartOptions, Stock };
+export {
+  RESOURCE_KINDS,
+  ZERO_COST,
+  afterPay,
+  affordable,
+  canPay,
+  costOf,
+  emptyStock,
+  missingFor,
+  missingOf,
+  startingStock,
+  totalOf,
+  withoutCost,
+};

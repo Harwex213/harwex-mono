@@ -47,6 +47,15 @@ const RESOURCE_OPTIONS = [
   { value: "gold", label: "Золото" },
 ] as const;
 
+/**
+ * What a unit is for. The barracks offers the soldiers and nothing else, so the
+ * split is a field a designer owns rather than a list of ids in game code.
+ */
+const UNIT_ROLE_OPTIONS = [
+  { value: "soldier", label: "Солдат" },
+  { value: "worker", label: "Рабочий" },
+] as const;
+
 /** Enemy units an enemy building can spawn. Ids match the `enemies` group. */
 const ENEMY_UNIT_OPTIONS = [
   { value: "raider", label: "Разбойник" },
@@ -1439,6 +1448,25 @@ const SCHEMA = {
         min: 1,
         max: 100,
       },
+      castleIntakeLanes: {
+        type: "int",
+        label: "Замок: полос приёмки",
+        description:
+          "Сколько дорог замок принимает одновременно — по одной на сторону гекса. Дороги растут не из замка, а из этих подходов, поэтому каждая полоса везёт свою очередь. 1 — прежнее поведение: весь остров сходится в одну колею.",
+        default: 6,
+        min: 1,
+        max: 6,
+      },
+      mergeLookahead: {
+        type: "number",
+        label: "Обоз: выдержка на слиянии",
+        description:
+          "За сколько дистанций до слияния двух дорог грузы начинают уступать друг другу. Меньше — плотнее поток, но два груза могут прийти к развилке бок о бок.",
+        default: 2.5,
+        min: 0,
+        max: 8,
+        step: 0.1,
+      },
       productionSpeedup: {
         type: "number",
         label: "Ускорение добычи",
@@ -1461,9 +1489,17 @@ const SCHEMA = {
   },
   units: {
     label: "Отряды",
-    description: "Заготовка: состав и числа игрок ещё не задавал. Поля общие для всех отрядов.",
+    description:
+      "Кого готовит казарма и почём. Поля общие для всех отрядов; «Назначение» решает, попадёт ли отряд в список казармы.",
     entityLabel: "Отряд",
     fields: {
+      role: {
+        type: "enum",
+        label: "Назначение",
+        description: "Кого готовит казарма. Рабочие в её списке не показываются: казарма готовит солдат.",
+        default: "soldier",
+        options: UNIT_ROLE_OPTIONS,
+      },
       costFood: {
         type: "int",
         label: "Цена: еда",
@@ -1487,6 +1523,14 @@ const SCHEMA = {
         default: 0,
         min: 0,
         max: 2000,
+      },
+      armyCost: {
+        type: "int",
+        label: "Мест в армии",
+        description: "Сколько мест предела армии занимает один отряд.",
+        default: 1,
+        min: 0,
+        max: 10,
       },
       trainTimeSec: {
         type: "int",
@@ -1539,6 +1583,12 @@ const SCHEMA = {
         max: 12,
         step: 0.5,
       },
+      tint: {
+        type: "color",
+        label: "Цвет накидки",
+        description: "Тон плаща фигурки на карте. Пятно под ногами красится цветом игрока, а не этим.",
+        default: "#cfd8e2",
+      },
       note: {
         type: "string",
         label: "Роль",
@@ -1552,7 +1602,9 @@ const SCHEMA = {
         label: "Рабочий",
         description: "Заготовка. Строит и добывает, в бою почти бесполезен.",
         overrides: {
+          role: "worker",
           costFood: 20,
+          tint: "#d8c08a",
           trainTimeSec: 12,
           maxHp: 80,
           damage: 4,
@@ -1563,7 +1615,7 @@ const SCHEMA = {
       },
       swordsman: {
         label: "Мечник",
-        description: "Заготовка. Дешёвый ближний бой, держит линию.",
+        description: "Дешёвый ближний бой, держит линию.",
         overrides: {
           costFood: 40,
           costGold: 10,
@@ -1571,12 +1623,13 @@ const SCHEMA = {
           maxHp: 220,
           damage: 18,
           attackSpeed: 1.1,
+          tint: "#c8483f",
           note: "Держит линию.",
         },
       },
       archer: {
         label: "Лучник",
-        description: "Заготовка. Бьёт издалека, но мрёт в ближнем бою.",
+        description: "Бьёт издалека, но мрёт в ближнем бою.",
         overrides: {
           costFood: 30,
           costWood: 20,
@@ -1586,8 +1639,73 @@ const SCHEMA = {
           attackSpeed: 0.9,
           moveSpeed: 1.1,
           attackRangeHex: 3.5,
+          tint: "#4f8f4a",
           note: "Бьёт из-за спины мечников.",
         },
+      },
+    },
+  },
+  army: {
+    label: "Армия",
+    description:
+      "Предел армии и повадки готовых отрядов. Казарма предела не поднимает — она только готовит; места дают замок и хижины.",
+    fields: {
+      castleBaseCapacity: {
+        type: "int",
+        label: "Замок: мест в армии",
+        description: "Сколько мест даёт один достроенный замок. Это вся база предела.",
+        default: 10,
+        min: 0,
+        max: 200,
+      },
+      hutSlotsFeedArmy: {
+        type: "boolean",
+        label: "Хижины дают места",
+        description:
+          "Считать ли «рабочие места» хижины местами в армии. Поле «рабочие места» пока значит и жильцов, и солдат.",
+        default: true,
+      },
+      queueLimit: {
+        type: "int",
+        label: "Очередь казармы",
+        description: "Сколько заказов казарма держит в очереди. Дальше найм отказывает.",
+        default: 6,
+        min: 1,
+        max: 20,
+      },
+      moveSpeedScale: {
+        type: "number",
+        label: "Ускорение шага",
+        description: "Множитель «скорости шага» отряда. Балансные гексы в секунду демо не выдерживает.",
+        default: 1.6,
+        min: 0.1,
+        max: 10,
+        step: 0.1,
+      },
+      rallySpacing: {
+        type: "number",
+        label: "Разбег у точки сбора",
+        description:
+          "Расстояние между соседними отрядами на точке сбора, в мировых единицах. По вертикали оно сплющено вместе со всей картой, поэтому запас нужен больше, чем кажется.",
+        default: 30,
+        min: 6,
+        max: 120,
+        step: 1,
+      },
+      unitScale: {
+        type: "number",
+        label: "Размер фигурки",
+        description: "Общий размер отряда на карте, доля от гекса.",
+        default: 1,
+        min: 0.3,
+        max: 3,
+        step: 0.05,
+      },
+      playerColor: {
+        type: "color",
+        label: "Цвет игрока",
+        description: "Цвет пятна под своими отрядами — по нему они и опознаются на любой земле.",
+        default: "#2f8bff",
       },
     },
   },

@@ -13,6 +13,7 @@ import type { PlacedBuilding } from "../state/buildings";
 import type { Camera } from "../state/camera";
 import type { FogSnapshot } from "../state/fog";
 import type { Delivery, Parcel, Stall } from "../state/parcels";
+import type { Unit } from "../state/units";
 import {
   buildingHeight,
   drawBuilding,
@@ -40,6 +41,7 @@ import type { FogPaint } from "./fogTint";
 import { fogPaint } from "./fogTint";
 import { drawIslandShadow } from "./shadows";
 import { drawTop, drawWalls, tracePath } from "./tiles";
+import { drawRally, drawUnit } from "./unitArt";
 
 /** The preview the map draws under the cursor while a building is being placed. */
 type GhostPreview = {
@@ -76,6 +78,24 @@ type Frame = {
   deliveries: readonly Delivery[];
   /** Producers with something to say, keyed by their hex. */
   stalls: ReadonlyMap<string, Stall>;
+  /** Soldiers on the map right now. Live data owned by `state/units.ts`. */
+  units: readonly Unit[];
+  /** The selected barracks and where it sends its soldiers, or null. */
+  rally: RallyLine | null;
+  /** A refused rally point, still saying why. */
+  notice: RallyMark | null;
+};
+
+/** The flag of the selected barracks, and the line running to it. */
+type RallyLine = {
+  from: Axial;
+  to: Axial;
+};
+
+/** A hex the map is captioning, with the caption. */
+type RallyMark = {
+  hex: Axial;
+  text: string;
 };
 
 /** Far enough outside any island to stand in for "the whole world" in a clip path. */
@@ -150,6 +170,8 @@ class Renderer {
   private readonly ctx: CanvasRenderingContext2D;
   /** Crates of this frame, grouped by the hex they are over. Reused, never rebuilt. */
   private readonly byHexParcels = new Map<string, Parcel[]>();
+  /** Soldiers of this frame, grouped the same way and for the same reason. */
+  private readonly byHexUnits = new Map<string, Unit[]>();
   private borderSource: WorldMap | null = null;
   private borderVersion = -1;
   private territories: Territory[] = [];
@@ -216,6 +238,7 @@ class Renderer {
     }
 
     this.groupParcels(frame);
+    this.groupUnits(frame);
 
     const ghostKey = frame.ghost ? hexKey(frame.ghost.hex.q, frame.ghost.hex.r) : null;
     const hasTile = (q: number, r: number): boolean => frame.world.byKey.has(hexKey(q, r));
@@ -264,6 +287,17 @@ class Renderer {
           drawParcel(ctx, parcel, frame.now / 1000, level);
         }
       }
+      // Soldiers go down with their tile too, and after the crates: both are on
+      // the ground, and a unit walking past a crate should pass in front of it.
+      // A unit over ground the player has never seen is not reached at all —
+      // this whole branch is inside the `level <= 0` skip — so it walks on
+      // invisibly and reappears with the ground it steps back onto.
+      const standing = this.byHexUnits.get(key);
+      if (standing) {
+        for (const unit of standing) {
+          drawUnit(ctx, unit, frame.now, level);
+        }
+      }
       if (frame.ghost && key === ghostKey) {
         drawGhost(ctx, frame.ghost.id, centre, frame.ghost.valid, frame.now / 1000);
       }
@@ -275,6 +309,15 @@ class Renderer {
     this.withoutBuildings(frame, () => {
       this.paintRoads(frame);
       this.drawTerritories(frame);
+      if (frame.rally) {
+        drawRally(
+          ctx,
+          hexToWorld(frame.rally.from),
+          hexToWorld(frame.rally.to),
+          frame.now / 1000,
+          config.army.playerColor,
+        );
+      }
       if (frame.ghost) {
         drawGhostTile(ctx, hexToWorld(frame.ghost.hex), frame.ghost.valid, frame.now / 1000);
       }
@@ -303,6 +346,9 @@ class Renderer {
     if (frame.ghost && !frame.ghost.valid) {
       drawRefusalLabel(ctx, hexToWorld(frame.ghost.hex), frame.ghost.reason);
     }
+    if (frame.notice) {
+      drawRefusalLabel(ctx, hexToWorld(frame.notice.hex), frame.notice.text);
+    }
 
     ctx.restore();
   }
@@ -323,6 +369,24 @@ class Renderer {
         continue;
       }
       this.byHexParcels.set(parcel.hex, [parcel]);
+    }
+  }
+
+  /**
+   * The same bucketing for the soldiers. Within one hex they are drawn in id
+   * order, so a formation never flickers back to front between frames.
+   */
+  private groupUnits(frame: Frame): void {
+    for (const bucket of this.byHexUnits.values()) {
+      bucket.length = 0;
+    }
+    for (const unit of frame.units) {
+      const bucket = this.byHexUnits.get(unit.hex);
+      if (bucket) {
+        bucket.push(unit);
+        continue;
+      }
+      this.byHexUnits.set(unit.hex, [unit]);
     }
   }
 
@@ -551,5 +615,5 @@ function drawBossMarker(ctx: CanvasRenderingContext2D, centre: Point, level: num
   ctx.restore();
 }
 
-export type { Frame, GhostPreview };
+export type { Frame, GhostPreview, RallyLine, RallyMark };
 export { Renderer };

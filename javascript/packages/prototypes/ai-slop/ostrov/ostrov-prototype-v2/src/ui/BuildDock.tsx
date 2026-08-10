@@ -1,15 +1,16 @@
 import { config } from "@hw/ostrov-prototype-v2-config";
 import { signal } from "@preact/signals-react";
 import { useSignals } from "@preact/signals-react/runtime";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
+import { useEffect, useState } from "react";
 import type { BuildingId, CategoryId } from "../buildings/catalog";
 import { CATEGORIES, buildingSpec, buildingsOfCategory } from "../buildings/catalog";
 import { attractsAttention, noticeBuilding } from "../state/attract";
 import { availabilityOf, buildPanelOpen, cancelPlacing, placing, togglePlacing } from "../state/buildings";
 import { canAfford, stock } from "../state/resources";
+import { selected } from "../state/signals";
 import { BuildingGlyph, CategoryGlyph, ResourceIcon } from "./glyphs";
 import { HammerIcon } from "./HammerIcon";
+import { Tooltip } from "./Tooltip";
 
 /**
  * The build menu: a row of section tiles over a grid of building tiles.
@@ -22,12 +23,6 @@ import { HammerIcon } from "./HammerIcon";
  * which opens on the first pointer event over a tile — no delay, because this is
  * a panel the player browses rather than one they consult.
  */
-
-/** How far the tooltip sits from the tile it describes, in pixels. */
-const TIP_GAP = 10;
-
-/** How close the tooltip may come to the edge of the viewport, in pixels. */
-const TIP_MARGIN = 8;
 
 /** How long the panel takes to arrive and to leave, in milliseconds. */
 const PANEL_ANIM_MS = config.ui.panelAnimMs;
@@ -99,57 +94,18 @@ type HoverTarget = {
   rect: DOMRect;
 };
 
-type TooltipProps = {
+type BuildTipProps = {
   target: HoverTarget;
 };
 
-/**
- * The tooltip, mounted on `document.body` rather than inside the panel. The
- * panel scrolls and carries a `backdrop-filter`, and a filter makes an element
- * the containing block of even its `position: fixed` children — a tooltip left
- * inside it would be clipped by the panel edge. On the body it is free to reach
- * across the screen.
- *
- * It prefers the left of the tile, flips to the right when the left edge of the
- * screen is closer, and is clamped on both axes, so a tile in a corner still
- * gets a whole tooltip.
- */
-function Tooltip({ target }: TooltipProps): React.JSX.Element {
+/** What one build tile has to say: its name, its price, its role. */
+function BuildTip({ target }: BuildTipProps): React.JSX.Element {
   useSignals();
-  const ref = useRef<HTMLDivElement>(null);
-  const [place, setPlace] = useState<{ left: number; top: number } | null>(null);
   const spec = target.id === null ? null : buildingSpec(target.id);
   const held = stock.value;
 
-  useLayoutEffect(() => {
-    const node = ref.current;
-    if (!node) {
-      return;
-    }
-    const box = node.getBoundingClientRect();
-    let left = target.rect.left - box.width - TIP_GAP;
-    if (left < TIP_MARGIN) {
-      left = target.rect.right + TIP_GAP;
-    }
-    left = Math.max(TIP_MARGIN, Math.min(left, window.innerWidth - box.width - TIP_MARGIN));
-    const wanted = target.rect.top + target.rect.height / 2 - box.height / 2;
-    const top = Math.max(TIP_MARGIN, Math.min(wanted, window.innerHeight - box.height - TIP_MARGIN));
-    setPlace({ left, top });
-  }, [target]);
-
-  return createPortal(
-    <div
-      ref={ref}
-      className="build-tip"
-      role="tooltip"
-      style={{
-        left: `${place?.left ?? 0}px`,
-        top: `${place?.top ?? 0}px`,
-        // The first pass is a measurement, not a picture: it is laid out at the
-        // origin, so it must not be seen there.
-        visibility: place ? "visible" : "hidden",
-      }}
-    >
+  return (
+    <Tooltip anchor={target.rect}>
       <span className="tip-name">{target.label}</span>
       {spec ? (
         <span className="tip-costs">
@@ -178,8 +134,7 @@ function Tooltip({ target }: TooltipProps): React.JSX.Element {
         </span>
       ) : null}
       {spec ? <span className="tip-desc">{spec.description}</span> : null}
-    </div>,
-    document.body,
+    </Tooltip>
   );
 }
 
@@ -289,7 +244,7 @@ function BuildPanel({ open }: PanelProps): React.JSX.Element | null {
       </div>
       {/* One instance across hovers: it is re-measured before every paint, so it
           never has to be hidden and re-shown on the way from tile to tile. */}
-      {hovered ? <Tooltip target={hovered} /> : null}
+      {hovered ? <BuildTip target={hovered} /> : null}
     </aside>
   );
 }
@@ -337,7 +292,14 @@ function BuildDock(): React.JSX.Element {
       // B is a toggle, and closing the panel takes any armed ghost with it: a
       // cursor still carrying a building with no panel to put it back is a trap.
       cancelPlacing();
-      buildPanelOpen.value = !buildPanelOpen.peek();
+      const opening = !buildPanelOpen.peek();
+      buildPanelOpen.value = opening;
+      if (opening) {
+        // Opening one panel closes the other. The barracks panel hangs off the
+        // selected hex, so dropping the selection is what puts it away — and it
+        // takes the yellow ring off the map with it, which is the same answer.
+        selected.value = null;
+      }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => {
@@ -355,7 +317,9 @@ function BuildDock(): React.JSX.Element {
     buildPanelOpen.value = !open;
     if (open) {
       cancelPlacing();
+      return;
     }
+    selected.value = null;
   };
 
   return (

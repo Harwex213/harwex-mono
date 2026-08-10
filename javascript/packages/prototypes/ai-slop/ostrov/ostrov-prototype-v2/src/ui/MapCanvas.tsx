@@ -5,10 +5,20 @@ import type { Axial } from "../hex/coords";
 import { hexKey } from "../hex/coords";
 import { WALL_DEPTH, hexToWorld, worldToHex } from "../hex/layout";
 import type { Tile } from "../map/island";
-import type { GhostPreview } from "../render/renderer";
+import type { GhostPreview, RallyLine, RallyMark } from "../render/renderer";
 import { Renderer } from "../render/renderer";
 import {
+  advanceBarracks,
+  barracksVersion,
+  rallyNotice,
+  rallyOf,
+  selectedBarracks,
+  setRally,
+  trainingActive,
+} from "../state/barracks";
+import {
   advanceBuildings,
+  buildPanelOpen,
   buildingsAnimating,
   cancelPlacing,
   placeBuilding,
@@ -31,6 +41,8 @@ import {
 } from "../state/parcels";
 import { stock } from "../state/resources";
 import { camera, dragging, hovered, selected, territoryVersion, viewport, world } from "../state/signals";
+import { advanceUnits, unitsAnimating, unitsOnMap, unitsVersion } from "../state/units";
+import { RALLY_NOTICE_SEC } from "../tuning";
 import { ZoomEase } from "../state/zoom";
 
 const DRAG_SLOP = config.camera.dragSlop;
@@ -144,6 +156,11 @@ function MapCanvas(): React.JSX.Element {
       // The pile is read by the placement check, so the preview under the cursor
       // turns red the moment a purchase leaves the player unable to pay.
       stock.value;
+      // A rally point moved, a queue changed, a soldier appeared: all three
+      // change the picture without moving the camera.
+      barracksVersion.value;
+      unitsVersion.value;
+      rallyNotice.value;
       dirty = true;
     });
 
@@ -195,6 +212,28 @@ function MapCanvas(): React.JSX.Element {
       }
       const check = placementCheck(carried, hex);
       return { id: carried, hex, valid: check.valid, reason: check.reason };
+    };
+
+    /** The flag of the barracks the player has open, or null when none is open. */
+    const currentRally = (): RallyLine | null => {
+      const barracks = selectedBarracks.peek();
+      if (!barracks) {
+        return null;
+      }
+      const to = rallyOf(hexKey(barracks.q, barracks.r));
+      if (!to) {
+        return null;
+      }
+      return { from: { q: barracks.q, r: barracks.r }, to };
+    };
+
+    /** A refused rally point, for as long as the caption is meant to stand. */
+    const currentNotice = (stamp: number): RallyMark | null => {
+      const mark = rallyNotice.peek();
+      if (!mark || stamp - mark.at > RALLY_NOTICE_SEC * 1000) {
+        return null;
+      }
+      return { hex: { q: mark.q, r: mark.r }, text: mark.text };
     };
 
     /** Re-reads the hex under the cursor. Used after the camera moved on its own. */
@@ -348,14 +387,39 @@ function MapCanvas(): React.JSX.Element {
         return;
       }
       selected.value = hex && sameHex(hex, selected.peek()) ? null : hex;
+      // The two panels never stand open together: reaching a barracks puts the
+      // build menu away, exactly as opening the build menu drops the selection
+      // and with it the barracks panel.
+      if (selectedBarracks.peek() !== null) {
+        buildPanelOpen.value = false;
+      }
     };
 
+    /**
+     * The right button, in strict order of precedence:
+     *
+     * 1. An armed placement is cancelled, and nothing else happens. Getting out
+     *    of placement mode is the thing the player is most likely to want, and
+     *    it was the button's only job before rally points existed.
+     * 2. Otherwise, if a barracks is open, the click sets its rally point.
+     * 3. Otherwise the browser's own menu is left alone, as it always was.
+     */
     const onContextMenu = (event: MouseEvent): void => {
-      if (placing.peek() === null) {
+      if (placing.peek() !== null) {
+        event.preventDefault();
+        cancelPlacing();
+        return;
+      }
+      const barracks = selectedBarracks.peek();
+      if (!barracks) {
         return;
       }
       event.preventDefault();
-      cancelPlacing();
+      const hex = pickAt(event.clientX, event.clientY);
+      if (!hex) {
+        return;
+      }
+      setRally(hexKey(barracks.q, barracks.r), hex, performance.now());
     };
 
     const onKeyDown = (event: KeyboardEvent): void => {
@@ -490,7 +554,17 @@ function MapCanvas(): React.JSX.Element {
       // send, crates walk, arrivals are credited. Nothing here starts a second
       // loop, and while a crate is on the road it keeps this one awake.
       advanceEconomy(stamp, delta);
-      if (buildingsAnimating() || economyAnimating()) {
+      // The barracks and its soldiers ride the same loop and the same clamped
+      // step: a queue advances, a trained unit walks out, a formation moves.
+      // Nothing here starts a second loop, and a unit still walking keeps this
+      // one awake through `unitsAnimating`.
+      advanceBarracks(stamp);
+      advanceUnits(stamp, delta);
+      if (buildingsAnimating() || economyAnimating() || trainingActive() || unitsAnimating(stamp)) {
+        dirty = true;
+      }
+      const notice = currentNotice(stamp);
+      if (notice) {
         dirty = true;
       }
       // Sampled before the dirty test, not after: a region on its way from
@@ -520,6 +594,9 @@ function MapCanvas(): React.JSX.Element {
         roads: roadLines(),
         deliveries: deliveryBeats(),
         stalls: stallsByHex(),
+        units: unitsOnMap(),
+        rally: currentRally(),
+        notice,
       });
     };
     frame = requestAnimationFrame(loop);

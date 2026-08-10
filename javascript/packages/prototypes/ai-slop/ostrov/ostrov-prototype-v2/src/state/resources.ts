@@ -2,8 +2,8 @@ import { RESOURCE_OPTIONS, config } from "@hw/ostrov-prototype-v2-config";
 import { signal } from "@preact/signals-react";
 import type { BuildingId } from "../buildings/catalog";
 import { CASTLE_ID, allBuildingCosts, buildingCost } from "../buildings/catalog";
-import type { ResourceKind, Stock } from "../economy/stock";
-import { affordable, missingOf, startingStock, withoutCost } from "../economy/stock";
+import type { Price, ResourceKind, Stock } from "../economy/stock";
+import { afterPay, affordable, canPay, missingFor, missingOf, startingStock, withoutCost } from "../economy/stock";
 
 /**
  * The player's pile of goods.
@@ -77,4 +77,40 @@ function credit(kind: ResourceKind, amount: number): void {
   stock.value = { ...held, [kind]: held[kind] + amount };
 }
 
-export { FUNDED_BUILDINGS, START_STOCK, canAfford, credit, paySpend, resourceLabel, shortfallOf, stock };
+/**
+ * Takes an arbitrary price out of the pile — a unit's, which unlike a building's
+ * includes food. Returns false and changes nothing when the pile is short, so
+ * the caller can refuse the order.
+ */
+function payPrice(price: Price): boolean {
+  if (!config.economy.enabled) {
+    return true;
+  }
+  const held = stock.peek();
+  if (!canPay(held, price)) {
+    return false;
+  }
+  stock.value = afterPay(held, price);
+  return true;
+}
+
+/** The resource the pile is short of for this price, or null when it is not. */
+function priceShortfall(price: Price): ResourceKind | null {
+  if (!config.economy.enabled) {
+    return null;
+  }
+  return missingFor(stock.value, price);
+}
+
+export {
+  FUNDED_BUILDINGS,
+  START_STOCK,
+  canAfford,
+  credit,
+  payPrice,
+  paySpend,
+  priceShortfall,
+  resourceLabel,
+  shortfallOf,
+  stock,
+};

@@ -42,8 +42,14 @@ const NO_RESOURCE = "none";
  */
 const CASTLE_ID: BuildingId = "castle1";
 
-/** The one other building with art of its own; the rest share the placeholder cottage. */
+/** The other buildings with art of their own; the rest share the placeholder cottage. */
 const SAWMILL_ID: BuildingId = "sawmill1";
+
+/** Trains units. It raises no army limit of its own — see `state/army.ts`. */
+const BARRACKS_ID: BuildingId = "barracks1";
+
+/** Houses people, and its `workerSlots` are what the army limit grows on. */
+const HUT_ID: BuildingId = "hut1";
 
 type BuildingSpec = BuildingValues & {
   id: BuildingId;
@@ -138,8 +144,10 @@ function startingTerrains(): string[] {
 
 export type { BuildingId, BuildingSpec, Category, CategoryId };
 export {
+  BARRACKS_ID,
   CASTLE_ID,
   CATEGORIES,
+  HUT_ID,
   NO_PREREQUISITE,
   NO_RESOURCE,
   SAWMILL_ID,

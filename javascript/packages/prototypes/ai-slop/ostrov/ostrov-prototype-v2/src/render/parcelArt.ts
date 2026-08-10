@@ -204,7 +204,6 @@ function drawDelivery(ctx: CanvasRenderingContext2D, delivery: Delivery, now: nu
 }
 
 const STALL_WORDS: Record<Stall["reason"], string> = {
-  none: "Дорога занята",
   noCastle: "Нет замка",
   noRoute: "Нет пути до замка",
 };
@@ -213,6 +212,10 @@ const STALL_WORDS: Record<Stall["reason"], string> = {
  * The pill over a producer that is not shipping: why, and how much has piled up
  * inside while it waited. Drawn with the progress bars, after the territory
  * line, because it is a caption on the scene rather than part of it.
+ *
+ * Only genuine faults reach here. A road running at capacity used to get one
+ * too, and three of them at once buried the island under captions saying that
+ * the economy was working.
  */
 function drawStallBadge(ctx: CanvasRenderingContext2D, centre: Point, stall: Stall, height: number): void {
   const words = `${STALL_WORDS[stall.reason]} · ${stall.stored}`;
@@ -228,9 +231,9 @@ function drawStallBadge(ctx: CanvasRenderingContext2D, centre: Point, stall: Sta
 
   ctx.beginPath();
   ctx.roundRect(left, y - 16, width, 32, 16);
-  ctx.fillStyle = stall.reason === "none" ? "rgba(12, 30, 46, 0.86)" : "rgba(52, 30, 10, 0.88)";
+  ctx.fillStyle = "rgba(52, 30, 10, 0.88)";
   ctx.fill();
-  ctx.strokeStyle = stall.reason === "none" ? "rgba(150, 205, 240, 0.45)" : "rgba(255, 190, 96, 0.7)";
+  ctx.strokeStyle = "rgba(255, 190, 96, 0.7)";
   ctx.lineWidth = 1.6;
   ctx.stroke();
 
@@ -241,7 +244,7 @@ function drawStallBadge(ctx: CanvasRenderingContext2D, centre: Point, stall: Sta
   ctx.roundRect(left + gap, y - badge / 2 - 1, badge, badge, 3);
   ctx.fill();
 
-  ctx.fillStyle = stall.reason === "none" ? "#dcecf8" : "#ffe0b4";
+  ctx.fillStyle = "#ffe0b4";
   ctx.fillText(words, left + gap * 2 + badge, y + 1);
   ctx.restore();
 }

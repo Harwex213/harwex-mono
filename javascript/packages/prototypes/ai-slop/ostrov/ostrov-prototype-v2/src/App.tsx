@@ -1,3 +1,4 @@
+import { BarracksPanel } from "./ui/BarracksPanel";
 import { BuildDock } from "./ui/BuildDock";
 import { CloudCanvas } from "./ui/CloudCanvas";
 import { MapCanvas } from "./ui/MapCanvas";
@@ -15,6 +16,10 @@ function App(): React.JSX.Element {
       <div className="overlay">
         <ResourceBar />
         <Minimap />
+        {/* Between the two bottom corners: the overview keeps the left, the
+            build dock keeps the right, and the barracks stands in the middle
+            only while one is selected. */}
+        <BarracksPanel />
         <BuildDock />
       </div>
     </div>

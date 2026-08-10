@@ -271,46 +271,66 @@
     "parcelSpeed": 170,
     "parcelSpacing": 42,
     "parcelCarry": 2,
+    "castleIntakeLanes": 6,
+    "mergeLookahead": 2.5,
     "productionSpeedup": 4,
     "stallStockpileCap": 12
   },
   "units": {
     "worker": {
+      "role": "worker",
       "costFood": 20,
       "costWood": 0,
       "costGold": 0,
+      "armyCost": 1,
       "trainTimeSec": 12,
       "maxHp": 80,
       "damage": 4,
       "attackSpeed": 0.8,
       "moveSpeed": 1.2,
       "attackRangeHex": 1,
+      "tint": "#d8c08a",
       "note": "Строит и добывает."
     },
     "swordsman": {
+      "role": "soldier",
       "costFood": 40,
       "costWood": 0,
       "costGold": 10,
+      "armyCost": 1,
       "trainTimeSec": 25,
       "maxHp": 220,
       "damage": 18,
       "attackSpeed": 1.1,
       "moveSpeed": 1,
       "attackRangeHex": 1,
+      "tint": "#c8483f",
       "note": "Держит линию."
     },
     "archer": {
+      "role": "soldier",
       "costFood": 30,
       "costWood": 20,
       "costGold": 0,
+      "armyCost": 1,
       "trainTimeSec": 30,
       "maxHp": 130,
       "damage": 14,
       "attackSpeed": 0.9,
       "moveSpeed": 1.1,
       "attackRangeHex": 3.5,
+      "tint": "#4f8f4a",
       "note": "Бьёт из-за спины мечников."
     }
+  },
+  "army": {
+    "castleBaseCapacity": 10,
+    "hutSlotsFeedArmy": true,
+    "queueLimit": 6,
+    "moveSpeedScale": 1.6,
+    "rallySpacing": 30,
+    "unitScale": 1,
+    "playerColor": "#2f8bff"
   },
   "enemies": {
     "raider": {
