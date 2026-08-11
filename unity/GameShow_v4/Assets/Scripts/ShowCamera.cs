@@ -25,17 +25,17 @@ using UnityEngine;
 [RequireComponent(typeof(Camera))]
 public class ShowCamera : MonoBehaviour
 {
-    /// <summary>One framing of the wheel, built from the aim point outwards.</summary>
+    /// <summary>One framing of a game, built from the aim point outwards.</summary>
     [Serializable]
     public class Shot
     {
-        [Tooltip("Where the camera looks, measured from the centre of the wheel.")]
+        [Tooltip("Where the camera looks, measured from the rig this shot is aimed at.")]
         public Vector3 aimOffset;
 
         [Tooltip("Metres from the aim point to the camera.")]
         [Min(0.1f)] public float distance = 5f;
 
-        [Tooltip("Degrees around the wheel. 0 is straight in front of it.")]
+        [Tooltip("Degrees around the rig. 0 stands straight in front of the game.")]
         public float yawDegrees;
 
         [Tooltip("Metres the camera sits above the aim point.")]
@@ -70,7 +70,7 @@ public class ShowCamera : MonoBehaviour
     {
         aimOffset = Vector3.zero,
         distance = 5.2f,
-        yawDegrees = 6f,
+        yawDegrees = 0f,
         heightOffset = 0.4f,
         fieldOfView = 40f,
         moveDuration = 1.2f,
@@ -80,11 +80,11 @@ public class ShowCamera : MonoBehaviour
     [SerializeField]
     private Shot resultShot = new()
     {
-        // The flapper stands in front of the rim, so a wide angle slides it off the segment it
-        // points at. Ten degrees keeps some depth without breaking that read.
+        // The flapper stands in front of the rim. Yaw slides the flapper off the segment it points
+        // at. A yaw of 0 keeps the two lined up.
         aimOffset = new Vector3(0f, 1.05f, 0.2f),
         distance = 2.5f,
-        yawDegrees = 10f,
+        yawDegrees = 0f,
         heightOffset = 0.25f,
         fieldOfView = 31f,
         moveDuration = 0.9f,
@@ -113,12 +113,12 @@ public class ShowCamera : MonoBehaviour
     [SerializeField]
     private Shot diceSpinShot = new()
     {
-        // Biased onto the narrow bay, the one the dice fall down. The distance is what makes the
-        // 2.72 m of play area fit in frame at 40 degrees, and the camera stays level with the aim
-        // so neither the release at the top nor the floor at the bottom is cropped.
+        // The aim offset biases the shot onto the narrow bay, the one the dice fall down. The
+        // distance fits the 2.72 m of play area in frame at 40 degrees. The camera stays level with
+        // the aim, so neither the release at the top nor the floor at the bottom is cropped.
         aimOffset = new Vector3(-0.2f, 1.45f, 0f),
         distance = 4f,
-        yawDegrees = -6f,
+        yawDegrees = 0f,
         heightOffset = 0f,
         fieldOfView = 40f,
         moveDuration = 1f,
@@ -129,18 +129,21 @@ public class ShowCamera : MonoBehaviour
     private Shot diceResultShot = new()
     {
         aimOffset = new Vector3(-0.43f, 0.17f, 0f),
-        distance = 0.7f,
+        distance = 0.1f,
         yawDegrees = 8f,
         // High enough to look down over the cabinet's bottom rail, which stands right in front of
         // the dice and hides them from a level camera.
         heightOffset = 0.42f,
-        fieldOfView = 30f,
+        fieldOfView = 31f,
         moveDuration = 0.9f,
     };
 
     [Header("Wide")]
-    [Tooltip("Seconds the move back to the authored pose takes.")]
-    [SerializeField, Min(0f)] private float returnDuration = 1.4f;
+    [Tooltip(
+        "Seconds the move back to the authored pose takes. A switch is not reported done until " +
+        "the camera lands, so this is how long a MAIN_SWITCH runs. Keep it near the dice shots' " +
+        "own move durations, or switching between the two games reads lopsided.")]
+    [SerializeField, Min(0f)] private float returnDuration = 1.6f;
 
     /// <summary>The shot on screen, for the console.</summary>
     public string CurrentShot { get; private set; } = "wide";

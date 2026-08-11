@@ -1566,12 +1566,12 @@ MonoBehaviour:
     moveDuration: 1
   diceResultShot:
     aimOffset: {x: -0.43, y: 0.17, z: 0}
-    distance: 0.1
-    yawDegrees: 8
+    distance: 0.44
+    yawDegrees: 0
     heightOffset: 0.42
     fieldOfView: 31
     moveDuration: 0.9
-  returnDuration: 6
+  returnDuration: 1.6
 --- !u!1001 &342701731
 PrefabInstance:
   m_ObjectHideFlags: 0

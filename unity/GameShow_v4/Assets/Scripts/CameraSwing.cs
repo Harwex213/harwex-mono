@@ -24,7 +24,7 @@ public class CameraSwing : MonoBehaviour
     [SerializeField] private Transform pivot;
 
     [Tooltip("Distance to the pivot point ahead of the camera, used while no pivot is set.")]
-    [SerializeField, Min(0.01f)] private float pivotDistance = 5f;
+    [SerializeField, Min(0.01f)] private float pivotDistance = 6f;
 
     [Header("Swing")]
     [Tooltip("Scales all three axes at once. 0 holds the camera still.")]
