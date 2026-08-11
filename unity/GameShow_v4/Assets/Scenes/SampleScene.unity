@@ -1444,13 +1444,13 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 330585543}
   serializedVersion: 2
-  m_LocalRotation: {x: 0.0000018481496, y: -0.9987298, z: 0.04960732, w: -0.008832241}
-  m_LocalPosition: {x: -0.078, y: 2.072, z: 4.736}
+  m_LocalRotation: {x: 0.00044455356, y: -0.9987687, z: 0.04960807, w: 0.000022080634}
+  m_LocalPosition: {x: 0, y: 2.072, z: 4.736}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 0}
-  m_LocalEulerAnglesHint: {x: 5.687, y: -181.016, z: -0.051}
+  m_LocalEulerAnglesHint: {x: 5.687, y: -180, z: -0.051}
 --- !u!114 &330585547
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1537,14 +1537,14 @@ MonoBehaviour:
   spinShot:
     aimOffset: {x: 0, y: 0, z: 0}
     distance: 5.2
-    yawDegrees: 6
+    yawDegrees: 0
     heightOffset: 0.4
     fieldOfView: 40
     moveDuration: 1.2
   resultShot:
     aimOffset: {x: 0, y: 1.05, z: 0.2}
     distance: 2.5
-    yawDegrees: 10
+    yawDegrees: 0
     heightOffset: 0.25
     fieldOfView: 31
     moveDuration: 0.9
@@ -4376,6 +4376,7 @@ GameObject:
   - component: {fileID: 928462282}
   - component: {fileID: 928462281}
   - component: {fileID: 928462280}
+  - component: {fileID: 928462283}
   m_Layer: 0
   m_Name: Show Control
   m_TagString: Untagged
@@ -4428,6 +4429,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::WsConnection
   serverUrl: ws://localhost:9435/joker-show/ws
   reconnectDelaySeconds: 3
+  offline: 0
   logRawMessages: 1
 --- !u!4 &928462282
 Transform:
@@ -4444,6 +4446,34 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &928462283
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 928462279}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: fd184befd72504859a7f7e4d6418ef2f, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::ShowDirectorDebug
+  connection: {fileID: 928462281}
+  director: {fileID: 928462280}
+  wheel: {fileID: 498903082}
+  showCamera: {fileID: 330585549}
+  mockConnection: 1
+  panelVisible: 1
+  toggleKey: 282
+  uiScale: 1
+  panelRect:
+    serializedVersion: 2
+    x: 16
+    y: 16
+    width: 440
+    height: 560
+  autoHoldSeconds: 2
+  doneTimeoutSeconds: 30
 --- !u!1 &1001961657
 GameObject:
   m_ObjectHideFlags: 0
