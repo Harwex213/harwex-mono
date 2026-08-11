@@ -6,14 +6,16 @@ using UnityEngine;
 /// Moves the camera between the shots the show needs, and hands it back to
 /// <see cref="CameraSwing"/> when the wide shot returns.
 ///
-/// A shot is aimed at the hero wheel, not authored as a pose, so the framing follows the wheel if
-/// the rig ever moves. The camera sits <see cref="Shot.distance"/> in front of the aim point,
-/// <see cref="Shot.yawDegrees"/> around it and <see cref="Shot.heightOffset"/> above it, and it
-/// looks straight back at that point.
+/// A shot is aimed at the game being played, not authored as a pose, so the framing follows that
+/// game's rig if it is ever moved. The camera sits <see cref="Shot.distance"/> in front of the aim
+/// point, <see cref="Shot.yawDegrees"/> around it and <see cref="Shot.heightOffset"/> above it, and
+/// it looks straight back at that point. Both the yaw and the aim offset are read in the target's
+/// own frame, so a yaw of 0 is straight in front of whatever the shot is aimed at.
 ///
-/// The wide shot is the pose authored in the scene. The jib swing runs in the wide shot alone;
-/// the spin and result shots are locked off, the way a studio cuts to a fixed camera for the
-/// moment that matters.
+/// Two games have shots here. The main round is aimed at the hero wheel, and its wide shot is the
+/// pose authored in the scene, with the jib swing running. The bonus dice round is aimed at the
+/// acrylic cabinet, and all three of its shots are locked off, the way a studio cuts to a fixed
+/// camera for the moment that matters.
 /// </summary>
 [DisallowMultipleComponent]
 [RequireComponent(typeof(Camera))]
@@ -76,12 +78,66 @@ public class ShowCamera : MonoBehaviour
         moveDuration = 0.9f,
     };
 
+    [Header("Bonus dice")]
+    [Tooltip(
+        "The dice cabinet's frame: origin at the foot of the cabinet, forward facing the audience. " +
+        "Left empty, the dice round is shot on the wheel like the other bonus rounds.")]
+    [SerializeField] private Transform diceTarget;
+
+    [Tooltip("The whole cabinet in frame. This is the shot the switch into the dice round moves to.")]
+    [SerializeField]
+    private Shot diceWideShot = new()
+    {
+        // The cabinet stands 2.9 m tall, so it only fits at this distance.
+        aimOffset = new Vector3(0.15f, 1.45f, 0f),
+        distance = 4.3f,
+        yawDegrees = 0f,
+        heightOffset = 0.25f,
+        fieldOfView = 40f,
+        moveDuration = 1.6f,
+    };
+
+    [Tooltip("Holds the whole drop, from the release at the top of the cabinet down to its floor.")]
+    [SerializeField]
+    private Shot diceSpinShot = new()
+    {
+        // Biased onto the narrow bay, the one the dice fall down. The distance is what makes the
+        // 2.72 m of play area fit in frame at 40 degrees, and the camera stays level with the aim
+        // so neither the release at the top nor the floor at the bottom is cropped.
+        aimOffset = new Vector3(-0.2f, 1.45f, 0f),
+        distance = 4f,
+        yawDegrees = -6f,
+        heightOffset = 0f,
+        fieldOfView = 40f,
+        moveDuration = 1f,
+    };
+
+    [Tooltip("Close on the floor of the narrow bay, where the dice come to rest showing their faces.")]
+    [SerializeField]
+    private Shot diceResultShot = new()
+    {
+        aimOffset = new Vector3(-0.43f, 0.17f, 0f),
+        distance = 0.7f,
+        yawDegrees = 8f,
+        // High enough to look down over the cabinet's bottom rail, which stands right in front of
+        // the dice and hides them from a level camera.
+        heightOffset = 0.42f,
+        fieldOfView = 30f,
+        moveDuration = 0.9f,
+    };
+
     [Header("Wide")]
     [Tooltip("Seconds the move back to the authored pose takes.")]
     [SerializeField, Min(0f)] private float returnDuration = 1.4f;
 
     /// <summary>The shot on screen, for the console.</summary>
     public string CurrentShot { get; private set; } = "wide";
+
+    /// <summary>True while the camera is still travelling to the shot it was last sent to.</summary>
+    public bool IsMoving
+    {
+        get { return move != null; }
+    }
 
     private Camera cam;
 
@@ -122,21 +178,42 @@ public class ShowCamera : MonoBehaviour
         wideFieldOfView = cam.fieldOfView;
     }
 
-    /// <summary>Moves in for the spin, with the whole wheel still in frame.</summary>
-    public void FrameSpin()
+    /// <summary>Moves in for the spin or the drop, with the whole of the game still in frame.</summary>
+    public void FrameSpin(ShowGame game)
     {
-        Frame("spin", spinShot);
+        if (HasDiceRig(game))
+        {
+            Frame("dice-spin", diceSpinShot, diceTarget);
+            return;
+        }
+
+        Frame("spin", spinShot, target);
     }
 
-    /// <summary>Moves close on the flapper, so the winning segment reads.</summary>
-    public void FrameResult()
+    /// <summary>Moves close on the winning segment, or on the dice where they lie.</summary>
+    public void FrameResult(ShowGame game)
     {
-        Frame("result", resultShot);
+        if (HasDiceRig(game))
+        {
+            Frame("dice-result", diceResultShot, diceTarget);
+            return;
+        }
+
+        Frame("result", resultShot, target);
     }
 
-    /// <summary>Pulls back to the authored pose and starts the jib swing again.</summary>
-    public void FrameWide()
+    /// <summary>
+    /// The shot a round opens and closes on. For the dice round that is the whole cabinet; for
+    /// every other round it is the pose authored in the scene, with the jib swing running again.
+    /// </summary>
+    public void FrameWide(ShowGame game)
     {
+        if (HasDiceRig(game))
+        {
+            Frame("dice-wide", diceWideShot, diceTarget);
+            return;
+        }
+
         if (CurrentShot == "wide" && move == null)
         {
             return;
@@ -149,9 +226,15 @@ public class ShowCamera : MonoBehaviour
         move = StartCoroutine(MoveTo(widePosition, wideRotation, wideFieldOfView, returnDuration, true));
     }
 
-    private void Frame(string shotName, Shot shot)
+    /// <summary>True when this round is the dice round and the cabinet is wired up to shoot.</summary>
+    private bool HasDiceRig(ShowGame game)
     {
-        if (target == null)
+        return game == ShowGame.BonusDice && diceTarget != null;
+    }
+
+    private void Frame(string shotName, Shot shot, Transform aimAt)
+    {
+        if (aimAt == null)
         {
             return;
         }
@@ -161,8 +244,17 @@ public class ShowCamera : MonoBehaviour
             return;
         }
 
-        Vector3 aim = target.position + shot.aimOffset;
-        Vector3 back = Quaternion.Euler(0f, shot.yawDegrees, 0f) * Vector3.forward;
+        // The shot is written in the target's own frame, flattened to the horizontal plane: yaw 0
+        // stands straight in front of the target and the aim offset runs across, up and out from
+        // it. The wheel faces down +Z, so its shots read the same as they did before.
+        Vector3 facing = aimAt.forward;
+        facing.y = 0f;
+        Quaternion level = facing.sqrMagnitude > 1e-6f
+            ? Quaternion.LookRotation(facing.normalized, Vector3.up)
+            : Quaternion.identity;
+
+        Vector3 aim = aimAt.position + level * shot.aimOffset;
+        Vector3 back = level * (Quaternion.Euler(0f, shot.yawDegrees, 0f) * Vector3.forward);
         Vector3 position = aim + back * shot.distance + Vector3.up * shot.heightOffset;
         Quaternion rotation = Quaternion.LookRotation(aim - position, Vector3.up);
         float fieldOfView = shot.fieldOfView > 0f ? shot.fieldOfView : wideFieldOfView;

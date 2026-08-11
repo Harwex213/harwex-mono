@@ -98,6 +98,9 @@ public class ShowDirectorDebug : MonoBehaviour
     [Tooltip("The camera rig. Left empty, it is looked up in the scene. Only its readout is used.")]
     [SerializeField] private ShowCamera showCamera;
 
+    [Tooltip("The dice cabinet. Left empty, it is looked up in the scene. Only its readout is used.")]
+    [SerializeField] private DiceBoard diceBoard;
+
     [Header("Connection")]
     [Tooltip("Hold the socket shut and drive the show from this panel alone.")]
     [SerializeField] private bool mockConnection = true;
@@ -183,6 +186,11 @@ public class ShowDirectorDebug : MonoBehaviour
         if (showCamera == null)
         {
             showCamera = FindAnyObjectByType<ShowCamera>();
+        }
+
+        if (diceBoard == null)
+        {
+            diceBoard = FindAnyObjectByType<DiceBoard>();
         }
 
         // Awake runs before the socket opens in Start, so nothing is dialled at all.
@@ -583,6 +591,12 @@ public class ShowDirectorDebug : MonoBehaviour
             GUILayout.Label(
                 $"wheel: {spinning}, segment {wheel.CurrentSegment} ({CrazyTimeWheel.LabelOf(wheel.CurrentSegment)})",
                 WrapLabel());
+        }
+
+        if (diceBoard != null)
+        {
+            string rolling = diceBoard.IsRolling ? "falling" : "at rest";
+            GUILayout.Label($"dice: {rolling}, {diceBoard.DescribeFaces()} = {diceBoard.Total}", WrapLabel());
         }
 
         if (showCamera != null)

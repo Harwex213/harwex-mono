@@ -10,9 +10,15 @@ using UnityEngine;
 ///
 /// <list type="bullet">
 /// <item>START and WAITING turn the hero wheel slowly. The studio's own timer advances them.</item>
-/// <item>SPINNING spins the wheel onto the result in the payload, then reports done.</item>
-/// <item>RESULT, SWITCH and CANCELING hold for their own time, then report done.</item>
+/// <item>SPINNING spins the wheel onto the result in the payload, then reports done. In the dice
+/// round it drops the two dice through the cabinet and waits for them to settle instead.</item>
+/// <item>RESULT, SWITCH and CANCELING hold for their own time, then report done. A SWITCH also
+/// moves the camera onto the round named in its uri, and is not reported done until it lands.</item>
 /// </list>
+///
+/// The round in the uri picks what the camera watches: MAIN_* is shot on the hero wheel, and
+/// BONUS_DICE_* on the acrylic cabinet. The three bonus rounds with no visual of their own still
+/// stand in on the wheel.
 ///
 /// Every stage and every transition is written to the console, prefixed with <c>[Show]</c>.
 /// </summary>
@@ -29,6 +35,9 @@ public class ShowDirector : MonoBehaviour
     [Tooltip("The camera rig. Left empty, it is looked up in the scene. Without it the camera holds still.")]
     [SerializeField] private ShowCamera showCamera;
 
+    [Tooltip("The dice cabinet. Left empty, it is looked up in the scene. Without it the dice round spins the wheel.")]
+    [SerializeField] private DiceBoard diceBoard;
+
     [Header("Hold times")]
     [Tooltip("Seconds the win effects run before the studio is told the result is done.")]
     [SerializeField, Min(0f)] private float resultHoldSeconds = 2f;
@@ -38,6 +47,16 @@ public class ShowDirector : MonoBehaviour
 
     [Tooltip("Seconds the cancel effect takes.")]
     [SerializeField, Min(0f)] private float cancelHoldSeconds = 1f;
+
+    [Tooltip(
+        "Seconds a camera move is waited on before the stage carries on without it. Only a safety " +
+        "net against a move that never lands, so keep it above the longest shot in ShowCamera - " +
+        "the return to the wide pose is the slow one.")]
+    [SerializeField, Min(0f)] private float cameraMoveTimeout = 8f;
+
+    [Header("Bonus dice")]
+    [Tooltip("Seconds the camera holds on the cabinet before the dice are released, so the drop is on screen.")]
+    [SerializeField, Min(0f)] private float diceReleaseDelaySeconds = 0.9f;
 
     [Header("Wheel")]
     [Tooltip("Turn the wheel slowly during START and WAITING.")]
@@ -96,6 +115,18 @@ public class ShowDirector : MonoBehaviour
         if (showCamera == null)
         {
             showCamera = FindFirstObjectByType<ShowCamera>();
+        }
+
+        if (diceBoard == null)
+        {
+            diceBoard = FindFirstObjectByType<DiceBoard>();
+        }
+
+        if (diceBoard == null)
+        {
+            Debug.LogWarning(
+                "ShowDirector: no DiceBoard in the scene. The dice round falls back to the hero wheel.",
+                this);
         }
     }
 
@@ -169,46 +200,115 @@ public class ShowDirector : MonoBehaviour
             case ShowPhase.Waiting:
                 // The studio's timer advances these two. Idle the wheel and wait for the next frame.
                 SetIdleSpin(idleBetweenSpins);
-                FrameWide();
+                ClearDice();
+                FrameWide(stage.Game);
                 break;
 
             case ShowPhase.Spinning:
-                // The camera moves in as the wheel starts, and both settle well before the spin ends.
-                FrameSpin();
-                yield return SpinWheel(stage, payload);
+                // The camera moves in as the game starts, and settles well before it ends.
+                FrameSpin(stage.Game);
+                yield return PlaySpin(stage, payload);
                 Report(stage, correlationId);
                 break;
 
             case ShowPhase.Result:
                 Debug.Log($"[Show] {stage} win effects for {resultHoldSeconds:0.#}s", this);
-                FrameResult();
+                FrameResult(stage.Game);
                 yield return new WaitForSeconds(resultHoldSeconds);
                 Report(stage, correlationId);
                 break;
 
             case ShowPhase.Switch:
-                Debug.Log($"[Show] {stage} switching game for {switchHoldSeconds:0.#}s", this);
+                // The uri names the round being switched into, so this is the move onto that
+                // game: BONUS_DICE_SWITCH travels to the cabinet, MAIN_SWITCH back to the wheel.
+                Debug.Log($"[Show] {stage} switching to {stage.Game} over at least {switchHoldSeconds:0.#}s", this);
                 SetIdleSpin(idleBetweenSpins);
-                FrameWide();
-                yield return new WaitForSeconds(switchHoldSeconds);
+                ClearDice();
+                FrameWide(stage.Game);
+                yield return HoldForCamera(switchHoldSeconds);
                 Report(stage, correlationId);
                 break;
 
             case ShowPhase.Canceling:
-                Debug.Log($"[Show] {stage} round cancelled, the wheel stops where it is", this);
+                Debug.Log($"[Show] {stage} round cancelled, the wheel and the dice stop where they are", this);
                 if (wheel != null)
                 {
                     wheel.StopSpin();
                 }
 
+                if (diceBoard != null)
+                {
+                    diceBoard.StopRoll();
+                }
+
                 SetIdleSpin(false);
-                FrameWide();
+                FrameWide(stage.Game);
                 yield return new WaitForSeconds(cancelHoldSeconds);
                 Report(stage, correlationId);
                 break;
         }
 
         _render = null;
+    }
+
+    /// <summary>Plays the round's own spin: the dice fall in the dice round, the wheel turns in the rest.</summary>
+    private IEnumerator PlaySpin(ShowStage stage, WsConnectionMessagePayload payload)
+    {
+        if (stage.Game == ShowGame.BonusDice && diceBoard != null)
+        {
+            yield return RollDice(stage, payload);
+            yield break;
+        }
+
+        yield return SpinWheel(stage, payload);
+    }
+
+    /// <summary>
+    /// Drops the two dice through the cabinet and waits for them to come to rest. The faces are
+    /// whatever the physics leaves on top; see <see cref="DiceBoard"/> for how a studio result
+    /// would have to be honoured.
+    /// </summary>
+    private IEnumerator RollDice(ShowStage stage, WsConnectionMessagePayload payload)
+    {
+        // Give the camera its beat on the cabinet, or the release happens off screen.
+        yield return HoldForCamera(diceReleaseDelaySeconds);
+
+        diceBoard.Roll(payload == null ? null : payload.Result);
+
+        while (diceBoard.IsRolling)
+        {
+            yield return null;
+        }
+
+        Debug.Log(
+            $"[Show] {stage} dice landed on {diceBoard.DescribeFaces()} = {diceBoard.Total}",
+            this);
+    }
+
+    /// <summary>Waits for the camera to reach its mark, then out to <paramref name="minimumSeconds"/>.</summary>
+    private IEnumerator HoldForCamera(float minimumSeconds)
+    {
+        float started = Time.time;
+
+        while (showCamera != null && showCamera.IsMoving && Time.time - started < cameraMoveTimeout)
+        {
+            yield return null;
+        }
+
+        float remaining = minimumSeconds - (Time.time - started);
+        if (remaining > 0f)
+        {
+            yield return new WaitForSeconds(remaining);
+        }
+    }
+
+    /// <summary>Takes the dice off the board, so the cabinet stands empty until the next drop.</summary>
+    private void ClearDice()
+    {
+        if (diceBoard != null)
+        {
+            diceBoard.Park();
+        }
     }
 
     /// <summary>Spins the hero wheel onto the segment the studio picked.</summary>
@@ -317,27 +417,27 @@ public class ShowDirector : MonoBehaviour
         }
     }
 
-    private void FrameWide()
+    private void FrameWide(ShowGame game)
     {
         if (showCamera != null)
         {
-            showCamera.FrameWide();
+            showCamera.FrameWide(game);
         }
     }
 
-    private void FrameSpin()
+    private void FrameSpin(ShowGame game)
     {
         if (showCamera != null)
         {
-            showCamera.FrameSpin();
+            showCamera.FrameSpin(game);
         }
     }
 
-    private void FrameResult()
+    private void FrameResult(ShowGame game)
     {
         if (showCamera != null)
         {
-            showCamera.FrameResult();
+            showCamera.FrameResult(game);
         }
     }
 
