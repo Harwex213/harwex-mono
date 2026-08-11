@@ -9,8 +9,12 @@ using UnityEngine;
 /// A shot is aimed at the game being played, not authored as a pose, so the framing follows that
 /// game's rig if it is ever moved. The camera sits <see cref="Shot.distance"/> in front of the aim
 /// point, <see cref="Shot.yawDegrees"/> around it and <see cref="Shot.heightOffset"/> above it, and
-/// it looks straight back at that point. Both the yaw and the aim offset are read in the target's
-/// own frame, so a yaw of 0 is straight in front of whatever the shot is aimed at.
+/// it looks straight back at that point.
+///
+/// Each game hands over two transforms, and the two are read for different things. The first gives
+/// the aim position, so a shot sits on the part of the rig that matters. The second gives the
+/// facing, so a yaw of 0 stands straight in front of the game. Keeping the two apart lets the wheel
+/// aim at its hub, which spins, while it takes its facing from the rig, which stands still.
 ///
 /// Two games have shots here. The main round is aimed at the hero wheel, and its wide shot is the
 /// pose authored in the scene, with the jib swing running. The bonus dice round is aimed at the
@@ -45,8 +49,16 @@ public class ShowCamera : MonoBehaviour
     }
 
     [Header("Wiring")]
-    [Tooltip("The spinning wheel disc. Its position is the centre every shot is aimed from.")]
+    // This disc turns as the wheel spins, so its rotation is not a facing. Read the position from
+    // here and the facing from targetBasis, and never wire a facing to this transform again.
+    [Tooltip("The spinning wheel disc. Its position is the hub every wheel shot is aimed from.")]
     [SerializeField] private Transform target;
+
+    [Tooltip(
+        "The wheel rig, which stands still while the disc spins. Every wheel shot reads its yaw " +
+        "and its aim offset in this frame. Left empty, the wheel shots are read in world space, " +
+        "where +Z is the front.")]
+    [SerializeField] private Transform targetBasis;
 
     [Tooltip("The jib swing. It runs in the wide shot and stops in every other shot.")]
     [SerializeField] private CameraSwing swing;
@@ -158,18 +170,23 @@ public class ShowCamera : MonoBehaviour
             swing = GetComponent<CameraSwing>();
         }
 
-        if (target == null)
+        var wheel = FindFirstObjectByType<CrazyTimeWheel>();
+
+        if (target == null && wheel != null)
         {
-            var wheel = FindFirstObjectByType<CrazyTimeWheel>();
-            if (wheel != null)
-            {
-                target = wheel.transform;
-            }
+            target = wheel.transform;
         }
 
         if (target == null)
         {
             Debug.LogWarning("ShowCamera: no wheel to aim at. The camera holds the wide shot.", this);
+        }
+
+        if (targetBasis == null && wheel != null)
+        {
+            // The rig root does not spin, so its facing is the one the wheel shots were authored
+            // against. The rig also stands unrotated, so leaving this empty gives the same framing.
+            targetBasis = wheel.transform;
         }
 
         // CameraSwing only writes to the transform from LateUpdate, so this is the authored pose.
@@ -183,11 +200,11 @@ public class ShowCamera : MonoBehaviour
     {
         if (HasDiceRig(game))
         {
-            Frame("dice-spin", diceSpinShot, diceTarget);
+            Frame("dice-spin", diceSpinShot, diceTarget, diceTarget);
             return;
         }
 
-        Frame("spin", spinShot, target);
+        Frame("spin", spinShot, target, targetBasis);
     }
 
     /// <summary>Moves close on the winning segment, or on the dice where they lie.</summary>
@@ -195,11 +212,11 @@ public class ShowCamera : MonoBehaviour
     {
         if (HasDiceRig(game))
         {
-            Frame("dice-result", diceResultShot, diceTarget);
+            Frame("dice-result", diceResultShot, diceTarget, diceTarget);
             return;
         }
 
-        Frame("result", resultShot, target);
+        Frame("result", resultShot, target, targetBasis);
     }
 
     /// <summary>
@@ -210,7 +227,7 @@ public class ShowCamera : MonoBehaviour
     {
         if (HasDiceRig(game))
         {
-            Frame("dice-wide", diceWideShot, diceTarget);
+            Frame("dice-wide", diceWideShot, diceTarget, diceTarget);
             return;
         }
 
@@ -232,7 +249,12 @@ public class ShowCamera : MonoBehaviour
         return game == ShowGame.BonusDice && diceTarget != null;
     }
 
-    private void Frame(string shotName, Shot shot, Transform aimAt)
+    /// <summary>
+    /// Moves the camera to one shot. <paramref name="aimAt"/> gives the position the shot is aimed
+    /// at, and <paramref name="basis"/> gives the facing the shot is written against. The two are
+    /// separate because a rig can aim at a part that turns, and a turning part carries no facing.
+    /// </summary>
+    private void Frame(string shotName, Shot shot, Transform aimAt, Transform basis)
     {
         if (aimAt == null)
         {
@@ -244,14 +266,10 @@ public class ShowCamera : MonoBehaviour
             return;
         }
 
-        // The shot is written in the target's own frame, flattened to the horizontal plane: yaw 0
-        // stands straight in front of the target and the aim offset runs across, up and out from
-        // it. The wheel faces down +Z, so its shots read the same as they did before.
-        Vector3 facing = aimAt.forward;
-        facing.y = 0f;
-        Quaternion level = facing.sqrMagnitude > 1e-6f
-            ? Quaternion.LookRotation(facing.normalized, Vector3.up)
-            : Quaternion.identity;
+        // The shot is written in the basis frame, flattened to the horizontal plane: yaw 0 stands
+        // straight in front of the game and the aim offset runs across, up and out from the aim
+        // point. The wheel rig faces down +Z, so its shots read the same as they did before.
+        Quaternion level = LevelFacing(basis);
 
         Vector3 aim = aimAt.position + level * shot.aimOffset;
         Vector3 back = level * (Quaternion.Euler(0f, shot.yawDegrees, 0f) * Vector3.forward);
@@ -268,6 +286,28 @@ public class ShowCamera : MonoBehaviour
 
         StopMove();
         move = StartCoroutine(MoveTo(position, rotation, fieldOfView, shot.moveDuration, false));
+    }
+
+    /// <summary>
+    /// The horizontal facing of a transform, as the frame a shot is written in. A missing transform
+    /// gives world space, and so does one that points straight up or down.
+    /// </summary>
+    private static Quaternion LevelFacing(Transform basis)
+    {
+        if (basis == null)
+        {
+            return Quaternion.identity;
+        }
+
+        Vector3 facing = basis.forward;
+        facing.y = 0f;
+
+        if (facing.sqrMagnitude <= 1e-6f)
+        {
+            return Quaternion.identity;
+        }
+
+        return Quaternion.LookRotation(facing.normalized, Vector3.up);
     }
 
     private IEnumerator MoveTo(
