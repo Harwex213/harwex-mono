@@ -39,8 +39,16 @@ Both Blender and Unity treat one unit as one metre. Keep `scene.unit_settings.sc
 FBX declares its own unit scale in the file header, and Blender bakes a matching 100× scale into the root object. The two cancel out, but only if the Unity importer is left consistent.
 
 - Unity `ModelImporter`: `useFileScale = true`, `globalScale = 1`.
-- The imported `CT_Root`-style root will show `localScale = 100` and its children will show local positions in centimetres. That is normal and correct.
-- **Verify world bounds, never local transforms.** A child's `localPosition` reads in the root's scaled units and looks wrong by 100×. Encapsulate every `MeshRenderer.bounds` and check the total size in metres.
+- **Aim for an identity root.** `apply_scale_options="FBX_SCALE_ALL"` puts the metre→centimetre factor in the FBX header, so Unity reports `fileScale = 1` and the root imports at `localScale = 1`. `FBX_SCALE_NONE` bakes that factor into the object transforms instead, and the root arrives at `localScale = 100` with children whose `localPosition` reads in centimetres.
+- **Verify world bounds, never local transforms.** A child's `localPosition` reads in the root's scaled units. Encapsulate every `MeshRenderer.bounds` and check the total size in metres.
+
+## Bake the up-axis conversion, or the root arrives rotated
+
+Blender is Z-up and Unity is Y-up. Left alone, the exporter emits that conversion as a **270.02° X rotation on the root object** — not 270°, so the model is also slightly tilted. Code that writes the root's rotation then fights the conversion, and the set cannot be dropped in at identity.
+
+- `bake_space_transform=True` bakes the conversion into the mesh data and the root imports at identity. It is a pure rotation, so face winding is preserved.
+- Blender marks the option experimental because it misbehaves with deep hierarchies and animation. It is safe for a flat hierarchy of identity-transform meshes under one empty. Re-run the winding audit after changing it, every time.
+- Unity's importer-side `bakeAxisConversion = true` is **not** an equivalent. Measured on this project it left a 89.98° rotation on the root and perturbed vertices enough to make the audit flag triangles that were clean before.
 
 ## Put moving parts under their own empty
 
@@ -63,6 +71,8 @@ Plan for a rebuild step:
 - Import with `materialImportMode = ImportStandard` so Unity generates one URP Lit material per Blender material name, then set the values on those assets.
 - `materialLocation = External` is deprecated and spams warnings. Use `materialLocation = InPrefab` plus `importer.AddRemap(new AssetImporter.SourceAssetIdentifier(typeof(Material), name), mat)` to point the model at material assets you control.
 - **Base colour needs converting.** Blender's base colour is linear. Unity treats a material `Color` property as gamma. Pass `blenderColor.gamma`.
+- **A base map replaces the colour in Blender but multiplies it in Unity.** A texture linked into Principled's Base Color socket overrides the constant. URP Lit computes albedo as `_BaseMap * _BaseColor`. Carry the Blender constant across only for materials with no base map; set `_BaseColor` to white wherever a base map exists, or every textured surface arrives double-darkened.
+- **A Blender roughness map has no URP socket.** URP Lit reads metallic from `_MetallicGlossMap.r` and smoothness from its alpha. Pack an RGBA map with `r = metallic` and `a = 1 - roughness`, then `EnableKeyword("_METALLICSPECGLOSSMAP")`. Import it with `sRGBTexture = false` and `alphaSource = FromInput`, or the alpha is discarded.
 - **Emission does not.** `_EmissionColor` is an `[HDR]` property and stays linear. Pass the linear colour multiplied by the Blender strength, then `EnableKeyword("_EMISSION")` and set `globalIlluminationFlags = RealtimeEmissive`.
 - Smoothness is the inverse of roughness: `1 - roughness`.
 
@@ -76,9 +86,9 @@ bpy.ops.export_scene.fbx(
     object_types={"EMPTY", "MESH", "OTHER"},  # OTHER carries FONT and CURVE
     global_scale=1.0,
     apply_unit_scale=True,
-    apply_scale_options="FBX_SCALE_NONE",
+    apply_scale_options="FBX_SCALE_ALL",   # header carries the unit scale -> root at scale 1
     use_space_transform=True,
-    bake_space_transform=False,
+    bake_space_transform=True,             # Z-up -> Y-up into the mesh -> root at rotation 0
     use_mesh_modifiers=True,
     mesh_smooth_type="FACE",
     use_triangles=False,        # Unity triangulates on import
@@ -182,6 +192,8 @@ importer.SaveAndReimport();
 ```
 
 Always report `examined` and `skipped` alongside the triangle count. A `0%` failure rate over a partial sweep proves nothing. Set the degenerate-triangle threshold low (`1e-16f`), because a coarse threshold discards the small text triangles and shrinks coverage without saying so.
+
+**Judge a failure by how negative the dot product is, not by its sign.** A genuinely inverted face gives a dot near `-1`. A dot between `-0.05` and `0` means the face is *perpendicular* to its smoothed normal, which is what happens on the small triangles rounding a tight corner of a swept moulding — the vertex normals there average across a near-90° bend. Those are shading artifacts, not winding errors. Report the dot range and the triangle areas before concluding anything, and cross-check against the Blender-side audit: `flipped = 0` with `boundary = 0` on a closed mesh already proves the winding is outward.
 
 ## Checklist
 
