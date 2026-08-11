@@ -18,18 +18,21 @@ public class CrazyTimeWheel : MonoBehaviour
     public const int SegmentCount = 54;
     public const float DegreesPerSegment = 360f / SegmentCount;
 
-    /// <summary>Face value of each segment, indexed by segment number.</summary>
+    /// <summary>
+    /// Face value of each segment, indexed by segment number. The names are the ones printed on
+    /// the rim, and the four bonus names are the four bonus rounds the studio can open.
+    /// </summary>
     private static readonly string[] SegmentLabels =
     {
-        "CRAZY TIME", "1", "2", "1", "5", "1",
-        "CASH HUNT", "2", "1", "10", "1", "2",
-        "COIN FLIP", "1", "5", "1", "2", "1",
-        "PACHINKO", "10", "1", "2", "1", "5",
-        "COIN FLIP", "1", "2", "1", "10", "1",
-        "CASH HUNT", "2", "1", "5", "1", "2",
-        "COIN FLIP", "1", "10", "1", "2", "1",
-        "PACHINKO", "5", "1", "2", "1", "2",
-        "COIN FLIP", "1", "2", "5", "2", "5",
+        "GAME SHOW", "1", "2", "1", "5", "1",
+        "BONUS DELUXE", "2", "1", "10", "1", "2",
+        "BONUS DICE", "1", "5", "1", "2", "1",
+        "BONUS LUCK", "10", "1", "2", "1", "5",
+        "BONUS DICE", "1", "2", "1", "10", "1",
+        "BONUS DELUXE", "2", "1", "5", "1", "2",
+        "BONUS DICE", "1", "10", "1", "2", "1",
+        "BONUS LUCK", "5", "1", "2", "1", "2",
+        "BONUS DICE", "1", "2", "5", "2", "5",
     };
 
     [Header("Rig")]
@@ -74,6 +77,13 @@ public class CrazyTimeWheel : MonoBehaviour
 
     /// <summary>True from the moment a spin starts until the wheel has settled.</summary>
     public bool IsSpinning { get; private set; }
+
+    /// <summary>Turns the wheel slowly while no spin is running.</summary>
+    public bool IdleSpin
+    {
+        get { return idleSpin; }
+        set { idleSpin = value; }
+    }
 
     /// <summary>Raised with the winning segment index once the wheel has settled.</summary>
     public event Action<int> SpinCompleted;

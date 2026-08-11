@@ -1369,6 +1369,7 @@ GameObject:
   - component: {fileID: 330585544}
   - component: {fileID: 330585547}
   - component: {fileID: 330585548}
+  - component: {fileID: 330585549}
   m_Layer: 0
   m_Name: Main Camera
   m_TagString: MainCamera
@@ -1519,6 +1520,35 @@ MonoBehaviour:
   easeInDuration: 2
   phaseOffset: 0
   ignoreTimeScale: 0
+--- !u!114 &330585549
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 330585543}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 698940b6037624db7abd3b29886862c8, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::ShowCamera
+  target: {fileID: 498903081}
+  swing: {fileID: 330585548}
+  spinShot:
+    aimOffset: {x: 0, y: 0, z: 0}
+    distance: 5.2
+    yawDegrees: 6
+    heightOffset: 0.4
+    fieldOfView: 40
+    moveDuration: 1.2
+  resultShot:
+    aimOffset: {x: 0, y: 1.05, z: 0.2}
+    distance: 2.5
+    yawDegrees: 10
+    heightOffset: 0.25
+    fieldOfView: 31
+    moveDuration: 0.9
+  returnDuration: 6
 --- !u!1001 &342701731
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -4335,6 +4365,85 @@ Light:
   m_LightUnit: 1
   m_LuxAtDistance: 1
   m_EnableSpotReflector: 1
+--- !u!1 &928462279
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 928462282}
+  - component: {fileID: 928462281}
+  - component: {fileID: 928462280}
+  m_Layer: 0
+  m_Name: Show Control
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &928462280
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 928462279}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3552d4001bbd64da98e543860e3ed0aa, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::ShowDirector
+  connection: {fileID: 928462281}
+  wheel: {fileID: 498903082}
+  showCamera: {fileID: 330585549}
+  resultHoldSeconds: 2
+  switchHoldSeconds: 1.5
+  cancelHoldSeconds: 1
+  idleBetweenSpins: 1
+  mainResultLabels:
+  - 1
+  - 2
+  - 5
+  - 10
+  - 1
+  - 2
+  - BONUS LUCK
+  - BONUS DICE
+  - BONUS DELUXE
+  - GAME SHOW
+  heartbeatSeconds: 0
+--- !u!114 &928462281
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 928462279}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 17a29ae49d2a846f88e291a39918af6d, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::WsConnection
+  serverUrl: ws://localhost:9435/joker-show/ws
+  reconnectDelaySeconds: 3
+  logRawMessages: 1
+--- !u!4 &928462282
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 928462279}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1001961657
 GameObject:
   m_ObjectHideFlags: 0
@@ -8754,3 +8863,4 @@ SceneRoots:
   - {fileID: 1736786317}
   - {fileID: 2025368677}
   - {fileID: 1676260434}
+  - {fileID: 928462282}
