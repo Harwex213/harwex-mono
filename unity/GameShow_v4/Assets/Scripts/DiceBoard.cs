@@ -19,9 +19,14 @@ using UnityEngine;
 /// slip past a peg it looks like it should have hit.
 ///
 /// The dice fall down the narrow bay, the one with three columns of fat pegs. Its gaps are even
-/// and wide enough for a 36 mm die at any angle. The wide bay's chevron, pentagon and diamond
+/// and wide enough for a 39 mm die at any angle. The wide bay's chevron, pentagon and diamond
 /// rows are pitched for a far smaller ball — a die released over them wedges between two rows and
 /// never reaches the floor — so the wide bay is scenery for this game, not a route.
+///
+/// A peg is a cylinder lying across the cabinet, and a die can land square on the crown of one and
+/// balance there. That happened to about one die in eighty. So a roll is only over once every die
+/// is on the floor: a die that stops making its way down is nudged loose, and only the timeout can
+/// end a roll with a die still in the air.
 ///
 /// This component's own transform is the board's frame — the origin sits at the centre of the
 /// plinth on the floor, +Y is up and +Z faces the audience — so the whole rig follows the board
@@ -43,8 +48,20 @@ public class DiceBoard : MonoBehaviour
     private const float TFront = 0.008f;
     private const float FrontSheetY = -0.098f;   // centre plane of the front glazing
     private const float BackSheetY = 0.098f;
-    private const float BaseTopZ = 0.075f;       // floor of the play area
+    /// <summary>
+    /// Floor of the play area: the top face of <c>BaseTrim</c>, measured by dropping rays down the
+    /// bay in the model. The trim is a solid slab that covers the whole footprint, so it, and not
+    /// the plinth top 15.5 mm under it, is what a die lands on.
+    /// </summary>
+    private const float BaseTopZ = 0.0905f;
+
     private const float DeckBottomZ = 2.287f;    // underside of the top deck: its ceiling
+
+    /// <summary>The rails that clamp the glass, front and back, reach this high over the floor.</summary>
+    private const float RailTopZ = 0.116f;
+
+    private const float RailFrontY = -0.087f;    // inner face of the front bottom rail
+    private const float RailBackY = 0.087f;
     private const float MullionX = 0.14f;
     private const float MullionW = 0.016f;
     private const float LeftBayX1 = MullionX - MullionW / 2f;
@@ -129,6 +146,19 @@ public class DiceBoard : MonoBehaviour
         "metres. Read off the BonusDice root, whose scale is 122.98 against a model in centimetres.")]
     [SerializeField, Min(0.01f)] private float boardScale = 1.2298f;
 
+    [Header("Physics")]
+    [Tooltip(
+        "Contact offset given to the dice and to every collider built here. PhysX defaults to " +
+        "10 mm, which is a quarter of a die: at that size the solver works with a die far fatter " +
+        "than the one on screen. A couple of millimetres keeps a 39 mm die 39 mm.")]
+    [SerializeField, Min(0.0002f)] private float contactOffset = 0.002f;
+
+    [Tooltip(
+        "Fixed timestep held for as long as a roll runs, then put back. A die crosses a whole peg " +
+        "inside one 20 ms step, so the tumble is resolved coarsely and dice stall on peg crowns " +
+        "more often. The dice are the only physics in this scene, so nothing else pays for 10 ms.")]
+    [SerializeField, Min(0.001f)] private float rollTimestep = 0.01f;
+
     [Header("Release")]
     [Tooltip("Height inside the cabinet the dice are released from, in the board's own metres.")]
     [SerializeField] private float releaseHeight = 2.2f;
@@ -160,8 +190,14 @@ public class DiceBoard : MonoBehaviour
         "that never got going cannot report the last roll's faces as a new one.")]
     [SerializeField, Min(0f)] private float minimumRollSeconds = 0.5f;
 
-    [Tooltip("Seconds a die may sit still off the floor before it is nudged loose.")]
-    [SerializeField, Min(0.1f)] private float wedgeSeconds = 0.7f;
+    [Tooltip(
+        "Seconds a die off the floor may go without dropping any further before it is nudged " +
+        "loose. Stalling is the test, not stillness: a die balanced on a peg often keeps " +
+        "trembling above the still thresholds and would otherwise never be nudged at all.")]
+    [SerializeField, Min(0.1f)] private float stallSeconds = 0.5f;
+
+    [Tooltip("Metres a die must drop to count as still on its way down.")]
+    [SerializeField, Min(0.001f)] private float stallProgress = 0.02f;
 
     [Tooltip("Never nudge more than this many times per roll; something is wrong past that.")]
     [SerializeField, Min(0)] private int maxNudges = 8;
@@ -195,6 +231,7 @@ public class DiceBoard : MonoBehaviour
 
     private Coroutine roll;
     private Transform cavity;
+    private float restingTimestep;
 
     private void Awake()
     {
@@ -210,8 +247,50 @@ public class DiceBoard : MonoBehaviour
             return;
         }
 
+        restingTimestep = Time.fixedDeltaTime;
+        PrepareDice();
         BuildCavity();
         Park();
+    }
+
+    private void OnDisable()
+    {
+        RestoreTimestep();
+    }
+
+    /// <summary>
+    /// Gives each die the contact offset the rest of the rig is built to, and checks that its
+    /// collider is the size of the die on screen. A box smaller than the mesh sinks the die into
+    /// the floor, which the result shot is close enough to show.
+    /// </summary>
+    private void PrepareDice()
+    {
+        foreach (var die in dice)
+        {
+            var box = die.GetComponent<BoxCollider>();
+            if (box == null)
+            {
+                Debug.LogWarning($"[Dice] {die.name} has no box collider.", this);
+                continue;
+            }
+
+            box.contactOffset = contactOffset;
+
+            var filter = die.GetComponent<MeshFilter>();
+            if (filter == null || filter.sharedMesh == null)
+            {
+                continue;
+            }
+
+            Vector3 mesh = filter.sharedMesh.bounds.size;
+            if (Vector3.Distance(mesh, box.size) > 0.001f)
+            {
+                Debug.LogWarning(
+                    $"[Dice] {die.name} is {mesh.x * 1000f:0} mm across but its collider is " +
+                    $"{box.size.x * 1000f:0} mm. The die will sink into whatever it lands on.",
+                    this);
+            }
+        }
     }
 
     /// <summary>Hides the dice, so the cabinet stands empty between rounds.</summary>
@@ -244,15 +323,24 @@ public class DiceBoard : MonoBehaviour
             roll = null;
         }
 
+        RestoreTimestep();
         IsRolling = false;
     }
 
     private IEnumerator RollRoutine(string requestedResult)
     {
         IsRolling = true;
+        Time.fixedDeltaTime = rollTimestep;
         Release();
 
-        var stillFor = new float[dice.Length];
+        // The lowest each die has been, and how long it has been stuck at that height.
+        var lowest = new float[dice.Length];
+        var stalled = new float[dice.Length];
+        for (int i = 0; i < dice.Length; i++)
+        {
+            lowest[i] = float.PositiveInfinity;
+        }
+
         int nudges = 0;
         float allStillFor = 0f;
         float started = Time.time;
@@ -260,31 +348,48 @@ public class DiceBoard : MonoBehaviour
         while (Time.time - started < rollTimeout)
         {
             yield return new WaitForFixedUpdate();
+            float step = Time.fixedDeltaTime;
 
-            bool allStill = true;
+            // A roll is over when every die lies still on the floor. A die still up in the field
+            // holds the roll open, so the nudge below always gets its turn.
+            bool settled = true;
             for (int i = 0; i < dice.Length; i++)
             {
-                if (IsStill(dice[i]))
+                var die = dice[i];
+                float height = HeightOf(die);
+                bool onFloor = height <= RestHeight;
+
+                if (!onFloor || !IsStill(die))
                 {
-                    stillFor[i] += Time.fixedDeltaTime;
+                    settled = false;
+                }
+
+                if (onFloor)
+                {
+                    continue;
+                }
+
+                if (height < lowest[i] - stallProgress)
+                {
+                    lowest[i] = height;
+                    stalled[i] = 0f;
                 }
                 else
                 {
-                    stillFor[i] = 0f;
-                    allStill = false;
+                    stalled[i] += step;
                 }
 
-                // A die that has stopped without reaching the floor is caught between pegs.
-                if (stillFor[i] > wedgeSeconds && !IsOnFloor(dice[i]) && nudges < maxNudges)
+                // A die that is no longer making its way down is caught on a peg or between two.
+                if (stalled[i] >= stallSeconds && nudges < maxNudges)
                 {
-                    Nudge(dice[i]);
-                    stillFor[i] = 0f;
+                    Nudge(die, nudges);
+                    lowest[i] = height;
+                    stalled[i] = 0f;
                     nudges++;
-                    allStill = false;
                 }
             }
 
-            allStillFor = allStill ? allStillFor + Time.fixedDeltaTime : 0f;
+            allStillFor = settled ? allStillFor + step : 0f;
             if (allStillFor >= settleSeconds && Time.time - started >= minimumRollSeconds)
             {
                 break;
@@ -295,6 +400,7 @@ public class DiceBoard : MonoBehaviour
         bool timedOut = elapsed >= rollTimeout;
 
         ReadFaces();
+        RestoreTimestep();
         IsRolling = false;
         roll = null;
 
@@ -304,16 +410,16 @@ public class DiceBoard : MonoBehaviour
             (timedOut ? " (timed out, reported where they lay)" : string.Empty),
             this);
 
-        // A face read off a die still hanging in the field is not a real roll, so say so
-        // loudly rather than paying out on it.
+        // Only the timeout can end a roll with a die in the air, and by then it has been nudged
+        // as often as the rig allows. Its face is not a real roll, so say so loudly rather than
+        // paying out on it.
         foreach (var die in dice)
         {
             if (!IsOnFloor(die))
             {
                 Debug.LogWarning(
-                    $"[Dice] {die.name} stopped {transform.InverseTransformPoint(die.transform.position).y:0.00} m up, " +
-                    "wedged in the field instead of reaching the floor. Its face is not a fair roll — " +
-                    "the die is too big for the gaps it was released over.",
+                    $"[Dice] {die.name} ran the roll out {HeightOf(die) / boardScale:0.00} m up, still " +
+                    $"caught in the field after {nudges} nudge(s). Its face is not a fair roll.",
                     this);
             }
         }
@@ -374,23 +480,50 @@ public class DiceBoard : MonoBehaviour
             && die.angularVelocity.magnitude < stillSpinDegrees * Mathf.Deg2Rad;
     }
 
+    /// <summary>How high a die stands over the plinth, in this object's space.</summary>
+    private float HeightOf(Rigidbody die)
+    {
+        return transform.InverseTransformPoint(die.transform.position).y;
+    }
+
+    /// <summary>The height a die's centre is under once it lies on the floor, or on the other die.</summary>
+    private float RestHeight
+    {
+        get { return FromBoard(0f, CavityMidY, BaseTopZ).y + 0.05f * boardScale; }
+    }
+
     /// <summary>True once a die has reached the floor of the cavity rather than stalling on a peg.</summary>
     private bool IsOnFloor(Rigidbody die)
     {
-        float restHeight = FromBoard(0f, CavityMidY, BaseTopZ).y + 0.05f * boardScale;
-        return transform.InverseTransformPoint(die.transform.position).y <= restHeight;
+        return HeightOf(die) <= RestHeight;
     }
 
     /// <summary>
-    /// Knocks a wedged die loose, hard enough to fall on but not to fly. The lift comes first:
+    /// Knocks a stalled die loose, hard enough to fall on but not to fly. The lift comes first:
     /// a die caught on two pegs has to come off them before sideways travel does anything.
+    /// Each nudge of a roll is harder than the one before, so a die that shrugs the first one off
+    /// still ends up on the floor.
     /// </summary>
-    private void Nudge(Rigidbody die)
+    private void Nudge(Rigidbody die, int alreadyNudged)
     {
+        float strength = 1f + 0.5f * alreadyNudged;
         Vector3 sideways = transform.right * (UnityEngine.Random.value < 0.5f ? -1f : 1f);
-        die.AddForce((sideways * 0.7f + Vector3.up * 0.5f) * die.mass, ForceMode.Impulse);
-        die.AddTorque(UnityEngine.Random.onUnitSphere * (0.004f * die.mass), ForceMode.Impulse);
-        Debug.Log($"[Dice] {die.name} was wedged off the floor and has been nudged", this);
+        die.AddForce((sideways * 0.5f + Vector3.up * 0.35f) * (strength * die.mass), ForceMode.Impulse);
+        die.AddTorque(UnityEngine.Random.onUnitSphere * (0.0006f * strength * die.mass), ForceMode.Impulse);
+        die.WakeUp();
+        Debug.Log(
+            $"[Dice] {die.name} stalled {HeightOf(die) / boardScale:0.00} m up and has been nudged " +
+            $"loose (nudge {alreadyNudged + 1})",
+            this);
+    }
+
+    /// <summary>Puts the timestep back to the one the rest of the show runs on.</summary>
+    private void RestoreTimestep()
+    {
+        if (restingTimestep > 0f)
+        {
+            Time.fixedDeltaTime = restingTimestep;
+        }
     }
 
     private void ReadFaces()
@@ -492,7 +625,16 @@ public class DiceBoard : MonoBehaviour
         AddBox("Mullion", MullionX, CavityMidY, midZ, MullionW, CavityDepth, height);
         AddBox("Floor", 0f, CavityMidY, BaseTopZ - WallHalf, W, CavityDepth, 2f * WallHalf);
         AddBox("Deck", 0f, CavityMidY, DeckBottomZ + WallHalf, W, CavityDepth, 2f * WallHalf);
-        return 7;
+
+        // The bottom rails clamp the glass and stand a little proud of it inside the cavity, so a
+        // die that comes to rest against the glass leans on the rail rather than through it.
+        AddBox(
+            "Rail_Front", 0f, (CavityFrontY + RailFrontY) / 2f, (BaseTopZ + RailTopZ) / 2f,
+            W, RailFrontY - CavityFrontY, RailTopZ - BaseTopZ);
+        AddBox(
+            "Rail_Back", 0f, (CavityBackY + RailBackY) / 2f, (BaseTopZ + RailTopZ) / 2f,
+            W, CavityBackY - RailBackY, RailTopZ - BaseTopZ);
+        return 9;
     }
 
     /// <summary>One capsule per peg, reaching from the front sheet to the back sheet.</summary>
@@ -645,6 +787,7 @@ public class DiceBoard : MonoBehaviour
             BarWidth * boardScale,
             CavityDepth * boardScale);
         box.sharedMaterial = surface;
+        box.contactOffset = contactOffset;
     }
 
     private void AddPeg(string name, float x, float z, float radius)
@@ -658,6 +801,7 @@ public class DiceBoard : MonoBehaviour
         capsule.radius = radius * boardScale;
         capsule.height = CavityDepth * boardScale;
         capsule.sharedMaterial = surface;
+        capsule.contactOffset = contactOffset;
     }
 
     private void AddBox(string name, float x, float y, float z, float sizeX, float sizeY, float sizeZ)
@@ -669,6 +813,7 @@ public class DiceBoard : MonoBehaviour
         var box = go.AddComponent<BoxCollider>();
         box.size = new Vector3(sizeX, sizeZ, sizeY) * boardScale;
         box.sharedMaterial = surface;
+        box.contactOffset = contactOffset;
     }
 
     /// <summary>
