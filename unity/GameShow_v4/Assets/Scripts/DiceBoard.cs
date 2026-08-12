@@ -946,8 +946,32 @@ public class DiceBoard : MonoBehaviour
             }
         }
 
-        // Tilted chevrons on the bay walls, which turn a die back off the glass.
-        foreach (float z in new[] { 2.045f, 1.812f })
+        // Chevrons tilted against the two bay walls, which turn a die back off the glass.
+        //
+        // The lower pair is what keeps the pip dice off the walls. Left alone, the peg field is a
+        // random walk against absorbing walls: a die that touches the glass has nothing to push it
+        // back, so 85% of them finish within 60 mm of the left wall or the mullion and only 4%
+        // within 100 mm of the middle. No physics value fixes that, because the dice *arrive* at
+        // the walls rather than sliding there — friction, bounciness, damping, release lanes and
+        // release height were each measured and each moved the spread by less than the noise.
+        // These two extra rows take the mean distance from the middle of the bay from 0.292 to
+        // 0.111 and the share of dice against a wall from 85% to 10%, over 400 rolls.
+        //
+        // Two things about the heights, both measured rather than reasoned:
+        //  - A deflector only counts below the last scattering row. The same chevrons at z >= 1.20
+        //    leave the final spread untouched, because the nine lower peg rows undo their work.
+        //  - 0.650 and 0.350 are a narrow pocket, not a smooth optimum. Moving the pair to the
+        //    midpoints between the peg rows, 0.6665 and 0.3875, looks safer and is ruinous: it
+        //    times out 260 rolls in 400. Sweep these heights, never interpolate them.
+        //
+        // Beware the model: `Shapes_Outlines` in Dice_v3.blend carries the upper two pairs as
+        // plain, untilted chevrons at x = -0.4877 and 0.0817, about 28 mm across the bay and 46 mm
+        // in height away from where this builds them. Placing the colliders on that modelled
+        // geometry is *correct* and costs a lot — it pinches dice against the shape rows and takes
+        // the nudge rate from 25% to 44% with 5 timeouts in 400. So the model is the side that is
+        // wrong here, and the fix is to tilt those four shapes out against the walls to match
+        // these numbers, then add the lower pair to the model as well.
+        foreach (float z in new[] { 2.045f, 1.812f, 0.650f, 0.350f })
         {
             bars += AddOutline(Chevron, -0.516f, z, -72f, 0.92f, false);
             bars += AddOutline(Chevron, 0.104f, z, 72f, 0.92f, false);
