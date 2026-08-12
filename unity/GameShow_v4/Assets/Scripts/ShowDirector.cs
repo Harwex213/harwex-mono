@@ -12,14 +12,16 @@ using UnityEngine;
 /// <item>START and WAITING turn the hero wheel slowly. The studio's own timer advances them.</item>
 /// <item>SPINNING spins the wheel onto the result in the payload, then reports done. In the dice
 /// round it drops every die through the cabinet, both bays at once, and waits for them to
-/// settle instead.</item>
+/// settle instead. In the luck round it spins the Golden Luck slot machine and waits for its own
+/// reaction to finish.</item>
 /// <item>RESULT, SWITCH and CANCELING hold for their own time, then report done. A SWITCH also
 /// moves the camera onto the round named in its uri, and is not reported done until it lands.</item>
 /// </list>
 ///
 /// The round in the uri picks what the camera watches: MAIN_* is shot on the hero wheel, and
-/// BONUS_DICE_* on the acrylic cabinet. The three bonus rounds with no visual of their own still
-/// stand in on the wheel.
+/// BONUS_DICE_* on the acrylic cabinet. BONUS_LUCK_* plays on the slot machine when one is in the
+/// scene, though the camera has no shot of its own for it yet and still frames the wheel. The bonus
+/// rounds with no visual at all stand in on the wheel.
 ///
 /// Every stage and every transition is written to the console, prefixed with <c>[Show]</c>.
 /// </summary>
@@ -38,6 +40,10 @@ public class ShowDirector : MonoBehaviour
 
     [Tooltip("The dice cabinet. Left empty, it is looked up in the scene. Without it the dice round spins the wheel.")]
     [SerializeField] private DiceBoard diceBoard;
+
+    [Tooltip("The Golden Luck slot machine. Left empty, it is looked up in the scene. Without it the " +
+             "luck round spins the wheel, exactly as it did before the machine existed.")]
+    [SerializeField] private SlotMachineController slotMachine;
 
     [Header("Hold times")]
     [Tooltip("Seconds the win effects run before the studio is told the result is done.")]
@@ -58,6 +64,10 @@ public class ShowDirector : MonoBehaviour
     [Header("Bonus dice")]
     [Tooltip("Seconds the camera holds on the cabinet before the dice are released, so the drop is on screen.")]
     [SerializeField, Min(0f)] private float diceReleaseDelaySeconds = 0.9f;
+
+    [Header("Bonus luck")]
+    [Tooltip("Seconds the camera holds on the slot machine before the reels start, so the start is on screen.")]
+    [SerializeField, Min(0f)] private float slotStartDelaySeconds = 0.7f;
 
     [Header("Wheel")]
     [Tooltip("Turn the wheel slowly during START and WAITING.")]
@@ -128,6 +138,16 @@ public class ShowDirector : MonoBehaviour
             Debug.LogWarning(
                 "ShowDirector: no DiceBoard in the scene. The dice round falls back to the hero wheel.",
                 this);
+        }
+
+        if (slotMachine == null)
+        {
+            slotMachine = FindFirstObjectByType<SlotMachineController>();
+        }
+
+        if (slotMachine == null)
+        {
+            Debug.Log("[Show] no SlotMachineController in the scene. The luck round falls back to the hero wheel.", this);
         }
     }
 
@@ -202,6 +222,7 @@ public class ShowDirector : MonoBehaviour
                 // The studio's timer advances these two. Idle the wheel and wait for the next frame.
                 SetIdleSpin(idleBetweenSpins);
                 ClearDice();
+                ResetSlotMachine();
                 FrameWide(stage.Game);
                 break;
 
@@ -225,6 +246,7 @@ public class ShowDirector : MonoBehaviour
                 Debug.Log($"[Show] {stage} switching to {stage.Game} over at least {switchHoldSeconds:0.#}s", this);
                 SetIdleSpin(idleBetweenSpins);
                 ClearDice();
+                ResetSlotMachine();
                 FrameWide(stage.Game);
                 yield return HoldForCamera(switchHoldSeconds);
                 Report(stage, correlationId);
@@ -242,6 +264,11 @@ public class ShowDirector : MonoBehaviour
                     diceBoard.StopRoll();
                 }
 
+                if (slotMachine != null)
+                {
+                    slotMachine.CancelSpin(snapToResult: true);
+                }
+
                 SetIdleSpin(false);
                 FrameWide(stage.Game);
                 yield return new WaitForSeconds(cancelHoldSeconds);
@@ -252,7 +279,10 @@ public class ShowDirector : MonoBehaviour
         _render = null;
     }
 
-    /// <summary>Plays the round's own spin: the dice fall in the dice round, the wheel turns in the rest.</summary>
+    /// <summary>
+    /// Plays the round's own spin: the dice fall in the dice round, the slot machine turns in the luck
+    /// round, and the wheel turns in the rest.
+    /// </summary>
     private IEnumerator PlaySpin(ShowStage stage, WsConnectionMessagePayload payload)
     {
         if (stage.Game == ShowGame.BonusDice && diceBoard != null)
@@ -261,7 +291,55 @@ public class ShowDirector : MonoBehaviour
             yield break;
         }
 
+        if (stage.Game == ShowGame.BonusLuck && slotMachine != null)
+        {
+            yield return SpinSlotMachine(stage, payload);
+            yield break;
+        }
+
         yield return SpinWheel(stage, payload);
+    }
+
+    /// <summary>
+    /// Spins the Golden Luck machine and waits for it to finish its own reaction.
+    ///
+    /// The studio's result names a paytable combination, such as <c>three_stars</c>, and the machine
+    /// finds a line that pays it. A result the paytable does not carry falls through to a drawn spin
+    /// rather than stalling the round, and says so.
+    /// </summary>
+    private IEnumerator SpinSlotMachine(ShowStage stage, WsConnectionMessagePayload payload)
+    {
+        // Give the camera its beat on the machine, or the reels start off screen.
+        yield return HoldForCamera(slotStartDelaySeconds);
+
+        string result = payload == null ? null : payload.Result;
+        SlotMachineResult forced;
+
+        if (!string.IsNullOrEmpty(result) && slotMachine.TryBuildResultFor(result, out forced))
+        {
+            Debug.Log($"[Show] {stage} slot machine forced onto '{result}' ({forced})", this);
+            slotMachine.SpinWithResult(forced);
+        }
+        else
+        {
+            if (!string.IsNullOrEmpty(result))
+            {
+                Debug.LogWarning(
+                    $"[Show] {stage} sent result '{result}', which matches no paytable combination on the " +
+                    "slot machine. The reels are drawn from their weights instead.",
+                    this);
+            }
+
+            slotMachine.Spin();
+        }
+
+        while (slotMachine.State != SlotMachineState.Idle && slotMachine.State != SlotMachineState.Disabled)
+        {
+            yield return null;
+        }
+
+        var landed = slotMachine.LastResult;
+        Debug.Log($"[Show] {stage} slot machine finished on {(landed == null ? "<none>" : landed.ToString())}", this);
     }
 
     /// <summary>
@@ -308,6 +386,18 @@ public class ShowDirector : MonoBehaviour
         if (diceBoard != null)
         {
             diceBoard.Park();
+        }
+    }
+
+    /// <summary>
+    /// Puts the slot machine back to idle, so it is not still showing the last round's win when the
+    /// show comes back to it. Safe mid-spin, which is what a CANCELING needs.
+    /// </summary>
+    private void ResetSlotMachine()
+    {
+        if (slotMachine != null)
+        {
+            slotMachine.ResetMachine();
         }
     }
 
