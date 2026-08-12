@@ -1,11 +1,21 @@
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 
+/// <summary>The colour a colour die can come to rest showing.</summary>
+public enum DieColour
+{
+    Red,
+    Green,
+    Blue,
+}
+
 /// <summary>
-/// The bonus dice game. Two dice are released at the top of the acrylic cabinet, fall through
-/// its deflector and peg fields, and come to rest on its floor. The faces that end up on top
-/// are the roll.
+/// The bonus dice game. Both bays of the acrylic cabinet are played at once, and every die is
+/// released together at the top of the cabinet. Three pip dice fall down the wide bay on the
+/// left and their faces are added up; two colour dice fall down the narrow bay on the right and
+/// the face each one shows is red, green or blue. The roll is the sum and the pair of colours.
 ///
 /// The cabinet in <c>AcrylicGameBoard.fbx</c> carries no colliders, so this component builds
 /// them: the four walls of the play cavity, its floor and deck, one capsule per peg and one box
@@ -18,10 +28,14 @@ using UnityEngine;
 /// pegs only stand 70 mm proud of the back sheet. That is deliberate: a die must not be able to
 /// slip past a peg it looks like it should have hit.
 ///
-/// The dice fall down the narrow bay, the one with three columns of fat pegs. Its gaps are even
-/// and wide enough for a 39 mm die at any angle. The wide bay's chevron, pentagon and diamond
-/// rows are pitched for a far smaller ball — a die released over them wedges between two rows and
-/// never reaches the floor — so the wide bay is scenery for this game, not a route.
+/// Each bay passes a die of its own size, and the two sizes are not the same. Take every obstacle
+/// of a bay and every chain of them that runs from one wall to the other: the widest gap of the
+/// tightest such chain is the widest thing the bay passes. That measures 68.5 mm in the narrow
+/// bay, whose three columns of fat pegs are evenly pitched, and 64.0 mm in the wide bay, which is
+/// laid out for a far smaller ball. A cube passes a gap at any angle once its long diagonal fits,
+/// so the narrow bay takes the 39 mm colour dice and the wide bay takes the pip dice at 36 mm —
+/// the same 39 mm model, placed in the scene at 36/39 of its size. At 39 mm the wide bay left a
+/// pip die stuck in the field in 7 rolls out of 120; at 36 mm it left none.
 ///
 /// A peg is a cylinder lying across the cabinet, and a die can land square on the crown of one and
 /// balance there. That happened to about one die in eighty. So a roll is only over once every die
@@ -134,9 +148,28 @@ public class DiceBoard : MonoBehaviour
 
     private static readonly int[] FaceValues = { 4, 3, 1, 6, 2, 5 };
 
+    /// <summary>
+    /// Colours of a colour die, as the axis of this Unity model that carries them. A colour sits
+    /// on a pair of opposite faces, so only the axis matters and not which way along it the face
+    /// points. Measured off the imported mesh: red is the submesh whose faces face ±X, blue ±Y
+    /// and green ±Z. <c>blender/_scripts/19_color_die.py</c> is what puts them there.
+    /// </summary>
+    private static readonly Vector3[] ColourAxes = { Vector3.right, Vector3.up, Vector3.forward };
+
+    private static readonly DieColour[] ColourValues =
+    {
+        DieColour.Red, DieColour.Blue, DieColour.Green,
+    };
+
     [Header("Wiring")]
-    [Tooltip("The two dice. Left empty, every rigidbody under this object is used.")]
-    [SerializeField] private Rigidbody[] dice;
+    [Tooltip(
+        "The pip dice, which fall down the wide bay on the left. Their faces are the number the " +
+        "round pays on. Left empty, every rigidbody under this object that is not a colour die " +
+        "is used.")]
+    [SerializeField] private Rigidbody[] numberDice;
+
+    [Tooltip("The colour dice, which fall down the narrow bay on the right.")]
+    [SerializeField] private Rigidbody[] colourDice;
 
     [Tooltip("Surface of the cavity walls, pegs and deflectors. Acrylic, so fairly lively.")]
     [SerializeField] private PhysicsMaterial surface;
@@ -164,10 +197,18 @@ public class DiceBoard : MonoBehaviour
     [SerializeField] private float releaseHeight = 2.2f;
 
     [Tooltip(
-        "Where across the cabinet each die is released, in the board's own metres. Both sit over " +
-        "the narrow bay, one above each channel between its three columns of pegs. The wide bay " +
-        "is not used: its deflector rows are pitched for a small ball and a die wedges in them.")]
-    [SerializeField] private float[] releaseAcross = { 0.286f, 0.407f };
+        "Where across the cabinet each pip die is released, in the board's own metres. The three " +
+        "sit over the middle of the wide bay, far enough apart not to touch on the way in. They " +
+        "keep off its two side channels on purpose: a chevron is tilted against each side wall " +
+        "up there, and the 38 mm it leaves beside the shape row next to it is a trap a die does " +
+        "not come out of. Released down the middle no die was left in the field over 120 rolls; " +
+        "released at -0.48 one was left in 13 rolls out of 40.")]
+    [SerializeField] private float[] numberReleaseAcross = { -0.36f, -0.21f, -0.06f };
+
+    [Tooltip(
+        "Where across the cabinet each colour die is released. Both sit over the narrow bay, one " +
+        "above each channel between its three columns of pegs.")]
+    [SerializeField] private float[] colourReleaseAcross = { 0.286f, 0.407f };
 
     [Tooltip("Metres either way of the release point the dice are jittered, so no two rolls match.")]
     [SerializeField, Min(0f)] private float releaseJitter = 0.012f;
@@ -208,10 +249,13 @@ public class DiceBoard : MonoBehaviour
     /// <summary>True from the release until every die has settled, timed out or been stopped.</summary>
     public bool IsRolling { get; private set; }
 
-    /// <summary>The face each die shows, in release order. Empty before the first roll.</summary>
+    /// <summary>The face each pip die shows, in release order. Empty before the first roll.</summary>
     public int[] Faces { get; private set; } = Array.Empty<int>();
 
-    /// <summary>The two faces added together, which is what a dice round pays on.</summary>
+    /// <summary>The colour each colour die shows, in release order. Empty before the first roll.</summary>
+    public DieColour[] Colours { get; private set; } = Array.Empty<DieColour>();
+
+    /// <summary>The pip faces added together, which is what a dice round pays on.</summary>
     public int Total
     {
         get
@@ -233,24 +277,75 @@ public class DiceBoard : MonoBehaviour
     private Transform cavity;
     private float restingTimestep;
 
+    /// <summary>Every die, pip dice first, in the order they are released and reported in.</summary>
+    private Rigidbody[] dice = Array.Empty<Rigidbody>();
+
+    // The state one roll carries: the lowest each die has been, how long it has been stuck at
+    // that height, and how the roll as a whole is going.
+    private float[] lowest = Array.Empty<float>();
+    private float[] stalled = Array.Empty<float>();
+    private int nudges;
+    private float allStillFor;
+    private float rollElapsed;
+
     private void Awake()
     {
-        if (dice == null || dice.Length == 0)
-        {
-            dice = GetComponentsInChildren<Rigidbody>(true);
-        }
+        restingTimestep = Time.fixedDeltaTime;
 
-        if (dice.Length == 0)
+        if (!Rebuild())
         {
-            Debug.LogError("DiceBoard: no dice under " + name + ". The dice game cannot run.", this);
             enabled = false;
             return;
         }
 
-        restingTimestep = Time.fixedDeltaTime;
+        Park();
+    }
+
+    /// <summary>
+    /// Finds the dice, sets them up and builds the cavity: everything the board needs before it
+    /// can roll. Awake calls it, and so does the physics soak, which drives this component from
+    /// the editor where Awake never runs. False when there are no dice to roll.
+    /// </summary>
+    public bool Rebuild()
+    {
+        GatherDice();
+
+        if (dice.Length == 0)
+        {
+            Debug.LogError("DiceBoard: no dice under " + name + ". The dice game cannot run.", this);
+            return false;
+        }
+
         PrepareDice();
         BuildCavity();
-        Park();
+        return true;
+    }
+
+    /// <summary>
+    /// Puts the two bays' dice into one list. A rig left unwired falls back to every rigidbody
+    /// under this object as pip dice, which is what the game was before the colour dice existed.
+    /// </summary>
+    private void GatherDice()
+    {
+        colourDice = colourDice ?? Array.Empty<Rigidbody>();
+
+        if (numberDice == null || numberDice.Length == 0)
+        {
+            var found = new List<Rigidbody>();
+            foreach (var body in GetComponentsInChildren<Rigidbody>(true))
+            {
+                if (Array.IndexOf(colourDice, body) < 0)
+                {
+                    found.Add(body);
+                }
+            }
+
+            numberDice = found.ToArray();
+        }
+
+        dice = new Rigidbody[numberDice.Length + colourDice.Length];
+        numberDice.CopyTo(dice, 0);
+        colourDice.CopyTo(dice, numberDice.Length);
     }
 
     private void OnDisable()
@@ -327,85 +422,132 @@ public class DiceBoard : MonoBehaviour
         IsRolling = false;
     }
 
-    private IEnumerator RollRoutine(string requestedResult)
+    /// <summary>
+    /// Releases every die and starts the bookkeeping a roll needs. Paired with
+    /// <see cref="StepRoll"/>, which carries one roll along one physics step at a time: the
+    /// coroutine below drives the pair from the show, and the physics soak drives it from the
+    /// editor at whatever speed the machine manages.
+    /// </summary>
+    public void BeginRoll()
     {
-        IsRolling = true;
-        Time.fixedDeltaTime = rollTimestep;
         Release();
 
-        // The lowest each die has been, and how long it has been stuck at that height.
-        var lowest = new float[dice.Length];
-        var stalled = new float[dice.Length];
+        lowest = new float[dice.Length];
+        stalled = new float[dice.Length];
         for (int i = 0; i < dice.Length; i++)
         {
             lowest[i] = float.PositiveInfinity;
         }
 
-        int nudges = 0;
-        float allStillFor = 0f;
-        float started = Time.time;
+        nudges = 0;
+        allStillFor = 0f;
+        rollElapsed = 0f;
+    }
 
-        while (Time.time - started < rollTimeout)
+    /// <summary>
+    /// Carries a running roll over one physics step, which must already have been simulated.
+    /// Returns true once the roll is over, which is when every die lies still on the floor. A die
+    /// still up in the field holds the roll open, so a stalled one always gets its nudge.
+    /// </summary>
+    public bool StepRoll(float step)
+    {
+        rollElapsed += step;
+
+        bool settled = true;
+        for (int i = 0; i < dice.Length; i++)
         {
-            yield return new WaitForFixedUpdate();
-            float step = Time.fixedDeltaTime;
+            var die = dice[i];
+            float height = HeightOf(die);
+            bool onFloor = height <= RestHeight;
 
-            // A roll is over when every die lies still on the floor. A die still up in the field
-            // holds the roll open, so the nudge below always gets its turn.
-            bool settled = true;
-            for (int i = 0; i < dice.Length; i++)
+            if (!onFloor || !IsStill(die))
             {
-                var die = dice[i];
-                float height = HeightOf(die);
-                bool onFloor = height <= RestHeight;
+                settled = false;
+            }
 
-                if (!onFloor || !IsStill(die))
-                {
-                    settled = false;
-                }
+            if (onFloor)
+            {
+                continue;
+            }
 
-                if (onFloor)
-                {
-                    continue;
-                }
+            if (height < lowest[i] - stallProgress)
+            {
+                lowest[i] = height;
+                stalled[i] = 0f;
+            }
+            else
+            {
+                stalled[i] += step;
+            }
 
-                if (height < lowest[i] - stallProgress)
-                {
-                    lowest[i] = height;
-                    stalled[i] = 0f;
-                }
-                else
-                {
-                    stalled[i] += step;
-                }
+            // A die that is no longer making its way down is caught on a peg or between two.
+            if (stalled[i] >= stallSeconds && nudges < maxNudges)
+            {
+                Nudge(die, nudges);
+                lowest[i] = height;
+                stalled[i] = 0f;
+                nudges++;
+            }
+        }
 
-                // A die that is no longer making its way down is caught on a peg or between two.
-                if (stalled[i] >= stallSeconds && nudges < maxNudges)
+        allStillFor = settled ? allStillFor + step : 0f;
+        return allStillFor >= settleSeconds && rollElapsed >= minimumRollSeconds;
+    }
+
+    /// <summary>Seconds the roll on the board has been running, or ran for.</summary>
+    public float RollElapsed
+    {
+        get { return rollElapsed; }
+    }
+
+    /// <summary>How many dice this roll has had to knock loose.</summary>
+    public int Nudges
+    {
+        get { return nudges; }
+    }
+
+    /// <summary>True while any die is still off the floor of the cavity.</summary>
+    public bool AnyDieInTheField
+    {
+        get
+        {
+            foreach (var die in dice)
+            {
+                if (!IsOnFloor(die))
                 {
-                    Nudge(die, nudges);
-                    lowest[i] = height;
-                    stalled[i] = 0f;
-                    nudges++;
+                    return true;
                 }
             }
 
-            allStillFor = settled ? allStillFor + step : 0f;
-            if (allStillFor >= settleSeconds && Time.time - started >= minimumRollSeconds)
+            return false;
+        }
+    }
+
+    private IEnumerator RollRoutine(string requestedResult)
+    {
+        IsRolling = true;
+        Time.fixedDeltaTime = rollTimestep;
+        BeginRoll();
+
+        while (rollElapsed < rollTimeout)
+        {
+            yield return new WaitForFixedUpdate();
+            if (StepRoll(Time.fixedDeltaTime))
             {
                 break;
             }
         }
 
-        float elapsed = Time.time - started;
+        float elapsed = rollElapsed;
         bool timedOut = elapsed >= rollTimeout;
 
-        ReadFaces();
+        ReadRoll();
         RestoreTimestep();
         IsRolling = false;
         roll = null;
 
         Debug.Log(
-            $"[Dice] rolled {DescribeFaces()} = {Total} in {elapsed:0.00}s" +
+            $"[Dice] rolled {DescribeRoll()} in {elapsed:0.00}s" +
             (nudges > 0 ? $", {nudges} nudge(s)" : string.Empty) +
             (timedOut ? " (timed out, reported where they lay)" : string.Empty),
             this);
@@ -439,15 +581,22 @@ public class DiceBoard : MonoBehaviour
         }
     }
 
-    /// <summary>Drops the dice in at the top of the cabinet, each one turned differently.</summary>
+    /// <summary>
+    /// Drops every die in at the top of the cabinet at once, each one turned differently. The two
+    /// bays are released over their own lanes, so the pip dice go left and the colour dice right.
+    /// </summary>
     private void Release()
     {
-        for (int i = 0; i < dice.Length; i++)
+        ReleaseBay(numberDice, numberReleaseAcross, "pip");
+        ReleaseBay(colourDice, colourReleaseAcross, "colour");
+    }
+
+    private void ReleaseBay(Rigidbody[] bay, float[] lanes, string what)
+    {
+        for (int i = 0; i < bay.Length; i++)
         {
-            var die = dice[i];
-            float across = releaseAcross.Length > 0
-                ? releaseAcross[i % releaseAcross.Length]
-                : 0f;
+            var die = bay[i];
+            float across = lanes.Length > 0 ? lanes[i % lanes.Length] : 0f;
             across += UnityEngine.Random.Range(-releaseJitter, releaseJitter);
 
             Vector3 spawn = transform.TransformPoint(FromBoard(across, CavityMidY, releaseHeight));
@@ -468,7 +617,7 @@ public class DiceBoard : MonoBehaviour
             die.WakeUp();
 
             Debug.Log(
-                $"[Dice] released die {i + 1} at {die.transform.position} " +
+                $"[Dice] released {what} die {i + 1} at {die.transform.position} " +
                 $"(board x={across:0.000} z={releaseHeight:0.000})",
                 this);
         }
@@ -486,10 +635,15 @@ public class DiceBoard : MonoBehaviour
         return transform.InverseTransformPoint(die.transform.position).y;
     }
 
-    /// <summary>The height a die's centre is under once it lies on the floor, or on the other die.</summary>
+    /// <summary>
+    /// The height a die's centre is under once it lies on the floor, or on top of another die.
+    /// Three dice share the wide bay's floor now, so this has to clear one die standing on
+    /// another: 65 mm covers two of them stacked and still sits well under the 96 mm a die
+    /// balanced on the lowest peg of the wide bay would report.
+    /// </summary>
     private float RestHeight
     {
-        get { return FromBoard(0f, CavityMidY, BaseTopZ).y + 0.05f * boardScale; }
+        get { return FromBoard(0f, CavityMidY, BaseTopZ).y + 0.065f * boardScale; }
     }
 
     /// <summary>True once a die has reached the floor of the cavity rather than stalling on a peg.</summary>
@@ -526,18 +680,26 @@ public class DiceBoard : MonoBehaviour
         }
     }
 
-    private void ReadFaces()
+    /// <summary>Reads the faces and the colours the dice are showing where they lie.</summary>
+    public void ReadRoll()
     {
-        var faces = new int[dice.Length];
-        for (int i = 0; i < dice.Length; i++)
+        var faces = new int[numberDice.Length];
+        for (int i = 0; i < numberDice.Length; i++)
         {
-            faces[i] = FaceUp(dice[i].transform);
+            faces[i] = FaceUp(numberDice[i].transform);
+        }
+
+        var colours = new DieColour[colourDice.Length];
+        for (int i = 0; i < colourDice.Length; i++)
+        {
+            colours[i] = ColourUp(colourDice[i].transform);
         }
 
         Faces = faces;
+        Colours = colours;
     }
 
-    /// <summary>The face of a die pointing most nearly straight up.</summary>
+    /// <summary>The face of a pip die pointing most nearly straight up.</summary>
     public static int FaceUp(Transform die)
     {
         int best = 0;
@@ -555,7 +717,29 @@ public class DiceBoard : MonoBehaviour
         return FaceValues[best];
     }
 
-    /// <summary>The faces as "3 + 5", for the console and the debug panel.</summary>
+    /// <summary>
+    /// The colour of a colour die pointing most nearly straight up. A colour sits on both ends of
+    /// its axis, so the axis lying nearest to vertical carries the face on top whichever way up
+    /// the die came to rest.
+    /// </summary>
+    public static DieColour ColourUp(Transform die)
+    {
+        int best = 0;
+        float bestDot = float.NegativeInfinity;
+        for (int i = 0; i < ColourAxes.Length; i++)
+        {
+            float dot = Mathf.Abs(Vector3.Dot(die.rotation * ColourAxes[i], Vector3.up));
+            if (dot > bestDot)
+            {
+                bestDot = dot;
+                best = i;
+            }
+        }
+
+        return ColourValues[best];
+    }
+
+    /// <summary>The pip faces as "3 + 5 + 2", for the console and the debug panel.</summary>
     public string DescribeFaces()
     {
         if (Faces.Length == 0)
@@ -570,6 +754,39 @@ public class DiceBoard : MonoBehaviour
         }
 
         return string.Join(" + ", parts);
+    }
+
+    /// <summary>The colours as "RED + GREEN", in release order.</summary>
+    public string DescribeColours()
+    {
+        if (Colours.Length == 0)
+        {
+            return "<none>";
+        }
+
+        var parts = new string[Colours.Length];
+        for (int i = 0; i < Colours.Length; i++)
+        {
+            parts[i] = Colours[i].ToString().ToUpperInvariant();
+        }
+
+        return string.Join(" + ", parts);
+    }
+
+    /// <summary>The whole roll, both bays, as the result screen reads it out.</summary>
+    public string DescribeRoll()
+    {
+        if (Faces.Length == 0 && Colours.Length == 0)
+        {
+            return "<no roll yet>";
+        }
+
+        if (Colours.Length == 0)
+        {
+            return $"{DescribeFaces()} = {Total}";
+        }
+
+        return $"{DescribeFaces()} = {Total}, {DescribeColours()}";
     }
 
     // ------------------------------------------------------------------ cavity --

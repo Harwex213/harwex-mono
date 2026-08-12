@@ -113,10 +113,10 @@ public class ShowCamera : MonoBehaviour
     [SerializeField]
     private Shot diceSpinShot = new()
     {
-        // The aim offset biases the shot onto the narrow bay, the one the dice fall down. The
-        // distance fits the 2.72 m of play area in frame at 40 degrees. The camera stays level with
-        // the aim, so neither the release at the top nor the floor at the bottom is cropped.
-        aimOffset = new Vector3(-0.2f, 1.45f, 0f),
+        // Both bays are played, so the shot is centred on the cabinet rather than biased onto one
+        // of them. The distance fits the 2.72 m of play area in frame at 40 degrees. The camera
+        // stays level with the aim, so neither the release at the top nor the floor is cropped.
+        aimOffset = new Vector3(0f, 1.45f, 0f),
         distance = 4f,
         yawDegrees = 0f,
         heightOffset = 0f,
@@ -124,17 +124,22 @@ public class ShowCamera : MonoBehaviour
         moveDuration = 1f,
     };
 
-    [Tooltip("Close on the floor of the narrow bay, where the dice come to rest showing their faces.")]
+    [Tooltip("Down onto the floor of both bays, where the dice come to rest showing their faces.")]
     [SerializeField]
     private Shot diceResultShot = new()
     {
-        aimOffset = new Vector3(-0.43f, 0.17f, 0f),
-        distance = 0.1f,
-        yawDegrees = 8f,
-        // High enough to look down over the cabinet's bottom rail, which stands right in front of
-        // the dice and hides them from a level camera.
-        heightOffset = 0.42f,
-        fieldOfView = 31f,
+        // Both bays are read off this one shot. The dice come to rest anywhere over 1.28 m of
+        // floor, the pip dice left of the mullion and the colour dice right of it, and the aim
+        // sits a little over the floor so the plinth does not take the bottom of the frame.
+        aimOffset = new Vector3(0f, 0.24f, 0f),
+        distance = 1f,
+        yawDegrees = 0f,
+        // The camera looks down on the dice at about 39 degrees. It has to clear the cabinet's
+        // bottom rail, which stands in front of the dice and hides them from a level camera, and
+        // the face on top of a die is the face the roll counts — a flatter shot reads the front
+        // of each die instead, which is a different number and a different colour.
+        heightOffset = 0.8f,
+        fieldOfView = 35f,
         moveDuration = 0.9f,
     };
 

@@ -11,7 +11,8 @@ using UnityEngine;
 /// <list type="bullet">
 /// <item>START and WAITING turn the hero wheel slowly. The studio's own timer advances them.</item>
 /// <item>SPINNING spins the wheel onto the result in the payload, then reports done. In the dice
-/// round it drops the two dice through the cabinet and waits for them to settle instead.</item>
+/// round it drops every die through the cabinet, both bays at once, and waits for them to
+/// settle instead.</item>
 /// <item>RESULT, SWITCH and CANCELING hold for their own time, then report done. A SWITCH also
 /// moves the camera onto the round named in its uri, and is not reported done until it lands.</item>
 /// </list>
@@ -264,9 +265,10 @@ public class ShowDirector : MonoBehaviour
     }
 
     /// <summary>
-    /// Drops the two dice through the cabinet and waits for them to come to rest. The faces are
-    /// whatever the physics leaves on top; see <see cref="DiceBoard"/> for how a studio result
-    /// would have to be honoured.
+    /// Drops every die through the cabinet, the pip dice down the wide bay and the colour dice
+    /// down the narrow one, and waits for them all to come to rest. The faces are whatever the
+    /// physics leaves on top; see <see cref="DiceBoard"/> for how a studio result would have to
+    /// be honoured.
     /// </summary>
     private IEnumerator RollDice(ShowStage stage, WsConnectionMessagePayload payload)
     {
@@ -280,9 +282,7 @@ public class ShowDirector : MonoBehaviour
             yield return null;
         }
 
-        Debug.Log(
-            $"[Show] {stage} dice landed on {diceBoard.DescribeFaces()} = {diceBoard.Total}",
-            this);
+        Debug.Log($"[Show] {stage} dice landed on {diceBoard.DescribeRoll()}", this);
     }
 
     /// <summary>Waits for the camera to reach its mark, then out to <paramref name="minimumSeconds"/>.</summary>

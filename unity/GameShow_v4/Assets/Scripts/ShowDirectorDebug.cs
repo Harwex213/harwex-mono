@@ -596,7 +596,7 @@ public class ShowDirectorDebug : MonoBehaviour
         if (diceBoard != null)
         {
             string rolling = diceBoard.IsRolling ? "falling" : "at rest";
-            GUILayout.Label($"dice: {rolling}, {diceBoard.DescribeFaces()} = {diceBoard.Total}", WrapLabel());
+            GUILayout.Label($"dice: {rolling}, {diceBoard.DescribeRoll()}", WrapLabel());
         }
 
         if (showCamera != null)
