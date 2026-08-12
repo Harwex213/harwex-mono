@@ -33,9 +33,21 @@ public enum DieColour
 /// tightest such chain is the widest thing the bay passes. That measures 68.5 mm in the narrow
 /// bay, whose three columns of fat pegs are evenly pitched, and 64.0 mm in the wide bay, which is
 /// laid out for a far smaller ball. A cube passes a gap at any angle once its long diagonal fits,
-/// so the narrow bay takes the 39 mm colour dice and the wide bay takes the pip dice at 36 mm —
-/// the same 39 mm model, placed in the scene at 36/39 of its size. At 39 mm the wide bay left a
-/// pip die stuck in the field in 7 rolls out of 120; at 36 mm it left none.
+/// so the narrow bay takes the 39 mm colour dice, and the wide bay takes the pip dice at 30 mm —
+/// the same 39 mm model, placed in the scene at 30/39 of its size, with its mass scaled by the
+/// cube of that so the two kinds of die keep one density.
+///
+/// Fitting the bay is not the same as falling through it cleanly, and the size was picked by
+/// soaking 500 rolls per candidate rather than by the diagonal alone. No size from 26 to 36 mm
+/// ever left a die stranded, because the nudge always frees one in the end; what the size decides
+/// is how often a die has to be nudged at all, and that is what an audience sees. Rolls needing at
+/// least one nudge: 56% at 36 mm, 34% at 33 mm, 23% at 32 mm, 23% at 30 mm, 32% at 28 mm, 40% at
+/// 26 mm. Smaller is therefore not monotonically better — under 30 mm a die is small enough to
+/// enter the narrow channels along the walls, where it then has to be shaken out. 31 mm and 33 mm
+/// both sit worse than their neighbours, so the good sizes are a pocket set by the peg pitch, not
+/// a threshold. 30 mm and 32 mm tie on that rate; 30 mm was taken for the lower nudges per roll
+/// (0.35 against 0.42) and the shorter worst-case roll (6.9 s against 8.4 s). At 36 mm one roll in
+/// 200 ran the full 14 s timeout out.
 ///
 /// A peg is a cylinder lying across the cabinet, and a die can land square on the crown of one and
 /// balance there. That happened to about one die in eighty. So a roll is only over once every die
@@ -637,9 +649,11 @@ public class DiceBoard : MonoBehaviour
 
     /// <summary>
     /// The height a die's centre is under once it lies on the floor, or on top of another die.
-    /// Three dice share the wide bay's floor now, so this has to clear one die standing on
-    /// another: 65 mm covers two of them stacked and still sits well under the 96 mm a die
-    /// balanced on the lowest peg of the wide bay would report.
+    /// Three dice share the wide bay's floor, so this has to clear one die standing on another.
+    /// The figure is in the board's own metres, where a 30 mm die measures 24.4 mm: one on the
+    /// floor reports 12 mm, two stacked 37 mm and all three stacked 61 mm, so 65 mm now covers
+    /// the whole pile. It still sits well under the 90 mm a die balanced on the crown of the
+    /// lowest peg of the wide bay would report, which is the case this has to tell apart.
     /// </summary>
     private float RestHeight
     {
