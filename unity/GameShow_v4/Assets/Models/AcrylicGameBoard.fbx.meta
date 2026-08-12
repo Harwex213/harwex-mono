@@ -7,27 +7,27 @@ ModelImporter:
   - first:
       type: UnityEngine:Material
       assembly: UnityEngine.CoreModule
-      name: M_Acrylic_Clear
+      name: MAT_Acrylic_Clear
     second: {fileID: 2100000, guid: f72990cd5c4db425abcec2edb996bbfc, type: 2}
   - first:
       type: UnityEngine:Material
       assembly: UnityEngine.CoreModule
-      name: M_Base_Core
+      name: MAT_BaseCore
     second: {fileID: 2100000, guid: 12a6ae1d36dfc49c7995850911b29c6c, type: 2}
   - first:
       type: UnityEngine:Material
       assembly: UnityEngine.CoreModule
-      name: M_Copper_Polished
+      name: MAT_Copper
     second: {fileID: 2100000, guid: 289573054008140e8b844300485f6944, type: 2}
   - first:
       type: UnityEngine:Material
       assembly: UnityEngine.CoreModule
-      name: M_LED_Warm
+      name: MAT_LED
     second: {fileID: 2100000, guid: 13c90186ab2a14f03be08e83f73ecd04, type: 2}
   - first:
       type: UnityEngine:Material
       assembly: UnityEngine.CoreModule
-      name: M_RoseGold_Polished
+      name: MAT_RoseGold
     second: {fileID: 2100000, guid: f2cef46c6637b40249a833f140d637f6, type: 2}
   materials:
     materialImportMode: 1
@@ -67,8 +67,8 @@ ModelImporter:
     importPhysicalCameras: 1
     importVisibility: 1
     importBlendShapes: 1
-    importCameras: 1
-    importLights: 1
+    importCameras: 0
+    importLights: 0
     nodeNameCollisionStrategy: 1
     fileIdsGeneration: 2
     swapUVChannels: 0
