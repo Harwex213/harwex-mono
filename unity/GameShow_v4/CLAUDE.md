@@ -1,0 +1,3 @@
+# Rules
+
+- use Unity MCP
