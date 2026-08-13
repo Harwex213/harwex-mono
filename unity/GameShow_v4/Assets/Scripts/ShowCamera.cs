@@ -16,10 +16,11 @@ using UnityEngine;
 /// facing, so a yaw of 0 stands straight in front of the game. Keeping the two apart lets the wheel
 /// aim at its hub, which spins, while it takes its facing from the rig, which stands still.
 ///
-/// Two games have shots here. The main round is aimed at the hero wheel, and its wide shot is the
+/// Three rigs have shots here. The main round is aimed at the hero wheel, and its wide shot is the
 /// pose authored in the scene, with the jib swing running. The bonus dice round is aimed at the
-/// acrylic cabinet, and all three of its shots are locked off, the way a studio cuts to a fixed
-/// camera for the moment that matters.
+/// acrylic cabinet. The two slot rounds, bonus luck and bonus deluxe, are both aimed at the one
+/// Golden Luck machine, because both play on it. Every shot outside the main round is locked off,
+/// the way a studio cuts to a fixed camera for the moment that matters.
 /// </summary>
 [DisallowMultipleComponent]
 [RequireComponent(typeof(Camera))]
@@ -143,6 +144,61 @@ public class ShowCamera : MonoBehaviour
         moveDuration = 0.9f,
     };
 
+    [Header("Bonus luck and bonus deluxe")]
+    [Tooltip(
+        "The slot machine's frame: origin at the foot of the cabinet, forward out of its face. " +
+        "Left empty, it is looked up in the scene, and with no machine at all both slot rounds " +
+        "are shot on the wheel like the other bonus rounds.")]
+    [SerializeField] private Transform slotTarget;
+
+    // The three shots below are written in metres against a cabinet 2.88 m tall whose reel window
+    // sits 0.35 m in front of its origin, centred 1.73 m up and 0.75 m tall. Rescaling the machine
+    // in the scene does not carry the offsets with it, so re-measure them if it ever changes size.
+    [Tooltip("The whole cabinet in frame. This is the shot a switch into either slot round moves to.")]
+    [SerializeField]
+    private Shot slotWideShot = new()
+    {
+        // 4.3 m at 40 degrees puts 3.13 m of height in frame, which holds the 2.88 m cabinet with a
+        // hand's width of floor under it and no more.
+        aimOffset = new Vector3(0f, 1.45f, 0.35f),
+        distance = 4.3f,
+        yawDegrees = 0f,
+        heightOffset = 0.35f,
+        fieldOfView = 40f,
+        moveDuration = 1.6f,
+    };
+
+    [Tooltip("The reel bay and the logo above it, close enough to read the symbols as they turn.")]
+    [SerializeField]
+    private Shot slotSpinShot = new()
+    {
+        // Level with the aim, like the result shot: the camera sits above the reel window otherwise
+        // and the tilt crops the GOLDEN LUCK sign off the top of the frame.
+        aimOffset = new Vector3(0f, 1.8f, 0.35f),
+        distance = 2.5f,
+        yawDegrees = 0f,
+        heightOffset = 0f,
+        fieldOfView = 38f,
+        moveDuration = 1.1f,
+    };
+
+    [Tooltip("Pushed in on the win line, where the three symbols that pay come to rest.")]
+    [SerializeField]
+    private Shot slotResultShot = new()
+    {
+        // Aimed at the win line, the third of the four visible positions, 1.64 m up. The distance
+        // is set by the width rather than the height: the three reels span 1.37 m, so a closer shot
+        // than this crops the outer two and the line can no longer be read as a line. The camera
+        // stays level with the aim, because the reels are a flat panel and a raised shot keystones
+        // them.
+        aimOffset = new Vector3(0f, 1.64f, 0.35f),
+        distance = 1.6f,
+        yawDegrees = 0f,
+        heightOffset = 0f,
+        fieldOfView = 32f,
+        moveDuration = 0.9f,
+    };
+
     [Header("Wide")]
     [Tooltip(
         "Seconds the move back to the authored pose takes. A switch is not reported done until " +
@@ -197,6 +253,17 @@ public class ShowCamera : MonoBehaviour
             targetBasis = wheel.transform;
         }
 
+        if (slotTarget == null)
+        {
+            var slot = FindFirstObjectByType<SlotMachineController>();
+            if (slot != null)
+            {
+                // The cabinet's own root: it stands on the floor and its forward is its face, which
+                // is the frame the three slot shots are written in.
+                slotTarget = slot.transform;
+            }
+        }
+
         // CameraSwing only writes to the transform from LateUpdate, so this is the authored pose.
         widePosition = transform.localPosition;
         wideRotation = transform.localRotation;
@@ -212,15 +279,30 @@ public class ShowCamera : MonoBehaviour
             return;
         }
 
+        if (HasSlotRig(game))
+        {
+            Frame("slot-spin", slotSpinShot, slotTarget, slotTarget);
+            return;
+        }
+
         Frame("spin", spinShot, target, targetBasis);
     }
 
-    /// <summary>Moves close on the winning segment, or on the dice where they lie.</summary>
+    /// <summary>
+    /// Moves close on what the round has just decided: the winning segment, the dice where they lie,
+    /// or the slot machine's win line.
+    /// </summary>
     public void FrameResult(ShowGame game)
     {
         if (HasDiceRig(game))
         {
             Frame("dice-result", diceResultShot, diceTarget, diceTarget);
+            return;
+        }
+
+        if (HasSlotRig(game))
+        {
+            Frame("slot-result", slotResultShot, slotTarget, slotTarget);
             return;
         }
 
@@ -236,6 +318,12 @@ public class ShowCamera : MonoBehaviour
         if (HasDiceRig(game))
         {
             Frame("dice-wide", diceWideShot, diceTarget, diceTarget);
+            return;
+        }
+
+        if (HasSlotRig(game))
+        {
+            Frame("slot-wide", slotWideShot, slotTarget, slotTarget);
             return;
         }
 
@@ -255,6 +343,15 @@ public class ShowCamera : MonoBehaviour
     private bool HasDiceRig(ShowGame game)
     {
         return game == ShowGame.BonusDice && diceTarget != null;
+    }
+
+    /// <summary>
+    /// True when this round is one of the two slot rounds and the machine is wired up to shoot. Both
+    /// rounds play on the one cabinet, so both take the same three shots.
+    /// </summary>
+    private bool HasSlotRig(ShowGame game)
+    {
+        return ShowStage.IsSlotGame(game) && slotTarget != null;
     }
 
     /// <summary>

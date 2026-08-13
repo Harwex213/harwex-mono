@@ -279,6 +279,62 @@ public class SlotMachineController : MonoBehaviour
     }
 
     /// <summary>
+    /// Puts a different config on the machine, which is how two rounds of a show play on one
+    /// cabinet: the reels, the timings and the paytable all come from the config, so swapping it is
+    /// the whole of the difference between them.
+    ///
+    /// A spin still running is dropped rather than finished. Its result names positions on the old
+    /// strips, and the new strips can be a different length, so carrying it over would land the
+    /// reels somewhere the paytable never agreed to.
+    /// </summary>
+    public void ApplyConfig(SlotMachineConfig next)
+    {
+        if (next == null)
+        {
+            Debug.LogError("[Slot] ApplyConfig(null) ignored on " + name + ", the machine keeps its config.", this);
+            return;
+        }
+
+        if (ReferenceEquals(next, config))
+        {
+            return;
+        }
+
+        if (logStateChanges)
+        {
+            string previous = config == null ? "<none>" : config.name;
+            Debug.Log("[Slot] config " + previous + " -> " + next.name, this);
+        }
+
+        CancelSpin(snapToResult: false);
+        config = next;
+        _result = null;
+        BuildRandom();
+
+        // Bind re-reads the strips onto the reels and the medallions, so it has to run before
+        // anything draws again.
+        Bind();
+        ReturnToIdle(raiseEvent: true);
+    }
+
+    /// <summary>
+    /// Lights the winning line up again, for a show that holds a close-up after the machine's own
+    /// reaction has already faded. Does nothing when the last spin lost or none has run.
+    ///
+    /// Only the reel highlight is restored. The horseshoe glow is not, because the idle animation
+    /// writes to it every frame and would take it straight back off.
+    /// </summary>
+    public void HighlightLastResult()
+    {
+        if (view == null || _result == null || !_result.IsWin)
+        {
+            return;
+        }
+
+        view.SetWinHighlight(_result, 1f);
+    }
+
+    /// <summary>
     /// Finds a line that pays the paytable combination called <paramref name="combinationId"/>, so a
     /// show can ask for "three_stars" without knowing which strip position that is on each reel.
     /// Returns false when no combination of the three strips produces it, which is the honest answer

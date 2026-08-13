@@ -55,6 +55,16 @@ public readonly struct ShowStage
         }
     }
 
+    /// <summary>
+    /// True for the two rounds played on the Golden Luck slot machine. Both spin the same cabinet
+    /// and differ only in the config it is given, so every part of the show that treats them alike
+    /// asks here rather than listing the two rounds again.
+    /// </summary>
+    public static bool IsSlotGame(ShowGame game)
+    {
+        return game == ShowGame.BonusLuck || game == ShowGame.BonusDeluxe;
+    }
+
     /// <summary>True when both the round and the phase were recognised.</summary>
     public bool IsKnown
     {

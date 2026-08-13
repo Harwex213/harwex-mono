@@ -1,4 +1,5 @@
 using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
@@ -101,6 +102,11 @@ public class ShowDirectorDebug : MonoBehaviour
     [Tooltip("The dice cabinet. Left empty, it is looked up in the scene. Only its readout is used.")]
     [SerializeField] private DiceBoard diceBoard;
 
+    [Tooltip(
+        "The Golden Luck slot machine. Left empty, it is looked up in the scene. Read for its " +
+        "state and for the combination ids the two slot rounds can land on.")]
+    [SerializeField] private SlotMachineController slotMachine;
+
     [Header("Connection")]
     [Tooltip("Hold the socket shut and drive the show from this panel alone.")]
     [SerializeField] private bool mockConnection = true;
@@ -137,6 +143,12 @@ public class ShowDirectorDebug : MonoBehaviour
 
     /// <summary>Counts the frames this panel has sent. It makes each correlation id its own.</summary>
     private int _sent;
+
+    /// <summary>The combination ids the slot rounds can be sent, and the paytable they were read off.</summary>
+    private static readonly string[] NoPicks = new string[0];
+
+    private string[] _slotPicks = NoPicks;
+    private SlotPaytable _slotPicksFrom;
 
     private string _lastDone = "<none>";
     private float _stageStartedAt;
@@ -191,6 +203,11 @@ public class ShowDirectorDebug : MonoBehaviour
         if (diceBoard == null)
         {
             diceBoard = FindAnyObjectByType<DiceBoard>();
+        }
+
+        if (slotMachine == null)
+        {
+            slotMachine = FindAnyObjectByType<SlotMachineController>();
         }
 
         // Awake runs before the socket opens in Start, so nothing is dialled at all.
@@ -469,8 +486,17 @@ public class ShowDirectorDebug : MonoBehaviour
             return _result;
         }
 
-        // A bonus round has no visual of its own yet, so the hero wheel stands in for it. Keep it
-        // off the bonus segments there, or a bonus round would open another one.
+        // A slot round is landed by naming a paytable combination, not a wheel label. Sending it a
+        // label would leave the machine to draw its own result, and the round would then never play
+        // the outcome the studio asked for.
+        if (ShowStage.IsSlotGame(game))
+        {
+            var picks = SlotPicks();
+            return picks.Length == 0 ? null : picks[Random.Range(0, picks.Length)];
+        }
+
+        // A bonus round with no visual of its own is stood in for by the hero wheel. Keep it off the
+        // bonus segments there, or a bonus round would open another one.
         for (int attempt = 0; attempt < 32; attempt++)
         {
             string label = CrazyTimeWheel.LabelOf(Random.Range(0, CrazyTimeWheel.SegmentCount));
@@ -481,6 +507,43 @@ public class ShowDirectorDebug : MonoBehaviour
         }
 
         return "1";
+    }
+
+    /// <summary>
+    /// The combination ids the machine can currently pay, read off its own paytable so the panel
+    /// cannot offer a combination the reels no longer carry. Cached against the paytable it was read
+    /// from, because the panel asks for it every frame it draws.
+    /// </summary>
+    private string[] SlotPicks()
+    {
+        var paytable = slotMachine == null || slotMachine.Config == null ? null : slotMachine.Config.Paytable;
+
+        if (ReferenceEquals(paytable, _slotPicksFrom))
+        {
+            return _slotPicks;
+        }
+
+        _slotPicksFrom = paytable;
+
+        if (paytable == null)
+        {
+            _slotPicks = NoPicks;
+            return _slotPicks;
+        }
+
+        var ids = new List<string>();
+        var combinations = paytable.Combinations;
+        for (int i = 0; i < combinations.Count; i++)
+        {
+            var combination = combinations[i];
+            if (combination != null && !string.IsNullOrEmpty(combination.id))
+            {
+                ids.Add(combination.id);
+            }
+        }
+
+        _slotPicks = ids.ToArray();
+        return _slotPicks;
     }
 
     /// <summary>The bonus round a result opens, or <see cref="ShowGame.Unknown"/> for a payout.</summary>
@@ -599,6 +662,15 @@ public class ShowDirectorDebug : MonoBehaviour
             GUILayout.Label($"dice: {rolling}, {diceBoard.DescribeRoll()}", WrapLabel());
         }
 
+        if (slotMachine != null)
+        {
+            var landed = slotMachine.LastResult;
+            string config = slotMachine.Config == null ? "<no config>" : slotMachine.Config.name;
+            GUILayout.Label(
+                $"slot: {slotMachine.State} on {config}, last {(landed == null ? "<none>" : landed.ToString())}",
+                WrapLabel());
+        }
+
         if (showCamera != null)
         {
             GUILayout.Label($"camera: {showCamera.CurrentShot}", WrapLabel());
@@ -647,6 +719,25 @@ public class ShowDirectorDebug : MonoBehaviour
         if (pick >= 0)
         {
             _result = ResultPicks[pick];
+        }
+
+        // A slot round is landed by a combination id, so the wheel labels above are no use to it.
+        // The row only appears for the two rounds that can use it.
+        if (ShowStage.IsSlotGame(_game))
+        {
+            var slotPicks = SlotPicks();
+            if (slotPicks.Length == 0)
+            {
+                GUILayout.Label("no slot paytable, so this round can only spin at random", WrapLabel());
+            }
+            else
+            {
+                int slotPick = GUILayout.SelectionGrid(-1, slotPicks, 2);
+                if (slotPick >= 0)
+                {
+                    _result = slotPicks[slotPick];
+                }
+            }
         }
 
         GUILayout.BeginHorizontal();

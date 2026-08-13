@@ -12,16 +12,18 @@ using UnityEngine;
 /// <item>START and WAITING turn the hero wheel slowly. The studio's own timer advances them.</item>
 /// <item>SPINNING spins the wheel onto the result in the payload, then reports done. In the dice
 /// round it drops every die through the cabinet, both bays at once, and waits for them to
-/// settle instead. In the luck round it spins the Golden Luck slot machine and waits for its own
-/// reaction to finish.</item>
+/// settle instead. In the two slot rounds it spins the Golden Luck slot machine and waits for its
+/// own reaction to finish.</item>
 /// <item>RESULT, SWITCH and CANCELING hold for their own time, then report done. A SWITCH also
-/// moves the camera onto the round named in its uri, and is not reported done until it lands.</item>
+/// moves the camera onto the round named in its uri, and is not reported done until it lands. A
+/// RESULT in a slot round relights the winning line, because the camera pushes in on it.</item>
 /// </list>
 ///
 /// The round in the uri picks what the camera watches: MAIN_* is shot on the hero wheel, and
-/// BONUS_DICE_* on the acrylic cabinet. BONUS_LUCK_* plays on the slot machine when one is in the
-/// scene, though the camera has no shot of its own for it yet and still frames the wheel. The bonus
-/// rounds with no visual at all stand in on the wheel.
+/// BONUS_DICE_* on the acrylic cabinet. BONUS_LUCK_* and BONUS_DELUXE_* are both shot on the slot
+/// machine, which the two rounds share: the round decides which config the machine plays, so the
+/// deluxe round turns the same reels on a longer spin and a paytable that pays more. BONUS_SHOW_*
+/// has no visual of its own and stands in on the wheel.
 ///
 /// Every stage and every transition is written to the console, prefixed with <c>[Show]</c>.
 /// </summary>
@@ -41,8 +43,9 @@ public class ShowDirector : MonoBehaviour
     [Tooltip("The dice cabinet. Left empty, it is looked up in the scene. Without it the dice round spins the wheel.")]
     [SerializeField] private DiceBoard diceBoard;
 
-    [Tooltip("The Golden Luck slot machine. Left empty, it is looked up in the scene. Without it the " +
-             "luck round spins the wheel, exactly as it did before the machine existed.")]
+    [Tooltip("The Golden Luck slot machine, which the luck and deluxe rounds share. Left empty, it " +
+             "is looked up in the scene. Without it both rounds spin the wheel, exactly as they did " +
+             "before the machine existed.")]
     [SerializeField] private SlotMachineController slotMachine;
 
     [Header("Hold times")]
@@ -65,9 +68,20 @@ public class ShowDirector : MonoBehaviour
     [Tooltip("Seconds the camera holds on the cabinet before the dice are released, so the drop is on screen.")]
     [SerializeField, Min(0f)] private float diceReleaseDelaySeconds = 0.9f;
 
-    [Header("Bonus luck")]
+    [Header("Bonus luck and bonus deluxe")]
     [Tooltip("Seconds the camera holds on the slot machine before the reels start, so the start is on screen.")]
     [SerializeField, Min(0f)] private float slotStartDelaySeconds = 0.7f;
+
+    [Tooltip(
+        "Config the machine plays the luck round on. Left empty, the round plays on whichever " +
+        "config the prefab already carries.")]
+    [SerializeField] private SlotMachineConfig luckConfig;
+
+    [Tooltip(
+        "Config the machine plays the deluxe round on: the same three symbols and the same " +
+        "combination ids, but a longer spin and a paytable that pays more. Left empty, the deluxe " +
+        "round plays exactly like the luck round.")]
+    [SerializeField] private SlotMachineConfig deluxeConfig;
 
     [Header("Wheel")]
     [Tooltip("Turn the wheel slowly during START and WAITING.")]
@@ -147,7 +161,17 @@ public class ShowDirector : MonoBehaviour
 
         if (slotMachine == null)
         {
-            Debug.Log("[Show] no SlotMachineController in the scene. The luck round falls back to the hero wheel.", this);
+            Debug.Log(
+                "[Show] no SlotMachineController in the scene. The luck and deluxe rounds fall back " +
+                "to the hero wheel.",
+                this);
+        }
+        else if (deluxeConfig == null || luckConfig == null)
+        {
+            Debug.Log(
+                "[Show] only one slot config is wired, so the luck and deluxe rounds will play the " +
+                "same reels and pay the same. Wire both configs to tell the two rounds apart.",
+                this);
         }
     }
 
@@ -223,11 +247,15 @@ public class ShowDirector : MonoBehaviour
                 SetIdleSpin(idleBetweenSpins);
                 ClearDice();
                 ResetSlotMachine();
+                ApplySlotConfig(stage.Game);
                 FrameWide(stage.Game);
                 break;
 
             case ShowPhase.Spinning:
                 // The camera moves in as the game starts, and settles well before it ends.
+                // The config is applied again here, so a round that never sent a START or a SWITCH
+                // still spins on its own reels rather than the last round's.
+                ApplySlotConfig(stage.Game);
                 FrameSpin(stage.Game);
                 yield return PlaySpin(stage, payload);
                 Report(stage, correlationId);
@@ -235,6 +263,7 @@ public class ShowDirector : MonoBehaviour
 
             case ShowPhase.Result:
                 Debug.Log($"[Show] {stage} win effects for {resultHoldSeconds:0.#}s", this);
+                HoldSlotWinLine(stage);
                 FrameResult(stage.Game);
                 yield return new WaitForSeconds(resultHoldSeconds);
                 Report(stage, correlationId);
@@ -247,6 +276,7 @@ public class ShowDirector : MonoBehaviour
                 SetIdleSpin(idleBetweenSpins);
                 ClearDice();
                 ResetSlotMachine();
+                ApplySlotConfig(stage.Game);
                 FrameWide(stage.Game);
                 yield return HoldForCamera(switchHoldSeconds);
                 Report(stage, correlationId);
@@ -291,7 +321,7 @@ public class ShowDirector : MonoBehaviour
             yield break;
         }
 
-        if (stage.Game == ShowGame.BonusLuck && slotMachine != null)
+        if (ShowStage.IsSlotGame(stage.Game) && slotMachine != null)
         {
             yield return SpinSlotMachine(stage, payload);
             yield break;
@@ -301,11 +331,64 @@ public class ShowDirector : MonoBehaviour
     }
 
     /// <summary>
-    /// Spins the Golden Luck machine and waits for it to finish its own reaction.
+    /// Puts the round's own config on the slot machine. The luck round and the deluxe round share
+    /// one cabinet and differ only in this, so a round that forgets to apply it plays the other
+    /// round's reels and pays the other round's paytable.
+    ///
+    /// Called on every stage of a slot round rather than only on the switch, because the studio can
+    /// open a round at any phase and a stage that arrives mid-render replaces the one on screen.
+    /// Applying a config the machine already carries costs nothing.
+    /// </summary>
+    private void ApplySlotConfig(ShowGame game)
+    {
+        if (slotMachine == null || !ShowStage.IsSlotGame(game))
+        {
+            return;
+        }
+
+        var wanted = game == ShowGame.BonusDeluxe ? deluxeConfig : luckConfig;
+        if (wanted == null)
+        {
+            return;
+        }
+
+        slotMachine.ApplyConfig(wanted);
+    }
+
+    /// <summary>
+    /// Lights the winning line back up for the result close-up. The machine's own win reaction runs
+    /// inside the spin and has already faded by the time RESULT arrives, so the shot the studio
+    /// cuts to would otherwise show three symbols with nothing marking them as the line that paid.
+    /// </summary>
+    private void HoldSlotWinLine(ShowStage stage)
+    {
+        if (slotMachine == null || !ShowStage.IsSlotGame(stage.Game))
+        {
+            return;
+        }
+
+        var landed = slotMachine.LastResult;
+        if (landed == null)
+        {
+            Debug.LogWarning(
+                $"[Show] {stage} has no slot result to show. The close-up plays on whatever the " +
+                "reels are resting on, which means the SPINNING before it never ran.",
+                this);
+            return;
+        }
+
+        slotMachine.HighlightLastResult();
+        Debug.Log($"[Show] {stage} holding the slot win line on {landed}", this);
+    }
+
+    /// <summary>
+    /// Spins the Golden Luck machine and waits for it to finish its own reaction. Both slot rounds
+    /// come through here; the config applied before the spin is what makes them different.
     ///
     /// The studio's result names a paytable combination, such as <c>three_stars</c>, and the machine
-    /// finds a line that pays it. A result the paytable does not carry falls through to a drawn spin
-    /// rather than stalling the round, and says so.
+    /// finds a line that pays it. Both configs carry the same combination ids, so one result string
+    /// means the same combination in either round and only the payout changes. A result the paytable
+    /// does not carry falls through to a drawn spin rather than stalling the round, and says so.
     /// </summary>
     private IEnumerator SpinSlotMachine(ShowStage stage, WsConnectionMessagePayload payload)
     {
