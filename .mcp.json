@@ -1,24 +1,24 @@
 {
   "mcpServers": {
     "unity-gameshow": {
-      "command": "~/.unity/relay/relay_mac_arm64.app/Contents/MacOS/relay_mac_arm64",
+      "command": "${HOME}/.unity/relay/relay_mac_arm64.app/Contents/MacOS/relay_mac_arm64",
       "args": [
         "--mcp",
         "--name",
         "GameShow_v4",
         "--project-path",
-        "~/Projects/harwex-mono/unity/GameShow_v4"
+        "${HOME}/Projects/harwex-mono/unity/GameShow_v4"
       ],
       "env": {}
     },
     "unity-selflearning": {
-      "command": "~/.unity/relay/relay_mac_arm64.app/Contents/MacOS/relay_mac_arm64",
+      "command": "${HOME}/.unity/relay/relay_mac_arm64.app/Contents/MacOS/relay_mac_arm64",
       "args": [
         "--mcp",
         "--name",
         "SelfLearning",
         "--project-path",
-        "~/Projects/harwex-mono/unity/SelfLearning"
+        "${HOME}/Projects/harwex-mono/unity/SelfLearning"
       ],
       "env": {}
     }
