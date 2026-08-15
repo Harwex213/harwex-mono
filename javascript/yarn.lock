@@ -2776,6 +2776,21 @@ __metadata:
   languageName: unknown
   linkType: soft
 
+"@hw/theme-builder@workspace:packages/prototypes/ai-slop/theme-builder":
+  version: 0.0.0-use.local
+  resolution: "@hw/theme-builder@workspace:packages/prototypes/ai-slop/theme-builder"
+  dependencies:
+    "@rspack/cli": "npm:2.1.4"
+    "@rspack/core": "npm:2.1.4"
+    "@rspack/dev-server": "npm:2.1.0"
+    "@types/react": "npm:19.2.0"
+    "@types/react-dom": "npm:19.2.0"
+    react: "npm:19.2.0"
+    react-dom: "npm:19.2.0"
+    typescript: "npm:5.9.3"
+  languageName: unknown
+  linkType: soft
+
 "@hw/traders-last-argument@workspace:packages/prototypes/traders-last-argument":
   version: 0.0.0-use.local
   resolution: "@hw/traders-last-argument@workspace:packages/prototypes/traders-last-argument"
