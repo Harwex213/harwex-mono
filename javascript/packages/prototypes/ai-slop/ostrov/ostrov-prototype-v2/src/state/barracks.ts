@@ -6,7 +6,7 @@ import type { Axial } from "../hex/coords";
 import { hexKey } from "../hex/coords";
 import { REPEAT_RETRY_SEC } from "../tuning";
 import type { UnitId } from "../units/catalog";
-import { trainableUnitIds, trainingSeconds, unitArmyCost, unitPrice } from "../units/catalog";
+import { allUnitIds, trainingSeconds, unitArmyCost, unitPrice } from "../units/catalog";
 import { armyLimit } from "./army";
 import type { PlacedBuilding } from "./buildings";
 import { buildings } from "./buildings";
@@ -238,7 +238,7 @@ function runRepeat(record: Barracks, now: number): void {
     // Not a block: the barracks is simply working at capacity.
     return;
   }
-  const wanted = trainableUnitIds().filter((id) => record.repeat.has(id));
+  const wanted = allUnitIds().filter((id) => record.repeat.has(id));
   if (wanted.length === 0) {
     return;
   }

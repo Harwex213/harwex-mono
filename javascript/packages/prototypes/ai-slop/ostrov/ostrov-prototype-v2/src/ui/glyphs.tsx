@@ -154,12 +154,6 @@ const BUILDING_GLYPHS: Record<BuildingId, React.JSX.Element> = {
  * every figure is the same figure.
  */
 const UNIT_GLYPHS: Record<UnitId, React.JSX.Element> = {
-  // A pick over a shoulder. The barracks never shows it — a worker is labour —
-  // but the roster is complete, so a designer who flips its role gets a glyph.
-  worker: filled(
-    "M2.6 8.4 C7 4 17 4 21.4 8.4 L19.8 10.6 C16 7.4 8 7.4 4.2 10.6 Z" +
-      " M10.6 9.4 H13.4 L12.8 21.8 H11.2 Z",
-  ),
   // A closed helm: dome, brow band and the slit. Not a sword — the sword is the
   // war section of the build panel, and one glyph may only mean one thing.
   swordsman: filled(

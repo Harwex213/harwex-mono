@@ -2591,7 +2591,7 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@hw/ostrov-prototype-v2-config@workspace:packages/prototypes/ai-slop/ostrov/ostrov-prototype-v2-config":
+"@hw/ostrov-prototype-v2-config@workspace:*, @hw/ostrov-prototype-v2-config@workspace:packages/prototypes/ai-slop/ostrov/ostrov-prototype-v2-config":
   version: 0.0.0-use.local
   resolution: "@hw/ostrov-prototype-v2-config@workspace:packages/prototypes/ai-slop/ostrov/ostrov-prototype-v2-config"
   dependencies:
@@ -2611,6 +2611,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@hw/ostrov-prototype-v2@workspace:packages/prototypes/ai-slop/ostrov/ostrov-prototype-v2"
   dependencies:
+    "@hw/ostrov-prototype-v2-config": "workspace:*"
     "@preact/signals-react": "npm:3.9.0"
     "@rspack/cli": "npm:2.1.4"
     "@rspack/core": "npm:2.1.4"

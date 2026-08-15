@@ -7,10 +7,9 @@ import { TRAIN_TIME_MIN_SEC, TRAIN_TIME_SPEEDUP } from "../tuning";
  * The unit roster, read straight out of the config library, exactly the way
  * `buildings/catalog.ts` reads the buildings.
  *
- * The barracks offers `soldiers` and nothing else. Which units those are is the
- * `role` field of the schema rather than a list of ids here: a designer who adds
- * a spearman gets it in the panel, and one who decides the barracks should train
- * labourers after all flips one enum instead of editing game code.
+ * Every unit in the roster is a unit the barracks trains, so the panel lists the
+ * roster as it stands. A designer who adds a spearman gets it in the panel
+ * without editing game code.
  */
 
 type UnitId = keyof GameConfig["units"];
@@ -24,9 +23,6 @@ type UnitSpec = UnitValues & {
   description: string;
 };
 
-/** Value of `role` for a unit the barracks trains. */
-const SOLDIER_ROLE = "soldier";
-
 function unitSpec(id: UnitId): UnitSpec {
   const entity = SCHEMA.units.entities[id];
   return { id, label: entity.label, description: entity.description, ...config.units[id] };
@@ -36,17 +32,9 @@ function unitLabel(id: UnitId): string {
   return SCHEMA.units.entities[id].label;
 }
 
-/** Every unit id the roster knows, in schema order. */
+/** Every unit id the roster knows, in schema order. All of them are trainable. */
 function allUnitIds(): UnitId[] {
   return Object.keys(config.units) as UnitId[];
-}
-
-/**
- * The units a barracks offers, in schema order. The worker is not among them:
- * its `role` says it is labour, and a barracks trains soldiers.
- */
-function trainableUnitIds(): UnitId[] {
-  return allUnitIds().filter((id) => config.units[id].role === SOLDIER_ROLE);
 }
 
 /** What one of these costs to train. Unlike a building, a unit eats. */
@@ -75,9 +63,7 @@ function unitSpeed(id: UnitId, hexStep: number): number {
 
 export type { UnitId, UnitSpec, UnitValues };
 export {
-  SOLDIER_ROLE,
   allUnitIds,
-  trainableUnitIds,
   trainingSeconds,
   unitArmyCost,
   unitLabel,

@@ -19,7 +19,7 @@ import { stock } from "../state/resources";
 import { armyUsed } from "../state/units";
 import { TRAIN_TIME_SPEEDUP } from "../tuning";
 import type { UnitId } from "../units/catalog";
-import { trainableUnitIds, trainingSeconds, unitPrice, unitSpec } from "../units/catalog";
+import { allUnitIds, trainingSeconds, unitPrice, unitSpec } from "../units/catalog";
 import { RepeatIcon, ResourceIcon, UnitGlyph } from "./glyphs";
 import { Tooltip } from "./Tooltip";
 
@@ -258,7 +258,7 @@ function BarracksPanel(): React.JSX.Element | null {
         </span>
       </header>
       <div className="unit-rows">
-        {trainableUnitIds().map((id) => (
+        {allUnitIds().map((id) => (
           <UnitRow record={record} id={id} key={id} onHover={setHovered} />
         ))}
       </div>

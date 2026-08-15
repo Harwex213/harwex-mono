@@ -93,18 +93,6 @@ function drawBow(ctx: CanvasRenderingContext2D, x: number, y: number, size: numb
   ctx.stroke();
 }
 
-/** A pick over the shoulder, for the labourer the barracks does not train. */
-function drawTool(ctx: CanvasRenderingContext2D, x: number, y: number, size: number): void {
-  ctx.strokeStyle = "#8b6a3c";
-  ctx.lineWidth = size * 0.16;
-  ctx.beginPath();
-  ctx.moveTo(x - size * 0.3, y - size * 0.1);
-  ctx.lineTo(x + size * 0.3, y - size * 1.05);
-  ctx.stroke();
-  ctx.fillStyle = "#c3ced8";
-  ctx.fillRect(x + size * 0.1, y - size * 1.25, size * 0.42, size * 0.16);
-}
-
 /**
  * One soldier. `level` is the fog level of the ground under it, so a unit on
  * remembered ground is as dim as the ground it stands on, and one on ground that
@@ -169,8 +157,6 @@ function drawUnit(ctx: CanvasRenderingContext2D, unit: Unit, now: number, level:
 
   if (spec.attackRangeHex > 1.5) {
     drawBow(ctx, size * 0.42, -size * 0.5, size);
-  } else if (spec.role === "worker") {
-    drawTool(ctx, size * 0.42, -size * 0.5, size);
   } else {
     drawSword(ctx, size * 0.5, -size * 0.5, size);
   }

@@ -47,15 +47,6 @@ const RESOURCE_OPTIONS = [
   { value: "gold", label: "Золото" },
 ] as const;
 
-/**
- * What a unit is for. The barracks offers the soldiers and nothing else, so the
- * split is a field a designer owns rather than a list of ids in game code.
- */
-const UNIT_ROLE_OPTIONS = [
-  { value: "soldier", label: "Солдат" },
-  { value: "worker", label: "Рабочий" },
-] as const;
-
 /** Enemy units an enemy building can spawn. Ids match the `enemies` group. */
 const ENEMY_UNIT_OPTIONS = [
   { value: "raider", label: "Разбойник" },
@@ -1489,17 +1480,9 @@ const SCHEMA = {
   },
   units: {
     label: "Отряды",
-    description:
-      "Кого готовит казарма и почём. Поля общие для всех отрядов; «Назначение» решает, попадёт ли отряд в список казармы.",
+    description: "Кого готовит казарма и почём. Поля общие для всех отрядов.",
     entityLabel: "Отряд",
     fields: {
-      role: {
-        type: "enum",
-        label: "Назначение",
-        description: "Кого готовит казарма. Рабочие в её списке не показываются: казарма готовит солдат.",
-        default: "soldier",
-        options: UNIT_ROLE_OPTIONS,
-      },
       costFood: {
         type: "int",
         label: "Цена: еда",
@@ -1598,21 +1581,6 @@ const SCHEMA = {
       },
     },
     entities: {
-      worker: {
-        label: "Рабочий",
-        description: "Заготовка. Строит и добывает, в бою почти бесполезен.",
-        overrides: {
-          role: "worker",
-          costFood: 20,
-          tint: "#d8c08a",
-          trainTimeSec: 12,
-          maxHp: 80,
-          damage: 4,
-          attackSpeed: 0.8,
-          moveSpeed: 1.2,
-          note: "Строит и добывает.",
-        },
-      },
       swordsman: {
         label: "Мечник",
         description: "Дешёвый ближний бой, держит линию.",
