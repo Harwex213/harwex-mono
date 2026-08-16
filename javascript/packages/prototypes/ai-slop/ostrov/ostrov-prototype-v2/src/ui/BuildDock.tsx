@@ -215,7 +215,7 @@ function BuildPanel({ open }: PanelProps): React.JSX.Element | null {
 
   return (
     <aside className="build-panel" data-open={open}>
-      <div className="build-cats" role="tablist" aria-label="Разделы построек">
+      <div className="build-cats" role="tablist" aria-label="Building sections">
         {sections.map((section) => (
           <button
             type="button"
@@ -280,8 +280,8 @@ function BuildDock(): React.JSX.Element {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
-      // `code`, not `key`: this prototype is in Russian, and on a Russian layout
-      // the same physical key sends "и".
+      // `code`, not `key`: on a non-Latin layout the same physical key sends
+      // another character.
       if (event.code !== "KeyB" || event.repeat || event.altKey || event.ctrlKey || event.metaKey) {
         return;
       }
@@ -329,8 +329,8 @@ function BuildDock(): React.JSX.Element {
         type="button"
         className="build-button"
         aria-pressed={open}
-        aria-label={open ? "Закрыть постройки" : "Открыть постройки"}
-        title="Постройки"
+        aria-label={open ? "Close buildings" : "Open buildings"}
+        title="Buildings"
         onClick={onToggle}
       >
         <HammerIcon />

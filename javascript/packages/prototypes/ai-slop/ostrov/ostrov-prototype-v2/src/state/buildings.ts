@@ -65,7 +65,7 @@ function availabilityOf(id: BuildingId): Availability {
   if (prerequisite === null || builtIds.value.has(prerequisite)) {
     return { unlocked: true, reason: "" };
   }
-  return { unlocked: false, reason: `Нужен: ${buildingLabel(prerequisite)}` };
+  return { unlocked: false, reason: `Needs: ${buildingLabel(prerequisite)}` };
 }
 
 type PlacementCheck = {
@@ -79,35 +79,35 @@ const PLACEMENT_OK: PlacementCheck = { valid: true, reason: "" };
 /** Whether `id` may be laid on `hex` right now. */
 function placementCheck(id: BuildingId, hex: Axial | null): PlacementCheck {
   if (!hex) {
-    return { valid: false, reason: "Вне острова" };
+    return { valid: false, reason: "Outside the island" };
   }
   const tile = world.value.byKey.get(hexKey(hex.q, hex.r));
   if (!tile) {
-    return { valid: false, reason: "Вне острова" };
+    return { valid: false, reason: "Outside the island" };
   }
   // Nothing is built on ground the player cannot see. Owned tiles sit at the
   // centre of their own reveal radius and are therefore always in sight, so this
   // never refuses a legal hex — it is here so the rule is written down and holds
   // whatever a designer does to the reveal radius.
   if (!tileVisible(tile)) {
-    return { valid: false, reason: "Скрыто туманом" };
+    return { valid: false, reason: "Hidden by fog" };
   }
   if (tile.owner !== OWNER_PLAYER) {
-    return { valid: false, reason: "Не ваш остров" };
+    return { valid: false, reason: "Not your island" };
   }
   if (buildings.value.has(hexKey(hex.q, hex.r))) {
-    return { valid: false, reason: "Гекс занят" };
+    return { valid: false, reason: "Hex taken" };
   }
   const wanted = buildingSpec(id).terrain;
   if (wanted !== "any" && wanted !== tile.terrain) {
-    return { valid: false, reason: "Не тот биом" };
+    return { valid: false, reason: "Wrong biome" };
   }
   // The price is checked last on purpose. It is the one refusal that has nothing
   // to do with the hex under the cursor, and the build panel has already dimmed
   // the tile, so the player meets it knowing why.
   const missing = shortfallOf(id);
   if (missing) {
-    return { valid: false, reason: `Не хватает: ${resourceLabel(missing)}` };
+    return { valid: false, reason: `Short of: ${resourceLabel(missing)}` };
   }
   return PLACEMENT_OK;
 }

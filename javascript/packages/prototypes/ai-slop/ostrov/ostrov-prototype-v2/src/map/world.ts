@@ -394,7 +394,7 @@ function generateWorld(seed: number): WorldMap {
     sample: () => ({ q: 0, r: 0 }),
   });
   if (!boss) {
-    throw new Error("Мир не построен: остров босса не встал в центр");
+    throw new Error("World not built: the boss island did not land in the centre");
   }
 
   const wildInner = knobs.bossZoneRadius + reach;
@@ -429,7 +429,7 @@ function generateWorld(seed: number): WorldMap {
     sample: (source) => sampleRing(source, rimInner, rimOuter, 0, 1),
   });
   if (!player) {
-    throw new Error("Мир не построен: стартовому острову игрока не нашлось места");
+    throw new Error("World not built: no room for the player starting island");
   }
 
   // The enemy starts as a neighbour, not as a mirror image on the far side: the
@@ -457,7 +457,7 @@ function generateWorld(seed: number): WorldMap {
     accept: (origin) => insideRing(origin, rimInner, rimOuter),
   });
   if (!enemy) {
-    throw new Error("Мир не построен: стартовому острову врага не нашлось места рядом с игроком");
+    throw new Error("World not built: no room for the enemy starting island next to the player");
   }
 
   for (let index = 0; index < knobs.peripheralIslandCount; index += 1) {

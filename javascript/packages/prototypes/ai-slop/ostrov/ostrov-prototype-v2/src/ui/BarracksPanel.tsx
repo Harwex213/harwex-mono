@@ -83,10 +83,10 @@ function UnitTip({ target }: { target: HoverTarget }): React.JSX.Element {
         </span>
       </span>
       <span className="tip-stats">
-        <span>Здоровье {spec.maxHp}</span>
-        <span>Урон {spec.damage}</span>
-        <span>Скорость {spec.attackSpeed}/с</span>
-        <span>Дальность {spec.attackRangeHex}</span>
+        <span>Health {spec.maxHp}</span>
+        <span>Damage {spec.damage}</span>
+        <span>Speed {spec.attackSpeed}/s</span>
+        <span>Range {spec.attackRangeHex}</span>
       </span>
       <span className="tip-desc">{spec.description}</span>
     </Tooltip>
@@ -117,7 +117,7 @@ function UnitRow({ record, id, onHover }: RowProps): React.JSX.Element {
       <button
         type="button"
         className="build-tile unit-tile"
-        aria-label={`Нанять: ${spec.label}`}
+        aria-label={`Train: ${spec.label}`}
         data-affordable={refusal === ""}
         onClick={() => enqueueTraining(record.key, id, performance.now())}
         onPointerEnter={show}
@@ -158,8 +158,8 @@ function UnitRow({ record, id, onHover }: RowProps): React.JSX.Element {
         type="button"
         className="repeat-toggle"
         aria-pressed={repeating}
-        aria-label={`Повтор: ${spec.label}`}
-        title="Нанимать без остановки"
+        aria-label={`Repeat: ${spec.label}`}
+        title="Train without stopping"
         onClick={() => toggleRepeat(record.key, id)}
       >
         <RepeatIcon />
@@ -179,7 +179,7 @@ function UnitRow({ record, id, onHover }: RowProps): React.JSX.Element {
 function Queue({ record }: { record: Barracks }): React.JSX.Element {
   const front = record.queue[0];
   if (!front) {
-    return <p className="barracks-idle">Очередь пуста</p>;
+    return <p className="barracks-idle">Queue empty</p>;
   }
   const spec = unitSpec(front.unitId);
   const seconds = trainingSeconds(front.unitId);
@@ -196,7 +196,7 @@ function Queue({ record }: { record: Barracks }): React.JSX.Element {
         <button
           type="button"
           className="queue-cancel"
-          aria-label="Отменить заказ"
+          aria-label="Cancel order"
           onClick={() => cancelTraining(record.key, front.id)}
         >
           ×
@@ -218,7 +218,7 @@ function Queue({ record }: { record: Barracks }): React.JSX.Element {
               type="button"
               key={entry.id}
               className="queue-chip"
-              aria-label={`Убрать из очереди: ${unitSpec(entry.unitId).label}`}
+              aria-label={`Remove from queue: ${unitSpec(entry.unitId).label}`}
               onClick={() => cancelTraining(record.key, entry.id)}
             >
               <UnitGlyph id={entry.unitId} />
@@ -250,11 +250,11 @@ function BarracksPanel(): React.JSX.Element | null {
   const moved = record.rally.q !== barracks.q || record.rally.r !== barracks.r;
 
   return (
-    <aside className="barracks-panel" aria-label="Казарма">
+    <aside className="barracks-panel" aria-label="Barracks">
       <header className="barracks-head">
-        <h2>Казарма</h2>
+        <h2>Barracks</h2>
         <span className="barracks-army" data-full={full}>
-          Армия {used}/{limit}
+          Army {used}/{limit}
         </span>
       </header>
       <div className="unit-rows">
@@ -264,11 +264,11 @@ function BarracksPanel(): React.JSX.Element | null {
       </div>
       <Queue record={record} />
       {record.paused ? (
-        <p className="barracks-warn">Повтор ждёт: {record.paused}</p>
+        <p className="barracks-warn">Repeat waiting: {record.paused}</p>
       ) : null}
       <p className="barracks-hint">
-        {moved ? "Точка сбора поставлена." : "Правый клик по гексу — точка сбора."}
-        {` Найм ускорен ×${TRAIN_TIME_SPEEDUP}, очередь до ${config.army.queueLimit}.`}
+        {moved ? "Rally point set." : "Right-click a hex to set the rally point."}
+        {` Training sped up ×${TRAIN_TIME_SPEEDUP}, queue up to ${config.army.queueLimit}.`}
       </p>
       {hovered ? <UnitTip target={hovered} /> : null}
     </aside>

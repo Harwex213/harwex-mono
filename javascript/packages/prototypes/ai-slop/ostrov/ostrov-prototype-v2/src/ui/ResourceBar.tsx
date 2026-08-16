@@ -63,7 +63,7 @@ function ResourceBar(): React.JSX.Element {
   }, []);
 
   return (
-    <div className="resource-bar" aria-label="Запасы">
+    <div className="resource-bar" aria-label="Stores">
       {RESOURCE_KINDS.map((kind) => {
         const pulse = pulses[kind];
         return (
@@ -89,7 +89,7 @@ function ResourceBar(): React.JSX.Element {
       <div className="res res-army" data-full={armyUsed.value >= armyLimit.value}>
         <ArmyIcon className="res-icon" />
         <span className="res-text">
-          <span className="res-name">Армия</span>
+          <span className="res-name">Army</span>
           <span className="res-value" key={armyUsed.value}>
             {armyUsed.value}
             <span className="res-limit">/{armyLimit.value}</span>

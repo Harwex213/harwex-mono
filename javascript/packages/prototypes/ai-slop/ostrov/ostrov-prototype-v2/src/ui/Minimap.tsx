@@ -153,7 +153,7 @@ function Minimap(): React.JSX.Element {
       ref={ref}
       className="minimap"
       style={{ width: `${MINIMAP_SIZE}px`, height: `${MINIMAP_SIZE}px` }}
-      aria-label="Карта мира"
+      aria-label="World map"
     />
   );
 }

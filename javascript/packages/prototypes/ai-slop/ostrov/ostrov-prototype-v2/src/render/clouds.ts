@@ -53,14 +53,14 @@ function skyGradientCss(): string {
 function compile(gl: WebGLRenderingContext, type: number, source: string): WebGLShader {
   const shader = gl.createShader(type);
   if (!shader) {
-    throw new Error("не удалось создать шейдер");
+    throw new Error("could not create the shader");
   }
   gl.shaderSource(shader, source);
   gl.compileShader(shader);
   if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
-    const log = gl.getShaderInfoLog(shader) ?? "без описания";
+    const log = gl.getShaderInfoLog(shader) ?? "no description";
     gl.deleteShader(shader);
-    throw new Error(`шейдер не компилируется: ${log}`);
+    throw new Error(`shader does not compile: ${log}`);
   }
   return shader;
 }
@@ -70,7 +70,7 @@ function link(gl: WebGLRenderingContext): WebGLProgram {
   const fragment = compile(gl, gl.FRAGMENT_SHADER, FRAGMENT_SOURCE);
   const program = gl.createProgram();
   if (!program) {
-    throw new Error("не удалось создать программу");
+    throw new Error("could not create the program");
   }
   gl.attachShader(program, vertex);
   gl.attachShader(program, fragment);
@@ -79,9 +79,9 @@ function link(gl: WebGLRenderingContext): WebGLProgram {
   gl.deleteShader(vertex);
   gl.deleteShader(fragment);
   if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-    const log = gl.getProgramInfoLog(program) ?? "без описания";
+    const log = gl.getProgramInfoLog(program) ?? "no description";
     gl.deleteProgram(program);
-    throw new Error(`программа не линкуется: ${log}`);
+    throw new Error(`program does not link: ${log}`);
   }
   return program;
 }
@@ -124,7 +124,7 @@ class CloudLayer {
     try {
       this.program = link(gl);
     } catch (error) {
-      console.warn(`Облака отключены: ${String(error)}`);
+      console.warn(`Clouds off: ${String(error)}`);
       this.gl = null;
       return;
     }
@@ -179,7 +179,7 @@ class CloudLayer {
     const context =
       this.canvas.getContext("webgl", options) ?? this.canvas.getContext("experimental-webgl", options);
     if (!context) {
-      console.warn("Облака отключены: WebGL недоступен, остался градиент неба.");
+      console.warn("Clouds off: WebGL is unavailable, only the sky gradient is left.");
       return null;
     }
     return context as WebGLRenderingContext;

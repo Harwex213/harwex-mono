@@ -323,7 +323,7 @@ function drawFlag(ctx: CanvasRenderingContext2D, x: number, baseY: number, time:
   ctx.stroke();
 }
 
-/* --- Замок I ур. -----------------------------------------------------------
+/* --- Castle tier I -----------------------------------------------------------
  *
  * Two masses and nothing else: a squat crenellated keep standing behind a low
  * crenellated curtain wall with the gate in it. Both masses are battlemented
@@ -412,7 +412,7 @@ const CASTLE_ART: BuildingArt = {
   siteHalfWidth: 58,
 };
 
-/* --- Лесопилка I ур. -------------------------------------------------------
+/* --- Sawmill tier I -------------------------------------------------------
  *
  * A timber shed under a steep gable, a water wheel on its left flank and a stack
  * of cut logs in front of the door. The wheel is the whole reason the silhouette
@@ -581,7 +581,7 @@ const SAWMILL_ART: BuildingArt = {
   siteHalfWidth: 50,
 };
 
-/* --- Казарма I ур. ---------------------------------------------------------
+/* --- Barracks tier I ---------------------------------------------------------
  *
  * A long low hall under a hipped roof, standing inside a ring of pointed
  * stakes, with a banner pole planted at one end of the yard.

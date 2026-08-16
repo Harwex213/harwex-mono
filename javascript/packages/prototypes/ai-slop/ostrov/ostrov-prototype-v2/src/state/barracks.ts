@@ -150,14 +150,14 @@ function armyPlanned(): number {
  */
 function trainRefusal(record: Barracks, unitId: UnitId): Refusal {
   if (record.queue.length >= config.army.queueLimit) {
-    return "Очередь полна";
+    return "Queue full";
   }
   if (armyPlanned() + unitArmyCost(unitId) > armyLimit.peek()) {
-    return "Предел армии";
+    return "Army limit";
   }
   const missing = priceShortfall(unitPrice(unitId));
   if (missing) {
-    return `Не хватает: ${resourceLabel(missing)}`;
+    return `Short of: ${resourceLabel(missing)}`;
   }
   return "";
 }
@@ -171,14 +171,14 @@ function trainRefusal(record: Barracks, unitId: UnitId): Refusal {
 function enqueueTraining(key: string, unitId: UnitId, now: number): Refusal {
   const record = barracksAt(key);
   if (!record) {
-    return "Нет казармы";
+    return "No barracks";
   }
   const refusal = trainRefusal(record, unitId);
   if (refusal) {
     return refusal;
   }
   if (!payPrice(unitPrice(unitId))) {
-    return "Не хватает ресурсов";
+    return "Not enough resources";
   }
   record.queue.push({ id: nextEntryId, unitId, startedAt: record.queue.length === 0 ? now : null });
   nextEntryId += 1;
@@ -309,21 +309,21 @@ function trainingActive(): boolean {
 function setRally(key: string, hex: Axial, now: number): Refusal {
   const record = barracksAt(key);
   if (!record) {
-    return "Нет казармы";
+    return "No barracks";
   }
   const map = world.peek();
   const tile = map.byKey.get(hexKey(hex.q, hex.r));
   if (!tile) {
-    rallyNotice.value = { q: hex.q, r: hex.r, text: "Здесь не земля", at: now };
-    return "Здесь не земля";
+    rallyNotice.value = { q: hex.q, r: hex.r, text: "Not land here", at: now };
+    return "Not land here";
   }
   if (!tileExplored(tile)) {
-    rallyNotice.value = { q: hex.q, r: hex.r, text: "Скрыто туманом", at: now };
-    return "Скрыто туманом";
+    rallyNotice.value = { q: hex.q, r: hex.r, text: "Hidden by fog", at: now };
+    return "Hidden by fog";
   }
   if (!walkTo(map, hex, record.hex)) {
-    rallyNotice.value = { q: hex.q, r: hex.r, text: "Не дойти по земле", at: now };
-    return "Не дойти по земле";
+    rallyNotice.value = { q: hex.q, r: hex.r, text: "No land route", at: now };
+    return "No land route";
   }
   record.rally = { q: hex.q, r: hex.r };
   rallyNotice.value = null;

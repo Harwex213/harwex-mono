@@ -20,38 +20,38 @@ import type {
  */
 
 const TERRAIN_OPTIONS = [
-  { value: "none", label: "Нет" },
-  { value: "snow", label: "Снег" },
-  { value: "grass", label: "Луг" },
-  { value: "ice", label: "Лёд" },
-  { value: "forest", label: "Лес" },
-  { value: "sand", label: "Пустошь" },
+  { value: "none", label: "None" },
+  { value: "snow", label: "Snow" },
+  { value: "grass", label: "Meadow" },
+  { value: "ice", label: "Ice" },
+  { value: "forest", label: "Forest" },
+  { value: "sand", label: "Wasteland" },
 ] as const;
 
 /** Where a building may stand. `any` means the biome does not matter. */
 const BUILD_TERRAIN_OPTIONS = [
-  { value: "any", label: "Любой" },
-  { value: "snow", label: "Снег" },
-  { value: "grass", label: "Луг" },
-  { value: "ice", label: "Лёд" },
-  { value: "forest", label: "Лес" },
-  { value: "sand", label: "Пустошь" },
+  { value: "any", label: "Any" },
+  { value: "snow", label: "Snow" },
+  { value: "grass", label: "Meadow" },
+  { value: "ice", label: "Ice" },
+  { value: "forest", label: "Forest" },
+  { value: "sand", label: "Wasteland" },
 ] as const;
 
 /** The island economy. `none` marks a building that produces nothing. */
 const RESOURCE_OPTIONS = [
-  { value: "none", label: "Нет" },
-  { value: "wood", label: "Дерево" },
-  { value: "stone", label: "Камень" },
-  { value: "food", label: "Еда" },
-  { value: "gold", label: "Золото" },
+  { value: "none", label: "None" },
+  { value: "wood", label: "Wood" },
+  { value: "stone", label: "Stone" },
+  { value: "food", label: "Food" },
+  { value: "gold", label: "Gold" },
 ] as const;
 
 /** Enemy units an enemy building can spawn. Ids match the `enemies` group. */
 const ENEMY_UNIT_OPTIONS = [
-  { value: "raider", label: "Разбойник" },
-  { value: "wolf", label: "Волк" },
-  { value: "brute", label: "Громила" },
+  { value: "raider", label: "Raider" },
+  { value: "wolf", label: "Wolf" },
+  { value: "brute", label: "Brute" },
 ] as const;
 
 /**
@@ -60,11 +60,11 @@ const ENEMY_UNIT_OPTIONS = [
  * of in game code.
  */
 const BUILDING_CATEGORY_OPTIONS = [
-  { value: "core", label: "Основа" },
-  { value: "economics", label: "Экономика" },
-  { value: "war", label: "Война" },
-  { value: "defense", label: "Оборона" },
-  { value: "magic", label: "Магия" },
+  { value: "core", label: "Core" },
+  { value: "economics", label: "Economy" },
+  { value: "war", label: "War" },
+  { value: "defense", label: "Defence" },
+  { value: "magic", label: "Magic" },
 ] as const;
 
 /** Group of the tech tree, so the page and the validation share one name. */
@@ -88,14 +88,14 @@ const NODE_Y_FIELD = "nodeY";
  * `assertPrerequisiteOptions` keeps the list and the entity ids in step.
  */
 const BUILDING_PREREQUISITE_OPTIONS = [
-  { value: "none", label: "С начала игры" },
-  { value: "castle1", label: "Замок I ур." },
-  { value: "barracks1", label: "Казарма I ур." },
-  { value: "hut1", label: "Хижина I ур." },
-  { value: "sawmill1", label: "Лесопилка I ур." },
-  { value: "mill1", label: "Мельница I ур." },
-  { value: "mine1", label: "Шахта I ур." },
-  { value: "islandController1", label: "Контроллер острова I ур." },
+  { value: "none", label: "From the start" },
+  { value: "castle1", label: "Castle I" },
+  { value: "barracks1", label: "Barracks I" },
+  { value: "hut1", label: "Hut I" },
+  { value: "sawmill1", label: "Sawmill I" },
+  { value: "mill1", label: "Mill I" },
+  { value: "mine1", label: "Mine I" },
+  { value: "islandController1", label: "Island controller I" },
 ] as const;
 
 const SCHEMA = {
@@ -800,7 +800,7 @@ const SCHEMA = {
         type: "string",
         label: "Снег: название",
         description: "Подпись биома в панели.",
-        default: "Снег",
+        default: "Snow",
         maxLength: 32,
       },
       snowTop: {
@@ -825,7 +825,7 @@ const SCHEMA = {
         type: "string",
         label: "Луг: название",
         description: "Подпись биома в панели.",
-        default: "Луг",
+        default: "Meadow",
         maxLength: 32,
       },
       grassTop: {
@@ -850,7 +850,7 @@ const SCHEMA = {
         type: "string",
         label: "Лёд: название",
         description: "Подпись биома в панели.",
-        default: "Лёд",
+        default: "Ice",
         maxLength: 32,
       },
       iceTop: {
@@ -875,7 +875,7 @@ const SCHEMA = {
         type: "string",
         label: "Лес: название",
         description: "Подпись биома в панели.",
-        default: "Лес",
+        default: "Forest",
         maxLength: 32,
       },
       forestTop: {
@@ -900,7 +900,7 @@ const SCHEMA = {
         type: "string",
         label: "Пустошь: название",
         description: "Подпись биома в панели.",
-        default: "Пустошь",
+        default: "Wasteland",
         maxLength: 32,
       },
       sandTop: {
@@ -1272,8 +1272,8 @@ const SCHEMA = {
     },
     entities: {
       castle1: {
-        label: "Замок I ур.",
-        description: "Главное здание острова. Дорогое и долгое, зато держит удар и собирает налог.",
+        label: "Castle I",
+        description: "The main building of the island. Costly and slow, but it takes a hit and collects the tax.",
         overrides: {
           costWood: 800,
           costStone: 600,
@@ -1284,12 +1284,12 @@ const SCHEMA = {
           productionResource: "gold",
           productionPerMin: 6,
           claimRadius: 2,
-          note: "Центр острова: открывает постройки и хранит запасы.",
+          note: "The island centre: it unlocks buildings and holds the stores.",
         },
       },
       barracks1: {
-        label: "Казарма I ур.",
-        description: "Готовит отряды. Ресурсов не даёт, поэтому рабочих мест у неё нет.",
+        label: "Barracks I",
+        description: "Trains units. It gives no resources, so it has no worker slots.",
         overrides: {
           category: "war",
           requires: "castle1",
@@ -1299,12 +1299,12 @@ const SCHEMA = {
           buildTimeSec: 180,
           maxHp: 1400,
           workerSlots: 0,
-          note: "Готовит отряды, ресурсов не даёт.",
+          note: "Trains units, gives no resources.",
         },
       },
       hut1: {
-        label: "Хижина I ур.",
-        description: "Самая дешёвая постройка. Даёт крышу рабочим и ничего не добывает.",
+        label: "Hut I",
+        description: "The cheapest building. It gives workers a roof and mines nothing.",
         overrides: {
           costWood: 60,
           costStone: 20,
@@ -1312,12 +1312,12 @@ const SCHEMA = {
           maxHp: 400,
           workerSlots: 3,
           terrain: "grass",
-          note: "Дом на трёх рабочих.",
+          note: "A home for three workers.",
         },
       },
       sawmill1: {
-        label: "Лесопилка I ур.",
-        description: "Рубит лес вокруг себя, поэтому стоит только на лесном гексе.",
+        label: "Sawmill I",
+        description: "Cuts the forest around it, so it stands on a forest hex only.",
         overrides: {
           category: "economics",
           costWood: 120,
@@ -1329,12 +1329,12 @@ const SCHEMA = {
           productionResource: "wood",
           productionPerMin: 12,
           terrain: "forest",
-          note: "Главный источник дерева.",
+          note: "The main source of wood.",
         },
       },
       mill1: {
-        label: "Мельница I ур.",
-        description: "Мелет зерно с луга. Даёт еду, которой кормятся отряды.",
+        label: "Mill I",
+        description: "Grinds grain from the meadow. It gives the food the units live on.",
         overrides: {
           category: "economics",
           costWood: 140,
@@ -1346,12 +1346,12 @@ const SCHEMA = {
           productionResource: "food",
           productionPerMin: 10,
           terrain: "grass",
-          note: "Главный источник еды.",
+          note: "The main source of food.",
         },
       },
       mine1: {
-        label: "Шахта I ур.",
-        description: "Бьёт породу в пустоши. Камня даёт мало, но без него не растут стены.",
+        label: "Mine I",
+        description: "Breaks rock in the wasteland. It gives little stone, but walls do not grow without it.",
         overrides: {
           category: "economics",
           costWood: 100,
@@ -1363,12 +1363,12 @@ const SCHEMA = {
           productionResource: "stone",
           productionPerMin: 8,
           terrain: "sand",
-          note: "Главный источник камня.",
+          note: "The main source of stone.",
         },
       },
       islandController1: {
-        label: "Контроллер острова I ур.",
-        description: "Ставится на границе и забирает соседние гексы под игрока. Сам ничего не добывает.",
+        label: "Island controller I",
+        description: "Stands on the border and takes the neighbouring hexes for the player. It mines nothing itself.",
         overrides: {
           requires: "castle1",
           costWood: 200,
@@ -1378,7 +1378,7 @@ const SCHEMA = {
           maxHp: 1500,
           workerSlots: 1,
           claimRadius: 2,
-          note: "Расширяет территорию на два кольца гексов.",
+          note: "Widens the territory by two rings of hexes.",
         },
       },
     },
@@ -1582,8 +1582,8 @@ const SCHEMA = {
     },
     entities: {
       swordsman: {
-        label: "Мечник",
-        description: "Дешёвый ближний бой, держит линию.",
+        label: "Swordsman",
+        description: "Cheap melee, holds the line.",
         overrides: {
           costFood: 40,
           costGold: 10,
@@ -1592,12 +1592,12 @@ const SCHEMA = {
           damage: 18,
           attackSpeed: 1.1,
           tint: "#c8483f",
-          note: "Держит линию.",
+          note: "Holds the line.",
         },
       },
       archer: {
-        label: "Лучник",
-        description: "Бьёт издалека, но мрёт в ближнем бою.",
+        label: "Archer",
+        description: "Hits from afar, but dies in melee.",
         overrides: {
           costFood: 30,
           costWood: 20,
@@ -1608,7 +1608,7 @@ const SCHEMA = {
           moveSpeed: 1.1,
           attackRangeHex: 3.5,
           tint: "#4f8f4a",
-          note: "Бьёт из-за спины мечников.",
+          note: "Shoots from behind the swordsmen.",
         },
       },
     },
@@ -1751,20 +1751,20 @@ const SCHEMA = {
     },
     entities: {
       raider: {
-        label: "Разбойник",
-        description: "Заготовка. Обычный пехотинец лагеря.",
+        label: "Raider",
+        description: "Placeholder. The ordinary footman of the camp.",
         overrides: {
           maxHp: 140,
           damage: 16,
           moveSpeed: 1.1,
           aggroRadiusHex: 3,
           rewardGold: 14,
-          note: "Рядовой противник.",
+          note: "A rank-and-file enemy.",
         },
       },
       wolf: {
-        label: "Волк",
-        description: "Заготовка. Быстрый и хрупкий, ходит стаей.",
+        label: "Wolf",
+        description: "Placeholder. Fast and fragile, moves in a pack.",
         overrides: {
           maxHp: 90,
           damage: 11,
@@ -1773,12 +1773,12 @@ const SCHEMA = {
           aggroRadiusHex: 4.5,
           rewardGold: 6,
           rewardFood: 8,
-          note: "Догоняет отставших.",
+          note: "Catches the stragglers.",
         },
       },
       brute: {
-        label: "Громила",
-        description: "Заготовка. Медленный, но бьёт очень больно.",
+        label: "Brute",
+        description: "Placeholder. Slow, but hits very hard.",
         overrides: {
           maxHp: 420,
           damage: 34,
@@ -1786,7 +1786,7 @@ const SCHEMA = {
           moveSpeed: 0.7,
           aggroRadiusHex: 2.5,
           rewardGold: 40,
-          note: "Ломает стены и строй.",
+          note: "Breaks walls and formations.",
         },
       },
     },
@@ -1853,16 +1853,16 @@ const SCHEMA = {
     },
     entities: {
       camp: {
-        label: "Лагерь разбойников",
-        description: "Заготовка. Базовый источник разбойников.",
+        label: "Raider camp",
+        description: "Placeholder. The basic source of raiders.",
         overrides: {
           maxHp: 600,
-          note: "Ровный поток разбойников.",
+          note: "A steady stream of raiders.",
         },
       },
       den: {
-        label: "Волчье логово",
-        description: "Заготовка. Выпускает волков парами и часто.",
+        label: "Wolf den",
+        description: "Placeholder. It releases wolves in pairs, and often.",
         overrides: {
           maxHp: 380,
           spawnIntervalSec: 30,
@@ -1870,19 +1870,19 @@ const SCHEMA = {
           spawnBatch: 2,
           garrisonCap: 6,
           rewardGold: 45,
-          note: "Частые быстрые стаи.",
+          note: "Frequent fast packs.",
         },
       },
       watchtower: {
-        label: "Сторожевая башня",
-        description: "Заготовка. Редко, но выпускает громил.",
+        label: "Watchtower",
+        description: "Placeholder. Rarely, but it releases brutes.",
         overrides: {
           maxHp: 1200,
           spawnIntervalSec: 90,
           spawnUnit: "brute",
           garrisonCap: 2,
           rewardGold: 120,
-          note: "Редкие, но тяжёлые гости.",
+          note: "Rare but heavy guests.",
         },
       },
     },

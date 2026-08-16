@@ -91,23 +91,23 @@
     "panelAnimMs": 150
   },
   "terrain": {
-    "snowLabel": "Снег",
+    "snowLabel": "Snow",
     "snowTop": "#f2f6f9",
     "snowRim": "#d3e0ea",
     "snowWall": "#7d94a4",
-    "grassLabel": "Луг",
+    "grassLabel": "Meadow",
     "grassTop": "#93c24a",
     "grassRim": "#6f9f34",
     "grassWall": "#6f8b74",
-    "iceLabel": "Лёд",
+    "iceLabel": "Ice",
     "iceTop": "#c5dee8",
     "iceRim": "#9dc2d4",
     "iceWall": "#6f8fa4",
-    "forestLabel": "Лес",
+    "forestLabel": "Forest",
     "forestTop": "#eaf1f6",
     "forestRim": "#cbdae6",
     "forestWall": "#77909f",
-    "sandLabel": "Пустошь",
+    "sandLabel": "Wasteland",
     "sandTop": "#e6dcc3",
     "sandRim": "#cbbe9c",
     "sandWall": "#8b8b7e"
@@ -157,7 +157,7 @@
       "productionPerMin": 6,
       "terrain": "any",
       "claimRadius": 2,
-      "note": "Центр острова: открывает постройки и хранит запасы.",
+      "note": "The island centre: it unlocks buildings and holds the stores.",
       "nodeX": 0,
       "nodeY": 0
     },
@@ -174,7 +174,7 @@
       "productionPerMin": 0,
       "terrain": "any",
       "claimRadius": 0,
-      "note": "Готовит отряды, ресурсов не даёт.",
+      "note": "Trains units, gives no resources.",
       "nodeX": 0,
       "nodeY": 0
     },
@@ -191,7 +191,7 @@
       "productionPerMin": 0,
       "terrain": "grass",
       "claimRadius": 0,
-      "note": "Дом на трёх рабочих.",
+      "note": "A home for three workers.",
       "nodeX": 364,
       "nodeY": 299
     },
@@ -208,7 +208,7 @@
       "productionPerMin": 12,
       "terrain": "forest",
       "claimRadius": 0,
-      "note": "Главный источник дерева.",
+      "note": "The main source of wood.",
       "nodeX": 361,
       "nodeY": 412
     },
@@ -225,7 +225,7 @@
       "productionPerMin": 10,
       "terrain": "grass",
       "claimRadius": 0,
-      "note": "Главный источник еды.",
+      "note": "The main source of food.",
       "nodeX": 356,
       "nodeY": 520
     },
@@ -242,7 +242,7 @@
       "productionPerMin": 8,
       "terrain": "sand",
       "claimRadius": 0,
-      "note": "Главный источник камня.",
+      "note": "The main source of stone.",
       "nodeX": 352,
       "nodeY": 628
     },
@@ -259,7 +259,7 @@
       "productionPerMin": 0,
       "terrain": "any",
       "claimRadius": 2,
-      "note": "Расширяет территорию на два кольца гексов.",
+      "note": "Widens the territory by two rings of hexes.",
       "nodeX": 367,
       "nodeY": 172
     }
@@ -289,7 +289,7 @@
       "moveSpeed": 1,
       "attackRangeHex": 1,
       "tint": "#c8483f",
-      "note": "Держит линию."
+      "note": "Holds the line."
     },
     "archer": {
       "costFood": 30,
@@ -303,7 +303,7 @@
       "moveSpeed": 1.1,
       "attackRangeHex": 3.5,
       "tint": "#4f8f4a",
-      "note": "Бьёт из-за спины мечников."
+      "note": "Shoots from behind the swordsmen."
     }
   },
   "army": {
@@ -324,7 +324,7 @@
       "aggroRadiusHex": 3,
       "rewardGold": 14,
       "rewardFood": 0,
-      "note": "Рядовой противник."
+      "note": "A rank-and-file enemy."
     },
     "wolf": {
       "maxHp": 90,
@@ -334,7 +334,7 @@
       "aggroRadiusHex": 4.5,
       "rewardGold": 6,
       "rewardFood": 8,
-      "note": "Догоняет отставших."
+      "note": "Catches the stragglers."
     },
     "brute": {
       "maxHp": 420,
@@ -344,7 +344,7 @@
       "aggroRadiusHex": 2.5,
       "rewardGold": 40,
       "rewardFood": 0,
-      "note": "Ломает стены и строй."
+      "note": "Breaks walls and formations."
     }
   },
   "enemyBuildings": {
@@ -355,7 +355,7 @@
       "spawnBatch": 1,
       "garrisonCap": 4,
       "rewardGold": 60,
-      "note": "Ровный поток разбойников."
+      "note": "A steady stream of raiders."
     },
     "den": {
       "maxHp": 380,
@@ -364,7 +364,7 @@
       "spawnBatch": 2,
       "garrisonCap": 6,
       "rewardGold": 45,
-      "note": "Частые быстрые стаи."
+      "note": "Frequent fast packs."
     },
     "watchtower": {
       "maxHp": 1200,
@@ -373,7 +373,7 @@
       "spawnBatch": 1,
       "garrisonCap": 2,
       "rewardGold": 120,
-      "note": "Редкие, но тяжёлые гости."
+      "note": "Rare but heavy guests."
     }
   }
 }

@@ -204,8 +204,8 @@ function drawDelivery(ctx: CanvasRenderingContext2D, delivery: Delivery, now: nu
 }
 
 const STALL_WORDS: Record<Stall["reason"], string> = {
-  noCastle: "Нет замка",
-  noRoute: "Нет пути до замка",
+  noCastle: "No castle",
+  noRoute: "No route to the castle",
 };
 
 /**
