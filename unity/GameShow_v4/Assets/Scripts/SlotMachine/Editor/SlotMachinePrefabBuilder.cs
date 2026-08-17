@@ -50,11 +50,17 @@ public static class SlotMachinePrefabBuilder
 
     /// <summary>
     /// Where the reel-bay overlay sits. The model has no anchor for it: x and y are the centre of
-    /// Frame_ReelBay_Gold, and z is between the reel canvases (0.2185) and the back face of the
-    /// display glass (0.2210), so the pointers draw over the reels and the sweep is still seen
-    /// through the glass.
+    /// Frame_ReelBay_Gold, and z is 1.5 mm in front of the gold frames.
+    ///
+    /// The frames matter because the pointers stand in the gaps between the reel windows, and those
+    /// gaps are exactly where the frame bars are. The bars are opaque and write depth, while the UI
+    /// shader tests depth (<c>ZTest [unity_GUIZTestMode]</c>, which is LEqual on a world-space
+    /// canvas), so an overlay behind them is not drawn at all: sorting order cannot rescue it. The
+    /// frames reach z = 0.2380, so the canvas goes at 0.2395 and the pointers read as gold inlays
+    /// mounted on the bars, which is what the front-view reference paints. The light sweep is in
+    /// front of the display glass for the same reason, and sweeps across the whole bay.
     /// </summary>
-    private static readonly Vector3 BayCentre = new Vector3(0f, 1.1545f, 0.2205f);
+    private static readonly Vector3 BayCentre = new Vector3(0f, 1.1545f, 0.2395f);
 
     private static readonly StringBuilder Log = new StringBuilder();
     private static Material _unlit;
