@@ -283,9 +283,13 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 513cf77b428154d9b9025f553472ee96, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::CylindricCoordinateSystem
-  height: 2
-  radius: 4
-  angle: 0
+  animationTimeSec: 3
+  startHeight: 0
+  endHeight: 3
+  startRadius: 0
+  endRadius: 3
+  startAngle: 0
+  endAngle: 360
 --- !u!1 &314523649
 GameObject:
   m_ObjectHideFlags: 0
