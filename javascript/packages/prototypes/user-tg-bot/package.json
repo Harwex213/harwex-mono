@@ -1,0 +1,15 @@
+{
+  "name": "@hw/user-tg-bot",
+  "type": "module",
+  "browserslist": [
+    "last 1 version",
+    "> 1%",
+    "not dead"
+  ],
+  "dependencies": {
+    "teleproto": "1.228.5"
+  },
+  "devDependencies": {
+    "@hw/typescript-config": "workspace:*"
+  }
+}
