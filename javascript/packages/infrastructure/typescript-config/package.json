@@ -6,6 +6,7 @@
   "files": [
     "base.json",
     "preact.json",
+    "react.json",
     "node.json"
   ],
   "peerDependencies": {

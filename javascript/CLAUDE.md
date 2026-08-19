@@ -13,6 +13,10 @@
 
 ### Development workflow
 
+#### Typescript
+
+- Use `setup-tsconfig` skill if you need to create or change typescript config for the project
+
 #### `yarn :static` script
 
 Поднимает статический сервер ([http-server](https://github.com/http-party/http-server)) в текущей директории (`$INIT_CWD`) на случайном свободном порту (`-p 0`).
