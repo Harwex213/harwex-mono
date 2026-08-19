@@ -1,0 +1,11 @@
+{
+  "extends": "@hw/typescript-config/node.json",
+  "include": [
+    "./src/**/*"
+  ],
+  "compilerOptions": {
+    "baseUrl": ".",
+    "allowImportingTsExtensions": true,
+    "noEmit": true
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "name": "@hw/zod",
+  "description": "zod js library investigation",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "start": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test \"src/**/*.test.ts\"",
+    "lint": "eslint ."
+  },
+  "dependencies": {
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@hw/eslint-config": "workspace:*",
+    "@hw/typescript-config": "workspace:*",
+    "@types/node": "24.1.0",
+    "eslint": "9.25.1",
+    "tsx": "4.19.4",
+    "typescript": "5.9.3"
+  }
+}
