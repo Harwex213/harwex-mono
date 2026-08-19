@@ -1,0 +1,360 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: bb4b860642fa6429ca039afaadc4f059, type: 3}
+  m_Name: GoldenLuck_DefaultConfig
+  m_EditorClassIdentifier: GameShow.SlotMachine::SlotMachineConfig
+  reels:
+  - name: Left (red)
+    background: {fileID: 21300000, guid: cf6a7fb1f31ec48a2b3ddbcc5f9ba548, type: 3}
+    accentColor: {r: 1, g: 0.855, b: 0.42, a: 1}
+    items:
+    - id: l_20
+      displayText: 20
+      kind: 0
+      symbol: 0
+      sprite: {fileID: 0}
+      weight: 1
+      multiplier: 20
+      reward: 200
+      overrideColor: 0
+      color: {r: 1, g: 1, b: 1, a: 1}
+    - id: l_10
+      displayText: 10
+      kind: 0
+      symbol: 0
+      sprite: {fileID: 0}
+      weight: 3
+      multiplier: 10
+      reward: 100
+      overrideColor: 0
+      color: {r: 1, g: 1, b: 1, a: 1}
+    - id: l_5
+      displayText: 5
+      kind: 0
+      symbol: 0
+      sprite: {fileID: 0}
+      weight: 5
+      multiplier: 5
+      reward: 50
+      overrideColor: 0
+      color: {r: 1, g: 1, b: 1, a: 1}
+    - id: l_star
+      displayText: Star
+      kind: 1
+      symbol: 0
+      sprite: {fileID: 21300000, guid: 46dd55b0d8c31477b96d50a83dc66890, type: 3}
+      weight: 2
+      multiplier: 50
+      reward: 500
+      overrideColor: 0
+      color: {r: 1, g: 1, b: 1, a: 1}
+    - id: l_3
+      displayText: 3
+      kind: 0
+      symbol: 0
+      sprite: {fileID: 0}
+      weight: 5
+      multiplier: 3
+      reward: 30
+      overrideColor: 0
+      color: {r: 1, g: 1, b: 1, a: 1}
+    - id: l_bell
+      displayText: Bell
+      kind: 1
+      symbol: 1
+      sprite: {fileID: 21300000, guid: 1331a5fe9dddd4769b9b81cb4a31545d, type: 3}
+      weight: 2
+      multiplier: 30
+      reward: 300
+      overrideColor: 0
+      color: {r: 1, g: 1, b: 1, a: 1}
+    - id: l_horseshoe
+      displayText: Horseshoe
+      kind: 1
+      symbol: 2
+      sprite: {fileID: 21300000, guid: 8df8e42ae34d94b858df018442f48f5b, type: 3}
+      weight: 2
+      multiplier: 40
+      reward: 400
+      overrideColor: 0
+      color: {r: 1, g: 1, b: 1, a: 1}
+  - name: Center (blue)
+    background: {fileID: 21300000, guid: 9b8d80ad3579e4138bafb39c3acab90f, type: 3}
+    accentColor: {r: 1, g: 0.855, b: 0.42, a: 1}
+    items:
+    - id: c_10
+      displayText: 10
+      kind: 0
+      symbol: 0
+      sprite: {fileID: 0}
+      weight: 3
+      multiplier: 10
+      reward: 100
+      overrideColor: 0
+      color: {r: 1, g: 1, b: 1, a: 1}
+    - id: c_6
+      displayText: 6
+      kind: 0
+      symbol: 0
+      sprite: {fileID: 0}
+      weight: 4
+      multiplier: 6
+      reward: 60
+      overrideColor: 0
+      color: {r: 1, g: 1, b: 1, a: 1}
+    - id: c_3
+      displayText: 3
+      kind: 0
+      symbol: 0
+      sprite: {fileID: 0}
+      weight: 5
+      multiplier: 3
+      reward: 30
+      overrideColor: 0
+      color: {r: 1, g: 1, b: 1, a: 1}
+    - id: c_bell
+      displayText: Bell
+      kind: 1
+      symbol: 1
+      sprite: {fileID: 21300000, guid: 1331a5fe9dddd4769b9b81cb4a31545d, type: 3}
+      weight: 2
+      multiplier: 30
+      reward: 300
+      overrideColor: 0
+      color: {r: 1, g: 1, b: 1, a: 1}
+    - id: c_5
+      displayText: 5
+      kind: 0
+      symbol: 0
+      sprite: {fileID: 0}
+      weight: 5
+      multiplier: 5
+      reward: 50
+      overrideColor: 0
+      color: {r: 1, g: 1, b: 1, a: 1}
+    - id: c_horseshoe
+      displayText: Horseshoe
+      kind: 1
+      symbol: 2
+      sprite: {fileID: 21300000, guid: 8df8e42ae34d94b858df018442f48f5b, type: 3}
+      weight: 2
+      multiplier: 40
+      reward: 400
+      overrideColor: 0
+      color: {r: 1, g: 1, b: 1, a: 1}
+    - id: c_star
+      displayText: Star
+      kind: 1
+      symbol: 0
+      sprite: {fileID: 21300000, guid: 46dd55b0d8c31477b96d50a83dc66890, type: 3}
+      weight: 2
+      multiplier: 50
+      reward: 500
+      overrideColor: 0
+      color: {r: 1, g: 1, b: 1, a: 1}
+  - name: Right (green)
+    background: {fileID: 21300000, guid: abaf5d6073f4e4a878c5a55fd6f820fc, type: 3}
+    accentColor: {r: 1, g: 0.855, b: 0.42, a: 1}
+    items:
+    - id: r_7
+      displayText: 7
+      kind: 0
+      symbol: 0
+      sprite: {fileID: 0}
+      weight: 2
+      multiplier: 7
+      reward: 70
+      overrideColor: 0
+      color: {r: 1, g: 1, b: 1, a: 1}
+    - id: r_5
+      displayText: 5
+      kind: 0
+      symbol: 0
+      sprite: {fileID: 0}
+      weight: 5
+      multiplier: 5
+      reward: 50
+      overrideColor: 0
+      color: {r: 1, g: 1, b: 1, a: 1}
+    - id: r_3
+      displayText: 3
+      kind: 0
+      symbol: 0
+      sprite: {fileID: 0}
+      weight: 5
+      multiplier: 3
+      reward: 30
+      overrideColor: 0
+      color: {r: 1, g: 1, b: 1, a: 1}
+    - id: r_horseshoe
+      displayText: Horseshoe
+      kind: 1
+      symbol: 2
+      sprite: {fileID: 21300000, guid: 8df8e42ae34d94b858df018442f48f5b, type: 3}
+      weight: 2
+      multiplier: 40
+      reward: 400
+      overrideColor: 0
+      color: {r: 1, g: 1, b: 1, a: 1}
+    - id: r_10
+      displayText: 10
+      kind: 0
+      symbol: 0
+      sprite: {fileID: 0}
+      weight: 3
+      multiplier: 10
+      reward: 100
+      overrideColor: 0
+      color: {r: 1, g: 1, b: 1, a: 1}
+    - id: r_star
+      displayText: Star
+      kind: 1
+      symbol: 0
+      sprite: {fileID: 21300000, guid: 46dd55b0d8c31477b96d50a83dc66890, type: 3}
+      weight: 2
+      multiplier: 50
+      reward: 500
+      overrideColor: 0
+      color: {r: 1, g: 1, b: 1, a: 1}
+    - id: r_bell
+      displayText: Bell
+      kind: 1
+      symbol: 1
+      sprite: {fileID: 21300000, guid: 1331a5fe9dddd4769b9b81cb4a31545d, type: 3}
+      weight: 2
+      multiplier: 30
+      reward: 300
+      overrideColor: 0
+      color: {r: 1, g: 1, b: 1, a: 1}
+  visibleCells: 4
+  winLineCell: 2
+  spinUpSeconds: 0.55
+  startStaggerSeconds: 0.08
+  spinSeconds: 1.6
+  cruiseCellsPerSecond: 14
+  stopDelaySeconds: 0.45
+  reelStopSeconds: 0.95
+  fullTurnsBeforeStop: 1
+  spinUpCurve:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 0
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 1
+      value: 1
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  stopCurve:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 0
+      inSlope: 2
+      outSlope: 2
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 1
+      value: 1
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  bounceCells: 0.07
+  bounceSeconds: 0.22
+  bounceCurve:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 1
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 0.55
+      value: -0.32
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 1
+      value: 0
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  resultMode: 0
+  forcedItemIndices: 030000000600000005000000
+  useFixedSeed: 1
+  randomSeed: 20250812
+  paytable: {fileID: 11400000, guid: 90d3d980331ba4d2fb208d6073c0ed9c, type: 2}
+  winHoldSeconds: 2.4
+  loseHoldSeconds: 0.6
+  cooldownSeconds: 0.4
+  logoPulseSeconds: 3.4
+  logoPulseAmount: 0.22
+  horseshoeIdleGlow: 0.35
+  horseshoePulseSeconds: 4.2
+  lightSweepIntervalSeconds: 7
+  lightSweepSeconds: 1.1
+  idleDustRate: 1.5
+  winFlashSeconds: 0.55
+  winGlowPeak: 1
+  winSymbolPunch: 0.14
+  winSweepCount: 2
+  winDustBurst: 40
+  winSparkleSeconds: 1.5
+  winFlashSprite: {fileID: 21300000, guid: a15a8e71b774947ba856552041a60335, type: 3}
+  sparkleStarSprite: {fileID: 21300000, guid: a5fd8cbd095fc47079c1dede4b447914, type: 3}
+  sparkleSoftSprite: {fileID: 21300000, guid: 95abe5cbb35934f57bf64fecf71ad436, type: 3}
+  lightSweepSprite: {fileID: 21300000, guid: cc64f1483b49b41cc9ce5fa8b296cf5f, type: 3}
+  spinLoopClip: {fileID: 0}
+  reelStopClip: {fileID: 0}
+  winClip: {fileID: 0}
+  loseClip: {fileID: 0}
+  spinStartClip: {fileID: 0}
+  spinPitchAtStop: 0.72
