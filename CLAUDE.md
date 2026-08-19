@@ -1,0 +1,1 @@
+**Do not start task by any chance in case when user provide your link to working files from inner worktree while you are on master worktree.**  
