@@ -7,13 +7,6 @@ import { App } from "./ui/App";
 import { AppProviders } from "./ui/context";
 import { ReadyFlag } from "./ui/ReadyFlag";
 
-// The app entry is the only place that wires the layers together:
-//
-//   fixtures ─▶ store ─▶ registry(store, api) ─▶ ui
-//
-// The seed comes from `fixtures/` while the api layer is empty. When the api
-// lands, this is the one file that changes.
-
 const container = document.getElementById("root");
 if (!container) {
   throw new Error("#root is missing from index.html");

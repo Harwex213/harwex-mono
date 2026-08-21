@@ -1,11 +1,6 @@
 import type { LiveTable, Provider } from "../model/types";
 import type { StoreSeed } from "../store/types";
 
-// The lobby the app starts from. It lives here, not in the tests, because the
-// api layer is empty: until it exists this is the only source of tables. The app
-// entry and every screenshot scenario read the same seed, so what a test shows
-// is what a human sees on a fresh load.
-
 const PROVIDERS: readonly Provider[] = [
   {
     id: "evolution",
@@ -272,8 +267,6 @@ const TABLES: readonly LiveTable[] = [
 
 const STARTING_BALANCE = 250;
 
-// A fresh copy every call, so two stores built in the same process cannot see
-// each other's tables.
 function createLobbySeed(): StoreSeed {
   return {
     providers: PROVIDERS.map((provider) => ({ ...provider })),

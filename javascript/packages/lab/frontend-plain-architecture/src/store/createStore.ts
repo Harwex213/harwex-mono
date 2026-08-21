@@ -3,10 +3,6 @@ import { averageMinBet, compareTables, isAvailable, matchesFilters, seatsFree } 
 import type { CategoryFilter, LiveTable, Notice, Provider, ProviderId, SortKey, TableId } from "../model/types";
 import type { Store, StoreSeed } from "./types";
 
-// One factory, one store instance. The app entry builds one; every screenshot
-// test builds its own. Because no signal is created at module scope, two stores
-// never share state.
-
 function createStore(seed: StoreSeed): Store {
   const providers = signal<readonly Provider[]>(seed.providers);
   const tables = signal<readonly LiveTable[]>(seed.tables);
@@ -92,9 +88,6 @@ function createStore(seed: StoreSeed): Store {
 
   const providerById = computed(() => new Map(providers.value.map((provider) => [provider.id, provider])));
 
-  // Counts for the category tabs. They ignore the category filter itself and
-  // honour every other filter, so switching tabs never shows a count that turns
-  // out to be zero.
   const categoryCounts = computed(() => {
     const counts = new Map<CategoryFilter, number>();
     const withoutCategory = { ...filters.value, category: "all" as const };
