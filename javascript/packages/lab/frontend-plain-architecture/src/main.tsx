@@ -1,26 +1,25 @@
 import { createRoot } from "react-dom/client";
-import { createApi } from "./api";
-import { createLobbySeed } from "./fixtures/lobby";
-import { createRegistry } from "./registry";
-import { createStore } from "./store/createStore";
-import { App } from "./ui/App";
-import { AppProviders } from "./ui/context";
-import { ReadyFlag } from "./ui/ReadyFlag";
+import { createStore, StoreProvider } from "./store/store";
+import { createRegistry } from "./domain/registry-creator";
+import { App } from "./ui/app";
 
-const container = document.getElementById("root");
-if (!container) {
-  throw new Error("#root is missing from index.html");
-}
+const main = () => {
+  const container = document.querySelector("#root");
+  if (!container) {
+    throw new Error("No root was found to mount app");
+  }
 
-const store = createStore(createLobbySeed());
-const registry = createRegistry({
-  store,
-  api: createApi(),
-});
+  const root = createRoot(container);
 
-createRoot(container).render(
-  <AppProviders store={store} registry={registry}>
-    <App />
-    <ReadyFlag />
-  </AppProviders>,
-);
+  const store = createStore();
+
+  const registry = createRegistry(store);
+
+  root.render(
+    <StoreProvider value={store}>
+      <App registry={registry} />
+    </StoreProvider>
+  );
+};
+
+main();

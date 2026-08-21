@@ -1,5 +1,5 @@
 {
-  "name": "@hw/frontend-plain-architecture",
+  "name": "@hw/frontend-plain-architecture-v2",
   "private": true,
   "version": "1.0.0",
   "type": "module",
@@ -10,11 +10,7 @@
   ],
   "scripts": {
     "dev": "rspack serve",
-    "build": "rspack build",
-    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.tests.json",
-    "test": "playwright test",
-    "test:update": "playwright test --update-snapshots",
-    "test:report": "playwright show-report"
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.tests.json"
   },
   "dependencies": {
     "@preact/signals-react": "3.9.0",
@@ -23,7 +19,6 @@
   },
   "devDependencies": {
     "@hw/typescript-config": "workspace:*",
-    "@playwright/test": "1.61.1",
     "@rspack/cli": "2.1.4",
     "@rspack/core": "2.1.4",
     "@rspack/dev-server": "2.1.0",
