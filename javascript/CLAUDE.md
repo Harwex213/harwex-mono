@@ -11,11 +11,19 @@
 
 - No single-line CSS rules: one declaration per line, closing brace on its own line (`.bf a:hover { color: var(--text-primary); }` → `.bf a:hover {\n  color: var(--text-primary);\n}`). Applies wherever CSS lives.
 
-### Development workflow
+### Development workflow conventions
+
+#### Frontend App Default Tech Stack
+
+If you need to setup new frontend app use this default tech stack until other being mentioned:
+- react
+- rspack
+- typescript
+- preact/signals
 
 #### Typescript
 
-- Use `setup-tsconfig` skill if you need to create or change typescript config for the project
+- Use `setup-tsconfig` skill if you need to create or change typescript config for the particular package
 
 #### `yarn :static` script
 
