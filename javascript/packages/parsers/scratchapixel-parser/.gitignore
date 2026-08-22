@@ -1,0 +1,4 @@
+# Crawl output
+out/
+*.local.*
+

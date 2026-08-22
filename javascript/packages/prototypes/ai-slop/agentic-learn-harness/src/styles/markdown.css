@@ -1,0 +1,96 @@
+.markdown {
+  font-size: 13px;
+}
+
+.markdown > * + * {
+  margin-top: 8px;
+}
+
+.markdown h1,
+.markdown h2,
+.markdown h3,
+.markdown h4 {
+  margin-top: 14px;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.markdown h1 {
+  font-size: 15px;
+}
+
+.markdown h2 {
+  font-size: 14px;
+}
+
+.markdown ul,
+.markdown ol {
+  padding-left: 18px;
+}
+
+.markdown ul {
+  list-style: disc;
+}
+
+.markdown ol {
+  list-style: decimal;
+}
+
+.markdown li + li {
+  margin-top: 3px;
+}
+
+.markdown strong {
+  color: #fff;
+}
+
+.markdown a {
+  color: var(--accent);
+}
+
+.markdown code {
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: rgb(122 162 255 / 12%);
+  font-family: var(--mono);
+  font-size: 11px;
+}
+
+.markdown pre {
+  overflow-x: auto;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg-input);
+}
+
+.markdown pre code {
+  padding: 0;
+  background: none;
+}
+
+.markdown blockquote {
+  margin: 0;
+  padding-left: 10px;
+  border-left: 2px solid var(--line-strong);
+  color: var(--text-dim);
+}
+
+.markdown table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.markdown th,
+.markdown td {
+  padding: 4px 6px;
+  border: 1px solid var(--line);
+  text-align: left;
+}
+
+.markdown hr {
+  border: none;
+  border-top: 1px solid var(--line);
+}

@@ -1,0 +1,19 @@
+{
+  "name": "@hw/scratchapixel-parser",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "exports": "./src/index.ts",
+  "scripts": {
+    "typecheck": "tsc",
+    "parse": "tsx scripts/parse.ts"
+  },
+  "dependencies": {
+    "node-html-parser": "8.0.3",
+    "undici": "8.5.0"
+  },
+  "devDependencies": {
+    "tsx": "4.19.4",
+    "typescript": "5.9.3"
+  }
+}
