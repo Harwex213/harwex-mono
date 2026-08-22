@@ -1,0 +1,1102 @@
+<title>Visual Agent Harness</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap">
+
+<style>
+:root {
+  --ground: #f4f6f6;
+  --surface: #ffffff;
+  --surface-2: #edf1f1;
+  --ink: #10191c;
+  --ink-2: #3a4a4e;
+  --ink-3: #6b7c80;
+  --line: #dbe3e3;
+  --line-strong: #c2cfcf;
+  --accent: #0d7d8c;
+  --accent-soft: #e2f0f1;
+  --warn: #8f6210;
+  --warn-soft: #f6eeda;
+  --danger: #a93e27;
+  --danger-soft: #f7e9e5;
+  --good: #2c6e4a;
+  --good-soft: #e4f0e9;
+  --code-bg: #f0f4f4;
+  --shadow: 0 1px 2px rgba(16, 25, 28, 0.04), 0 8px 24px rgba(16, 25, 28, 0.06);
+  --font-display: "Archivo", "Helvetica Neue", Arial, sans-serif;
+  --font-body: "Source Serif 4", Georgia, "Times New Roman", serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ground: #0c1416;
+    --surface: #121d20;
+    --surface-2: #172427;
+    --ink: #e8f0f0;
+    --ink-2: #a9bcbe;
+    --ink-3: #7a8e91;
+    --line: #223235;
+    --line-strong: #33474a;
+    --accent: #46d2c8;
+    --accent-soft: #102f2f;
+    --warn: #e0a84a;
+    --warn-soft: #2a2214;
+    --danger: #e58a72;
+    --danger-soft: #2c1a16;
+    --good: #6fc495;
+    --good-soft: #14271e;
+    --code-bg: #0f1a1c;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px rgba(0, 0, 0, 0.3);
+  }
+}
+
+:root[data-theme="dark"] {
+  --ground: #0c1416;
+  --surface: #121d20;
+  --surface-2: #172427;
+  --ink: #e8f0f0;
+  --ink-2: #a9bcbe;
+  --ink-3: #7a8e91;
+  --line: #223235;
+  --line-strong: #33474a;
+  --accent: #46d2c8;
+  --accent-soft: #102f2f;
+  --warn: #e0a84a;
+  --warn-soft: #2a2214;
+  --danger: #e58a72;
+  --danger-soft: #2c1a16;
+  --good: #6fc495;
+  --good-soft: #14271e;
+  --code-bg: #0f1a1c;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px rgba(0, 0, 0, 0.3);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 1.0625rem;
+  line-height: 1.62;
+  -webkit-font-smoothing: antialiased;
+}
+
+.shell {
+  max-width: 76rem;
+  margin: 0 auto;
+  padding: 2.5rem 1.5rem 6rem;
+}
+
+@media (min-width: 1080px) {
+  .shell {
+    display: grid;
+    grid-template-columns: 12.5rem minmax(0, 1fr);
+    gap: 3.5rem;
+    align-items: start;
+    padding-top: 4rem;
+  }
+}
+
+/* ---------- rail ---------- */
+
+.rail {
+  display: none;
+}
+
+@media (min-width: 1080px) {
+  .rail {
+    display: block;
+    position: sticky;
+    top: 4rem;
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+}
+
+.rail ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  border-left: 1px solid var(--line);
+}
+
+.rail a {
+  display: block;
+  padding: 0.1rem 0 0.1rem 0.85rem;
+  margin-left: -1px;
+  border-left: 2px solid transparent;
+  color: var(--ink-3);
+  text-decoration: none;
+}
+
+.rail a:hover,
+.rail a:focus-visible {
+  color: var(--accent);
+  border-left-color: var(--accent);
+}
+
+.rail-count {
+  font-variant-numeric: tabular-nums;
+  color: var(--line-strong);
+  margin-right: 0.4rem;
+}
+
+/* ---------- picker frame motif ---------- */
+
+.picker {
+  position: relative;
+  border: 1px dashed var(--accent);
+  background: var(--surface);
+}
+
+.picker::before,
+.picker::after,
+.picker > .tick-l,
+.picker > .tick-r {
+  content: "";
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  background: var(--accent);
+}
+
+.picker::before {
+  top: -3px;
+  left: -3px;
+}
+
+.picker::after {
+  top: -3px;
+  right: -3px;
+}
+
+.picker > .tick-l {
+  bottom: -3px;
+  left: -3px;
+}
+
+.picker > .tick-r {
+  bottom: -3px;
+  right: -3px;
+}
+
+/* ---------- header ---------- */
+
+.masthead {
+  padding: 2rem 1.75rem 1.75rem;
+  margin-bottom: 3rem;
+}
+
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin: 0 0 1rem;
+}
+
+h1 {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: clamp(2.1rem, 5vw, 3.15rem);
+  line-height: 1.02;
+  letter-spacing: -0.025em;
+  text-wrap: balance;
+  margin: 0 0 0.85rem;
+}
+
+.standfirst {
+  font-size: 1.15rem;
+  color: var(--ink-2);
+  max-width: 54ch;
+  margin: 0;
+}
+
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 2rem;
+  margin: 1.75rem 0 0;
+  padding: 1.15rem 0 0;
+  border-top: 1px solid var(--line);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--ink-3);
+}
+
+.meta div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.meta dt {
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  font-size: 0.65rem;
+  color: var(--line-strong);
+}
+
+.meta dd {
+  margin: 0;
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- sections ---------- */
+
+section {
+  margin: 0 0 4rem;
+  scroll-margin-top: 2rem;
+}
+
+h2 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: clamp(1.4rem, 2.6vw, 1.8rem);
+  line-height: 1.15;
+  letter-spacing: -0.018em;
+  text-wrap: balance;
+  margin: 0 0 1.25rem;
+  padding-bottom: 0.55rem;
+  border-bottom: 2px solid var(--ink);
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+}
+
+h2 .num {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: var(--accent);
+  letter-spacing: 0.08em;
+  font-variant-numeric: tabular-nums;
+}
+
+h3 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 1.05rem;
+  letter-spacing: 0.005em;
+  margin: 2.25rem 0 0.7rem;
+}
+
+.prose {
+  max-width: 68ch;
+}
+
+p {
+  margin: 0 0 1.1rem;
+}
+
+a {
+  color: var(--accent);
+  text-underline-offset: 0.15em;
+}
+
+code {
+  font-family: var(--font-mono);
+  font-size: 0.86em;
+  background: var(--code-bg);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  padding: 0.08em 0.32em;
+  white-space: nowrap;
+}
+
+/* ---------- steps ---------- */
+
+.steps {
+  counter-reset: step;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.9rem;
+  max-width: 72ch;
+}
+
+.steps li {
+  counter-increment: step;
+  position: relative;
+  padding-left: 2.6rem;
+}
+
+.steps li::before {
+  content: counter(step, decimal-leading-zero);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-radius: 2px;
+  padding: 0.1rem 0.35rem;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- tables ---------- */
+
+.scroller {
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  margin: 0 0 1.5rem;
+}
+
+table {
+  border-collapse: collapse;
+  width: 100%;
+  min-width: 40rem;
+  font-size: 0.9rem;
+}
+
+thead th {
+  text-align: left;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-size: 0.66rem;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  background: var(--surface-2);
+  padding: 0.6rem 0.85rem;
+  border-bottom: 1px solid var(--line-strong);
+  white-space: nowrap;
+}
+
+tbody td {
+  padding: 0.65rem 0.85rem;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+  color: var(--ink-2);
+}
+
+tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+tbody th {
+  text-align: left;
+  padding: 0.65rem 0.85rem;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+  font-family: var(--font-mono);
+  font-weight: 500;
+  font-size: 0.8rem;
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+tbody tr:last-child th {
+  border-bottom: 0;
+}
+
+td.decision {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+table code {
+  white-space: nowrap;
+}
+
+/* ---------- pills ---------- */
+
+.pill {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 0.66rem;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 0.12rem 0.4rem;
+  border-radius: 2px;
+  white-space: nowrap;
+}
+
+.pill.v1 {
+  color: var(--good);
+  background: var(--good-soft);
+}
+
+.pill.fence {
+  color: var(--danger);
+  background: var(--danger-soft);
+}
+
+.pill.watch {
+  color: var(--warn);
+  background: var(--warn-soft);
+}
+
+/* ---------- callouts ---------- */
+
+.note {
+  border-left: 3px solid var(--accent);
+  background: var(--surface);
+  padding: 1rem 1.15rem;
+  margin: 0 0 1.5rem;
+  max-width: 72ch;
+}
+
+.note.danger {
+  border-left-color: var(--danger);
+}
+
+.note.warn {
+  border-left-color: var(--warn);
+}
+
+.note p:last-child {
+  margin-bottom: 0;
+}
+
+.note-label {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 0.66rem;
+  font-weight: 600;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 0.4rem;
+}
+
+.note.danger .note-label {
+  color: var(--danger);
+}
+
+.note.warn .note-label {
+  color: var(--warn);
+}
+
+/* ---------- code blocks ---------- */
+
+pre {
+  margin: 0 0 1.5rem;
+  padding: 1.1rem 1.25rem;
+  background: var(--code-bg);
+  border: 1px solid var(--line);
+  overflow-x: auto;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  line-height: 1.62;
+  color: var(--ink);
+  tab-size: 2;
+}
+
+pre code {
+  background: none;
+  border: 0;
+  padding: 0;
+  font-size: inherit;
+  white-space: pre;
+}
+
+.caption {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: var(--ink-3);
+  letter-spacing: 0.03em;
+  margin: -1rem 0 1.75rem;
+}
+
+/* ---------- diagram ---------- */
+
+.diagram {
+  padding: 1.5rem;
+  margin: 0 0 0.9rem;
+  overflow-x: auto;
+}
+
+.diagram svg {
+  display: block;
+  min-width: 46rem;
+  width: 100%;
+  height: auto;
+}
+
+.d-box {
+  fill: var(--surface-2);
+  stroke: var(--line-strong);
+  stroke-width: 1;
+}
+
+.d-box-accent {
+  fill: var(--accent-soft);
+  stroke: var(--accent);
+  stroke-width: 1;
+}
+
+.d-lane {
+  fill: none;
+  stroke: var(--line);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+}
+
+.d-title {
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 600;
+  fill: var(--ink);
+}
+
+.d-text {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  fill: var(--ink-2);
+}
+
+.d-label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  fill: var(--ink-3);
+  letter-spacing: 0.06em;
+}
+
+.d-flow {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.5;
+}
+
+.d-return {
+  fill: none;
+  stroke: var(--ink-3);
+  stroke-width: 1.5;
+  stroke-dasharray: 4 3;
+}
+
+/* ---------- footer ---------- */
+
+footer {
+  border-top: 1px solid var(--line);
+  padding-top: 1.25rem;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--ink-3);
+  max-width: 72ch;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+</style>
+
+<div class="shell">
+
+<nav class="rail" aria-label="Sections">
+  <ol>
+    <li><a href="#loop"><span class="rail-count">01</span>The loop</a></li>
+    <li><a href="#packages"><span class="rail-count">02</span>Packages</a></li>
+    <li><a href="#topology"><span class="rail-count">03</span>Topology</a></li>
+    <li><a href="#decisions"><span class="rail-count">04</span>Decisions</a></li>
+    <li><a href="#payload"><span class="rail-count">05</span>Pick payload</a></li>
+    <li><a href="#protocol"><span class="rail-count">06</span>Protocol</a></li>
+    <li><a href="#agent"><span class="rail-count">07</span>Agent session</a></li>
+    <li><a href="#fence"><span class="rail-count">08</span>Fence and undo</a></li>
+    <li><a href="#consumer"><span class="rail-count">09</span>Consumer change</a></li>
+    <li><a href="#watch"><span class="rail-count">10</span>Watch list</a></li>
+    <li><a href="#order"><span class="rail-count">11</span>Build order</a></li>
+    <li><a href="#evidence"><span class="rail-count">12</span>Evidence</a></li>
+  </ol>
+</nav>
+
+<main>
+
+<header class="masthead picker">
+  <span class="tick-l"></span><span class="tick-r"></span>
+  <p class="eyebrow">Spec of record &middot; harwex-mono</p>
+  <h1>Visual Agent Harness</h1>
+  <p class="standfirst">Pick a React component in the running app, and a Claude Code agent edits the file behind it while you watch the page repaint.</p>
+  <dl class="meta">
+    <div><dt>Packages</dt><dd>3</dd></div>
+    <div><dt>Location</dt><dd>infrastructure/visual-agent</dd></div>
+    <div><dt>First consumer</dt><dd>lab/frontend-plain-architecture</dd></div>
+    <div><dt>Scope</dt><dd>full design, one milestone</dd></div>
+    <div><dt>Dated</dt><dd>2026-08-20</dd></div>
+  </dl>
+</header>
+
+<section id="loop">
+  <h2><span class="num">01</span>The loop</h2>
+  <div class="prose">
+    <p>The tool exists to shorten one cycle: you see something wrong on screen, and a file changes. Every decision below serves that cycle. The tool runs in development only, because the component names it reads exist only in a development React build.</p>
+  </div>
+  <ol class="steps">
+    <li><strong>Pick.</strong> <code>Cmd/Ctrl+Shift+A</code> enters pick mode. Hover paints a rect with the component name. A click selects the nearest component boundary. <code>[</code> and <code>]</code> walk the <code>fiber.return</code> chain outward and back. Esc cancels.</li>
+    <li><strong>Capture.</strong> The client builds a capped payload and crops the picked node to a PNG. Two other capture modes exist: a freeform drag region, and the full viewport.</li>
+    <li><strong>Send.</strong> The panel writes your instruction, attaches the payload, and sends it over the WebSocket. The server feeds it into a streaming-input session as a text block plus an image block.</li>
+    <li><strong>Work.</strong> The agent reads files, then edits them. Writes inside the app's <code>src/</code> are approved automatically. Everything else stops at a prompt in the panel.</li>
+    <li><strong>Repaint.</strong> rspack recompiles and HMR updates the page. You are looking at the result within about a second.</li>
+    <li><strong>Verify.</strong> The agent calls <code>screenshot()</code>, <code>get_selection()</code> and <code>console_errors()</code> to check its own work before it reports back.</li>
+    <li><strong>Undo, if needed.</strong> Any user message in the transcript offers a rewind, which reverts the file changes made since that message.</li>
+  </ol>
+</section>
+
+<section id="packages">
+  <h2><span class="num">02</span>Packages</h2>
+  <div class="prose">
+    <p>Three workspace packages sit under the existing empty <code>packages/infrastructure/visual-agent/</code>. The directory names stay short, because the parent directory already namespaces them. All three ship raw TypeScript with no build step, which is what <code>@hw/vschema</code> already does.</p>
+  </div>
+  <div class="scroller">
+    <table>
+      <thead>
+        <tr><th scope="col">Dir</th><th scope="col">Package</th><th scope="col">Owns</th><th scope="col">Runtime deps</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <th scope="row">protocol/</th>
+          <td><code>@hw/visual-agent-protocol</code></td>
+          <td>Types only. The message union, <code>PROTOCOL_VERSION</code>, and the pick-payload shape. Exported as <code>"exports": "./exports.ts"</code>.</td>
+          <td>None</td>
+        </tr>
+        <tr>
+          <th scope="row">client/</th>
+          <td><code>@hw/visual-agent-client</code></td>
+          <td>Picker, capture, error buffer, and the floating panel in a shadow root. Reads fibers off the <code>__reactFiber$*</code> key on DOM nodes, so it holds <em>no</em> React dependency and works in any app that mounts React.</td>
+          <td><code>@hw/signals</code>, <code>html-to-image</code> 1.11.13</td>
+        </tr>
+        <tr>
+          <th scope="row">server/</th>
+          <td><code>@hw/visual-agent-server</code></td>
+          <td>WebSocket server, session registry, permission fence, and the in-process MCP server. Runs as <code>node src/index.ts</code> on Node 24, like <code>@hw/colony-sim-v1-backend</code>.</td>
+          <td><code>ws</code> 8.18.2, <code>@anthropic-ai/claude-agent-sdk</code> 0.3.237, <code>playwright</code> 1.61.1</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="caption">Versions are exact. The repo sets <code>defaultSemverRangePrefix: ""</code>, and Playwright is held at 1.61.1 to match the chromium-1228 build already on disk.</p>
+
+  <h3>How it enters an app</h3>
+  <pre><code>// src/main.tsx, three lines, greppable, no build config
+if (process.env.NODE_ENV !== "production") {
+  void import("@hw/visual-agent-client").then((module) => {
+    module.mount();
+  });
+}</code></pre>
+  <p class="caption">A production build drops the whole branch, so the client cannot ship.</p>
+</section>
+
+<section id="topology">
+  <h2><span class="num">03</span>Topology</h2>
+  <div class="diagram picker">
+    <span class="tick-l"></span><span class="tick-r"></span>
+    <svg viewBox="0 0 900 500" role="img" aria-label="Browser tab sends a pick over a WebSocket to the visual-agent server, which drives a Claude Agent SDK session; the session edits files, rspack HMR repaints the browser tab, closing the loop.">
+      <!-- browser lane -->
+      <rect class="d-lane" x="16" y="16" width="868" height="132" rx="2"></rect>
+      <text class="d-label" x="28" y="34">BROWSER TAB &mdash; DEV BUILD ONLY</text>
+      <rect class="d-box" x="36" y="46" width="200" height="82" rx="2"></rect>
+      <text class="d-title" x="50" y="70">App tree</text>
+      <text class="d-text" x="50" y="90">React 19.2 development</text>
+      <text class="d-text" x="50" y="106">__reactFiber$* readable</text>
+      <rect class="d-box-accent" x="264" y="46" width="196" height="82" rx="2"></rect>
+      <text class="d-title" x="278" y="70">Picker</text>
+      <text class="d-text" x="278" y="90">fiber.return chain</text>
+      <text class="d-text" x="278" y="106">crop, cap 1568px</text>
+      <rect class="d-box" x="488" y="46" width="180" height="82" rx="2"></rect>
+      <text class="d-title" x="502" y="70">Panel</text>
+      <text class="d-text" x="502" y="90">shadow root, floating</text>
+      <text class="d-text" x="502" y="106">refuses in screenshot mode</text>
+      <rect class="d-box" x="696" y="46" width="168" height="82" rx="2"></rect>
+      <text class="d-title" x="710" y="70">Error buffer</text>
+      <text class="d-text" x="710" y="90">onerror, rejection,</text>
+      <text class="d-text" x="710" y="106">HMR compile errors</text>
+
+      <!-- socket -->
+      <path class="d-flow" d="M 450 148 L 450 196" marker-end="url(#va-arrow)"></path>
+      <text class="d-label" x="462" y="178">WEBSOCKET :8140 &mdash; LOOPBACK, ORIGIN-FENCED</text>
+
+      <!-- server lane -->
+      <rect class="d-lane" x="16" y="204" width="868" height="140" rx="2"></rect>
+      <text class="d-label" x="28" y="222">VISUAL-AGENT SERVER &mdash; NODE 24, CWD = REPO ROOT</text>
+      <rect class="d-box" x="36" y="234" width="252" height="94" rx="2"></rect>
+      <text class="d-title" x="50" y="258">Session registry</text>
+      <text class="d-text" x="50" y="278">N sessions, one cwd</text>
+      <text class="d-text" x="50" y="294">bounded transcript buffer</text>
+      <text class="d-text" x="50" y="310">resume ids on disk</text>
+      <rect class="d-box-accent" x="316" y="234" width="236" height="94" rx="2"></rect>
+      <text class="d-title" x="330" y="258">canUseTool fence</text>
+      <text class="d-text" x="330" y="278">Edit, Write inside</text>
+      <text class="d-text" x="330" y="294">&lt;app&gt;/src &rarr; auto-approve</text>
+      <text class="d-text" x="330" y="310">anything else &rarr; prompt</text>
+      <rect class="d-box" x="580" y="234" width="284" height="94" rx="2"></rect>
+      <text class="d-title" x="594" y="258">In-process MCP server</text>
+      <text class="d-text" x="594" y="278">screenshot() &mdash; playwright</text>
+      <text class="d-text" x="594" y="294">get_selection()</text>
+      <text class="d-text" x="594" y="310">console_errors()</text>
+
+      <!-- sdk -->
+      <path class="d-flow" d="M 450 344 L 450 392" marker-end="url(#va-arrow)"></path>
+      <text class="d-label" x="462" y="374">AGENT SDK query() &mdash; STREAMING INPUT, QUEUED MESSAGES</text>
+
+      <rect class="d-box" x="288" y="400" width="324" height="66" rx="2"></rect>
+      <text class="d-title" x="302" y="424">Claude session</text>
+      <text class="d-text" x="302" y="444">claude_code preset + settingSources + brief</text>
+
+      <!-- edit out to files, and return path -->
+      <path class="d-flow" d="M 612 433 L 748 433 L 748 300" marker-end="url(#va-arrow)"></path>
+      <text class="d-label" x="622" y="425">EDIT / WRITE</text>
+      <path class="d-return" d="M 288 433 L 152 433 L 152 148" marker-end="url(#va-arrow-muted)"></path>
+      <text class="d-label" x="60" y="425">FILES &rarr; RSPACK HMR</text>
+
+      <defs>
+        <marker id="va-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--accent)"></path>
+        </marker>
+        <marker id="va-arrow-muted" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--ink-3)"></path>
+        </marker>
+      </defs>
+    </svg>
+  </div>
+  <p class="caption">The dashed return path is the only part nobody wrote: rspack was already watching the files.</p>
+</section>
+
+<section id="decisions">
+  <h2><span class="num">04</span>Decision record</h2>
+  <div class="prose">
+    <p>Thirty-six branches, resolved in order, with the reason each one won. The reason matters more than the decision, because the reason is what tells you whether a later change is safe.</p>
+  </div>
+
+  <h3>Product shape</h3>
+  <div class="scroller">
+    <table>
+      <thead>
+        <tr><th scope="col">Branch</th><th scope="col">Decision</th><th scope="col">Why, and what lost</th></tr>
+      </thead>
+      <tbody>
+        <tr><th scope="row">Coupling</th><td class="decision">Generic core, optional adapter</td><td>The core needs only the DOM and fibers, so any React app in the monorepo can use it. An app that has scenarios and a store registers an adapter and gets richer context. A version coupled to one app would die with that experiment.</td></tr>
+        <tr><th scope="row">Surface</th><td class="decision">In-browser panel, server runs the SDK</td><td>The panel is the chat. This is the only arrangement where a pick becomes a message with no copy and paste. A terminal-only variant needs no SDK at all, but you keep switching windows and you lose spawning.</td></tr>
+        <tr><th scope="row">Edit loop</th><td class="decision">Agent edits files, HMR shows it</td><td>The loop closes with no human step, which is the whole point. Safety comes from git and from rewind, not from a gate. A propose-a-diff flow adds a click to every iteration.</td></tr>
+        <tr><th scope="row">Spawn model</th><td class="decision">N concurrent sessions, soft guard</td><td>Each spawn is one session with its own id and its own transcript. All share one cwd. The panel warns when two live sessions have touched one file. A hard lock denies an Edit mid-turn, which confuses the agent more than the warning confuses you.</td></tr>
+        <tr><th scope="row">v1 scope</th><td class="decision">Full design, one milestone</td><td>Everything in this record gets built before the tool is used in anger.</td></tr>
+        <tr><th scope="row">Docs</th><td class="decision">READMEs, skill rewrite, root pointer</td><td>Three coupled packages with a wire protocol need the coupling written down. <code>frontend-human-in-the-loop</code> gets the workflow appended, and its philosophy section stays.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Client</h3>
+  <div class="scroller">
+    <table>
+      <thead>
+        <tr><th scope="col">Branch</th><th scope="col">Decision</th><th scope="col">Why, and what lost</th></tr>
+      </thead>
+      <tbody>
+        <tr><th scope="row">Pick precision</th><td class="decision">Component name, then the agent greps</td><td>React 19.2 removed <code>_debugSource</code>, so nothing reads an exact file and line off a fiber any more. A build-time <code>data-va-src</code> transform would be exact, and it was rejected to keep the client a plain import with no loader and no rspack plugin. The cost is one grep per pick, and a heavier payload to disambiguate.</td></tr>
+        <tr><th scope="row">Panel stack</th><td class="decision">Vanilla DOM and <code>@hw/signals</code></td><td>The panel owns its shadow root and never enters the host's React tree. The client ends up with zero React dependency, so a Preact app or a vanilla app can use it too.</td></tr>
+        <tr><th scope="row">Panel place</th><td class="decision">In page, shadow root, dev-gated</td><td>App CSS and panel CSS cannot reach each other. The panel refuses to mount when <code>data-screenshot="true"</code> is set, so screenshot baselines are safe by construction rather than by discipline.</td></tr>
+        <tr><th scope="row">Panel chrome</th><td class="decision">Floating, draggable window</td><td>The app layout stays untouched, so what you see is what the user sees. The cost is that the panel covers content and needs dragging. It collapses to a status dot carrying connection state and the error count.</td></tr>
+        <tr><th scope="row">Picker UX</th><td class="decision">Hotkey and hover, three capture modes</td><td>Hover rect, click to select the nearest component, <code>[</code> and <code>]</code> to widen and narrow, Esc to cancel. Element crop, drag region and full viewport, because "these two cards, side by side" is a real request.</td></tr>
+        <tr><th scope="row">Pick payload</th><td class="decision">Curated bundle, hard cap</td><td>Grep-based location means the payload must identify the component on its own. Serialized <code>outerHTML</code> was rejected: a grid pick becomes tens of kilobytes of generated class names and the signal drowns.</td></tr>
+        <tr><th scope="row">Image prep</th><td class="decision">Node capture, 1568px cap, panel filtered</td><td>Above 1568px on the long edge the API downsamples anyway, so larger images cost tokens and buy nothing. The panel's own shadow host is filtered out, or the tool photographs itself.</td></tr>
+        <tr><th scope="row">Screenshot</th><td class="decision">In-page canvas now, Playwright to verify</td><td>Two mechanisms, each used where it is strong. The in-page crop is instant and is literally what you are looking at. Playwright gives the agent an independent eye after its own edit.</td></tr>
+        <tr><th scope="row">Error feed</th><td class="decision">On demand, via <code>console_errors()</code></td><td>No message is ever injected into a session on the client's initiative, so nothing derails a turn in progress. The consequence is that the client must buffer errors continuously, and the brief must tell the agent to ask.</td></tr>
+        <tr><th scope="row">Injection</th><td class="decision">Guarded dynamic import in the app entry</td><td>Three visible, greppable lines. An rspack plugin would inject invisibly, would need an exclusion for the harness entry, and would restore the build coupling this design avoids.</td></tr>
+        <tr><th scope="row">Defaults</th><td class="decision">Port 8140, <code>Cmd/Ctrl+Shift+A</code></td><td>8140 stays clear of the 8130 dev server and is overridable by env. Not <code>Cmd+Shift+C</code>, which is Chrome's own inspector, and you will want both at once.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Server and agent</h3>
+  <div class="scroller">
+    <table>
+      <thead>
+        <tr><th scope="col">Branch</th><th scope="col">Decision</th><th scope="col">Why, and what lost</th></tr>
+      </thead>
+      <tbody>
+        <tr><th scope="row">Transport</th><td class="decision">WebSocket, one socket per tab</td><td><code>canUseTool</code> and <code>interrupt()</code> both need server-to-client requests, not a one-way push stream. Sessions multiplex over the one socket by id, and request pairs carry a correlation id.</td></tr>
+        <tr><th scope="row">Security</th><td class="decision">Loopback bind, strict Origin allowlist</td><td>Any page you visit can open a socket to localhost, and this server edits files. A browser sets <code>Origin</code> on the handshake and page script cannot forge it, so the allowlist is the defence. It costs nothing in use.</td></tr>
+        <tr><th scope="row">Permissions</th><td class="decision">Auto-approve inside declared roots</td><td><code>permissionMode: "default"</code>, reads on the allowlist, and a <code>canUseTool</code> callback that resolves the path. Fast where it is safe, gated where it is not. <code>bypassPermissions</code> was rejected: a stray agent would rewrite <code>yarn.lock</code> or <code>.claude/</code> and you would find out at <code>git status</code>.</td></tr>
+        <tr><th scope="row">Agent cwd</th><td class="decision">Repo root</td><td>Everything is visible, including the root conventions file and every sibling package. The costs are accepted deliberately: greps are noisy across four language trees, and <code>worktrees/</code> is in scope, so the write fence is doing real work. The brief names the app package as the work area up front.</td></tr>
+        <tr><th scope="row">Agent brief</th><td class="decision">Preset, setting sources, short brief</td><td><code>systemPrompt: { type: "preset", preset: "claude_code", append }</code> with <code>settingSources: ["user", "project", "local"]</code>, so <code>javascript/CLAUDE.md</code> actually loads. A hand-written prompt is cheaper and would have the agent writing single quotes and unbraced <code>if</code> statements into a repo that forbids both.</td></tr>
+        <tr><th scope="row">Agent tools</th><td class="decision">screenshot, get_selection, console_errors</td><td>Three tools, each closing one blind spot: it cannot see the page, it cannot re-read the pick, it cannot see a thrown error. Click, type and eval were rejected, because an agent driving your live tab while you watch is hostile, and scenarios already reach any state.</td></tr>
+        <tr><th scope="row">Transcript</th><td class="decision">Streamed text, collapsed tool timeline</td><td><code>includePartialMessages: true</code> so text arrives live. Each tool call is one line that expands. A forty-second silent turn reads as broken, and you cannot tell when to interrupt.</td></tr>
+        <tr><th scope="row">Spawn seed</th><td class="decision">Optional pick, free text, model selector</td><td>A pick attaches when one is active but is not required, because "add a dark theme" has no pick. Model defaults to <code>claude-opus-5</code> per session, since a colour tweak and a refactor do not deserve the same spend. No prompt templates: they go stale and you type faster.</td></tr>
+        <tr><th scope="row">Undo</th><td class="decision">Per-message <code>rewindFiles()</code></td><td>The SDK reverts file changes made since a given message, with <code>dryRun</code> to preview. This is what makes a loop with no approval gate defensible. Git reverts by file, so it cannot separate a good first edit from a bad third one.</td></tr>
+        <tr><th scope="row">Mid-turn pick</th><td class="decision">Queue it, with an explicit Interrupt</td><td>Streaming input queues messages in order, which is exactly the desired behaviour. Auto-interrupting would silently discard a turn, including edits already on disk.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Protocol, lifecycle and process</h3>
+  <div class="scroller">
+    <table>
+      <thead>
+        <tr><th scope="col">Branch</th><th scope="col">Decision</th><th scope="col">Why, and what lost</th></tr>
+      </thead>
+      <tbody>
+        <tr><th scope="row">Packages</th><td class="decision">Three, with a types-only protocol</td><td>Mirrors <code>@hw/colony-sim-v1-protocol</code>. The browser package never pulls in a node dependency, and the server never pulls in React.</td></tr>
+        <tr><th scope="row">Layout</th><td class="decision"><code>client/</code>, <code>server/</code>, <code>protocol/</code></td><td>The parent directory namespaces them, so a repeated prefix would be noise. <code>packages/**/*</code> matches at this depth, proven by <code>colony-sim-v1-backend</code> five levels down.</td></tr>
+        <tr><th scope="row">Distribution</th><td class="decision">Raw TypeScript, no build</td><td>Settled by the codebase, not by preference. <code>@hw/vschema</code> ships <code>"exports": "./exports.ts"</code>, the consuming swc rule has no <code>exclude</code>, and Node 24 strips types natively.</td></tr>
+        <tr><th scope="row">Protocol</th><td class="decision">Version in handshake, sessions global</td><td>A mismatch is refused with a message naming the fix, never a confusing runtime failure. An HMR-reloaded page against a stale server is the normal case. Sessions are server-global so any tab attaches to any of them.</td></tr>
+        <tr><th scope="row">Session life</th><td class="decision">Server owns them, panel re-attaches</td><td>A reload costs nothing, because the transcript buffer replays. A server restart reopens sessions with <code>resume</code> from ids on disk. Panel-owned ids let two tabs resume one session and race.</td></tr>
+        <tr><th scope="row">Wiring</th><td class="decision"><code>$INIT_CWD</code> script, URL from handshake</td><td>A global <code>yarn :visual-agent</code> script, the same trick as the existing <code>:static</code>, so the launch directory is right by definition. The dev URL is not configured at all: the client sends <code>location.origin</code>.</td></tr>
+        <tr><th scope="row">Adapter</th><td class="decision">Read-only state, scenarios, app brief</td><td>All fields optional. The agent can see the store and name a scenario, and cannot mutate app state, so the page never changes under your hands. Exposing registry actions was rejected for the same reason page-control tools were.</td></tr>
+        <tr><th scope="row">Testing</th><td class="decision">Injected fake <code>query</code>, node:test, one e2e</td><td>The server takes <code>query</code> as an injected dependency, so a fake generator drives the permission round trip, interrupt, queueing and reconnect with no API calls and no flake. Those are the parts that break silently.</td></tr>
+        <tr><th scope="row">Harness gate</th><td class="decision">Move the flag into <code>harness.tsx</code></td><td>Lets the panel run on the harness, where every interesting state already lives, with animations alive. Costs a three-file change in the consumer app. See section 09.</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section id="payload">
+  <h2><span class="num">05</span>Pick payload</h2>
+  <div class="prose">
+    <p>This type is the heart of the tool. It has to identify a component well enough that a grep finds it on the first try, and stay small enough that it does not crowd out the conversation. Every collection is capped, and every cap reports itself, so the agent knows when it is looking at a truncated view.</p>
+  </div>
+  <pre><code>type PickPayload = {
+  readonly kind: "element" | "region" | "viewport";
+
+  // Identity. componentChain walks fiber.return outward, names read from
+  // fiber.type.name ?? fiber.type.displayName, with _debugOwner as a tiebreaker.
+  readonly componentChain: readonly string[];
+  readonly tagName: string;
+  readonly className: string;
+  readonly domPath: string;
+  readonly siblingIndex: number;
+
+  // Reserved. Stays undefined until a build-time transform exists, so adding
+  // one later is not a breaking protocol change.
+  readonly sourceLocation?: {
+    readonly file: string;
+    readonly line: number;
+    readonly column: number;
+  };
+
+  // Content and geometry.
+  readonly text: string;                      // trimmed, capped
+  readonly props: Readonly&lt;Record&lt;string, unknown&gt;&gt;;  // depth &lt;= 2, fns as "[fn]"
+  readonly rect: { x: number; y: number; width: number; height: number };
+  readonly computedStyles: Readonly&lt;Record&lt;string, string&gt;&gt;;  // ~20 whitelisted
+
+  // Capture.
+  readonly image: { readonly dataUrl: string; readonly scale: number };
+
+  // Present only when the app registered an adapter.
+  readonly app?: {
+    readonly scenarioName?: string;
+    readonly scenarios?: readonly string[];
+    readonly state?: unknown;
+  };
+
+  readonly truncated: readonly string[];      // e.g. ["props.tables", "text"]
+};</code></pre>
+  <p class="caption">The whitelist covers box, font, colour and layout properties. A twenty-property subset is legible; the full computed style is nine hundred lines of noise.</p>
+
+  <h3>Adapter contract</h3>
+  <pre><code>type VisualAgentAdapter = {
+  readonly getStateSnapshot?: () => unknown;   // JSON-safe view-model
+  readonly getScenarioName?: () => string;
+  readonly listScenarios?: () => readonly string[];
+  readonly describeApp?: () => string;         // appended to the session brief
+};
+
+function registerVisualAgentContext(adapter: VisualAgentAdapter): void;</code></pre>
+  <p class="caption">Read-only by construction. In a signals app, <code>getStateSnapshot()</code> is the most compressed available answer to "why does it look like this".</p>
+</section>
+
+<section id="protocol">
+  <h2><span class="num">06</span>Protocol</h2>
+  <div class="prose">
+    <p>One socket per browser tab. Every frame carries a <code>type</code> discriminant, and every frame after the handshake carries a <code>sessionId</code>. Request and response pairs carry a <code>correlationId</code>, because two of them travel from server to client.</p>
+  </div>
+  <div class="scroller">
+    <table>
+      <thead>
+        <tr><th scope="col">Direction</th><th scope="col">Message</th><th scope="col">Carries</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>client &rarr; server</td><th scope="row">hello</th><td><code>protocolVersion</code>, <code>origin</code>, <code>devUrl</code> from <code>location.origin</code>, adapter capability flags</td></tr>
+        <tr><td>server &rarr; client</td><th scope="row">welcome</th><td>Accepted version, live session list, declared write roots, app package path</td></tr>
+        <tr><td>server &rarr; client</td><th scope="row">versionRefused</th><td>Expected version and the remedy to show in the panel</td></tr>
+        <tr><td>client &rarr; server</td><th scope="row">spawn</th><td>Optional <code>PickPayload</code>, instruction text, model</td></tr>
+        <tr><td>client &rarr; server</td><th scope="row">send</th><td><code>sessionId</code>, optional <code>PickPayload</code>, instruction text</td></tr>
+        <tr><td>client &rarr; server</td><th scope="row">attach</th><td><code>sessionId</code>, to receive the replayed transcript buffer</td></tr>
+        <tr><td>client &rarr; server</td><th scope="row">interrupt</th><td><code>sessionId</code></td></tr>
+        <tr><td>client &rarr; server</td><th scope="row">rewind</th><td><code>sessionId</code>, <code>userMessageId</code>, <code>dryRun</code></td></tr>
+        <tr><td>client &rarr; server</td><th scope="row">setModel</th><td><code>sessionId</code>, model id</td></tr>
+        <tr><td>server &rarr; client</td><th scope="row">transcript</th><td>Mapped SDK messages: text deltas, tool calls, tool results, thinking, result</td></tr>
+        <tr><td>server &rarr; client</td><th scope="row">sessionState</th><td>idle, working or queued, plus files touched and token usage</td></tr>
+        <tr><td>server &rarr; client</td><th scope="row">conflictWarning</th><td>Two live sessions have touched one file</td></tr>
+        <tr><td>server &rarr; client</td><th scope="row">permissionRequest</th><td><code>correlationId</code>, tool name, input, and the reason the fence did not auto-approve</td></tr>
+        <tr><td>client &rarr; server</td><th scope="row">permissionReply</th><td><code>correlationId</code>, allow or deny</td></tr>
+        <tr><td>server &rarr; client</td><th scope="row">selectionRequest</th><td><code>correlationId</code>, raised by the agent's <code>get_selection()</code> tool</td></tr>
+        <tr><td>client &rarr; server</td><th scope="row">selectionReply</th><td><code>correlationId</code>, current <code>PickPayload</code> or null</td></tr>
+        <tr><td>server &rarr; client</td><th scope="row">errorsRequest</th><td><code>correlationId</code>, raised by <code>console_errors()</code></td></tr>
+        <tr><td>client &rarr; server</td><th scope="row">errorsReply</th><td><code>correlationId</code>, the buffered error list</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="caption">The selection lives on the connection, not on the session, and is snapshotted into the message at send time. Two tabs therefore never fight over one pick.</p>
+</section>
+
+<section id="agent">
+  <h2><span class="num">07</span>Agent session</h2>
+  <div class="prose">
+    <p>Images and interrupts both require streaming input mode, so single-message mode is not an option: it cannot attach an image at all. Each session is one long-lived <code>query()</code> whose prompt is an async generator the server pushes into.</p>
+  </div>
+  <pre><code>const session = query({
+  prompt: pushableMessageStream,          // AsyncIterable&lt;SDKUserMessage&gt;
+  options: {
+    cwd: repoRoot,
+    model: requestedModel,
+    systemPrompt: { type: "preset", preset: "claude_code", append: brief },
+    settingSources: ["user", "project", "local"],
+    permissionMode: "default",
+    allowedTools: ["Read", "Grep", "Glob"],
+    canUseTool: fenceWrites(declaredRoots),
+    mcpServers: { visualAgent: inProcessServer },
+    includePartialMessages: true,
+    resume: knownSessionId,
+  },
+});</code></pre>
+  <p class="caption">A pick becomes one user message holding a text block and an image block.</p>
+
+  <h3>What the brief says</h3>
+  <div class="prose">
+    <p>The brief is short and situational, and it carries three load-bearing instructions. It names the app package path as the work area, because the cwd is the repo root and a bare grep spans four language trees. It says the dev server is already running, so the agent never starts one. It requires <code>console_errors()</code> and <code>screenshot()</code> before any claim of being done, because the client never volunteers an error and nothing else will tell the agent that the page went white.</p>
+  </div>
+</section>
+
+<section id="fence">
+  <h2><span class="num">08</span>Fence and undo</h2>
+  <div class="note danger">
+    <span class="note-label">The fence</span>
+    <p>Two independent checks stand between a web page and your repository. The socket binds to <code>127.0.0.1</code> and refuses any handshake whose <code>Origin</code> is not the declared dev URL. Then <code>canUseTool</code> resolves every write path and auto-approves only what sits inside the launching app's <code>src/</code>. Everything else, and every <code>Bash</code> call, stops at a prompt in the panel.</p>
+    <p>The cwd is the repo root, so <code>worktrees/</code>, <code>unity/</code> and the memory directory are all readable. The write fence is the only thing keeping them intact, which is why it is a resolved path check and not a prefix string match.</p>
+  </div>
+  <div class="note">
+    <span class="note-label">The undo</span>
+    <p>Every user message in the transcript offers a rewind. It calls <code>query.rewindFiles(userMessageId, { dryRun: true })</code> first and shows what would change, then commits on confirmation. This reverts by turn rather than by file, so a good first edit survives while a bad third one goes away. Git stays available underneath, and does not need to be the first resort.</p>
+  </div>
+</section>
+
+<section id="consumer">
+  <h2><span class="num">09</span>Consumer-app change</h2>
+  <div class="prose">
+    <p><code>harness.html</code> hardcodes <code>data-screenshot="true"</code> on <code>&lt;html&gt;</code>, and the panel refuses to mount when that flag is set. Left alone, the panel would never appear on the harness, which is where every interesting UI state already lives. Three files move the flag from the template into the entry.</p>
+  </div>
+  <div class="scroller">
+    <table>
+      <thead>
+        <tr><th scope="col">File</th><th scope="col">Change</th></tr>
+      </thead>
+      <tbody>
+        <tr><th scope="row">harness.html</th><td>Drop <code>data-screenshot="true"</code> from the <code>&lt;html&gt;</code> tag.</td></tr>
+        <tr><th scope="row">src/harness.tsx</th><td>Set the attribute before mount when the URL carries <code>screenshot=1</code>.</td></tr>
+        <tr><th scope="row">tests/helpers.ts</th><td>Add <code>screenshot=1</code> to the harness URL the tests open.</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="note">
+    <span class="note-label">Baseline guarantee</span>
+    <p>Test runs set the flag exactly as they do today, before first paint, so all twenty-four committed baselines stay byte-identical. Dev browsing gets the panel and live animations, which matters because that same flag kills every transition, and a dead transition is useless when the transition is the thing you are polishing.</p>
+  </div>
+</section>
+
+<section id="watch">
+  <h2><span class="num">10</span>Watch list</h2>
+  <div class="prose">
+    <p>Four things are known to be fragile. None of them blocks the build, and each has a decided response.</p>
+  </div>
+  <div class="scroller">
+    <table>
+      <thead>
+        <tr><th scope="col">Risk</th><th scope="col">Response</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <th scope="row">Grep ambiguity</th>
+          <td>Two components sharing a name send the agent to the wrong file. The payload carries a DOM path, sibling index and text to break the tie. If it still misses often, the escape hatch is the build-time <code>data-va-src</code> transform, and <code>sourceLocation</code> is already reserved in the payload so adding it breaks nothing.</td>
+        </tr>
+        <tr>
+          <th scope="row">Canvas fidelity</th>
+          <td><code>html-to-image</code> mis-renders <code>backdrop-filter</code>, some web fonts and 3D transforms, which are exactly the properties worth iterating on. The Playwright-backed <code>screenshot()</code> tool is the escape hatch, and the brief says to reach for it when the crop looks wrong.</td>
+        </tr>
+        <tr>
+          <th scope="row">Floating panel</th>
+          <td>Two guards, both easy to forget. The shadow host must be filtered out of every capture, or the tool photographs itself. The window's backdrop must not take pointer events, or it swallows picks.</td>
+        </tr>
+        <tr>
+          <th scope="row">Development-only reads</th>
+          <td>Component names and <code>_debugOwner</code> exist only in a development React build. A production bundle has neither, and the guarded import means the client is not there to try. This is a property of the design, not a defect to fix.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section id="order">
+  <h2><span class="num">11</span>Build order</h2>
+  <div class="prose">
+    <p>This is a real sequence, because each step is the first thing testable after the one before it.</p>
+  </div>
+  <ol class="steps">
+    <li><code>protocol/</code>. The message union, the payload type, the version constant. Nothing depends on anything.</li>
+    <li><code>server/</code> with an injected fake <code>query</code>, plus its <code>node:test</code> suite. Permission round trip, interrupt, queueing, reconnect and replay, all without an API call.</li>
+    <li>Client picker, fiber walker and payload builder, with unit tests on the capping and truncation reporting.</li>
+    <li>Capture: element crop, drag region, viewport, the 1568px cap, and the shadow-host filter.</li>
+    <li>Panel: floating window, transcript rendering, permission prompts, status dot.</li>
+    <li>In-process MCP server: <code>screenshot()</code>, <code>get_selection()</code>, <code>console_errors()</code>.</li>
+    <li>Spawn, model selector, rewind UI, conflict warning, and the adapter.</li>
+    <li>The three-file consumer change, then one Playwright test proving pick to payload end to end.</li>
+    <li>Three READMEs, the <code>frontend-human-in-the-loop</code> rewrite, and the root README pointer.</li>
+  </ol>
+</section>
+
+<section id="evidence">
+  <h2><span class="num">12</span>Evidence</h2>
+  <div class="prose">
+    <p>Claims in this spec that came from reading the repository or the SDK documentation, rather than from memory.</p>
+  </div>
+  <div class="scroller">
+    <table>
+      <thead>
+        <tr><th scope="col">Claim</th><th scope="col">Checked</th></tr>
+      </thead>
+      <tbody>
+        <tr><th scope="row">React 19.2 dropped <code>_debugSource</code></th><td><code>grep -c "_debugSource" react-dom-client.development.js</code> returns 0. The same file has 26 hits for <code>_debugOwner</code>, 8 for <code>_debugStack</code>, 38 for <code>_debugTask</code>.</td></tr>
+        <tr><th scope="row">No <code>__source</code> prop either</th><td><code>jsxDEVImpl</code> in <code>react-jsx-dev-runtime.development.js</code> takes <code>debugStack</code> and <code>debugTask</code>. The old <code>source</code> and <code>self</code> parameters are gone.</td></tr>
+        <tr><th scope="row">Raw TypeScript is the convention</th><td><code>@hw/vschema</code> declares <code>"exports": "./exports.ts"</code>, with no <code>dist/</code> and no build script.</td></tr>
+        <tr><th scope="row">A TS server runs unbuilt</th><td><code>@hw/colony-sim-v1-backend</code> runs <code>node src/index.ts</code>. Node is 24.13.1, which strips types natively.</td></tr>
+        <tr><th scope="row">Deep nesting resolves</th><td><code>colony-sim-v1-backend</code> sits five levels below <code>packages/</code> and the <code>packages/**/*</code> workspace glob matches it.</td></tr>
+        <tr><th scope="row">The harness flag is hardcoded</th><td><code>harness.html</code> line 2: <code>&lt;html lang="en" data-screenshot="true"&gt;</code>. Twenty-four PNG baselines sit under <code>tests/__screenshots__/darwin/</code>.</td></tr>
+        <tr><th scope="row">Images require streaming input</th><td>The Agent SDK documentation states single-message input supports neither image attachments, nor queued messages, nor interruption.</td></tr>
+        <tr><th scope="row">Rewind exists as an SDK method</th><td>The <code>Query</code> interface exposes <code>rewindFiles(userMessageId, options?)</code> with a <code>dryRun</code> option.</td></tr>
+        <tr><th scope="row">Version pins</th><td>Resolved from the registry: agent SDK 0.3.237, <code>html-to-image</code> 1.11.13. From the lockfile: <code>ws</code> 8.18.2. From the consumer app: Playwright 1.61.1, matching the installed chromium-1228.</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<footer>
+  <p>Spec of record for <code>@hw/visual-agent-*</code>. Resolved across eight rounds of interview on 2026-08-20. Amend this file when a decision changes, and note the reason, because the reason is what tells the next reader whether a further change is safe.</p>
+</footer>
+
+</main>
+</div>

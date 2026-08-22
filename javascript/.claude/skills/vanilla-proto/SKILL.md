@@ -1,6 +1,7 @@
 ---
 name: vanilla-proto
 description: Conventions and scaffolding for vanilla-js UI prototypes (no bundler, native ESM, pub/sub store, factory components). Use when creating a new prototype in vanilla js.
+disable-model-invocation: true
 ---
 
 # Vanilla-js prototype
