@@ -1,0 +1,619 @@
+<title>Мели Острова</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700;800;900&family=Literata:opsz,wght@7..72,400..600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+*,*::before,*::after{box-sizing:border-box}
+:root{
+  --paper:#E7EDEE;
+  --card:#F7FAFA;
+  --line:#C0CED1;
+  --hair:#D4DEE0;
+  --ink:#0C2227;
+  --ink2:#53707A;
+  --hazard:#A5125C;
+  --hazard-bg:#F2DAE6;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --paper:#091619;
+    --card:#0F2328;
+    --line:#22434B;
+    --hair:#1A363D;
+    --ink:#DCE8E9;
+    --ink2:#87A3AA;
+    --hazard:#FF6EA8;
+    --hazard-bg:#331123;
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#091619;
+  --card:#0F2328;
+  --line:#22434B;
+  --hair:#1A363D;
+  --ink:#DCE8E9;
+  --ink2:#87A3AA;
+  --hazard:#FF6EA8;
+  --hazard-bg:#331123;
+}
+
+body{
+  margin:0;
+  background:var(--paper);
+  color:var(--ink);
+  font-family:Literata,Georgia,serif;
+  font-size:16px;
+  line-height:1.62;
+  -webkit-font-smoothing:antialiased;
+}
+.wrap{max-width:1140px;margin:0 auto;padding:0 28px 96px}
+h1,h2,h3{font-family:"Golos Text",system-ui,sans-serif;text-wrap:balance;margin:0}
+.mono{font-family:"IBM Plex Mono",ui-monospace,monospace}
+
+/* header */
+header.top{padding:56px 0 0}
+.eyebrow{
+  font-family:"IBM Plex Mono",ui-monospace,monospace;
+  font-size:11px;letter-spacing:.16em;text-transform:uppercase;
+  color:var(--hazard);margin:0 0 18px
+}
+h1{
+  font-size:clamp(38px,6.4vw,68px);font-weight:900;line-height:.98;
+  letter-spacing:-.028em;max-width:16ch
+}
+.lede{font-size:19px;max-width:62ch;margin:22px 0 0;color:var(--ink)}
+.lede b{font-weight:600}
+.strip{
+  display:flex;flex-wrap:wrap;gap:0 26px;margin:34px 0 0;
+  border-top:1px solid var(--line);border-bottom:1px solid var(--line);
+  padding:12px 0;
+  font-family:"IBM Plex Mono",ui-monospace,monospace;
+  font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink2);
+  font-variant-numeric:tabular-nums
+}
+.strip b{color:var(--ink);font-weight:500}
+.strip .hz{color:var(--hazard)}
+
+/* sections */
+section{margin-top:74px}
+.kicker{
+  font-family:"IBM Plex Mono",ui-monospace,monospace;
+  font-size:11px;letter-spacing:.16em;text-transform:uppercase;
+  color:var(--ink2);margin:0 0 10px
+}
+h2{font-size:clamp(26px,3.4vw,38px);font-weight:800;letter-spacing:-.02em;line-height:1.06;max-width:24ch}
+.note{font-size:16px;color:var(--ink2);max-width:64ch;margin:14px 0 0}
+
+/* contradictions */
+.clash{margin:34px 0 0;border-top:1px solid var(--line)}
+.clash > div{
+  display:grid;grid-template-columns:minmax(200px,300px) 1fr auto;
+  gap:6px 28px;align-items:baseline;
+  padding:16px 0;border-bottom:1px solid var(--hair)
+}
+.pair{
+  font-family:"Golos Text",system-ui,sans-serif;font-weight:600;font-size:16px;
+  line-height:1.3
+}
+.pair span{color:var(--hazard);font-weight:500;padding:0 4px}
+.clash p{margin:0;font-size:15.5px;color:var(--ink)}
+.ref{
+  font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:11px;
+  color:var(--ink2);white-space:nowrap;letter-spacing:.06em
+}
+
+/* figure */
+figure{margin:40px 0 0}
+.figbox{background:var(--card);border:1px solid var(--line);padding:18px 20px;overflow-x:auto}
+figure svg{display:block;width:100%;min-width:760px;height:auto;color:var(--ink)}
+figcaption{margin:14px 0 0;font-size:15px;color:var(--ink2);max-width:70ch}
+
+/* register */
+.reg{margin-top:34px;border-bottom:1px solid var(--line)}
+.q{
+  display:grid;grid-template-columns:136px 1fr;gap:14px 34px;
+  border-top:1px solid var(--line);padding:28px 0
+}
+.rail{display:flex;flex-direction:column;gap:9px;align-items:flex-start}
+.qid{
+  font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:14px;font-weight:500;
+  letter-spacing:.08em;color:var(--ink2);font-variant-numeric:tabular-nums
+}
+.q.p0 .qid{color:var(--hazard)}
+.chip{
+  font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:10px;
+  letter-spacing:.14em;text-transform:uppercase;
+  background:var(--hazard-bg);color:var(--hazard);
+  border:1px solid var(--hazard);padding:2px 7px
+}
+.q h3{font-size:clamp(20px,2.2vw,25px);font-weight:700;letter-spacing:-.015em;line-height:1.18;max-width:30ch}
+.q dl{display:grid;grid-template-columns:98px 1fr;gap:11px 22px;margin:18px 0 0}
+.q dt{
+  font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:10px;
+  letter-spacing:.13em;text-transform:uppercase;color:var(--ink2);padding-top:4px
+}
+.q dd{margin:0;font-size:15.5px;max-width:68ch}
+
+/* order */
+ol.gates{list-style:none;margin:32px 0 0;padding:0;border-top:1px solid var(--line)}
+ol.gates li{
+  display:grid;grid-template-columns:120px 1fr;gap:8px 28px;
+  padding:15px 0;border-bottom:1px solid var(--hair);font-size:15.5px
+}
+ol.gates b{
+  font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:11.5px;font-weight:500;
+  letter-spacing:.09em;text-transform:uppercase;color:var(--hazard);padding-top:4px
+}
+ol.gates span{max-width:68ch}
+ol.gates i{font-style:normal;font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:13px;color:var(--ink2)}
+
+/* gaps */
+ul.gaps{list-style:none;margin:30px 0 0;padding:0;display:flex;flex-wrap:wrap;gap:10px}
+ul.gaps li{
+  background:var(--card);border:1px solid var(--line);padding:9px 13px;font-size:14.5px
+}
+ul.gaps li em{font-style:normal;color:var(--ink2)}
+
+footer{margin-top:74px;border-top:1px solid var(--line);padding-top:18px;
+  font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:11px;
+  letter-spacing:.08em;text-transform:uppercase;color:var(--ink2)}
+
+a{color:var(--hazard)}
+:focus-visible{outline:2px solid var(--hazard);outline-offset:3px}
+
+@media (max-width:820px){
+  .q{grid-template-columns:1fr;gap:12px}
+  .rail{flex-direction:row;align-items:center;gap:12px}
+  .q dl{grid-template-columns:1fr;gap:3px 0}
+  .q dd{margin-bottom:9px}
+  .clash > div{grid-template-columns:1fr}
+  ol.gates li{grid-template-columns:1fr}
+}
+</style>
+
+<div class="wrap">
+
+<header class="top">
+  <p class="eyebrow">Ревизия дизайна · Ostrov · до старта производства</p>
+  <h1>Мели Острова</h1>
+  <p class="lede">Бриф описывает игру одной строкой и шестью прямоугольниками. Ниже — <b>17 вопросов, без ответов на которые Остров либо не продастся, либо не будет доделан</b>. Каждый вопрос дан в форме, которую можно закрыть решением или дешёвой проверкой, а не обсуждением.</p>
+  <p class="strip">
+    <span><b>17</b> вопросов</span>
+    <span class="hz"><b>4</b> блокируют всё остальное</span>
+    <span><b>6</b> противоречий уже в брифе</span>
+    <span>Р — риск продаж · П — риск производства</span>
+  </p>
+</header>
+
+<section>
+  <p class="kicker">Начнём с того, что уже сломано</p>
+  <h2>Бриф противоречит сам себе в шести местах</h2>
+  <p class="note">Это не придирки к формулировкам. Каждая пара ниже — два взаимоисключающих обещания игроку, и каждое из них тянет за собой свою экономику, свой код и свою аудиторию.</p>
+
+  <div class="clash">
+    <div>
+      <p class="pair">RTS <span>↔</span> Автобатлер</p>
+      <p>RTS продаёт контроль в бою. Автобатлер продаёт отказ от контроля. Игрок платит за одно из двух.</p>
+      <p class="ref">Р-03</p>
+    </div>
+    <div>
+      <p class="pair">Роглайт <span>↔</span> Градострой</p>
+      <p>Одно ядро стирает прогресс каждый забег, другое копит его месяцами. Ядро бывает только одно.</p>
+      <p class="ref">Р-02</p>
+    </div>
+    <div>
+      <p class="pair">Мало времени <span>↔</span> «Подождал ресурсы»</p>
+      <p>Шаг ожидания стоит прямо в ядре цикла. Портрет игрока — человек, у которого времени нет.</p>
+      <p class="ref">Р-07</p>
+    </div>
+    <div>
+      <p class="pair">Кооп с друзьями <span>↔</span> Набеги на твой остров</p>
+      <p>Уютный остров и потеря построек — разные фантазии. Вторая выгоняет игрока, который пришёл за первой.</p>
+      <p class="ref">Р-04</p>
+    </div>
+    <div>
+      <p class="pair">Война зданиями <span>↔</span> Война юнитами</p>
+      <p>Обе схемы в брифе описаны дословно одинаковым текстом. Разница между ними не спроектирована.</p>
+      <p class="ref">П-01</p>
+    </div>
+    <div>
+      <p class="pair">11 тегов <span>↔</span> Один бюджет</p>
+      <p>Каждый тег — обещание и полка конкурентов. Одиннадцать полок не занимает никто.</p>
+      <p class="ref">П-08</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <p class="kicker">Порядок важнее списка</p>
+  <h2>Четыре вопроса стоят выше всех дорогих систем</h2>
+
+  <figure>
+    <div class="figbox">
+      <svg viewBox="0 0 980 400" role="img" aria-label="Схема: три нерешённых вопроса дизайна определяют вопрос о юнитах и четыре решения ниже, а те задают самые дорогие производственные системы: пайплайн контента, сервера и юнит-производство.">
+        <defs>
+          <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,1 L9,5 L0,9 z" fill="currentColor"></path>
+          </marker>
+        </defs>
+
+        <g stroke="currentColor" stroke-opacity=".45" fill="none" marker-end="url(#ar)">
+          <line x1="204" y1="56" x2="299" y2="56"></line>
+          <line x1="204" y1="324" x2="299" y2="324"></line>
+          <path d="M204,190 L250,190 L250,165 L299,165"></path>
+          <path d="M204,190 L250,190 L250,233 L299,233"></path>
+          <line x1="506" y1="56" x2="643" y2="56"></line>
+          <line x1="506" y1="324" x2="643" y2="324"></line>
+          <path d="M506,165 L590,165 L590,190 L643,190"></path>
+          <path d="M506,233 L590,233 L590,208 L643,208"></path>
+        </g>
+
+        <g font-family="'IBM Plex Mono', monospace" font-size="10.5" fill="currentColor" fill-opacity=".62" text-anchor="middle">
+          <text x="258" y="46">задаёт конфликт</text>
+          <text x="258" y="314">нужны ли юниты</text>
+          <text x="248" y="180">длина забега</text>
+          <text x="566" y="46">сколько контента</text>
+          <text x="566" y="314">сколько анимаций</text>
+          <text x="566" y="150">где живёт остров</text>
+        </g>
+
+        <line x1="620" y1="8" x2="620" y2="360" stroke="var(--hazard)" stroke-opacity=".5" stroke-width="1" stroke-dasharray="4 5"></line>
+        <text x="620" y="382" font-family="'IBM Plex Mono', monospace" font-size="11" fill="var(--hazard)" text-anchor="middle">дальше начинаются деньги</text>
+
+        <g fill="var(--card)" stroke="var(--hazard)" stroke-width="1.5">
+          <rect x="8" y="24" width="196" height="64"></rect>
+          <rect x="8" y="158" width="196" height="64"></rect>
+          <rect x="8" y="292" width="196" height="64"></rect>
+          <rect x="306" y="301" width="200" height="46"></rect>
+        </g>
+        <g fill="var(--card)" stroke="currentColor" stroke-opacity=".4">
+          <rect x="306" y="33" width="200" height="46"></rect>
+          <rect x="306" y="142" width="200" height="46"></rect>
+          <rect x="306" y="210" width="200" height="46"></rect>
+          <rect x="650" y="27" width="322" height="58"></rect>
+          <rect x="650" y="170" width="322" height="58"></rect>
+          <rect x="650" y="295" width="322" height="58"></rect>
+        </g>
+
+        <g font-family="'IBM Plex Mono', monospace" font-size="10.5" fill="var(--hazard)">
+          <text x="24" y="46">Р-01</text>
+          <text x="24" y="180">Р-02</text>
+          <text x="24" y="314">Р-03</text>
+          <text x="322" y="320">П-01</text>
+        </g>
+        <g font-family="'IBM Plex Mono', monospace" font-size="10.5" fill="currentColor" fill-opacity=".6">
+          <text x="322" y="52">П-02</text>
+          <text x="322" y="161">Р-04</text>
+          <text x="322" y="229">Р-09</text>
+        </g>
+
+        <g font-family="'Golos Text', sans-serif" font-size="14" font-weight="600" fill="currentColor">
+          <text x="24" y="70">Решение в ядре</text>
+          <text x="24" y="204">Забег или город</text>
+          <text x="24" y="338">Контроль в бою</text>
+          <text x="322" y="338">Юниты вообще нужны</text>
+          <text x="322" y="70">Сколько зданий</text>
+          <text x="322" y="179">Цена набега</text>
+          <text x="322" y="247">Модель продаж</text>
+          <text x="668" y="52">Пайплайн контента</text>
+          <text x="668" y="195">Сервера и сохранения</text>
+          <text x="668" y="320">Юнит-производство</text>
+        </g>
+        <g font-family="'IBM Plex Mono', monospace" font-size="10.5" fill="currentColor" fill-opacity=".6">
+          <text x="668" y="70">здания × тиры × локализация</text>
+          <text x="668" y="213">плата за игрока каждый год</text>
+          <text x="668" y="338">анимации, пути, детерминизм</text>
+        </g>
+      </svg>
+    </div>
+    <figcaption>Малиновым — четыре вопроса уровня <span class="mono">P0</span>. Всё, что справа от пунктира, — это месяцы работы и деньги. Каждый месяц без ответа на левую колонку превращается в код, который придётся переписать.</figcaption>
+  </figure>
+</section>
+
+<section>
+  <p class="kicker">Раздел А</p>
+  <h2>Почему игра может не продаться</h2>
+
+  <div class="reg">
+
+    <article class="q p0">
+      <div class="rail"><span class="qid">Р-01</span><span class="chip">P0</span></div>
+      <div>
+        <h3>Где в ядре цикла решение, а не исполнение?</h3>
+        <dl>
+          <dt>Почему</dt>
+          <dd>Цикл в брифе звучит так: игрок смотрит на гексы, видит доступные здания, выбирает «более всего подходящее». Если «подходящее» вычисляется из гексов и ресурсов, игрок не решает, а исполняет чек-лист. Такой цикл не удержит игрока при любом объёме контента.</dd>
+          <dt>Ответ</dt>
+          <dd>Назовите ограничение, из-за которого два хороших здания исключают друг друга. Кандидаты: лимит клеток, требование к соседним гексам, один дефицитный ресурс на две ветки, взаимоисключающие апгрейды.</dd>
+          <dt>Проверка</dt>
+          <dd>Бумажный прототип на гексовой сетке: шесть игроков, десять партий. Метрика одна — сколько раз игрок думал над ходом дольше трёх секунд.</dd>
+        </dl>
+      </div>
+    </article>
+
+    <article class="q p0">
+      <div class="rail"><span class="qid">Р-02</span><span class="chip">P0</span></div>
+      <div>
+        <h3>Остров стирается между забегами или растёт месяцами?</h3>
+        <dl>
+          <dt>Почему</dt>
+          <dd>Роглайт стирает прогресс, градострой его хранит. В теги записано и то, и другое. От этого ответа зависят экономика, сохранения, набеги, сервера и цена копии. Сменить его после начала работы над экономикой — значит начать игру заново.</dd>
+          <dt>Ответ</dt>
+          <dd>Длина забега в минутах, список того, что переносится, список того, что стирается. Одно число и два списка.</dd>
+          <dt>Проверка</dt>
+          <dd>Проверять нечего: это решение владельца проекта. Нужно до первой строки кода экономики.</dd>
+        </dl>
+      </div>
+    </article>
+
+    <article class="q p0">
+      <div class="rail"><span class="qid">Р-03</span><span class="chip">P0</span></div>
+      <div>
+        <h3>Игрок управляет боем или смотрит на него?</h3>
+        <dl>
+          <dt>Почему</dt>
+          <dd>RTS-игрок купит игру ради контроля и вернёт её через сорок минут, если контроля нет. Игрок автобатлера не станет разбираться с микроконтролем. Тег, который вы не выполняете, приносит возвраты и отзывы «не то, что обещали».</dd>
+          <dt>Ответ</dt>
+          <dd>Одна фраза: «в бою игрок делает X». Плюс три тега Steam, которые остаются на странице. Остальные восемь вычеркнуты письменно.</dd>
+          <dt>Проверка</dt>
+          <dd>Два варианта капсулы и описания страницы на одинаковом трафике. Сравниваем конверсию в вишлист.</dd>
+        </dl>
+      </div>
+    </article>
+
+    <article class="q">
+      <div class="rail"><span class="qid">Р-04</span></div>
+      <div>
+        <h3>Что игрок теряет, когда его остров грабят?</h3>
+        <dl>
+          <dt>Почему</dt>
+          <dd>Потеря построек бьёт по фантазии «мой город» — за это уходят молча. Отсутствие потери убивает смысл обороны — тогда половина зданий не нужна. Между этими краями узкий коридор, и его задают числами, а не намерением.</dd>
+          <dt>Ответ</dt>
+          <dd>Список того, что можно отнять, время полного восстановления и правило доступа: кто вообще имеет право напасть на мой остров.</dd>
+          <dt>Проверка</dt>
+          <dd>Двадцать человек из целевого портрета, один вопрос: «друг сжёг твою ферму, пока ты спал — играешь дальше?»</dd>
+        </dl>
+      </div>
+    </article>
+
+    <article class="q">
+      <div class="rail"><span class="qid">Р-05</span></div>
+      <div>
+        <h3>Кооп — один остров на двоих или два острова рядом?</h3>
+        <dl>
+          <dt>Почему</dt>
+          <dd>Общий остров даёт спор о клетке, ожидание медленного друга и гриферство. Два острова дают игру рядом, а не вместе. Это два разных дизайна, два разных объёма сетевого кода и две разные цены.</dd>
+          <dt>Ответ</dt>
+          <dd>Схема на одной картинке. Плюс два ответа: можно ли войти в чужую сессию посреди игры, и что происходит с общим прогрессом, пока друг офлайн.</dd>
+          <dt>Проверка</dt>
+          <dd>Портрет игрока говорит «мало времени». Значит проверяем одно: игра остаётся полноценной, когда друг не зашёл.</dd>
+        </dl>
+      </div>
+    </article>
+
+    <article class="q">
+      <div class="rail"><span class="qid">Р-06</span></div>
+      <div>
+        <h3>Почему второй остров играется иначе, чем первый?</h3>
+        <dl>
+          <dt>Почему</dt>
+          <dd>Процедурная генерация продаётся как реиграбельность. Реиграбельность появляется только тогда, когда новая карта запрещает повторить прошлый порядок постройки. Если не запрещает — генерация это декорация, и её надо вырезать вместе с её ценой.</dd>
+          <dt>Ответ</dt>
+          <dd>Механика, из-за которой один и тот же билд физически невозможен на другой карте.</dd>
+          <dt>Проверка</dt>
+          <dd>Дизайнер играет пять сгенерированных островов одним и тем же порядком постройки. Прошёл везде — реиграбельности нет.</dd>
+        </dl>
+      </div>
+    </article>
+
+    <article class="q">
+      <div class="rail"><span class="qid">Р-07</span></div>
+      <div>
+        <h3>Сколько длится сессия, и чем занят игрок во время ожидания?</h3>
+        <dl>
+          <dt>Почему</dt>
+          <dd>В ядре цикла стоит шаг «подождал, пока накопятся ресурсы». Ожидание в реальном времени — механика мобильного F2P. В премиум-игре на Steam за неё ставят возврат, а у нашего игрока времени нет по определению.</dd>
+          <dt>Ответ</dt>
+          <dd>Длина сессии в минутах, длина самого долгого ожидания в секундах, и действие, доступное внутри этого ожидания.</dd>
+          <dt>Проверка</dt>
+          <dd>Замер на грейбоксе: сколько секунд в минуту игрок не нажимает ничего. Больше двадцати — цикл сломан.</dd>
+        </dl>
+      </div>
+    </article>
+
+    <article class="q">
+      <div class="rail"><span class="qid">Р-08</span></div>
+      <div>
+        <h3>Какой один кадр продаёт эту игру?</h3>
+        <dl>
+          <dt>Почему</dt>
+          <dd>Автобатлер-градострой плохо показывается: гексы с растущими цифрами не собирают вишлисты. Вишлисты решают судьбу релиза. Нет кадра — нет трейлера, стримеров и продаж, каким бы хорошим ни было ядро.</dd>
+          <dt>Ответ</dt>
+          <dd>Раскадровка на шесть кадров. Каждый кадр читается без текста и без звука.</dd>
+          <dt>Проверка</dt>
+          <dd>Показать шесть статичных кадров двадцати людям и спросить: что здесь делает игрок.</dd>
+        </dl>
+      </div>
+    </article>
+
+    <article class="q">
+      <div class="rail"><span class="qid">Р-09</span></div>
+      <div>
+        <h3>Премиум, F2P или ранний доступ?</h3>
+        <dl>
+          <dt>Почему</dt>
+          <dd>Набеги, таймеры и бесконечная прогрессия — механики F2P. Портрет игрока — премиум-кооп в Steam. Экономика проектируется под одну модель; смена модели после этого означает новую игру.</dd>
+          <dt>Ответ</dt>
+          <dd>Цена, платформа, дата. Отдельной строкой: сколько стоит один игрок в год и что происходит с серверами через три года после релиза.</dd>
+          <dt>Проверка</dt>
+          <dd>Посчитать хранение и симуляцию острова офлайн-игрока. Сравнить с чистой выручкой с одной копии.</dd>
+        </dl>
+      </div>
+    </article>
+
+  </div>
+</section>
+
+<section>
+  <p class="kicker">Раздел Б</p>
+  <h2>Почему игра может не быть сделана</h2>
+
+  <div class="reg">
+
+    <article class="q p0">
+      <div class="rail"><span class="qid">П-01</span><span class="chip">P0</span></div>
+      <div>
+        <h3>Что юниты дают такого, чего не дают здания?</h3>
+        <dl>
+          <dt>Почему</dt>
+          <dd>В брифе две схемы войны — зданиями и юнитами. Их текст совпадает дословно, то есть вклад юнитов ещё не спроектирован. Платить за него придётся полностью: пути по гексам, выбор цели, набор анимаций на каждый тип, читаемость свалки из пятидесяти существ и детерминизм для сети. Это самая дорогая система проекта.</dd>
+          <dt>Ответ</dt>
+          <dd>Одна фраза про то, что юниты добавляют к бою зданиями. Фразы нет — юниты вырезаются, и это крупнейшая экономия за всё производство.</dd>
+          <dt>Проверка</dt>
+          <dd>Прототип боя только зданиями. Если он читается и держит внимание, юниты не нужны.</dd>
+        </dl>
+      </div>
+    </article>
+
+    <article class="q">
+      <div class="rail"><span class="qid">П-02</span></div>
+      <div>
+        <h3>Сколько зданий нужно, и сколько стоит одно?</h3>
+        <dl>
+          <dt>Почему</dt>
+          <dd>Глубина цикла растёт вместе с числом зданий. Каждое здание — это модель, иконка, тиры апгрейда, баланс, тултип и локализация. Ошибка в оценке одного здания умножается на весь список.</dd>
+          <dt>Ответ</dt>
+          <dd>Три числа: минимум зданий для живого цикла, часы на одно здание, число тиров с визуальным изменением. Произведение — в человеко-месяцах.</dd>
+          <dt>Проверка</dt>
+          <dd>Сделать одно здание до финального качества и замерить часы. Умножать только на замеренное, не на оценку.</dd>
+        </dl>
+      </div>
+    </article>
+
+    <article class="q">
+      <div class="rail"><span class="qid">П-03</span></div>
+      <div>
+        <h3>Кто считает бой, когда защитник офлайн?</h3>
+        <dl>
+          <dt>Почему</dt>
+          <dd>Асинхронный набег требует воспроизводимой симуляции обороны. Детерминизм — это требование ко всему коду симуляции, а не отдельная фича. Патч баланса ломает сохранённые реплеи. Именно здесь такие проекты чаще всего останавливаются навсегда.</dd>
+          <dt>Ответ</dt>
+          <dd>Выбранная модель: авторитет сервера, lockstep или доверие клиенту. И имя человека в команде, который уже отправлял такое в прод.</dd>
+          <dt>Проверка</dt>
+          <dd>Тех-спайк на две недели: двести прогонов одного боя дают побитово одинаковый результат.</dd>
+        </dl>
+      </div>
+    </article>
+
+    <article class="q">
+      <div class="rail"><span class="qid">П-04</span></div>
+      <div>
+        <h3>Как подбирается цель для набега?</h3>
+        <dl>
+          <dt>Почему</dt>
+          <dd>Растущие острова требуют оценки силы. Оценить силу города с процедурной картой — отдельная тяжёлая задача. Без неё остров сорокового уровня фармит остров пятого, и новые игроки уходят в первый день.</dd>
+          <dt>Ответ</dt>
+          <dd>Формула силы острова и правило подбора, проверенные на симуляции, а не на глаз.</dd>
+          <dt>Проверка</dt>
+          <dd>Прогнать формулу на тысяче случайных островов и посмотреть разброс исхода боя.</dd>
+        </dl>
+      </div>
+    </article>
+
+    <article class="q">
+      <div class="rail"><span class="qid">П-05</span></div>
+      <div>
+        <h3>Лейт-гейм-босс стоит своей доли бюджета?</h3>
+        <dl>
+          <dt>Почему</dt>
+          <dd>Босс — это уникальный арт, уникальные механики и уникальный проигрыш. В структуре игры он стоит выше всего остального, а увидят его единицы процентов игроков. По цене за одного увидевшего это худшая покупка в проекте.</dd>
+          <dt>Ответ</dt>
+          <dd>Доля бюджета на босса и альтернативный финал дешевле: волны, ладдер или рекорд.</dd>
+          <dt>Проверка</dt>
+          <dd>Посмотреть ачивки похожих игр в Steam. Процент дошедших до финала — это и есть аудитория босса.</dd>
+        </dl>
+      </div>
+    </article>
+
+    <article class="q">
+      <div class="rail"><span class="qid">П-06</span></div>
+      <div>
+        <h3>Кто и когда напишет симулятор баланса?</h3>
+        <dl>
+          <dt>Почему</dt>
+          <dd>Экономика из нескольких ресурсов, десятков зданий, дерева апгрейдов и PvP руками не балансируется. Без симулятора последние полгода уходят в правки на ощупь, и дата релиза перестаёт существовать.</dd>
+          <dt>Ответ</dt>
+          <dd>Строка в плане: инструмент, исполнитель, дата. До вертикального слайса, не после.</dd>
+          <dt>Проверка</dt>
+          <dd>Симулятор за минуту прогоняет тысячу партий и печатает, какая стратегия победила.</dd>
+        </dl>
+      </div>
+    </article>
+
+    <article class="q">
+      <div class="rail"><span class="qid">П-07</span></div>
+      <div>
+        <h3>Сколько типов ресурсов в экономике?</h3>
+        <dl>
+          <dt>Почему</dt>
+          <dd>Каждый тип ресурса умножает интерфейс, тултипы, баланс и туториал. Три ресурса читаются с одного взгляда, семь — нет. Лишний ресурс платный и не добавляет ни одного решения.</dd>
+          <dt>Ответ</dt>
+          <dd>Число ресурсов и роль каждого. Ресурс, который не создаёт отдельного решения, вырезается.</dd>
+          <dt>Проверка</dt>
+          <dd>Для каждого ресурса написать решение, которое без него исчезнет. Не написалось — вон из игры.</dd>
+        </dl>
+      </div>
+    </article>
+
+    <article class="q">
+      <div class="rail"><span class="qid">П-08</span></div>
+      <div>
+        <h3>Что вырезаем, если опаздываем на три месяца?</h3>
+        <dl>
+          <dt>Почему</dt>
+          <dd>Список, составленный заранее, стоит один разговор. Тот же список под давлением стоит команду и качество всего, что осталось. Опоздание случится: одиннадцать тегов не помещаются ни в один бюджет.</dd>
+          <dt>Ответ</dt>
+          <dd>Упорядоченные пять фич на рез и имя человека, который режет без совещания.</dd>
+          <dt>Проверка</dt>
+          <dd>Кооп, набеги, босс, юниты, процедурная генерация — расставьте их в порядке реза сегодня.</dd>
+        </dl>
+      </div>
+    </article>
+
+  </div>
+</section>
+
+<section>
+  <p class="kicker">Что делать с этим списком</p>
+  <h2>Семь недель до вертикального слайса</h2>
+  <p class="note">Часть вопросов закрывается решением за день, часть — только прототипом. Порядок задан зависимостями со схемы выше, а не важностью.</p>
+
+  <ol class="gates">
+    <li><b>Неделя 0</b><span><i>Р-02, Р-03, Р-09.</i> Это решения, а не гипотезы. Один человек, один день, письменно. До них любая работа над экономикой и сетью — работа в мусор.</span></li>
+    <li><b>Недели 1–2</b><span><i>Р-01, Р-06, П-07.</i> Бумажный прототип на гексовой сетке. Ядро либо создаёт конфликт выбора, либо нет; выясняется это за две недели, а не за два года.</span></li>
+    <li><b>Недели 3–4</b><span><i>П-01, П-03.</i> Параллельно: бой только зданиями и тех-спайк на детерминизм. Оба результата решают, существует ли в проекте юнит-производство.</span></li>
+    <li><b>Недели 5–6</b><span><i>П-02, Р-08.</i> Одно здание до финального качества с замером часов. Из того же ассета собираются шесть кадров трейлера.</span></li>
+    <li><b>Неделя 7</b><span><i>Гейт.</i> Играбельные десять минут на серых боксах. Проходим дальше, если игрок думал над ходом дольше трёх секунд хотя бы пять раз и не простаивал больше двадцати секунд в минуту.</span></li>
+    <li><b>После гейта</b><span><i>Р-04, Р-05, П-04, П-05, П-06, П-08.</i> Эти вопросы стоят денег, но не блокируют ядро. Открывать их только после того, как ядро подтверждено.</span></li>
+  </ol>
+</section>
+
+<section>
+  <p class="kicker">Не забыть</p>
+  <h2>Чего в брифе нет вообще</h2>
+  <p class="note">Ни один из пунктов ниже не является мелочью бюджета. Каждый обычно всплывает за три месяца до релиза.</p>
+  <ul class="gaps">
+    <li>Первые десять минут игры <em>— туториал в стратегии дороже уровня</em></li>
+    <li>Объём интерфейса <em>— в градострое это отдельный проект</em></li>
+    <li>Арт-стиль и его цена за ассет</li>
+    <li>Звук и музыка <em>— автобатлеру нужна обратная связь боя</em></li>
+    <li>Управление и платформа <em>— мышь или геймпад решает всю UI-схему</em></li>
+    <li>Античит для PvP-набегов</li>
+    <li>Локализация <em>— умножается на число зданий</em></li>
+    <li>Размер команды и деньги до слайса</li>
+  </ul>
+</section>
+
+<footer>Ostrov · ревизия дизайн-документа · 17 открытых вопросов, 0 закрытых</footer>
+
+</div>
