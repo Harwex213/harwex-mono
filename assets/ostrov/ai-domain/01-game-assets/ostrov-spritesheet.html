@@ -1,0 +1,416 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ostrov — каталог игровых спрайтов</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --ink: #f5efd9;
+      --muted: #aaa58f;
+      --panel: #17211f;
+      --line: #34443c;
+      --accent: #f2b84b;
+      --teal: #5bbab0;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background:
+        radial-gradient(circle at 10% 0%, rgba(91, 186, 176, .13), transparent 28rem),
+        radial-gradient(circle at 95% 5%, rgba(242, 184, 75, .11), transparent 30rem),
+        #0d1413;
+      color: var(--ink);
+      font: 16px/1.55 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    header, main, footer { width: min(1440px, calc(100% - 32px)); margin-inline: auto; }
+    header { padding: 64px 0 28px; }
+    h1 { margin: 0 0 8px; font-size: clamp(2.3rem, 6vw, 5.5rem); line-height: .95; letter-spacing: -.06em; }
+    .lede { max-width: 850px; color: var(--muted); font-size: 1.05rem; }
+    .summary { display: flex; flex-wrap: wrap; gap: 10px; margin: 24px 0; }
+    .pill { padding: 6px 11px; border: 1px solid var(--line); border-radius: 999px; background: rgba(23,33,31,.72); color: var(--muted); }
+    .pill strong { color: var(--accent); }
+    .toolbar { display: flex; gap: 10px; flex-wrap: wrap; position: sticky; top: 0; z-index: 10; padding: 12px 0; background: rgba(13,20,19,.92); backdrop-filter: blur(12px); }
+    button, input { color: var(--ink); background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 13px; font: inherit; }
+    input { flex: 1 1 260px; }
+    button { cursor: pointer; }
+    button:hover, button.active { border-color: var(--accent); color: var(--accent); }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; padding: 22px 0 60px; }
+    article { display: flex; flex-direction: column; min-width: 0; overflow: hidden; border: 1px solid var(--line); border-radius: 18px; background: linear-gradient(155deg, rgba(29,42,39,.95), rgba(19,28,26,.95)); }
+    .preview { display: grid; place-items: center; aspect-ratio: 1; padding: 20px; background-color: #d8d0b6; background-image: linear-gradient(45deg, #c5bda5 25%, transparent 25%), linear-gradient(-45deg, #c5bda5 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #c5bda5 75%), linear-gradient(-45deg, transparent 75%, #c5bda5 75%); background-size: 24px 24px; background-position: 0 0, 0 12px, 12px -12px, -12px 0; }
+    .preview img { display: block; width: 100%; height: 100%; object-fit: contain; filter: drop-shadow(0 12px 12px rgba(17,22,19,.25)); }
+    .body { display: flex; flex: 1; flex-direction: column; padding: 18px; }
+    .eyebrow { color: var(--teal); font-size: .78rem; font-weight: 750; letter-spacing: .09em; text-transform: uppercase; }
+    h2 { margin: 5px 0 7px; font-size: 1.25rem; line-height: 1.2; }
+    .purpose { min-height: 3em; margin: 0 0 14px; color: var(--muted); }
+    .file { display: block; overflow: hidden; color: var(--accent); text-overflow: ellipsis; white-space: nowrap; }
+    details { margin-top: 15px; border-top: 1px solid var(--line); padding-top: 12px; }
+    summary { cursor: pointer; color: var(--muted); }
+    pre { overflow: auto; max-height: 390px; margin: 12px 0 0; padding: 13px; border-radius: 10px; background: #0b1110; color: #d9d4c1; white-space: pre-wrap; font: 12px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .empty { grid-column: 1 / -1; padding: 60px; text-align: center; color: var(--muted); }
+    footer { border-top: 1px solid var(--line); padding: 24px 0 44px; color: var(--muted); }
+    @media (max-width: 520px) { header { padding-top: 38px; } .grid { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <header>
+    <p class="eyebrow">Game-ready asset catalog · MVP</p>
+    <h1>OSTROV<br>SPRITES</h1>
+    <p class="lede">Минимальный набор спрайтов, напрямую покрывающий цикл из GDD: развитие летающего острова, накопление и трата очков, строительство и улучшения, автоматический бой и налёты на чужие острова. Конкретные классы и ресурсы сведены к функциональному минимуму там, где GDD не задаёт детализацию.</p>
+    <div class="summary">
+      <span class="pill"><strong id="total">19</strong> спрайтов</span>
+      <span class="pill">единая камера 3/4 сверху</span>
+      <span class="pill">прозрачный PNG</span>
+      <span class="pill">fantasy RTS</span>
+    </div>
+    <div class="toolbar" aria-label="Фильтры каталога">
+      <input id="search" type="search" placeholder="Найти спрайт…" aria-label="Поиск спрайта">
+      <button class="active" data-filter="all">Все</button>
+      <button data-filter="world">Мир и экономика</button>
+      <button data-filter="combat">Бой</button>
+      <button data-filter="ui">UI и VFX</button>
+    </div>
+  </header>
+
+  <main>
+    <section id="grid" class="grid" aria-live="polite"></section>
+  </main>
+
+  <footer>
+    Спрайты сгенерированы отдельными запросами ChatGPT Images. Шахматный фон служит только для проверки прозрачности и не является частью PNG.
+  </footer>
+
+  <script>
+    const sprites = [
+      {
+        n: 1, category: 'world', name: 'Летающий остров', file: 'floating-island-01.png',
+        purpose: 'Базовая площадка мира: домашний остров с местом под здания.',
+        prompt: `Use case: stylized-concept
+Asset type: game-ready world sprite for a fantasy RTS
+Primary request: Create one compact floating island that serves as the buildable home-island foundation for a town.
+Scene/backdrop: genuinely transparent background; isolated asset only.
+Subject: a broad oval island with a mostly flat grassy buildable top, subtle worn-earth paths and several clearly empty building plots; rocky soil tapering beneath into a floating underside; a few tiny edge shrubs and stones for scale, but no buildings.
+Style/medium: polished stylized low-poly 3D with hand-painted textures, cozy fantasy strategy-game aesthetic, chunky readable forms, restrained detail.
+Composition/framing: orthographic 3/4 top-down view at about 35 degrees, centered, entire island and underside visible, generous transparent padding, square canvas; no element cropped.
+Lighting/mood: warm neutral daylight from upper left, soft ambient occlusion, inviting and calm.
+Color palette: fresh moss green, warm tan soil, muted gray-brown rock.
+Constraints: single isolated island; large unobstructed buildable surface; crisp silhouette; consistent game-ready sprite; real alpha transparency.
+Avoid: ocean, sky, clouds, horizon, buildings, bridges, characters, enemies, resource icons, grid lines, labels, UI, border, drop-shadow backdrop, watermark, photorealism.`
+      },
+      {
+        n: 2, category: 'world', name: 'Ратуша', file: 'town-hall-02.png',
+        purpose: 'Стартовый центр поселения и визуальный якорь прогрессии.',
+        prompt: `Use case: stylized-concept
+Asset type: game-ready building sprite for a fantasy RTS
+Primary request: Create a compact level-one town hall that visually anchors a newly founded island settlement.
+Scene/backdrop: genuinely transparent background; isolated building only.
+Subject: sturdy timber-and-stone civic hall with a steep teal shingle roof, small central lookout, warm doorway, modest banner with no emblem, crates and one barrel kept tight to the footprint; prosperous enough to read as the main building but clearly early-game.
+Style/medium: polished stylized low-poly 3D with hand-painted textures, cozy fantasy strategy-game aesthetic, chunky readable forms, restrained detail.
+Composition/framing: orthographic 3/4 top-down view at about 35 degrees, front facing lower right, centered, complete compact footprint, generous transparent padding, square canvas.
+Lighting/mood: warm neutral daylight from upper left, soft ambient occlusion, welcoming.
+Color palette: warm oak, pale stone, muted teal roof, small amber accents.
+Materials/textures: readable timber beams, plaster, stone foundation, matte shingles.
+Constraints: single isolated building; strong distinct silhouette; no integrated terrain tile; consistent scale with other buildings; real alpha transparency.
+Avoid: people, weapons, legible symbols, text, UI, health bars, scenery, island, background, border, watermark, photorealism.`
+      },
+      {
+        n: 3, category: 'world', name: 'Сборщик эфира', file: 'aether-collector-03.png',
+        purpose: 'Универсальный пассивный производитель ресурсов/очков.',
+        prompt: `Use case: stylized-concept
+Asset type: game-ready economy-building sprite for a fantasy RTS
+Primary request: Create a small magical resource collector that passively gathers glowing aether energy for island construction and upgrades.
+Scene/backdrop: genuinely transparent background; isolated building only.
+Subject: compact stone-and-brass collector with one suspended cyan crystal inside a forked wooden frame, a small wheel and two capped storage canisters; clearly an economy building, not a weapon.
+Style/medium: polished stylized low-poly 3D with hand-painted textures, cozy fantasy strategy-game aesthetic, chunky readable forms, restrained detail.
+Composition/framing: orthographic 3/4 top-down view at about 35 degrees, front facing lower right, centered, complete compact footprint, generous transparent padding, square canvas.
+Lighting/mood: warm daylight from upper left plus a restrained cyan magical glow, soft ambient occlusion.
+Color palette: pale stone, warm timber, aged brass, cyan-blue energy accent.
+Materials/textures: matte carved stone, wood, simple brass bands, faceted glowing crystal.
+Constraints: single isolated building; crystal glow must remain readable at small size; no integrated ground tile; real alpha transparency.
+Avoid: laser cannon silhouette, characters, coins, text, UI, resource counters, scenery, background, border, watermark, photorealism.`
+      },
+      {
+        n: 4, category: 'world', name: 'Мастерская строителей', file: 'builders-workshop-04.png',
+        purpose: 'Объясняет открытие новых зданий и улучшение существующих.',
+        prompt: `Use case: stylized-concept
+Asset type: game-ready construction-building sprite for a fantasy RTS
+Primary request: Create a compact builder’s workshop used to unlock new structures and improve existing ones.
+Scene/backdrop: genuinely transparent background; isolated building only.
+Subject: cozy open-sided timber workshop with an ochre canvas roof, sturdy workbench, bundled planks, stone blocks, mallet and rolled blank plans; all props contained tightly within the footprint.
+Style/medium: polished stylized low-poly 3D with hand-painted textures, cozy fantasy strategy-game aesthetic, chunky readable forms, restrained detail.
+Composition/framing: orthographic 3/4 top-down view at about 35 degrees, front facing lower right, centered, complete compact footprint, generous transparent padding, square canvas.
+Lighting/mood: warm neutral daylight from upper left, soft ambient occlusion, industrious and friendly.
+Color palette: honey-brown timber, ochre cloth, pale stone, muted iron accents.
+Materials/textures: hewn wood, canvas, rough stone blocks, matte metal tools.
+Constraints: single isolated building; workshop function instantly readable; no integrated terrain tile; real alpha transparency.
+Avoid: builders or people, readable writing on plans, text, UI, cranes extending out of frame, scenery, background, border, watermark, photorealism.`
+      },
+      {
+        n: 5, category: 'world', name: 'Стройплощадка', file: 'construction-site-05.png',
+        purpose: 'Универсальное промежуточное состояние строящегося здания.',
+        prompt: `Use case: stylized-concept
+Asset type: game-ready construction-state sprite for a fantasy RTS
+Primary request: Create a universal early-stage fantasy building construction site that can stand in for any structure while it is being built.
+Scene/backdrop: genuinely transparent background; isolated construction footprint only.
+Subject: low square stone foundation, four short timber scaffold posts, partial wall frame, neatly stacked planks and stone blocks, one rope pulley and blank rolled plans; visibly unfinished but tidy and readable.
+Style/medium: polished stylized low-poly 3D with hand-painted textures, cozy fantasy strategy-game aesthetic, chunky readable forms, restrained detail.
+Composition/framing: orthographic 3/4 top-down view at about 35 degrees, front facing lower right, centered, low compact footprint matching the building set, generous transparent padding, square canvas.
+Lighting/mood: warm neutral daylight from upper left, soft ambient occlusion.
+Color palette: raw honey timber, pale limestone, muted iron, small ochre cloth accent.
+Materials/textures: unfinished wood beams, rough-cut stone, rope, matte iron fittings.
+Constraints: one isolated construction site; unmistakably incomplete; no finished roof or specific building identity; real alpha transparency.
+Avoid: workers, text, warning signs, UI progress bar, dust cloud hiding the silhouette, scenery, island, background, border, watermark, photorealism.`
+      },
+      {
+        n: 6, category: 'world', name: 'Небесный док', file: 'sky-dock-06.png',
+        purpose: 'Точка отправления и возвращения межостровных экспедиций.',
+        prompt: `Use case: stylized-concept
+Asset type: game-ready transport-building sprite for a fantasy RTS
+Primary request: Create a compact fantasy sky dock used to launch expeditions from one floating island to another.
+Scene/backdrop: genuinely transparent background; isolated building only.
+Subject: short timber-and-stone dock platform with a tiny roofed dispatch hut, stout mooring mast, coiled rope, two buoyant crystal lanterns and a clearly open outer berth; no vehicle included.
+Style/medium: polished stylized low-poly 3D with hand-painted textures, cozy fantasy strategy-game aesthetic, chunky readable forms, restrained detail.
+Composition/framing: orthographic 3/4 top-down view at about 35 degrees, dock projects toward lower right, centered, entire structure visible, compact footprint, generous transparent padding, square canvas.
+Lighting/mood: warm neutral daylight from upper left, subtle cyan crystal glow, adventurous but calm, soft ambient occlusion.
+Color palette: honey timber, pale stone, muted teal cloth, cyan-blue glow.
+Materials/textures: hewn planks, rope, carved stone, faceted crystals, matte cloth canopy.
+Constraints: single isolated dock; readable transport function; no integrated island or terrain; real alpha transparency.
+Avoid: airship, boat, water, people, flags with symbols, text, UI, clouds, scenery, background, border, watermark, photorealism.`
+      },
+      {
+        n: 7, category: 'combat', name: 'Островной мечник', file: 'island-swordsman-07.png',
+        purpose: 'Базовый союзный юнит ближнего боя.',
+        prompt: `Use case: stylized-concept
+Asset type: game-ready RTS combat unit sprite
+Primary request: a basic island-town swordsman for a fantasy auto-battler RTS
+Subject: one full-body human militia fighter with a short sword and small round wooden shield, practical quilted armor, simple teal-and-cream island-town cloth accents, alert neutral combat-ready stance
+Style/medium: stylized hand-painted fantasy game art, chunky readable shapes, modest detail, not pixel art, consistent production sprite
+Composition/framing: single isolated character, three-quarter isometric view from above, facing lower-right, entire silhouette and equipment visible, centered with generous transparent padding
+Lighting/mood: soft neutral daylight from upper-left, calm readiness
+Materials/textures: worn wood, iron, quilted cloth, leather
+Constraints: genuinely transparent background with clean alpha edges; one character only; no ground plane, base, scenery, cast shadow, particles, text, UI, border, logo, or watermark
+Avoid: photorealism, anime, chibi proportions, dramatic perspective, cropped weapon or feet, extra limbs or gear.`
+      },
+      {
+        n: 8, category: 'combat', name: 'Островной лучник', file: 'island-archer-08.png',
+        purpose: 'Базовый союзный юнит дальнего боя.',
+        prompt: `Use case: stylized-concept
+Asset type: game-ready RTS combat unit sprite
+Primary request: a basic island-town archer for a fantasy auto-battler RTS
+Subject: one full-body human archer holding a simple wooden recurve bow at rest, small quiver, light leather-and-cloth armor, teal-and-cream island-town accents matching the allied swordsman, clear ranged-unit silhouette
+Style/medium: stylized hand-painted fantasy game art, chunky readable shapes, modest detail, not pixel art, consistent production sprite
+Composition/framing: single isolated character, three-quarter isometric view from above, facing lower-right, entire bow, quiver, body, and feet visible, centered with generous transparent padding
+Lighting/mood: soft neutral daylight from upper-left, focused and ready
+Materials/textures: worn wood, leather, linen cloth, simple iron fittings
+Constraints: genuinely transparent background with clean alpha edges; one character only; no fired arrow, ground plane, base, scenery, cast shadow, particles, text, UI, border, logo, or watermark
+Avoid: photorealism, anime, chibi proportions, oversized bow, dynamic attack effects, cropped equipment, extra limbs.`
+      },
+      {
+        n: 9, category: 'combat', name: 'Налётчик-громила', file: 'raider-brute-09.png',
+        purpose: 'Контрастный вражеский юнит ближнего боя.',
+        prompt: `Use case: stylized-concept
+Asset type: game-ready RTS enemy combat unit sprite
+Primary request: a rugged enemy island raider brute for a fantasy auto-battler RTS
+Subject: one full-body human raider with a broad single-handed axe and battered plank shield, rough layered leather armor, rust-red and charcoal cloth accents, asymmetrical scavenged gear, threatening but readable silhouette
+Style/medium: stylized hand-painted fantasy game art, chunky readable shapes, modest detail, not pixel art, same rendering language and scale as allied island-town units
+Composition/framing: single isolated character, three-quarter isometric view from above, facing lower-right, entire silhouette and equipment visible, centered with generous transparent padding
+Lighting/mood: soft neutral daylight from upper-left, aggressive readiness
+Materials/textures: chipped iron, battered wood, rough leather, coarse cloth
+Constraints: genuinely transparent background with clean alpha edges; one character only; no gore, ground plane, base, scenery, cast shadow, particles, text, UI, border, logo, or watermark
+Avoid: photorealism, anime, chibi proportions, monstrous anatomy, skull overload, cropped weapon or feet, extra limbs.`
+      },
+      {
+        n: 10, category: 'combat', name: 'Налётчик-арбалетчик', file: 'raider-crossbowman-10.png',
+        purpose: 'Контрастный вражеский юнит дальнего боя.',
+        prompt: `Use case: stylized-concept
+Asset type: game-ready RTS enemy combat unit sprite
+Primary request: a rugged enemy island raider crossbowman for a fantasy auto-battler RTS
+Subject: one full-body human raider carrying a compact wooden crossbow in a safe ready position, small bolt case, light scavenged leather armor, rust-red and charcoal cloth accents matching the raider brute, unmistakable ranged-unit silhouette
+Style/medium: stylized hand-painted fantasy game art, chunky readable shapes, modest detail, not pixel art, same rendering language and scale as all other combat units
+Composition/framing: single isolated character, three-quarter isometric view from above, facing lower-right, entire crossbow, body, and feet visible, centered with generous transparent padding
+Lighting/mood: soft neutral daylight from upper-left, watchful and hostile
+Materials/textures: worn wood, dark iron, patched leather, coarse cloth
+Constraints: genuinely transparent background with clean alpha edges; one character only; no fired bolt, gore, ground plane, base, scenery, cast shadow, particles, text, UI, border, logo, or watermark
+Avoid: photorealism, anime, chibi proportions, gun-like design, oversized weapon, cropped equipment, extra limbs.`
+      },
+      {
+        n: 11, category: 'combat', name: 'Рейдовая небесная баржа', file: 'raid-sky-barge-11.png',
+        purpose: 'Транспорт и визуальный маркер межостровного налёта.',
+        prompt: `Use case: stylized-concept
+Asset type: game-ready RTS raid vehicle sprite
+Primary request: a compact fantasy sky barge used to carry a small raiding party between floating islands
+Subject: one squat wooden airborne transport with a curved hull, small patched tan lift-balloon, two short side fins, rope rigging, iron braces, and subtle rust-red raider pennants; sturdy utilitarian silhouette, no visible crew
+Style/medium: stylized hand-painted fantasy game art, chunky readable shapes, modest detail, not pixel art, consistent with the unit sprites
+Composition/framing: single isolated vehicle, three-quarter isometric view from above, nose facing lower-right, complete silhouette including balloon and hull visible, centered with generous transparent padding
+Lighting/mood: soft neutral daylight from upper-left, adventurous but threatening
+Materials/textures: weathered wood, patched canvas, rope, dark iron
+Constraints: genuinely transparent background with clean alpha edges; one vehicle only; no island, clouds, sky backdrop, docking platform, cast shadow, motion trail, particles, text, UI, border, logo, or watermark
+Avoid: modern aircraft, steampunk machinery overload, weapons larger than the hull, cropped rigging, photorealism.`
+      },
+      {
+        n: 12, category: 'combat', name: 'Башня с баллистой', file: 'ballista-tower-12.png',
+        purpose: 'Пассивное боевое здание, автоматически атакующее в радиусе.',
+        prompt: `Use case: stylized-concept
+Asset type: game-ready RTS combat building sprite
+Primary request: a compact island-town ballista tower that automatically attacks enemies within range
+Subject: one sturdy square stone-and-timber watchtower with a clearly visible oversized wooden ballista on its open top platform, teal cloth pennant, practical fantasy construction, strong defensive silhouette
+Style/medium: stylized hand-painted fantasy game art, chunky readable shapes, modest detail, not pixel art, same world and rendering language as the combat units
+Composition/framing: single isolated building, three-quarter isometric view from above, front facing lower-right, full foundation and roofline visible, centered with generous transparent padding; building should read as roughly twice a unit’s visual mass
+Lighting/mood: soft neutral daylight from upper-left, dependable defense
+Materials/textures: pale island stone, heavy timber, rope, iron fittings, canvas
+Constraints: genuinely transparent background with clean alpha edges; one building only; ballista idle and unloaded; no terrain tile, ground plane, base, scenery, cast shadow, projectile, range circle, particles, text, UI, border, logo, or watermark
+Avoid: castle-scale tower, modern artillery, excessive ornament, cropped structure, photorealism.`
+      },
+      {
+        n: 13, category: 'combat', name: 'Сигнальный боевой рог', file: 'war-horn-beacon-13.png',
+        purpose: 'Боевое здание с запускаемым игроком активным действием.',
+        prompt: `Use case: stylized-concept
+Asset type: game-ready RTS active combat building sprite
+Primary request: an island-town war-horn beacon building that lets the player trigger a rally call during battle
+Subject: one compact timber signal platform with a large bronze horn mounted at the top, reinforced posts, small teal-and-cream banners, rope mechanism, and a tiny covered supply alcove; instantly readable as an active support building
+Style/medium: stylized hand-painted fantasy game art, chunky readable shapes, modest detail, not pixel art, same world and rendering language as the ballista tower and combat units
+Composition/framing: single isolated building, three-quarter isometric view from above, front facing lower-right, complete foundation and horn silhouette visible, centered with generous transparent padding; building should read as roughly twice a unit’s visual mass
+Lighting/mood: soft neutral daylight from upper-left, energetic readiness
+Materials/textures: weathered timber, aged bronze, rope, linen banners, iron braces
+Constraints: genuinely transparent background with clean alpha edges; one building only; horn inactive; no characters, terrain tile, ground plane, base, scenery, cast shadow, sound waves, glow, particles, text, UI, border, logo, or watermark
+Avoid: temple architecture, modern loudspeaker, excessive ornament, cropped structure, photorealism.`
+      },
+      {
+        n: 14, category: 'ui', name: 'Ресурсы / очки', file: 'resource-points-14.png',
+        purpose: 'Единый ресурс, который накапливается и тратится.',
+        prompt: `Use case: stylized-concept
+Asset type: game UI resource icon
+Primary request: a universal fantasy strategy-game resource-points token, represented by one compact faceted amber crystal coin with a subtle central spark
+Subject: one resource token only
+Style/medium: polished hand-painted fantasy RTS UI sprite, crisp readable silhouette, moderate detail, no photorealism
+Composition/framing: centered orthographic icon, square canvas, generous transparent padding
+Color palette: warm amber and muted gold with restrained ivory highlights
+Lighting/mood: soft game-icon lighting, calm and valuable
+Constraints: genuinely transparent background; one isolated object; readable at 32–64 px; no frame; no text; no numbers; no logo; no watermark
+Avoid: extra coins, scenery, inventory-slot background, drop shadow beyond the sprite, excessive glow.`
+      },
+      {
+        n: 15, category: 'ui', name: 'Построить', file: 'build-action-15.png',
+        purpose: 'Кнопка выбора и строительства доступного здания.',
+        prompt: `Use case: stylized-concept
+Asset type: game UI action icon
+Primary request: a universal build action icon for a fantasy island-town RTS, shown as one sturdy wooden mallet crossing a simple unfinished timber beam
+Subject: construction action symbol only
+Style/medium: polished hand-painted fantasy RTS UI sprite, crisp readable silhouette, moderate detail
+Composition/framing: centered orthographic icon, square canvas, generous transparent padding
+Color palette: weathered oak brown, muted iron gray, small warm highlight
+Lighting/mood: clear neutral game-icon lighting
+Materials/textures: worn wood and simple forged iron
+Constraints: genuinely transparent background; readable at 32–64 px; no frame; no text; no logo; no watermark
+Avoid: full building, characters, scenery, inventory-slot background, excessive particles.`
+      },
+      {
+        n: 16, category: 'ui', name: 'Улучшить / открыть', file: 'upgrade-unlock-action-16.png',
+        purpose: 'Трата очков на улучшение здания или открытие нового.',
+        prompt: `Use case: stylized-concept
+Asset type: game UI action icon
+Primary request: a universal upgrade-and-unlock action icon for a fantasy strategy game, combining one compact stone tower silhouette with a single upward chevron and a small opening padlock
+Subject: one unified upgrade/unlock symbol
+Style/medium: polished hand-painted fantasy RTS UI sprite, crisp readable silhouette, simplified for small UI scale
+Composition/framing: centered orthographic icon, square canvas, generous transparent padding; tower is dominant, chevron and padlock remain secondary but legible
+Color palette: cool slate gray, muted teal, restrained warm gold accents
+Lighting/mood: clear positive progression cue
+Constraints: genuinely transparent background; readable at 32–64 px; no frame; no text; no numbers; no logo; no watermark
+Avoid: multiple buildings, characters, scenery, dense ornament, inventory-slot background.`
+      },
+      {
+        n: 17, category: 'ui', name: 'Начать атаку', file: 'initiate-attack-action-17.png',
+        purpose: 'Команда прибытия к чужому острову и инициации боя.',
+        prompt: `Use case: stylized-concept
+Asset type: game UI action icon
+Primary request: a universal initiate-attack icon for an island-based fantasy RTS, shown as a bold forward-pointing arrow entering a compact circular target marker
+Subject: attack initiation symbol only
+Style/medium: polished hand-painted fantasy RTS UI sprite, crisp readable silhouette, simplified tactical icon
+Composition/framing: centered orthographic icon, square canvas, generous transparent padding, strong directional motion
+Color palette: muted crimson, dark iron, restrained warm highlight
+Lighting/mood: urgent but readable, not gory
+Constraints: genuinely transparent background; readable at 32–64 px; no frame; no text; no logo; no watermark
+Avoid: specific weapon or unit class, characters, island scenery, blood, inventory-slot background, excessive particles.`
+      },
+      {
+        n: 18, category: 'ui', name: 'Активное действие здания', file: 'active-building-action-18.png',
+        purpose: 'Универсальная кнопка активной способности боевого здания.',
+        prompt: `Use case: stylized-concept
+Asset type: game UI ability icon
+Primary request: a universal active-building-action icon for a fantasy RTS, represented by one compact stone mechanism glyph emitting a single controlled activation pulse
+Subject: one abstract building ability symbol only, with no implied element or weapon type
+Style/medium: polished hand-painted fantasy RTS UI sprite, crisp readable silhouette, simplified for small UI scale
+Composition/framing: centered orthographic icon, square canvas, generous transparent padding
+Color palette: cool stone gray, muted cyan-white activation light
+Lighting/mood: ready and energized, controlled rather than explosive
+Constraints: genuinely transparent background; readable at 32–64 px; no frame; no text; no logo; no watermark
+Avoid: fire, ice, lightning, weapons, characters, buildings in scenery, inventory-slot background, excessive glow.`
+      },
+      {
+        n: 19, category: 'ui', name: 'Радиальный урон', file: 'radius-damage-vfx-19.png',
+        purpose: 'Однокадровый VFX урона по врагам в радиусе.',
+        prompt: `Use case: stylized-concept
+Asset type: game combat VFX sprite prepared for luminance-to-alpha extraction
+Primary request: a single-frame radial damage shockwave for a fantasy RTS, an expanding circular pressure ring with a bright inner rim and sparse outward fragments, with no elemental identity
+Scene/backdrop: perfectly uniform solid pure black (#000000) background extending edge to edge
+Subject: one clean area-of-effect damage pulse only
+Style/medium: hand-painted game-ready 2D VFX sprite, smooth glow gradients, crisp impact details, readable over terrain
+Composition/framing: centered top-down circular effect, square canvas, effect fully contained with generous black padding
+Color palette: pale ivory core fading through muted amber to pure black
+Lighting/mood: forceful instantaneous impact
+Constraints: the background must be flat solid pure black with no texture, no gradient, no noise, and no lighting variation; no checkerboard anywhere; no transparency visualization; no ground plane; no text; no logo; no watermark
+Avoid: checker pattern, grid, tiles, squares, fire, ice, lightning, smoke cloud, blood, weapons, characters, scenery, opaque light background.`
+      }
+    ];
+
+    const labels = { world: 'Мир и экономика', combat: 'Бой', ui: 'UI и VFX' };
+    const grid = document.querySelector('#grid');
+    const search = document.querySelector('#search');
+    let activeFilter = 'all';
+
+    function escapeHtml(value) {
+      return value.replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[char]));
+    }
+
+    function render() {
+      const query = search.value.trim().toLocaleLowerCase('ru');
+      const visible = sprites.filter(sprite => {
+        const inCategory = activeFilter === 'all' || sprite.category === activeFilter;
+        const haystack = `${sprite.name} ${sprite.file} ${sprite.purpose}`.toLocaleLowerCase('ru');
+        return inCategory && haystack.includes(query);
+      });
+
+      grid.innerHTML = visible.length ? visible.map(sprite => `
+        <article>
+          <a class="preview" href="sprites/${sprite.file}" title="Открыть ${sprite.file}">
+            <img src="sprites/${sprite.file}" alt="${escapeHtml(sprite.name)}" loading="lazy">
+          </a>
+          <div class="body">
+            <span class="eyebrow">${String(sprite.n).padStart(2, '0')} · ${labels[sprite.category]}</span>
+            <h2>${escapeHtml(sprite.name)}</h2>
+            <p class="purpose">${escapeHtml(sprite.purpose)}</p>
+            <a class="file" href="sprites/${sprite.file}" download>${sprite.file}</a>
+            <details>
+              <summary>Промпт ChatGPT Images</summary>
+              <pre>${escapeHtml(sprite.prompt)}</pre>
+            </details>
+          </div>
+        </article>`).join('') : '<p class="empty">Ничего не найдено.</p>';
+    }
+
+    document.querySelectorAll('[data-filter]').forEach(button => {
+      button.addEventListener('click', () => {
+        activeFilter = button.dataset.filter;
+        document.querySelectorAll('[data-filter]').forEach(item => item.classList.toggle('active', item === button));
+        render();
+      });
+    });
+    search.addEventListener('input', render);
+    render();
+  </script>
+</body>
+</html>
