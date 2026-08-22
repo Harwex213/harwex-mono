@@ -1,0 +1,3 @@
+# Graph, uploaded images, and the agent's scratch cwd.
+.data/
+dist/
