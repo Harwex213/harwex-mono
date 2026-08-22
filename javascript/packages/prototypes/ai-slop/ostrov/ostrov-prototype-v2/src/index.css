@@ -1,0 +1,720 @@
+:root {
+  --panel-bg: rgba(11, 27, 42, 0.78);
+  --panel-edge: rgba(150, 205, 240, 0.22);
+  --text: #e8f2fa;
+  --muted: #9db6c9;
+  --accent: #7fc0ff;
+  --gold: #ffd479;
+  --wood: #b98a55;
+  --stone: #b9c6cf;
+  font-family: system-ui, "Segoe UI", Roboto, sans-serif;
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  overflow: hidden;
+  background: #7fa4bf;
+  color: var(--text);
+}
+
+#root {
+  height: 100%;
+}
+
+.app {
+  position: fixed;
+  inset: 0;
+}
+
+.cloud-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  pointer-events: none;
+}
+
+.map-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  touch-action: none;
+}
+
+.overlay {
+  position: absolute;
+  inset: 0;
+  padding: 14px;
+  pointer-events: none;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+/* The treasury. Absolute rather than a flex child, so it keeps the top edge to
+   itself whatever the two bottom corners grow to. */
+.resource-bar {
+  position: absolute;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  /* Shrink-to-fit reads the flex line rather than the row, so the fifth tile —
+     the army — dropped onto a second line with four still fitting. */
+  width: max-content;
+  max-width: calc(100% - 28px);
+  pointer-events: auto;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+  padding: 12px 16px;
+  border: 1px solid var(--panel-edge);
+  border-radius: 20px;
+  background: var(--panel-bg);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 14px 40px rgba(6, 20, 34, 0.4);
+}
+
+.res {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 168px;
+  padding: 8px 18px 8px 12px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.res-icon {
+  width: 40px;
+  height: 40px;
+  display: block;
+  flex: none;
+  filter: drop-shadow(0 2px 4px rgba(4, 14, 24, 0.55));
+}
+
+.res-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  line-height: 1;
+}
+
+.res-name {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.res-value {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 30px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  animation: res-bump 420ms ease-out;
+}
+
+/* The arrival, floating off the count it was added to. It ends invisible, so
+   nothing has to come back and clear it. */
+.res-delta {
+  position: absolute;
+  top: 2px;
+  right: 10px;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--gold);
+  text-shadow: 0 2px 6px rgba(4, 14, 24, 0.8);
+  pointer-events: none;
+  animation: res-rise 900ms ease-out forwards;
+}
+
+@keyframes res-bump {
+  0% {
+    color: #ffffff;
+    transform: scale(1.22);
+  }
+  100% {
+    color: var(--text);
+    transform: scale(1);
+  }
+}
+
+@keyframes res-rise {
+  0% {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  25% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-16px);
+  }
+}
+
+/* Opaque on purpose: the sea and the islands under it are the same blues and
+   greens as the marks, and a translucent overview read through them. */
+.minimap {
+  pointer-events: auto;
+  flex: none;
+  display: block;
+  cursor: pointer;
+  touch-action: none;
+  background: #0a1a2c;
+  border: 1px solid var(--panel-edge);
+  border-radius: 14px;
+  box-shadow: 0 14px 40px rgba(6, 20, 34, 0.35);
+}
+
+.build-dock {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 10px;
+  min-height: 0;
+  max-height: 100%;
+}
+
+.build-button {
+  pointer-events: auto;
+  flex: none;
+  width: 54px;
+  height: 54px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  color: var(--text);
+  cursor: pointer;
+  border: 1px solid var(--panel-edge);
+  border-radius: 15px;
+  background: var(--panel-bg);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 14px 40px rgba(6, 20, 34, 0.35);
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+
+.build-button svg {
+  width: 24px;
+  height: 24px;
+  display: block;
+}
+
+.build-button:hover {
+  background: rgba(127, 192, 255, 0.22);
+}
+
+.build-button[aria-pressed="true"] {
+  color: #0b1b2a;
+  background: var(--gold);
+  border-color: rgba(255, 212, 121, 0.7);
+}
+
+.build-panel {
+  pointer-events: auto;
+  width: 192px;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding: 10px;
+  border: 1px solid var(--panel-edge);
+  border-radius: 14px;
+  background: var(--panel-bg);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 14px 40px rgba(6, 20, 34, 0.35);
+  /* It grows out of the hammer button below it. The dock is anchored to the
+     bottom, so nothing here ever moves the button or the map. */
+  transform-origin: 100% 100%;
+  animation: build-panel-in var(--panel-anim) cubic-bezier(0.16, 0.9, 0.3, 1);
+}
+
+/* On its way out. It stops taking clicks the moment it is asked to leave, so a
+   click landing during the animation reaches the map instead of a fading tile. */
+.build-panel[data-open="false"] {
+  pointer-events: none;
+  animation: build-panel-out var(--panel-anim) ease-in forwards;
+}
+
+@keyframes build-panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.94);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes build-panel-out {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(8px) scale(0.95);
+  }
+}
+
+.build-cats {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 30px;
+  gap: 5px;
+  padding-bottom: 9px;
+  border-bottom: 1px solid var(--panel-edge);
+}
+
+.build-cat {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  cursor: pointer;
+  border: 1px solid var(--panel-edge);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.05);
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+
+.build-cat:hover {
+  color: var(--text);
+  background: rgba(127, 192, 255, 0.2);
+}
+
+.build-cat[aria-selected="true"] {
+  color: #0b1b2a;
+  background: var(--gold);
+  border-color: rgba(255, 212, 121, 0.75);
+}
+
+.cat-glyph {
+  width: 18px;
+  height: 18px;
+  display: block;
+}
+
+.build-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 53px);
+  gap: 5px;
+}
+
+.build-tile {
+  position: relative;
+  width: 53px;
+  height: 53px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  color: var(--text);
+  cursor: pointer;
+  border: 1px solid var(--panel-edge);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.06);
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+
+.build-tile:hover {
+  background: rgba(127, 192, 255, 0.22);
+  border-color: rgba(127, 192, 255, 0.55);
+}
+
+.build-tile[aria-pressed="true"] {
+  color: #0b1b2a;
+  background: var(--gold);
+  border-color: rgba(255, 212, 121, 0.75);
+}
+
+/* Priced out of reach. Dimmed, never hidden: the player has to be able to see
+   what they are saving for. Hiding is reserved for an unmet prerequisite. */
+.build-tile[data-affordable="false"] {
+  color: var(--muted);
+  opacity: 0.45;
+  border-style: dashed;
+}
+
+.build-tile[data-affordable="false"]:hover {
+  opacity: 0.7;
+  background: rgba(255, 122, 110, 0.18);
+  border-color: rgba(255, 122, 110, 0.5);
+}
+
+/* Just unlocked, and not yet looked at. Gold, because gold is this interface's
+   word for "yours now", and a pulse rather than a badge because the tile has to
+   be found in a grid the player already knows. Hovering it ends both rules. */
+.build-tile[data-attract="true"] {
+  border-color: rgba(255, 212, 121, 0.85);
+  animation: tile-attract var(--attract-period) ease-in-out infinite;
+}
+
+.build-tile[data-attract="true"]::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background-image: linear-gradient(
+    115deg,
+    rgba(255, 236, 187, 0) 38%,
+    rgba(255, 236, 187, 0.5) 50%,
+    rgba(255, 236, 187, 0) 62%
+  );
+  background-size: 260% 100%;
+  animation: tile-shimmer var(--attract-period) ease-in-out infinite;
+}
+
+@keyframes tile-attract {
+  0% {
+    background-color: rgba(255, 212, 121, 0.12);
+    box-shadow: 0 0 0 0 rgba(255, 212, 121, 0);
+  }
+  50% {
+    background-color: rgba(255, 212, 121, 0.3);
+    box-shadow: 0 0 13px 3px rgba(255, 212, 121, 0.5);
+  }
+  100% {
+    background-color: rgba(255, 212, 121, 0.12);
+    box-shadow: 0 0 0 0 rgba(255, 212, 121, 0);
+  }
+}
+
+@keyframes tile-shimmer {
+  0% {
+    background-position: 165% 0;
+  }
+  55% {
+    background-position: -65% 0;
+  }
+  100% {
+    background-position: -65% 0;
+  }
+}
+
+.tile-glyph {
+  width: 29px;
+  height: 29px;
+  display: block;
+}
+
+.build-tip {
+  position: fixed;
+  z-index: 10;
+  width: 232px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 9px 11px;
+  pointer-events: none;
+  border: 1px solid var(--panel-edge);
+  border-radius: 11px;
+  background: rgba(8, 20, 33, 0.95);
+  box-shadow: 0 14px 40px rgba(6, 20, 34, 0.45);
+}
+
+.tip-name {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.tip-costs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 11px;
+}
+
+.tip-cost {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 11.5px;
+}
+
+/* The resource the pile is short of, so the price says which one to go and get. */
+.tip-cost[data-short="true"] {
+  font-weight: 700;
+  color: #ff9a8e;
+}
+
+.tip-icon {
+  width: 13px;
+  height: 13px;
+  display: block;
+}
+
+.tip-desc {
+  font-size: 11.5px;
+  line-height: 1.35;
+  color: var(--muted);
+}
+
+.tip-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 12px;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+/* The army counter is a limit, not a pile: the room left is written smaller
+   than the number that fills it. */
+.res-limit {
+  font-size: 18px;
+  color: var(--muted);
+}
+
+.res-army[data-full="true"] .res-value {
+  color: #ff9a8e;
+}
+
+/* The barracks. Bottom centre, between the overview on the left and the build
+   dock on the right, so it never covers either. */
+.barracks-panel {
+  position: absolute;
+  left: 50%;
+  bottom: 14px;
+  transform: translateX(-50%);
+  width: 430px;
+  max-width: calc(100% - 360px);
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding: 12px 14px;
+  border: 1px solid var(--panel-edge);
+  border-radius: 16px;
+  background: var(--panel-bg);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 14px 40px rgba(6, 20, 34, 0.4);
+  animation: build-panel-in 150ms cubic-bezier(0.16, 0.9, 0.3, 1);
+}
+
+.barracks-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.barracks-head h2 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.barracks-army {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.barracks-army[data-full="true"] {
+  font-weight: 700;
+  color: #ff9a8e;
+}
+
+.unit-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.unit-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.unit-tile {
+  flex: none;
+}
+
+.unit-meta {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.unit-name {
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+/* Lit while this kind is being ordered over and over. Gold is this interface's
+   word for "on", the same as the pressed build tile. */
+.repeat-toggle {
+  flex: none;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  cursor: pointer;
+  border: 1px solid var(--panel-edge);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.05);
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+
+.repeat-toggle:hover {
+  color: var(--text);
+  background: rgba(127, 192, 255, 0.2);
+}
+
+.repeat-toggle[aria-pressed="true"] {
+  color: #0b1b2a;
+  background: var(--gold);
+  border-color: rgba(255, 212, 121, 0.75);
+}
+
+.repeat-glyph {
+  width: 20px;
+  height: 20px;
+  display: block;
+}
+
+.barracks-queue {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 9px;
+  border-top: 1px solid var(--panel-edge);
+}
+
+.queue-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.queue-head .tile-glyph {
+  width: 20px;
+  height: 20px;
+  color: var(--text);
+}
+
+.queue-cancel {
+  margin-left: auto;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  font-size: 15px;
+  line-height: 1;
+  color: var(--muted);
+  cursor: pointer;
+  border: 1px solid var(--panel-edge);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.queue-cancel:hover {
+  color: #ffd8d3;
+  background: rgba(255, 122, 110, 0.22);
+}
+
+/* The bar is one CSS animation started from the order's own clock, so a queue
+   in progress never renders a React frame. */
+.queue-bar {
+  height: 10px;
+  overflow: hidden;
+  border: 1px solid rgba(150, 205, 240, 0.4);
+  border-radius: 6px;
+  background: rgba(9, 24, 38, 0.78);
+}
+
+.queue-bar i {
+  display: block;
+  height: 100%;
+  width: 0;
+  border-radius: 5px;
+  background: linear-gradient(90deg, #7fc0ff, #ffd479);
+  animation-name: queue-fill;
+  animation-timing-function: linear;
+  animation-fill-mode: forwards;
+}
+
+@keyframes queue-fill {
+  from {
+    width: 0;
+  }
+  to {
+    width: 100%;
+  }
+}
+
+.queue-rest {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.queue-chip {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  cursor: pointer;
+  border: 1px solid var(--panel-edge);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.queue-chip:hover {
+  color: #ffd8d3;
+  border-color: rgba(255, 122, 110, 0.5);
+}
+
+.queue-chip .tile-glyph {
+  width: 18px;
+  height: 18px;
+}
+
+.barracks-idle,
+.barracks-hint,
+.barracks-warn {
+  margin: 0;
+  font-size: 11.5px;
+  line-height: 1.35;
+  color: var(--muted);
+}
+
+.barracks-idle {
+  padding-top: 9px;
+  border-top: 1px solid var(--panel-edge);
+}
+
+.barracks-warn {
+  font-weight: 600;
+  color: #ffbe74;
+}
