@@ -1,0 +1,747 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Harwex Notes Build Plan</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap">
+<style>
+:root {
+  --bg: #0d1117;
+  --surface: #161b22;
+  --surface-raised: #1c2129;
+  --border: #30363d;
+  --border-strong: #3d444d;
+  --text: #e6edf3;
+  --muted: #8b949e;
+  --accent: #58a6ff;
+  --purple: #bc8cff;
+  --green: #3fb950;
+  --orange: #d29922;
+  --red: #f85149;
+  --sans: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 15px;
+  line-height: 1.65;
+}
+
+.page {
+  max-width: 62rem;
+  margin: 0 auto;
+  padding: 3rem 1.5rem 6rem;
+  display: flex;
+  flex-direction: column;
+  gap: 2.5rem;
+}
+
+.masthead {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 1.75rem;
+}
+
+.eyebrow {
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+h1 {
+  font-size: 2.1rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  margin: 0;
+  text-wrap: balance;
+}
+
+.lede {
+  margin: 0;
+  max-width: 60ch;
+  color: var(--muted);
+  font-size: 1.02rem;
+}
+
+.meta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 0.5rem;
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.meta-row span {
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.15rem 0.5rem;
+  background: var(--surface);
+}
+
+section {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+h2 {
+  font-size: 1.28rem;
+  font-weight: 600;
+  margin: 0;
+  letter-spacing: -0.01em;
+  display: flex;
+  align-items: baseline;
+  gap: 0.7rem;
+}
+
+h2 .num {
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--accent);
+  letter-spacing: 0.08em;
+}
+
+h3 {
+  font-size: 1rem;
+  font-weight: 600;
+  margin: 0;
+  color: var(--purple);
+}
+
+p {
+  margin: 0;
+  max-width: 68ch;
+}
+
+ul, ol {
+  margin: 0;
+  padding-left: 1.35rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  max-width: 68ch;
+}
+
+a {
+  color: var(--accent);
+}
+
+code {
+  font-family: var(--mono);
+  font-size: 0.84em;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.05rem 0.3rem;
+  color: #ffd9a0;
+}
+
+pre {
+  margin: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1rem 1.1rem;
+  overflow-x: auto;
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  line-height: 1.6;
+  color: #d7dee8;
+}
+
+pre code {
+  background: none;
+  border: 0;
+  padding: 0;
+  color: inherit;
+  font-size: 1em;
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1.15rem 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.grid-2 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr));
+  gap: 0.9rem;
+}
+
+.table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.86rem;
+  font-variant-numeric: tabular-nums;
+}
+
+th, td {
+  text-align: left;
+  padding: 0.55rem 0.8rem;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+
+th {
+  background: var(--surface-raised);
+  font-weight: 600;
+  font-size: 0.76rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+td.mono, th.mono {
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+.chip {
+  display: inline-block;
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  font-weight: 500;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  border: 1px solid var(--border-strong);
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.chip-blue {
+  color: var(--accent);
+  border-color: #1f4a7a;
+  background: #10243a;
+}
+
+.chip-purple {
+  color: var(--purple);
+  border-color: #4a3670;
+  background: #241a38;
+}
+
+.chip-green {
+  color: var(--green);
+  border-color: #245c33;
+  background: #10281a;
+}
+
+.chip-orange {
+  color: var(--orange);
+  border-color: #5c4718;
+  background: #2a2110;
+}
+
+.chip-red {
+  color: var(--red);
+  border-color: #6e2b28;
+  background: #2c1514;
+}
+
+.milestones {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.milestone {
+  display: grid;
+  grid-template-columns: 4.5rem 1fr;
+  gap: 0 1rem;
+  padding: 1rem 1.15rem;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+
+.milestone:last-child {
+  border-bottom: 0;
+}
+
+.milestone .id {
+  font-family: var(--mono);
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.milestone .body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.milestone h3 {
+  color: var(--text);
+}
+
+.check {
+  font-family: var(--mono);
+  font-size: 0.76rem;
+  color: var(--green);
+}
+
+.check::before {
+  content: "gate ";
+  color: var(--muted);
+}
+
+figure {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+figure svg {
+  width: 100%;
+  height: auto;
+  display: block;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+figcaption {
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.note {
+  border-left: 2px solid var(--orange);
+  padding-left: 0.9rem;
+  color: var(--muted);
+  font-size: 0.9rem;
+  max-width: 68ch;
+}
+
+hr {
+  border: 0;
+  border-top: 1px solid var(--border);
+  margin: 0;
+}
+
+.footer {
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+</style>
+</head>
+<body>
+<div class="page">
+
+<header class="masthead">
+  <div class="eyebrow">javascript / packages / projects / harwex-notes</div>
+  <h1>Harwex Notes Build Plan</h1>
+  <p class="lede">A local web workbench over one folder on disk: a JetBrains-style file tree on the left, a tabbed editor on the right that switches its surface to match the file it opened &mdash; Excalidraw scenes, Markdown, plain text, and rendered HTML.</p>
+  <div class="meta-row">
+    <span>rspack</span><span>react 19</span><span>@preact/signals-react</span><span>tRPC 11</span><span>zod 4</span><span>node 24 native TS</span><span>excalidraw 0.18</span><span>codemirror 6</span>
+  </div>
+</header>
+
+<section>
+  <h2><span class="num">01</span> What gets built</h2>
+  <p>One workspace package holding both halves of the app. The backend exposes a single folder on disk (the <em>notes root</em>) over a typed tRPC API. The frontend browses that folder and edits its files in place. No database, no auth, no cloud &mdash; the filesystem is the model.</p>
+  <div class="grid-2">
+    <div class="card">
+      <h3>In scope</h3>
+      <ul>
+        <li>Lazy file tree: expand/collapse, keyboard navigation, file-kind icons.</li>
+        <li>Tab bar: multiple open files, dirty marker, close, middle-click close.</li>
+        <li><code>.excalidraw</code> &rarr; live Excalidraw canvas, autosaved.</li>
+        <li><code>.md</code> &rarr; CodeMirror + rendered preview toggle.</li>
+        <li><code>.txt</code> and unknown text &rarr; CodeMirror plain.</li>
+        <li><code>.html</code> &rarr; sandboxed iframe render, with a source toggle.</li>
+        <li>Explicit save (<code>Cmd/Ctrl+S</code>) with stale-write detection.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>Out of scope for the prototype</h3>
+      <ul>
+        <li>Create / rename / delete / move in the tree (read + write existing files only).</li>
+        <li>Filesystem watching and external-change push.</li>
+        <li>Search, git integration, multi-root workspaces.</li>
+        <li>Excalidraw image (binary) files and library support.</li>
+        <li>Relative asset resolution inside the HTML preview.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">02</span> Layout</h2>
+  <figure>
+    <svg viewBox="0 0 760 300" role="img" aria-label="Wireframe: narrow file tree panel on the left, tab bar above a large editor pane on the right.">
+      <rect x="14" y="14" width="132" height="272" rx="4" fill="#1c2129" stroke="#3d444d"/>
+      <text x="80" y="146" fill="#8b949e" font-family="JetBrains Mono, monospace" font-size="12" text-anchor="middle">FS viewer</text>
+      <text x="80" y="164" fill="#58a6ff" font-family="JetBrains Mono, monospace" font-size="9" text-anchor="middle">&lt;FsTree /&gt;</text>
+      <rect x="158" y="14" width="588" height="42" rx="4" fill="#1c2129" stroke="#3d444d"/>
+      <text x="452" y="36" fill="#8b949e" font-family="JetBrains Mono, monospace" font-size="12" text-anchor="middle">tabs</text>
+      <text x="452" y="50" fill="#58a6ff" font-family="JetBrains Mono, monospace" font-size="9" text-anchor="middle">&lt;TabBar /&gt;</text>
+      <rect x="158" y="66" width="588" height="220" rx="4" fill="#1c2129" stroke="#3d444d"/>
+      <text x="452" y="168" fill="#8b949e" font-family="JetBrains Mono, monospace" font-size="12" text-anchor="middle">excalidraw / markdown / text / html viewer</text>
+      <text x="452" y="186" fill="#58a6ff" font-family="JetBrains Mono, monospace" font-size="9" text-anchor="middle">&lt;EditorHost /&gt;</text>
+      <line x1="150" y1="20" x2="150" y2="280" stroke="#30363d" stroke-dasharray="3 4"/>
+    </svg>
+    <figcaption>Two columns. The left panel is resizable by dragging the divider; its width is remembered in <code>localStorage</code>. The right column is a fixed-height tab strip over a pane that fills the rest.</figcaption>
+  </figure>
+</section>
+
+<section>
+  <h2><span class="num">03</span> Where it lives</h2>
+  <p>A single Yarn workspace package, <code>@hw/harwex-notes</code>. Frontend, backend, and the contract they share sit in one package on purpose: tRPC infers the client type straight from the router type, and keeping both under one <code>tsconfig</code> pair avoids the workspace-symlink watch trap that <code>ostrov-prototype-v2</code> had to work around in its rspack config.</p>
+  <pre><code>javascript/packages/projects/harwex-notes/
+  docs/plan.html              this document
+  index.html                  rspack HTML template
+  package.json                @hw/harwex-notes
+  rspack.config.mjs           web bundle + /trpc proxy to the API
+  tsconfig.json               browser: src + shared
+  tsconfig.server.json        node: server + shared
+  scripts/dev.mjs             runs API and web dev server together
+  notes-root/                 committed sample content (4 file kinds)
+  shared/
+    contract.ts               zod schemas, inferred DTO types
+    file-kind.ts              extension -> editor kind
+  server/
+    index.ts                  standalone tRPC http server
+    router.ts                 appRouter: fs.list, file.read, file.write
+    workspace.ts              root resolution + path containment
+    workspace.test.ts         node --test over the containment rules
+  src/
+    main.tsx
+    api/client.ts             createTRPCClient&lt;AppRouter&gt;
+    state/
+      tree-store.ts           expanded dirs, loaded children, selection
+      tabs-store.ts           open tabs, active tab, dirty flags
+      doc-store.ts            per-tab document buffers
+    components/
+      app.tsx  splitter.tsx  fs-tree.tsx  tree-row.tsx  tab-bar.tsx
+      editor-host.tsx
+      editors/
+        excalidraw-editor.tsx  markdown-editor.tsx
+        text-editor.tsx        html-preview.tsx
+    styles/</code></pre>
+  <p class="note">The notes root defaults to <code>./notes-root</code> inside the package and is overridden with <code>NOTES_ROOT=/abs/path</code>. Committing sample content means the app has something to show on first <code>yarn dev</code>.</p>
+</section>
+
+<section>
+  <h2><span class="num">04</span> Stack, and why each piece</h2>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Piece</th><th class="mono">Version</th><th>Role</th><th>Note</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>rspack + @rspack/cli, dev-server</td><td class="mono">2.2.0</td><td>Bundler and dev server</td><td>Repo default for frontend apps. <code>builtin:swc-loader</code>, no babel.</td></tr>
+        <tr><td>react, react-dom</td><td class="mono">19.2.0</td><td>UI runtime</td><td>Pinned to the version already in <code>yarn.lock</code>; <code>@types/react</code> is resolution-pinned repo-wide.</td></tr>
+        <tr><td>@preact/signals-react</td><td class="mono">3.12.0</td><td>All app state</td><td>Repo convention: signals in <code>state/</code>, <code>useSignals()</code> from <code>/runtime</code> in every component that reads one.</td></tr>
+        <tr><td>@trpc/server, @trpc/client</td><td class="mono">11.18.0</td><td>Typed RPC</td><td><code>httpBatchLink</code> in the browser, <code>@trpc/server/adapters/standalone</code> on the server &mdash; no express.</td></tr>
+        <tr><td>zod</td><td class="mono">4.4.3</td><td>Input validation, shared DTO types</td><td>tRPC 11 takes zod 4 directly as a Standard Schema validator.</td></tr>
+        <tr><td>@excalidraw/excalidraw</td><td class="mono">0.18.1</td><td>Drawing surface</td><td>React-DOM only. Peer range covers React 19.</td></tr>
+        <tr><td>codemirror + @codemirror/lang-markdown, lang-html</td><td class="mono">6.x</td><td>Text and Markdown editing</td><td>Chosen over Monaco: ~10x smaller, no worker plumbing, still the best-maintained option.</td></tr>
+        <tr><td>marked + dompurify</td><td class="mono">18.x / 3.x</td><td>Markdown preview</td><td>Already the pairing used by <code>agentic-learn-harness</code>.</td></tr>
+        <tr><td>typescript</td><td class="mono">5.9.3</td><td>Typecheck only</td><td>Matches the repo pin. Node 24 executes server <code>.ts</code> natively; nothing is emitted.</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p><strong>Rejected:</strong> Monaco (worker/bundle cost for a prototype), Express (the standalone adapter is enough), TanStack Query (signals already own cache and loading state), a preact alias (Excalidraw needs real react-dom).</p>
+</section>
+
+<section>
+  <h2><span class="num">05</span> The contract</h2>
+  <p>One file both halves import. Every path crossing the wire is workspace-relative and POSIX-separated; the server is the only place that ever sees an absolute path.</p>
+  <pre><code>// shared/contract.ts
+import { z } from "zod";
+
+const relPathSchema = z
+  .string()
+  .max(1024)
+  .refine((value) => !value.startsWith("/"), "Path must be workspace-relative.")
+  .refine((value) => !value.includes("\0"), "Path must not contain NUL.")
+  .refine((value) => !value.split("/").includes(".."), "Path must not escape the root.");
+
+const fileKindSchema = z.enum(["excalidraw", "markdown", "text", "html"]);
+
+const entrySchema = z.object({
+  name: z.string(),
+  path: relPathSchema,
+  type: z.enum(["dir", "file"]),
+  fileKind: fileKindSchema.nullable(),
+  size: z.number().int().nonnegative(),
+  mtimeMs: z.number(),
+});
+
+const listInputSchema = z.object({ path: relPathSchema });
+const readInputSchema = z.object({ path: relPathSchema });
+const writeInputSchema = z.object({
+  path: relPathSchema,
+  text: z.string().max(16 * 1024 * 1024),
+  baseMtimeMs: z.number(),
+});
+
+export type Entry = z.infer&lt;typeof entrySchema&gt;;
+export type FileKind = z.infer&lt;typeof fileKindSchema&gt;;
+export {
+  entrySchema,
+  fileKindSchema,
+  listInputSchema,
+  readInputSchema,
+  relPathSchema,
+  writeInputSchema,
+};</code></pre>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th class="mono">Procedure</th><th>Input</th><th>Returns</th><th>Behaviour</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="mono">fs.list</td><td><code>{ path }</code></td><td><code>{ entries: Entry[] }</code></td><td>One directory level only &mdash; the tree expands lazily. Directories first, then files, both case-insensitive by name.</td></tr>
+        <tr><td class="mono">file.read</td><td><code>{ path }</code></td><td><code>{ path, fileKind, text, mtimeMs }</code></td><td>UTF-8 text. Refuses files over 8&nbsp;MB and anything whose first 8&nbsp;KB contains a NUL byte.</td></tr>
+        <tr><td class="mono">file.write</td><td><code>{ path, text, baseMtimeMs }</code></td><td><code>{ mtimeMs }</code></td><td>Rejects with <code>CONFLICT</code> when the file&rsquo;s current mtime differs from <code>baseMtimeMs</code>. Writes to a temp file in the same directory, then renames.</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">06</span> Server</h2>
+  <h3>Path containment is the whole security model</h3>
+  <p>The server hands out file contents by relative path, so the only thing between it and the rest of the disk is one function. It gets its own unit test before anything else is built.</p>
+  <pre><code>// server/workspace.ts
+async function resolveInRoot(root: string, relPath: string): Promise&lt;string&gt; {
+  const absolute = path.resolve(root, relPath);
+  const realRoot = await fs.realpath(root);
+  const realTarget = await realpathOfNearestExisting(absolute);
+  if (realTarget !== realRoot &amp;&amp; !realTarget.startsWith(realRoot + path.sep)) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "Path escapes the workspace root." });
+  }
+  return absolute;
+}</code></pre>
+  <ul>
+    <li>Zod rejects <code>..</code> segments, absolute paths, and NUL before this runs. <code>resolveInRoot</code> is the second line: it catches symlinks pointing out of the root, which no amount of string checking can.</li>
+    <li><code>realpathOfNearestExisting</code> walks up to the closest existing ancestor, so a write to a not-yet-created file is still checked.</li>
+    <li>Bound to <code>127.0.0.1</code> only, on a fixed port (<code>NOTES_API_PORT</code>, default <code>5788</code>) because the rspack proxy needs a stable target. CORS stays off; the dev server proxies same-origin.</li>
+  </ul>
+  <h3>Execution</h3>
+  <p>Node 24 runs <code>.ts</code> directly, so <code>node server/index.ts</code> is the whole start command and nothing is compiled. That constrains the server code to erasable TypeScript &mdash; no enums, no parameter properties, no namespaces &mdash; which <code>tsconfig.server.json</code> enforces with <code>erasableSyntaxOnly</code>. Relative imports carry the <code>.ts</code> extension, matching <code>agentic-learn-harness</code>.</p>
+</section>
+
+<section>
+  <h2><span class="num">07</span> Frontend</h2>
+  <h3>State: three signal stores, no context, no reducers</h3>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th class="mono">Store</th><th>Holds</th><th>Owns</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="mono">tree-store</td><td><code>childrenByPath</code>, <code>expanded</code>, <code>loading</code>, <code>selectedPath</code></td><td>Calls <code>fs.list</code> on first expand and caches the result; nothing re-lists until the user collapses and reopens.</td></tr>
+        <tr><td class="mono">tabs-store</td><td><code>openPaths</code>, <code>activePath</code></td><td>Open, activate, close, and the &ldquo;is this tab dirty&rdquo; lookup. Reopening an open file just activates its tab.</td></tr>
+        <tr><td class="mono">doc-store</td><td><code>docsByPath</code>: <code>{ status, fileKind, savedText, draftText, baseMtimeMs, error }</code></td><td>Load, edit, save, conflict state. One entry per open tab, dropped on close.</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>Dirty is derived, not stored: <code>draftText !== savedText</code> in a computed signal per tab. The tab bar reads that computed and nothing else.</p>
+  <h3>Components</h3>
+  <pre><code>&lt;App&gt;                      keyboard shortcuts, splitter width
+  &lt;FsTree&gt;                 flat render of the expanded tree
+    &lt;TreeRow&gt;              chevron, kind icon, name; aria-expanded
+  &lt;main&gt;
+    &lt;TabBar&gt;               active tab, dirty dot, close button
+    &lt;EditorHost&gt;           switch (fileKind) -> one of four editors
+      &lt;ExcalidrawEditor&gt;  &lt;MarkdownEditor&gt;
+      &lt;TextEditor&gt;        &lt;HtmlPreview&gt;</code></pre>
+  <p><code>EditorHost</code> keys each editor by path, so switching tabs unmounts the previous editor instead of feeding it a new document. That is deliberate: both Excalidraw and CodeMirror hold internal state that is far more annoying to reconcile than to rebuild.</p>
+  <h3>Tree behaviour, JetBrains-shaped</h3>
+  <ul>
+    <li>Single click selects, <code>Enter</code> or double click opens a file; on a directory both toggle expansion.</li>
+    <li><code>ArrowDown</code> / <code>ArrowUp</code> move through visible rows, <code>ArrowRight</code> expands, <code>ArrowLeft</code> collapses or jumps to the parent.</li>
+    <li>Indent guides at 14&nbsp;px per level, chevrons only on directories, kind icons as inline SVG.</li>
+    <li>Roving <code>tabindex</code> on rows with <code>role="tree"</code> / <code>role="treeitem"</code>, so the whole panel is one tab stop.</li>
+  </ul>
+</section>
+
+<section>
+  <h2><span class="num">08</span> The four editors</h2>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Kind</th><th class="mono">Extensions</th><th>Surface</th><th>Save</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><span class="chip chip-purple">excalidraw</span></td><td class="mono">.excalidraw</td><td><code>&lt;Excalidraw&gt;</code> with <code>initialData</code> parsed from the file</td><td>Autosave, 800&nbsp;ms debounce, skipped when <code>getSceneVersion</code> is unchanged</td></tr>
+        <tr><td><span class="chip chip-blue">markdown</span></td><td class="mono">.md .markdown</td><td>CodeMirror 6 with <code>markdown()</code>; preview pane toggled by a button in the tab strip</td><td>Explicit <code>Cmd/Ctrl+S</code></td></tr>
+        <tr><td><span class="chip chip-green">text</span></td><td class="mono">.txt, unknown text</td><td>CodeMirror 6, no language mode</td><td>Explicit <code>Cmd/Ctrl+S</code></td></tr>
+        <tr><td><span class="chip chip-orange">html</span></td><td class="mono">.html .htm</td><td><code>&lt;iframe srcdoc&gt;</code>, sandboxed; a toggle swaps in CodeMirror with <code>html()</code></td><td>Explicit <code>Cmd/Ctrl+S</code>, preview re-renders on save</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>Excalidraw is the one autosaving editor because it has no save affordance of its own &mdash; the user draws, and drawing is the edit. Everything else has a visible buffer and a cursor, so it saves on command like any editor.</p>
+  <p>Writing a scene goes through Excalidraw&rsquo;s own <code>serializeAsJSON(elements, appState, files, "local")</code> rather than a hand-rolled JSON shape, which keeps the file openable on excalidraw.com.</p>
+</section>
+
+<section>
+  <h2><span class="num">09</span> Traps found while planning</h2>
+  <div class="grid-2">
+    <div class="card">
+      <h3><span class="chip chip-red">blocker</span> Excalidraw CSS has no <code>default</code> export condition</h3>
+      <p>Its <code>package.json</code> maps <code>./index.css</code> to <code>production</code> and <code>development</code> only. A plain <code>import "@excalidraw/excalidraw/index.css"</code> fails to resolve under rspack&rsquo;s default conditions. Fix: <code>resolve.conditionNames: ["...", "production"]</code> in the rspack config.</p>
+    </div>
+    <div class="card">
+      <h3><span class="chip chip-red">blocker</span> Excalidraw fonts come from a CDN</h3>
+      <p>Left alone, the bundle fetches its woff2 files from unpkg at runtime. Set <code>window.EXCALIDRAW_ASSET_PATH = "/"</code> in <code>index.html</code> and copy <code>@excalidraw/excalidraw/dist/prod/fonts</code> into the output with <code>CopyRspackPlugin</code>.</p>
+    </div>
+    <div class="card">
+      <h3><span class="chip chip-orange">care</span> <code>allow-scripts</code> plus <code>allow-same-origin</code> is not a sandbox</h3>
+      <p>Granting both lets the framed document reach back into the parent. The HTML preview uses <code>sandbox="allow-scripts"</code> alone, which leaves the frame on an opaque origin. Consequence: relative <code>src</code>/<code>href</code> inside previewed HTML will not resolve &mdash; accepted, and listed as out of scope.</p>
+    </div>
+    <div class="card">
+      <h3><span class="chip chip-orange">care</span> CodeMirror must not be re-rendered by React</h3>
+      <p>Create the <code>EditorView</code> once in an effect keyed on the path, and dispatch changes into it. Rebuilding the view from React state on every keystroke loses selection and undo history.</p>
+    </div>
+    <div class="card">
+      <h3><span class="chip chip-orange">care</span> Signals need <code>useSignals()</code></h3>
+      <p><code>@preact/signals-react</code> tracks reads only inside components that call <code>useSignals()</code> from <code>@preact/signals-react/runtime</code>. Miss it and the component simply stops updating &mdash; silently. Repo precedent: every signal-reading component in <code>ostrov-prototype-v2</code> calls it first.</p>
+    </div>
+    <div class="card">
+      <h3><span class="chip chip-orange">care</span> Excalidraw <code>onChange</code> fires on pointer move</h3>
+      <p>Debounce, and compare <code>getSceneVersion()</code> before writing. Otherwise a single drag produces hundreds of writes to the file.</p>
+    </div>
+    <div class="card">
+      <h3><span class="chip chip-blue">setup</span> Two ports, one fixed</h3>
+      <p>The web dev server takes <code>port: 0</code> like everything else in the repo, so a forgotten run can never answer with a stale bundle. The API cannot: the proxy target must be a known number, so it pins <code>5788</code> and fails loudly if that port is taken.</p>
+    </div>
+    <div class="card">
+      <h3><span class="chip chip-blue">setup</span> No StrictMode</h3>
+      <p>Double-invoked effects would mount two Excalidraw instances and two <code>EditorView</code>s per tab. Matching <code>ostrov-prototype-v2</code>, the root renders <code>&lt;App /&gt;</code> directly.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">10</span> Milestones</h2>
+  <div class="milestones">
+    <div class="milestone">
+      <div class="id">M0</div>
+      <div class="body">
+        <h3>Package skeleton</h3>
+        <p><code>package.json</code>, both tsconfigs, rspack config, <code>index.html</code>, sample <code>notes-root/</code> with one file of each kind. React mounts an empty two-pane shell.</p>
+        <div class="check"><code>yarn install</code> clean, <code>yarn typecheck</code> clean, <code>yarn build</code> produces a bundle.</div>
+      </div>
+    </div>
+    <div class="milestone">
+      <div class="id">M1</div>
+      <div class="body">
+        <h3>Contract and server</h3>
+        <p><code>shared/contract.ts</code>, <code>server/workspace.ts</code>, the three procedures, the standalone adapter, and the containment tests.</p>
+        <div class="check"><code>node --test server/*.test.ts</code> green, including escape attempts via <code>..</code>, an absolute path, and a symlink out of the root.</div>
+      </div>
+    </div>
+    <div class="milestone">
+      <div class="id">M2</div>
+      <div class="body">
+        <h3>Tree</h3>
+        <p>tRPC client, <code>tree-store</code>, <code>FsTree</code> with lazy expansion, icons, indent guides, and keyboard navigation.</p>
+        <div class="check">Sample root browsable to depth 3 by keyboard alone; each directory is listed at most once per expand.</div>
+      </div>
+    </div>
+    <div class="milestone">
+      <div class="id">M3</div>
+      <div class="body">
+        <h3>Tabs and text editors</h3>
+        <p><code>tabs-store</code>, <code>doc-store</code>, <code>TabBar</code>, <code>EditorHost</code>, and the CodeMirror-based text and Markdown editors with preview and explicit save.</p>
+        <div class="check">Edit, save, reload the page, and the change is on disk; the dirty dot appears and clears at the right moments.</div>
+      </div>
+    </div>
+    <div class="milestone">
+      <div class="id">M4</div>
+      <div class="body">
+        <h3>Excalidraw</h3>
+        <p>Scene load, debounced autosave through <code>serializeAsJSON</code>, asset path and CSS resolution fixed per section 09.</p>
+        <div class="check">Draw a shape, wait for autosave, reopen the tab &mdash; the shape is there, and no request goes to unpkg.</div>
+      </div>
+    </div>
+    <div class="milestone">
+      <div class="id">M5</div>
+      <div class="body">
+        <h3>HTML preview and polish</h3>
+        <p>Sandboxed iframe with a source toggle, splitter with remembered width, conflict banner on <code>CONFLICT</code>, empty and error states, README.</p>
+        <div class="check">Every acceptance walk in section 11 passes on a fresh clone.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">11</span> How it gets verified</h2>
+  <pre><code>cd javascript
+yarn install
+cd packages/projects/harwex-notes
+yarn typecheck          # tsc --noEmit x2 (browser + server projects)
+yarn test               # node --test over the containment rules
+yarn build              # rspack production bundle
+yarn dev                # API on 5788 + web dev server on a free port</code></pre>
+  <p>Manual walk, run once per milestone from M3 on:</p>
+  <ol>
+    <li>Expand <code>notes-root</code> to a nested folder, open <code>welcome.md</code>, type, <code>Cmd+S</code>, confirm the file changed on disk.</li>
+    <li>Open <code>scratch.excalidraw</code>, draw, switch to another tab and back &mdash; the drawing survived.</li>
+    <li>Open <code>demo.html</code>, see it rendered, toggle to source, edit, save, see the render update.</li>
+    <li>Edit a file outside the app while its tab is dirty, then save &mdash; the conflict banner appears instead of a silent overwrite.</li>
+    <li>Open four tabs, close the middle one &mdash; focus lands on a neighbour, not on nothing.</li>
+  </ol>
+</section>
+
+<section>
+  <h2><span class="num">12</span> After the prototype</h2>
+  <ul>
+    <li><strong>Tree mutations</strong> &mdash; create, rename, delete, drag-move, with the same containment check on both ends of a move.</li>
+    <li><strong>Watching</strong> &mdash; <code>fs.watch</code> behind a tRPC subscription over SSE, so external edits refresh the tree and warn open tabs.</li>
+    <li><strong>Real HTML preview</strong> &mdash; serve the notes root read-only over HTTP and point the iframe at a URL, so relative assets resolve.</li>
+    <li><strong>Excalidraw files</strong> &mdash; embedded images, which means binary payloads and a second read/write path.</li>
+    <li><strong>Search</strong> &mdash; content search across the root, which is where a real index starts to earn its place.</li>
+  </ul>
+</section>
+
+<hr>
+<p class="footer">Plan written 2026-08-26 &middot; branch <code>prototype/harwex-notes</code> &middot; versions checked against the npm registry the same day.</p>
+
+</div>
+</body>
+</html>
