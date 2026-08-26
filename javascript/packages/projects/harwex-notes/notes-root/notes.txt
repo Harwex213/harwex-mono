@@ -1,0 +1,9 @@
+Plain text, plain editor.
+
+No language mode, no preview, no syntax highlighting beyond the basics that
+CodeMirror gives every document. Save with Cmd+S or Ctrl+S.
+
+Scratch space:
+- the notes root defaults to ./notes-root inside the package
+- override it with NOTES_ROOT=/abs/path
+- the API binds 127.0.0.1 on port 5788 and nothing else

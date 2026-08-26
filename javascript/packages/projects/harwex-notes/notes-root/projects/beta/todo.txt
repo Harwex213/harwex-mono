@@ -1,0 +1,8 @@
+beta backlog
+============
+
+[ ] tree mutations: create, rename, delete, drag-move
+[ ] fs.watch behind a tRPC subscription, so external edits refresh the tree
+[ ] serve the notes root read-only so relative assets resolve in the preview
+[ ] embedded images in Excalidraw scenes (binary read/write path)
+[ ] content search across the root
