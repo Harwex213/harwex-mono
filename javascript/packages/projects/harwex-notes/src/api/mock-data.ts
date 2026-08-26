@@ -1,4 +1,16 @@
-import type { TDocument, TFsNode } from "./types";
+import architectureFile from "./sketches/architecture.excalidraw.json";
+import economyFile from "./sketches/economy.excalidraw.json";
+import scratchFile from "./sketches/scratch.excalidraw.json";
+import type { TDocument, TExcalidrawScene, TFsNode } from "./types";
+
+// The mock vault holds real `.excalidraw` files. Their format is richer than the type a
+// JSON import infers, so a parsed file is asserted here the same way a reader of the real
+// vault would have to assert it after `JSON.parse`.
+const readSketch = (file: unknown): TExcalidrawScene => {
+  const scene = file as Pick<TExcalidrawScene, "elements"> & Partial<TExcalidrawScene>;
+
+  return { elements: scene.elements, files: scene.files ?? {} };
+};
 
 const FS_NODES: readonly TFsNode[] = [
   { id: "projects", parentId: null, name: "Projects", kind: "folder" },
@@ -152,75 +164,27 @@ const READING_LIST_MARKDOWN = `# Reading list
 > plan.
 `;
 
-const ARCHITECTURE_DOCUMENT: TDocument = {
-  kind: "excalidraw",
-  nodeId: "projects/harwex-notes/architecture.excalidraw",
-  width: 720,
-  height: 460,
-  shapes: [
-    { type: "text", x: 24, y: 34, text: "data flow", color: "ink", size: "large" },
-    { type: "rect", x: 40, y: 70, width: 180, height: 76, color: "blue", label: "ui" },
-    { type: "rect", x: 40, y: 200, width: 180, height: 76, color: "violet", label: "registry" },
-    { type: "rect", x: 40, y: 330, width: 180, height: 76, color: "green", label: "domain" },
-    { type: "rect", x: 330, y: 200, width: 180, height: 76, color: "orange", label: "store" },
-    { type: "ellipse", x: 560, y: 196, width: 130, height: 84, color: "ink", label: "mock api" },
-    { type: "arrow", points: [[130, 150], [130, 196]], color: "violet", label: "action" },
-    { type: "arrow", points: [[130, 280], [130, 326]], color: "green" },
-    { type: "arrow", points: [[220, 366], [330, 366], [330, 280]], color: "orange" },
-    { type: "arrow", points: [[510, 238], [556, 238]], color: "ink" },
-    { type: "arrow", points: [[420, 196], [420, 110], [222, 110]], color: "blue", label: "signal" },
-    { type: "text", x: 336, y: 316, text: "signals only,", color: "ink", size: "small" },
-    { type: "text", x: 336, y: 340, text: "no react state", color: "ink", size: "small" },
-  ],
-};
-
-const ECONOMY_DOCUMENT: TDocument = {
-  kind: "excalidraw",
-  nodeId: "projects/ostrov/economy.excalidraw",
-  width: 720,
-  height: 420,
-  shapes: [
-    { type: "text", x: 24, y: 34, text: "island economy", color: "ink", size: "large" },
-    { type: "ellipse", x: 60, y: 80, width: 150, height: 90, color: "green", label: "wood" },
-    { type: "ellipse", x: 60, y: 240, width: 150, height: 90, color: "blue", label: "water" },
-    { type: "rect", x: 300, y: 160, width: 160, height: 90, color: "orange", label: "camp" },
-    { type: "ellipse", x: 550, y: 150, width: 140, height: 100, color: "violet", label: "raft" },
-    { type: "arrow", points: [[210, 125], [300, 180]], color: "green" },
-    { type: "arrow", points: [[210, 285], [300, 232]], color: "blue" },
-    { type: "arrow", points: [[460, 205], [546, 200]], color: "violet", label: "escape" },
-    { type: "text", x: 300, y: 300, text: "camp caps at 3 uses", color: "ink", size: "small" },
-    { type: "text", x: 300, y: 330, text: "per island", color: "ink", size: "small" },
-  ],
-};
-
-const SCRATCH_DOCUMENT: TDocument = {
-  kind: "excalidraw",
-  nodeId: "scratch.excalidraw",
-  width: 640,
-  height: 380,
-  shapes: [
-    { type: "text", x: 24, y: 40, text: "scratch", color: "ink", size: "large" },
-    { type: "rect", x: 50, y: 80, width: 220, height: 110, color: "ink", label: "tabs" },
-    { type: "rect", x: 50, y: 220, width: 220, height: 110, color: "ink", label: "viewer" },
-    { type: "arrow", points: [[280, 135], [400, 135]], color: "orange" },
-    { type: "text", x: 410, y: 130, text: "one tab per file", color: "orange", size: "medium" },
-    { type: "ellipse", x: 400, y: 210, width: 190, height: 110, color: "violet", label: "later?" },
-  ],
-};
-
 const DOCUMENTS: Readonly<Record<string, TDocument>> = {
   "projects/harwex-notes/overview.md": {
     kind: "markdown",
     nodeId: "projects/harwex-notes/overview.md",
     text: OVERVIEW_MARKDOWN,
   },
-  "projects/harwex-notes/architecture.excalidraw": ARCHITECTURE_DOCUMENT,
+  "projects/harwex-notes/architecture.excalidraw": {
+    kind: "excalidraw",
+    nodeId: "projects/harwex-notes/architecture.excalidraw",
+    scene: readSketch(architectureFile),
+  },
   "projects/ostrov/core-loop.md": {
     kind: "markdown",
     nodeId: "projects/ostrov/core-loop.md",
     text: CORE_LOOP_MARKDOWN,
   },
-  "projects/ostrov/economy.excalidraw": ECONOMY_DOCUMENT,
+  "projects/ostrov/economy.excalidraw": {
+    kind: "excalidraw",
+    nodeId: "projects/ostrov/economy.excalidraw",
+    scene: readSketch(economyFile),
+  },
   "journal/2026-08-24.md": {
     kind: "markdown",
     nodeId: "journal/2026-08-24.md",
@@ -236,7 +200,11 @@ const DOCUMENTS: Readonly<Record<string, TDocument>> = {
     nodeId: "inbox/reading-list.md",
     text: READING_LIST_MARKDOWN,
   },
-  "scratch.excalidraw": SCRATCH_DOCUMENT,
+  "scratch.excalidraw": {
+    kind: "excalidraw",
+    nodeId: "scratch.excalidraw",
+    scene: readSketch(scratchFile),
+  },
 };
 
 export { DOCUMENTS, FS_NODES };

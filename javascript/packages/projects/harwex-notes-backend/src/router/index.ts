@@ -1,8 +1,8 @@
 import { router } from "../trpc.js";
-import { notesRouter } from "./notes.js";
+import { fsRouter } from "./fs.js";
 
 const appRouter = router({
-  notes: notesRouter,
+  fs: fsRouter,
 });
 
 type AppRouter = typeof appRouter;

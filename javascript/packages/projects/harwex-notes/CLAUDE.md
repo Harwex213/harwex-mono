@@ -36,10 +36,11 @@ main.tsx  →  createStore()  +  createApi()  →  createRegistry(store, api)  �
 
 ### 4. Api (`src/api/`)
 
-- `types.ts` is the boundary: data types (`TFsNode`, `TDocument`, ...) plus the `TApi` interface. Everything else in the app imports data shapes from here, never from a concrete api implementation.
+- `types.ts` is the boundary: it re-exports the data types (`TFsNode`, `TDocument`, ...) from `@hw/harwex-notes-protocol` and adds the `TApi` interface. Everything else in the app imports data shapes from here, never from the protocol package or a concrete api implementation.
+- Data shapes and their zod schemas live in `@hw/harwex-notes-protocol`, shared with `@hw/harwex-notes-backend`. A change to a data shape starts in the protocol package.
 - `TApi` methods are async and return the **full new state** (for example the whole node list after a mutation) rather than a delta. Domain actions replace store signals with what the api returned; they do not compute the mutation twice.
 - The api validates its own invariants and throws `Error` with a user-readable message. Domain shows that message as is.
-- `createMockApi()` is the current implementation: in-memory data, fake latency, no persistence. A real backend goes in as another `createXxxApi(): TApi` and swaps in `main.tsx`. Nothing outside `src/api/` should know which one is active.
+- Two implementations exist. `createTrpcApi(url)` talks to the backend over tRPC and is the default. `createMockApi()` is in-memory data with fake latency and no persistence; `yarn dev:mocked` / `yarn build:mocked` (`rspack --env mocked`) select it through the `__API_MOCKED__` define. Nothing outside `src/api/` and `main.tsx` should know which one is active.
 - Domain and UI must not depend on `mock-data.ts` or on mock-only details.
 
 ### 5. UI (`src/ui/`)

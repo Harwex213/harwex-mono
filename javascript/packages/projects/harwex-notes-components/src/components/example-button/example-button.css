@@ -1,0 +1,24 @@
+.example-button {
+  padding: 6px 12px;
+  border: 1px solid var(--color-border-strong, #b9b6ae);
+  border-radius: 4px;
+  background: var(--color-surface, #ffffff);
+  color: var(--color-text, #1d1c1a);
+  font: inherit;
+  cursor: pointer;
+}
+
+.example-button--primary {
+  background: var(--color-text, #1d1c1a);
+  color: var(--color-surface, #ffffff);
+}
+
+.example-button--ghost {
+  border-color: transparent;
+  background: transparent;
+}
+
+.example-button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}

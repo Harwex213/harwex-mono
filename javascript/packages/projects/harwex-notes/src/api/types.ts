@@ -1,76 +1,16 @@
-type TFsNodeKind = "folder" | "markdown" | "excalidraw";
-
-type TFsNode = {
-  id: string;
-  parentId: string | null;
-  name: string;
-  kind: TFsNodeKind;
-};
-
-type TMarkdownDocument = {
-  kind: "markdown";
-  nodeId: string;
-  text: string;
-};
-
-type TExcalidrawColor = "ink" | "blue" | "green" | "orange" | "violet";
-
-type TExcalidrawPoint = readonly [number, number];
-
-type TExcalidrawShape =
-  | {
-    type: "rect";
-    x: number;
-    y: number;
-    width: number;
-    height: number;
-    color: TExcalidrawColor;
-    label?: string;
-  }
-  | {
-    type: "ellipse";
-    x: number;
-    y: number;
-    width: number;
-    height: number;
-    color: TExcalidrawColor;
-    label?: string;
-  }
-  | {
-    type: "arrow";
-    points: readonly TExcalidrawPoint[];
-    color: TExcalidrawColor;
-    label?: string;
-  }
-  | {
-    type: "text";
-    x: number;
-    y: number;
-    text: string;
-    color: TExcalidrawColor;
-    size: "small" | "medium" | "large";
-  };
-
-type TExcalidrawDocument = {
-  kind: "excalidraw";
-  nodeId: string;
-  width: number;
-  height: number;
-  shapes: readonly TExcalidrawShape[];
-};
-
-type TDocument = TMarkdownDocument | TExcalidrawDocument;
-
-type TCreateNodeInput = {
-  parentId: string | null;
-  name: string;
-  kind: TFsNodeKind;
-};
-
-type TCreateNodeResult = {
-  nodes: readonly TFsNode[];
-  node: TFsNode;
-};
+// Data shapes are shared with the backend through the protocol package. This file adds the
+// frontend boundary on top of them: the `TApi` contract every api implementation fulfils.
+import type {
+  TCreateNodeInput,
+  TCreateNodeResult,
+  TDocument,
+  TExcalidrawDocument,
+  TExcalidrawScene,
+  TFsFileKind,
+  TFsNode,
+  TFsNodeKind,
+  TMarkdownDocument,
+} from "@hw/harwex-notes-protocol";
 
 type TApi = {
   fetchTree: () => Promise<readonly TFsNode[]>;
@@ -86,10 +26,9 @@ export type {
   TCreateNodeInput,
   TCreateNodeResult,
   TDocument,
-  TExcalidrawColor,
   TExcalidrawDocument,
-  TExcalidrawPoint,
-  TExcalidrawShape,
+  TExcalidrawScene,
+  TFsFileKind,
   TFsNode,
   TFsNodeKind,
   TMarkdownDocument,

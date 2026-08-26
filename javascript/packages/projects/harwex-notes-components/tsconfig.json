@@ -1,0 +1,11 @@
+{
+  "extends": "@hw/typescript-config/react.json",
+  "compilerOptions": {
+    "noEmit": true
+  },
+  "include": [
+    "./src/**/*",
+    "./dev/**/*",
+    "exports.ts"
+  ]
+}

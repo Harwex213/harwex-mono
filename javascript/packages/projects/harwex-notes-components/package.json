@@ -1,8 +1,10 @@
 {
-  "name": "@hw/harwex-notes",
+  "name": "@hw/harwex-notes-components",
+  "description": "React component library for harwex-notes, with a demo playground for parallel component work",
   "private": true,
   "version": "1.0.0",
   "type": "module",
+  "exports": "./exports.ts",
   "browserslist": [
     "last 1 version",
     "> 1%",
@@ -10,28 +12,25 @@
   ],
   "scripts": {
     "dev": "rspack serve",
-    "dev:mocked": "rspack serve --env mocked",
-    "build": "rspack build",
-    "build:mocked": "rspack build --env mocked",
+    "build:dev": "rspack build",
     "typecheck": "tsc --noEmit"
   },
-  "dependencies": {
-    "@excalidraw/excalidraw": "0.18.1",
-    "@hw/harwex-notes-components": "workspace:*",
-    "@hw/harwex-notes-protocol": "workspace:*",
+  "peerDependencies": {
     "@preact/signals-react": "3.9.0",
-    "@trpc/client": "11.18.0",
     "react": "19.2.0",
     "react-dom": "19.2.0"
   },
   "devDependencies": {
     "@hw/typescript-config": "workspace:*",
+    "@preact/signals-react": "3.9.0",
     "@rspack/cli": "2.1.4",
     "@rspack/core": "2.1.4",
     "@rspack/dev-server": "2.1.0",
     "@types/node": "24.1.0",
     "@types/react": "19.2.0",
     "@types/react-dom": "19.2.0",
+    "react": "19.2.0",
+    "react-dom": "19.2.0",
     "typescript": "5.9.3"
   }
 }

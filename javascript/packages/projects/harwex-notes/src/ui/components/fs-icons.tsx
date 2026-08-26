@@ -1,5 +1,6 @@
 import type { FC } from "react";
 import type { TFsNodeKind } from "../../api/types";
+import type { TFsDraftKind } from "../../store/fs-slice";
 
 type TChevronProps = {
   isExpanded: boolean;
@@ -29,6 +30,21 @@ const FolderIcon: FC = () => {
         strokeWidth="1.2"
       />
       <path d="M1.5 4.2V2.9h3.4l1 1.3" fill="none" stroke="currentColor" strokeWidth="1.2" />
+    </svg>
+  );
+};
+
+const FileIcon: FC = () => {
+  return (
+    <svg className="fs__icon" height="14" viewBox="0 0 16 16" width="14">
+      <path
+        d="M3 1.8h6.4L13 5.4v8.8H3z"
+        fill="currentColor"
+        fillOpacity="0.22"
+        stroke="currentColor"
+        strokeWidth="1.2"
+      />
+      <path d="M9.2 1.8v3.8H13" fill="none" stroke="currentColor" strokeWidth="1.2" />
     </svg>
   );
 };
@@ -160,4 +176,17 @@ const NodeIcon: FC<TNodeIconProps> = ({ kind }) => {
   return <SketchIcon />;
 };
 
-export { Chevron, NewFolderIcon, NewNoteIcon, NewSketchIcon, NodeIcon };
+type TDraftIconProps = {
+  kind: TFsDraftKind;
+};
+
+// A file draft has no kind until an extension is typed, so it shows a plain sheet.
+const DraftIcon: FC<TDraftIconProps> = ({ kind }) => {
+  if (kind === "file") {
+    return <FileIcon />;
+  }
+
+  return <NodeIcon kind={kind} />;
+};
+
+export { Chevron, DraftIcon, NewFolderIcon, NewNoteIcon, NewSketchIcon, NodeIcon };

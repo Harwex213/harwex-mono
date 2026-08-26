@@ -30,7 +30,6 @@
 
   /* neutral, cool (dark theme) */
   --base-color-cool-50: #e6e5e1;
-  --base-color-cool-100: #d8d7d3;
   --base-color-cool-300: #9fa0a2;
   --base-color-cool-400: #74767a;
   --base-color-cool-600: #4a4e55;
@@ -43,16 +42,9 @@
   --base-color-blue-100: #e6eef7;
   --base-color-blue-300: #7fb0e8;
   --base-color-blue-600: #3b6ea5;
-  --base-color-blue-700: #2f6bb0;
   --base-color-blue-900: #24303d;
-  --base-color-green-300: #74c495;
-  --base-color-green-700: #2f7d55;
-  --base-color-orange-300: #e0a568;
-  --base-color-orange-700: #b8681f;
-  --base-color-violet-300: #a68ce6;
   --base-color-violet-400: #b193ea;
   --base-color-violet-600: #7b52c4;
-  --base-color-violet-700: #6a4bb0;
   --base-color-red-300: #e08b80;
   --base-color-red-700: #a63d33;
   --base-color-amber-300: #e0b45f;
@@ -61,10 +53,6 @@
   --base-color-transparent: transparent;
 
   /* alpha */
-  --base-alpha-5: 5%;
-  --base-alpha-6: 6%;
-  --base-alpha-9: 9%;
-  --base-alpha-12: 12%;
   --base-alpha-18: 18%;
   --base-alpha-45: 45%;
 
@@ -108,12 +96,10 @@
   /* borders */
   --base-border-1: 1px;
   --base-border-3: 3px;
-  --base-stroke-1-7: 1.7;
 
   /* typography */
   --base-font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   --base-font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  --base-font-hand: "Segoe Print", "Bradley Hand", "Comic Sans MS", "Chalkboard SE", cursive;
   --base-font-size-10: 10px;
   --base-font-size-11: 11px;
   --base-font-size-12: 12px;
@@ -170,15 +156,6 @@
   --color-kind-markdown: var(--base-color-blue-600);
   --color-kind-sketch: var(--base-color-violet-600);
 
-  /* drawing palette */
-  --color-ink: var(--base-color-warm-900);
-  --color-ink-blue: var(--base-color-blue-700);
-  --color-ink-green: var(--base-color-green-700);
-  --color-ink-orange: var(--base-color-orange-700);
-  --color-ink-violet: var(--base-color-violet-700);
-  --alpha-ink-fill: var(--base-alpha-5);
-  --alpha-ink-hue-fill: var(--base-alpha-9);
-
   /* elevation */
   --shadow-popover: 0 var(--base-shadow-y-6) var(--base-shadow-blur-20)
     color-mix(in srgb, var(--base-color-black) var(--base-alpha-18), transparent);
@@ -224,12 +201,10 @@
   /* borders */
   --border-width: var(--base-border-1);
   --border-width-thick: var(--base-border-3);
-  --stroke-width: var(--base-stroke-1-7);
 
   /* typography */
   --font-body: var(--base-font-sans);
   --font-code: var(--base-font-mono);
-  --font-hand: var(--base-font-hand);
   --font-size-2xs: var(--base-font-size-10);
   --font-size-xs: var(--base-font-size-11);
   --font-size-sm: var(--base-font-size-12);
@@ -272,14 +247,6 @@
     --color-kind-folder: var(--base-color-amber-300);
     --color-kind-markdown: var(--base-color-blue-300);
     --color-kind-sketch: var(--base-color-violet-400);
-
-    --color-ink: var(--base-color-cool-100);
-    --color-ink-blue: var(--base-color-blue-300);
-    --color-ink-green: var(--base-color-green-300);
-    --color-ink-orange: var(--base-color-orange-300);
-    --color-ink-violet: var(--base-color-violet-300);
-    --alpha-ink-fill: var(--base-alpha-6);
-    --alpha-ink-hue-fill: var(--base-alpha-12);
   }
 }
 
@@ -297,8 +264,8 @@
 
   /* app shell */
   --app-sidebar-width: var(--size-sidebar);
-  --app-gap: var(--space-lg);
-  --app-padding: var(--space-lg);
+  --app-gap: var(--space-xs);
+  --app-padding: var(--space-xs);
 
   /* fs: file tree panel */
   --fs-bg: var(--color-surface);
@@ -336,14 +303,24 @@
   --fs-row-dragging-opacity: var(--opacity-disabled);
   --fs-row-drop-bg: var(--color-accent-subtle);
   --fs-row-drop-border: var(--color-accent);
-  --fs-input-padding: var(--space-hairline) var(--space-xs);
+  --fs-input-padding-y: var(--space-hairline);
+  --fs-input-padding-x: var(--space-xs);
+  --fs-input-padding: var(--fs-input-padding-y) var(--fs-input-padding-x);
+  /* Pull the padding and border into the margin so the input takes the
+     exact box of .fs__name and the row does not jump when renaming starts. */
+  --fs-input-margin:
+    calc(-1 * (var(--fs-input-padding-y) + var(--fs-border-width)))
+    calc(-1 * (var(--fs-input-padding-x) + var(--fs-border-width)));
   --fs-input-bg: var(--color-surface);
   --fs-input-border: var(--color-accent);
   --fs-input-radius: var(--radius-sm);
   --fs-input-text: var(--color-text);
+  --fs-input-invalid-border: var(--color-danger);
+  --fs-ext-font-size: var(--font-size-xs);
+  --fs-ext-text: var(--color-text-faint);
+  --fs-ext-invalid-text: var(--color-danger);
   --fs-twisty-size: var(--size-icon-sm);
   --fs-twisty-text: var(--color-text-faint);
-  --fs-chevron-motion: var(--motion-fast);
   --fs-icon-size: var(--size-icon-md);
   --fs-icon-text: var(--color-text-muted);
   --fs-icon-folder: var(--color-kind-folder);
@@ -355,6 +332,7 @@
   --fs-menu-border: var(--color-border-strong);
   --fs-menu-radius: var(--radius-md);
   --fs-menu-shadow: var(--shadow-popover);
+  --fs-menu-item-gap: var(--space-md);
   --fs-menu-item-padding: var(--space-xs-plus) var(--space-md);
   --fs-menu-item-radius: var(--radius-sm);
   --fs-menu-item-font-size: var(--font-size-sm-plus);
@@ -462,23 +440,9 @@
   --md-table-head-text: var(--color-text-muted);
   --md-border-width: var(--border-width);
 
-  /* sketch: excalidraw viewer. `--sketch-*` color names are read from TSX; keep them stable. */
-  --sketch-padding: var(--space-5xl);
-  --sketch-grid-dot: var(--color-border);
-  --sketch-grid-dot-size: var(--space-hairline);
-  --sketch-grid-step: var(--space-4xl);
-  --sketch-stroke-width: var(--stroke-width);
-  --sketch-font: var(--font-hand);
-  --sketch-ink: var(--color-ink);
-  --sketch-blue: var(--color-ink-blue);
-  --sketch-green: var(--color-ink-green);
-  --sketch-orange: var(--color-ink-orange);
-  --sketch-violet: var(--color-ink-violet);
-  --sketch-ink-fill: color-mix(in srgb, var(--color-ink) var(--alpha-ink-fill), transparent);
-  --sketch-blue-fill: color-mix(in srgb, var(--color-ink-blue) var(--alpha-ink-hue-fill), transparent);
-  --sketch-green-fill: color-mix(in srgb, var(--color-ink-green) var(--alpha-ink-hue-fill), transparent);
-  --sketch-orange-fill: color-mix(in srgb, var(--color-ink-orange) var(--alpha-ink-hue-fill), transparent);
-  --sketch-violet-fill: color-mix(in srgb, var(--color-ink-violet) var(--alpha-ink-hue-fill), transparent);
+  /* sketch: the frame around the embedded Excalidraw canvas. Excalidraw carries its own
+     stylesheet and keeps element colors in the scene, so there is nothing to theme here. */
+  --sketch-background: var(--color-transparent);
 }
 
 /* ------------------------------------------------------------------ */
@@ -657,6 +621,7 @@ button {
 .fs__input {
   flex: 1 1 auto;
   min-width: 0;
+  margin: var(--fs-input-margin);
   padding: var(--fs-input-padding);
   background: var(--fs-input-bg);
   border: var(--fs-border-width) solid var(--fs-input-border);
@@ -664,6 +629,21 @@ button {
   font: inherit;
   color: var(--fs-input-text);
   outline: none;
+}
+
+.fs__input--invalid {
+  border-color: var(--fs-input-invalid-border);
+}
+
+/* The extensions a file draft accepts, shown next to the name being typed. */
+.fs__ext {
+  flex: 0 0 auto;
+  font-size: var(--fs-ext-font-size);
+  color: var(--fs-ext-text);
+}
+
+.fs__ext--invalid {
+  color: var(--fs-ext-invalid-text);
 }
 
 .fs__twisty {
@@ -674,10 +654,6 @@ button {
   width: var(--fs-twisty-size);
   color: var(--fs-twisty-text);
   cursor: pointer;
-}
-
-.fs__chevron {
-  transition: transform var(--fs-chevron-motion);
 }
 
 .fs__chevron--open {
@@ -721,6 +697,9 @@ button {
 }
 
 .fs__menu-item {
+  display: flex;
+  align-items: center;
+  gap: var(--fs-menu-item-gap);
   padding: var(--fs-menu-item-padding);
   background: none;
   border: 0;
@@ -1028,33 +1007,11 @@ button {
 /* sketch                                                              */
 /* ------------------------------------------------------------------ */
 
+/* Excalidraw sizes itself to its container, so the container needs a definite height. */
 .sketch {
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  position: relative;
   width: 100%;
   height: 100%;
   min-height: 0;
-  padding: var(--sketch-padding);
-  background-image:
-    radial-gradient(circle, var(--sketch-grid-dot) var(--sketch-grid-dot-size), transparent var(--sketch-grid-dot-size));
-  background-size: var(--sketch-grid-step) var(--sketch-grid-step);
-  background-position: center;
-}
-
-.sketch__canvas {
-  width: 100%;
-  height: 100%;
-  max-height: 100%;
-}
-
-.sketch__stroke {
-  fill: none;
-  stroke-width: var(--sketch-stroke-width);
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
-.sketch__text {
-  font-family: var(--sketch-font);
+  background: var(--sketch-background);
 }

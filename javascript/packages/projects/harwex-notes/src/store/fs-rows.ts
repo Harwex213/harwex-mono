@@ -1,5 +1,5 @@
-import type { TFsNode, TFsNodeKind } from "../api/types";
-import type { TFsDraft } from "./fs-slice";
+import type { TFsNode } from "../api/types";
+import type { TFsDraft, TFsDraftKind } from "./fs-slice";
 
 type TFsNodeRow = {
   type: "node";
@@ -12,7 +12,7 @@ type TFsNodeRow = {
 type TFsDraftRow = {
   type: "draft";
   depth: number;
-  kind: TFsNodeKind;
+  kind: TFsDraftKind;
 };
 
 type TFsRow = TFsNodeRow | TFsDraftRow;

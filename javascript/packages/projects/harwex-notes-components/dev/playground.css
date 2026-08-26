@@ -1,0 +1,75 @@
+:root {
+  --color-canvas: #f6f6f4;
+  --color-surface: #ffffff;
+  --color-border: #d9d7d1;
+  --color-border-strong: #b9b6ae;
+  --color-text: #1d1c1a;
+  --color-text-muted: #6f6c65;
+}
+
+body {
+  margin: 0;
+  background: var(--color-canvas);
+  color: var(--color-text);
+  font: 14px/1.4 system-ui, sans-serif;
+}
+
+.playground {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  min-height: 100vh;
+}
+
+.playground__nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 16px;
+  border-right: 1px solid var(--color-border);
+  background: var(--color-surface);
+}
+
+.playground__title {
+  margin: 0 0 12px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+.playground__link {
+  padding: 6px 8px;
+  border-radius: 4px;
+  color: var(--color-text);
+  text-decoration: none;
+}
+
+.playground__link:hover {
+  background: var(--color-canvas);
+}
+
+.playground__link--active {
+  background: var(--color-text);
+  color: var(--color-surface);
+}
+
+.playground__empty {
+  color: var(--color-text-muted);
+}
+
+.playground__stage {
+  padding: 24px 32px;
+}
+
+.playground__heading {
+  margin: 0 0 16px;
+  font-size: 18px;
+}
+
+.playground__canvas {
+  padding: 24px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-surface);
+}

@@ -1,20 +1,14 @@
 import { initTRPC } from "@trpc/server";
-import type { CreateHTTPContextOptions } from "@trpc/server/adapters/standalone";
+import type { TFsStore } from "./fsStore.js";
 
-interface Context {
-  requestId: string;
-}
+type TContext = {
+  fs: TFsStore;
+};
 
-function createContext(_opts: CreateHTTPContextOptions): Context {
-  return {
-    requestId: crypto.randomUUID(),
-  };
-}
-
-const t = initTRPC.context<Context>().create();
+const t = initTRPC.context<TContext>().create();
 
 const router = t.router;
 const publicProcedure = t.procedure;
 
-export { createContext, router, publicProcedure };
-export type { Context };
+export { router, publicProcedure };
+export type { TContext };

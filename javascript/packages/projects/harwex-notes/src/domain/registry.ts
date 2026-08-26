@@ -1,4 +1,4 @@
-import type { TFsNodeKind } from "../api/types";
+import type { TFsDraftKind } from "../store/fs-slice";
 
 type TLoadTreeAction = () => Promise<void>;
 
@@ -8,7 +8,7 @@ type TOpenNodeAction = (nodeId: string) => void;
 
 type TSelectNodeAction = (nodeId: string) => void;
 
-type TStartCreateAction = (parentId: string | null, kind: TFsNodeKind) => void;
+type TStartCreateAction = (parentId: string | null, kind: TFsDraftKind) => void;
 
 type TStartRenameAction = (nodeId: string) => void;
 

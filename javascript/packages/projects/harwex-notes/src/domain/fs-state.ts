@@ -1,4 +1,6 @@
+import { FILE_EXTENSIONS, readFileKind } from "./fs-file-kinds";
 import type { TApi, TFsNode, TFsNodeKind } from "../api/types";
+import type { TFsDraftKind } from "../store/fs-slice";
 import type { TStore } from "../store/store";
 
 // A folder and everything below it.
@@ -108,7 +110,7 @@ const startCreateAction = (
   store: TStore,
   _api: TApi,
   parentId: string | null,
-  kind: TFsNodeKind
+  kind: TFsDraftKind
 ) => {
   store.fs.error.value = null;
 
@@ -128,13 +130,30 @@ const cancelDraftAction = (store: TStore, _api: TApi) => {
   store.fs.error.value = null;
 };
 
+// A "file" draft carries no kind, so the extension of the typed name has to name one.
+// Anything else was started from a button that already knows what it creates.
+const readCreateKind = (draftKind: TFsDraftKind, name: string): TFsNodeKind => {
+  if (draftKind !== "file") {
+    return draftKind;
+  }
+
+  const kind = readFileKind(name);
+  if (kind === null) {
+    throw new Error(`A file name has to end with ${FILE_EXTENSIONS.join(" or ")}`);
+  }
+
+  return kind;
+};
+
 const createNode = async (
   store: TStore,
   api: TApi,
   parentId: string | null,
-  kind: TFsNodeKind,
+  draftKind: TFsDraftKind,
   name: string
 ) => {
+  const kind = readCreateKind(draftKind, name);
+
   const { nodes, node } = await api.createNode({ parentId, name, kind });
 
   store.fs.nodes.value = nodes;

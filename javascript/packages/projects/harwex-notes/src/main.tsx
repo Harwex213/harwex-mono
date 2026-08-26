@@ -1,5 +1,6 @@
 import { createRoot } from "react-dom/client";
 import { createMockApi } from "./api/mock-api";
+import { createTrpcApi } from "./api/trpc-api";
 import { createRegistry } from "./domain/registry-creator";
 import { createStore, StoreProvider } from "./store/store";
 import { App } from "./ui/app";
@@ -15,7 +16,7 @@ const main = () => {
 
   const store = createStore();
 
-  const api = createMockApi();
+  const api = __API_MOCKED__ ? createMockApi() : createTrpcApi(__API_URL__);
 
   const registry = createRegistry(store, api);
 

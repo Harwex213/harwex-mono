@@ -2,14 +2,17 @@ import { useSignals } from "@preact/signals-react/runtime";
 import { useEffect, useRef, useState } from "react";
 import {
   Chevron,
+  DraftIcon,
   NewFolderIcon,
   NewNoteIcon,
   NewSketchIcon,
   NodeIcon,
 } from "./fs-icons";
+import { FILE_EXTENSIONS, readFileKind } from "../../domain/fs-file-kinds";
 import { useStore } from "../../store/store";
 import type { DragEvent, FC, KeyboardEvent, MouseEvent } from "react";
 import type { TFsNode, TFsNodeKind } from "../../api/types";
+import type { TFsDraftKind } from "../../store/fs-slice";
 import type {
   TCancelDraftAction,
   TDeleteNodeAction,
@@ -39,7 +42,9 @@ type TFsViewerProps = {
 };
 
 type TMenuState = {
-  nodeId: string;
+  // A right click on the empty space below the tree aims at the vault root, and the
+  // root is not a node, so the menu keeps no node for it.
+  nodeId: string | null;
   x: number;
   y: number;
   isConfirmingDelete: boolean;
@@ -49,11 +54,20 @@ const INDENT_STEP_PX = 14;
 const MENU_WIDTH_PX = 176;
 const MENU_MARGIN_PX = 8;
 
-const NEW_NAME_BY_KIND: Readonly<Record<TFsNodeKind, string>> = {
+const NEW_NAME_BY_KIND: Readonly<Record<TFsDraftKind, string>> = {
   folder: "new-folder",
+  file: "untitled",
   markdown: "untitled.md",
   excalidraw: "untitled.excalidraw",
 };
+
+const CREATE_ITEMS: readonly { kind: TFsDraftKind; label: string }[] = [
+  { kind: "file", label: "New file" },
+  { kind: "excalidraw", label: "New excalidraw" },
+  { kind: "folder", label: "New folder" },
+];
+
+const EXTENSIONS_HINT = FILE_EXTENSIONS.join(" \u00b7 ");
 
 const LABEL_BY_KIND: Readonly<Record<TFsNodeKind, string>> = {
   folder: "folder",
@@ -112,13 +126,23 @@ const readCreateParentId = (
 
 type TDraftInputProps = {
   initialName: string;
+  // A file draft is named by the reader, extension included, and only an extension the
+  // app knows names a kind. Every other draft already knows its kind and takes any name.
+  isFileDraft: boolean;
   onCancel: () => void;
   onSubmit: (name: string) => void;
 };
 
-const DraftInput: FC<TDraftInputProps> = ({ initialName, onCancel, onSubmit }) => {
+const DraftInput: FC<TDraftInputProps> = ({
+  initialName,
+  isFileDraft,
+  onCancel,
+  onSubmit,
+}) => {
   const [name, setName] = useState(initialName);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  const isAllowed = !isFileDraft || readFileKind(name) !== null;
 
   useEffect(() => {
     const input = inputRef.current;
@@ -137,6 +161,10 @@ const DraftInput: FC<TDraftInputProps> = ({ initialName, onCancel, onSubmit }) =
     event.stopPropagation();
 
     if (event.key === "Enter") {
+      if (!isAllowed) {
+        return;
+      }
+
       onSubmit(name);
 
       return;
@@ -147,17 +175,37 @@ const DraftInput: FC<TDraftInputProps> = ({ initialName, onCancel, onSubmit }) =
     }
   };
 
+  // Leaving an extension the app cannot read behind would only fail in the api, so the
+  // draft is dropped instead.
+  const handleBlur = () => {
+    if (!isAllowed) {
+      onCancel();
+
+      return;
+    }
+
+    onSubmit(name);
+  };
+
   return (
-    <input
-      className="fs__input"
-      onBlur={() => onSubmit(name)}
-      onChange={(event) => setName(event.target.value)}
-      onClick={(event) => event.stopPropagation()}
-      onKeyDown={handleKeyDown}
-      ref={inputRef}
-      spellCheck={false}
-      value={name}
-    />
+    <>
+      <input
+        className={`fs__input${isAllowed ? "" : " fs__input--invalid"}`}
+        onBlur={handleBlur}
+        onChange={(event) => setName(event.target.value)}
+        onClick={(event) => event.stopPropagation()}
+        onKeyDown={handleKeyDown}
+        ref={inputRef}
+        spellCheck={false}
+        value={name}
+      />
+
+      {isFileDraft ? (
+        <span className={`fs__ext${isAllowed ? "" : " fs__ext--invalid"}`}>
+          {EXTENSIONS_HINT}
+        </span>
+      ) : null}
+    </>
   );
 };
 
@@ -217,7 +265,14 @@ const FsViewer: FC<TFsViewerProps> = ({ registry }) => {
 
   const createParentId = readCreateParentId(nodeById, selectedId);
 
-  const menuNode = menu === null ? null : nodeById.get(menu.nodeId) ?? null;
+  const menuNode = menu === null || menu.nodeId === null
+    ? null
+    : nodeById.get(menu.nodeId) ?? null;
+
+  // The root menu creates in the vault root, a folder menu creates inside that folder,
+  // and a file menu creates nothing.
+  const menuParentId = menuNode === null ? null : menuNode.id;
+  const canCreateInMenu = menuNode === null || menuNode.kind === "folder";
 
   const canDropOn = (targetId: string | null) => {
     if (dragId === null) {
@@ -278,11 +333,13 @@ const FsViewer: FC<TFsViewerProps> = ({ registry }) => {
     registry.moveNodeAction(movedId, targetId);
   };
 
-  const handleContextMenu = (event: MouseEvent<HTMLElement>, nodeId: string) => {
+  const handleContextMenu = (event: MouseEvent<HTMLElement>, nodeId: string | null) => {
     event.preventDefault();
     event.stopPropagation();
 
-    registry.selectNodeAction(nodeId);
+    if (nodeId !== null) {
+      registry.selectNodeAction(nodeId);
+    }
 
     const x = Math.min(event.clientX, window.innerWidth - MENU_WIDTH_PX - MENU_MARGIN_PX);
 
@@ -349,6 +406,11 @@ const FsViewer: FC<TFsViewerProps> = ({ registry }) => {
             handleDragOver(event, null);
           }
         }}
+        onContextMenu={(event) => {
+          if (event.target === event.currentTarget) {
+            handleContextMenu(event, null);
+          }
+        }}
         onDrop={(event) => {
           if (event.target === event.currentTarget) {
             handleDrop(event, null);
@@ -369,10 +431,11 @@ const FsViewer: FC<TFsViewerProps> = ({ registry }) => {
               >
                 <span className="fs__twisty" />
 
-                <NodeIcon kind={row.kind} />
+                <DraftIcon kind={row.kind} />
 
                 <DraftInput
                   initialName={NEW_NAME_BY_KIND[row.kind]}
+                  isFileDraft={row.kind === "file"}
                   onCancel={registry.cancelDraftAction}
                   onSubmit={registry.submitDraftAction}
                 />
@@ -439,6 +502,7 @@ const FsViewer: FC<TFsViewerProps> = ({ registry }) => {
               {isRenaming ? (
                 <DraftInput
                   initialName={node.name}
+                  isFileDraft={false}
                   onCancel={registry.cancelDraftAction}
                   onSubmit={registry.submitDraftAction}
                 />
@@ -450,84 +514,73 @@ const FsViewer: FC<TFsViewerProps> = ({ registry }) => {
         })}
       </div>
 
-      {menu === null || menuNode === null ? null : (
+      {menu === null || (menu.nodeId !== null && menuNode === null) ? null : (
         <div
           className="fs__menu"
           ref={menuRef}
           style={{ left: `${menu.x}px`, top: `${menu.y}px` }}
         >
-          {menuNode.kind !== "folder" ? null : (
+          {!canCreateInMenu ? null : (
             <>
-              <button
-                className="fs__menu-item"
-                onClick={() => {
-                  runMenuAction(() => registry.startCreateAction(menuNode.id, "markdown"));
-                }}
-                type="button"
-              >
-                {"New note"}
-              </button>
+              {CREATE_ITEMS.map((item) => (
+                <button
+                  className="fs__menu-item"
+                  key={item.kind}
+                  onClick={() => {
+                    runMenuAction(() => registry.startCreateAction(menuParentId, item.kind));
+                  }}
+                  type="button"
+                >
+                  <DraftIcon kind={item.kind} />
 
-              <button
-                className="fs__menu-item"
-                onClick={() => {
-                  runMenuAction(() => registry.startCreateAction(menuNode.id, "excalidraw"));
-                }}
-                type="button"
-              >
-                {"New sketch"}
-              </button>
+                  {item.label}
+                </button>
+              ))}
 
-              <button
-                className="fs__menu-item"
-                onClick={() => {
-                  runMenuAction(() => registry.startCreateAction(menuNode.id, "folder"));
-                }}
-                type="button"
-              >
-                {"New folder"}
-              </button>
-
-              <span className="fs__menu-divider" />
+              {menuNode === null ? null : <span className="fs__menu-divider" />}
             </>
           )}
 
-          <button
-            className="fs__menu-item"
-            onClick={() => runMenuAction(() => registry.startRenameAction(menuNode.id))}
-            type="button"
-          >
-            {"Rename"}
-          </button>
+          {menuNode === null ? null : (
+            <>
+              <button
+                className="fs__menu-item"
+                onClick={() => runMenuAction(() => registry.startRenameAction(menuNode.id))}
+                type="button"
+              >
+                {"Rename"}
+              </button>
 
-          {menuNode.parentId === null ? null : (
-            <button
-              className="fs__menu-item"
-              onClick={() => runMenuAction(() => registry.moveNodeAction(menuNode.id, null))}
-              type="button"
-            >
-              {"Move to vault root"}
-            </button>
-          )}
+              {menuNode.parentId === null ? null : (
+                <button
+                  className="fs__menu-item"
+                  onClick={() => runMenuAction(() => registry.moveNodeAction(menuNode.id, null))}
+                  type="button"
+                >
+                  {"Move to vault root"}
+                </button>
+              )}
 
-          <span className="fs__menu-divider" />
+              <span className="fs__menu-divider" />
 
-          {menu.isConfirmingDelete ? (
-            <button
-              className="fs__menu-item fs__menu-item--danger"
-              onClick={() => runMenuAction(() => registry.deleteNodeAction(menuNode.id))}
-              type="button"
-            >
-              {`Delete this ${LABEL_BY_KIND[menuNode.kind]}?`}
-            </button>
-          ) : (
-            <button
-              className="fs__menu-item fs__menu-item--danger"
-              onClick={() => setMenu({ ...menu, isConfirmingDelete: true })}
-              type="button"
-            >
-              {"Delete"}
-            </button>
+              {menu.isConfirmingDelete ? (
+                <button
+                  className="fs__menu-item fs__menu-item--danger"
+                  onClick={() => runMenuAction(() => registry.deleteNodeAction(menuNode.id))}
+                  type="button"
+                >
+                  {`Delete this ${LABEL_BY_KIND[menuNode.kind]}?`}
+                </button>
+              ) : (
+                <button
+                  className="fs__menu-item fs__menu-item--danger"
+                  onClick={() => setMenu({ ...menu, isConfirmingDelete: true })}
+                  type="button"
+                >
+                  {"Delete"}
+                </button>
+              )}
+            </>
           )}
         </div>
       )}

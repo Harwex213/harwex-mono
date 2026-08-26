@@ -1,15 +1,35 @@
 export {
-  noteIdSchema,
-  noteSchema,
-  createNoteInputSchema,
-  updateNoteInputSchema,
-  noteByIdInputSchema,
-} from "./src/note.js";
+  fsNodeKindSchema,
+  fsNodeIdSchema,
+  fsParentIdSchema,
+  fsNodeSchema,
+  fsNodeListSchema,
+  nodeByIdInputSchema,
+  createNodeInputSchema,
+  createNodeResultSchema,
+  renameNodeInputSchema,
+  moveNodeInputSchema,
+} from "./src/fs.js";
 export type {
-  NoteId,
-  Note,
-  CreateNoteInput,
-  UpdateNoteInput,
-  NoteByIdInput,
-} from "./src/note.js";
+  TFsNodeKind,
+  TFsFileKind,
+  TFsNode,
+  TNodeByIdInput,
+  TCreateNodeInput,
+  TCreateNodeResult,
+  TRenameNodeInput,
+  TMoveNodeInput,
+} from "./src/fs.js";
+export {
+  markdownDocumentSchema,
+  excalidrawSceneSchema,
+  excalidrawDocumentSchema,
+  documentSchema,
+} from "./src/document.js";
+export type {
+  TMarkdownDocument,
+  TExcalidrawScene,
+  TExcalidrawDocument,
+  TDocument,
+} from "./src/document.js";
 export type { AppRouter } from "./src/api.js";
