@@ -3,6 +3,8 @@ import { toggleFolderAction } from "./fs-state";
 import type { TApi } from "../api/types";
 import type { TStore } from "../store/store";
 
+const MAX_OPEN_TABS = 5;
+
 const pickNeighbourId = (
   openIds: readonly string[],
   closedId: string
@@ -34,7 +36,9 @@ const openNodeAction = (store: TStore, api: TApi, nodeId: string) => {
 
   const openIds = store.tabs.openIds.peek();
   if (!openIds.includes(nodeId)) {
-    store.tabs.openIds.value = [...openIds, nodeId];
+    // The strip holds five notes. Opening a sixth one drops the tab that was
+    // opened first.
+    store.tabs.openIds.value = [...openIds, nodeId].slice(-MAX_OPEN_TABS);
   }
 
   store.tabs.activeId.value = nodeId;

@@ -1,8 +1,24 @@
+import type { TFsNodeKind } from "../api/types";
+
 type TLoadTreeAction = () => Promise<void>;
 
 type TToggleFolderAction = (nodeId: string) => void;
 
 type TOpenNodeAction = (nodeId: string) => void;
+
+type TSelectNodeAction = (nodeId: string) => void;
+
+type TStartCreateAction = (parentId: string | null, kind: TFsNodeKind) => void;
+
+type TStartRenameAction = (nodeId: string) => void;
+
+type TCancelDraftAction = () => void;
+
+type TSubmitDraftAction = (name: string) => void;
+
+type TMoveNodeAction = (nodeId: string, parentId: string | null) => void;
+
+type TDeleteNodeAction = (nodeId: string) => void;
 
 type TActivateTabAction = (nodeId: string) => void;
 
@@ -14,6 +30,13 @@ type TAppRegistry = {
   loadTreeAction: TLoadTreeAction;
   toggleFolderAction: TToggleFolderAction;
   openNodeAction: TOpenNodeAction;
+  selectNodeAction: TSelectNodeAction;
+  startCreateAction: TStartCreateAction;
+  startRenameAction: TStartRenameAction;
+  cancelDraftAction: TCancelDraftAction;
+  submitDraftAction: TSubmitDraftAction;
+  moveNodeAction: TMoveNodeAction;
+  deleteNodeAction: TDeleteNodeAction;
   activateTabAction: TActivateTabAction;
   closeTabAction: TCloseTabAction;
   reloadDocumentAction: TReloadDocumentAction;
@@ -22,9 +45,16 @@ type TAppRegistry = {
 export type {
   TActivateTabAction,
   TAppRegistry,
+  TCancelDraftAction,
   TCloseTabAction,
+  TDeleteNodeAction,
   TLoadTreeAction,
+  TMoveNodeAction,
   TOpenNodeAction,
   TReloadDocumentAction,
+  TSelectNodeAction,
+  TStartCreateAction,
+  TStartRenameAction,
+  TSubmitDraftAction,
   TToggleFolderAction,
 };

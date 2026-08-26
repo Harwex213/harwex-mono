@@ -1,7 +1,7 @@
 import { useSignals } from "@preact/signals-react/runtime";
 import { NodeIcon } from "./fs-icons";
 import { useStore } from "../../store/store";
-import type { FC } from "react";
+import type { FC, MouseEvent } from "react";
 import type { TActivateTabAction, TCloseTabAction } from "../../domain/registry";
 
 type TTabsBarRegistrySlice = {
@@ -13,12 +13,32 @@ type TTabsBarProps = {
   registry: TTabsBarRegistrySlice;
 };
 
+const MIDDLE_BUTTON = 1;
+
 const TabsBar: FC<TTabsBarProps> = ({ registry }) => {
   useSignals();
 
   const store = useStore();
   const openNodes = store.derived.openNodes.value;
   const activeId = store.tabs.activeId.value;
+
+  // The browser starts autoscroll on a middle press, so the press is swallowed
+  // and the tab closes on the release.
+  const handleMouseDown = (event: MouseEvent<HTMLElement>) => {
+    if (event.button === MIDDLE_BUTTON) {
+      event.preventDefault();
+    }
+  };
+
+  const handleAuxClick = (event: MouseEvent<HTMLElement>, nodeId: string) => {
+    if (event.button !== MIDDLE_BUTTON) {
+      return;
+    }
+
+    event.preventDefault();
+
+    registry.closeTabAction(nodeId);
+  };
 
   return (
     <nav className="tabs">
@@ -30,6 +50,8 @@ const TabsBar: FC<TTabsBarProps> = ({ registry }) => {
         <span
           className={`tab${node.id === activeId ? " tab--active" : ""}`}
           key={node.id}
+          onAuxClick={(event) => handleAuxClick(event, node.id)}
+          onMouseDown={handleMouseDown}
         >
           <button
             className="tab__label"

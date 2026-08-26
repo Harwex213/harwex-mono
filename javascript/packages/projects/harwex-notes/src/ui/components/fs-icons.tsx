@@ -20,11 +20,11 @@ const Chevron: FC<TChevronProps> = ({ isExpanded }) => {
 
 const FolderIcon: FC = () => {
   return (
-    <svg className="fs__icon" height="14" viewBox="0 0 16 16" width="14">
+    <svg className="fs__icon fs__icon--folder" height="14" viewBox="0 0 16 16" width="14">
       <path
         d="M1.5 4.2h4l1.3 1.6h7.7v7.7H1.5z"
         fill="currentColor"
-        fillOpacity="0.18"
+        fillOpacity="0.3"
         stroke="currentColor"
         strokeWidth="1.2"
       />
@@ -35,11 +35,11 @@ const FolderIcon: FC = () => {
 
 const MarkdownIcon: FC = () => {
   return (
-    <svg className="fs__icon" height="14" viewBox="0 0 16 16" width="14">
+    <svg className="fs__icon fs__icon--markdown" height="14" viewBox="0 0 16 16" width="14">
       <path
         d="M3 1.8h6.4L13 5.4v8.8H3z"
         fill="currentColor"
-        fillOpacity="0.14"
+        fillOpacity="0.22"
         stroke="currentColor"
         strokeWidth="1.2"
       />
@@ -51,11 +51,11 @@ const MarkdownIcon: FC = () => {
 
 const SketchIcon: FC = () => {
   return (
-    <svg className="fs__icon" height="14" viewBox="0 0 16 16" width="14">
+    <svg className="fs__icon fs__icon--sketch" height="14" viewBox="0 0 16 16" width="14">
       <path
         d="M2.4 2.4h11.2v11.2H2.4z"
         fill="currentColor"
-        fillOpacity="0.14"
+        fillOpacity="0.22"
         stroke="currentColor"
         strokeWidth="1.2"
       />
@@ -65,6 +65,80 @@ const SketchIcon: FC = () => {
         stroke="currentColor"
         strokeLinecap="round"
         strokeWidth="1.2"
+      />
+    </svg>
+  );
+};
+
+const PLUS_PATH = "M12.5 9.6v4.2M10.4 11.7h4.2";
+
+const NewNoteIcon: FC = () => {
+  return (
+    <svg className="fs__tool-icon fs__icon--markdown" height="15" viewBox="0 0 16 16" width="15">
+      <path
+        d="M2.6 1.8h5.8L11.4 4.8v4.2H2.6z"
+        fill="currentColor"
+        fillOpacity="0.22"
+        stroke="currentColor"
+        strokeWidth="1.2"
+      />
+      <path d="M8.2 1.8v3h3.2" fill="none" stroke="currentColor" strokeWidth="1.2" />
+      <path
+        d={PLUS_PATH}
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeWidth="1.5"
+      />
+    </svg>
+  );
+};
+
+const NewSketchIcon: FC = () => {
+  return (
+    <svg className="fs__tool-icon fs__icon--sketch" height="15" viewBox="0 0 16 16" width="15">
+      <path
+        d="M2.2 2.2h9v6.8h-9z"
+        fill="currentColor"
+        fillOpacity="0.22"
+        stroke="currentColor"
+        strokeWidth="1.2"
+      />
+      <path
+        d="M3.8 7.4c1.1-2.6 2-2.6 2.8-1 .8 1.6 1.7 1.6 2.8-1"
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeWidth="1.2"
+      />
+      <path
+        d={PLUS_PATH}
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeWidth="1.5"
+      />
+    </svg>
+  );
+};
+
+const NewFolderIcon: FC = () => {
+  return (
+    <svg className="fs__tool-icon fs__icon--folder" height="15" viewBox="0 0 16 16" width="15">
+      <path
+        d="M1.4 4.2h3.6l1.2 1.5h5.4V11H1.4z"
+        fill="currentColor"
+        fillOpacity="0.3"
+        stroke="currentColor"
+        strokeWidth="1.2"
+      />
+      <path d="M1.4 4.2V3h3l0.9 1.2" fill="none" stroke="currentColor" strokeWidth="1.2" />
+      <path
+        d={PLUS_PATH}
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeWidth="1.5"
       />
     </svg>
   );
@@ -86,4 +160,4 @@ const NodeIcon: FC<TNodeIconProps> = ({ kind }) => {
   return <SketchIcon />;
 };
 
-export { Chevron, NodeIcon };
+export { Chevron, NewFolderIcon, NewNoteIcon, NewSketchIcon, NodeIcon };

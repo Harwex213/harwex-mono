@@ -20,6 +20,9 @@
   --sketch-green-fill: rgba(47, 125, 85, 0.09);
   --sketch-orange-fill: rgba(184, 104, 31, 0.09);
   --sketch-violet-fill: rgba(106, 75, 176, 0.09);
+  --icon-folder: #cf9432;
+  --icon-markdown: #3b6ea5;
+  --icon-sketch: #7b52c4;
   --sketch-font: "Segoe Print", "Bradley Hand", "Comic Sans MS", "Chalkboard SE", cursive;
 }
 
@@ -46,6 +49,9 @@
     --sketch-green-fill: rgba(116, 196, 149, 0.12);
     --sketch-orange-fill: rgba(224, 165, 104, 0.12);
     --sketch-violet-fill: rgba(166, 140, 230, 0.12);
+    --icon-folder: #e0b45f;
+    --icon-markdown: #7fb0e8;
+    --icon-sketch: #b193ea;
   }
 }
 
@@ -80,6 +86,7 @@ button {
 .app {
   display: grid;
   grid-template-columns: 260px minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   gap: 10px;
   height: 100%;
   padding: 10px;
@@ -118,15 +125,45 @@ button {
   color: var(--text-muted);
 }
 
-.fs__count {
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
-  color: var(--text-faint);
+.fs__tools {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.fs__tool {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3px;
+  background: none;
+  border: 0;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.fs__tool:hover:not(:disabled) {
+  background: var(--code-bg);
+}
+
+.fs__tool:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.fs__tool-icon {
+  display: block;
 }
 
 .fs__body {
   padding: 6px 6px 12px;
+  border: 1px solid transparent;
+  border-radius: 6px;
   overflow-y: auto;
+}
+
+.fs__body--drop {
+  border-color: var(--border-strong);
 }
 
 .fs__hint,
@@ -146,20 +183,49 @@ button {
   gap: 6px;
   width: 100%;
   padding: 4px 8px;
-  background: none;
-  border: 0;
+  border: 1px solid transparent;
   border-radius: 5px;
   text-align: left;
-  cursor: pointer;
+  user-select: none;
+  cursor: default;
 }
 
 .fs__row:hover {
   background: var(--code-bg);
 }
 
+.fs__row--selected {
+  background: var(--code-bg);
+}
+
 .fs__row--active {
   background: var(--accent-soft);
   color: var(--accent);
+}
+
+.fs__row--dragging {
+  opacity: 0.45;
+}
+
+.fs__row--drop {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+
+.fs__row--draft {
+  background: var(--code-bg);
+}
+
+.fs__input {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 1px 4px;
+  background: var(--panel);
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  font: inherit;
+  color: var(--text);
+  outline: none;
 }
 
 .fs__twisty {
@@ -169,6 +235,7 @@ button {
   flex: 0 0 12px;
   width: 12px;
   color: var(--text-faint);
+  cursor: pointer;
 }
 
 .fs__chevron {
@@ -184,8 +251,16 @@ button {
   color: var(--text-muted);
 }
 
-.fs__row--active .fs__icon {
-  color: var(--accent);
+.fs__icon--folder {
+  color: var(--icon-folder);
+}
+
+.fs__icon--markdown {
+  color: var(--icon-markdown);
+}
+
+.fs__icon--sketch {
+  color: var(--icon-sketch);
 }
 
 .fs__name {
@@ -194,11 +269,47 @@ button {
   text-overflow: ellipsis;
 }
 
+.fs__menu {
+  position: fixed;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  width: 176px;
+  padding: 4px;
+  background: var(--panel);
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18);
+}
+
+.fs__menu-item {
+  padding: 5px 8px;
+  background: none;
+  border: 0;
+  border-radius: 4px;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.fs__menu-item:hover {
+  background: var(--code-bg);
+}
+
+.fs__menu-item--danger {
+  color: var(--danger);
+}
+
+.fs__menu-divider {
+  margin: 4px 6px;
+  border-top: 1px solid var(--border);
+}
+
 .tabs {
   display: flex;
   align-items: stretch;
   gap: 4px;
-  min-height: 40px;
+  height: 44px;
   padding: 4px;
   background: var(--panel);
   border: 1px solid var(--border);
@@ -307,6 +418,7 @@ button {
 
 .viewer--sketch {
   padding: 0;
+  overflow: hidden;
 }
 
 .md {
@@ -468,7 +580,7 @@ button {
   justify-content: center;
   width: 100%;
   height: 100%;
-  min-height: 320px;
+  min-height: 0;
   padding: 24px;
   background-image:
     radial-gradient(circle, var(--border) 1px, transparent 1px);

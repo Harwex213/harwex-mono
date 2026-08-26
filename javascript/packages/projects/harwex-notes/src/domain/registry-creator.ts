@@ -1,5 +1,15 @@
 import { reloadDocumentAction } from "./documents-state";
-import { loadTreeAction, toggleFolderAction } from "./fs-state";
+import {
+  cancelDraftAction,
+  deleteNodeAction,
+  loadTreeAction,
+  moveNodeAction,
+  selectNodeAction,
+  startCreateAction,
+  startRenameAction,
+  submitDraftAction,
+  toggleFolderAction,
+} from "./fs-state";
 import { activateTabAction, closeTabAction, openNodeAction } from "./tabs-state";
 import type { TApi } from "../api/types";
 import type { TStore } from "../store/store";
@@ -10,12 +20,21 @@ const createRegistry = (store: TStore, api: TApi) => {
     loadTreeAction,
     toggleFolderAction,
     openNodeAction,
+    selectNodeAction,
+    startCreateAction,
+    startRenameAction,
+    cancelDraftAction,
+    submitDraftAction,
+    moveNodeAction,
+    deleteNodeAction,
     activateTabAction,
     closeTabAction,
     reloadDocumentAction,
   };
 
-  const registry = Object.entries(rawRegistry).reduce((newRegistry, [name, func]) => {
+  const entries = Object.entries(rawRegistry) as readonly [string, Function][];
+
+  const registry = entries.reduce((newRegistry, [name, func]) => {
     newRegistry[name] = func.bind(null, store, api);
 
     return newRegistry;
