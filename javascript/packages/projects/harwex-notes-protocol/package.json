@@ -1,0 +1,19 @@
+{
+  "name": "@hw/harwex-notes-protocol",
+  "description": "Shared zod schemas and API types for harwex-notes",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "exports": "./exports.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@hw/harwex-notes-backend": "workspace:*",
+    "@hw/typescript-config": "workspace:*",
+    "typescript": "5.9.3"
+  }
+}

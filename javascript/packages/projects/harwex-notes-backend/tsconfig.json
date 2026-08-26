@@ -1,0 +1,9 @@
+{
+  "extends": "@hw/typescript-config/node.json",
+  "compilerOptions": {
+    "noEmit": true
+  },
+  "include": [
+    "./src/**/*"
+  ]
+}
