@@ -1,0 +1,13 @@
+{
+  "extends": "@hw/typescript-config/node.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "rewriteRelativeImportExtensions": true,
+    "erasableSyntaxOnly": true
+  },
+  "include": [
+    "./server/**/*",
+    "./shared/**/*"
+  ]
+}

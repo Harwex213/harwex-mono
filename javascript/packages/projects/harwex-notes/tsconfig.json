@@ -1,0 +1,17 @@
+{
+  "extends": "@hw/typescript-config/react.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "types": [
+      "react",
+      "react-dom",
+      "node"
+    ]
+  },
+  "include": [
+    "./src/**/*",
+    "./shared/**/*",
+    "./server/router.ts"
+  ]
+}
