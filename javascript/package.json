@@ -3,11 +3,12 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "force": "yarn :rr **/node_modules && yarn",
+    ":excalidraw-markdown": "EXCALIDRAW_CONVERT_CWD=$INIT_CWD yarn workspace @hw/excalidraw-convert markdown",
     ":rr": "npx rimraf@4.4.1",
     ":sap-parse": "SAP_PARSE_CWD=$INIT_CWD yarn workspace @hw/scratchapixel-parser parse",
     ":static": "yarn http-server $INIT_CWD -p 0 -c-1",
-    ":vk-parse": "VK_PARSE_CWD=$INIT_CWD yarn workspace @hw/faenwald-parser parse"
+    ":vk-parse": "VK_PARSE_CWD=$INIT_CWD yarn workspace @hw/faenwald-parser parse",
+    "force": "yarn :rr **/node_modules && yarn"
   },
   "devDependencies": {
     "http-server": "14.1.1",
