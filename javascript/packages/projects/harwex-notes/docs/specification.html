@@ -251,8 +251,19 @@ td.id {
   padding: 0.75rem 0.5rem;
 }
 
-.wire-left {
+.wire-left-col {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
   min-height: 14rem;
+}
+
+.wire-search {
+  height: 2.4rem;
+}
+
+.wire-tree {
+  flex: 1;
 }
 
 .wire-right {
@@ -308,7 +319,8 @@ td.id {
     <li><a href="#app">APP — Application shell</a></li>
     <li><a href="#vault">VAULT — The vault and its files</a></li>
     <li><a href="#tree">TREE — File tree</a></li>
-    <li><a href="#mut">MUT — Creating, renaming, deleting</a></li>
+    <li><a href="#srch">SRCH — Search</a></li>
+    <li><a href="#mut">MUT — Creating, renaming, moving, deleting</a></li>
     <li><a href="#tab">TAB — Tabs</a></li>
     <li><a href="#doc">DOC — Saving</a></li>
     <li><a href="#sync">SYNC — Changes made outside the app</a></li>
@@ -348,6 +360,8 @@ td.id {
       <tr><td><strong>Document</strong></td><td>The content of one open file as the app holds it, together with its save state.</td></tr>
       <tr><td><strong>Unsaved changes</strong></td><td>A document differs from the file on disk because the user edited it and the save has not landed yet.</td></tr>
       <tr><td><strong>Conflict</strong></td><td>A document has unsaved changes and the file on disk changed since the app read it.</td></tr>
+      <tr><td><strong>Filter</strong></td><td>A term in the search field. While the field holds a term the tree shows matching entries only.</td></tr>
+      <tr><td><strong>Match</strong></td><td>An entry whose name contains the term, or an openable file whose content contains it.</td></tr>
     </tbody>
   </table>
   </div>
@@ -356,13 +370,16 @@ td.id {
 <section id="layout">
   <h2><span class="num">03</span> Layout</h2>
   <div class="wire">
-    <div class="wire-box wire-left">FS viewer<br>(file tree)</div>
+    <div class="wire-left-col">
+      <div class="wire-box wire-search">search</div>
+      <div class="wire-box wire-tree">FS viewer<br>(file tree)</div>
+    </div>
     <div class="wire-right">
       <div class="wire-box wire-tabs">tabs</div>
       <div class="wire-box wire-viewer">drawing / Markdown / text / HTML viewer</div>
     </div>
   </div>
-  <p>Two columns. The left column is the file tree over the whole vault. The right column is a tab bar over one viewer, and the viewer fills the rest of the height. The divider between the columns is draggable. Nothing else is on the screen: no menu bar, no sidebar, no second route.</p>
+  <p>Two columns. The left column holds a search field over the file tree of the whole vault. The right column is a tab bar over one viewer, and the viewer fills the rest of the height. The divider between the columns is draggable. Nothing else is on the screen: no menu bar, no sidebar, no second route.</p>
 </section>
 
 <section id="app">
@@ -423,14 +440,43 @@ td.id {
   </div>
 </section>
 
-<section id="mut">
-  <h2><span class="num">07</span> MUT — Creating, renaming, deleting</h2>
+<section id="srch">
+  <h2><span class="num">07</span> SRCH — Search</h2>
   <div class="table-wrap">
   <table>
     <thead><tr><th>ID</th><th>Rule</th></tr></thead>
     <tbody>
-      <tr><td class="id">MUT-1</td><td>Four operations exist: create a file, create a folder, rename an entry, delete an entry. Moving an entry does not exist.</td></tr>
-      <tr><td class="id">MUT-2</td><td>Each operation is reachable three ways: a context menu on the tree row, two buttons at the top of the tree panel for the two create operations, and the keyboard shortcuts in TREE-5.</td></tr>
+      <tr><td class="id">SRCH-1</td><td>A search field sits above the tree, in the same panel. The app has no other search surface.</td></tr>
+      <tr><td class="id">SRCH-2</td><td>The tree itself shows the results. While the field holds a term, only matching entries are listed, each under the real folders that hold it, and those folders are expanded so the path to every match is visible.</td></tr>
+      <tr><td class="id">SRCH-3</td><td>Clearing the field restores the tree as it was before the search, including which folders the user had expanded and which row was selected.</td></tr>
+      <tr><td class="id">SRCH-4</td><td>Every entry matches on its name, folders included.</td></tr>
+      <tr><td class="id">SRCH-5</td><td>Content is searched in the openable text kinds: Markdown, plain text and HTML.</td></tr>
+      <tr><td class="id">SRCH-6</td><td>Inside a drawing, only the text the user typed into the drawing is searched. The data that describes the shapes is never searched, because it would match on identifiers and colours that the user cannot see.</td></tr>
+      <tr><td class="id">SRCH-7</td><td>A file that cannot be opened — an unsupported extension, too large, not text — matches on its name alone.</td></tr>
+      <tr><td class="id">SRCH-8</td><td>Search covers exactly what the tree shows. The folders excluded by VAULT-8 are not searched, and nothing outside the vault is searched.</td></tr>
+      <tr><td class="id">SRCH-9</td><td>Matching ignores case and treats the term as plain text. There are no patterns, no wildcards and no options to configure.</td></tr>
+      <tr><td class="id">SRCH-10</td><td>A term of one character filters on names only. From two characters onward content is searched as well.</td></tr>
+      <tr><td class="id">SRCH-11</td><td>Results follow the field as the user types. No key needs to be pressed to run the search.</td></tr>
+      <tr><td class="id">SRCH-12</td><td>A file with unsaved changes is searched as the user has it, not as the disk holds it.</td></tr>
+      <tr><td class="id">SRCH-13</td><td>A row that matched on content shows how many times the term occurs in that file.</td></tr>
+      <tr><td class="id">SRCH-14</td><td>Opening a result follows the TAB rules. A Markdown or text file scrolls its first match into view. A drawing or an HTML file opens normally, without jumping to a match.</td></tr>
+      <tr><td class="id">SRCH-15</td><td>A filter stays live. A file created outside the app that matches appears in the results; a file edited so that it no longer matches leaves them; a deleted file disappears.</td></tr>
+      <tr><td class="id">SRCH-16</td><td>While a search over a large vault is still running the panel says so, and results appear as they are found. The panel never looks empty while it is still working.</td></tr>
+      <tr><td class="id">SRCH-17</td><td>A term that matches nothing states that nothing matched it, and names how many files were searched.</td></tr>
+      <tr><td class="id">SRCH-18</td><td>Search only finds. Nothing in the app changes what a search has found, in one file or across the vault.</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section id="mut">
+  <h2><span class="num">08</span> MUT — Creating, renaming, moving, deleting</h2>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>ID</th><th>Rule</th></tr></thead>
+    <tbody>
+      <tr><td class="id">MUT-1</td><td>Five operations exist: create a file, create a folder, rename an entry, move an entry, delete an entry.</td></tr>
+      <tr><td class="id">MUT-2</td><td>Each operation is reachable from the pointer and from the keyboard. Create, rename and delete sit in a context menu on the tree row; the two create operations also have buttons at the top of the tree panel; the keyboard shortcuts are in TREE-5. Moving has its own two gestures, in MUT-16.</td></tr>
       <tr><td class="id">MUT-3</td><td>Creation happens inside the selected folder. When a file is selected, creation happens in the folder that holds it. When nothing is selected, creation happens at the root of the vault.</td></tr>
       <tr><td class="id">MUT-4</td><td>Naming happens in the tree itself: the row becomes a text field. Enter commits the name, Escape cancels the operation, and clicking away commits.</td></tr>
       <tr><td class="id">MUT-5</td><td>The user types the extension. The app never adds one, never completes one and never offers a list to pick from.</td></tr>
@@ -444,13 +490,24 @@ td.id {
       <tr><td class="id">MUT-13</td><td>Deletion is permanent. The app has no trash and no undo, and every deletion prompt says so.</td></tr>
       <tr><td class="id">MUT-14</td><td>Renaming a folder keeps everything inside it. Tabs open on files inside that folder follow the rename and stay open.</td></tr>
       <tr><td class="id">MUT-15</td><td>An operation that fails on disk reports the reason from the system and changes nothing in the tree.</td></tr>
+      <tr><td class="id">MUT-16</td><td>An entry moves two ways: dragging its row, or cutting it with <code>Cmd/Ctrl+X</code> and pasting into the target with <code>Cmd/Ctrl+V</code>. Both move one entry at a time.</td></tr>
+      <tr><td class="id">MUT-17</td><td>Dropping onto a folder row moves the entry into that folder. Dropping onto a file row moves it into the folder that holds that file. Dropping onto the panel background, away from every row, moves it to the root of the vault.</td></tr>
+      <tr><td class="id">MUT-18</td><td>While a drag is over a valid target, that target is highlighted. A target that would refuse the move is not highlighted.</td></tr>
+      <tr><td class="id">MUT-19</td><td>Dropping onto a collapsed folder moves the entry in and expands that folder, so the user sees where it landed.</td></tr>
+      <tr><td class="id">MUT-20</td><td>A move into a folder that already holds that name is refused, and nothing is moved. The reason is the one in MUT-8.</td></tr>
+      <tr><td class="id">MUT-21</td><td>A folder cannot be moved into itself or into anything inside itself. A move onto the folder that already holds the entry does nothing.</td></tr>
+      <tr><td class="id">MUT-22</td><td>A move never changes a name, so the extension rules in MUT-6 and MUT-7 do not apply to it.</td></tr>
+      <tr><td class="id">MUT-23</td><td>A save still pending on a moved file is written before the move starts. No write is ever in flight while a path changes.</td></tr>
+      <tr><td class="id">MUT-24</td><td>An open tab follows its file to the new path and stays open. Moving a folder carries every open tab inside it.</td></tr>
+      <tr><td class="id">MUT-25</td><td>Moving is permanent. As with deletion, there is no undo.</td></tr>
+      <tr><td class="id">MUT-26</td><td>Dragging and pasting are refused while a filter is active, because a filtered tree hides the folders the user needs as targets. The refusal says to clear the search first.</td></tr>
     </tbody>
   </table>
   </div>
 </section>
 
 <section id="tab">
-  <h2><span class="num">08</span> TAB — Tabs</h2>
+  <h2><span class="num">09</span> TAB — Tabs</h2>
   <div class="table-wrap">
   <table>
     <thead><tr><th>ID</th><th>Rule</th></tr></thead>
@@ -471,7 +528,7 @@ td.id {
 </section>
 
 <section id="doc">
-  <h2><span class="num">09</span> DOC — Saving</h2>
+  <h2><span class="num">10</span> DOC — Saving</h2>
   <div class="table-wrap">
   <table>
     <thead><tr><th>ID</th><th>Rule</th></tr></thead>
@@ -494,7 +551,7 @@ td.id {
 </section>
 
 <section id="sync">
-  <h2><span class="num">10</span> SYNC — Changes made outside the app</h2>
+  <h2><span class="num">11</span> SYNC — Changes made outside the app</h2>
   <div class="table-wrap">
   <table>
     <thead><tr><th>ID</th><th>Rule</th></tr></thead>
@@ -504,7 +561,7 @@ td.id {
       <tr><td class="id">SYNC-3</td><td>An open file with no unsaved changes reloads from disk in place, and the user sees the new content in the viewer.</td></tr>
       <tr><td class="id">SYNC-4</td><td>An open file with unsaved changes never reloads silently. It raises a conflict instead. See CONF-1.</td></tr>
       <tr><td class="id">SYNC-5</td><td>When an open file disappears from disk: a tab with no unsaved changes closes; a tab with unsaved changes stays open, marked as deleted on disk, its automatic saving stopped, offering one action that writes the content back and recreates the file.</td></tr>
-      <tr><td class="id">SYNC-6</td><td>A file renamed outside the app counts as one entry removed and another added, so an open tab on it follows SYNC-5. A rename performed inside the app follows the file instead, because the app knows both names.</td></tr>
+      <tr><td class="id">SYNC-6</td><td>A file renamed or moved outside the app counts as one entry removed and another added, so an open tab on it follows SYNC-5. A rename or a move performed inside the app follows the file instead, because the app knows both paths.</td></tr>
       <tr><td class="id">SYNC-7</td><td>When the app loses contact with the vault, the status line says <em>Offline</em> and the app keeps trying to restore it.</td></tr>
       <tr><td class="id">SYNC-8</td><td>Once contact is restored, the app re-checks the whole vault and every open file. A clean file whose content changed reloads. A file with unsaved changes whose content changed raises a conflict.</td></tr>
       <tr><td class="id">SYNC-9</td><td>The app's own saves do not count as outside changes. Saving a file never reloads the viewer the user is working in.</td></tr>
@@ -514,7 +571,7 @@ td.id {
 </section>
 
 <section id="conf">
-  <h2><span class="num">11</span> CONF — Conflicts</h2>
+  <h2><span class="num">12</span> CONF — Conflicts</h2>
   <div class="table-wrap">
   <table>
     <thead><tr><th>ID</th><th>Rule</th></tr></thead>
@@ -534,7 +591,7 @@ td.id {
 </section>
 
 <section id="view">
-  <h2><span class="num">12</span> VIEW — Viewers in general</h2>
+  <h2><span class="num">13</span> VIEW — Viewers in general</h2>
   <div class="table-wrap">
   <table>
     <thead><tr><th>ID</th><th>Rule</th></tr></thead>
@@ -560,7 +617,7 @@ td.id {
 </section>
 
 <section id="ex">
-  <h2><span class="num">13</span> EX — Drawing viewer</h2>
+  <h2><span class="num">14</span> EX — Drawing viewer</h2>
   <div class="table-wrap">
   <table>
     <thead><tr><th>ID</th><th>Rule</th></tr></thead>
@@ -577,7 +634,7 @@ td.id {
 </section>
 
 <section id="md">
-  <h2><span class="num">14</span> MD — Markdown viewer</h2>
+  <h2><span class="num">15</span> MD — Markdown viewer</h2>
   <div class="table-wrap">
   <table>
     <thead><tr><th>ID</th><th>Rule</th></tr></thead>
@@ -599,7 +656,7 @@ td.id {
 </section>
 
 <section id="txt">
-  <h2><span class="num">15</span> TXT — Text viewer</h2>
+  <h2><span class="num">16</span> TXT — Text viewer</h2>
   <div class="table-wrap">
   <table>
     <thead><tr><th>ID</th><th>Rule</th></tr></thead>
@@ -613,7 +670,7 @@ td.id {
 </section>
 
 <section id="html">
-  <h2><span class="num">16</span> HTML — HTML viewer</h2>
+  <h2><span class="num">17</span> HTML — HTML viewer</h2>
   <div class="table-wrap">
   <table>
     <thead><tr><th>ID</th><th>Rule</th></tr></thead>
@@ -630,7 +687,7 @@ td.id {
 </section>
 
 <section id="feed">
-  <h2><span class="num">17</span> FEED — Messages and empty states</h2>
+  <h2><span class="num">18</span> FEED — Messages and empty states</h2>
   <div class="table-wrap">
   <table>
     <thead><tr><th>ID</th><th>Rule</th></tr></thead>
@@ -647,7 +704,7 @@ td.id {
 </section>
 
 <section id="sess">
-  <h2><span class="num">18</span> SESS — What survives a reload</h2>
+  <h2><span class="num">19</span> SESS — What survives a reload</h2>
   <div class="table-wrap">
   <table>
     <thead><tr><th>ID</th><th>Rule</th></tr></thead>
@@ -656,13 +713,14 @@ td.id {
       <tr><td class="id">SESS-2</td><td>A restored path that no longer exists, or that is no longer supported, is dropped without a message. A reload never shows an error about a file the user has already moved on from.</td></tr>
       <tr><td class="id">SESS-3</td><td>Cursor position and scroll position are not restored.</td></tr>
       <tr><td class="id">SESS-4</td><td>Unsaved changes are not restored. They were written to disk before the reload, or they were lost with the page — the app keeps no draft of its own.</td></tr>
+      <tr><td class="id">SESS-5</td><td>The search term is not restored. A reload clears the field and shows the whole tree, because a filter is a momentary act and not part of the workspace.</td></tr>
     </tbody>
   </table>
   </div>
 </section>
 
 <section id="life">
-  <h2><span class="num">19</span> Document lifecycle</h2>
+  <h2><span class="num">20</span> Document lifecycle</h2>
   <p>Every open file is in exactly one of these states. The table is the authority on which transitions exist.</p>
   <div class="table-wrap">
   <table>
@@ -682,7 +740,7 @@ td.id {
 </section>
 
 <section id="walk">
-  <h2><span class="num">20</span> Conformance walk</h2>
+  <h2><span class="num">21</span> Conformance walk</h2>
   <p>Each walk is performed in the running app against a vault holding at least one file of each supported kind, one unsupported file, and folders nested three deep. A walk passes only when every rule it names holds.</p>
 
   <h3>W1 — Browsing</h3>
@@ -760,14 +818,43 @@ td.id {
     <li>Open the app in a second browser tab, and edit the same file in both. The second save raises a conflict. <span class="chip">APP-4</span></li>
     <li>Narrow the window below 1024 px. A message appears instead of a broken layout. <span class="chip">APP-3</span></li>
   </ol>
+
+  <h3>W9 — Search</h3>
+  <ol>
+    <li>Type one character. Rows are filtered on names, and each match is shown under its real folders. <span class="chip">SRCH-2</span> <span class="chip">SRCH-10</span></li>
+    <li>Type a word that appears inside a Markdown file but in no file name. That file appears, with a count of its occurrences. <span class="chip">SRCH-5</span> <span class="chip">SRCH-13</span></li>
+    <li>Type a word written into a shape in a drawing. The drawing appears. Type an identifier from the drawing's raw data. It does not. <span class="chip">SRCH-6</span></li>
+    <li>Open the result. The Markdown file scrolls to its first match; the drawing opens without jumping. <span class="chip">SRCH-14</span></li>
+    <li>Type a word only in an unsaved edit that has not reached disk. The file matches. <span class="chip">SRCH-12</span></li>
+    <li>With a filter active, create a matching file outside the app. It appears in the results. Delete it. It goes. <span class="chip">SRCH-15</span></li>
+    <li>Type a term that matches nothing. The panel says so and names how many files were searched. <span class="chip">SRCH-17</span></li>
+    <li>Clear the field. The tree returns with the same expanded folders and the same selected row as before the search. <span class="chip">SRCH-3</span></li>
+    <li>Reload the page. The field is empty and the whole tree is shown. <span class="chip">SESS-5</span></li>
+    <li>Search for a word held only by a file in an excluded folder. Nothing matches. <span class="chip">SRCH-8</span></li>
+  </ol>
+
+  <h3>W10 — Moving</h3>
+  <ol>
+    <li>Drag a file onto a collapsed folder. It moves in and the folder expands. <span class="chip">MUT-17</span> <span class="chip">MUT-19</span></li>
+    <li>Drag a file onto another file. It lands in that file's folder, not on the file. <span class="chip">MUT-17</span></li>
+    <li>Drag a file from a nested folder onto the panel background. It lands at the root of the vault. <span class="chip">MUT-17</span></li>
+    <li>Select a file, press <code>Cmd/Ctrl+X</code>, select a folder, press <code>Cmd/Ctrl+V</code>. It moves. <span class="chip">MUT-16</span></li>
+    <li>Move a file into a folder that already holds that name. The move is refused and nothing changed. <span class="chip">MUT-20</span></li>
+    <li>Drag a folder onto one of its own children. The target is never highlighted and the drop is refused. <span class="chip">MUT-18</span> <span class="chip">MUT-21</span></li>
+    <li>Move a folder holding two open files. Both tabs stay open on the new paths. <span class="chip">MUT-24</span></li>
+    <li>Type into a file and immediately move it. The edit is on disk at the new path, not the old one. <span class="chip">MUT-23</span></li>
+    <li>Type a term into the search field, then try to drag a row. The drag is refused and the message says to clear the search. <span class="chip">MUT-26</span></li>
+  </ol>
 </section>
 
 <section id="outofscope">
-  <h2><span class="num">21</span> Out of scope</h2>
+  <h2><span class="num">22</span> Out of scope</h2>
   <p>These are named so they are not assumed to exist.</p>
   <ul>
-    <li><strong>Search.</strong> Nothing in the app searches file names or file content.</li>
-    <li><strong>Moving entries.</strong> Nothing can be dragged in the tree, and no command relocates a file or a folder. Renaming is the only operation that changes a path, and it cannot move an entry to a different folder.</li>
+    <li><strong>Multiple selection.</strong> Every operation acts on one entry. There is no way to select several rows, so nothing can be moved, deleted or opened in bulk.</li>
+    <li><strong>Undo, and a trash.</strong> Deleting and moving are permanent. The app keeps no history and no recycle folder.</li>
+    <li><strong>Replace.</strong> Search finds; it never changes what it finds, in one file or across the vault.</li>
+    <li><strong>Version control, accounts, several vaults.</strong> No git integration, no sharing, no second vault inside one running app.</li>
   </ul>
 </section>
 
