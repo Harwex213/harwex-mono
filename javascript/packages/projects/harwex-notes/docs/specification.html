@@ -1,0 +1,778 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Harwex Notes Specification</title>
+<style>
+:root {
+  --bg: #0d1117;
+  --surface: #161b22;
+  --surface-raised: #1c2129;
+  --border: #30363d;
+  --border-strong: #3d444d;
+  --text: #e6edf3;
+  --muted: #8b949e;
+  --accent: #58a6ff;
+  --purple: #bc8cff;
+  --green: #3fb950;
+  --orange: #d29922;
+  --red: #f85149;
+  --sans: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 15px;
+  line-height: 1.65;
+}
+
+.page {
+  max-width: 64rem;
+  margin: 0 auto;
+  padding: 3rem 1.5rem 6rem;
+  display: flex;
+  flex-direction: column;
+  gap: 2.75rem;
+}
+
+.masthead {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 1.75rem;
+}
+
+.eyebrow {
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+h1 {
+  font-size: 2.1rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  margin: 0;
+}
+
+.lede {
+  margin: 0;
+  max-width: 62ch;
+  color: var(--muted);
+  font-size: 1.02rem;
+}
+
+section {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+h2 {
+  font-size: 1.28rem;
+  font-weight: 600;
+  margin: 0;
+  letter-spacing: -0.01em;
+  display: flex;
+  align-items: baseline;
+  gap: 0.7rem;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 0.5rem;
+}
+
+h2 .num {
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--accent);
+  letter-spacing: 0.08em;
+}
+
+h3 {
+  font-size: 1rem;
+  font-weight: 600;
+  margin: 1rem 0 0;
+  color: var(--purple);
+}
+
+p {
+  margin: 0;
+  max-width: 70ch;
+}
+
+ul, ol {
+  margin: 0;
+  padding-left: 1.35rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  max-width: 70ch;
+}
+
+a {
+  color: var(--accent);
+}
+
+code {
+  font-family: var(--mono);
+  font-size: 0.84em;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.05rem 0.3rem;
+  color: #ffd9a0;
+}
+
+.toc {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1rem 1.25rem;
+}
+
+.toc ol {
+  columns: 2;
+  column-gap: 2rem;
+  display: block;
+  padding-left: 1.2rem;
+}
+
+.toc li {
+  margin-bottom: 0.2rem;
+}
+
+.toc a {
+  text-decoration: none;
+  font-size: 0.9rem;
+}
+
+.toc a:hover {
+  text-decoration: underline;
+}
+
+.table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+}
+
+th, td {
+  text-align: left;
+  padding: 0.55rem 0.8rem;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+
+th {
+  background: var(--surface-raised);
+  font-weight: 600;
+  font-size: 0.74rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+td {
+  background: var(--surface);
+}
+
+tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+td.id {
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  white-space: nowrap;
+  color: var(--accent);
+  width: 5.5rem;
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1.15rem 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.note {
+  border-left: 3px solid var(--orange);
+  background: var(--surface);
+  border-radius: 0 8px 8px 0;
+  padding: 0.85rem 1.1rem;
+}
+
+.note strong {
+  color: var(--orange);
+}
+
+.wire {
+  display: grid;
+  grid-template-columns: 12rem 1fr;
+  gap: 0.75rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1rem;
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.wire-box {
+  border: 1px dashed var(--border-strong);
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 0.75rem 0.5rem;
+}
+
+.wire-left {
+  min-height: 14rem;
+}
+
+.wire-right {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.wire-tabs {
+  height: 2.4rem;
+}
+
+.wire-viewer {
+  flex: 1;
+  min-height: 10.6rem;
+}
+
+.chip {
+  display: inline-block;
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.05rem 0.5rem;
+  color: var(--muted);
+  background: var(--surface-raised);
+}
+
+.footer {
+  border-top: 1px solid var(--border);
+  padding-top: 1.25rem;
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+</style>
+</head>
+<body>
+<div class="page">
+
+<header class="masthead">
+  <div class="eyebrow">javascript / packages / projects / harwex-notes</div>
+  <h1>Harwex Notes Specification</h1>
+  <p class="lede">A local single-page app over one folder on disk. A file tree on the left, a tab bar and one viewer on the right. Drawings, Markdown and plain text are edited in place and saved without a command; HTML is rendered and never edited.</p>
+  <p class="lede">This document defines behaviour, not implementation. Every rule carries an identifier and can be walked through in the running app and marked pass or fail. It says nothing about frameworks, transports or file layout.</p>
+</header>
+
+<nav class="toc">
+  <ol>
+    <li><a href="#purpose">Purpose</a></li>
+    <li><a href="#vocabulary">Vocabulary</a></li>
+    <li><a href="#layout">Layout</a></li>
+    <li><a href="#app">APP — Application shell</a></li>
+    <li><a href="#vault">VAULT — The vault and its files</a></li>
+    <li><a href="#tree">TREE — File tree</a></li>
+    <li><a href="#mut">MUT — Creating, renaming, deleting</a></li>
+    <li><a href="#tab">TAB — Tabs</a></li>
+    <li><a href="#doc">DOC — Saving</a></li>
+    <li><a href="#sync">SYNC — Changes made outside the app</a></li>
+    <li><a href="#conf">CONF — Conflicts</a></li>
+    <li><a href="#view">VIEW — Viewers in general</a></li>
+    <li><a href="#ex">EX — Drawing viewer</a></li>
+    <li><a href="#md">MD — Markdown viewer</a></li>
+    <li><a href="#txt">TXT — Text viewer</a></li>
+    <li><a href="#html">HTML — HTML viewer</a></li>
+    <li><a href="#feed">FEED — Messages and empty states</a></li>
+    <li><a href="#sess">SESS — What survives a reload</a></li>
+    <li><a href="#life">Document lifecycle</a></li>
+    <li><a href="#walk">Conformance walk</a></li>
+    <li><a href="#outofscope">Out of scope</a></li>
+  </ol>
+</nav>
+
+<section id="purpose">
+  <h2><span class="num">01</span> Purpose</h2>
+  <p>One folder on the user's machine holds notes in four forms: Excalidraw drawings, Markdown documents, plain text files and HTML pages. Today each form needs a different program. This app opens all four in one place, in a browser, against the folder as it sits on disk.</p>
+  <p>The folder is the model. There is no database, no account and no copy of the content anywhere else. What the app shows is what the disk holds, and an edit in the app is an edit to the file.</p>
+</section>
+
+<section id="vocabulary">
+  <h2><span class="num">02</span> Vocabulary</h2>
+  <div class="table-wrap">
+  <table>
+    <thead>
+      <tr><th>Term</th><th>Meaning</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><strong>Vault</strong></td><td>The one folder the app opens. Everything the app can read or write lives inside it.</td></tr>
+      <tr><td><strong>Entry</strong></td><td>A file or a folder inside the vault.</td></tr>
+      <tr><td><strong>Supported file</strong></td><td>A file the app can open, decided by its extension. See VAULT-2.</td></tr>
+      <tr><td><strong>Viewer</strong></td><td>The surface that shows one open file. Four exist: drawing, Markdown, text, HTML.</td></tr>
+      <tr><td><strong>Tab</strong></td><td>One open file in the tab bar. At most five exist at once.</td></tr>
+      <tr><td><strong>Document</strong></td><td>The content of one open file as the app holds it, together with its save state.</td></tr>
+      <tr><td><strong>Unsaved changes</strong></td><td>A document differs from the file on disk because the user edited it and the save has not landed yet.</td></tr>
+      <tr><td><strong>Conflict</strong></td><td>A document has unsaved changes and the file on disk changed since the app read it.</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section id="layout">
+  <h2><span class="num">03</span> Layout</h2>
+  <div class="wire">
+    <div class="wire-box wire-left">FS viewer<br>(file tree)</div>
+    <div class="wire-right">
+      <div class="wire-box wire-tabs">tabs</div>
+      <div class="wire-box wire-viewer">drawing / Markdown / text / HTML viewer</div>
+    </div>
+  </div>
+  <p>Two columns. The left column is the file tree over the whole vault. The right column is a tab bar over one viewer, and the viewer fills the rest of the height. The divider between the columns is draggable. Nothing else is on the screen: no menu bar, no sidebar, no second route.</p>
+</section>
+
+<section id="app">
+  <h2><span class="num">04</span> APP — Application shell</h2>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>ID</th><th>Rule</th></tr></thead>
+    <tbody>
+      <tr><td class="id">APP-1</td><td>The app runs at a fixed address on the local machine. That address is the whole app: one screen, one URL. Nothing in the app navigates the browser away from it.</td></tr>
+      <tr><td class="id">APP-2</td><td>The app opens exactly one vault. Changing the vault requires restarting the app.</td></tr>
+      <tr><td class="id">APP-3</td><td>The app is for desktop browsers. It has one light theme and no theme switch. Below 1024 px wide it shows a message stating that the window is too narrow, instead of reflowing the layout.</td></tr>
+      <tr><td class="id">APP-4</td><td>Opening the same address in a second browser tab is allowed. Each tab is a full, independent client. The files on disk are the only state the two share, and two clients editing one file resolve the collision under the CONF rules.</td></tr>
+      <tr><td class="id">APP-5</td><td>While any document has unsaved changes, a save is in progress, or a conflict is unresolved, the browser asks the user to confirm leaving the page. The wording of that prompt belongs to the browser and the app cannot change it.</td></tr>
+      <tr><td class="id">APP-6</td><td>APP-5 cannot stop a forced close. When the page is closing anyway, the app makes one last attempt to write every pending save. This document does not claim that attempt always succeeds.</td></tr>
+      <tr><td class="id">APP-7</td><td>The app needs no login and no network beyond the user's own machine.</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <div class="note"><strong>On APP-5.</strong> A browser will not let a page block its own closing. The strongest available behaviour is the browser's own confirmation prompt, and a user who confirms it closes the page. The spec states this plainly so that no reviewer expects a hard block.</div>
+</section>
+
+<section id="vault">
+  <h2><span class="num">05</span> VAULT — The vault and its files</h2>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>ID</th><th>Rule</th></tr></thead>
+    <tbody>
+      <tr><td class="id">VAULT-1</td><td>Every file and every folder in the vault appears in the tree. Nothing is hidden because of its type.</td></tr>
+      <tr><td class="id">VAULT-2</td><td>Six extensions are supported, matched without regard to case: <code>.excalidraw</code>, <code>.md</code>, <code>.markdown</code>, <code>.txt</code>, <code>.html</code>, <code>.htm</code>.</td></tr>
+      <tr><td class="id">VAULT-3</td><td>Every other file is shown, marked visibly as not openable, and cannot be opened.</td></tr>
+      <tr><td class="id">VAULT-4</td><td>A file larger than 8 MB is refused when the user tries to open it. The refusal names the size limit and no tab opens.</td></tr>
+      <tr><td class="id">VAULT-5</td><td>A supported file whose content is not readable text is refused the same way. The refusal states that the file is not text.</td></tr>
+      <tr><td class="id">VAULT-6</td><td>A vault too large to list is refused at startup, with a message naming the reason. The app never shows part of a vault as though it were the whole vault.</td></tr>
+      <tr><td class="id">VAULT-7</td><td>The app reads and writes only inside the vault. An entry that points outside the vault is listed but never followed, and the app never opens or writes the target.</td></tr>
+      <tr><td class="id">VAULT-8</td><td>Folders that hold generated content — dependency folders, build output, version-control internals — are not listed. This keeps a vault that also happens to be a project directory usable.</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section id="tree">
+  <h2><span class="num">06</span> TREE — File tree</h2>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>ID</th><th>Rule</th></tr></thead>
+    <tbody>
+      <tr><td class="id">TREE-1</td><td>The tree shows the whole vault: every folder and every file, nested as they are on disk.</td></tr>
+      <tr><td class="id">TREE-2</td><td>A single click selects a row. Selection opens nothing and expands nothing.</td></tr>
+      <tr><td class="id">TREE-3</td><td>A double click on a supported file opens it. A double click on a folder expands it, or collapses it when it is already expanded.</td></tr>
+      <tr><td class="id">TREE-4</td><td>Collapsing a folder also collapses every expanded folder inside it. Expanding that folder again shows its children collapsed.</td></tr>
+      <tr><td class="id">TREE-5</td><td>The tree is usable from the keyboard. Up and Down move through the visible rows. Right expands a folder. Left collapses a folder, or moves to the parent when the row is already collapsed. Enter opens a file or toggles a folder. F2 starts a rename. Delete starts a deletion. The whole panel is a single tab stop.</td></tr>
+      <tr><td class="id">TREE-6</td><td>Inside a folder, folders come first, then files. Both are sorted by name without regard to case.</td></tr>
+      <tr><td class="id">TREE-7</td><td>The width of the tree panel is adjustable by dragging the divider.</td></tr>
+      <tr><td class="id">TREE-8</td><td>A change to the vault made outside the app does not disturb the selected row or the set of expanded folders. See SYNC-2.</td></tr>
+      <tr><td class="id">TREE-9</td><td>Each row shows the entry name and a marker for its kind. Folders show whether they are expanded.</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section id="mut">
+  <h2><span class="num">07</span> MUT — Creating, renaming, deleting</h2>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>ID</th><th>Rule</th></tr></thead>
+    <tbody>
+      <tr><td class="id">MUT-1</td><td>Four operations exist: create a file, create a folder, rename an entry, delete an entry. Moving an entry does not exist.</td></tr>
+      <tr><td class="id">MUT-2</td><td>Each operation is reachable three ways: a context menu on the tree row, two buttons at the top of the tree panel for the two create operations, and the keyboard shortcuts in TREE-5.</td></tr>
+      <tr><td class="id">MUT-3</td><td>Creation happens inside the selected folder. When a file is selected, creation happens in the folder that holds it. When nothing is selected, creation happens at the root of the vault.</td></tr>
+      <tr><td class="id">MUT-4</td><td>Naming happens in the tree itself: the row becomes a text field. Enter commits the name, Escape cancels the operation, and clicking away commits.</td></tr>
+      <tr><td class="id">MUT-5</td><td>The user types the extension. The app never adds one, never completes one and never offers a list to pick from.</td></tr>
+      <tr><td class="id">MUT-6</td><td>Creating a file whose extension is not one of the six is refused. A name with no extension is refused for the same reason.</td></tr>
+      <tr><td class="id">MUT-7</td><td>Renaming may not leave a supported file unsupported. Renaming a file that was already unsupported is unrestricted, because it was never openable.</td></tr>
+      <tr><td class="id">MUT-8</td><td>A name already used by another entry in the same folder is refused.</td></tr>
+      <tr><td class="id">MUT-9</td><td>A refusal keeps the text field open with the name the user typed, and states the reason underneath. Nothing is written to disk. The user corrects the name or presses Escape.</td></tr>
+      <tr><td class="id">MUT-10</td><td>Deleting a file asks the user to confirm, and names the file.</td></tr>
+      <tr><td class="id">MUT-11</td><td>Deleting a folder requires the user to type the folder's name. The prompt states how many files are removed with it.</td></tr>
+      <tr><td class="id">MUT-12</td><td>When anything being deleted has unsaved changes in a tab, the prompt says so before asking for the confirmation.</td></tr>
+      <tr><td class="id">MUT-13</td><td>Deletion is permanent. The app has no trash and no undo, and every deletion prompt says so.</td></tr>
+      <tr><td class="id">MUT-14</td><td>Renaming a folder keeps everything inside it. Tabs open on files inside that folder follow the rename and stay open.</td></tr>
+      <tr><td class="id">MUT-15</td><td>An operation that fails on disk reports the reason from the system and changes nothing in the tree.</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section id="tab">
+  <h2><span class="num">08</span> TAB — Tabs</h2>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>ID</th><th>Rule</th></tr></thead>
+    <tbody>
+      <tr><td class="id">TAB-1</td><td>The tab bar lists the open files in the order they were opened. The order is fixed and tabs cannot be dragged.</td></tr>
+      <tr><td class="id">TAB-2</td><td>At most five files are open at once. Opening a sixth is refused with a message that names the limit and asks the user to close a tab first. Nothing is closed automatically.</td></tr>
+      <tr><td class="id">TAB-3</td><td>Opening a file that is already open activates its existing tab. It does not open a second tab and does not count against the limit again.</td></tr>
+      <tr><td class="id">TAB-4</td><td>Each tab shows the file name and its save state. See DOC-5.</td></tr>
+      <tr><td class="id">TAB-5</td><td>A tab closes through its close control or a middle click.</td></tr>
+      <tr><td class="id">TAB-6</td><td>Closing the active tab activates the tab to its right, or the tab to its left when the closed tab was the last one. Closing a tab that is not active leaves the active tab alone.</td></tr>
+      <tr><td class="id">TAB-7</td><td>Closing the last tab shows the empty state described in FEED-1.</td></tr>
+      <tr><td class="id">TAB-8</td><td>Closing a tab with a save still pending writes the file first, then closes.</td></tr>
+      <tr><td class="id">TAB-9</td><td>Closing a tab whose conflict is unresolved, or whose last save failed, asks the user to confirm losing the changes.</td></tr>
+      <tr><td class="id">TAB-10</td><td>Only the active tab's viewer is shown. Exactly one viewer is visible whenever at least one tab is open.</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section id="doc">
+  <h2><span class="num">09</span> DOC — Saving</h2>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>ID</th><th>Rule</th></tr></thead>
+    <tbody>
+      <tr><td class="id">DOC-1</td><td>An edit reaches the disk without a command from the user. Saving by hand is never required.</td></tr>
+      <tr><td class="id">DOC-2</td><td>A save runs 600 ms after the last change to a document, and at the latest 3 s after the first unsaved change. The second half of that rule covers a user who types without pausing.</td></tr>
+      <tr><td class="id">DOC-3</td><td>Three actions save immediately instead of waiting: pressing <code>Cmd/Ctrl+S</code>, switching to a different tab in the app, and leaving the browser tab.</td></tr>
+      <tr><td class="id">DOC-4</td><td>DOC-2 and DOC-3 apply to every editable kind: drawings, Markdown and plain text. Drawing is an edit like typing is an edit.</td></tr>
+      <tr><td class="id">DOC-5</td><td>Each tab shows one of four save states: unsaved changes, saving, saved, failed.</td></tr>
+      <tr><td class="id">DOC-6</td><td>One status line beside the tab bar states the state of the app as a whole: <em>Saving…</em>, <em>All changes saved</em>, <em>Save failed</em>, or <em>Offline</em>.</td></tr>
+      <tr><td class="id">DOC-7</td><td>A save that fails for a reason other than a conflict is reported at once, with the reason the system gave. The app does not retry on its own. Automatic saving of that file stops until the user asks to try again.</td></tr>
+      <tr><td class="id">DOC-8</td><td>A failed save never discards content. The document stays in the viewer exactly as the user left it.</td></tr>
+      <tr><td class="id">DOC-9</td><td>HTML files are never written. See HTML-5.</td></tr>
+      <tr><td class="id">DOC-10</td><td>Line endings are preserved. A file that used CRLF still uses CRLF after the app saves it.</td></tr>
+      <tr><td class="id">DOC-11</td><td>A byte-order mark at the start of a file is preserved.</td></tr>
+      <tr><td class="id">DOC-12</td><td>A save either replaces the whole file or leaves it as it was. A file is never left half written, whatever interrupts the save.</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section id="sync">
+  <h2><span class="num">10</span> SYNC — Changes made outside the app</h2>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>ID</th><th>Rule</th></tr></thead>
+    <tbody>
+      <tr><td class="id">SYNC-1</td><td>A change made to the vault outside the app appears in the app without a reload.</td></tr>
+      <tr><td class="id">SYNC-2</td><td>The tree follows those changes: new entries appear, removed entries disappear. The selected row stays selected and expanded folders stay expanded, as long as they still exist.</td></tr>
+      <tr><td class="id">SYNC-3</td><td>An open file with no unsaved changes reloads from disk in place, and the user sees the new content in the viewer.</td></tr>
+      <tr><td class="id">SYNC-4</td><td>An open file with unsaved changes never reloads silently. It raises a conflict instead. See CONF-1.</td></tr>
+      <tr><td class="id">SYNC-5</td><td>When an open file disappears from disk: a tab with no unsaved changes closes; a tab with unsaved changes stays open, marked as deleted on disk, its automatic saving stopped, offering one action that writes the content back and recreates the file.</td></tr>
+      <tr><td class="id">SYNC-6</td><td>A file renamed outside the app counts as one entry removed and another added, so an open tab on it follows SYNC-5. A rename performed inside the app follows the file instead, because the app knows both names.</td></tr>
+      <tr><td class="id">SYNC-7</td><td>When the app loses contact with the vault, the status line says <em>Offline</em> and the app keeps trying to restore it.</td></tr>
+      <tr><td class="id">SYNC-8</td><td>Once contact is restored, the app re-checks the whole vault and every open file. A clean file whose content changed reloads. A file with unsaved changes whose content changed raises a conflict.</td></tr>
+      <tr><td class="id">SYNC-9</td><td>The app's own saves do not count as outside changes. Saving a file never reloads the viewer the user is working in.</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section id="conf">
+  <h2><span class="num">11</span> CONF — Conflicts</h2>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>ID</th><th>Rule</th></tr></thead>
+    <tbody>
+      <tr><td class="id">CONF-1</td><td>A conflict exists when a document has unsaved changes and the file on disk changed after the app read it.</td></tr>
+      <tr><td class="id">CONF-2</td><td>A conflict opens a modal that names the file and offers exactly two choices. <strong>Overwrite the file</strong> writes the app's version over the file on disk. <strong>Discard my changes</strong> throws the app's version away and loads the file from disk.</td></tr>
+      <tr><td class="id">CONF-3</td><td>The modal cannot be dismissed. Escape does nothing and clicking outside does nothing. One of the two choices ends it.</td></tr>
+      <tr><td class="id">CONF-4</td><td>Automatic saving of that file stops while its modal is open. Every other open file keeps saving normally.</td></tr>
+      <tr><td class="id">CONF-5</td><td>Conflicts queue. One modal is shown at a time, and it states how many other files are waiting.</td></tr>
+      <tr><td class="id">CONF-6</td><td>For a drawing, the discard choice is worded as discarding the drawing as it stands now. The user cannot compare two versions of a drawing, so the modal names what is lost instead of implying a comparison.</td></tr>
+      <tr><td class="id">CONF-7</td><td>Either choice clears the conflict and returns the file to normal automatic saving.</td></tr>
+      <tr><td class="id">CONF-8</td><td>A conflict never resolves itself and never expires. It waits for the user.</td></tr>
+      <tr><td class="id">CONF-9</td><td>A conflict does not block the rest of the app. The user can still browse the tree and edit other open files.</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section id="view">
+  <h2><span class="num">12</span> VIEW — Viewers in general</h2>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>ID</th><th>Rule</th></tr></thead>
+    <tbody>
+      <tr><td class="id">VIEW-1</td><td>The extension decides the viewer. The user cannot pick a different one.</td></tr>
+      <tr><td class="id">VIEW-2</td><td>Switching between tabs and back leaves each viewer's content as it was. Switching tabs is not a reload.</td></tr>
+      <tr><td class="id">VIEW-3</td><td>Renaming an open file so that its kind changes reloads it into the viewer that matches the new extension.</td></tr>
+      <tr><td class="id">VIEW-4</td><td>A viewer that cannot show its file — the content does not parse, or the file is unreadable — states the reason in the pane instead of showing an empty surface.</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>Extension</th><th>Viewer</th><th>Editable</th></tr></thead>
+    <tbody>
+      <tr><td><code>.excalidraw</code></td><td>Drawing</td><td>Yes</td></tr>
+      <tr><td><code>.md</code> <code>.markdown</code></td><td>Markdown</td><td>Yes</td></tr>
+      <tr><td><code>.txt</code></td><td>Text</td><td>Yes</td></tr>
+      <tr><td><code>.html</code> <code>.htm</code></td><td>HTML</td><td>No</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section id="ex">
+  <h2><span class="num">13</span> EX — Drawing viewer</h2>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>ID</th><th>Rule</th></tr></thead>
+    <tbody>
+      <tr><td class="id">EX-1</td><td>An <code>.excalidraw</code> file opens as a drawing surface with the full tool set of Excalidraw. The app adds no tools of its own and removes none.</td></tr>
+      <tr><td class="id">EX-2</td><td>Drawing is editing. Changes save under the DOC rules, with no save command.</td></tr>
+      <tr><td class="id">EX-3</td><td>Files stay interchangeable with excalidraw.com. A drawing the app saved opens there, and a drawing saved there opens in the app.</td></tr>
+      <tr><td class="id">EX-4</td><td>An image pasted into a drawing is kept, saved with the drawing and still there when the file is reopened.</td></tr>
+      <tr><td class="id">EX-5</td><td>A file whose content is not a valid drawing is refused with a message naming the reason. No empty canvas is shown in its place, because saving that canvas would destroy the file.</td></tr>
+      <tr><td class="id">EX-6</td><td>Panning and zooming are not edits and never cause a save.</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section id="md">
+  <h2><span class="num">14</span> MD — Markdown viewer</h2>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>ID</th><th>Rule</th></tr></thead>
+    <tbody>
+      <tr><td class="id">MD-1</td><td>The pane splits in two: the Markdown source on the left, the rendered document on the right.</td></tr>
+      <tr><td class="id">MD-2</td><td>The rendered side follows the source as the user types. No command is needed to refresh it.</td></tr>
+      <tr><td class="id">MD-3</td><td>Either side can be collapsed, so the user can work in source alone or read the rendered document alone. The choice applies to the app, not to one file, and it survives a reload.</td></tr>
+      <tr><td class="id">MD-4</td><td>Rendering covers standard Markdown plus tables, task lists, strikethrough and fenced code blocks.</td></tr>
+      <tr><td class="id">MD-5</td><td>An image whose path is relative to the file renders from the vault.</td></tr>
+      <tr><td class="id">MD-6</td><td>A link to a supported file inside the vault opens that file as a tab, under the TAB rules.</td></tr>
+      <tr><td class="id">MD-7</td><td>A link to a file that is missing or unsupported shows the refusal message from FEED-2 and opens nothing.</td></tr>
+      <tr><td class="id">MD-8</td><td>An <code>http</code> or <code>https</code> link opens in a new browser tab. The app itself is never navigated away.</td></tr>
+      <tr><td class="id">MD-9</td><td>The rendered document holds no active content. Scripts and event handlers written into the Markdown are removed before it is shown.</td></tr>
+      <tr><td class="id">MD-10</td><td>Editing happens only in the source side. The rendered side is not editable.</td></tr>
+      <tr><td class="id">MD-11</td><td>The two sides scroll independently.</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section id="txt">
+  <h2><span class="num">15</span> TXT — Text viewer</h2>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>ID</th><th>Rule</th></tr></thead>
+    <tbody>
+      <tr><td class="id">TXT-1</td><td>A <code>.txt</code> file opens in a plain text editor: no rendering, no preview, no syntax colouring.</td></tr>
+      <tr><td class="id">TXT-2</td><td>The editor shows the file as it is. It does not wrap, reflow or reformat the content on load or on save.</td></tr>
+      <tr><td class="id">TXT-3</td><td>Editing and saving follow the DOC rules, including DOC-10 and DOC-11.</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section id="html">
+  <h2><span class="num">16</span> HTML — HTML viewer</h2>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>ID</th><th>Rule</th></tr></thead>
+    <tbody>
+      <tr><td class="id">HTML-1</td><td>An <code>.html</code> or <code>.htm</code> file opens rendered, as the file would appear in a browser.</td></tr>
+      <tr><td class="id">HTML-2</td><td>Images, stylesheets and scripts referenced by a path relative to the file load from the vault. A page and its assets look the same in the app as they do when opened directly.</td></tr>
+      <tr><td class="id">HTML-3</td><td>Scripts in the page run.</td></tr>
+      <tr><td class="id">HTML-4</td><td>The page is isolated from the app. It cannot read or change anything around it, and it cannot navigate the app away.</td></tr>
+      <tr><td class="id">HTML-5</td><td>There is no editing: no source view, no save, no way for the app to write an HTML file.</td></tr>
+      <tr><td class="id">HTML-6</td><td>A change to the file on disk re-renders the page. See SYNC-3. An HTML file can never have unsaved changes, so it never conflicts.</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section id="feed">
+  <h2><span class="num">17</span> FEED — Messages and empty states</h2>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>ID</th><th>Rule</th></tr></thead>
+    <tbody>
+      <tr><td class="id">FEED-1</td><td>With no tab open, the viewer pane names the vault, lists the four kinds the app can open, and states that a file opens on a double click.</td></tr>
+      <tr><td class="id">FEED-2</td><td>A double click on an unsupported file shows a short message naming the extension and stating that the app cannot open it. The row stays visibly marked as not openable, so the refusal is never the user's first hint.</td></tr>
+      <tr><td class="id">FEED-3</td><td>Every refusal names its reason: unsupported extension, name already taken, file too large, file is not text, tab limit reached.</td></tr>
+      <tr><td class="id">FEED-4</td><td>A message appears next to the thing that caused it. A refused name is explained under the text field; a refused open is explained near the tab bar.</td></tr>
+      <tr><td class="id">FEED-5</td><td>No state is communicated by colour alone. Save state, conflict state and unopenable rows each carry a shape or a word as well.</td></tr>
+      <tr><td class="id">FEED-6</td><td>An empty folder expands to show that it is empty, rather than looking like a folder that failed to open.</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section id="sess">
+  <h2><span class="num">18</span> SESS — What survives a reload</h2>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>ID</th><th>Rule</th></tr></thead>
+    <tbody>
+      <tr><td class="id">SESS-1</td><td>A reload restores the open tabs, the active tab, the expanded folders, the selected row, the tree panel width and the Markdown pane choice from MD-3.</td></tr>
+      <tr><td class="id">SESS-2</td><td>A restored path that no longer exists, or that is no longer supported, is dropped without a message. A reload never shows an error about a file the user has already moved on from.</td></tr>
+      <tr><td class="id">SESS-3</td><td>Cursor position and scroll position are not restored.</td></tr>
+      <tr><td class="id">SESS-4</td><td>Unsaved changes are not restored. They were written to disk before the reload, or they were lost with the page — the app keeps no draft of its own.</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section id="life">
+  <h2><span class="num">19</span> Document lifecycle</h2>
+  <p>Every open file is in exactly one of these states. The table is the authority on which transitions exist.</p>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>State</th><th>Meaning</th><th>Leaves the state when</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Loading</strong></td><td>The file is being read.</td><td>The content arrives, and the state becomes Saved. A refusal closes the tab and shows a message.</td></tr>
+      <tr><td><strong>Saved</strong></td><td>The document matches the file on disk.</td><td>The user edits it, and the state becomes Unsaved. The file changes on disk, and the document reloads, staying Saved.</td></tr>
+      <tr><td><strong>Unsaved</strong></td><td>The document differs from the file. A save is scheduled.</td><td>The save starts, and the state becomes Saving. The file changes on disk first, and the state becomes Conflict.</td></tr>
+      <tr><td><strong>Saving</strong></td><td>The save is in progress.</td><td>It succeeds, and the state becomes Saved. It is rejected as stale, and the state becomes Conflict. It fails otherwise, and the state becomes Failed.</td></tr>
+      <tr><td><strong>Conflict</strong></td><td>The document has unsaved changes and the file changed underneath it. Automatic saving is stopped.</td><td>The user chooses to overwrite, and the state becomes Saving. The user chooses to discard, and the document reloads as Saved.</td></tr>
+      <tr><td><strong>Failed</strong></td><td>The last save failed for a reason other than a conflict. Automatic saving is stopped.</td><td>The user asks to try again, and the state becomes Saving.</td></tr>
+      <tr><td><strong>Deleted</strong></td><td>The file is gone from disk and the document has unsaved changes. Automatic saving is stopped.</td><td>The user writes it back, and the state becomes Saving. The user closes the tab, confirming the loss.</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p>A document with no unsaved changes never reaches Conflict, Failed or Deleted. Its tab closes instead, under SYNC-5, or its content reloads, under SYNC-3.</p>
+</section>
+
+<section id="walk">
+  <h2><span class="num">20</span> Conformance walk</h2>
+  <p>Each walk is performed in the running app against a vault holding at least one file of each supported kind, one unsupported file, and folders nested three deep. A walk passes only when every rule it names holds.</p>
+
+  <h3>W1 — Browsing</h3>
+  <ol>
+    <li>Expand three levels, then collapse the top one. Expand it again: the inner folders are collapsed. <span class="chip">TREE-3</span> <span class="chip">TREE-4</span></li>
+    <li>Click a file once. Nothing opens. <span class="chip">TREE-2</span></li>
+    <li>Walk to a file with the arrow keys and press Enter. It opens. <span class="chip">TREE-5</span></li>
+    <li>Double-click the unsupported file. A message names its extension and no tab opens. <span class="chip">VAULT-3</span> <span class="chip">FEED-2</span></li>
+  </ol>
+
+  <h3>W2 — Tabs</h3>
+  <ol>
+    <li>Open five files, then a sixth. The sixth is refused and the message names the limit. Nothing closed. <span class="chip">TAB-2</span></li>
+    <li>Double-click one of the five again. Its tab activates; no sixth tab appears. <span class="chip">TAB-3</span></li>
+    <li>Close the active middle tab. Its right neighbour activates. <span class="chip">TAB-6</span></li>
+    <li>Close the last remaining tab. The hint panel appears. <span class="chip">TAB-7</span> <span class="chip">FEED-1</span></li>
+  </ol>
+
+  <h3>W3 — Saving</h3>
+  <ol>
+    <li>Type into a Markdown file and stop. Within a second the status line reads <em>All changes saved</em>, and the file on disk holds the new text. <span class="chip">DOC-2</span> <span class="chip">DOC-6</span></li>
+    <li>Type without pausing for ten seconds. The file changed on disk before the typing stopped. <span class="chip">DOC-2</span></li>
+    <li>Draw in a drawing, switch to another tab and back. The drawing is there, and the file holds it. <span class="chip">DOC-4</span> <span class="chip">VIEW-2</span></li>
+    <li>Make a file read-only outside the app, then edit it. The failure is reported at once with the system's reason, the tab shows the failed state, and the content stays in the editor. <span class="chip">DOC-7</span> <span class="chip">DOC-8</span></li>
+    <li>Edit a file that used CRLF. It still uses CRLF. <span class="chip">DOC-10</span></li>
+  </ol>
+
+  <h3>W4 — Outside changes</h3>
+  <ol>
+    <li>With a file open and saved, change it outside the app. The viewer shows the new content. <span class="chip">SYNC-3</span></li>
+    <li>Create a file and a folder outside the app. Both appear in the tree, and the selected row and expanded folders are undisturbed. <span class="chip">SYNC-2</span> <span class="chip">TREE-8</span></li>
+    <li>Delete an open, saved file outside the app. Its tab closes. <span class="chip">SYNC-5</span></li>
+    <li>Type into a file, and while the change is unsaved, delete the file outside the app. The tab stays, marked deleted, and writing it back recreates the file. <span class="chip">SYNC-5</span></li>
+    <li>Stop the app's contact with the vault, change two files, restore contact. A clean open file reloads; a dirty one raises a conflict. <span class="chip">SYNC-7</span> <span class="chip">SYNC-8</span></li>
+  </ol>
+
+  <h3>W5 — Conflicts</h3>
+  <ol>
+    <li>Type into a file and, before the save lands, replace the file outside the app. A modal names the file and offers two choices. <span class="chip">CONF-1</span> <span class="chip">CONF-2</span></li>
+    <li>Press Escape and click outside the modal. It stays. <span class="chip">CONF-3</span></li>
+    <li>Choose to overwrite. The file holds the app's version. <span class="chip">CONF-7</span></li>
+    <li>Repeat, and choose to discard. The viewer holds the disk version. <span class="chip">CONF-7</span></li>
+    <li>Force conflicts on two files at once. One modal appears and states that another waits. <span class="chip">CONF-5</span></li>
+    <li>Force a conflict on a drawing. The discard choice names the drawing as what is lost. <span class="chip">CONF-6</span></li>
+    <li>While a conflict is open, edit a different file. It saves normally. <span class="chip">CONF-4</span> <span class="chip">CONF-9</span></li>
+  </ol>
+
+  <h3>W6 — Creating, renaming, deleting</h3>
+  <ol>
+    <li>Create a file named <code>note</code>. It is refused for having no extension. Correct it to <code>note.md</code> and it is created. <span class="chip">MUT-6</span> <span class="chip">MUT-9</span></li>
+    <li>Create a second file with the same name. It is refused. <span class="chip">MUT-8</span></li>
+    <li>Rename <code>note.md</code> to <code>note.bak</code>. It is refused. <span class="chip">MUT-7</span></li>
+    <li>Rename it to <code>notes.md</code> while it is open. The tab follows the new name. <span class="chip">MUT-14</span> <span class="chip">SYNC-6</span></li>
+    <li>Create a folder with no selection. It lands at the vault root. <span class="chip">MUT-3</span></li>
+    <li>Delete a folder. Typing its name is required, and the prompt states how many files go with it. <span class="chip">MUT-11</span></li>
+    <li>Delete a file that has unsaved changes. The prompt says so before asking. <span class="chip">MUT-12</span></li>
+    <li>Reach create, rename and delete once through the context menu, once through the panel buttons, once through the keyboard. <span class="chip">MUT-2</span></li>
+  </ol>
+
+  <h3>W7 — Viewers</h3>
+  <ol>
+    <li>Open a Markdown file holding a relative image, a link to another vault file, and an external link. The image renders; the vault link opens a tab; the external link opens a browser tab and the app stays put. <span class="chip">MD-5</span> <span class="chip">MD-6</span> <span class="chip">MD-8</span></li>
+    <li>Collapse the rendered side, reload the page, and it is still collapsed. <span class="chip">MD-3</span> <span class="chip">SESS-1</span></li>
+    <li>Open an HTML file that loads a relative stylesheet and runs a script. Both work, and no editing surface is offered. <span class="chip">HTML-2</span> <span class="chip">HTML-3</span> <span class="chip">HTML-5</span></li>
+    <li>Open a drawing saved by excalidraw.com, edit it, and open the file there again. It still opens. <span class="chip">EX-3</span></li>
+    <li>Paste an image into a drawing, reopen the tab, and the image is still there. <span class="chip">EX-4</span></li>
+    <li>Rename a <code>.excalidraw</code> file to <code>.txt</code> to break it, then open it. It is refused with a reason and no empty canvas appears. <span class="chip">EX-5</span> <span class="chip">VIEW-4</span></li>
+  </ol>
+
+  <h3>W8 — Shell</h3>
+  <ol>
+    <li>Type into a file and immediately try to close the browser tab. The browser asks for confirmation. <span class="chip">APP-5</span></li>
+    <li>Reload the page. The same tabs, the same active tab, the same expanded folders and the same panel width come back. <span class="chip">SESS-1</span></li>
+    <li>Delete a file outside the app, then reload. Its tab is gone and no error is shown. <span class="chip">SESS-2</span></li>
+    <li>Open the app in a second browser tab, and edit the same file in both. The second save raises a conflict. <span class="chip">APP-4</span></li>
+    <li>Narrow the window below 1024 px. A message appears instead of a broken layout. <span class="chip">APP-3</span></li>
+  </ol>
+</section>
+
+<section id="outofscope">
+  <h2><span class="num">21</span> Out of scope</h2>
+  <p>These are named so they are not assumed to exist.</p>
+  <ul>
+    <li><strong>Search.</strong> Nothing in the app searches file names or file content.</li>
+    <li><strong>Moving entries.</strong> Nothing can be dragged in the tree, and no command relocates a file or a folder. Renaming is the only operation that changes a path, and it cannot move an entry to a different folder.</li>
+  </ul>
+</section>
+
+<footer class="footer">Harwex Notes &middot; behavioural specification &middot; 26 August 2026</footer>
+
+</div>
+</body>
+</html>
