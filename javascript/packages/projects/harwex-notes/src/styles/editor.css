@@ -1,0 +1,102 @@
+.editor-pane {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  background: #0f1319;
+}
+
+.editor-single,
+.editor-split {
+  display: grid;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.editor-single {
+  grid-template-columns: 1fr;
+}
+
+.editor-split {
+  grid-template-columns: 1fr 1fr;
+}
+
+.cm-host {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border-right: 1px solid var(--border);
+}
+
+.editor-single .cm-host {
+  border-right: 0;
+}
+
+.cm-host .cm-editor {
+  height: 100%;
+}
+
+.excalidraw-host {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.html-frame {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: #ffffff;
+}
+
+.editor-message {
+  padding: 1.5rem;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.editor-message-bad {
+  color: var(--red);
+  font-family: var(--mono);
+  font-size: 0.75rem;
+}
+
+.editor-notice {
+  flex: 0 0 auto;
+  padding: 0.4rem 0.75rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.conflict-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex: 0 0 auto;
+  padding: 0.5rem 0.75rem;
+  background: #2a2110;
+  border-bottom: 1px solid #5c4718;
+  color: var(--orange);
+  font-size: 0.78rem;
+}
+
+.conflict-actions {
+  display: flex;
+  gap: 0.4rem;
+  flex: 0 0 auto;
+}
+
+.conflict-actions button {
+  padding: 0.15rem 0.5rem;
+  border: 1px solid #5c4718;
+  border-radius: 5px;
+  background: #1c2129;
+  color: var(--orange);
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  cursor: pointer;
+}
+
+.conflict-actions button:hover {
+  border-color: var(--orange);
+  color: #ffd9a0;
+}

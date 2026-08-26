@@ -1,0 +1,129 @@
+.tree-panel {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.tree {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 0.25rem 0 1rem;
+}
+
+.tree-error {
+  flex: 0 0 auto;
+  padding: 0.5rem 0.75rem;
+  color: var(--red);
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.tree-empty {
+  padding: 0.5rem 0.75rem;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 0.72rem;
+}
+
+.tree-row {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  height: 22px;
+  padding-right: 0.5rem;
+  cursor: default;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.tree-row:hover {
+  background: var(--surface-raised);
+}
+
+.tree-row.selected {
+  background: #1f2b3d;
+}
+
+.tree-row:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.tree-guide {
+  flex: 0 0 auto;
+  width: 14px;
+  height: 22px;
+  border-left: 1px solid #262c34;
+}
+
+.tree-chevron-slot {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 22px;
+  color: var(--muted);
+}
+
+.tree-chevron {
+  width: 12px;
+  height: 12px;
+  transition: transform 90ms linear;
+}
+
+.tree-chevron.open {
+  transform: rotate(90deg);
+}
+
+.tree-icon {
+  flex: 0 0 auto;
+  width: 15px;
+  height: 15px;
+  margin-right: 5px;
+}
+
+.icon-dir {
+  color: #7d8590;
+}
+
+.icon-excalidraw {
+  color: var(--purple);
+}
+
+.icon-markdown {
+  color: var(--accent);
+}
+
+.icon-html {
+  color: var(--orange);
+}
+
+.icon-text {
+  color: #7d8590;
+}
+
+.tree-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tree-row.open-in-tab .tree-name {
+  color: #ffffff;
+}
+
+.tree-kind {
+  margin-left: 0.5rem;
+  font-family: var(--mono);
+  font-size: 0.62rem;
+  color: #4c5661;
+  opacity: 0;
+}
+
+.tree-row:hover .tree-kind,
+.tree-row.selected .tree-kind {
+  opacity: 1;
+}

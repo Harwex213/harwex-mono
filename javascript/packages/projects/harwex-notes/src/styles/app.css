@@ -1,0 +1,76 @@
+:root {
+  --bg: #0d1117;
+  --surface: #161b22;
+  --surface-raised: #1c2129;
+  --border: #30363d;
+  --border-strong: #3d444d;
+  --text: #e6edf3;
+  --muted: #8b949e;
+  --accent: #58a6ff;
+  --purple: #bc8cff;
+  --green: #3fb950;
+  --orange: #d29922;
+  --red: #f85149;
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.app {
+  display: flex;
+  height: 100%;
+  align-items: stretch;
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 auto;
+  min-width: 0;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.panel-head {
+  flex: 0 0 auto;
+  padding: 0.55rem 0.75rem;
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+  border-bottom: 1px solid var(--border);
+}
+
+.splitter {
+  flex: 0 0 auto;
+  width: 5px;
+  margin-left: -3px;
+  cursor: col-resize;
+  background: transparent;
+  border: 0;
+  z-index: 2;
+}
+
+.splitter:hover,
+.splitter:focus-visible,
+.splitter.dragging {
+  background: var(--accent);
+  outline: none;
+}
+
+.workspace {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+}
