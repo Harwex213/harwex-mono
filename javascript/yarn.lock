@@ -2773,15 +2773,66 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@hw/harwex-notes@workspace:packages/projects/harwex-notes":
+"@hw/harwex-notes-backend@workspace:*, @hw/harwex-notes-backend@workspace:packages/projects/harwex-notes/harwex-notes-backend":
   version: 0.0.0-use.local
-  resolution: "@hw/harwex-notes@workspace:packages/projects/harwex-notes"
+  resolution: "@hw/harwex-notes-backend@workspace:packages/projects/harwex-notes/harwex-notes-backend"
+  dependencies:
+    "@hw/harwex-notes-protocol": "workspace:*"
+    "@hw/typescript-config": "workspace:*"
+    "@trpc/server": "npm:11.18.0"
+    "@types/node": "npm:24.1.0"
+    tsx: "npm:4.19.4"
+    typescript: "npm:5.9.3"
+    zod: "npm:4.4.3"
+  languageName: unknown
+  linkType: soft
+
+"@hw/harwex-notes-components@workspace:*, @hw/harwex-notes-components@workspace:packages/projects/harwex-notes/harwex-notes-components":
+  version: 0.0.0-use.local
+  resolution: "@hw/harwex-notes-components@workspace:packages/projects/harwex-notes/harwex-notes-components"
   dependencies:
     "@hw/typescript-config": "workspace:*"
     "@preact/signals-react": "npm:3.9.0"
     "@rspack/cli": "npm:2.1.4"
     "@rspack/core": "npm:2.1.4"
     "@rspack/dev-server": "npm:2.1.0"
+    "@types/node": "npm:24.1.0"
+    "@types/react": "npm:19.2.0"
+    "@types/react-dom": "npm:19.2.0"
+    react: "npm:19.2.0"
+    react-dom: "npm:19.2.0"
+    typescript: "npm:5.9.3"
+  peerDependencies:
+    "@preact/signals-react": 3.9.0
+    react: 19.2.0
+    react-dom: 19.2.0
+  languageName: unknown
+  linkType: soft
+
+"@hw/harwex-notes-protocol@workspace:*, @hw/harwex-notes-protocol@workspace:packages/projects/harwex-notes/harwex-notes-protocol":
+  version: 0.0.0-use.local
+  resolution: "@hw/harwex-notes-protocol@workspace:packages/projects/harwex-notes/harwex-notes-protocol"
+  dependencies:
+    "@hw/harwex-notes-backend": "workspace:*"
+    "@hw/typescript-config": "workspace:*"
+    typescript: "npm:5.9.3"
+    zod: "npm:4.4.3"
+  languageName: unknown
+  linkType: soft
+
+"@hw/harwex-notes@workspace:packages/projects/harwex-notes/harwex-notes-frontend":
+  version: 0.0.0-use.local
+  resolution: "@hw/harwex-notes@workspace:packages/projects/harwex-notes/harwex-notes-frontend"
+  dependencies:
+    "@excalidraw/excalidraw": "npm:0.18.1"
+    "@hw/harwex-notes-components": "workspace:*"
+    "@hw/harwex-notes-protocol": "workspace:*"
+    "@hw/typescript-config": "workspace:*"
+    "@preact/signals-react": "npm:3.9.0"
+    "@rspack/cli": "npm:2.1.4"
+    "@rspack/core": "npm:2.1.4"
+    "@rspack/dev-server": "npm:2.1.0"
+    "@trpc/client": "npm:11.18.0"
     "@types/node": "npm:24.1.0"
     "@types/react": "npm:19.2.0"
     "@types/react-dom": "npm:19.2.0"
@@ -5582,6 +5633,29 @@ __metadata:
   version: 1.1.2
   resolution: "@tootallnate/once@npm:1.1.2"
   checksum: 10/e1fb1bbbc12089a0cb9433dc290f97bddd062deadb6178ce9bcb93bb7c1aecde5e60184bc7065aec42fe1663622a213493c48bbd4972d931aae48315f18e1be9
+  languageName: node
+  linkType: hard
+
+"@trpc/client@npm:11.18.0":
+  version: 11.18.0
+  resolution: "@trpc/client@npm:11.18.0"
+  peerDependencies:
+    "@trpc/server": 11.18.0
+    typescript: ">=5.7.2"
+  bin:
+    intent: bin/intent.js
+  checksum: 10/a2763774023834305ed645a37542d9bb96f33389587feee86202b1323ae80313e429a4db782b54af6ccd3a42b979dd551a07fb5ad1e8246f0adc8c9d798e7384
+  languageName: node
+  linkType: hard
+
+"@trpc/server@npm:11.18.0":
+  version: 11.18.0
+  resolution: "@trpc/server@npm:11.18.0"
+  peerDependencies:
+    typescript: ">=5.7.2"
+  bin:
+    intent: bin/intent.js
+  checksum: 10/a633cc8ef1296eb99ab742a97a563056fe31320fbca2ed2e97dce4af06168080cfd4fe12923857d5fb622660009ddeba4361ff37f97226369126a26836800806
   languageName: node
   linkType: hard
 
