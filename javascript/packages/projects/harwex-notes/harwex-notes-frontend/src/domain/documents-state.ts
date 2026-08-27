@@ -1,3 +1,4 @@
+import type { TExcalidrawScene } from "@hw/harwex-notes-protocol";
 import type { TDocumentEntry, TStore } from "../store/store";
 import type { TApiClient } from "../api/api";
 
@@ -35,4 +36,18 @@ const reloadDocumentAction = (store: TStore, api: TApiClient, nodeId: string) =>
   void loadDocument(store, api, nodeId);
 };
 
-export { ensureDocument, reloadDocumentAction };
+const excalidrawDocumentChangedAction = (
+  store: TStore,
+  _api: TApiClient,
+  nodeId: string,
+  scene: TExcalidrawScene
+) => {
+  const entry = store.documents.entryById.peek()[nodeId];
+  if (entry === undefined || entry.status !== "ready" || entry.document.kind !== "excalidraw") {
+    return;
+  }
+
+  setEntry(store, nodeId, { status: "ready", document: { ...entry.document, scene } });
+};
+
+export { ensureDocument, excalidrawDocumentChangedAction, reloadDocumentAction };

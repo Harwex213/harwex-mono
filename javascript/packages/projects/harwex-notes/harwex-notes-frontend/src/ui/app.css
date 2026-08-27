@@ -10,7 +10,7 @@
  * Component rules use component tokens only. Never `var(--color-*)` or a literal color
  * inside a `.md__*` rule; add a `--md-*` token instead.
  *
- * Dark mode redefines only the semantic layer. Base values never change.
+ * The theme is light only. The cool base colors stay for future use.
  */
 
 /* ------------------------------------------------------------------ */
@@ -231,27 +231,10 @@
   --motion-fast: var(--base-duration-fast) var(--base-easing-default);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --color-canvas: var(--base-color-cool-900);
-    --color-surface: var(--base-color-cool-850);
-    --color-surface-sunken: var(--base-color-cool-800);
-    --color-border: var(--base-color-cool-700);
-    --color-border-strong: var(--base-color-cool-600);
-
-    --color-text: var(--base-color-cool-50);
-    --color-text-muted: var(--base-color-cool-300);
-    --color-text-faint: var(--base-color-cool-400);
-    --color-text-on-accent: var(--base-color-cool-850);
-
-    --color-accent: var(--base-color-blue-300);
-    --color-accent-subtle: var(--base-color-blue-900);
-    --color-danger: var(--base-color-red-300);
-
-    --color-kind-folder: var(--base-color-amber-300);
-    --color-kind-markdown: var(--base-color-blue-300);
-    --color-kind-sketch: var(--base-color-violet-400);
-  }
+/* The site is always light. The OS dark preference is ignored on purpose:
+   sketches and markdown are authored against the light palette. */
+:root {
+  color-scheme: light;
 }
 
 /* ------------------------------------------------------------------ */
