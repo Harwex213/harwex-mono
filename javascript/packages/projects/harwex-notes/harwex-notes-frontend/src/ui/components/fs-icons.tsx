@@ -1,6 +1,5 @@
 import type { FC } from "react";
 import type { TFsNodeKind } from "@hw/harwex-notes-protocol";
-import type { TFsDraftKind } from "../../store/fs-slice";
 
 type TChevronProps = {
   isExpanded: boolean;
@@ -177,7 +176,7 @@ const NodeIcon: FC<TNodeIconProps> = ({ kind }) => {
 };
 
 type TDraftIconProps = {
-  kind: TFsDraftKind;
+  kind: TFsNodeKind;
 };
 
 // A file draft has no kind until an extension is typed, so it shows a plain sheet.

@@ -4,7 +4,6 @@ import type { DragEvent, FC, KeyboardEvent, MouseEvent } from "react";
 import type { TFsNode, TFsNodeKind } from "@hw/harwex-notes-protocol";
 import { FILE_EXTENSIONS, readFileKind } from "../../domain/fs-file-kinds";
 import { useStore } from "../../store/store";
-import type { TFsDraftKind } from "../../store/fs-slice";
 import type {
   TCancelDraftAction,
   TDeleteNodeAction,
@@ -54,14 +53,14 @@ const INDENT_STEP_PX = 14;
 const MENU_WIDTH_PX = 176;
 const MENU_MARGIN_PX = 8;
 
-const NEW_NAME_BY_KIND: Readonly<Record<TFsDraftKind, string>> = {
+const NEW_NAME_BY_KIND: Readonly<Record<TFsNodeKind, string>> = {
   folder: "new-folder",
   file: "untitled",
   markdown: "untitled.md",
   excalidraw: "untitled.excalidraw",
 };
 
-const CREATE_ITEMS: readonly { kind: TFsDraftKind; label: string }[] = [
+const CREATE_ITEMS: readonly { kind: TFsNodeKind; label: string }[] = [
   { kind: "file", label: "New file" },
   { kind: "excalidraw", label: "New excalidraw" },
   { kind: "folder", label: "New folder" },
@@ -73,6 +72,7 @@ const LABEL_BY_KIND: Readonly<Record<TFsNodeKind, string>> = {
   folder: "folder",
   markdown: "note",
   excalidraw: "sketch",
+  file: "file",
 };
 
 const readIndentStyle = (depth: number) => ({

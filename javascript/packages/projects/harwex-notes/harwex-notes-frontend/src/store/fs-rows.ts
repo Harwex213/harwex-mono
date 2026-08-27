@@ -1,5 +1,5 @@
-import type { TFsNode } from "@hw/harwex-notes-protocol";
-import type { TFsDraft, TFsDraftKind } from "./fs-slice";
+import type { TFsNode, TFsNodeKind } from "@hw/harwex-notes-protocol";
+import type { TFsDraft } from "./fs-slice";
 
 type TFsNodeRow = {
   type: "node";
@@ -12,7 +12,7 @@ type TFsNodeRow = {
 type TFsDraftRow = {
   type: "draft";
   depth: number;
-  kind: TFsDraftKind;
+  kind: TFsNodeKind;
 };
 
 type TFsRow = TFsNodeRow | TFsDraftRow;

@@ -1,3 +1,9 @@
+// API
+
+export type { AppRouter } from "@hw/harwex-notes-backend/router";
+
+// Types
+
 export {
   fsNodeKindSchema,
   fsNodeIdSchema,
@@ -9,7 +15,7 @@ export {
   createNodeResultSchema,
   renameNodeInputSchema,
   moveNodeInputSchema,
-} from "./src/fs.js";
+} from "./src/types/fs.js";
 export type {
   TFsNodeKind,
   TFsFileKind,
@@ -19,17 +25,35 @@ export type {
   TCreateNodeResult,
   TRenameNodeInput,
   TMoveNodeInput,
-} from "./src/fs.js";
+} from "./src/types/fs.js";
 export {
   markdownDocumentSchema,
   excalidrawSceneSchema,
   excalidrawDocumentSchema,
   documentSchema,
-} from "./src/document.js";
+} from "./src/types/document.js";
 export type {
   TMarkdownDocument,
   TExcalidrawScene,
   TExcalidrawDocument,
   TDocument,
-} from "./src/document.js";
-export type { AppRouter } from "./src/api.js";
+} from "./src/types/document.js";
+
+// Registry
+
+export type {
+  TActivateTabAction,
+  TAppRegistry,
+  TCancelDraftAction,
+  TCloseTabAction,
+  TDeleteNodeAction,
+  TLoadTreeAction,
+  TMoveNodeAction,
+  TOpenNodeAction,
+  TReloadDocumentAction,
+  TSelectNodeAction,
+  TStartCreateAction,
+  TStartRenameAction,
+  TSubmitDraftAction,
+  TToggleFolderAction,
+} from "./src/registry.js";

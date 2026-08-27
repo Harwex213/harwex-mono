@@ -1,5 +1,4 @@
 import type { TFsNode, TFsNodeKind } from "@hw/harwex-notes-protocol";
-import type { TFsDraftKind } from "../store/fs-slice";
 import type { TStore } from "../store/store";
 import type { TApiClient } from "../api/api";
 import { FILE_EXTENSIONS, readFileKind } from "./fs-file-kinds";
@@ -111,7 +110,7 @@ const startCreateAction = (
   store: TStore,
   _api: TApiClient,
   parentId: string | null,
-  kind: TFsDraftKind
+  kind: TFsNodeKind
 ) => {
   store.fs.error.value = null;
 
@@ -133,7 +132,7 @@ const cancelDraftAction = (store: TStore, _api: TApiClient) => {
 
 // A "file" draft carries no kind, so the extension of the typed name has to name one.
 // Anything else was started from a button that already knows what it creates.
-const readCreateKind = (draftKind: TFsDraftKind, name: string): TFsNodeKind => {
+const readCreateKind = (draftKind: TFsNodeKind, name: string): TFsNodeKind => {
   if (draftKind !== "file") {
     return draftKind;
   }
@@ -150,7 +149,7 @@ const createNode = async (
   store: TStore,
   api: TApiClient,
   parentId: string | null,
-  draftKind: TFsDraftKind,
+  draftKind: TFsNodeKind,
   name: string
 ) => {
   const kind = readCreateKind(draftKind, name);

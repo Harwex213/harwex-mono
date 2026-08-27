@@ -2803,6 +2803,7 @@ __metadata:
     react-dom: "npm:19.2.0"
     typescript: "npm:5.9.3"
   peerDependencies:
+    "@hw/harwex-notes-protocol": "workspace:*"
     "@preact/signals-react": 3.9.0
     react: 19.2.0
     react-dom: 19.2.0

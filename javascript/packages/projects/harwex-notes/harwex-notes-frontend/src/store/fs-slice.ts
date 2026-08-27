@@ -6,7 +6,7 @@ import type { TFsNode, TFsNodeKind } from "@hw/harwex-notes-protocol";
 type TFsDraftKind = TFsNodeKind | "file";
 
 type TFsDraft =
-  | { mode: "create"; parentId: string | null; kind: TFsDraftKind }
+  | { mode: "create"; parentId: string | null; kind: TFsNodeKind }
   | { mode: "rename"; nodeId: string };
 
 const createFsState = () => ({
