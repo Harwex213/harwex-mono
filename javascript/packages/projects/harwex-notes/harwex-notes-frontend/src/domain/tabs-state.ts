@@ -1,7 +1,7 @@
 import { ensureDocument } from "./documents-state";
 import { toggleFolderAction } from "./fs-state";
-import type { TApi } from "../api/types";
 import type { TStore } from "../store/store";
+import type { TApiClient } from "../api/api";
 
 const MAX_OPEN_TABS = 5;
 
@@ -22,7 +22,7 @@ const pickNeighbourId = (
   return openIds[closedIndex - 1] ?? null;
 };
 
-const openNodeAction = (store: TStore, api: TApi, nodeId: string) => {
+const openNodeAction = (store: TStore, api: TApiClient, nodeId: string) => {
   const node = store.derived.nodeById.peek().get(nodeId);
   if (node === undefined) {
     return;
@@ -46,7 +46,7 @@ const openNodeAction = (store: TStore, api: TApi, nodeId: string) => {
   ensureDocument(store, api, nodeId);
 };
 
-const activateTabAction = (store: TStore, api: TApi, nodeId: string) => {
+const activateTabAction = (store: TStore, api: TApiClient, nodeId: string) => {
   if (!store.tabs.openIds.peek().includes(nodeId)) {
     return;
   }
@@ -56,7 +56,7 @@ const activateTabAction = (store: TStore, api: TApi, nodeId: string) => {
   ensureDocument(store, api, nodeId);
 };
 
-const closeTabAction = (store: TStore, _api: TApi, nodeId: string) => {
+const closeTabAction = (store: TStore, _api: TApiClient, nodeId: string) => {
   const openIds = store.tabs.openIds.peek();
   if (!openIds.includes(nodeId)) {
     return;

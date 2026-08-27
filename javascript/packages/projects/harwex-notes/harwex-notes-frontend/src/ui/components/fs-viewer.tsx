@@ -1,17 +1,9 @@
 import { useSignals } from "@preact/signals-react/runtime";
 import { useEffect, useRef, useState } from "react";
-import {
-  Chevron,
-  DraftIcon,
-  NewFolderIcon,
-  NewNoteIcon,
-  NewSketchIcon,
-  NodeIcon,
-} from "./fs-icons";
+import type { DragEvent, FC, KeyboardEvent, MouseEvent } from "react";
+import type { TFsNode, TFsNodeKind } from "@hw/harwex-notes-protocol";
 import { FILE_EXTENSIONS, readFileKind } from "../../domain/fs-file-kinds";
 import { useStore } from "../../store/store";
-import type { DragEvent, FC, KeyboardEvent, MouseEvent } from "react";
-import type { TFsNode, TFsNodeKind } from "../../api/types";
 import type { TFsDraftKind } from "../../store/fs-slice";
 import type {
   TCancelDraftAction,
@@ -24,6 +16,14 @@ import type {
   TSubmitDraftAction,
   TToggleFolderAction,
 } from "../../domain/registry";
+import {
+  Chevron,
+  DraftIcon,
+  NewFolderIcon,
+  NewNoteIcon,
+  NewSketchIcon,
+  NodeIcon,
+} from "./fs-icons";
 
 type TFsViewerRegistrySlice = {
   toggleFolderAction: TToggleFolderAction;

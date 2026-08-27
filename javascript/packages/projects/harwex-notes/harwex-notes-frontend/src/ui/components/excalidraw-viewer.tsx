@@ -4,7 +4,7 @@ import "@excalidraw/excalidraw/index.css";
 import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
 import type { BinaryFiles } from "@excalidraw/excalidraw/types";
 import type { FC } from "react";
-import type { TExcalidrawDocument } from "../../api/types";
+import type { TExcalidrawDocument } from "@hw/harwex-notes-protocol";
 
 type TExcalidrawViewerProps = {
   document: TExcalidrawDocument;

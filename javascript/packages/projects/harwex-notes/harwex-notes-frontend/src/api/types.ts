@@ -12,17 +12,7 @@ import type {
   TMarkdownDocument,
 } from "@hw/harwex-notes-protocol";
 
-type TApi = {
-  fetchTree: () => Promise<readonly TFsNode[]>;
-  fetchDocument: (nodeId: string) => Promise<TDocument>;
-  createNode: (input: TCreateNodeInput) => Promise<TCreateNodeResult>;
-  renameNode: (nodeId: string, name: string) => Promise<readonly TFsNode[]>;
-  moveNode: (nodeId: string, parentId: string | null) => Promise<readonly TFsNode[]>;
-  deleteNode: (nodeId: string) => Promise<readonly TFsNode[]>;
-};
-
 export type {
-  TApi,
   TCreateNodeInput,
   TCreateNodeResult,
   TDocument,

@@ -1,4 +1,4 @@
-import type { TFsNode } from "../api/types";
+import type { TFsNode } from "@hw/harwex-notes-protocol";
 import type { TFsDraft, TFsDraftKind } from "./fs-slice";
 
 type TFsNodeRow = {

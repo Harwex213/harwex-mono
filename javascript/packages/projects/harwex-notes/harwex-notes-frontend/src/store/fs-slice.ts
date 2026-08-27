@@ -1,5 +1,5 @@
 import { signal } from "@preact/signals-react";
-import type { TFsNode, TFsNodeKind } from "../api/types";
+import type { TFsNode, TFsNodeKind } from "@hw/harwex-notes-protocol";
 
 // A "file" draft is started without a kind: the extension the reader types decides
 // whether the new file is a note or a sketch.

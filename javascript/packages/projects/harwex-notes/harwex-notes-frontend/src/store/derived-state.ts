@@ -1,6 +1,6 @@
 import { computed } from "@preact/signals-react";
+import type { TFsNode } from "@hw/harwex-notes-protocol";
 import { flattenTree } from "./fs-rows";
-import type { TFsNode } from "../api/types";
 import type { TDocumentsSlice } from "./documents-slice";
 import type { TFsSlice } from "./fs-slice";
 import type { TTabsSlice } from "./tabs-slice";

@@ -1,5 +1,5 @@
-import type { TApi } from "../api/types";
 import type { TDocumentEntry, TStore } from "../store/store";
+import type { TApiClient } from "../api/api";
 
 const setEntry = (store: TStore, nodeId: string, entry: TDocumentEntry) => {
   store.documents.entryById.value = {
@@ -8,11 +8,11 @@ const setEntry = (store: TStore, nodeId: string, entry: TDocumentEntry) => {
   };
 };
 
-const loadDocument = async (store: TStore, api: TApi, nodeId: string) => {
+const loadDocument = async (store: TStore, api: TApiClient, nodeId: string) => {
   setEntry(store, nodeId, { status: "loading" });
 
   try {
-    const document = await api.fetchDocument(nodeId);
+    const document = await api.fs.document.query({ nodeId });
 
     setEntry(store, nodeId, { status: "ready", document });
   } catch (error) {
@@ -22,7 +22,7 @@ const loadDocument = async (store: TStore, api: TApi, nodeId: string) => {
   }
 };
 
-const ensureDocument = (store: TStore, api: TApi, nodeId: string) => {
+const ensureDocument = (store: TStore, api: TApiClient, nodeId: string) => {
   const entry = store.documents.entryById.peek()[nodeId];
   if (entry !== undefined && entry.status !== "error") {
     return;
@@ -31,7 +31,7 @@ const ensureDocument = (store: TStore, api: TApi, nodeId: string) => {
   void loadDocument(store, api, nodeId);
 };
 
-const reloadDocumentAction = (store: TStore, api: TApi, nodeId: string) => {
+const reloadDocumentAction = (store: TStore, api: TApiClient, nodeId: string) => {
   void loadDocument(store, api, nodeId);
 };
 

@@ -1,5 +1,5 @@
 import type { FC } from "react";
-import type { TFsNodeKind } from "../../api/types";
+import type { TFsNodeKind } from "@hw/harwex-notes-protocol";
 import type { TFsDraftKind } from "../../store/fs-slice";
 
 type TChevronProps = {

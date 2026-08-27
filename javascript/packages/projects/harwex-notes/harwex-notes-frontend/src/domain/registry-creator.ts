@@ -11,11 +11,11 @@ import {
   toggleFolderAction,
 } from "./fs-state";
 import { activateTabAction, closeTabAction, openNodeAction } from "./tabs-state";
-import type { TApi } from "../api/types";
 import type { TStore } from "../store/store";
 import type { TAppRegistry } from "./registry";
+import type { TApiClient } from "../api/api";
 
-const createRegistry = (store: TStore, api: TApi) => {
+const createRegistry = (store: TStore, api: TApiClient) => {
   const rawRegistry = {
     loadTreeAction,
     toggleFolderAction,

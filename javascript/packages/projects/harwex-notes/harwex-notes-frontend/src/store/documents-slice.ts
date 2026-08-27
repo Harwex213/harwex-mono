@@ -1,5 +1,5 @@
 import { signal } from "@preact/signals-react";
-import type { TDocument } from "../api/types";
+import type { TDocument } from "@hw/harwex-notes-protocol";
 
 type TDocumentEntry =
   | { status: "loading" }

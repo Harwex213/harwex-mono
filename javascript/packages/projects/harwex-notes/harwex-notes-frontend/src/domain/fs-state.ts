@@ -1,7 +1,8 @@
-import { FILE_EXTENSIONS, readFileKind } from "./fs-file-kinds";
-import type { TApi, TFsNode, TFsNodeKind } from "../api/types";
+import type { TFsNode, TFsNodeKind } from "@hw/harwex-notes-protocol";
 import type { TFsDraftKind } from "../store/fs-slice";
 import type { TStore } from "../store/store";
+import type { TApiClient } from "../api/api";
+import { FILE_EXTENSIONS, readFileKind } from "./fs-file-kinds";
 
 // A folder and everything below it.
 const collectSubtreeIds = (nodes: readonly TFsNode[], nodeId: string): ReadonlySet<string> => {
@@ -68,12 +69,12 @@ const readErrorMessage = (error: unknown) => {
   return error instanceof Error ? error.message : "Unknown error";
 };
 
-const loadTreeAction = async (store: TStore, api: TApi) => {
+const loadTreeAction = async (store: TStore, api: TApiClient) => {
   store.fs.isLoading.value = true;
   store.fs.error.value = null;
 
   try {
-    const nodes = await api.fetchTree();
+    const nodes = await api.fs.tree.query();
 
     store.fs.nodes.value = nodes;
     store.fs.expandedIds.value = nodes
@@ -88,7 +89,7 @@ const loadTreeAction = async (store: TStore, api: TApi) => {
 
 // Collapsing a folder collapses everything below it, so reopening the folder
 // always shows a closed subtree.
-const toggleFolderAction = (store: TStore, _api: TApi, nodeId: string) => {
+const toggleFolderAction = (store: TStore, _api: TApiClient, nodeId: string) => {
   const expandedIds = store.fs.expandedIds.peek();
   if (!expandedIds.includes(nodeId)) {
     store.fs.expandedIds.value = [...expandedIds, nodeId];
@@ -101,14 +102,14 @@ const toggleFolderAction = (store: TStore, _api: TApi, nodeId: string) => {
   store.fs.expandedIds.value = expandedIds.filter((id) => !collapsedIds.has(id));
 };
 
-const selectNodeAction = (store: TStore, _api: TApi, nodeId: string) => {
+const selectNodeAction = (store: TStore, _api: TApiClient, nodeId: string) => {
   store.fs.selectedId.value = nodeId;
   store.fs.draft.value = null;
 };
 
 const startCreateAction = (
   store: TStore,
-  _api: TApi,
+  _api: TApiClient,
   parentId: string | null,
   kind: TFsDraftKind
 ) => {
@@ -119,13 +120,13 @@ const startCreateAction = (
   store.fs.draft.value = { mode: "create", parentId, kind };
 };
 
-const startRenameAction = (store: TStore, _api: TApi, nodeId: string) => {
+const startRenameAction = (store: TStore, _api: TApiClient, nodeId: string) => {
   store.fs.error.value = null;
   store.fs.selectedId.value = nodeId;
   store.fs.draft.value = { mode: "rename", nodeId };
 };
 
-const cancelDraftAction = (store: TStore, _api: TApi) => {
+const cancelDraftAction = (store: TStore, _api: TApiClient) => {
   store.fs.draft.value = null;
   store.fs.error.value = null;
 };
@@ -147,14 +148,14 @@ const readCreateKind = (draftKind: TFsDraftKind, name: string): TFsNodeKind => {
 
 const createNode = async (
   store: TStore,
-  api: TApi,
+  api: TApiClient,
   parentId: string | null,
   draftKind: TFsDraftKind,
   name: string
 ) => {
   const kind = readCreateKind(draftKind, name);
 
-  const { nodes, node } = await api.createNode({ parentId, name, kind });
+  const { nodes, node } = await api.fs.createNode.mutate({ parentId, name, kind });
 
   store.fs.nodes.value = nodes;
   store.fs.draft.value = null;
@@ -165,14 +166,14 @@ const createNode = async (
   }
 };
 
-const renameNode = async (store: TStore, api: TApi, nodeId: string, name: string) => {
-  store.fs.nodes.value = await api.renameNode(nodeId, name);
+const renameNode = async (store: TStore, api: TApiClient, nodeId: string, name: string) => {
+  store.fs.nodes.value = await api.fs.renameNode.mutate({ nodeId, name });
   store.fs.draft.value = null;
 };
 
 // The draft row is the only place a name is typed, so both create and rename
 // end here.
-const submitDraftAction = async (store: TStore, api: TApi, name: string) => {
+const submitDraftAction = async (store: TStore, api: TApiClient, name: string) => {
   const draft = store.fs.draft.peek();
   if (draft === null || store.fs.isBusy.peek()) {
     return;
@@ -202,7 +203,7 @@ const submitDraftAction = async (store: TStore, api: TApi, name: string) => {
 
 const moveNodeAction = async (
   store: TStore,
-  api: TApi,
+  api: TApiClient,
   nodeId: string,
   parentId: string | null
 ) => {
@@ -214,7 +215,7 @@ const moveNodeAction = async (
   store.fs.error.value = null;
 
   try {
-    store.fs.nodes.value = await api.moveNode(nodeId, parentId);
+    store.fs.nodes.value = await api.fs.moveNode.mutate({ nodeId, parentId });
 
     expandFolder(store, parentId);
   } catch (error) {
@@ -224,7 +225,7 @@ const moveNodeAction = async (
   }
 };
 
-const deleteNodeAction = async (store: TStore, api: TApi, nodeId: string) => {
+const deleteNodeAction = async (store: TStore, api: TApiClient, nodeId: string) => {
   if (store.fs.isBusy.peek()) {
     return;
   }
@@ -235,7 +236,7 @@ const deleteNodeAction = async (store: TStore, api: TApi, nodeId: string) => {
   store.fs.error.value = null;
 
   try {
-    store.fs.nodes.value = await api.deleteNode(nodeId);
+    store.fs.nodes.value = await api.fs.deleteNode.mutate({ nodeId });
     store.fs.expandedIds.value = store.fs.expandedIds
       .peek()
       .filter((id) => !removedIds.has(id));

@@ -1,4 +1,4 @@
-import type { TFsFileKind } from "../api/types";
+import type { TFsFileKind } from "@hw/harwex-notes-protocol";
 
 // The extension decides the kind of a file, the way it does on disk. The rule is pure
 // data with no store and no api behind it: `createNode` reads it to resolve the kind of

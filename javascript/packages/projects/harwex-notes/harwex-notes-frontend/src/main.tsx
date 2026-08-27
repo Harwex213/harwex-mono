@@ -1,6 +1,6 @@
 import { createRoot } from "react-dom/client";
 import { createMockApi } from "./api/mock-api";
-import { createTrpcApi } from "./api/trpc-api";
+import { createTrpcApi } from "./api/api";
 import { createRegistry } from "./domain/registry-creator";
 import { createStore, StoreProvider } from "./store/store";
 import { App } from "./ui/app";
