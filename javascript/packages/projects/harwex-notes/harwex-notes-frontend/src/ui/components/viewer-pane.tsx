@@ -1,13 +1,17 @@
 import { useSignals } from "@preact/signals-react/runtime";
-import { ExcalidrawViewer } from "@hw/harwex-notes-components";
-import { MarkdownViewer } from "./markdown-viewer";
+import { ExcalidrawViewer, MarkdownViewer } from "@hw/harwex-notes-components";
 import { useStore } from "../../store/store";
 import type { FC } from "react";
-import type { TExcalidrawDocumentChangedAction, TReloadDocumentAction } from "@hw/harwex-notes-protocol";
+import type {
+  TExcalidrawDocumentChangedAction,
+  TMarkdownDocumentChangedAction,
+  TReloadDocumentAction,
+} from "@hw/harwex-notes-protocol";
 
 type TViewerPaneRegistrySlice = {
   reloadDocumentAction: TReloadDocumentAction;
   excalidrawDocumentChangedAction: TExcalidrawDocumentChangedAction;
+  markdownDocumentChangedAction: TMarkdownDocumentChangedAction;
 };
 
 type TViewerPaneProps = {
@@ -56,7 +60,7 @@ const ViewerPane: FC<TViewerPaneProps> = ({ registry }) => {
   if (entry.document.kind === "markdown") {
     return (
       <section className="viewer viewer--markdown">
-        <MarkdownViewer text={entry.document.text} />
+        <MarkdownViewer document={entry.document} registry={registry} theme={"light"} />
       </section>
     );
   }

@@ -4,9 +4,6 @@ import type { TDocumentEntry, TDocumentsSlice } from "./documents-slice";
 import type { TFsSlice } from "./fs-slice";
 import type { TTabsSlice } from "./tabs-slice";
 
-// The app only reads files, so a tab is either still fetching its document, holding it, or
-// holding the error the fetch gave. The bar's remaining states (unsaved, saving, conflict,
-// deleted) arrive with saving, see DOC-5 in the specification.
 const readSaveState = (entry: TDocumentEntry | undefined): TTabSaveState => {
   if (entry === undefined || entry.status === "loading") {
     return "loading";
@@ -16,7 +13,29 @@ const readSaveState = (entry: TDocumentEntry | undefined): TTabSaveState => {
     return "failed";
   }
 
-  return "saved";
+  return entry.save.state;
+};
+
+type TAppSaveState = "saved" | "saving" | "failed";
+
+const readAppSaveState = (entryById: Readonly<Record<string, TDocumentEntry>>): TAppSaveState => {
+  let appState: TAppSaveState = "saved";
+
+  for (const entry of Object.values(entryById)) {
+    if (entry.status !== "ready") {
+      continue;
+    }
+
+    if (entry.save.state === "failed") {
+      return "failed";
+    }
+
+    if (entry.save.state === "saving" || entry.save.state === "unsaved") {
+      appState = "saving";
+    }
+  }
+
+  return appState;
 };
 
 const createDerivedState = (
@@ -67,15 +86,18 @@ const createDerivedState = (
     return documents.entryById.value[activeId] ?? null;
   });
 
+  const appSaveState = computed(() => readAppSaveState(documents.entryById.value));
+
   return {
     nodeById,
     openTabs,
     activeNode,
     activeEntry,
+    appSaveState,
   };
 };
 
 type TDerivedState = ReturnType<typeof createDerivedState>;
 
-export type { TDerivedState };
+export type { TAppSaveState, TDerivedState };
 export { createDerivedState };

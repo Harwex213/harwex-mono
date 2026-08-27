@@ -43,8 +43,6 @@ const moveNodeInputSchema = z.object({
 
 type TFsNodeKind = z.infer<typeof fsNodeKindSchema>;
 
-// Everything that is not a folder is a file, and the extension of a file decides
-// which kind of file it is.
 type TFsFileKind = Exclude<TFsNodeKind, "folder">;
 
 type TFsNode = z.infer<typeof fsNodeSchema>;

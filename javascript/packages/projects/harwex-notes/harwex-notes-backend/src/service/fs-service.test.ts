@@ -11,8 +11,10 @@ import {
   deleteNode,
   fetchDocument,
   fetchTree,
+  MAX_DOCUMENT_BYTES,
   moveNode,
   renameNode,
+  updateDocument,
 } from "./fs-service.js";
 
 let disk: TMemoryVaultFs;
@@ -112,15 +114,87 @@ describe("fetchDocument", () => {
     await rejectsWith(fetchDocument(ctx, created.node.id), "BAD_REQUEST", "not a text file");
   });
 
-  it("refuses a file larger than 8 MB", async () => {
+  it("refuses a file larger than the limit", async () => {
     const created = await createNode(ctx, { parentId: null, name: "huge.md", kind: "markdown" });
-    await disk.writeFile(`${SAMPLE_VAULT_PATH}/huge.md`, new Uint8Array(8 * 1024 * 1024 + 1));
+    await disk.writeFile(`${SAMPLE_VAULT_PATH}/huge.md`, new Uint8Array(MAX_DOCUMENT_BYTES + 1));
 
-    await rejectsWith(fetchDocument(ctx, created.node.id), "BAD_REQUEST", "8 MB");
+    await rejectsWith(fetchDocument(ctx, created.node.id), "BAD_REQUEST", "MB");
   });
 
   it("reports an unknown node as not found", async () => {
     await rejectsWith(fetchDocument(ctx, "missing"), "NOT_FOUND", "No node");
+  });
+});
+
+describe("updateDocument", () => {
+  it("writes markdown text to disk as it is", async () => {
+    const node = byPath(ctx.dataAccess.tree, "Journal/2026-08-26.md");
+
+    await updateDocument(ctx, { kind: "markdown", nodeId: node.id, text: "Read it once.\n" });
+
+    assert.equal(disk.readText("Journal/2026-08-26.md"), "Read it once.\n");
+    assert.deepEqual(await fetchDocument(ctx, node.id), { kind: "markdown", nodeId: node.id, text: "Read it once.\n" });
+  });
+
+  it("replaces the elements of a drawing and keeps the rest of the file", async () => {
+    const node = byPath(ctx.dataAccess.tree, "Projects/harwex-notes/architecture.excalidraw");
+    const before = JSON.parse(disk.readText("Projects/harwex-notes/architecture.excalidraw") ?? "") as Record<string, unknown>;
+    const elements = [{ id: "a", type: "rectangle" }, { id: "b", type: "text", text: "hi" }];
+
+    await updateDocument(ctx, { kind: "excalidraw", nodeId: node.id, scene: { elements, files: { f1: { id: "f1" } } } });
+
+    const after = JSON.parse(disk.readText("Projects/harwex-notes/architecture.excalidraw") ?? "") as Record<string, unknown>;
+    assert.equal(after["type"], "excalidraw");
+    assert.deepEqual(after["appState"], before["appState"]);
+    assert.deepEqual(after["elements"], elements);
+    assert.deepEqual(after["files"], { f1: { id: "f1" } });
+  });
+
+  it("rewrites a drawing that did not parse into a valid one", async () => {
+    const node = byPath(ctx.dataAccess.tree, "broken.excalidraw");
+
+    await updateDocument(ctx, { kind: "excalidraw", nodeId: node.id, scene: { elements: [], files: {} } });
+
+    const document = await fetchDocument(ctx, node.id);
+    assert.equal(document.kind, "excalidraw");
+  });
+
+  it("refuses a document whose kind does not match the node", async () => {
+    const node = byPath(ctx.dataAccess.tree, "Journal/2026-08-26.md");
+
+    await rejectsWith(
+      updateDocument(ctx, { kind: "excalidraw", nodeId: node.id, scene: { elements: [], files: {} } }),
+      "BAD_REQUEST",
+      "not a excalidraw document"
+    );
+    assert.equal(disk.readText("Journal/2026-08-26.md"), "Read the spec twice.\n");
+  });
+
+  it("refuses a document larger than the limit", async () => {
+    const node = byPath(ctx.dataAccess.tree, "Journal/2026-08-26.md");
+
+    await rejectsWith(
+      updateDocument(ctx, { kind: "markdown", nodeId: node.id, text: "x".repeat(MAX_DOCUMENT_BYTES + 1) }),
+      "BAD_REQUEST",
+      "MB"
+    );
+  });
+
+  it("reports an unknown node as not found", async () => {
+    await rejectsWith(updateDocument(ctx, { kind: "markdown", nodeId: "missing", text: "" }), "NOT_FOUND", "No node");
+  });
+
+  it("reports a disk failure with the system reason", async () => {
+    const node = byPath(ctx.dataAccess.tree, "Journal/2026-08-26.md");
+    disk.writeFile = async () => {
+      throw new Error("ENOSPC: no space left on device");
+    };
+
+    await rejectsWith(
+      updateDocument(ctx, { kind: "markdown", nodeId: node.id, text: "more" }),
+      "INTERNAL_SERVER_ERROR",
+      "ENOSPC"
+    );
   });
 });
 

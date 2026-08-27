@@ -36,6 +36,6 @@ const useStore = () => {
 };
 
 export type { TStore };
-export type { TDocumentEntry } from "./documents-slice";
+export type { TDocumentEntry, TDocumentSaveState } from "./documents-slice";
 export type { TFsDraft } from "./fs-slice";
 export { StoreProvider, createStore, useStore };

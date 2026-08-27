@@ -1,4 +1,4 @@
-import { ensureDocument } from "./documents-state";
+import { ensureDocument, flushDocument } from "./documents-state";
 import { toggleFolderAction } from "./fs-state";
 import type { TStore } from "../store/store";
 import type { TApiClient } from "../api/api";
@@ -36,8 +36,6 @@ const openNodeAction = (store: TStore, api: TApiClient, nodeId: string) => {
 
   const openIds = store.tabs.openIds.peek();
   if (!openIds.includes(nodeId)) {
-    // The strip holds five notes. Opening a sixth one drops the tab that was
-    // opened first.
     store.tabs.openIds.value = [...openIds, nodeId].slice(-MAX_OPEN_TABS);
   }
 
@@ -51,16 +49,23 @@ const activateTabAction = (store: TStore, api: TApiClient, nodeId: string) => {
     return;
   }
 
+  const previousId = store.tabs.activeId.peek();
+  if (previousId !== null && previousId !== nodeId) {
+    void flushDocument(store, api, previousId);
+  }
+
   store.tabs.activeId.value = nodeId;
 
   ensureDocument(store, api, nodeId);
 };
 
-const closeTabAction = (store: TStore, _api: TApiClient, nodeId: string) => {
+const closeTabAction = (store: TStore, api: TApiClient, nodeId: string) => {
   const openIds = store.tabs.openIds.peek();
   if (!openIds.includes(nodeId)) {
     return;
   }
+
+  void flushDocument(store, api, nodeId);
 
   if (store.tabs.activeId.peek() === nodeId) {
     store.tabs.activeId.value = pickNeighbourId(openIds, nodeId);

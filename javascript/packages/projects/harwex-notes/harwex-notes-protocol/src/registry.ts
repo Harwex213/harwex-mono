@@ -62,6 +62,16 @@ type TMiscActions = {
   markdownDocumentChangedAction: TMarkdownDocumentChangedAction;
 };
 
+// Conflict Actions
+
+type TOverwriteConflictAction = (nodeId: string) => void;
+type TDiscardConflictAction = (nodeId: string) => void;
+
+type TConflictActions = {
+  overwriteConflictAction: TOverwriteConflictAction;
+  discardConflictAction: TDiscardConflictAction;
+};
+
 // Layout Actions
 
 type TResizeSidebarAction = (width: number) => void;
@@ -77,6 +87,7 @@ type TAppRegistry = &
   TDraftActions &
   TFolderActions &
   TTabActions &
+  TConflictActions &
   TLayoutActions &
   TMiscActions;
 
@@ -86,9 +97,11 @@ export type {
   TCancelDraftAction,
   TCloseTabAction,
   TDeleteNodeAction,
+  TDiscardConflictAction,
   TLoadTreeAction,
   TMoveNodeAction,
   TOpenNodeAction,
+  TOverwriteConflictAction,
   TReloadDocumentAction,
   TExcalidrawDocumentChangedAction,
   TMarkdownDocumentChangedAction,

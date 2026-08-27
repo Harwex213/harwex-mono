@@ -1,3 +1,4 @@
+import { cancelScheduledSave, flushDocument } from "./documents-state";
 import type { TFsNode, TFsNodeKind } from "@hw/harwex-notes-protocol";
 import type { TStore } from "../store/store";
 import type { TApiClient } from "../api/api";
@@ -58,6 +59,10 @@ const dropTabs = (store: TStore, removedIds: ReadonlySet<string>) => {
 
 const dropDocuments = (store: TStore, removedIds: ReadonlySet<string>) => {
   const entryById = store.documents.entryById.peek();
+
+  for (const nodeId of removedIds) {
+    cancelScheduledSave(store, nodeId);
+  }
 
   store.documents.entryById.value = Object.fromEntries(
     Object.entries(entryById).filter(([nodeId]) => !removedIds.has(nodeId))
@@ -165,13 +170,19 @@ const createNode = async (
   }
 };
 
+// No write is ever in flight while a path changes (MUT-23).
+const flushSubtree = async (store: TStore, api: TApiClient, nodeId: string) => {
+  const ids = collectSubtreeIds(store.fs.nodes.peek(), nodeId);
+
+  await Promise.all([...ids].map((id) => flushDocument(store, api, id)));
+};
+
 const renameNode = async (store: TStore, api: TApiClient, nodeId: string, name: string) => {
+  await flushSubtree(store, api, nodeId);
   store.fs.nodes.value = await api.fs.renameNode.mutate({ nodeId, name });
   store.fs.draft.value = null;
 };
 
-// The draft row is the only place a name is typed, so both create and rename
-// end here.
 const submitDraftAction = async (store: TStore, api: TApiClient, name: string) => {
   const draft = store.fs.draft.peek();
   if (draft === null || store.fs.isBusy.peek()) {
@@ -214,6 +225,7 @@ const moveNodeAction = async (
   store.fs.error.value = null;
 
   try {
+    await flushSubtree(store, api, nodeId);
     store.fs.nodes.value = await api.fs.moveNode.mutate({ nodeId, parentId });
 
     expandFolder(store, parentId);

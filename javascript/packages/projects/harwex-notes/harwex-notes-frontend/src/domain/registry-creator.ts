@@ -1,5 +1,9 @@
 import type { TAppRegistry } from "@hw/harwex-notes-protocol";
-import { excalidrawDocumentChangedAction, reloadDocumentAction } from "./documents-state";
+import {
+  excalidrawDocumentChangedAction,
+  markdownDocumentChangedAction,
+  reloadDocumentAction,
+} from "./documents-state";
 import { resizeSidebarAction } from "./layout-state";
 import {
   cancelDraftAction,
@@ -32,6 +36,7 @@ const createRegistry = (store: TStore, api: TApiClient) => {
     closeTabAction,
     reloadDocumentAction,
     excalidrawDocumentChangedAction,
+    markdownDocumentChangedAction,
     resizeSidebarAction,
   };
 

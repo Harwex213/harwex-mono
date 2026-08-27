@@ -6,7 +6,7 @@ import { SAMPLE_VAULT, SAMPLE_VAULT_PATH } from "./data-access/sample-vault.js";
 import { appRouter } from "./router/index.js";
 import type { TContext } from "./trpc.js";
 
-const DEFAULT_PORT = 3001;
+const DEFAULT_PORT = 4001;
 
 const port = Number(process.env.PORT ?? DEFAULT_PORT);
 const vaultPath = process.env.VAULT_PATH;

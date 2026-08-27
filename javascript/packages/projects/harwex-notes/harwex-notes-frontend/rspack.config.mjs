@@ -3,7 +3,7 @@ import path from "node:path";
 import { rspack } from "@rspack/core";
 
 const DEV_SERVER_PORT = 8140;
-const DEFAULT_API_URL = "http://localhost:3001";
+const DEFAULT_API_URL = "http://localhost:4001";
 
 const require = createRequire(import.meta.url);
 

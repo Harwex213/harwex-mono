@@ -1,9 +1,10 @@
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { TRPCError } from "@trpc/server";
-import type { TExcalidrawScene, TFsNode, TFsNodeKind } from "@hw/harwex-notes-protocol";
+import type { TDocument, TExcalidrawScene, TFsNode, TFsNodeKind } from "@hw/harwex-notes-protocol";
 import { readFileKind } from "../data-access/fs-data-access.js";
 import type { FsDataAccess } from "../data-access/fs-data-access.types.js";
+import type { TContext } from "../trpc.js";
 import type {
   TFetchTree,
   TFetchDocument,
@@ -11,6 +12,7 @@ import type {
   TRenameNode,
   TMoveNode,
   TDeleteNode,
+  TUpdateDocument,
 } from "./fs-service.types.js";
 
 const SUPPORTED_EXTENSIONS: ReadonlySet<string> = new Set([
@@ -22,7 +24,8 @@ const SUPPORTED_EXTENSIONS: ReadonlySet<string> = new Set([
   ".htm",
 ]);
 
-const MAX_DOCUMENT_BYTES = 8 * 1024 * 1024;
+const MAX_DOCUMENT_MEGABYTES = 32;
+const MAX_DOCUMENT_BYTES = MAX_DOCUMENT_MEGABYTES * 1024 * 1024;
 
 const badRequest = (message: string) => new TRPCError({ code: "BAD_REQUEST", message });
 const notFound = (message: string) => new TRPCError({ code: "NOT_FOUND", message });
@@ -142,18 +145,22 @@ const collectSubtreeIds = (nodes: readonly TFsNode[], nodeId: string): ReadonlyS
   return ids;
 };
 
+const BLANK_EXCALIDRAW_FILE: Readonly<Record<string, unknown>> = {
+  type: "excalidraw",
+  version: 2,
+  source: "harwex-notes",
+  elements: [],
+  appState: { viewBackgroundColor: "#ffffff" },
+  files: {},
+};
+
+const encodeExcalidrawFile = (file: Record<string, unknown>): Uint8Array => {
+  return new TextEncoder().encode(JSON.stringify(file, null, 2));
+};
+
 const createBlankContent = (kind: TFsNodeKind): Uint8Array => {
   if (kind === "excalidraw") {
-    const scene = {
-      type: "excalidraw",
-      version: 2,
-      source: "harwex-notes",
-      elements: [],
-      appState: { viewBackgroundColor: "#ffffff" },
-      files: {},
-    };
-
-    return new TextEncoder().encode(JSON.stringify(scene, null, 2));
+    return encodeExcalidrawFile({ ...BLANK_EXCALIDRAW_FILE });
   }
 
   return new Uint8Array();
@@ -243,7 +250,7 @@ const fetchDocument: TFetchDocument = async (ctx, nodeId) => {
   try {
     const size = await ctx.dataAccess.readFileSize(nodeId);
     if (size > MAX_DOCUMENT_BYTES) {
-      throw badRequest(`"${node.name}" is larger than 8 MB and cannot be opened`);
+      throw badRequest(`"${node.name}" is larger than ${MAX_DOCUMENT_MEGABYTES} MB and cannot be opened`);
     }
 
     bytes = await ctx.dataAccess.readFile(nodeId);
@@ -262,6 +269,60 @@ const fetchDocument: TFetchDocument = async (ctx, nodeId) => {
   }
 
   return { kind: "excalidraw", nodeId, scene: parseExcalidrawScene(text, node.name) };
+};
+
+// Keeps whatever else the file on disk holds (appState, version, source) and replaces
+// only the elements and files. A file that does not parse starts from the blank envelope.
+const readExcalidrawEnvelope = (bytes: Uint8Array): Record<string, unknown> => {
+  try {
+    const parsed: unknown = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
+
+    return isRecord(parsed) ? parsed : { ...BLANK_EXCALIDRAW_FILE };
+  } catch {
+    return { ...BLANK_EXCALIDRAW_FILE };
+  }
+};
+
+const encodeDocument = async (ctx: TContext, document: TDocument): Promise<Uint8Array> => {
+  if (document.kind === "markdown") {
+    return new TextEncoder().encode(document.text);
+  }
+
+  const envelope = readExcalidrawEnvelope(await ctx.dataAccess.readFile(document.nodeId));
+
+  return encodeExcalidrawFile({
+    ...envelope,
+    elements: document.scene.elements,
+    files: document.scene.files,
+  });
+};
+
+const updateDocument: TUpdateDocument = async (ctx, document) => {
+  // Runs under the same lock as tree mutations, so a rename cannot slip between reading
+  // the node and writing its file.
+  await ctx.dataAccess.runExclusive(async () => {
+    const node = readNode(ctx.dataAccess.tree, document.nodeId);
+
+    if (node.kind !== document.kind) {
+      throw badRequest(`"${node.name}" is not a ${document.kind} document`);
+    }
+
+    try {
+      const bytes = await encodeDocument(ctx, document);
+
+      if (bytes.byteLength > MAX_DOCUMENT_BYTES) {
+        throw badRequest(`"${node.name}" would be larger than ${MAX_DOCUMENT_MEGABYTES} MB and cannot be saved`);
+      }
+
+      await ctx.dataAccess.writeFile(node.id, bytes);
+    } catch (error) {
+      if (error instanceof TRPCError) {
+        throw error;
+      }
+
+      throw diskFailure(error);
+    }
+  });
 };
 
 const createNode: TCreateNode = async (ctx, input) => {
@@ -363,8 +424,10 @@ const deleteNode: TDeleteNode = async (ctx, nodeId) => {
 };
 
 export {
+  MAX_DOCUMENT_BYTES,
   fetchTree,
   fetchDocument,
+  updateDocument,
   createNode,
   renameNode,
   moveNode,

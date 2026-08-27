@@ -4,11 +4,11 @@
  * 1. Base      `--base-*`   primitive values: raw colors, a spacing scale, radii, font stacks.
  * 2. Semantic  `--color-*`, `--space-*`, `--radius-*`, `--font-*`, ...
  *                            meaning, not value: "surface", "text-muted", "accent". Built from base.
- * 3. Component `--tabs-bar-*`, `--viewer-*`, `--md-*`, ...
+ * 3. Component `--tabs-bar-*`, `--viewer-*`, `--sketch-*`, ...
  *                            one block per component. Built from semantic.
  *
  * Component rules use component tokens only. Never `var(--color-*)` or a literal color
- * inside a `.md__*` rule; add a `--md-*` token instead.
+ * inside a `.viewer__*` rule; add a `--viewer-*` token instead.
  *
  * The theme is light only. The cool base colors stay for future use.
  */
@@ -289,63 +289,12 @@
   --viewer-retry-padding: var(--space-xs-plus) var(--space-2xl);
   --viewer-retry-border: var(--color-border-strong);
   --viewer-retry-radius: var(--radius-md);
-  --viewer-markdown-padding: var(--space-6xl) var(--space-7xl) var(--space-8xl);
 
-  /* md: rendered markdown */
-  --md-max-width: var(--size-prose-max);
-  --md-heading-margin: var(--space-6xl) var(--space-none) var(--space-lg);
-  --md-heading-line-height: var(--line-height-heading);
-  --md-heading-1-padding-bottom: var(--space-md);
-  --md-heading-1-border: var(--color-border);
-  --md-heading-1-font-size: var(--font-size-2xl);
-  --md-heading-2-font-size: var(--font-size-xl);
-  --md-heading-3-font-size: var(--font-size-lg);
-  --md-heading-4-font-size: var(--font-size-md);
-  --md-heading-4-text: var(--color-text-muted);
-  --md-block-margin: var(--space-2xl);
-  --md-block-margin-wide: var(--space-3xl);
-  --md-list-indent: var(--space-4xl);
-  --md-list-item-margin: var(--space-xs);
-  --md-task-gap: var(--space-md);
-  --md-checkbox-size: var(--size-icon-lg);
-  --md-checkbox-border: var(--color-border-strong);
-  --md-checkbox-radius: var(--radius-xs);
-  --md-checkbox-font-size: var(--font-size-xs);
-  --md-checkbox-line-height: var(--line-height-none);
-  --md-checkbox-offset-y: var(--space-3xs);
-  --md-checkbox-checked-bg: var(--color-accent);
-  --md-checkbox-checked-border: var(--color-accent);
-  --md-checkbox-checked-text: var(--color-text-on-accent);
-  --md-task-done-text: var(--color-text-faint);
-  --md-quote-padding: var(--space-3xs) var(--space-none) var(--space-3xs) var(--space-2xl);
-  --md-quote-border: var(--color-border-strong);
-  --md-quote-border-width: var(--border-width-thick);
-  --md-quote-text: var(--color-text-muted);
-  --md-code-padding: var(--space-2xl) var(--space-3xl);
-  --md-code-bg: var(--color-surface-sunken);
-  --md-code-border: var(--color-border);
-  --md-code-radius: var(--radius-md);
-  --md-code-font: var(--font-code);
-  --md-code-font-size: var(--font-size-code);
-  --md-code-language-top: var(--space-sm);
-  --md-code-language-right: var(--space-lg);
-  --md-code-language-font-size: var(--font-size-2xs);
-  --md-code-language-letter-spacing: var(--letter-spacing-caption);
-  --md-code-language-text: var(--color-text-faint);
-  --md-inline-code-padding: var(--space-hairline) var(--space-xs-plus);
-  --md-inline-code-radius: var(--radius-sm);
-  --md-link-text: var(--color-accent);
-  --md-link-underline: var(--color-border-strong);
-  --md-divider-margin: var(--space-5xl) var(--space-none);
-  --md-divider-border: var(--color-border);
-  --md-table-font-size: var(--font-size-sm-plus);
-  --md-table-cell-padding: var(--space-sm) var(--space-xl);
-  --md-table-border: var(--color-border);
-  --md-table-head-bg: var(--color-surface-sunken);
-  --md-table-head-font-size: var(--font-size-xs);
-  --md-table-head-letter-spacing: var(--letter-spacing-table);
-  --md-table-head-text: var(--color-text-muted);
-  --md-border-width: var(--border-width);
+  /* save status: the one line beside the tabs bar (DOC-6). */
+  --save-status-gap: var(--space-md);
+  --save-status-padding: 0 var(--space-md);
+  --save-status-text: var(--color-text-faint);
+  --save-status-failed-text: var(--color-danger);
 
   /* sketch: the frame around the embedded Excalidraw canvas. Excalidraw carries its own
      stylesheet and keeps element colors in the scene, so there is nothing to theme here. */
@@ -402,6 +351,29 @@ button {
   grid-template-rows: auto minmax(0, 1fr);
   gap: var(--app-main-gap);
   min-width: 0;
+}
+
+.app__bar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--save-status-gap);
+  min-width: 0;
+}
+
+/* ------------------------------------------------------------------ */
+/* save status                                                         */
+/* ------------------------------------------------------------------ */
+
+.save-status {
+  margin: 0;
+  padding: var(--save-status-padding);
+  color: var(--save-status-text);
+  white-space: nowrap;
+}
+
+.save-status--failed {
+  color: var(--save-status-failed-text);
 }
 
 /* ------------------------------------------------------------------ */
@@ -538,169 +510,13 @@ button {
 }
 
 .viewer--markdown {
-  padding: var(--viewer-markdown-padding);
+  padding: 0;
+  overflow: hidden;
 }
 
 .viewer--sketch {
   padding: 0;
   overflow: hidden;
-}
-
-/* ------------------------------------------------------------------ */
-/* md                                                                  */
-/* ------------------------------------------------------------------ */
-
-.md {
-  max-width: var(--md-max-width);
-  margin: 0 auto;
-}
-
-.md__heading {
-  margin: var(--md-heading-margin);
-  line-height: var(--md-heading-line-height);
-}
-
-.md__heading:first-child {
-  margin-top: 0;
-}
-
-.md__heading--1 {
-  padding-bottom: var(--md-heading-1-padding-bottom);
-  border-bottom: var(--md-border-width) solid var(--md-heading-1-border);
-  font-size: var(--md-heading-1-font-size);
-}
-
-.md__heading--2 {
-  font-size: var(--md-heading-2-font-size);
-}
-
-.md__heading--3 {
-  font-size: var(--md-heading-3-font-size);
-}
-
-.md__heading--4 {
-  font-size: var(--md-heading-4-font-size);
-  color: var(--md-heading-4-text);
-}
-
-.md__paragraph {
-  margin: 0 0 var(--md-block-margin);
-}
-
-.md__list {
-  margin: 0 0 var(--md-block-margin);
-  padding-left: var(--md-list-indent);
-}
-
-.md__list li {
-  margin-bottom: var(--md-list-item-margin);
-}
-
-.md__task {
-  display: flex;
-  align-items: baseline;
-  gap: var(--md-task-gap);
-  list-style: none;
-  margin-left: calc(-1 * var(--md-list-indent));
-}
-
-.md__checkbox {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex: 0 0 var(--md-checkbox-size);
-  width: var(--md-checkbox-size);
-  height: var(--md-checkbox-size);
-  border: var(--md-border-width) solid var(--md-checkbox-border);
-  border-radius: var(--md-checkbox-radius);
-  font-size: var(--md-checkbox-font-size);
-  line-height: var(--md-checkbox-line-height);
-  transform: translateY(var(--md-checkbox-offset-y));
-}
-
-.md__checkbox--checked {
-  background: var(--md-checkbox-checked-bg);
-  border-color: var(--md-checkbox-checked-border);
-  color: var(--md-checkbox-checked-text);
-}
-
-.md__task-done {
-  color: var(--md-task-done-text);
-  text-decoration: line-through;
-}
-
-.md__quote {
-  margin: 0 0 var(--md-block-margin);
-  padding: var(--md-quote-padding);
-  border-left: var(--md-quote-border-width) solid var(--md-quote-border);
-  color: var(--md-quote-text);
-}
-
-.md__code {
-  position: relative;
-  margin: 0 0 var(--md-block-margin-wide);
-  padding: var(--md-code-padding);
-  background: var(--md-code-bg);
-  border: var(--md-border-width) solid var(--md-code-border);
-  border-radius: var(--md-code-radius);
-  font-family: var(--md-code-font);
-  font-size: var(--md-code-font-size);
-  overflow-x: auto;
-}
-
-.md__code-language {
-  position: absolute;
-  top: var(--md-code-language-top);
-  right: var(--md-code-language-right);
-  font-size: var(--md-code-language-font-size);
-  letter-spacing: var(--md-code-language-letter-spacing);
-  text-transform: uppercase;
-  color: var(--md-code-language-text);
-}
-
-.md__inline-code {
-  padding: var(--md-inline-code-padding);
-  background: var(--md-code-bg);
-  border-radius: var(--md-inline-code-radius);
-  font-family: var(--md-code-font);
-  font-size: var(--md-code-font-size);
-}
-
-.md__link {
-  color: var(--md-link-text);
-  text-decoration-color: var(--md-link-underline);
-}
-
-.md__divider {
-  margin: var(--md-divider-margin);
-  border: 0;
-  border-top: var(--md-border-width) solid var(--md-divider-border);
-}
-
-.md__table-scroll {
-  margin: 0 0 var(--md-block-margin-wide);
-  overflow-x: auto;
-}
-
-.md__table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: var(--md-table-font-size);
-}
-
-.md__table th,
-.md__table td {
-  padding: var(--md-table-cell-padding);
-  border: var(--md-border-width) solid var(--md-table-border);
-  text-align: left;
-}
-
-.md__table th {
-  background: var(--md-table-head-bg);
-  font-size: var(--md-table-head-font-size);
-  letter-spacing: var(--md-table-head-letter-spacing);
-  text-transform: uppercase;
-  color: var(--md-table-head-text);
 }
 
 /* ------------------------------------------------------------------ */

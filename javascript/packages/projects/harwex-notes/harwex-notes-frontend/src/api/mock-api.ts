@@ -225,12 +225,26 @@ const createMockApi = (): TApiClient => {
     return nodes;
   };
 
+  const updateDocument = async (document: TDocument): Promise<null> => {
+    await delay(MUTATION_LATENCY_MS);
+
+    const node = readNode(nodes, document.nodeId);
+    if (node.kind !== document.kind) {
+      throw new Error(`"${node.name}" is not a ${document.kind} document`);
+    }
+
+    documents[document.nodeId] = document;
+
+    return null;
+  };
+
   // The same nested shape a tRPC client proxy exposes, so domain code cannot tell the
   // two implementations apart.
   return {
     fs: {
       tree: { query: fetchTree },
       document: { query: fetchDocument },
+      updateDocument: { mutate: updateDocument },
       createNode: { mutate: createNode },
       renameNode: { mutate: renameNode },
       moveNode: { mutate: moveNode },

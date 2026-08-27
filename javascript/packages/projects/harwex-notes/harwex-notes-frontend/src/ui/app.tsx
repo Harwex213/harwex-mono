@@ -35,10 +35,13 @@ const App: FC<TAppProps> = ({ registry }) => {
       />
 
       <main className="app__main">
-        <TabsBarContainer registry={registry} />
+        <div className="app__bar">
+          <TabsBarContainer registry={registry} />
+        </div>
 
         <ViewerPane registry={registry} />
       </main>
+
     </div>
   );
 };
