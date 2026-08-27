@@ -1,0 +1,286 @@
+/* The viewer reads the host's semantic tokens (--color-*) and falls back to the light
+   palette when a host defines none. Every value the rules use is a --fs-* token, so a host
+   that wants a different look overrides those on .fs-viewer instead of the rules. */
+.fs-viewer {
+  --fs-bg: var(--color-surface, #ffffff);
+  --fs-border: var(--color-border, #d9d7d1);
+  --fs-border-strong: var(--color-border-strong, #b9b6ae);
+  --fs-surface-sunken: var(--color-surface-sunken, #f1f0ec);
+  --fs-text: var(--color-text, #1d1c1a);
+  --fs-text-muted: var(--color-text-muted, #6f6c65);
+  --fs-text-faint: var(--color-text-faint, #9a968d);
+  --fs-accent: var(--color-accent, #3b6ea5);
+  --fs-accent-subtle: var(--color-accent-subtle, #e6eef7);
+  --fs-danger: var(--color-danger, #a63d33);
+  --fs-icon-folder: var(--color-kind-folder, #cf9432);
+  --fs-icon-markdown: var(--color-kind-markdown, #3b6ea5);
+  --fs-icon-sketch: var(--color-kind-sketch, #7b52c4);
+  --fs-shadow: 0 6px 20px rgba(0, 0, 0, 0.18);
+  --fs-disabled-opacity: 45%;
+
+  --fs-border-width: 1px;
+  --fs-radius: 8px;
+  --fs-header-padding: 10px 12px;
+  --fs-title-font-size: 11px;
+  --fs-title-letter-spacing: 0.09em;
+  --fs-tools-gap: 2px;
+  --fs-tool-padding: 3px;
+  --fs-tool-radius: 4px;
+  --fs-body-padding: 6px 6px 12px;
+  --fs-body-radius: 6px;
+  --fs-hint-margin: 6px 8px;
+  --fs-hint-font-size: 12px;
+  --fs-row-gap: 6px;
+  --fs-row-padding: 4px 8px;
+  --fs-row-radius: 5px;
+  --fs-input-padding-y: 1px;
+  --fs-input-padding-x: 4px;
+  --fs-input-radius: 4px;
+  --fs-ext-font-size: 11px;
+  --fs-twisty-size: 12px;
+  --fs-icon-size: 14px;
+  --fs-menu-width: 176px;
+  --fs-menu-padding: 4px;
+  --fs-menu-radius: 6px;
+  --fs-menu-item-gap: 8px;
+  --fs-menu-item-padding: 5px 8px;
+  --fs-menu-item-radius: 4px;
+  --fs-menu-item-font-size: 13px;
+  --fs-menu-divider-margin: 4px 6px;
+
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  background: var(--fs-bg);
+  color: var(--fs-text);
+  border: var(--fs-border-width) solid var(--fs-border);
+  border-radius: var(--fs-radius);
+  overflow: hidden;
+}
+
+/* A host without a box-sizing reset would let a full-width row overflow by its padding. */
+.fs-viewer,
+.fs-viewer * {
+  box-sizing: border-box;
+}
+
+.fs-viewer__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--fs-header-padding);
+  border-bottom: var(--fs-border-width) solid var(--fs-border);
+}
+
+.fs-viewer__title {
+  font-size: var(--fs-title-font-size);
+  font-weight: 700;
+  letter-spacing: var(--fs-title-letter-spacing);
+  text-transform: uppercase;
+  color: var(--fs-text-muted);
+}
+
+.fs-viewer__tools {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--fs-tools-gap);
+}
+
+.fs-viewer__tool {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--fs-tool-padding);
+  background: none;
+  border: 0;
+  border-radius: var(--fs-tool-radius);
+  color: inherit;
+  cursor: pointer;
+}
+
+.fs-viewer__tool:hover:not(:disabled) {
+  background: var(--fs-surface-sunken);
+}
+
+.fs-viewer__tool:disabled {
+  opacity: var(--fs-disabled-opacity);
+  cursor: default;
+}
+
+.fs-viewer__tool-icon {
+  display: block;
+}
+
+.fs-viewer__body {
+  padding: var(--fs-body-padding);
+  border: var(--fs-border-width) solid transparent;
+  border-radius: var(--fs-body-radius);
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.fs-viewer__body--drop {
+  border-color: var(--fs-border-strong);
+}
+
+.fs-viewer__hint,
+.fs-viewer__error {
+  margin: var(--fs-hint-margin);
+  font-size: var(--fs-hint-font-size);
+  color: var(--fs-text-faint);
+}
+
+.fs-viewer__error {
+  color: var(--fs-danger);
+}
+
+.fs-viewer__row {
+  display: flex;
+  align-items: center;
+  gap: var(--fs-row-gap);
+  width: 100%;
+  padding: var(--fs-row-padding);
+  border: var(--fs-border-width) solid transparent;
+  border-radius: var(--fs-row-radius);
+  text-align: left;
+  user-select: none;
+  cursor: default;
+}
+
+.fs-viewer__row:hover {
+  background: var(--fs-surface-sunken);
+}
+
+.fs-viewer__row--selected {
+  background: var(--fs-surface-sunken);
+}
+
+.fs-viewer__row--active {
+  background: var(--fs-accent-subtle);
+  color: var(--fs-accent);
+}
+
+.fs-viewer__row--dragging {
+  opacity: var(--fs-disabled-opacity);
+}
+
+.fs-viewer__row--drop {
+  background: var(--fs-accent-subtle);
+  border-color: var(--fs-accent);
+}
+
+.fs-viewer__row--draft {
+  background: var(--fs-surface-sunken);
+}
+
+/* The padding and border are pulled into the margin so the input takes the exact box of
+   .fs-viewer__name and the row does not jump when renaming starts. */
+.fs-viewer__input {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin:
+    calc(-1 * (var(--fs-input-padding-y) + var(--fs-border-width)))
+    calc(-1 * (var(--fs-input-padding-x) + var(--fs-border-width)));
+  padding: var(--fs-input-padding-y) var(--fs-input-padding-x);
+  background: var(--fs-bg);
+  border: var(--fs-border-width) solid var(--fs-accent);
+  border-radius: var(--fs-input-radius);
+  font: inherit;
+  color: var(--fs-text);
+  outline: none;
+}
+
+.fs-viewer__input--invalid {
+  border-color: var(--fs-danger);
+}
+
+.fs-viewer__ext {
+  flex: 0 0 auto;
+  font-size: var(--fs-ext-font-size);
+  color: var(--fs-text-faint);
+}
+
+.fs-viewer__ext--invalid {
+  color: var(--fs-danger);
+}
+
+.fs-viewer__twisty {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 var(--fs-twisty-size);
+  width: var(--fs-twisty-size);
+  color: var(--fs-text-faint);
+  cursor: pointer;
+}
+
+.fs-viewer__chevron--open {
+  transform: rotate(90deg);
+}
+
+.fs-viewer__icon {
+  flex: 0 0 var(--fs-icon-size);
+  color: var(--fs-text-muted);
+}
+
+.fs-viewer__icon--folder {
+  color: var(--fs-icon-folder);
+}
+
+.fs-viewer__icon--markdown {
+  color: var(--fs-icon-markdown);
+}
+
+.fs-viewer__icon--sketch {
+  color: var(--fs-icon-sketch);
+}
+
+.fs-viewer__name {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.fs-viewer__menu {
+  position: fixed;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  width: var(--fs-menu-width);
+  padding: var(--fs-menu-padding);
+  background: var(--fs-bg);
+  color: var(--fs-text);
+  border: var(--fs-border-width) solid var(--fs-border-strong);
+  border-radius: var(--fs-menu-radius);
+  box-shadow: var(--fs-shadow);
+}
+
+.fs-viewer__menu-item {
+  display: flex;
+  align-items: center;
+  gap: var(--fs-menu-item-gap);
+  padding: var(--fs-menu-item-padding);
+  background: none;
+  border: 0;
+  border-radius: var(--fs-menu-item-radius);
+  font: inherit;
+  font-size: var(--fs-menu-item-font-size);
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.fs-viewer__menu-item:hover {
+  background: var(--fs-surface-sunken);
+}
+
+.fs-viewer__menu-item--danger {
+  color: var(--fs-danger);
+}
+
+.fs-viewer__menu-divider {
+  margin: var(--fs-menu-divider-margin);
+  border-top: var(--fs-border-width) solid var(--fs-border);
+}

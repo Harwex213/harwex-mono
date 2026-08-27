@@ -16,11 +16,14 @@
     "typecheck": "tsc --noEmit"
   },
   "peerDependencies": {
+    "@excalidraw/excalidraw": "0.18.1",
+    "@hw/harwex-notes-protocol": "workspace:*",
     "@preact/signals-react": "3.9.0",
     "react": "19.2.0",
     "react-dom": "19.2.0"
   },
   "devDependencies": {
+    "@excalidraw/excalidraw": "0.18.1",
     "@hw/typescript-config": "workspace:*",
     "@preact/signals-react": "3.9.0",
     "@rspack/cli": "2.1.4",
