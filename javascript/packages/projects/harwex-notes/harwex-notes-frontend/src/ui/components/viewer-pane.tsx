@@ -1,12 +1,13 @@
 import { useSignals } from "@preact/signals-react/runtime";
-import { ExcalidrawViewer } from "./excalidraw-viewer";
+import { ExcalidrawViewer } from "@hw/harwex-notes-components";
 import { MarkdownViewer } from "./markdown-viewer";
 import { useStore } from "../../store/store";
 import type { FC } from "react";
-import type { TReloadDocumentAction } from "@hw/harwex-notes-protocol";
+import type { TExcalidrawDocumentChangedAction, TReloadDocumentAction } from "@hw/harwex-notes-protocol";
 
 type TViewerPaneRegistrySlice = {
   reloadDocumentAction: TReloadDocumentAction;
+  excalidrawDocumentChangedAction: TExcalidrawDocumentChangedAction;
 };
 
 type TViewerPaneProps = {
@@ -62,7 +63,7 @@ const ViewerPane: FC<TViewerPaneProps> = ({ registry }) => {
 
   return (
     <section className="viewer viewer--sketch">
-      <ExcalidrawViewer document={entry.document} />
+      <ExcalidrawViewer document={entry.document} registry={registry} theme={"light"} />
     </section>
   );
 };

@@ -51,6 +51,7 @@ export type {
   TMoveNodeAction,
   TOpenNodeAction,
   TReloadDocumentAction,
+  TExcalidrawDocumentChangedAction,
   TSelectNodeAction,
   TStartCreateAction,
   TStartRenameAction,

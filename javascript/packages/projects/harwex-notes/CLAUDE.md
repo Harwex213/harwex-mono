@@ -1,0 +1,1 @@
+Read the spec before applying changes - `javascript/packages/projects/harwex-notes/docs/specification.html`

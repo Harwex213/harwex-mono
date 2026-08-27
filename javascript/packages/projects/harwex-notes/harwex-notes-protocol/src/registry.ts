@@ -1,4 +1,5 @@
 import type { TFsNodeKind } from "./types/fs";
+import type { TExcalidrawScene } from "./types/document";
 
 // Node Actions
 
@@ -49,12 +50,14 @@ type TTabActions = {
   closeTabAction: TCloseTabAction;
 };
 
-// Misc Actions
+// Document Actions
 
 type TReloadDocumentAction = (nodeId: string) => void;
+type TExcalidrawDocumentChangedAction = (nodeId: string, scene: TExcalidrawScene) => void;
 
 type TMiscActions = {
   reloadDocumentAction: TReloadDocumentAction;
+  excalidrawDocumentChangedAction: TExcalidrawDocumentChangedAction;
 };
 
 // App
@@ -76,6 +79,7 @@ export type {
   TMoveNodeAction,
   TOpenNodeAction,
   TReloadDocumentAction,
+  TExcalidrawDocumentChangedAction,
   TSelectNodeAction,
   TStartCreateAction,
   TStartRenameAction,

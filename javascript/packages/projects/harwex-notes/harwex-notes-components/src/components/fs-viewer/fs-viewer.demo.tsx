@@ -4,7 +4,7 @@ import { FsViewer } from "./fs-viewer";
 import { readFileKind } from "./fs-file-kinds";
 import type { CSSProperties } from "react";
 import type { TFsNode, TFsNodeKind } from "@hw/harwex-notes-protocol";
-import type { TFsDraft, TFsViewerRegistrySlice } from "./fs-viewer-types";
+import type { TFsDraft, TFsViewerRegistrySlice } from "./fs-viewer.types";
 import type { TDemo } from "../../../dev/demo";
 
 // The vault from the design: three root folders, two of them holding notes, and one

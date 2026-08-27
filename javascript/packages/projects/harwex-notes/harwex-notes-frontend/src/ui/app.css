@@ -267,79 +267,13 @@
   --app-gap: var(--space-xs);
   --app-padding: var(--space-xs);
 
-  /* fs: file tree panel */
-  --fs-bg: var(--color-surface);
-  --fs-border: var(--color-border);
-  --fs-border-width: var(--border-width);
-  --fs-radius: var(--radius-lg);
-  --fs-header-padding-y: var(--space-lg);
-  --fs-header-padding-x: var(--space-xl);
-  --fs-title-font-size: var(--font-size-xs);
-  --fs-title-font-weight: var(--font-weight-label);
-  --fs-title-letter-spacing: var(--letter-spacing-label);
-  --fs-title-text: var(--color-text-muted);
-  --fs-tools-gap: var(--space-3xs);
-  --fs-tool-padding: var(--space-2xs);
-  --fs-tool-radius: var(--radius-sm);
-  --fs-tool-hover-bg: var(--color-surface-sunken);
-  --fs-tool-disabled-opacity: var(--opacity-disabled);
-  --fs-body-padding: var(--space-sm) var(--space-sm) var(--space-xl);
-  --fs-body-radius: var(--radius-md);
-  --fs-body-border: var(--color-transparent);
-  --fs-body-drop-border: var(--color-border-strong);
-  --fs-hint-margin: var(--space-sm) var(--space-md);
-  --fs-hint-font-size: var(--font-size-sm);
-  --fs-hint-text: var(--color-text-faint);
-  --fs-error-text: var(--color-danger);
-  --fs-row-gap: var(--space-sm);
-  --fs-row-padding: var(--space-xs) var(--space-md);
-  --fs-row-radius: var(--radius-sm-plus);
-  --fs-row-border: var(--color-transparent);
-  --fs-row-hover-bg: var(--color-surface-sunken);
-  --fs-row-selected-bg: var(--color-surface-sunken);
-  --fs-row-draft-bg: var(--color-surface-sunken);
-  --fs-row-active-bg: var(--color-accent-subtle);
-  --fs-row-active-text: var(--color-accent);
-  --fs-row-dragging-opacity: var(--opacity-disabled);
-  --fs-row-drop-bg: var(--color-accent-subtle);
-  --fs-row-drop-border: var(--color-accent);
-  --fs-input-padding-y: var(--space-hairline);
-  --fs-input-padding-x: var(--space-xs);
-  --fs-input-padding: var(--fs-input-padding-y) var(--fs-input-padding-x);
-  /* Pull the padding and border into the margin so the input takes the
-     exact box of .fs__name and the row does not jump when renaming starts. */
-  --fs-input-margin:
-    calc(-1 * (var(--fs-input-padding-y) + var(--fs-border-width)))
-    calc(-1 * (var(--fs-input-padding-x) + var(--fs-border-width)));
-  --fs-input-bg: var(--color-surface);
-  --fs-input-border: var(--color-accent);
-  --fs-input-radius: var(--radius-sm);
-  --fs-input-text: var(--color-text);
-  --fs-input-invalid-border: var(--color-danger);
-  --fs-ext-font-size: var(--font-size-xs);
-  --fs-ext-text: var(--color-text-faint);
-  --fs-ext-invalid-text: var(--color-danger);
-  --fs-twisty-size: var(--size-icon-sm);
-  --fs-twisty-text: var(--color-text-faint);
+  /* fs icons: the file-kind glyphs, which the tabs bar shows too. The vault panel is
+     `FsViewer` from `@hw/harwex-notes-components` and reads the semantic layer itself. */
   --fs-icon-size: var(--size-icon-md);
   --fs-icon-text: var(--color-text-muted);
   --fs-icon-folder: var(--color-kind-folder);
   --fs-icon-markdown: var(--color-kind-markdown);
   --fs-icon-sketch: var(--color-kind-sketch);
-  --fs-menu-width: var(--size-popover);
-  --fs-menu-padding: var(--space-xs);
-  --fs-menu-bg: var(--color-surface);
-  --fs-menu-border: var(--color-border-strong);
-  --fs-menu-radius: var(--radius-md);
-  --fs-menu-shadow: var(--shadow-popover);
-  --fs-menu-item-gap: var(--space-md);
-  --fs-menu-item-padding: var(--space-xs-plus) var(--space-md);
-  --fs-menu-item-radius: var(--radius-sm);
-  --fs-menu-item-font-size: var(--font-size-sm-plus);
-  --fs-menu-item-hover-bg: var(--color-surface-sunken);
-  --fs-menu-item-danger-text: var(--color-danger);
-  --fs-menu-divider-margin: var(--space-xs) var(--space-sm);
-  --fs-menu-divider-border: var(--color-border);
 
   /* tabs: tab bar */
   --tabs-gap: var(--space-xs);
@@ -498,162 +432,23 @@ button {
 }
 
 /* ------------------------------------------------------------------ */
-/* fs                                                                  */
+/* fs-viewer                                                           */
 /* ------------------------------------------------------------------ */
 
-.fs {
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
-  min-height: 0;
-  background: var(--fs-bg);
-  border: var(--fs-border-width) solid var(--fs-border);
-  border-radius: var(--fs-radius);
-  overflow: hidden;
+/* The vault panel is `FsViewer` from `@hw/harwex-notes-components`. It carries its own
+   stylesheet and builds every value from the semantic tokens above, so only the two
+   values it hardcodes are handed over here. */
+.fs-viewer {
+  --fs-shadow: var(--shadow-popover);
+  --fs-disabled-opacity: var(--opacity-disabled);
 }
 
-.fs__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: var(--fs-header-padding-y) var(--fs-header-padding-x);
-  border-bottom: var(--fs-border-width) solid var(--fs-border);
-}
-
-.fs__title {
-  font-size: var(--fs-title-font-size);
-  font-weight: var(--fs-title-font-weight);
-  letter-spacing: var(--fs-title-letter-spacing);
-  text-transform: uppercase;
-  color: var(--fs-title-text);
-}
-
-.fs__tools {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--fs-tools-gap);
-}
-
-.fs__tool {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: var(--fs-tool-padding);
-  background: none;
-  border: 0;
-  border-radius: var(--fs-tool-radius);
-  cursor: pointer;
-}
-
-.fs__tool:hover:not(:disabled) {
-  background: var(--fs-tool-hover-bg);
-}
-
-.fs__tool:disabled {
-  opacity: var(--fs-tool-disabled-opacity);
-  cursor: default;
-}
+/* ------------------------------------------------------------------ */
+/* fs icons                                                            */
+/* ------------------------------------------------------------------ */
 
 .fs__tool-icon {
   display: block;
-}
-
-.fs__body {
-  padding: var(--fs-body-padding);
-  border: var(--fs-border-width) solid var(--fs-body-border);
-  border-radius: var(--fs-body-radius);
-  overflow-y: auto;
-}
-
-.fs__body--drop {
-  border-color: var(--fs-body-drop-border);
-}
-
-.fs__hint,
-.fs__error {
-  margin: var(--fs-hint-margin);
-  font-size: var(--fs-hint-font-size);
-  color: var(--fs-hint-text);
-}
-
-.fs__error {
-  color: var(--fs-error-text);
-}
-
-.fs__row {
-  display: flex;
-  align-items: center;
-  gap: var(--fs-row-gap);
-  width: 100%;
-  padding: var(--fs-row-padding);
-  border: var(--fs-border-width) solid var(--fs-row-border);
-  border-radius: var(--fs-row-radius);
-  text-align: left;
-  user-select: none;
-  cursor: default;
-}
-
-.fs__row:hover {
-  background: var(--fs-row-hover-bg);
-}
-
-.fs__row--selected {
-  background: var(--fs-row-selected-bg);
-}
-
-.fs__row--active {
-  background: var(--fs-row-active-bg);
-  color: var(--fs-row-active-text);
-}
-
-.fs__row--dragging {
-  opacity: var(--fs-row-dragging-opacity);
-}
-
-.fs__row--drop {
-  background: var(--fs-row-drop-bg);
-  border-color: var(--fs-row-drop-border);
-}
-
-.fs__row--draft {
-  background: var(--fs-row-draft-bg);
-}
-
-.fs__input {
-  flex: 1 1 auto;
-  min-width: 0;
-  margin: var(--fs-input-margin);
-  padding: var(--fs-input-padding);
-  background: var(--fs-input-bg);
-  border: var(--fs-border-width) solid var(--fs-input-border);
-  border-radius: var(--fs-input-radius);
-  font: inherit;
-  color: var(--fs-input-text);
-  outline: none;
-}
-
-.fs__input--invalid {
-  border-color: var(--fs-input-invalid-border);
-}
-
-/* The extensions a file draft accepts, shown next to the name being typed. */
-.fs__ext {
-  flex: 0 0 auto;
-  font-size: var(--fs-ext-font-size);
-  color: var(--fs-ext-text);
-}
-
-.fs__ext--invalid {
-  color: var(--fs-ext-invalid-text);
-}
-
-.fs__twisty {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex: 0 0 var(--fs-twisty-size);
-  width: var(--fs-twisty-size);
-  color: var(--fs-twisty-text);
-  cursor: pointer;
 }
 
 .fs__chevron--open {
@@ -675,51 +470,6 @@ button {
 
 .fs__icon--sketch {
   color: var(--fs-icon-sketch);
-}
-
-.fs__name {
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
-.fs__menu {
-  position: fixed;
-  z-index: 20;
-  display: flex;
-  flex-direction: column;
-  width: var(--fs-menu-width);
-  padding: var(--fs-menu-padding);
-  background: var(--fs-menu-bg);
-  border: var(--fs-border-width) solid var(--fs-menu-border);
-  border-radius: var(--fs-menu-radius);
-  box-shadow: var(--fs-menu-shadow);
-}
-
-.fs__menu-item {
-  display: flex;
-  align-items: center;
-  gap: var(--fs-menu-item-gap);
-  padding: var(--fs-menu-item-padding);
-  background: none;
-  border: 0;
-  border-radius: var(--fs-menu-item-radius);
-  font-size: var(--fs-menu-item-font-size);
-  text-align: left;
-  cursor: pointer;
-}
-
-.fs__menu-item:hover {
-  background: var(--fs-menu-item-hover-bg);
-}
-
-.fs__menu-item--danger {
-  color: var(--fs-menu-item-danger-text);
-}
-
-.fs__menu-divider {
-  margin: var(--fs-menu-divider-margin);
-  border-top: var(--fs-border-width) solid var(--fs-menu-divider-border);
 }
 
 /* ------------------------------------------------------------------ */

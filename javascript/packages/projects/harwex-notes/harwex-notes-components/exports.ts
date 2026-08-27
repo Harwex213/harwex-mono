@@ -1,19 +1,31 @@
-import { ExampleButton } from "./src/components/example-button/example-button";
 import { ExcalidrawViewer } from "./src/components/excalidraw-viewer/excalidraw-viewer";
 import { FsViewer } from "./src/components/fs-viewer/fs-viewer";
-import type { TExampleButtonProps } from "./src/components/example-button/example-button";
-import type { TExcalidrawViewerProps } from "./src/components/excalidraw-viewer/excalidraw-viewer";
+import { TabsBar } from "./src/components/tabs-bar/tabs-bar";
+import type {
+  TExcalidrawViewerProps,
+  TExcalidrawViewerRegistrySlice,
+} from "./src/components/excalidraw-viewer/excalidraw-viewer.types";
 import type {
   TFsDraft,
   TFsViewerProps,
   TFsViewerRegistrySlice,
-} from "./src/components/fs-viewer/fs-viewer-types";
+} from "./src/components/fs-viewer/fs-viewer.types";
+import type {
+  TTab,
+  TTabSaveState,
+  TTabsBarProps,
+  TTabsBarRegistrySlice,
+} from "./src/components/tabs-bar/tabs-bar.types";
 
-export { ExampleButton, ExcalidrawViewer, FsViewer };
+export { ExcalidrawViewer, FsViewer, TabsBar };
 export type {
-  TExampleButtonProps,
   TExcalidrawViewerProps,
+  TExcalidrawViewerRegistrySlice,
   TFsDraft,
   TFsViewerProps,
   TFsViewerRegistrySlice,
+  TTab,
+  TTabSaveState,
+  TTabsBarProps,
+  TTabsBarRegistrySlice,
 };

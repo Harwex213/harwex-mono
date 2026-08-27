@@ -1,5 +1,5 @@
 import type { TFsNode, TFsNodeKind } from "@hw/harwex-notes-protocol";
-import type { TFsDraft } from "./fs-viewer-types";
+import type { TFsDraft } from "./fs-viewer.types";
 
 type TFsNodeRow = {
   type: "node";

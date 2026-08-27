@@ -12,7 +12,7 @@ import {
   NodeIcon,
 } from "./fs-icons";
 import { flattenTree } from "./fs-rows";
-import type { TFsViewerProps } from "./fs-viewer-types";
+import type { TFsViewerProps } from "./fs-viewer.types";
 
 type TMenuState = {
   // A right click on the empty space below the tree aims at the vault root, and the root
@@ -580,4 +580,4 @@ const FsViewer: FC<TFsViewerProps> = ({
 };
 
 export { FsViewer };
-export type { TFsDraft, TFsViewerProps, TFsViewerRegistrySlice } from "./fs-viewer-types";
+export type { TFsDraft, TFsViewerProps, TFsViewerRegistrySlice } from "./fs-viewer.types";

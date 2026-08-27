@@ -1,6 +1,5 @@
 import { computed } from "@preact/signals-react";
 import type { TFsNode } from "@hw/harwex-notes-protocol";
-import { flattenTree } from "./fs-rows";
 import type { TDocumentsSlice } from "./documents-slice";
 import type { TFsSlice } from "./fs-slice";
 import type { TTabsSlice } from "./tabs-slice";
@@ -11,10 +10,6 @@ const createDerivedState = (
   documents: TDocumentsSlice
 ) => {
   const nodeById = computed(() => new Map(fs.nodes.value.map((node) => [node.id, node])));
-
-  const rows = computed(() => {
-    return flattenTree(nodeById.value, fs.expandedIds.value, fs.draft.value);
-  });
 
   const openNodes = computed(() => {
     const byId = nodeById.value;
@@ -49,7 +44,6 @@ const createDerivedState = (
 
   return {
     nodeById,
-    rows,
     openNodes,
     activeNode,
     activeEntry,

@@ -7,7 +7,7 @@ import {
   getSceneVersion,
   THEME,
 } from "@excalidraw/excalidraw";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
 import type {
   BinaryFileData,
@@ -15,19 +15,8 @@ import type {
   ExcalidrawImperativeAPI,
 } from "@excalidraw/excalidraw/types";
 import type { FC } from "react";
-import type { TExcalidrawDocument, TExcalidrawScene } from "@hw/harwex-notes-protocol";
-
-type TExcalidrawViewerProps = {
-  document: TExcalidrawDocument;
-  // The drawing changed. Panning, zooming and selecting are not changes and never reach it,
-  // so every call carries content to write. A drag reports each step of itself, which is
-  // what a host that saves on a pause expects.
-  onChange?: (scene: TExcalidrawScene) => void;
-  // Reading only: the drawing shows but no tool can change it.
-  readOnly?: boolean;
-  // Left out, the viewer follows the operating system setting.
-  theme?: "light" | "dark";
-};
+import type { TExcalidrawScene } from "@hw/harwex-notes-protocol";
+import type { TExcalidrawViewerProps } from "./excalidraw-viewer.types";
 
 // A cheap fingerprint of a scene. `getSceneVersion` sums the element versions, which change
 // on every edit and on nothing else; the file count catches an image whose data arrives
@@ -36,8 +25,6 @@ type TSceneStamp = {
   version: number;
   fileCount: number;
 };
-
-const DARK_SCHEME_QUERY = "(prefers-color-scheme: dark)";
 
 // The protocol carries the scene as opaque records. These two are the only place that hands
 // them back to Excalidraw under its own types.
@@ -57,37 +44,12 @@ const isSameStamp = (left: TSceneStamp, right: TSceneStamp): boolean => {
   return left.version === right.version && left.fileCount === right.fileCount;
 };
 
-// Excalidraw paints on a canvas, so it cannot follow the media query the rest of the app
-// uses. Its theme has to be handed over as a prop and kept in sync by hand.
-const useSystemTheme = (): "light" | "dark" => {
-  const [isDark, setIsDark] = useState(() => {
-    return window.matchMedia(DARK_SCHEME_QUERY).matches;
-  });
-
-  useEffect(() => {
-    const query = window.matchMedia(DARK_SCHEME_QUERY);
-
-    const handleChange = (event: MediaQueryListEvent) => {
-      setIsDark(event.matches);
-    };
-
-    query.addEventListener("change", handleChange);
-
-    return () => {
-      query.removeEventListener("change", handleChange);
-    };
-  }, []);
-
-  return isDark ? "dark" : "light";
-};
-
 const ExcalidrawViewer: FC<TExcalidrawViewerProps> = ({
   document,
-  onChange,
-  readOnly = false,
+  registry,
   theme,
+  readOnly = false,
 }) => {
-  const systemTheme = useSystemTheme();
   const apiRef = useRef<ExcalidrawImperativeAPI | null>(null);
   const nodeIdRef = useRef(document.nodeId);
   // Excalidraw reports a scene back as soon as it takes it, with its own repairs applied:
@@ -122,14 +84,15 @@ const ExcalidrawViewer: FC<TExcalidrawViewerProps> = ({
       return;
     }
 
-    documentStampRef.current = stamp;
-
     const api = apiRef.current;
 
+    // The editor has not mounted yet, so it still reads this scene as its `initialData`.
+    // The stamp stays behind as well, or the scene after this one is taken for an echo.
     if (api === null) {
       return;
     }
 
+    documentStampRef.current = stamp;
     isHandOverPendingRef.current = true;
     // The scene changed underneath the user, so it is not theirs to undo.
     api.updateScene({ elements, captureUpdate: CaptureUpdateAction.NEVER });
@@ -162,16 +125,14 @@ const ExcalidrawViewer: FC<TExcalidrawViewerProps> = ({
     // A deleted element stays in the scene as a tombstone so the user can undo it. That is
     // editor state, not content, and writing it would grow the file with every deletion.
     const nextElements = getNonDeletedElements(elements);
-    const scene = {
+    const scene: TExcalidrawScene = {
       elements: nextElements as readonly Record<string, unknown>[],
       files: files as Record<string, unknown>,
     };
 
     documentStampRef.current = stampOf(nextElements, files);
 
-    if (onChange) {
-      onChange(scene);
-    }
+    registry.excalidrawDocumentChangedAction(document.nodeId, scene);
   };
 
   return (
@@ -189,7 +150,7 @@ const ExcalidrawViewer: FC<TExcalidrawViewerProps> = ({
         // `initialData` is read once, on mount, so a different drawing needs a new instance.
         key={document.nodeId}
         onChange={handleChange}
-        theme={(theme ?? systemTheme) === "dark" ? THEME.DARK : THEME.LIGHT}
+        theme={theme === "dark" ? THEME.DARK : THEME.LIGHT}
         viewModeEnabled={readOnly}
       />
     </div>
@@ -197,4 +158,3 @@ const ExcalidrawViewer: FC<TExcalidrawViewerProps> = ({
 };
 
 export { ExcalidrawViewer };
-export type { TExcalidrawViewerProps };

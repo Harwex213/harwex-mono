@@ -1,8 +1,8 @@
 import type { FC } from "react";
 import type { TAppRegistry } from "@hw/harwex-notes-protocol";
-import { FsViewer } from "./components/fs-viewer";
-import { TabsBar } from "./components/tabs-bar";
+import { FsViewerContainer } from "./components/fs-viewer-container";
 import { ViewerPane } from "./components/viewer-pane";
+import { TabsBar } from "./components/tabs-bar";
 
 type TAppProps = {
   registry: TAppRegistry;
@@ -11,7 +11,7 @@ type TAppProps = {
 const App: FC<TAppProps> = ({ registry }) => {
   return (
     <div className="app">
-      <FsViewer registry={registry} />
+      <FsViewerContainer registry={registry} />
 
       <main className="app__main">
         <TabsBar registry={registry} />

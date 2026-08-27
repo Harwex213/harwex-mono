@@ -2,6 +2,7 @@ import { signal } from "@preact/signals-react";
 import { useSignals } from "@preact/signals-react/runtime";
 import { ExcalidrawViewer } from "./excalidraw-viewer";
 import type { TExcalidrawDocument, TExcalidrawScene } from "@hw/harwex-notes-protocol";
+import type { TExcalidrawViewerRegistrySlice } from "./excalidraw-viewer.types";
 import type { TDemo } from "../../../dev/demo";
 
 // Every element Excalidraw does not find is filled in by its own restore step, so a fixture
@@ -130,12 +131,19 @@ const documentSignal = signal<TExcalidrawDocument>({
 });
 const edits = signal(0);
 const readOnly = signal(false);
-// "system" stands for the host leaving the prop out.
-const theme = signal<"system" | "light" | "dark">("light");
+const theme = signal<"light" | "dark">("light");
 
-const handleChange = (scene: TExcalidrawScene) => {
-  edits.value++;
-  documentSignal.value = { ...documentSignal.peek(), scene };
+// A stand-in for the host store: the action the app registers writes the scene back into
+// the document the viewer is given, which is what the viewer has to tell from a real edit.
+const registry: TExcalidrawViewerRegistrySlice = {
+  excalidrawDocumentChangedAction: (nodeId, scene) => {
+    if (documentSignal.peek().nodeId !== nodeId) {
+      return;
+    }
+
+    edits.value++;
+    documentSignal.value = { ...documentSignal.peek(), scene };
+  },
 };
 
 const openDrawing = (nodeId: string, scene: TExcalidrawScene) => {
@@ -187,21 +195,20 @@ const Demo = () => {
             }}
             value={theme.value}
           >
-            <option value="system">{"system"}</option>
             <option value="light">{"light"}</option>
             <option value="dark">{"dark"}</option>
           </select>
         </label>
 
-        <span>{`${document.nodeId} · ${document.scene.elements.length} elements · ${edits.value} edits reported`}</span>
+        <span>{`${document.nodeId} \u00b7 ${document.scene.elements.length} elements \u00b7 ${edits.value} edits reported`}</span>
       </div>
 
       <div style={{ height: "70vh" }}>
         <ExcalidrawViewer
           document={document}
-          onChange={handleChange}
           readOnly={readOnly.value}
-          theme={theme.value === "system" ? undefined : theme.value}
+          registry={registry}
+          theme={theme.value}
         />
       </div>
     </div>
