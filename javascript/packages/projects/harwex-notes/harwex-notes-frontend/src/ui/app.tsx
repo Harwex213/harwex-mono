@@ -5,6 +5,7 @@ import { TabsBarContainer } from "./components/tabs-bar-container";
 import { ViewerPane } from "./components/viewer-pane";
 import { MAX_SIDEBAR_WIDTH_PX, MIN_SIDEBAR_WIDTH_PX } from "../store/layout-slice";
 import { useStore } from "../store/store";
+import { useEffect } from "react";
 import type { CSSProperties, FC } from "react";
 import type { TAppRegistry } from "@hw/harwex-notes-protocol";
 
@@ -17,6 +18,26 @@ const App: FC<TAppProps> = ({ registry }) => {
 
   const store = useStore();
   const sidebarWidth = store.layout.sidebarWidth.value;
+
+  // Cmd+S (Ctrl+S elsewhere) flushes pending saves. The default is the browser's
+  // "save page" dialog, which is never what the user means here.
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const isSaveChord = (event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey;
+      if (!isSaveChord || event.key.toLowerCase() !== "s") {
+        return;
+      }
+
+      event.preventDefault();
+      registry.flushDocumentsAction();
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [registry]);
 
   // The grid column reads its width from a custom property, so a drag re-lays out the
   // shell without either panel knowing its own size.

@@ -55,11 +55,13 @@ type TTabActions = {
 type TReloadDocumentAction = (nodeId: string) => void;
 type TExcalidrawDocumentChangedAction = (nodeId: string, scene: TExcalidrawScene) => void;
 type TMarkdownDocumentChangedAction = (nodeId: string, text: string) => void;
+type TFlushDocumentsAction = () => void;
 
 type TMiscActions = {
   reloadDocumentAction: TReloadDocumentAction;
   excalidrawDocumentChangedAction: TExcalidrawDocumentChangedAction;
   markdownDocumentChangedAction: TMarkdownDocumentChangedAction;
+  flushDocumentsAction: TFlushDocumentsAction;
 };
 
 // Conflict Actions
@@ -104,6 +106,7 @@ export type {
   TOverwriteConflictAction,
   TReloadDocumentAction,
   TExcalidrawDocumentChangedAction,
+  TFlushDocumentsAction,
   TMarkdownDocumentChangedAction,
   TResizeSidebarAction,
   TSelectNodeAction,

@@ -211,11 +211,25 @@ const markdownDocumentChangedAction = (
   changeDocument(store, api, nodeId, { ...entry.document, text });
 };
 
+// Cmd+S: every unsaved document goes to disk now instead of waiting for its timer.
+const flushDocumentsAction = (store: TStore, api: TApiClient) => {
+  const entryById = store.documents.entryById.peek();
+
+  for (const [nodeId, entry] of Object.entries(entryById)) {
+    if (entry.status !== "ready" || entry.save.state !== "unsaved") {
+      continue;
+    }
+
+    void flushDocument(store, api, nodeId);
+  }
+};
+
 export {
   cancelScheduledSave,
   ensureDocument,
   excalidrawDocumentChangedAction,
   flushDocument,
+  flushDocumentsAction,
   markdownDocumentChangedAction,
   reloadDocumentAction,
 };

@@ -1,6 +1,7 @@
 import type { TAppRegistry } from "@hw/harwex-notes-protocol";
 import {
   excalidrawDocumentChangedAction,
+  flushDocumentsAction,
   markdownDocumentChangedAction,
   reloadDocumentAction,
 } from "./documents-state";
@@ -37,6 +38,7 @@ const createRegistry = (store: TStore, api: TApiClient) => {
     reloadDocumentAction,
     excalidrawDocumentChangedAction,
     markdownDocumentChangedAction,
+    flushDocumentsAction,
     resizeSidebarAction,
   };
 
