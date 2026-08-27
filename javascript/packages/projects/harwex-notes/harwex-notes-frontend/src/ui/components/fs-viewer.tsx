@@ -1,10 +1,9 @@
 import { useSignals } from "@preact/signals-react/runtime";
 import { useEffect, useRef, useState } from "react";
 import type { DragEvent, FC, KeyboardEvent, MouseEvent } from "react";
-import type { TFsNode, TFsNodeKind } from "@hw/harwex-notes-protocol";
-import { FILE_EXTENSIONS, readFileKind } from "../../domain/fs-file-kinds";
-import { useStore } from "../../store/store";
 import type {
+  TFsNode,
+  TFsNodeKind,
   TCancelDraftAction,
   TDeleteNodeAction,
   TMoveNodeAction,
@@ -14,7 +13,9 @@ import type {
   TStartRenameAction,
   TSubmitDraftAction,
   TToggleFolderAction,
-} from "../../domain/registry";
+} from "@hw/harwex-notes-protocol";
+import { FILE_EXTENSIONS, readFileKind } from "../../domain/fs-file-kinds";
+import { useStore } from "../../store/store";
 import {
   Chevron,
   DraftIcon,

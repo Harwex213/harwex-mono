@@ -1,3 +1,4 @@
+import type { TAppRegistry } from "@hw/harwex-notes-protocol";
 import { reloadDocumentAction } from "./documents-state";
 import {
   cancelDraftAction,
@@ -12,7 +13,6 @@ import {
 } from "./fs-state";
 import { activateTabAction, closeTabAction, openNodeAction } from "./tabs-state";
 import type { TStore } from "../store/store";
-import type { TAppRegistry } from "./registry";
 import type { TApiClient } from "../api/api";
 
 const createRegistry = (store: TStore, api: TApiClient) => {

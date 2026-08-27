@@ -3,7 +3,7 @@ import { ExcalidrawViewer } from "./excalidraw-viewer";
 import { MarkdownViewer } from "./markdown-viewer";
 import { useStore } from "../../store/store";
 import type { FC } from "react";
-import type { TReloadDocumentAction } from "../../domain/registry";
+import type { TReloadDocumentAction } from "@hw/harwex-notes-protocol";
 
 type TViewerPaneRegistrySlice = {
   reloadDocumentAction: TReloadDocumentAction;

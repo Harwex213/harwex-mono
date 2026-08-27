@@ -2,7 +2,7 @@ import { useSignals } from "@preact/signals-react/runtime";
 import { NodeIcon } from "./fs-icons";
 import { useStore } from "../../store/store";
 import type { FC, MouseEvent } from "react";
-import type { TActivateTabAction, TCloseTabAction } from "../../domain/registry";
+import type { TActivateTabAction, TCloseTabAction } from "@hw/harwex-notes-protocol";
 
 type TTabsBarRegistrySlice = {
   activateTabAction: TActivateTabAction;
