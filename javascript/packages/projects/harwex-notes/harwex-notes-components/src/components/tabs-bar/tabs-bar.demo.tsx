@@ -69,7 +69,7 @@ const MESSAGE_LIFETIME_MS = 4000;
 const tabs = signal<readonly TTab[]>(INITIAL_TABS);
 const activeId = signal<string | null>(PLAN.id);
 const message = signal<string | null>(null);
-const theme = signal<"dark" | "light">("dark");
+const theme = signal<"light" | "dark">("light");
 const log = signal<readonly string[]>([]);
 
 let messageTimer: ReturnType<typeof setTimeout> | null = null;
@@ -199,8 +199,8 @@ const Demo = () => {
             }}
             value={theme.value}
           >
-            <option value="dark">{"dark"}</option>
             <option value="light">{"light"}</option>
+            <option value="dark">{"dark"}</option>
           </select>
         </label>
 

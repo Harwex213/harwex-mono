@@ -4,11 +4,11 @@
  * 1. Base      `--base-*`   primitive values: raw colors, a spacing scale, radii, font stacks.
  * 2. Semantic  `--color-*`, `--space-*`, `--radius-*`, `--font-*`, ...
  *                            meaning, not value: "surface", "text-muted", "accent". Built from base.
- * 3. Component `--fs-*`, `--tab-*`, `--md-*`, ...
+ * 3. Component `--tabs-bar-*`, `--viewer-*`, `--md-*`, ...
  *                            one block per component. Built from semantic.
  *
  * Component rules use component tokens only. Never `var(--color-*)` or a literal color
- * inside a `.fs__*` rule; add a `--fs-*` token instead.
+ * inside a `.md__*` rule; add a `--md-*` token instead.
  *
  * Dark mode redefines only the semantic layer. Base values never change.
  */
@@ -87,6 +87,7 @@
   --base-size-760: 760px;
 
   /* radii */
+  --base-radius-0: 0;
   --base-radius-3: 3px;
   --base-radius-4: 4px;
   --base-radius-5: 5px;
@@ -94,6 +95,7 @@
   --base-radius-8: 8px;
 
   /* borders */
+  --base-border-0: 0;
   --base-border-1: 1px;
   --base-border-3: 3px;
 
@@ -192,6 +194,7 @@
   --size-prose-max: var(--base-size-760);
 
   /* radii */
+  --radius-none: var(--base-radius-0);
   --radius-xs: var(--base-radius-3);
   --radius-sm: var(--base-radius-4);
   --radius-sm-plus: var(--base-radius-5);
@@ -199,6 +202,7 @@
   --radius-lg: var(--base-radius-8);
 
   /* borders */
+  --border-width-none: var(--base-border-0);
   --border-width: var(--base-border-1);
   --border-width-thick: var(--base-border-3);
 
@@ -263,53 +267,39 @@
   --body-line-height: var(--line-height-body);
 
   /* app shell */
+  /* The shell overrides this width inline while the divider is dragged. */
   --app-sidebar-width: var(--size-sidebar);
-  --app-gap: var(--space-xs);
+  /* The divider column stands between the panels, so the grid adds no gap of its own. */
+  --app-gap: var(--space-none);
+  /* The tabs bar is drawn to sit joined to the viewer, so the main column has no gap. */
+  --app-main-gap: var(--space-none);
   --app-padding: var(--space-xs);
 
-  /* fs icons: the file-kind glyphs, which the tabs bar shows too. The vault panel is
-     `FsViewer` from `@hw/harwex-notes-components` and reads the semantic layer itself. */
-  --fs-icon-size: var(--size-icon-md);
-  --fs-icon-text: var(--color-text-muted);
-  --fs-icon-folder: var(--color-kind-folder);
-  --fs-icon-markdown: var(--color-kind-markdown);
-  --fs-icon-sketch: var(--color-kind-sketch);
+  /* split: the draggable divider that sizes the panel before it. Its line stays invisible
+     until the pointer or the keyboard reaches it, so the shell reads as a plain gap at
+     rest. The divider column is as wide as the gap it replaces. */
+  --split-size: var(--space-md);
+  --split-line-thickness: var(--border-width);
+  --split-line-thickness-strong: var(--border-width-thick);
+  --split-line: var(--color-transparent);
+  --split-line-hover: var(--color-border-strong);
+  --split-line-active: var(--color-accent);
+  --split-line-radius: var(--radius-xs);
 
-  /* tabs: tab bar */
-  --tabs-gap: var(--space-xs);
-  --tabs-height: var(--size-bar);
-  --tabs-padding: var(--space-xs);
-  --tabs-bg: var(--color-surface);
-  --tabs-border: var(--color-border);
-  --tabs-border-width: var(--border-width);
-  --tabs-radius: var(--radius-lg);
-  --tabs-empty-padding: var(--space-none) var(--space-md);
-  --tabs-empty-font-size: var(--font-size-sm);
-  --tabs-empty-text: var(--color-text-faint);
-
-  /* tab: one tab */
-  --tab-max-width: var(--size-chip-max);
-  --tab-border: var(--color-transparent);
-  --tab-border-width: var(--border-width);
-  --tab-radius: var(--radius-md);
-  --tab-hover-bg: var(--color-surface-sunken);
-  --tab-active-bg: var(--color-accent-subtle);
-  --tab-active-border: var(--color-border);
-  --tab-active-text: var(--color-accent);
-  --tab-label-gap: var(--space-sm);
-  --tab-label-padding: var(--space-xs) var(--space-xs) var(--space-xs) var(--space-md-plus);
-  --tab-close-padding: var(--space-none) var(--space-md) var(--space-3xs);
-  --tab-close-radius: var(--radius-sm);
-  --tab-close-font-size: var(--font-size-md-plus);
-  --tab-close-line-height: var(--line-height-none);
-  --tab-close-text: var(--color-text-faint);
-  --tab-close-hover-text: var(--color-danger);
+  /* tabs bar: the strip of open files. It is `TabsBar` from
+     `@hw/harwex-notes-components`, which reads the semantic layer itself, so the shell only
+     frames the bar. The bar draws its own bottom border, which the shell leaves alone. */
+  --tabs-bar-border: var(--color-border);
+  --tabs-bar-border-width: var(--border-width);
+  --tabs-bar-radius: var(--radius-lg) var(--radius-lg) var(--radius-none) var(--radius-none);
 
   /* viewer: document pane */
   --viewer-bg: var(--color-surface);
   --viewer-border: var(--color-border);
   --viewer-border-width: var(--border-width);
-  --viewer-radius: var(--radius-lg);
+  --viewer-radius: var(--radius-none) var(--radius-none) var(--radius-lg) var(--radius-lg);
+  /* The bottom border of the tabs bar is the line between the bar and the viewer. */
+  --viewer-border-top-width: var(--border-width-none);
   --viewer-centered-gap: var(--space-xl);
   --viewer-placeholder-text: var(--color-text-faint);
   --viewer-error-text: var(--color-danger);
@@ -417,7 +407,7 @@ button {
 
 .app {
   display: grid;
-  grid-template-columns: var(--app-sidebar-width) minmax(0, 1fr);
+  grid-template-columns: var(--app-sidebar-width) auto minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr);
   gap: var(--app-gap);
   height: 100%;
@@ -427,8 +417,76 @@ button {
 .app__main {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
-  gap: var(--app-gap);
+  gap: var(--app-main-gap);
   min-width: 0;
+}
+
+/* ------------------------------------------------------------------ */
+/* split                                                               */
+/* ------------------------------------------------------------------ */
+
+.split {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* A drag on a touch screen must size the panels, not scroll the page, and a drag with a
+     mouse must not select the text it passes over. */
+  touch-action: none;
+  user-select: none;
+}
+
+/* The line carries the focus, so the ring around the whole divider would only repeat it. */
+.split:focus {
+  outline: none;
+}
+
+.split--vertical {
+  width: var(--split-size);
+  cursor: col-resize;
+}
+
+.split--horizontal {
+  height: var(--split-size);
+  cursor: row-resize;
+}
+
+.split__line {
+  background: var(--split-line);
+  border-radius: var(--split-line-radius);
+  /* Only the colour fades in. The thickness is feedback on a drag, so it snaps. */
+  transition: background var(--motion-fast);
+}
+
+.split--vertical .split__line {
+  width: var(--split-line-thickness);
+  height: 100%;
+}
+
+.split--horizontal .split__line {
+  width: 100%;
+  height: var(--split-line-thickness);
+}
+
+.split:hover .split__line {
+  background: var(--split-line-hover);
+}
+
+/* Focus and a live drag both thicken the line: no state is carried by colour alone. The
+   drag names `.split` as well, because the pointer that drags the divider also hovers it,
+   and the hover rule above would otherwise be the more specific one. */
+.split:focus-visible .split__line,
+.split.split--dragging .split__line {
+  background: var(--split-line-active);
+}
+
+.split--vertical:focus-visible .split__line,
+.split--vertical.split--dragging .split__line {
+  width: var(--split-line-thickness-strong);
+}
+
+.split--horizontal:focus-visible .split__line,
+.split--horizontal.split--dragging .split__line {
+  height: var(--split-line-thickness-strong);
 }
 
 /* ------------------------------------------------------------------ */
@@ -444,109 +502,17 @@ button {
 }
 
 /* ------------------------------------------------------------------ */
-/* fs icons                                                            */
+/* tabs bar                                                            */
 /* ------------------------------------------------------------------ */
 
-.fs__tool-icon {
-  display: block;
-}
-
-.fs__chevron--open {
-  transform: rotate(90deg);
-}
-
-.fs__icon {
-  flex: 0 0 var(--fs-icon-size);
-  color: var(--fs-icon-text);
-}
-
-.fs__icon--folder {
-  color: var(--fs-icon-folder);
-}
-
-.fs__icon--markdown {
-  color: var(--fs-icon-markdown);
-}
-
-.fs__icon--sketch {
-  color: var(--fs-icon-sketch);
-}
-
-/* ------------------------------------------------------------------ */
-/* tabs / tab                                                          */
-/* ------------------------------------------------------------------ */
-
-.tabs {
-  display: flex;
-  align-items: stretch;
-  gap: var(--tabs-gap);
-  height: var(--tabs-height);
-  padding: var(--tabs-padding);
-  background: var(--tabs-bg);
-  border: var(--tabs-border-width) solid var(--tabs-border);
-  border-radius: var(--tabs-radius);
-  overflow-x: auto;
-}
-
-.tabs__empty {
-  align-self: center;
-  padding: var(--tabs-empty-padding);
-  font-size: var(--tabs-empty-font-size);
-  color: var(--tabs-empty-text);
-}
-
-.tab {
-  display: inline-flex;
-  align-items: center;
-  flex: 0 0 auto;
-  max-width: var(--tab-max-width);
-  border: var(--tab-border-width) solid var(--tab-border);
-  border-radius: var(--tab-radius);
-}
-
-.tab:hover {
-  background: var(--tab-hover-bg);
-}
-
-.tab--active {
-  background: var(--tab-active-bg);
-  border-color: var(--tab-active-border);
-}
-
-.tab__label {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--tab-label-gap);
-  min-width: 0;
-  padding: var(--tab-label-padding);
-  background: none;
-  border: 0;
-  cursor: pointer;
-}
-
-.tab--active .tab__label {
-  color: var(--tab-active-text);
-}
-
-.tab__name {
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
-.tab__close {
-  padding: var(--tab-close-padding);
-  background: none;
-  border: 0;
-  border-radius: var(--tab-close-radius);
-  font-size: var(--tab-close-font-size);
-  line-height: var(--tab-close-line-height);
-  color: var(--tab-close-text);
-  cursor: pointer;
-}
-
-.tab__close:hover {
-  color: var(--tab-close-hover-text);
+/* The bar draws its own bottom border, and its active tab paints over that line. The shell
+   adds the other three sides as longhands: a `border` shorthand would reset the bottom
+   border as well. */
+.tabs-bar {
+  border-top: var(--tabs-bar-border-width) solid var(--tabs-bar-border);
+  border-right: var(--tabs-bar-border-width) solid var(--tabs-bar-border);
+  border-left: var(--tabs-bar-border-width) solid var(--tabs-bar-border);
+  border-radius: var(--tabs-bar-radius);
 }
 
 /* ------------------------------------------------------------------ */
@@ -557,6 +523,7 @@ button {
   min-height: 0;
   background: var(--viewer-bg);
   border: var(--viewer-border-width) solid var(--viewer-border);
+  border-top-width: var(--viewer-border-top-width);
   border-radius: var(--viewer-radius);
   overflow: auto;
 }

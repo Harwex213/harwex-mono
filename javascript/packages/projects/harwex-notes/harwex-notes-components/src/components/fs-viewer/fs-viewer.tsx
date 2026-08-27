@@ -403,100 +403,102 @@ const FsViewer: FC<TFsViewerProps> = ({
 
         {error === null ? null : <p className="fs-viewer__error">{error}</p>}
 
-        {rows.map((row) => {
-          if (row.type === "draft") {
+        <div className="fs-viewer__tree" role="presentation">
+          {rows.map((row) => {
+            if (row.type === "draft") {
+              return (
+                <div
+                  className="fs-viewer__row fs-viewer__row--draft"
+                  key="draft"
+                  style={readIndentStyle(row.depth)}
+                >
+                  <span className="fs-viewer__twisty" />
+
+                  <DraftIcon kind={row.kind} />
+
+                  <DraftInput
+                    initialName={NEW_NAME_BY_KIND[row.kind]}
+                    isFileDraft={row.kind === "file"}
+                    onCancel={registry.cancelDraftAction}
+                    onSubmit={registry.submitDraftAction}
+                  />
+                </div>
+              );
+            }
+
+            const node = row.node;
+            const isRenaming = draft !== null
+              && draft.mode === "rename"
+              && draft.nodeId === node.id;
+
+            const isFolder = node.kind === "folder";
+            // Dropping on a file moves into the folder that holds the file.
+            const dropTargetId = isFolder ? node.id : node.parentId;
+
+            const modifiers = [
+              node.id === activeId ? " fs-viewer__row--active" : "",
+              node.id === selectedId ? " fs-viewer__row--selected" : "",
+              node.id === dropId ? " fs-viewer__row--drop" : "",
+              node.id === dragId ? " fs-viewer__row--dragging" : "",
+            ].join("");
+
             return (
               <div
-                className="fs-viewer__row fs-viewer__row--draft"
-                key="draft"
+                aria-expanded={isFolder ? row.isExpanded : undefined}
+                aria-selected={node.id === selectedId}
+                className={`fs-viewer__row${modifiers}`}
+                draggable={!isRenaming}
+                key={node.id}
+                onClick={() => registry.selectNodeAction(node.id)}
+                onContextMenu={(event) => handleContextMenu(event, node.id)}
+                onDoubleClick={() => registry.openNodeAction(node.id)}
+                onDragEnd={() => {
+                  setDragId(null);
+                  setDropId(null);
+                }}
+                onDragLeave={(event) => handleDragLeave(event, dropTargetId)}
+                onDragOver={(event) => handleDragOver(event, dropTargetId)}
+                onDragStart={(event) => {
+                  event.dataTransfer.effectAllowed = "move";
+                  event.dataTransfer.setData("text/plain", node.id);
+
+                  setDragId(node.id);
+                }}
+                onDrop={(event) => handleDrop(event, dropTargetId)}
+                onKeyDown={(event) => handleRowKeyDown(event, node.id)}
+                role="treeitem"
                 style={readIndentStyle(row.depth)}
+                tabIndex={0}
               >
-                <span className="fs-viewer__twisty" />
+                <span
+                  className="fs-viewer__twisty"
+                  onClick={(event) => {
+                    event.stopPropagation();
 
-                <DraftIcon kind={row.kind} />
+                    if (isFolder) {
+                      registry.toggleFolderAction(node.id);
+                    }
+                  }}
+                >
+                  {isFolder ? <Chevron isExpanded={row.isExpanded} /> : null}
+                </span>
 
-                <DraftInput
-                  initialName={NEW_NAME_BY_KIND[row.kind]}
-                  isFileDraft={row.kind === "file"}
-                  onCancel={registry.cancelDraftAction}
-                  onSubmit={registry.submitDraftAction}
-                />
+                <NodeIcon kind={node.kind} />
+
+                {isRenaming ? (
+                  <DraftInput
+                    initialName={node.name}
+                    isFileDraft={false}
+                    onCancel={registry.cancelDraftAction}
+                    onSubmit={registry.submitDraftAction}
+                  />
+                ) : (
+                  <span className="fs-viewer__name">{node.name}</span>
+                )}
               </div>
             );
-          }
-
-          const node = row.node;
-          const isRenaming = draft !== null
-            && draft.mode === "rename"
-            && draft.nodeId === node.id;
-
-          const isFolder = node.kind === "folder";
-          // Dropping on a file moves into the folder that holds the file.
-          const dropTargetId = isFolder ? node.id : node.parentId;
-
-          const modifiers = [
-            node.id === activeId ? " fs-viewer__row--active" : "",
-            node.id === selectedId ? " fs-viewer__row--selected" : "",
-            node.id === dropId ? " fs-viewer__row--drop" : "",
-            node.id === dragId ? " fs-viewer__row--dragging" : "",
-          ].join("");
-
-          return (
-            <div
-              aria-expanded={isFolder ? row.isExpanded : undefined}
-              aria-selected={node.id === selectedId}
-              className={`fs-viewer__row${modifiers}`}
-              draggable={!isRenaming}
-              key={node.id}
-              onClick={() => registry.selectNodeAction(node.id)}
-              onContextMenu={(event) => handleContextMenu(event, node.id)}
-              onDoubleClick={() => registry.openNodeAction(node.id)}
-              onDragEnd={() => {
-                setDragId(null);
-                setDropId(null);
-              }}
-              onDragLeave={(event) => handleDragLeave(event, dropTargetId)}
-              onDragOver={(event) => handleDragOver(event, dropTargetId)}
-              onDragStart={(event) => {
-                event.dataTransfer.effectAllowed = "move";
-                event.dataTransfer.setData("text/plain", node.id);
-
-                setDragId(node.id);
-              }}
-              onDrop={(event) => handleDrop(event, dropTargetId)}
-              onKeyDown={(event) => handleRowKeyDown(event, node.id)}
-              role="treeitem"
-              style={readIndentStyle(row.depth)}
-              tabIndex={0}
-            >
-              <span
-                className="fs-viewer__twisty"
-                onClick={(event) => {
-                  event.stopPropagation();
-
-                  if (isFolder) {
-                    registry.toggleFolderAction(node.id);
-                  }
-                }}
-              >
-                {isFolder ? <Chevron isExpanded={row.isExpanded} /> : null}
-              </span>
-
-              <NodeIcon kind={node.kind} />
-
-              {isRenaming ? (
-                <DraftInput
-                  initialName={node.name}
-                  isFileDraft={false}
-                  onCancel={registry.cancelDraftAction}
-                  onSubmit={registry.submitDraftAction}
-                />
-              ) : (
-                <span className="fs-viewer__name">{node.name}</span>
-              )}
-            </div>
-          );
-        })}
+          })}
+        </div>
       </div>
 
       {menu === null || (menu.nodeId !== null && menuNode === null) ? null : (

@@ -47,7 +47,7 @@ const isSameStamp = (left: TSceneStamp, right: TSceneStamp): boolean => {
 const ExcalidrawViewer: FC<TExcalidrawViewerProps> = ({
   document,
   registry,
-  theme,
+  theme = "light",
   readOnly = false,
 }) => {
   const apiRef = useRef<ExcalidrawImperativeAPI | null>(null);

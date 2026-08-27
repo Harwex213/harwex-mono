@@ -10,7 +10,7 @@ type TExcalidrawViewerRegistrySlice = {
 type TExcalidrawViewerProps = {
   document: TExcalidrawDocument;
   registry: TExcalidrawViewerRegistrySlice;
-  theme: "light" | "dark";
+  theme?: "light" | "dark";
   readOnly?: boolean;
 };
 

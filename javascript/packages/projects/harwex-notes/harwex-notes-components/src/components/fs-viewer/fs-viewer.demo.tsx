@@ -34,6 +34,77 @@ const VAULT: readonly TFsNode[] = [
   { id: "scratch", parentId: null, name: "scratch.excalidraw", kind: "excalidraw" },
 ];
 
+// A vault built to outgrow the panel: names far longer than any sidebar, and a chain deep
+// enough that the indent alone pushes a short name past the right edge. The tree scrolls
+// sideways, every row keeps the width of the widest one, and no name is cut off.
+const WIDE_VAULT: readonly TFsNode[] = [
+  {
+    id: "long-names",
+    parentId: null,
+    name: "a-folder-name-nobody-would-shorten-for-the-sake-of-the-sidebar",
+    kind: "folder",
+  },
+  {
+    id: "long-names/note",
+    parentId: "long-names",
+    name: "a-note-name-that-runs-well-past-the-right-edge-of-the-panel.md",
+    kind: "markdown",
+  },
+  { id: "long-names/short", parentId: "long-names", name: "ok.md", kind: "markdown" },
+  { id: "deep", parentId: null, name: "research", kind: "folder" },
+  { id: "deep/2026", parentId: "deep", name: "2026", kind: "folder" },
+  { id: "deep/2026/q3", parentId: "deep/2026", name: "q3", kind: "folder" },
+  { id: "deep/2026/q3/notes", parentId: "deep/2026/q3", name: "notes", kind: "folder" },
+  {
+    id: "deep/2026/q3/notes/drafts",
+    parentId: "deep/2026/q3/notes",
+    name: "drafts",
+    kind: "folder",
+  },
+  {
+    id: "deep/2026/q3/notes/drafts/sketch",
+    parentId: "deep/2026/q3/notes/drafts",
+    name: "storage-layout-and-write-queue.excalidraw",
+    kind: "excalidraw",
+  },
+  { id: "top.md", parentId: null, name: "top.md", kind: "markdown" },
+];
+
+type TVaultKey = "design" | "wide";
+
+type TVaultFixture = {
+  label: string;
+  nodes: readonly TFsNode[];
+  expandedIds: readonly string[];
+};
+
+const VAULTS: Readonly<Record<TVaultKey, TVaultFixture>> = {
+  design: {
+    label: "design vault",
+    nodes: VAULT,
+    expandedIds: ["inbox", "journal", "projects"],
+  },
+  wide: {
+    label: "wide vault (horizontal scroll)",
+    nodes: WIDE_VAULT,
+    // Open on load, so the overflow shows without a click.
+    expandedIds: [
+      "long-names",
+      "deep",
+      "deep/2026",
+      "deep/2026/q3",
+      "deep/2026/q3/notes",
+      "deep/2026/q3/notes/drafts",
+    ],
+  },
+};
+
+const VAULT_KEYS: readonly TVaultKey[] = ["design", "wide"];
+
+// 160px overflows even the design vault, 200px and 260px hold it, and at 420px only the
+// wide vault still scrolls.
+const PANEL_WIDTHS_PX: readonly number[] = [160, 200, 260, 420];
+
 // The host's dark palette, scoped to the demo frame so the playground itself stays light.
 const DARK_TOKENS: CSSProperties = {
   "--color-canvas": "#17181a",
@@ -57,15 +128,17 @@ const MUTATION_LATENCY_MS = 300;
 
 // A stand-in for the host store: the same signals the app keeps, changed by the same
 // rules, with a fake latency so the busy state is visible.
-const nodes = signal<readonly TFsNode[]>(VAULT);
-const expandedIds = signal<readonly string[]>(["inbox", "journal", "projects"]);
+const vaultKey = signal<TVaultKey>("design");
+const panelWidth = signal(SIDEBAR_WIDTH_PX);
+const nodes = signal<readonly TFsNode[]>(VAULTS.design.nodes);
+const expandedIds = signal<readonly string[]>(VAULTS.design.expandedIds);
 const selectedId = signal<string | null>(null);
 const activeId = signal<string | null>(null);
 const draft = signal<TFsDraft | null>(null);
 const isBusy = signal(false);
 const isLoading = signal(false);
 const error = signal<string | null>(null);
-const theme = signal<"dark" | "light">("dark");
+const theme = signal<"light" | "dark">("light");
 const log = signal<readonly string[]>([]);
 
 const report = (line: string) => {
@@ -275,8 +348,10 @@ const registry: TFsViewerRegistrySlice = {
 };
 
 const reset = () => {
-  nodes.value = VAULT;
-  expandedIds.value = ["inbox", "journal", "projects"];
+  const vault = VAULTS[vaultKey.peek()];
+
+  nodes.value = vault.nodes;
+  expandedIds.value = vault.expandedIds;
   selectedId.value = null;
   activeId.value = null;
   draft.value = null;
@@ -309,8 +384,41 @@ const Demo = () => {
             }}
             value={theme.value}
           >
-            <option value="dark">{"dark"}</option>
             <option value="light">{"light"}</option>
+            <option value="dark">{"dark"}</option>
+          </select>
+        </label>
+
+        <label style={{ display: "flex", gap: 6, alignItems: "center" }}>
+          {"Vault"}
+          <select
+            onChange={(event) => {
+              vaultKey.value = event.target.value as TVaultKey;
+              reset();
+            }}
+            value={vaultKey.value}
+          >
+            {VAULT_KEYS.map((key) => (
+              <option key={key} value={key}>
+                {VAULTS[key].label}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label style={{ display: "flex", gap: 6, alignItems: "center" }}>
+          {"Panel width"}
+          <select
+            onChange={(event) => {
+              panelWidth.value = Number(event.target.value);
+            }}
+            value={panelWidth.value}
+          >
+            {PANEL_WIDTHS_PX.map((width) => (
+              <option key={width} value={width}>
+                {`${width}px`}
+              </option>
+            ))}
           </select>
         </label>
 
@@ -335,7 +443,7 @@ const Demo = () => {
       </div>
 
       <div style={frameStyle}>
-        <div style={{ width: SIDEBAR_WIDTH_PX, height: "70vh", flex: "0 0 auto" }}>
+        <div style={{ width: panelWidth.value, height: "70vh", flex: "0 0 auto" }}>
           <FsViewer
             activeId={activeId.value}
             draft={draft.value}

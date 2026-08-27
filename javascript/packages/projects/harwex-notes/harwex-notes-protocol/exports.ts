@@ -52,6 +52,7 @@ export type {
   TOpenNodeAction,
   TReloadDocumentAction,
   TExcalidrawDocumentChangedAction,
+  TResizeSidebarAction,
   TSelectNodeAction,
   TStartCreateAction,
   TStartRenameAction,

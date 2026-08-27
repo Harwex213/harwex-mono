@@ -117,8 +117,15 @@
   padding: var(--fs-body-padding);
   border: var(--fs-border-width) solid transparent;
   border-radius: var(--fs-body-radius);
-  overflow-x: hidden;
-  overflow-y: auto;
+  overflow: auto;
+}
+
+/* The tree is as wide as its widest row, so a deep branch or a long name scrolls sideways
+   instead of being cut off. Every row takes that width, so a hover or a selection paints
+   the whole band and not just the row's own text. */
+.fs-viewer__tree {
+  width: max-content;
+  min-width: 100%;
 }
 
 .fs-viewer__body--drop {
@@ -238,9 +245,7 @@
 }
 
 .fs-viewer__name {
-  overflow: hidden;
   white-space: nowrap;
-  text-overflow: ellipsis;
 }
 
 .fs-viewer__menu {

@@ -60,6 +60,14 @@ type TMiscActions = {
   excalidrawDocumentChangedAction: TExcalidrawDocumentChangedAction;
 };
 
+// Layout Actions
+
+type TResizeSidebarAction = (width: number) => void;
+
+type TLayoutActions = {
+  resizeSidebarAction: TResizeSidebarAction;
+};
+
 // App
 
 type TAppRegistry = &
@@ -67,6 +75,7 @@ type TAppRegistry = &
   TDraftActions &
   TFolderActions &
   TTabActions &
+  TLayoutActions &
   TMiscActions;
 
 export type {
@@ -80,6 +89,7 @@ export type {
   TOpenNodeAction,
   TReloadDocumentAction,
   TExcalidrawDocumentChangedAction,
+  TResizeSidebarAction,
   TSelectNodeAction,
   TStartCreateAction,
   TStartRenameAction,
