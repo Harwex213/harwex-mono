@@ -1,8 +1,8 @@
 import { initTRPC } from "@trpc/server";
-import type { TFsStore } from "./fsStore.js";
+import type { FsDataAccess } from "./data-access/fs-data-access.types.js";
 
 type TContext = {
-  fs: TFsStore;
+  dataAccess: FsDataAccess;
 };
 
 const t = initTRPC.context<TContext>().create();

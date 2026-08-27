@@ -5,25 +5,33 @@ import {
   renameNodeInputSchema,
 } from "@hw/harwex-notes-protocol";
 import { publicProcedure, router } from "../trpc.js";
+import {
+  fetchTree,
+  fetchDocument,
+  createNode,
+  renameNode,
+  moveNode,
+  deleteNode,
+} from "../service/fs-service.js";
 
 const fsRouter = router({
   tree: publicProcedure.query(({ ctx }) => {
-    return ctx.fs.fetchTree();
+    return fetchTree(ctx);
   }),
   document: publicProcedure.input(nodeByIdInputSchema).query(({ ctx, input }) => {
-    return ctx.fs.fetchDocument(input.nodeId);
+    return fetchDocument(ctx, input.nodeId);
   }),
   createNode: publicProcedure.input(createNodeInputSchema).mutation(({ ctx, input }) => {
-    return ctx.fs.createNode(input);
+    return createNode(ctx, input);
   }),
   renameNode: publicProcedure.input(renameNodeInputSchema).mutation(({ ctx, input }) => {
-    return ctx.fs.renameNode(input.nodeId, input.name);
+    return renameNode(ctx, input.nodeId, input.name);
   }),
   moveNode: publicProcedure.input(moveNodeInputSchema).mutation(({ ctx, input }) => {
-    return ctx.fs.moveNode(input.nodeId, input.parentId);
+    return moveNode(ctx, input.nodeId, input.parentId);
   }),
   deleteNode: publicProcedure.input(nodeByIdInputSchema).mutation(({ ctx, input }) => {
-    return ctx.fs.deleteNode(input.nodeId);
+    return deleteNode(ctx, input.nodeId);
   }),
 });
 

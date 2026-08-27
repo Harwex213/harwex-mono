@@ -1,5 +1,4 @@
 import { createHTTPServer } from "@trpc/server/adapters/standalone";
-import { createFsStore } from "./fsStore.js";
 import { appRouter } from "./router/index.js";
 import type { TContext } from "./trpc.js";
 
@@ -7,11 +6,8 @@ const DEFAULT_PORT = 3001;
 
 const port = Number(process.env.PORT ?? DEFAULT_PORT);
 
-// One store for the whole process: the vault is shared by every client.
-const fs = createFsStore();
-
 const createContext = (): TContext => {
-  return { fs };
+  throw new Error("Not Implemented");
 };
 
 const server = createHTTPServer({
