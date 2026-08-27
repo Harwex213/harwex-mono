@@ -54,10 +54,12 @@ type TTabActions = {
 
 type TReloadDocumentAction = (nodeId: string) => void;
 type TExcalidrawDocumentChangedAction = (nodeId: string, scene: TExcalidrawScene) => void;
+type TMarkdownDocumentChangedAction = (nodeId: string, text: string) => void;
 
 type TMiscActions = {
   reloadDocumentAction: TReloadDocumentAction;
   excalidrawDocumentChangedAction: TExcalidrawDocumentChangedAction;
+  markdownDocumentChangedAction: TMarkdownDocumentChangedAction;
 };
 
 // Layout Actions
@@ -89,6 +91,7 @@ export type {
   TOpenNodeAction,
   TReloadDocumentAction,
   TExcalidrawDocumentChangedAction,
+  TMarkdownDocumentChangedAction,
   TResizeSidebarAction,
   TSelectNodeAction,
   TStartCreateAction,

@@ -1,5 +1,6 @@
 import { ExcalidrawViewer } from "./src/components/excalidraw-viewer/excalidraw-viewer";
 import { FsViewer } from "./src/components/fs-viewer/fs-viewer";
+import { MarkdownViewer } from "./src/components/markdown-viewer/markdown-viewer";
 import { TabsBar } from "./src/components/tabs-bar/tabs-bar";
 import type {
   TExcalidrawViewerProps,
@@ -11,19 +12,27 @@ import type {
   TFsViewerRegistrySlice,
 } from "./src/components/fs-viewer/fs-viewer.types";
 import type {
+  TMarkdownViewerLayout,
+  TMarkdownViewerProps,
+  TMarkdownViewerRegistrySlice,
+} from "./src/components/markdown-viewer/markdown-viewer.types";
+import type {
   TTab,
   TTabSaveState,
   TTabsBarProps,
   TTabsBarRegistrySlice,
 } from "./src/components/tabs-bar/tabs-bar.types";
 
-export { ExcalidrawViewer, FsViewer, TabsBar };
+export { ExcalidrawViewer, FsViewer, MarkdownViewer, TabsBar };
 export type {
   TExcalidrawViewerProps,
   TExcalidrawViewerRegistrySlice,
   TFsDraft,
   TFsViewerProps,
   TFsViewerRegistrySlice,
+  TMarkdownViewerLayout,
+  TMarkdownViewerProps,
+  TMarkdownViewerRegistrySlice,
   TTab,
   TTabSaveState,
   TTabsBarProps,

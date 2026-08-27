@@ -1,5 +1,5 @@
 import "./fs-viewer.css";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { DragEvent, FC, KeyboardEvent, MouseEvent } from "react";
 import type { TFsNode, TFsNodeKind } from "@hw/harwex-notes-protocol";
 import { FILE_EXTENSIONS, readFileKind } from "./fs-file-kinds";
@@ -11,6 +11,7 @@ import {
   NewSketchIcon,
   NodeIcon,
 } from "./fs-icons";
+import { FsNodeMenu, clampMenuX } from "./fs-node-menu";
 import { flattenTree } from "./fs-rows";
 import type { TFsViewerProps } from "./fs-viewer.types";
 
@@ -25,8 +26,6 @@ type TMenuState = {
 
 const INDENT_STEP_PX = 14;
 const ROW_BASE_PADDING_PX = 8;
-const MENU_WIDTH_PX = 176;
-const MENU_MARGIN_PX = 8;
 
 const NEW_NAME_BY_KIND: Readonly<Record<TFsNodeKind, string>> = {
   folder: "new-folder",
@@ -35,20 +34,7 @@ const NEW_NAME_BY_KIND: Readonly<Record<TFsNodeKind, string>> = {
   excalidraw: "untitled.excalidraw",
 };
 
-const CREATE_ITEMS: readonly { kind: TFsNodeKind; label: string }[] = [
-  { kind: "file", label: "New file" },
-  { kind: "excalidraw", label: "New excalidraw" },
-  { kind: "folder", label: "New folder" },
-];
-
 const EXTENSIONS_HINT = FILE_EXTENSIONS.join(" · ");
-
-const LABEL_BY_KIND: Readonly<Record<TFsNodeKind, string>> = {
-  folder: "folder",
-  markdown: "note",
-  excalidraw: "sketch",
-  file: "file",
-};
 
 const readIndentStyle = (depth: number) => ({
   paddingLeft: `${ROW_BASE_PADDING_PX + depth * INDENT_STEP_PX}px`,
@@ -206,53 +192,15 @@ const FsViewer: FC<TFsViewerProps> = ({
   const [dragId, setDragId] = useState<string | null>(null);
   const [dropId, setDropId] = useState<string | null>(null);
 
-  const menuRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (menu === null) {
-      return;
-    }
-
-    const closeMenu = () => {
-      setMenu(null);
-    };
-
-    const closeOnOutsidePress = (event: PointerEvent) => {
-      const target = event.target;
-      if (menuRef.current !== null && target instanceof Node && menuRef.current.contains(target)) {
-        return;
-      }
-
-      setMenu(null);
-    };
-
-    const closeOnEscape = (event: globalThis.KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setMenu(null);
-      }
-    };
-
-    window.addEventListener("pointerdown", closeOnOutsidePress);
-    window.addEventListener("keydown", closeOnEscape);
-    window.addEventListener("resize", closeMenu);
-
-    return () => {
-      window.removeEventListener("pointerdown", closeOnOutsidePress);
-      window.removeEventListener("keydown", closeOnEscape);
-      window.removeEventListener("resize", closeMenu);
-    };
-  }, [menu]);
+  const closeMenu = useCallback(() => {
+    setMenu(null);
+  }, []);
 
   const createParentId = readCreateParentId(nodeById, selectedId);
 
   const menuNode = menu === null || menu.nodeId === null
     ? null
     : nodeById.get(menu.nodeId) ?? null;
-
-  // The root menu creates in the vault root, a folder menu creates inside that folder, and
-  // a file menu creates nothing.
-  const menuParentId = menuNode === null ? null : menuNode.id;
-  const canCreateInMenu = menuNode === null || menuNode.kind === "folder";
 
   const canDropOn = (targetId: string | null) => {
     if (dragId === null) {
@@ -321,15 +269,7 @@ const FsViewer: FC<TFsViewerProps> = ({
       registry.selectNodeAction(nodeId);
     }
 
-    // The menu is kept inside the window on the right; the browser keeps it on the left.
-    const x = Math.min(event.clientX, window.innerWidth - MENU_WIDTH_PX - MENU_MARGIN_PX);
-
-    setMenu({ nodeId, x, y: event.clientY, isConfirmingDelete: false });
-  };
-
-  const runMenuAction = (run: () => void) => {
-    run();
-    setMenu(null);
+    setMenu({ nodeId, x: clampMenuX(event.clientX), y: event.clientY, isConfirmingDelete: false });
   };
 
   const handleRowKeyDown = (event: KeyboardEvent<HTMLElement>, nodeId: string) => {
@@ -502,80 +442,15 @@ const FsViewer: FC<TFsViewerProps> = ({
       </div>
 
       {menu === null || (menu.nodeId !== null && menuNode === null) ? null : (
-        <div
-          className="fs-viewer__menu"
-          ref={menuRef}
-          role="menu"
-          style={{ left: `${menu.x}px`, top: `${menu.y}px` }}
-        >
-          {!canCreateInMenu ? null : (
-            <>
-              {CREATE_ITEMS.map((item) => (
-                <button
-                  className="fs-viewer__menu-item"
-                  key={item.kind}
-                  onClick={() => {
-                    runMenuAction(() => registry.startCreateAction(menuParentId, item.kind));
-                  }}
-                  role="menuitem"
-                  type="button"
-                >
-                  <DraftIcon kind={item.kind} />
-
-                  {item.label}
-                </button>
-              ))}
-
-              {menuNode === null ? null : <span className="fs-viewer__menu-divider" />}
-            </>
-          )}
-
-          {menuNode === null ? null : (
-            <>
-              <button
-                className="fs-viewer__menu-item"
-                onClick={() => runMenuAction(() => registry.startRenameAction(menuNode.id))}
-                role="menuitem"
-                type="button"
-              >
-                {"Rename"}
-              </button>
-
-              {menuNode.parentId === null ? null : (
-                <button
-                  className="fs-viewer__menu-item"
-                  onClick={() => runMenuAction(() => registry.moveNodeAction(menuNode.id, null))}
-                  role="menuitem"
-                  type="button"
-                >
-                  {"Move to vault root"}
-                </button>
-              )}
-
-              <span className="fs-viewer__menu-divider" />
-
-              {menu.isConfirmingDelete ? (
-                <button
-                  className="fs-viewer__menu-item fs-viewer__menu-item--danger"
-                  onClick={() => runMenuAction(() => registry.deleteNodeAction(menuNode.id))}
-                  role="menuitem"
-                  type="button"
-                >
-                  {`Delete this ${LABEL_BY_KIND[menuNode.kind]}?`}
-                </button>
-              ) : (
-                <button
-                  className="fs-viewer__menu-item fs-viewer__menu-item--danger"
-                  onClick={() => setMenu({ ...menu, isConfirmingDelete: true })}
-                  role="menuitem"
-                  type="button"
-                >
-                  {"Delete"}
-                </button>
-              )}
-            </>
-          )}
-        </div>
+        <FsNodeMenu
+          isConfirmingDelete={menu.isConfirmingDelete}
+          node={menuNode}
+          onClose={closeMenu}
+          onConfirmDelete={() => setMenu({ ...menu, isConfirmingDelete: true })}
+          registry={registry}
+          x={menu.x}
+          y={menu.y}
+        />
       )}
     </aside>
   );
