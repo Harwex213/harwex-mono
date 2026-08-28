@@ -1,0 +1,28 @@
+{
+  "name": "@hw/harwex-notes-backend",
+  "description": "harwex-notes tRPC backend",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./router": "./src/router/index.ts"
+  },
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "tsx src/index.ts",
+    "test": "node --import tsx --test \"src/**/*.test.ts\"",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@hw/harwex-notes-protocol": "workspace:*",
+    "@trpc/server": "11.18.0",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@hw/typescript-config": "workspace:*",
+    "@types/node": "24.1.0",
+    "tsx": "4.19.4",
+    "typescript": "5.9.3"
+  }
+}

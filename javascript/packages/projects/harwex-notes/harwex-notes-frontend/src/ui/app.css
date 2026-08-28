@@ -1,0 +1,533 @@
+/*
+ * Design tokens live in three layers. Each layer may only read from the layer below it.
+ *
+ * 1. Base      `--base-*`   primitive values: raw colors, a spacing scale, radii, font stacks.
+ * 2. Semantic  `--color-*`, `--space-*`, `--radius-*`, `--font-*`, ...
+ *                            meaning, not value: "surface", "text-muted", "accent". Built from base.
+ * 3. Component `--tabs-bar-*`, `--viewer-*`, `--sketch-*`, ...
+ *                            one block per component. Built from semantic.
+ *
+ * Component rules use component tokens only. Never `var(--color-*)` or a literal color
+ * inside a `.viewer__*` rule; add a `--viewer-*` token instead.
+ *
+ * The theme is light only. The cool base colors stay for future use.
+ */
+
+/* ------------------------------------------------------------------ */
+/* 1. Base                                                             */
+/* ------------------------------------------------------------------ */
+
+:root {
+  /* neutral, warm (light theme) */
+  --base-color-warm-0: #ffffff;
+  --base-color-warm-50: #f6f6f4;
+  --base-color-warm-100: #f1f0ec;
+  --base-color-warm-200: #d9d7d1;
+  --base-color-warm-300: #b9b6ae;
+  --base-color-warm-500: #9a968d;
+  --base-color-warm-600: #6f6c65;
+  --base-color-warm-900: #1d1c1a;
+
+  /* neutral, cool (dark theme) */
+  --base-color-cool-50: #e6e5e1;
+  --base-color-cool-300: #9fa0a2;
+  --base-color-cool-400: #74767a;
+  --base-color-cool-600: #4a4e55;
+  --base-color-cool-700: #32353a;
+  --base-color-cool-800: #24272b;
+  --base-color-cool-850: #1e2023;
+  --base-color-cool-900: #17181a;
+
+  /* hues */
+  --base-color-blue-100: #e6eef7;
+  --base-color-blue-300: #7fb0e8;
+  --base-color-blue-600: #3b6ea5;
+  --base-color-blue-900: #24303d;
+  --base-color-violet-400: #b193ea;
+  --base-color-violet-600: #7b52c4;
+  --base-color-red-300: #e08b80;
+  --base-color-red-700: #a63d33;
+  --base-color-amber-300: #e0b45f;
+  --base-color-amber-600: #cf9432;
+  --base-color-black: #000000;
+  --base-color-transparent: transparent;
+
+  /* alpha */
+  --base-alpha-18: 18%;
+  --base-alpha-45: 45%;
+
+  /* spacing scale */
+  --base-space-0: 0;
+  --base-space-1: 1px;
+  --base-space-2: 2px;
+  --base-space-3: 3px;
+  --base-space-4: 4px;
+  --base-space-5: 5px;
+  --base-space-6: 6px;
+  --base-space-8: 8px;
+  --base-space-9: 9px;
+  --base-space-10: 10px;
+  --base-space-12: 12px;
+  --base-space-14: 14px;
+  --base-space-16: 16px;
+  --base-space-22: 22px;
+  --base-space-24: 24px;
+  --base-space-28: 28px;
+  --base-space-32: 32px;
+  --base-space-56: 56px;
+
+  /* fixed sizes */
+  --base-size-12: 12px;
+  --base-size-14: 14px;
+  --base-size-15: 15px;
+  --base-size-44: 44px;
+  --base-size-176: 176px;
+  --base-size-240: 240px;
+  --base-size-260: 260px;
+  --base-size-760: 760px;
+
+  /* radii */
+  --base-radius-0: 0;
+  --base-radius-3: 3px;
+  --base-radius-4: 4px;
+  --base-radius-5: 5px;
+  --base-radius-6: 6px;
+  --base-radius-8: 8px;
+
+  /* borders */
+  --base-border-0: 0;
+  --base-border-1: 1px;
+  --base-border-3: 3px;
+
+  /* typography */
+  --base-font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --base-font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --base-font-size-10: 10px;
+  --base-font-size-11: 11px;
+  --base-font-size-12: 12px;
+  --base-font-size-12-5: 12.5px;
+  --base-font-size-13: 13px;
+  --base-font-size-14: 14px;
+  --base-font-size-15: 15px;
+  --base-font-size-16: 16px;
+  --base-font-size-19: 19px;
+  --base-font-size-26: 26px;
+  --base-font-weight-bold: 700;
+  --base-line-height-1: 1;
+  --base-line-height-tight: 1.3;
+  --base-line-height-body: 1.55;
+  --base-letter-spacing-5: 0.05em;
+  --base-letter-spacing-6: 0.06em;
+  --base-letter-spacing-9: 0.09em;
+
+  /* motion */
+  --base-duration-fast: 120ms;
+  --base-easing-default: ease;
+
+  /* elevation */
+  --base-shadow-y-6: 6px;
+  --base-shadow-blur-20: 20px;
+}
+
+/* ------------------------------------------------------------------ */
+/* 2. Semantic                                                         */
+/* ------------------------------------------------------------------ */
+
+:root {
+  /* surfaces */
+  --color-canvas: var(--base-color-warm-50);
+  --color-surface: var(--base-color-warm-0);
+  --color-surface-sunken: var(--base-color-warm-100);
+  --color-border: var(--base-color-warm-200);
+  --color-border-strong: var(--base-color-warm-300);
+  --color-transparent: var(--base-color-transparent);
+
+  /* text */
+  --color-text: var(--base-color-warm-900);
+  --color-text-muted: var(--base-color-warm-600);
+  --color-text-faint: var(--base-color-warm-500);
+  --color-text-on-accent: var(--base-color-warm-0);
+
+  /* status */
+  --color-accent: var(--base-color-blue-600);
+  --color-accent-subtle: var(--base-color-blue-100);
+  --color-danger: var(--base-color-red-700);
+
+  /* file kinds */
+  --color-kind-folder: var(--base-color-amber-600);
+  --color-kind-markdown: var(--base-color-blue-600);
+  --color-kind-sketch: var(--base-color-violet-600);
+
+  /* elevation */
+  --shadow-popover: 0 var(--base-shadow-y-6) var(--base-shadow-blur-20)
+    color-mix(in srgb, var(--base-color-black) var(--base-alpha-18), transparent);
+  --opacity-disabled: var(--base-alpha-45);
+
+  /* spacing */
+  --space-none: var(--base-space-0);
+  --space-hairline: var(--base-space-1);
+  --space-3xs: var(--base-space-2);
+  --space-2xs: var(--base-space-3);
+  --space-xs: var(--base-space-4);
+  --space-xs-plus: var(--base-space-5);
+  --space-sm: var(--base-space-6);
+  --space-md: var(--base-space-8);
+  --space-md-plus: var(--base-space-9);
+  --space-lg: var(--base-space-10);
+  --space-xl: var(--base-space-12);
+  --space-2xl: var(--base-space-14);
+  --space-3xl: var(--base-space-16);
+  --space-4xl: var(--base-space-22);
+  --space-5xl: var(--base-space-24);
+  --space-6xl: var(--base-space-28);
+  --space-7xl: var(--base-space-32);
+  --space-8xl: var(--base-space-56);
+
+  /* sizes */
+  --size-icon-sm: var(--base-size-12);
+  --size-icon-md: var(--base-size-14);
+  --size-icon-lg: var(--base-size-15);
+  --size-bar: var(--base-size-44);
+  --size-popover: var(--base-size-176);
+  --size-chip-max: var(--base-size-240);
+  --size-sidebar: var(--base-size-260);
+  --size-prose-max: var(--base-size-760);
+
+  /* radii */
+  --radius-none: var(--base-radius-0);
+  --radius-xs: var(--base-radius-3);
+  --radius-sm: var(--base-radius-4);
+  --radius-sm-plus: var(--base-radius-5);
+  --radius-md: var(--base-radius-6);
+  --radius-lg: var(--base-radius-8);
+
+  /* borders */
+  --border-width-none: var(--base-border-0);
+  --border-width: var(--base-border-1);
+  --border-width-thick: var(--base-border-3);
+
+  /* typography */
+  --font-body: var(--base-font-sans);
+  --font-code: var(--base-font-mono);
+  --font-size-2xs: var(--base-font-size-10);
+  --font-size-xs: var(--base-font-size-11);
+  --font-size-sm: var(--base-font-size-12);
+  --font-size-code: var(--base-font-size-12-5);
+  --font-size-sm-plus: var(--base-font-size-13);
+  --font-size-md: var(--base-font-size-14);
+  --font-size-md-plus: var(--base-font-size-15);
+  --font-size-lg: var(--base-font-size-16);
+  --font-size-xl: var(--base-font-size-19);
+  --font-size-2xl: var(--base-font-size-26);
+  --font-weight-label: var(--base-font-weight-bold);
+  --line-height-none: var(--base-line-height-1);
+  --line-height-heading: var(--base-line-height-tight);
+  --line-height-body: var(--base-line-height-body);
+  --letter-spacing-label: var(--base-letter-spacing-9);
+  --letter-spacing-caption: var(--base-letter-spacing-6);
+  --letter-spacing-table: var(--base-letter-spacing-5);
+
+  /* motion */
+  --motion-fast: var(--base-duration-fast) var(--base-easing-default);
+}
+
+/* The site is always light. The OS dark preference is ignored on purpose:
+   sketches and markdown are authored against the light palette. */
+:root {
+  color-scheme: light;
+}
+
+/* ------------------------------------------------------------------ */
+/* 3. Component                                                        */
+/* ------------------------------------------------------------------ */
+
+:root {
+  /* body */
+  --body-bg: var(--color-canvas);
+  --body-text: var(--color-text);
+  --body-font: var(--font-body);
+  --body-font-size: var(--font-size-md);
+  --body-line-height: var(--line-height-body);
+
+  /* app shell */
+  /* The shell overrides this width inline while the divider is dragged. */
+  --app-sidebar-width: var(--size-sidebar);
+  /* The divider column stands between the panels, so the grid adds no gap of its own. */
+  --app-gap: var(--space-none);
+  /* The tabs bar is drawn to sit joined to the viewer, so the main column has no gap. */
+  --app-main-gap: var(--space-none);
+  --app-padding: var(--space-xs);
+
+  /* split: the draggable divider that sizes the panel before it. Its line stays invisible
+     until the pointer or the keyboard reaches it, so the shell reads as a plain gap at
+     rest. The divider column is as wide as the gap it replaces. */
+  --split-size: var(--space-md);
+  --split-line-thickness: var(--border-width);
+  --split-line-thickness-strong: var(--border-width-thick);
+  --split-line: var(--color-transparent);
+  --split-line-hover: var(--color-border-strong);
+  --split-line-active: var(--color-accent);
+  --split-line-radius: var(--radius-xs);
+
+  /* tabs bar: the strip of open files. It is `TabsBar` from
+     `@hw/harwex-notes-components`, which reads the semantic layer itself, so the shell only
+     frames the bar. The bar draws its own bottom border, which the shell leaves alone. */
+  --tabs-bar-border: var(--color-border);
+  --tabs-bar-border-width: var(--border-width);
+  --tabs-bar-radius: var(--radius-lg) var(--radius-lg) var(--radius-none) var(--radius-none);
+
+  /* viewer: document pane */
+  --viewer-bg: var(--color-surface);
+  --viewer-border: var(--color-border);
+  --viewer-border-width: var(--border-width);
+  --viewer-radius: var(--radius-none) var(--radius-none) var(--radius-lg) var(--radius-lg);
+  /* The bottom border of the tabs bar is the line between the bar and the viewer. */
+  --viewer-border-top-width: var(--border-width-none);
+  --viewer-centered-gap: var(--space-xl);
+  --viewer-placeholder-text: var(--color-text-faint);
+  --viewer-error-text: var(--color-danger);
+  --viewer-retry-padding: var(--space-xs-plus) var(--space-2xl);
+  --viewer-retry-border: var(--color-border-strong);
+  --viewer-retry-radius: var(--radius-md);
+
+  /* save status: the one line beside the tabs bar (DOC-6). */
+  --save-status-gap: var(--space-md);
+  --save-status-padding: 0 var(--space-md);
+  --save-status-text: var(--color-text-faint);
+  --save-status-failed-text: var(--color-danger);
+
+  /* sketch: the frame around the embedded Excalidraw canvas. Excalidraw carries its own
+     stylesheet and keeps element colors in the scene, so there is nothing to theme here. */
+  --sketch-background: var(--color-transparent);
+}
+
+/* ------------------------------------------------------------------ */
+/* Global                                                              */
+/* ------------------------------------------------------------------ */
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--body-bg);
+  color: var(--body-text);
+  font-family: var(--body-font);
+  font-size: var(--body-font-size);
+  line-height: var(--body-line-height);
+  -webkit-font-smoothing: antialiased;
+}
+
+#root {
+  height: 100%;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+}
+
+/* ------------------------------------------------------------------ */
+/* app                                                                 */
+/* ------------------------------------------------------------------ */
+
+.app {
+  display: grid;
+  grid-template-columns: var(--app-sidebar-width) auto minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  gap: var(--app-gap);
+  height: 100%;
+  padding: var(--app-padding);
+}
+
+.app__main {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: var(--app-main-gap);
+  min-width: 0;
+}
+
+.app__bar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--save-status-gap);
+  min-width: 0;
+}
+
+/* ------------------------------------------------------------------ */
+/* save status                                                         */
+/* ------------------------------------------------------------------ */
+
+.save-status {
+  margin: 0;
+  padding: var(--save-status-padding);
+  color: var(--save-status-text);
+  white-space: nowrap;
+}
+
+.save-status--failed {
+  color: var(--save-status-failed-text);
+}
+
+/* ------------------------------------------------------------------ */
+/* split                                                               */
+/* ------------------------------------------------------------------ */
+
+.split {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* A drag on a touch screen must size the panels, not scroll the page, and a drag with a
+     mouse must not select the text it passes over. */
+  touch-action: none;
+  user-select: none;
+}
+
+/* The line carries the focus, so the ring around the whole divider would only repeat it. */
+.split:focus {
+  outline: none;
+}
+
+.split--vertical {
+  width: var(--split-size);
+  cursor: col-resize;
+}
+
+.split--horizontal {
+  height: var(--split-size);
+  cursor: row-resize;
+}
+
+.split__line {
+  background: var(--split-line);
+  border-radius: var(--split-line-radius);
+  /* Only the colour fades in. The thickness is feedback on a drag, so it snaps. */
+  transition: background var(--motion-fast);
+}
+
+.split--vertical .split__line {
+  width: var(--split-line-thickness);
+  height: 100%;
+}
+
+.split--horizontal .split__line {
+  width: 100%;
+  height: var(--split-line-thickness);
+}
+
+.split:hover .split__line {
+  background: var(--split-line-hover);
+}
+
+/* Focus and a live drag both thicken the line: no state is carried by colour alone. The
+   drag names `.split` as well, because the pointer that drags the divider also hovers it,
+   and the hover rule above would otherwise be the more specific one. */
+.split:focus-visible .split__line,
+.split.split--dragging .split__line {
+  background: var(--split-line-active);
+}
+
+.split--vertical:focus-visible .split__line,
+.split--vertical.split--dragging .split__line {
+  width: var(--split-line-thickness-strong);
+}
+
+.split--horizontal:focus-visible .split__line,
+.split--horizontal.split--dragging .split__line {
+  height: var(--split-line-thickness-strong);
+}
+
+/* ------------------------------------------------------------------ */
+/* fs-viewer                                                           */
+/* ------------------------------------------------------------------ */
+
+/* The vault panel is `FsViewer` from `@hw/harwex-notes-components`. It carries its own
+   stylesheet and builds every value from the semantic tokens above, so only the two
+   values it hardcodes are handed over here. */
+.fs-viewer {
+  --fs-shadow: var(--shadow-popover);
+  --fs-disabled-opacity: var(--opacity-disabled);
+}
+
+/* ------------------------------------------------------------------ */
+/* tabs bar                                                            */
+/* ------------------------------------------------------------------ */
+
+/* The bar draws its own bottom border, and its active tab paints over that line. The shell
+   adds the other three sides as longhands: a `border` shorthand would reset the bottom
+   border as well. */
+.tabs-bar {
+  border-top: var(--tabs-bar-border-width) solid var(--tabs-bar-border);
+  border-right: var(--tabs-bar-border-width) solid var(--tabs-bar-border);
+  border-left: var(--tabs-bar-border-width) solid var(--tabs-bar-border);
+  border-radius: var(--tabs-bar-radius);
+}
+
+/* ------------------------------------------------------------------ */
+/* viewer                                                              */
+/* ------------------------------------------------------------------ */
+
+.viewer {
+  min-height: 0;
+  background: var(--viewer-bg);
+  border: var(--viewer-border-width) solid var(--viewer-border);
+  border-top-width: var(--viewer-border-top-width);
+  border-radius: var(--viewer-radius);
+  overflow: auto;
+}
+
+.viewer--centered {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--viewer-centered-gap);
+}
+
+.viewer__placeholder {
+  margin: 0;
+  color: var(--viewer-placeholder-text);
+}
+
+.viewer__error {
+  margin: 0;
+  color: var(--viewer-error-text);
+}
+
+.viewer__retry {
+  padding: var(--viewer-retry-padding);
+  background: none;
+  border: var(--viewer-border-width) solid var(--viewer-retry-border);
+  border-radius: var(--viewer-retry-radius);
+  cursor: pointer;
+}
+
+.viewer--markdown {
+  padding: 0;
+  overflow: hidden;
+}
+
+.viewer--sketch {
+  padding: 0;
+  overflow: hidden;
+}
+
+/* ------------------------------------------------------------------ */
+/* sketch                                                              */
+/* ------------------------------------------------------------------ */
+
+/* Excalidraw sizes itself to its container, so the container needs a definite height. */
+.sketch {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  background: var(--sketch-background);
+}

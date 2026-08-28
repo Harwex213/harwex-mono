@@ -1,0 +1,251 @@
+/* The bar reads the host's semantic tokens (--color-*) and falls back to the light palette
+   when a host defines none. Every value the rules use is a --tabs-* token, so a host that
+   wants a different look overrides those on .tabs-bar instead of the rules. */
+.tabs-bar {
+  --tabs-bg: var(--color-surface-sunken, #f1f0ec);
+  --tabs-border: var(--color-border, #d9d7d1);
+  --tabs-border-strong: var(--color-border-strong, #b9b6ae);
+  --tabs-text: var(--color-text, #1d1c1a);
+  --tabs-text-muted: var(--color-text-muted, #6f6c65);
+  --tabs-text-faint: var(--color-text-faint, #9a968d);
+  --tabs-accent: var(--color-accent, #3b6ea5);
+  --tabs-danger: var(--color-danger, #a63d33);
+  --tabs-tab-bg: transparent;
+  --tabs-tab-hover-bg: var(--color-surface, #ffffff);
+  --tabs-tab-active-bg: var(--color-surface, #ffffff);
+  --tabs-icon-markdown: var(--color-kind-markdown, #3b6ea5);
+  --tabs-icon-sketch: var(--color-kind-sketch, #7b52c4);
+
+  --tabs-border-width: 1px;
+  --tabs-height: 38px;
+  --tabs-padding: 4px 8px 0;
+  --tabs-gap: 2px;
+  --tabs-font-size: 13px;
+  --tabs-tab-min-width: 110px;
+  --tabs-tab-max-width: 200px;
+  --tabs-tab-radius: 6px 6px 0 0;
+  --tabs-label-gap: 6px;
+  --tabs-label-padding: 0 4px 0 10px;
+  --tabs-icon-size: 14px;
+  --tabs-marker-size: 12px;
+  --tabs-close-size: 20px;
+  --tabs-close-radius: 4px;
+  --tabs-close-margin: 0 6px 0 0;
+  --tabs-empty-padding: 0 4px;
+  --tabs-message-padding: 6px 12px;
+  --tabs-message-font-size: 12px;
+
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  font-size: var(--tabs-font-size);
+  color: var(--tabs-text);
+  background: var(--tabs-bg);
+  border-bottom: var(--tabs-border-width) solid var(--tabs-border);
+}
+
+/* A host without a box-sizing reset would let a tab overflow by its padding. */
+.tabs-bar,
+.tabs-bar * {
+  box-sizing: border-box;
+}
+
+.tabs-bar__row {
+  display: flex;
+  align-items: stretch;
+  height: var(--tabs-height);
+  min-width: 0;
+}
+
+.tabs-bar__list {
+  display: flex;
+  align-items: stretch;
+  flex: 1 1 auto;
+  gap: var(--tabs-gap);
+  min-width: 0;
+  padding: var(--tabs-padding);
+  overflow-x: auto;
+  /* Never a vertical scroll range: a taller child would let focus scroll the row. */
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+
+.tabs-bar__list::-webkit-scrollbar {
+  display: none;
+}
+
+.tabs-bar__empty {
+  align-self: center;
+  padding: var(--tabs-empty-padding);
+  color: var(--tabs-text-faint);
+  white-space: nowrap;
+}
+
+.tabs-bar__tab {
+  display: inline-flex;
+  align-items: center;
+  /* A tab never shrinks below its minimum; the list scrolls sideways instead. */
+  flex: 0 1 auto;
+  min-width: var(--tabs-tab-min-width);
+  max-width: var(--tabs-tab-max-width);
+  background: var(--tabs-tab-bg);
+  border: var(--tabs-border-width) solid transparent;
+  border-bottom: 0;
+  border-radius: var(--tabs-tab-radius);
+  color: var(--tabs-text-muted);
+}
+
+.tabs-bar__tab:hover {
+  background: var(--tabs-tab-hover-bg);
+}
+
+.tabs-bar__tab--active {
+  background: var(--tabs-tab-active-bg);
+  border-color: var(--tabs-border);
+  color: var(--tabs-text);
+  /* Paints over the bar's bottom border so the active tab reads as joined to the viewer. A
+     negative margin would do the same, but it makes the tab taller than the scrolling list,
+     and then every click scrolls the row by a pixel. */
+  box-shadow: 0 var(--tabs-border-width) 0 var(--tabs-tab-active-bg);
+  position: relative;
+}
+
+.tabs-bar__label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--tabs-label-gap);
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 100%;
+  padding: var(--tabs-label-padding);
+  background: none;
+  border: 0;
+  border-radius: inherit;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+.tabs-bar__label:focus-visible {
+  outline: 2px solid var(--tabs-accent);
+  outline-offset: -2px;
+}
+
+.tabs-bar__icon {
+  display: inline-flex;
+  flex: 0 0 auto;
+  width: var(--tabs-icon-size);
+  height: var(--tabs-icon-size);
+}
+
+.tabs-bar__icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+/* The fs-viewer icons colour themselves from that component's stylesheet, which the bar
+   does not load, so the bar colours them itself. */
+.tabs-bar__icon .fs-viewer__icon--markdown {
+  color: var(--tabs-icon-markdown);
+}
+
+.tabs-bar__icon .fs-viewer__icon--sketch {
+  color: var(--tabs-icon-sketch);
+}
+
+.tabs-bar__name {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* Deleted-on-disk names are struck through, so the state reads in the text as well. */
+.tabs-bar__tab--deleted .tabs-bar__name {
+  text-decoration: line-through;
+}
+
+.tabs-bar__tab--unsaved .tabs-bar__name,
+.tabs-bar__tab--saving .tabs-bar__name {
+  font-style: italic;
+}
+
+.tabs-bar__marker {
+  display: inline-flex;
+  flex: 0 0 auto;
+  width: var(--tabs-marker-size);
+  height: var(--tabs-marker-size);
+  color: var(--tabs-text-muted);
+}
+
+.tabs-bar__marker svg {
+  width: 100%;
+  height: 100%;
+}
+
+.tabs-bar__marker--unsaved {
+  color: var(--tabs-accent);
+}
+
+.tabs-bar__marker--loading svg,
+.tabs-bar__marker--saving svg {
+  animation: tabs-bar-spin 0.9s linear infinite;
+}
+
+.tabs-bar__marker--failed,
+.tabs-bar__marker--conflict,
+.tabs-bar__marker--deleted {
+  color: var(--tabs-danger);
+}
+
+@keyframes tabs-bar-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tabs-bar__marker--loading svg,
+  .tabs-bar__marker--saving svg {
+    animation: none;
+  }
+}
+
+.tabs-bar__close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: var(--tabs-close-size);
+  height: var(--tabs-close-size);
+  margin: var(--tabs-close-margin);
+  padding: 0;
+  background: none;
+  border: 0;
+  border-radius: var(--tabs-close-radius);
+  color: var(--tabs-text-faint);
+  cursor: pointer;
+}
+
+.tabs-bar__close svg {
+  width: var(--tabs-marker-size);
+  height: var(--tabs-marker-size);
+}
+
+.tabs-bar__close:hover {
+  background: var(--tabs-bg);
+  color: var(--tabs-text);
+}
+
+.tabs-bar__close:focus-visible {
+  outline: 2px solid var(--tabs-accent);
+  outline-offset: -2px;
+}
+
+.tabs-bar__message {
+  margin: 0;
+  padding: var(--tabs-message-padding);
+  font-size: var(--tabs-message-font-size);
+  color: var(--tabs-danger);
+  border-top: var(--tabs-border-width) solid var(--tabs-border);
+}

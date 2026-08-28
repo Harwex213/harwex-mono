@@ -1,0 +1,156 @@
+/* The modal reads the host's semantic tokens (--color-*) and falls back to the light
+   palette when a host defines none. Every value the rules use is a --conflict-* token, so a
+   host that wants a different look overrides those on .conflict-modal instead of the rules. */
+.conflict-modal {
+  --conflict-bg: var(--color-surface, #ffffff);
+  --conflict-border: var(--color-border-strong, #b9b6ae);
+  --conflict-text: var(--color-text, #1d1c1a);
+  --conflict-text-muted: var(--color-text-muted, #6f6c65);
+  --conflict-accent: var(--color-accent, #3b6ea5);
+  --conflict-danger: var(--color-danger, #a63d33);
+  --conflict-choice-bg: var(--color-surface-sunken, #f1f0ec);
+  --conflict-choice-hover-bg: var(--color-accent-subtle, #e8eef6);
+  --conflict-choice-border: var(--color-border, #d9d7d1);
+
+  --conflict-width: 420px;
+  --conflict-top: 12vh;
+  --conflict-radius: 10px;
+  --conflict-padding: 16px 18px 14px;
+  --conflict-gap: 12px;
+  --conflict-shadow: 0 10px 30px rgba(0, 0, 0, 0.18), 0 1px 3px rgba(0, 0, 0, 0.12);
+  --conflict-font-size: 13px;
+  --conflict-title-size: 15px;
+  --conflict-icon-size: 18px;
+  --conflict-choice-padding: 8px 12px;
+  --conflict-choice-radius: 6px;
+  --conflict-choice-gap: 8px;
+  --conflict-hint-size: 12px;
+
+  /* Sits over the viewer without a backdrop: the rest of the app stays clickable (CONF-9).
+     The wrapper itself takes no pointer events, so only the panel catches clicks. */
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: var(--conflict-top);
+  pointer-events: none;
+  font-size: var(--conflict-font-size);
+  color: var(--conflict-text);
+}
+
+.conflict-modal,
+.conflict-modal * {
+  box-sizing: border-box;
+}
+
+.conflict-modal__panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--conflict-gap);
+  width: min(var(--conflict-width), calc(100vw - 32px));
+  padding: var(--conflict-padding);
+  background: var(--conflict-bg);
+  border: 1px solid var(--conflict-border);
+  border-top: 3px solid var(--conflict-danger);
+  border-radius: var(--conflict-radius);
+  box-shadow: var(--conflict-shadow);
+  pointer-events: auto;
+}
+
+.conflict-modal__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+/* The split circle is the same glyph the tab marker uses for a conflict, so the state
+   reads by shape as well as by colour (FEED-5). */
+.conflict-modal__icon {
+  display: inline-flex;
+  flex: 0 0 auto;
+  width: var(--conflict-icon-size);
+  height: var(--conflict-icon-size);
+  color: var(--conflict-danger);
+}
+
+.conflict-modal__icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+.conflict-modal__title {
+  margin: 0;
+  min-width: 0;
+  font-size: var(--conflict-title-size);
+  font-weight: 600;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.conflict-modal__name {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.93em;
+}
+
+.conflict-modal__description {
+  margin: 0;
+  color: var(--conflict-text-muted);
+  line-height: 1.45;
+}
+
+.conflict-modal__choices {
+  display: flex;
+  flex-direction: column;
+  gap: var(--conflict-choice-gap);
+}
+
+.conflict-modal__choice {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: 100%;
+  padding: var(--conflict-choice-padding);
+  background: var(--conflict-choice-bg);
+  border: 1px solid var(--conflict-choice-border);
+  border-radius: var(--conflict-choice-radius);
+  font: inherit;
+  text-align: left;
+  color: var(--conflict-text);
+  cursor: pointer;
+}
+
+.conflict-modal__choice:hover {
+  background: var(--conflict-choice-hover-bg);
+  border-color: var(--conflict-accent);
+}
+
+.conflict-modal__choice:focus-visible {
+  outline: 2px solid var(--conflict-accent);
+  outline-offset: 1px;
+}
+
+.conflict-modal__choice-label {
+  font-weight: 600;
+}
+
+/* The discard choice is the one that loses work, so its label carries the danger colour
+   next to the word "Discard" (FEED-5: word and colour together). */
+.conflict-modal__choice--discard .conflict-modal__choice-label {
+  color: var(--conflict-danger);
+}
+
+.conflict-modal__choice-hint {
+  font-size: var(--conflict-hint-size);
+  color: var(--conflict-text-muted);
+  line-height: 1.4;
+}
+
+.conflict-modal__waiting {
+  margin: 0;
+  font-size: var(--conflict-hint-size);
+  color: var(--conflict-text-muted);
+}
