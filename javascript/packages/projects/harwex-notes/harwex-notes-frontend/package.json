@@ -13,7 +13,8 @@
     "dev:mocked": "rspack serve --env mocked",
     "build": "rspack build",
     "build:mocked": "rspack build --env mocked",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "build:static": "node scripts/build-static.mjs"
   },
   "dependencies": {
     "@codemirror/lang-markdown": "6.5.2",

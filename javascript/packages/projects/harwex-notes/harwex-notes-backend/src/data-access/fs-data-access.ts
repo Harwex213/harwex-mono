@@ -11,6 +11,7 @@ const EXCLUDED_FOLDER_NAMES: ReadonlySet<string> = new Set([
   ".yarn",
   "dist",
   "build",
+  "tools"
 ]);
 
 const MAX_VAULT_ENTRIES = 50_000;
