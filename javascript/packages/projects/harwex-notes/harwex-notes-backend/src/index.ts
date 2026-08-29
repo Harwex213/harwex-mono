@@ -17,14 +17,19 @@ const port = Number(process.env.PORT ?? DEFAULT_PORT);
 const vaultPath = process.env.VAULT_PATH;
 const staticDir = process.env.STATIC_DIR ?? DEFAULT_STATIC_DIR;
 
-const dataAccess = ((): FsDataAccess => {
+const dataAccess = await (async (): Promise<FsDataAccess> => {
   if (vaultPath === undefined || vaultPath.length === 0) {
     console.log("VAULT_PATH is not set: serving the in-memory sample vault");
 
     return new FsDataAccess(createMemoryVaultFs(SAMPLE_VAULT_PATH, SAMPLE_VAULT), SAMPLE_VAULT_PATH);
   }
 
-  return new FsDataAccess(createNodeVaultFs(), vaultPath);
+  // A real vault can be edited by another process (a second server, an agent, an
+  // external editor), so mutations also take an OS-level lock on it. Imported here
+  // rather than at the top so the sample vault runs without a native build.
+  const { createNativeVaultLock } = await import("./data-access/native-vault-lock.js");
+
+  return new FsDataAccess(createNodeVaultFs(), vaultPath, createNativeVaultLock(vaultPath));
 })();
 
 const createContext = (): TContext => {

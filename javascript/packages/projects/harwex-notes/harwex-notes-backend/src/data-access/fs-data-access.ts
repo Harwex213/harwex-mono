@@ -1,7 +1,9 @@
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 import type { TFsNode, TFsNodeKind } from "@hw/harwex-notes-protocol";
+import { createPassthroughVaultLock } from "./passthrough-vault-lock.js";
 import type { TVaultFs } from "./vault-fs.types.js";
+import type { TVaultLock } from "./vault-lock.types.js";
 
 const EXCLUDED_FOLDER_NAMES: ReadonlySet<string> = new Set([
   "node_modules",
@@ -72,14 +74,16 @@ class FsDataAccess {
 
   readonly #fs: TVaultFs;
   readonly #vaultPath: string;
+  readonly #lock: TVaultLock;
 
   #flushed: TNodeMap = new Map();
 
   #queue: Promise<unknown> = Promise.resolve();
 
-  constructor(fs: TVaultFs, vaultPath: string) {
+  constructor(fs: TVaultFs, vaultPath: string, lock: TVaultLock = createPassthroughVaultLock()) {
     this.#fs = fs;
     this.#vaultPath = path.resolve(vaultPath);
+    this.#lock = lock;
   }
 
   preload = async (): Promise<void> => {
@@ -141,8 +145,12 @@ class FsDataAccess {
     await this.#fs.writeFile(this.#absolutePath(nodeId), data);
   };
 
+  // Two layers, in this order. The queue orders callers inside this process, so at most
+  // one of them reaches the vault lock; the vault lock then keeps other processes out.
+  // Doing it the other way round would park several libuv workers on the same lock.
   runExclusive = <T>(task: () => Promise<T>): Promise<T> => {
-    const run = this.#queue.then(task, task);
+    const guarded = () => this.#lock.runExclusive(task);
+    const run = this.#queue.then(guarded, guarded);
     this.#queue = run.catch(() => undefined);
 
     return run;
