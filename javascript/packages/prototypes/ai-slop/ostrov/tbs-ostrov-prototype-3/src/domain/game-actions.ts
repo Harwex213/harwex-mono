@@ -5,6 +5,7 @@ import { hexKey } from "./hex/coords";
 import { linkedIdsOf, moveIsland, moveTargetsOf } from "./world/world";
 import type { TAxial } from "./hex/coords";
 import type { TStore } from "../store/store";
+import type { TMoveRange } from "./world/world";
 
 const LOG_LIMIT = 8;
 
@@ -37,6 +38,10 @@ const toggleMoveModeAction = (store: TStore) => {
   store.gameState.selectedIslandId.value = "player";
 };
 
+const setMoveRangeAction = (store: TStore, range: TMoveRange) => {
+  store.gameState.moveRange.value = range;
+};
+
 const cancelMoveAction = (store: TStore) => {
   store.gameState.mode.value = "idle";
   store.gameState.hoveredTarget.value = null;
@@ -46,7 +51,7 @@ const hoverTargetAction = (store: TStore, target: TAxial | null) => {
   store.gameState.hoveredTarget.value = target;
 };
 
-/** Flies the player island to a highlighted cell. Ignored for a cell that is not a target. */
+/** Flies the player island to a cell in range. Ignored when the island would not fit there. */
 const moveToTargetAction = (store: TStore, target: TAxial) => {
   const { world, mode, movesLeft, hoveredTarget } = store.gameState;
 
@@ -56,7 +61,8 @@ const moveToTargetAction = (store: TStore, target: TAxial) => {
 
   const player = playerOf(store);
   const targetKey = hexKey(target.q, target.r);
-  const allowed = moveTargetsOf(world.peek(), player.id).some((cell) => hexKey(cell.q, cell.r) === targetKey);
+  const range = store.gameState.moveRange.peek();
+  const allowed = moveTargetsOf(world.peek(), player.id, range).some((cell) => hexKey(cell.q, cell.r) === targetKey);
   if (!allowed) {
     return;
   }
@@ -127,6 +133,7 @@ const endTurnAction = (store: TStore) => {
   const gold = income.gold > 0 ? `, ${income.gold} золота` : "";
 
   pushLog(store, `Ход ${currentTurn} завершён: +${income.food} еды, ${income.wood} дерева, ${income.stone} камня${gold}.`);
+
 };
 
 /** Clicking the selected island again clears the selection. */
@@ -162,5 +169,6 @@ export {
   moveToTargetAction,
   newWorldAction,
   selectIslandAction,
+  setMoveRangeAction,
   toggleMoveModeAction,
 };

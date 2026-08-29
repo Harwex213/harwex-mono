@@ -1,7 +1,7 @@
 import { HEX_DEPTH, HEX_SIZE, hexPolygonPoints, hexToPoint } from "../../../core/hex/layout";
 import { TERRAIN_LIST } from "../../../core/island/terrain";
 import { coastlinePath } from "../../../core/hex/outline";
-import { hexKey } from "../../../core/hex/coords";
+import { hexKey } from "@hw/ostrov-utils";
 import type { TTile } from "../../../core/exports";
 import { useSignals } from "@preact/signals-react/runtime";
 import { COLORS, TERRAIN_GRADIENTS } from "../palette";

@@ -2,10 +2,12 @@ import { useSignals } from "@preact/signals-react/runtime";
 import { COLORS, TERRAIN_GRADIENTS } from "../palette";
 import { FloatingIsland } from "./floating-island";
 import { HEX_DEPTH, HEX_SIZE, hexPolygonPoints, hexToPoint } from "../../domain/hex/layout";
-import { SKY_RADIUS, linksOf, moveTargetsOf } from "../../domain/world/world";
+import { SKY_RADIUS, fitsAt, footprintOf, linksOf, occupancyOf } from "../../domain/world/world";
+import { coastlinePath } from "../../domain/hex/outline";
+import { insideGrid } from "../../domain/hex/grid";
 import { TERRAIN_LIST } from "../../domain/island/terrain";
 import { createGrid } from "../../domain/hex/grid";
-import { hexKey } from "../../domain/hex/coords";
+import { hexDistance, hexKey } from "../../domain/hex/coords";
 import { useStore } from "../../store/store";
 import type { FC } from "react";
 import type { TAxial } from "../../domain/hex/coords";
@@ -14,7 +16,8 @@ import type { TWorldIsland } from "../../domain/world/world";
 
 const BOARD_PADDING = 40;
 const CELL_POINTS = hexPolygonPoints(0.94);
-const TARGET_POINTS = hexPolygonPoints(0.8);
+const HIT_POINTS = hexPolygonPoints(1);
+const FOOTPRINT_POINTS = hexPolygonPoints(0.9);
 const SKY_CELLS = createGrid(SKY_RADIUS);
 
 type TSkyBoardRegistrySlice = {
@@ -37,15 +40,26 @@ const viewBox = (() => {
   return `${left.toFixed(1)} ${top.toFixed(1)} ${(right - left).toFixed(1)} ${(bottom - top).toFixed(1)}`;
 })();
 
-/** A flight route: a curve from one anchor to another that sags a little in the middle. */
-const routePath = (from: TAxial, to: TAxial) => {
-  const a = hexToPoint(from);
-  const b = hexToPoint(to);
-  const midX = (a.x + b.x) / 2;
-  const midY = (a.y + b.y) / 2 + 10;
-
-  return `M${a.x.toFixed(1)} ${a.y.toFixed(1)} Q${midX.toFixed(1)} ${midY.toFixed(1)} ${b.x.toFixed(1)} ${b.y.toFixed(1)}`;
+type TFootprintProps = {
+  cells: TAxial[];
+  className: string;
 };
+
+const Footprint: FC<TFootprintProps> = ({ cells, className }) => (
+  <g className={className}>
+    {cells.map((cell) => {
+      const centre = hexToPoint(cell);
+
+      return (
+        <polygon
+          key={hexKey(cell.q, cell.r)}
+          transform={`translate(${centre.x.toFixed(2)} ${centre.y.toFixed(2)})`}
+          points={FOOTPRINT_POINTS}
+        />
+      );
+    })}
+  </g>
+);
 
 /** Islands are painted back to front, so a near island covers the underside of a far one. */
 const byDepth = (a: TWorldIsland, b: TWorldIsland) => a.anchor.r - b.anchor.r;
@@ -60,9 +74,25 @@ const SkyBoard: FC<TSkyBoardProps> = ({ registry }) => {
   const selectedId = store.gameState.selectedIslandId.value;
 
   const player = world.islands.find((entry) => entry.owner === "player")!;
-  const targets = mode === "move" ? moveTargetsOf(world, player.id) : [];
-  const hoveredKey = hovered ? hexKey(hovered.q, hovered.r) : null;
+  const moving = mode === "move";
+  const range = store.gameState.moveRange.value;
   const links = linksOf(world);
+  /** Anchors the island can fly to this turn; the hover surface. */
+  const zone = moving
+    ? SKY_CELLS.filter((cell) => {
+        const steps = hexDistance(cell, player.anchor);
+
+        return steps > 0 && steps <= range;
+      })
+    : [];
+  /** Every sky cell the island may cover after the move: its coast pushed out by `range`. */
+  const coast = footprintOf(player);
+  const reach = moving ? SKY_CELLS.filter((cell) => coast.some((tile) => hexDistance(cell, tile) <= range)) : [];
+  const inZone = (q: number, r: number) => {
+    return insideGrid({ q, r }, SKY_RADIUS) && coast.some((tile) => hexDistance({ q, r }, tile) <= range);
+  };
+  const zoneOutline = moving ? coastlinePath(reach, inZone) : "";
+  const fits = moving && hovered ? fitsAt(player, hovered, occupancyOf(world.islands, player.id)) : false;
 
   return (
     <svg className={`sky${mode === "move" ? " sky--move" : ""}`} viewBox={viewBox} role="img" aria-label="Небо с островами">
@@ -108,6 +138,7 @@ const SkyBoard: FC<TSkyBoardProps> = ({ registry }) => {
             key={entry.id}
             worldIsland={entry}
             selected={entry.id === selectedId}
+            moving={moving && entry.owner === "player"}
             phase={index * 0.9}
             onClick={() => registry.selectIslandAction(entry.id)}
           />
@@ -129,47 +160,33 @@ const SkyBoard: FC<TSkyBoardProps> = ({ registry }) => {
         })}
       </g>
 
-      {mode === "move" ? (
-        <g className="sky__routes" fill="none" stroke={COLORS.target} strokeLinecap="round">
-          {targets.map((target) => {
-            const key = hexKey(target.q, target.r);
-            const active = key === hoveredKey;
+      {moving ? <path className="sky__zone" d={zoneOutline} /> : null}
 
-            return (
-              <path
-                key={key}
-                d={routePath(player.anchor, target)}
-                strokeWidth={active ? 3.5 : 1.4}
-                opacity={active ? 1 : 0.3}
-                strokeDasharray={active ? "none" : "6 8"}
-              />
-            );
-          })}
-        </g>
-      ) : null}
-
-      {mode === "move" ? (
-        <g className="sky__targets">
-          {targets.map((target) => {
-            const key = hexKey(target.q, target.r);
-            const centre = hexToPoint(target);
+      {moving ? (
+        <g className="sky__hits">
+          {zone.map((cell) => {
+            const centre = hexToPoint(cell);
 
             return (
               <polygon
-                key={key}
-                className={`sky__target${key === hoveredKey ? " sky__target--hover" : ""}`}
+                key={hexKey(cell.q, cell.r)}
+                className="sky__hit"
                 transform={`translate(${centre.x.toFixed(2)} ${centre.y.toFixed(2)})`}
-                points={TARGET_POINTS}
-                onMouseEnter={() => registry.hoverTargetAction(target)}
+                points={HIT_POINTS}
+                onMouseEnter={() => registry.hoverTargetAction(cell)}
                 onMouseLeave={() => registry.hoverTargetAction(null)}
-                onClick={() => registry.moveToTargetAction(target)}
+                onClick={() => registry.moveToTargetAction(cell)}
               />
             );
           })}
         </g>
       ) : null}
 
-      {mode === "move" && hovered ? <FloatingIsland worldIsland={player} anchor={hovered} ghost /> : null}
+      {moving && hovered && fits ? <FloatingIsland worldIsland={player} anchor={hovered} ghost /> : null}
+
+      {moving && hovered ? (
+        <Footprint cells={footprintOf(player, hovered)} className={`sky__footprint${fits ? "" : " sky__footprint--blocked"}`} />
+      ) : null}
     </svg>
   );
 };

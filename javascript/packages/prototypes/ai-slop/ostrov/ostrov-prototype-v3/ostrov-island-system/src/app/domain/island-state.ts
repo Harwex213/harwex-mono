@@ -1,5 +1,5 @@
 import { Island, generateIsland } from "../../core/exports";
-import { createSeedText } from "../../core/island/seed";
+import { createSeedText } from "@hw/ostrov-utils";
 import type { TNumericConfigKey, TTerrain } from "../../core/exports";
 import type { TStore } from "../store/store";
 

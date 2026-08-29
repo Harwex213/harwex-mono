@@ -4,7 +4,8 @@ import { createWorld } from "../domain/world/create-world";
 import { emptyResources } from "../domain/world/resources";
 import type { TAxial } from "../domain/hex/coords";
 import type { TResources } from "../domain/world/resources";
-import type { TWorld } from "../domain/world/world";
+import { MOVE_RANGE } from "../domain/world/world";
+import type { TMoveRange, TWorld } from "../domain/world/world";
 
 const INITIAL_SEED = "НЕБО";
 
@@ -17,6 +18,8 @@ const createGameState = (seedText: string) => ({
   turn: signal(1),
   /** Moves the player still has this turn. */
   movesLeft: signal(1),
+  /** How far the player island flies in one move. Adjustable from the move card. */
+  moveRange: signal<TMoveRange>(MOVE_RANGE),
   mode: signal<TMode>("idle"),
   /** Target anchor under the pointer while in move mode. */
   hoveredTarget: signal<TAxial | null>(null),

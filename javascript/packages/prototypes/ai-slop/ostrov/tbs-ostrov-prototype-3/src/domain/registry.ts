@@ -1,4 +1,5 @@
 import type { TAxial } from "./hex/coords";
+import type { TMoveRange } from "./world/world";
 
 type TToggleMoveModeAction = () => void;
 type TCancelMoveAction = () => void;
@@ -7,6 +8,7 @@ type TMoveToTargetAction = (target: TAxial) => void;
 type TEndTurnAction = () => void;
 type TSelectIslandAction = (id: string) => void;
 type TNewWorldAction = (seedText: string) => void;
+type TSetMoveRangeAction = (range: TMoveRange) => void;
 
 type TAppRegistry = {
   toggleMoveModeAction: TToggleMoveModeAction;
@@ -15,6 +17,7 @@ type TAppRegistry = {
   moveToTargetAction: TMoveToTargetAction;
   endTurnAction: TEndTurnAction;
   selectIslandAction: TSelectIslandAction;
+  setMoveRangeAction: TSetMoveRangeAction;
   newWorldAction: TNewWorldAction;
 };
 
@@ -26,5 +29,6 @@ export type {
   TMoveToTargetAction,
   TNewWorldAction,
   TSelectIslandAction,
+  TSetMoveRangeAction,
   TToggleMoveModeAction,
 };

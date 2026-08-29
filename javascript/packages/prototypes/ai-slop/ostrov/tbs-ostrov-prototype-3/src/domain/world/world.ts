@@ -9,8 +9,13 @@ const SKY_RADIUS = 9;
 /** Radius of the local grid an island is grown on. */
 const ISLAND_RADIUS = 2;
 
-/** How many sky steps an island can fly in one move. */
-const MOVE_RANGE = 3;
+/** Sky steps an island may fly in one move: the choices offered to the player. */
+const MOVE_RANGES = [1, 2, 3] as const;
+
+type TMoveRange = (typeof MOVE_RANGES)[number];
+
+/** Default move range. */
+const MOVE_RANGE: TMoveRange = 3;
 
 type TOwner = "player" | "neutral";
 
@@ -59,7 +64,7 @@ const fitsAt = (worldIsland: TWorldIsland, anchor: TAxial, occupied: Map<string,
 };
 
 /** Every anchor the island can fly to this move. */
-const moveTargetsOf = (world: TWorld, islandId: string, range = MOVE_RANGE): TAxial[] => {
+const moveTargetsOf = (world: TWorld, islandId: string, range: number = MOVE_RANGE): TAxial[] => {
   const worldIsland = world.islands.find((entry) => entry.id === islandId);
   if (!worldIsland) {
     return [];
@@ -153,10 +158,11 @@ const moveIsland = (world: TWorld, islandId: string, anchor: TAxial): TWorld => 
   islands: world.islands.map((entry) => (entry.id === islandId ? { ...entry, anchor } : entry)),
 });
 
-export type { TLink, TOwner, TWorld, TWorldIsland };
+export type { TLink, TMoveRange, TOwner, TWorld, TWorldIsland };
 export {
   ISLAND_RADIUS,
   MOVE_RANGE,
+  MOVE_RANGES,
   SKY_RADIUS,
   areLinked,
   fitsAt,
