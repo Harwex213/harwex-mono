@@ -21,6 +21,11 @@ If you need to setup new frontend app use this default tech stack until other be
 - typescript
 - preact/signals
 
+### Frontend App Default architecture
+
+If you need to setup new frontend app use this default architecture until other being mentioned:
+Package: `@hw/frontend-plain-architecture-v2`. Relative path: `javascript/packages/lab/frontend-plain-architecture`.
+
 #### Typescript
 
 - Use `setup-tsconfig` skill if you need to create or change typescript config for the particular package

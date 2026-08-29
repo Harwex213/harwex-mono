@@ -1,0 +1,33 @@
+export type TRerollShopAction = () => void;
+export type TBuyUnitAction = (offerIndex: number) => void;
+export type TSellUnitAction = (unitId: string) => void;
+export type TSelectUnitAction = (unitId: string | null) => void;
+export type THoverUnitAction = (unitId: string | null) => void;
+export type TBeginDragAction = (unitId: string) => void;
+export type TDragToAction = (x: number, y: number) => void;
+export type TEndDragAction = () => void;
+export type TAutoArrangeAction = () => void;
+export type TStartBattleAction = () => void;
+export type TAdvanceBattleAction = (frameSeconds: number) => void;
+export type TSetSpeedAction = (speed: number) => void;
+export type TTogglePauseAction = () => void;
+export type TNextRoundAction = () => void;
+export type TRestartGameAction = () => void;
+
+export type TAppRegistry = {
+  rerollShopAction: TRerollShopAction;
+  buyUnitAction: TBuyUnitAction;
+  sellUnitAction: TSellUnitAction;
+  selectUnitAction: TSelectUnitAction;
+  hoverUnitAction: THoverUnitAction;
+  beginDragAction: TBeginDragAction;
+  dragToAction: TDragToAction;
+  endDragAction: TEndDragAction;
+  autoArrangeAction: TAutoArrangeAction;
+  startBattleAction: TStartBattleAction;
+  advanceBattleAction: TAdvanceBattleAction;
+  setSpeedAction: TSetSpeedAction;
+  togglePauseAction: TTogglePauseAction;
+  nextRoundAction: TNextRoundAction;
+  restartGameAction: TRestartGameAction;
+};
