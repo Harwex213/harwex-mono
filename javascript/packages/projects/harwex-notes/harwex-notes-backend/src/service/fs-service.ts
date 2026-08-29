@@ -6,12 +6,12 @@ import { readFileKind } from "../data-access/fs-data-access.js";
 import type { FsDataAccess } from "../data-access/fs-data-access.types.js";
 import type { TContext } from "../trpc.js";
 import type {
-  TFetchTree,
-  TFetchDocument,
   TCreateNode,
-  TRenameNode,
-  TMoveNode,
   TDeleteNode,
+  TFetchDocument,
+  TFetchTree,
+  TMoveNode,
+  TRenameNode,
   TUpdateDocument,
 } from "./fs-service.types.js";
 
@@ -24,7 +24,7 @@ const SUPPORTED_EXTENSIONS: ReadonlySet<string> = new Set([
   ".htm",
 ]);
 
-const MAX_DOCUMENT_MEGABYTES = 32;
+const MAX_DOCUMENT_MEGABYTES = 128;
 const MAX_DOCUMENT_BYTES = MAX_DOCUMENT_MEGABYTES * 1024 * 1024;
 
 const badRequest = (message: string) => new TRPCError({ code: "BAD_REQUEST", message });
