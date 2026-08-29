@@ -18,6 +18,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@hw/ostrov-utils": "workspace:*",
     "@preact/signals-react": "3.9.0",
     "react": "19.2.0",
     "react-dom": "19.2.0"

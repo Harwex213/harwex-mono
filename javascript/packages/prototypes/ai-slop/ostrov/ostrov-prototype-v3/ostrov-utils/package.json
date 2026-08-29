@@ -1,0 +1,17 @@
+{
+  "name": "@hw/ostrov-utils",
+  "description": "Dependency-free helpers shared by the Остров prototypes: a seeded random generator and seed handling",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "exports": {
+    ".": "./exports.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@hw/typescript-config": "workspace:*",
+    "typescript": "5.9.3"
+  }
+}

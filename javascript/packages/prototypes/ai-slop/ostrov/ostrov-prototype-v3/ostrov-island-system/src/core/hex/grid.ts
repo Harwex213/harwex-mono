@@ -1,4 +1,4 @@
-import type { TAxial } from "./coords";
+import type { TAxial } from "@hw/ostrov-utils";
 
 /**
  * Board size the generator falls back to. A board of radius `n` is a hexagon

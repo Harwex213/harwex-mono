@@ -1,12 +1,12 @@
 import { createGrid, gridCentre } from "../hex/grid";
-import { hexDistance, hexKey, neighboursOf } from "../hex/coords";
+import { hexDistance, hexKey, neighboursOf } from "@hw/ostrov-utils";
 import { TERRAIN_LIST } from "./terrain";
-import { createRng, hashSeed } from "./rng";
+import { createRng, hashSeed } from "@hw/ostrov-utils";
 import { resolveIslandConfig } from "./config";
-import type { TAxial } from "../hex/coords";
+import type { TAxial } from "@hw/ostrov-utils";
 import type { TIslandOptions, TTerrainWeights } from "./config";
 import { Island } from "./island";
-import type { TRng } from "./rng";
+import type { TRng } from "@hw/ostrov-utils";
 import type { TTerrain } from "./terrain";
 
 /**
