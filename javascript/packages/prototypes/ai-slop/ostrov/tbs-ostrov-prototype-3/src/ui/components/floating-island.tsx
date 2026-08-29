@@ -25,6 +25,8 @@ type TFloatingIslandProps = {
   /** Overrides the anchor. Used for the ghost preview of a move. */
   anchor?: TAxial;
   selected?: boolean;
+  /** The island is being flown: the whole outline lights up. */
+  moving?: boolean;
   ghost?: boolean;
   /** Bob phase, so islands do not all rise and fall together. */
   phase?: number;
@@ -41,7 +43,7 @@ const translateOf = (tile: TAxial) => {
  * One island drawn at its anchor. The outer group carries a CSS transform so
  * a move glides instead of jumping; the inner group bobs on the spot.
  */
-const FloatingIsland: FC<TFloatingIslandProps> = ({ worldIsland, anchor, selected, ghost, phase = 0, onClick }) => {
+const FloatingIsland: FC<TFloatingIslandProps> = ({ worldIsland, anchor, selected, moving, ghost, phase = 0, onClick }) => {
   const { island, owner } = worldIsland;
   const position = hexToPoint(anchor ?? worldIsland.anchor);
   const land = island.tiles.filter((tile: TTile) => tile.land);
@@ -108,9 +110,9 @@ const FloatingIsland: FC<TFloatingIslandProps> = ({ worldIsland, anchor, selecte
 
         <path d={outline} fill="none" stroke="rgba(20, 40, 52, 0.55)" strokeWidth={1.8} strokeLinecap="round" />
 
-        {selected ? (
+        {selected || moving ? (
           <path
-            className="island__ring"
+            className={`island__ring${moving ? " island__ring--moving" : ""}`}
             d={outline}
             fill="none"
             stroke={ringColor}

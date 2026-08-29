@@ -1,0 +1,663 @@
+:root {
+  --bg: #0d1b24;
+  --panel: #14232e;
+  --panel-edge: #243b4a;
+  --text: #e8f1f5;
+  --text-dim: #8ea6b4;
+  --accent: #ffd479;
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: "Inter", "Segoe UI", system-ui, sans-serif;
+  font-size: 14px;
+}
+
+.app {
+  margin: 0 auto;
+  padding: 10px 12px;
+  max-width: 1800px;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.app__header {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.app__title {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.app__subtitle {
+  margin: 0;
+  color: var(--text-dim);
+}
+
+.stage {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  /* The card dock sits over the bottom of the stage; the board stops above it. */
+  padding-bottom: 148px;
+}
+
+.popup {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 280px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+}
+
+.popup__close {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  padding: 0 6px;
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.popup__close:hover {
+  color: var(--text);
+}
+
+.board {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  /* The board fills the space left under the header. The SVG keeps its aspect
+     ratio and is letterboxed. The background matches the deep ocean, so the
+     bars the letterboxing leaves read as more open water. */
+  display: block;
+  border-radius: 14px;
+  border: 1px solid var(--panel-edge);
+  background: #0a2c3f;
+}
+
+.board__decor {
+  pointer-events: none;
+}
+
+.board__selection {
+  pointer-events: none;
+}
+
+.board__hit {
+  fill: transparent;
+  cursor: pointer;
+  transition: fill 120ms ease;
+}
+
+.board__hit:hover {
+  fill: rgba(255, 255, 255, 0.14);
+}
+
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 8px 14px;
+  flex-wrap: wrap;
+  padding: 6px 10px;
+  border-radius: 12px;
+  border: 1px solid var(--panel-edge);
+  background: var(--panel);
+}
+
+.controls__label {
+  color: var(--text-dim);
+}
+
+.controls__input {
+  padding: 7px 10px;
+  min-width: 180px;
+  border-radius: 8px;
+  border: 1px solid var(--panel-edge);
+  background: #0f1c25;
+  color: var(--text);
+  font: inherit;
+  letter-spacing: 0.06em;
+}
+
+.controls__input:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.controls__button {
+  padding: 7px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--panel-edge);
+  background: #1b2f3c;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.controls__button:hover {
+  border-color: var(--accent);
+}
+
+.controls__button--primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #24190a;
+  font-weight: 600;
+}
+
+.panel {
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--panel-edge);
+  background: var(--panel);
+}
+
+.panel__title {
+  margin: 0 0 6px;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.panel__hint {
+  margin: 0 0 14px;
+  color: var(--text-dim);
+  line-height: 1.5;
+}
+
+.slider {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-bottom: 12px;
+}
+
+.slider__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.slider__swatch {
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  border: 1px solid rgba(0, 0, 0, 0.35);
+  flex: none;
+}
+
+.slider__label {
+  flex: 1;
+}
+
+.slider__readout {
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.slider__input {
+  width: 100%;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+@media (max-width: 1120px) {
+  html,
+  body {
+    overflow: auto;
+  }
+
+  .app {
+    height: auto;
+  }
+
+
+  .board {
+    height: auto;
+  }
+}
+
+.panel__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.panel__reset {
+  padding: 3px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--panel-edge);
+  background: transparent;
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.panel__reset:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+.config-dump {
+  margin: 0;
+  padding: 10px;
+  border-radius: 8px;
+  background: #0f1c25;
+  color: var(--text-dim);
+  font-size: 11px;
+  line-height: 1.4;
+  overflow-x: auto;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.topbar__stock {
+  padding: 6px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--panel-edge);
+  background: var(--panel);
+  font-size: 16px;
+}
+
+.topbar .controls {
+  flex: 1;
+  justify-content: flex-end;
+}
+
+.chips {
+  display: inline-flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.chips--empty {
+  color: var(--text-dim);
+}
+
+.chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.chip__icon {
+  font-size: 0.95em;
+}
+
+.chip__delta {
+  font-size: 0.8em;
+  font-weight: 500;
+}
+
+.chip__delta--up {
+  color: #8fd15a;
+}
+
+.chip__delta--down {
+  color: #ff7b6b;
+}
+
+.chip__delta--flat {
+  color: var(--text-dim);
+}
+
+
+
+.panel__tag {
+  margin-left: 8px;
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: #1b2f3c;
+  color: var(--text-dim);
+  font-size: 11px;
+  font-weight: 500;
+  vertical-align: middle;
+}
+
+.swatch {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  margin-right: 8px;
+  border-radius: 3px;
+  border: 1px solid rgba(0, 0, 0, 0.35);
+  vertical-align: middle;
+}
+
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 7px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--panel-edge);
+  background: #0f1c25;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 120ms ease, background 120ms ease;
+}
+
+.card:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.card--picked {
+  border-color: var(--accent);
+  background: #1e2d1a;
+  box-shadow: 0 0 0 2px rgba(255, 212, 121, 0.35);
+}
+
+.card--poor .card__label {
+  color: var(--text-dim);
+}
+
+.card--locked {
+  cursor: not-allowed;
+  color: var(--text-dim);
+}
+
+.card--locked .card__label,
+.card--locked .chip {
+  color: var(--text-dim) !important;
+}
+
+.card--locked .card__icon {
+  filter: grayscale(1);
+  opacity: 0.6;
+}
+
+.card__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.card__icon {
+  font-size: 18px;
+}
+
+.card__label {
+  flex: 1;
+  font-weight: 600;
+}
+
+.card__turns {
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+.card__terrains {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.card__terrain {
+  width: 12px;
+  height: 8px;
+  border-radius: 2px;
+}
+
+.card__flag {
+  margin-left: 4px;
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+.card__row,
+.building__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+}
+
+.card__row-label,
+.building__row-label {
+  width: 72px;
+  flex: none;
+  color: var(--text-dim);
+}
+
+.card__upkeep {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  color: var(--text-dim);
+}
+
+.card__locked {
+  color: #ff9c8f;
+  font-size: 12px;
+}
+
+.building {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.building__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.building__icon {
+  font-size: 22px;
+}
+
+.building__label {
+  flex: 1;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.building__level {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.building__actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.controls__button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.board--placing .board__hit {
+  cursor: crosshair;
+}
+
+.board__hint {
+  pointer-events: none;
+}
+
+
+
+
+
+
+/* Tooltips: any element with `data-tip` grows a bubble above it on hover. */
+[data-tip] {
+  position: relative;
+}
+
+[data-tip]:hover::after {
+  content: attr(data-tip);
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 6px);
+  transform: translateX(-50%);
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--panel-edge);
+  background: #0a141b;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.3;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 10;
+}
+
+.topbar__stock {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.topbar__divider {
+  width: 1px;
+  height: 18px;
+  background: var(--panel-edge);
+}
+
+.dock {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 2px;
+}
+
+.dock .card {
+  width: 176px;
+  flex: none;
+}
+
+/* On the first turn the one card that matters pulses so the player finds it. */
+.dock--first .card:not(:disabled) {
+  animation: card-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes card-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(255, 212, 121, 0.6);
+  }
+
+  50% {
+    box-shadow: 0 0 0 6px rgba(255, 212, 121, 0);
+  }
+}
+
+.card__row--gain {
+  gap: 8px;
+}
+
+.curtain {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  top: 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding-bottom: 130px;
+  background: rgba(6, 16, 24, 0.45);
+  animation: curtain-in 200ms ease-out;
+  z-index: 5;
+}
+
+.curtain__line {
+  padding: 12px 28px;
+  border-radius: 12px;
+  border: 1px solid var(--panel-edge);
+  background: var(--panel);
+  color: var(--accent);
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  animation: line-in 220ms ease-out;
+}
+
+@keyframes curtain-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes line-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.dock .card {
+  gap: 3px;
+  font-size: 12px;
+}
+
+.dock .card .chips {
+  flex-wrap: nowrap;
+  gap: 8px;
+}
+
+.dock .card__row {
+  gap: 8px;
+  font-size: 12px;
+  white-space: nowrap;
+}

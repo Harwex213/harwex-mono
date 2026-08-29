@@ -5,6 +5,7 @@ import {
   moveToTargetAction,
   newWorldAction,
   selectIslandAction,
+  setMoveRangeAction,
   toggleMoveModeAction,
 } from "./game-actions";
 import type { TStore } from "../store/store";
@@ -21,6 +22,7 @@ const createRegistry = (store: TStore) => {
     moveToTargetAction,
     newWorldAction,
     selectIslandAction,
+    setMoveRangeAction,
     toggleMoveModeAction,
   };
 

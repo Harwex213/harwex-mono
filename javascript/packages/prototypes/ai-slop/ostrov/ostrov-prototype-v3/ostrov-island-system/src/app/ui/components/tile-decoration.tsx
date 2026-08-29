@@ -1,6 +1,6 @@
 import { HEX_SIZE } from "../../../core/hex/layout";
-import { createRng, mixSeed } from "../../../core/island/rng";
-import type { TRng } from "../../../core/island/rng";
+import { createRng, mixSeed } from "@hw/ostrov-utils";
+import type { TRng } from "@hw/ostrov-utils";
 import type { TTerrain } from "../../../core/island/terrain";
 import { COLORS } from "../palette";
 import type { FC } from "react";
