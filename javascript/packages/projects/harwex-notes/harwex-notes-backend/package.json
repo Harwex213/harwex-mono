@@ -15,6 +15,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@hw/harwex-notes-lock": "workspace:*",
     "@hw/harwex-notes-protocol": "workspace:*",
     "@trpc/server": "11.18.0",
     "zod": "4.4.3"
