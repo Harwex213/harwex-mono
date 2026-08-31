@@ -1,0 +1,26 @@
+{
+  "name": "@hw/harwex-notes-lock",
+  "description": "Межпроцессная блокировка файлов (flock) через N-API",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "build": "cmake-js compile",
+    "rebuild": "cmake-js rebuild",
+    "clean": "cmake-js clean",
+    "test": "node --import tsx --test \"src/**/*.test.ts\"",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "node-addon-api": "8.5.0"
+  },
+  "devDependencies": {
+    "@types/node": "24.1.0",
+    "cmake-js": "7.3.1",
+    "tsx": "4.19.4",
+    "typescript": "5.9.3"
+  }
+}
