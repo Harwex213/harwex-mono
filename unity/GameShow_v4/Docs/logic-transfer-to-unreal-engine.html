@@ -1,0 +1,1032 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GameShow V4 Logic Transfer Spec</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #f7f6f2;
+    --panel: #ffffff;
+    --ink: #1d1d1b;
+    --muted: #5d5b55;
+    --line: #dedbd3;
+    --accent: #9a6b00;
+    --accent-soft: #f3e7c6;
+    --code-bg: #f0ede4;
+    --warn-bg: #fff3d6;
+    --warn-line: #d9a400;
+    --note-bg: #e8f0f7;
+    --note-line: #3d78b3;
+    --gap-bg: #fbe4e4;
+    --gap-line: #c4403c;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #161613;
+      --panel: #1f1f1b;
+      --ink: #ece9e0;
+      --muted: #a39f93;
+      --line: #35342e;
+      --accent: #e0b64a;
+      --accent-soft: #3a3010;
+      --code-bg: #24241f;
+      --warn-bg: #3a3010;
+      --warn-line: #e0b64a;
+      --note-bg: #16283a;
+      --note-line: #6ea4dc;
+      --gap-bg: #3a1c1b;
+      --gap-line: #e06b66;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: var(--sans);
+    font-size: 15px;
+    line-height: 1.55;
+    color: var(--ink);
+    background: var(--bg);
+  }
+  .layout { display: grid; grid-template-columns: 260px minmax(0, 1fr); min-height: 100vh; }
+  nav {
+    position: sticky; top: 0; align-self: start; height: 100vh; overflow-y: auto;
+    padding: 24px 18px; border-right: 1px solid var(--line); background: var(--panel);
+    font-size: 13.5px;
+  }
+  nav h2 { margin: 0 0 12px; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+  nav ol { list-style: none; margin: 0; padding: 0; }
+  nav li { margin: 0; }
+  nav a { display: block; padding: 4px 6px; color: var(--ink); text-decoration: none; border-radius: 4px; }
+  nav a:hover { background: var(--accent-soft); }
+  nav ol ol { margin-left: 12px; border-left: 1px solid var(--line); }
+  nav ol ol a { color: var(--muted); font-size: 13px; }
+  main { padding: 36px 56px 96px; max-width: 1080px; }
+  header.hero { border-bottom: 1px solid var(--line); padding-bottom: 24px; margin-bottom: 36px; }
+  header.hero h1 { margin: 0 0 8px; font-size: 32px; line-height: 1.15; }
+  header.hero p.sub { margin: 0; color: var(--muted); font-size: 16px; }
+  .meta { display: flex; flex-wrap: wrap; gap: 8px 24px; margin-top: 16px; font-size: 13px; color: var(--muted); }
+  .meta b { color: var(--ink); font-weight: 600; }
+  section { margin-bottom: 56px; }
+  h2 { font-size: 24px; margin: 0 0 16px; padding-top: 8px; }
+  h2 .num { color: var(--accent); margin-right: 10px; font-variant-numeric: tabular-nums; }
+  h3 { font-size: 18px; margin: 32px 0 10px; }
+  h4 { font-size: 15px; margin: 24px 0 8px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+  p { margin: 0 0 12px; }
+  ul, ol { margin: 0 0 14px; padding-left: 24px; }
+  li { margin-bottom: 4px; }
+  code { font-family: var(--mono); font-size: 13px; background: var(--code-bg); padding: 1px 5px; border-radius: 4px; }
+  pre {
+    font-family: var(--mono); font-size: 12.5px; line-height: 1.5; background: var(--code-bg);
+    border: 1px solid var(--line); border-radius: 6px; padding: 14px 16px; overflow-x: auto; margin: 0 0 16px;
+  }
+  pre code { background: none; padding: 0; font-size: inherit; }
+  table { border-collapse: collapse; width: 100%; margin: 0 0 18px; font-size: 13.5px; }
+  .tablewrap { overflow-x: auto; margin-bottom: 18px; }
+  .tablewrap table { margin-bottom: 0; }
+  th, td { text-align: left; vertical-align: top; padding: 7px 10px; border-bottom: 1px solid var(--line); }
+  th { font-weight: 600; background: var(--panel); position: sticky; top: 0; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  td code { white-space: nowrap; }
+  .callout { border-left: 4px solid; padding: 10px 14px; margin: 0 0 16px; border-radius: 0 6px 6px 0; }
+  .callout p:last-child { margin-bottom: 0; }
+  .callout.note { background: var(--note-bg); border-color: var(--note-line); }
+  .callout.warn { background: var(--warn-bg); border-color: var(--warn-line); }
+  .callout.gap { background: var(--gap-bg); border-color: var(--gap-line); }
+  .callout .label { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; font-weight: 700; display: block; margin-bottom: 4px; }
+  .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; margin-bottom: 16px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; }
+  .card h4 { margin-top: 0; }
+  figure { margin: 0 0 20px; }
+  figure svg { width: 100%; height: auto; display: block; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; }
+  figcaption { font-size: 13px; color: var(--muted); margin-top: 6px; }
+  .wheel-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; font-size: 12.5px; font-family: var(--mono); margin-bottom: 16px; }
+  .wheel-grid div { background: var(--panel); border: 1px solid var(--line); border-radius: 4px; padding: 4px 6px; }
+  .wheel-grid div.bonus { background: var(--accent-soft); }
+  .wheel-grid span { color: var(--muted); }
+  .kv { display: grid; grid-template-columns: max-content 1fr; gap: 4px 16px; font-size: 13.5px; margin-bottom: 14px; }
+  .kv dt { color: var(--muted); }
+  .kv dd { margin: 0; }
+  .svg-box { fill: var(--panel); stroke: var(--ink); stroke-width: 1.2; }
+  .svg-box.gated { fill: var(--accent-soft); stroke: var(--accent); }
+  .svg-box.cancel { fill: var(--gap-bg); stroke: var(--gap-line); }
+  .svg-text { font-family: var(--mono); font-size: 12px; fill: var(--ink); }
+  .svg-small { font-family: var(--sans); font-size: 10.5px; fill: var(--muted); }
+  .svg-line { stroke: var(--ink); stroke-width: 1.2; fill: none; }
+  .svg-line.dashed { stroke-dasharray: 4 3; stroke: var(--muted); }
+  @media (max-width: 900px) {
+    .layout { grid-template-columns: 1fr; }
+    nav { position: static; height: auto; border-right: 0; border-bottom: 1px solid var(--line); }
+    main { padding: 24px 20px 64px; }
+    .wheel-grid { grid-template-columns: repeat(3, 1fr); }
+  }
+</style>
+</head>
+<body>
+<div class="layout">
+<nav>
+  <h2>Contents</h2>
+  <ol>
+    <li><a href="#overview">0. Overview and scope</a></li>
+    <li><a href="#ws">1. WebSocket connection</a>
+      <ol>
+        <li><a href="#ws-protocol">Protocol</a></li>
+        <li><a href="#ws-lifecycle">Socket lifecycle</a></li>
+        <li><a href="#ws-ue">Unreal mapping</a></li>
+      </ol></li>
+    <li><a href="#fsm">2. Stage FSM</a>
+      <ol>
+        <li><a href="#fsm-grammar">Stage grammar</a></li>
+        <li><a href="#fsm-render">What each phase renders</a></li>
+        <li><a href="#fsm-round">A full round</a></li>
+        <li><a href="#fsm-interrupt">Interrupts and cancel</a></li>
+      </ol></li>
+    <li><a href="#camera">3. Camera transitions</a>
+      <ol>
+        <li><a href="#camera-shot">Shot model</a></li>
+        <li><a href="#camera-table">Shot table</a></li>
+        <li><a href="#camera-swing">Jib swing</a></li>
+        <li><a href="#camera-gate">Camera gating</a></li>
+      </ol></li>
+    <li><a href="#wheel">4. MainWheel game</a></li>
+    <li><a href="#slot">5. BonusLuck and BonusDeluxe</a>
+      <ol>
+        <li><a href="#slot-config">Two configs, one cabinet</a></li>
+        <li><a href="#slot-strips">Reel strips</a></li>
+        <li><a href="#slot-paytable">Paytable</a></li>
+        <li><a href="#slot-result">Landing the studio result</a></li>
+        <li><a href="#slot-fsm">Spin state machine</a></li>
+        <li><a href="#slot-reel">Reel motion</a></li>
+        <li><a href="#slot-show">Show integration</a></li>
+      </ol></li>
+    <li><a href="#dice">6. BonusDice game</a>
+      <ol>
+        <li><a href="#dice-cabinet">Cabinet and colliders</a></li>
+        <li><a href="#dice-release">Release</a></li>
+        <li><a href="#dice-settle">Settling and nudges</a></li>
+        <li><a href="#dice-read">Reading the faces</a></li>
+        <li><a href="#dice-show">Show integration</a></li>
+      </ol></li>
+    <li><a href="#timeline">7. Timeline of one round</a></li>
+    <li><a href="#logging">8. Logging</a></li>
+    <li><a href="#gaps">9. Known gaps</a></li>
+    <li><a href="#mapping">A. Unity to Unreal mapping</a></li>
+    <li><a href="#layout">B. Scene layout</a></li>
+  </ol>
+</nav>
+
+<main>
+<header class="hero">
+  <h1>GameShow V4: game logic transfer to Unreal Engine</h1>
+  <p class="sub">Everything the Unity graphic app does between a studio frame arriving and a done leaving. Written so the same behaviour can be rebuilt in Unreal without reading the C#.</p>
+  <div class="meta">
+    <span>Source: <b>unity/GameShow_v4</b>, scene <b>SampleScene.unity</b></span>
+    <span>Numbers: <b>scene values win over code defaults</b></span>
+    <span>Date: <b>2026-09-02</b></span>
+  </div>
+</header>
+
+<!-- ============================================================ 0 -->
+<section id="overview">
+  <h2><span class="num">0</span>Overview and scope</h2>
+  <p>The graphic app is a renderer. The studio server owns the game flow. The studio sends one stage at a time over a WebSocket. The app renders that stage. Four stages are gated: the studio waits for the app to report them done before the round moves on.</p>
+  <p>The app has five moving parts. Each one becomes one Unreal class.</p>
+  <div class="tablewrap"><table>
+    <tr><th>Unity component</th><th>File</th><th>Role</th><th>Unreal suggestion</th></tr>
+    <tr><td><code>WsConnection</code></td><td>Scripts/WsConnection/WsConnection.cs</td><td>Holds the socket, dedupes frames, resends the last done.</td><td><code>UStudioConnection</code> (UGameInstanceSubsystem, IWebSocket)</td></tr>
+    <tr><td><code>ShowStage</code></td><td>Scripts/WsConnection/ShowStage.cs</td><td>Parses <code>GAME_PHASE</code> uris.</td><td><code>FShowStage</code> struct + two enums</td></tr>
+    <tr><td><code>ShowDirector</code></td><td>Scripts/ShowDirector.cs</td><td>Turns a stage into scene actions, reports done.</td><td><code>AShowDirector</code> actor</td></tr>
+    <tr><td><code>ShowCamera</code> + <code>CameraSwing</code></td><td>Scripts/ShowCamera.cs, CameraSwing.cs</td><td>Moves the camera between shots, drifts the wide shot.</td><td><code>AShowCamera</code> (ACameraActor subclass)</td></tr>
+    <tr><td><code>CrazyTimeWheel</code></td><td>Scripts/CrazyTimeWheel.cs</td><td>Main round prize wheel, 54 segments.</td><td><code>APrizeWheel</code></td></tr>
+    <tr><td><code>SlotMachineController</code> + config assets</td><td>Scripts/SlotMachine/*</td><td>Golden Luck cabinet for BonusLuck and BonusDeluxe.</td><td><code>ASlotMachine</code> + <code>USlotMachineConfig</code> data assets</td></tr>
+    <tr><td><code>DiceBoard</code></td><td>Scripts/DiceBoard.cs</td><td>Physics dice drop for BonusDice.</td><td><code>ADiceBoard</code></td></tr>
+  </table></div>
+  <p>Not in scope: the studio server itself, the Blender asset pipeline, the debug panel UI. The debug panel's round sequencer is described in <a href="#fsm-round">2.3</a> because it documents how the studio orders stages.</p>
+  <div class="callout note"><span class="label">Reading guide</span><p>Each section ends with an "Unreal mapping" note. Values marked <em>scene</em> are the serialized values in SampleScene.unity or in the slot config assets. They differ from the C# field defaults in a few places, and the scene value is the one on screen.</p></div>
+</section>
+
+<!-- ============================================================ 1 -->
+<section id="ws">
+  <h2><span class="num">1</span>WebSocket connection</h2>
+
+  <h3 id="ws-protocol">1.1 Protocol</h3>
+  <dl class="kv">
+    <dt>Endpoint</dt><dd><code>ws://localhost:9435/joker-show/ws</code> (scene). Make it a config value.</dd>
+    <dt>Direction</dt><dd>Studio sends state frames. App sends done responses. Nothing else travels.</dd>
+    <dt>Encoding</dt><dd>UTF-8 JSON text frames. One JSON object per WebSocket message.</dd>
+  </dl>
+
+  <h4>Inbound frame (studio to app)</h4>
+<pre><code>{
+  "uri": "MAIN_SPINNING",          // required. GAME_PHASE, see section 2.1
+  "correlationId": "4f1c-…",        // required. Echoed back in the done
+  "payload": {                       // optional. Absent on most stages
+    "result": "BONUS DICE",          // optional. Outcome the round must land on
+    "bonusSpin": 1                   // optional. Spin number inside a bonus round, from 1
+  }
+}</code></pre>
+  <p>A frame with no <code>uri</code> or no <code>correlationId</code> is a parse error. The app logs it and drops it. <code>payload.bonusSpin</code> is parsed and logged but nothing reads it.</p>
+
+  <h4>Outbound done (app to studio)</h4>
+<pre><code>{ "uri": "MAIN_SPINNING", "correlationId": "4f1c-…" }</code></pre>
+  <p>Both fields are copied from the frame that opened the stage. A done is only sent for gated stages. The studio ignores a done for a stage it has already left, so a duplicate is harmless.</p>
+
+  <h3 id="ws-lifecycle">1.2 Socket lifecycle</h3>
+  <ol>
+    <li><b>Dial loop.</b> On start, connect. When the socket closes or fails, wait <b>3 s</b> and connect again. Loop until the app quits.</li>
+    <li><b>Resend on reconnect.</b> Right after a connection opens, send the last done again if one exists. A done can be lost when the socket drops mid-send.</li>
+    <li><b>Read.</b> Read frames until the socket closes. Reassemble fragmented messages before parsing.</li>
+    <li><b>Marshal to the game thread.</b> Every parsed frame is delivered to subscribers on the main thread. Subscribers move scene objects.</li>
+    <li><b>Dedupe.</b> Keep the last delivered frame. If the next frame has the same <code>uri</code> and the same <code>correlationId</code>, drop it and log "repeat". Compare both fields, not just the uri: the studio can legitimately send the same uri twice in a row for two different rounds.</li>
+    <li><b>Send lock.</b> One send at a time. Two dones must never interleave on the wire.</li>
+    <li><b>Send while closed.</b> If a done is requested while the socket is closed, store it as the last done and log a warning. The reconnect resend delivers it.</li>
+    <li><b>Offline flag.</b> A debug switch that never dials and keeps every done inside the app. The debug driver injects frames through the same dedupe and dispatch path. Keep this path in Unreal so the FSM can be tested without a studio.</li>
+    <li><b>Shutdown.</b> Abort the socket first so a pending read gives up, then dispose.</li>
+  </ol>
+
+  <h4>Events the connection exposes</h4>
+  <div class="tablewrap"><table>
+    <tr><th>Event</th><th>Thread</th><th>Payload</th><th>Who listens</th></tr>
+    <tr><td><code>StageReceived</code></td><td>game thread</td><td>the parsed frame</td><td>ShowDirector, debug panel</td></tr>
+    <tr><td><code>DoneSent</code></td><td>game thread</td><td>the done response, online or offline</td><td>debug round sequencer</td></tr>
+  </table></div>
+
+  <h3 id="ws-ue">1.3 Unreal mapping</h3>
+  <ul>
+    <li>Module <code>WebSockets</code>. <code>FWebSocketsModule::Get().CreateWebSocket(Url, TEXT(""))</code>. Bind <code>OnConnected</code>, <code>OnConnectionError</code>, <code>OnClosed</code>, <code>OnMessage</code>. <code>OnMessage</code> already delivers whole text messages.</li>
+    <li>IWebSocket callbacks arrive on the game thread in the default implementation. Still guard with <code>AsyncTask(ENamedThreads::GameThread, …)</code> if the module is ever swapped.</li>
+    <li>Parse with <code>FJsonObjectConverter::JsonObjectStringToUStruct</code> into a <code>USTRUCT</code> that mirrors the frame. Mark <code>Result</code> and <code>BonusSpin</code> optional by giving them defaults and checking <code>HasField</code> on the payload object.</li>
+    <li>Reconnect with <code>FTimerManager::SetTimer</code> at 3 s. Keep the timer on a subsystem so it survives level travel.</li>
+    <li>Put the connection in a <code>UGameInstanceSubsystem</code>. Expose two multicast delegates for the events above.</li>
+  </ul>
+</section>
+
+<!-- ============================================================ 2 -->
+<section id="fsm">
+  <h2><span class="num">2</span>Stage FSM</h2>
+
+  <h3 id="fsm-grammar">2.1 Stage grammar</h3>
+  <p>A uri is <code>GAME_PHASE</code>. Split at the <b>last</b> underscore. The left part is the game. The right part is the phase. Game names carry underscores of their own.</p>
+  <div class="grid2">
+    <div class="card">
+      <h4>Games (round)</h4>
+      <div class="tablewrap"><table>
+        <tr><th>Uri prefix</th><th>Enum</th><th>Rig</th></tr>
+        <tr><td><code>MAIN</code></td><td>Main</td><td>hero wheel</td></tr>
+        <tr><td><code>BONUS_LUCK</code></td><td>BonusLuck</td><td>slot machine, luck config</td></tr>
+        <tr><td><code>BONUS_DICE</code></td><td>BonusDice</td><td>dice cabinet</td></tr>
+        <tr><td><code>BONUS_DELUXE</code></td><td>BonusDeluxe</td><td>slot machine, deluxe config</td></tr>
+        <tr><td><code>BONUS_SHOW</code></td><td>BonusShow</td><td>none. The wheel stands in.</td></tr>
+      </table></div>
+    </div>
+    <div class="card">
+      <h4>Phases</h4>
+      <div class="tablewrap"><table>
+        <tr><th>Uri suffix</th><th>Enum</th><th>Gated</th></tr>
+        <tr><td><code>START</code></td><td>Start</td><td>no, studio timer</td></tr>
+        <tr><td><code>WAITING</code></td><td>Waiting</td><td>no, studio timer</td></tr>
+        <tr><td><code>SPINNING</code></td><td>Spinning</td><td><b>yes</b></td></tr>
+        <tr><td><code>RESULT</code></td><td>Result</td><td><b>yes</b></td></tr>
+        <tr><td><code>SWITCH</code></td><td>Switch</td><td><b>yes</b></td></tr>
+        <tr><td><code>CANCELING</code></td><td>Canceling</td><td><b>yes</b></td></tr>
+      </table></div>
+    </div>
+  </div>
+  <p>Any name outside these lists parses as Unknown. A stage with an Unknown game or an Unknown phase is rejected: the app logs an error, renders nothing, sends no done, and keeps the stage already on screen. Parsing is exact and case sensitive.</p>
+  <p>Two helper predicates are used everywhere. <code>IsGated</code> is true for Spinning, Result, Switch and Canceling. <code>IsSlotGame</code> is true for BonusLuck and BonusDeluxe.</p>
+
+  <h3 id="fsm-render">2.2 What each phase renders</h3>
+  <p>The director keeps one render routine at a time. A new frame stops the running routine and starts a new one. The table lists every action in the order the code performs it. "Report" means send the done for this stage.</p>
+  <div class="tablewrap"><table>
+    <tr><th style="width:110px">Phase</th><th>Actions in order</th><th style="width:150px">Done sent</th></tr>
+    <tr><td><code>START</code><br><code>WAITING</code></td>
+      <td>
+        <ol>
+          <li>Wheel idle spin on (8°/s).</li>
+          <li>Dice: park (hide every die, stop any roll).</li>
+          <li>Slot: reset machine (cancel spin, drop last result, reels to rest, idle look).</li>
+          <li>Slot: apply this round's config if the game is a slot game.</li>
+          <li>Camera: <b>wide</b> shot for this game.</li>
+        </ol>
+      </td><td>never. The routine ends at once.</td></tr>
+    <tr><td><code>SPINNING</code></td>
+      <td>
+        <ol>
+          <li>Slot: apply this round's config if the game is a slot game.</li>
+          <li>Camera: <b>spin</b> shot for this game.</li>
+          <li>Play the round's spin. BonusDice with a dice board: roll dice (<a href="#dice-show">6.5</a>). Slot game with a slot machine: spin slot (<a href="#slot-show">5.7</a>). Everything else, including BonusShow: spin the wheel (<a href="#wheel">4</a>).</li>
+        </ol>
+      </td><td>when the spin has fully settled.</td></tr>
+    <tr><td><code>RESULT</code></td>
+      <td>
+        <ol>
+          <li>Slot game: relight the winning line (the machine's own win reaction has already faded).</li>
+          <li>Camera: <b>result</b> shot for this game.</li>
+          <li>Wait <b>2.0 s</b> (<code>resultHoldSeconds</code>).</li>
+        </ol>
+      </td><td>after the hold.</td></tr>
+    <tr><td><code>SWITCH</code></td>
+      <td>
+        <p>The uri names the game being switched <b>into</b>. <code>BONUS_DICE_SWITCH</code> travels to the cabinet. <code>MAIN_SWITCH</code> travels back to the wheel.</p>
+        <ol>
+          <li>Wheel idle spin on.</li>
+          <li>Dice: park.</li>
+          <li>Slot: reset machine.</li>
+          <li>Slot: apply this round's config if the game is a slot game.</li>
+          <li>Camera: <b>wide</b> shot for this game.</li>
+          <li>Wait for the camera to land (timeout 8 s), then wait out the rest of <b>1.5 s</b> (<code>switchHoldSeconds</code>) if any remains.</li>
+        </ol>
+      </td><td>after the camera lands and the hold is over.</td></tr>
+    <tr><td><code>CANCELING</code></td>
+      <td>
+        <ol>
+          <li>Wheel: stop spin where it is.</li>
+          <li>Dice: stop roll where the dice lie (restore physics timestep).</li>
+          <li>Slot: cancel spin with <b>snap to result</b>: reels jump to the decided positions, effects and audio stop, highlight cleared.</li>
+          <li>Wheel idle spin <b>off</b>.</li>
+          <li>Camera: <b>wide</b> shot for this game.</li>
+          <li>Wait <b>1.0 s</b> (<code>cancelHoldSeconds</code>).</li>
+        </ol>
+      </td><td>after the hold.</td></tr>
+  </table></div>
+
+  <div class="callout note"><span class="label">Why the slot config is applied on every stage</span><p>The two slot rounds share one cabinet. Only the config tells them apart. The studio can open a round at any phase, and a frame can interrupt a render. So the config is set on START, WAITING, SPINNING and SWITCH alike. Applying a config the machine already has is a no-op.</p></div>
+
+  <h3 id="fsm-round">2.3 A full round</h3>
+  <p>The debug driver plays rounds the way the studio does. This is the canonical order. START and WAITING are held by a timer (2 s each in the debug driver). Every gated stage waits for the done.</p>
+  <figure>
+    <svg viewBox="0 0 960 330" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Round flow">
+      <!-- main round row -->
+      <text x="20" y="28" class="svg-small">MAIN round</text>
+      <rect x="20" y="40" width="120" height="40" rx="6" class="svg-box"/>
+      <text x="80" y="65" text-anchor="middle" class="svg-text">MAIN_START</text>
+      <rect x="170" y="40" width="130" height="40" rx="6" class="svg-box"/>
+      <text x="235" y="65" text-anchor="middle" class="svg-text">MAIN_WAITING</text>
+      <rect x="330" y="40" width="140" height="40" rx="6" class="svg-box gated"/>
+      <text x="400" y="65" text-anchor="middle" class="svg-text">MAIN_SPINNING</text>
+      <rect x="500" y="40" width="130" height="40" rx="6" class="svg-box gated"/>
+      <text x="565" y="65" text-anchor="middle" class="svg-text">MAIN_RESULT</text>
+      <rect x="660" y="40" width="130" height="40" rx="6" class="svg-box gated"/>
+      <text x="725" y="65" text-anchor="middle" class="svg-text">MAIN_SWITCH</text>
+      <path d="M140 60 H170" class="svg-line" marker-end="url(#arr)"/>
+      <path d="M300 60 H330" class="svg-line" marker-end="url(#arr)"/>
+      <path d="M470 60 H500" class="svg-line" marker-end="url(#arr)"/>
+      <path d="M630 60 H660" class="svg-line dashed" marker-end="url(#arr)"/>
+      <text x="645" y="34" text-anchor="middle" class="svg-small">result is a bonus label</text>
+      <text x="400" y="96" text-anchor="middle" class="svg-small">payload.result: "1" "2" "5" "10" or a bonus label</text>
+      <!-- payout loop -->
+      <path d="M565 80 V110 H80 V80" class="svg-line dashed" marker-end="url(#arr)"/>
+      <text x="320" y="124" text-anchor="middle" class="svg-small">result is a payout: next MAIN round</text>
+      <!-- bonus round -->
+      <path d="M725 80 V160" class="svg-line" marker-end="url(#arr)"/>
+      <text x="110" y="180" class="svg-small">BONUS round (X = LUCK, DICE, DELUXE or SHOW)</text>
+      <rect x="20" y="190" width="150" height="40" rx="6" class="svg-box"/>
+      <text x="95" y="215" text-anchor="middle" class="svg-text">BONUS_X_START</text>
+      <rect x="200" y="190" width="160" height="40" rx="6" class="svg-box"/>
+      <text x="280" y="215" text-anchor="middle" class="svg-text">BONUS_X_WAITING</text>
+      <rect x="390" y="190" width="170" height="40" rx="6" class="svg-box gated"/>
+      <text x="475" y="215" text-anchor="middle" class="svg-text">BONUS_X_SPINNING</text>
+      <rect x="590" y="190" width="150" height="40" rx="6" class="svg-box gated"/>
+      <text x="665" y="215" text-anchor="middle" class="svg-text">BONUS_X_RESULT</text>
+      <rect x="770" y="190" width="170" height="40" rx="6" class="svg-box gated"/>
+      <text x="855" y="215" text-anchor="middle" class="svg-text">BONUS_X_SWITCH</text>
+      <path d="M725 160 H95 V190" class="svg-line" marker-end="url(#arr)"/>
+      <path d="M170 210 H200" class="svg-line" marker-end="url(#arr)"/>
+      <path d="M360 210 H390" class="svg-line" marker-end="url(#arr)"/>
+      <path d="M560 210 H590" class="svg-line" marker-end="url(#arr)"/>
+      <path d="M740 210 H770" class="svg-line" marker-end="url(#arr)"/>
+      <text x="475" y="246" text-anchor="middle" class="svg-small">slot: combination id · dice: ignored · show: wheel label</text>
+      <!-- back to main -->
+      <path d="M855 230 V270 H80 V300" class="svg-line" marker-end="url(#arr)"/>
+      <text x="470" y="286" text-anchor="middle" class="svg-small">BONUS_X_SWITCH is the move back onto the wheel. Then the next MAIN round starts.</text>
+      <rect x="20" y="300" width="120" height="24" rx="6" class="svg-box"/>
+      <text x="80" y="317" text-anchor="middle" class="svg-small">MAIN_START</text>
+      <!-- cancel -->
+      <rect x="800" y="110" width="140" height="40" rx="6" class="svg-box cancel"/>
+      <text x="870" y="135" text-anchor="middle" class="svg-text">*_CANCELING</text>
+      <text x="870" y="164" text-anchor="middle" class="svg-small">may replace any stage</text>
+      <defs>
+        <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0 0 L10 5 L0 10 z" fill="currentColor"/>
+        </marker>
+      </defs>
+    </svg>
+    <figcaption>Gold boxes are gated: the studio waits for the app's done. White boxes are advanced by the studio's own timer. Every round has the same six-phase shape.</figcaption>
+  </figure>
+
+  <h4>Which bonus round a MAIN result opens</h4>
+  <div class="tablewrap"><table>
+    <tr><th>MAIN result string</th><th>Wheel label</th><th>Opens</th></tr>
+    <tr><td><code>"BONUS LUCK"</code> or <code>"6"</code></td><td>BONUS LUCK</td><td>BONUS_LUCK round</td></tr>
+    <tr><td><code>"BONUS DICE"</code> or <code>"7"</code></td><td>BONUS DICE</td><td>BONUS_DICE round</td></tr>
+    <tr><td><code>"BONUS DELUXE"</code> or <code>"8"</code></td><td>BONUS DELUXE</td><td>BONUS_DELUXE round</td></tr>
+    <tr><td><code>"GAME SHOW"</code> or <code>"9"</code></td><td>GAME SHOW</td><td>BONUS_SHOW round</td></tr>
+    <tr><td><code>"1" "2" "5" "10"</code> or numbers <code>0..5</code></td><td>payout segment</td><td>nothing, next MAIN round</td></tr>
+  </table></div>
+  <p>The studio decides this. The app only needs the mapping to interpret <code>payload.result</code> for the wheel (<a href="#wheel">section 4</a>).</p>
+
+  <h3 id="fsm-interrupt">2.4 Interrupts and cancel</h3>
+  <ul>
+    <li>A frame that arrives mid-render <b>replaces</b> the running render. Stop the coroutine or timer chain, then start the new one. Nothing from the old render is finished, and no done is sent for the old stage.</li>
+    <li><code>CANCELING</code> normally arrives this way. Every rig has a "stop where you are" call for it. See the table in 2.2.</li>
+    <li>A <code>RESULT</code> in a slot round with no result to show logs a warning and holds the close-up on whatever the reels rest on.</li>
+    <li>Missing rigs degrade rather than fail. No dice board: the dice round spins the wheel. No slot machine: both slot rounds spin the wheel. No camera: the camera holds still. No wheel: spins report done at once. Keep this so a partial Unreal scene still runs a round.</li>
+  </ul>
+
+  <h4>Unreal mapping</h4>
+  <ul>
+    <li>Model the render routine as a small state object on <code>AShowDirector</code> with a <code>Tick</code>. Coroutines map to either latent timers (<code>FTimerHandle</code>) or an explicit per-phase sub-state that polls <code>IsSpinning</code> / <code>IsRolling</code> / <code>State == Idle</code> every tick. Polling is the closer match to the C# and interrupts cleanly: on a new frame, clear all timers and reset the sub-state.</li>
+    <li>Store <code>CurrentStage</code>, <code>StageStartedAt</code> and the frame's <code>correlationId</code>. The done needs the correlation id of the frame that opened the stage, not the latest frame.</li>
+  </ul>
+</section>
+
+<!-- ============================================================ 3 -->
+<section id="camera">
+  <h2><span class="num">3</span>Camera transitions</h2>
+
+  <h3 id="camera-shot">3.1 Shot model</h3>
+  <p>A shot is not an authored pose. A shot is aimed at a rig and built outwards from the aim point. If the rig moves, the shot follows.</p>
+  <div class="tablewrap"><table>
+    <tr><th>Field</th><th>Meaning</th></tr>
+    <tr><td><code>aimOffset</code> (x, y, z m)</td><td>Where the camera looks, offset from the rig's aim transform, in the rig's level frame: x across, y up, z out of the rig's face.</td></tr>
+    <tr><td><code>distance</code> (m)</td><td>From the aim point to the camera.</td></tr>
+    <tr><td><code>yawDegrees</code></td><td>Around the aim point. 0 stands straight in front of the rig.</td></tr>
+    <tr><td><code>heightOffset</code> (m)</td><td>Camera above the aim point. 0 keeps the camera level with the aim.</td></tr>
+    <tr><td><code>fieldOfView</code> (vertical, degrees)</td><td>0 keeps the scene-authored FOV (40).</td></tr>
+    <tr><td><code>moveDuration</code> (s)</td><td>How long the move into the shot takes.</td></tr>
+  </table></div>
+  <p>Each rig supplies two transforms. The <b>aim</b> transform gives the position. The <b>basis</b> transform gives the facing. The wheel aims at its spinning disc but takes its facing from the still rig root, because a spinning disc has no facing.</p>
+  <h4>Pose formula</h4>
+<pre><code>level    = yaw-only rotation of basis.forward projected onto the ground plane
+           (identity if basis is null or points straight up/down)
+aim      = aimTransform.position + level * shot.aimOffset
+back     = level * (RotateAboutUp(shot.yawDegrees) * Forward)   // Forward = rig's own facing
+position = aim + back * shot.distance + Up * shot.heightOffset
+rotation = LookAt(from position, to aim, up = world Up)
+fov      = shot.fieldOfView > 0 ? shot.fieldOfView : authoredFov</code></pre>
+  <p>Note the sign: the camera sits on the rig's <b>forward</b> side and looks back at the rig. "Forward" of every rig is the side the audience sees.</p>
+
+  <h4>Move</h4>
+<pre><code>t  = SmoothStep(0, 1, clamp(elapsed / duration))     // 3t² − 2t³
+pos = Lerp(fromPos, toPos, t)
+rot = Slerp(fromRot, toRot, t)
+fov = Lerp(fromFov, toFov, t)
+// on finish: snap to exact target, mark not moving, re-enable the jib swing only for the wide return</code></pre>
+  <ul>
+    <li>A move into the shot already on screen, with no move running, is a no-op. Otherwise a new move replaces a running move and starts from the current pose.</li>
+    <li>Before every move, disable the jib swing without letting it snap the camera back: read the current pose, disable the swing, write the pose back.</li>
+    <li><code>IsMoving</code> is true while a move runs. The director gates on this (<a href="#camera-gate">3.4</a>).</li>
+  </ul>
+
+  <h3 id="camera-table">3.2 Shot table</h3>
+  <p>Three calls exist: <code>FrameWide(game)</code>, <code>FrameSpin(game)</code>, <code>FrameResult(game)</code>. The game picks the rig. BonusShow and any game whose rig is missing fall through to the wheel column.</p>
+  <div class="tablewrap"><table>
+    <tr><th>Shot</th><th>Rig / basis</th><th>aimOffset (x, y, z)</th><th class="num">distance</th><th class="num">yaw</th><th class="num">height</th><th class="num">FOV</th><th class="num">move s</th><th>Notes</th></tr>
+    <tr><td colspan="9"><b>Main round and BonusShow</b>: aim = wheel disc <code>CT_WheelSpin</code>, basis = wheel rig root (faces +Z)</td></tr>
+    <tr><td>wide</td><td>authored pose</td><td>position (0, 2.072, 4.736) m, yaw 180°, pitch 5.69° down</td><td class="num">–</td><td class="num">–</td><td class="num">–</td><td class="num">40</td><td class="num">1.6</td><td>Returns to the scene pose. Jib swing runs here and only here.</td></tr>
+    <tr><td>spin</td><td>wheel</td><td>(0, 0, 0)</td><td class="num">5.2</td><td class="num">0</td><td class="num">0.4</td><td class="num">40</td><td class="num">1.2</td><td>Whole rim in frame.</td></tr>
+    <tr><td>result</td><td>wheel</td><td>(0, 1.05, 0.2)</td><td class="num">2.5</td><td class="num">0</td><td class="num">0.25</td><td class="num">31</td><td class="num">0.9</td><td>Flapper at the top of the wheel. Yaw must stay 0 or the flapper slides off the segment.</td></tr>
+    <tr><td colspan="9"><b>BonusDice</b>: aim = basis = cabinet frame (origin at the cabinet foot, forward to the audience)</td></tr>
+    <tr><td>dice-wide</td><td>cabinet</td><td>(0.15, 1.45, 0)</td><td class="num">4.3</td><td class="num">0</td><td class="num">0.25</td><td class="num">40</td><td class="num">1.6</td><td>Whole 2.9 m cabinet. Target of BONUS_DICE_SWITCH.</td></tr>
+    <tr><td>dice-spin</td><td>cabinet</td><td>(0, 1.45, 0)</td><td class="num">4.0</td><td class="num">0</td><td class="num">0</td><td class="num">40</td><td class="num">1.0</td><td>Level with the aim so neither the release nor the floor is cropped.</td></tr>
+    <tr><td>dice-result</td><td>cabinet</td><td>(0, 0.24, 0)</td><td class="num">1.0</td><td class="num">0</td><td class="num">0.8</td><td class="num">35</td><td class="num">0.9</td><td>Looks down ~39° onto both bay floors. The top face is the face that counts.</td></tr>
+    <tr><td colspan="9"><b>BonusLuck and BonusDeluxe</b>: aim = basis = slot cabinet root (on the floor, forward out of its face). <em>Scene values; the C# defaults differ.</em></td></tr>
+    <tr><td>slot-wide</td><td>slot</td><td>(0, 1.5, 0.35)</td><td class="num">4.6</td><td class="num">0</td><td class="num">0.5</td><td class="num">40</td><td class="num">1.6</td><td>Whole 2.88 m cabinet. Target of BONUS_LUCK_SWITCH and BONUS_DELUXE_SWITCH.</td></tr>
+    <tr><td>slot-spin</td><td>slot</td><td>(0, 1.75, 0.35)</td><td class="num">2.4</td><td class="num">0</td><td class="num">0.15</td><td class="num">38</td><td class="num">1.1</td><td>Reel bay plus the logo above it.</td></tr>
+    <tr><td>slot-result</td><td>slot</td><td>(0, 1.64, 0.35)</td><td class="num">1.6</td><td class="num">0</td><td class="num">0</td><td class="num">32</td><td class="num">0.9</td><td>Win line, 1.64 m up. Three reels span 1.37 m, so no closer.</td></tr>
+  </table></div>
+  <p>Slot offsets assume a cabinet 2.88 m tall with its reel window 0.35 m in front of the origin, centred 1.73 m up and 0.75 m tall. Re-measure if the Unreal cabinet is a different size.</p>
+
+  <h4>Phase to shot</h4>
+  <div class="tablewrap"><table>
+    <tr><th>Phase</th><th>Call</th><th>Main / Show</th><th>BonusDice</th><th>BonusLuck / Deluxe</th></tr>
+    <tr><td>START, WAITING, SWITCH, CANCELING</td><td>FrameWide</td><td>wide (authored + swing)</td><td>dice-wide</td><td>slot-wide</td></tr>
+    <tr><td>SPINNING</td><td>FrameSpin</td><td>spin</td><td>dice-spin</td><td>slot-spin</td></tr>
+    <tr><td>RESULT</td><td>FrameResult</td><td>result</td><td>dice-result</td><td>slot-result</td></tr>
+  </table></div>
+
+  <h3 id="camera-swing">3.3 Jib swing (wide shot only)</h3>
+  <p>The swing drifts the camera around a pivot the way a studio jib drifts on air. It is enabled only when the wide return finishes, and disabled before any other move.</p>
+  <dl class="kv">
+    <dt>Pivot</dt><dd>No pivot transform is set. The pivot is <code>basePosition + baseRotation * Forward * 6 m</code>.</dd>
+    <dt>Base pose</dt><dd>Captured when enabled. Restored when disabled. The wide return lands exactly on the authored pose first, so the base pose is always the authored pose.</dd>
+    <dt>Amplitudes</dt><dd>yaw ±2.2° period 12 s · pitch ±0.9° period 8.3 s · roll ±0.4° period 15 s. Intensity 1.</dd>
+    <dt>Ease-in</dt><dd>SmoothStep over the first 2 s from enable, scaling all three amplitudes.</dd>
+    <dt>Phase offsets</dt><dd>yaw 0, pitch +0.31, roll +0.67 cycles.</dd>
+    <dt>Aim</dt><dd><code>aimAtPivot</code> on: the camera looks at the pivot, so the swing reads as parallax.</dd>
+  </dl>
+<pre><code>Wave(period, phase) = ( sin(2π(t/period + phase)) + 0.28 · sin(2π(t/(0.41·period) + 1.7·phase)) ) / 1.28
+
+yaw   = 2.2 · scale · Wave(12,  0)
+pitch = 0.9 · scale · Wave(8.3, 0.31)
+roll  = 0.4 · scale · Wave(15,  0.67)
+right = baseRotation * Right
+arc   = AngleAxis(yaw, Up) * AngleAxis(pitch, right)
+fromPivot = arc * (basePosition − pivot)
+position  = pivot + fromPivot
+rotation  = LookAt(−fromPivot, Up) * AngleAxis(roll, Forward)     // applied in LateUpdate / after all other movement</code></pre>
+
+  <h3 id="camera-gate">3.4 Camera gating</h3>
+  <p>Three places wait for the camera. Each uses the same helper: wait while <code>IsMoving</code>, give up after <b>8 s</b> (<code>cameraMoveTimeout</code>), then wait out whatever remains of a minimum hold.</p>
+  <div class="tablewrap"><table>
+    <tr><th>Where</th><th>Minimum hold</th><th>Purpose</th></tr>
+    <tr><td>SWITCH</td><td>1.5 s</td><td>The switch is not reported done until the camera has landed on the new game.</td></tr>
+    <tr><td>BonusDice SPINNING, before release</td><td>0.9 s</td><td>The drop happens on screen.</td></tr>
+    <tr><td>Slot SPINNING, before reels start</td><td>0.7 s</td><td>The reel start happens on screen.</td></tr>
+  </table></div>
+  <p>Keep the timeout above the longest move (1.6 s). It is a safety net, not a design value.</p>
+
+  <h4>Unreal mapping</h4>
+  <ul>
+    <li>Subclass <code>ACameraActor</code> or drive a <code>UCameraComponent</code> on a pawn. Do not use <code>SetViewTargetWithBlend</code>: it cannot blend FOV to a computed pose and cannot be interrupted mid-blend with the same semantics. Tick the interpolation yourself.</li>
+    <li><code>FMath::SmoothStep(0.f, 1.f, t)</code>, <code>FMath::Lerp</code>, <code>FQuat::Slerp</code>, <code>FRotationMatrix::MakeFromX(aim − position).Rotator()</code> for LookAt with world up.</li>
+    <li>Run the swing in a component that ticks in <code>TG_PostUpdateWork</code> so it runs after the move. Only one of the two writes the transform in any frame.</li>
+    <li>Coordinates: see <a href="#mapping">Appendix A</a> for the Unity to Unreal axis swap. Yaw sign is preserved. Metres become centimetres.</li>
+  </ul>
+</section>
+
+<!-- ============================================================ 4 -->
+<section id="wheel">
+  <h2><span class="num">4</span>MainWheel game</h2>
+  <p>The Crazy Time wheel. Only the disc rotates. The stand, mast, flapper and bulbs stay still. The disc turns about its own local up axis. A rising angle reads as clockwise from the front.</p>
+
+  <h3>4.1 Segments</h3>
+  <p>54 equal segments, <b>6.667°</b> each. Segment 0 is centred under the top flapper at angle 0. Segment <code>i</code> is centred there at <code>i × 360 / 54</code> degrees. Labels by index:</p>
+  <div class="wheel-grid">
+    <div class="bonus"><span>0</span> GAME SHOW</div><div><span>1</span> 1</div><div><span>2</span> 2</div><div><span>3</span> 1</div><div><span>4</span> 5</div><div><span>5</span> 1</div>
+    <div class="bonus"><span>6</span> BONUS DELUXE</div><div><span>7</span> 2</div><div><span>8</span> 1</div><div><span>9</span> 10</div><div><span>10</span> 1</div><div><span>11</span> 2</div>
+    <div class="bonus"><span>12</span> BONUS DICE</div><div><span>13</span> 1</div><div><span>14</span> 5</div><div><span>15</span> 1</div><div><span>16</span> 2</div><div><span>17</span> 1</div>
+    <div class="bonus"><span>18</span> BONUS LUCK</div><div><span>19</span> 10</div><div><span>20</span> 1</div><div><span>21</span> 2</div><div><span>22</span> 1</div><div><span>23</span> 5</div>
+    <div class="bonus"><span>24</span> BONUS DICE</div><div><span>25</span> 1</div><div><span>26</span> 2</div><div><span>27</span> 1</div><div><span>28</span> 10</div><div><span>29</span> 1</div>
+    <div class="bonus"><span>30</span> BONUS DELUXE</div><div><span>31</span> 2</div><div><span>32</span> 1</div><div><span>33</span> 5</div><div><span>34</span> 1</div><div><span>35</span> 2</div>
+    <div class="bonus"><span>36</span> BONUS DICE</div><div><span>37</span> 1</div><div><span>38</span> 10</div><div><span>39</span> 1</div><div><span>40</span> 2</div><div><span>41</span> 1</div>
+    <div class="bonus"><span>42</span> BONUS LUCK</div><div><span>43</span> 5</div><div><span>44</span> 1</div><div><span>45</span> 2</div><div><span>46</span> 1</div><div><span>47</span> 2</div>
+    <div class="bonus"><span>48</span> BONUS DICE</div><div><span>49</span> 1</div><div><span>50</span> 2</div><div><span>51</span> 5</div><div><span>52</span> 2</div><div><span>53</span> 5</div>
+  </div>
+  <p>Counts: "1" ×21, "2" ×13, "5" ×7, "10" ×4, BONUS DICE ×4, BONUS DELUXE ×2, BONUS LUCK ×2, GAME SHOW ×1.</p>
+<pre><code>AngleForSegment(i)  = i · 360/54 + pointerOffsetDegrees          // pointerOffset = 0 in the scene
+CurrentSegment      = round((angle − pointerOffset) / (360/54)) mod 54, wrapped positive
+LabelOf(i)          = labels[i mod 54]</code></pre>
+
+  <h3>4.2 Resolving the studio result to a segment</h3>
+  <p>Run these steps in order on <code>payload.result</code>. Stop at the first that produces a segment.</p>
+  <ol>
+    <li><b>Empty result.</b> Pick a random segment. Log a warning.</li>
+    <li><b>Label match.</b> Compare the result to every label, case insensitive. Several segments share a label, so pick one of the matches at random. This is what keeps the wheel from landing on the same spot every time.</li>
+    <li><b>Numeric index.</b> If the result parses as an integer 0..9, map it through the table below to a label and repeat step 2 with that label.</li>
+    <li><b>Fallback.</b> Random segment, warning logged.</li>
+  </ol>
+  <div class="tablewrap"><table>
+    <tr><th>Result number</th><th class="num">0</th><th class="num">1</th><th class="num">2</th><th class="num">3</th><th class="num">4</th><th class="num">5</th><th class="num">6</th><th class="num">7</th><th class="num">8</th><th class="num">9</th></tr>
+    <tr><td>Label</td><td>1</td><td>2</td><td>5</td><td>10</td><td>1</td><td>2</td><td>BONUS LUCK</td><td>BONUS DICE</td><td>BONUS DELUXE</td><td>GAME SHOW</td></tr>
+  </table></div>
+
+  <h3>4.3 Spin</h3>
+  <dl class="kv">
+    <dt>Duration</dt><dd>7.0 s from release to stop.</dd>
+    <dt>Extra turns</dt><dd>4 whole turns on top of the travel to the target.</dd>
+    <dt>Direction</dt><dd>Clockwise as seen from the front. <code>direction = +1</code>.</dd>
+    <dt>Easing</dt><dd><code>1 − (1 − t)⁴</code>, sampled into a 12-key smoothed curve. Fast off the mark, long tail.</dd>
+    <dt>Settle</dt><dd>Amplitude 1.6°, duration 0.9 s, 1.75 oscillations, decay <code>(1 − t)²</code>.</dd>
+    <dt>Idle spin</dt><dd>8°/s in the spin direction while no spin runs and the idle flag is on. The director turns it on for START, WAITING and SWITCH, and off for SPINNING and CANCELING.</dd>
+  </dl>
+<pre><code>SpinTo(target):
+  start     = angle                              // continuous angle, keeps counting up across turns
+  landing   = AngleForSegment(target)
+  remainder = ((landing − start) · direction) mod 360, in [0, 360)
+  sweep     = (remainder + turns · 360) · direction
+  end       = start + sweep
+  for elapsed in 0..duration:  angle = start + sweep · easing(elapsed / duration)
+  angle = end
+  Settle: for elapsed in 0..0.9:
+      t = elapsed / 0.9
+      angle = end − sin(t · 1.75 · 2π) · 1.6 · (1 − t)² · direction
+  angle = end;  IsSpinning = false;  raise SpinCompleted(target)</code></pre>
+  <p><code>IsSpinning</code> is true from the call until the settle ends, 7.9 s in total. The director polls it and then sends the done. <code>StopSpin</code> aborts the routine and leaves the disc where it is. A new <code>SpinTo</code> while spinning replaces the running spin.</p>
+  <p>The disc's rotation is written as <code>AngleAxis(angle, localUp)</code> every frame. On start-up, read the authored angle back from the disc so nothing snaps on load.</p>
+
+  <h3>4.4 BonusShow on the wheel</h3>
+  <p>BONUS_SHOW has no rig. Its SPINNING spins the wheel with the studio's result. The debug driver keeps that result off the bonus labels so a bonus round cannot open another one. The real studio is expected to do the same.</p>
+
+  <h4>Unreal mapping</h4>
+  <ul>
+    <li>Rotate the disc component with <code>SetRelativeRotation(FQuat(LocalUpAxis, FMath::DegreesToRadians(angle)))</code>. Keep the angle as a float that grows without wrapping.</li>
+    <li>Bake the easing into a <code>UCurveFloat</code> or evaluate <code>1 − (1−t)^4</code> directly. Both are equivalent within a frame.</li>
+    <li><code>FMath::RandRange</code> for the random picks. Randomness here only chooses among segments that share the requested label.</li>
+  </ul>
+</section>
+
+<!-- ============================================================ 5 -->
+<section id="slot">
+  <h2><span class="num">5</span>BonusLuck and BonusDeluxe (Golden Luck slot)</h2>
+
+  <h3 id="slot-config">5.1 Two configs, one cabinet</h3>
+  <p>Both rounds spin the same three-reel machine. The round decides which config the machine plays. The configs share the reel strips and the combination ids. They differ in timing, effects strength and paytable payouts.</p>
+  <div class="tablewrap"><table>
+    <tr><th>Setting</th><th class="num">Luck (GoldenLuck_DefaultConfig)</th><th class="num">Deluxe (GoldenLuck_DeluxeConfig)</th></tr>
+    <tr><td>visibleCells / winLineCell</td><td class="num">4 / 2</td><td class="num">4 / 2</td></tr>
+    <tr><td>spinUpSeconds</td><td class="num">0.55</td><td class="num">0.55</td></tr>
+    <tr><td>startStaggerSeconds (per reel)</td><td class="num">0.08</td><td class="num">0.08</td></tr>
+    <tr><td>spinSeconds (cruise before the first stop)</td><td class="num">1.6</td><td class="num">2.8</td></tr>
+    <tr><td>cruiseCellsPerSecond</td><td class="num">14</td><td class="num">17</td></tr>
+    <tr><td>stopDelaySeconds (between reels)</td><td class="num">0.45</td><td class="num">0.6</td></tr>
+    <tr><td>reelStopSeconds</td><td class="num">0.95</td><td class="num">1.15</td></tr>
+    <tr><td>fullTurnsBeforeStop</td><td class="num">1</td><td class="num">2</td></tr>
+    <tr><td>bounceCells / bounceSeconds</td><td class="num">0.07 / 0.22</td><td class="num">0.07 / 0.22</td></tr>
+    <tr><td>winHoldSeconds</td><td class="num">2.4</td><td class="num">3.2</td></tr>
+    <tr><td>loseHoldSeconds / cooldownSeconds</td><td class="num">0.6 / 0.4</td><td class="num">0.6 / 0.4</td></tr>
+    <tr><td>winGlowPeak</td><td class="num">1.0</td><td class="num">1.35</td></tr>
+    <tr><td>winSweepCount / winDustBurst</td><td class="num">2 / 40</td><td class="num">3 / 70</td></tr>
+    <tr><td>winSparkleSeconds</td><td class="num">1.5</td><td class="num">2.2</td></tr>
+    <tr><td>idleDustRate (particles/s)</td><td class="num">1.5</td><td class="num">2.5</td></tr>
+    <tr><td>paytable</td><td class="num">GoldenLuck_Paytable</td><td class="num">GoldenLuck_DeluxePaytable</td></tr>
+    <tr><td>resultMode / useFixedSeed / seed</td><td class="num">Random / <b>true</b> / 20250812</td><td class="num">Random / <b>true</b> / 20250812</td></tr>
+  </table></div>
+  <p>Shared idle look: logo pulse 3.4 s at ±0.22, horseshoe idle glow 0.35 pulsing over 4.2 s, a light sweep across the reel bay every 7 s taking 1.1 s. Shared win look: gold flash 0.55 s, matched symbols punch +14%. Curves: spin-up is ease-in-out (0,0)→(1,1); stop curve is (0,0, slope 2)→(1,1, slope 0); bounce curve is (0, +1)→(0.55, −0.32)→(1, 0).</p>
+  <div class="callout warn"><span class="label">Fixed seed is on</span><p>Both configs have <code>useFixedSeed</code> on. The random generator is rebuilt from the seed on every reset and every config swap, and the director resets the machine on every START, WAITING and SWITCH. So an unforced spin always draws the same first result. This only matters when the studio sends no result or an unknown combination id. Decide in Unreal whether to keep it.</p></div>
+
+  <h3 id="slot-strips">5.2 Reel strips</h3>
+  <p>Three reels, seven positions each, identical in both configs. Positions are listed top to bottom as they scroll past. <code>kind</code> is Value (prints a number) or Symbol (draws a sprite). Weight is the relative chance in a random draw.</p>
+  <div class="grid2">
+    <div class="card"><h4>Reel 0: Left (red), total weight 20</h4>
+      <table><tr><th class="num">#</th><th>id</th><th>shows</th><th class="num">weight</th><th class="num">mult</th></tr>
+        <tr><td class="num">0</td><td>l_20</td><td>20</td><td class="num">1</td><td class="num">20</td></tr>
+        <tr><td class="num">1</td><td>l_10</td><td>10</td><td class="num">3</td><td class="num">10</td></tr>
+        <tr><td class="num">2</td><td>l_5</td><td>5</td><td class="num">5</td><td class="num">5</td></tr>
+        <tr><td class="num">3</td><td>l_star</td><td>★ Star</td><td class="num">2</td><td class="num">50</td></tr>
+        <tr><td class="num">4</td><td>l_3</td><td>3</td><td class="num">5</td><td class="num">3</td></tr>
+        <tr><td class="num">5</td><td>l_bell</td><td>🔔 Bell</td><td class="num">2</td><td class="num">30</td></tr>
+        <tr><td class="num">6</td><td>l_horseshoe</td><td>Horseshoe</td><td class="num">2</td><td class="num">40</td></tr></table></div>
+    <div class="card"><h4>Reel 1: Center (blue), total weight 23</h4>
+      <table><tr><th class="num">#</th><th>id</th><th>shows</th><th class="num">weight</th><th class="num">mult</th></tr>
+        <tr><td class="num">0</td><td>c_10</td><td>10</td><td class="num">3</td><td class="num">10</td></tr>
+        <tr><td class="num">1</td><td>c_6</td><td>6</td><td class="num">4</td><td class="num">6</td></tr>
+        <tr><td class="num">2</td><td>c_3</td><td>3</td><td class="num">5</td><td class="num">3</td></tr>
+        <tr><td class="num">3</td><td>c_bell</td><td>🔔 Bell</td><td class="num">2</td><td class="num">30</td></tr>
+        <tr><td class="num">4</td><td>c_5</td><td>5</td><td class="num">5</td><td class="num">5</td></tr>
+        <tr><td class="num">5</td><td>c_horseshoe</td><td>Horseshoe</td><td class="num">2</td><td class="num">40</td></tr>
+        <tr><td class="num">6</td><td>c_star</td><td>★ Star</td><td class="num">2</td><td class="num">50</td></tr></table></div>
+    <div class="card"><h4>Reel 2: Right (green), total weight 21</h4>
+      <table><tr><th class="num">#</th><th>id</th><th>shows</th><th class="num">weight</th><th class="num">mult</th></tr>
+        <tr><td class="num">0</td><td>r_7</td><td>7</td><td class="num">2</td><td class="num">7</td></tr>
+        <tr><td class="num">1</td><td>r_5</td><td>5</td><td class="num">5</td><td class="num">5</td></tr>
+        <tr><td class="num">2</td><td>r_3</td><td>3</td><td class="num">5</td><td class="num">3</td></tr>
+        <tr><td class="num">3</td><td>r_horseshoe</td><td>Horseshoe</td><td class="num">2</td><td class="num">40</td></tr>
+        <tr><td class="num">4</td><td>r_10</td><td>10</td><td class="num">3</td><td class="num">10</td></tr>
+        <tr><td class="num">5</td><td>r_star</td><td>★ Star</td><td class="num">2</td><td class="num">50</td></tr>
+        <tr><td class="num">6</td><td>r_bell</td><td>🔔 Bell</td><td class="num">2</td><td class="num">30</td></tr></table></div>
+  </div>
+  <p>Each item also carries a flat <code>reward</code> (mult × 10) that nothing evaluates today. The <code>multiplier</code> column is read by the value_triple line.</p>
+<pre><code>Wrap(i)            = ((i mod count) + count) mod count
+DrawWeightedIndex  = roll a float in [0, Σweights); walk the items subtracting weights; first item that drives roll ≤ 0
+                     (all weights 0 → uniform)</code></pre>
+
+  <h3 id="slot-paytable">5.3 Paytable</h3>
+  <p>Evaluation looks only at the three items on the win line. Every matching line is a candidate. The highest <code>priority</code> wins; ties keep list order. <code>Reward = round(baseReward × multiplier)</code>. A loss reports reward 0 and an empty combination id.</p>
+  <div class="tablewrap"><table>
+    <tr><th>id</th><th>Match rule</th><th class="num">priority</th><th class="num">Luck base × mult</th><th class="num">Deluxe base × mult</th></tr>
+    <tr><td><code>three_stars</code></td><td>SymbolTriple: all three show Star</td><td class="num">100</td><td class="num">100 × 50 = 5000</td><td class="num">100 × 100 = 10000</td></tr>
+    <tr><td><code>three_horseshoes</code></td><td>SymbolTriple: all three show Horseshoe</td><td class="num">95</td><td class="num">100 × 40 = 4000</td><td class="num">100 × 80 = 8000</td></tr>
+    <tr><td><code>three_bells</code></td><td>SymbolTriple: all three show Bell</td><td class="num">90</td><td class="num">100 × 30 = 3000</td><td class="num">100 × 60 = 6000</td></tr>
+    <tr><td><code>lucky_medallions</code></td><td>ExactSymbols: left Star, center Bell, right Horseshoe</td><td class="num">80</td><td class="num">100 × 25 = 2500</td><td class="num">100 × 50 = 5000</td></tr>
+    <tr><td><code>value_triple</code></td><td>ValueTriple: all three are numbers and print the same text. Multiplier = min of the three item multipliers.</td><td class="num">40</td><td class="num">100 × {3, 5, 10}</td><td class="num">200 × {3, 5, 10}</td></tr>
+  </table></div>
+  <p>Only 3, 5 and 10 appear on all three reels, so those are the only value triples reachable. Match kinds that exist in the code but are unused by these paytables: AnySymbolTriple, ExactValues. Implement them anyway; they are cheap and the data asset can use them.</p>
+
+  <h3 id="slot-result">5.4 Landing the studio result</h3>
+  <p><code>payload.result</code> for a slot round is a <b>combination id</b>, not a wheel label. The machine turns the id into reel positions:</p>
+<pre><code>TryBuildResultFor(id):
+  for a in 0..left.count−1:
+    for b in 0..center.count−1:
+      for c in 0..right.count−1:
+        match = paytable.Evaluate([left[a], center[b], right[c]])
+        if match.IsWin and match.CombinationId == id (case insensitive):
+          return (a, b, c)          // first hit wins
+  return none</code></pre>
+  <p>With the shipped strips the search is deterministic. Reproduce the same loop order so the reels land on the same pictures as the Unity build:</p>
+  <div class="tablewrap"><table>
+    <tr><th>Combination id</th><th>Landing (left, center, right)</th><th>Win line reads</th></tr>
+    <tr><td>three_stars</td><td>(3, 6, 5)</td><td>Star · Star · Star</td></tr>
+    <tr><td>three_horseshoes</td><td>(6, 5, 3)</td><td>Horseshoe · Horseshoe · Horseshoe</td></tr>
+    <tr><td>three_bells</td><td>(5, 3, 6)</td><td>Bell · Bell · Bell</td></tr>
+    <tr><td>lucky_medallions</td><td>(3, 3, 3)</td><td>Star · Bell · Horseshoe</td></tr>
+    <tr><td>value_triple</td><td>(1, 0, 4)</td><td>10 · 10 · 10, pays base × 10</td></tr>
+  </table></div>
+  <p>If the id is empty or matches nothing, the machine spins on a random weighted draw and the director logs a warning. The round does not stall.</p>
+
+  <h3 id="slot-fsm">5.5 Spin state machine</h3>
+  <div class="tablewrap"><table>
+    <tr><th>State</th><th>Entered when</th><th>Leaves after</th><th>Side effects on entry</th></tr>
+    <tr><td>Disabled</td><td>no config, or component disabled</td><td>enable with a config</td><td>–</td></tr>
+    <tr><td>Idle</td><td>reset, config applied, cooldown over</td><td><code>Spin()</code> / <code>SpinWithResult()</code></td><td>idle effects on. Only state where <code>CanSpin</code> is true.</td></tr>
+    <tr><td>Starting</td><td>spin requested</td><td><code>spinUp + stagger × 2</code> (0.71 s)</td><td>result fixed and cleared of evaluation, idle effects off, win highlight cleared, spin-start sound + spin loop, each reel <code>BeginSpin(stagger × i)</code>, raise SpinStarted</td></tr>
+    <tr><td>Spinning</td><td>all reels cruising</td><td><code>spinSeconds</code></td><td>audio pitch follows the slowest reel's stop progress</td></tr>
+    <tr><td>Stopping</td><td>cruise over</td><td>reels land in turn: for each reel <code>RequestStop(target)</code>, wait until it rests, play the stop click, raise ReelStopped(i), then wait <code>stopDelaySeconds</code> before the next</td><td>spin loop stops after the last reel</td></tr>
+    <tr><td>Evaluating</td><td>all reels at rest</td><td>immediately</td><td>paytable evaluation. Also asserts each reel's win-line item equals the result position; a mismatch is a logged bug.</td></tr>
+    <tr><td>Win</td><td>evaluated as a win</td><td><code>winHoldSeconds</code> via the ramp below</td><td>raise WinStarted, win sound, win effects</td></tr>
+    <tr><td>Lose</td><td>evaluated as a loss</td><td><code>loseHoldSeconds</code></td><td>lose sound, lose effect</td></tr>
+    <tr><td>Cooldown</td><td>reaction over</td><td><code>cooldownSeconds</code></td><td>raise SpinCompleted(result)</td></tr>
+  </table></div>
+<pre><code>RampWin (total = winHoldSeconds):
+  rise = min(0.35, hold·0.25);  fall = min(0.5, hold·0.3);  plateau = hold − rise − fall
+  ramp highlight 0→1 and horseshoe glow idle→peak over rise (SmoothStep)
+  hold at highlight 1, glow peak for plateau
+  ramp 1→0 over fall
+  clear highlight, glow back to idle (0.35)</code></pre>
+  <p>Every exit path, including cancel, goes through <code>ReturnToIdle</code>, so audio and effects can never be left running.</p>
+  <h4>Public operations the show uses</h4>
+  <div class="tablewrap"><table>
+    <tr><th>Call</th><th>Effect</th></tr>
+    <tr><td><code>ApplyConfig(config)</code></td><td>No-op if same asset. Otherwise cancel any spin (reels to rest), swap config, drop last result, rebuild RNG, rebind view/effects/audio, Idle.</td></tr>
+    <tr><td><code>SpinWithResult(result)</code></td><td>Ignored unless Idle. Wraps each index into its strip, then starts.</td></tr>
+    <tr><td><code>Spin()</code></td><td>Ignored unless Idle. Forced mode replays the config's forced indices; Random mode draws by weight.</td></tr>
+    <tr><td><code>CancelSpin(snapToResult)</code></td><td>Stop the routine, audio and effects. snap: reels jump to the decided result. no snap: reels to position 0. Clear highlight.</td></tr>
+    <tr><td><code>ResetMachine()</code></td><td>Cancel (no snap), forget the result, rebuild RNG, reset visuals, Idle.</td></tr>
+    <tr><td><code>HighlightLastResult()</code></td><td>Relight the reel highlight at full strength if the last result was a win. Glow is not restored because idle writes it every frame.</td></tr>
+  </table></div>
+
+  <h3 id="slot-reel">5.6 Reel motion</h3>
+  <p>A reel owns a float <code>position</code> in strip cells. Whole numbers are exact rest points. Position <code>P</code> puts strip item <code>Wrap(round(P) + winLineCell)</code> on the win line. The controller ticks all three reels in order every frame, so nothing drifts.</p>
+  <div class="tablewrap"><table>
+    <tr><th>Reel phase</th><th>Behaviour</th></tr>
+    <tr><td>Idle</td><td>Still.</td></tr>
+    <tr><td>WaitingToStart</td><td>Count down the stagger delay, then SpinningUp.</td></tr>
+    <tr><td>SpinningUp</td><td><code>speed = cruise × spinUpCurve(timer / spinUpSeconds)</code>. Advance. At the end snap speed to cruise, go Cruising, and begin a stop if one was already requested.</td></tr>
+    <tr><td>Cruising</td><td>Advance at cruise speed. Position is kept wrapped into [0, count).</td></tr>
+    <tr><td>Stopping</td><td><code>position = LerpUnclamped(stopFrom, stopTo, stopCurve(timer / reelStopSeconds))</code>. At the end land exactly on <code>stopTo</code>, then Bouncing (or Idle if bounce is 0).</td></tr>
+    <tr><td>Bouncing</td><td><code>position = stopTo + bounceCurve(timer / bounceSeconds) × bounceCells</code>. Then Idle at exactly <code>stopTo</code>.</td></tr>
+  </table></div>
+<pre><code>BeginStop (called when the reel is Cruising and a stop was requested):
+  slope    = max(0.2, (stopCurve(0.02) − stopCurve(0)) / 0.02)      // ≈ 2 with the shipped curve
+  natural  = cruise · reelStopSeconds / slope                       // 6.65 cells luck, 9.775 deluxe
+  minimum  = position + natural + fullTurnsBeforeStop · count       // + 7 or + 14
+  wanted   = Wrap(targetItem − winLineCell)                         // rest position that shows the item
+  stopTo   = ceil(minimum) raised to the next integer ≡ wanted (mod count)
+  stopFrom = position</code></pre>
+  <p>Why this shape: the stop curve's opening slope is matched to the cruise speed, so the stop begins with no jolt. The target is an integer, so nothing accumulates over a show. The bounce is under half a cell, so the item on the win line never changes after landing.</p>
+  <p>The view scrolls a ribbon of cells by <code>position × cellHeight</code> and swaps the item drawn in each cell as it wraps. Highlight and punch are per-reel multipliers the view applies to the win-line cell.</p>
+
+  <h3 id="slot-show">5.7 Show integration</h3>
+  <ol>
+    <li>SPINNING arrives. Apply the round's config. Frame slot-spin.</li>
+    <li>Wait for the camera, minimum <b>0.7 s</b>.</li>
+    <li>Resolve <code>payload.result</code> with <code>TryBuildResultFor</code>. Hit: <code>SpinWithResult</code>. Miss or empty: <code>Spin()</code> and a warning.</li>
+    <li>Poll until <code>State</code> is Idle or Disabled. Send the done.</li>
+    <li>RESULT: <code>HighlightLastResult</code>, frame slot-result, hold 2 s, done.</li>
+    <li>START, WAITING, SWITCH: <code>ResetMachine</code> then <code>ApplyConfig</code>. CANCELING: <code>CancelSpin(snapToResult: true)</code>.</li>
+  </ol>
+  <p>Wall time from SPINNING arriving to the done, when the camera is already close: luck win ≈ 0.7 + 0.71 + 1.6 + 3 × (0.95 + 0.22) + 2 × 0.45 + 2.4 + 0.4 ≈ <b>10.2 s</b>. Deluxe win ≈ 0.7 + 0.71 + 2.8 + 3 × (1.15 + 0.22) + 2 × 0.6 + 3.2 + 0.4 ≈ <b>13.1 s</b>. A loss is 1.8 s (luck) or 2.6 s (deluxe) shorter.</p>
+
+  <h4>Unreal mapping</h4>
+  <ul>
+    <li><code>USlotMachineConfig : UPrimaryDataAsset</code> with a <code>TArray&lt;FSlotReelStrip&gt;</code>, the timing floats, and <code>UCurveFloat*</code> for the three curves. <code>USlotPaytable : UDataAsset</code> with <code>TArray&lt;FSlotWinCombination&gt;</code>.</li>
+    <li>Keep the maths (strips, positions, paytable, stop distance) in a plain C++ class with no UObject dependencies, so it can be unit tested with the Automation framework. The Unity build has EditMode tests for the same reason.</li>
+    <li>Reel visuals: UMG widget on a <code>UWidgetComponent</code>, or a material with a scrolling UV. Either way the model hands the view a single float <code>position</code> per reel plus two 0..1 amounts (highlight, punch).</li>
+    <li>RNG: <code>FRandomStream</code> seeded from the config, reseeded on reset and config swap.</li>
+  </ul>
+</section>
+
+<!-- ============================================================ 6 -->
+<section id="dice">
+  <h2><span class="num">6</span>BonusDice game</h2>
+  <p>Both bays of the acrylic cabinet are played at once. Every die is released together at the top. Three pip dice fall down the <b>wide bay on the left</b> and their top faces are summed. Two colour dice fall down the <b>narrow bay on the right</b> and each shows red, green or blue. The roll is the sum plus the pair of colours. The faces are whatever the physics leaves on top.</p>
+  <div class="callout gap"><span class="label">Result is not forced</span><p>The studio sends <code>payload.result</code> for BONUS_DICE_SPINNING. The dice ignore it. The board logs a warning when the physics total differs from the request. Nothing in the app forces the studio's number. This is the largest open item for the Unreal build; see <a href="#gaps">section 9</a>.</p></div>
+
+  <h3 id="dice-cabinet">6.1 Cabinet and colliders</h3>
+  <p>The imported cabinet mesh has no collision. The board builds every collider itself at start-up under a child named <code>Cavity</code>, deleting and rebuilding on every call. All dimensions are the generator's numbers in metres, in the <b>board frame</b>: x across (cabinet centre at 0), z up from the plinth, y depth (negative toward the audience).</p>
+  <p>Board frame to Unity local space: <code>(x, y, z) → (−x, z, −y) × boardScale</code>, with <code>boardScale = 1.2298</code>. The Unreal build should place the same primitives in its own frame with the same metric numbers.</p>
+  <div class="tablewrap"><table>
+    <tr><th>Constant</th><th class="num">Value (m)</th><th>Meaning</th></tr>
+    <tr><td>W</td><td class="num">1.10</td><td>cabinet width, x ∈ [−0.55, 0.55]</td></tr>
+    <tr><td>TSide / TFront</td><td class="num">0.012 / 0.008</td><td>side and back sheets / front glazing thickness</td></tr>
+    <tr><td>FrontSheetY / BackSheetY</td><td class="num">−0.098 / 0.098</td><td>centre planes of the two glazed sheets</td></tr>
+    <tr><td>CavityFrontY / CavityBackY</td><td class="num">−0.094 / 0.092</td><td>inner faces; CavityDepth 0.186, CavityMidY −0.001</td></tr>
+    <tr><td>BaseTopZ</td><td class="num">0.0905</td><td>play floor (top of the base trim)</td></tr>
+    <tr><td>DeckBottomZ</td><td class="num">2.287</td><td>ceiling</td></tr>
+    <tr><td>RailTopZ, RailFrontY / RailBackY</td><td class="num">0.116, ∓0.087</td><td>bottom glazing rails, stand proud of the glass inside the cavity</td></tr>
+    <tr><td>MullionX / MullionW</td><td class="num">0.14 / 0.016</td><td>divider between the bays. Left bay x &lt; 0.132, right bay x ∈ [0.148, 0.545]</td></tr>
+    <tr><td>WallHalf</td><td class="num">0.02</td><td>half thickness of every generated wall, grown outward from the contact face</td></tr>
+    <tr><td>BarWidth</td><td class="num">0.0115</td><td>thickness of deflector outline bars</td></tr>
+  </table></div>
+
+  <h4>Collider inventory</h4>
+  <div class="tablewrap"><table>
+    <tr><th>Group</th><th>Count</th><th>Shape and placement</th></tr>
+    <tr><td>Shell</td><td>9 boxes</td><td>front wall, back wall, left, right, mullion, floor (top at BaseTopZ), deck (bottom at DeckBottomZ), front rail, back rail.</td></tr>
+    <tr><td>Right bay pegs</td><td>57 capsules</td><td>3 columns at x = RightBayX0 + 0.078, bay centre, RightBayX1 − 0.078; 19 rows at z = 0.175 + row × 0.107; radius 0.026.</td></tr>
+    <tr><td>Wide bay middle pegs</td><td>≤ 26 capsules</td><td>rows (z, count, x-offset): (1.478, 6, 0), (1.404, 6, 0.052), (1.330, 4, 0.104), (1.048, 5, 0.026), (0.988, 5, 0.078). x = −0.470 + offset + i × 0.104, skip x &gt; LeftBayX1 − 0.030. Radius 0.018.</td></tr>
+    <tr><td>Wide bay lower pegs</td><td>≤ 63 capsules</td><td>9 rows at z = 0.155 + row × 0.093, odd rows offset +0.043; 7 per row at x = −0.480 + offset + i × 0.086, skip x &gt; LeftBayX1 − 0.026. Radius 0.0135.</td></tr>
+    <tr><td>Shape rows</td><td>bars</td><td>5 rows, bottom first: z 1.625 chevrons at x {−0.42, −0.21, 0}; 1.748 pentagons at {−0.315, −0.105}; 1.876 pentagons at {−0.42, −0.21, 0}; 1.998 chevrons at {−0.315, −0.105}; 2.112 chevrons at {−0.42, −0.21, 0}. Chevron profile (−0.055, −0.017), (0, 0.021), (0.055, −0.017), open. Pentagon radius 0.048, first vertex at 90°, closed.</td></tr>
+    <tr><td>Wall chevrons</td><td>bars</td><td>At z ∈ {2.045, 1.812, 0.650, 0.350}: a chevron at x = −0.516 rotated −72°, and one at x = 0.104 rotated +72°, both scaled 0.92. The lower pair is what keeps dice off the walls. Sweep these heights, never interpolate them.</td></tr>
+    <tr><td>Diamonds</td><td>bars + 2 capsules</td><td>Profile (−0.078, 0), (0, 0.040), (0.078, 0), (0, −0.040), closed. Centres (−0.340, 1.168) rotated −9°, (−0.088, 1.176) rotated +11°. Each has a hub capsule of radius 0.026.</td></tr>
+  </table></div>
+  <p>Every capsule and bar spans the full cavity depth (front sheet to back sheet), even though the modelled pegs stand only 70 mm proud of the back sheet. A die must not slip past a peg it looks like it hit. All colliders use one acrylic physics material and the contact offset below.</p>
+
+  <h4>Dice</h4>
+  <div class="tablewrap"><table>
+    <tr><th>Die</th><th>Bay</th><th class="num">Edge</th><th>Scale</th><th>Notes</th></tr>
+    <tr><td>Die_A, Die_B, Die_C (pip)</td><td>wide, left</td><td class="num">30 mm</td><td>0.7692 of the 39 mm model</td><td>mass scaled by 0.7692³ so both die kinds share one density</td></tr>
+    <tr><td>Colour_A, Colour_B</td><td>narrow, right</td><td class="num">39 mm</td><td>1.0</td><td>colour on opposite face pairs</td></tr>
+  </table></div>
+  <p>The bay's widest passable gap is 64.0 mm in the wide bay and 68.5 mm in the narrow bay. A cube passes once its long diagonal fits. 30 mm was chosen from a 500-roll soak per size: it needs the fewest nudges per roll (0.35) and has the shortest worst case (6.9 s). Sizes under 30 mm enter the wall channels and stall more.</p>
+
+  <h4>Physics settings during a roll</h4>
+  <div class="tablewrap"><table>
+    <tr><th>Setting</th><th class="num">Value</th><th>Why</th></tr>
+    <tr><td>Contact offset on dice and every collider</td><td class="num">2 mm</td><td>The engine default (10 mm) makes a die a quarter fatter than drawn.</td></tr>
+    <tr><td>Fixed timestep while rolling</td><td class="num">10 ms</td><td>A die crosses a peg inside one 20 ms step. Restored to the project value when the roll ends or is stopped.</td></tr>
+    <tr><td>Box collider size</td><td class="num">= mesh bounds</td><td>Checked at start; a smaller box sinks the die into the floor in the close-up.</td></tr>
+  </table></div>
+
+  <h3 id="dice-release">6.2 Release</h3>
+  <dl class="kv">
+    <dt>Height</dt><dd>z = 2.2 m in the board frame, at CavityMidY depth.</dd>
+    <dt>Pip lanes (x)</dt><dd>−0.36, −0.21, −0.06. Down the middle of the wide bay, off the wall channels.</dd>
+    <dt>Colour lanes (x)</dt><dd>0.266, 0.377 (<em>scene</em>; code default 0.286, 0.407). One over each channel between the three peg columns.</dd>
+    <dt>Jitter</dt><dd>±12 mm across, uniform, per die per roll.</dd>
+    <dt>Orientation</dt><dd>uniform random rotation.</dd>
+    <dt>Velocity</dt><dd>linear 0. Angular: random unit axis × 220°/s.</dd>
+  </dl>
+  <p>Between rolls the dice are hidden (deactivated). On release each die is activated, its pose written to <b>both</b> the transform and the rigid body, velocities set, and the body woken. The pose must reach the physics body: a die asleep on the floor from the last round would otherwise stay there and report stale faces.</p>
+
+  <h3 id="dice-settle">6.3 Settling and nudges</h3>
+  <p>After every physics step, run <code>StepRoll(step)</code>:</p>
+<pre><code>StepRoll(step):
+  rollElapsed += step
+  settled = true
+  for each die i:
+    height  = die height above the plinth, in board metres
+    onFloor = height ≤ RestHeight
+    if not onFloor or not IsStill(die): settled = false
+    if onFloor: continue
+    if height &lt; lowest[i] − 0.02:  lowest[i] = height; stalled[i] = 0        // still making progress
+    else:                           stalled[i] += step
+    if stalled[i] ≥ 0.5 and nudges &lt; 8:
+        Nudge(die, nudges); lowest[i] = height; stalled[i] = 0; nudges += 1
+  allStillFor = settled ? allStillFor + step : 0
+  return allStillFor ≥ 0.45 and rollElapsed ≥ 0.5
+
+IsStill(die)  = |v| &lt; 0.05 m/s and |ω| &lt; 25°/s
+RestHeight    = floor height + 0.065 m (board metres). Covers three 30 mm dice stacked (61 mm)
+                but stays under a die balanced on the lowest peg crown (90 mm).
+
+Nudge(die, n):
+  strength = 1 + 0.5 · n
+  impulse  = (±right · 0.5 + up · 0.35) · strength · mass        // side picked at random; lift first
+  torque   = randomUnitAxis · 0.0006 · strength · mass
+  wake the body</code></pre>
+  <ul>
+    <li>Stalling, not stillness, is the nudge test. A die on a peg crown trembles above the still thresholds and would never be nudged otherwise.</li>
+    <li>A roll ends only when every die is on the floor and still for 0.45 s, and at least 0.5 s has passed. Only the <b>14 s timeout</b> can end a roll with a die still in the field. That die's face is reported with a warning that it is not a fair roll.</li>
+    <li>Nudges are capped at 8 per roll. Each is harder than the one before.</li>
+    <li><code>StopRoll</code> aborts, restores the timestep, and leaves the dice where they lie. <code>Park</code> stops and hides them.</li>
+  </ul>
+
+  <h3 id="dice-read">6.4 Reading the faces</h3>
+  <p>Read after the roll ends. For each die, take the local axis whose world direction is most nearly straight up.</p>
+  <div class="grid2">
+    <div class="card"><h4>Pip die: local axis → face</h4>
+      <table><tr><th>Axis</th><th class="num">Face</th></tr>
+        <tr><td>+X</td><td class="num">4</td></tr><tr><td>−X</td><td class="num">3</td></tr>
+        <tr><td>+Y</td><td class="num">1</td></tr><tr><td>−Y</td><td class="num">6</td></tr>
+        <tr><td>+Z</td><td class="num">2</td></tr><tr><td>−Z</td><td class="num">5</td></tr></table>
+      <p>Pick the axis with the largest <code>dot(rotation × axis, Up)</code>. Measured off the Unity-imported mesh, which mirrors X against the Blender source. Re-measure on the Unreal import.</p></div>
+    <div class="card"><h4>Colour die: local axis → colour</h4>
+      <table><tr><th>Axis (either way)</th><th>Colour</th></tr>
+        <tr><td>±X</td><td>Red</td></tr><tr><td>±Y</td><td>Blue</td></tr><tr><td>±Z</td><td>Green</td></tr></table>
+      <p>A colour sits on both ends of its axis. Pick the axis with the largest <code>|dot(rotation × axis, Up)|</code>.</p></div>
+  </div>
+  <p>Outputs: <code>Faces[3]</code> in release order, <code>Colours[2]</code> in release order, <code>Total = ΣFaces</code>. Describe as <code>"3 + 5 + 2 = 10, RED + GREEN"</code>. Raise <code>RollCompleted(total)</code>.</p>
+
+  <h3 id="dice-show">6.5 Show integration</h3>
+  <ol>
+    <li>SPINNING arrives. Frame dice-spin.</li>
+    <li>Wait for the camera, minimum <b>0.9 s</b>.</li>
+    <li><code>Roll(payload.result)</code>. The argument is logged only.</li>
+    <li>Poll until <code>IsRolling</code> is false. Log the roll. Send the done.</li>
+    <li>RESULT: frame dice-result, hold 2 s, done. The dice lie where they landed.</li>
+    <li>START, WAITING, SWITCH: <code>Park</code> (hide). CANCELING: <code>StopRoll</code>.</li>
+  </ol>
+  <p>Typical roll length is 3 to 7 s. Worst case is the 14 s timeout. Budget the studio's own timeout above 0.9 + 14 s.</p>
+
+  <h4>Unreal mapping</h4>
+  <ul>
+    <li>Chaos rigid bodies on <code>UStaticMeshComponent</code>s with <code>SetSimulatePhysics(true)</code>. Build the cavity from <code>UBoxComponent</code> and <code>UCapsuleComponent</code> children with the metric numbers above, converted to centimetres. Capsules in Chaos are along local Z; rotate them to run front-to-back.</li>
+    <li>Contact offset: Chaos has no per-shape contact offset. Set the collision margin low in the project physics settings and enable CCD on the dice. Validate with a soak: the Unity project settled on 30 mm dice after 500 rolls per size, and Chaos will move that optimum.</li>
+    <li>Timestep: enable physics substepping with a 10 ms max substep, or set <code>FPhysicsSettings</code> fixed delta. Do it globally; the Unity build toggles it per roll only because the dice are the only physics in the scene.</li>
+    <li>Release pose: <code>SetWorldLocationAndRotation(loc, rot, false, nullptr, ETeleportType::TeleportPhysics)</code>, then <code>SetPhysicsLinearVelocity</code>, <code>SetPhysicsAngularVelocityInDegrees</code>, <code>WakeRigidBody</code>.</li>
+    <li>Nudge: <code>AddImpulse(impulse, NAME_None, /*bVelChange*/ false)</code> and <code>AddAngularImpulseInRadians</code>. Scale by mass as the C# does, or pass <code>bVelChange = true</code> and drop the mass factor.</li>
+    <li>Run <code>StepRoll</code> from an <code>FPhysScene</code> post-physics callback or a <code>TG_PostPhysics</code> tick with the substep delta.</li>
+    <li>Sleep thresholds: Chaos sleeps bodies more eagerly than PhysX. Wake every die on release and after each nudge.</li>
+  </ul>
+</section>
+
+<!-- ============================================================ 7 -->
+<section id="timeline">
+  <h2><span class="num">7</span>Timeline of one round</h2>
+  <p>A MAIN round that lands on BONUS DICE, then the dice round, then the hand-back. Studio holds of 2 s are the debug driver's value; the real studio sets its own. Times are from the frame arriving.</p>
+  <div class="tablewrap"><table>
+    <tr><th>Frame</th><th>Camera</th><th>Rig</th><th class="num">Done after</th></tr>
+    <tr><td><code>MAIN_START</code></td><td>wide (return 1.6 s, then swing)</td><td>wheel idles 8°/s; dice hidden; slot reset</td><td class="num">– (studio timer)</td></tr>
+    <tr><td><code>MAIN_WAITING</code></td><td>wide (no-op)</td><td>same</td><td class="num">– (studio timer)</td></tr>
+    <tr><td><code>MAIN_SPINNING</code> result "BONUS DICE"</td><td>spin (1.2 s)</td><td>wheel spins 7 s + 0.9 s settle onto one of segments 12, 24, 36, 48</td><td class="num">≈ 7.9 s</td></tr>
+    <tr><td><code>MAIN_RESULT</code></td><td>result (0.9 s)</td><td>wheel still</td><td class="num">2.0 s</td></tr>
+    <tr><td><code>BONUS_DICE_SWITCH</code></td><td>dice-wide (1.6 s)</td><td>wheel idles; dice hidden</td><td class="num">≈ 1.6 s (max of move, 1.5 s)</td></tr>
+    <tr><td><code>BONUS_DICE_START</code></td><td>dice-wide (no-op)</td><td>–</td><td class="num">–</td></tr>
+    <tr><td><code>BONUS_DICE_WAITING</code></td><td>dice-wide (no-op)</td><td>–</td><td class="num">–</td></tr>
+    <tr><td><code>BONUS_DICE_SPINNING</code></td><td>dice-spin (1.0 s)</td><td>hold ≥ 0.9 s, release 5 dice, settle</td><td class="num">≈ 4 to 8 s, max 15 s</td></tr>
+    <tr><td><code>BONUS_DICE_RESULT</code></td><td>dice-result (0.9 s)</td><td>dice at rest</td><td class="num">2.0 s</td></tr>
+    <tr><td><code>BONUS_DICE_SWITCH</code></td><td>dice-wide (no-op if already there)</td><td>dice hidden</td><td class="num">1.5 s</td></tr>
+    <tr><td><code>MAIN_START</code></td><td>wide (return 1.6 s, swing resumes)</td><td>wheel idles</td><td class="num">–</td></tr>
+  </table></div>
+  <div class="callout note"><span class="label">Observed quirk</span><p>The second <code>BONUS_DICE_SWITCH</code> frames the dice cabinet again, because the uri names the dice round. The move back to the wheel happens on the following <code>MAIN_START</code>. If the studio sends <code>MAIN_SWITCH</code> instead for the hand-back, the camera returns to the wheel during the switch and the done waits for it. Keep the Unity behaviour: the switch frames whatever game the uri names.</p></div>
+</section>
+
+<!-- ============================================================ 8 -->
+<section id="logging">
+  <h2><span class="num">8</span>Logging</h2>
+  <p>Every subsystem prefixes its log lines. Keep the prefixes; the studio operators grep for them.</p>
+  <div class="tablewrap"><table>
+    <tr><th>Prefix</th><th>Emits</th></tr>
+    <tr><td><code>[WS]</code></td><td>connect, connected, raw frame text (toggle), repeat dropped, sent done, socket closed, reconnecting in N s, offline notices, send failed</td></tr>
+    <tr><td><code>[Show]</code></td><td><code>{from} -> {to} (previous stage held N s)</code>, rendering line with game/phase/gated/result/correlationId, per-phase notes, <code>{stage} done after N s</code>, warnings for unmatched results, optional heartbeat every N s</td></tr>
+    <tr><td><code>[Camera]</code></td><td><code>{from} -> {to} over N s | aim= distance= yaw= fov=</code></td></tr>
+    <tr><td><code>[Slot]</code></td><td>state changes with time held, config swaps, win line and result, ignored spin calls, landing mismatches (error)</td></tr>
+    <tr><td><code>[Dice]</code></td><td>cavity rebuilt with counts, each release with board coordinates, each nudge, roll summary with time and nudges, unfair-face warnings, studio-request mismatch</td></tr>
+  </table></div>
+  <p>Unreal: one <code>DECLARE_LOG_CATEGORY_EXTERN</code> per prefix (<code>LogWS</code>, <code>LogShow</code>, <code>LogShowCamera</code>, <code>LogSlot</code>, <code>LogDice</code>). Keep the message text the same where practical.</p>
+</section>
+
+<!-- ============================================================ 9 -->
+<section id="gaps">
+  <h2><span class="num">9</span>Known gaps and decisions for the Unreal build</h2>
+  <ol>
+    <li><b>Dice result is not honoured.</b> Physics decides the faces. Options: (a) keep physics and accept the mismatch, as Unity does; (b) run the drop as a physics simulation but read the faces from <code>payload.result</code> and rotate each die to match as it comes to rest; (c) pre-simulate offline and replay a recorded drop whose total matches. Decide before building the dice actor; (b) and (c) change its interface.</li>
+    <li><b>Colour dice are not part of the studio result.</b> The payload carries one string. If colours must be forced too, the payload format has to grow.</li>
+    <li><b>BonusShow has no visual.</b> The wheel stands in. The studio must send a payout label, not a bonus label, for BONUS_SHOW_SPINNING.</li>
+    <li><b><code>bonusSpin</code> is unused.</b> It is parsed and logged only.</li>
+    <li><b>Fixed slot seed.</b> Both configs seed the RNG with 20250812. Unforced spins repeat. See 5.1.</li>
+    <li><b>Scene overrides differ from code defaults.</b> Slot wide and spin shots, and colour release lanes. This document uses the scene values.</li>
+    <li><b>Scene layout is metric and Y-up.</b> Convert positions per Appendix A. The camera's authored wide pose is a scene fact, not a formula, and must be re-authored in Unreal against the Unreal set.</li>
+    <li><b>Deflector model vs colliders.</b> The Blender model's upper wall chevrons sit 28 mm across and 46 mm in height from where the colliders are built. The colliders are correct; the model is the side that is wrong. Build the Unreal colliders from the numbers here, not from the mesh.</li>
+  </ol>
+</section>
+
+<!-- ============================================================ A -->
+<section id="mapping">
+  <h2><span class="num">A</span>Unity to Unreal mapping</h2>
+  <h3>Coordinates</h3>
+  <p>Both engines are left-handed. Unity is Y-up in metres. Unreal is Z-up in centimetres. No mirroring is needed.</p>
+<pre><code>UE.X = Unity.Z × 100     // forward
+UE.Y = Unity.X × 100     // right
+UE.Z = Unity.Y × 100     // up
+yaw sign: unchanged (positive yaw is clockwise seen from above in both)
+pitch: Unity "look down" = positive X rotation; Unreal pitch is negative for looking down
+FOV: Unity Camera.fieldOfView is vertical; UE CameraComponent FieldOfView is horizontal.
+     Convert: hFov = 2·atan(tan(vFov/2) · aspect). At 16:9, vertical 40° ≈ horizontal 65.5°, 38° ≈ 62.8°, 35° ≈ 58.7°, 32° ≈ 54.4°, 31° ≈ 52.9°.</code></pre>
+  <h3>Constructs</h3>
+  <div class="tablewrap"><table>
+    <tr><th>Unity</th><th>Unreal</th></tr>
+    <tr><td>MonoBehaviour on a scene object</td><td>AActor or UActorComponent</td></tr>
+    <tr><td>Coroutine with <code>yield return null</code> / <code>WaitForSeconds</code></td><td>Tick-driven sub-state, or FTimerManager; interrupt = clear timers and reset state</td></tr>
+    <tr><td><code>WaitForFixedUpdate</code></td><td>post-physics tick group or physics scene callback</td></tr>
+    <tr><td>ScriptableObject config</td><td>UPrimaryDataAsset / UDataAsset</td></tr>
+    <tr><td>AnimationCurve</td><td>UCurveFloat (or an inline FRichCurve)</td></tr>
+    <tr><td>C# event</td><td>DECLARE_MULTICAST_DELEGATE / dynamic delegate for Blueprint</td></tr>
+    <tr><td>Rigidbody, BoxCollider, CapsuleCollider</td><td>UStaticMeshComponent with SimulatePhysics, UBoxComponent, UCapsuleComponent</td></tr>
+    <tr><td>PhysicsMaterial</td><td>UPhysicalMaterial</td></tr>
+    <tr><td>Time.fixedDeltaTime</td><td>Project physics substepping settings</td></tr>
+    <tr><td>Newtonsoft JsonConvert</td><td>FJsonObjectConverter</td></tr>
+    <tr><td>ClientWebSocket</td><td>IWebSocket via FWebSocketsModule</td></tr>
+    <tr><td>Awaitable.MainThreadAsync</td><td>AsyncTask(ENamedThreads::GameThread, …)</td></tr>
+    <tr><td>Mathf.SmoothStep, Lerp, Repeat</td><td>FMath::SmoothStep, Lerp, Fmod (fix negative results)</td></tr>
+    <tr><td>Quaternion.LookRotation(dir, up)</td><td>FRotationMatrix::MakeFromXZ(dir, up).ToQuat()</td></tr>
+    <tr><td>Quaternion.AngleAxis(deg, axis)</td><td>FQuat(axis, FMath::DegreesToRadians(deg))</td></tr>
+    <tr><td>Random.Range, Random.rotationUniform, Random.onUnitSphere</td><td>FMath::RandRange, FMath::VRand, FRotator from random quaternion (FMath::VRand + random roll)</td></tr>
+    <tr><td>System.Random(seed)</td><td>FRandomStream(seed)</td></tr>
+    <tr><td>Debug.Log with prefix</td><td>UE_LOG(LogCategory, …)</td></tr>
+    <tr><td>IMGUI debug panel</td><td>ImGui plugin, Slate debug window, or console commands (<code>show.stage MAIN_SPINNING "BONUS DICE"</code>)</td></tr>
+  </table></div>
+</section>
+
+<!-- ============================================================ B -->
+<section id="layout">
+  <h2><span class="num">B</span>Scene layout (SampleScene, Unity units)</h2>
+  <p>For orientation only. The Unreal set will be re-authored, but these place the three rigs relative to each other and to the camera's wide pose.</p>
+  <div class="tablewrap"><table>
+    <tr><th>Object</th><th>Position (x, y, z) m</th><th>Rotation</th><th>Scale</th><th>Notes</th></tr>
+    <tr><td>Main Camera (wide pose)</td><td>(0, 2.072, 4.736)</td><td>yaw 180°, pitch 5.69° down</td><td>1</td><td>looks toward −Z at the wheel; vertical FOV 40°, near 0.3, far 1000</td></tr>
+    <tr><td>MainWheel (rig root)</td><td>(0, 0, −2.861)</td><td>identity, faces +Z</td><td>1</td><td>disc child <code>CT_WheelSpin</code> spins about local Y</td></tr>
+    <tr><td>GoldenLuck_SlotMachine</td><td>(−4.913, 0, 0.403)</td><td>yaw 86.44°</td><td>1.6</td><td>stage left; cabinet 2.88 m tall at this scale</td></tr>
+    <tr><td>BonusDice (cabinet)</td><td>(4.34, 0, 1.021)</td><td>euler (−90, 0, −77.96)</td><td>122.98</td><td>stage right; model authored Z-up in centimetres; a separate child transform supplies the camera's cabinet frame</td></tr>
+    <tr><td>StudioSet</td><td>(0, 0, 0.02)</td><td>yaw −89.69°</td><td>1</td><td>procedural black-and-gold round stage</td></tr>
+  </table></div>
+</section>
+
+</main>
+</div>
+</body>
+</html>
