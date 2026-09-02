@@ -3428,6 +3428,27 @@ __metadata:
   languageName: unknown
   linkType: soft
 
+"@hw/ostrov-game-prototype-1@workspace:packages/prototypes/ai-slop/ostrov/ostrov-prototype-v3/ostrov-game-prototype-1":
+  version: 0.0.0-use.local
+  resolution: "@hw/ostrov-game-prototype-1@workspace:packages/prototypes/ai-slop/ostrov/ostrov-prototype-v3/ostrov-game-prototype-1"
+  dependencies:
+    "@hw/ostrov-island-system": "workspace:*"
+    "@hw/ostrov-utils": "workspace:*"
+    "@hw/ostrov-world-system": "workspace:*"
+    "@hw/typescript-config": "workspace:*"
+    "@preact/signals-react": "npm:3.9.0"
+    "@rspack/cli": "npm:2.1.4"
+    "@rspack/core": "npm:2.1.4"
+    "@rspack/dev-server": "npm:2.1.0"
+    "@types/react": "npm:19.2.0"
+    "@types/react-dom": "npm:19.2.0"
+    react: "npm:19.2.0"
+    react-dom: "npm:19.2.0"
+    tsx: "npm:4.20.6"
+    typescript: "npm:5.9.3"
+  languageName: unknown
+  linkType: soft
+
 "@hw/ostrov-island-system@workspace:*, @hw/ostrov-island-system@workspace:packages/prototypes/ai-slop/ostrov/ostrov-prototype-v3/ostrov-island-system":
   version: 0.0.0-use.local
   resolution: "@hw/ostrov-island-system@workspace:packages/prototypes/ai-slop/ostrov/ostrov-prototype-v3/ostrov-island-system"
@@ -3504,7 +3525,7 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@hw/ostrov-world-system@workspace:packages/prototypes/ai-slop/ostrov/ostrov-prototype-v3/ostrov-world-system":
+"@hw/ostrov-world-system@workspace:*, @hw/ostrov-world-system@workspace:packages/prototypes/ai-slop/ostrov/ostrov-prototype-v3/ostrov-world-system":
   version: 0.0.0-use.local
   resolution: "@hw/ostrov-world-system@workspace:packages/prototypes/ai-slop/ostrov/ostrov-prototype-v3/ostrov-world-system"
   dependencies:

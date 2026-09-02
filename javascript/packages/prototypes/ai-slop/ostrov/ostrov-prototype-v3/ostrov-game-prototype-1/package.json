@@ -1,0 +1,37 @@
+{
+  "name": "@hw/ostrov-game-prototype-1",
+  "description": "Playable co-op prototype of Остров built on the world and island systems: a hex world of islands, simultaneous turns, factions, units, a deposit economy, a shared tech tree, the island engine and an auto-battler with pre-battle deployment",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "browserslist": [
+    "last 1 version",
+    "> 1%",
+    "not dead"
+  ],
+  "scripts": {
+    "dev": "rspack serve",
+    "build": "rspack build",
+    "typecheck": "tsc --noEmit",
+    "smoke": "tsx scripts/smoke.ts",
+    "probe": "tsx scripts/battle-probe.ts"
+  },
+  "dependencies": {
+    "@hw/ostrov-island-system": "workspace:*",
+    "@hw/ostrov-utils": "workspace:*",
+    "@hw/ostrov-world-system": "workspace:*",
+    "@preact/signals-react": "3.9.0",
+    "react": "19.2.0",
+    "react-dom": "19.2.0"
+  },
+  "devDependencies": {
+    "@hw/typescript-config": "workspace:*",
+    "@rspack/cli": "2.1.4",
+    "@rspack/core": "2.1.4",
+    "@rspack/dev-server": "2.1.0",
+    "@types/react": "19.2.0",
+    "@types/react-dom": "19.2.0",
+    "tsx": "4.20.6",
+    "typescript": "5.9.3"
+  }
+}
