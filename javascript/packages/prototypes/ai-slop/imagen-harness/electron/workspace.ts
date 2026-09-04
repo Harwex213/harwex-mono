@@ -1,5 +1,5 @@
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
-import path from "node:path";
+import * as path from "node:path";
 import type { Graph } from "../shared/types.js";
 import { writeSkills } from "./agent/skills.js";
 
