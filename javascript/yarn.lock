@@ -2881,7 +2881,7 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@hw/excalidraw-convert@workspace:packages/infrastructure/excalidraw-convert":
+"@hw/excalidraw-convert@workspace:*, @hw/excalidraw-convert@workspace:packages/infrastructure/excalidraw-convert":
   version: 0.0.0-use.local
   resolution: "@hw/excalidraw-convert@workspace:packages/infrastructure/excalidraw-convert"
   dependencies:
@@ -2894,6 +2894,18 @@ __metadata:
     playwright: "npm:1.61.1"
     react: "npm:19.2.0"
     react-dom: "npm:19.2.0"
+    tsx: "npm:4.19.4"
+    typescript: "npm:5.9.3"
+  languageName: unknown
+  linkType: soft
+
+"@hw/excalidraw-to-prompt@workspace:packages/infrastructure/scripts/excalidraw-to-prompt":
+  version: 0.0.0-use.local
+  resolution: "@hw/excalidraw-to-prompt@workspace:packages/infrastructure/scripts/excalidraw-to-prompt"
+  dependencies:
+    "@hw/excalidraw-convert": "workspace:*"
+    "@hw/typescript-config": "workspace:*"
+    "@types/node": "npm:24.13.3"
     tsx: "npm:4.19.4"
     typescript: "npm:5.9.3"
   languageName: unknown

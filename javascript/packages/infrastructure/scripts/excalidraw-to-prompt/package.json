@@ -1,0 +1,24 @@
+{
+  "name": "@hw/excalidraw-to-prompt",
+  "description": "Convert an .excalidraw scene into a node graph a prompt can read",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "exports": "./src/index.ts",
+  "bin": {
+    "excalidraw-to-prompt": "./bin/excalidraw-to-prompt"
+  },
+  "scripts": {
+    "prompt": "tsx scripts/prompt.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@hw/excalidraw-convert": "workspace:*"
+  },
+  "devDependencies": {
+    "@hw/typescript-config": "workspace:*",
+    "@types/node": "24.13.3",
+    "tsx": "4.19.4",
+    "typescript": "5.9.3"
+  }
+}

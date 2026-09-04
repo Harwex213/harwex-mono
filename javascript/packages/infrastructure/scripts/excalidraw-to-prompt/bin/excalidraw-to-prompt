@@ -1,0 +1,50 @@
+#!/bin/sh
+# Runs the converter from anywhere on the system. Link it into a directory on
+# your PATH:
+#
+#   ln -s "$PWD/bin/excalidraw-to-prompt" ~/.local/bin/excalidraw-to-prompt
+#
+# Relative paths given on the command line resolve against the directory you
+# call it from, which is what EXCALIDRAW_PROMPT_CWD carries.
+set -e
+
+# The launcher is called through a symlink, so follow the chain to the package.
+self="$0"
+while [ -L "$self" ]; do
+  target="$(readlink "$self")"
+  case "$target" in
+    /*) self="$target" ;;
+    *) self="$(dirname "$self")/$target" ;;
+  esac
+done
+package="$(cd "$(dirname "$self")/.." && pwd)"
+
+EXCALIDRAW_PROMPT_CWD="$PWD"
+export EXCALIDRAW_PROMPT_CWD
+
+# A shell that never read your profile has no nvm, and so no node. Take the
+# newest one nvm installed, because tsx runs on `#!/usr/bin/env node`.
+if ! command -v node >/dev/null 2>&1; then
+  for candidate in $(ls -d "${NVM_DIR:-$HOME/.nvm}"/versions/node/*/bin 2>/dev/null | sort -V -r); do
+    PATH="$candidate:$PATH"
+    export PATH
+    break
+  done
+fi
+if ! command -v node >/dev/null 2>&1; then
+  echo "excalidraw-to-prompt: node is not on PATH" >&2
+  exit 1
+fi
+
+# tsx sits in the workspace root, a few directories above the package.
+directory="$package"
+while [ "$directory" != "/" ]; do
+  if [ -x "$directory/node_modules/.bin/tsx" ]; then
+    exec "$directory/node_modules/.bin/tsx" "$package/scripts/prompt.ts" "$@"
+  fi
+  directory="$(dirname "$directory")"
+done
+
+# Nothing installed yet: let yarn resolve it, and say so if it cannot.
+cd "$package"
+exec yarn tsx scripts/prompt.ts "$@"
