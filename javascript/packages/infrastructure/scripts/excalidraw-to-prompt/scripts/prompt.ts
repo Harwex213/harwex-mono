@@ -17,8 +17,11 @@ The graph replaces the scene in the file you pass. Keep the drawing somewhere
 first, or write the graph elsewhere with --out or --out-dir.
 
 Usage:
-  yarn :excalidraw-prompt <input.json> [more.json ...] [options]
-  yarn workspace @hw/excalidraw-to-prompt prompt <input.json> [options]
+  yarn :excalidraw-prompt [<input.json> ...] [options]
+  yarn workspace @hw/excalidraw-to-prompt prompt [<input.json>] [options]
+
+With no input path, the command reads one scene from stdin and writes the graph
+to stdout by default. Empty stdin is a successful no-op.
 
 Options:
   -o, --out <file>          Write here instead, or "-" for stdout. Single input only.
@@ -152,9 +155,6 @@ function parseArgs(argv: string[]): ParsedArgs | "help" {
     }
   }
 
-  if (parsed.inputs.length === 0) {
-    throw new Error("No input file given");
-  }
   if (parsed.out && parsed.inputs.length > 1) {
     throw new Error("--out takes a single input; use --out-dir for several");
   }
@@ -181,6 +181,24 @@ function countOf(amount: number, one: string, many: string): string {
   return `${amount} ${amount === 1 ? one : many}`;
 }
 
+async function readStdin(): Promise<Buffer> {
+  if (process.stdin.isTTY) {
+    return Buffer.alloc(0);
+  }
+
+  const chunks: Buffer[] = [];
+  for await (const chunk of process.stdin) {
+    chunks.push(typeof chunk === "string" ? Buffer.from(chunk) : chunk);
+  }
+  return Buffer.concat(chunks);
+}
+
+type ConversionJob = {
+  source: Buffer;
+  output: string;
+  stem: string;
+};
+
 async function main(): Promise<void> {
   const parsed = parseArgs(process.argv.slice(2));
   if (parsed === "help") {
@@ -189,9 +207,28 @@ async function main(): Promise<void> {
   }
 
   /* Read every input first, so a bad path fails before a browser is launched. */
-  const jobs = [];
-  for (const input of parsed.inputs) {
-    jobs.push({ input, source: await readFile(input), output: outputPathFor(parsed, input) });
+  const jobs: ConversionJob[] = [];
+  if (parsed.inputs.length === 0) {
+    const source = await readStdin();
+    if (source.toString("utf8").trim().length === 0) {
+      if (!parsed.quiet) {
+        console.error("excalidraw-to-prompt: stdin is empty; nothing done");
+      }
+      return;
+    }
+    jobs.push({
+      source,
+      output: parsed.out ?? (parsed.outDir ? join(parsed.outDir, "stdin.json") : "-"),
+      stem: "stdin",
+    });
+  } else {
+    for (const input of parsed.inputs) {
+      jobs.push({
+        source: await readFile(input),
+        output: outputPathFor(parsed, input),
+        stem: stemFor(input),
+      });
+    }
   }
 
   /* One set of names for the whole batch: two scenes must not claim one file. */
@@ -200,7 +237,7 @@ async function main(): Promise<void> {
   for (const job of jobs) {
     const toStdout = job.output === "-";
     const graphDir = toStdout ? callerCwd() : dirname(job.output);
-    const stem = stemFor(job.input);
+    const stem = job.stem;
     const result = sceneToPromptGraph(job.source, {
       graphDir,
       imageDir: parsed.imageDir ?? join(graphDir, `${stem}-images`),

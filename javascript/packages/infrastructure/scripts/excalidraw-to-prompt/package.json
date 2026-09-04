@@ -5,9 +5,7 @@
   "version": "1.0.0",
   "type": "module",
   "exports": "./src/index.ts",
-  "bin": {
-    "excalidraw-to-prompt": "./bin/excalidraw-to-prompt"
-  },
+  "bin": "./bin/excalidraw-to-prompt",
   "scripts": {
     "prompt": "tsx scripts/prompt.ts",
     "typecheck": "tsc --noEmit"

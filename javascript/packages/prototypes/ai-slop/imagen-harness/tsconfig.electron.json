@@ -1,0 +1,14 @@
+{
+  "extends": "@hw/typescript-config/node.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": ".",
+    "lib": [
+      "ES2024"
+    ]
+  },
+  "include": [
+    "electron",
+    "shared"
+  ]
+}

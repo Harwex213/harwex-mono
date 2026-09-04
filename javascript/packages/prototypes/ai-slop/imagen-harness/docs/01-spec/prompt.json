@@ -1,0 +1,71 @@
+{
+  "nodes": [
+    {
+      "id": "frame-1",
+      "type": "frame",
+      "children": [
+        {
+          "id": "imagen-harness-spec",
+          "type": "block",
+          "text": "imagen-harness spec"
+        },
+        {
+          "id": "electron-app-which-provides-opportunity",
+          "type": "block",
+          "text": "Electron app, which provides opportunity to generate images in node-based canvas"
+        },
+        {
+          "id": "canvas-example-wireframe",
+          "type": "block",
+          "text": "canvas example wireframe"
+        },
+        {
+          "id": "schema-5",
+          "type": "schema",
+          "image": "prompt-images/prompt-schema-1.svg"
+        },
+        {
+          "id": "canvas-ac",
+          "type": "block",
+          "text": "canvas AC:\n\n- core features:\n    - zoom\n    - pan\n    - support mouse & wheel\n    - support touch (reference - excalidraw)\n    - support Mac & Windows keyboard for hotkeys\n\n- 5 types of nodes:\n    - text node\n    - image prompt generator node\n    - image prompt node\n    - image codegen node\n    - image node\n\n- general node AC:\n    - node could be dragged\n    - node content could be copied (cmd + C or ctrl + C)\n    - hotkey ctl+C for image -> image node being created\n    - right click -> node creation\n    - user can create nodes by right click: text node, image prompt generator node, image generator node\n    - user can copy content from nodes: text node, image prompt node, image node\n    - text nodes and whole graph are stored as json in working dir\n    - image prompts strored separately in corresponding file under `node_id.md` in folder `prompts/`\n    - images stored separately in corresponding file under `node_id.png` in folder `images/`\n    - each node could be deleted\n    - if image prompt node being deleted, it corresponding file should be deleted too\n    - if image node being deleted, it corresponding file should be deleted too\n\n- text node AC:\n    - provides input for user to write\n\n- image prompt generator node:\n    - have socket for taking input from one or more text node\n    - have button start (rerun)\n    - automatically creates image prompt node on run\n    - on rerun output being overrided\n\n- image prompt node\n    - always being created by image prompt generator node and cannot be unlinked from it\n    - shows text of created prompt\n    - text of prompt is truncated\n    - there should be button \"show more\" / \"show less\"\n\n- image generator node:\n  - provides select for specifying model (chatgpt images, recraft, nano banana 2, nano banana pro)\n    - provides select for specifying dimensions\n    - have socket for applying text or images as input\n    - have button start (rerun)\n    - automatically creates image node node on run\n    - on rerun new image node being created\n\n\n- image node:\n    - renders image"
+        },
+        {
+          "id": "tech-decisions",
+          "type": "block",
+          "text": "tech decisions:\n- use anthropic agentic SDK for spawning agents and do actual work\n- write internal skills for image prompt generator & image generator nodes, which specifies rules for storing prompts and images in working dir\n- use magnific MCP for image generation"
+        },
+        {
+          "id": "also-tab-is-required",
+          "type": "block",
+          "text": "also \"tab\" is required:\n- each tab - one working dir\n- when user creates new tab (e.g. canvas), app requests to define working dir on the local system of the user\n- working dir have `prompts/` and `images/` which are have flat structure"
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "from": "imagen-harness-spec",
+      "to": "electron-app-which-provides-opportunity"
+    },
+    {
+      "from": "electron-app-which-provides-opportunity",
+      "to": "canvas-ac"
+    },
+    {
+      "from": "electron-app-which-provides-opportunity",
+      "to": "canvas-example-wireframe"
+    },
+    {
+      "from": "canvas-example-wireframe",
+      "to": "schema-5"
+    },
+    {
+      "from": "canvas-ac",
+      "to": "also-tab-is-required"
+    },
+    {
+      "from": "electron-app-which-provides-opportunity",
+      "to": "tech-decisions"
+    }
+  ]
+}

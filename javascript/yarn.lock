@@ -1980,6 +1980,31 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@electron-internal/extract-zip@npm:^1.0.1":
+  version: 1.0.5
+  resolution: "@electron-internal/extract-zip@npm:1.0.5"
+  checksum: 10/f67a2ae62ab78df306e5ec38e917fed8faf87053cf13aa5d29784ed7da6d7b96b358b3559be1b6fa98d75636593dfed23ad89a8aafff5ffac01c3c88abdd0291
+  languageName: node
+  linkType: hard
+
+"@electron/get@npm:^5.0.0":
+  version: 5.1.0
+  resolution: "@electron/get@npm:5.1.0"
+  dependencies:
+    debug: "npm:^4.1.1"
+    env-paths: "npm:^3.0.0"
+    graceful-fs: "npm:^4.2.11"
+    progress: "npm:^2.0.3"
+    semver: "npm:^7.6.3"
+    sumchecker: "npm:^3.0.1"
+    undici: "npm:^7.24.4"
+  dependenciesMeta:
+    undici:
+      optional: true
+  checksum: 10/e9ff8716d1f777a09aee8efe7761b5b6db1c0f572222cf10b8cf4d4f1f88c71c131ec41880030ee9c00ed00e55953e0d07e2cc12f526c98a985bc828c3861ec4
+  languageName: node
+  linkType: hard
+
 "@emnapi/core@npm:1.11.1":
   version: 1.11.1
   resolution: "@emnapi/core@npm:1.11.1"
@@ -2908,6 +2933,8 @@ __metadata:
     "@types/node": "npm:24.13.3"
     tsx: "npm:4.19.4"
     typescript: "npm:5.9.3"
+  bin:
+    excalidraw-to-prompt: ./bin/excalidraw-to-prompt
   languageName: unknown
   linkType: soft
 
@@ -3287,6 +3314,26 @@ __metadata:
   resolution: "@hw/html-lib@workspace:packages/infrastructure/html-lib"
   dependencies:
     "@hw/signals": "workspace:*"
+  languageName: unknown
+  linkType: soft
+
+"@hw/imagen-harness@workspace:packages/prototypes/ai-slop/imagen-harness":
+  version: 0.0.0-use.local
+  resolution: "@hw/imagen-harness@workspace:packages/prototypes/ai-slop/imagen-harness"
+  dependencies:
+    "@anthropic-ai/claude-agent-sdk": "npm:0.3.234"
+    "@hw/typescript-config": "workspace:*"
+    "@preact/signals-react": "npm:3.9.0"
+    "@rspack/cli": "npm:2.1.4"
+    "@rspack/core": "npm:2.1.4"
+    "@rspack/dev-server": "npm:2.1.0"
+    "@types/node": "npm:24.1.0"
+    "@types/react": "npm:19.2.0"
+    "@types/react-dom": "npm:19.2.0"
+    electron: "npm:44.2.0"
+    react: "npm:19.2.0"
+    react-dom: "npm:19.2.0"
+    typescript: "npm:5.9.3"
   languageName: unknown
   linkType: soft
 
@@ -6850,7 +6897,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@types/node@npm:24.13.3":
+"@types/node@npm:24.13.3, @types/node@npm:^24.9.0":
   version: 24.13.3
   resolution: "@types/node@npm:24.13.3"
   dependencies:
@@ -9332,7 +9379,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"debug@npm:^4.0.0, debug@npm:^4.3.6, debug@npm:^4.4.1":
+"debug@npm:^4.0.0, debug@npm:^4.1.1, debug@npm:^4.3.6, debug@npm:^4.4.1":
   version: 4.4.3
   resolution: "debug@npm:4.4.3"
   dependencies:
@@ -9727,6 +9774,20 @@ __metadata:
   languageName: node
   linkType: hard
 
+"electron@npm:44.2.0":
+  version: 44.2.0
+  resolution: "electron@npm:44.2.0"
+  dependencies:
+    "@electron-internal/extract-zip": "npm:^1.0.1"
+    "@electron/get": "npm:^5.0.0"
+    "@types/node": "npm:^24.9.0"
+  bin:
+    electron: cli.js
+    install-electron: install.js
+  checksum: 10/5ef9bd42c17aad6e8e1ee7fdc66e9e71b0da4c78980aa30922362d7e929ce68387c3e31050afcc6cc8ad1f399dc44ca1658b24d50ebf82b2bc743e81ff8d2615
+  languageName: node
+  linkType: hard
+
 "emoji-regex@npm:^8.0.0":
   version: 8.0.0
   resolution: "emoji-regex@npm:8.0.0"
@@ -9818,6 +9879,13 @@ __metadata:
   version: 2.2.1
   resolution: "env-paths@npm:2.2.1"
   checksum: 10/65b5df55a8bab92229ab2b40dad3b387fad24613263d103a97f91c9fe43ceb21965cd3392b1ccb5d77088021e525c4e0481adb309625d0cb94ade1d1fb8dc17e
+  languageName: node
+  linkType: hard
+
+"env-paths@npm:^3.0.0":
+  version: 3.0.0
+  resolution: "env-paths@npm:3.0.0"
+  checksum: 10/b2b0a0d0d9931a13d279c22ed94d78648a1cc5f408f05d47ff3e0c1616f0aa0c38fb33deec5e5be50497225d500607d57f9c8652c4d39c2f2b7608cd45768128
   languageName: node
   linkType: hard
 
@@ -14751,6 +14819,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"progress@npm:^2.0.3":
+  version: 2.0.3
+  resolution: "progress@npm:2.0.3"
+  checksum: 10/e6f0bcb71f716eee9dfac0fe8a2606e3704d6a64dd93baaf49fbadbc8499989a610fe14cf1bc6f61b6d6653c49408d94f4a94e124538084efd8e4cf525e0293d
+  languageName: node
+  linkType: hard
+
 "promise-inflight@npm:^1.0.1":
   version: 1.0.1
   resolution: "promise-inflight@npm:1.0.1"
@@ -15761,6 +15836,15 @@ __metadata:
   languageName: node
   linkType: hard
 
+"semver@npm:^7.6.3":
+  version: 7.8.5
+  resolution: "semver@npm:7.8.5"
+  bin:
+    semver: bin/semver.js
+  checksum: 10/9b01d2ff11e6e4a4539b7ca3c5f280c8704cb397a28504469f2ed4f00ad2194748d756647362a9712fff30984d15772ab7f083108c2fb508e2096ae9e708f22c
+  languageName: node
+  linkType: hard
+
 "send@npm:0.19.0":
   version: 0.19.0
   resolution: "send@npm:0.19.0"
@@ -16488,6 +16572,15 @@ __metadata:
   languageName: node
   linkType: hard
 
+"sumchecker@npm:^3.0.1":
+  version: 3.0.1
+  resolution: "sumchecker@npm:3.0.1"
+  dependencies:
+    debug: "npm:^4.1.0"
+  checksum: 10/5c69776ce2b53040c952cfbca0f7b487b1ee993c55b6d5523f674ec075f30e031fd84b6706dc8ccc4deb9761b58f9925be8806a316e5eedff2286bb48cb75044
+  languageName: node
+  linkType: hard
+
 "supports-color@npm:^7.1.0":
   version: 7.2.0
   resolution: "supports-color@npm:7.2.0"
@@ -17036,6 +17129,13 @@ __metadata:
   version: 8.5.0
   resolution: "undici@npm:8.5.0"
   checksum: 10/e95913777afd47d76babfe62547bb4e9a94b93f44b50c84b4e0b6fa41c00364e31ff4f433a955b1592c3162f43e8757e2e0feae6eea195187730594523393568
+  languageName: node
+  linkType: hard
+
+"undici@npm:^7.24.4":
+  version: 7.29.1
+  resolution: "undici@npm:7.29.1"
+  checksum: 10/8b9eaf83615e96f83826c9b6b129bd378c26f750f183e931df89bf07dfae24a39736b3648c16c25904e59e34f9e151e7a852c82ef0f1fb8e8a1297c52ff3170c
   languageName: node
   linkType: hard
 

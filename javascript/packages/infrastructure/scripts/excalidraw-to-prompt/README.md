@@ -35,7 +35,13 @@ cd packages/projects/harwex-notes/docs
 yarn :excalidraw-prompt spec.excalidraw.json          # spec.excalidraw.json is now the graph
 yarn :excalidraw-prompt spec.json -o - --no-images    # to stdout, nothing written
 yarn :excalidraw-prompt *.json -d ../prompts          # a batch, one browser, scenes kept
+pbpaste | yarn :excalidraw-prompt --no-images         # clipboard JSON in, graph to stdout
 ```
+
+When no input path is given, the converter reads one Excalidraw scene from stdin. The
+graph goes to stdout unless `--out` or `--out-dir` is set (`--out-dir` names it
+`stdin.json`). Empty or whitespace-only stdin is a successful no-op: the command writes
+no graph and reports that nothing was done on stderr. `--quiet` suppresses that report.
 
 Options:
 
