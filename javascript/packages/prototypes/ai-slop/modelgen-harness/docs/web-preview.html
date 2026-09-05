@@ -1,0 +1,1086 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Modelgen Harness — интерактивное WebGPU-превью</title>
+  <style>
+    :root {
+      --bg: #090c10;
+      --panel: #10161d;
+      --panel-2: #151d26;
+      --line: #283645;
+      --text: #e8eef4;
+      --muted: #99a9b9;
+      --cyan: #3ee6c2;
+      --cyan-soft: rgba(62, 230, 194, 0.12);
+      --orange: #ff9a52;
+      --orange-soft: rgba(255, 154, 82, 0.12);
+      --red: #ff6b75;
+      --blue: #74a7ff;
+      --radius: 14px;
+      --content: 1180px;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+        "Segoe UI", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      margin: 0;
+      color: var(--text);
+      background:
+        radial-gradient(circle at 80% 0%, rgba(62, 230, 194, 0.09), transparent 34rem),
+        radial-gradient(circle at 10% 35%, rgba(116, 167, 255, 0.07), transparent 28rem),
+        var(--bg);
+      line-height: 1.62;
+    }
+
+    a { color: var(--cyan); }
+    a:hover { color: #8ff4df; }
+
+    code, pre {
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+    }
+
+    code {
+      color: #c8f8ee;
+      background: rgba(62, 230, 194, 0.08);
+      border: 1px solid rgba(62, 230, 194, 0.14);
+      border-radius: 5px;
+      padding: 0.12rem 0.35rem;
+    }
+
+    pre {
+      margin: 1rem 0;
+      padding: 1rem 1.1rem;
+      color: #dce8f2;
+      background: #080b0f;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      overflow: auto;
+      line-height: 1.5;
+    }
+
+    pre code {
+      padding: 0;
+      color: inherit;
+      background: none;
+      border: 0;
+    }
+
+    h1, h2, h3, h4 {
+      line-height: 1.2;
+      letter-spacing: -0.02em;
+    }
+
+    h1 {
+      max-width: 900px;
+      margin: 0;
+      font-size: clamp(2.35rem, 6vw, 5.2rem);
+      letter-spacing: -0.055em;
+    }
+
+    h2 {
+      margin-top: 0;
+      font-size: clamp(1.65rem, 3vw, 2.35rem);
+    }
+
+    h3 { margin-top: 1.8rem; }
+    p { max-width: 78ch; }
+    li + li { margin-top: 0.35rem; }
+
+    .hero {
+      padding: 5.5rem max(1.25rem, calc((100vw - var(--content)) / 2)) 4rem;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      gap: 0.55rem;
+      align-items: center;
+      margin-bottom: 1.25rem;
+      color: var(--cyan);
+      font-size: 0.78rem;
+      font-weight: 800;
+      letter-spacing: 0.13em;
+      text-transform: uppercase;
+    }
+
+    .eyebrow::before {
+      content: "";
+      width: 0.55rem;
+      height: 0.55rem;
+      background: var(--cyan);
+      border-radius: 50%;
+      box-shadow: 0 0 1rem var(--cyan);
+    }
+
+    .lead {
+      max-width: 850px;
+      margin: 1.5rem 0 0;
+      color: #c0ccd7;
+      font-size: clamp(1.05rem, 2vw, 1.35rem);
+    }
+
+    .hero-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.65rem;
+      margin-top: 2rem;
+    }
+
+    .pill {
+      padding: 0.38rem 0.7rem;
+      color: var(--muted);
+      background: rgba(255, 255, 255, 0.035);
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      font-size: 0.84rem;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 245px minmax(0, 1fr);
+      gap: 2.5rem;
+      width: min(calc(100% - 2.5rem), var(--content));
+      margin: 0 auto;
+    }
+
+    nav {
+      position: sticky;
+      top: 1.25rem;
+      align-self: start;
+      padding: 2.25rem 0;
+      max-height: calc(100vh - 2.5rem);
+      overflow: auto;
+    }
+
+    nav strong {
+      display: block;
+      margin-bottom: 0.8rem;
+      color: #fff;
+      font-size: 0.76rem;
+      letter-spacing: 0.11em;
+      text-transform: uppercase;
+    }
+
+    nav a {
+      display: block;
+      padding: 0.33rem 0;
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 0.9rem;
+    }
+
+    nav a:hover { color: var(--cyan); }
+
+    main { min-width: 0; padding: 2.5rem 0 6rem; }
+
+    section {
+      padding: 2.2rem 0;
+      scroll-margin-top: 1rem;
+      border-bottom: 1px solid rgba(40, 54, 69, 0.75);
+    }
+
+    section:last-child { border-bottom: 0; }
+
+    .callout {
+      margin: 1.25rem 0;
+      padding: 1rem 1.1rem;
+      background: var(--cyan-soft);
+      border: 1px solid rgba(62, 230, 194, 0.3);
+      border-left: 4px solid var(--cyan);
+      border-radius: 8px;
+    }
+
+    .callout.warn {
+      background: var(--orange-soft);
+      border-color: rgba(255, 154, 82, 0.3);
+      border-left-color: var(--orange);
+    }
+
+    .callout.danger {
+      background: rgba(255, 107, 117, 0.09);
+      border-color: rgba(255, 107, 117, 0.3);
+      border-left-color: var(--red);
+    }
+
+    .callout p:first-child { margin-top: 0; }
+    .callout p:last-child { margin-bottom: 0; }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 1rem;
+      margin: 1.25rem 0;
+    }
+
+    .grid.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+
+    .card {
+      padding: 1.15rem;
+      background: linear-gradient(145deg, var(--panel-2), var(--panel));
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+    }
+
+    .card h3, .card h4 { margin-top: 0; }
+    .card p:last-child { margin-bottom: 0; }
+
+    .number {
+      display: grid;
+      place-items: center;
+      width: 2rem;
+      height: 2rem;
+      margin-bottom: 0.8rem;
+      color: #06100e;
+      background: var(--cyan);
+      border-radius: 8px;
+      font-weight: 900;
+    }
+
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(7, auto);
+      align-items: stretch;
+      gap: 0.65rem;
+      margin: 1.5rem 0;
+    }
+
+    .flow .node {
+      display: grid;
+      place-items: center;
+      min-height: 90px;
+      padding: 0.85rem;
+      text-align: center;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+    }
+
+    .flow .arrow {
+      display: grid;
+      place-items: center;
+      color: var(--cyan);
+      font-size: 1.35rem;
+      font-weight: 900;
+    }
+
+    .label {
+      display: block;
+      margin-bottom: 0.2rem;
+      color: var(--cyan);
+      font-size: 0.72rem;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    table {
+      width: 100%;
+      margin: 1rem 0;
+      border-collapse: collapse;
+      background: rgba(16, 22, 29, 0.7);
+    }
+
+    th, td {
+      padding: 0.75rem 0.8rem;
+      text-align: left;
+      vertical-align: top;
+      border: 1px solid var(--line);
+    }
+
+    th { color: #fff; background: var(--panel-2); }
+    td { color: #becbd6; }
+
+    .yes { color: var(--cyan); font-weight: 800; }
+    .no { color: var(--red); font-weight: 800; }
+
+    .status {
+      display: inline-block;
+      padding: 0.15rem 0.45rem;
+      border: 1px solid rgba(116, 167, 255, 0.28);
+      border-radius: 5px;
+      color: var(--blue);
+      background: rgba(116, 167, 255, 0.08);
+      font-size: 0.77rem;
+      font-weight: 800;
+      text-transform: uppercase;
+    }
+
+    .checklist { padding-left: 0; list-style: none; }
+    .checklist li { position: relative; padding-left: 1.65rem; }
+    .checklist li::before {
+      content: "✓";
+      position: absolute;
+      left: 0;
+      color: var(--cyan);
+      font-weight: 900;
+    }
+
+    details {
+      margin: 0.75rem 0;
+      padding: 0.8rem 1rem;
+      background: rgba(16, 22, 29, 0.8);
+      border: 1px solid var(--line);
+      border-radius: 9px;
+    }
+
+    summary { cursor: pointer; color: #fff; font-weight: 750; }
+
+    footer {
+      padding: 2rem 1.25rem 4rem;
+      color: var(--muted);
+      text-align: center;
+      border-top: 1px solid var(--line);
+    }
+
+    @media (max-width: 900px) {
+      .layout { grid-template-columns: 1fr; }
+      nav { display: none; }
+      main { padding-top: 1rem; }
+      .grid.three { grid-template-columns: 1fr; }
+      .flow { grid-template-columns: 1fr; }
+      .flow .arrow { transform: rotate(90deg); }
+    }
+
+    @media (max-width: 620px) {
+      .hero { padding-top: 3.5rem; }
+      .grid { grid-template-columns: 1fr; }
+      table { font-size: 0.86rem; }
+      th, td { padding: 0.55rem; }
+    }
+
+    @media print {
+      :root { color-scheme: light; }
+      body { color: #111; background: #fff; }
+      .hero { padding: 2rem 0; }
+      .layout { display: block; width: 100%; }
+      nav { display: none; }
+      section { break-inside: avoid; }
+      .card, pre, table, .callout { break-inside: avoid; }
+      .card, pre, table, .callout, th, td { color: #111; background: #fff; border-color: #aaa; }
+      code { color: #111; background: #eee; border-color: #bbb; }
+      a { color: #111; }
+    }
+  </style>
+</head>
+<body>
+  <header class="hero">
+    <div class="eyebrow">Modelgen harness · design note</div>
+    <h1>Из Blender — сразу в интерактивное WebGPU-превью</h1>
+    <p class="lead">
+      Практическая архитектура генерации 3D-модели агентом, автоматического экспорта
+      в GLB, просмотра мешей, текстур и материалов в браузере, выделения объектов и
+      свободной игры с translate / rotate / scale без изменения исходного <code>.blend</code>.
+    </p>
+    <div class="hero-meta">
+      <span class="pill">Источник истины: .blend</span>
+      <span class="pill">Runtime-формат: .glb</span>
+      <span class="pill">Renderer: Three.js + WebGPU</span>
+      <span class="pill">Трансформы: только web-сессия</span>
+      <span class="pill">Статус: proposed architecture</span>
+    </div>
+  </header>
+
+  <div class="layout">
+    <nav aria-label="Содержание">
+      <strong>Содержание</strong>
+      <a href="#decision">Главное решение</a>
+      <a href="#scope">Что входит в задачу</a>
+      <a href="#current">Что уже есть</a>
+      <a href="#architecture">Архитектура</a>
+      <a href="#artifacts">Артефакты запуска</a>
+      <a href="#identity">Идентичность объектов</a>
+      <a href="#viewer">Веб-превью</a>
+      <a href="#transforms">Трансформации</a>
+      <a href="#coordinates">Координаты и иерархия</a>
+      <a href="#session-state">Состояние web-сессии</a>
+      <a href="#agent-contract">Контракт для агента</a>
+      <a href="#materials">Материалы и текстуры</a>
+      <a href="#security">Безопасность</a>
+      <a href="#delivery">План поставки</a>
+      <a href="#acceptance">Критерии готовности</a>
+      <a href="#references">Ссылки</a>
+    </nav>
+
+    <main>
+      <section id="decision">
+        <span class="status">TL;DR</span>
+        <h2>Главное решение</h2>
+        <div class="callout">
+          <p>
+            <strong>Браузер не должен открывать <code>.blend</code> напрямую.</strong>
+            Сервер запускает Blender headless, получает канонический
+            <code>model.blend</code> и производный <code>model.glb</code>. Браузер грузит
+            GLB, рендерит его через Three.js/WebGPU и позволяет интерактивно менять
+            объектные трансформации <strong>только в памяти браузера</strong>.
+            <code>model.blend</code> и <code>model.glb</code> после генерации не меняются.
+          </p>
+        </div>
+
+        <div class="grid three">
+          <article class="card">
+            <div class="number">1</div>
+            <h3><code>.blend</code> — результат</h3>
+            <p>Полная сцена Blender для скачивания, следующего запуска агента или ручной доработки.</p>
+          </article>
+          <article class="card">
+            <div class="number">2</div>
+            <h3><code>.glb</code> — delivery</h3>
+            <p>Компактный, готовый к рендерингу снимок мешей, PBR-материалов и текстур.</p>
+          </article>
+          <article class="card">
+            <div class="number">3</div>
+            <h3>Web — песочница</h3>
+            <p>WebGPU рисует сцену, а все пользовательские трансформы остаются локальными.</p>
+          </article>
+        </div>
+
+        <p>
+          FBX в этой цепочке не нужен. Он остаётся опциональным экспортом для внешних
+          DCC/движков, но веб-превью должно потреблять GLB/glTF.
+        </p>
+      </section>
+
+      <section id="scope">
+        <h2>Что входит в задачу</h2>
+        <table>
+          <thead>
+            <tr><th>Возможность</th><th>MVP</th><th>Комментарий</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Показ мешей</td><td class="yes">Да</td><td>Включая иерархию объектов после GLB-экспорта.</td></tr>
+            <tr><td>Показ текстур</td><td class="yes">Да</td><td>Предпочтительно упакованных внутрь GLB.</td></tr>
+            <tr><td>Показ PBR-материалов</td><td class="yes">Да</td><td>Поддерживаемый Blender glTF subset.</td></tr>
+            <tr><td>Orbit / pan / zoom</td><td class="yes">Да</td><td>Обычная навигация камерой.</td></tr>
+            <tr><td>Выделение объекта</td><td class="yes">Да</td><td>Raycast + подсветка + карточка метаданных.</td></tr>
+            <tr><td>Move / rotate / scale</td><td class="yes">Да</td><td>Three.js TransformControls.</td></tr>
+            <tr><td>Трансформации только в web-сессии</td><td class="yes">Да</td><td>Исходные BLEND и GLB остаются неизменными.</td></tr>
+            <tr><td>Сброс к исходному состоянию</td><td class="yes">Да</td><td>Мгновенно, без повторного запуска Blender.</td></tr>
+            <tr><td>Запись изменений обратно в .blend</td><td class="no">Нет</td><td>Сознательно вне scope.</td></tr>
+            <tr><td>Редактирование вершин</td><td class="no">Нет</td><td>Отдельный mesh editor, не часть MVP.</td></tr>
+            <tr><td>Редактор shader nodes</td><td class="no">Нет</td><td>Веб только отображает экспортированный результат.</td></tr>
+            <tr><td>Geometry Nodes / sculpt / rig editing</td><td class="no">Нет</td><td>Остаются в Blender/агентном build script.</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="current">
+        <h2>Что уже есть в modelgen-harness</h2>
+        <p>
+          Текущий pipeline уже закрывает тяжёлую нижнюю половину схемы. Host-side
+          <code>pipeline.py</code> валидирует job, создаёт изолированный run directory и
+          запускает Blender с <code>--background --disable-autoexec</code>. Blender-side
+          <code>blender_worker.py</code> выполняет agent-authored build script, проверяет
+          геометрию, сохраняет blend, экспортирует GLB/FBX и рендерит PNG-превью.
+        </p>
+
+        <div class="grid">
+          <article class="card">
+            <h3>Уже реализовано</h3>
+            <ul class="checklist">
+              <li>изолированные run directories;</li>
+              <li>запуск Blender headless;</li>
+              <li>запрет auto-exec из входного blend;</li>
+              <li>валидация мешей и трансформаций;</li>
+              <li><code>model.blend</code> как результат;</li>
+              <li><code>model.glb</code> как веб-артефакт;</li>
+              <li>статические PNG-превью;</li>
+              <li><code>report.json</code> и host status.</li>
+            </ul>
+          </article>
+          <article class="card">
+            <h3>Нужно добавить</h3>
+            <ul>
+              <li>стабильные <code>web_id</code> для объектов;</li>
+              <li>web-метаданные для логических узлов;</li>
+              <li>HTTP-раздачу GLB и статусов;</li>
+              <li>Three.js viewer;</li>
+              <li>raycast selection и transform gizmo;</li>
+              <li>client-side undo/redo и reset;</li>
+              <li>опциональное сохранение web-сессии отдельно от BLEND.</li>
+            </ul>
+          </article>
+        </div>
+      </section>
+
+      <section id="architecture">
+        <h2>Целевая архитектура</h2>
+
+        <div class="flow" aria-label="Основной поток данных">
+          <div class="node"><span><span class="label">Input</span>User requirements</span></div>
+          <div class="arrow">→</div>
+          <div class="node"><span><span class="label">Build</span>Agent + Blender worker</span></div>
+          <div class="arrow">→</div>
+          <div class="node"><span><span class="label">Artifacts</span>BLEND + GLB + manifest</span></div>
+          <div class="arrow">→</div>
+          <div class="node"><span><span class="label">Preview</span>Three.js / WebGPU</span></div>
+        </div>
+
+        <h3>Основной generation flow</h3>
+        <ol>
+          <li>Сервер принимает требования пользователя и создаёт job.</li>
+          <li>Агент генерирует или меняет Blender build script в рамках job.</li>
+          <li>Harness запускает Blender headless в отдельном run directory.</li>
+          <li>Worker строит сцену, проводит audit и validation.</li>
+          <li>Worker назначает/проверяет идентификаторы интерактивных объектов.</li>
+          <li>Worker сохраняет <code>model.blend</code>.</li>
+          <li>Worker экспортирует <code>model.glb</code> и <code>scene-manifest.json</code>.</li>
+          <li>Сервер переводит run в <code>ready</code> и отдаёт URL превью.</li>
+          <li>Клиент грузит GLB и строит индекс <code>web_id → Object3D</code>.</li>
+        </ol>
+
+        <h3>Web-only interaction flow</h3>
+        <ol>
+          <li>Пользователь кликает по видимому мешу.</li>
+          <li>Клиент поднимается по его родителям до логического узла с <code>web_id</code>.</li>
+          <li>Gizmo меняет transform локально — кадр обновляется немедленно.</li>
+          <li>На окончание drag клиент фиксирует команду только в локальном undo stack.</li>
+          <li>Reset Object возвращает выбранный узел к transform из загруженного GLB.</li>
+          <li>Reset Scene восстанавливает исходное состояние всей сцены.</li>
+          <li>Перезагрузка страницы сбрасывает изменения, если session snapshot не включён.</li>
+        </ol>
+
+        <div class="callout">
+          <p>
+            <strong>После публикации GLB Blender больше не участвует.</strong> Выделение,
+            перемещение, вращение, масштабирование, undo и reset выполняются в Three.js.
+            Поэтому управление отзывчивое и не требует transform API, очередей или worker.
+          </p>
+        </div>
+      </section>
+
+      <section id="artifacts">
+        <h2>Контракт артефактов запуска</h2>
+        <pre><code>runs/&lt;job-id&gt;/&lt;run-id&gt;/
+├── job.resolved.json
+├── host-status.json
+├── report.json
+├── blender.log
+├── model.blend              # полный результат генерации для скачивания
+├── model.glb                # неизменяемый runtime snapshot для web
+├── scene-manifest.json      # опциональные web IDs, labels и UI hints
+└── previews/
+    ├── front.png
+    ├── perspective.png
+    └── ...</code></pre>
+
+        <p>
+          GLB и manifest относятся к одному завершённому run. Они доступны только после
+          успешной валидации и не меняются из веб-превью. Если агент генерирует модель
+          заново, это новый run с новыми URL, а не мутация старых файлов.
+        </p>
+
+        <pre><code>{
+  "jobId": "wooden-crate",
+  "runId": "20260904T120000Z-a31f9c2d",
+  "state": "ready",
+  "artifacts": {
+    "blend": "/runs/wooden-crate/20260904T120000Z-a31f9c2d/model.blend",
+    "glb": "/runs/wooden-crate/20260904T120000Z-a31f9c2d/model.glb",
+    "manifest": "/runs/wooden-crate/20260904T120000Z-a31f9c2d/scene-manifest.json"
+  }
+}</code></pre>
+      </section>
+
+      <section id="identity">
+        <h2>Идентичность объектов внутри web-сессии</h2>
+        <p>
+          Имена Blender-объектов не являются API: пользователь или агент может их
+          поменять, Blender добавляет суффиксы, а экспортёр создаёт промежуточные узлы.
+          Чтобы клик по дочернему mesh выбирал правильную составную деталь, каждый
+          интерактивный логический объект получает UUID в custom property. Стабильность
+          между генерациями желательна, но для web-only режима не обязательна.
+        </p>
+
+        <pre><code>import uuid
+
+for obj in bpy.context.scene.objects:
+    if obj.type == "MESH" and "web_id" not in obj:
+        obj["web_id"] = str(uuid.uuid4())
+        obj["web_interactive"] = True</code></pre>
+
+        <p>
+          Экспорт glTF должен включать custom properties. Они попадают в glTF
+          <code>extras</code>, а после загрузки Three.js доступны как
+          <code>object.userData.web_id</code>.
+        </p>
+
+        <pre><code>function findEditableNode(hitObject) {
+  let node = hitObject;
+
+  while (node) {
+    if (node.userData?.web_id &amp;&amp; node.userData?.web_interactive !== false) {
+      return node;
+    }
+    node = node.parent;
+  }
+
+  return null;
+}</code></pre>
+
+        <div class="callout">
+          <p>
+            <strong>Правило:</strong> transform применяется к логическому узлу с
+            <code>web_id</code>, а не обязательно к тому дочернему <code>Mesh</code>, в
+            треугольник которого попал raycast.
+          </p>
+        </div>
+      </section>
+
+      <section id="viewer">
+        <h2>Веб-превью</h2>
+        <div class="grid three">
+          <article class="card">
+            <h3>Загрузка</h3>
+            <p><code>GLTFLoader</code> загружает GLB и возвращает scene graph, материалы и текстуры.</p>
+          </article>
+          <article class="card">
+            <h3>Рендер</h3>
+            <p><code>WebGPURenderer</code> использует WebGPU и может откатиться на WebGL 2.</p>
+          </article>
+          <article class="card">
+            <h3>Управление</h3>
+            <p><code>OrbitControls</code>, <code>Raycaster</code> и <code>TransformControls</code>.</p>
+          </article>
+        </div>
+
+        <h3>Минимальный состав UI</h3>
+        <ul>
+          <li>canvas на всю доступную область;</li>
+          <li>orbit/pan/zoom камеры;</li>
+          <li>клик для выбора объекта, клик в пустоту для сброса;</li>
+          <li>outline или emissive-подсветка выбранного объекта;</li>
+          <li>режимы <strong>Move</strong>, <strong>Rotate</strong>, <strong>Scale</strong>;</li>
+          <li>переключатель <strong>Local / World</strong>;</li>
+          <li>snap для перемещения, угла и масштаба;</li>
+          <li>панель имени, ID, текущего TRS и material slots;</li>
+          <li>Undo/Redo и Reset Object / Reset Scene;</li>
+          <li>индикаторы <code>loading</code>, <code>ready</code>, <code>modified locally</code>, <code>failed</code>.</li>
+        </ul>
+
+        <h3>Базовый selection flow</h3>
+        <pre><code>pointerdown
+  → Raycaster.setFromCamera(pointer, camera)
+  → intersectObject(gltf.scene, true)
+  → nearest visible hit
+  → climb parents until userData.web_id
+  → setSelection(node)
+  → TransformControls.attach(node)</code></pre>
+
+        <p>
+          На время перетаскивания gizmo OrbitControls отключается, иначе один жест
+          одновременно двигает объект и камеру. После <code>mouseUp</code> камера снова
+          включается, а операция попадает в локальный undo stack.
+        </p>
+      </section>
+
+      <section id="transforms">
+        <h2>Трансформации внутри браузера</h2>
+
+        <h3>В браузере</h3>
+        <p>
+          Three.js хранит transform как <code>position</code>, <code>quaternion</code>,
+          <code>scale</code> и вычисляемую матрицу. Эти значения меняются только у
+          загруженных <code>Object3D</code>; файлы на сервере остаются нетронутыми.
+          Перед первым изменением viewer сохраняет исходный local TRS каждого
+          интерактивного узла для Reset и сравнения состояния.
+        </p>
+
+        <pre><code>transformControls.addEventListener("mouseDown", () =&gt; {
+  orbitControls.enabled = false;
+  beginUndoTransaction(selected);
+});
+
+transformControls.addEventListener("objectChange", () =&gt; {
+  markModifiedLocally(selected.userData.web_id);
+  render();
+});
+
+transformControls.addEventListener("mouseUp", () =&gt; {
+  orbitControls.enabled = true;
+  commitUndoTransaction(selected);
+});</code></pre>
+
+        <h3>Исходное состояние и Reset</h3>
+        <p>
+          Сразу после загрузки GLB клиент создаёт snapshot исходных transforms. Reset
+          копирует значения назад в объект; новый экспорт и сетевой запрос не нужны.
+        </p>
+
+        <pre><code>const initialTransforms = new Map();
+
+gltf.scene.traverse((node) =&gt; {
+  if (!node.userData?.web_id) return;
+  initialTransforms.set(node.userData.web_id, {
+    position: node.position.clone(),
+    quaternion: node.quaternion.clone(),
+    scale: node.scale.clone(),
+  });
+});
+
+function resetObject(node) {
+  const initial = initialTransforms.get(node.userData.web_id);
+  node.position.copy(initial.position);
+  node.quaternion.copy(initial.quaternion);
+  node.scale.copy(initial.scale);
+  node.updateMatrixWorld(true);
+}</code></pre>
+
+        <h3>Undo/Redo</h3>
+        <p>
+          Стек полностью клиентский. Каждая операция хранит <code>before</code> и
+          <code>after</code> local TRS выбранного узла. Reload/Reset Scene очищает стек.
+          Никакие команды не уходят моделирующему агенту или Blender worker.
+        </p>
+      </section>
+
+      <section id="coordinates">
+        <h2>Координаты, pivot и иерархия</h2>
+        <p>
+          Blender использует Z-up, glTF — Y-up, но для web-only трансформов эта разница
+          почти полностью закрывается экспортёром: viewer работает только с уже
+          сконвертированным scene graph. Обратной конверсии в Blender basis нет.
+        </p>
+
+        <div class="grid">
+          <article class="card">
+            <h3>Рекомендуемый подход</h3>
+            <ul>
+              <li>менять local TRS самого логического <code>Object3D</code>;</li>
+              <li>не распрямлять иерархию после загрузки без необходимости;</li>
+              <li>вращение хранить quaternion, в UI показывать Euler;</li>
+              <li>сохранять исходный local TRS до первой операции;</li>
+              <li>ставить gizmo в pivot/origin выбранного объекта.</li>
+            </ul>
+          </article>
+          <article class="card">
+            <h3>Что обязательно проверить</h3>
+            <ul>
+              <li>объекты с non-zero origin;</li>
+              <li>вложенные parent/child transforms;</li>
+              <li>неравномерный scale;</li>
+              <li>отрицательный scale;</li>
+              <li>rotated parent + scaled child;</li>
+              <li>empty как логический root;</li>
+              <li>инстансы и linked mesh data.</li>
+            </ul>
+          </article>
+        </div>
+
+        <div class="callout warn">
+          <p>
+            Если загруженный узел имеет shear или матрицу, которую нельзя чисто разложить
+            в TRS, его лучше оставить selectable, но отключить gizmo. Это редкий случай,
+            но молчаливое разложение матрицы даст визуальные скачки уже в браузере.
+          </p>
+        </div>
+
+        <h3>Manifest как мост между Blender и web</h3>
+        <pre><code>{
+  "schemaVersion": 1,
+  "runId": "20260904T120000Z-a31f9c2d",
+  "coordinateSystem": {
+    "authoring": "RH_Z_UP",
+    "delivery": "RH_Y_UP",
+    "unitMeters": 1
+  },
+  "objects": [
+    {
+      "webId": "9f2cd95a-...",
+      "name": "CrateBody",
+      "type": "MESH",
+      "parentWebId": null,
+      "interactive": true,
+      "initialTransformSource": "glb",
+      "materials": ["MAT_Wood", "MAT_Metal"]
+    }
+  ]
+}</code></pre>
+      </section>
+
+      <section id="session-state">
+        <h2>Состояние web-сессии</h2>
+
+        <p>
+          Для основного режима transform API не нужен вообще. Сервер один раз отдаёт
+          результат job, после чего браузер работает автономно с загруженным scene graph.
+        </p>
+
+        <h3>Единственный обязательный read API</h3>
+        <pre><code>GET /api/model-jobs/{jobId}/runs/{runId}
+
+200 OK
+{
+  "jobId": "wooden-crate",
+  "runId": "20260904T120000Z-a31f9c2d",
+  "state": "ready",
+  "glbUrl": "/artifacts/wooden-crate/20260904T120000Z-a31f9c2d/model.glb",
+  "manifestUrl": "/artifacts/wooden-crate/20260904T120000Z-a31f9c2d/scene-manifest.json"
+}</code></pre>
+
+        <h3>Runtime state в памяти</h3>
+        <pre><code>type PreviewSession = {
+  runId: string;
+  selectedWebId: string | null;
+  mode: "translate" | "rotate" | "scale";
+  space: "local" | "world";
+  initialTransforms: Map&lt;string, TransformSnapshot&gt;;
+  undoStack: TransformCommand[];
+  redoStack: TransformCommand[];
+};</code></pre>
+
+        <h3>Опциональный snapshot</h3>
+        <p>
+          Если позже понадобится восстановить «игровую» раскладку после reload, её можно
+          положить в <code>localStorage</code> или сохранить отдельным JSON на сервере.
+          Это не новый GLB и не изменение <code>.blend</code>: при загрузке viewer сначала
+          открывает оригинальный GLB, затем накладывает session transforms по
+          <code>web_id</code>.
+        </p>
+
+        <pre><code>{
+  "schemaVersion": 1,
+  "sourceRunId": "20260904T120000Z-a31f9c2d",
+  "transforms": {
+    "9f2cd95a-...": {
+      "position": [1.2, 0.0, -3.4],
+      "quaternion": [0.0, 0.7071068, 0.0, 0.7071068],
+      "scale": [1.0, 1.0, 1.0]
+    }
+  }
+}</code></pre>
+
+        <div class="callout warn">
+          <p>
+            Snapshot должен ссылаться на конкретный <code>sourceRunId</code>. Не надо
+            автоматически накладывать старую раскладку на заново сгенерированную модель:
+            иерархия и геометрия могли измениться.
+          </p>
+        </div>
+      </section>
+
+      <section id="agent-contract">
+        <h2>Контракт для моделирующего агента</h2>
+        <p>
+          Чтобы web preview был предсказуемым, агентные build scripts должны соблюдать
+          узкий набор правил. Эти требования стоит добавить в prompt/skill агента и
+          проверять worker-валидацией.
+        </p>
+
+        <ol>
+          <li><strong>MUST:</strong> создавать осмысленные имена объектов и материалов.</li>
+          <li><strong>SHOULD:</strong> сохранять существующий <code>web_id</code> при доработке объекта.</li>
+          <li><strong>SHOULD:</strong> назначать новый UUID новому логическому объекту.</li>
+          <li><strong>MUST:</strong> использовать конечные transforms без NaN/Infinity.</li>
+          <li><strong>MUST:</strong> сохранять master <code>.blend</code> до экспорта runtime-артефактов.</li>
+          <li><strong>SHOULD:</strong> держать один логический interactive root на составную деталь.</li>
+          <li><strong>SHOULD:</strong> использовать Principled BSDF и image textures.</li>
+          <li><strong>SHOULD:</strong> применять или явно документировать модификаторы перед экспортом.</li>
+          <li><strong>SHOULD:</strong> избегать negative scale; при необходимости применять scale.</li>
+          <li><strong>SHOULD:</strong> ставить origin туда, где пользователь ожидает вращение детали.</li>
+          <li><strong>MAY:</strong> помечать служебные объекты <code>web_interactive = false</code>.</li>
+        </ol>
+
+        <div class="callout">
+          <p>
+            Важное разделение: агент отвечает за создание содержимого сцены, worker — за
+            инварианты, audit, IDs, сохранение и экспорт. Не стоит надеяться, что каждый
+            сгенерированный скрипт идеально реализует инфраструктурные правила сам.
+          </p>
+        </div>
+      </section>
+
+      <section id="materials">
+        <h2>Материалы и текстуры</h2>
+        <p>
+          GLB хорошо переносит стандартный metallic/roughness PBR: base color, metallic,
+          roughness, normal, occlusion, emission, alpha и ряд glTF extensions. Но произвольная
+          Blender node graph не становится автоматически эквивалентным web shader.
+        </p>
+
+        <table>
+          <thead>
+            <tr><th>Данные Blender</th><th>Ожидание в web</th><th>Действие</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Mesh + UV</td><td class="yes">Надёжно</td><td>Экспортировать evaluated mesh.</td></tr>
+            <tr><td>Principled BSDF</td><td class="yes">Основные параметры</td><td>Держаться glTF-compatible subset.</td></tr>
+            <tr><td>Image Texture nodes</td><td class="yes">Надёжно</td><td>Pack/embed в GLB.</td></tr>
+            <tr><td>Procedural noise/voronoi</td><td class="no">Не напрямую</td><td>Bake в image textures.</td></tr>
+            <tr><td>Сложные node groups</td><td class="no">Не гарантируется</td><td>Bake или отдельный web shader.</td></tr>
+            <tr><td>Geometry Nodes</td><td>Только результат</td><td>Экспортировать evaluated geometry.</td></tr>
+            <tr><td>World shader / area lights</td><td>Не 1:1</td><td>Свет и environment задаёт viewer.</td></tr>
+          </tbody>
+        </table>
+
+        <h3>Viewer lighting preset</h3>
+        <p>
+          Для честной проверки материала viewer должен иметь нейтральный HDR environment,
+          key/fill/rim либо студийный preset, переключение solid/material mode и контроль
+          exposure. Иначе хороший материал будет выглядеть плохо просто из-за пустого света.
+        </p>
+
+        <h3>Оптимизация после MVP</h3>
+        <ul>
+          <li>KTX2/Basis для сжатия GPU-текстур;</li>
+          <li>Meshopt или Draco для геометрии;</li>
+          <li>лимиты размера текстур и общего GLB;</li>
+          <li>LOD для тяжёлых ассетов;</li>
+          <li>отложенная загрузка environment map.</li>
+        </ul>
+      </section>
+
+      <section id="security">
+        <h2>Безопасность и эксплуатация</h2>
+        <div class="callout danger">
+          <p>
+            <strong><code>.blend</code> — недоверенный вход.</strong> Он может содержать
+            Python и другие тяжёлые данные. Запуск с <code>--disable-autoexec</code> обязателен,
+            но сам worker всё равно исполняет agent-authored Python, поэтому процесс должен
+            быть изолирован ресурсными лимитами и правами файловой системы.
+          </p>
+        </div>
+
+        <ul>
+          <li>отдельный процесс Blender на generation job;</li>
+          <li>timeout, memory/CPU limits и максимальный размер входных файлов;</li>
+          <li>запись только в конкретный run directory;</li>
+          <li>никаких пользовательских абсолютных output paths внутри worker;</li>
+          <li>атомарная публикация артефактов только после успешной валидации;</li>
+          <li>viewer получает только статические артефакты и не запускает Blender;</li>
+          <li>старый успешный preview остаётся доступен, если новый generation run упал;</li>
+          <li>логи связываются по jobId и runId;</li>
+          <li>очистка старых run directories отдельной retention policy.</li>
+        </ul>
+      </section>
+
+      <section id="delivery">
+        <h2>План поставки</h2>
+
+        <div class="grid">
+          <article class="card">
+            <span class="label">Этап 1</span>
+            <h3>Read-only viewer</h3>
+            <ul>
+              <li>раздать существующий <code>model.glb</code>;</li>
+              <li>Three.js WebGPURenderer + GLTFLoader;</li>
+              <li>камера, освещение, grid, reset view;</li>
+              <li>loading/error state.</li>
+            </ul>
+          </article>
+          <article class="card">
+            <span class="label">Этап 2</span>
+            <h3>Selection</h3>
+            <ul>
+              <li>назначение <code>web_id</code>;</li>
+              <li>custom properties в GLB;</li>
+              <li>raycast и interactive-root resolution;</li>
+              <li>outline и inspector.</li>
+            </ul>
+          </article>
+          <article class="card">
+            <span class="label">Этап 3</span>
+            <h3>Local transforms</h3>
+            <ul>
+              <li>TransformControls;</li>
+              <li>move/rotate/scale;</li>
+              <li>local/world + snapping;</li>
+              <li>client-side undo/redo.</li>
+            </ul>
+          </article>
+          <article class="card">
+            <span class="label">Этап 4 · опционально</span>
+            <h3>Session snapshots</h3>
+            <ul>
+              <li>JSON текущих web transforms;</li>
+              <li>localStorage или отдельное backend-хранилище;</li>
+              <li>проверка соответствия <code>sourceRunId</code>;</li>
+              <li>импорт/экспорт раскладки без изменения BLEND.</li>
+            </ul>
+          </article>
+          <article class="card">
+            <span class="label">Этап 5</span>
+            <h3>Production hardening</h3>
+            <ul>
+              <li>resource quotas;</li>
+              <li>performance fixtures для тяжёлых GLB;</li>
+              <li>telemetry, cache headers и retention;</li>
+              <li>KTX2/Meshopt pipeline.</li>
+            </ul>
+          </article>
+          <article class="card">
+            <span class="label">Позже</span>
+            <h3>Не тащить в MVP</h3>
+            <ul>
+              <li>vertex/face edit mode;</li>
+              <li>полный material editor;</li>
+              <li>rig/animation authoring;</li>
+              <li>live mesh streaming на каждый Blender change;</li>
+              <li>любую запись web transforms обратно в BLEND.</li>
+            </ul>
+          </article>
+        </div>
+      </section>
+
+      <section id="acceptance">
+        <h2>Критерии готовности MVP</h2>
+        <ul class="checklist">
+          <li>После успешного modelgen job браузер открывает GLB без ручного экспорта.</li>
+          <li>Меши, UV-текстуры и поддерживаемые PBR-материалы визуально присутствуют.</li>
+          <li>Пользователь может выбрать логический объект кликом по любой его геометрии.</li>
+          <li>Выбранный объект однозначно связан с Blender-объектом через <code>web_id</code>.</li>
+          <li>Move, rotate и scale работают интерактивно без запросов к серверу.</li>
+          <li>Undo/Redo возвращает корректный local TRS выбранного объекта.</li>
+          <li>Reset Object и Reset Scene восстанавливают состояние из загруженного GLB.</li>
+          <li>Изменения в viewer не меняют <code>model.blend</code>, <code>model.glb</code> или <code>report.json</code>.</li>
+          <li>Тесты проходят для X/Y/Z, local/world и parented object.</li>
+          <li>Reload открывает исходную модель, если session snapshot не включён.</li>
+        </ul>
+
+        <h3>Ключевые тестовые сцены</h3>
+        <ol>
+          <li>Одиночный текстурированный cube.</li>
+          <li>Два объекта с разными материалами и похожими именами.</li>
+          <li>Parent empty → rotated mesh child.</li>
+          <li>Составная модель с несколькими дочерними mesh nodes под одним interactive root.</li>
+          <li>Non-uniform scale и object origin вне геометрического центра.</li>
+          <li>Сцена с procedural material, который должен быть baked или помечен warning.</li>
+        </ol>
+      </section>
+
+      <section id="references">
+        <h2>Технические ссылки</h2>
+        <ul>
+          <li><a href="https://docs.blender.org/manual/en/latest/addons/scene_gltf2.html">Blender Manual — glTF 2.0 exporter</a></li>
+          <li><a href="https://threejs.org/manual/en/loading-3d-models.html">Three.js — Loading 3D Models</a></li>
+          <li><a href="https://threejs.org/docs/pages/GLTFLoader.html">Three.js — GLTFLoader</a></li>
+          <li><a href="https://threejs.org/docs/pages/WebGPURenderer.html">Three.js — WebGPURenderer</a></li>
+          <li><a href="https://threejs.org/docs/pages/Raycaster.html">Three.js — Raycaster</a></li>
+          <li><a href="https://threejs.org/docs/pages/TransformControls.html">Three.js — TransformControls</a></li>
+          <li><a href="https://registry.khronos.org/glTF/specs/2.0/glTF-2.0.html">Khronos — glTF 2.0 specification</a></li>
+        </ul>
+
+        <div class="callout">
+          <p>
+            <strong>Итог:</strong> harness не обязан заставлять пользователя вручную
+            экспортировать FBX/GLB. Он обязан автоматически производить GLB из master
+            blend и показывать его в web. Все игровые transform-операции выполняются
+            локально над Three.js scene graph и никак не затрагивают Blender. Это даёт
+            быстрый preview без transform API и без попытки запихнуть Blender runtime в браузер.
+          </p>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <footer>
+    Modelgen Harness · Web Preview Architecture · standalone HTML, без внешних зависимостей
+  </footer>
+</body>
+</html>
