@@ -75,22 +75,22 @@ async function runBlenderCli(
  * When the tab's live Blender has the same file open with unsaved changes, a
  * numbered copy is saved and used, then removed — the CLI run sees what the
  * agent sees. Otherwise the file itself is used.
+ *
+ * `dirty` comes from the harness, which tracks unsaved changes itself.
+ * `bpy.data.is_dirty` cannot answer this: a `--background` Blender never
+ * updates it. See the note on `save` in `scene.ts`.
  */
 async function withSyncedBlend<T>(
   tabBlendPath: string,
   blendFile: string,
+  dirty: boolean,
   body: (file: string) => Promise<T>,
 ): Promise<T> {
   const instance = get(tabBlendPath);
   if (!instance || instance.status !== "ready" || path.resolve(blendFile) !== path.resolve(tabBlendPath)) {
     return await body(blendFile);
   }
-  const dirty = await execute(
-    tabBlendPath,
-    "import bpy\nresult = {\"is_dirty\": bpy.data.is_dirty}\n",
-    true,
-  );
-  if (dirty.status !== "ok" || dirty.result?.is_dirty !== true) {
+  if (!dirty) {
     return await body(blendFile);
   }
   const parsed = path.parse(blendFile);

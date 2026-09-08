@@ -102,7 +102,10 @@ All five take no parameters and read the file that is open in the live Blender.
 **`get_blendfile_summary_path_info`** — `filepath` (empty string when never saved),
 `is_saved`, `is_dirty`, `age_seconds`, `file_size_bytes`, `backups`
 (list of `path`, `age_seconds`, `size_bytes` for `.blend1`, `.blend2`, ...).
-Cheap. Use it to check whether the scene has unsaved changes.
+Cheap. Ignore `is_dirty`: it mirrors Blender's window state, which a
+`--background` Blender never maintains. Your edits leave it False, and some
+files report True however often they are saved. Use `age_seconds` to see how
+long ago the file was written instead.
 
 **`get_blendfile_summary_missing_files`** — `missing_files` (list of `id_type`,
 `id_name`, `path`), `total_checked`. Packed files and weak references are skipped.
@@ -370,8 +373,12 @@ import bpy
 bpy.ops.wm.save_as_mainfile(filepath="/abs/path/out.blend")   # first save, or save-as
 bpy.ops.wm.save_mainfile()                                     # later saves, same file
 bpy.ops.wm.save_as_mainfile(filepath="/abs/path/copy.blend", copy=True)  # copy, keep current path
-result = {"saved": bpy.data.filepath, "dirty": bpy.data.is_dirty}
+result = {"saved": bpy.data.filepath}
 ```
+
+`bpy.data.is_dirty` does not tell you whether there are unsaved changes here —
+see `get_blendfile_summary_path_info` above. Keep track of what you changed
+since your last save yourself.
 
 Use absolute paths. Relative paths resolve against the current .blend, which may be
 unsaved. Export with the file operators, e.g. `bpy.ops.export_scene.gltf(filepath=...)`

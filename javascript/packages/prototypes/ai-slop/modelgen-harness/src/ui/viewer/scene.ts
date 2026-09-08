@@ -7,36 +7,38 @@ import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 /**
  * The 3D viewer's world, outside React: a glTF the main process exported from
  * the tab's Blender, lights, a grid, orbit controls, a gizmo on the selected
- * mesh, and the material slots as editable numbers. Everything done here is a
+ * mesh, and the scene's materials as editable numbers. Everything done here is a
  * try-out — the file on disk is never touched — and Reset loads the model
  * again as it came.
  */
 
 type GizmoMode = "translate" | "rotate" | "scale";
 
-interface MaterialSlot {
-  /** `<mesh uuid>:<slot index>`. */
+/** One material of the scene, however many meshes carry it. */
+interface SceneMaterial {
+  /** The material's name, or its uuid when it has no name. Identity for patches. */
   key: string;
-  meshUuid: string;
-  meshName: string;
-  index: number;
-  materialName: string;
+  name: string;
   color: string;
   metalness: number;
   roughness: number;
   opacity: number;
   wireframe: boolean;
+  /** The base colour comes from a texture, so `color` only tints it. */
+  textured: boolean;
+  /** Every mesh the material is on. */
+  meshes: { uuid: string; name: string }[];
 }
 
 interface SceneInfo {
-  slots: MaterialSlot[];
+  materials: SceneMaterial[];
   selected: string | null;
   meshCount: number;
   loaded: boolean;
   error: string;
 }
 
-type SlotPatch = Partial<Pick<MaterialSlot, "color" | "metalness" | "roughness" | "opacity" | "wireframe">>;
+type MaterialPatch = Partial<Pick<SceneMaterial, "color" | "metalness" | "roughness" | "opacity" | "wireframe">>;
 
 const BACKGROUND = 0x14161f;
 
@@ -46,6 +48,23 @@ function isStandard(material: THREE.Material): material is THREE.MeshStandardMat
 
 function materialsOf(mesh: THREE.Mesh): THREE.Material[] {
   return Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+}
+
+function toBlob(canvas: HTMLCanvasElement): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (blob) {
+        resolve(blob);
+      } else {
+        reject(new Error("The viewer could not produce an image."));
+      }
+    }, "image/png");
+  });
+}
+
+/** What makes two materials one row in the panel. */
+function materialKey(material: THREE.Material): string {
+  return material.name.length > 0 ? material.name : material.uuid;
 }
 
 class ModelViewer {
@@ -297,69 +316,89 @@ class ModelViewer {
   }
 
   // ---------------------------------------------------------------------------
-  // Material slots.
+  // Materials.
 
-  private slots(): MaterialSlot[] {
-    const slots: MaterialSlot[] = [];
+  /**
+   * The scene's materials, one entry each, in the order they are first met.
+   * Meshes that share a material share its entry, so five materials on fifty
+   * meshes are five rows.
+   *
+   * The name is the identity, because the glTF loader can build a material
+   * more than once — once per set of mesh flags it needs — and those copies are
+   * one material to everyone but the loader.
+   */
+  private materialList(): SceneMaterial[] {
+    const list: SceneMaterial[] = [];
+    const byKey = new Map<string, SceneMaterial>();
     if (!this.model) {
-      return slots;
+      return list;
     }
     this.model.traverse((object) => {
       const mesh = object as THREE.Mesh;
       if (!mesh.isMesh) {
         return;
       }
-      materialsOf(mesh).forEach((material, index) => {
-        const standard = isStandard(material) ? material : null;
-        slots.push({
-          key: `${mesh.uuid}:${index}`,
-          meshUuid: mesh.uuid,
-          meshName: mesh.name || "mesh",
-          index,
-          materialName: material.name || `material ${index + 1}`,
-          color: standard ? `#${standard.color.getHexString()}` : "#888888",
-          metalness: standard ? standard.metalness : 0,
-          roughness: standard ? standard.roughness : 1,
-          opacity: material.opacity,
-          wireframe: standard ? standard.wireframe : false,
-        });
-      });
+      for (const material of materialsOf(mesh)) {
+        const key = materialKey(material);
+        let entry = byKey.get(key);
+        if (!entry) {
+          const standard = isStandard(material) ? material : null;
+          entry = {
+            key,
+            name: material.name || "material",
+            color: standard ? `#${standard.color.getHexString()}` : "#888888",
+            metalness: standard ? standard.metalness : 0,
+            roughness: standard ? standard.roughness : 1,
+            opacity: material.opacity,
+            wireframe: standard ? standard.wireframe : false,
+            textured: standard?.map != null,
+            meshes: [],
+          };
+          byKey.set(key, entry);
+          list.push(entry);
+        }
+        if (!entry.meshes.some((entryMesh) => entryMesh.uuid === mesh.uuid)) {
+          entry.meshes.push({ uuid: mesh.uuid, name: mesh.name || "mesh" });
+        }
+      }
     });
-    return slots;
+    return list;
   }
 
-  patchSlot(key: string, patch: SlotPatch): void {
-    const [uuid, indexText] = key.split(":");
-    const index = Number(indexText);
+  /** Applies the patch to every copy of one material, wherever it sits. */
+  patchMaterial(key: string, patch: MaterialPatch): void {
     if (!this.model) {
       return;
     }
+    const done = new Set<string>();
     this.model.traverse((object) => {
       const mesh = object as THREE.Mesh;
-      if (!mesh.isMesh || mesh.uuid !== uuid) {
+      if (!mesh.isMesh) {
         return;
       }
-      const material = materialsOf(mesh)[index];
-      if (!material) {
-        return;
-      }
-      if (patch.opacity !== undefined) {
-        material.opacity = patch.opacity;
-        material.transparent = patch.opacity < 1;
-        material.needsUpdate = true;
-      }
-      if (isStandard(material)) {
-        if (patch.color !== undefined) {
-          material.color.set(patch.color);
+      for (const material of materialsOf(mesh)) {
+        if (materialKey(material) !== key || done.has(material.uuid)) {
+          continue;
         }
-        if (patch.metalness !== undefined) {
-          material.metalness = patch.metalness;
+        done.add(material.uuid);
+        if (patch.opacity !== undefined) {
+          material.opacity = patch.opacity;
+          material.transparent = patch.opacity < 1;
+          material.needsUpdate = true;
         }
-        if (patch.roughness !== undefined) {
-          material.roughness = patch.roughness;
-        }
-        if (patch.wireframe !== undefined) {
-          material.wireframe = patch.wireframe;
+        if (isStandard(material)) {
+          if (patch.color !== undefined) {
+            material.color.set(patch.color);
+          }
+          if (patch.metalness !== undefined) {
+            material.metalness = patch.metalness;
+          }
+          if (patch.roughness !== undefined) {
+            material.roughness = patch.roughness;
+          }
+          if (patch.wireframe !== undefined) {
+            material.wireframe = patch.wireframe;
+          }
         }
       }
     });
@@ -377,7 +416,7 @@ class ModelViewer {
       }
     });
     this.onChange({
-      slots: this.slots(),
+      materials: this.materialList(),
       selected: this.selected?.uuid ?? null,
       meshCount,
       loaded: this.model !== null,
@@ -405,15 +444,37 @@ class ModelViewer {
   /** The canvas as it looks right now, as a PNG. */
   screenshot(): Promise<Blob> {
     this.renderer.render(this.scene, this.camera);
-    return new Promise((resolve, reject) => {
-      this.canvas.toBlob((blob) => {
-        if (blob) {
-          resolve(blob);
-        } else {
-          reject(new Error("The viewer could not produce an image."));
-        }
-      }, "image/png");
-    });
+    return toBlob(this.canvas);
+  }
+
+  /**
+   * One rectangle of the canvas, as a PNG. The rectangle is in CSS pixels
+   * relative to the canvas, the way the pointer reports them, and it is scaled
+   * to the drawing buffer and clamped to it here.
+   *
+   * The frame is drawn again right before the copy: the drawing buffer is not
+   * preserved, so anything read later in the task is empty.
+   */
+  screenshotRegion(rect: { x: number; y: number; width: number; height: number }): Promise<Blob> {
+    const scaleX = this.canvas.width / (this.canvas.clientWidth || 1);
+    const scaleY = this.canvas.height / (this.canvas.clientHeight || 1);
+    const x = Math.min(Math.max(Math.round(rect.x * scaleX), 0), this.canvas.width);
+    const y = Math.min(Math.max(Math.round(rect.y * scaleY), 0), this.canvas.height);
+    const width = Math.min(Math.round(rect.width * scaleX), this.canvas.width - x);
+    const height = Math.min(Math.round(rect.height * scaleY), this.canvas.height - y);
+    if (width < 1 || height < 1) {
+      return Promise.reject(new Error("The region is too small to capture."));
+    }
+    const crop = document.createElement("canvas");
+    crop.width = width;
+    crop.height = height;
+    const context = crop.getContext("2d");
+    if (!context) {
+      return Promise.reject(new Error("The viewer could not crop the image."));
+    }
+    this.renderer.render(this.scene, this.camera);
+    context.drawImage(this.canvas, x, y, width, height, 0, 0, width, height);
+    return toBlob(crop);
   }
 
   dispose(): void {
@@ -430,5 +491,5 @@ class ModelViewer {
   }
 }
 
-export type { GizmoMode, MaterialSlot, SceneInfo, SlotPatch };
+export type { GizmoMode, MaterialPatch, SceneInfo, SceneMaterial };
 export { ModelViewer };

@@ -284,8 +284,6 @@ function defaultSettings(): Settings {
     reasoningEffort: process.env.MODELGEN_REASONING_EFFORT ?? "",
     codexPath: process.env.CODEX_PATH ?? "",
     blenderPath: defaultBlenderPath(),
-    blenderMcpDir:
-      process.env.BLENDER_MCP_DIR ?? path.join(app.getPath("home"), "Projects", "MCP-servers", "blender_mcp"),
   };
 }
 
@@ -307,7 +305,6 @@ function readSettings(): Settings {
     reasoningEffort: pick("reasoningEffort"),
     codexPath: pick("codexPath"),
     blenderPath: required("blenderPath"),
-    blenderMcpDir: required("blenderMcpDir"),
   };
 }
 

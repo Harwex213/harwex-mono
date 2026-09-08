@@ -76,8 +76,6 @@ interface Settings {
   /** The `codex` executable. Empty means the one bundled with the Codex SDK. */
   codexPath: string;
   blenderPath: string;
-  /** Checkout of https://projects.blender.org/lab/blender_mcp. Tool-code and docs are read from it. */
-  blenderMcpDir: string;
 }
 
 /** Progress the main process pushes to every window. */

@@ -8,7 +8,6 @@ const FIELDS: { key: keyof Settings; label: string; hint: string }[] = [
   { key: "reasoningEffort", label: "Reasoning effort", hint: "Empty uses the Codex default. One of minimal, low, medium, high, xhigh." },
   { key: "codexPath", label: "codex executable", hint: "Empty uses the codex bundled with the Codex SDK. Sign in once with `codex login`." },
   { key: "blenderPath", label: "Blender executable", hint: "Blender 5.1 with the Blender MCP extension installed and enabled." },
-  { key: "blenderMcpDir", label: "blender_mcp checkout", hint: "Tool-code and docs are read from mcp/blmcp there." },
 ];
 
 function SettingsDialog(): React.JSX.Element {

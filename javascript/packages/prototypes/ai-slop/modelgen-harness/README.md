@@ -24,10 +24,12 @@ without the watchers.
   extension installed and enabled. The app starts
   `blender --online-mode --background <file.blend> --command blender_mcp --port N`
   per tab, which is the extension's own background server.
-- **A checkout of the blender_mcp repo.** The tool-code the bundled tools run
-  inside Blender, and the RST docs the documentation tools search, are read
-  from it (`mcp/blmcp/`). The docs tools run through `uv run` inside that
-  checkout, so `uv` has to be on the PATH.
+- **A `python3` on the PATH**, for the three documentation tools. Nothing has
+  to be installed into it: the slice of the blender_mcp repo those tools need —
+  the tool modules, their 25 MB of RST docs and docutils — ships under
+  `vendor/blender-mcp/`, together with the tool-code the other tools run inside
+  Blender. `vendor/blender-mcp/README.md` says where it came from and how to
+  refresh it. Set `MODELGEN_PYTHON` to choose another interpreter.
 - **A Codex login.** The agent runs on the
   [Codex SDK](https://developers.openai.com/codex/sdk), which drives the
   `codex` CLI with the ChatGPT account it is signed into (`codex login`). No
@@ -36,8 +38,7 @@ without the watchers.
 
 Paths and the model are set in the settings dialog (the gear in the tab bar)
 and stored in the app's SQLite. The defaults come from `BLENDER_PATH` (else
-`/Applications/Blender.app/Contents/MacOS/Blender`), `BLENDER_MCP_DIR` (else
-`~/Projects/MCP-servers/blender_mcp`), `MODELGEN_AGENT_MODEL` and
+`/Applications/Blender.app/Contents/MacOS/Blender`), `MODELGEN_AGENT_MODEL` and
 `MODELGEN_REASONING_EFFORT` (else whatever `~/.codex/config.toml` says) and
 `CODEX_PATH` (else the `codex` bundled with the SDK).
 
@@ -109,10 +110,10 @@ carry the Blender MCP names and do what those tools do:
 | Tool | How the harness runs it |
 | --- | --- |
 | `execute_blender_code` | sent to the tab's Blender over the add-on's TCP protocol |
-| `get_objects_summary`, `get_object_detail_summary`, `get_blendfile_summary_*` | the repo's `*_toolcode.py` files, sent the way the MCP server sends them |
+| `get_objects_summary`, `get_object_detail_summary`, `get_blendfile_summary_*` | the vendored `*_toolcode.py` files, sent the way the MCP server sends them |
 | `render_thumbnail_to_path`, `render_viewport_to_path` | tool-code as above; the PNG is stored as the preview and returned to the agent as an image |
-| `search_api_docs`, `search_manual_docs`, `get_python_api_docs` | the repo's own tool functions, run in a short-lived `uv run python` |
-| `*_for_cli` | a fresh `blender --background`, as the repo's `blender_cli.py` does |
+| `search_api_docs`, `search_manual_docs`, `get_python_api_docs` | the upstream tool functions, run in a short-lived `python3` on the vendored RST |
+| `*_for_cli` | a fresh `blender --background`, as upstream's `blender_cli.py` does |
 
 Its instructions are the two skills under `skills/`, written on every run into
 `AGENTS.md` in the tab's working directory, which is where Codex reads them:

@@ -375,6 +375,37 @@ button {
   pointer-events: none;
 }
 
+.viewer__region {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  cursor: crosshair;
+  touch-action: none;
+  background: rgba(20, 22, 31, 0.25);
+}
+
+.viewer__marquee {
+  position: absolute;
+  border: 1px solid var(--accent);
+  background: var(--accent-soft);
+  pointer-events: none;
+}
+
+.viewer__region-hint {
+  position: absolute;
+  left: 50%;
+  bottom: 34px;
+  transform: translateX(-50%);
+  padding: 4px 10px;
+  background: rgba(14, 15, 21, 0.9);
+  border: 1px solid var(--line-soft);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 11px;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
 .viewer__empty {
   position: absolute;
   inset: 0;
@@ -418,8 +449,7 @@ button {
   font-weight: 600;
 }
 
-.materials__title small,
-.mesh__name small {
+.materials__title small {
   color: var(--muted);
   font-weight: 400;
 }
@@ -429,36 +459,16 @@ button {
   padding: 4px;
 }
 
-.mesh {
+.slot {
   border-top: 1px solid var(--line-soft);
-  padding: 6px 0;
+  padding: 6px 4px 8px;
 }
 
-.mesh--selected {
+.slot--selected {
   background: var(--accent-soft);
   border-radius: 6px;
-  padding: 6px 4px;
   margin: 0 -4px;
-}
-
-.mesh__name {
-  display: flex;
-  justify-content: space-between;
-  width: 100%;
-  border: 0;
-  background: transparent;
-  text-align: left;
-  padding: 2px 4px 6px;
-  cursor: pointer;
-  font-weight: 600;
-}
-
-.mesh__name:hover {
-  color: var(--accent);
-}
-
-.slot {
-  padding: 4px 4px 6px;
+  padding: 6px 8px 8px;
 }
 
 .slot__head {
@@ -484,6 +494,13 @@ button {
   white-space: nowrap;
 }
 
+.slot__tag {
+  color: var(--muted);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
 .slot__check {
   display: flex;
   align-items: center;
@@ -506,6 +523,37 @@ button {
   width: 100%;
   margin: 0;
   accent-color: var(--accent);
+}
+
+.slot__meshes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.slot__mesh {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 1px 6px;
+  border: 1px solid var(--line-soft);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.slot__mesh:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.slot__mesh--on {
+  color: var(--accent);
+  border-color: var(--accent);
 }
 
 /* Chat --------------------------------------------------------------------- */

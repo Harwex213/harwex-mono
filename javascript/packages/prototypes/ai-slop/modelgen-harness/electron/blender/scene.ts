@@ -7,8 +7,8 @@ import { buildToolCall, pythonRepr } from "./toolcode.js";
 
 /**
  * What the harness itself asks Blender for, outside of any agent tool: the
- * glTF the viewer renders, the dirty flag, saving, and a preview when the
- * agent forgot to make one.
+ * glTF the viewer renders, saving, and a preview when the agent forgot to
+ * make one.
  *
  * Background Blender has no window, so `bpy.context.active_object` and its
  * friends do not exist and exporters that read them fail. Overriding the
@@ -62,11 +62,14 @@ async function exportModel(blendPath: string): Promise<string | null> {
   }
 }
 
-async function isDirty(blendPath: string): Promise<boolean> {
-  const response = await execute(blendPath, "import bpy\nresult = {'dirty': bpy.data.is_dirty}\n", true);
-  return response.status === "ok" && response.result?.dirty === true;
-}
-
+/**
+ * Writes the file. `bpy.data.is_dirty` is not read back afterwards, and no
+ * other part of the harness reads it either: the flag mirrors Blender's
+ * window state, which a `--background` Blender never maintains. Edits leave it
+ * False, and whatever value a file was written with stays. Studio_v2.blend
+ * reads True on load and keeps reading True after a save, which used to leave
+ * its tab impossible to close. The harness tracks unsaved changes itself.
+ */
 async function save(blendPath: string): Promise<void> {
   const response = await execute(
     blendPath,
@@ -83,8 +86,8 @@ async function save(blendPath: string): Promise<void> {
  * PNG back. The tool-code writes under Blender's temp dir whatever path it is
  * given, and reports where.
  */
-async function renderThumbnail(mcpDir: string, blendPath: string, name: string): Promise<Uint8Array> {
-  const code = await buildToolCall(mcpDir, "render_thumbnail_to_path", { output_path: `${name}.png` });
+async function renderThumbnail(blendPath: string, name: string): Promise<Uint8Array> {
+  const code = await buildToolCall("render_thumbnail_to_path", { output_path: `${name}.png` });
   const response = await execute(blendPath, code, true);
   const result = response.result ?? {};
   if (response.status !== "ok" || result.status !== "ok" || typeof result.filepath !== "string") {
@@ -93,4 +96,4 @@ async function renderThumbnail(mcpDir: string, blendPath: string, name: string):
   return new Uint8Array(await readFile(result.filepath));
 }
 
-export { exportModel, isDirty, modelPath, renderThumbnail, save };
+export { exportModel, modelPath, renderThumbnail, save };

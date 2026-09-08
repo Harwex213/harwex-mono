@@ -1,13 +1,16 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 /**
- * The bundled Blender MCP tools are Python files that run inside Blender:
- * `mcp/blmcp/tools/<tool>_toolcode.py` in the blender_mcp checkout. This
- * module rebuilds the exact code string the MCP server would send —
+ * The bundled Blender MCP tools are Python files that run inside Blender, one
+ * per tool. They ship with the harness under `vendor/blender-mcp/tools`, so
+ * nothing has to be installed alongside it; that directory's README says where
+ * they came from and how to refresh them.
+ *
+ * This module rebuilds the exact code string the MCP server would send —
  * `tools_helpers/__init__.py` in Node — so the harness runs the same tool-code
- * against its headless Blender, and a newer checkout is picked up without a
- * change here.
+ * against its headless Blender.
  */
 
 const PARAMS_PLACEHOLDER = "__BLMCP_PARAMS__";
@@ -27,9 +30,9 @@ const FOOTER = [
 
 type ParamValue = string | number | boolean | null;
 
-function toolsDir(mcpDir: string): string {
-  return path.join(mcpDir, "mcp", "blmcp", "tools");
-}
+/** `dist/electron/blender` at run time, so the package root is three up. */
+const here = path.dirname(fileURLToPath(import.meta.url));
+const TOOLS_DIR = path.join(here, "..", "..", "..", "vendor", "blender-mcp", "tools");
 
 /** `repr()` of a Python value, for the handful of types tool parameters use. */
 function pythonRepr(value: ParamValue): string {
@@ -78,20 +81,13 @@ async function expandIncludes(toolcodePath: string): Promise<string> {
  * `params` is null for a tool that takes nothing, otherwise the fields of its
  * `Params` named tuple.
  */
-async function buildToolCall(
-  mcpDir: string,
-  toolName: string,
-  params: Record<string, ParamValue> | null,
-): Promise<string> {
-  const file = path.join(toolsDir(mcpDir), `${toolName}_toolcode.py`);
+async function buildToolCall(toolName: string, params: Record<string, ParamValue> | null): Promise<string> {
+  const file = path.join(TOOLS_DIR, `${toolName}_toolcode.py`);
   let code: string;
   try {
     code = await expandIncludes(file);
   } catch (error) {
-    throw new Error(
-      `Cannot read the Blender MCP tool-code at ${file}: ${(error as Error).message}. ` +
-        "Point the blender_mcp directory in settings at a checkout of https://projects.blender.org/lab/blender_mcp.",
-    );
+    throw new Error(`Cannot read the tool-code shipped at ${file}: ${(error as Error).message}.`);
   }
   const literal =
     params === null

@@ -24,8 +24,10 @@ import type { RunContext } from "./tools.js";
 
 interface RunnerDeps {
   emit(event: WorkspaceEvent): void;
-  /** The scene may have changed: refresh the viewer and the dirty flag. */
+  /** The scene may have changed: refresh the viewer and mark the tab dirty. */
   sceneChanged(tabId: string): void;
+  /** Whether the tab's Blender holds edits that are not on disk. */
+  hasUnsavedChanges(tabId: string): boolean;
 }
 
 const PROGRESS_THROTTLE_MS = 150;
@@ -262,6 +264,9 @@ async function runTurn(request: SendRequest, settings: Settings, deps: RunnerDep
     sceneChanged() {
       deps.sceneChanged(tabId);
     },
+    hasUnsavedChanges() {
+      return deps.hasUnsavedChanges(tabId);
+    },
   };
 
   // The progress log: a summary line from the model, then the steps.
@@ -463,7 +468,7 @@ async function runTurn(request: SendRequest, settings: Settings, deps: RunnerDep
 
   if (failedWith.length === 0 && previewCount === 0) {
     try {
-      const png = toPng(await renderThumbnail(settings.blenderMcpDir, blendPath, `preview-${Date.now()}`));
+      const png = toPng(await renderThumbnail(blendPath, `preview-${Date.now()}`));
       ctx.attachImage("preview", png, null);
       steps.push("▸ render_thumbnail_to_path — preview rendered by the harness ✓");
     } catch (error) {

@@ -26,8 +26,10 @@ interface RunContext {
   settings: Settings;
   /** Stores a picture on the run's message and shows it in the chat. */
   attachImage(kind: ImageKind, png: Png, filePath: string | null): MessageImage;
-  /** The scene may have changed: the viewer and the dirty flag are refreshed. */
+  /** The scene may have changed: the viewer is refreshed and the tab turns dirty. */
   sceneChanged(): void;
+  /** Whether this tab's Blender holds edits that are not on disk. */
+  hasUnsavedChanges(): boolean;
 }
 
 /** What a tool hands back: text for the model, and sometimes a PNG too. */
@@ -93,7 +95,7 @@ async function bundled(
   params: Record<string, ParamValue> | null,
 ): Promise<ToolResult> {
   try {
-    const code = await buildToolCall(ctx.settings.blenderMcpDir, toolName, params);
+    const code = await buildToolCall(toolName, params);
     return describe(await execute(ctx.blendPath, code, true));
   } catch (error) {
     return failure(error);
@@ -103,8 +105,8 @@ async function bundled(
 /** Runs one bundled tool-code file in a fresh background Blender on some file. */
 async function bundledForCli(ctx: RunContext, toolName: string, blendFile: string): Promise<ToolResult> {
   try {
-    const code = await buildToolCall(ctx.settings.blenderMcpDir, toolName, null);
-    const result = await withSyncedBlend(ctx.blendPath, blendFile, (file) => {
+    const code = await buildToolCall(toolName, null);
+    const result = await withSyncedBlend(ctx.blendPath, blendFile, ctx.hasUnsavedChanges(), (file) => {
       return runBlenderCli(ctx.settings.blenderPath, file, code);
     });
     return json(result);
@@ -172,7 +174,7 @@ const SEARCH_SCHEMA: z.ZodRawShape = {
 function buildTools(ctx: RunContext): ToolDefinition[] {
   const docs = async (name: string, args: Record<string, unknown>): Promise<ToolResult> => {
     try {
-      return json(await runDocTool(ctx.settings.blenderMcpDir, name, args));
+      return json(await runDocTool(name, args));
     } catch (error) {
       return failure(error);
     }
@@ -276,9 +278,14 @@ function buildTools(ctx: RunContext): ToolDefinition[] {
       },
       execute: async (args) => {
         try {
-          const result = await withSyncedBlend(ctx.blendPath, text(args.blend_file), (file) => {
-            return runBlenderCli(ctx.settings.blenderPath, file, text(args.code));
-          });
+          const result = await withSyncedBlend(
+            ctx.blendPath,
+            text(args.blend_file),
+            ctx.hasUnsavedChanges(),
+            (file) => {
+              return runBlenderCli(ctx.settings.blenderPath, file, text(args.code));
+            },
+          );
           return json(result);
         } catch (error) {
           return failure(error);

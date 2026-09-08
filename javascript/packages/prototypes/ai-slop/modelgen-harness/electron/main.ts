@@ -15,7 +15,7 @@ import type {
 import { startMcpServer } from "./agent/mcp-server.js";
 import { cancelRun, isRunning, runTurn } from "./agent/runner.js";
 import * as blender from "./blender/process.js";
-import { exportModel, isDirty, modelPath, save } from "./blender/scene.js";
+import { exportModel, modelPath, save } from "./blender/scene.js";
 import {
   closeTab,
   failStaleRuns,
@@ -58,10 +58,20 @@ function pushState(tabId: string): void {
 }
 
 /**
- * Exports the glTF the viewer shows and re-reads the dirty flag. Debounced,
- * because a run calls this after every code block.
+ * Exports the glTF the viewer shows. Debounced, because a run calls this after
+ * every code block.
+ *
+ * `changed` says whether something ran in that Blender that may have edited
+ * the scene. Those are the only moments a tab becomes dirty: the flag is set
+ * here and cleared by a save, and Blender is never asked about it. See the
+ * note on `save` in `blender/scene.ts` for why its own flag cannot be used.
  */
-function refreshScene(tabId: string): void {
+function refreshScene(tabId: string, changed: boolean): void {
+  const state = states.get(tabId);
+  if (changed && state && !state.dirty) {
+    state.dirty = true;
+    pushState(tabId);
+  }
   const pending = exportTimers.get(tabId);
   if (pending) {
     clearTimeout(pending);
@@ -71,16 +81,15 @@ function refreshScene(tabId: string): void {
     setTimeout(() => {
       exportTimers.delete(tabId);
       void (async () => {
-        const state = states.get(tabId);
-        if (!state || state.blender !== "ready") {
+        const current = states.get(tabId);
+        if (!current || current.blender !== "ready") {
           return;
         }
         try {
           const file = await exportModel(tabId);
           if (file) {
-            state.modelStamp = Date.now();
+            current.modelStamp = Date.now();
           }
-          state.dirty = await isDirty(tabId);
         } catch (error) {
           broadcast({ type: "notice", tabId, text: error instanceof Error ? error.message : String(error) });
         }
@@ -90,6 +99,11 @@ function refreshScene(tabId: string): void {
   );
 }
 
+/** Whether the tab's Blender holds edits that are not on disk. */
+function hasUnsavedChanges(tabId: string): boolean {
+  return states.get(tabId)?.dirty === true;
+}
+
 blender.onStatus((blendPath, status, message) => {
   const state = states.get(blendPath);
   if (!state) {
@@ -97,9 +111,13 @@ blender.onStatus((blendPath, status, message) => {
   }
   state.blender = status;
   state.blenderMessage = message;
+  if (status === "ready") {
+    // A fresh Blender holds exactly what is on disk.
+    state.dirty = false;
+  }
   pushState(blendPath);
   if (status === "ready") {
-    refreshScene(blendPath);
+    refreshScene(blendPath, false);
   }
 });
 
@@ -250,15 +268,9 @@ function registerIpc(): void {
     if (isRunning(tabId)) {
       return { ok: false, reason: "The agent is still working on this model. Cancel the run first." };
     }
-    if (state.blender === "ready") {
-      try {
-        state.dirty = await isDirty(tabId);
-      } catch {
-        // Blender did not answer; the last known flag decides.
-      }
-    }
-    if (state.dirty) {
-      pushState(tabId);
+    // Only a running Blender can still be saved. When it is gone the changes
+    // are gone with it, so the tab closes instead of refusing forever.
+    if (state.dirty && state.blender === "ready") {
       return { ok: false, reason: "The model has unsaved changes. Save it, then close the tab." };
     }
     await blender.stop(tabId);
@@ -307,7 +319,10 @@ function registerIpc(): void {
     try {
       await runTurn(request, readSettings(), {
         emit: broadcast,
-        sceneChanged: refreshScene,
+        hasUnsavedChanges,
+        sceneChanged: (tabId: string) => {
+          refreshScene(tabId, true);
+        },
       });
     } finally {
       state.running = false;

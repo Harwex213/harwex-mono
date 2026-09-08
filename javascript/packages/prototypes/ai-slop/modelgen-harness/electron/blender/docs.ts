@@ -1,46 +1,32 @@
 import { spawn } from "node:child_process";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 /**
  * The three documentation tools of the Blender MCP server search RST files
- * bundled in the blender_mcp checkout, with Python code that lives in that
- * checkout. Rather than port it, the harness runs the very same tool function
- * in a short-lived Python: `uv run` inside `mcp/` has the dependencies, and a
- * stand-in for FastMCP captures the function the module registers.
+ * with Python code. Rather than port it, the harness ships that slice of the
+ * server under `vendor/blender-mcp/python` — the tool modules, their RST
+ * files and docutils — and runs the very same tool function in a short-lived
+ * Python. `run_doc_tool.py` there does the calling; nothing has to be
+ * installed but a `python3`.
  */
 
 const DOC_TOOLS = new Set(["search_api_docs", "search_manual_docs", "get_python_api_docs"]);
 const TIMEOUT_MS = 60_000;
 
-const SCRIPT = `
-import json, sys
-name, args = json.loads(sys.stdin.read())
-sys.path.insert(0, ".")
-module = __import__("blmcp.tools." + name, fromlist=["register"])
-class _Capture:
-    fn = None
-    def tool(self, *a, **kw):
-        def deco(fn):
-            self.fn = fn
-            return fn
-        return deco
-capture = _Capture()
-module.register(capture)
-print(json.dumps(capture.fn(**args), default=str))
-`;
+/** `dist/electron/blender` at run time, so the package root is three up. */
+const here = path.dirname(fileURLToPath(import.meta.url));
+const PYTHON_DIR = path.join(here, "..", "..", "..", "vendor", "blender-mcp", "python");
+const RUNNER = path.join(PYTHON_DIR, "run_doc_tool.py");
+const PYTHON = process.env.MODELGEN_PYTHON ?? "python3";
 
-async function runDocTool(
-  mcpDir: string,
-  toolName: string,
-  args: Record<string, unknown>,
-): Promise<Record<string, unknown>> {
+async function runDocTool(toolName: string, args: Record<string, unknown>): Promise<Record<string, unknown>> {
   if (!DOC_TOOLS.has(toolName)) {
     throw new Error(`${toolName} is not a documentation tool.`);
   }
-  const cwd = path.join(mcpDir, "mcp");
   return await new Promise((resolve, reject) => {
-    const child = spawn("uv", ["run", "--quiet", "python", "-c", SCRIPT], {
-      cwd,
+    const child = spawn(PYTHON, [RUNNER], {
+      cwd: PYTHON_DIR,
       stdio: ["pipe", "pipe", "pipe"],
     });
     let out = "";
@@ -59,7 +45,8 @@ async function runDocTool(
       clearTimeout(timer);
       reject(
         new Error(
-          `Could not run uv in ${cwd}: ${error.message}. The documentation tools need uv and the blender_mcp checkout from settings.`,
+          `Could not run ${PYTHON}: ${error.message}. ` +
+            "The documentation tools need a python3 on PATH; set MODELGEN_PYTHON to point at one.",
         ),
       );
     });

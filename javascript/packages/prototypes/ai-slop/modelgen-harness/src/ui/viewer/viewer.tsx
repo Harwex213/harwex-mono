@@ -5,19 +5,39 @@ import { MaterialPanel } from "./material-panel.js";
 import { ModelViewer } from "./scene.js";
 import type { GizmoMode, SceneInfo } from "./scene.js";
 
-const EMPTY: SceneInfo = { slots: [], selected: null, meshCount: 0, loaded: false, error: "" };
+const EMPTY: SceneInfo = { materials: [], selected: null, meshCount: 0, loaded: false, error: "" };
 
 const MODES: { mode: GizmoMode; label: string; key: string }[] = [
-  { mode: "translate", label: "Move", key: "G" },
+  { mode: "translate", label: "Move", key: "W" },
   { mode: "rotate", label: "Rotate", key: "R" },
   { mode: "scale", label: "Scale", key: "S" },
 ];
+
+/** A drag under 8 CSS pixels either way is a click, not a region. */
+const REGION_MIN = 8;
+
+interface Rect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+function rectOf(from: { x: number; y: number }, to: { x: number; y: number }): Rect {
+  return {
+    x: Math.min(from.x, to.x),
+    y: Math.min(from.y, to.y),
+    width: Math.abs(to.x - from.x),
+    height: Math.abs(to.y - from.y),
+  };
+}
 
 /**
  * The left half of a workspace. Zoom with the wheel, orbit with the left
  * button, pan with the right button or Shift. Click a mesh to select it and
  * get the gizmo; nothing done here reaches the file. Screenshot drops the
- * current view into the composer as an attachment.
+ * current view into the composer as an attachment, Region drops one rectangle
+ * of it.
  */
 function Viewer({ tabId, stamp }: { tabId: string; stamp: number }): React.JSX.Element {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -25,6 +45,10 @@ function Viewer({ tabId, stamp }: { tabId: string; stamp: number }): React.JSX.E
   const [info, setInfo] = useState<SceneInfo>(EMPTY);
   const [mode, setMode] = useState<GizmoMode>("translate");
   const [showMaterials, setShowMaterials] = useState(true);
+  /** Armed by the Region button: the next drag over the canvas is the capture. */
+  const [region, setRegion] = useState(false);
+  const [marquee, setMarquee] = useState<Rect | null>(null);
+  const dragFrom = useRef<{ x: number; y: number } | null>(null);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -56,6 +80,14 @@ function Viewer({ tabId, stamp }: { tabId: string; stamp: number }): React.JSX.E
       if (target && (target.tagName === "TEXTAREA" || target.tagName === "INPUT")) {
         return;
       }
+      // While a region is armed, Escape puts it away and nothing else runs:
+      // the keys would otherwise move the gizmo under the rectangle.
+      if (region) {
+        if (event.key === "Escape") {
+          cancelRegion();
+        }
+        return;
+      }
       const entry = MODES.find((candidate) => candidate.key.toLowerCase() === event.key.toLowerCase());
       if (entry) {
         setMode(entry.mode);
@@ -69,20 +101,69 @@ function Viewer({ tabId, stamp }: { tabId: string; stamp: number }): React.JSX.E
     return () => {
       window.removeEventListener("keydown", onKey);
     };
-  }, []);
+  }, [region]);
+
+  const attach = async (make: () => Promise<Blob>, what: string) => {
+    try {
+      const blob = await make();
+      await addAttachment(tabId, blob, "viewer.png");
+      setNotice(`${what} added to the message.`);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : String(error));
+    }
+  };
 
   const screenshot = async () => {
     const viewer = viewerRef.current;
     if (!viewer) {
       return;
     }
-    try {
-      const blob = await viewer.screenshot();
-      await addAttachment(tabId, blob, "viewer.png");
-      setNotice("Screenshot added to the message.");
-    } catch (error) {
-      setNotice(error instanceof Error ? error.message : String(error));
+    await attach(() => viewer.screenshot(), "Screenshot");
+  };
+
+  function cancelRegion(): void {
+    setRegion(false);
+    setMarquee(null);
+    dragFrom.current = null;
+  }
+
+  /** Where the pointer is inside the canvas, in CSS pixels. */
+  function pointIn(event: React.PointerEvent<HTMLDivElement>): { x: number; y: number } {
+    const rect = event.currentTarget.getBoundingClientRect();
+    return { x: event.clientX - rect.left, y: event.clientY - rect.top };
+  }
+
+  const onRegionDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0) {
+      return;
     }
+    event.currentTarget.setPointerCapture(event.pointerId);
+    dragFrom.current = pointIn(event);
+    setMarquee(null);
+  };
+
+  const onRegionMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    const from = dragFrom.current;
+    if (from) {
+      setMarquee(rectOf(from, pointIn(event)));
+    }
+  };
+
+  const onRegionUp = (event: React.PointerEvent<HTMLDivElement>) => {
+    const from = dragFrom.current;
+    dragFrom.current = null;
+    const viewer = viewerRef.current;
+    if (!from || !viewer) {
+      cancelRegion();
+      return;
+    }
+    const rect = rectOf(from, pointIn(event));
+    cancelRegion();
+    if (rect.width < REGION_MIN || rect.height < REGION_MIN) {
+      setNotice("Drag a rectangle over the view to capture part of it.");
+      return;
+    }
+    void attach(() => viewer.screenshotRegion(rect), "Region");
   };
 
   return (
@@ -140,8 +221,23 @@ function Viewer({ tabId, stamp }: { tabId: string; stamp: number }): React.JSX.E
           </button>
           <button
             type="button"
+            className={region ? "button button--small button--on" : "button button--small"}
+            title="Drag a rectangle over the view and put that part into the message"
+            onClick={() => {
+              if (region) {
+                cancelRegion();
+              } else {
+                setRegion(true);
+                setNotice("Drag a rectangle over the view. Esc cancels.");
+              }
+            }}
+          >
+            Region
+          </button>
+          <button
+            type="button"
             className={showMaterials ? "button button--small button--on" : "button button--small"}
-            title="Material slots"
+            title="The scene's materials"
             onClick={() => {
               setShowMaterials(!showMaterials);
             }}
@@ -157,7 +253,7 @@ function Viewer({ tabId, stamp }: { tabId: string; stamp: number }): React.JSX.E
             viewerRef.current?.selectByUuid(uuid);
           }}
           onPatch={(key, patch) => {
-            viewerRef.current?.patchSlot(key, patch);
+            viewerRef.current?.patchMaterial(key, patch);
           }}
         />
       ) : null}
@@ -172,12 +268,37 @@ function Viewer({ tabId, stamp }: { tabId: string; stamp: number }): React.JSX.E
           )}
         </div>
       ) : null}
+      {region ? (
+        <div
+          className="viewer__region"
+          onPointerDown={onRegionDown}
+          onPointerMove={onRegionMove}
+          onPointerUp={onRegionUp}
+          onPointerCancel={() => {
+            cancelRegion();
+          }}
+        >
+          {marquee ? (
+            <div
+              className="viewer__marquee"
+              style={{ left: marquee.x, top: marquee.y, width: marquee.width, height: marquee.height }}
+            />
+          ) : null}
+          <div className="viewer__region-hint">
+            {marquee
+              ? `${Math.round(marquee.width)} × ${Math.round(marquee.height)}`
+              : "Drag a rectangle to capture it · Esc cancels"}
+          </div>
+        </div>
+      ) : null}
       {info.loaded && info.meshCount === 0 ? (
         <div className="viewer__empty viewer__empty--soft">
           <p>The file has no meshes yet. Describe the model in the chat.</p>
         </div>
       ) : null}
-      <div className="viewer__legend">wheel zooms · drag orbits · right-drag pans · click selects · Esc deselects</div>
+      <div className="viewer__legend">
+        wheel zooms · drag orbits · right-drag pans · click selects · W/R/S move, rotate, scale · Esc deselects
+      </div>
     </div>
   );
 }
