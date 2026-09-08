@@ -1,0 +1,63 @@
+{
+  "nodes": [
+    {
+      "id": "modelgen-harness",
+      "type": "frame",
+      "text": "modelgen-harness",
+      "children": [
+        {
+          "id": "blender-mcp-https-projects-blender-org-l",
+          "type": "block",
+          "text": "возьми все тулы из Blender MCP - https://projects.blender.org/lab/blender_mcp/src/branch/main и напиши скилл, который научит агента использовать эти тулы. Используй субагента для парсинга всех тулов"
+        },
+        {
+          "id": "schema-3",
+          "type": "schema",
+          "image": "01-spec-images/01-spec-schema-1.svg"
+        },
+        {
+          "id": "prompt-imagen-harness-electron-openai-ag",
+          "type": "block",
+          "text": "prompt: создай \"imagen harness\" - electron приложение, которое позволит создавать модели с помощью openai agentic SDK и Blender Headless Mode параллельно"
+        },
+        {
+          "id": "workspace-wireframe",
+          "type": "block",
+          "text": "workspace wireframe"
+        },
+        {
+          "id": "imagen-harness-ac",
+          "type": "block",
+          "text": "imagen harness AC:\n\n- core features\n    - tabs. Each tab = 1 workspace = 1 model = 1 blend file on disk\n    - workspace. Consist of chat with agent & 3D model viewer\n\n- tabs AC:\n    - tab could be created\n    - when new tab is created, path to model is specified\n    - two options to specify path - plain string or Mac chooser\n    - tab could be closed\n    - to close the tab, model should already be saved\n    - opened tabs should be stored in sqlilte db and be saved on close\n\n- workspace AC:\n    - before model being created, user should write first model description\n    - input should have multiline input\n    - input can take multiple images for modeling\n    - workspace should have internal tool for screenshoting and automatically inserting it to input\n    - model being created should persist on disk\n    - final message from agent should be printed\n    - calling tools & small summary of current agent task should be printed, but in one message, with updated text\n    - agent should take preview image of model, which should be showed in workspace\n    - images of preview should be stored in sqlite db\n\n- 3d model viewer:\n    - should contain material slots\n    - should provide zoom & pan\n    - should provide selection of meshes and gizmo edit tool inside 3d model viewer to adjust model\n    - any adjustments should be just for testing and not be persisted to blend file in any ways\n    - should provide \"reset\" button to reset changes"
+        },
+        {
+          "id": "additional-ac",
+          "type": "block",
+          "text": "additional AC:\n- agent should use same tools as Blender MCP performed through skill\n- agent should be openai agentic SDK\n- let agent generate necessary images for modeling using imagen codex internal tool"
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "from": "prompt-imagen-harness-electron-openai-ag",
+      "to": "imagen-harness-ac"
+    },
+    {
+      "from": "additional-ac",
+      "to": "blender-mcp-https-projects-blender-org-l"
+    },
+    {
+      "from": "workspace-wireframe",
+      "to": "schema-3"
+    },
+    {
+      "from": "imagen-harness-ac",
+      "to": "workspace-wireframe"
+    },
+    {
+      "from": "imagen-harness-ac",
+      "to": "additional-ac"
+    }
+  ]
+}
