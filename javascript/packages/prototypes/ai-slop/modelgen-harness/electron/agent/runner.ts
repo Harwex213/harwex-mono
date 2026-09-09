@@ -37,6 +37,18 @@ const IMAGE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".webp"]);
 
 const active = new Map<string, AbortController>();
 
+/**
+ * Codex names an exhausted ChatGPT quota only in the text of its error: both
+ * the 5-hour and the weekly window end in "You've hit your usage limit …" with
+ * the reset time. Say so up front, so the run does not read as a network fault.
+ */
+function describeFailure(message: string): string {
+  if (/usage limit/i.test(message)) {
+    return `Codex usage limit reached. The ChatGPT plan's quota is used up for now. ${message}`;
+  }
+  return message;
+}
+
 function isRunning(tabId: string): boolean {
   return active.has(tabId);
 }
@@ -307,19 +319,36 @@ async function runTurn(request: SendRequest, settings: Settings, deps: RunnerDep
   };
   const mark = (status: string): string => (status === "completed" ? " ✓" : status === "failed" ? " ✗" : "");
 
-  const onEvent = (event: ThreadEvent): string | null => {
+  // The reason the run stopped. `turn.failed` is the verdict and always wins.
+  // Top-level `error` events also carry transient notices ("Reconnecting… 2/5"),
+  // so they only stand in for the verdict when the turn never completes.
+  let failedWith = "";
+  let turnCompleted = false;
+  let lastStreamError = "";
+  const onEvent = (event: ThreadEvent): void => {
     if (event.type === "thread.started") {
       writeThreadId(tabId, event.thread_id);
-      return null;
+      return;
     }
     if (event.type === "turn.failed") {
-      return event.error.message;
+      failedWith = describeFailure(event.error.message);
+      return;
+    }
+    if (event.type === "turn.completed") {
+      turnCompleted = true;
+      return;
     }
     if (event.type === "error") {
-      return event.message;
+      lastStreamError = event.message;
+      const line = `✗ ${shorten(event.message, 300)}`;
+      if (!steps.includes(line)) {
+        steps.push(line);
+        flush(false);
+      }
+      return;
     }
     if (event.type !== "item.started" && event.type !== "item.updated" && event.type !== "item.completed") {
-      return null;
+      return;
     }
     const item = event.item;
     if (item.type === "mcp_tool_call") {
@@ -329,26 +358,26 @@ async function runTurn(request: SendRequest, settings: Settings, deps: RunnerDep
         item.error != null ||
         item.result?.content.some((block) => block.type === "text" && /^\s*\{\s*"status"\s*:\s*"error"/.test(block.text)) === true;
       setStep(item, `▸ ${summariseTool(item.tool, item.arguments)}${item.status === "in_progress" ? "" : failed ? " ✗" : " ✓"}`);
-      return null;
+      return;
     }
     if (item.type === "command_execution") {
       setStep(item, `▸ $ ${shorten(item.command, 96)}${mark(item.status)}`);
-      return null;
+      return;
     }
     if (item.type === "web_search") {
       setStep(item, `▸ web search — ${shorten(item.query, 96)}`);
-      return null;
+      return;
     }
     if (item.type === "file_change") {
       setStep(item, `▸ file change — ${item.changes.map((change) => path.basename(change.path)).join(", ")}${mark(item.status)}`);
-      return null;
+      return;
     }
     if (item.type === "reasoning") {
       if (item.text.trim().length > 0) {
         summary = shorten(item.text, 240);
         flush(false);
       }
-      return null;
+      return;
     }
     if (item.type === "agent_message") {
       if (item.text.trim().length > 0) {
@@ -358,16 +387,15 @@ async function runTurn(request: SendRequest, settings: Settings, deps: RunnerDep
         }
         flush(false);
       }
-      return null;
+      return;
     }
     if (item.type === "error") {
       setStep(item, `✗ ${shorten(item.message, 300)}`);
     }
-    return null;
+    return;
   };
 
   const run = registerRun(ctx);
-  let failedWith = "";
   try {
     const firstMessage = readThreadId(tabId) === null;
     await writeAgentsFile(ctx, firstMessage);
@@ -441,14 +469,17 @@ async function runTurn(request: SendRequest, settings: Settings, deps: RunnerDep
       if (process.env.MODELGEN_DEBUG) {
         process.stderr.write(`[codex] ${JSON.stringify(event).slice(0, 1500)}\n`);
       }
-      const failure = onEvent(event);
-      if (failure && failedWith.length === 0) {
-        failedWith = failure;
-      }
+      onEvent(event);
+    }
+    if (failedWith.length === 0 && !turnCompleted) {
+      failedWith =
+        lastStreamError.length > 0 ? describeFailure(lastStreamError) : "Codex ended the stream before the turn completed.";
     }
   } catch (error) {
     if (failedWith.length === 0) {
-      failedWith = controller.signal.aborted ? "Cancelled." : error instanceof Error ? error.message : String(error);
+      failedWith = controller.signal.aborted
+        ? "Cancelled."
+        : describeFailure(error instanceof Error ? error.message : String(error));
     }
   } finally {
     if (flushTimer) {

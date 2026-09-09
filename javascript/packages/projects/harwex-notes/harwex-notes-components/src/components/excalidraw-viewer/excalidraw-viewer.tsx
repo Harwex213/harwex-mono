@@ -44,6 +44,15 @@ const isSameStamp = (left: TSceneStamp, right: TSceneStamp): boolean => {
   return left.version === right.version && left.fileCount === right.fileCount;
 };
 
+// The style a new element gets. Excalidraw keeps these in `appState`, and it reads them from
+// `initialData` on mount, so this is where the app's own defaults go. A roughness of 0 is the
+// `architect` sloppiness; Excalidraw exports the name only from its internals.
+const DEFAULT_ITEM_STYLE = {
+  currentItemArrowType: "elbow",
+  currentItemRoughness: 0,
+  currentItemRoundness: "sharp",
+} as const;
+
 const ExcalidrawViewer: FC<TExcalidrawViewerProps> = ({
   document,
   registry,
@@ -142,7 +151,7 @@ const ExcalidrawViewer: FC<TExcalidrawViewerProps> = ({
           apiRef.current = api;
         }}
         initialData={{
-          appState: { viewBackgroundColor: "transparent" },
+          appState: { ...DEFAULT_ITEM_STYLE, viewBackgroundColor: "transparent" },
           elements: asElements(document.scene),
           files: asFiles(document.scene),
           scrollToContent: true,
