@@ -33,6 +33,10 @@ interface SceneMaterial {
 interface SceneInfo {
   materials: SceneMaterial[];
   selected: string | null;
+  /** Name of the selected mesh, which is the Blender object's name. */
+  selectedName: string | null;
+  /** Every named node of the model, so the object panel knows what it can select. */
+  nodeNames: string[];
   meshCount: number;
   loaded: boolean;
   error: string;
@@ -67,6 +71,37 @@ function materialKey(material: THREE.Material): string {
   return material.name.length > 0 ? material.name : material.uuid;
 }
 
+/**
+ * Whether one node of the model belongs to one Blender object. The glTF
+ * exporter writes a node named after the object, and when that object has
+ * several materials it writes one numbered child per slot — `Wall` becomes a
+ * group `Wall` over `Wall_1`, `Wall_2`. The object panel has the Blender
+ * names, the viewer has the node names, and this is what joins them.
+ */
+function belongsToObject(nodeName: string, objectName: string): boolean {
+  if (nodeName === objectName) {
+    return true;
+  }
+  if (!nodeName.startsWith(`${objectName}_`)) {
+    return false;
+  }
+  const slot = nodeName.slice(objectName.length + 1);
+  return slot.length > 0 && /^\d+$/.test(slot);
+}
+
+/**
+ * The node that stands for a Blender object, given something the ray hit.
+ * A hit on one material slot selects the whole object, the way clicking in
+ * Blender does.
+ */
+function objectNodeOf(hit: THREE.Object3D): THREE.Object3D {
+  const parent = hit.parent;
+  if (parent && parent.name.length > 0 && belongsToObject(hit.name, parent.name) && hit.name !== parent.name) {
+    return parent;
+  }
+  return hit;
+}
+
 class ModelViewer {
   private readonly renderer: THREE.WebGLRenderer;
   private readonly scene = new THREE.Scene();
@@ -79,7 +114,7 @@ class ModelViewer {
   private readonly onChange: (info: SceneInfo) => void;
   private readonly onResize: () => void;
   private model: THREE.Group | null = null;
-  private selected: THREE.Mesh | null = null;
+  private selected: THREE.Object3D | null = null;
   private lastUrl = "";
   private loadCount = 0;
   private lastBounds: THREE.Sphere | null = null;
@@ -199,10 +234,10 @@ class ModelViewer {
     this.lastBounds = sphere;
 
     if (previousSelection) {
-      let again: THREE.Mesh | null = null;
+      let again: THREE.Object3D | null = null;
       this.model.traverse((object) => {
-        if (!again && (object as THREE.Mesh).isMesh && object.name === previousSelection) {
-          again = object as THREE.Mesh;
+        if (!again && object.name === previousSelection) {
+          again = object;
         }
       });
       this.select(again);
@@ -239,6 +274,22 @@ class ModelViewer {
     if (!bounds.isEmpty()) {
       this.frameBounds(bounds.getBoundingSphere(new THREE.Sphere()));
     }
+  }
+
+  /** Brings the selected mesh into view without changing how far the camera is. */
+  private frameSelection(): void {
+    if (!this.selected) {
+      return;
+    }
+    const bounds = new THREE.Box3().setFromObject(this.selected);
+    if (bounds.isEmpty()) {
+      return;
+    }
+    const center = bounds.getCenter(new THREE.Vector3());
+    const offset = this.camera.position.clone().sub(this.orbit.target);
+    this.orbit.target.copy(center);
+    this.camera.position.copy(center).add(offset);
+    this.orbit.update();
   }
 
   private frameBounds(sphere: THREE.Sphere): void {
@@ -279,20 +330,45 @@ class ModelViewer {
     );
     this.raycaster.setFromCamera(point, this.camera);
     const hit = this.raycaster.intersectObject(this.model, true).find((entry) => (entry.object as THREE.Mesh).isMesh);
-    this.select(hit ? (hit.object as THREE.Mesh) : null);
+    this.select(hit ? objectNodeOf(hit.object) : null);
     this.emit();
   };
 
-  select(mesh: THREE.Mesh | null): void {
-    this.selected = mesh;
-    if (mesh) {
-      this.gizmo.attach(mesh);
-      this.highlight.setFromObject(mesh);
+  select(node: THREE.Object3D | null): void {
+    this.selected = node;
+    if (node) {
+      this.gizmo.attach(node);
+      this.highlight.setFromObject(node);
       this.highlight.visible = true;
     } else {
       this.gizmo.detach();
       this.highlight.visible = false;
     }
+  }
+
+  /**
+   * Selects the node named after one Blender object, which is what the object
+   * panel has. Lights, cameras and empties are in Blender's outliner but the
+   * export leaves the first two out, so a name the model does not carry
+   * selects nothing.
+   */
+  selectByName(name: string | null): void {
+    if (!name || !this.model) {
+      this.select(null);
+      this.emit();
+      return;
+    }
+    let found: THREE.Object3D | null = null;
+    this.model.traverse((object) => {
+      if (!found && object.name === name) {
+        found = object;
+      }
+    });
+    this.select(found);
+    if (found) {
+      this.frameSelection();
+    }
+    this.emit();
   }
 
   selectByUuid(uuid: string | null): void {
@@ -301,10 +377,10 @@ class ModelViewer {
       this.emit();
       return;
     }
-    let found: THREE.Mesh | null = null;
+    let found: THREE.Object3D | null = null;
     this.model.traverse((object) => {
-      if (!found && object.uuid === uuid && (object as THREE.Mesh).isMesh) {
-        found = object as THREE.Mesh;
+      if (!found && object.uuid === uuid) {
+        found = object;
       }
     });
     this.select(found);
@@ -409,8 +485,12 @@ class ModelViewer {
   // Frame loop, output, teardown.
 
   private emit(): void {
+    const nodeNames: string[] = [];
     let meshCount = 0;
     this.model?.traverse((object) => {
+      if (object.name.length > 0) {
+        nodeNames.push(object.name);
+      }
       if ((object as THREE.Mesh).isMesh) {
         meshCount += 1;
       }
@@ -418,6 +498,8 @@ class ModelViewer {
     this.onChange({
       materials: this.materialList(),
       selected: this.selected?.uuid ?? null,
+      selectedName: this.selected?.name ?? null,
+      nodeNames,
       meshCount,
       loaded: this.model !== null,
       error: this.error,
@@ -492,4 +574,4 @@ class ModelViewer {
 }
 
 export type { GizmoMode, MaterialPatch, SceneInfo, SceneMaterial };
-export { ModelViewer };
+export { belongsToObject, ModelViewer };

@@ -1,5 +1,5 @@
 import { computed, signal } from "@preact/signals-react";
-import type { ChatMessage, Settings, TabState, WorkspaceEvent } from "../../shared/types.js";
+import type { ChatMessage, ReasoningEffort, SceneOutline, Settings, TabState, WorkspaceEvent } from "../../shared/types.js";
 import { harness } from "./bridge.js";
 
 /**
@@ -225,6 +225,20 @@ function cancel(tabId: string): void {
   void harness.chat.cancel(tabId);
 }
 
+/** The collection and object tree of a tab's Blender. Read fresh every time. */
+function readOutline(tabId: string): Promise<SceneOutline> {
+  return harness.tabs.outline(tabId);
+}
+
+/** Model and effort of one tab. The main process stores them and pushes the tab back. */
+async function setTabAgent(tabId: string, agentModel: string, reasoningEffort: ReasoningEffort): Promise<void> {
+  try {
+    await harness.tabs.setAgent(tabId, agentModel, reasoningEffort);
+  } catch (error) {
+    fail(error);
+  }
+}
+
 export type { Attachment };
 export {
   activeTab,
@@ -240,8 +254,10 @@ export {
   notice,
   removeAttachment,
   restartBlender,
+  readOutline,
   saveSettings,
   saveTab,
+  setTabAgent,
   selectTab,
   send,
   setNotice,

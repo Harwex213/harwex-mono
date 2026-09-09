@@ -1,11 +1,21 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { SceneOutline } from "../../../shared/types.js";
 import { modelUrl } from "../../state/bridge.js";
-import { addAttachment, setNotice } from "../../state/store.js";
+import { addAttachment, readOutline, setNotice } from "../../state/store.js";
 import { MaterialPanel } from "./material-panel.js";
+import { OutlinePanel } from "./outline-panel.js";
 import { ModelViewer } from "./scene.js";
 import type { GizmoMode, SceneInfo } from "./scene.js";
 
-const EMPTY: SceneInfo = { materials: [], selected: null, meshCount: 0, loaded: false, error: "" };
+const EMPTY: SceneInfo = {
+  materials: [],
+  selected: null,
+  selectedName: null,
+  nodeNames: [],
+  meshCount: 0,
+  loaded: false,
+  error: "",
+};
 
 const MODES: { mode: GizmoMode; label: string; key: string }[] = [
   { mode: "translate", label: "Move", key: "W" },
@@ -45,6 +55,10 @@ function Viewer({ tabId, stamp }: { tabId: string; stamp: number }): React.JSX.E
   const [info, setInfo] = useState<SceneInfo>(EMPTY);
   const [mode, setMode] = useState<GizmoMode>("translate");
   const [showMaterials, setShowMaterials] = useState(true);
+  const [showObjects, setShowObjects] = useState(false);
+  const [outline, setOutline] = useState<SceneOutline | null>(null);
+  const [outlineError, setOutlineError] = useState("");
+  const [outlineLoading, setOutlineLoading] = useState(false);
   /** Armed by the Region button: the next drag over the canvas is the capture. */
   const [region, setRegion] = useState(false);
   const [marquee, setMarquee] = useState<Rect | null>(null);
@@ -73,6 +87,27 @@ function Viewer({ tabId, stamp }: { tabId: string; stamp: number }): React.JSX.E
       void viewerRef.current?.load(modelUrl(tabId, stamp));
     }
   }, [tabId, stamp]);
+
+  const loadOutline = useCallback(async () => {
+    setOutlineLoading(true);
+    try {
+      setOutline(await readOutline(tabId));
+      setOutlineError("");
+    } catch (error) {
+      setOutline(null);
+      setOutlineError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setOutlineLoading(false);
+    }
+  }, [tabId]);
+
+  // Only while the panel is open, and again after every export: that is when
+  // the scene has just changed.
+  useEffect(() => {
+    if (showObjects) {
+      void loadOutline();
+    }
+  }, [showObjects, stamp, loadOutline]);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -236,6 +271,16 @@ function Viewer({ tabId, stamp }: { tabId: string; stamp: number }): React.JSX.E
           </button>
           <button
             type="button"
+            className={showObjects ? "button button--small button--on" : "button button--small"}
+            title="The collection and object tree, as Blender's outliner has it"
+            onClick={() => {
+              setShowObjects(!showObjects);
+            }}
+          >
+            Objects
+          </button>
+          <button
+            type="button"
             className={showMaterials ? "button button--small button--on" : "button button--small"}
             title="The scene's materials"
             onClick={() => {
@@ -246,6 +291,21 @@ function Viewer({ tabId, stamp }: { tabId: string; stamp: number }): React.JSX.E
           </button>
         </div>
       </div>
+      {showObjects ? (
+        <OutlinePanel
+          outline={outline}
+          error={outlineError}
+          loading={outlineLoading}
+          nodeNames={info.nodeNames}
+          selectedName={info.selectedName}
+          onSelect={(name) => {
+            viewerRef.current?.selectByName(name);
+          }}
+          onRefresh={() => {
+            void loadOutline();
+          }}
+        />
+      ) : null}
       {showMaterials ? (
         <MaterialPanel
           info={info}

@@ -6,7 +6,7 @@ import { Codex } from "@openai/codex-sdk";
 import type { ThreadEvent, ThreadItem, ThreadOptions, UserInput } from "@openai/codex-sdk";
 import type { ChatMessage, ImageKind, MessageImage, SendRequest, Settings, WorkspaceEvent } from "../../shared/types.js";
 import { renderThumbnail } from "../blender/scene.js";
-import { insertImage, insertMessage, readMessage, readThreadId, updateMessage, writeThreadId } from "../db.js";
+import { insertImage, insertMessage, readMessage, readTab, readThreadId, updateMessage, writeThreadId } from "../db.js";
 import { newId, toPng } from "../images.js";
 import type { Png } from "../images.js";
 import { registerRun } from "./mcp-server.js";
@@ -379,6 +379,7 @@ async function runTurn(request: SendRequest, settings: Settings, deps: RunnerDep
       }
     }
     const otherServers = Object.fromEntries((await userMcpServerNames()).map((name) => [name, { enabled: false }]));
+    const tab = readTab(tabId);
     const codex = new Codex({
       ...(settings.codexPath ? { codexPathOverride: settings.codexPath } : {}),
       env,
@@ -402,8 +403,11 @@ async function runTurn(request: SendRequest, settings: Settings, deps: RunnerDep
       sandboxMode: "read-only",
       approvalPolicy: "never",
       webSearchMode: "disabled",
-      ...(settings.agentModel ? { model: settings.agentModel } : {}),
-      ...(settings.reasoningEffort ? { modelReasoningEffort: settings.reasoningEffort as ThreadOptions["modelReasoningEffort"] } : {}),
+      // The model and the effort belong to the tab, next to its composer.
+      ...(tab?.agentModel ? { model: tab.agentModel } : {}),
+      ...(tab?.reasoningEffort
+        ? { modelReasoningEffort: tab.reasoningEffort as ThreadOptions["modelReasoningEffort"] }
+        : {}),
     };
     const threadId = readThreadId(tabId);
     let thread = threadId ? codex.resumeThread(threadId, options) : codex.startThread(options);

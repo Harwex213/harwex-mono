@@ -1,6 +1,8 @@
 import type {
   ChatMessage,
   CloseResult,
+  ReasoningEffort,
+  SceneOutline,
   SendRequest,
   Settings,
   TabState,
@@ -21,6 +23,10 @@ interface HarnessBridge {
     reveal(tabId: string): Promise<void>;
     /** Starts the headless Blender again after it stopped or failed. */
     restart(tabId: string): Promise<void>;
+    /** Which Codex model and effort this file's runs use. Both are kept with the tab. */
+    setAgent(tabId: string, agentModel: string, reasoningEffort: ReasoningEffort): Promise<void>;
+    /** The collection and object tree of the tab's Blender, as its outliner has it. */
+    outline(tabId: string): Promise<SceneOutline>;
   };
   chat: {
     list(tabId: string): Promise<ChatMessage[]>;
@@ -44,6 +50,8 @@ const IPC = {
   tabsSave: "tabs:save",
   tabsReveal: "tabs:reveal",
   tabsRestart: "tabs:restart",
+  tabsSetAgent: "tabs:set-agent",
+  tabsOutline: "tabs:outline",
   chatList: "chat:list",
   chatSend: "chat:send",
   chatCancel: "chat:cancel",

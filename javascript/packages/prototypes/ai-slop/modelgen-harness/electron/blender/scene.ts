@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { mkdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { app } from "electron";
+import type { SceneCollection, SceneObject, SceneOutline } from "../../shared/types.js";
 import { execute } from "./process.js";
 import { buildToolCall, pythonRepr } from "./toolcode.js";
 
@@ -70,6 +71,74 @@ async function exportModel(blendPath: string): Promise<string | null> {
  * reads True on load and keeps reading True after a save, which used to leave
  * its tab impossible to close. The harness tracks unsaved changes itself.
  */
+/** What the `get_objects_summary` tool-code answers with, before it is renamed. */
+interface RawObject {
+  name?: unknown;
+  type?: unknown;
+  parent?: unknown;
+  data_name?: unknown;
+  visible?: unknown;
+  hide_viewport?: unknown;
+  instance_collection?: unknown;
+}
+
+interface RawCollection {
+  name?: unknown;
+  exclude?: unknown;
+  hide_viewport?: unknown;
+  objects?: unknown;
+  children?: unknown;
+}
+
+function textOrNull(value: unknown): string | null {
+  return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+function toSceneObject(raw: RawObject): SceneObject {
+  return {
+    name: typeof raw.name === "string" ? raw.name : "",
+    type: typeof raw.type === "string" ? raw.type : "",
+    parent: textOrNull(raw.parent),
+    dataName: textOrNull(raw.data_name),
+    visible: raw.visible === true,
+    hidden: raw.hide_viewport === true,
+    instanceCollection: textOrNull(raw.instance_collection),
+  };
+}
+
+function toSceneCollection(raw: RawCollection): SceneCollection {
+  const objects = Array.isArray(raw.objects) ? (raw.objects as RawObject[]) : [];
+  const children = Array.isArray(raw.children) ? (raw.children as RawCollection[]) : [];
+  return {
+    name: typeof raw.name === "string" ? raw.name : "",
+    excluded: raw.exclude === true,
+    hidden: raw.hide_viewport === true,
+    objects: objects.map(toSceneObject),
+    children: children.map(toSceneCollection),
+  };
+}
+
+/**
+ * The collection and object tree of the scene, from the Blender MCP
+ * `get_objects_summary` tool-code — the same tree Blender's own outliner
+ * draws, so lights, cameras and empties are in it too, which the glTF the
+ * viewer renders does not have.
+ */
+async function readOutline(blendPath: string): Promise<SceneOutline> {
+  const code = await buildToolCall("get_objects_summary", null);
+  const response = await execute(blendPath, code, true);
+  const result = response.result ?? {};
+  if (response.status !== "ok" || result.status !== "ok") {
+    throw new Error(String(result.message ?? response.message ?? "Blender did not answer with the object tree."));
+  }
+  const collections = Array.isArray(result.collections) ? (result.collections as RawCollection[]) : [];
+  return {
+    sceneName: typeof result.scene_name === "string" ? result.scene_name : "",
+    activeObject: textOrNull(result.active_object),
+    collections: collections.map(toSceneCollection),
+  };
+}
+
 async function save(blendPath: string): Promise<void> {
   const response = await execute(
     blendPath,
@@ -96,4 +165,4 @@ async function renderThumbnail(blendPath: string, name: string): Promise<Uint8Ar
   return new Uint8Array(await readFile(result.filepath));
 }
 
-export { exportModel, modelPath, renderThumbnail, save };
+export { exportModel, modelPath, readOutline, renderThumbnail, save };

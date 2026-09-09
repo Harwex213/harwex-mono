@@ -36,11 +36,34 @@ without the watchers.
   API key is involved; a Codex subscription is what gets used. Reference
   pictures come from Codex's built-in `image_gen` tool.
 
-Paths and the model are set in the settings dialog (the gear in the tab bar)
-and stored in the app's SQLite. The defaults come from `BLENDER_PATH` (else
-`/Applications/Blender.app/Contents/MacOS/Blender`), `MODELGEN_AGENT_MODEL` and
-`MODELGEN_REASONING_EFFORT` (else whatever `~/.codex/config.toml` says) and
-`CODEX_PATH` (else the `codex` bundled with the SDK).
+Paths are set in the settings dialog (the gear in the tab bar) and stored in
+the app's SQLite. The defaults come from `BLENDER_PATH` (else
+`/Applications/Blender.app/Contents/MacOS/Blender`) and `CODEX_PATH` (else the
+`codex` bundled with the SDK).
+
+The Codex model and the reasoning effort are not settings: they belong to one
+file, so they sit next to the composer input and are kept with the tab.
+Default means whatever `~/.codex/config.toml` says, and a tab reopened later
+comes back with the pair it was given. The model list is the one Codex
+recommends (<https://learn.chatgpt.com/docs/models>); a tab holding a slug that
+is not in the list keeps it and marks it, so a model retired from the list, or
+released after it was written, is never swapped out behind your back.
+
+## The viewer
+
+The left half of a workspace renders the glTF the main process exports from the
+tab's Blender after every code block. Two panels sit over it:
+
+- **Objects** — the collection and object tree, read from Blender with
+  `get_objects_summary`, so it is the tree Blender's own outliner draws:
+  nested collections, object types, what is hidden or excluded. Lights and
+  cameras are listed but cannot be selected, because the export leaves them
+  out. Pressing a mesh selects it in the viewer and brings it into view.
+- **Materials** — the scene's materials, one row each however many meshes
+  carry them, with sliders that only touch the viewer's copy.
+
+`Screenshot` puts the whole view into the message, `Region` a rectangle of it.
+`W`, `R` and `S` switch the gizmo between move, rotate and scale.
 
 ## Tabs
 

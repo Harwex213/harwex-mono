@@ -4,8 +4,6 @@ import type { Settings } from "../../shared/types.js";
 import { saveSettings, settings, showSettings } from "../state/store.js";
 
 const FIELDS: { key: keyof Settings; label: string; hint: string }[] = [
-  { key: "agentModel", label: "Codex model", hint: "Empty uses the model from ~/.codex/config.toml. For example gpt-5.5-codex." },
-  { key: "reasoningEffort", label: "Reasoning effort", hint: "Empty uses the Codex default. One of minimal, low, medium, high, xhigh." },
   { key: "codexPath", label: "codex executable", hint: "Empty uses the codex bundled with the Codex SDK. Sign in once with `codex login`." },
   { key: "blenderPath", label: "Blender executable", hint: "Blender 5.1 with the Blender MCP extension installed and enabled." },
 ];

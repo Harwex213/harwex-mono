@@ -7,6 +7,7 @@ import type {
   MessageImage,
   MessageRole,
   MessageStatus,
+  ReasoningEffort,
   Settings,
   Tab,
 } from "../shared/types.js";
@@ -21,10 +22,12 @@ import type {
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS tabs (
-  blend_path TEXT PRIMARY KEY,
-  name       TEXT    NOT NULL,
-  opened_at  INTEGER NOT NULL,
-  is_open    INTEGER NOT NULL DEFAULT 1
+  blend_path       TEXT PRIMARY KEY,
+  name             TEXT    NOT NULL,
+  opened_at        INTEGER NOT NULL,
+  is_open          INTEGER NOT NULL DEFAULT 1,
+  agent_model      TEXT    NOT NULL DEFAULT '',
+  reasoning_effort TEXT    NOT NULL DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS messages (
   id         TEXT PRIMARY KEY,
@@ -63,6 +66,8 @@ interface TabRow {
   name: string;
   opened_at: number;
   is_open: number;
+  agent_model: string;
+  reasoning_effort: string;
 }
 
 interface MessageRow {
@@ -101,17 +106,63 @@ function database(): DatabaseSync {
   handle = new DatabaseSync(file);
   handle.exec("PRAGMA journal_mode = WAL");
   handle.exec(SCHEMA);
+  // Columns added after the first databases were written. `CREATE TABLE IF NOT
+  // EXISTS` above leaves those tables as they are, so add them here; the ALTER
+  // throws on a table that already has the column, which is the "nothing to
+  // do" case.
+  for (const column of ["agent_model", "reasoning_effort"]) {
+    try {
+      handle.exec(`ALTER TABLE tabs ADD COLUMN ${column} TEXT NOT NULL DEFAULT ''`);
+    } catch {
+      // Already there.
+    }
+  }
+  carryAgentSettingsToTabs(handle);
   return handle;
 }
 
+/**
+ * The model and the effort were one setting for the whole app before they
+ * became a property of each tab. Hands them to every tab that has none and
+ * drops the two rows, so a setup made before the move keeps working and this
+ * runs once.
+ */
+function carryAgentSettingsToTabs(db: DatabaseSync): void {
+  const rows = db
+    .prepare("SELECT key, value FROM settings WHERE key IN ('agentModel', 'reasoningEffort')")
+    .all() as unknown as { key: string; value: string }[];
+  if (rows.length === 0) {
+    return;
+  }
+  const stored = new Map(rows.map((row) => [row.key, row.value]));
+  const model = stored.get("agentModel") ?? "";
+  const effort = stored.get("reasoningEffort") ?? "";
+  if (model.length > 0) {
+    db.prepare("UPDATE tabs SET agent_model = ? WHERE agent_model = ''").run(model);
+  }
+  if (effort.length > 0) {
+    db.prepare("UPDATE tabs SET reasoning_effort = ? WHERE reasoning_effort = ''").run(effort);
+  }
+  db.prepare("DELETE FROM settings WHERE key IN ('agentModel', 'reasoningEffort')").run();
+}
+
 function toTab(row: TabRow): Tab {
-  return { id: row.blend_path, blendPath: row.blend_path, name: row.name };
+  return {
+    id: row.blend_path,
+    blendPath: row.blend_path,
+    name: row.name,
+    agentModel: row.agent_model ?? "",
+    reasoningEffort: (row.reasoning_effort ?? "") as ReasoningEffort,
+  };
 }
 
 // ---------------------------------------------------------------------------
 // Tabs.
 
-/** Writes the file down as an open tab. A tab that was already open keeps its place. */
+/**
+ * Writes the file down as an open tab. A tab that was already open keeps its
+ * place, and one opened before keeps the model and the effort it was given.
+ */
 function openTab(blendPath: string): Tab {
   const name = path.basename(blendPath, ".blend") || blendPath;
   database()
@@ -124,7 +175,21 @@ function openTab(blendPath: string): Tab {
          is_open = 1`,
     )
     .run(blendPath, name, Date.now());
-  return { id: blendPath, blendPath, name };
+  return readTab(blendPath) ?? { id: blendPath, blendPath, name, agentModel: "", reasoningEffort: "" };
+}
+
+function readTab(blendPath: string): Tab | null {
+  const row = database().prepare("SELECT * FROM tabs WHERE blend_path = ?").get(blendPath) as unknown as
+    | TabRow
+    | undefined;
+  return row ? toTab(row) : null;
+}
+
+/** Stores the Codex model and effort of one tab. Empty means the Codex default. */
+function setTabAgent(blendPath: string, agentModel: string, reasoningEffort: ReasoningEffort): void {
+  database()
+    .prepare("UPDATE tabs SET agent_model = ?, reasoning_effort = ? WHERE blend_path = ?")
+    .run(agentModel, reasoningEffort, blendPath);
 }
 
 function closeTab(blendPath: string): void {
@@ -280,8 +345,6 @@ function defaultBlenderPath(): string {
 
 function defaultSettings(): Settings {
   return {
-    agentModel: process.env.MODELGEN_AGENT_MODEL ?? "",
-    reasoningEffort: process.env.MODELGEN_REASONING_EFFORT ?? "",
     codexPath: process.env.CODEX_PATH ?? "",
     blenderPath: defaultBlenderPath(),
   };
@@ -301,8 +364,6 @@ function readSettings(): Settings {
     return value !== undefined && value.length > 0 ? value : defaults[key];
   };
   return {
-    agentModel: pick("agentModel"),
-    reasoningEffort: pick("reasoningEffort"),
     codexPath: pick("codexPath"),
     blenderPath: required("blenderPath"),
   };
@@ -330,7 +391,9 @@ export {
   readImage,
   readMessage,
   readSettings,
+  readTab,
   readThreadId,
+  setTabAgent,
   updateMessage,
   writeSettings,
   writeThreadId,

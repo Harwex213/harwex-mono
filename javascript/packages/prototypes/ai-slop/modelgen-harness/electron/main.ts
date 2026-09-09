@@ -7,6 +7,8 @@ import { IPC, SCHEME } from "../shared/bridge.js";
 import type {
   ChatMessage,
   CloseResult,
+  ReasoningEffort,
+  SceneOutline,
   SendRequest,
   Settings,
   TabState,
@@ -15,7 +17,7 @@ import type {
 import { startMcpServer } from "./agent/mcp-server.js";
 import { cancelRun, isRunning, runTurn } from "./agent/runner.js";
 import * as blender from "./blender/process.js";
-import { exportModel, modelPath, save } from "./blender/scene.js";
+import { exportModel, modelPath, readOutline, save } from "./blender/scene.js";
 import {
   closeTab,
   failStaleRuns,
@@ -24,6 +26,7 @@ import {
   openTabs,
   readImage,
   readSettings,
+  setTabAgent,
   writeSettings,
 } from "./db.js";
 
@@ -300,6 +303,27 @@ function registerIpc(): void {
     await blender.stop(tabId);
     await startBlender(tabId);
     pushState(tabId);
+  });
+
+  ipcMain.handle(
+    IPC.tabsSetAgent,
+    (_event, tabId: string, agentModel: string, reasoningEffort: ReasoningEffort): void => {
+      const state = states.get(tabId);
+      if (!state) {
+        return;
+      }
+      setTabAgent(tabId, agentModel, reasoningEffort);
+      state.tab = { ...state.tab, agentModel, reasoningEffort };
+      pushState(tabId);
+    },
+  );
+
+  ipcMain.handle(IPC.tabsOutline, async (_event, tabId: string): Promise<SceneOutline> => {
+    const state = states.get(tabId);
+    if (!state || state.blender !== "ready") {
+      throw new Error(`Blender is ${state?.blender ?? "not running"} for this file.`);
+    }
+    return await readOutline(tabId);
   });
 
   ipcMain.handle(IPC.chatList, (_event, tabId: string): ChatMessage[] => {
