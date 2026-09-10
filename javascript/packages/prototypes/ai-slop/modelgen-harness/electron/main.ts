@@ -5,6 +5,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { app, BrowserWindow, dialog, ipcMain, net, protocol, shell } from "electron";
 import { IPC, SCHEME } from "../shared/bridge.js";
 import type {
+  AgentKind,
   ChatMessage,
   CloseResult,
   ReasoningEffort,
@@ -19,6 +20,7 @@ import { cancelRun, isRunning, runTurn } from "./agent/runner.js";
 import * as blender from "./blender/process.js";
 import { exportModel, modelPath, readOutline, save } from "./blender/scene.js";
 import {
+  clearConversation,
   closeTab,
   failStaleRuns,
   messagesOf,
@@ -26,7 +28,9 @@ import {
   openTabs,
   readImage,
   readSettings,
+  readTokens,
   setTabAgent,
+  setTabAgentKind,
   writeSettings,
 } from "./db.js";
 
@@ -144,6 +148,9 @@ async function openBlend(blendPath: string): Promise<TabState> {
       dirty: false,
       running: isRunning(blendPath),
       modelStamp: 0,
+      tokensUsed: readTokens(blendPath).used,
+      tokensCached: readTokens(blendPath).cached,
+      conversationStarted: messagesOf(blendPath).length > 0,
     };
     states.set(blendPath, state);
   }
@@ -222,6 +229,31 @@ function createWindow(): BrowserWindow {
     void window.loadFile(path.join(here, "..", "renderer", "index.html"));
   }
   return window;
+}
+
+/**
+ * Drops the conversation of a tab. `forgetAgent` also drops the agent that
+ * held it, which is what puts the panel back to its Clear state. The `.blend`
+ * is not touched: the model stays, only the talk about it goes.
+ */
+function resetChat(tabId: string, forgetAgent: boolean): void {
+  const state = states.get(tabId);
+  if (!state) {
+    return;
+  }
+  if (isRunning(tabId)) {
+    throw new Error("The agent is still working on this model. Cancel the run first.");
+  }
+  clearConversation(tabId);
+  state.conversationStarted = false;
+  if (forgetAgent) {
+    setTabAgentKind(tabId, "");
+    state.tab = { ...state.tab, agentKind: "", agentModel: "", reasoningEffort: "" };
+  }
+  state.tokensUsed = 0;
+  state.tokensCached = 0;
+  broadcast({ type: "chat-cleared", tabId });
+  pushState(tabId);
 }
 
 async function saveTab(tabId: string): Promise<void> {
@@ -318,6 +350,21 @@ function registerIpc(): void {
     },
   );
 
+  ipcMain.handle(IPC.tabsSetAgentKind, (_event, tabId: string, agentKind: AgentKind): void => {
+    const state = states.get(tabId);
+    if (!state) {
+      return;
+    }
+    // The agent is fixed for the length of a conversation: it holds the thread
+    // that remembers what was built, and the other agent cannot pick that up.
+    if (messagesOf(tabId).length > 0) {
+      throw new Error("Close the conversation before choosing another agent.");
+    }
+    setTabAgentKind(tabId, agentKind);
+    state.tab = { ...state.tab, agentKind, agentModel: "", reasoningEffort: "" };
+    pushState(tabId);
+  });
+
   ipcMain.handle(IPC.tabsOutline, async (_event, tabId: string): Promise<SceneOutline> => {
     const state = states.get(tabId);
     if (!state || state.blender !== "ready") {
@@ -339,6 +386,9 @@ function registerIpc(): void {
       throw new Error(`Blender is ${state.blender}. ${state.blenderMessage}`);
     }
     state.running = true;
+    // The turn writes the user's message before anything else can fail, so the
+    // conversation has started from here on whatever the agent does with it.
+    state.conversationStarted = true;
     pushState(request.tabId);
     try {
       await runTurn(request, readSettings(), {
@@ -346,6 +396,14 @@ function registerIpc(): void {
         hasUnsavedChanges,
         sceneChanged: (tabId: string) => {
           refreshScene(tabId, true);
+        },
+        tokensChanged: (tabId: string, used: number, cached: number) => {
+          const tab = states.get(tabId);
+          if (tab) {
+            tab.tokensUsed = used;
+            tab.tokensCached = cached;
+            pushState(tabId);
+          }
         },
       });
     } finally {
@@ -356,6 +414,14 @@ function registerIpc(): void {
 
   ipcMain.handle(IPC.chatCancel, (_event, tabId: string): void => {
     cancelRun(tabId);
+  });
+
+  ipcMain.handle(IPC.chatClear, (_event, tabId: string): void => {
+    resetChat(tabId, false);
+  });
+
+  ipcMain.handle(IPC.chatClose, (_event, tabId: string): void => {
+    resetChat(tabId, true);
   });
 
   ipcMain.handle(IPC.settingsGet, (): Settings => {

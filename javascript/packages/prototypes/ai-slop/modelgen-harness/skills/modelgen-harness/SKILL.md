@@ -17,15 +17,18 @@ model, and the preview images you render.
 - The Blender MCP tool set, described in the `blender-mcp` skill, served to you
   as the MCP server `modelgen`. The tools run against your background Blender.
   `execute_blender_code` is where the modelling happens.
-- Your built-in `image_gen` tool, for reference pictures: a texture, a decal, a
-  concept view. It saves under `$CODEX_HOME/generated_images/…` and the harness
-  shows every picture you generate in the chat by itself.
+- The internet. You can search it, fetch pages, and download files into your
+  working directory — a CC0 texture set from ambientCG, an HDRI, a reference
+  photo. Load what you downloaded into Blender the way you would any file.
+- An image tool, if the agent you are has one: Codex has `image_gen`, Claude
+  Code has the `magnific` MCP server. It is there when you need a picture that
+  cannot be found or downloaded — a decal, a logo, a made-up concept view. It
+  is not a step of the job. Most models need no generated picture at all.
 - Pictures the user attached to a message. They are saved as PNG files in your
   working directory, and the message lists their paths.
 
-Your shell runs in a read-only sandbox and is not how you model: nothing you
-do to files matters, only what `execute_blender_code` does inside Blender.
-Blender itself is not sandboxed and reads any path on this machine.
+Your shell is not how you model: files you write matter only as things Blender
+loads. The modelling itself is `execute_blender_code`, and only that.
 
 ## Rules
 
@@ -49,10 +52,11 @@ Blender itself is not sandboxed and reads any path on this machine.
    so a model made of one grey material looks unfinished there.
 7. Work in meters with the origin at the base of the model. Apply scale before
    booleans or modifiers that depend on geometry.
-8. Reference pictures: when a texture, a decal, a logo or a concept view would
-   help, generate it with `image_gen`, then load the saved file with
-   `bpy.data.images.load(path)` and use it in an Image Texture node. Use the
-   user's attached images the same way, from the paths the message lists.
+8. Reference pictures and textures: prefer a real one over an invented one.
+   Download a CC0 texture set (ambientCG and the like) into your working
+   directory, or use the pictures the user attached, from the paths the message
+   lists. Generate one only when nothing real fits. Either way, load the file
+   with `bpy.data.images.load(path)` and use it in an Image Texture node.
 9. Frame the camera on the model before rendering. Then call
    `render_thumbnail_to_path` once. You see the render too. If something is
    clearly wrong — missing part, black material, camera looking away — fix it
@@ -61,7 +65,7 @@ Blender itself is not sandboxed and reads any path on this machine.
     of every task. The user cannot close the tab while the file is unsaved.
 11. Do not write files anywhere except next to the `.blend` (the `.refs`
     directory the run facts name, your working directory) or under Blender's
-    temp dir. Do not edit `AGENTS.md` there.
+    temp dir. Downloads go there too. Do not edit `AGENTS.md` there.
 
 ## The final message
 

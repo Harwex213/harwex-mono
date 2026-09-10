@@ -4,8 +4,21 @@ import type { Settings } from "../../shared/types.js";
 import { saveSettings, settings, showSettings } from "../state/store.js";
 
 const FIELDS: { key: keyof Settings; label: string; hint: string }[] = [
-  { key: "codexPath", label: "codex executable", hint: "Empty uses the codex bundled with the Codex SDK. Sign in once with `codex login`." },
-  { key: "blenderPath", label: "Blender executable", hint: "Blender 5.1 with the Blender MCP extension installed and enabled." },
+  {
+    key: "claudeCodePath",
+    label: "claude code executable",
+    hint: "Found on this machine by default. Empty uses the claude bundled with the Claude Agent SDK. Sign in once with `claude`.",
+  },
+  {
+    key: "codexPath",
+    label: "codex executable",
+    hint: "Empty uses the codex bundled with the Codex SDK. Sign in once with `codex login`.",
+  },
+  {
+    key: "blenderPath",
+    label: "Blender executable",
+    hint: "Blender 5.1 with the Blender MCP extension installed and enabled.",
+  },
 ];
 
 function SettingsDialog(): React.JSX.Element {

@@ -679,6 +679,83 @@ button {
   background: var(--bg);
 }
 
+.chat__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  height: 38px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.chat__agent {
+  font-weight: 600;
+}
+
+.chat__tokens {
+  color: var(--muted);
+  font-size: 11px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+
+.chat__spacer {
+  flex: 1;
+}
+
+/* Clear state: nothing but the choice of agent. */
+
+.agent-picker {
+  margin: auto;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: 100%;
+  max-width: 380px;
+}
+
+.agent-picker h3 {
+  margin: 0;
+  text-align: center;
+}
+
+.agent-picker__options {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.agent-option {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  text-align: left;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+}
+
+.agent-option:hover {
+  background: #242739;
+  border-color: var(--accent);
+}
+
+.agent-option__name {
+  font-weight: 600;
+}
+
+.agent-option__hint {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
 .chat__scroll {
   flex: 1;
   min-height: 0;
@@ -875,6 +952,12 @@ button {
   flex-direction: column;
   gap: 8px;
   background: #0f1017;
+}
+
+.composer__agent {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .composer__attachments {

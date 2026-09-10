@@ -1,14 +1,22 @@
 /** Types the renderer and the Electron main process both speak. */
 
-/** What Codex is asked to think with. Empty means the Codex default. */
+/** What the agent is asked to think with. Empty means the agent's own default. */
 type ReasoningEffort = "" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max" | "ultra" | "persistent";
+
+/**
+ * Which agent builds the model in a tab. Empty means none has been chosen yet,
+ * which is what puts the tab's right panel in its Clear state.
+ */
+type AgentKind = "" | "claude" | "codex";
 
 /** One tab is one `.blend` file on disk. The path is the identity, so `id` is it. */
 interface Tab {
   id: string;
   blendPath: string;
   name: string;
-  /** Codex model for this file's runs. Empty means whatever `~/.codex/config.toml` says. */
+  /** The agent chosen for this file. It is fixed until the conversation is closed. */
+  agentKind: AgentKind;
+  /** Model for this file's runs. Empty means whatever the agent's own config says. */
   agentModel: string;
   reasoningEffort: ReasoningEffort;
 }
@@ -28,6 +36,17 @@ interface TabState {
   running: boolean;
   /** Bumped every time the glTF export is refreshed. The viewer reloads on change. */
   modelStamp: number;
+  /** Tokens the agent read for the first time in this conversation. Cleared with it. */
+  tokensUsed: number;
+  /** Prompt the agent re-read from cache. Every tool call repeats it, so it dwarfs the rest. */
+  tokensCached: number;
+  /**
+   * The conversation holds at least one message. What separates the Empty
+   * state from the In-progress one, and it comes from the main process rather
+   * than from the chat the window has loaded: the two pickers must never be
+   * open for the moment a reopened tab has not read its messages yet.
+   */
+  conversationStarted: boolean;
 }
 
 type MessageRole = "user" | "agent" | "progress";
@@ -77,6 +96,8 @@ interface CloseResult {
 interface Settings {
   /** The `codex` executable. Empty means the one bundled with the Codex SDK. */
   codexPath: string;
+  /** The `claude` executable. Empty means the one bundled with the Claude Agent SDK. */
+  claudeCodePath: string;
   blenderPath: string;
 }
 
@@ -117,10 +138,12 @@ type WorkspaceEvent =
   | { type: "tab"; state: TabState }
   | { type: "tab-closed"; tabId: string }
   | { type: "message"; message: ChatMessage }
+  | { type: "chat-cleared"; tabId: string }
   | { type: "notice"; tabId: string; text: string };
 
 
 export type {
+  AgentKind,
   BlenderStatus,
   ChatMessage,
   CloseResult,

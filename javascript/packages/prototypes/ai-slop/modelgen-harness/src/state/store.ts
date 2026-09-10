@@ -1,5 +1,13 @@
 import { computed, signal } from "@preact/signals-react";
-import type { ChatMessage, ReasoningEffort, SceneOutline, Settings, TabState, WorkspaceEvent } from "../../shared/types.js";
+import type {
+  AgentKind,
+  ChatMessage,
+  ReasoningEffort,
+  SceneOutline,
+  Settings,
+  TabState,
+  WorkspaceEvent,
+} from "../../shared/types.js";
 import { harness } from "./bridge.js";
 
 /**
@@ -77,6 +85,11 @@ function onEvent(event: WorkspaceEvent): void {
   }
   if (event.type === "message") {
     upsertMessage(event.message);
+    return;
+  }
+  if (event.type === "chat-cleared") {
+    messagesByTab.value = { ...messagesByTab.value, [event.tabId]: [] };
+    clearAttachments(event.tabId);
     return;
   }
   setNotice(event.text);
@@ -239,6 +252,33 @@ async function setTabAgent(tabId: string, agentModel: string, reasoningEffort: R
   }
 }
 
+/** Picks the agent that builds this model. Only possible while the chat is empty. */
+async function setTabAgentKind(tabId: string, agentKind: AgentKind): Promise<void> {
+  try {
+    await harness.tabs.setAgentKind(tabId, agentKind);
+  } catch (error) {
+    fail(error);
+  }
+}
+
+/** Starts the conversation over, on the same agent. */
+async function clearChat(tabId: string): Promise<void> {
+  try {
+    await harness.chat.clear(tabId);
+  } catch (error) {
+    fail(error);
+  }
+}
+
+/** Ends the conversation and lets the agent be chosen again. */
+async function closeChat(tabId: string): Promise<void> {
+  try {
+    await harness.chat.close(tabId);
+  } catch (error) {
+    fail(error);
+  }
+}
+
 export type { Attachment };
 export {
   activeTab,
@@ -247,6 +287,8 @@ export {
   attachmentsByTab,
   cancel,
   clearAttachments,
+  clearChat,
+  closeChat,
   closeTab,
   createTab,
   init,
@@ -258,6 +300,7 @@ export {
   saveSettings,
   saveTab,
   setTabAgent,
+  setTabAgentKind,
   selectTab,
   send,
   setNotice,

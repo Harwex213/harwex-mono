@@ -1,39 +1,27 @@
 import { useSignals } from "@preact/signals-react/runtime";
 import { useEffect, useRef, useState } from "react";
+import { agentInfo } from "../../shared/agents.js";
+import type { AgentModel } from "../../shared/agents.js";
 import type { ReasoningEffort, TabState } from "../../shared/types.js";
 import {
   addAttachment,
   attachmentsByTab,
   cancel,
-  messagesByTab,
   removeAttachment,
   send,
   setTabAgent,
 } from "../state/store.js";
 
-/** What the Codex SDK takes, plus the empty default. */
-const EFFORTS: ReasoningEffort[] = ["", "minimal", "low", "medium", "high", "xhigh", "max", "ultra", "persistent"];
-
 /**
- * The models Codex recommends, from <https://learn.chatgpt.com/docs/models>.
- * The legacy ones are left out, but a tab that holds a slug missing from this
- * list keeps it and shows it: a model retired here, or one released after this
- * list was written, must not silently turn into something else.
+ * A tab that holds a slug its agent's list does not name keeps it and shows
+ * it: a model retired from the list, or one released after the list was
+ * written, must not silently turn into something else.
  */
-const MODELS: { slug: string; label: string }[] = [
-  { slug: "", label: "model: default" },
-  { slug: "gpt-6-astra", label: "Astra" },
-  { slug: "gpt-5.6-sol", label: "5.6 Sol" },
-  { slug: "gpt-5.6-terra", label: "5.6 Terra" },
-  { slug: "gpt-5.6-luna", label: "5.6 Luna" },
-  { slug: "gpt-5.3-codex-spark", label: "5.3 Codex Spark" },
-];
-
-function modelOptions(current: string): { slug: string; label: string }[] {
-  if (current.length === 0 || MODELS.some((entry) => entry.slug === current)) {
-    return MODELS;
+function modelOptions(models: AgentModel[], current: string): AgentModel[] {
+  if (current.length === 0 || models.some((entry) => entry.slug === current)) {
+    return models;
   }
-  return [...MODELS, { slug: current, label: `${current} (not listed)` }];
+  return [...models, { slug: current, label: `${current} (not listed)` }];
 }
 
 /**
@@ -41,9 +29,11 @@ function modelOptions(current: string): { slug: string; label: string }[] {
  * chosen, and the screenshots the viewer hands over. Cmd/Ctrl + Enter sends;
  * Enter alone is a new line.
  *
- * The Codex model and effort sit here rather than in the settings, because
- * they belong to one file: each tab keeps its own, and the next run of that
- * tab uses them.
+ * The model and the effort sit above the field rather than in the settings,
+ * because they belong to one file. They are settled before the first message
+ * and fixed after it: the session the next message resumes was built by that
+ * pair, so changing either mid-conversation would change what the agent is
+ * halfway through being.
  */
 function Composer({ state }: { state: TabState }): React.JSX.Element {
   useSignals();
@@ -52,8 +42,9 @@ function Composer({ state }: { state: TabState }): React.JSX.Element {
   const areaRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const attachments = attachmentsByTab.value[tabId] ?? [];
-  const firstMessage = (messagesByTab.value[tabId] ?? []).length === 0;
+  const started = state.conversationStarted;
   const canSend = state.blender === "ready" && !state.running && text.trim().length > 0;
+  const agent = agentInfo(state.tab.agentKind);
   const model = state.tab.agentModel;
   const effort = state.tab.reasoningEffort;
 
@@ -97,6 +88,52 @@ function Composer({ state }: { state: TabState }): React.JSX.Element {
         takeFiles(event.dataTransfer.files);
       }}
     >
+      {agent ? (
+        <div className="composer__agent">
+          <select
+            className="composer__model"
+            value={model}
+            title={
+              started
+                ? "The model is fixed for this conversation. Clear it to choose another."
+                : "The model this file's runs use. Default uses the agent's own."
+            }
+            disabled={started || state.running}
+            onChange={(event) => {
+              void setTabAgent(tabId, event.target.value, effort);
+            }}
+          >
+            {modelOptions(agent.models, model).map((entry) => {
+              return (
+                <option key={entry.slug} value={entry.slug}>
+                  {entry.label}
+                </option>
+              );
+            })}
+          </select>
+          <select
+            className="composer__effort"
+            value={effort}
+            title={
+              started
+                ? "The reasoning effort is fixed for this conversation. Clear it to choose another."
+                : "Reasoning effort for this file. Default uses the agent's own."
+            }
+            disabled={started || state.running}
+            onChange={(event) => {
+              void setTabAgent(tabId, model, event.target.value as ReasoningEffort);
+            }}
+          >
+            {agent.efforts.map((entry) => {
+              return (
+                <option key={entry} value={entry}>
+                  {entry === "" ? "effort: default" : `effort: ${entry}`}
+                </option>
+              );
+            })}
+          </select>
+        </div>
+      ) : null}
       {attachments.length > 0 ? (
         <div className="composer__attachments">
           {attachments.map((attachment) => {
@@ -123,9 +160,9 @@ function Composer({ state }: { state: TabState }): React.JSX.Element {
         className="composer__input"
         value={text}
         placeholder={
-          firstMessage
-            ? "Describe the model to build. What it is, its size, materials, purpose…"
-            : "What should change? Cmd/Ctrl + Enter sends."
+          started
+            ? "What should change? Cmd/Ctrl + Enter sends."
+            : "Describe the model to build. What it is, its size, materials, purpose…"
         }
         disabled={state.running}
         onChange={(event) => {
@@ -173,45 +210,9 @@ function Composer({ state }: { state: TabState }): React.JSX.Element {
             fileRef.current?.click();
           }}
         >
-          + image
+          +
         </button>
-        <select
-          className="composer__model"
-          value={model}
-          title="Codex model for this file. Default uses the model from ~/.codex/config.toml."
-          disabled={state.running}
-          onChange={(event) => {
-            void setTabAgent(tabId, event.target.value, effort);
-          }}
-        >
-          {modelOptions(model).map((entry) => {
-            return (
-              <option key={entry.slug} value={entry.slug}>
-                {entry.label}
-              </option>
-            );
-          })}
-        </select>
-        <select
-          className="composer__effort"
-          value={effort}
-          title="Reasoning effort for this file. Empty uses the Codex default."
-          disabled={state.running}
-          onChange={(event) => {
-            void setTabAgent(tabId, model, event.target.value as ReasoningEffort);
-          }}
-        >
-          {EFFORTS.map((entry) => {
-            return (
-              <option key={entry} value={entry}>
-                {entry === "" ? "effort: default" : `effort: ${entry}`}
-              </option>
-            );
-          })}
-        </select>
-        <span className="composer__hint">
-          {state.blender !== "ready" ? `Blender is ${state.blender}.` : "Cmd/Ctrl + Enter to send"}
-        </span>
+        <span className="composer__hint">{state.blender !== "ready" ? `Blender is ${state.blender}.` : ""}</span>
         {state.running ? (
           <button
             type="button"

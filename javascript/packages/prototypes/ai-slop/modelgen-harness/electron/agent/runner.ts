@@ -1,25 +1,35 @@
-import { copyFile, lstat, mkdir, readdir, readFile, stat, symlink, writeFile } from "node:fs/promises";
-import os from "node:os";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { app } from "electron";
-import { Codex } from "@openai/codex-sdk";
-import type { ThreadEvent, ThreadItem, ThreadOptions, UserInput } from "@openai/codex-sdk";
 import type { ChatMessage, ImageKind, MessageImage, SendRequest, Settings, WorkspaceEvent } from "../../shared/types.js";
 import { renderThumbnail } from "../blender/scene.js";
-import { insertImage, insertMessage, readMessage, readTab, readThreadId, updateMessage, writeThreadId } from "../db.js";
+import {
+  addTokens,
+  insertImage,
+  insertMessage,
+  readMessage,
+  readSessionId,
+  readTab,
+  updateMessage,
+  writeSessionId,
+} from "../db.js";
 import { newId, toPng } from "../images.js";
 import type { Png } from "../images.js";
+import { claudeDriver } from "./claude.js";
+import { codexDriver, codexHome } from "./codex.js";
+import type { AgentDriver, TurnReport, TurnRequest } from "./driver.js";
 import { registerRun } from "./mcp-server.js";
 import { loadSkills } from "./skills.js";
 import type { RunContext } from "./tools.js";
 
 /**
- * One agent turn on Codex: the user's message goes in, Codex works the
- * harness's MCP tools against the tab's Blender, and two chat messages come
- * out — a progress log rewritten while the turn goes on, and the final answer
- * with the preview it rendered. Codex runs through the Codex SDK, which drives
- * the `codex` CLI and its ChatGPT login, so no API key is involved. Every tab
- * is one Codex thread, resumed on the next message.
+ * One agent turn: the user's message goes in, the agent works the harness's
+ * MCP tools against the tab's Blender, and two chat messages come out — a
+ * progress log rewritten while the turn goes on, and the final answer with the
+ * preview it rendered.
+ *
+ * Which agent that is belongs to the tab. Everything around it is the same
+ * either way, and lives here; what differs is in the driver, one file per
+ * agent, behind the interface in `driver.ts`.
  */
 
 interface RunnerDeps {
@@ -28,25 +38,22 @@ interface RunnerDeps {
   sceneChanged(tabId: string): void;
   /** Whether the tab's Blender holds edits that are not on disk. */
   hasUnsavedChanges(tabId: string): boolean;
+  /** The tab's token counts moved. */
+  tokensChanged(tabId: string, used: number, cached: number): void;
 }
 
 const PROGRESS_THROTTLE_MS = 150;
-/** Codex reads AGENTS.md up to this many bytes; the two skills are longer than its default. */
-const PROJECT_DOC_MAX_BYTES = 400_000;
-const IMAGE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".webp"]);
+
+const DRIVERS: AgentDriver[] = [claudeDriver, codexDriver];
 
 const active = new Map<string, AbortController>();
 
-/**
- * Codex names an exhausted ChatGPT quota only in the text of its error: both
- * the 5-hour and the weekly window end in "You've hit your usage limit …" with
- * the reset time. Say so up front, so the run does not read as a network fault.
- */
-function describeFailure(message: string): string {
-  if (/usage limit/i.test(message)) {
-    return `Codex usage limit reached. The ChatGPT plan's quota is used up for now. ${message}`;
+function driverFor(kind: string): AgentDriver {
+  const driver = DRIVERS.find((entry) => entry.kind === kind);
+  if (!driver) {
+    throw new Error("Choose an agent for this model first.");
   }
-  return message;
+  return driver;
 }
 
 function isRunning(tabId: string): boolean {
@@ -62,145 +69,23 @@ function refsDirFor(blendPath: string): string {
   return path.join(parsed.dir, `${parsed.name}.refs`);
 }
 
-/** The user's own Codex home: the login and the config live there. */
-function userCodexHome(): string {
-  return process.env.CODEX_HOME ?? path.join(os.homedir(), ".codex");
-}
-
-/** The Codex home runs use: the app's own, so the user's global AGENTS.md stays out. */
-function codexHome(): string {
-  return path.join(app.getPath("userData"), "codex-home");
-}
-
-/**
- * Codex always reads `$CODEX_HOME/AGENTS.md`, and there is no switch to skip
- * it. So a run gets its own home: the user's `auth.json` linked in (the login
- * is shared, token refreshes land in the same file), the user's `config.toml`
- * copied in (model and preferences follow), and no AGENTS.md. Sessions and
- * generated images of harness runs live there too.
- */
-async function prepareCodexHome(): Promise<string> {
-  const home = codexHome();
-  const user = userCodexHome();
-  await mkdir(home, { recursive: true });
-  const auth = path.join(home, "auth.json");
-  try {
-    await lstat(auth);
-  } catch {
-    try {
-      await stat(path.join(user, "auth.json"));
-    } catch {
-      throw new Error(`Codex is not signed in: ${path.join(user, "auth.json")} is missing. Run \`codex login\` once.`);
-    }
-    await symlink(path.join(user, "auth.json"), auth);
-  }
-  try {
-    await copyFile(path.join(user, "config.toml"), path.join(home, "config.toml"));
-  } catch {
-    // No user config: Codex defaults apply.
-  }
-  return home;
-}
-
-/**
- * The MCP servers the user's own Codex config declares. They are switched off
- * for a harness run: a second Blender server pointed at another Blender would
- * only confuse the agent about which scene it is editing.
- */
-async function userMcpServerNames(): Promise<string[]> {
-  let raw: string;
-  try {
-    raw = await readFile(path.join(userCodexHome(), "config.toml"), "utf8");
-  } catch {
-    return [];
-  }
-  const names = new Set<string>();
-  for (const match of raw.matchAll(/^\s*\[mcp_servers\.("([^"]+)"|([A-Za-z0-9_-]+))(\.[^\]]*)?\]/gm)) {
-    const name = match[2] ?? match[3];
-    if (name && name !== "modelgen") {
-      names.add(name);
-    }
-  }
-  return [...names];
-}
-
-function shorten(value: string, max: number): string {
-  const flat = value.replace(/\s+/g, " ").trim();
-  return flat.length > max ? `${flat.slice(0, max - 1)}…` : flat;
-}
-
-/** The one line a tool call gets in the progress log. */
-function summariseTool(tool: string, rawArguments: unknown): string {
-  const name = tool.replace(/^.*__/, "");
-  const args = typeof rawArguments === "object" && rawArguments !== null ? (rawArguments as Record<string, unknown>) : {};
-  const pick = (key: string): string => (typeof args[key] === "string" ? (args[key] as string) : "");
-  let detail = "";
-  if (name.startsWith("execute_blender_code")) {
-    const first = pick("code")
-      .split("\n")
-      .map((line) => line.trim())
-      .find((line) => line.length > 0);
-    detail = (first ?? "").replace(/^#\s*/, "");
-  } else {
-    detail = pick("name") || pick("query") || pick("identifier") || pick("output_path") || pick("blend_file");
-  }
-  detail = shorten(detail, 96);
-  return detail.length > 0 ? `${name} — ${detail}` : name;
-}
-
-/** Writes the instructions Codex reads from its working directory. */
-async function writeAgentsFile(ctx: RunContext, firstMessage: boolean): Promise<void> {
+/** The skills and the facts of this run, as the one block of text a driver hands its agent. */
+async function buildInstructions(driver: AgentDriver, ctx: RunContext, firstMessage: boolean): Promise<string> {
   const skills = await loadSkills();
   const parts = skills.map((skill) => `<skill name="${skill.name}">\n${skill.body}\n</skill>`);
-  parts.push(
-    [
-      "<run-facts>",
-      `blend file: ${ctx.blendPath}`,
-      `reference pictures directory (your working directory): ${ctx.refsDir}`,
-      `first message of this tab: ${firstMessage ? "yes — inspect the scene first" : "no — the thread remembers what exists"}`,
-      "Blender: 5.1, background mode, already connected to your MCP tools (server name: modelgen)",
-      `generated images from image_gen land under: ${path.join(codexHome(), "generated_images")}`,
-      "</run-facts>",
-    ].join("\n"),
-  );
-  await mkdir(ctx.refsDir, { recursive: true });
-  await writeFile(path.join(ctx.refsDir, "AGENTS.md"), `${parts.join("\n\n")}\n`, "utf8");
-}
-
-/** Pictures Codex's built-in image tool produced since the turn began. */
-async function newGeneratedImages(since: number): Promise<string[]> {
-  const root = path.join(codexHome(), "generated_images");
-  const found: string[] = [];
-  const walk = async (dir: string, depth: number): Promise<void> => {
-    let entries;
-    try {
-      entries = await readdir(dir, { withFileTypes: true });
-    } catch {
-      return;
-    }
-    for (const entry of entries) {
-      const file = path.join(dir, entry.name);
-      if (entry.isDirectory()) {
-        if (depth < 3) {
-          await walk(file, depth + 1);
-        }
-        continue;
-      }
-      if (!IMAGE_EXTENSIONS.has(path.extname(entry.name).toLowerCase())) {
-        continue;
-      }
-      try {
-        const info = await stat(file);
-        if (info.mtimeMs >= since - 1000) {
-          found.push(file);
-        }
-      } catch {
-        // Gone between listing and stat.
-      }
-    }
-  };
-  await walk(root, 0);
-  return found.sort();
+  const facts = [
+    "<run-facts>",
+    `blend file: ${ctx.blendPath}`,
+    `reference pictures directory (your working directory): ${ctx.refsDir}`,
+    `first message of this conversation: ${firstMessage ? "yes — inspect the scene first" : "no — the session remembers what exists"}`,
+    "Blender: 5.1, background mode, already connected to your MCP tools (server name: modelgen)",
+  ];
+  if (driver.kind === "codex") {
+    facts.push(`generated images from image_gen land under: ${path.join(codexHome(), "generated_images")}`);
+  }
+  facts.push("</run-facts>");
+  parts.push(facts.join("\n"));
+  return parts.join("\n\n");
 }
 
 async function runTurn(request: SendRequest, settings: Settings, deps: RunnerDeps): Promise<void> {
@@ -208,6 +93,11 @@ async function runTurn(request: SendRequest, settings: Settings, deps: RunnerDep
   if (active.has(tabId)) {
     throw new Error("The agent is already working on this model. Wait for it, or cancel the run.");
   }
+  const tab = readTab(tabId);
+  if (!tab) {
+    throw new Error("That tab is not open.");
+  }
+  const driver = driverFor(tab.agentKind);
   const controller = new AbortController();
   active.set(tabId, controller);
 
@@ -242,7 +132,7 @@ async function runTurn(request: SendRequest, settings: Settings, deps: RunnerDep
     id: newId("msg"),
     tabId,
     role: "progress",
-    text: "Starting Codex…",
+    text: `Starting ${driver.label}…`,
     status: "running",
     createdAt: now + 1,
   });
@@ -283,7 +173,7 @@ async function runTurn(request: SendRequest, settings: Settings, deps: RunnerDep
 
   // The progress log: a summary line from the model, then the steps.
   const steps: string[] = [];
-  const stepByItem = new Map<string, number>();
+  const stepByKey = new Map<string, number>();
   let summary = "";
   let finalText = "";
   let lastFlush = 0;
@@ -307,180 +197,61 @@ async function runTurn(request: SendRequest, settings: Settings, deps: RunnerDep
     updateMessage(progress.id, text, "running");
     deps.emit({ type: "message", message: { ...progress, text, status: "running" } });
   };
-  const setStep = (item: ThreadItem, line: string) => {
-    const index = stepByItem.get(item.id);
-    if (index === undefined) {
-      stepByItem.set(item.id, steps.length);
-      steps.push(line);
-    } else {
-      steps[index] = line;
-    }
-    flush(false);
-  };
-  const mark = (status: string): string => (status === "completed" ? " ✓" : status === "failed" ? " ✗" : "");
 
-  // The reason the run stopped. `turn.failed` is the verdict and always wins.
-  // Top-level `error` events also carry transient notices ("Reconnecting… 2/5"),
-  // so they only stand in for the verdict when the turn never completes.
-  let failedWith = "";
-  let turnCompleted = false;
-  let lastStreamError = "";
-  const onEvent = (event: ThreadEvent): void => {
-    if (event.type === "thread.started") {
-      writeThreadId(tabId, event.thread_id);
-      return;
-    }
-    if (event.type === "turn.failed") {
-      failedWith = describeFailure(event.error.message);
-      return;
-    }
-    if (event.type === "turn.completed") {
-      turnCompleted = true;
-      return;
-    }
-    if (event.type === "error") {
-      lastStreamError = event.message;
-      const line = `✗ ${shorten(event.message, 300)}`;
-      if (!steps.includes(line)) {
+  const report: TurnReport = {
+    session(id: string) {
+      writeSessionId(tabId, driver.kind, id);
+    },
+    step(key: string, line: string) {
+      const index = stepByKey.get(key);
+      if (index === undefined) {
+        stepByKey.set(key, steps.length);
         steps.push(line);
-        flush(false);
+      } else {
+        steps[index] = line;
       }
-      return;
-    }
-    if (event.type !== "item.started" && event.type !== "item.updated" && event.type !== "item.completed") {
-      return;
-    }
-    const item = event.item;
-    if (item.type === "mcp_tool_call") {
-      // The SDK types say `error?`, the wire says `"error": null`; both mean no error.
-      const failed =
-        item.status === "failed" ||
-        item.error != null ||
-        item.result?.content.some((block) => block.type === "text" && /^\s*\{\s*"status"\s*:\s*"error"/.test(block.text)) === true;
-      setStep(item, `▸ ${summariseTool(item.tool, item.arguments)}${item.status === "in_progress" ? "" : failed ? " ✗" : " ✓"}`);
-      return;
-    }
-    if (item.type === "command_execution") {
-      setStep(item, `▸ $ ${shorten(item.command, 96)}${mark(item.status)}`);
-      return;
-    }
-    if (item.type === "web_search") {
-      setStep(item, `▸ web search — ${shorten(item.query, 96)}`);
-      return;
-    }
-    if (item.type === "file_change") {
-      setStep(item, `▸ file change — ${item.changes.map((change) => path.basename(change.path)).join(", ")}${mark(item.status)}`);
-      return;
-    }
-    if (item.type === "reasoning") {
-      if (item.text.trim().length > 0) {
-        summary = shorten(item.text, 240);
-        flush(false);
+      flush(false);
+    },
+    summary(text: string) {
+      summary = text;
+      flush(false);
+    },
+    final(text: string) {
+      finalText = text;
+    },
+    tokens(count) {
+      if (count.fresh <= 0 && count.cached <= 0) {
+        return;
       }
-      return;
-    }
-    if (item.type === "agent_message") {
-      if (item.text.trim().length > 0) {
-        summary = shorten(item.text, 240);
-        if (event.type === "item.completed") {
-          finalText = item.text.trim();
-        }
-        flush(false);
+      const total = addTokens(tabId, count.fresh, count.cached);
+      deps.tokensChanged(tabId, total.used, total.cached);
+    },
+    trace(line: string) {
+      if (process.env.MODELGEN_DEBUG) {
+        process.stderr.write(`${line}\n`);
       }
-      return;
-    }
-    if (item.type === "error") {
-      setStep(item, `✗ ${shorten(item.message, 300)}`);
-    }
-    return;
+    },
   };
 
+  let failedWith = "";
   const run = registerRun(ctx);
   try {
-    const firstMessage = readThreadId(tabId) === null;
-    await writeAgentsFile(ctx, firstMessage);
-    const home = await prepareCodexHome();
-    const env: Record<string, string> = { CODEX_HOME: home };
-    for (const [key, value] of Object.entries(process.env)) {
-      if (value !== undefined && key !== "CODEX_HOME") {
-        env[key] = value;
-      }
-    }
-    const otherServers = Object.fromEntries((await userMcpServerNames()).map((name) => [name, { enabled: false }]));
-    const tab = readTab(tabId);
-    const codex = new Codex({
-      ...(settings.codexPath ? { codexPathOverride: settings.codexPath } : {}),
-      env,
-      config: {
-        project_doc_max_bytes: PROJECT_DOC_MAX_BYTES,
-        mcp_servers: {
-          ...otherServers,
-          modelgen: {
-            url: run.url,
-            startup_timeout_sec: 30,
-            tool_timeout_sec: 600,
-            // The harness's tools are the point of the run; asking is not an option in a headless turn.
-            default_tools_approval_mode: "approve",
-          },
-        },
-      },
-    });
-    const options: ThreadOptions = {
-      workingDirectory: refsDir,
-      skipGitRepoCheck: true,
-      sandboxMode: "read-only",
-      approvalPolicy: "never",
-      webSearchMode: "disabled",
-      // The model and the effort belong to the tab, next to its composer.
-      ...(tab?.agentModel ? { model: tab.agentModel } : {}),
-      ...(tab?.reasoningEffort
-        ? { modelReasoningEffort: tab.reasoningEffort as ThreadOptions["modelReasoningEffort"] }
-        : {}),
+    const sessionId = readSessionId(tabId, driver.kind);
+    const turn: TurnRequest = {
+      tab,
+      settings,
+      blendPath,
+      refsDir,
+      instructions: await buildInstructions(driver, ctx, sessionId === null),
+      text: request.text,
+      attachedPaths,
+      mcpUrl: run.url,
+      sessionId,
+      signal: controller.signal,
     };
-    const threadId = readThreadId(tabId);
-    let thread = threadId ? codex.resumeThread(threadId, options) : codex.startThread(options);
-
-    const lines = [request.text.trim()];
-    if (attachedPaths.length > 0) {
-      lines.push("", "Attached pictures, saved as files:", ...attachedPaths.map((file) => `- ${file}`));
-    }
-    const input: UserInput[] = [
-      { type: "text", text: lines.join("\n") },
-      ...attachedPaths.map((file): UserInput => ({ type: "local_image", path: file })),
-    ];
-
-    let { events } = await thread.runStreamed(input, { signal: controller.signal });
-    if (threadId) {
-      // A thread Codex no longer has (another Codex home, a wiped session) fails before any item; start over then.
-      const first = await events.next();
-      if (first.done || first.value.type === "error" || first.value.type === "turn.failed") {
-        thread = codex.startThread(options);
-        ({ events } = await thread.runStreamed(input, { signal: controller.signal }));
-      } else {
-        const rest = events;
-        const head = first.value;
-        events = (async function* () {
-          yield head;
-          yield* rest;
-        })();
-      }
-    }
-    for await (const event of events) {
-      if (process.env.MODELGEN_DEBUG) {
-        process.stderr.write(`[codex] ${JSON.stringify(event).slice(0, 1500)}\n`);
-      }
-      onEvent(event);
-    }
-    if (failedWith.length === 0 && !turnCompleted) {
-      failedWith =
-        lastStreamError.length > 0 ? describeFailure(lastStreamError) : "Codex ended the stream before the turn completed.";
-    }
+    await driver.run(turn, report);
   } catch (error) {
-    if (failedWith.length === 0) {
-      failedWith = controller.signal.aborted
-        ? "Cancelled."
-        : describeFailure(error instanceof Error ? error.message : String(error));
-    }
+    failedWith = controller.signal.aborted ? "Cancelled." : error instanceof Error ? error.message : String(error);
   } finally {
     if (flushTimer) {
       clearTimeout(flushTimer);
@@ -492,8 +263,8 @@ async function runTurn(request: SendRequest, settings: Settings, deps: RunnerDep
   // The scene is whatever the agent left; show it, whether the run ended well or not.
   deps.sceneChanged(tabId);
 
-  // Pictures made with Codex's own image tool during this turn join the message.
-  for (const file of await newGeneratedImages(now)) {
+  // Pictures the agent made with its own image tool during this turn join the message.
+  for (const file of await (driver.generatedImages?.(now) ?? Promise.resolve([]))) {
     try {
       ctx.attachImage("generated", toPng(new Uint8Array(await readFile(file))), file);
     } catch {

@@ -2,7 +2,9 @@ import { useSignals } from "@preact/signals-react/runtime";
 import type { TabState } from "../../shared/types.js";
 import { harness } from "../state/bridge.js";
 import { restartBlender, saveTab } from "../state/store.js";
+import { AgentPicker } from "./agent-picker.js";
 import { Chat } from "./chat.js";
+import { ChatHeader } from "./chat-header.js";
 import { Composer } from "./composer.js";
 import { Viewer } from "./viewer/viewer.js";
 
@@ -10,10 +12,16 @@ import { Viewer } from "./viewer/viewer.js";
  * One tab's room: the model on the left, the conversation on the right, as
  * the wireframe draws it. The header carries what the file needs — its path,
  * the state of its Blender, and Save.
+ *
+ * The right half has three states. **Clear** has no agent yet and shows
+ * nothing but the choice of one. **Empty** has the agent but no message, so
+ * the model and the effort are still open. **In progress** has a conversation:
+ * the pair is fixed, the tokens are counted, and Clear starts over.
  */
 function Workspace({ state }: { state: TabState }): React.JSX.Element {
   useSignals();
   const tabId = state.tab.id;
+  const chosen = state.tab.agentKind !== "";
   return (
     <section className="workspace">
       <header className="workspace__header">
@@ -58,8 +66,15 @@ function Workspace({ state }: { state: TabState }): React.JSX.Element {
       <div className="workspace__body">
         <Viewer tabId={tabId} stamp={state.modelStamp} />
         <aside className="chat">
-          <Chat tabId={tabId} />
-          <Composer state={state} />
+          {chosen ? (
+            <>
+              <ChatHeader state={state} />
+              <Chat tabId={tabId} />
+              <Composer state={state} />
+            </>
+          ) : (
+            <AgentPicker tabId={tabId} />
+          )}
         </aside>
       </div>
     </section>

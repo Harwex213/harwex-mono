@@ -3390,6 +3390,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@hw/modelgen-harness@workspace:packages/prototypes/ai-slop/modelgen-harness"
   dependencies:
+    "@anthropic-ai/claude-agent-sdk": "npm:0.3.234"
     "@hw/typescript-config": "workspace:*"
     "@modelcontextprotocol/sdk": "npm:1.30.0"
     "@openai/codex-sdk": "npm:0.153.4"

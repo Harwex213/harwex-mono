@@ -14,12 +14,15 @@ const bridge: HarnessBridge = {
     restart: (tabId) => ipcRenderer.invoke(IPC.tabsRestart, tabId),
     setAgent: (tabId, agentModel, reasoningEffort) =>
       ipcRenderer.invoke(IPC.tabsSetAgent, tabId, agentModel, reasoningEffort),
+    setAgentKind: (tabId, agentKind) => ipcRenderer.invoke(IPC.tabsSetAgentKind, tabId, agentKind),
     outline: (tabId) => ipcRenderer.invoke(IPC.tabsOutline, tabId),
   },
   chat: {
     list: (tabId) => ipcRenderer.invoke(IPC.chatList, tabId),
     send: (request) => ipcRenderer.invoke(IPC.chatSend, request),
     cancel: (tabId) => ipcRenderer.invoke(IPC.chatCancel, tabId),
+    clear: (tabId) => ipcRenderer.invoke(IPC.chatClear, tabId),
+    close: (tabId) => ipcRenderer.invoke(IPC.chatClose, tabId),
   },
   settings: {
     get: () => ipcRenderer.invoke(IPC.settingsGet),

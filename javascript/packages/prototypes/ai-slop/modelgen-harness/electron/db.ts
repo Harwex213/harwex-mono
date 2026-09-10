@@ -1,7 +1,10 @@
+import { accessSync, constants } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { app } from "electron";
 import type {
+  AgentKind,
   ChatMessage,
   ImageKind,
   MessageImage,
@@ -26,8 +29,11 @@ CREATE TABLE IF NOT EXISTS tabs (
   name             TEXT    NOT NULL,
   opened_at        INTEGER NOT NULL,
   is_open          INTEGER NOT NULL DEFAULT 1,
+  agent_kind       TEXT    NOT NULL DEFAULT '',
   agent_model      TEXT    NOT NULL DEFAULT '',
-  reasoning_effort TEXT    NOT NULL DEFAULT ''
+  reasoning_effort TEXT    NOT NULL DEFAULT '',
+  tokens_used      INTEGER NOT NULL DEFAULT 0,
+  tokens_cached    INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS messages (
   id         TEXT PRIMARY KEY,
@@ -50,9 +56,10 @@ CREATE TABLE IF NOT EXISTS images (
   created_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS images_by_message ON images (message_id);
-CREATE TABLE IF NOT EXISTS codex_threads (
+CREATE TABLE IF NOT EXISTS agent_sessions (
   blend_path TEXT PRIMARY KEY,
-  thread_id  TEXT    NOT NULL,
+  agent_kind TEXT    NOT NULL,
+  session_id TEXT    NOT NULL,
   updated_at INTEGER NOT NULL
 );
 CREATE TABLE IF NOT EXISTS settings (
@@ -66,8 +73,11 @@ interface TabRow {
   name: string;
   opened_at: number;
   is_open: number;
+  agent_kind: string;
   agent_model: string;
   reasoning_effort: string;
+  tokens_used: number;
+  tokens_cached: number;
 }
 
 interface MessageRow {
@@ -110,15 +120,44 @@ function database(): DatabaseSync {
   // EXISTS` above leaves those tables as they are, so add them here; the ALTER
   // throws on a table that already has the column, which is the "nothing to
   // do" case.
-  for (const column of ["agent_model", "reasoning_effort"]) {
+  for (const column of ["agent_kind", "agent_model", "reasoning_effort"]) {
     try {
       handle.exec(`ALTER TABLE tabs ADD COLUMN ${column} TEXT NOT NULL DEFAULT ''`);
     } catch {
       // Already there.
     }
   }
+  for (const column of ["tokens_used", "tokens_cached"]) {
+    try {
+      handle.exec(`ALTER TABLE tabs ADD COLUMN ${column} INTEGER NOT NULL DEFAULT 0`);
+    } catch {
+      // Already there.
+    }
+  }
   carryAgentSettingsToTabs(handle);
+  carryCodexThreadsToSessions(handle);
   return handle;
+}
+
+/**
+ * Codex was the only agent before, so a tab written then names none. A tab that
+ * already holds a conversation gets Codex — the agent that built it — and one
+ * that holds nothing stays empty, which is what opens the agent choice.
+ */
+function carryCodexThreadsToSessions(db: DatabaseSync): void {
+  try {
+    db.exec(
+      `INSERT INTO agent_sessions (blend_path, agent_kind, session_id, updated_at)
+       SELECT blend_path, 'codex', thread_id, updated_at FROM codex_threads
+       WHERE blend_path NOT IN (SELECT blend_path FROM agent_sessions)`,
+    );
+  } catch {
+    // No codex_threads table: nothing written before this table existed.
+  }
+  db.exec(
+    `UPDATE tabs SET agent_kind = 'codex'
+     WHERE agent_kind = '' AND blend_path IN (SELECT DISTINCT blend_path FROM messages)`,
+  );
 }
 
 /**
@@ -151,6 +190,7 @@ function toTab(row: TabRow): Tab {
     id: row.blend_path,
     blendPath: row.blend_path,
     name: row.name,
+    agentKind: (row.agent_kind ?? "") as AgentKind,
     agentModel: row.agent_model ?? "",
     reasoningEffort: (row.reasoning_effort ?? "") as ReasoningEffort,
   };
@@ -175,7 +215,9 @@ function openTab(blendPath: string): Tab {
          is_open = 1`,
     )
     .run(blendPath, name, Date.now());
-  return readTab(blendPath) ?? { id: blendPath, blendPath, name, agentModel: "", reasoningEffort: "" };
+  return (
+    readTab(blendPath) ?? { id: blendPath, blendPath, name, agentKind: "", agentModel: "", reasoningEffort: "" }
+  );
 }
 
 function readTab(blendPath: string): Tab | null {
@@ -185,11 +227,38 @@ function readTab(blendPath: string): Tab | null {
   return row ? toTab(row) : null;
 }
 
-/** Stores the Codex model and effort of one tab. Empty means the Codex default. */
+/** Stores the model and effort of one tab. Empty means the agent's own default. */
 function setTabAgent(blendPath: string, agentModel: string, reasoningEffort: ReasoningEffort): void {
   database()
     .prepare("UPDATE tabs SET agent_model = ?, reasoning_effort = ? WHERE blend_path = ?")
     .run(agentModel, reasoningEffort, blendPath);
+}
+
+/**
+ * Stores which agent builds this model. The model and the effort go with it:
+ * the two agents name theirs differently, so a slug carried over from the other
+ * one would be a slug that agent has never heard of.
+ */
+function setTabAgentKind(blendPath: string, agentKind: AgentKind): void {
+  database()
+    .prepare("UPDATE tabs SET agent_kind = ?, agent_model = '', reasoning_effort = '' WHERE blend_path = ?")
+    .run(agentKind, blendPath);
+}
+
+/** What the tab's conversation has spent so far, new content and re-read prompt apart. */
+function readTokens(blendPath: string): { used: number; cached: number } {
+  const row = database()
+    .prepare("SELECT tokens_used, tokens_cached FROM tabs WHERE blend_path = ?")
+    .get(blendPath) as { tokens_used: number; tokens_cached: number } | undefined;
+  return { used: row?.tokens_used ?? 0, cached: row?.tokens_cached ?? 0 };
+}
+
+/** Adds one turn's tokens to the tab's running totals and returns them. */
+function addTokens(blendPath: string, fresh: number, cached: number): { used: number; cached: number } {
+  database()
+    .prepare("UPDATE tabs SET tokens_used = tokens_used + ?, tokens_cached = tokens_cached + ? WHERE blend_path = ?")
+    .run(fresh, cached, blendPath);
+  return readTokens(blendPath);
 }
 
 function closeTab(blendPath: string): void {
@@ -310,24 +379,45 @@ function readImage(id: string): { mime: string; bytes: Uint8Array } | null {
 }
 
 // ---------------------------------------------------------------------------
-// Codex threads. One per tab; Codex keeps the conversation under ~/.codex/sessions.
+// Agent sessions. One per tab, resumed on the next message. Codex keeps its
+// threads under its own home; Claude Code keeps its sessions under ~/.claude.
 
-function readThreadId(blendPath: string): string | null {
+/** The session of this tab, but only if the agent that owns it is still the tab's. */
+function readSessionId(blendPath: string, agentKind: AgentKind): string | null {
   const row = database()
-    .prepare("SELECT thread_id FROM codex_threads WHERE blend_path = ?")
-    .get(blendPath) as { thread_id: string } | undefined;
-  return row?.thread_id ?? null;
+    .prepare("SELECT agent_kind, session_id FROM agent_sessions WHERE blend_path = ?")
+    .get(blendPath) as { agent_kind: string; session_id: string } | undefined;
+  if (!row || row.agent_kind !== agentKind) {
+    return null;
+  }
+  return row.session_id;
 }
 
-function writeThreadId(blendPath: string, threadId: string): void {
+function writeSessionId(blendPath: string, agentKind: AgentKind, sessionId: string): void {
   database()
     .prepare(
-      `INSERT INTO codex_threads (blend_path, thread_id, updated_at) VALUES (?, ?, ?)
+      `INSERT INTO agent_sessions (blend_path, agent_kind, session_id, updated_at) VALUES (?, ?, ?, ?)
        ON CONFLICT (blend_path) DO UPDATE SET
-         thread_id = excluded.thread_id,
+         agent_kind = excluded.agent_kind,
+         session_id = excluded.session_id,
          updated_at = excluded.updated_at`,
     )
-    .run(blendPath, threadId, Date.now());
+    .run(blendPath, agentKind, sessionId, Date.now());
+}
+
+/**
+ * Wipes the conversation of one tab: its messages, the images hanging off them,
+ * the agent session the next message would have resumed, and the token count.
+ * What the agent already built in the `.blend` is untouched — only the talk goes.
+ */
+function clearConversation(blendPath: string): void {
+  const db = database();
+  db.prepare(
+    "DELETE FROM images WHERE message_id IN (SELECT id FROM messages WHERE blend_path = ?)",
+  ).run(blendPath);
+  db.prepare("DELETE FROM messages WHERE blend_path = ?").run(blendPath);
+  db.prepare("DELETE FROM agent_sessions WHERE blend_path = ?").run(blendPath);
+  db.prepare("UPDATE tabs SET tokens_used = 0, tokens_cached = 0 WHERE blend_path = ?").run(blendPath);
 }
 
 // ---------------------------------------------------------------------------
@@ -343,9 +433,43 @@ function defaultBlenderPath(): string {
   return "blender";
 }
 
+function isExecutable(file: string): boolean {
+  try {
+    accessSync(file, constants.X_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Where `claude` usually sits: the native installer's own directory, then the
+ * PATH, then the places a global npm install puts it. Empty when none of them
+ * has it, which leaves the executable bundled with the Claude Agent SDK.
+ */
+function defaultClaudeCodePath(): string {
+  if (process.env.CLAUDE_CODE_PATH) {
+    return process.env.CLAUDE_CODE_PATH;
+  }
+  const home = os.homedir();
+  const candidates = [
+    path.join(home, ".claude", "local", "claude"),
+    ...(process.env.PATH ?? "").split(path.delimiter).filter(Boolean).map((dir) => path.join(dir, "claude")),
+    "/opt/homebrew/bin/claude",
+    "/usr/local/bin/claude",
+  ];
+  for (const candidate of candidates) {
+    if (isExecutable(candidate)) {
+      return candidate;
+    }
+  }
+  return "";
+}
+
 function defaultSettings(): Settings {
   return {
     codexPath: process.env.CODEX_PATH ?? "",
+    claudeCodePath: defaultClaudeCodePath(),
     blenderPath: defaultBlenderPath(),
   };
 }
@@ -365,6 +489,7 @@ function readSettings(): Settings {
   };
   return {
     codexPath: pick("codexPath"),
+    claudeCodePath: pick("claudeCodePath"),
     blenderPath: required("blenderPath"),
   };
 }
@@ -381,6 +506,8 @@ function writeSettings(settings: Settings): Settings {
 
 export type { StoredImage };
 export {
+  addTokens,
+  clearConversation,
   closeTab,
   failStaleRuns,
   insertImage,
@@ -390,11 +517,13 @@ export {
   openTabs,
   readImage,
   readMessage,
+  readSessionId,
   readSettings,
   readTab,
-  readThreadId,
+  readTokens,
   setTabAgent,
+  setTabAgentKind,
   updateMessage,
+  writeSessionId,
   writeSettings,
-  writeThreadId,
 };

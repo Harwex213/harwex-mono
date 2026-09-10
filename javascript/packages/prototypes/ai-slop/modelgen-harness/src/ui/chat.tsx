@@ -103,10 +103,6 @@ function Chat({ tabId }: { tabId: string }): React.JSX.Element {
       {list.length === 0 ? (
         <div className="chat__empty">
           <h3>Describe the model</h3>
-          <p>
-            What it is, how big, what it is made of, what it is for. Attach pictures if you have them.
-            The agent builds it in Blender, shows a preview, and saves the file.
-          </p>
         </div>
       ) : null}
       {list.map((message) => {

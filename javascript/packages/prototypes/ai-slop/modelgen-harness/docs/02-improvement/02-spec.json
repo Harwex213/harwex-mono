@@ -1,0 +1,101 @@
+{
+  "nodes": [
+    {
+      "id": "modelgen-harness",
+      "type": "block",
+      "text": "Промпт: необходимо улучшить modelgen-harness"
+    },
+    {
+      "id": "clear-agent-chat-empty-agent-chat-inprog",
+      "type": "block",
+      "text": "Задача первая. В правую панель нужно добавить три вида состояния: Clear (когда нет диалога), Agent Chat Empty (когда нет первого сообщения от юзера), Agent Chat InProgress"
+    },
+    {
+      "id": "clear-ac",
+      "type": "block",
+      "text": "Clear состояние AC:\n- юзеру предлагается выбрать агента для работы над моделью - Claude Code или Codex\n- в настройках должна появиться строчка claude code executable (также определять по дефолту)\n- ничего кроме выбора агента на Clear показывать не нужно\n- давать перевыбрать агента в ходе диалога нельзя, только если очистить диалог"
+    },
+    {
+      "id": "image-4",
+      "type": "image",
+      "image": "02-spec-images/02-spec-image-1.png"
+    },
+    {
+      "id": "node-5",
+      "type": "block",
+      "text": "Текущий вид панели"
+    },
+    {
+      "id": "agent-chat-empty-inprogress-common-ac",
+      "type": "block",
+      "text": "Agent Chat - Empty и InProgress состояния - common AC:\n- добавить кнопку Close, которая возвращает к состоянию\n- Удалить текст \"What it is, how big, what it is made of, what it is for. Attach pictures if you have them. The agent builds it in Blender, shows a preview, and saves the file.\"\n- удалить текст \"Cmd/Ctrl + Enter to send\"\n- из \"+image\" сделать просто плюс"
+    },
+    {
+      "id": "agent-chat-inprogress-ac",
+      "type": "block",
+      "text": "Agent Chat InProgress состояние AC:\n- сменить модель нельзя\n- сменить reasoning нельзя\n- появляется кнопка Clear, которая запускает чистую сессию (делает /clear), то есть возвращает к состоянию Empty\n- добавить количество использованных токенов в рамках сессии"
+    },
+    {
+      "id": "agent-chat-empty-ac",
+      "type": "block",
+      "text": "Agent Chat Empty состояние AC:\n- дать выбор модели и reasoning сверху input"
+    },
+    {
+      "id": "agent-general-ac",
+      "type": "block",
+      "text": "Agent general AC:\n- агент должен иметь доступ в интернет\n- агент должен уметь скачивать файлы из интернета, например материалы для ambientCG"
+    },
+    {
+      "id": "codex-ac",
+      "type": "block",
+      "text": "Codex AC:\n- codex агент должен уметь пользоваться imagen тулой в случае необходимости (не пушить использовать её, но предоставить возможность)"
+    },
+    {
+      "id": "claude-code-ac",
+      "type": "block",
+      "text": "Claude Code AC:\n- claude агент должен уметь пользоваться magnific MCP в случае необходимости (не пушить использовать её, но предоставить возможность)"
+    }
+  ],
+  "edges": [
+    {
+      "from": "clear-agent-chat-empty-agent-chat-inprog",
+      "to": "clear-ac"
+    },
+    {
+      "from": "clear-ac",
+      "to": "agent-chat-empty-inprogress-common-ac"
+    },
+    {
+      "from": "agent-chat-empty-inprogress-common-ac",
+      "to": "node-5"
+    },
+    {
+      "from": "node-5",
+      "to": "image-4"
+    },
+    {
+      "from": "agent-chat-empty-inprogress-common-ac",
+      "to": "agent-chat-inprogress-ac"
+    },
+    {
+      "from": "agent-chat-empty-inprogress-common-ac",
+      "to": "agent-chat-empty-ac"
+    },
+    {
+      "from": "agent-chat-inprogress-ac",
+      "to": "agent-general-ac"
+    },
+    {
+      "from": "agent-chat-inprogress-ac",
+      "to": "codex-ac"
+    },
+    {
+      "from": "agent-chat-inprogress-ac",
+      "to": "claude-code-ac"
+    },
+    {
+      "from": "modelgen-harness",
+      "to": "clear-agent-chat-empty-agent-chat-inprog"
+    }
+  ]
+}
