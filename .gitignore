@@ -10,6 +10,7 @@ out
 *.db
 *.DS_Store
 
+*.local.json
 .claude/worktrees
 
 AGENTS.md
