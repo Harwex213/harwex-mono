@@ -3,6 +3,7 @@ import "./excalidraw-viewer.css";
 import {
   CaptureUpdateAction,
   Excalidraw,
+  FONT_FAMILY,
   getNonDeletedElements,
   getSceneVersion,
   THEME,
@@ -45,10 +46,13 @@ const isSameStamp = (left: TSceneStamp, right: TSceneStamp): boolean => {
 };
 
 // The style a new element gets. Excalidraw keeps these in `appState`, and it reads them from
-// `initialData` on mount, so this is where the app's own defaults go. A roughness of 0 is the
-// `architect` sloppiness; Excalidraw exports the name only from its internals.
+// `initialData` on mount, so this is where the app's own defaults go. Two values are numbers
+// the editor names only in its internals: a roughness of 0 is the `architect` sloppiness, and
+// a font size of 16 is `small`. `Nunito` is the font the picker calls `normal`.
 const DEFAULT_ITEM_STYLE = {
   currentItemArrowType: "elbow",
+  currentItemFontFamily: FONT_FAMILY.Nunito,
+  currentItemFontSize: 16,
   currentItemRoughness: 0,
   currentItemRoundness: "sharp",
 } as const;
