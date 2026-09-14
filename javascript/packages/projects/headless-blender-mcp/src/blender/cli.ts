@@ -72,22 +72,26 @@ async function runBlenderCli(
 }
 
 /**
- * When the tab's live Blender has the same file open with unsaved changes, a
+ * When the live Blender has the same file open with unsaved changes, a
  * numbered copy is saved and used, then removed — the CLI run sees what the
- * agent sees. Otherwise the file itself is used.
+ * agent sees. Otherwise the file itself is used, and a session holding no
+ * file at all always reads the file on disk.
  *
- * `dirty` comes from the harness, which tracks unsaved changes itself.
+ * `dirty` comes from the caller, which tracks unsaved changes itself.
  * `bpy.data.is_dirty` cannot answer this: a `--background` Blender never
  * updates it. See the note on `save` in `scene.ts`.
  */
 async function withSyncedBlend<T>(
-  tabBlendPath: string,
+  livePath: string | null,
   blendFile: string,
   dirty: boolean,
   body: (file: string) => Promise<T>,
 ): Promise<T> {
-  const instance = get(tabBlendPath);
-  if (!instance || instance.status !== "ready" || path.resolve(blendFile) !== path.resolve(tabBlendPath)) {
+  if (!livePath) {
+    return await body(blendFile);
+  }
+  const instance = get(livePath);
+  if (!instance || instance.status !== "ready" || path.resolve(blendFile) !== path.resolve(livePath)) {
     return await body(blendFile);
   }
   if (!dirty) {
@@ -96,7 +100,7 @@ async function withSyncedBlend<T>(
   const parsed = path.parse(blendFile);
   const copy = path.join(parsed.dir, `${parsed.name}_mcp_${Date.now().toString(36)}${parsed.ext}`);
   const saved = await execute(
-    tabBlendPath,
+    livePath,
     `import bpy\nbpy.ops.wm.save_as_mainfile(filepath=${pythonRepr(copy)}, copy=True)\nresult = {}\n`,
     true,
   );

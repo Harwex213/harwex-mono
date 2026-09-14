@@ -1,13 +1,14 @@
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { BLENDER_SKILL_PATH } from "@hw/headless-blender-mcp";
 
 /**
- * The agent's instructions are the skills under `skills/` — one Markdown file
- * per skill, each with a small front-matter block. The Blender MCP one was
- * written from the blender_mcp repo and teaches every tool; the harness one
- * says how a run in this app is expected to go. They are read on every run, so
- * an edit to a skill reaches the next message without a restart.
+ * The agent's instructions are Markdown files with a small front-matter block,
+ * read on every run, so an edit to a skill reaches the next message without a
+ * restart. There are two: the harness one under `skills/` says how a run in
+ * this app is expected to go, and the Blender one ships with
+ * `@hw/headless-blender-mcp` next to the tools it describes.
  */
 
 // This file runs from dist/electron/agent/, three levels under the package.
@@ -48,16 +49,9 @@ async function loadSkills(): Promise<Skill[]> {
       // A directory without a SKILL.md is not a skill.
     }
   }
-  // The harness skill goes first: it frames how the Blender tools are used here.
-  skills.sort((a, b) => {
-    if (a.name === "modelgen-harness") {
-      return -1;
-    }
-    if (b.name === "modelgen-harness") {
-      return 1;
-    }
-    return a.name.localeCompare(b.name);
-  });
+  skills.sort((a, b) => a.name.localeCompare(b.name));
+  // The harness's own skills frame the run, so the Blender one comes after them.
+  skills.push(parseSkill(await readFile(BLENDER_SKILL_PATH, "utf8"), "blender-mcp"));
   return skills;
 }
 

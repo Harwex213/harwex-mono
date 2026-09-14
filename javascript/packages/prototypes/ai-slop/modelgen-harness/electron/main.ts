@@ -3,6 +3,8 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { app, BrowserWindow, dialog, ipcMain, net, protocol, shell } from "electron";
+import { createSession, modelPath, onStatus, setExportsDir, stopAll } from "@hw/headless-blender-mcp";
+import type { BlenderSession, Png } from "@hw/headless-blender-mcp";
 import { IPC, SCHEME } from "../shared/bridge.js";
 import type {
   AgentKind,
@@ -17,8 +19,6 @@ import type {
 } from "../shared/types.js";
 import { startMcpServer } from "./agent/mcp-server.js";
 import { cancelRun, isRunning, runTurn } from "./agent/runner.js";
-import * as blender from "./blender/process.js";
-import { exportModel, modelPath, readOutline, save } from "./blender/scene.js";
 import {
   clearConversation,
   closeTab,
@@ -49,6 +49,14 @@ protocol.registerSchemesAsPrivileged([
 
 /** What every window shows about each open tab. Keyed by the `.blend` path. */
 const states = new Map<string, TabState>();
+/**
+ * The headless Blender behind each tab: one session of
+ * `@hw/headless-blender-mcp`, holding that tab's file open and handing out the
+ * Blender MCP tools bound to it.
+ */
+const sessions = new Map<string, BlenderSession>();
+/** Where a tab's renders go while a run is in flight. The run installs its own. */
+const renderSinks = new Map<string, (png: Png, filePath: string) => void>();
 const exportTimers = new Map<string, NodeJS.Timeout>();
 
 function broadcast(event: WorkspaceEvent): void {
@@ -67,18 +75,8 @@ function pushState(tabId: string): void {
 /**
  * Exports the glTF the viewer shows. Debounced, because a run calls this after
  * every code block.
- *
- * `changed` says whether something ran in that Blender that may have edited
- * the scene. Those are the only moments a tab becomes dirty: the flag is set
- * here and cleared by a save, and Blender is never asked about it. See the
- * note on `save` in `blender/scene.ts` for why its own flag cannot be used.
  */
-function refreshScene(tabId: string, changed: boolean): void {
-  const state = states.get(tabId);
-  if (changed && state && !state.dirty) {
-    state.dirty = true;
-    pushState(tabId);
-  }
+function refreshModel(tabId: string): void {
   const pending = exportTimers.get(tabId);
   if (pending) {
     clearTimeout(pending);
@@ -93,7 +91,7 @@ function refreshScene(tabId: string, changed: boolean): void {
           return;
         }
         try {
-          const file = await exportModel(tabId);
+          const file = await sessions.get(tabId)?.exportModel();
           if (file) {
             current.modelStamp = Date.now();
           }
@@ -106,12 +104,23 @@ function refreshScene(tabId: string, changed: boolean): void {
   );
 }
 
-/** Whether the tab's Blender holds edits that are not on disk. */
-function hasUnsavedChanges(tabId: string): boolean {
-  return states.get(tabId)?.dirty === true;
+/**
+ * The session says the scene may have changed, and whether it now holds edits
+ * that are not on disk. That flag is the session's own: it turns true with
+ * anything that runs code in Blender and false on a save, and Blender is never
+ * asked about it, because a `--background` Blender does not maintain
+ * `bpy.data.is_dirty`.
+ */
+function sceneChanged(tabId: string, dirty: boolean): void {
+  const state = states.get(tabId);
+  if (state && state.dirty !== dirty) {
+    state.dirty = dirty;
+    pushState(tabId);
+  }
+  refreshModel(tabId);
 }
 
-blender.onStatus((blendPath, status, message) => {
+onStatus((blendPath, status, message) => {
   const state = states.get(blendPath);
   if (!state) {
     return;
@@ -124,20 +133,43 @@ blender.onStatus((blendPath, status, message) => {
   }
   pushState(blendPath);
   if (status === "ready") {
-    refreshScene(blendPath, false);
+    refreshModel(blendPath);
   }
 });
 
-/** Starts (or restarts) the Blender behind a tab. */
-async function startBlender(tabId: string): Promise<void> {
+/**
+ * Starts the session behind a tab, without waiting for Blender: the tab shows
+ * up at once and the status above moves it from starting to ready. The session
+ * is built fresh every time, so a Blender path changed in the settings is
+ * picked up by the next restart. A failure before any process exists — a file
+ * that cannot be created — is reported here, because no status will arrive
+ * for it.
+ */
+function startSession(tabId: string): void {
   const settings = readSettings();
-  await blender.start(settings.blenderPath, tabId);
+  const session = createSession({
+    blendPath: tabId,
+    blenderPath: settings.blenderPath,
+    onChange(dirty: boolean) {
+      sceneChanged(tabId, dirty);
+    },
+    onRender(png: Png, filePath: string) {
+      renderSinks.get(tabId)?.(png, filePath);
+    },
+  });
+  sessions.set(tabId, session);
+  void session.start().catch((error: unknown) => {
+    const state = states.get(tabId);
+    if (state) {
+      state.blender = "failed";
+      state.blenderMessage = error instanceof Error ? error.message : String(error);
+      pushState(tabId);
+    }
+  });
 }
 
 /** Opens a `.blend` as a tab: written down, its Blender started, its state tracked. */
-async function openBlend(blendPath: string): Promise<TabState> {
-  const settings = readSettings();
-  await blender.ensureBlendFile(settings.blenderPath, blendPath);
+function openBlend(blendPath: string): TabState {
   const tab = openTab(blendPath);
   let state = states.get(blendPath);
   if (!state) {
@@ -154,7 +186,7 @@ async function openBlend(blendPath: string): Promise<TabState> {
     };
     states.set(blendPath, state);
   }
-  await startBlender(blendPath);
+  startSession(blendPath);
   pushState(blendPath);
   return state;
 }
@@ -256,13 +288,9 @@ function resetChat(tabId: string, forgetAgent: boolean): void {
   pushState(tabId);
 }
 
+/** Writes the tab's file. The session clears its own dirty flag, which is what pushes the state. */
 async function saveTab(tabId: string): Promise<void> {
-  await save(tabId);
-  const state = states.get(tabId);
-  if (state) {
-    state.dirty = false;
-    pushState(tabId);
-  }
+  await sessions.get(tabId)?.save();
 }
 
 function registerIpc(): void {
@@ -291,8 +319,8 @@ function registerIpc(): void {
     return picked.canceled ? null : (picked.filePath ?? null);
   });
 
-  ipcMain.handle(IPC.tabsCreate, async (_event, raw: string): Promise<TabState> => {
-    return await openBlend(normaliseBlendPath(raw));
+  ipcMain.handle(IPC.tabsCreate, (_event, raw: string): TabState => {
+    return openBlend(normaliseBlendPath(raw));
   });
 
   ipcMain.handle(IPC.tabsClose, async (_event, tabId: string): Promise<CloseResult> => {
@@ -308,7 +336,9 @@ function registerIpc(): void {
     if (state.dirty && state.blender === "ready") {
       return { ok: false, reason: "The model has unsaved changes. Save it, then close the tab." };
     }
-    await blender.stop(tabId);
+    await sessions.get(tabId)?.stop();
+    sessions.delete(tabId);
+    renderSinks.delete(tabId);
     closeTab(tabId);
     states.delete(tabId);
     broadcast({ type: "tab-closed", tabId });
@@ -332,8 +362,8 @@ function registerIpc(): void {
     if (!states.has(tabId)) {
       return;
     }
-    await blender.stop(tabId);
-    await startBlender(tabId);
+    await sessions.get(tabId)?.stop();
+    startSession(tabId);
     pushState(tabId);
   });
 
@@ -367,10 +397,11 @@ function registerIpc(): void {
 
   ipcMain.handle(IPC.tabsOutline, async (_event, tabId: string): Promise<SceneOutline> => {
     const state = states.get(tabId);
-    if (!state || state.blender !== "ready") {
+    const session = sessions.get(tabId);
+    if (!state || !session || state.blender !== "ready") {
       throw new Error(`Blender is ${state?.blender ?? "not running"} for this file.`);
     }
-    return await readOutline(tabId);
+    return await session.outline();
   });
 
   ipcMain.handle(IPC.chatList, (_event, tabId: string): ChatMessage[] => {
@@ -379,7 +410,8 @@ function registerIpc(): void {
 
   ipcMain.handle(IPC.chatSend, async (_event, request: SendRequest): Promise<void> => {
     const state = states.get(request.tabId);
-    if (!state) {
+    const session = sessions.get(request.tabId);
+    if (!state || !session) {
       throw new Error("That tab is not open.");
     }
     if (state.blender !== "ready") {
@@ -391,12 +423,17 @@ function registerIpc(): void {
     state.conversationStarted = true;
     pushState(request.tabId);
     try {
-      await runTurn(request, readSettings(), {
+      await runTurn(request, readSettings(), session, {
         emit: broadcast,
-        hasUnsavedChanges,
-        sceneChanged: (tabId: string) => {
-          refreshScene(tabId, true);
+        captureRenders: (tabId: string, sink: (png: Png, filePath: string) => void): (() => void) => {
+          renderSinks.set(tabId, sink);
+          return () => {
+            if (renderSinks.get(tabId) === sink) {
+              renderSinks.delete(tabId);
+            }
+          };
         },
+        refreshModel,
         tokensChanged: (tabId: string, used: number, cached: number) => {
           const tab = states.get(tabId);
           if (tab) {
@@ -434,6 +471,8 @@ function registerIpc(): void {
 }
 
 void app.whenReady().then(async () => {
+  // The viewer's glTF exports belong with the rest of the app's data.
+  setExportsDir(path.join(app.getPath("userData"), "exports"));
   protocol.handle(SCHEME, serve);
   failStaleRuns();
   await startMcpServer();
@@ -441,9 +480,7 @@ void app.whenReady().then(async () => {
   createWindow();
   // Every tab that was open last time comes back, each with its own Blender.
   for (const tab of openTabs()) {
-    void openBlend(tab.blendPath).catch((error: unknown) => {
-      broadcast({ type: "notice", tabId: tab.blendPath, text: error instanceof Error ? error.message : String(error) });
-    });
+    openBlend(tab.blendPath);
   }
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -459,7 +496,7 @@ app.on("before-quit", (event) => {
   }
   quitting = true;
   event.preventDefault();
-  void blender.stopAll().finally(() => {
+  void stopAll().finally(() => {
     app.quit();
   });
 });

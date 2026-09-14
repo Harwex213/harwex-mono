@@ -6,6 +6,12 @@ agent session that models in that Blender through the Blender MCP tool set.
 The agent is Claude Code or Codex, chosen per model. The tab shows the model
 live in a 3D viewer next to the chat.
 
+The Blender half is not in this package. It is
+[`@hw/headless-blender-mcp`](../../../projects/headless-blender-mcp): one
+session of that library per tab, which starts the background Blender, holds
+the tab's file open, and hands out the tools bound to it. The app keeps the
+tabs, the chat, the agents and the viewer.
+
 The specs this was built from are `docs/01-spec.json` and
 `docs/02-improvement/02-spec.json`.
 
@@ -29,9 +35,9 @@ without the watchers.
 - **A `python3` on the PATH**, for the three documentation tools. Nothing has
   to be installed into it: the slice of the blender_mcp repo those tools need —
   the tool modules, their 25 MB of RST docs and docutils — ships under
-  `vendor/blender-mcp/`, together with the tool-code the other tools run inside
-  Blender. `vendor/blender-mcp/README.md` says where it came from and how to
-  refresh it. Set `MODELGEN_PYTHON` to choose another interpreter.
+  `vendor/blender-mcp/` in `@hw/headless-blender-mcp`, together with the
+  tool-code the other tools run inside Blender. Set `HEADLESS_BLENDER_PYTHON`
+  to choose another interpreter.
 - **A login for at least one of the two agents.** Claude Code runs on the
   [Claude Agent SDK](https://platform.claude.com/docs/en/api/agent-sdk/overview),
   which drives the `claude` CLI with the login that CLI holds. Codex runs on
@@ -78,8 +84,10 @@ missing file is created from Blender's startup scene without the cube, so a
 camera and a light are already there for previews. `~` and a missing
 `.blend` extension are filled in.
 
-Opening a tab starts its Blender. Tabs run side by side: every tab has its own
-process and its own port, and agents in different tabs work at the same time.
+Opening a tab starts its Blender. The tab appears at once and its header says
+`starting` until Blender answers; a Blender that never comes up says so there.
+Tabs run side by side: every tab has its own process and its own port, and
+agents in different tabs work at the same time.
 
 **×** closes a tab, but only when the file is saved and no run is in flight;
 otherwise the reason shows as a notice. The header has **Save**, and the
@@ -154,16 +162,22 @@ server — and the skills say to reach for it last, not first.
 
 Codex only reaches outside tools through MCP, so the harness *is* an MCP
 server: an HTTP endpoint on the loopback interface with one unguessable path
-per run, handed to Codex through its config as the server `modelgen`. The tools
-carry the Blender MCP names and do what those tools do:
+per run, handed to Codex through its config as the server `modelgen`. The
+tools behind that endpoint are the ones the tab's session hands out —
+`session.tools()` of `@hw/headless-blender-mcp`, which carry the Blender MCP
+names and do what those tools do. That package's README describes each of
+them.
 
-| Tool | How the harness runs it |
-| --- | --- |
-| `execute_blender_code` | sent to the tab's Blender over the add-on's TCP protocol |
-| `get_objects_summary`, `get_object_detail_summary`, `get_blendfile_summary_*` | the vendored `*_toolcode.py` files, sent the way the MCP server sends them |
-| `render_thumbnail_to_path`, `render_viewport_to_path` | tool-code as above; the PNG is stored as the preview and returned to the agent as an image |
-| `search_api_docs`, `search_manual_docs`, `get_python_api_docs` | the upstream tool functions, run in a short-lived `python3` on the vendored RST |
-| `*_for_cli` | a fresh `blender --background`, as upstream's `blender_cli.py` does |
+Two of them are the package's own rather than upstream's, and the harness
+takes one of the two:
+
+- `save_blend_file` writes the open file. There is no window here, so nothing
+  else does, and the skills make it the last call of every task. It also
+  clears the tab's unsaved mark, which `bpy.ops.wm.save_mainfile()` inside
+  `execute_blender_code` does not.
+- `open_blend_file` is dropped from the list the run gets. The tab owns its
+  file: an agent that opened another one would leave the app watching a
+  Blender that is no longer there.
 
 Claude Code holds the same `modelgen` server over the same HTTP endpoint, plus
 `magnific`, and the built-in tools a run needs: `Bash`, `Read`, `Write`,
@@ -195,17 +209,16 @@ tool runs arbitrary Python in a Blender the harness starts unsandboxed, which
 is what modelling *is* here. The sandbox raises the floor; the tool is the
 door, and it is open by design.
 
-The instructions are the two skills under `skills/`, read on every run. Codex
-gets them as `AGENTS.md` in the tab's working directory; Claude Code gets them
-appended to its system prompt:
+The instructions are two skills, read on every run. Codex gets them as
+`AGENTS.md` in the tab's working directory; Claude Code gets them appended to
+its system prompt:
 
-- `skills/blender-mcp/SKILL.md` — every tool of the Blender MCP server, with
-  parameters, return shapes and working practices, written from the
-  blender_mcp repo. It also says which tools do not exist in background mode
-  (screenshots, `jump_to_*`).
 - `skills/modelgen-harness/SKILL.md` — how a run in this app goes: inspect
   first, build in named steps, materials per surface, `image_gen` for
   references, render a preview, save.
+- the `blender-mcp` skill of `@hw/headless-blender-mcp`, which ships next to
+  the tools it describes. It holds what the tool schemas cannot say: how a
+  background Blender differs from one in a window, and which calls fail there.
 
 ### Codex's own home
 
@@ -230,14 +243,13 @@ come from the user's config unless the tab overrides them.
 ```
 shared/types.ts, bridge.ts   what the renderer and the main process both speak
 shared/agents.ts             the two agents, their models and their efforts
-electron/main.ts             window, IPC, the modelgen:// protocol for models and pictures
+electron/main.ts             window, IPC, one Blender session per tab, the modelgen:// protocol
 electron/db.ts               SQLite: tabs, messages, images, agent sessions, settings
-electron/blender/            process per tab, TCP client, tool-code loader, docs, CLI, export
-electron/agent/              tools, the MCP server the agents talk to, the run loop, skills
+electron/agent/              the MCP server the agents talk to, the run loop, skills
 electron/agent/driver.ts     what the runner asks of an agent, and gets back
 electron/agent/codex.ts      the Codex driver
 electron/agent/claude.ts     the Claude Code driver
-skills/                      the two skills the agent reads
+skills/                      the harness skill; the Blender one comes from the package
 src/state/                   signals: tabs, messages, attachments, settings
 src/ui/                      tab bar, dialogs, workspace, chat, composer, viewer
 ```
@@ -257,13 +269,15 @@ about 350 000 cached tokens and perhaps 11 000 new ones; one total would have
 called that a cube worth 360 000 tokens.
 
 What a Claude request carries before any work happens, measured on a turn that
-called no tools at all:
+called no tools at all. The measurement predates the move to
+`@hw/headless-blender-mcp`, which added `save_blend_file` to the run and
+shortened the Blender skill, so the first row is now a rough figure:
 
 | | tokens per request |
 | --- | ---: |
-| the `claude_code` preset, the two skills, the 18 `modelgen` tools | 24 700 |
+| the `claude_code` preset, the two skills, the 20 `modelgen` tools | ~24 700 |
 | the 117 `magnific` tools | 43 200 |
-| total | 67 900 |
+| total | ~67 900 |
 
 Magnific is a whole media platform — speech, music, voice, the gallery, the
 account balance — and a modelling agent wants one thing from it. Its tool
@@ -278,7 +292,7 @@ sets permissions rather than what is loaded. So the cost stands, knowingly.
   blocks the export the viewer waits for until it is done.
 - Background Blender has no window. Operators that read
   `bpy.context.active_object` need the window override the skills describe;
-  the app's own glTF export uses it.
+  the package's own glTF export uses it.
 - The agent sees the previews it renders but not the viewer. Use **Screenshot**
   to show it what you see.
 - Pictures from Codex's `image_gen` are found by scanning the app Codex home's

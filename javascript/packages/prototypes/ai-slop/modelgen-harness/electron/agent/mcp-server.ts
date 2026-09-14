@@ -4,21 +4,21 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
-import { buildTools } from "./tools.js";
-import type { RunContext } from "./tools.js";
+import type { ToolDefinition } from "@hw/headless-blender-mcp";
 
 /**
  * Codex only reaches outside tools through MCP, so the harness is an MCP
  * server: one HTTP endpoint on the loopback interface, one unguessable path
  * per run. A request on `/mcp/<token>` is answered by a fresh, stateless MCP
- * server whose tools are bound to that run's tab — its Blender, its chat
- * message, its settings. Codex is pointed at the URL through its config.
+ * server carrying that run's tools, which the tab's Blender session handed
+ * out and which therefore work on that tab's file. Codex is pointed at the
+ * URL through its config.
  */
 
 const HOST = "127.0.0.1";
 const PATH_PREFIX = "/mcp/";
 
-const runs = new Map<string, RunContext>();
+const runs = new Map<string, ToolDefinition[]>();
 let server: http.Server | null = null;
 let port = 0;
 
@@ -51,9 +51,9 @@ function toCallResult(text: string, image: Uint8Array | undefined, isError: bool
   return isError ? { content, isError: true } : { content };
 }
 
-function mcpServerFor(ctx: RunContext): McpServer {
+function mcpServerFor(tools: ToolDefinition[]): McpServer {
   const mcp = new McpServer({ name: "modelgen-harness", version: "1.0.0" });
-  for (const definition of buildTools(ctx)) {
+  for (const definition of tools) {
     mcp.registerTool(
       definition.name,
       { description: definition.description, inputSchema: definition.schema },
@@ -73,8 +73,8 @@ async function handle(request: IncomingMessage, response: ServerResponse): Promi
     return;
   }
   const token = url.pathname.slice(PATH_PREFIX.length);
-  const ctx = runs.get(token);
-  if (!ctx) {
+  const tools = runs.get(token);
+  if (!tools) {
     response.writeHead(404).end("no such run");
     return;
   }
@@ -86,7 +86,7 @@ async function handle(request: IncomingMessage, response: ServerResponse): Promi
     return;
   }
   const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
-  const mcp = mcpServerFor(ctx);
+  const mcp = mcpServerFor(tools);
   response.on("close", () => {
     void transport.close();
     void mcp.close();
@@ -119,9 +119,9 @@ function startMcpServer(): Promise<number> {
 }
 
 /** Makes a run reachable. Returns the URL Codex is given and a way to take it down. */
-function registerRun(ctx: RunContext): { url: string; release(): void } {
+function registerRun(tools: ToolDefinition[]): { url: string; release(): void } {
   const token = randomBytes(18).toString("base64url");
-  runs.set(token, ctx);
+  runs.set(token, tools);
   return {
     url: `http://${HOST}:${port}${PATH_PREFIX}${token}`,
     release() {

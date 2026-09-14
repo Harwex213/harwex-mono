@@ -1,6 +1,6 @@
 # Vendored Blender MCP
 
-Everything the harness needs from the Blender MCP server, so nothing has to be
+Everything this package needs from the Blender MCP server, so nothing has to be
 installed next to it.
 
 - upstream: <https://projects.blender.org/lab/blender_mcp>
@@ -12,14 +12,14 @@ installed next to it.
 `mcp/blmcp/tools/*_toolcode.py` and `mcp/blmcp/tools/_template_*.py`, copied
 verbatim. Each file is the body of one tool, executed inside Blender;
 `_template_*.py` files are pulled in by the `# @include_begin:` markers.
-`electron/blender/toolcode.ts` assembles the call the way upstream's
+`src/blender/toolcode.ts` assembles the call the way upstream's
 `tools_helpers/__init__.py` does. Nothing here is imported as a Python
-package — the harness only reads the text and sends it to Blender.
+package — this package only reads the text and sends it to Blender.
 
 ## `python/`
 
 What the three documentation tools need, run by
-`electron/blender/docs.ts` through `run_doc_tool.py`:
+`src/blender/docs.ts` through `run_doc_tool.py`:
 
 | Path | From upstream | Notes |
 | --- | --- | --- |

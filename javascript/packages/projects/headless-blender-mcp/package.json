@@ -1,0 +1,32 @@
+{
+  "name": "@hw/headless-blender-mcp",
+  "description": "A headless Blender behind the Blender MCP tool set: a library, and a stdio MCP server for Claude Code and Codex",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "bin": {
+    "headless-blender": "./dist/cli/main.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json && chmod +x dist/cli/main.js",
+    "cli": "tsx src/cli/main.ts",
+    "install-cli": "yarn build && node dist/cli/main.js install",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.30.0",
+    "zod": "4.5.4"
+  },
+  "devDependencies": {
+    "@hw/typescript-config": "workspace:*",
+    "@types/node": "24.1.0",
+    "tsx": "4.19.4",
+    "typescript": "5.9.3"
+  }
+}

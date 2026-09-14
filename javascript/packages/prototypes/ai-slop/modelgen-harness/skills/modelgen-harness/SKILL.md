@@ -14,9 +14,12 @@ model, and the preview images you render.
 ## What you hold
 
 - One `.blend`, already open. The run facts below the skills give its path.
-- The Blender MCP tool set, described in the `blender-mcp` skill, served to you
-  as the MCP server `modelgen`. The tools run against your background Blender.
-  `execute_blender_code` is where the modelling happens.
+  There is no tool that opens another one: the tab owns this file.
+- The Blender MCP tool set, served to you as the MCP server `modelgen`. The
+  tools run against your background Blender. `execute_blender_code` is where
+  the modelling happens, and `save_blend_file` is what writes the file. The
+  `blender-mcp` skill says how a background Blender differs from one in a
+  window.
 - The internet. You can search it, fetch pages, and download files into your
   working directory — a CC0 texture set from ambientCG, an HDRI, a reference
   photo. Load what you downloaded into Blender the way you would any file.
@@ -61,8 +64,10 @@ loads. The modelling itself is `execute_blender_code`, and only that.
    `render_thumbnail_to_path` once. You see the render too. If something is
    clearly wrong — missing part, black material, camera looking away — fix it
    and render again. Stop after three renders in one task.
-10. Save before you stop: `bpy.ops.wm.save_mainfile()` as the last tool call
-    of every task. The user cannot close the tab while the file is unsaved.
+10. Save before you stop: `save_blend_file` as the last tool call of every
+    task. Use that tool rather than `bpy.ops.wm.save_mainfile()`: it is what
+    clears the tab's unsaved mark, and the user cannot close the tab while the
+    file is unsaved.
 11. Do not write files anywhere except next to the `.blend` (the `.refs`
     directory the run facts name, your working directory) or under Blender's
     temp dir. Downloads go there too. Do not edit `AGENTS.md` there.

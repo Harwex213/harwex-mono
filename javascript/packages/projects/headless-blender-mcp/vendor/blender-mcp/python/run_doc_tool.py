@@ -4,10 +4,10 @@
 Runs one of the Blender MCP documentation tools and prints its result as JSON.
 
 Reads ``[tool_name, args]`` as JSON on stdin, writes the tool's result as JSON
-on stdout. Called by `electron/blender/docs.ts`.
+on stdout. Called by `src/blender/docs.ts`.
 
 The tool modules register themselves on a FastMCP server and are typed against
-the MCP SDK, which the harness does not ship: it never speaks MCP here, it just
+the MCP SDK, which this slice does not ship: it never speaks MCP here, it just
 calls the function the module registers. So the two SDK modules the tools
 import are stood in for before the import, and a capture object stands in for
 the server. Nothing else about the tool modules is touched, and they keep

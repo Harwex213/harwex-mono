@@ -1,5 +1,9 @@
 /** Types the renderer and the Electron main process both speak. */
 
+// What the scene looks like from outside Blender is named by the package that
+// talks to it, so the app and the tools never drift apart.
+import type { BlenderStatus } from "@hw/headless-blender-mcp";
+
 /** What the agent is asked to think with. Empty means the agent's own default. */
 type ReasoningEffort = "" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max" | "ultra" | "persistent";
 
@@ -20,9 +24,6 @@ interface Tab {
   agentModel: string;
   reasoningEffort: ReasoningEffort;
 }
-
-/** Where the headless Blender behind a tab is in its life. */
-type BlenderStatus = "starting" | "ready" | "stopped" | "failed";
 
 /** Everything the renderer shows about a tab besides its chat. */
 interface TabState {
@@ -101,38 +102,6 @@ interface Settings {
   blenderPath: string;
 }
 
-/** One object of the Blender scene, as the outliner shows it. */
-interface SceneObject {
-  name: string;
-  /** Blender's object type: `MESH`, `LIGHT`, `CAMERA`, `EMPTY`… */
-  type: string;
-  parent: string | null;
-  dataName: string | null;
-  /** Visible in the view layer, after collections and its own flag. */
-  visible: boolean;
-  /** Its own eye is closed. */
-  hidden: boolean;
-  /** For a collection instance, the collection it stands for. */
-  instanceCollection: string | null;
-}
-
-/** One collection of the Blender scene, with what sits in it. */
-interface SceneCollection {
-  name: string;
-  /** Unticked in the outliner: out of the view layer entirely. */
-  excluded: boolean;
-  hidden: boolean;
-  objects: SceneObject[];
-  children: SceneCollection[];
-}
-
-/** The tree the object panel draws, read from the tab's Blender. */
-interface SceneOutline {
-  sceneName: string;
-  activeObject: string | null;
-  collections: SceneCollection[];
-}
-
 /** Progress the main process pushes to every window. */
 type WorkspaceEvent =
   | { type: "tab"; state: TabState }
@@ -142,9 +111,9 @@ type WorkspaceEvent =
   | { type: "notice"; tabId: string; text: string };
 
 
+export type { BlenderStatus, SceneCollection, SceneObject, SceneOutline } from "@hw/headless-blender-mcp";
 export type {
   AgentKind,
-  BlenderStatus,
   ChatMessage,
   CloseResult,
   ImageAttachment,
@@ -153,9 +122,6 @@ export type {
   MessageRole,
   MessageStatus,
   ReasoningEffort,
-  SceneCollection,
-  SceneObject,
-  SceneOutline,
   SendRequest,
   Settings,
   Tab,

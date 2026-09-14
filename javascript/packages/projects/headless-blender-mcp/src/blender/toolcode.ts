@@ -1,15 +1,15 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { TOOLS_DIR } from "./paths.js";
 
 /**
  * The bundled Blender MCP tools are Python files that run inside Blender, one
- * per tool. They ship with the harness under `vendor/blender-mcp/tools`, so
+ * per tool. They ship with this package under `vendor/blender-mcp/tools`, so
  * nothing has to be installed alongside it; that directory's README says where
  * they came from and how to refresh them.
  *
  * This module rebuilds the exact code string the MCP server would send —
- * `tools_helpers/__init__.py` in Node — so the harness runs the same tool-code
+ * `tools_helpers/__init__.py` in Node — so this package runs the same tool-code
  * against its headless Blender.
  */
 
@@ -29,10 +29,6 @@ const FOOTER = [
 ].join("\n");
 
 type ParamValue = string | number | boolean | null;
-
-/** `dist/electron/blender` at run time, so the package root is three up. */
-const here = path.dirname(fileURLToPath(import.meta.url));
-const TOOLS_DIR = path.join(here, "..", "..", "..", "vendor", "blender-mcp", "tools");
 
 /** `repr()` of a Python value, for the handful of types tool parameters use. */
 function pythonRepr(value: ParamValue): string {

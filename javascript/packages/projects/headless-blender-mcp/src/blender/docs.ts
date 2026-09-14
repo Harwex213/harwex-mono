@@ -1,10 +1,11 @@
 import { spawn } from "node:child_process";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { ENV_PYTHON } from "../meta.js";
+import { PYTHON_DIR } from "./paths.js";
 
 /**
  * The three documentation tools of the Blender MCP server search RST files
- * with Python code. Rather than port it, the harness ships that slice of the
+ * with Python code. Rather than port it, this package ships that slice of the
  * server under `vendor/blender-mcp/python` — the tool modules, their RST
  * files and docutils — and runs the very same tool function in a short-lived
  * Python. `run_doc_tool.py` there does the calling; nothing has to be
@@ -14,11 +15,8 @@ import { fileURLToPath } from "node:url";
 const DOC_TOOLS = new Set(["search_api_docs", "search_manual_docs", "get_python_api_docs"]);
 const TIMEOUT_MS = 60_000;
 
-/** `dist/electron/blender` at run time, so the package root is three up. */
-const here = path.dirname(fileURLToPath(import.meta.url));
-const PYTHON_DIR = path.join(here, "..", "..", "..", "vendor", "blender-mcp", "python");
 const RUNNER = path.join(PYTHON_DIR, "run_doc_tool.py");
-const PYTHON = process.env.MODELGEN_PYTHON ?? "python3";
+const PYTHON = process.env[ENV_PYTHON] ?? "python3";
 
 async function runDocTool(toolName: string, args: Record<string, unknown>): Promise<Record<string, unknown>> {
   if (!DOC_TOOLS.has(toolName)) {
@@ -46,7 +44,7 @@ async function runDocTool(toolName: string, args: Record<string, unknown>): Prom
       reject(
         new Error(
           `Could not run ${PYTHON}: ${error.message}. ` +
-            "The documentation tools need a python3 on PATH; set MODELGEN_PYTHON to point at one.",
+            `The documentation tools need a python3 on PATH; set ${ENV_PYTHON} to point at one.`,
         ),
       );
     });

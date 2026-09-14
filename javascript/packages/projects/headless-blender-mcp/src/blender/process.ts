@@ -2,17 +2,17 @@ import { spawn } from "node:child_process";
 import type { ChildProcess } from "node:child_process";
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
-import type { BlenderStatus } from "../../shared/types.js";
+import type { BlenderStatus } from "./types.js";
 import type { BlenderResponse } from "./client.js";
 import { freePort, sendCode, waitForPort } from "./client.js";
 
 /**
- * One headless Blender per tab. Each is started as
+ * One headless Blender per `.blend`. Each is started as
  * `blender --online-mode --background <file.blend> --command blender_mcp --port N`,
  * which is the blender_mcp add-on's own background server, so the tools the
  * agent calls are executed exactly the way the Blender MCP server would
- * execute them. Tabs run side by side because every tab has its own process
- * and its own port.
+ * execute them. Two files run side by side because each one has its own
+ * process and its own port.
  *
  * The add-on serves one request at a time on Blender's main thread, so calls
  * to one instance are queued here rather than sent in parallel.
@@ -114,7 +114,7 @@ async function ensureBlendFile(blenderPath: string, blendPath: string): Promise<
   });
 }
 
-/** Starts the headless Blender for a file. A tab that already has one keeps it. */
+/** Starts the headless Blender for a file. A file that already has one keeps it. */
 async function start(blenderPath: string, blendPath: string): Promise<BlenderInstance> {
   const existing = instances.get(blendPath);
   if (existing && existing.status !== "stopped" && existing.status !== "failed") {
@@ -226,13 +226,13 @@ async function stopAll(): Promise<void> {
 }
 
 /**
- * Runs Python inside the tab's Blender. Calls on one instance are serialised.
+ * Runs Python inside the file's Blender. Calls on one instance are serialised.
  * Rejects when Blender is not running rather than waiting for it.
  */
 function execute(blendPath: string, code: string, strictJson: boolean): Promise<BlenderResponse> {
   const instance = instances.get(blendPath);
   if (!instance) {
-    return Promise.reject(new Error("Blender is not running for this file. Restart it from the workspace header."));
+    return Promise.reject(new Error("Blender is not running for this file. Start it first."));
   }
   const task = instance.queue.then(async () => {
     const ready = await instance.ready;

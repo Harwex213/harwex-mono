@@ -1,16 +1,13 @@
 import { nativeImage } from "electron";
+import type { Png } from "@hw/headless-blender-mcp";
 
 /**
- * Every picture the chat stores is a PNG with a known size. Whatever the user
- * drops in — a JPEG, a WebP, a screenshot — goes through Electron's image
- * decoder once on the way in.
+ * Every picture the chat stores is a PNG with a known size — the same shape
+ * `@hw/headless-blender-mcp` hands back for a render, so a render and an
+ * attachment are stored the same way. Whatever the user drops in — a JPEG, a
+ * WebP, a screenshot — goes through Electron's image decoder once on the way
+ * in.
  */
-
-interface Png {
-  bytes: Uint8Array;
-  width: number;
-  height: number;
-}
 
 function toPng(input: Uint8Array | Buffer): Png {
   const image = nativeImage.createFromBuffer(Buffer.from(input));

@@ -1,7 +1,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import type { BlenderSession, ToolDefinition } from "@hw/headless-blender-mcp";
 import type { ChatMessage, ImageKind, MessageImage, SendRequest, Settings, WorkspaceEvent } from "../../shared/types.js";
-import { renderThumbnail } from "../blender/scene.js";
 import {
   addTokens,
   insertImage,
@@ -19,11 +19,10 @@ import { codexDriver, codexHome } from "./codex.js";
 import type { AgentDriver, TurnReport, TurnRequest } from "./driver.js";
 import { registerRun } from "./mcp-server.js";
 import { loadSkills } from "./skills.js";
-import type { RunContext } from "./tools.js";
 
 /**
- * One agent turn: the user's message goes in, the agent works the harness's
- * MCP tools against the tab's Blender, and two chat messages come out — a
+ * One agent turn: the user's message goes in, the agent works the tab's
+ * Blender session through its MCP tools, and two chat messages come out — a
  * progress log rewritten while the turn goes on, and the final answer with the
  * preview it rendered.
  *
@@ -34,10 +33,14 @@ import type { RunContext } from "./tools.js";
 
 interface RunnerDeps {
   emit(event: WorkspaceEvent): void;
-  /** The scene may have changed: refresh the viewer and mark the tab dirty. */
-  sceneChanged(tabId: string): void;
-  /** Whether the tab's Blender holds edits that are not on disk. */
-  hasUnsavedChanges(tabId: string): boolean;
+  /**
+   * Sends the renders of this tab into the run, until the returned function
+   * is called. The session hands a render to whoever is listening, and during
+   * a turn that is the run's answer message.
+   */
+  captureRenders(tabId: string, sink: (png: Png, filePath: string) => void): () => void;
+  /** Exports the glTF the viewer shows again. */
+  refreshModel(tabId: string): void;
   /** The tab's token counts moved. */
   tokensChanged(tabId: string, used: number, cached: number): void;
 }
@@ -69,14 +72,29 @@ function refsDirFor(blendPath: string): string {
   return path.join(parsed.dir, `${parsed.name}.refs`);
 }
 
+/**
+ * The tools the run offers its agent. They come from the tab's session, so
+ * they already work on the tab's file; `open_blend_file` is dropped, because
+ * the tab owns that choice and an agent that opened another file would leave
+ * the app watching a Blender that no longer exists.
+ */
+function agentTools(session: BlenderSession): ToolDefinition[] {
+  return session.tools().filter((tool) => tool.name !== "open_blend_file");
+}
+
 /** The skills and the facts of this run, as the one block of text a driver hands its agent. */
-async function buildInstructions(driver: AgentDriver, ctx: RunContext, firstMessage: boolean): Promise<string> {
+async function buildInstructions(
+  driver: AgentDriver,
+  blendPath: string,
+  refsDir: string,
+  firstMessage: boolean,
+): Promise<string> {
   const skills = await loadSkills();
   const parts = skills.map((skill) => `<skill name="${skill.name}">\n${skill.body}\n</skill>`);
   const facts = [
     "<run-facts>",
-    `blend file: ${ctx.blendPath}`,
-    `reference pictures directory (your working directory): ${ctx.refsDir}`,
+    `blend file: ${blendPath}`,
+    `reference pictures directory (your working directory): ${refsDir}`,
     `first message of this conversation: ${firstMessage ? "yes — inspect the scene first" : "no — the session remembers what exists"}`,
     "Blender: 5.1, background mode, already connected to your MCP tools (server name: modelgen)",
   ];
@@ -88,7 +106,12 @@ async function buildInstructions(driver: AgentDriver, ctx: RunContext, firstMess
   return parts.join("\n\n");
 }
 
-async function runTurn(request: SendRequest, settings: Settings, deps: RunnerDeps): Promise<void> {
+async function runTurn(
+  request: SendRequest,
+  settings: Settings,
+  session: BlenderSession,
+  deps: RunnerDeps,
+): Promise<void> {
   const tabId = request.tabId;
   if (active.has(tabId)) {
     throw new Error("The agent is already working on this model. Wait for it, or cancel the run.");
@@ -147,28 +170,19 @@ async function runTurn(request: SendRequest, settings: Settings, deps: RunnerDep
   deps.emit({ type: "message", message: progress });
   deps.emit({ type: "message", message: answer });
 
+  // Every picture of this turn — the renders, the ones the agent generated —
+  // hangs off the answer message.
   let previewCount = 0;
-  const ctx: RunContext = {
-    blendPath,
-    refsDir,
-    settings,
-    attachImage(kind: ImageKind, png: Png, filePath: string | null): MessageImage {
-      if (kind === "preview") {
-        previewCount += 1;
-      }
-      const image = insertImage({ ...png, id: newId("img"), kind, mime: "image/png", filePath, messageId: answer.id });
-      const fresh = readMessage(answer.id);
-      if (fresh) {
-        deps.emit({ type: "message", message: fresh });
-      }
-      return image;
-    },
-    sceneChanged() {
-      deps.sceneChanged(tabId);
-    },
-    hasUnsavedChanges() {
-      return deps.hasUnsavedChanges(tabId);
-    },
+  const attachImage = (kind: ImageKind, png: Png, filePath: string | null): MessageImage => {
+    if (kind === "preview") {
+      previewCount += 1;
+    }
+    const image = insertImage({ ...png, id: newId("img"), kind, mime: "image/png", filePath, messageId: answer.id });
+    const fresh = readMessage(answer.id);
+    if (fresh) {
+      deps.emit({ type: "message", message: fresh });
+    }
+    return image;
   };
 
   // The progress log: a summary line from the model, then the steps.
@@ -234,7 +248,10 @@ async function runTurn(request: SendRequest, settings: Settings, deps: RunnerDep
   };
 
   let failedWith = "";
-  const run = registerRun(ctx);
+  const stopCapturing = deps.captureRenders(tabId, (png, filePath) => {
+    attachImage("preview", png, filePath);
+  });
+  const run = registerRun(agentTools(session));
   try {
     const sessionId = readSessionId(tabId, driver.kind);
     const turn: TurnRequest = {
@@ -242,7 +259,7 @@ async function runTurn(request: SendRequest, settings: Settings, deps: RunnerDep
       settings,
       blendPath,
       refsDir,
-      instructions: await buildInstructions(driver, ctx, sessionId === null),
+      instructions: await buildInstructions(driver, blendPath, refsDir, sessionId === null),
       text: request.text,
       attachedPaths,
       mcpUrl: run.url,
@@ -256,17 +273,18 @@ async function runTurn(request: SendRequest, settings: Settings, deps: RunnerDep
     if (flushTimer) {
       clearTimeout(flushTimer);
     }
+    stopCapturing();
     run.release();
     active.delete(tabId);
   }
 
   // The scene is whatever the agent left; show it, whether the run ended well or not.
-  deps.sceneChanged(tabId);
+  deps.refreshModel(tabId);
 
   // Pictures the agent made with its own image tool during this turn join the message.
   for (const file of await (driver.generatedImages?.(now) ?? Promise.resolve([]))) {
     try {
-      ctx.attachImage("generated", toPng(new Uint8Array(await readFile(file))), file);
+      attachImage("generated", toPng(new Uint8Array(await readFile(file))), file);
     } catch {
       // Not a picture this app can decode.
     }
@@ -274,8 +292,8 @@ async function runTurn(request: SendRequest, settings: Settings, deps: RunnerDep
 
   if (failedWith.length === 0 && previewCount === 0) {
     try {
-      const png = toPng(await renderThumbnail(blendPath, `preview-${Date.now()}`));
-      ctx.attachImage("preview", png, null);
+      const png = toPng(await session.renderThumbnail(`preview-${Date.now()}`));
+      attachImage("preview", png, null);
       steps.push("▸ render_thumbnail_to_path — preview rendered by the harness ✓");
     } catch (error) {
       steps.push(`▸ preview render failed: ${error instanceof Error ? error.message : String(error)}`);

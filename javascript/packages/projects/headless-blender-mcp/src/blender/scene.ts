@@ -1,15 +1,14 @@
 import { createHash } from "node:crypto";
 import { mkdir, readFile, stat } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
-import { app } from "electron";
-import type { SceneCollection, SceneObject, SceneOutline } from "../../shared/types.js";
 import { execute } from "./process.js";
 import { buildToolCall, pythonRepr } from "./toolcode.js";
+import type { SceneCollection, SceneObject, SceneOutline } from "./types.js";
 
 /**
- * What the harness itself asks Blender for, outside of any agent tool: the
- * glTF the viewer renders, saving, and a preview when the agent forgot to
- * make one.
+ * What a host asks Blender for outside of any agent tool: the glTF a viewer
+ * renders, the object tree, saving, and a preview render.
  *
  * Background Blender has no window, so `bpy.context.active_object` and its
  * friends do not exist and exporters that read them fail. Overriding the
@@ -22,17 +21,24 @@ const WINDOW_OVERRIDE = [
   "override = bpy.context.temp_override(window=win, screen=win.screen) if win else contextlib.nullcontext()",
 ].join("\n");
 
-function exportsDir(): string {
-  return path.join(app.getPath("userData"), "exports");
+/** Where the glTF exports land. A host with its own data directory sets this once. */
+let exportsRoot = path.join(os.tmpdir(), "headless-blender-mcp", "exports");
+
+function setExportsDir(directory: string): void {
+  exportsRoot = directory;
 }
 
-/** Where the viewer's copy of a file's model lives. Stable per file, so the URL is too. */
+function exportsDir(): string {
+  return exportsRoot;
+}
+
+/** Where a file's exported model lives. Stable per file, so a URL to it is too. */
 function modelPath(blendPath: string): string {
   const hash = createHash("sha1").update(blendPath).digest("hex").slice(0, 16);
   return path.join(exportsDir(), `${hash}.glb`);
 }
 
-/** Exports the scene as a binary glTF for the viewer. Resolves to the file, or null when it did not land. */
+/** Exports the scene as a binary glTF. Resolves to the file, or null when it did not land. */
 async function exportModel(blendPath: string): Promise<string | null> {
   await mkdir(exportsDir(), { recursive: true });
   const target = modelPath(blendPath);
@@ -63,14 +69,6 @@ async function exportModel(blendPath: string): Promise<string | null> {
   }
 }
 
-/**
- * Writes the file. `bpy.data.is_dirty` is not read back afterwards, and no
- * other part of the harness reads it either: the flag mirrors Blender's
- * window state, which a `--background` Blender never maintains. Edits leave it
- * False, and whatever value a file was written with stays. Studio_v2.blend
- * reads True on load and keeps reading True after a save, which used to leave
- * its tab impossible to close. The harness tracks unsaved changes itself.
- */
 /** What the `get_objects_summary` tool-code answers with, before it is renamed. */
 interface RawObject {
   name?: unknown;
@@ -121,8 +119,8 @@ function toSceneCollection(raw: RawCollection): SceneCollection {
 /**
  * The collection and object tree of the scene, from the Blender MCP
  * `get_objects_summary` tool-code — the same tree Blender's own outliner
- * draws, so lights, cameras and empties are in it too, which the glTF the
- * viewer renders does not have.
+ * draws, so lights, cameras and empties are in it too, which an exported glTF
+ * does not have.
  */
 async function readOutline(blendPath: string): Promise<SceneOutline> {
   const code = await buildToolCall("get_objects_summary", null);
@@ -139,6 +137,13 @@ async function readOutline(blendPath: string): Promise<SceneOutline> {
   };
 }
 
+/**
+ * Writes the file. `bpy.data.is_dirty` is not read back afterwards, and
+ * nothing here reads it either: the flag mirrors Blender's window state,
+ * which a `--background` Blender never maintains. Edits leave it False, and
+ * whatever value a file was written with stays. A host that needs to know
+ * about unsaved changes has to track them itself.
+ */
 async function save(blendPath: string): Promise<void> {
   const response = await execute(
     blendPath,
@@ -165,4 +170,4 @@ async function renderThumbnail(blendPath: string, name: string): Promise<Uint8Ar
   return new Uint8Array(await readFile(result.filepath));
 }
 
-export { exportModel, modelPath, readOutline, renderThumbnail, save };
+export { exportModel, exportsDir, modelPath, readOutline, renderThumbnail, save, setExportsDir };
