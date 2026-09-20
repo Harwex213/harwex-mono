@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { cpSync, rmSync, mkdirSync } from "node:fs";
+import { cpSync, mkdirSync, rmSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -14,11 +14,17 @@ const apiUrl = process.env.API_URL ?? DEFAULT_API_URL;
 
 console.log(`Building with API_URL=${apiUrl}`);
 
-const build = spawnSync("yarn", ["rspack", "build"], {
+const build = spawnSync("yarn rspack build", {
   cwd: packageDir,
   stdio: "inherit",
+  shell: true,
   env: { ...process.env, API_URL: apiUrl },
 });
+
+if (build.error) {
+  console.error(`Failed to run rspack build: ${build.error.message}`);
+  process.exit(1);
+}
 
 if (build.status !== 0) {
   process.exit(build.status ?? 1);

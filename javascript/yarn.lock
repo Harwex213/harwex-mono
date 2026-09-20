@@ -3325,7 +3325,7 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@hw/headless-blender-mcp@workspace:packages/projects/headless-blender-mcp":
+"@hw/headless-blender-mcp@workspace:*, @hw/headless-blender-mcp@workspace:packages/projects/headless-blender-mcp":
   version: 0.0.0-use.local
   resolution: "@hw/headless-blender-mcp@workspace:packages/projects/headless-blender-mcp"
   dependencies:
@@ -3406,6 +3406,7 @@ __metadata:
   resolution: "@hw/modelgen-harness@workspace:packages/prototypes/ai-slop/modelgen-harness"
   dependencies:
     "@anthropic-ai/claude-agent-sdk": "npm:0.3.234"
+    "@hw/headless-blender-mcp": "workspace:*"
     "@hw/typescript-config": "workspace:*"
     "@modelcontextprotocol/sdk": "npm:1.30.0"
     "@openai/codex-sdk": "npm:0.153.4"
@@ -3422,7 +3423,6 @@ __metadata:
     react-dom: "npm:19.2.0"
     three: "npm:0.185.1"
     typescript: "npm:5.9.3"
-    zod: "npm:4.5.4"
   languageName: unknown
   linkType: soft
 
