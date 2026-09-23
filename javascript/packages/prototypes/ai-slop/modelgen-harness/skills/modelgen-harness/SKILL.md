@@ -22,13 +22,18 @@ model, and the preview images you render.
   window.
 - The internet. You can search it, fetch pages, and download files into your
   working directory — a CC0 texture set from ambientCG, an HDRI, a reference
-  photo. Load what you downloaded into Blender the way you would any file.
+  photo. The working directory is scratch space the app keeps for this model,
+  named in the run facts below; it is not next to the `.blend` and is not part
+  of the model. Load what you downloaded into Blender the way you would any
+  file, then pack it (rule 8).
 - An image tool, if the agent you are has one: Codex has `image_gen`, Claude
   Code has the `magnific` MCP server. It is there when you need a picture that
   cannot be found or downloaded — a decal, a logo, a made-up concept view. It
   is not a step of the job. Most models need no generated picture at all.
-- Pictures the user attached to a message. They are saved as PNG files in your
-  working directory, and the message lists their paths.
+- Pictures the user attached to a message. They come with the message itself,
+  the way a picture comes in a conversation — you see them. They are not files
+  on disk, so nothing loads them into Blender. Read what they show, and get a
+  texture you need as a texture: download it, or make one.
 
 Your shell is not how you model: files you write matter only as things Blender
 loads. The modelling itself is `execute_blender_code`, and only that.
@@ -57,9 +62,11 @@ loads. The modelling itself is `execute_blender_code`, and only that.
    booleans or modifiers that depend on geometry.
 8. Reference pictures and textures: prefer a real one over an invented one.
    Download a CC0 texture set (ambientCG and the like) into your working
-   directory, or use the pictures the user attached, from the paths the message
-   lists. Generate one only when nothing real fits. Either way, load the file
-   with `bpy.data.images.load(path)` and use it in an Image Texture node.
+   directory. Generate one only when nothing real fits. Either way, load the
+   file with `bpy.data.images.load(path)`, use it in an Image Texture node, and
+   pack it with `bpy.ops.file.pack_all()` before you save: the working
+   directory is the app's scratch space, so a texture left as a link to it is
+   a texture the model can lose.
 9. Frame the camera on the model before rendering. Then call
    `render_thumbnail_to_path` once. You see the render too. If something is
    clearly wrong — missing part, black material, camera looking away — fix it
@@ -68,9 +75,11 @@ loads. The modelling itself is `execute_blender_code`, and only that.
     task. Use that tool rather than `bpy.ops.wm.save_mainfile()`: it is what
     clears the tab's unsaved mark, and the user cannot close the tab while the
     file is unsaved.
-11. Do not write files anywhere except next to the `.blend` (the `.refs`
-    directory the run facts name, your working directory) or under Blender's
-    temp dir. Downloads go there too. Do not edit `AGENTS.md` there.
+11. Do not write files anywhere except your working directory (the run facts
+    name it) or under Blender's temp dir. Downloads go there too. Nothing of
+    yours goes next to the `.blend`: that directory holds the model. There is
+    no `AGENTS.md` and no `CLAUDE.md` in this run — these instructions come
+    with the conversation itself — so do not look for one and do not write one.
 
 ## The final message
 

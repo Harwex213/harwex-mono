@@ -56,13 +56,13 @@ type MessageStatus = "running" | "done" | "failed";
 
 type ImageKind = "input" | "preview" | "generated";
 
-/** An image stored in SQLite, attached to one message. */
+/** A picture of one message. The bytes stay in the main process; this is how it is named. */
 interface MessageImage {
   id: string;
   kind: ImageKind;
   width: number;
   height: number;
-  /** For generated and input images: where the PNG also sits on disk, for the agent. */
+  /** Where the PNG also sits on disk, when it came from a file the agent wrote. */
   filePath: string | null;
 }
 

@@ -3,23 +3,17 @@ import os from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { app } from "electron";
-import type {
-  AgentKind,
-  ChatMessage,
-  ImageKind,
-  MessageImage,
-  MessageRole,
-  MessageStatus,
-  ReasoningEffort,
-  Settings,
-  Tab,
-} from "../shared/types.js";
+import type { AgentKind, ReasoningEffort, Settings, Tab } from "../shared/types.js";
 
 /**
- * One SQLite file holds the tabs, every chat message, every image the chat
- * shows (previews the agent rendered, pictures the user attached, references
- * the agent generated), the agent's conversation history per tab, and the
- * settings. `node:sqlite` ships with Electron's Node, so there is no native
+ * One SQLite file, holding the models this app has worked on and the paths it
+ * was set up with. Nothing else: a conversation, the pictures it showed and
+ * the agent session behind it belong to the app while it runs, and are kept in
+ * memory by `chat.ts`.
+ *
+ * So a row here says a model exists, where its `.blend` is, which agent builds
+ * it and with what — the record of a model, which outlives every conversation
+ * about it. `node:sqlite` ships with Electron's Node, so there is no native
  * module to rebuild.
  */
 
@@ -31,42 +25,17 @@ CREATE TABLE IF NOT EXISTS tabs (
   is_open          INTEGER NOT NULL DEFAULT 1,
   agent_kind       TEXT    NOT NULL DEFAULT '',
   agent_model      TEXT    NOT NULL DEFAULT '',
-  reasoning_effort TEXT    NOT NULL DEFAULT '',
-  tokens_used      INTEGER NOT NULL DEFAULT 0,
-  tokens_cached    INTEGER NOT NULL DEFAULT 0
-);
-CREATE TABLE IF NOT EXISTS messages (
-  id         TEXT PRIMARY KEY,
-  blend_path TEXT    NOT NULL,
-  role       TEXT    NOT NULL,
-  text       TEXT    NOT NULL,
-  status     TEXT    NOT NULL DEFAULT 'done',
-  created_at INTEGER NOT NULL
-);
-CREATE INDEX IF NOT EXISTS messages_by_tab ON messages (blend_path, created_at);
-CREATE TABLE IF NOT EXISTS images (
-  id         TEXT PRIMARY KEY,
-  message_id TEXT    NOT NULL,
-  kind       TEXT    NOT NULL,
-  mime       TEXT    NOT NULL,
-  width      INTEGER NOT NULL,
-  height     INTEGER NOT NULL,
-  file_path  TEXT,
-  bytes      BLOB    NOT NULL,
-  created_at INTEGER NOT NULL
-);
-CREATE INDEX IF NOT EXISTS images_by_message ON images (message_id);
-CREATE TABLE IF NOT EXISTS agent_sessions (
-  blend_path TEXT PRIMARY KEY,
-  agent_kind TEXT    NOT NULL,
-  session_id TEXT    NOT NULL,
-  updated_at INTEGER NOT NULL
+  reasoning_effort TEXT    NOT NULL DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS settings (
   key   TEXT PRIMARY KEY,
   value TEXT NOT NULL
 );
 `;
+
+/** What earlier versions wrote here and this one keeps in memory instead. */
+const DROPPED_TABLES = ["messages", "images", "agent_sessions", "codex_threads"];
+const DROPPED_COLUMNS = ["tokens_used", "tokens_cached"];
 
 interface TabRow {
   blend_path: string;
@@ -76,34 +45,6 @@ interface TabRow {
   agent_kind: string;
   agent_model: string;
   reasoning_effort: string;
-  tokens_used: number;
-  tokens_cached: number;
-}
-
-interface MessageRow {
-  id: string;
-  blend_path: string;
-  role: string;
-  text: string;
-  status: string;
-  created_at: number;
-}
-
-interface ImageRow {
-  id: string;
-  message_id: string;
-  kind: string;
-  mime: string;
-  width: number;
-  height: number;
-  file_path: string | null;
-  bytes: Uint8Array;
-  created_at: number;
-}
-
-interface StoredImage extends MessageImage {
-  mime: string;
-  bytes: Uint8Array;
 }
 
 let handle: DatabaseSync | null = null;
@@ -127,37 +68,38 @@ function database(): DatabaseSync {
       // Already there.
     }
   }
-  for (const column of ["tokens_used", "tokens_cached"]) {
-    try {
-      handle.exec(`ALTER TABLE tabs ADD COLUMN ${column} INTEGER NOT NULL DEFAULT 0`);
-    } catch {
-      // Already there.
-    }
-  }
   carryAgentSettingsToTabs(handle);
-  carryCodexThreadsToSessions(handle);
+  dropConversationTables(handle);
   return handle;
 }
 
 /**
- * Codex was the only agent before, so a tab written then names none. A tab that
- * already holds a conversation gets Codex — the agent that built it — and one
- * that holds nothing stays empty, which is what opens the agent choice.
+ * Chats, pictures and agent sessions used to be written down. They are the
+ * app's own state now, so a database written before that keeps the models and
+ * loses the talk — which is also what makes the file small again, because the
+ * pictures were the bulk of it.
  */
-function carryCodexThreadsToSessions(db: DatabaseSync): void {
-  try {
-    db.exec(
-      `INSERT INTO agent_sessions (blend_path, agent_kind, session_id, updated_at)
-       SELECT blend_path, 'codex', thread_id, updated_at FROM codex_threads
-       WHERE blend_path NOT IN (SELECT blend_path FROM agent_sessions)`,
-    );
-  } catch {
-    // No codex_threads table: nothing written before this table existed.
+function dropConversationTables(db: DatabaseSync): void {
+  let dropped = false;
+  for (const table of DROPPED_TABLES) {
+    const row = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?").get(table);
+    if (!row) {
+      continue;
+    }
+    db.exec(`DROP TABLE ${table}`);
+    dropped = true;
   }
-  db.exec(
-    `UPDATE tabs SET agent_kind = 'codex'
-     WHERE agent_kind = '' AND blend_path IN (SELECT DISTINCT blend_path FROM messages)`,
-  );
+  for (const column of DROPPED_COLUMNS) {
+    try {
+      db.exec(`ALTER TABLE tabs DROP COLUMN ${column}`);
+      dropped = true;
+    } catch {
+      // Not there: nothing to drop.
+    }
+  }
+  if (dropped) {
+    db.exec("VACUUM");
+  }
 }
 
 /**
@@ -197,7 +139,7 @@ function toTab(row: TabRow): Tab {
 }
 
 // ---------------------------------------------------------------------------
-// Tabs.
+// Models.
 
 /**
  * Writes the file down as an open tab. A tab that was already open keeps its
@@ -245,22 +187,6 @@ function setTabAgentKind(blendPath: string, agentKind: AgentKind): void {
     .run(agentKind, blendPath);
 }
 
-/** What the tab's conversation has spent so far, new content and re-read prompt apart. */
-function readTokens(blendPath: string): { used: number; cached: number } {
-  const row = database()
-    .prepare("SELECT tokens_used, tokens_cached FROM tabs WHERE blend_path = ?")
-    .get(blendPath) as { tokens_used: number; tokens_cached: number } | undefined;
-  return { used: row?.tokens_used ?? 0, cached: row?.tokens_cached ?? 0 };
-}
-
-/** Adds one turn's tokens to the tab's running totals and returns them. */
-function addTokens(blendPath: string, fresh: number, cached: number): { used: number; cached: number } {
-  database()
-    .prepare("UPDATE tabs SET tokens_used = tokens_used + ?, tokens_cached = tokens_cached + ? WHERE blend_path = ?")
-    .run(fresh, cached, blendPath);
-  return readTokens(blendPath);
-}
-
 function closeTab(blendPath: string): void {
   database().prepare("UPDATE tabs SET is_open = 0 WHERE blend_path = ?").run(blendPath);
 }
@@ -270,154 +196,6 @@ function openTabs(): Tab[] {
     .prepare("SELECT * FROM tabs WHERE is_open = 1 ORDER BY opened_at")
     .all() as unknown as TabRow[];
   return rows.map(toTab);
-}
-
-// ---------------------------------------------------------------------------
-// Messages and images.
-
-function imagesOf(messageId: string): MessageImage[] {
-  const rows = database()
-    .prepare(
-      "SELECT id, kind, width, height, file_path FROM images WHERE message_id = ? ORDER BY created_at",
-    )
-    .all(messageId) as unknown as Omit<ImageRow, "bytes" | "mime" | "message_id" | "created_at">[];
-  return rows.map((row) => {
-    return {
-      id: row.id,
-      kind: row.kind as ImageKind,
-      width: row.width,
-      height: row.height,
-      filePath: row.file_path,
-    };
-  });
-}
-
-function toMessage(row: MessageRow): ChatMessage {
-  return {
-    id: row.id,
-    tabId: row.blend_path,
-    role: row.role as MessageRole,
-    text: row.text,
-    status: row.status as MessageStatus,
-    createdAt: row.created_at,
-    images: imagesOf(row.id),
-  };
-}
-
-function insertMessage(message: Omit<ChatMessage, "images">): ChatMessage {
-  database()
-    .prepare(
-      "INSERT INTO messages (id, blend_path, role, text, status, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-    )
-    .run(
-      message.id,
-      message.tabId,
-      message.role,
-      message.text,
-      message.status,
-      message.createdAt,
-    );
-  return { ...message, images: [] };
-}
-
-function updateMessage(id: string, text: string, status: MessageStatus): void {
-  database().prepare("UPDATE messages SET text = ?, status = ? WHERE id = ?").run(text, status, id);
-}
-
-function readMessage(id: string): ChatMessage | null {
-  const row = database().prepare("SELECT * FROM messages WHERE id = ?").get(id) as
-    | MessageRow
-    | undefined;
-  return row ? toMessage(row) : null;
-}
-
-function messagesOf(blendPath: string): ChatMessage[] {
-  const rows = database()
-    .prepare("SELECT * FROM messages WHERE blend_path = ? ORDER BY created_at")
-    .all(blendPath) as unknown as MessageRow[];
-  return rows.map(toMessage);
-}
-
-/** A run that died mid-way leaves a running message behind. Mark it so on startup. */
-function failStaleRuns(): void {
-  database()
-    .prepare("UPDATE messages SET status = 'failed' WHERE status = 'running'")
-    .run();
-}
-
-function insertImage(image: StoredImage & { messageId: string }): MessageImage {
-  database()
-    .prepare(
-      `INSERT INTO images (id, message_id, kind, mime, width, height, file_path, bytes, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    )
-    .run(
-      image.id,
-      image.messageId,
-      image.kind,
-      image.mime,
-      image.width,
-      image.height,
-      image.filePath,
-      image.bytes,
-      Date.now(),
-    );
-  return {
-    id: image.id,
-    kind: image.kind,
-    width: image.width,
-    height: image.height,
-    filePath: image.filePath,
-  };
-}
-
-function readImage(id: string): { mime: string; bytes: Uint8Array } | null {
-  const row = database().prepare("SELECT mime, bytes FROM images WHERE id = ?").get(id) as
-    | Pick<ImageRow, "mime" | "bytes">
-    | undefined;
-  return row ? { mime: row.mime, bytes: row.bytes } : null;
-}
-
-// ---------------------------------------------------------------------------
-// Agent sessions. One per tab, resumed on the next message. Codex keeps its
-// threads under its own home; Claude Code keeps its sessions under ~/.claude.
-
-/** The session of this tab, but only if the agent that owns it is still the tab's. */
-function readSessionId(blendPath: string, agentKind: AgentKind): string | null {
-  const row = database()
-    .prepare("SELECT agent_kind, session_id FROM agent_sessions WHERE blend_path = ?")
-    .get(blendPath) as { agent_kind: string; session_id: string } | undefined;
-  if (!row || row.agent_kind !== agentKind) {
-    return null;
-  }
-  return row.session_id;
-}
-
-function writeSessionId(blendPath: string, agentKind: AgentKind, sessionId: string): void {
-  database()
-    .prepare(
-      `INSERT INTO agent_sessions (blend_path, agent_kind, session_id, updated_at) VALUES (?, ?, ?, ?)
-       ON CONFLICT (blend_path) DO UPDATE SET
-         agent_kind = excluded.agent_kind,
-         session_id = excluded.session_id,
-         updated_at = excluded.updated_at`,
-    )
-    .run(blendPath, agentKind, sessionId, Date.now());
-}
-
-/**
- * Wipes the conversation of one tab: its messages, the images hanging off them,
- * the agent session the next message would have resumed, and the token count.
- * What the agent already built in the `.blend` is untouched — only the talk goes.
- */
-function clearConversation(blendPath: string): void {
-  const db = database();
-  db.prepare(
-    "DELETE FROM images WHERE message_id IN (SELECT id FROM messages WHERE blend_path = ?)",
-  ).run(blendPath);
-  db.prepare("DELETE FROM messages WHERE blend_path = ?").run(blendPath);
-  db.prepare("DELETE FROM agent_sessions WHERE blend_path = ?").run(blendPath);
-  db.prepare("UPDATE tabs SET tokens_used = 0, tokens_cached = 0 WHERE blend_path = ?").run(blendPath);
 }
 
 // ---------------------------------------------------------------------------
@@ -504,26 +282,13 @@ function writeSettings(settings: Settings): Settings {
   return readSettings();
 }
 
-export type { StoredImage };
 export {
-  addTokens,
-  clearConversation,
   closeTab,
-  failStaleRuns,
-  insertImage,
-  insertMessage,
-  messagesOf,
   openTab,
   openTabs,
-  readImage,
-  readMessage,
-  readSessionId,
   readSettings,
   readTab,
-  readTokens,
   setTabAgent,
   setTabAgentKind,
-  updateMessage,
-  writeSessionId,
   writeSettings,
 };

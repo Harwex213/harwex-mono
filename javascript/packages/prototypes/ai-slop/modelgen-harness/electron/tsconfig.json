@@ -1,0 +1,17 @@
+// The package holds two projects: the renderer (`tsconfig.json`, React and
+// bundler resolution) and the Electron side (`tsconfig.electron.json`, NodeNext).
+// An editor looks up from the file it opens for the nearest `tsconfig.json` that
+// covers it, finds the renderer one — which includes `src` and `shared` only —
+// and puts everything under `electron/` in a default project instead: node10
+// resolution, which cannot read the `exports` map of a workspace package.
+// `@hw/headless-blender-mcp` then reads as a missing module in the editor while
+// `tsc` is perfectly happy.
+//
+// This file is that nearest config. It adds nothing of its own: the settings,
+// the includes and the output paths all stay in `tsconfig.electron.json`, which
+// is what the build and `yarn typecheck` still use. Relative paths in an
+// extended config resolve against the file that declared them, so both configs
+// describe exactly the same project.
+{
+  "extends": "../tsconfig.electron.json"
+}

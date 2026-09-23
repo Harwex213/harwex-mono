@@ -1,7 +1,7 @@
 import os from "node:os";
 import path from "node:path";
 import { query } from "@anthropic-ai/claude-agent-sdk";
-import type { Options, SDKMessage } from "@anthropic-ai/claude-agent-sdk";
+import type { Options, SDKMessage, SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 import type { AgentDriver, TokenCount, TurnReport, TurnRequest } from "./driver.js";
 import { promptText, shorten, summariseCode } from "./driver.js";
 
@@ -107,6 +107,44 @@ function describeFailure(message: string): string {
 }
 
 /**
+ * The turn's input. A message with nothing attached is the text itself, which
+ * is what a one-shot turn takes. Pictures turn it into a stream of one
+ * message: content blocks are the only way to hand Claude a picture, and they
+ * carry the bytes, so what the user attached reaches the model without ever
+ * being written to disk.
+ */
+function promptFor(request: TurnRequest): string | AsyncIterable<SDKUserMessage> {
+  if (request.images.length === 0) {
+    return promptText(request);
+  }
+  const content: SDKUserMessage["message"]["content"] = [
+    ...request.images.map((image) => {
+      return {
+        type: "image" as const,
+        source: {
+          type: "base64" as const,
+          // Every picture the app stores has been through its PNG encoder.
+          media_type: "image/png" as const,
+          data: Buffer.from(image.bytes).toString("base64"),
+        },
+      };
+    }),
+    { type: "text" as const, text: promptText(request) },
+  ];
+  return (async function* () {
+    // The same shape the SDK writes for a plain string prompt, with the
+    // pictures in front of the text. Closing the stream after it is what ends
+    // the turn, exactly as a string prompt does.
+    yield {
+      type: "user",
+      session_id: "",
+      message: { role: "user", content },
+      parent_tool_use_id: null,
+    } as SDKUserMessage;
+  })();
+}
+
+/**
  * What a turn spent, over every model the session called. Anthropic reports
  * cache reads apart from `inputTokens`, so `fresh` is the content the model
  * saw for the first time and `cached` is the prompt it re-read — which, on a
@@ -143,7 +181,7 @@ async function run(request: TurnRequest, out: TurnReport): Promise<void> {
 
   const options: Options = {
     abortController: controller,
-    cwd: request.refsDir,
+    cwd: request.workDir,
     tools: TOOLS,
     allowedTools: ALLOWED,
     // A headless turn has nobody to answer a permission prompt, but that is no
@@ -179,7 +217,7 @@ async function run(request: TurnRequest, out: TurnReport): Promise<void> {
   let failedWith = "";
   let completed = false;
 
-  for await (const message of query({ prompt: promptText(request), options })) {
+  for await (const message of query({ prompt: promptFor(request), options })) {
     out.trace(`[claude] ${JSON.stringify(message).slice(0, 1500)}`);
     if (message.type === "system" && message.subtype === "init") {
       out.session(message.session_id);

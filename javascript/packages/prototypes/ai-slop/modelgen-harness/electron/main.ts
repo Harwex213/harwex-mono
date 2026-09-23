@@ -19,16 +19,12 @@ import type {
 } from "../shared/types.js";
 import { startMcpServer } from "./agent/mcp-server.js";
 import { cancelRun, isRunning, runTurn } from "./agent/runner.js";
+import { clearConversation, messagesOf, readImage, readTokens } from "./chat.js";
 import {
-  clearConversation,
   closeTab,
-  failStaleRuns,
-  messagesOf,
   openTab,
   openTabs,
-  readImage,
   readSettings,
-  readTokens,
   setTabAgent,
   setTabAgentKind,
   writeSettings,
@@ -173,6 +169,7 @@ function openBlend(blendPath: string): TabState {
   const tab = openTab(blendPath);
   let state = states.get(blendPath);
   if (!state) {
+    const tokens = readTokens(blendPath);
     state = {
       tab,
       blender: "starting",
@@ -180,8 +177,8 @@ function openBlend(blendPath: string): TabState {
       dirty: false,
       running: isRunning(blendPath),
       modelStamp: 0,
-      tokensUsed: readTokens(blendPath).used,
-      tokensCached: readTokens(blendPath).cached,
+      tokensUsed: tokens.used,
+      tokensCached: tokens.cached,
       conversationStarted: messagesOf(blendPath).length > 0,
     };
     states.set(blendPath, state);
@@ -209,7 +206,7 @@ function normaliseBlendPath(raw: string): string {
 
 /**
  * Serves `modelgen://model?tab=…` (the viewer's glTF) and `modelgen://image?id=…`
- * (a picture out of SQLite). Only files of open tabs are served.
+ * (a picture of an open chat). Only files of open tabs are served.
  */
 async function serve(request: Request): Promise<Response> {
   const url = new URL(request.url);
@@ -474,7 +471,6 @@ void app.whenReady().then(async () => {
   // The viewer's glTF exports belong with the rest of the app's data.
   setExportsDir(path.join(app.getPath("userData"), "exports"));
   protocol.handle(SCHEME, serve);
-  failStaleRuns();
   await startMcpServer();
   registerIpc();
   createWindow();

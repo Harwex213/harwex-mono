@@ -11,19 +11,27 @@ import type { AgentKind, Settings, Tab } from "../../shared/types.js";
  * and how its own conversation is resumed.
  */
 
+/** A picture the user attached, as bytes. It is never written next to the model. */
+interface TurnImage {
+  /** What to call it when an agent needs a name for it. */
+  name: string;
+  mime: string;
+  bytes: Uint8Array;
+}
+
 /** What one turn is asked to do. */
 interface TurnRequest {
   tab: Tab;
   settings: Settings;
   blendPath: string;
-  /** The agent's working directory: reference pictures next to the `.blend`. */
-  refsDir: string;
+  /** The agent's working directory: scratch space of this model, under the app's data. */
+  workDir: string;
   /** The skills and the run facts, as one block of text. */
   instructions: string;
   /** The user's message. */
   text: string;
-  /** PNG files of the pictures the user attached, in the working directory. */
-  attachedPaths: string[];
+  /** The pictures attached to this message, held in memory and handed to the agent as content. */
+  images: TurnImage[];
   /** The harness's MCP endpoint for this run, with its one-time path. */
   mcpUrl: string;
   /** The conversation to resume, when the tab already has one. */
@@ -97,14 +105,18 @@ function summariseCode(code: string): string {
   return (comment ?? lines[0] ?? "").replace(/^#+\s*/, "");
 }
 
-/** The message the user typed, plus where the pictures they attached now sit. */
+/** The message the user typed, and a word about the pictures that came with it. */
 function promptText(request: TurnRequest): string {
   const lines = [request.text.trim()];
-  if (request.attachedPaths.length > 0) {
-    lines.push("", "Attached pictures, saved as files:", ...request.attachedPaths.map((file) => `- ${file}`));
+  if (request.images.length > 0) {
+    const count = request.images.length;
+    lines.push(
+      "",
+      `${count} picture${count === 1 ? "" : "s"} came with this message. ${count === 1 ? "It is" : "They are"} attached here, not on disk.`,
+    );
   }
   return lines.join("\n");
 }
 
-export type { AgentDriver, TokenCount, TurnReport, TurnRequest };
+export type { AgentDriver, TokenCount, TurnImage, TurnReport, TurnRequest };
 export { promptText, shorten, summariseCode };

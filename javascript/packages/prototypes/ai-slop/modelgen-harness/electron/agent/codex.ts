@@ -1,10 +1,10 @@
-import { copyFile, lstat, mkdir, readdir, readFile, stat, symlink, writeFile } from "node:fs/promises";
+import { copyFile, lstat, mkdir, mkdtemp, readdir, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { app } from "electron";
 import { Codex } from "@openai/codex-sdk";
 import type { ThreadEvent, ThreadItem, ThreadOptions, UserInput } from "@openai/codex-sdk";
-import type { AgentDriver, TurnReport, TurnRequest } from "./driver.js";
+import type { AgentDriver, TurnImage, TurnReport, TurnRequest } from "./driver.js";
 import { promptText, shorten, summariseCode } from "./driver.js";
 
 /**
@@ -13,8 +13,6 @@ import { promptText, shorten, summariseCode } from "./driver.js";
  * One tab is one Codex thread, resumed on the next message.
  */
 
-/** Codex reads AGENTS.md up to this many bytes; the two skills are longer than its default. */
-const PROJECT_DOC_MAX_BYTES = 400_000;
 const IMAGE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".webp"]);
 
 /**
@@ -91,6 +89,32 @@ async function userMcpServerNames(): Promise<string[]> {
   return [...names];
 }
 
+/**
+ * The first message of a thread, with the run's instructions at its head.
+ *
+ * Codex has no parameter for a system prompt: `ThreadOptions` carries the
+ * model, the sandbox and the directory, and nothing else. What it does read is
+ * an `AGENTS.md`, and this app writes none — an instruction file would sit in
+ * a directory the agent itself works in, where it can be read as something to
+ * edit, and it would be one more thing of the app's living on disk.
+ *
+ * So the instructions open the conversation instead. A thread keeps them for
+ * as long as it lives, which is as long as the tab's conversation, and a
+ * resumed thread already holds them — only a thread that starts here is given
+ * the block.
+ */
+function openingMessage(request: TurnRequest): string {
+  return [
+    "<instructions>",
+    request.instructions,
+    "</instructions>",
+    "",
+    "Everything above is how this whole conversation works, not a task. The task is below.",
+    "",
+    promptText(request),
+  ].join("\n");
+}
+
 /** The one line a tool call gets in the progress log. */
 function summariseTool(tool: string, rawArguments: unknown): string {
   const name = tool.replace(/^.*__/, "");
@@ -104,6 +128,33 @@ function summariseTool(tool: string, rawArguments: unknown): string {
   }
   detail = shorten(detail, 96);
   return detail.length > 0 ? `${name} — ${detail}` : name;
+}
+
+/**
+ * Codex takes a picture as a path and nothing else, so the pictures of this
+ * turn are written to a directory of their own under the OS temp dir and
+ * deleted when the turn ends. The CLI reads them on its way into the request;
+ * nothing of the user's lands next to the model or outlives the turn.
+ */
+async function stageImages(images: TurnImage[]): Promise<{ paths: string[]; release: () => Promise<void> }> {
+  if (images.length === 0) {
+    return { paths: [], release: () => Promise.resolve() };
+  }
+  const dir = await mkdtemp(path.join(os.tmpdir(), "modelgen-turn-"));
+  const paths: string[] = [];
+  for (const [index, image] of images.entries()) {
+    // The bytes are PNG whatever the picture was called on the way in.
+    const stem = path.basename(image.name, path.extname(image.name)) || "picture";
+    const file = path.join(dir, `${index}-${stem}.png`);
+    await writeFile(file, image.bytes);
+    paths.push(file);
+  }
+  return {
+    paths,
+    release: async () => {
+      await rm(dir, { recursive: true, force: true });
+    },
+  };
 }
 
 /** Pictures Codex's built-in image tool produced since the turn began. */
@@ -216,9 +267,9 @@ function report(event: ThreadEvent, out: TurnReport, state: { failedWith: string
 }
 
 async function run(request: TurnRequest, out: TurnReport): Promise<void> {
-  // Codex reads its instructions from AGENTS.md in the working directory.
-  await mkdir(request.refsDir, { recursive: true });
-  await writeFile(path.join(request.refsDir, "AGENTS.md"), `${request.instructions}\n`, "utf8");
+  // The working directory is the agent's own scratch space. Nothing is put in
+  // it here: the instructions ride the first message, not an AGENTS.md.
+  await mkdir(request.workDir, { recursive: true });
 
   const home = await prepareCodexHome();
   const env: Record<string, string> = { CODEX_HOME: home };
@@ -232,7 +283,10 @@ async function run(request: TurnRequest, out: TurnReport): Promise<void> {
     ...(request.settings.codexPath ? { codexPathOverride: request.settings.codexPath } : {}),
     env,
     config: {
-      project_doc_max_bytes: PROJECT_DOC_MAX_BYTES,
+      // Codex looks for an AGENTS.md in the working directory and above it on
+      // its way up. A run's instructions come from the harness, so it is told
+      // to read none: no file on disk shapes what the agent is here.
+      project_doc_max_bytes: 0,
       mcp_servers: {
         ...otherServers,
         modelgen: {
@@ -246,7 +300,7 @@ async function run(request: TurnRequest, out: TurnReport): Promise<void> {
     },
   });
   const options: ThreadOptions = {
-    workingDirectory: request.refsDir,
+    workingDirectory: request.workDir,
     skipGitRepoCheck: true,
     // The agent fetches references and materials off the web, so its sandbox
     // reaches the network and may write — into the working directory only.
@@ -263,32 +317,41 @@ async function run(request: TurnRequest, out: TurnReport): Promise<void> {
   };
   let thread = request.sessionId ? codex.resumeThread(request.sessionId, options) : codex.startThread(options);
 
-  const input: UserInput[] = [
-    { type: "text", text: promptText(request) },
-    ...request.attachedPaths.map((file): UserInput => ({ type: "local_image", path: file })),
-  ];
-
-  let { events } = await thread.runStreamed(input, { signal: request.signal });
-  if (request.sessionId) {
-    // A thread Codex no longer has (another Codex home, a wiped session) fails before any item; start over then.
-    const first = await events.next();
-    if (first.done || first.value.type === "error" || first.value.type === "turn.failed") {
-      thread = codex.startThread(options);
-      ({ events } = await thread.runStreamed(input, { signal: request.signal }));
-    } else {
-      const rest = events;
-      const head = first.value;
-      events = (async function* () {
-        yield head;
-        yield* rest;
-      })();
-    }
-  }
+  const staged = await stageImages(request.images);
+  const pictures = staged.paths.map((file): UserInput => ({ type: "local_image", path: file }));
+  // Two shapes of the same message: the one that opens a thread carries the
+  // instructions, the one that continues a thread does not, because the thread
+  // already holds them.
+  const opening: UserInput[] = [{ type: "text", text: openingMessage(request) }, ...pictures];
+  const following: UserInput[] = [{ type: "text", text: promptText(request) }, ...pictures];
 
   const state = { failedWith: "", completed: false, lastError: "" };
-  for await (const event of events) {
-    out.trace(`[codex] ${JSON.stringify(event).slice(0, 1500)}`);
-    report(event, out, state);
+  try {
+    let { events } = await thread.runStreamed(request.sessionId ? following : opening, { signal: request.signal });
+    if (request.sessionId) {
+      // A thread Codex no longer has (another Codex home, a wiped session) fails before any item; start over then.
+      const first = await events.next();
+      if (first.done || first.value.type === "error" || first.value.type === "turn.failed") {
+        thread = codex.startThread(options);
+        // A thread that starts here is new, whatever the tab remembered, so it
+        // is opened with the instructions like any other.
+        ({ events } = await thread.runStreamed(opening, { signal: request.signal }));
+      } else {
+        const rest = events;
+        const head = first.value;
+        events = (async function* () {
+          yield head;
+          yield* rest;
+        })();
+      }
+    }
+
+    for await (const event of events) {
+      out.trace(`[codex] ${JSON.stringify(event).slice(0, 1500)}`);
+      report(event, out, state);
+    }
+  } finally {
+    await staged.release();
   }
   if (state.failedWith.length === 0 && !state.completed) {
     state.failedWith =

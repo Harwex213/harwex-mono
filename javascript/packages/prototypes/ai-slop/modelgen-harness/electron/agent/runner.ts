@@ -1,5 +1,7 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { mkdir, readFile } from "node:fs/promises";
 import path from "node:path";
+import { app } from "electron";
 import type { BlenderSession, ToolDefinition } from "@hw/headless-blender-mcp";
 import type { ChatMessage, ImageKind, MessageImage, SendRequest, Settings, WorkspaceEvent } from "../../shared/types.js";
 import {
@@ -8,15 +10,15 @@ import {
   insertMessage,
   readMessage,
   readSessionId,
-  readTab,
   updateMessage,
   writeSessionId,
-} from "../db.js";
+} from "../chat.js";
+import { readTab } from "../db.js";
 import { newId, toPng } from "../images.js";
 import type { Png } from "../images.js";
 import { claudeDriver } from "./claude.js";
 import { codexDriver, codexHome } from "./codex.js";
-import type { AgentDriver, TurnReport, TurnRequest } from "./driver.js";
+import type { AgentDriver, TurnImage, TurnReport, TurnRequest } from "./driver.js";
 import { registerRun } from "./mcp-server.js";
 import { loadSkills } from "./skills.js";
 
@@ -67,9 +69,20 @@ function cancelRun(tabId: string): void {
   active.get(tabId)?.abort();
 }
 
-function refsDirFor(blendPath: string): string {
+/**
+ * The agent's working directory: one per model, under the app's own data. It
+ * is scratch space — what the agent downloads to build the model, and the
+ * `AGENTS.md` Codex reads. Nothing is put next to the `.blend`, so a model
+ * directory holds the model and nothing else, and the pictures the user
+ * attaches never land on disk at all.
+ *
+ * The path is in the name, hashed, because two models in two directories may
+ * be called the same thing.
+ */
+function workDirFor(blendPath: string): string {
   const parsed = path.parse(blendPath);
-  return path.join(parsed.dir, `${parsed.name}.refs`);
+  const stamp = createHash("sha1").update(blendPath).digest("hex").slice(0, 8);
+  return path.join(app.getPath("userData"), "work", `${parsed.name}-${stamp}`);
 }
 
 /**
@@ -86,7 +99,7 @@ function agentTools(session: BlenderSession): ToolDefinition[] {
 async function buildInstructions(
   driver: AgentDriver,
   blendPath: string,
-  refsDir: string,
+  workDir: string,
   firstMessage: boolean,
 ): Promise<string> {
   const skills = await loadSkills();
@@ -94,7 +107,8 @@ async function buildInstructions(
   const facts = [
     "<run-facts>",
     `blend file: ${blendPath}`,
-    `reference pictures directory (your working directory): ${refsDir}`,
+    `working directory (downloads and scratch files, never next to the blend file): ${workDir}`,
+    "pictures the user attaches come with the message itself, not as files; nothing of theirs is written to disk",
     `first message of this conversation: ${firstMessage ? "yes — inspect the scene first" : "no — the session remembers what exists"}`,
     "Blender: 5.1, background mode, already connected to your MCP tools (server name: modelgen)",
   ];
@@ -126,10 +140,11 @@ async function runTurn(
 
   const now = Date.now();
   const blendPath = tabId;
-  const refsDir = refsDirFor(blendPath);
-  await mkdir(refsDir, { recursive: true });
+  const workDir = workDirFor(blendPath);
+  await mkdir(workDir, { recursive: true });
 
-  // The user's message, with its pictures stored in SQLite and on disk.
+  // The user's message. Its pictures are decoded once and held in memory: the
+  // chat draws them from there, and the agent is handed the same bytes.
   const userMessage = insertMessage({
     id: newId("msg"),
     tabId,
@@ -138,16 +153,14 @@ async function runTurn(
     status: "done",
     createdAt: now,
   });
-  const attachedPaths: string[] = [];
+  const turnImages: TurnImage[] = [];
   for (const attachment of request.images) {
     const png = toPng(new Uint8Array(attachment.bytes));
     const id = newId("in");
-    const file = path.join(refsDir, `${id}.png`);
-    await writeFile(file, png.bytes);
     userMessage.images.push(
-      insertImage({ ...png, id, kind: "input", mime: "image/png", filePath: file, messageId: userMessage.id }),
+      insertImage({ ...png, id, kind: "input", mime: "image/png", filePath: null, messageId: userMessage.id }),
     );
-    attachedPaths.push(file);
+    turnImages.push({ name: attachment.name || `${id}.png`, mime: "image/png", bytes: png.bytes });
   }
   deps.emit({ type: "message", message: userMessage });
 
@@ -258,10 +271,10 @@ async function runTurn(
       tab,
       settings,
       blendPath,
-      refsDir,
-      instructions: await buildInstructions(driver, blendPath, refsDir, sessionId === null),
+      workDir,
+      instructions: await buildInstructions(driver, blendPath, workDir, sessionId === null),
       text: request.text,
-      attachedPaths,
+      images: turnImages,
       mcpUrl: run.url,
       sessionId,
       signal: controller.signal,

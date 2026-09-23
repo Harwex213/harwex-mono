@@ -60,6 +60,12 @@ slug that is not in its agent's list keeps it and marks it, so a model retired
 from the list, or released after it was written, is never swapped out behind
 your back.
 
+What the list names is the agent's own alias where there is one. Claude Code's
+CLI resolves `opus`, `fable`, `sonnet` and `haiku` to whichever model of that
+family is current, so a release reaches the picker without an edit here. Codex
+has no such alias — its `--model` takes a slug out of its own registry — so
+that list names slugs and needs a visit when a generation ships.
+
 ## The viewer
 
 The left half of a workspace renders the glTF the main process exports from the
@@ -92,7 +98,9 @@ agents in different tabs work at the same time.
 **×** closes a tab, but only when the file is saved and no run is in flight;
 otherwise the reason shows as a notice. The header has **Save**, and the
 agent is told to save at the end of every task. Open tabs are written to
-SQLite and come back on the next start, each with its Blender and its chat.
+SQLite and come back on the next start, each with its Blender. The chat does
+not: a conversation lives as long as the app runs, and a tab that comes back
+comes back empty, in front of a model that is already built.
 
 If Electron dies without stopping its Blenders, each Blender notices its
 parent is gone and exits on its own.
@@ -118,17 +126,20 @@ The first message describes the model. Later messages ask for changes; the
 conversation continues, so "make it taller" means what it should. The
 composer is multi-line (Cmd/Ctrl + Enter sends) and takes pictures: drop
 them, paste them, choose them with **+ image**, or press **Screenshot** in the
-viewer to put the current view into the message. Pictures are saved next to
-the `.blend` in a `<name>.refs/` directory — the agent's working directory —
-so the agent can load them as textures.
+viewer to put the current view into the message. A picture is held in memory
+and handed to the agent as part of the message, the way a picture is shown to
+anyone: the agent sees it, and nothing is written next to the model. (Codex
+takes a picture only as a path, so its driver writes the turn's pictures to a
+directory under the OS temp dir and deletes it when the turn ends.)
 
 Each run prints two messages. The **progress** message is rewritten while
 the agent works: the latest reasoning summary on top, then one line per tool
 call (name, its first line, ✓ or ✗). The **final** message is the agent's
-answer, with the preview it rendered beside it. Previews are stored in
-SQLite, not on disk; a run that ends without one gets a preview rendered by
-the app. Pictures the agent generated with `image_gen` during the turn show in
-the same message.
+answer, with the preview it rendered beside it. A run that ends without one
+gets a preview rendered by the app. Pictures the agent generated with
+`image_gen` during the turn show in the same message. Pressing any picture
+opens it over the window, where the wheel zooms, a drag moves it, and a
+double-click goes in and back.
 
 ## The 3D viewer
 
@@ -147,8 +158,8 @@ Blender on open, after every code block the agent runs, and after Save.
 
 ## The agents
 
-Every tab is one session of one agent; the session id lives in SQLite next to
-the agent that owns it, and the next message resumes it, so "make it taller"
+Every tab is one session of one agent; the session id is held next to the
+agent that owns it, and the next message resumes it, so "make it taller"
 means what it should. Everything around the agent — the MCP tools, the skills,
 the chat messages, the preview, the token count — is the same either way.
 `electron/agent/driver.ts` is the line between the two: the runner drives that
@@ -209,9 +220,13 @@ tool runs arbitrary Python in a Blender the harness starts unsandboxed, which
 is what modelling *is* here. The sandbox raises the floor; the tool is the
 door, and it is open by design.
 
-The instructions are two skills, read on every run. Codex gets them as
-`AGENTS.md` in the tab's working directory; Claude Code gets them appended to
-its system prompt:
+The instructions are two skills, read on every run and handed over as one
+block of text. Neither agent reads them off disk: Claude Code gets the block
+appended to its system prompt, and Codex — which has no such parameter — gets
+it at the head of the first message of the thread, where it stays for the
+length of the conversation. No `CLAUDE.md`, no `AGENTS.md`: an instruction
+file would sit in a directory the agent works in, and the run would be shaped
+by a file it can edit.
 
 - `skills/modelgen-harness/SKILL.md` — how a run in this app goes: inspect
   first, build in named steps, materials per surface, `image_gen` for
@@ -231,9 +246,8 @@ and preferences follow), and no AGENTS.md. Codex sessions and `image_gen`
 output of harness runs live there too.
 
 Per run, Codex is started with a workspace-write sandbox that reaches the
-network, no approvals, live web search, `project_doc_max_bytes` raised so the
-skills fit, the harness's tools set to auto-approve, and every MCP server from
-the user's `config.toml` switched off — a second Blender server would only
+network, no approvals, live web search, the harness's tools set to
+auto-approve, and every MCP server from the user's `config.toml` switched off — a second Blender server would only
 confuse the agent about which scene it is editing. Model and reasoning effort
 come from the user's config unless the tab overrides them.
 `MODELGEN_DEBUG=1` prints every agent event to the app's stderr.
@@ -244,7 +258,8 @@ come from the user's config unless the tab overrides them.
 shared/types.ts, bridge.ts   what the renderer and the main process both speak
 shared/agents.ts             the two agents, their models and their efforts
 electron/main.ts             window, IPC, one Blender session per tab, the modelgen:// protocol
-electron/db.ts               SQLite: tabs, messages, images, agent sessions, settings
+electron/db.ts               SQLite: the models this app has worked on, and the settings
+electron/chat.ts             in memory: messages, pictures, agent sessions, token counts
 electron/agent/              the MCP server the agents talk to, the run loop, skills
 electron/agent/driver.ts     what the runner asks of an agent, and gets back
 electron/agent/codex.ts      the Codex driver
@@ -256,7 +271,28 @@ src/ui/                      tab bar, dialogs, workspace, chat, composer, viewer
 
 Models and pictures never travel over IPC to be displayed. `modelgen://model`
 serves the exported glTF of an open tab; `modelgen://image` serves a picture
-out of SQLite.
+of an open chat.
+
+## What is kept
+
+SQLite holds the models: one row per `.blend` this app has opened, with the
+agent, the model slug and the effort that file is built with, and whether it
+was open when the app was last closed. That row is the record of a model, and
+it outlives every conversation about it.
+
+Nothing else is written down. The messages, the pictures they show, the agent
+session the next message resumes and the token count belong to the app while
+it runs, and `electron/chat.ts` keeps them in memory. The work itself is in
+the `.blend`, which Blender writes, so a restart loses the talk and not the
+model. A database written by an earlier version has its `messages`, `images`
+and `agent_sessions` tables dropped on open, and is vacuumed — the pictures
+were most of the file.
+
+Each model also has a working directory of its own under the app's user data:
+`work/<name>-<hash of the path>`, the agent's cwd, where its downloads go. The
+app writes nothing into it. The model's own directory holds the model and
+nothing else, which is why the skills tell the agent to pack the textures it
+loads into the `.blend` before saving.
 
 ## What a turn costs
 

@@ -4,6 +4,15 @@ import type { AgentKind, ReasoningEffort } from "./types.js";
  * The two agents a tab can be built by, and what each of them is asked for.
  * The renderer draws these lists in the composer; the main process hands the
  * chosen slug to that agent's SDK. One catalog, so the two never drift.
+ *
+ * Both agents get the same job here: the Blender MCP tools of the tab's
+ * session, the same two skills, the web, and one way to make a picture that
+ * cannot be downloaded. What differs is the CLI behind them and the account
+ * that CLI is signed into, which is what the hints below say.
+ *
+ * A tab holding a slug that is missing from its agent's list keeps it and
+ * marks it. A model retired from a list, or released after the list was
+ * written, must never turn into something else behind the user's back.
  */
 
 interface AgentModel {
@@ -20,37 +29,54 @@ interface AgentInfo {
   efforts: ReasoningEffort[];
 }
 
+/**
+ * Claude Code, on the Claude Agent SDK. The slugs are the CLI's own aliases,
+ * not model ids: `claude --model` takes "an alias for the latest model" and
+ * resolves it itself, so `opus` is whichever Opus is current — `claude-opus-5-5`
+ * as this is written, where a list written one version ago says `claude-opus-5`
+ * and holds every tab on the model before it. A new model reaches this picker
+ * on its own; a pinned id has to be noticed and typed.
+ *
+ * Four families, most capable first. The CLI also has pinned aliases for a tab
+ * that must not move — `opus5`, `opus48`, `sonnet46` — which are not offered
+ * here, because moving is the point.
+ */
 const CLAUDE: AgentInfo = {
   kind: "claude",
   label: "Claude Code",
-  hint: "Runs on the `claude` CLI and the login it holds.",
+  hint: "Runs on the `claude` CLI and the login it holds. Reaches the web, and `magnific` when a picture has to be invented.",
   models: [
     { slug: "", label: "model: default" },
-    { slug: "claude-opus-5", label: "Opus 5" },
-    { slug: "claude-sonnet-5", label: "Sonnet 5" },
-    { slug: "claude-fable-5-1", label: "Fable 5.1" },
-    { slug: "claude-haiku-4-5-20251001", label: "Haiku 4.5" },
+    { slug: "fable", label: "Fable" },
+    { slug: "opus", label: "Opus" },
+    { slug: "sonnet", label: "Sonnet" },
+    { slug: "haiku", label: "Haiku" },
   ],
   efforts: ["", "low", "medium", "high", "xhigh", "max"],
 };
 
 /**
- * The models Codex recommends, from <https://learn.chatgpt.com/docs/models>.
- * The legacy ones are left out, but a tab that holds a slug missing from this
- * list keeps it and shows it: a model retired here, or one released after this
- * list was written, must not silently turn into something else.
+ * Codex, on the Codex SDK. Codex has no alias of the kind Claude's CLI has:
+ * `codex --model` takes a slug out of the CLI's own model registry, and these
+ * are the slugs that registry holds. So this list does go stale, and a new
+ * generation of models is a line to add here. `model: default` is the entry
+ * that never does: it leaves the choice to the user's own `config.toml`, which
+ * the CLI keeps current.
+ *
+ * Codex names more efforts than Claude does, down to `minimal` and up through
+ * `ultra` and `persistent`, and reads them from its own config when the tab
+ * asks for none.
  */
 const CODEX: AgentInfo = {
   kind: "codex",
   label: "Codex",
-  hint: "Runs on the `codex` CLI and the ChatGPT account it is signed into.",
+  hint: "Runs on the `codex` CLI and the ChatGPT account it is signed into. Reaches the web, and makes pictures with `image_gen`.",
   models: [
     { slug: "", label: "model: default" },
     { slug: "gpt-6-astra", label: "Astra" },
     { slug: "gpt-5.6-sol", label: "5.6 Sol" },
     { slug: "gpt-5.6-terra", label: "5.6 Terra" },
     { slug: "gpt-5.6-luna", label: "5.6 Luna" },
-    { slug: "gpt-5.3-codex-spark", label: "5.3 Codex Spark" },
   ],
   efforts: ["", "minimal", "low", "medium", "high", "xhigh", "max", "ultra", "persistent"],
 };

@@ -3,21 +3,37 @@ import { useEffect, useRef, useState } from "react";
 import type { ChatMessage, MessageImage } from "../../shared/types.js";
 import { imageUrl } from "../state/bridge.js";
 import { messagesByTab } from "../state/store.js";
+import { ImageModal } from "./image-modal.js";
 
+/**
+ * A picture in the chat is a thumbnail. Pressing it opens the full one over
+ * the window, where it can be zoomed and moved — the chat column is no place
+ * to judge a render.
+ */
 function Picture({ image, large }: { image: MessageImage; large: boolean }): React.JSX.Element {
   const [open, setOpen] = useState(false);
   const label = image.kind === "preview" ? "preview" : image.kind === "generated" ? "reference" : "attached";
   return (
-    <figure
-      className={`picture picture--${image.kind}${open || large ? " picture--large" : ""}`}
-      title={image.filePath ?? label}
-      onClick={() => {
-        setOpen(!open);
-      }}
-    >
-      <img src={imageUrl(image.id)} alt={label} width={image.width} height={image.height} />
-      <figcaption>{label}</figcaption>
-    </figure>
+    <>
+      <figure
+        className={`picture picture--${image.kind}${large ? " picture--large" : ""}`}
+        title={image.filePath ?? label}
+        onClick={() => {
+          setOpen(true);
+        }}
+      >
+        <img src={imageUrl(image.id)} alt={label} width={image.width} height={image.height} />
+        <figcaption>{label}</figcaption>
+      </figure>
+      {open ? (
+        <ImageModal
+          image={image}
+          onClose={() => {
+            setOpen(false);
+          }}
+        />
+      ) : null}
+    </>
   );
 }
 
