@@ -1,0 +1,5 @@
+// Editor-only config: without it, files under `electron/` fall outside the root
+// renderer tsconfig and get a default project. Build and typecheck use `tsconfig.electron.json`.
+{
+  "extends": "../tsconfig.electron.json"
+}

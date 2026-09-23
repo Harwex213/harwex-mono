@@ -1,0 +1,5 @@
+// Editor-only config: without it, files under `server/` fall outside the root
+// web tsconfig and get a default project. Typecheck uses `tsconfig.server.json`.
+{
+  "extends": "../tsconfig.server.json"
+}
