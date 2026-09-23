@@ -1,6 +1,8 @@
 import { stat } from "node:fs/promises";
+import path from "node:path";
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import type { Options } from "@anthropic-ai/claude-agent-sdk";
+import { app } from "electron";
 import type {
   ImageRunRequest,
   RunEvent,
@@ -17,6 +19,13 @@ const PROMPT_TOOLS = ["Read", "Write", "Glob", "Skill"];
 /** The image run downloads what Magnific hands back, so it needs a shell. */
 const IMAGE_TOOLS = ["Read", "Write", "Glob", "Bash", "Skill"];
 const MAGNIFIC_TOOLS = "mcp__magnific";
+
+/**
+ * The skills ship with the app as a local plugin and are handed to every run,
+ * so nothing is written into the working directory and nothing is left behind
+ * there, however the app goes away.
+ */
+const PLUGIN_DIR = path.join(app.getAppPath(), "plugin");
 
 const TOOL_DETAIL_KEYS = ["file_path", "prompt", "command", "url", "pattern", "description"];
 
@@ -102,9 +111,9 @@ async function drive(run: AgentRun, emit: Emit): Promise<string> {
     tools: run.tools,
     allowedTools: [...run.tools, ...(run.allowed ?? [])],
     permissionMode: "bypassPermissions",
-    // The working directory carries the two skills, and nothing else about the
-    // machine should reach the run.
-    settingSources: ["project"],
+    plugins: [{ type: "local", path: PLUGIN_DIR }],
+    // Skills come only from the plugin, so no settings or stale skills from the machine reach the run.
+    settingSources: [],
     maxTurns: run.maxTurns,
   };
   if (config.agentModel) {
@@ -164,7 +173,7 @@ async function runPromptGeneration(request: RunRequest, emit: Emit): Promise<Run
   const prompt = [
     "Write one image prompt from the sources below.",
     "",
-    "Follow the image-prompt-generator skill. It says where the file goes and what the prompt has to look like.",
+    "Follow the imagen:image-prompt-generator skill. It says where the file goes and what the prompt has to look like.",
     "",
     `Node id: ${request.targetId}`,
     `Write the prompt to: prompts/${request.targetId}.md`,
@@ -210,7 +219,7 @@ async function runImageGeneration(request: ImageRunRequest, emit: Emit): Promise
   const prompt = [
     "Generate one image from the sources below.",
     "",
-    "Follow the image-generator skill. It says which server to call and where the file goes.",
+    "Follow the imagen:image-generator skill. It says which server to call and where the file goes.",
     "",
     `Node id: ${request.targetId}`,
     `Model: ${request.model}`,

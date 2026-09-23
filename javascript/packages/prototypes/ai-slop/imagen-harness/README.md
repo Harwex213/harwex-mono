@@ -44,14 +44,13 @@ imported into it on first run and then removed.
 
 ## Inside a working directory
 
-Creating one opens the directory picker, and the app then owns four things inside
-it:
+Creating one opens the directory picker, and the app then owns three things
+inside it:
 
 ```
 graph.json               the canvas: every node, its position, and the text nodes
 prompts/<node-id>.md     one file per image prompt node
 images/<node-id>.png     one file per image node
-.claude/skills/          the two skills the agents read, rewritten on every open
 ```
 
 `prompts/` and `images/` are flat, and a file is named after the node that owns
@@ -139,8 +138,9 @@ machine's Claude Code credentials: if `claude` works in your terminal, this
 works.
 
 The rules for where a file goes are not in the prompt — they are in the two
-skills the app writes into `.claude/skills/`, and `settingSources: ["project"]`
-is what lets the run pick them up. The app then checks the disk itself: a run
+skills under `plugin/`, which every run loads as a local plugin named `imagen`.
+Nothing is written into the working directory for them, and `settingSources: []`
+keeps every other setting on the machine out of the run. The app then checks the disk itself: a run
 that ends without the file it was asked for is a failed run, whatever the agent
 said.
 
@@ -163,7 +163,8 @@ shared/bridge.ts        what the renderer may ask the main process for
 electron/main.ts        window, IPC, and the imagen:// protocol that serves images
 electron/workspace.ts   graph.json, prompts/, images/
 electron/workspaces.ts  the SQLite list of directories worked in
-electron/agent/         the two runs, the skills they read, the Magnific config
+electron/agent/         the two runs and the Magnific config
+plugin/                 the `imagen` plugin: the two skills the runs follow
 src/state/              signals: the graph, the runs, the viewport, the framing
 src/ui/                 canvas, cards, wires, menu, minimap, directory list
 ```

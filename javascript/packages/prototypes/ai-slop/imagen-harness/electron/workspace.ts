@@ -1,7 +1,6 @@
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import * as path from "node:path";
 import type { Graph } from "../shared/types.js";
-import { writeSkills } from "./agent/skills.js";
 
 const GRAPH_FILE = "graph.json";
 const PROMPTS_DIR = "prompts";
@@ -29,11 +28,10 @@ function imagePath(dir: string, id: string): string {
   return path.join(dir, IMAGES_DIR, `${safeId(id)}.png`);
 }
 
-/** Creates what a working directory needs and refreshes the skills the agents read. */
+/** Creates what a working directory needs. */
 async function ensureWorkspace(dir: string): Promise<void> {
   await mkdir(path.join(dir, PROMPTS_DIR), { recursive: true });
   await mkdir(path.join(dir, IMAGES_DIR), { recursive: true });
-  await writeSkills(dir);
 }
 
 async function loadGraph(dir: string): Promise<Graph> {
