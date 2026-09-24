@@ -1,0 +1,29 @@
+{
+  "nodes": [
+    {
+      "id": "assets-harness-modelgen-harness",
+      "type": "block",
+      "text": "assets-harness - форк modelgen-harness который позволяет работать в проекте, чтобы подтягивать проектный контекст"
+    },
+    {
+      "id": "modelgen-harness-system-prompt-mcp-model",
+      "type": "block",
+      "text": "- текущая проблема modelgen-harness: существуют проектный контекст, или так называемые проектные конвенции, которым нужно следовать при разработке моделей. Для этого нужно спавнить агента в соответствующей папке проекта, но нужен \"system\" prompt (специальный контекст для агента, присылаемый первым сообщением) и mcp от modelgen-harness"
+    },
+    {
+      "id": "node-3",
+      "type": "block",
+      "text": "Основные фичи:\n- позволяет открыть проект по папке\n- парсит внутреннюю папку проекта `Assets` по convention структуре ассетов: blender модели, текстуры, материалы\n- подшивает system prompt и нужные mcp - headless blender, magnific для claude"
+    }
+  ],
+  "edges": [
+    {
+      "from": "assets-harness-modelgen-harness",
+      "to": "modelgen-harness-system-prompt-mcp-model"
+    },
+    {
+      "from": "modelgen-harness-system-prompt-mcp-model",
+      "to": "node-3"
+    }
+  ]
+}

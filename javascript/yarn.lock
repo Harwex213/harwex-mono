@@ -2721,6 +2721,31 @@ __metadata:
   languageName: unknown
   linkType: soft
 
+"@hw/assets-harness@workspace:packages/projects/assets-harness":
+  version: 0.0.0-use.local
+  resolution: "@hw/assets-harness@workspace:packages/projects/assets-harness"
+  dependencies:
+    "@anthropic-ai/claude-agent-sdk": "npm:0.3.234"
+    "@hw/headless-blender-mcp": "workspace:*"
+    "@hw/typescript-config": "workspace:*"
+    "@modelcontextprotocol/sdk": "npm:1.30.0"
+    "@openai/codex-sdk": "npm:0.153.4"
+    "@preact/signals-react": "npm:3.9.0"
+    "@rspack/cli": "npm:2.1.4"
+    "@rspack/core": "npm:2.1.4"
+    "@rspack/dev-server": "npm:2.1.0"
+    "@types/node": "npm:24.1.0"
+    "@types/react": "npm:19.2.0"
+    "@types/react-dom": "npm:19.2.0"
+    "@types/three": "npm:0.185.4"
+    electron: "npm:44.2.0"
+    react: "npm:19.2.0"
+    react-dom: "npm:19.2.0"
+    three: "npm:0.185.1"
+    typescript: "npm:5.9.3"
+  languageName: unknown
+  linkType: soft
+
 "@hw/browser-scroll-restoration@workspace:packages/learning/scroll-restoration/browser-scroll-restoration":
   version: 0.0.0-use.local
   resolution: "@hw/browser-scroll-restoration@workspace:packages/learning/scroll-restoration/browser-scroll-restoration"
