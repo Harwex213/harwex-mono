@@ -1,0 +1,32 @@
+{
+  "name": "@hw/ostrov-prototype-v7-core",
+  "description": "Ostrov prototype v7: game logic, an observable model",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "exports": {
+    ".": "./exports.ts"
+  },
+  "scripts": {
+    "harness": "rspack serve",
+    "model": "node tools/extract-model.mjs",
+    "typecheck": "node tools/extract-model.mjs && tsc --noEmit && tsc --noEmit -p harness",
+    "test": "tsx --test src/*.test.ts"
+  },
+  "dependencies": {
+    "@preact/signals-core": "1.13.0"
+  },
+  "devDependencies": {
+    "@hw/typescript-config": "workspace:*",
+    "@rspack/cli": "2.1.4",
+    "@rspack/core": "2.1.4",
+    "@rspack/dev-server": "2.1.0",
+    "tsx": "4.20.6",
+    "typescript": "5.9.3"
+  },
+  "browserslist": [
+    "last 1 version",
+    "> 1%",
+    "not dead"
+  ]
+}
