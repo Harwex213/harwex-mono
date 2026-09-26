@@ -82,13 +82,33 @@ const ruler = (): CanvasRenderingContext2D => {
   return ctx;
 };
 
-// A class shows what the layer above can call: its getters and its methods. The
-// private state behind them stays in the panel. A type is nothing but its
-// members, so they need no heading either.
+// A class shows what the layer above can reach: its public fields, its getters
+// and its methods. The extractor drops the private state behind the getters. A
+// type is nothing but its members, so they need no heading either.
 const rowsOf = (node: ModelNode): Row[] => {
   const rows: Row[] = [];
 
   if (node.kind === "type") {
+    for (const field of node.fields) {
+      rows.push({
+        kind: "member",
+        name: field.name,
+        left: field.name,
+        right: field.type,
+        end: 0,
+      });
+    }
+  }
+
+  if (node.kind === "class" && node.fields.length > 0) {
+    rows.push({
+      kind: "section",
+      name: "",
+      left: "поля",
+      right: "",
+      end: 0,
+    });
+
     for (const field of node.fields) {
       rows.push({
         kind: "member",
@@ -335,11 +355,11 @@ const place = (boxes: Box[], edges: ModelEdge[]): void => {
 };
 
 // An edge leaves the row that declares the dependency: the property typed after
-// the target, or the method that takes it. A row the card does not draw — a
-// private field — is skipped. What is left over leaves the middle of the card.
+// the target, or the method that takes it. A member the card does not draw — a
+// private field — has no row. What is left over leaves the middle of the card.
 const anchorOf = (box: Box, edge: ModelEdge): number | undefined => {
-  // Scanned in the order of the card, so a property wins over a method and the
-  // constructor is the last resort.
+  // Scanned in the order of the card, so a field or a property wins over a
+  // method and the constructor is the last resort.
   const row = box.rows.find((candidate) => {
     return candidate.kind === "member" && edge.members.includes(candidate.name);
   });

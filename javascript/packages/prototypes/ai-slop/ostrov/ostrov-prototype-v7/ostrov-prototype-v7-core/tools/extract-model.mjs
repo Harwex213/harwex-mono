@@ -67,10 +67,6 @@ const tagsOf = (node) => {
     tags.push("readonly");
   }
 
-  if (hasModifier(node, ts.SyntaxKind.PrivateKeyword)) {
-    tags.push("private");
-  }
-
   return tags;
 };
 
@@ -156,12 +152,27 @@ const referencesOf = (node, file, imported) => {
   return found;
 };
 
+// A `#name` or a `private` member is invisible to the layer above. The model
+// keeps only what a caller can reach, so neither the card nor the panel lists
+// the state that a getter already exposes.
+const isPrivate = (member) => {
+  if (member.name && ts.isPrivateIdentifier(member.name)) {
+    return true;
+  }
+
+  return hasModifier(member, ts.SyntaxKind.PrivateKeyword) || hasModifier(member, ts.SyntaxKind.ProtectedKeyword);
+};
+
 // Which member of the class mentions a name. The diagram draws the edge out of
 // that row, so a dependency leaves the line that declares it.
 const anchorsOf = (node, file, imported) => {
   const anchors = new Map();
 
   for (const member of node.members) {
+    if (isPrivate(member)) {
+      continue;
+    }
+
     const label = ts.isConstructorDeclaration(member) ? "constructor" : nameOf(member, file);
 
     for (const name of referencesOf(member, file, imported).keys()) {
@@ -183,6 +194,10 @@ const readClass = (node, file, path, imported) => {
   const methods = [];
 
   for (const member of node.members) {
+    if (isPrivate(member)) {
+      continue;
+    }
+
     if (ts.isPropertyDeclaration(member)) {
       fields.push({
         name: nameOf(member, file),

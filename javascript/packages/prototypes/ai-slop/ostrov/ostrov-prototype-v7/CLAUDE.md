@@ -127,9 +127,9 @@ madness rule above. Mana has no producer yet: no building in the GDD makes it.
 ### harness
 
 The core harness paints every class in the package on a zoom and pan canvas: its
-properties, its methods and the dependencies between them. A click opens the
-panel with the private fields and the full types; the search dims everything
-that does not match. A card follows the cursor when dragged, and `format` throws
+public fields, its properties, its methods and the dependencies between them. A
+click opens the panel with the full types; the search dims everything that does
+not match. A card follows the cursor when dragged, and `format` throws
 the drags away and lays the columns out again.
 
 - The diagram is generated, never drawn by hand. `tools/extract-model.mjs` reads
@@ -142,8 +142,10 @@ the drags away and lays the columns out again.
   and the package declares elsewhere: a heritage clause, a `new`, a type
   reference.
 - An edge remembers the members that mention the target, so it leaves the row
-  that declares the dependency. The card is scanned top down: a property wins
-  over a method, and the constructor is the last resort.
+  that declares the dependency. The card is scanned top down: a field or a
+  property wins over a method, and the constructor is the last resort.
+- The diagram shows what a caller can reach. A `#name` or `private` member is
+  not extracted: the getter in front of it already stands for it.
 - The comment directly above a class becomes the description on its card. The
   author writes it, in a sentence or two; nothing generates it.
 - `harness/` has its own tsconfig with the DOM lib. The package tsconfig stays
