@@ -1,0 +1,93 @@
+.ostrov-extra-actions {
+  position: relative;
+  display: inline-flex;
+  flex-direction: column;
+  gap: 10px;
+  align-self: flex-start;
+  width: fit-content;
+  padding: 10px;
+  border: 1px solid var(--ostrov-goldShadow);
+  border-radius: 14px;
+  background: var(--ostrov-abyss);
+  font-family: var(--ostrov-font);
+  font-weight: var(--ostrov-weight);
+}
+
+.ostrov-extra-actions__button {
+  position: static;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  height: 64px;
+  padding: 0;
+  border: 1px solid var(--ostrov-steel);
+  border-radius: 12px;
+  background: var(--ostrov-slate);
+  color: var(--ostrov-light);
+  font-family: inherit;
+  font-weight: inherit;
+  cursor: pointer;
+}
+
+.ostrov-extra-actions__button--active {
+  border-color: var(--ostrov-gold);
+}
+
+.ostrov-extra-actions__button:hover {
+  border-color: var(--ostrov-gold);
+}
+
+.ostrov-extra-actions__button:focus-visible {
+  border-color: var(--ostrov-gold);
+  outline: none;
+}
+
+.ostrov-extra-actions__icon {
+  font-size: 30px;
+  line-height: 1;
+}
+
+.ostrov-extra-actions__tooltip {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 12px);
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: max-content;
+  max-width: 440px;
+  padding: 14px 18px;
+  border: 1px solid var(--ostrov-goldShadow);
+  border-radius: 14px;
+  background: var(--ostrov-abyss);
+  text-align: left;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.ostrov-extra-actions__button:hover .ostrov-extra-actions__tooltip {
+  opacity: 1;
+  visibility: visible;
+}
+
+.ostrov-extra-actions__button:focus-visible .ostrov-extra-actions__tooltip {
+  opacity: 1;
+  visibility: visible;
+}
+
+.ostrov-extra-actions__tooltip-title {
+  color: var(--ostrov-gold);
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.ostrov-extra-actions__tooltip-text {
+  color: var(--ostrov-light);
+  font-size: 15px;
+  font-weight: 400;
+  line-height: 1.4;
+}

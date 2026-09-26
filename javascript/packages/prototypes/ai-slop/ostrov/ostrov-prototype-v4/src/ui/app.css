@@ -1,0 +1,1445 @@
+:root {
+  --bg: #081426;
+  --bg-deep: #050d19;
+  --panel: #10233d;
+  --panel-soft: #18314f;
+  --line: #2a4a73;
+  --gold: #ffd75e;
+  --gold-dim: #b9902f;
+  --text: #e9f1f9;
+  --text-dim: #93aec6;
+  --toxic: #7fd08a;
+  --insane: #ff8ec4;
+  --danger: #ff6b5e;
+  --player-green: #5ec26a;
+  --player-teal: #35c6b6;
+  --player-blue: #4d8dff;
+  --player-orange: #ff9b3d;
+  --radius: 10px;
+  --gap: 12px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 14px;
+}
+
+#root {
+  width: 100vw;
+  height: 100vh;
+}
+
+.page {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+  width: 100vw;
+  height: 100vh;
+  padding: 24px;
+  overflow: hidden;
+  background: radial-gradient(circle at 50% 35%, var(--bg) 0%, var(--bg-deep) 100%);
+}
+
+.page__title {
+  margin: 0;
+  color: var(--gold);
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.page__hint {
+  margin: 0;
+  color: var(--text-dim);
+}
+
+.page__nav {
+  display: flex;
+  gap: var(--gap);
+  flex-wrap: wrap;
+}
+
+.page__link {
+  padding: 8px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.page__link:hover {
+  border-color: var(--gold-dim);
+  background: var(--panel-soft);
+  color: var(--gold);
+}
+
+/* --------------------------------------------------------------------------
+   Main menu
+   -------------------------------------------------------------------------- */
+
+.menu {
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.menu__title {
+  margin: 0;
+  color: var(--gold);
+  font-size: 54px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-shadow: 0 0 24px rgba(255, 215, 94, 0.35);
+}
+
+.menu__subtitle {
+  max-width: 520px;
+  margin: 0;
+  color: var(--text-dim);
+  line-height: 1.5;
+}
+
+.menu__field {
+  display: flex;
+  align-items: center;
+  gap: var(--gap);
+  margin-top: 12px;
+}
+
+.menu__label {
+  color: var(--text-dim);
+}
+
+.menu__input {
+  width: 220px;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel);
+  color: var(--text);
+  font: inherit;
+}
+
+.menu__input:focus {
+  border-color: var(--gold-dim);
+  outline: none;
+}
+
+.menu__actions {
+  display: flex;
+  gap: var(--gap);
+}
+
+.menu__button {
+  padding: 12px 28px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel);
+  color: var(--text);
+  font: inherit;
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.menu__button:hover {
+  border-color: var(--gold-dim);
+  background: var(--panel-soft);
+}
+
+.menu__button--primary {
+  border-color: var(--gold);
+  color: var(--gold);
+}
+
+/* --------------------------------------------------------------------------
+   Island page: the canvas fills the viewport, the panels float over it
+   (wireframe `01-spec-schema-1.svg`)
+   -------------------------------------------------------------------------- */
+
+.island-page {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background: radial-gradient(circle at 50% 40%, var(--bg) 0%, var(--bg-deep) 100%);
+}
+
+.island-page__canvas-slot {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+}
+
+.island-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  cursor: grab;
+  touch-action: none;
+}
+
+.island-canvas:active {
+  cursor: grabbing;
+}
+
+.panel {
+  position: absolute;
+  z-index: 2;
+  padding: 10px;
+  border: 1px solid var(--gold-dim);
+  border-radius: var(--radius);
+  background: rgba(8, 20, 38, 0.82);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  pointer-events: auto;
+}
+
+.island-page__tools,
+.island-page__buildings-slot {
+  position: absolute;
+  z-index: 2;
+  pointer-events: auto;
+}
+
+.island-page__tools {
+  left: 332px;
+  bottom: 16px;
+  width: 104px;
+  min-height: 132px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+}
+
+/*
+ * The bottom row is resources | tools | buildings | end turn. A plainly centred
+ * buildings panel lands on the tools column below 1440 px — at 1280 px it
+ * covered the three buttons outright — so its left edge is clamped to the end
+ * of the tools column plus a 12 px gutter, and its width is capped so the right
+ * edge keeps the same gutter to the end-turn panel. Above 1400 px the clamp
+ * never bites and the panel sits centred, as the wireframe draws it.
+ */
+.island-page__buildings-slot {
+  --tools-right: 448px;
+  --end-turn-left: 180px;
+  --buildings-width: min(560px, 42vw, calc(100vw - var(--tools-right) - var(--end-turn-left)));
+  left: max(calc(50% - var(--buildings-width) / 2), var(--tools-right));
+  bottom: 16px;
+  width: var(--buildings-width);
+  min-height: 132px;
+}
+
+.island-page__back {
+  position: absolute;
+  z-index: 2;
+  left: 16px;
+  bottom: 16px;
+  padding: 10px 18px;
+  border: 1px solid var(--gold-dim);
+  border-radius: var(--radius);
+  background: rgba(8, 20, 38, 0.82);
+  color: var(--gold);
+  font: inherit;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.island-page__back:hover {
+  background: var(--panel-soft);
+}
+
+.island-page__toast {
+  position: absolute;
+  z-index: 5;
+  left: 50%;
+  bottom: 176px;
+  padding: 10px 18px;
+  border: 1px solid var(--danger);
+  border-radius: var(--radius);
+  background: rgba(8, 20, 38, 0.94);
+  color: var(--text);
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+/* --------------------------------------------------------------------------
+   Turn pill
+   -------------------------------------------------------------------------- */
+
+.turn-pill {
+  position: absolute;
+  z-index: 2;
+  top: 16px;
+  left: 50%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 20px;
+  border: 1px solid var(--gold-dim);
+  border-radius: 999px;
+  background: rgba(8, 20, 38, 0.82);
+  transform: translateX(-50%);
+  pointer-events: auto;
+}
+
+.turn-pill__turn {
+  color: var(--gold);
+  font-weight: 600;
+}
+
+.turn-pill__separator {
+  color: var(--line);
+}
+
+.turn-pill__phase {
+  color: var(--text-dim);
+}
+
+/* --------------------------------------------------------------------------
+   Players panel (`01-spec-image-3.png`)
+   -------------------------------------------------------------------------- */
+
+.players-panel {
+  top: 16px;
+  left: 16px;
+  width: 224px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.players-panel__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: rgba(24, 49, 79, 0.55);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.players-panel__row:hover {
+  background: var(--panel-soft);
+}
+
+.players-panel__row--viewed {
+  border-color: var(--gold);
+}
+
+.players-panel__pennant {
+  width: 14px;
+  height: 26px;
+  border-radius: 2px;
+  clip-path: polygon(0 0, 100% 0, 100% 100%, 50% 78%, 0 100%);
+}
+
+.players-panel__body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.players-panel__name {
+  overflow: hidden;
+  font-weight: 600;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.players-panel__counters {
+  display: flex;
+  gap: 8px;
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+.players-panel__status {
+  font-size: 14px;
+}
+
+/* --------------------------------------------------------------------------
+   Resources panel (`01-spec-image-6.png`)
+   -------------------------------------------------------------------------- */
+
+.resources-panel {
+  left: 16px;
+  bottom: 16px;
+  width: 300px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/*
+ * Two columns, not the three of `01-spec-image-6.png`: at 300 px a third column
+ * leaves 90 px per chip and «Токсичность» is cut to an ellipsis. The panel
+ * cannot grow sideways either — the tools column stands 16 px to its right.
+ */
+.resources-panel__grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 6px 8px;
+}
+
+.resource-chip {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  min-width: 0;
+}
+
+.resource-chip__glyph {
+  font-size: 13px;
+}
+
+.resource-chip__value {
+  font-weight: 700;
+}
+
+.resource-chip__value--toxic {
+  color: var(--toxic);
+}
+
+.resource-chip__value--insane {
+  color: var(--insane);
+}
+
+.resource-chip__label {
+  color: var(--text-dim);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.resources-panel__calm {
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.resources-panel__calm:hover:enabled {
+  border-color: var(--gold-dim);
+  background: var(--panel-soft);
+  color: var(--gold);
+}
+
+.resources-panel__calm:disabled {
+  color: var(--text-dim);
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* --------------------------------------------------------------------------
+   End-turn medallion (`01-spec-image-2.png`)
+   -------------------------------------------------------------------------- */
+
+.end-turn-panel {
+  right: 16px;
+  bottom: 16px;
+  width: 152px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.end-turn-panel__banner {
+  width: 100%;
+  padding: 4px 6px;
+  border: 1px solid var(--gold);
+  border-radius: 6px;
+  background: rgba(24, 49, 79, 0.7);
+  color: var(--gold);
+  font-size: 12px;
+  text-align: center;
+}
+
+.end-turn-panel__medallion {
+  position: relative;
+  width: 108px;
+  height: 108px;
+  padding: 0;
+  border: 3px solid var(--gold);
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 38%, var(--panel-soft) 0%, var(--bg-deep) 100%);
+  box-shadow: inset 0 0 0 2px var(--gold-dim), 0 6px 18px rgba(0, 0, 0, 0.5);
+  cursor: pointer;
+}
+
+.end-turn-panel__medallion:hover:enabled {
+  box-shadow: inset 0 0 0 2px var(--gold), 0 0 18px rgba(255, 215, 94, 0.45);
+}
+
+.end-turn-panel__medallion:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* The X that splits the four quadrants of the reference medallion. */
+.end-turn-panel__cross {
+  position: absolute;
+  inset: 6px;
+  border-radius: 50%;
+  background:
+    linear-gradient(45deg, transparent calc(50% - 1px), var(--gold-dim) calc(50% - 1px), var(--gold-dim) calc(50% + 1px), transparent calc(50% + 1px)),
+    linear-gradient(135deg, transparent calc(50% - 1px), var(--gold-dim) calc(50% - 1px), var(--gold-dim) calc(50% + 1px), transparent calc(50% + 1px));
+}
+
+.end-turn-panel__quadrant {
+  position: absolute;
+  font-size: 18px;
+  line-height: 1;
+}
+
+/* Hammer on top, skull right, sword left, wheat below, as in the reference. */
+.end-turn-panel__quadrant--0 {
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.end-turn-panel__quadrant--1 {
+  top: 50%;
+  right: 12px;
+  transform: translateY(-50%);
+}
+
+.end-turn-panel__quadrant--2 {
+  top: 50%;
+  left: 12px;
+  transform: translateY(-50%);
+}
+
+.end-turn-panel__quadrant--3 {
+  bottom: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+/* --------------------------------------------------------------------------
+   Buildings panel (`01-spec-image-4.png`)
+   -------------------------------------------------------------------------- */
+
+.buildings-panel {
+  position: static;
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 5px;
+  width: 100%;
+}
+
+.building-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  padding: 6px 2px 5px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(24, 49, 79, 0.55);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.building-card:hover {
+  border-color: var(--gold-dim);
+  background: var(--panel-soft);
+}
+
+.building-card--armed {
+  border-color: var(--gold);
+  background: var(--panel-soft);
+  box-shadow: 0 0 14px rgba(255, 215, 94, 0.45);
+}
+
+.building-card--poor {
+  opacity: 0.62;
+  filter: grayscale(0.6);
+}
+
+.building-card--poor.building-card--armed {
+  opacity: 0.9;
+  filter: none;
+}
+
+.building-card__art {
+  width: 46px;
+  height: 46px;
+  object-fit: contain;
+  pointer-events: none;
+}
+
+.building-card__name {
+  overflow: hidden;
+  max-width: 100%;
+  font-size: 10px;
+  line-height: 1.2;
+  text-align: center;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.building-card__cost {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 2px 4px;
+  color: var(--text-dim);
+  font-size: 10px;
+}
+
+.building-card__cost-part--missing {
+  color: var(--danger);
+  font-weight: 700;
+}
+
+.building-card__tooltip {
+  position: absolute;
+  z-index: 6;
+  left: 50%;
+  bottom: calc(100% + 8px);
+  display: none;
+  flex-direction: column;
+  gap: 2px;
+  width: 218px;
+  padding: 8px 10px;
+  border: 1px solid var(--gold-dim);
+  border-radius: 8px;
+  background: rgba(5, 13, 25, 0.96);
+  text-align: left;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.building-card:hover .building-card__tooltip {
+  display: flex;
+}
+
+.building-card__tooltip-title {
+  margin-bottom: 2px;
+  color: var(--gold);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.building-card__tooltip-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11px;
+}
+
+.building-card__tooltip-biome {
+  color: var(--text-dim);
+}
+
+.building-card__tooltip-combo {
+  white-space: nowrap;
+}
+
+/* --------------------------------------------------------------------------
+   Demolish icon (`01-spec-image-5.png`, top slot)
+   -------------------------------------------------------------------------- */
+
+.demolish-icon {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  width: 60px;
+  height: 60px;
+  padding: 0;
+  border: 1px solid var(--gold-dim);
+  border-radius: 8px;
+  background: rgba(8, 20, 38, 0.82);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.demolish-icon:hover {
+  border-color: var(--gold);
+  background: var(--panel-soft);
+}
+
+.demolish-icon--active {
+  border-color: var(--danger);
+  background: rgba(255, 107, 94, 0.18);
+  box-shadow: 0 0 14px rgba(255, 107, 94, 0.45);
+}
+
+.demolish-icon__glyph {
+  font-size: 22px;
+  line-height: 1;
+}
+
+.demolish-icon__label {
+  color: var(--text-dim);
+  font-size: 10px;
+}
+
+/* --------------------------------------------------------------------------
+   Hex popup (hover) and biome modal (click)
+   -------------------------------------------------------------------------- */
+
+.hex-popup {
+  position: fixed;
+  z-index: 6;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 8px 10px;
+  border: 1px solid var(--gold-dim);
+  border-radius: 8px;
+  background: rgba(5, 13, 25, 0.95);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  pointer-events: none;
+}
+
+.hex-popup__title {
+  color: var(--gold);
+  font-weight: 600;
+}
+
+.hex-popup__biome {
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+.hex-popup__combo {
+  font-size: 12px;
+}
+
+.hex-popup__list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 2px;
+}
+
+.hex-popup__row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11px;
+}
+
+.hex-popup__row-name {
+  color: var(--text-dim);
+}
+
+.hex-popup__row-combo {
+  white-space: nowrap;
+}
+
+.hex-popup__toxicity {
+  margin-top: 3px;
+  color: var(--toxic);
+  font-size: 11px;
+}
+
+.hex-popup__toxicity--dead {
+  color: var(--danger);
+}
+
+.biome-modal {
+  position: absolute;
+  z-index: 4;
+  top: 72px;
+  right: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 292px;
+  padding: 12px;
+  border: 1px solid var(--gold-dim);
+  border-radius: var(--radius);
+  background: rgba(8, 20, 38, 0.94);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  pointer-events: auto;
+}
+
+.biome-modal__close {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.biome-modal__close:hover {
+  border-color: var(--gold-dim);
+  color: var(--gold);
+}
+
+.biome-modal__swatch {
+  display: block;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.biome-modal__title {
+  margin: 0;
+  color: var(--gold);
+  font-size: 16px;
+}
+
+.biome-modal__description {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.biome-modal__toxicity {
+  color: var(--toxic);
+  font-size: 12px;
+}
+
+.biome-modal__toxicity--dead {
+  color: var(--danger);
+}
+
+.biome-modal__building {
+  font-weight: 600;
+}
+
+.biome-modal__yield {
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+/* --------------------------------------------------------------------------
+   S5 — tax phase: the flight layer and the two chip pulses
+   -------------------------------------------------------------------------- */
+
+.tax-flight-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 4;
+  display: block;
+  width: 100vw;
+  height: 100vh;
+  pointer-events: none;
+}
+
+.resource-chip--pulse .resource-chip__glyph,
+.resource-chip--pulse .resource-chip__value {
+  display: inline-block;
+  animation: resource-chip-pulse 300ms ease-out;
+}
+
+.resource-chip--alarm .resource-chip__glyph,
+.resource-chip--alarm .resource-chip__value {
+  display: inline-block;
+  animation: resource-chip-alarm 900ms ease-out;
+}
+
+@keyframes resource-chip-pulse {
+  0% {
+    transform: scale(1);
+    text-shadow: none;
+  }
+
+  40% {
+    transform: scale(1.35);
+    text-shadow: 0 0 10px var(--gold);
+  }
+
+  100% {
+    transform: scale(1);
+    text-shadow: none;
+  }
+}
+
+@keyframes resource-chip-alarm {
+  0% {
+    transform: scale(1);
+    color: var(--insane);
+    text-shadow: none;
+  }
+
+  25% {
+    transform: scale(1.5);
+    color: var(--danger);
+    text-shadow: 0 0 14px var(--danger);
+  }
+
+  60% {
+    transform: scale(1.1);
+    color: var(--danger);
+    text-shadow: 0 0 8px var(--danger);
+  }
+
+  100% {
+    transform: scale(1);
+    text-shadow: none;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   S6 — exploration phase: the world globe, the cell panel and the event modal
+   -------------------------------------------------------------------------- */
+
+.world-page {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background: var(--bg-deep);
+}
+
+.world-page__canvas-slot {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+}
+
+.world-globe {
+  display: block;
+  width: 100%;
+  height: 100%;
+  cursor: grab;
+  touch-action: none;
+}
+
+.world-globe:active {
+  cursor: grabbing;
+}
+
+.world-page__toast {
+  position: absolute;
+  z-index: 5;
+  left: 50%;
+  bottom: 176px;
+  padding: 10px 18px;
+  border: 1px solid var(--danger);
+  border-radius: var(--radius);
+  background: rgba(8, 20, 38, 0.94);
+  color: var(--text);
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.cell-panel {
+  top: 72px;
+  right: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 268px;
+  padding: 12px;
+}
+
+.cell-panel__close {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.cell-panel__close:hover {
+  border-color: var(--gold-dim);
+  color: var(--gold);
+}
+
+.cell-panel__title {
+  color: var(--gold);
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.cell-panel__biome {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cell-panel__swatch {
+  display: block;
+  width: 22px;
+  height: 22px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+.cell-panel__biome-name {
+  font-weight: 600;
+}
+
+.cell-panel__row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.cell-panel__row-label {
+  color: var(--text-dim);
+}
+
+.cell-panel__row-value {
+  white-space: nowrap;
+}
+
+.cell-panel__row-value--toxic {
+  color: var(--toxic);
+}
+
+.cell-panel__actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.cell-panel__reveal,
+.cell-panel__move {
+  flex: 1 1 0;
+  padding: 8px 6px;
+  border: 1px solid var(--gold-dim);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.cell-panel__reveal:hover:enabled,
+.cell-panel__move:hover:enabled {
+  border-color: var(--gold);
+  background: var(--panel-soft);
+  color: var(--gold);
+}
+
+.cell-panel__reveal:disabled,
+.cell-panel__move:disabled {
+  border-color: var(--line);
+  color: var(--text-dim);
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.cell-panel__hint {
+  color: var(--toxic);
+  font-size: 11px;
+}
+
+.cell-panel__here {
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+.event-modal__backdrop {
+  position: absolute;
+  z-index: 6;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(5, 13, 25, 0.6);
+  pointer-events: auto;
+}
+
+.event-modal {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: min(420px, 82vw);
+  padding: 20px;
+  border: 1px solid var(--gold);
+  border-radius: var(--radius);
+  background: rgba(8, 20, 38, 0.97);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.6);
+}
+
+.event-modal__title {
+  margin: 0;
+  color: var(--gold);
+  font-size: 20px;
+}
+
+.event-modal__text {
+  margin: 0;
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.event-modal__ok {
+  align-self: flex-end;
+  min-width: 96px;
+  padding: 8px 18px;
+  border: 1px solid var(--gold-dim);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--gold);
+  font: inherit;
+  cursor: pointer;
+}
+
+.event-modal__ok:hover {
+  border-color: var(--gold);
+  background: var(--panel-soft);
+}
+
+/* --------------------------------------------------------------------------
+   S7 — clearing phase: the battle canvas, the HUD readout, the retreat button
+   and the end-of-level banner
+   -------------------------------------------------------------------------- */
+
+.battle-page {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background: var(--bg-deep);
+}
+
+.battle-page__canvas-slot {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+}
+
+.battle-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+}
+
+.battle-hud {
+  position: absolute;
+  z-index: 2;
+  top: 16px;
+  right: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 220px;
+  padding: 10px 12px;
+  border: 1px solid var(--gold-dim);
+  border-radius: var(--radius);
+  background: rgba(8, 20, 38, 0.82);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+}
+
+.battle-hud__row {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.battle-hud__hint {
+  margin-top: 4px;
+  color: var(--text-dim);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+/*
+ * Left of the end-turn panel (16 px + its 152 px + a 16 px gutter), so the
+ * medallion stays clickable at 1440x900 and at 1280x720 alike.
+ */
+.battle-page__retreat {
+  position: absolute;
+  z-index: 3;
+  right: 184px;
+  bottom: 16px;
+  min-width: 152px;
+  padding: 10px 18px;
+  border: 1px solid var(--danger);
+  border-radius: var(--radius);
+  background: rgba(8, 20, 38, 0.9);
+  color: var(--danger);
+  font: inherit;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.battle-page__retreat:hover {
+  background: var(--panel-soft);
+}
+
+.battle-banner {
+  position: absolute;
+  z-index: 4;
+  top: 26%;
+  left: 50%;
+  padding: 14px 28px;
+  border: 1px solid var(--gold);
+  border-radius: var(--radius);
+  background: rgba(8, 20, 38, 0.94);
+  color: var(--gold);
+  font-size: 18px;
+  text-align: center;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.battle-page__toast {
+  position: absolute;
+  z-index: 5;
+  left: 50%;
+  bottom: 176px;
+  padding: 10px 18px;
+  border: 1px solid var(--danger);
+  border-radius: var(--radius);
+  background: rgba(8, 20, 38, 0.94);
+  color: var(--text);
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+/* --------------------------------------------------------------------------
+   S8 — technologies: the flask in the tools column and the full-screen modal
+   -------------------------------------------------------------------------- */
+
+.tech-icon {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  width: 60px;
+  height: 60px;
+  padding: 0;
+  border: 1px solid var(--gold-dim);
+  border-radius: 8px;
+  background: rgba(8, 20, 38, 0.82);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.tech-icon:hover {
+  border-color: var(--gold);
+  background: var(--panel-soft);
+}
+
+.tech-icon--researching {
+  border-color: #b98cff;
+  box-shadow: 0 0 14px rgba(185, 140, 255, 0.45);
+}
+
+.tech-icon__glyph {
+  font-size: 22px;
+  line-height: 1;
+}
+
+.tech-icon__label {
+  color: var(--text-dim);
+  font-size: 10px;
+  letter-spacing: 0.02em;
+}
+
+/* The third tools slot, shown only once «Ритуал очищения» is researched. */
+.purge-icon {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  width: 60px;
+  height: 60px;
+  padding: 0;
+  border: 1px solid var(--gold-dim);
+  border-radius: 8px;
+  background: rgba(8, 20, 38, 0.82);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.purge-icon:hover {
+  border-color: var(--gold);
+  background: var(--panel-soft);
+}
+
+.purge-icon--active {
+  border-color: #b98cff;
+  background: rgba(158, 112, 255, 0.22);
+  box-shadow: 0 0 14px rgba(158, 112, 255, 0.5);
+}
+
+.purge-icon__glyph {
+  font-size: 22px;
+  line-height: 1;
+}
+
+.purge-icon__label {
+  color: var(--text-dim);
+  font-size: 10px;
+}
+
+.tech-modal {
+  position: fixed;
+  z-index: 8;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+  padding: 20px 24px 24px;
+  background: rgba(5, 13, 25, 0.97);
+  overflow-y: auto;
+}
+
+.tech-modal__header {
+  display: flex;
+  align-items: center;
+  gap: var(--gap);
+}
+
+.tech-modal__title {
+  margin: 0;
+  color: var(--gold);
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.tech-modal__science {
+  flex: 1;
+  color: var(--text-dim);
+  font-size: 13px;
+}
+
+.tech-modal__close {
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 1px solid var(--gold-dim);
+  border-radius: 8px;
+  background: rgba(8, 20, 38, 0.82);
+  color: var(--text);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.tech-modal__close:hover {
+  border-color: var(--gold);
+  background: var(--panel-soft);
+}
+
+.tech-modal__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: var(--gap);
+}
+
+.tech-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: rgba(16, 35, 61, 0.88);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.tech-card:hover {
+  border-color: var(--gold);
+}
+
+.tech-card--available {
+  border-color: var(--gold-dim);
+}
+
+.tech-card--researched {
+  border-color: var(--toxic);
+  background: rgba(127, 208, 138, 0.14);
+}
+
+.tech-card--locked {
+  border-color: var(--line);
+  color: var(--text-dim);
+  opacity: 0.6;
+}
+
+.tech-card--active {
+  border-color: #b98cff;
+  box-shadow: 0 0 16px rgba(185, 140, 255, 0.4);
+}
+
+.tech-card__name {
+  color: var(--gold);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.tech-card__cost {
+  font-size: 13px;
+}
+
+.tech-card__progress {
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+.tech-card__description {
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.tech-card__requires {
+  color: var(--text-dim);
+  font-size: 11px;
+  font-style: italic;
+}
+
+.tech-card__state {
+  margin-top: 2px;
+  color: var(--text-dim);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}

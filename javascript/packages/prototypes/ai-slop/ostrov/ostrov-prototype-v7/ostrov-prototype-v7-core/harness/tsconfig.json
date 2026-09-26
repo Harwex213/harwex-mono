@@ -1,0 +1,15 @@
+{
+  "extends": "@hw/typescript-config/base.json",
+  "compilerOptions": {
+    "lib": [
+      "ES2024",
+      "DOM",
+      "DOM.Iterable"
+    ],
+    "noEmit": true
+  },
+  "include": [
+    "./**/*",
+    "../tools/**/*"
+  ]
+}

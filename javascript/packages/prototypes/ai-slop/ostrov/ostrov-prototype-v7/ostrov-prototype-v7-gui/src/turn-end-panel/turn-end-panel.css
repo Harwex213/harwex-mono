@@ -1,0 +1,68 @@
+.ostrov-turn-end {
+  box-sizing: border-box;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  width: 226px;
+  padding: 20px;
+  border: 1px solid var(--ostrov-goldShadow);
+  border-radius: 18px;
+  background: var(--ostrov-slate);
+  font-family: var(--ostrov-font);
+  font-weight: var(--ostrov-weight);
+}
+
+.ostrov-turn-end__button {
+  padding: 6px 22px;
+  border: 2px solid var(--ostrov-gold);
+  border-radius: 8px;
+  background: var(--ostrov-abyss);
+  color: var(--ostrov-gold);
+  font-family: var(--ostrov-font);
+  font-size: 20px;
+  font-weight: var(--ostrov-weight);
+  line-height: 1.2;
+  cursor: pointer;
+}
+
+.ostrov-turn-end__button:disabled {
+  border-color: var(--ostrov-steel);
+  color: var(--ostrov-muted);
+  cursor: default;
+}
+
+.ostrov-turn-end__wheel {
+  display: block;
+  width: 186px;
+  height: 186px;
+}
+
+.ostrov-turn-end__sector--active {
+  fill-opacity: 0.4;
+}
+
+.ostrov-turn-end__divider {
+  stroke-width: 1.5;
+  stroke-opacity: 0.55;
+}
+
+.ostrov-turn-end__ring {
+  stroke-width: 3;
+}
+
+.ostrov-turn-end__icon {
+  font-family: var(--ostrov-font);
+  font-size: 30px;
+}
+
+.ostrov-turn-end__caption {
+  margin: 0;
+  min-height: 20px;
+  color: var(--ostrov-muted);
+  font-family: var(--ostrov-font);
+  font-size: 16px;
+  font-weight: var(--ostrov-weight);
+  line-height: 1.25;
+  text-align: center;
+}

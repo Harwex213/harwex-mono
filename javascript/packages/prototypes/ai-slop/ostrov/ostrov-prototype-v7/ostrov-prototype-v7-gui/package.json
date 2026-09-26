@@ -1,0 +1,33 @@
+{
+  "name": "@hw/ostrov-prototype-v7-gui",
+  "description": "Ostrov prototype v7: the four widgets",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "browserslist": [
+    "last 1 version",
+    "> 1%",
+    "not dead"
+  ],
+  "exports": {
+    ".": "./exports.ts"
+  },
+  "scripts": {
+    "harness": "rspack serve",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@hw/ostrov-prototype-v7-assets": "workspace:*",
+    "react": "19.2.0"
+  },
+  "devDependencies": {
+    "@hw/typescript-config": "workspace:*",
+    "@rspack/cli": "2.1.4",
+    "@rspack/core": "2.1.4",
+    "@rspack/dev-server": "2.1.0",
+    "@types/react": "19.2.0",
+    "@types/react-dom": "19.2.0",
+    "react-dom": "19.2.0",
+     "typescript": "5.9.3"
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "name": "@hw/ostrov-prototype-v7-assets",
+  "description": "Ostrov prototype v7: asset manifests for a 2D strategy, painted on Canvas",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "browserslist": [
+    "last 1 version",
+    "> 1%",
+    "not dead"
+  ],
+  "exports": {
+    ".": "./exports.ts"
+  },
+  "scripts": {
+    "harness": "rspack serve",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@hw/typescript-config": "workspace:*",
+    "@rspack/cli": "2.1.4",
+    "@rspack/core": "2.1.4",
+    "@rspack/dev-server": "2.1.0",
+    "typescript": "5.9.3"
+  }
+}

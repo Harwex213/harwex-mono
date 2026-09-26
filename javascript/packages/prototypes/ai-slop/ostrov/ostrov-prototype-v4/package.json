@@ -1,0 +1,39 @@
+{
+  "name": "@hw/ostrov-prototype-v4",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Toxic Island — turn-based hex-island prototype: build and tax phases on a 2D island canvas, exploration on a three.js globe, a real-time clearing phase on a 2D battle canvas.",
+  "type": "module",
+  "browserslist": [
+    "last 1 version",
+    "> 1%",
+    "not dead"
+  ],
+  "scripts": {
+    "dev": "rspack serve",
+    "build": "rspack build",
+    "typecheck": "tsc --noEmit",
+    "probe": "tsx scripts/probe.ts",
+    "smoke": "tsx scripts/core-smoke.ts",
+    "serve": "python3 -m http.server 8401 --directory dist"
+  },
+  "dependencies": {
+    "@preact/signals-react": "3.9.0",
+    "react": "19.2.0",
+    "react-dom": "19.2.0",
+    "three": "0.185.1"
+  },
+  "devDependencies": {
+    "@hw/typescript-config": "workspace:*",
+    "@rspack/cli": "2.1.4",
+    "@rspack/core": "2.1.4",
+    "@rspack/dev-server": "2.1.0",
+    "@types/node": "24.1.0",
+    "@types/react": "19.2.0",
+    "@types/react-dom": "19.2.0",
+    "@types/three": "0.185.4",
+    "playwright": "1.61.1",
+    "tsx": "4.20.6",
+    "typescript": "5.9.3"
+  }
+}

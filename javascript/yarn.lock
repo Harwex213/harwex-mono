@@ -3597,6 +3597,132 @@ __metadata:
   languageName: unknown
   linkType: soft
 
+"@hw/ostrov-prototype-v4@workspace:packages/prototypes/ai-slop/ostrov/ostrov-prototype-v4":
+  version: 0.0.0-use.local
+  resolution: "@hw/ostrov-prototype-v4@workspace:packages/prototypes/ai-slop/ostrov/ostrov-prototype-v4"
+  dependencies:
+    "@hw/typescript-config": "workspace:*"
+    "@preact/signals-react": "npm:3.9.0"
+    "@rspack/cli": "npm:2.1.4"
+    "@rspack/core": "npm:2.1.4"
+    "@rspack/dev-server": "npm:2.1.0"
+    "@types/node": "npm:24.1.0"
+    "@types/react": "npm:19.2.0"
+    "@types/react-dom": "npm:19.2.0"
+    "@types/three": "npm:0.185.4"
+    playwright: "npm:1.61.1"
+    react: "npm:19.2.0"
+    react-dom: "npm:19.2.0"
+    three: "npm:0.185.1"
+    tsx: "npm:4.20.6"
+    typescript: "npm:5.9.3"
+  languageName: unknown
+  linkType: soft
+
+"@hw/ostrov-prototype-v5@workspace:packages/prototypes/ai-slop/ostrov/ostrov-prototype-v5":
+  version: 0.0.0-use.local
+  resolution: "@hw/ostrov-prototype-v5@workspace:packages/prototypes/ai-slop/ostrov/ostrov-prototype-v5"
+  dependencies:
+    "@hw/typescript-config": "workspace:*"
+    "@preact/signals-react": "npm:3.9.0"
+    "@rspack/cli": "npm:2.1.4"
+    "@rspack/core": "npm:2.1.4"
+    "@rspack/dev-server": "npm:2.1.0"
+    "@types/node": "npm:24.1.0"
+    "@types/react": "npm:19.2.0"
+    "@types/react-dom": "npm:19.2.0"
+    "@types/three": "npm:0.185.4"
+    playwright: "npm:1.61.1"
+    react: "npm:19.2.0"
+    react-dom: "npm:19.2.0"
+    three: "npm:0.185.1"
+    tsx: "npm:4.20.6"
+    typescript: "npm:5.9.3"
+  languageName: unknown
+  linkType: soft
+
+"@hw/ostrov-prototype-v6@workspace:packages/prototypes/ai-slop/ostrov/ostrov-prototype-v6":
+  version: 0.0.0-use.local
+  resolution: "@hw/ostrov-prototype-v6@workspace:packages/prototypes/ai-slop/ostrov/ostrov-prototype-v6"
+  dependencies:
+    "@hw/typescript-config": "workspace:*"
+    "@preact/signals-react": "npm:3.9.0"
+    "@rspack/cli": "npm:2.1.4"
+    "@rspack/core": "npm:2.1.4"
+    "@rspack/dev-server": "npm:2.1.0"
+    "@types/node": "npm:24.1.0"
+    "@types/react": "npm:19.2.0"
+    "@types/react-dom": "npm:19.2.0"
+    "@types/three": "npm:0.185.4"
+    react: "npm:19.2.0"
+    react-dom: "npm:19.2.0"
+    three: "npm:0.185.1"
+    typescript: "npm:5.9.3"
+  languageName: unknown
+  linkType: soft
+
+"@hw/ostrov-prototype-v7-assets@workspace:*, @hw/ostrov-prototype-v7-assets@workspace:packages/prototypes/ai-slop/ostrov/ostrov-prototype-v7/ostrov-prototype-v7-assets":
+  version: 0.0.0-use.local
+  resolution: "@hw/ostrov-prototype-v7-assets@workspace:packages/prototypes/ai-slop/ostrov/ostrov-prototype-v7/ostrov-prototype-v7-assets"
+  dependencies:
+    "@hw/typescript-config": "workspace:*"
+    "@rspack/cli": "npm:2.1.4"
+    "@rspack/core": "npm:2.1.4"
+    "@rspack/dev-server": "npm:2.1.0"
+    typescript: "npm:5.9.3"
+  languageName: unknown
+  linkType: soft
+
+"@hw/ostrov-prototype-v7-core@workspace:*, @hw/ostrov-prototype-v7-core@workspace:packages/prototypes/ai-slop/ostrov/ostrov-prototype-v7/ostrov-prototype-v7-core":
+  version: 0.0.0-use.local
+  resolution: "@hw/ostrov-prototype-v7-core@workspace:packages/prototypes/ai-slop/ostrov/ostrov-prototype-v7/ostrov-prototype-v7-core"
+  dependencies:
+    "@hw/typescript-config": "workspace:*"
+    "@preact/signals-core": "npm:1.13.0"
+    "@rspack/cli": "npm:2.1.4"
+    "@rspack/core": "npm:2.1.4"
+    "@rspack/dev-server": "npm:2.1.0"
+    tsx: "npm:4.20.6"
+    typescript: "npm:5.9.3"
+  languageName: unknown
+  linkType: soft
+
+"@hw/ostrov-prototype-v7-game@workspace:packages/prototypes/ai-slop/ostrov/ostrov-prototype-v7/ostrov-prototype-v7-game":
+  version: 0.0.0-use.local
+  resolution: "@hw/ostrov-prototype-v7-game@workspace:packages/prototypes/ai-slop/ostrov/ostrov-prototype-v7/ostrov-prototype-v7-game"
+  dependencies:
+    "@hw/ostrov-prototype-v7-core": "workspace:*"
+    "@hw/ostrov-prototype-v7-gui": "workspace:*"
+    "@hw/typescript-config": "workspace:*"
+    "@preact/signals-react": "npm:3.9.0"
+    "@rspack/cli": "npm:2.1.4"
+    "@rspack/core": "npm:2.1.4"
+    "@rspack/dev-server": "npm:2.1.0"
+    "@types/react": "npm:19.2.0"
+    "@types/react-dom": "npm:19.2.0"
+    react: "npm:19.2.0"
+    react-dom: "npm:19.2.0"
+    typescript: "npm:5.9.3"
+  languageName: unknown
+  linkType: soft
+
+"@hw/ostrov-prototype-v7-gui@workspace:*, @hw/ostrov-prototype-v7-gui@workspace:packages/prototypes/ai-slop/ostrov/ostrov-prototype-v7/ostrov-prototype-v7-gui":
+  version: 0.0.0-use.local
+  resolution: "@hw/ostrov-prototype-v7-gui@workspace:packages/prototypes/ai-slop/ostrov/ostrov-prototype-v7/ostrov-prototype-v7-gui"
+  dependencies:
+    "@hw/ostrov-prototype-v7-assets": "workspace:*"
+    "@hw/typescript-config": "workspace:*"
+    "@rspack/cli": "npm:2.1.4"
+    "@rspack/core": "npm:2.1.4"
+    "@rspack/dev-server": "npm:2.1.0"
+    "@types/react": "npm:19.2.0"
+    "@types/react-dom": "npm:19.2.0"
+    react: "npm:19.2.0"
+    react-dom: "npm:19.2.0"
+    typescript: "npm:5.9.3"
+  languageName: unknown
+  linkType: soft
+
 "@hw/ostrov-utils@workspace:*, @hw/ostrov-utils@workspace:packages/prototypes/ai-slop/ostrov/ostrov-prototype-v3/ostrov-utils":
   version: 0.0.0-use.local
   resolution: "@hw/ostrov-utils@workspace:packages/prototypes/ai-slop/ostrov/ostrov-prototype-v3/ostrov-utils"
@@ -4778,17 +4904,17 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@preact/signals-core@npm:1.13.0, @preact/signals-core@npm:^1.13.0":
+  version: 1.13.0
+  resolution: "@preact/signals-core@npm:1.13.0"
+  checksum: 10/692dadf943a8a26dc8d8b96b9216d932ab8464b738bc8ddc6da293b79189b7b3d6d3d47a1afb21ca106731692f61cd090b0ea72ef605a68201e70a9d0055eec1
+  languageName: node
+  linkType: hard
+
 "@preact/signals-core@npm:1.8.0, @preact/signals-core@npm:^1.7.0":
   version: 1.8.0
   resolution: "@preact/signals-core@npm:1.8.0"
   checksum: 10/480c1aaf1bce6f8bd5544eec9fd92a70ccdfffa24c23d99aa8e3c13783cc6b06ec0a3d90578c5fd368d06121cbe0f8fbe81368aa45ddba11d8a28af15410a9dc
-  languageName: node
-  linkType: hard
-
-"@preact/signals-core@npm:^1.13.0":
-  version: 1.13.0
-  resolution: "@preact/signals-core@npm:1.13.0"
-  checksum: 10/692dadf943a8a26dc8d8b96b9216d932ab8464b738bc8ddc6da293b79189b7b3d6d3d47a1afb21ca106731692f61cd090b0ea72ef605a68201e70a9d0055eec1
   languageName: node
   linkType: hard
 
