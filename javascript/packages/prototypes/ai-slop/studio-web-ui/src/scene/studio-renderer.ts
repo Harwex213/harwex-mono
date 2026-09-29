@@ -2,12 +2,23 @@ import cloudsUrl from "../assets/clouds.png";
 import studioUrl from "../assets/studio.png";
 import { GLYPH_COLS, GLYPH_ROWS, SCREEN_ASPECT, buildTiles, drawGlyphAtlas } from "./board";
 import type { Tile } from "./board";
-import { FLOOR_Y, IMAGE_HEIGHT, IMAGE_WIDTH, MIRROR_Y, SCREEN_CORNERS, SCREEN_PIXEL_WIDTH } from "./calibration";
-import { createProgram, createRenderTarget, createTexture, loadImage, uniform } from "./gl";
+import {
+  FLOOR_Y,
+  HORIZON_Y,
+  IMAGE_HEIGHT,
+  IMAGE_WIDTH,
+  MIRROR_Y,
+  NEON_BLADES,
+  SCREEN_CORNERS,
+  SCREEN_PIXEL_WIDTH,
+} from "./calibration";
+import { createDataTexture, createProgram, createRenderTarget, createTexture, loadImage, uniform } from "./gl";
 import type { Program, RenderTarget } from "./gl";
 import { invert, squareToQuad, toColumnMajor } from "./homography";
 import { ATLAS_COLS, ATLAS_ROWS, LightningDirector, drawAtlas } from "./lightning";
+import { NeonRuns } from "./neon-runs";
 import { cleanPlate } from "./plate-cleanup";
+import { buildPlateMasks } from "./plate-masks";
 import {
   COMPOSITE_FRAG,
   CONTENT_FRAG,
@@ -39,6 +50,7 @@ class StudioRenderer {
   private studio!: WebGLTexture;
   private clouds!: WebGLTexture;
   private glyphs!: WebGLTexture;
+  private masks!: WebGLTexture;
   private atlas!: WebGLTexture;
   private target: RenderTarget | null = null;
   private spriteVao!: WebGLVertexArrayObject;
@@ -50,6 +62,11 @@ class StudioRenderer {
   private readonly spriteData = new Float32Array(MAX_BOLTS * 7);
   private readonly boltUniform = new Float32Array(MAX_BOLTS * 4);
   private director: LightningDirector;
+  private neonRuns = new NeonRuns(NEON_BLADES.length, 0);
+  private readonly blades = new Float32Array(
+    NEON_BLADES.flatMap((b) => [b.x, b.top, b.bottom, b.halfWidth]),
+  );
+  private readonly bladeReflections = new Float32Array(NEON_BLADES.flatMap((b) => [b.reflectTop, b.reflectBottom]));
   private frame = 0;
   private readonly start = performance.now();
   private readonly toScreen = toColumnMajor(invert(squareToQuad(...SCREEN_CORNERS)));
@@ -70,7 +87,7 @@ class StudioRenderer {
 
   async init(): Promise<void> {
     const gl = this.gl;
-    await Promise.all([document.fonts.load("500 80px Inter"), document.fonts.ready]);
+    await Promise.all([document.fonts.load("600 80px Inter"), document.fonts.ready]);
     const [studioImage, cloudsImage] = await Promise.all([loadImage(studioUrl), loadImage(cloudsUrl)]);
     if (this.disposed) {
       return;
@@ -79,7 +96,10 @@ class StudioRenderer {
     this.sprite = createProgram(gl, SPRITE_VERT, SPRITE_FRAG);
     this.tile = createProgram(gl, TILE_VERT, TILE_FRAG);
     this.composite = createProgram(gl, FULLSCREEN_VERT, COMPOSITE_FRAG);
-    this.studio = createTexture(gl, cleanPlate(studioImage));
+    const plate = cleanPlate(studioImage);
+    this.studio = createTexture(gl, plate);
+    const masks = buildPlateMasks(plate);
+    this.masks = createDataTexture(gl, masks.data, masks.width, masks.height);
     this.clouds = createTexture(gl, cloudsImage, { wrap: gl.MIRRORED_REPEAT });
     this.glyphs = createTexture(gl, drawGlyphAtlas());
     this.atlas = createTexture(gl, drawAtlas());
@@ -105,6 +125,7 @@ class StudioRenderer {
     gl.bindVertexArray(null);
 
     this.director = new LightningDirector(this.now());
+    this.neonRuns = new NeonRuns(NEON_BLADES.length, this.now());
     this.frame = requestAnimationFrame(this.tick);
   }
 
@@ -301,6 +322,13 @@ class StudioRenderer {
     gl.activeTexture(gl.TEXTURE1);
     gl.bindTexture(gl.TEXTURE_2D, target.texture);
     gl.uniform1i(uniform(p, "uContent"), 1);
+    gl.activeTexture(gl.TEXTURE2);
+    gl.bindTexture(gl.TEXTURE_2D, this.masks);
+    gl.uniform1i(uniform(p, "uMasks"), 2);
+    gl.uniform1f(uniform(p, "uHorizon"), HORIZON_Y);
+    gl.uniform4fv(uniform(p, "uBlades"), this.blades);
+    gl.uniform2fv(uniform(p, "uBladeReflections"), this.bladeReflections);
+    gl.uniform2fv(uniform(p, "uRuns"), this.neonRuns.update(now));
     gl.uniform1f(uniform(p, "uLevels"), target.levels - 1);
     gl.uniformMatrix3fv(uniform(p, "uToScreen"), false, this.toScreen);
     gl.uniform4fv(uniform(p, "uCover"), this.cover());

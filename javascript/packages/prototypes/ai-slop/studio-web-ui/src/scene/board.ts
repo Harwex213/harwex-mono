@@ -92,7 +92,7 @@ function drawGlyphAtlas(): HTMLCanvasElement {
   ctx.fillStyle = "#fff";
   ctx.textAlign = "center";
   ctx.textBaseline = "alphabetic";
-  ctx.font = `500 ${GLYPH_SLOT * 0.62}px Inter, sans-serif`;
+  ctx.font = `600 ${GLYPH_SLOT * 0.62}px Inter, sans-serif`;
   const metrics = ctx.measureText("0");
   const capHeight = metrics.actualBoundingBoxAscent;
   for (let n = 0; n <= 36; n++) {

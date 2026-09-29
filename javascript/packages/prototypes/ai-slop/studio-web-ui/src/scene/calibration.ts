@@ -28,7 +28,45 @@ const MIRROR_Y = 596 / IMAGE_HEIGHT;
 // First row of visible floor in front of the plinth.
 const FLOOR_Y = 620 / IMAGE_HEIGHT;
 
+// Vertical red neon LED lines on the side walls, left to right.
+// top/bottom: the lit blade; reflectTop/reflectBottom: its streak in the polished floor.
+type NeonBlade = {
+  x: number;
+  top: number;
+  bottom: number;
+  halfWidth: number;
+  reflectTop: number;
+  reflectBottom: number;
+};
+
+function blade(x: number, top: number, bottom: number, halfWidth: number, reflectTop: number, reflectBottom: number): NeonBlade {
+  return {
+    x: x / IMAGE_WIDTH,
+    top: top / IMAGE_HEIGHT,
+    bottom: bottom / IMAGE_HEIGHT,
+    halfWidth: halfWidth / IMAGE_HEIGHT,
+    reflectTop: reflectTop / IMAGE_HEIGHT,
+    reflectBottom: reflectBottom / IMAGE_HEIGHT,
+  };
+}
+
+// The outer blade on each wall is two separate LED lines 6 px apart, each with its own reflection.
+const NEON_BLADES: NeonBlade[] = [
+  blade(72.5, 98, 507, 2.5, 746, 999),
+  blade(79, 102, 505, 2, 802, 1019),
+  blade(236.5, 181, 516, 3.5, 697, 937),
+  blade(1299, 181, 515, 3.5, 697, 955),
+  blade(1456, 99, 504, 2, 787, 1019),
+  blade(1462.5, 99, 508, 2.5, 747, 1008),
+];
+// Eye-level line of the one-point perspective; lays fog and pools onto the floor plane.
+const HORIZON_Y = 0.4;
+
+export type { NeonBlade };
+
 export {
+  NEON_BLADES,
+  HORIZON_Y,
   IMAGE_WIDTH,
   IMAGE_HEIGHT,
   SCREEN_CORNERS,

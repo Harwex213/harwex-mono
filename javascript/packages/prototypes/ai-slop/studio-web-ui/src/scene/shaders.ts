@@ -1,3 +1,5 @@
+import { NEON_BLADES } from "./calibration";
+
 // GLSL sources. Conventions: every UV is y-down (0 at the top), matching the images.
 // Render targets are y-up, so content samples flip v.
 
@@ -279,7 +281,7 @@ void main() {
   if (zero) {
     gp.x -= 0.1;
   }
-  vec2 guv = gp / 0.66 + 0.5;
+  vec2 guv = gp / 0.96 + 0.5;
   float glyph = 0.0;
   float glyphGlow = 0.0;
   if (all(greaterThan(guv, vec2(0.0))) && all(lessThan(guv, vec2(1.0)))) {
@@ -347,6 +349,11 @@ uniform vec4 uFlash;
 uniform float uImageAspect;
 uniform float uScreenAspect;
 uniform float uDebug;
+uniform sampler2D uMasks;
+uniform float uHorizon;
+uniform vec4 uBlades[${NEON_BLADES.length}];
+uniform vec2 uBladeReflections[${NEON_BLADES.length}];
+uniform vec2 uRuns[${NEON_BLADES.length}];
 
 out vec4 outColor;
 
@@ -375,10 +382,125 @@ vec3 ledTone(vec3 c) {
   return mix(c, k, step(0.8, c));
 }
 
+// ---- Environment: the studio around the wall is alive too. ----
+
+// Ground-plane coordinates of a floor pixel: x across, z depth.
+vec2 floorPlane(vec2 p) {
+  float z = 1.0 / max(p.y - uHorizon, 0.02);
+  return vec2((p.x - 0.5) * uImageAspect * z, z);
+}
+
+// Fixtures breathe and flicker. Flicker depends on x only, so every light and its floor reflection stay in sync.
+vec3 livingFixtures(vec3 base, vec2 p) {
+  vec4 masks = texture(uMasks, p);
+  float neon = clamp(masks.r - masks.a, 0.0, 1.0);
+  float lanternGain = 0.75 + 0.5 * fbm(vec2(p.x * 11.0, uTime * 2.4));
+  float warmGain = 0.85 + 0.3 * fbm(vec2(p.x * 7.0 + 3.1, uTime * 1.8));
+  // Red light that belongs to no LED line (edges, stray reflections) drifts with position.
+  float neonGain = 1.0 + 0.2 * sin(uTime * 1.3 + p.x * 17.0);
+  vec3 runLight = vec3(0.0);
+  float runBoost = 0.0;
+
+  // Every LED line breathes, stutters and fires its runs on its own. The run goes up the line,
+  // and its floor reflection runs down in step.
+  for (int i = 0; i < ${NEON_BLADES.length}; i++) {
+    vec4 blade = uBlades[i];
+    vec2 reflection = uBladeReflections[i];
+    float mirrored = 0.0;
+    float v = -1.0;
+    if (p.y >= blade.y - 0.01 && p.y <= blade.z + 0.01) {
+      v = (blade.z - p.y) / (blade.z - blade.y);
+    } else if (p.y >= reflection.x && p.y <= reflection.y) {
+      v = (p.y - reflection.x) / (reflection.y - reflection.x);
+      mirrored = 1.0;
+    }
+    if (v < -0.2) {
+      continue;
+    }
+    float dx = abs(p.x - blade.x) * uImageAspect;
+    // Only the pixels of this line: the neighbouring line of a pair is 6 px away.
+    float own = exp(-pow(dx / (blade.w * 1.3), 4.0));
+    float fi = float(i);
+    float stutter = smoothstep(0.8, 0.95, noise(vec2(fi * 13.7, uTime * (6.0 + fi))));
+    float lineGain = 1.0 + 0.2 * sin(uTime * (1.0 + 0.37 * fi) + fi * 2.4) - 0.6 * stutter;
+    neonGain = mix(neonGain, lineGain, own);
+
+    vec2 run = uRuns[i];
+    if (run.y <= 0.0) {
+      continue;
+    }
+    float ahead = v - run.x;
+    float comet = ahead > 0.0 ? exp(-pow(ahead / 0.022, 2.0)) : exp(ahead / 0.07) * 0.8;
+    comet *= smoothstep(-0.04, 0.02, v) * (1.0 - smoothstep(0.98, 1.04, v)) * run.y;
+    float core = neon * own * comet;
+    runBoost += core * (mirrored > 0.5 ? 1.8 : 4.0);
+    runLight += core * vec3(1.0, 0.55, 0.45) * (mirrored > 0.5 ? 0.4 : 1.6);
+    float spread = blade.w * (mirrored > 0.5 ? 9.0 : 6.0);
+    runLight += vec3(1.0, 0.07, 0.04) * exp(-pow(dx / spread, 2.0)) * comet * (mirrored > 0.5 ? 0.08 : 0.3);
+  }
+  base *= mix(1.0, neonGain, neon) * mix(1.0, lanternGain, masks.a) * mix(1.0, warmGain, masks.g);
+  base = base * (1.0 + runBoost) + runLight;
+  vec4 halo = textureLod(uMasks, p, 4.5);
+  vec4 wide = textureLod(uMasks, p, 6.5);
+  base += vec3(1.0, 0.04, 0.03) * (max(halo.r - halo.a, 0.0) * 0.06 + wide.r * 0.03) * neonGain;
+  base += vec3(1.0, 0.22, 0.06) * (halo.a * 0.09 + wide.a * 0.05) * lanternGain;
+  base += vec3(1.0, 0.55, 0.25) * (halo.g * 0.04 + wide.g * 0.02) * warmGain;
+  return base;
+}
+
+// Colour of the fixtures' light spilling into the air around p.
+vec3 fixtureGlow(vec2 p) {
+  vec4 wide = textureLod(uMasks, p, 7.0);
+  return vec3(1.0, 0.05, 0.04) * wide.r * 0.6 + vec3(1.0, 0.55, 0.25) * wide.g * 0.5;
+}
+
+// Low fog rolling over the floor: denser towards the wall, where it also rises a little.
+float groundFog(vec2 p) {
+  float lift = uFloorY - p.y;
+  vec2 fp = floorPlane(vec2(p.x, max(p.y, uFloorY + 0.002)));
+  float depth = clamp((fp.y - 1.6) / 3.3, 0.0, 1.0);
+  vec2 f = vec2(fp.x * 0.5, fp.y * 1.1);
+  float n1 = fbm(f * 1.2 + vec2(uTime * 0.04, uTime * 0.015));
+  float n2 = fbm(f * 2.6 + n1 * 1.5 - vec2(uTime * 0.07, -uTime * 0.03));
+  float density = smoothstep(0.38, 0.9, n1 * 0.55 + n2 * 0.55);
+  density *= 0.3 + 0.7 * depth;
+  density *= 1.0 - smoothstep(0.0, 0.035 + 0.05 * depth, lift);
+  return density;
+}
+
+// Embers rising along the side walls, drifting and flickering like sparks from the lanterns.
+vec3 embers(vec2 p, vec2 q) {
+  float zone = smoothstep(0.3, 0.14, p.x) + smoothstep(0.7, 0.86, p.x);
+  zone *= smoothstep(0.02, 0.3, p.y) * smoothstep(0.98, 0.6, p.y);
+  if (zone <= 0.0) {
+    return vec3(0.0);
+  }
+  vec3 total = vec3(0.0);
+  for (int layer = 0; layer < 2; layer++) {
+    float fl = float(layer);
+    float scale = 16.0 + fl * 9.0;
+    vec2 g = q * scale + vec2(fl * 7.3, uTime * (0.45 + fl * 0.25));
+    vec2 cell = floor(g);
+    vec2 f = fract(g) - 0.5;
+    float h = hash(cell + fl * 13.1);
+    if (h < 0.8) {
+      continue;
+    }
+    vec2 off = (vec2(hash(cell + 2.1), hash(cell + 5.7)) - 0.5) * 0.5;
+    off.x += 0.25 * sin(uTime * 1.3 + h * 30.0 + g.y * 0.8);
+    float d = length(f - off);
+    float flicker = 0.5 + 0.5 * sin(uTime * (5.0 + h * 6.0) + h * 50.0);
+    float core = exp(-d * d * 900.0) * 1.6;
+    float glow = exp(-d * d * 60.0) * 0.3;
+    total += vec3(1.0, 0.36, 0.08) * (core + glow) * flicker * (0.6 - fl * 0.25);
+  }
+  return total * zone;
+}
+
 void main() {
   vec2 c = vec2(gl_FragCoord.x / uRes.x, 1.0 - gl_FragCoord.y / uRes.y);
   vec2 p = uCover.xy + c * uCover.zw;
-  vec3 base = toLinear(texture(uImage, p).rgb);
+  vec3 base = livingFixtures(toLinear(texture(uImage, p).rgb), p);
   vec2 s = toScreen(p);
 
   vec2 fw = fwidth(s) * 1.25;
@@ -436,6 +558,15 @@ void main() {
     float strength = 0.55 * exp(-dist * 3.4) * floorMask;
     col += reflection * mr.x * mr.y * strength;
   }
+
+  // Ground fog, lit by the wall, the lightning and the fixtures around it.
+  float fog = groundFog(p) * outside;
+  vec3 fogLight = average * 1.6 + edge * near * 2.0 + uFlash.rgb * (0.5 + flashFall * 1.5)
+                + fixtureGlow(p);
+  col = col * (1.0 - fog * 0.3) + fog * (fogLight * 0.45 + vec3(0.004, 0.0045, 0.007));
+
+  // Sparks rising along the walls.
+  col += embers(p, q) * outside;
 
   // Thin haze in the air, only visible where the wall light passes through it.
   float haze = fbm(vec2(p.x * 3.2 + uTime * 0.011, p.y * 5.0 - uTime * 0.005) + fbm(p * 2.0 - uTime * 0.004));
