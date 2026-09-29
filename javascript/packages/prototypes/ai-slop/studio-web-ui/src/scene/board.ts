@@ -4,7 +4,7 @@
 import { SCREEN_PIXEL_HEIGHT, SCREEN_PIXEL_WIDTH } from "./calibration";
 
 const COLUMNS = 13;
-const ROW_PITCH = 0.78;
+const ROW_PITCH = 1.3;
 const GAP = 0.11;
 const BOARD_UNITS_W = COLUMNS;
 const BOARD_UNITS_H = ROW_PITCH * 3;
@@ -14,9 +14,9 @@ const RED = new Set([1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 
 const SCREEN_ASPECT = SCREEN_PIXEL_WIDTH / SCREEN_PIXEL_HEIGHT;
 
 // Board rectangle in screen UV (y down): x, y, width, height.
-const BOARD_W = 0.86;
+const BOARD_W = 0.94;
 const BOARD_H = (BOARD_W * SCREEN_ASPECT * BOARD_UNITS_H) / BOARD_UNITS_W;
-const BOARD_RECT: [number, number, number, number] = [(1 - BOARD_W) / 2, 0.36, BOARD_W, BOARD_H];
+const BOARD_RECT: [number, number, number, number] = [(1 - BOARD_W) / 2, 0.22, BOARD_W, BOARD_H];
 
 type TileColor = "cream" | "red" | "green";
 

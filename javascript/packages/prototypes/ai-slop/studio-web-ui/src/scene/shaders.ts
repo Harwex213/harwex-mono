@@ -1,4 +1,4 @@
-import { NEON_BLADES } from "./calibration";
+import { LANTERNS, NEON_BLADES } from "./calibration";
 
 // GLSL sources. Conventions: every UV is y-down (0 at the top), matching the images.
 // Render targets are y-up, so content samples flip v.
@@ -354,6 +354,8 @@ uniform float uHorizon;
 uniform vec4 uBlades[${NEON_BLADES.length}];
 uniform vec2 uBladeReflections[${NEON_BLADES.length}];
 uniform vec2 uRuns[${NEON_BLADES.length}];
+uniform vec4 uLanterns[${LANTERNS.length}];
+uniform vec2 uLanternPivots[${LANTERNS.length}];
 
 out vec4 outColor;
 
@@ -390,11 +392,59 @@ vec2 floorPlane(vec2 p) {
   return vec2((p.x - 0.5) * uImageAspect * z, z);
 }
 
+// Each paper lantern swings a little on its cord, at its own pace. Only the outer pair has room
+// to swing wider; the inner pair hangs close to the neon lines.
+float swayAngle(float i) {
+  float speed = 1.15 + 0.19 * i + 0.05 * i * i;
+  float amplitude = (i == 1.0 || i == 2.0) ? 0.009 : 0.014;
+  return amplitude * (sin(uTime * speed + i * 1.9) + 0.15 * sin(uTime * speed * 0.53 + i * 4.1));
+}
+
+// Where to read the plate so the lanterns appear rotated about their pivots.
+vec2 swayLanterns(vec2 p) {
+  vec2 pixel = vec2(1.0 / 1536.0, 1.0 / 1024.0);
+  for (int i = 0; i < ${LANTERNS.length}; i++) {
+    vec4 box = uLanterns[i];
+    vec2 pivot = uLanternPivots[i];
+    vec2 lo = vec2(box.x, pivot.y) - pixel * 3.0;
+    vec2 hi = box.zw + pixel * 3.0;
+    vec2 feather = pixel * 3.0;
+    vec2 fromLo = smoothstep(lo, lo + feather, p);
+    vec2 fromHi = 1.0 - smoothstep(hi - feather, hi, p);
+    float weight = fromLo.x * fromLo.y * fromHi.x * fromHi.y;
+    if (weight <= 0.0) {
+      continue;
+    }
+    float a = swayAngle(float(i));
+    vec2 d = (p - pivot) * vec2(uImageAspect, 1.0);
+    vec2 r = vec2(cos(a) * d.x + sin(a) * d.y, -sin(a) * d.x + cos(a) * d.y);
+    return mix(p, pivot + r / vec2(uImageAspect, 1.0), weight);
+  }
+  return p;
+}
+
 // Fixtures breathe and flicker. Flicker depends on x only, so every light and its floor reflection stay in sync.
 vec3 livingFixtures(vec3 base, vec2 p) {
   vec4 masks = texture(uMasks, p);
   float neon = clamp(masks.r - masks.a, 0.0, 1.0);
-  float lanternGain = 0.75 + 0.5 * fbm(vec2(p.x * 11.0, uTime * 2.4));
+  // A candle burns inside every lantern: its own unsteady flame, and a hot spot that wanders
+  // under the paper. The column test lets the lantern's floor reflection flicker with it.
+  float lanternGain = 1.0;
+  for (int i = 0; i < ${LANTERNS.length}; i++) {
+    vec4 box = uLanterns[i];
+    float fi = float(i);
+    vec2 centre = (box.xy + box.zw) * 0.5;
+    vec2 size = box.zw - box.xy;
+    float column = 1.0 - smoothstep(size.x * 0.5, size.x * 0.5 + 0.02, abs(p.x - centre.x));
+    if (column <= 0.0) {
+      continue;
+    }
+    float flame = 0.78 + 0.32 * fbm(vec2(fi * 7.1, uTime * 1.2));
+    vec2 hotAt = centre + size * vec2(0.14 * sin(uTime * 0.8 + fi * 2.0), 0.1 * cos(uTime * 0.6 + fi * 1.1));
+    vec2 hd = (p - hotAt) / size;
+    float hot = exp(-dot(hd, hd) * 5.0) * step(p.y, box.w + 0.01);
+    lanternGain = mix(lanternGain, flame * (0.82 + 0.45 * hot), column);
+  }
   float warmGain = 0.85 + 0.3 * fbm(vec2(p.x * 7.0 + 3.1, uTime * 1.8));
   // Red light that belongs to no LED line (edges, stray reflections) drifts with position.
   float neonGain = 1.0 + 0.2 * sin(uTime * 1.3 + p.x * 17.0);
@@ -443,7 +493,7 @@ vec3 livingFixtures(vec3 base, vec2 p) {
   vec4 halo = textureLod(uMasks, p, 4.5);
   vec4 wide = textureLod(uMasks, p, 6.5);
   base += vec3(1.0, 0.04, 0.03) * (max(halo.r - halo.a, 0.0) * 0.06 + wide.r * 0.03) * neonGain;
-  base += vec3(1.0, 0.22, 0.06) * (halo.a * 0.09 + wide.a * 0.05) * lanternGain;
+  base += vec3(1.0, 0.22, 0.06) * (halo.a * 0.12 + wide.a * 0.07) * lanternGain;
   base += vec3(1.0, 0.55, 0.25) * (halo.g * 0.04 + wide.g * 0.02) * warmGain;
   return base;
 }
@@ -500,7 +550,8 @@ vec3 embers(vec2 p, vec2 q) {
 void main() {
   vec2 c = vec2(gl_FragCoord.x / uRes.x, 1.0 - gl_FragCoord.y / uRes.y);
   vec2 p = uCover.xy + c * uCover.zw;
-  vec3 base = livingFixtures(toLinear(texture(uImage, p).rgb), p);
+  vec2 swayed = swayLanterns(p);
+  vec3 base = livingFixtures(toLinear(texture(uImage, swayed).rgb), swayed);
   vec2 s = toScreen(p);
 
   vec2 fw = fwidth(s) * 1.25;

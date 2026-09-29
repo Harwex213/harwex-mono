@@ -59,12 +59,31 @@ const NEON_BLADES: NeonBlade[] = [
   blade(1456, 99, 504, 2, 787, 1019),
   blade(1462.5, 99, 508, 2.5, 747, 1008),
 ];
+// Paper lanterns hanging on the side walls: body with caps (x0, y0, x1, y1) and the point
+// where the cord meets the beam, which is the pivot of the sway.
+type Lantern = {
+  box: [number, number, number, number];
+  pivot: Vec2;
+};
+
+function lantern(x0: number, y0: number, x1: number, y1: number, px0: number, py0: number): Lantern {
+  return { box: [x0 / IMAGE_WIDTH, y0 / IMAGE_HEIGHT, x1 / IMAGE_WIDTH, y1 / IMAGE_HEIGHT], pivot: px(px0, py0) };
+}
+
+const LANTERNS: Lantern[] = [
+  lantern(115, 65, 169, 212, 142, 30),
+  lantern(242, 188, 275, 284, 258, 150),
+  lantern(1260, 188, 1294, 284, 1277, 150),
+  lantern(1367, 65, 1421, 212, 1394, 30),
+];
+
 // Eye-level line of the one-point perspective; lays fog and pools onto the floor plane.
 const HORIZON_Y = 0.4;
 
-export type { NeonBlade };
+export type { Lantern, NeonBlade };
 
 export {
+  LANTERNS,
   NEON_BLADES,
   HORIZON_Y,
   IMAGE_WIDTH,

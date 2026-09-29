@@ -7,6 +7,7 @@ import {
   HORIZON_Y,
   IMAGE_HEIGHT,
   IMAGE_WIDTH,
+  LANTERNS,
   MIRROR_Y,
   NEON_BLADES,
   SCREEN_CORNERS,
@@ -66,6 +67,8 @@ class StudioRenderer {
   private readonly blades = new Float32Array(
     NEON_BLADES.flatMap((b) => [b.x, b.top, b.bottom, b.halfWidth]),
   );
+  private readonly lanterns = new Float32Array(LANTERNS.flatMap((l) => l.box));
+  private readonly lanternPivots = new Float32Array(LANTERNS.flatMap((l) => l.pivot));
   private readonly bladeReflections = new Float32Array(NEON_BLADES.flatMap((b) => [b.reflectTop, b.reflectBottom]));
   private frame = 0;
   private readonly start = performance.now();
@@ -329,6 +332,8 @@ class StudioRenderer {
     gl.uniform4fv(uniform(p, "uBlades"), this.blades);
     gl.uniform2fv(uniform(p, "uBladeReflections"), this.bladeReflections);
     gl.uniform2fv(uniform(p, "uRuns"), this.neonRuns.update(now));
+    gl.uniform4fv(uniform(p, "uLanterns"), this.lanterns);
+    gl.uniform2fv(uniform(p, "uLanternPivots"), this.lanternPivots);
     gl.uniform1f(uniform(p, "uLevels"), target.levels - 1);
     gl.uniformMatrix3fv(uniform(p, "uToScreen"), false, this.toScreen);
     gl.uniform4fv(uniform(p, "uCover"), this.cover());
