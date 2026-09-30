@@ -20,7 +20,7 @@
       "id": "image-muo4yazp-22ue4",
       "kind": "image",
       "x": -152.7421875,
-      "y": -45.10546875,
+      "y": -45.58029777314162,
       "generatorId": null,
       "caption": "pasted"
     },
@@ -66,8 +66,8 @@
     {
       "id": "image-muo569v1-5dojf",
       "kind": "image",
-      "x": 208.37036272874792,
-      "y": -143.86484131941677,
+      "x": 181.86976995070876,
+      "y": -239.00389437510364,
       "generatorId": null,
       "caption": "pasted"
     },
@@ -85,6 +85,255 @@
       "x": 1460.2754292412615,
       "y": 802.0418272614381,
       "generatorId": "igen-muo50e3c-48nax",
+      "caption": "chatgpt images · 1920x1080"
+    },
+    {
+      "id": "image-muo81f4i-3odpm",
+      "kind": "image",
+      "x": 1711.7098912064212,
+      "y": -185.57650905730196,
+      "generatorId": null,
+      "caption": "pasted"
+    },
+    {
+      "id": "image-muo81if4-80my4",
+      "kind": "image",
+      "x": 1697.986425458217,
+      "y": -456.5430421772626,
+      "generatorId": null,
+      "caption": "pasted"
+    },
+    {
+      "id": "image-muo81mxd-659ug",
+      "kind": "image",
+      "x": 1712.3258856148211,
+      "y": 54.72130920820036,
+      "generatorId": null,
+      "caption": "pasted"
+    },
+    {
+      "id": "text-muo81zfu-7i91k",
+      "kind": "text",
+      "x": 1816.1128783156284,
+      "y": 413.5282026294142,
+      "text": "Картинка Студии по раскадровке:\n1 - большой телевизор\n2 - стены\n3 - пол\n4 - потолок\n\nСтиль - match casino scene from the image with girl, ААА+ продакшн"
+    },
+    {
+      "id": "igen-muo821d2-4zh9h",
+      "kind": "image-generator",
+      "x": 2311.000812833129,
+      "y": 112.99227901717242,
+      "model": "chatgpt images",
+      "dimensions": "1920x1080"
+    },
+    {
+      "id": "image-muo82ksv-2clvg",
+      "kind": "image",
+      "x": 2661.1935211664627,
+      "y": 84.25009151717242,
+      "generatorId": "igen-muo821d2-4zh9h",
+      "caption": "chatgpt images · 1920x1080"
+    },
+    {
+      "id": "image-muo8cnuq-71u0p",
+      "kind": "image",
+      "x": 2886.690095843074,
+      "y": -285.53536344016356,
+      "generatorId": null,
+      "caption": "pasted"
+    },
+    {
+      "id": "text-muo8cz0b-25vxf",
+      "kind": "text",
+      "x": 3025.4824629178147,
+      "y": -3.5584269559653494,
+      "text": "сделай такую же сцену, но поменяй ей сеттинг - возьми референс с кадра из игры live casino evolution"
+    },
+    {
+      "id": "igen-muo8dfc6-1dmiu",
+      "kind": "image-generator",
+      "x": 3401.556115773402,
+      "y": -39.28016881040111,
+      "model": "chatgpt images",
+      "dimensions": "1920x1080"
+    },
+    {
+      "id": "image-muo8dk2k-s1sr",
+      "kind": "image",
+      "x": 3751.556115773402,
+      "y": -39.28016881040111,
+      "generatorId": "igen-muo8dfc6-1dmiu",
+      "caption": "chatgpt images · 1920x1080"
+    },
+    {
+      "id": "image-muo8erqj-7lh0u",
+      "kind": "image",
+      "x": 2689.3679087794,
+      "y": 575.3574363498784,
+      "generatorId": null,
+      "caption": "pasted"
+    },
+    {
+      "id": "igen-muo8f1bo-32erb",
+      "kind": "image-generator",
+      "x": 3470.424310777021,
+      "y": 292.8708561616643,
+      "model": "chatgpt images",
+      "dimensions": "1024x1024"
+    },
+    {
+      "id": "igen-muo8f87t-5pbb3",
+      "kind": "image-generator",
+      "x": 3455.2480453517087,
+      "y": 568.6057207753613,
+      "model": "chatgpt images",
+      "dimensions": "1920x1080"
+    },
+    {
+      "id": "pgen-muo8ikdu-4xnft",
+      "kind": "prompt-generator",
+      "x": 2269.6884988280253,
+      "y": -499.9124012128525,
+      "outputId": "prompt-muo8iusu-jk7i"
+    },
+    {
+      "id": "prompt-muo8iusu-jk7i",
+      "kind": "prompt",
+      "x": 2599.6884988280253,
+      "y": -499.9124012128525,
+      "generatorId": "pgen-muo8ikdu-4xnft",
+      "expanded": false
+    },
+    {
+      "id": "igen-muo8jex9-1pvld",
+      "kind": "image-generator",
+      "x": 3080.128210816134,
+      "y": -530.2742080745155,
+      "model": "chatgpt images",
+      "dimensions": "1920x1080"
+    },
+    {
+      "id": "text-muo8jkw7-16b4d",
+      "kind": "text",
+      "x": 2694.6971479193085,
+      "y": -808.3547909839223,
+      "text": "Картинка Студии по раскадровке:\n1 - большой телевизор\n2 - стены\n3 - пол\n4 - потолок\n\nСтиль - match casino scene from the image with girl, ААА+ продакшн"
+    },
+    {
+      "id": "image-muo8jmml-2mm39",
+      "kind": "image",
+      "x": 2663.027816289693,
+      "y": -1116.9676265705357,
+      "generatorId": null,
+      "caption": "pasted"
+    },
+    {
+      "id": "image-muo8jtyr-90z1o",
+      "kind": "image",
+      "x": 3057.9960539520935,
+      "y": -1087.9820954202582,
+      "generatorId": null,
+      "caption": "pasted"
+    },
+    {
+      "id": "image-muo8jx33-311ek",
+      "kind": "image",
+      "x": 3430.986726548151,
+      "y": -530.2742080745155,
+      "generatorId": "igen-muo8jex9-1pvld",
+      "caption": "chatgpt images · 1920x1080"
+    },
+    {
+      "id": "image-muo8k696-2zgyq",
+      "kind": "image",
+      "x": 3782.968083834684,
+      "y": 554.857645330698,
+      "generatorId": "igen-muo8f87t-5pbb3",
+      "caption": "chatgpt images · 1920x1080"
+    },
+    {
+      "id": "image-muo8p95p-6jk29",
+      "kind": "image",
+      "x": 2962.461013175939,
+      "y": -1428.5884670660137,
+      "generatorId": null,
+      "caption": "pasted"
+    },
+    {
+      "id": "text-muo8paxy-1j63q",
+      "kind": "text",
+      "x": 3358.618898486127,
+      "y": -1322.4842904240666,
+      "text": "создай live casino сцену по референсу - только окружение, no hud, nu human, no roulette, plain dark tv"
+    },
+    {
+      "id": "igen-muo8pt5u-3hcll",
+      "kind": "image-generator",
+      "x": 3756.391435075061,
+      "y": -1444.1463264788565,
+      "model": "chatgpt images",
+      "dimensions": "1920x1080"
+    },
+    {
+      "id": "image-muo8pxeq-8i7hr",
+      "kind": "image",
+      "x": 4211.172165011517,
+      "y": -1423.339443806589,
+      "generatorId": "igen-muo8pt5u-3hcll",
+      "caption": "chatgpt images · 1920x1080"
+    },
+    {
+      "id": "text-muo8v879-145h1",
+      "kind": "text",
+      "x": 3814.2724817169324,
+      "y": -981.0467882989607,
+      "text": "Картинка Студии по раскадровке:\n1 - большой телевизор\n2 - стены\n3 - пол\n4 - потолок\n\nСтиль - match casino scene from the image with girl, ААА+ продакшн"
+    },
+    {
+      "id": "image-muo8va2r-5z7ow",
+      "kind": "image",
+      "x": 3766.136754682536,
+      "y": -1254.1710616249654,
+      "generatorId": null,
+      "caption": "pasted"
+    },
+    {
+      "id": "igen-muo8vdly-90uiz",
+      "kind": "image-generator",
+      "x": 4354.028742338778,
+      "y": -824.5426145890638,
+      "model": "chatgpt images",
+      "dimensions": "1920x1080"
+    },
+    {
+      "id": "pgen-muo8vfi1-jpab",
+      "kind": "prompt-generator",
+      "x": 4398.283727335682,
+      "y": -1016.2771650648248,
+      "outputId": "prompt-muo8vk6z-5esed"
+    },
+    {
+      "id": "prompt-muo8vk6z-5esed",
+      "kind": "prompt",
+      "x": 4728.283727335682,
+      "y": -1016.2771650648248,
+      "generatorId": "pgen-muo8vfi1-jpab",
+      "expanded": false
+    },
+    {
+      "id": "image-muo8voyi-9nxsx",
+      "kind": "image",
+      "x": 4704.028742338778,
+      "y": -824.7826135884011,
+      "generatorId": "igen-muo8vdly-90uiz",
+      "caption": "chatgpt images · 1920x1080"
+    },
+    {
+      "id": "image-muo95o5q-4a9kb",
+      "kind": "image",
+      "x": 4704.028742338778,
+      "y": -524.5426145890638,
+      "generatorId": "igen-muo8vdly-90uiz",
       "caption": "chatgpt images · 1920x1080"
     }
   ],
@@ -153,6 +402,186 @@
       "id": "edge-muo56iuz-4zguz",
       "from": "igen-muo50e3c-48nax",
       "to": "image-muo56iuz-63uzm"
+    },
+    {
+      "id": "edge-muo825h7-21j59",
+      "from": "image-muo81f4i-3odpm",
+      "to": "igen-muo821d2-4zh9h"
+    },
+    {
+      "id": "edge-muo827ue-7wg8z",
+      "from": "image-muo81mxd-659ug",
+      "to": "igen-muo821d2-4zh9h"
+    },
+    {
+      "id": "edge-muo8295m-1z6hp",
+      "from": "text-muo81zfu-7i91k",
+      "to": "igen-muo821d2-4zh9h"
+    },
+    {
+      "id": "edge-muo82aqx-6q625",
+      "from": "image-muo81if4-80my4",
+      "to": "igen-muo821d2-4zh9h"
+    },
+    {
+      "id": "edge-muo82ksv-82q9h",
+      "from": "igen-muo821d2-4zh9h",
+      "to": "image-muo82ksv-2clvg"
+    },
+    {
+      "id": "edge-muo8dhb8-8l4vw",
+      "from": "text-muo8cz0b-25vxf",
+      "to": "igen-muo8dfc6-1dmiu"
+    },
+    {
+      "id": "edge-muo8diii-5ak2a",
+      "from": "image-muo82ksv-2clvg",
+      "to": "igen-muo8dfc6-1dmiu"
+    },
+    {
+      "id": "edge-muo8djtz-eyco",
+      "from": "image-muo8cnuq-71u0p",
+      "to": "igen-muo8dfc6-1dmiu"
+    },
+    {
+      "id": "edge-muo8dk2k-5d0ur",
+      "from": "igen-muo8dfc6-1dmiu",
+      "to": "image-muo8dk2k-s1sr"
+    },
+    {
+      "id": "edge-muo8f2gw-9hsdf",
+      "from": "image-muo8erqj-7lh0u",
+      "to": "igen-muo8f1bo-32erb"
+    },
+    {
+      "id": "edge-muo8f3yl-9iha7",
+      "from": "image-muo82ksv-2clvg",
+      "to": "igen-muo8f1bo-32erb"
+    },
+    {
+      "id": "edge-muo8fabz-9797i",
+      "from": "image-muo8erqj-7lh0u",
+      "to": "igen-muo8f87t-5pbb3"
+    },
+    {
+      "id": "edge-muo8fbtg-72w4j",
+      "from": "image-muo82ksv-2clvg",
+      "to": "igen-muo8f87t-5pbb3"
+    },
+    {
+      "id": "edge-muo8fdb6-3xruu",
+      "from": "text-muo8cz0b-25vxf",
+      "to": "igen-muo8f87t-5pbb3"
+    },
+    {
+      "id": "edge-muo8ip7s-4nfwm",
+      "from": "text-muo81zfu-7i91k",
+      "to": "pgen-muo8ikdu-4xnft"
+    },
+    {
+      "id": "edge-muo8is96-862jn",
+      "from": "image-muo81mxd-659ug",
+      "to": "pgen-muo8ikdu-4xnft"
+    },
+    {
+      "id": "edge-muo8itfj-6ehl1",
+      "from": "image-muo81f4i-3odpm",
+      "to": "pgen-muo8ikdu-4xnft"
+    },
+    {
+      "id": "edge-muo8iui7-5fgg0",
+      "from": "image-muo81if4-80my4",
+      "to": "pgen-muo8ikdu-4xnft"
+    },
+    {
+      "id": "edge-muo8iusu-9d37b",
+      "from": "pgen-muo8ikdu-4xnft",
+      "to": "prompt-muo8iusu-jk7i"
+    },
+    {
+      "id": "edge-muo8jpti-2vu6f",
+      "from": "text-muo8jkw7-16b4d",
+      "to": "igen-muo8jex9-1pvld"
+    },
+    {
+      "id": "edge-muo8jr5o-9yer7",
+      "from": "image-muo8jmml-2mm39",
+      "to": "igen-muo8jex9-1pvld"
+    },
+    {
+      "id": "edge-muo8jwrr-79600",
+      "from": "image-muo8jtyr-90z1o",
+      "to": "igen-muo8jex9-1pvld"
+    },
+    {
+      "id": "edge-muo8jx34-lb6q",
+      "from": "igen-muo8jex9-1pvld",
+      "to": "image-muo8jx33-311ek"
+    },
+    {
+      "id": "edge-muo8k696-4qp4g",
+      "from": "igen-muo8f87t-5pbb3",
+      "to": "image-muo8k696-2zgyq"
+    },
+    {
+      "id": "edge-muo8pvzg-6bobg",
+      "from": "text-muo8paxy-1j63q",
+      "to": "igen-muo8pt5u-3hcll"
+    },
+    {
+      "id": "edge-muo8px5l-9j1jn",
+      "from": "image-muo8p95p-6jk29",
+      "to": "igen-muo8pt5u-3hcll"
+    },
+    {
+      "id": "edge-muo8pxeq-7e59a",
+      "from": "igen-muo8pt5u-3hcll",
+      "to": "image-muo8pxeq-8i7hr"
+    },
+    {
+      "id": "edge-muo8vhq3-2ef8",
+      "from": "text-muo8v879-145h1",
+      "to": "pgen-muo8vfi1-jpab"
+    },
+    {
+      "id": "edge-muo8viwp-zpu3",
+      "from": "image-muo8va2r-5z7ow",
+      "to": "pgen-muo8vfi1-jpab"
+    },
+    {
+      "id": "edge-muo8vjzx-5bvmx",
+      "from": "image-muo8pxeq-8i7hr",
+      "to": "pgen-muo8vfi1-jpab"
+    },
+    {
+      "id": "edge-muo8vk6z-7a2bl",
+      "from": "pgen-muo8vfi1-jpab",
+      "to": "prompt-muo8vk6z-5esed"
+    },
+    {
+      "id": "edge-muo8vl9j-4541w",
+      "from": "text-muo8v879-145h1",
+      "to": "igen-muo8vdly-90uiz"
+    },
+    {
+      "id": "edge-muo8vmg4-8cllm",
+      "from": "image-muo8va2r-5z7ow",
+      "to": "igen-muo8vdly-90uiz"
+    },
+    {
+      "id": "edge-muo8vntf-6bung",
+      "from": "image-muo8pxeq-8i7hr",
+      "to": "igen-muo8vdly-90uiz"
+    },
+    {
+      "id": "edge-muo8voyi-9ig5z",
+      "from": "igen-muo8vdly-90uiz",
+      "to": "image-muo8voyi-9nxsx"
+    },
+    {
+      "id": "edge-muo95o5q-2is5a",
+      "from": "igen-muo8vdly-90uiz",
+      "to": "image-muo95o5q-4a9kb"
     }
   ]
 }

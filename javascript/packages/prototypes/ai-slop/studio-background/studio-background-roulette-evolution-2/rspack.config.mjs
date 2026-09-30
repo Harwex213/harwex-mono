@@ -1,12 +1,8 @@
 import { rspack } from "@rspack/core";
 
-const BRANDS = ["gold", "lava"];
-
 export default {
-  // Every brand is its own app with its own page; they share src/core.
   entry: {
-    gold: "./src/brands/gold/main.tsx",
-    lava: "./src/brands/lava/main.tsx",
+    main: "./src/main.tsx",
   },
   output: {
     filename: "[name].[contenthash].js",
@@ -58,18 +54,8 @@ export default {
   },
   plugins: [
     new rspack.HtmlRspackPlugin({
-      template: "./brands.html",
-      filename: "index.html",
-      chunks: [],
+      template: "./index.html",
     }),
-    ...BRANDS.map(
-      (brand) =>
-        new rspack.HtmlRspackPlugin({
-          template: "./index.html",
-          filename: `${brand}.html`,
-          chunks: [brand],
-        }),
-    ),
   ],
   devServer: {
     hot: true,

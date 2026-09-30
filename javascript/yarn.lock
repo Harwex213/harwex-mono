@@ -17157,6 +17157,40 @@ __metadata:
   languageName: node
   linkType: hard
 
+"studio-background-roulette-evolution-2@workspace:packages/prototypes/ai-slop/studio-background/studio-background-roulette-evolution":
+  version: 0.0.0-use.local
+  resolution: "studio-background-roulette-evolution-2@workspace:packages/prototypes/ai-slop/studio-background/studio-background-roulette-evolution"
+  dependencies:
+    "@hw/typescript-config": "workspace:*"
+    "@preact/signals-react": "npm:3.9.0"
+    "@rspack/cli": "npm:2.1.4"
+    "@rspack/core": "npm:2.1.4"
+    "@rspack/dev-server": "npm:2.1.0"
+    "@types/react": "npm:19.2.0"
+    "@types/react-dom": "npm:19.2.0"
+    react: "npm:19.2.0"
+    react-dom: "npm:19.2.0"
+    typescript: "npm:5.9.3"
+  languageName: unknown
+  linkType: soft
+
+"studio-background-roulette-evolution@workspace:packages/prototypes/ai-slop/studio-background/studio-background-roulette-evolution-2":
+  version: 0.0.0-use.local
+  resolution: "studio-background-roulette-evolution@workspace:packages/prototypes/ai-slop/studio-background/studio-background-roulette-evolution-2"
+  dependencies:
+    "@hw/typescript-config": "workspace:*"
+    "@preact/signals-react": "npm:3.9.0"
+    "@rspack/cli": "npm:2.1.4"
+    "@rspack/core": "npm:2.1.4"
+    "@rspack/dev-server": "npm:2.1.0"
+    "@types/react": "npm:19.2.0"
+    "@types/react-dom": "npm:19.2.0"
+    react: "npm:19.2.0"
+    react-dom: "npm:19.2.0"
+    typescript: "npm:5.9.3"
+  languageName: unknown
+  linkType: soft
+
 "style-loader@npm:4.0.0":
   version: 4.0.0
   resolution: "style-loader@npm:4.0.0"
