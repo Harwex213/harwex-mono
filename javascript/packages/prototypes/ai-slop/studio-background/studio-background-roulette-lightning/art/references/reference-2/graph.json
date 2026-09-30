@@ -1,0 +1,158 @@
+{
+  "version": 1,
+  "nodes": [
+    {
+      "id": "text-muo4wwz1-4m9d0",
+      "kind": "text",
+      "x": -109.5,
+      "y": 242.09765625,
+      "text": "Картинка Студии по раскадровке:\n1 - большой телевизор\n2 - стены\n3 - пол\n4 - потолок\n\nСтиль - art deco live casino scene, ААА+ продакшн"
+    },
+    {
+      "id": "igen-muo4wyw0-1bbis",
+      "kind": "image-generator",
+      "x": 720.6992414574,
+      "y": -26.888311731172166,
+      "model": "chatgpt images",
+      "dimensions": "1920x1080"
+    },
+    {
+      "id": "image-muo4yazp-22ue4",
+      "kind": "image",
+      "x": -152.7421875,
+      "y": -45.10546875,
+      "generatorId": null,
+      "caption": "pasted"
+    },
+    {
+      "id": "image-muo4yetd-63rhq",
+      "kind": "image",
+      "x": 1071,
+      "y": -342.7769512472396,
+      "generatorId": "igen-muo4wyw0-1bbis",
+      "caption": "chatgpt images · 1920x1080"
+    },
+    {
+      "id": "pgen-muo4yh29-21rrp",
+      "kind": "prompt-generator",
+      "x": 326.8203125,
+      "y": 662.60546875,
+      "outputId": "prompt-muo4yndy-8m6wx"
+    },
+    {
+      "id": "prompt-muo4yndy-8m6wx",
+      "kind": "prompt",
+      "x": 666.44921875,
+      "y": 688.3984375,
+      "generatorId": "pgen-muo4yh29-21rrp",
+      "expanded": false
+    },
+    {
+      "id": "igen-muo50e3c-48nax",
+      "kind": "image-generator",
+      "x": 1110.2754292412615,
+      "y": 619.3591734727645,
+      "model": "chatgpt images",
+      "dimensions": "1920x1080"
+    },
+    {
+      "id": "image-muo50j1x-45gq",
+      "kind": "image",
+      "x": 1460.2754292412615,
+      "y": 482.3480767420704,
+      "generatorId": "igen-muo50e3c-48nax",
+      "caption": "chatgpt images · 1920x1080"
+    },
+    {
+      "id": "image-muo569v1-5dojf",
+      "kind": "image",
+      "x": 208.37036272874792,
+      "y": -143.86484131941677,
+      "generatorId": null,
+      "caption": "pasted"
+    },
+    {
+      "id": "image-muo56di1-2ac7h",
+      "kind": "image",
+      "x": 1082.8024943232413,
+      "y": -8.161346328757304,
+      "generatorId": "igen-muo4wyw0-1bbis",
+      "caption": "chatgpt images · 1920x1080"
+    },
+    {
+      "id": "image-muo56iuz-63uzm",
+      "kind": "image",
+      "x": 1460.2754292412615,
+      "y": 802.0418272614381,
+      "generatorId": "igen-muo50e3c-48nax",
+      "caption": "chatgpt images · 1920x1080"
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge-muo4ycxs-2mage",
+      "from": "image-muo4yazp-22ue4",
+      "to": "igen-muo4wyw0-1bbis"
+    },
+    {
+      "id": "edge-muo4yegm-2xrid",
+      "from": "text-muo4wwz1-4m9d0",
+      "to": "igen-muo4wyw0-1bbis"
+    },
+    {
+      "id": "edge-muo4yetd-52ggg",
+      "from": "igen-muo4wyw0-1bbis",
+      "to": "image-muo4yetd-63rhq"
+    },
+    {
+      "id": "edge-muo4yjpn-5n11h",
+      "from": "text-muo4wwz1-4m9d0",
+      "to": "pgen-muo4yh29-21rrp"
+    },
+    {
+      "id": "edge-muo4yl5h-396ys",
+      "from": "image-muo4yazp-22ue4",
+      "to": "pgen-muo4yh29-21rrp"
+    },
+    {
+      "id": "edge-muo4yndy-8dy3c",
+      "from": "pgen-muo4yh29-21rrp",
+      "to": "prompt-muo4yndy-8m6wx"
+    },
+    {
+      "id": "edge-muo50ghs-80kit",
+      "from": "image-muo4yazp-22ue4",
+      "to": "igen-muo50e3c-48nax"
+    },
+    {
+      "id": "edge-muo50hgz-486hy",
+      "from": "prompt-muo4yndy-8m6wx",
+      "to": "igen-muo50e3c-48nax"
+    },
+    {
+      "id": "edge-muo50j1x-964jt",
+      "from": "igen-muo50e3c-48nax",
+      "to": "image-muo50j1x-45gq"
+    },
+    {
+      "id": "edge-muo56cyd-9coou",
+      "from": "image-muo569v1-5dojf",
+      "to": "igen-muo4wyw0-1bbis"
+    },
+    {
+      "id": "edge-muo56di1-9ve83",
+      "from": "igen-muo4wyw0-1bbis",
+      "to": "image-muo56di1-2ac7h"
+    },
+    {
+      "id": "edge-muo56hjs-7xcjm",
+      "from": "image-muo569v1-5dojf",
+      "to": "igen-muo50e3c-48nax"
+    },
+    {
+      "id": "edge-muo56iuz-4zguz",
+      "from": "igen-muo50e3c-48nax",
+      "to": "image-muo56iuz-63uzm"
+    }
+  ]
+}
