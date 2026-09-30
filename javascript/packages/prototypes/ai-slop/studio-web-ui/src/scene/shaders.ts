@@ -351,6 +351,7 @@ uniform float uScreenAspect;
 uniform float uDebug;
 uniform sampler2D uMasks;
 uniform float uHorizon;
+uniform vec2 uVanish;
 uniform vec4 uBlades[${NEON_BLADES.length}];
 uniform vec2 uBladeReflections[${NEON_BLADES.length}];
 uniform vec2 uRuns[${NEON_BLADES.length}];
@@ -596,18 +597,37 @@ void main() {
   vec3 light = edge * near * 3.0 + average * 0.9 + flash;
   col += outside * (base * light * 2.4 + light * near * 0.004);
 
-  // Planar reflection in the polished floor: mirrored about the wall-floor seam, rougher with distance.
+  // Reflection in the polished floor, mirrored about the wall-floor seam. It is squeezed into a band
+  // right in front of the wall, and widens towards the camera along the floor lines.
   float floorMask = smoothstep(uFloorY - 0.004, uFloorY + 0.012, p.y);
   if (floorMask > 0.0) {
+    const float squeeze = 0.45;
     float dist = p.y - uMirrorY;
+    // Distance from the seam in the reflected wall; blur and fade follow it, not the squeezed floor.
+    float source = dist / squeeze;
+    // Follow the floor lines exactly: every point stays on its ray to the vanishing point.
+    // The reflection keeps its true width at the nearest reflected row of the board, so the
+    // reflected tiles sit right under the real ones.
+    float trueWidthY = uMirrorY + squeeze * 0.14;
+    float spread = (trueWidthY - uVanish.y) / max(p.y - uVanish.y, 1e-3);
     vec2 ripple = (vec2(fbm(p * vec2(40.0, 14.0)), fbm(p * vec2(40.0, 14.0) + 7.3)) - 0.5) * 0.006;
-    vec2 sr = toScreen(vec2(p.x, 2.0 * uMirrorY - p.y) + ripple);
-    float soft = 0.012 + dist * 0.25;
+    vec2 sr = toScreen(vec2(uVanish.x + (p.x - uVanish.x) * spread, uMirrorY - source) + ripple);
+    float soft = 0.012 + source * 0.25;
     vec2 mr = smoothstep(-soft, soft, sr) * smoothstep(-soft, soft, 1.0 - sr);
-    float lod = 1.2 + dist * 20.0;
+    float lod = 0.9 + source * 9.5;
     vec3 reflection = wall(clamp(sr, 0.0, 1.0), lod);
-    float strength = 0.55 * exp(-dist * 3.4) * floorMask;
+    // Dark stone mutes what it reflects: much less light and less colour.
+    reflection = mix(reflection, vec3(dot(reflection, vec3(0.3, 0.59, 0.11))), 0.35);
+    float strength = 0.27 * exp(-source * 2.9) * floorMask;
     col += reflection * mr.x * mr.y * strength;
+
+    // The lit screen as a whole: a soft glow at the TV's own width that starts at the plinth,
+    // so the reflection reads as coming from the TV.
+    vec2 sg = toScreen(vec2(p.x, uMirrorY - source));
+    float glowEdge = 0.04 + source * 0.3;
+    vec2 mg = smoothstep(-glowEdge, glowEdge, sg) * smoothstep(-glowEdge, glowEdge, 1.0 - sg);
+    vec3 glow = wall(clamp(sg, 0.0, 1.0), 6.5);
+    col += glow * mg.x * mg.y * 0.55 * exp(-source * 3.5) * floorMask;
   }
 
   // Ground fog, lit by the wall, the lightning and the fixtures around it.

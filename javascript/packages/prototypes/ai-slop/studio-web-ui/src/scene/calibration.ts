@@ -77,12 +77,16 @@ const LANTERNS: Lantern[] = [
   lantern(1367, 65, 1421, 212, 1394, 30),
 ];
 
+// Vanishing point of the floor inlay lines, found by fitting rays to the gold lines of the floor.
+const FLOOR_VANISH: Vec2 = px(768, 554);
+
 // Eye-level line of the one-point perspective; lays fog and pools onto the floor plane.
 const HORIZON_Y = 0.4;
 
 export type { Lantern, NeonBlade };
 
 export {
+  FLOOR_VANISH,
   LANTERNS,
   NEON_BLADES,
   HORIZON_Y,

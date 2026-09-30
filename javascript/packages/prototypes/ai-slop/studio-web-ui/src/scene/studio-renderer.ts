@@ -3,6 +3,7 @@ import studioUrl from "../assets/studio.png";
 import { GLYPH_COLS, GLYPH_ROWS, SCREEN_ASPECT, buildTiles, drawGlyphAtlas } from "./board";
 import type { Tile } from "./board";
 import {
+  FLOOR_VANISH,
   FLOOR_Y,
   HORIZON_Y,
   IMAGE_HEIGHT,
@@ -329,6 +330,7 @@ class StudioRenderer {
     gl.bindTexture(gl.TEXTURE_2D, this.masks);
     gl.uniform1i(uniform(p, "uMasks"), 2);
     gl.uniform1f(uniform(p, "uHorizon"), HORIZON_Y);
+    gl.uniform2fv(uniform(p, "uVanish"), FLOOR_VANISH);
     gl.uniform4fv(uniform(p, "uBlades"), this.blades);
     gl.uniform2fv(uniform(p, "uBladeReflections"), this.bladeReflections);
     gl.uniform2fv(uniform(p, "uRuns"), this.neonRuns.update(now));
