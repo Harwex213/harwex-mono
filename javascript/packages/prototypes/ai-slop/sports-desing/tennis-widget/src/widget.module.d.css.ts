@@ -1,0 +1,37 @@
+declare const classes: {
+  readonly ball: string;
+  readonly bg: string;
+  readonly board: string;
+  readonly cardHead: string;
+  readonly clock: string;
+  readonly event: string;
+  readonly eventSep: string;
+  readonly frame: string;
+  readonly gameCard: string;
+  readonly gameRow: string;
+  readonly glare: string;
+  readonly headSet: string;
+  readonly headSetWord: string;
+  readonly headerCard: string;
+  readonly live: string;
+  readonly liveDot: string;
+  readonly player: string;
+  readonly playerRow: string;
+  readonly playersCard: string;
+  readonly rowGame: string;
+  readonly rowName: string;
+  readonly rowNameText: string;
+  readonly rowPoints: string;
+  readonly rowTag: string;
+  readonly setCell: string;
+  readonly setValue: string;
+  readonly setsCard: string;
+  readonly setsHead: string;
+  readonly setsRow: string;
+  readonly shade: string;
+  readonly slash: string;
+  readonly topBar: string;
+  readonly widget: string;
+};
+
+export default classes;
