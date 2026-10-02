@@ -5,7 +5,7 @@ use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
-use egui::{pos2, vec2, Align2, Color32, Context, CornerRadius, FontId, Frame, Id, Key, Margin, Modal, Rect, RichText, ScrollArea, Sense, Stroke, TextEdit, Ui};
+use egui::{pos2, vec2, Align2, Color32, Context, CornerRadius, Frame, Id, Key, Margin, Modal, Rect, RichText, ScrollArea, Sense, Stroke, TextEdit, Ui};
 use ide_git::{ChangeKind, CommitDetails, CommitInfo, GraphRow, LogFilter, Oid, RefKind, ResetMode};
 
 use crate::layout::ToolWindow;
@@ -22,16 +22,7 @@ const MAX_LANES: usize = 24;
 const AUTHOR_W: f32 = 150.0;
 const DATE_W: f32 = 130.0;
 
-pub const LANE_COLORS: [Color32; 8] = [
-    Color32::from_rgb(0x5F, 0x9E, 0xE6),
-    Color32::from_rgb(0x8D, 0xBF, 0x5A),
-    Color32::from_rgb(0xE0, 0x8E, 0x45),
-    Color32::from_rgb(0xC0, 0x78, 0xD8),
-    Color32::from_rgb(0x4E, 0xC2, 0xB8),
-    Color32::from_rgb(0xE0, 0x6C, 0x8A),
-    Color32::from_rgb(0xD6, 0xC0, 0x4E),
-    Color32::from_rgb(0x9A, 0x9A, 0xE8),
-];
+pub const LANE_COLORS: [Color32; 8] = theme::T.lanes;
 
 pub struct LogUi {
     // Filter inputs as typed.
@@ -152,7 +143,7 @@ impl LogUi {
 
 pub fn tool_window(state: &mut AppState, ui: &mut Ui) {
     if state.git.repo.is_none() {
-        ui.label(RichText::new("The project is not inside a git repository.").color(theme::TEXT_DIM));
+        ui.label(RichText::new("The project is not inside a git repository.").color(theme::T.text_dim));
         return;
     }
     {
@@ -200,13 +191,13 @@ fn filter_bar(state: &mut AppState, ui: &mut Ui) {
         egui::ComboBox::from_id_salt("git-log-branch").selected_text(format!("Branch: {label}")).width(170.0).height(400.0).show_ui(ui, |ui| {
             ui.selectable_value(&mut log.branch, None, "All");
             if !log.branch_names.0.is_empty() {
-                ui.label(RichText::new("Local").small().color(theme::TEXT_DIM));
+                ui.label(RichText::new("Local").small().color(theme::T.text_dim));
             }
             for b in &log.branch_names.0 {
                 ui.selectable_value(&mut log.branch, Some(b.clone()), b);
             }
             if !log.branch_names.1.is_empty() {
-                ui.label(RichText::new("Remote").small().color(theme::TEXT_DIM));
+                ui.label(RichText::new("Remote").small().color(theme::T.text_dim));
             }
             for b in &log.branch_names.1 {
                 ui.selectable_value(&mut log.branch, Some(b.clone()), b);
@@ -220,9 +211,9 @@ fn filter_bar(state: &mut AppState, ui: &mut Ui) {
             log.edited_at = Some(Instant::now());
         }
         if let Some(p) = &log.path {
-            Frame::NONE.fill(theme::TAB_ACTIVE_BG).corner_radius(CornerRadius::same(3)).inner_margin(Margin::symmetric(6, 1)).show(ui, |ui| {
+            Frame::NONE.fill(theme::T.tab_active_bg).corner_radius(CornerRadius::same(3)).inner_margin(Margin::symmetric(6, 1)).show(ui, |ui| {
                 ui.horizontal(|ui| {
-                    ui.label(RichText::new(format!("Path: {}", p.display())).color(theme::TEXT_BRIGHT));
+                    ui.label(RichText::new(format!("Path: {}", p.display())).color(theme::T.text_bright));
                     if ui.small_button("x").on_hover_text("Show the whole history").clicked() {
                         close_path = true;
                     }
@@ -235,7 +226,7 @@ fn filter_bar(state: &mut AppState, ui: &mut Ui) {
         let count = log.commits.len();
         let more = if log.has_more { "+" } else { "" };
         let text = if log.loading { format!("{count}{more} commits, loading...") } else { format!("{count}{more} commits") };
-        ui.label(RichText::new(text).small().color(theme::TEXT_DIM));
+        ui.label(RichText::new(text).small().color(theme::T.text_dim));
     });
     if close_path {
         log.path = None;
@@ -383,21 +374,21 @@ fn commit_table(state: &mut AppState, ui: &mut Ui) {
     // Header.
     let (header, _) = ui.allocate_exact_size(vec2(full.width(), 18.0), Sense::hover());
     let painter = ui.painter();
-    let dim = theme::TEXT_DIM;
-    let small = FontId::proportional(11.5);
+    let dim = theme::T.text_dim;
+    let small = theme::T.tiny_font();
     painter.text(pos2(header.left() + 6.0, header.center().y), Align2::LEFT_CENTER, "Subject", small.clone(), dim);
     let author_x = header.right() - DATE_W - AUTHOR_W;
     painter.text(pos2(author_x + 4.0, header.center().y), Align2::LEFT_CENTER, "Author", small.clone(), dim);
     painter.text(pos2(header.right() - DATE_W + 4.0, header.center().y), Align2::LEFT_CENTER, "Date", small, dim);
-    painter.hline(header.x_range(), header.bottom() - 0.5, Stroke::new(1.0_f32, theme::BORDER));
+    painter.hline(header.x_range(), header.bottom() - 0.5, Stroke::new(1.0_f32, theme::T.border));
 
     if let Some(err) = state.git_ui.log.error.clone() {
-        ui.label(RichText::new(err).color(theme::ERROR));
+        ui.label(RichText::new(err).color(theme::T.error));
         return;
     }
     if state.git_ui.log.commits.is_empty() {
         let text = if state.git_ui.log.loading { "Loading..." } else { "No commits match the filter." };
-        ui.label(RichText::new(text).color(theme::TEXT_DIM));
+        ui.label(RichText::new(text).color(theme::T.text_dim));
         return;
     }
 
@@ -524,9 +515,9 @@ fn keyboard(state: &mut AppState, ui: &mut Ui, has_focus: bool) {
 fn draw_row(ui: &Ui, rect: Rect, c: &CommitInfo, g: &GraphRow, graph_w: f32, selected: bool, focused: bool, hovered: bool) {
     let painter = ui.painter();
     if selected {
-        painter.rect_filled(rect, 0.0, if focused { theme::SELECTION } else { theme::SELECTION_INACTIVE });
+        painter.rect_filled(rect, 0.0, if focused { theme::T.selection } else { theme::T.selection_inactive });
     } else if hovered {
-        painter.rect_filled(rect, 0.0, theme::HOVER);
+        painter.rect_filled(rect, 0.0, theme::T.hover);
     }
     let graph_rect = Rect::from_min_size(rect.min, vec2(graph_w, rect.height()));
     draw_graph(&painter.with_clip_rect(graph_rect.intersect(painter.clip_rect())), graph_rect, g, c.parents.len() > 1);
@@ -540,18 +531,18 @@ fn draw_row(ui: &Ui, rect: Rect, c: &CommitInfo, g: &GraphRow, graph_w: f32, sel
         x += draw_ref_label(&sp, pos2(x, cy), r) + 4.0;
     }
     if c.refs.len() > 4 {
-        let g = sp.layout_no_wrap(format!("+{}", c.refs.len() - 4), FontId::proportional(11.0), theme::TEXT_DIM);
+        let g = sp.layout_no_wrap(format!("+{}", c.refs.len() - 4), theme::T.tiny_font(), theme::T.text_dim);
         let w = g.size().x;
-        sp.galley(pos2(x, cy - g.size().y / 2.0), g, theme::TEXT_DIM);
+        sp.galley(pos2(x, cy - g.size().y / 2.0), g, theme::T.text_dim);
         x += w + 4.0;
     }
-    let text_color = if selected { theme::TEXT_BRIGHT } else { theme::TEXT };
-    sp.text(pos2(x + 2.0, cy), Align2::LEFT_CENTER, &c.summary, FontId::proportional(13.0), text_color);
+    let text_color = if selected { theme::T.text_bright } else { theme::T.text };
+    sp.text(pos2(x + 2.0, cy), Align2::LEFT_CENTER, &c.summary, theme::T.ui_font(), text_color);
 
     let ap = painter.with_clip_rect(Rect::from_min_max(pos2(author_x, rect.top()), pos2(rect.right() - DATE_W - 4.0, rect.bottom())).intersect(painter.clip_rect()));
-    let dim = if selected { theme::TEXT } else { theme::TEXT_DIM };
-    ap.text(pos2(author_x + 4.0, cy), Align2::LEFT_CENTER, &c.author_name, FontId::proportional(12.5), dim);
-    painter.text(pos2(rect.right() - DATE_W + 4.0, cy), Align2::LEFT_CENTER, format_time(c.author_time, c.author_offset_minutes), FontId::proportional(12.5), dim);
+    let dim = if selected { theme::T.text } else { theme::T.text_dim };
+    ap.text(pos2(author_x + 4.0, cy), Align2::LEFT_CENTER, &c.author_name, theme::T.small_font(), dim);
+    painter.text(pos2(rect.right() - DATE_W + 4.0, cy), Align2::LEFT_CENTER, format_time(c.author_time, c.author_offset_minutes), theme::T.small_font(), dim);
 }
 
 /// Draws one row of the lane graph. A segment between two rows is a straight line from lane
@@ -571,7 +562,7 @@ pub fn draw_graph(painter: &egui::Painter, rect: Rect, g: &GraphRow, merge: bool
     }
     let center = pos2(x(g.lane), mid);
     if merge {
-        painter.circle_filled(center, 4.0, theme::EDITOR_BG);
+        painter.circle_filled(center, 4.0, theme::T.island_bg);
         painter.circle_stroke(center, 3.5, Stroke::new(1.6_f32, color(g.color)));
     } else {
         painter.circle_filled(center, 4.0, color(g.color));
@@ -581,13 +572,13 @@ pub fn draw_graph(painter: &egui::Painter, rect: Rect, g: &GraphRow, merge: bool
 /// Draws a branch/tag label at `left_center`; returns its width.
 pub fn draw_ref_label(painter: &egui::Painter, left_center: egui::Pos2, r: &ide_git::RefLabel) -> f32 {
     let (bg, fg) = match r.kind {
-        RefKind::Head => (Color32::from_rgb(0x6E, 0x4A, 0x1E), Color32::from_rgb(0xFF, 0xC6, 0x6D)),
-        RefKind::LocalBranch if r.is_current => (Color32::from_rgb(0x5A, 0x4B, 0x1C), Color32::from_rgb(0xFF, 0xD7, 0x6E)),
-        RefKind::LocalBranch => (Color32::from_rgb(0x2E, 0x4E, 0x2E), Color32::from_rgb(0xA8, 0xD8, 0x8A)),
-        RefKind::RemoteBranch => (Color32::from_rgb(0x46, 0x36, 0x58), Color32::from_rgb(0xC9, 0xA8, 0xF0)),
-        RefKind::Tag => (Color32::from_rgb(0x4A, 0x46, 0x2A), Color32::from_rgb(0xE0, 0xD8, 0x90)),
+        RefKind::Head => theme::T.ref_head,
+        RefKind::LocalBranch if r.is_current => theme::T.ref_current,
+        RefKind::LocalBranch => theme::T.ref_local,
+        RefKind::RemoteBranch => theme::T.ref_remote,
+        RefKind::Tag => theme::T.ref_tag,
     };
-    let galley = painter.layout_no_wrap(r.name.clone(), FontId::proportional(11.0), fg);
+    let galley = painter.layout_no_wrap(r.name.clone(), theme::T.tiny_font(), fg);
     let size = galley.size() + vec2(8.0, 2.0);
     let rect = Rect::from_min_size(pos2(left_center.x, left_center.y - size.y / 2.0), size);
     painter.rect_filled(rect, 3.0, bg);
@@ -598,7 +589,7 @@ pub fn draw_ref_label(painter: &egui::Painter, left_center: egui::Pos2, r: &ide_
 fn details_pane(state: &mut AppState, ui: &mut Ui) {
     let selected = state.git_ui.log.selected;
     let Some(oid) = selected else {
-        ui.label(RichText::new("Select a commit to see its details.").color(theme::TEXT_DIM));
+        ui.label(RichText::new("Select a commit to see its details.").color(theme::T.text_dim));
         return;
     };
     if state.git_ui.log.details_for != Some(oid) {
@@ -623,13 +614,13 @@ fn details_pane(state: &mut AppState, ui: &mut Ui) {
         }
     }
     let Some(d) = state.git_ui.log.details.as_ref().filter(|d| d.info.oid == oid) else {
-        ui.label(RichText::new("Loading...").color(theme::TEXT_DIM));
+        ui.label(RichText::new("Loading...").color(theme::T.text_dim));
         return;
     };
     let mut open: Option<PathBuf> = None;
     let filter_path = state.git_ui.log.path.clone();
     let total_h = ui.available_height();
-    ui.label(RichText::new(format!("Changed files ({})", d.files.len())).small().color(theme::TEXT_DIM));
+    ui.label(RichText::new(format!("Changed files ({})", d.files.len())).small().color(theme::T.text_dim));
     let files_h = (total_h * 0.5).max(80.0);
     ui.push_id("git-log-files", |ui| {
         ui.spacing_mut().item_spacing.y = 0.0;
@@ -638,20 +629,20 @@ fn details_pane(state: &mut AppState, ui: &mut Ui) {
                 let (rect, resp) = ui.allocate_exact_size(vec2(ui.available_width(), 20.0), Sense::click());
                 crate::util::label_widget(&resp, egui::WidgetType::Button, format!("Changed file {}", f.path.display()));
                 if resp.hovered() {
-                    ui.painter().rect_filled(rect, 0.0, theme::HOVER);
+                    ui.painter().rect_filled(rect, 0.0, theme::T.hover);
                 }
                 let color = kind_color(f.kind);
                 let name = f.path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
                 let dir = f.path.parent().map(|p| p.display().to_string()).unwrap_or_default();
                 let p = ui.painter().with_clip_rect(rect.intersect(ui.clip_rect()));
                 let strong = filter_path.as_ref().is_some_and(|fp| f.path.starts_with(fp));
-                let font = FontId::proportional(if strong { 13.5 } else { 13.0 });
+                let font = if strong { theme::T.semibold(theme::T.font.ui) } else { theme::T.ui_font() };
                 let r = p.text(pos2(rect.left() + 4.0, rect.center().y), Align2::LEFT_CENTER, &name, font, color);
                 let mut extra = dir;
                 if let Some(old) = &f.old_path {
                     extra = format!("{extra}  (from {})", old.display());
                 }
-                p.text(pos2(r.right() + 8.0, rect.center().y), Align2::LEFT_CENTER, extra, FontId::proportional(11.5), theme::TEXT_DIM);
+                p.text(pos2(r.right() + 8.0, rect.center().y), Align2::LEFT_CENTER, extra, theme::T.tiny_font(), theme::T.text_dim);
                 let resp = resp.on_hover_text(f.path.display().to_string());
                 if resp.clicked() {
                     open = Some(f.path.clone());
@@ -662,28 +653,28 @@ fn details_pane(state: &mut AppState, ui: &mut Ui) {
     ui.add_space(6.0);
     ui.separator();
     ScrollArea::vertical().id_salt("git-log-message").auto_shrink([false, false]).show(ui, |ui| {
-        ui.add(egui::Label::new(RichText::new(d.message.trim_end()).color(theme::TEXT_BRIGHT)).wrap());
+        ui.add(egui::Label::new(RichText::new(d.message.trim_end()).color(theme::T.text_bright)).wrap());
         ui.add_space(8.0);
         let info = &d.info;
         ui.horizontal(|ui| {
-            ui.label(RichText::new(info.oid.to_string()).monospace().color(theme::TEXT_DIM));
+            ui.label(RichText::new(info.oid.to_string()).monospace().color(theme::T.text_dim));
             if ui.small_button("Copy").on_hover_text("Copy Revision Number").clicked() {
                 ui.ctx().copy_text(info.oid.to_string());
             }
         });
         ui.label(format!("{} <{}>", info.author_name, info.author_email));
-        ui.label(RichText::new(format!("on {}", format_time_full(info.author_time, info.author_offset_minutes))).color(theme::TEXT_DIM));
+        ui.label(RichText::new(format!("on {}", format_time_full(info.author_time, info.author_offset_minutes))).color(theme::T.text_dim));
         if d.committer_name != info.author_name || d.committer_email != info.author_email {
-            ui.label(RichText::new(format!("committed by {} <{}>", d.committer_name, d.committer_email)).color(theme::TEXT_DIM));
+            ui.label(RichText::new(format!("committed by {} <{}>", d.committer_name, d.committer_email)).color(theme::T.text_dim));
         }
         if !info.parents.is_empty() {
             let parents: Vec<String> = info.parents.iter().map(short).collect();
-            ui.label(RichText::new(format!("parents: {}", parents.join(", "))).color(theme::TEXT_DIM));
+            ui.label(RichText::new(format!("parents: {}", parents.join(", "))).color(theme::T.text_dim));
         }
         if !info.refs.is_empty() {
             ui.horizontal_wrapped(|ui| {
                 for r in &info.refs {
-                    let (rect, _) = ui.allocate_exact_size(vec2(ui.fonts(|f| f.layout_no_wrap(r.name.clone(), FontId::proportional(11.0), Color32::WHITE).size().x) + 8.0, 16.0), Sense::hover());
+                    let (rect, _) = ui.allocate_exact_size(vec2(ui.fonts(|f| f.layout_no_wrap(r.name.clone(), theme::T.tiny_font(), theme::T.text).size().x) + 8.0, 16.0), Sense::hover());
                     draw_ref_label(ui.painter(), rect.left_center(), r);
                 }
             });
@@ -696,12 +687,12 @@ fn details_pane(state: &mut AppState, ui: &mut Ui) {
 
 pub fn kind_color(kind: ChangeKind) -> Color32 {
     match kind {
-        ChangeKind::Added => theme::GIT_ADDED,
-        ChangeKind::Modified | ChangeKind::TypeChange => theme::GIT_MODIFIED,
-        ChangeKind::Deleted => theme::GIT_DELETED,
-        ChangeKind::Renamed => theme::GIT_RENAMED,
-        ChangeKind::Untracked => theme::GIT_UNTRACKED,
-        ChangeKind::Conflicted => theme::GIT_CONFLICT,
+        ChangeKind::Added => theme::T.git_added,
+        ChangeKind::Modified | ChangeKind::TypeChange => theme::T.git_modified,
+        ChangeKind::Deleted => theme::T.git_deleted,
+        ChangeKind::Renamed => theme::T.git_renamed,
+        ChangeKind::Untracked => theme::T.git_untracked,
+        ChangeKind::Conflicted => theme::T.git_conflict,
     }
 }
 
@@ -791,7 +782,7 @@ pub fn show_windows(state: &mut AppState, ctx: &Context) {
                 ui.label(RichText::new(format!("Reset {branch} to {}", short(&oid))).strong());
                 ui.add_space(6.0);
                 if *confirm_hard {
-                    ui.label(RichText::new("Hard reset discards all uncommitted changes in the working tree and the index. This cannot be undone.").color(theme::WARNING));
+                    ui.label(RichText::new("Hard reset discards all uncommitted changes in the working tree and the index. This cannot be undone.").color(theme::T.warning));
                     ui.add_space(6.0);
                     ui.horizontal(|ui| {
                         if ui.button("Reset --hard").clicked() {

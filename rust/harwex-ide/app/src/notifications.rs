@@ -113,15 +113,16 @@ impl Notifications {
                 .order(egui::Order::Foreground)
                 .show(ctx, |ui| {
                     Frame::popup(ui.style())
-                        .fill(theme::POPUP_BG)
-                        .stroke(Stroke::new(1.0_f32, level_color(toast.note.level)))
-                        .inner_margin(Margin::same(10))
+                        .fill(theme::T.popup_bg)
+                        .stroke(Stroke::new(1.0_f32, if toast.note.level == Level::Info { theme::T.popup_border } else { level_color(toast.note.level) }))
+                        .corner_radius(egui::CornerRadius::same(theme::T.radius.popup as u8))
+                        .inner_margin(Margin::same(12))
                         .show(ui, |ui| {
                             ui.set_max_width(380.0);
                             ui.horizontal(|ui| {
                                 ui.label(RichText::new(&toast.note.title).strong().color(level_color(toast.note.level)));
                                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
-                                    if ui.small_button("x").clicked() {
+                                    if crate::layout::icon_button(ui, crate::icons::Icon::Close, "x", "").clicked() {
                                         close.push(toast.id);
                                     }
                                 });
@@ -131,13 +132,13 @@ impl Notifications {
                                 let long = body.lines().count() > 6 || body.len() > 500;
                                 if long && !toast.expanded {
                                     let short: String = body.lines().take(6).collect::<Vec<_>>().join("\n");
-                                    ui.label(RichText::new(short).monospace().size(11.0));
+                                    ui.label(RichText::new(short).monospace().size(theme::T.font.tiny));
                                     if ui.link("Show more").clicked() {
                                         toast.expanded = true;
                                     }
                                 } else {
                                     ScrollArea::vertical().max_height(260.0).show(ui, |ui| {
-                                        ui.label(RichText::new(body).monospace().size(11.0));
+                                        ui.label(RichText::new(body).monospace().size(theme::T.font.tiny));
                                     });
                                 }
                             }
@@ -158,22 +159,20 @@ impl Notifications {
     /// The Notifications tool window body.
     pub fn show_log(&mut self, ui: &mut Ui) {
         self.unread = 0;
-        ui.horizontal(|ui| {
-            ui.label(RichText::new("Notifications").strong());
-            if ui.small_button("Clear").clicked() {
-                self.log.clear();
-            }
-        });
-        ui.separator();
+        // The island header already says "Notifications".
+        if ui.small_button("Clear").clicked() {
+            self.log.clear();
+        }
+        ui.add_space(2.0);
         ScrollArea::vertical().auto_shrink([false, false]).stick_to_bottom(true).show(ui, |ui| {
             for note in &self.log {
                 let ago = if self.frozen { String::new() } else { format!("{:>4}s ago", note.time.elapsed().as_secs()) };
                 ui.horizontal_wrapped(|ui| {
-                    ui.label(RichText::new(ago).weak().monospace().size(11.0));
+                    ui.label(RichText::new(ago).weak().monospace().size(theme::T.font.tiny));
                     ui.label(RichText::new(&note.title).color(level_color(note.level)));
                 });
                 if !note.body.is_empty() {
-                    ui.label(RichText::new(note.body.trim_end()).monospace().size(11.0).color(theme::TEXT_DIM));
+                    ui.label(RichText::new(note.body.trim_end()).monospace().size(theme::T.font.tiny).color(theme::T.text_dim));
                 }
             }
         });
@@ -190,8 +189,8 @@ fn life(level: Level) -> Duration {
 
 pub fn level_color(level: Level) -> Color32 {
     match level {
-        Level::Info => theme::TEXT,
-        Level::Warning => theme::WARNING,
-        Level::Error => theme::ERROR,
+        Level::Info => theme::T.text,
+        Level::Warning => theme::T.warning,
+        Level::Error => theme::T.error,
     }
 }

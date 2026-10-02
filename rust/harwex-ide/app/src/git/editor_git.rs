@@ -293,7 +293,7 @@ pub fn show_windows(state: &mut AppState, ctx: &Context) {
 }
 
 fn popup_frame() -> Frame {
-    Frame::popup(&egui::Style::default()).fill(theme::POPUP_BG).stroke(egui::Stroke::new(1.0_f32, egui::Color32::from_rgb(0x51, 0x56, 0x58)))
+    Frame::popup(&egui::Style::default()).fill(theme::T.popup_bg).stroke(egui::Stroke::new(1.0_f32, theme::T.popup_border)).corner_radius(egui::CornerRadius::same(theme::T.radius.popup as u8))
 }
 
 fn gutter_popup(state: &mut AppState, ctx: &Context) {
@@ -323,13 +323,13 @@ fn gutter_popup(state: &mut AppState, ctx: &Context) {
                     LineChangeKind::Modified => "Modified lines",
                     LineChangeKind::Deleted => "Deleted lines",
                 };
-                ui.label(RichText::new(what).size(11.5).color(theme::TEXT_DIM));
+                ui.label(RichText::new(what).size(theme::T.font.tiny).color(theme::T.text_dim));
             });
             if c.kind != LineChangeKind::Added {
                 ui.separator();
                 ScrollArea::both().max_height(300.0).max_width(680.0).show(ui, |ui| {
                     let text = c.old_text.strip_suffix('\n').unwrap_or(&c.old_text);
-                    ui.label(RichText::new(text).monospace().color(theme::TEXT).background_color(egui::Color32::from_rgb(0x48, 0x4A, 0x4A)));
+                    ui.label(RichText::new(text).monospace().color(theme::T.text).background_color(theme::T.code_bg));
                 });
             }
         });
@@ -374,27 +374,27 @@ fn commit_popup(state: &mut AppState, ctx: &Context) {
             match &p.details {
                 None => {
                     ui.horizontal(|ui| {
-                        ui.add(egui::Spinner::new().size(12.0));
+                        ui.add(egui::Spinner::new().size(theme::T.font.small));
                         ui.label(format!("Loading {}...", &p.oid.to_string()[..8]));
                     });
                 }
                 Some(Err(e)) => {
-                    ui.label(RichText::new(e).color(theme::ERROR));
+                    ui.label(RichText::new(e).color(theme::T.error));
                 }
                 Some(Ok(d)) => {
                     let subject = d.message.lines().next().unwrap_or_default();
-                    ui.label(RichText::new(subject).strong().color(theme::TEXT_BRIGHT));
+                    ui.label(RichText::new(subject).strong().color(theme::T.text_bright));
                     let body = d.message.lines().skip(1).collect::<Vec<_>>().join("\n");
                     let body = body.trim();
                     if !body.is_empty() {
-                        ui.label(RichText::new(body).color(theme::TEXT));
+                        ui.label(RichText::new(body).color(theme::T.text));
                     }
                     ui.add_space(4.0);
                     let i = &d.info;
-                    ui.label(RichText::new(format!("{} <{}>", i.author_name, i.author_email)).color(theme::TEXT));
-                    ui.label(RichText::new(format_time(i.author_time, i.author_offset_minutes)).color(theme::TEXT_DIM));
+                    ui.label(RichText::new(format!("{} <{}>", i.author_name, i.author_email)).color(theme::T.text));
+                    ui.label(RichText::new(format_time(i.author_time, i.author_offset_minutes)).color(theme::T.text_dim));
                     ui.horizontal(|ui| {
-                        ui.label(RichText::new(i.oid.to_string()).monospace().color(theme::TEXT_DIM));
+                        ui.label(RichText::new(i.oid.to_string()).monospace().color(theme::T.text_dim));
                     });
                     ui.add_space(4.0);
                     ui.horizontal(|ui| {
@@ -404,7 +404,7 @@ fn commit_popup(state: &mut AppState, ctx: &Context) {
                         if ui.button("Copy Hash").clicked() {
                             action = Some(1);
                         }
-                        ui.label(RichText::new(format!("{} file{} changed", d.files.len(), if d.files.len() == 1 { "" } else { "s" })).size(11.5).color(theme::TEXT_DIM));
+                        ui.label(RichText::new(format!("{} file{} changed", d.files.len(), if d.files.len() == 1 { "" } else { "s" })).size(theme::T.font.tiny).color(theme::T.text_dim));
                     });
                 }
             }

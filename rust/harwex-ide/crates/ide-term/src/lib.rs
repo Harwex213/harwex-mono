@@ -298,6 +298,12 @@ impl Terminal {
         &self.cwd
     }
 
+    /// The pid of the shell this terminal started. The app's memory indicator leaves this
+    /// process and its whole subtree out of its total.
+    pub fn process_id(&self) -> Option<u32> {
+        self.child.lock().unwrap().process_id()
+    }
+
     /// The working directory of the foreground process (the shell after `cd`), when the OS
     /// can tell. Used to resolve relative paths in the output.
     pub fn current_dir(&self) -> Option<PathBuf> {

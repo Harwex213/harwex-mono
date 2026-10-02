@@ -22,7 +22,7 @@ fn layout_renders_with_git_colors() {
     assert_eq!(status.get(&root.join("scratch.txt")), Some(&ChangeKind::Untracked));
     assert_eq!(status.get(&root.join("docs/notes.md")), Some(&ChangeKind::Deleted));
     assert!(ide.state().git.dirty_dirs.contains(&root.join("src")));
-    ide.assert_text("main  v");
+    ide.assert_text("Branch main");
     ide.snapshot("layout");
 
     // A click on a directory row expands it; its children load on a worker.
@@ -242,13 +242,13 @@ fn tool_window_toggles() {
     ide.click("Commit tool window");
     ide.settle();
     assert_eq!(ide.state().layout.left, None);
-    // The header's "-" hides the bottom window.
-    ide.click("-");
+    // The header's hide button hides the bottom window.
+    ide.click("Hide Notifications");
     ide.settle();
     assert_eq!(ide.state().layout.bottom, None);
     ide.snapshot("all_hidden");
 
-    // The top bar's Commit button opens the Commit window.
+    // The title bar's Commit button opens the Commit window.
     ide.click("Commit");
     ide.settle();
     assert_eq!(ide.state().layout.left, Some(ToolWindow::Commit));
@@ -278,4 +278,90 @@ fn layout_persists_through_storage() {
     assert_eq!(ide.state().layout.left, Some(ToolWindow::Find));
     assert_eq!(ide.state().layout.bottom, Some(ToolWindow::Git));
     ide.snapshot("restored_layout");
+}
+
+/// Islands Dark: the empty editor shows IDEA's hint list, and Cmd+E (one of the hints) opens
+/// Recent Files with the previous file preselected.
+#[test]
+fn empty_editor_hints_and_recent_files() {
+    let fx = Fixture::new(SUITE, "empty_editor");
+    let repo = basic_repo(fx.path("repo"));
+    let mut ide = Ide::open(SUITE, &repo.dir);
+    assert!(ide.has("Empty editor"));
+    assert!(ide.state().tabs.list.is_empty());
+    ide.snapshot("empty_editor");
+
+    ide.open_file("src/util.ts");
+    ide.open_file("src/app.ts");
+    ide.cmd(Key::E);
+    ide.settle();
+    assert!(ide.state().search.open && ide.state().search.recent_mode);
+    let hits: Vec<String> = ide.state().search.results().iter().map(|h| h.path.clone()).collect();
+    assert_eq!(hits, ["src/app.ts", "src/util.ts"]);
+    assert_eq!(ide.state().search.selected(), 1, "the previous file is preselected");
+    ide.assert_text("Recent Files");
+    ide.snapshot("recent_files");
+    ide.key(Key::Enter);
+    ide.settle();
+    assert_eq!(ide.active_title().as_deref(), Some("util.ts"));
+    assert!(!ide.state().search.open);
+}
+
+/// The title bar: project badge and name, the branch widget, and the icon buttons on the right.
+#[test]
+fn title_bar_widgets() {
+    let fx = Fixture::new(SUITE, "title_bar");
+    let repo = changed_repo(fx.path("harwex-mono"));
+    let mut ide = Ide::open(SUITE, &repo.dir);
+    for label in ["Project harwex-mono", "Branch main", "Update", "Commit", "Push", "Search", "Settings"] {
+        assert!(ide.has(label), "title bar has {label:?}; {:?}", ide.labels());
+    }
+    assert_eq!(harwex_ide::app::initials("harwex-mono"), "HM");
+    let title_h = harwex_ide::theme::T.space.title_h;
+    for label in ["Project harwex-mono", "Branch main", "Push", "Settings"] {
+        let r = ide.rect(label);
+        assert!(r.min.y >= 0.0 && r.max.y <= title_h, "{label} sits inside the title bar: {r:?}");
+    }
+    // The widgets read left to right: badge and project, branch; icon buttons at the right edge.
+    assert!(ide.rect("Project harwex-mono").max.x <= ide.rect("Branch main").min.x);
+    assert!(ide.rect("Update").max.x <= ide.rect("Commit").min.x && ide.rect("Commit").max.x <= ide.rect("Push").min.x);
+    assert!(ide.rect("Search").max.x <= ide.rect("Settings").min.x);
+    ide.hover("Branch main");
+    ide.snapshot_here("title_bar");
+
+    // Settings opens a menu; the Search button opens Search Everywhere.
+    ide.click("Settings");
+    ide.settle();
+    ide.assert_text("Open Folder...");
+    ide.key(Key::Escape);
+    ide.click("Search");
+    ide.settle();
+    assert!(ide.state().search.open && !ide.state().search.recent_mode);
+}
+
+/// The tool window strips: icons only, the open windows highlighted, tooltips with the titles.
+#[test]
+fn tool_strips() {
+    let fx = Fixture::new(SUITE, "strips");
+    let repo = basic_repo(fx.path("repo"));
+    let mut ide = Ide::open(SUITE, &repo.dir);
+    let strip_w = harwex_ide::theme::T.space.strip_w;
+    let left = ["Project", "Commit", "Find", "Git", "Find Usages", "Terminal"];
+    for title in left {
+        let r = ide.rect(&format!("{title} tool window"));
+        assert!(r.max.x <= strip_w, "{title} is on the left strip: {r:?}");
+    }
+    let n = ide.rect("Notifications tool window");
+    assert!(n.min.x >= 1280.0 - strip_w, "Notifications is on the right strip: {n:?}");
+    // The upper group opens left windows, the lower group bottom windows.
+    assert!(ide.rect("Find tool window").max.y < ide.rect("Git tool window").min.y - 200.0);
+    ide.click("Terminal tool window");
+    ide.wait_until("terminal open", |ide| ide.state().layout.bottom == Some(ToolWindow::Terminal) && ide.state().terminals.len() == 1);
+    ide.settle();
+    assert!(ide.is_selected("Project tool window") && ide.is_selected("Terminal tool window"));
+    assert!(!ide.is_selected("Commit tool window"));
+    ide.hover("Find Usages tool window");
+    ide.wait_real(std::time::Duration::from_millis(400));
+    ide.assert_text("Find Usages  ⌥F7");
+    ide.snapshot_here("tool_strips");
 }

@@ -20,26 +20,10 @@ use crate::tabs::CustomTab;
 use crate::theme;
 
 const LINE_H: f32 = 18.0;
-const FONT_SIZE: f32 = 13.0;
 const RIBBON_W: f32 = 36.0;
 const SCROLLBAR_W: f32 = 12.0;
 /// Longer lines are cut for display; nobody reads column 3000 in a diff.
 const MAX_COLS: usize = 3000;
-
-const fn hex(v: u32) -> Color32 {
-    Color32::from_rgb((v >> 16) as u8, (v >> 8) as u8, v as u8)
-}
-
-// IDEA Darcula diff colors.
-const INSERTED_BG: Color32 = hex(0x294436);
-const INSERTED_WORD: Color32 = hex(0x3B6B47);
-const DELETED_BG: Color32 = hex(0x484A4A);
-const DELETED_WORD: Color32 = hex(0x606464);
-const MODIFIED_BG: Color32 = hex(0x385570);
-const MODIFIED_WORD: Color32 = hex(0x4C6F94);
-const INSERTED_EDGE: Color32 = hex(0x4E8A5C);
-const DELETED_EDGE: Color32 = hex(0x6E7272);
-const MODIFIED_EDGE: Color32 = hex(0x5A84B0);
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum HunkKind {
@@ -60,23 +44,23 @@ impl HunkKind {
     }
     fn bg(self) -> Color32 {
         match self {
-            HunkKind::Inserted => INSERTED_BG,
-            HunkKind::Deleted => DELETED_BG,
-            HunkKind::Modified => MODIFIED_BG,
+            HunkKind::Inserted => theme::T.diff_inserted_bg,
+            HunkKind::Deleted => theme::T.diff_deleted_bg,
+            HunkKind::Modified => theme::T.diff_modified_bg,
         }
     }
     fn word(self) -> Color32 {
         match self {
-            HunkKind::Inserted => INSERTED_WORD,
-            HunkKind::Deleted => DELETED_WORD,
-            HunkKind::Modified => MODIFIED_WORD,
+            HunkKind::Inserted => theme::T.diff_inserted_word,
+            HunkKind::Deleted => theme::T.diff_deleted_word,
+            HunkKind::Modified => theme::T.diff_modified_word,
         }
     }
     fn edge(self) -> Color32 {
         match self {
-            HunkKind::Inserted => INSERTED_EDGE,
-            HunkKind::Deleted => DELETED_EDGE,
-            HunkKind::Modified => MODIFIED_EDGE,
+            HunkKind::Inserted => theme::T.diff_inserted_edge,
+            HunkKind::Deleted => theme::T.diff_deleted_edge,
+            HunkKind::Modified => theme::T.diff_modified_edge,
         }
     }
 }
@@ -415,12 +399,12 @@ impl CustomTab for DiffTab {
             }
             Load::Failed(e) => {
                 ui.add_space(20.0);
-                ui.label(RichText::new(format!("Cannot load the diff: {e}")).color(theme::ERROR));
+                ui.label(RichText::new(format!("Cannot load the diff: {e}")).color(theme::T.error));
                 return;
             }
             Load::Ready(m) if m.diff.binary => {
                 ui.add_space(20.0);
-                ui.vertical_centered(|ui| ui.label(RichText::new("Binary files differ").color(theme::TEXT_DIM)));
+                ui.vertical_centered(|ui| ui.label(RichText::new("Binary files differ").color(theme::T.text_dim)));
                 return;
             }
             Load::Ready(_) => {}
@@ -444,10 +428,10 @@ fn toolbar(tab: &mut DiffTab, ui: &mut Ui, env: &mut TabEnv, body_id: Id) {
     };
     let (hunks, identical) = tab.model().map_or((0, false), |m| (m.diff.hunks.len(), m.diff.hunks.is_empty() && !m.diff.binary));
     let mut jump = f4;
-    egui::Frame::NONE.fill(theme::PANEL_BG).inner_margin(egui::Margin::symmetric(8, 3)).show(ui, |ui| {
+    egui::Frame::NONE.fill(theme::T.island_bg).inner_margin(egui::Margin::symmetric(8, 3)).show(ui, |ui| {
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 4.0;
-            if ui.add_enabled(hunks > 0, egui::Button::new("Prev").small()).on_hover_text("Previous Difference (Shift+F7)").clicked() || shift_f7 {
+            if ui.add_enabled(hunks > 0, egui::Button::new("Prev").small()).on_hover_text("Previous Difference (⇧F7)").clicked() || shift_f7 {
                 tab.step(false);
             }
             if ui.add_enabled(hunks > 0, egui::Button::new("Next").small()).on_hover_text("Next Difference (F7)").clicked() || f7 {
@@ -464,9 +448,9 @@ fn toolbar(tab: &mut DiffTab, ui: &mut Ui, env: &mut TabEnv, body_id: Id) {
             } else {
                 format!("{hunks} difference{}", if hunks == 1 { "" } else { "s" })
             };
-            ui.label(RichText::new(label).size(12.0).color(theme::TEXT_DIM));
+            ui.label(RichText::new(label).size(theme::T.font.small).color(theme::T.text_dim));
             if tab.reloading {
-                ui.add(egui::Spinner::new().size(12.0));
+                ui.add(egui::Spinner::new().size(theme::T.font.small));
             }
         });
     });
@@ -487,8 +471,9 @@ struct Metrics {
 }
 
 fn body(tab: &mut DiffTab, ui: &mut Ui, theme_e: &EditorTheme, body_id: Id) {
-    let font = FontId::monospace(FONT_SIZE);
-    let char_w = ui.fonts(|f| f.glyph_width(&font, 'M'));
+    let font = theme::T.mono_font();
+    // The laid-out column step, like the editor (`ide_editor::column_advance`).
+    let char_w = ui.fonts(|f| ide_editor::column_advance(f, &font));
     let metrics = Metrics { char_w, font };
     let full = ui.available_rect_before_wrap();
     let title_h = 22.0;
@@ -583,11 +568,11 @@ fn body(tab: &mut DiffTab, ui: &mut Ui, theme_e: &EditorTheme, body_id: Id) {
     let title_l = Rect::from_min_size(full.min, vec2(pane_w, title_h));
     let title_r = Rect::from_min_size(pos2(right.min.x, full.min.y), vec2(pane_w + SCROLLBAR_W, title_h));
     for (r, text) in [(title_l, old_title), (title_r, new_title)] {
-        painter.rect_filled(r, 0.0, theme::TAB_BAR_BG);
-        painter.text(pos2(r.min.x + 8.0, r.center().y), Align2::LEFT_CENTER, text, FontId::proportional(12.0), theme::TEXT);
+        painter.rect_filled(r, 0.0, theme::T.tab_bar_bg);
+        painter.text(pos2(r.min.x + 8.0, r.center().y), Align2::LEFT_CENTER, text, theme::T.small_font(), theme::T.text);
     }
-    painter.rect_filled(Rect::from_min_size(pos2(left.max.x, full.min.y), vec2(RIBBON_W, title_h)), 0.0, theme::TAB_BAR_BG);
-    painter.hline(full.x_range(), area.min.y - 0.5, Stroke::new(1.0_f32, theme::BORDER));
+    painter.rect_filled(Rect::from_min_size(pos2(left.max.x, full.min.y), vec2(RIBBON_W, title_h)), 0.0, theme::T.tab_bar_bg);
+    painter.hline(full.x_range(), area.min.y - 0.5, Stroke::new(1.0_f32, theme::T.border));
 
     let t = tab.t;
     let top_old = model.map(t, true);
@@ -627,7 +612,7 @@ fn draw_pane(painter: &egui::Painter, rect: Rect, pane: &mut Pane, hunks: &[Diff
     painter.rect_filled(Rect::from_min_max(rect.min, pos2(text_x - 4.0, rect.max.y)), 0.0, th.gutter_background);
 
     if !pane.exists && pane.lines == 0 {
-        painter.text(rect.center(), Align2::CENTER_CENTER, "File does not exist", FontId::proportional(13.0), theme::TEXT_DIM);
+        painter.text(rect.center(), Align2::CENTER_CENTER, "File does not exist", theme::T.ui_font(), theme::T.text_dim);
     }
 
     // Empty-side hunks: a thin line at the gap the ribbon points to.
@@ -663,7 +648,7 @@ fn draw_pane(painter: &egui::Painter, rect: Rect, pane: &mut Pane, hunks: &[Diff
                 painter.hline(rect.x_range(), y + LINE_H, Stroke::new(1.0_f32, k.edge()));
             }
         }
-        painter.text(pos2(text_x - 10.0, y + LINE_H / 2.0), Align2::RIGHT_CENTER, (line + 1).to_string(), FontId::monospace(11.5), th.line_number);
+        painter.text(pos2(text_x - 10.0, y + LINE_H / 2.0), Align2::RIGHT_CENTER, (line + 1).to_string(), theme::T.mono_small_font(), th.line_number);
 
         let text = pane.doc.line(line);
         let x0 = text_x - hscroll;
@@ -762,7 +747,7 @@ fn draw_ribbons(painter: &egui::Painter, rect: Rect, m: &Model, top_old: f64, to
 
 #[allow(clippy::too_many_arguments)]
 fn draw_scrollbar(painter: &egui::Painter, bar: Rect, m: &Model, t: f64, max_t: f64, thumb_h: f32, thumb_range: f32, active: bool) {
-    painter.rect_filled(bar, 0.0, theme_bar_bg());
+    painter.rect_filled(bar, 0.0, theme::T.scrollbar_track);
     let total = m.total.max(1.0);
     // Change markers along the track, like IDEA's error stripe.
     for (hi, h) in m.diff.hunks.iter().enumerate() {
@@ -774,13 +759,10 @@ fn draw_scrollbar(painter: &egui::Painter, bar: Rect, m: &Model, t: f64, max_t: 
     }
     let thumb_y = bar.min.y + (t / max_t.max(1.0)) as f32 * thumb_range;
     let thumb = Rect::from_min_size(pos2(bar.min.x + 1.0, thumb_y), vec2(bar.width() - 2.0, thumb_h));
-    let c = if active { Color32::from_white_alpha(70) } else { Color32::from_white_alpha(40) };
+    let c = if active { theme::T.scrollbar_thumb_active } else { theme::T.scrollbar_thumb };
     painter.rect_filled(thumb, 3.0, c);
 }
 
-fn theme_bar_bg() -> Color32 {
-    hex(0x313335)
-}
 
 // ---------------------------------------------------------------------------------------------
 // Opening and loading.

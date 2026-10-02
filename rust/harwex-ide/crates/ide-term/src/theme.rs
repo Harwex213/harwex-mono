@@ -1,5 +1,5 @@
-//! Colors. The default theme follows IDEA's Darcula terminal so the tool window matches the
-//! rest of the IDE.
+//! Colors. Every color the terminal widget paints comes from here. The default theme follows
+//! IDEA's Islands Dark terminal so the tool window matches the rest of the IDE.
 
 use alacritty_terminal::term::color::Colors;
 use alacritty_terminal::vte::ansi::{Color, NamedColor, Rgb};
@@ -19,11 +19,50 @@ pub struct TerminalTheme {
 
 impl Default for TerminalTheme {
     fn default() -> Self {
-        Self::darcula()
+        Self::islands_dark()
     }
 }
 
+/// "No color set" in the widget's cell buffer; never painted.
+pub(crate) const NO_COLOR: Color32 = Color32::TRANSPARENT;
+
+pub(crate) fn from_rgb(c: Rgb) -> Color32 {
+    Color32::from_rgb(c.r, c.g, c.b)
+}
+
 impl TerminalTheme {
+    /// IDEA 2025 Islands Dark: the terminal sits on the island fill.
+    pub const fn islands_dark() -> Self {
+        const fn c(r: u8, g: u8, b: u8) -> Color32 {
+            Color32::from_rgb(r, g, b)
+        }
+        TerminalTheme {
+            foreground: c(0xbc, 0xbe, 0xc4),
+            background: c(0x1e, 0x1f, 0x22),
+            cursor: c(0xce, 0xd0, 0xd6),
+            selection: c(0x21, 0x42, 0x83),
+            link: c(0x54, 0x8a, 0xf7),
+            ansi: [
+                c(0x1e, 0x1f, 0x22),
+                c(0xf0, 0x52, 0x4f),
+                c(0x5f, 0xb8, 0x65),
+                c(0xd6, 0xa1, 0x3b),
+                c(0x3d, 0x8b, 0xf5),
+                c(0xc2, 0x7f, 0xd8),
+                c(0x24, 0xb6, 0xc2),
+                c(0xbc, 0xbe, 0xc4),
+                c(0x6f, 0x73, 0x7a),
+                c(0xff, 0x6b, 0x68),
+                c(0x7e, 0xd3, 0x83),
+                c(0xf2, 0xc5, 0x5c),
+                c(0x6c, 0xa6, 0xff),
+                c(0xe0, 0x9e, 0xf2),
+                c(0x4f, 0xd6, 0xe0),
+                c(0xff, 0xff, 0xff),
+            ],
+        }
+    }
+
     pub fn darcula() -> Self {
         let c = Color32::from_rgb;
         TerminalTheme {

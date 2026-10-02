@@ -51,6 +51,7 @@ pub fn init() {
             // Runs once, before this binary starts any thread that reads the environment.
             std::env::set_var(k, v);
         }
+        fixtures::use_test_rust_tools();
     });
 }
 
@@ -185,7 +186,7 @@ impl Ide {
             }
             if start.elapsed() > SETTLE_TIMEOUT {
                 let jobs: Vec<String> = self.state().jobs.running().into_iter().map(|j| j.label).collect();
-                panic!("settle timed out: in flight {}, ts queue {}, running {jobs:?}", self.state().jobs.in_flight(), self.state().ts.queued());
+                panic!("settle timed out: in flight {}, language queues {}, running {jobs:?}", self.state().jobs.in_flight(), self.state().langs.queued());
             }
         }
     }

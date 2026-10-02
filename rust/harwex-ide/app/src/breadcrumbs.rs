@@ -8,18 +8,18 @@
 //! popup has the keyboard, `take_keys` consumes the arrows before any widget sees them.
 //!
 //! Listings run on a worker through `tree::list_dir`, so `.gitignore` applies like in the
-//! project tree. Icons are painter shapes: egui's default fonts lack most symbol glyphs.
+//! project tree. Icons come from `icons`.
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
-use egui::{pos2, vec2, Align2, Vec2, Color32, Context, FontId, Id, Key, Painter, Pos2, Rect, ScrollArea, Sense, Shape, Stroke, Ui};
+use egui::{pos2, vec2, Align2, Vec2, Color32, Context, FontId, Id, Key, Painter, Pos2, Rect, ScrollArea, Sense, Stroke, Ui};
 
+use crate::icons::{self, Icon};
 use crate::state::AppState;
 use crate::theme;
 use crate::tree::{self, Entry};
 
-const FONT_SIZE: f32 = 12.0;
 const ICON_W: f32 = 18.0;
 const PAD: f32 = 4.0;
 const SEP_W: f32 = 16.0;
@@ -142,7 +142,7 @@ pub struct Popup {
     /// The file the bar showed when the popup opened. Another active file closes it.
     file: PathBuf,
     /// Top-left corner of the opening slot; level 0 starts at its x and grows upward.
-    anchor: Pos2,
+    pub anchor: Pos2,
 }
 
 #[derive(Default, Clone, Copy)]
@@ -349,19 +349,18 @@ pub fn take_keys(state: &mut AppState, ctx: &Context) {
 }
 
 fn font() -> FontId {
-    FontId::proportional(FONT_SIZE)
+    theme::T.small_font()
 }
 
 /// The content width of a popup level that lists `items`.
 fn level_width(ctx: &Context, items: &[Entry]) -> f32 {
-    let text_w = ctx.fonts(|f| items.iter().take(500).map(|e| f.layout_no_wrap(e.name.clone(), font(), theme::TEXT).size().x).fold(0.0_f32, f32::max));
+    let text_w = ctx.fonts(|f| items.iter().take(500).map(|e| f.layout_no_wrap(e.name.clone(), font(), theme::T.text).size().x).fold(0.0_f32, f32::max));
     (text_w + ICON_W + 34.0).clamp(160.0, 420.0)
 }
 
 fn segment_width(ui: &Ui, seg: &Segment) -> f32 {
-    let text = ui.painter().layout_no_wrap(seg.name.clone(), font(), theme::TEXT).size().x;
-    let icon = if seg.kind == SegmentKind::Dir { 0.0 } else { ICON_W };
-    PAD + icon + text + PAD
+    let text = ui.painter().layout_no_wrap(seg.name.clone(), font(), theme::T.text).size().x;
+    PAD + ICON_W + text + PAD
 }
 
 /// Draws the breadcrumbs into `ui` (the left part of the status bar).
@@ -391,7 +390,7 @@ pub fn bar(state: &mut AppState, ui: &mut Ui) {
     for (n, slot) in slots.iter().enumerate() {
         if n > 0 {
             let (r, _) = ui.allocate_exact_size(vec2(SEP_W, height), Sense::hover());
-            chevron(ui.painter(), r.center(), theme::TEXT_DIM);
+            chevron(ui.painter(), r.center(), theme::T.text_dim);
         }
         let (opener, width) = match slot {
             Slot::Segment(i) => (Opener::Segment(*i), widths[*i]),
@@ -409,13 +408,13 @@ pub fn bar(state: &mut AppState, ui: &mut Ui) {
         if chosen {
             // The keyboard selection: a filled slot with a focus ring.
             let r = rect.shrink2(vec2(0.0, 1.0));
-            painter.rect_filled(r, 3.0, theme::TAB_ACTIVE_BG);
-            painter.rect_stroke(r.shrink(0.5), 3.0, Stroke::new(1.0_f32, theme::TAB_ACTIVE_LINE), egui::StrokeKind::Inside);
+            painter.rect_filled(r, theme::T.radius.row, theme::T.tab_active_bg);
+            painter.rect_stroke(r.shrink(0.5), theme::T.radius.row, Stroke::new(1.0_f32, theme::T.accent), egui::StrokeKind::Inside);
         } else if open == Some(opener) {
-            painter.rect_filled(rect.shrink2(vec2(0.0, 1.0)), 3.0, theme::TAB_ACTIVE_BG);
+            painter.rect_filled(rect.shrink2(vec2(0.0, 1.0)), theme::T.radius.row, theme::T.tab_active_bg);
             anchor = Some(rect.left_top());
         } else if resp.hovered() {
-            painter.rect_filled(rect.shrink2(vec2(0.0, 1.0)), 3.0, theme::HOVER);
+            painter.rect_filled(rect.shrink2(vec2(0.0, 1.0)), theme::T.radius.row, theme::T.hover_on_window);
         }
         let cy = rect.center().y;
         match slot {
@@ -423,23 +422,17 @@ pub fn bar(state: &mut AppState, ui: &mut Ui) {
                 let seg = &segs[*i];
                 let mut x = rect.min.x + PAD;
                 match seg.kind {
-                    SegmentKind::Root => {
-                        folder_icon(painter, pos2(x + 7.0, cy));
-                        x += ICON_W;
-                    }
-                    SegmentKind::File => {
-                        file_icon(painter, pos2(x + 7.0, cy), &seg.name);
-                        x += ICON_W;
-                    }
-                    SegmentKind::Dir => {}
+                    SegmentKind::Root | SegmentKind::Dir => folder_icon(painter, pos2(x + 7.0, cy)),
+                    SegmentKind::File => file_icon(painter, pos2(x + 7.0, cy), &seg.name),
                 }
+                x += ICON_W;
                 let color = match seg.kind {
                     SegmentKind::File => tree::name_color(&state.git, &seg.path, false),
-                    _ => theme::TEXT,
+                    _ => theme::T.text,
                 };
                 painter.text(pos2(x, cy), Align2::LEFT_CENTER, &seg.name, font(), color);
             }
-            Slot::Hidden(_) => dots(painter, rect.center(), theme::TEXT),
+            Slot::Hidden(_) => dots(painter, rect.center(), theme::T.text),
         }
         if resp.clicked() {
             clicked = Some((opener, rect.left_top()));
@@ -559,8 +552,8 @@ pub fn show_popup(state: &mut AppState, ctx: &Context) {
     // Layout, like IDEA: every level rests on the status bar and grows upward. Nested levels sit
     // right of their parent, touching it. Heights are whole rows, at most `MAX_ROWS`.
     // The shadow is lifted by half its blur, so it does not darken the status bar below.
-    let shadow = egui::Shadow { offset: [0, -6], blur: 12, spread: 0, color: Color32::from_black_alpha(90) };
-    let frame = egui::Frame::popup(&ctx.style()).fill(theme::POPUP_BG).inner_margin(egui::Margin::same(4)).shadow(shadow);
+    let shadow = egui::Shadow { offset: [0, -6], blur: 12, spread: 0, color: theme::T.shadow };
+    let frame = egui::Frame::popup(&ctx.style()).fill(theme::T.popup_bg).corner_radius(egui::CornerRadius::same(theme::T.radius.popup as u8)).inner_margin(egui::Margin::same(4)).shadow(shadow);
     let margin = frame.total_margin().sum();
     let screen = ctx.screen_rect();
     let baseline = state.breadcrumbs.baseline.unwrap_or(screen.max.y).min(screen.max.y);
@@ -599,11 +592,11 @@ pub fn show_popup(state: &mut AppState, ctx: &Context) {
                 ui.set_width(size.x);
                 ui.set_height(size.y);
                 let Some(items) = items else {
-                    ui.label(egui::RichText::new("Loading...").size(FONT_SIZE).color(theme::TEXT_DIM));
+                    ui.label(egui::RichText::new("Loading...").size(theme::T.font.small).color(theme::T.text_dim));
                     return;
                 };
                 if items.is_empty() {
-                    ui.label(egui::RichText::new("Empty").size(FONT_SIZE).color(theme::TEXT_DIM));
+                    ui.label(egui::RichText::new("Empty").size(theme::T.font.small).color(theme::T.text_dim));
                     return;
                 }
                 let width = size.x;
@@ -622,11 +615,11 @@ pub fn show_popup(state: &mut AppState, ctx: &Context) {
                         crate::util::label_selectable(&r, format!("Breadcrumb item {rel}"), selected);
                         let painter = ui.painter();
                         if selected {
-                            painter.rect_filled(rect, 3.0, if focused { theme::SELECTION } else { theme::SELECTION_INACTIVE });
+                            painter.rect_filled(rect, theme::T.radius.row, if focused { theme::T.selection } else { theme::T.selection_inactive });
                         }
                         let is_current = level.current.as_ref() == Some(&e.path);
                         if is_current {
-                            painter.rect_filled(Rect::from_min_size(rect.min + vec2(0.0, 3.0), vec2(2.0, ROW_H - 6.0)), 1.0, theme::TAB_ACTIVE_LINE);
+                            painter.rect_filled(Rect::from_min_size(rect.min + vec2(0.0, 3.0), vec2(2.0, ROW_H - 6.0)), 1.0, theme::T.accent);
                         }
                         let cy = rect.center().y;
                         if e.is_dir {
@@ -635,13 +628,13 @@ pub fn show_popup(state: &mut AppState, ctx: &Context) {
                             file_icon(painter, pos2(rect.min.x + 13.0, cy), &e.name);
                         }
                         let mut color = tree::name_color(git, &e.path, e.is_dir);
-                        if selected && focused && color == theme::TEXT {
-                            color = theme::TEXT_BRIGHT;
+                        if selected && focused && color == theme::T.text {
+                            color = theme::T.text_bright;
                         }
-                        let font = if is_current { FontId::proportional(FONT_SIZE + 0.5) } else { font() };
+                        let font = if is_current { FontId::proportional(theme::T.font.small + 0.5) } else { font() };
                         painter.text(pos2(rect.min.x + 6.0 + ICON_W + 4.0, cy), Align2::LEFT_CENTER, &e.name, font, color);
                         if e.is_dir {
-                            chevron(painter, pos2(rect.max.x - 8.0, cy), theme::TEXT_DIM);
+                            chevron(painter, pos2(rect.max.x - 8.0, cy), theme::T.text_dim);
                         }
                         if selected && scroll {
                             // No alignment: the row lands on the viewport edge, so whole rows stay visible.
@@ -721,49 +714,20 @@ pub fn show_popup(state: &mut AppState, ctx: &Context) {
     }
 }
 
-/// A small `›` made of two lines.
 fn chevron(painter: &Painter, c: Pos2, color: Color32) {
-    let s = Stroke::new(1.2_f32, color);
-    painter.line_segment([c + vec2(-2.0, -3.5), c + vec2(1.5, 0.0)], s);
-    painter.line_segment([c + vec2(1.5, 0.0), c + vec2(-2.0, 3.5)], s);
+    icons::paint(painter, Rect::from_center_size(c, vec2(10.0, 10.0)), Icon::ChevronRight, color);
 }
 
 fn dots(painter: &Painter, c: Pos2, color: Color32) {
-    for dx in [-5.0, 0.0, 5.0] {
-        painter.circle_filled(c + vec2(dx, 2.0), 1.3, color);
-    }
+    icons::paint(painter, Rect::from_center_size(c, vec2(14.0, 14.0)), Icon::More, color);
 }
 
-/// A folder: a body with a tab on its top-left edge.
 pub fn folder_icon(painter: &Painter, c: Pos2) {
-    let color = Color32::from_rgb(0x87, 0x93, 0x9A);
-    let body = Rect::from_center_size(c + vec2(0.0, 1.0), vec2(14.0, 9.0));
-    painter.rect_filled(Rect::from_min_size(body.min - vec2(0.0, 2.0), vec2(6.0, 3.0)), 1.0, color);
-    painter.rect_filled(body, 1.5, color);
-    painter.hline(body.x_range().shrink(1.0), body.min.y + 2.0, Stroke::new(1.0_f32, Color32::from_rgb(0x6E, 0x78, 0x7E)));
+    icons::folder(painter, c, 14.0);
 }
 
-/// A page with a folded top-right corner, colored by the file extension.
 pub fn file_icon(painter: &Painter, c: Pos2, name: &str) {
-    let ext = name.rsplit_once('.').map_or("", |(_, e)| e);
-    let color = match ext {
-        "ts" | "tsx" | "mts" | "cts" => Color32::from_rgb(0x3E, 0x86, 0xC6),
-        "js" | "jsx" | "mjs" | "cjs" => Color32::from_rgb(0xD8, 0xB6, 0x3B),
-        "rs" => Color32::from_rgb(0xC6, 0x6B, 0x3E),
-        "json" => Color32::from_rgb(0x9A, 0x9A, 0x55),
-        "css" | "scss" => Color32::from_rgb(0x6E, 0x58, 0xB8),
-        "md" => Color32::from_rgb(0x6A, 0x9F, 0xB5),
-        _ => Color32::from_gray(150),
-    };
-    let r = Rect::from_center_size(c, vec2(10.0, 12.0));
-    let fold = 3.5;
-    let page = vec![r.left_top(), pos2(r.max.x - fold, r.min.y), pos2(r.max.x, r.min.y + fold), r.right_bottom(), r.left_bottom()];
-    painter.add(Shape::convex_polygon(page, color, Stroke::NONE));
-    let dark = Color32::from_rgba_unmultiplied(0, 0, 0, 90);
-    painter.add(Shape::convex_polygon(vec![pos2(r.max.x - fold, r.min.y), pos2(r.max.x, r.min.y + fold), pos2(r.max.x - fold, r.min.y + fold)], dark, Stroke::NONE));
-    for dy in [2.0, 4.5] {
-        painter.hline((r.min.x + 2.0)..=(r.max.x - 2.0), r.center().y + dy, Stroke::new(1.0_f32, dark));
-    }
+    icons::file(painter, c, 13.0, name);
 }
 
 #[cfg(test)]

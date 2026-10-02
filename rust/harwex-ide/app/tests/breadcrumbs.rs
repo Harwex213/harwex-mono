@@ -757,11 +757,21 @@ fn chain_moves_left_at_the_right_edge() {
     assert_eq!(wide.len(), 3);
     let chain = wide[2].max.x - wide[0].min.x;
 
-    // A window where the chain fits, but not from its segment.
-    let width = (wide[0].min.x + chain - 60.0).round();
-    assert!(width >= chain, "the test window fits the chain");
-    ide.resize(egui::vec2(width, 800.0));
-    ide.settle();
+    // A window where the chain fits, but not from its segment. A narrower window can collapse
+    // the bar and move the segment, so the width follows the segment until it stays put.
+    let mut anchor = wide[0].min.x;
+    let mut width = 0.0;
+    for _ in 0..5 {
+        width = (anchor + chain - 30.0).round();
+        assert!(width >= chain, "the test window fits the chain");
+        ide.resize(egui::vec2(width, 800.0));
+        ide.settle();
+        let moved = ide.state().breadcrumbs.popup.as_ref().expect("a resize keeps the popup").anchor.x;
+        if (moved - anchor).abs() <= 0.5 {
+            break;
+        }
+        anchor = moved;
+    }
     assert!(ide.state().breadcrumbs.popup.is_some(), "a resize keeps the popup");
     assert_rests_on_status_bar(&ide);
     let rects = popup_rects(&ide);
@@ -770,6 +780,6 @@ fn chain_moves_left_at_the_right_edge() {
     for w in rects.windows(2) {
         assert!((w[1].min.x - w[0].max.x).abs() < 0.5, "the chain stays connected");
     }
-    assert!(rects[0].min.x < wide[0].min.x - 50.0, "the chain moved left");
+    assert!(rects[0].min.x < anchor - 20.0, "the chain moved left of its segment");
     ide.snapshot("layout_right_edge");
 }

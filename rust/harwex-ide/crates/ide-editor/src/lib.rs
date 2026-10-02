@@ -7,9 +7,11 @@ mod document;
 pub mod editing;
 mod highlight;
 mod language;
+mod theme;
 mod view;
 
 pub use document::{Document, EditKind, Indent, Position, Selection};
 pub use highlight::{HlKind, Span};
 pub use language::Language;
-pub use view::{EditorAction, EditorGeometry, EditorResponse, EditorState, EditorTheme, EditorView, GutterMark};
+pub use view::{column_advance, EditorAction, EditorGeometry, EditorResponse, EditorState, EditorView, GutterMark};
+pub use theme::EditorTheme;

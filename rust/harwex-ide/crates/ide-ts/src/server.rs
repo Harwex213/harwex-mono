@@ -1,7 +1,7 @@
 //! One tsserver child process and the files it has open.
 
 use std::collections::HashMap;
-use std::io::{BufReader, Read, Write};
+use std::io::{BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -16,9 +16,6 @@ use crate::locate::prepend_path;
 use crate::protocol::read_message;
 use crate::position::LineIndex;
 use crate::Error;
-
-/// Keeps the last bytes of tsserver's stderr, so a crash report says why it died.
-const STDERR_TAIL: usize = 4096;
 
 pub(crate) struct OpenFile {
     pub(crate) text: Arc<str>,
@@ -322,25 +319,8 @@ impl Server {
                 .spawn(move || reader_loop(stdout, pending, alive))
                 .map_err(Error::Spawn)?;
         }
-        if let Some(mut stderr) = stderr {
-            let tail = stderr_tail.clone();
-            let _ = thread::Builder::new().name("tsserver-stderr".into()).spawn(move || {
-                let mut buf = [0u8; 1024];
-                while let Ok(n) = stderr.read(&mut buf) {
-                    if n == 0 {
-                        break;
-                    }
-                    let mut tail = lock(&tail);
-                    tail.push_str(&String::from_utf8_lossy(&buf[..n]));
-                    if tail.len() > STDERR_TAIL {
-                        let mut cut = tail.len() - STDERR_TAIL;
-                        while !tail.is_char_boundary(cut) {
-                            cut += 1;
-                        }
-                        tail.drain(..cut);
-                    }
-                }
-            });
+        if let Some(stderr) = stderr {
+            keep_stderr_tail(stderr, stderr_tail.clone(), "tsserver-stderr");
         }
         Ok(Process {
             child,
@@ -363,6 +343,9 @@ impl Server {
         args
     }
 }
+
+// Keeps the last bytes of a child's stderr, so a crash report says why it died.
+pub(crate) use ide_lsp::keep_stderr_tail;
 
 fn reader_loop(
     stdout: std::process::ChildStdout,
@@ -416,7 +399,7 @@ fn script_kind(path: &Path) -> Option<&'static str> {
     })
 }
 
-fn mtime(path: &Path) -> Option<SystemTime> {
+pub(crate) fn mtime(path: &Path) -> Option<SystemTime> {
     path.metadata().and_then(|m| m.modified()).ok()
 }
 
@@ -425,7 +408,5 @@ pub(crate) fn read_text(path: &Path) -> Result<String, Error> {
     Ok(String::from_utf8(bytes).unwrap_or_else(|e| String::from_utf8_lossy(e.as_bytes()).into_owned()))
 }
 
-/// A poisoned lock only means another thread panicked mid-request; the maps stay usable.
-pub(crate) fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
-    m.lock().unwrap_or_else(|e| e.into_inner())
-}
+// A poisoned lock only means another thread panicked mid-request; the maps stay usable.
+pub(crate) use ide_lsp::lock;

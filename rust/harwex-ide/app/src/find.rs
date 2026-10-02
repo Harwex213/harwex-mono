@@ -202,7 +202,7 @@ pub fn show_results(state: &mut AppState, ui: &mut egui::Ui) -> Option<(PathBuf,
             ui.spinner();
             ui.label(format!("Searching for \"{}\"...", f.searched_for));
         } else if f.searched_for.is_empty() {
-            ui.label(RichText::new("Cmd+Shift+F to search in files").weak());
+            ui.label(RichText::new("⇧⌘F to search in files").weak());
         } else {
             ui.label(RichText::new(format!(
                 "\"{}\": {} matches in {} files{}{took}",
@@ -218,7 +218,7 @@ pub fn show_results(state: &mut AppState, ui: &mut egui::Ui) -> Option<(PathBuf,
     ScrollArea::both().auto_shrink([false, false]).id_salt("find-results").show(ui, |ui| {
         for (path, hits) in &f.results {
             let rel = path.strip_prefix(&root).unwrap_or(path);
-            egui::CollapsingHeader::new(RichText::new(format!("{}  ({})", rel.display(), hits.len())).color(theme::TEXT_BRIGHT))
+            egui::CollapsingHeader::new(RichText::new(format!("{}  ({})", rel.display(), hits.len())).color(theme::T.text_bright))
                 .id_salt(path)
                 .default_open(true)
                 .show(ui, |ui| {

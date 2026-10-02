@@ -1,9 +1,11 @@
-//! Tool window strips, like IDEA: the left strip toggles the left panel, the bottom strip
-//! toggles the bottom panel. One tool window per side is visible at a time.
+//! Tool window strips and islands, like IDEA's New UI. The left strip toggles the left panel
+//! (top group) and the bottom panel (bottom group); the right strip holds Notifications. One
+//! tool window per side is visible at a time.
 
-use egui::{pos2, vec2, Color32, FontId, Rect, Sense, Stroke, Ui};
+use egui::{pos2, vec2, Frame, Id, Margin, Rect, Response, RichText, Sense, Stroke, Ui, UiBuilder, Vec2};
 
-use crate::theme;
+use crate::icons::{self, Icon};
+use crate::theme::T;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum ToolWindow {
@@ -102,77 +104,136 @@ impl Layout {
     }
 }
 
-/// The vertical strip on the left. Labels are drawn rotated, like IDEA's classic UI.
+impl ToolWindow {
+    pub fn icon(self) -> Icon {
+        match self {
+            ToolWindow::Project => Icon::Project,
+            ToolWindow::Commit => Icon::Commit,
+            ToolWindow::Find => Icon::Find,
+            ToolWindow::Git => Icon::Branch,
+            ToolWindow::Usages => Icon::Usages,
+            ToolWindow::Terminal => Icon::Terminal,
+            ToolWindow::Notifications => Icon::Notifications,
+        }
+    }
+
+    /// The shortcut shown in the strip button's tooltip.
+    fn shortcut(self) -> &'static str {
+        match self {
+            ToolWindow::Commit => "⌘K",
+            ToolWindow::Find => "⇧⌘F",
+            ToolWindow::Usages => "⌥F7",
+            ToolWindow::Terminal => "⌥F12",
+            _ => "",
+        }
+    }
+}
+
+/// The left strip, like IDEA's New UI: the left tool windows at the top, the bottom tool
+/// windows at the bottom. Icons only; the active one has a filled rounded highlight.
 pub fn left_strip(ui: &mut Ui, layout: &mut Layout, badge: impl Fn(ToolWindow) -> usize) {
-    ui.add_space(4.0);
-    for w in ToolWindow::LEFT {
-        let font = FontId::proportional(12.0);
-        let galley = ui.painter().layout_no_wrap(w.title().to_string(), font, theme::TEXT);
-        let size = vec2(22.0, galley.size().x + 18.0);
-        let (rect, resp) = ui.allocate_exact_size(size, Sense::click());
-        let active = layout.left == Some(w);
-        crate::util::label_selectable(&resp, format!("{} tool window", w.title()), active);
-        paint_button_bg(ui, rect, active, resp.hovered());
-        // Rotated -90°: text reads bottom to top, so start at the bottom-left of the rect.
-        let pos = pos2(rect.center().x - galley.size().y / 2.0, rect.max.y - 9.0);
-        let color = if active { theme::TEXT_BRIGHT } else { theme::TEXT };
-        ui.painter().add(egui::epaint::TextShape::new(pos, galley, color).with_angle(-std::f32::consts::FRAC_PI_2));
-        draw_badge(ui, rect, badge(w));
-        if resp.clicked() {
-            layout.toggle(w);
-        }
+    let full = ui.max_rect();
+    let t = &T;
+    let b = t.space.strip_button;
+    let step = b + 4.0;
+    let x = full.center().x - b / 2.0;
+    for (i, w) in ToolWindow::LEFT.into_iter().enumerate() {
+        let rect = Rect::from_min_size(pos2(x, full.min.y + 2.0 + i as f32 * step), vec2(b, b));
+        strip_button(ui, rect, layout, w, badge(w));
+    }
+    let lower = [ToolWindow::Git, ToolWindow::Usages, ToolWindow::Terminal];
+    for (i, w) in lower.into_iter().rev().enumerate() {
+        let rect = Rect::from_min_size(pos2(x, full.max.y - b - 2.0 - i as f32 * step), vec2(b, b));
+        strip_button(ui, rect, layout, w, badge(w));
     }
 }
 
-/// The horizontal strip above the status bar.
-pub fn bottom_strip(ui: &mut Ui, layout: &mut Layout, badge: impl Fn(ToolWindow) -> usize) {
-    ui.horizontal(|ui| {
-        ui.spacing_mut().item_spacing.x = 2.0;
-        for w in ToolWindow::BOTTOM {
-            let font = FontId::proportional(12.0);
-            let galley = ui.painter().layout_no_wrap(w.title().to_string(), font, theme::TEXT);
-            let size = vec2(galley.size().x + 18.0, 20.0);
-            let (rect, resp) = ui.allocate_exact_size(size, Sense::click());
-            let active = layout.bottom == Some(w);
-            crate::util::label_selectable(&resp, format!("{} tool window", w.title()), active);
-            paint_button_bg(ui, rect, active, resp.hovered());
-            let color = if active { theme::TEXT_BRIGHT } else { theme::TEXT };
-            ui.painter().galley(pos2(rect.min.x + 9.0, rect.center().y - galley.size().y / 2.0), galley, color);
-            draw_badge(ui, rect, badge(w));
-            if resp.clicked() {
-                layout.toggle(w);
-            }
-        }
-    });
+/// The right strip: Notifications, like IDEA. The window itself opens in the bottom slot.
+pub fn right_strip(ui: &mut Ui, layout: &mut Layout, badge: impl Fn(ToolWindow) -> usize) {
+    let full = ui.max_rect();
+    let b = T.space.strip_button;
+    let rect = Rect::from_min_size(pos2(full.center().x - b / 2.0, full.min.y + 2.0), vec2(b, b));
+    strip_button(ui, rect, layout, ToolWindow::Notifications, badge(ToolWindow::Notifications));
 }
 
-fn paint_button_bg(ui: &Ui, rect: Rect, active: bool, hovered: bool) {
+fn strip_button(ui: &mut Ui, rect: Rect, layout: &mut Layout, w: ToolWindow, badge: usize) {
+    let t = &T;
+    let resp = ui.interact(rect, Id::new(("strip", w.title())), Sense::click());
+    let active = layout.left == Some(w) || layout.bottom == Some(w);
+    crate::util::label_selectable(&resp, format!("{} tool window", w.title()), active);
+    let painter = ui.painter();
     if active {
-        ui.painter().rect_filled(rect, 3.0, Color32::from_rgb(0x2D, 0x2F, 0x30));
-    } else if hovered {
-        ui.painter().rect_filled(rect, 3.0, theme::HOVER);
+        painter.rect_filled(rect, t.radius.button, t.strip_active_bg);
+    } else if resp.hovered() {
+        painter.rect_filled(rect, t.radius.button, t.hover_on_window);
+    }
+    let color = if active { t.icon_active } else { t.icon };
+    icons::paint(painter, Rect::from_center_size(rect.center(), Vec2::splat(t.space.icon)), w.icon(), color);
+    if badge > 0 {
+        let c = pos2(rect.max.x - 6.0, rect.min.y + 6.0);
+        painter.circle(c, 3.5, t.accent, Stroke::new(1.5_f32, t.window_bg));
+    }
+    let tip = match w.shortcut() {
+        "" => w.title().to_string(),
+        k => format!("{}  {k}", w.title()),
+    };
+    if resp.on_hover_text(tip).clicked() {
+        layout.toggle(w);
     }
 }
 
-fn draw_badge(ui: &Ui, rect: Rect, count: usize) {
-    if count == 0 {
-        return;
+/// A square icon button with a rounded hover fill. `label` is its accessibility name.
+pub fn icon_button(ui: &mut Ui, icon: Icon, label: &str, tooltip: &str) -> Response {
+    let t = &T;
+    let size = Vec2::splat(t.space.strip_button - 4.0);
+    let (rect, resp) = ui.allocate_exact_size(size, Sense::click());
+    crate::util::label_widget(&resp, egui::WidgetType::Button, label);
+    if resp.hovered() || resp.is_pointer_button_down_on() {
+        ui.painter().rect_filled(rect, t.radius.button, if resp.is_pointer_button_down_on() { t.button_hover } else { t.hover });
     }
-    let c = pos2(rect.max.x - 4.0, rect.min.y + 4.0);
-    ui.painter().circle(c, 3.5, theme::TAB_ACTIVE_LINE, Stroke::NONE);
+    let color = match (resp.enabled(), resp.hovered()) {
+        (false, _) => t.text_dim,
+        (true, true) => t.icon_active,
+        (true, false) => t.icon,
+    };
+    icons::paint(ui.painter(), Rect::from_center_size(rect.center(), Vec2::splat(t.space.icon)), icon, color);
+    if tooltip.is_empty() {
+        resp
+    } else {
+        resp.on_hover_text(tooltip)
+    }
 }
 
-/// Header line of a tool window with a hide button.
-pub fn header(ui: &mut Ui, title: &str) -> bool {
+/// `icon_button` that can be disabled (dimmed, never clicked).
+pub fn icon_button_enabled(ui: &mut Ui, enabled: bool, icon: Icon, label: &str, tooltip: &str) -> Response {
+    ui.add_enabled_ui(enabled, |ui| icon_button(ui, icon, label, tooltip)).inner
+}
+
+/// The frame of an island: the rounded, lighter surface every tool window and the editor sit
+/// on. `inner` is the padding inside it.
+pub fn island(inner: f32) -> Frame {
+    Frame::NONE.fill(T.island_bg).corner_radius(T.island_radius()).inner_margin(Margin::same(inner as i8))
+}
+
+/// The header line of a tool window: the title on the left, `extra` (tabs, actions) after it,
+/// and the hide button on the right. Returns true when the hide button was clicked.
+pub fn header(ui: &mut Ui, title: &str, extra: impl FnOnce(&mut Ui)) -> bool {
+    let t = &T;
     let mut hide = false;
-    ui.horizontal(|ui| {
-        ui.label(egui::RichText::new(title).strong().color(theme::TEXT_BRIGHT));
-        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if ui.small_button("-").on_hover_text("Hide").clicked() {
-                hide = true;
-            }
-        });
-    });
+    let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), t.space.header_h), Sense::hover());
+    let mut child = ui.new_child(UiBuilder::new().max_rect(rect).layout(egui::Layout::left_to_right(egui::Align::Center)));
+    child.add_space(4.0);
+    child.label(RichText::new(title).font(t.semibold(t.font.ui)).color(t.text));
+    child.add_space(8.0);
+    let mut right = child.new_child(UiBuilder::new().max_rect(rect).layout(egui::Layout::right_to_left(egui::Align::Center)));
+    if icon_button(&mut right, Icon::Minus, &format!("Hide {title}"), "Hide").clicked() {
+        hide = true;
+    }
+    let used_right = rect.max.x - right.min_rect().min.x;
+    let rest = Rect::from_min_max(pos2(child.cursor().min.x, rect.min.y), pos2(rect.max.x - used_right - 8.0, rect.max.y));
+    let mut extra_ui = child.new_child(UiBuilder::new().max_rect(rest).layout(egui::Layout::left_to_right(egui::Align::Center)));
+    extra_ui.set_clip_rect(rest.intersect(extra_ui.clip_rect()));
+    extra(&mut extra_ui);
     hide
 }
 

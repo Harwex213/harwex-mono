@@ -13,11 +13,13 @@ use crate::find::FindInFiles;
 use crate::git::GitUi;
 use crate::jobs::{Jobs, UiCallback};
 use crate::layout::Layout;
-use crate::nav::{self, is_ts_language, NavPoint, Navigation, TsBridge, UsagesView};
+use crate::lang::{IdeConfig, Languages};
+use crate::nav::{self, NavPoint, Navigation, UsagesView};
 use crate::notifications::Notifications;
 use crate::search::{FileIndex, SearchEverywhere};
 use crate::tabs::{CustomTab, EditorTab, TabContent, TabId, Tabs};
 use crate::testhook::TestScript;
+use crate::theme;
 use crate::tree::ProjectTree;
 use crate::watcher::{FsBatch, Watcher};
 
@@ -96,7 +98,8 @@ pub struct AppState {
     pub git: GitInfo,
     #[allow(dead_code)] // Extension surface for the Git UI phase.
     pub git_ui: GitUi,
-    pub ts: TsBridge,
+    /// Language servers by language, with the project's `.harwex/ide.toml`.
+    pub langs: Languages,
     pub nav: Navigation,
     pub usages: UsagesView,
     pub find: FindInFiles,
@@ -117,11 +120,15 @@ pub struct AppState {
     pub watch_files: bool,
     /// Snapshot tests: no durations or clocks in the UI (see `AppOptions::deterministic`).
     pub deterministic: bool,
+    /// The status bar's memory indicator and its sampling thread.
+    pub memory: crate::memory::MemoryMonitor,
 }
 
 impl AppState {
     pub fn new(ctx: egui::Context, start: Instant) -> AppState {
         let (jobs, inbox) = Jobs::new(ctx.clone());
+        let repaint_ctx = ctx.clone();
+        let langs = Languages::new(jobs.clone(), std::sync::Arc::new(move || repaint_ctx.request_repaint()));
         AppState {
             ctx,
             jobs,
@@ -134,7 +141,7 @@ impl AppState {
             breadcrumbs: Default::default(),
             git: GitInfo::default(),
             git_ui: GitUi::default(),
-            ts: TsBridge::new(),
+            langs,
             nav: Navigation::default(),
             usages: UsagesView::default(),
             find: FindInFiles::default(),
@@ -145,29 +152,30 @@ impl AppState {
             watcher: None,
             timings: Timings { start, quiet: false },
             test: None,
-            editor_theme: EditorTheme::darcula(),
+            editor_theme: theme::T.editor.clone(),
             commands: Vec::new(),
             confirm_close: None,
             opening: HashMap::new(),
             watch_files: true,
             deterministic: false,
+            memory: Default::default(),
         }
     }
 
     /// True when no background work is pending: no job thread, no callback waiting for the
-    /// UI thread, no tsserver request in the queue, no git refresh. Tests step frames until
+    /// UI thread, no language server request in the queue, no git refresh. Tests step frames until
     /// this holds. Long-lived threads (file watcher, terminals) do not count.
     pub fn is_idle(&self) -> bool {
-        self.jobs.in_flight() == 0 && self.ts.queued() == 0 && !self.git.refreshing && !self.index.building && !self.has_pending_debounce()
+        self.jobs.in_flight() == 0 && self.langs.queued() == 0 && !self.git.refreshing && !self.index.building && !self.has_pending_debounce()
     }
 
-    /// Work that waits for a quiet period before it starts: tsserver sync and gutter marks
+    /// Work that waits for a quiet period before it starts: language server sync and gutter marks
     /// after an edit, the log filter, re-blame, the hover request.
     pub fn has_pending_debounce(&self) -> bool {
         let workdir = self.git.repo.as_ref().map(|r| r.workdir().to_path_buf());
         let editors = self.tabs.editors().any(|e| {
             let version = e.doc.version();
-            let ts = e.ts_version.is_some_and(|v| v != version);
+            let ts = e.lsp_version.is_some_and(|v| v != version);
             let marks = workdir.as_ref().is_some_and(|w| e.path.starts_with(w)) && (e.marks_in_flight || e.marks_for != Some(version));
             ts || marks
         });
@@ -200,16 +208,17 @@ impl AppState {
                     return Err(format!("{} is not a folder", root.display()));
                 }
                 let repo = Repo::discover(&root).ok();
-                Ok((root, repo))
+                let config = IdeConfig::load(&root);
+                Ok((root, repo, config))
             },
-            move |state, res: Result<(PathBuf, Option<Repo>), String>| match res {
-                Ok((root, repo)) => state.install_project(root, repo),
+            move |state, res: Result<(PathBuf, Option<Repo>, IdeConfig), String>| match res {
+                Ok((root, repo, config)) => state.install_project(root, repo, config),
                 Err(e) => state.notifications.error("Cannot open folder", e),
             },
         );
     }
 
-    fn install_project(&mut self, root: PathBuf, repo: Option<Repo>) {
+    fn install_project(&mut self, root: PathBuf, repo: Option<Repo>, config: IdeConfig) {
         // Closing the tabs below would drop unsaved edits without a prompt.
         let dirty: Vec<String> = self.tabs.list.iter().filter(|t| t.is_dirty()).map(|t| t.title()).collect();
         if !dirty.is_empty() {
@@ -235,6 +244,7 @@ impl AppState {
         self.opening.clear();
         self.watcher = None;
         self.git = GitInfo { repo, ..Default::default() };
+        self.apply_ide_config(config);
         // Dialogs and filters of the old repository must not act on the new one.
         self.git_ui = GitUi::default();
         crate::tree::load_dir(self, root.clone());
@@ -256,6 +266,26 @@ impl AppState {
                 }
             },
         );
+    }
+
+    /// Applies `.harwex/ide.toml` (defaults when there is none). Open tabs of a language that
+    /// is turned off now stop talking to its server.
+    pub fn apply_ide_config(&mut self, config: IdeConfig) {
+        for w in &config.warnings {
+            self.notifications.warn("Project settings", w.clone());
+        }
+        if let Some(src) = &config.source {
+            let langs: Vec<&str> = crate::lang::LangId::ALL.into_iter().filter(|l| config.enabled(*l)).map(|l| l.key()).collect();
+            self.timings.log(format!("{}: languages {langs:?}", src.display()));
+        }
+        for (_, e) in self.tabs.editors_mut() {
+            if e.lang.is_some_and(|l| !config.enabled(l)) {
+                e.lang = None;
+                e.lsp_version = None;
+            }
+        }
+        self.memory.set_interval(config.memory_interval);
+        self.langs.configure(config);
     }
 
     /// The active editor's file and caret, for navigation history.
@@ -318,21 +348,25 @@ impl AppState {
             }
             e.view.request_focus();
             let path = e.path.clone();
+            self.search.touch(&path);
             self.tree.selected = Some(path);
         }
     }
 
     fn add_editor_tab(&mut self, path: PathBuf, doc: Document, pos: Option<Position>) {
         let mut tab = EditorTab::new(path.clone(), doc);
-        if is_ts_language(tab.doc.language()) {
-            self.ts.open(&path, tab.doc.text());
-            tab.ts_version = Some(tab.doc.version());
+        if let Ok(lang) = self.langs.lang_for(&path) {
+            // The first open file of a language starts its server (rule 5).
+            self.langs.bridge(lang).open(&path, tab.doc.text());
+            tab.lang = Some(lang);
+            tab.lsp_version = Some(tab.doc.version());
         }
         if let Some(p) = pos {
             tab.view.reveal(p);
         }
         tab.view.request_focus();
         self.tabs.add(TabContent::Editor(Box::new(tab)));
+        self.search.touch(&path);
         self.tree.selected = Some(path);
     }
 
@@ -347,8 +381,8 @@ impl AppState {
         let Some(tab) = self.tabs.remove(id) else { return };
         match tab.content {
             TabContent::Editor(e) => {
-                if e.ts_version.is_some() {
-                    self.ts.close(&e.path);
+                if let Some(lang) = e.lang {
+                    self.langs.bridge(lang).close(&e.path);
                 }
             }
             TabContent::Custom(mut c) => {
@@ -576,20 +610,33 @@ impl AppState {
                 move || std::fs::read(&path).ok(),
                 move |state, bytes| {
                     let Some(bytes) = bytes else { return };
-                    let ts_tracked;
+                    let tracked;
                     {
                         let Some(e) = state.tabs.editor_mut(id) else { return };
                         if e.doc.is_dirty() || !e.doc.reload_from_bytes(&bytes) {
                             return;
                         }
                         e.invalidate_marks();
-                        ts_tracked = e.ts_version.is_some();
+                        tracked = e.lsp_version.is_some();
                     }
-                    if ts_tracked {
-                        nav::flush_ts(state, id);
+                    if tracked {
+                        nav::flush_lsp(state, id);
                     }
                 },
             );
+        }
+        if let Some(root) = self.project.as_ref().map(|p| p.root.clone()) {
+            if batch.paths.contains(&root.join(crate::lang::config::CONFIG_PATH)) {
+                let generation = self.project_generation();
+                self.jobs.spawn_quiet(
+                    move || IdeConfig::load(&root),
+                    move |state, config| {
+                        if state.project_generation() == generation {
+                            state.apply_ide_config(config);
+                        }
+                    },
+                );
+            }
         }
         if batch.structure_changed {
             crate::search::rebuild_index(self);

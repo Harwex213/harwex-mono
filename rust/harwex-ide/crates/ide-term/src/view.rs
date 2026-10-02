@@ -22,7 +22,7 @@ use egui::{
 
 use crate::keys::{key_to_bytes, paste_bytes, KeyMode};
 use crate::links::{path_at, resolve};
-use crate::theme::{dim, TerminalTheme};
+use crate::theme::{dim, from_rgb, TerminalTheme, NO_COLOR};
 use crate::{Emulator, Terminal};
 
 /// Two clicks closer than this on the same cell count as a double click.
@@ -40,8 +40,8 @@ struct CellView {
 
 const BLANK: CellView = CellView {
     c: ' ',
-    fg: Color32::TRANSPARENT,
-    bg: Color32::TRANSPARENT,
+    fg: NO_COLOR,
+    bg: NO_COLOR,
     flags: Flags::empty(),
 };
 
@@ -135,7 +135,9 @@ impl<'a> TerminalView<'a> {
         let ctx = ui.ctx().clone();
         let ppp = ctx.pixels_per_point();
         let font = FontId::monospace(font_size);
-        let (cell_w, row_h) = ui.fonts(|f| (f.glyph_width(&font, 'M'), f.row_height(&font)));
+        // The measured step between laid-out glyphs, not the nominal glyph width: egui snaps
+        // each glyph to the pixel grid, and runs of text are drawn as one galley.
+        let (cell_w, row_h) = ui.fonts(|f| (cell_advance(f, &font), f.row_height(&font)));
         let cell_h = ((row_h * ppp).round() / ppp).max(1.0);
 
         let (rect, _) = ui.allocate_exact_size(ui.available_size(), Sense::hover());
@@ -493,7 +495,7 @@ impl<'a> TerminalView<'a> {
             let cursor_point = content.cursor.point;
             let cursor_shape = content.cursor.shape;
             let cursor_color = colors[NamedColor::Cursor]
-                .map(|c| Color32::from_rgb(c.r, c.g, c.b))
+                .map(from_rgb)
                 .unwrap_or(theme.cursor);
             let selection = content.selection;
             for indexed in content.display_iter {
@@ -586,7 +588,7 @@ impl<'a> TerminalView<'a> {
                 while c1 < cols && cells[c1].bg == bg {
                     c1 += 1;
                 }
-                if bg != theme.background && bg != Color32::TRANSPARENT {
+                if bg != theme.background && bg != NO_COLOR {
                     let r = Rect::from_min_size(
                         pos2(x_of(c0), y),
                         vec2((c1 - c0) as f32 * cell_w, cell_h),
@@ -788,9 +790,38 @@ fn mouse_report(code: u8, col: usize, row: usize, pressed: bool, sgr: bool) -> V
     }
 }
 
+/// Width of one terminal cell: the step between glyphs in a laid-out run of `font`. egui snaps
+/// every glyph to the pixel grid, so the nominal `glyph_width` would drift from the drawn text by
+/// a fraction of a pixel per column.
+pub(crate) fn cell_advance(fonts: &egui::epaint::Fonts, font: &FontId) -> f32 {
+    const N: usize = 64;
+    let g = fonts.layout_no_wrap("0".repeat(N), font.clone(), Default::default());
+    match g.rows.first().map(|r| &r.glyphs[..]) {
+        Some([first, .., last]) => (last.pos.x - first.pos.x) / (N - 1) as f32,
+        _ => fonts.glyph_width(font, '0'),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A run of ASCII is one galley; cell `i` of the grid must start where its glyph is drawn.
+    #[test]
+    fn cells_match_glyphs_on_a_long_row() {
+        for ppp in [1.0, 1.5, 2.0] {
+            let ctx = egui::Context::default();
+            ctx.set_pixels_per_point(ppp);
+            let _ = ctx.run(Default::default(), |_| {});
+            let font = FontId::monospace(13.0);
+            let row: String = "ls -la src/main.rs && echo done; ".repeat(10).chars().take(300).collect();
+            let (cell_w, galley) = ctx.fonts(|f| (cell_advance(f, &font), f.layout_no_wrap(row, font.clone(), Default::default())));
+            for (i, g) in galley.rows[0].glyphs.iter().enumerate() {
+                let err = (g.pos.x - i as f32 * cell_w).abs();
+                assert!(err < 0.01, "ppp {ppp}: glyph {i} at {} but cell at {}", g.pos.x, i as f32 * cell_w);
+            }
+        }
+    }
 
     #[test]
     fn mouse_reports() {

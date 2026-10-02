@@ -74,6 +74,11 @@ impl Terminals {
         self.tabs.iter().any(|t| t.id == focused && t.term.is_alt_screen())
     }
 
+    /// Pids of the running shells, for the memory indicator, which leaves their subtrees out.
+    pub fn shell_pids(&self) -> impl Iterator<Item = u32> + Clone + '_ {
+        self.tabs.iter().filter_map(|t| t.term.process_id())
+    }
+
     /// Kills every shell. Called on app exit.
     pub fn kill_all(&mut self) {
         for t in &mut self.tabs {
@@ -145,45 +150,52 @@ pub(crate) fn focus_editor(s: &mut AppState, ctx: &Context) {
     }
 }
 
-/// Body of the Terminal tool window. Spawns the first shell when the window opens empty.
-pub fn tool_window(s: &mut AppState, ui: &mut Ui) {
-    if s.terminals.tabs.is_empty() {
-        new_terminal(s);
-        if s.terminals.tabs.is_empty() {
-            ui.label(RichText::new("Could not start a shell. See Notifications.").color(theme::TEXT_DIM));
-            return;
-        }
-    }
-
-    // Tab strip.
+/// The terminal tabs in the tool window header, like IDEA: one flat tab per shell with its
+/// close button, then "+".
+pub fn header_tabs(s: &mut AppState, ui: &mut Ui) {
+    let t = &theme::T;
     let mut activate = None;
     let mut close = None;
-    let mut add = false;
-    ui.horizontal(|ui| {
-        ui.spacing_mut().item_spacing.x = 2.0;
-        for (i, t) in s.terminals.tabs.iter().enumerate() {
-            let mut title = t.term.title();
-            if title.chars().count() > 32 {
-                title = format!("{}...", title.chars().take(30).collect::<String>());
-            }
-            let alive = t.term.is_alive();
-            let color = match (i == s.terminals.active, alive) {
-                (_, false) => theme::TEXT_DIM,
-                (true, true) => theme::TEXT_BRIGHT,
-                (false, true) => theme::TEXT,
-            };
-            if ui.selectable_label(i == s.terminals.active, RichText::new(title).size(12.0).color(color)).clicked() {
-                activate = Some(i);
-            }
-            if ui.small_button("x").on_hover_text(if alive { "Close (kills the shell)" } else { "Close" }).clicked() {
-                close = Some(i);
-            }
-            ui.add_space(6.0);
+    ui.spacing_mut().item_spacing.x = 2.0;
+    for (i, term) in s.terminals.tabs.iter().enumerate() {
+        let mut title = term.term.title();
+        if title.chars().count() > 32 {
+            title = format!("{}...", title.chars().take(30).collect::<String>());
         }
-        if ui.small_button("+").on_hover_text("New terminal").clicked() {
-            add = true;
+        let alive = term.term.is_alive();
+        let active = i == s.terminals.active;
+        let color = match (active, alive) {
+            (_, false) => t.text_dim,
+            (true, true) => t.text_bright,
+            (false, true) => t.text,
+        };
+        let galley = ui.painter().layout_no_wrap(title.clone(), t.small_font(), color);
+        let close_w = 16.0;
+        let size = egui::vec2(10.0 + galley.size().x + 4.0 + close_w + 6.0, 24.0);
+        let (rect, resp) = ui.allocate_exact_size(size, egui::Sense::click());
+        crate::util::label_selectable(&resp, title.clone(), active);
+        let painter = ui.painter();
+        if active {
+            painter.rect_filled(rect, t.radius.button, t.tab_active_bg);
+        } else if resp.hovered() {
+            painter.rect_filled(rect, t.radius.button, t.hover);
         }
-    });
+        painter.galley(egui::pos2(rect.min.x + 10.0, rect.center().y - galley.size().y / 2.0), galley, color);
+        let close_rect = egui::Rect::from_center_size(egui::pos2(rect.max.x - 6.0 - close_w / 2.0, rect.center().y), egui::Vec2::splat(close_w));
+        let close_resp = ui.interact(close_rect, egui::Id::new(("terminal-close", term.id)), egui::Sense::click());
+        crate::util::label_widget(&close_resp, egui::WidgetType::Button, "x");
+        if close_resp.hovered() {
+            ui.painter().rect_filled(close_rect, t.radius.small, t.button_hover);
+        }
+        crate::icons::paint(ui.painter(), close_rect.shrink(2.0), crate::icons::Icon::Close, if close_resp.hovered() { t.icon_active } else { t.text_dim });
+        if close_resp.on_hover_text(if alive { "Close (kills the shell)" } else { "Close" }).clicked() {
+            close = Some(i);
+        } else if resp.clicked() {
+            activate = Some(i);
+        }
+    }
+    ui.add_space(2.0);
+    let add = crate::layout::icon_button(ui, crate::icons::Icon::Plus, "+", "New terminal").clicked();
     if let Some(i) = activate {
         s.terminals.active = i;
         s.terminals.focus_pending = true;
@@ -202,6 +214,17 @@ pub fn tool_window(s: &mut AppState, ui: &mut Ui) {
     if add {
         new_terminal(s);
     }
+}
+
+/// Body of the Terminal tool window. Spawns the first shell when the window opens empty.
+pub fn tool_window(s: &mut AppState, ui: &mut Ui) {
+    if s.terminals.tabs.is_empty() {
+        new_terminal(s);
+        if s.terminals.tabs.is_empty() {
+            ui.label(RichText::new("Could not start a shell. See Notifications.").color(theme::T.text_dim));
+            return;
+        }
+    }
 
     let terms = &mut s.terminals;
     let active = terms.active.min(terms.tabs.len() - 1);
@@ -210,7 +233,7 @@ pub fn tool_window(s: &mut AppState, ui: &mut Ui) {
     if !tab.term.is_alive() {
         let mut close_dead = false;
         ui.horizontal(|ui| {
-            ui.label(RichText::new("[process exited]").color(theme::WARNING));
+            ui.label(RichText::new("[process exited]").color(theme::T.warning));
             close_dead = ui.small_button("Close").clicked();
         });
         if close_dead {
@@ -233,7 +256,7 @@ pub fn tool_window(s: &mut AppState, ui: &mut Ui) {
             ui.ctx().request_repaint_after(std::time::Duration::from_millis(200));
         }
     }
-    let r = TerminalView::new(&mut tab.term).id(tab.id).show(ui);
+    let r = TerminalView::new(&mut tab.term).id(tab.id).theme(theme::T.terminal.clone()).font_size(theme::T.font.mono).show(ui);
     if std::mem::take(&mut terms.focus_pending) {
         r.response.request_focus();
     }

@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
-use egui::{text::LayoutJob, Color32, FontId, Id, Key, Modal, RichText, ScrollArea, TextEdit, TextFormat};
+use egui::{text::LayoutJob, FontId, Id, Key, Modal, RichText, ScrollArea, TextEdit, TextFormat};
 use nucleo_matcher::pattern::{CaseMatching, Normalization, Pattern};
 use nucleo_matcher::{Config, Matcher, Utf32Str};
 
@@ -99,7 +99,14 @@ pub struct SearchEverywhere {
     last_shift_tap: Option<Instant>,
     shift_down_clean: bool,
     shift_was_down: bool,
+    /// Cmd+E: the popup lists recently opened files instead of the whole index.
+    pub recent_mode: bool,
+    /// Opened files, most recent first.
+    recent: Vec<PathBuf>,
 }
+
+/// How many recent files Cmd+E keeps.
+const RECENT_LIMIT: usize = 50;
 
 impl SearchEverywhere {
     /// State for a newly opened project; the generation keeps counting (see `FindInFiles::reset`).
@@ -174,6 +181,25 @@ impl SearchEverywhere {
         self.focus = true;
         self.selected = 0;
         self.last_query = None;
+        self.recent_mode = false;
+    }
+
+    /// Cmd+E, like IDEA's Recent Files: the previous file is preselected, so Enter goes back.
+    pub fn open_recent(&mut self) {
+        self.open();
+        self.query.clear();
+        self.recent_mode = true;
+    }
+
+    /// Records `path` as the most recently opened file.
+    pub fn touch(&mut self, path: &Path) {
+        self.recent.retain(|p| p != path);
+        self.recent.insert(0, path.to_path_buf());
+        self.recent.truncate(RECENT_LIMIT);
+    }
+
+    pub fn recent(&self) -> &[PathBuf] {
+        &self.recent
     }
 
     /// Detects a double tap of Shift with no other key in between. egui has no key event for
@@ -214,7 +240,14 @@ pub fn show(state: &mut AppState, ctx: &egui::Context) -> Option<PathBuf> {
         return None;
     }
     let root = state.project.as_ref().map(|p| p.root.clone())?;
-    if state.search.last_query.as_deref() != Some(state.search.query.as_str()) {
+    if state.search.recent_mode && state.search.last_query.as_deref() != Some(state.search.query.as_str()) {
+        // A few dozen paths: matching them is cheaper than a round trip to a worker.
+        let s = &mut state.search;
+        s.last_query = Some(s.query.clone());
+        let rel: Vec<String> = s.recent.iter().map(|p| p.strip_prefix(&root).unwrap_or(p).to_string_lossy().replace('\\', "/")).collect();
+        s.results = if s.query.trim().is_empty() { rel.into_iter().map(|path| SearchHit { path, indices: Vec::new() }).collect() } else { match_files(&rel, &s.query) };
+        s.selected = usize::from(s.query.trim().is_empty() && s.results.len() > 1);
+    } else if !state.search.recent_mode && state.search.last_query.as_deref() != Some(state.search.query.as_str()) {
         state.search.last_query = Some(state.search.query.clone());
         state.search.generation += 1;
         let generation = state.search.generation;
@@ -258,24 +291,30 @@ pub fn show(state: &mut AppState, ctx: &egui::Context) -> Option<PathBuf> {
         .show(ctx, |ui| {
             ui.set_width(640.0);
             ui.horizontal(|ui| {
-                ui.label(RichText::new("Search Everywhere").strong());
-                ui.label(RichText::new(if indexing { "indexing...".to_string() } else { format!("{count} files") }).weak().size(11.0));
+                if s.recent_mode {
+                    ui.label(RichText::new("Recent Files").strong());
+                } else {
+                    ui.label(RichText::new("Search Everywhere").strong());
+                    ui.label(RichText::new(if indexing { "indexing...".to_string() } else { format!("{count} files") }).weak().size(theme::T.font.tiny));
+                }
             });
-            let edit = ui.add(TextEdit::singleline(&mut s.query).hint_text("Type a file name").desired_width(f32::INFINITY).font(FontId::proportional(15.0)));
+            let hint = if s.recent_mode { "Type to filter recent files" } else { "Type a file name" };
+            let edit = ui.add(TextEdit::singleline(&mut s.query).hint_text(hint).desired_width(f32::INFINITY).font(FontId::proportional(theme::T.font.big)));
             if std::mem::take(&mut s.focus) {
                 edit.request_focus();
             }
             ui.add_space(4.0);
             // A fixed height: results arrive from a worker, and an auto-sized area would lag one
             // frame behind and clip the list until the next repaint.
-            let rows_h = (s.results.len().max(1) as f32 * 24.0).min(420.0);
+            let row_h = theme::T.space.row_h + 2.0;
+            let rows_h = (s.results.len().max(1) as f32 * (row_h + ui.spacing().item_spacing.y)).min(420.0);
             ScrollArea::vertical().min_scrolled_height(rows_h).max_height(rows_h).auto_shrink([false, false]).show(ui, |ui| {
                 // Rows look like list items, not buttons, until hovered or selected.
-                ui.visuals_mut().widgets.inactive.weak_bg_fill = egui::Color32::TRANSPARENT;
+                ui.visuals_mut().widgets.inactive.weak_bg_fill = theme::T.clear;
                 ui.visuals_mut().widgets.inactive.bg_stroke = egui::Stroke::NONE;
                 for (i, hit) in s.results.iter().enumerate() {
                     let job = hit_job(hit);
-                    let resp = ui.add(egui::Button::new(job).selected(i == s.selected).wrap_mode(egui::TextWrapMode::Truncate));
+                    let resp = ui.add(egui::Button::new(job).selected(i == s.selected).wrap_mode(egui::TextWrapMode::Truncate).min_size(egui::vec2(ui.available_width(), row_h)));
                     if i == s.selected && (up || down) {
                         resp.scroll_to_me(None);
                     }
@@ -301,13 +340,13 @@ fn hit_job(hit: &SearchHit) -> LayoutJob {
     let name = &hit.path[name_start..];
     for (idx, c) in name.chars().enumerate() {
         let matched = hit.indices.binary_search(&(name_char_start + idx as u32)).is_ok();
-        let color = if matched { theme::MATCH } else { theme::TEXT_BRIGHT };
-        job.append(&c.to_string(), 0.0, TextFormat { font_id: FontId::proportional(13.5), color, ..Default::default() });
+        let color = if matched { theme::T.match_text } else { theme::T.text_bright };
+        job.append(&c.to_string(), 0.0, TextFormat { font_id: theme::T.ui_font(), color, ..Default::default() });
     }
     if name_start > 0 {
         job.append(&format!("  {}", &hit.path[..name_start - 1]), 0.0, TextFormat {
-            font_id: FontId::proportional(12.0),
-            color: Color32::from_gray(130),
+            font_id: theme::T.small_font(),
+            color: theme::T.text_dim,
             ..Default::default()
         });
     }

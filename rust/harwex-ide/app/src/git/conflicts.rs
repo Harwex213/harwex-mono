@@ -4,7 +4,7 @@ mod merge;
 
 use std::path::PathBuf;
 
-use egui::{vec2, Align2, Context, FontId, Frame, Id, Modal, RichText, ScrollArea, Sense};
+use egui::{vec2, Align2, Context, Frame, Id, Modal, RichText, ScrollArea, Sense};
 use ide_git::{ConflictChoice, RepoState};
 
 use super::remote::run_op;
@@ -143,12 +143,12 @@ pub fn banner(state: &mut AppState, ctx: &Context) {
     let mut cont = false;
     let mut abort = false;
     let busy = c.busy;
-    let fill = egui::Color32::from_rgb(0x4A, 0x3F, 0x22);
+    let fill = theme::T.banner_bg;
     egui::TopBottomPanel::top("git-op-banner").frame(Frame::NONE.fill(fill).inner_margin(egui::Margin::symmetric(10, 4))).show(ctx, |ui| {
         ui.horizontal(|ui| {
             {
                 let text = if n > 0 { format!("{name} in progress: {n} conflicted file(s)") } else { format!("{name} in progress: all conflicts resolved") };
-                ui.label(RichText::new(text).color(theme::TEXT_BRIGHT));
+                ui.label(RichText::new(text).color(theme::T.text_bright));
                 ui.add_space(8.0);
                 if n > 0 && ui.button("Resolve...").clicked() {
                     resolve = true;
@@ -194,8 +194,8 @@ fn abort_confirm(state: &mut AppState, ctx: &Context) {
     let mut choice = None;
     let m = Modal::new(Id::new("git-abort-confirm")).show(ctx, |ui| {
         ui.set_width(380.0);
-        ui.label(RichText::new(format!("Abort {}?", name.to_lowercase())).strong().color(theme::TEXT_BRIGHT));
-        ui.label(RichText::new("The working tree returns to the state before the operation started. Resolved files are lost.").color(theme::WARNING));
+        ui.label(RichText::new(format!("Abort {}?", name.to_lowercase())).strong().color(theme::T.text_bright));
+        ui.label(RichText::new("The working tree returns to the state before the operation started. Resolved files are lost.").color(theme::T.warning));
         ui.add_space(6.0);
         ui.horizontal(|ui| {
             if ui.button("Abort").clicked() {
@@ -247,7 +247,7 @@ fn dialog(state: &mut AppState, ctx: &Context) {
         .show(ctx, |ui| {
             ui.set_width(620.0);
             if c.files.is_empty() {
-                ui.label(RichText::new("All conflicts are resolved.").color(theme::TEXT_BRIGHT));
+                ui.label(RichText::new("All conflicts are resolved.").color(theme::T.text_bright));
                 if c.op != RepoState::Clean {
                     ui.add_space(6.0);
                     if ui.add_enabled(!c.busy, egui::Button::new(format!("Continue {}", op_name(c.op).to_lowercase()))).clicked() {
@@ -256,7 +256,7 @@ fn dialog(state: &mut AppState, ctx: &Context) {
                 }
                 return;
             }
-            ui.label(RichText::new(format!("{} file(s) have conflicts. Pick a side, or merge them by hand.", c.files.len())).color(theme::TEXT_DIM));
+            ui.label(RichText::new(format!("{} file(s) have conflicts. Pick a side, or merge them by hand.", c.files.len())).color(theme::T.text_dim));
             ui.add_space(4.0);
             ui.horizontal_top(|ui| {
                 let list_w = ui.available_width() - 160.0;
@@ -270,11 +270,11 @@ fn dialog(state: &mut AppState, ctx: &Context) {
                             let sel = c.selected == Some(i);
                             crate::util::label_selectable(&resp, format!("Conflict {}", f.display()), sel);
                             if sel {
-                                ui.painter().rect_filled(rect, 0.0, theme::SELECTION);
+                                ui.painter().rect_filled(rect, 0.0, theme::T.selection);
                             } else if resp.hovered() {
-                                ui.painter().rect_filled(rect, 0.0, theme::HOVER);
+                                ui.painter().rect_filled(rect, 0.0, theme::T.hover);
                             }
-                            ui.painter().text(rect.left_center() + vec2(6.0, 0.0), Align2::LEFT_CENTER, f.display().to_string(), FontId::proportional(13.0), theme::GIT_CONFLICT);
+                            ui.painter().text(rect.left_center() + vec2(6.0, 0.0), Align2::LEFT_CENTER, f.display().to_string(), theme::T.ui_font(), theme::T.git_conflict);
                             if resp.clicked() {
                                 c.selected = Some(i);
                             }

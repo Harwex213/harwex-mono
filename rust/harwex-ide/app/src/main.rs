@@ -25,7 +25,15 @@ fn main() -> eframe::Result {
     let cwd = std::env::current_dir().ok();
     let cli_folder = launch::startup_folder(&args, cwd.as_deref(), tty);
 
-    let mut viewport = egui::ViewportBuilder::default().with_inner_size([1400.0, 900.0]).with_min_inner_size([640.0, 400.0]).with_title("harwex-ide");
+    // The title bar is ours (theme: Islands Dark): the content runs under a transparent native
+    // title bar, and macOS draws only the traffic lights over it.
+    let mut viewport = egui::ViewportBuilder::default()
+        .with_inner_size([1400.0, 900.0])
+        .with_min_inner_size([640.0, 400.0])
+        .with_title("harwex-ide")
+        .with_fullsize_content_view(true)
+        .with_titlebar_shown(false)
+        .with_title_shown(false);
     if background {
         viewport = viewport.with_active(false).with_fullscreen(false).with_maximized(false);
     }

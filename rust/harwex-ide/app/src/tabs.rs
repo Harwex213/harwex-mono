@@ -7,10 +7,11 @@ use std::any::Any;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
-use egui::{Color32, CursorIcon, Rect, ScrollArea, Sense, Stroke, Ui, Vec2};
+use egui::{CursorIcon, Rect, ScrollArea, Sense, Ui, Vec2};
 use ide_editor::{Document, EditorState, GutterMark};
 
 use crate::state::TabEnv;
+use crate::icons::{self, Icon};
 use crate::theme;
 
 pub type TabId = u64;
@@ -24,20 +25,23 @@ pub struct EditorTab {
     pub marks: Vec<(usize, GutterMark)>,
     /// Per-line annotation column (git blame). Empty hides it. Owned by the Git UI.
     pub annotations: Vec<String>,
-    /// The file lives under `node_modules`. The editor ignores edits and the tab shows a lock.
+    /// The file is a dependency source (`node_modules`, the Cargo registry, `rust-src`). The
+    /// editor ignores edits and the tab shows a lock.
     pub read_only: bool,
     /// Doc version the gutter marks were last requested for. `None` forces a recompute.
     pub(crate) marks_for: Option<u64>,
     pub(crate) marks_in_flight: bool,
-    /// Doc version tsserver has seen. `None` means tsserver does not track this file.
-    pub(crate) ts_version: Option<u64>,
+    /// The language server that tracks this file. `None` for plain files and disabled languages.
+    pub lang: Option<crate::lang::LangId>,
+    /// Doc version the language server has seen.
+    pub(crate) lsp_version: Option<u64>,
     pub(crate) last_edit: Instant,
     pub(crate) saving: bool,
 }
 
 impl EditorTab {
     pub fn new(path: PathBuf, doc: Document) -> EditorTab {
-        let read_only = path.components().any(|c| c.as_os_str() == "node_modules");
+        let read_only = crate::lang::is_library_path(&path);
         EditorTab {
             path,
             doc,
@@ -47,7 +51,8 @@ impl EditorTab {
             read_only,
             marks_for: None,
             marks_in_flight: false,
-            ts_version: None,
+            lang: None,
+            lsp_version: None,
             last_edit: Instant::now(),
             saving: false,
         }
@@ -250,19 +255,20 @@ impl Tabs {
         })
     }
 
-    /// The tab strip. Middle-click closes, like IDEA.
+    /// The tab strip. Middle-click closes, like IDEA. Flat tabs; the active one is a lighter
+    /// rounded fill, with no underline.
     pub fn show_bar(&self, ui: &mut Ui) -> Option<TabBarEvent> {
+        let t = &theme::T;
         let mut event = None;
-        let height = 28.0;
+        let height = t.space.tab_h;
         let (bar, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), height), Sense::hover());
-        ui.painter().rect_filled(bar, 0.0, theme::TAB_BAR_BG);
-        ui.painter().hline(bar.x_range(), bar.max.y - 0.5, Stroke::new(1.0_f32, theme::BORDER));
         let mut child = ui.new_child(egui::UiBuilder::new().max_rect(bar));
         ScrollArea::horizontal().id_salt("tab-bar").scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysHidden).show(&mut child, |ui| {
-            ui.horizontal(|ui| {
-                ui.spacing_mut().item_spacing.x = 0.0;
+            ui.horizontal_centered(|ui| {
+                ui.spacing_mut().item_spacing.x = 2.0;
+                ui.add_space(2.0);
                 for tab in &self.list {
-                    if let Some(e) = tab_button(ui, tab, self.active == Some(tab.id), height) {
+                    if let Some(e) = tab_button(ui, tab, self.active == Some(tab.id), height - 8.0) {
                         event = Some(e);
                     }
                 }
@@ -273,43 +279,45 @@ impl Tabs {
 }
 
 fn tab_button(ui: &mut Ui, tab: &Tab, active: bool, height: f32) -> Option<TabBarEvent> {
+    let t = &theme::T;
     let title = tab.title();
-    let font = egui::FontId::proportional(13.0);
-    let color = if active { theme::TEXT_BRIGHT } else { theme::TEXT };
-    let galley = ui.painter().layout_no_wrap(title, font, color);
-    let pad = 12.0;
-    let dot_w = 10.0;
+    let color = if active { t.text_bright } else { t.text };
+    let galley = ui.painter().layout_no_wrap(title, t.ui_font(), color);
+    let pad = 10.0;
+    let icon_w = 20.0;
     let close_w = 16.0;
-    let width = pad + dot_w + galley.size().x + 6.0 + close_w + 6.0;
+    let width = pad + icon_w + galley.size().x + 6.0 + close_w + 6.0;
     let (rect, resp) = ui.allocate_exact_size(Vec2::new(width, height), Sense::click());
     crate::util::label_selectable(&resp, format!("Tab {}", tab.title()), active);
     let painter = ui.painter();
     if active {
-        painter.rect_filled(rect, 0.0, theme::TAB_ACTIVE_BG);
-        painter.hline(rect.x_range(), rect.max.y - 1.5, Stroke::new(3.0_f32, theme::TAB_ACTIVE_LINE));
+        painter.rect_filled(rect, t.radius.button, t.tab_active_bg);
     } else if resp.hovered() {
-        painter.rect_filled(rect, 0.0, theme::HOVER);
+        painter.rect_filled(rect, t.radius.button, t.hover);
     }
-    painter.vline(rect.max.x - 0.5, rect.y_range(), Stroke::new(1.0_f32, theme::BORDER));
-    let text_pos = egui::pos2(rect.min.x + pad + dot_w, rect.center().y - galley.size().y / 2.0);
+    let icon_c = egui::pos2(rect.min.x + pad + 7.0, rect.center().y);
     let read_only = tab.editor().is_some_and(|e| e.read_only);
-    if read_only {
-        draw_lock(painter, egui::pos2(rect.min.x + pad + 3.0, rect.center().y), theme::TEXT_DIM);
-    } else if tab.is_dirty() {
-        painter.circle_filled(egui::pos2(rect.min.x + pad + 3.0, rect.center().y), 3.0, theme::TEXT);
+    match &tab.content {
+        TabContent::Editor(e) => icons::file(painter, icon_c, 14.0, &e.path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()),
+        TabContent::Custom(_) => icons::paint(painter, Rect::from_center_size(icon_c, Vec2::splat(14.0)), Icon::Branch, t.icon),
     }
+    if read_only {
+        icons::paint(painter, Rect::from_center_size(icon_c + Vec2::new(5.0, 4.0), Vec2::splat(9.0)), Icon::Lock, t.text_dim);
+    }
+    let text_pos = egui::pos2(rect.min.x + pad + icon_w, rect.center().y - galley.size().y / 2.0);
     painter.galley(text_pos, galley, color);
 
-    let close_rect = Rect::from_center_size(egui::pos2(rect.max.x - 6.0 - close_w / 2.0, rect.center().y), Vec2::splat(14.0));
+    let close_rect = Rect::from_center_size(egui::pos2(rect.max.x - 6.0 - close_w / 2.0, rect.center().y), Vec2::splat(close_w));
     let close_hovered = ui.rect_contains_pointer(close_rect);
-    if resp.hovered() || active {
-        let c = if close_hovered { theme::TEXT_BRIGHT } else { Color32::from_gray(130) };
+    if tab.is_dirty() && !close_hovered {
+        // IDEA marks a modified tab with a dot where the close button sits.
+        painter.circle_filled(close_rect.center(), 3.5, t.text);
+    } else if resp.hovered() || active {
+        let c = if close_hovered { t.icon_active } else { t.text_dim };
         if close_hovered {
-            painter.rect_filled(close_rect, 3.0, theme::HOVER);
+            painter.rect_filled(close_rect, t.radius.small, t.button_hover);
         }
-        let r = close_rect.shrink(4.0);
-        painter.line_segment([r.left_top(), r.right_bottom()], Stroke::new(1.2_f32, c));
-        painter.line_segment([r.right_top(), r.left_bottom()], Stroke::new(1.2_f32, c));
+        icons::paint(painter, close_rect.shrink(3.0), Icon::Close, c);
     }
     let resp = resp.on_hover_text(match &tab.content {
         TabContent::Editor(e) if e.read_only => format!("{} (read-only)", e.path.display()),
@@ -328,17 +336,3 @@ fn tab_button(ui: &mut Ui, tab: &Tab, active: bool, height: f32) -> Option<TabBa
     None
 }
 
-/// A small padlock: the default fonts have no lock glyph.
-fn draw_lock(painter: &egui::Painter, center: egui::Pos2, color: Color32) {
-    let body = Rect::from_center_size(center + Vec2::new(0.0, 1.5), Vec2::new(8.0, 6.0));
-    painter.rect_filled(body, 1.0, color);
-    let r = 2.5;
-    let top = body.min.y;
-    let pts: Vec<egui::Pos2> = (0..=8)
-        .map(|i| {
-            let a = std::f32::consts::PI * (i as f32 / 8.0);
-            egui::pos2(center.x - r * a.cos(), top - r * a.sin())
-        })
-        .collect();
-    painter.add(egui::Shape::line(pts, Stroke::new(1.3_f32, color)));
-}

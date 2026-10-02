@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["app", "crates/ide-git", "crates/ide-ts", "crates/ide-editor", "crates/ide-term", "xtask"]
+members = ["app", "crates/ide-git", "crates/ide-lsp", "crates/ide-ts", "crates/ide-editor", "crates/ide-term", "xtask"]
 
 [workspace.package]
 version = "0.1.0"

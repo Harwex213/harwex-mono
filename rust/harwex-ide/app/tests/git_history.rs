@@ -34,7 +34,7 @@ fn click_last(ide: &mut Ide, label: &str) {
 
 fn open_branches(ide: &mut Ide) {
     ide.dismiss_toasts();
-    let label = format!("{}  v", ide.state().git.branch.clone().expect("branch"));
+    let label = format!("Branch {}", ide.state().git.branch.clone().expect("branch"));
     ide.click(&label);
     ide.wait_until("branches popup", |ide| ide.state().git_ui.branches.is_open() && ide.has("Fetch"));
     ide.settle();
@@ -396,9 +396,14 @@ fn log_context_menu_new_branch_and_reset() {
     ide.type_text("from-log\n");
     ide.wait_for("branch from log", |s| s.git.branch.as_deref() == Some("from-log"));
     assert_eq!(repo.subjects("HEAD")[0], "Add ONE");
+    // The new ref reloads the log; a menu opened before the reload lands would close with it.
+    ide.settle();
 
     // Reset --hard asks twice; the branch then points at the chosen commit.
+    // The last row sits partly below the visible area; the click scrolls it into view, so the
+    // right click aims at its new place.
     ide.click("Commit Initial commit");
+    ide.settle();
     ide.right_click("Commit Initial commit");
     ide.settle();
     ide.click("Reset Current Branch to Here...");

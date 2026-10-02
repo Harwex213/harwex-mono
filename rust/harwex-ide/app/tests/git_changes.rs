@@ -290,7 +290,7 @@ fn many_changes_render() {
     assert_eq!(ide.state().git.changes.len(), 1200);
     ide.assert_text("1200 of 1200 selected");
     // Collapse All keeps the directories; only drawn rows have widgets.
-    ide.click("\u{2212}");
+    ide.click("Collapse All");
     ide.settle();
     ide.assert_text("Directory pkg0");
     assert!(!ide.has("pkg0/mod0/file0.txt"));

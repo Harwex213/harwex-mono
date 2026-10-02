@@ -5,6 +5,7 @@ edition.workspace = true
 publish.workspace = true
 
 [dependencies]
+ide-lsp = { path = "../ide-lsp" }
 serde_json = "1"
 
 [dev-dependencies]

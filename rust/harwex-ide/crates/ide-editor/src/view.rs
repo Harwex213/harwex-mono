@@ -7,7 +7,7 @@ use std::time::Duration;
 
 use egui::text::{LayoutJob, LayoutSection};
 use egui::{
-    Align, Align2, Button, Color32, CursorIcon, Event, EventFilter, FontId, Galley, Id, Key,
+    Align, Align2, Button, CursorIcon, Event, EventFilter, FontId, Galley, Id, Key,
     Layout, Modifiers, Pos2, Rect, ScrollArea, Sense, Stroke, TextFormat, Ui, UiBuilder, Vec2,
     ViewportCommand,
 };
@@ -15,6 +15,7 @@ use egui::{
 use crate::document::{Document, EditKind, Position, Selection};
 use crate::editing::{self, col_from_display, display_col};
 use crate::highlight::{HlKind, Span};
+use crate::theme::EditorTheme;
 
 /// Extra per-line marks drawn in the gutter (git change bars).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -60,90 +61,6 @@ pub struct EditorResponse {
     pub response: egui::Response,
 }
 
-/// Colors. Defaults are Darcula-like to match IDEA.
-#[derive(Clone, Debug, PartialEq)]
-pub struct EditorTheme {
-    pub background: Color32,
-    pub foreground: Color32,
-    pub gutter_background: Color32,
-    pub gutter_separator: Color32,
-    pub line_number: Color32,
-    pub line_number_current: Color32,
-    pub current_line: Color32,
-    pub selection: Color32,
-    pub caret: Color32,
-    pub link: Color32,
-    pub annotation: Color32,
-    pub mark_added: Color32,
-    pub mark_modified: Color32,
-    pub mark_deleted: Color32,
-    /// Indexed by `HlKind as usize`.
-    pub kinds: [Color32; HlKind::COUNT],
-}
-
-impl Default for EditorTheme {
-    fn default() -> Self {
-        EditorTheme::darcula()
-    }
-}
-
-impl EditorTheme {
-    pub fn darcula() -> EditorTheme {
-        let hex = |v: u32| Color32::from_rgb((v >> 16) as u8, (v >> 8) as u8, v as u8);
-        let fg = hex(0xA9B7C6);
-        let mut kinds = [fg; HlKind::COUNT];
-        let mut set = |k: HlKind, c: u32| kinds[k as usize] = hex(c);
-        set(HlKind::Keyword, 0xCC7832);
-        set(HlKind::String, 0x6A8759);
-        set(HlKind::Escape, 0xCC7832);
-        set(HlKind::Number, 0x6897BB);
-        set(HlKind::Comment, 0x808080);
-        set(HlKind::DocComment, 0x629755);
-        set(HlKind::Function, 0xFFC66D);
-        set(HlKind::Macro, 0x4EADE5);
-        set(HlKind::Type, 0x4EC9B0);
-        set(HlKind::Property, 0x9876AA);
-        set(HlKind::Constant, 0x9876AA);
-        set(HlKind::Builtin, 0xCC7832);
-        set(HlKind::Variable, 0xA9B7C6);
-        set(HlKind::Parameter, 0xA9B7C6);
-        set(HlKind::Operator, 0xA9B7C6);
-        set(HlKind::Punctuation, 0xA9B7C6);
-        set(HlKind::Tag, 0xE8BF6A);
-        set(HlKind::Attribute, 0xBABABA);
-        set(HlKind::Title, 0xFFC66D);
-        set(HlKind::Link, 0x287BDE);
-        EditorTheme {
-            background: hex(0x2B2B2B),
-            foreground: fg,
-            gutter_background: hex(0x313335),
-            gutter_separator: hex(0x3C3F41),
-            line_number: hex(0x606366),
-            line_number_current: hex(0xA4A3A3),
-            current_line: hex(0x323232),
-            selection: hex(0x214283),
-            caret: hex(0xBBBBBB),
-            link: hex(0x589DF6),
-            annotation: hex(0x8C8C8C),
-            mark_added: hex(0x384C38),
-            mark_modified: hex(0x374752),
-            mark_deleted: hex(0x656E76),
-            kinds,
-        }
-    }
-
-    pub fn color(&self, kind: HlKind) -> Color32 {
-        self.kinds[kind as usize]
-    }
-
-    fn fingerprint(&self) -> u64 {
-        let mut h = DefaultHasher::new();
-        self.foreground.hash(&mut h);
-        self.kinds.hash(&mut h);
-        h.finish()
-    }
-}
-
 struct HighlightCache {
     version: (u64, u64),
     lines: Range<usize>,
@@ -172,6 +89,19 @@ pub struct EditorState {
     galleys: HashMap<u64, (Arc<Galley>, u64)>,
     frame: u64,
     geometry: Option<EditorGeometry>,
+    /// Measured column advance, keyed by (font size, pixels per point).
+    advance: Option<(u32, u32, f32)>,
+    /// The galleys drawn last frame, for hit-testing this frame's pointer input against the
+    /// glyphs the user actually sees. The vector is reused across frames.
+    drawn: Vec<DrawnLine>,
+}
+
+/// One line as drawn last frame.
+struct DrawnLine {
+    line: usize,
+    /// First display column in the galley (non-zero for windows of very long lines).
+    window_start: usize,
+    galley: Arc<Galley>,
 }
 
 /// Where the last frame put things on screen. Tests aim pointer events with it; a popup can
@@ -232,6 +162,8 @@ impl EditorState {
             galleys: HashMap::new(),
             frame: 0,
             geometry: None,
+            advance: None,
+            drawn: Vec::new(),
         }
     }
 
@@ -274,6 +206,8 @@ impl EditorState {
     pub fn clear_caches(&mut self) {
         self.highlight = None;
         self.galleys.clear();
+        self.advance = None;
+        self.drawn.clear();
     }
 
     fn set_head(&mut self, idx: usize, extend: bool) {
@@ -347,14 +281,23 @@ impl<'a> EditorView<'a> {
         let theme = match theme {
             Some(t) => t,
             None => {
-                default_theme = EditorTheme::darcula();
+                default_theme = EditorTheme::default();
                 &default_theme
             }
         };
         state.frame += 1;
 
         let font = FontId::monospace(font_size);
-        let (char_w, row_h) = ui.fonts(|f| (f.glyph_width(&font, 'M'), f.row_height(&font)));
+        let ppp = ui.ctx().pixels_per_point();
+        let char_w = match state.advance {
+            Some((size, p, w)) if size == font_size.to_bits() && p == ppp.to_bits() => w,
+            _ => {
+                let w = ui.fonts(|f| column_advance(f, &font));
+                state.advance = Some((font_size.to_bits(), ppp.to_bits(), w));
+                w
+            }
+        };
+        let row_h = ui.fonts(|f| f.row_height(&font));
         let line_h = (row_h * 1.25).round();
 
         // External edits (rollback, reload) can shrink the text under a stale selection.
@@ -398,10 +341,14 @@ impl<'a> EditorView<'a> {
 
         let modifiers = ui.input(|i| i.modifiers);
         let origin = text_rect.min + Vec2::new(TEXT_PAD, 0.0) - state.scroll;
+        let drawn = std::mem::take(&mut state.drawn);
+        // Column boundary nearest to `p`, measured on the glyphs drawn last frame when the line
+        // was on screen.
         let hit = |doc: &Document, p: Pos2| -> usize {
             let line = (((p.y - origin.y) / line_h).floor().max(0.0) as usize).min(line_count.saturating_sub(1));
             let text = doc.line(line);
-            doc.line_start(line) + col_from_display(&text, (p.x - origin.x) / char_w)
+            let d = display_col_at(&drawn, line, p.x - origin.x, char_w);
+            doc.line_start(line) + col_from_display(&text, d)
         };
 
         // Mouse. The caret moves on press, not on release, so drag-select starts where the
@@ -545,9 +492,8 @@ impl<'a> EditorView<'a> {
             };
             item(ui, "Go to Declaration", "⌘B", true, MenuCmd::Action(EditorAction::GoToDeclaration(menu_pos)));
             item(ui, "Go to Source Definition", "", true, MenuCmd::Action(EditorAction::GoToSourceDefinition(menu_pos)));
-            // egui's default fonts have ⌘ but no ⇧ or ⌥ glyph; those would draw as boxes.
-            item(ui, "Go to Type Definition", "Shift+⌘B", true, MenuCmd::Action(EditorAction::GoToTypeDefinition(menu_pos)));
-            item(ui, "Find Usages", "Alt+F7", true, MenuCmd::Action(EditorAction::FindUsages(menu_pos)));
+            item(ui, "Go to Type Definition", "⇧⌘B", true, MenuCmd::Action(EditorAction::GoToTypeDefinition(menu_pos)));
+            item(ui, "Find Usages", "⌥F7", true, MenuCmd::Action(EditorAction::FindUsages(menu_pos)));
             ui.separator();
             item(ui, "Cut", "⌘X", !read_only, MenuCmd::Cut);
             item(ui, "Copy", "⌘C", true, MenuCmd::Copy);
@@ -652,6 +598,7 @@ impl<'a> EditorView<'a> {
             None
         };
 
+        let mut drawn_buf = drawn;
         let output = area.show_viewport(&mut child, |ui, viewport| {
             ui.set_min_size(content);
             let origin = ui.max_rect().min + Vec2::new(TEXT_PAD, 0.0);
@@ -673,7 +620,6 @@ impl<'a> EditorView<'a> {
             let hl = state.highlight.as_ref().expect("filled above");
 
             let painter = ui.painter().clone();
-            let ppp = ui.ctx().pixels_per_point();
             let round = |v: f32| (v * ppp).round() / ppp;
             let full_left = ui.clip_rect().left();
             let full_right = ui.clip_rect().right();
@@ -683,11 +629,60 @@ impl<'a> EditorView<'a> {
             let sel = state.sel;
             let sel_range = sel.range();
 
+            let mut drawn_now = std::mem::take(&mut drawn_buf);
+            drawn_now.clear();
             for line in visible {
                 let y = round(origin.y + line as f32 * line_h);
                 let text = doc.line(line);
                 let line_start = doc.line_start(line);
                 let line_chars = text.chars().count();
+
+                // The galley first: selection, underline and caret take their x from its glyphs.
+                let spans: &[Span] = line
+                    .checked_sub(hl.lines.start)
+                    .and_then(|i| hl.spans.get(i))
+                    .map_or(&[], |v| v.as_slice());
+                let width_cols = if line_chars > LONG_LINE / 4 { display_col(&text, line_chars) } else { line_chars };
+                let window = if width_cols > LONG_LINE {
+                    let s = first_col.saturating_sub(LONG_LINE_WINDOW / 2) / LONG_LINE_WINDOW * LONG_LINE_WINDOW;
+                    s..s + visible_cols + LONG_LINE_WINDOW * 2
+                } else {
+                    0..usize::MAX
+                };
+                let galley = if !text.is_empty() && window.start < width_cols {
+                    let key = {
+                        let mut h = DefaultHasher::new();
+                        text.hash(&mut h);
+                        spans.hash(&mut h);
+                        window.start.hash(&mut h);
+                        font_size.to_bits().hash(&mut h);
+                        theme_fp.hash(&mut h);
+                        h.finish()
+                    };
+                    let frame = state.frame;
+                    Some(match state.galleys.get_mut(&key) {
+                        Some((g, used)) => {
+                            *used = frame;
+                            g.clone()
+                        }
+                        None => {
+                            let job = line_job(&text, spans, window.clone(), &font, theme);
+                            let g = ui.fonts(|f| f.layout_job(job));
+                            state.galleys.insert(key, (g.clone(), frame));
+                            g
+                        }
+                    })
+                } else {
+                    None
+                };
+                // Screen x of the galley's left edge; the galley is drawn there, snapped to pixels.
+                let galley_x = round(origin.x + window.start as f32 * char_w);
+                let col_x = |d: usize| -> f32 {
+                    match &galley {
+                        Some(g) if d >= window.start => galley_x + galley_col_x(g, d - window.start, char_w, ppp),
+                        _ => origin.x + d as f32 * char_w,
+                    }
+                };
 
                 if line == caret_pos.line && sel.is_empty() {
                     painter.rect_filled(
@@ -704,77 +699,40 @@ impl<'a> EditorView<'a> {
                     let b = sel_range.end.min(le);
                     let covers_newline = sel_range.start <= le && sel_range.end > le;
                     if a < b || covers_newline && a <= le {
-                        let x0 = display_col(&text, a - ls) as f32 * char_w;
-                        let mut x1 = display_col(&text, b.max(a) - ls) as f32 * char_w;
+                        let x0 = col_x(display_col(&text, a - ls));
+                        let mut x1 = col_x(display_col(&text, b.max(a) - ls));
                         if covers_newline {
                             x1 += char_w;
                         }
-                        painter.rect_filled(
-                            Rect::from_min_max(Pos2::new(origin.x + x0, y), Pos2::new(origin.x + x1, y + line_h)),
-                            0.0,
-                            theme.selection,
-                        );
+                        painter.rect_filled(Rect::from_min_max(Pos2::new(x0, y), Pos2::new(x1, y + line_h)), 0.0, theme.selection);
                     }
                 }
 
-                let spans: &[Span] = line
-                    .checked_sub(hl.lines.start)
-                    .and_then(|i| hl.spans.get(i))
-                    .map_or(&[], |v| v.as_slice());
-                let width_cols = if line_chars > LONG_LINE / 4 { display_col(&text, line_chars) } else { line_chars };
-                let window = if width_cols > LONG_LINE {
-                    let s = first_col.saturating_sub(LONG_LINE_WINDOW / 2) / LONG_LINE_WINDOW * LONG_LINE_WINDOW;
-                    s..s + visible_cols + LONG_LINE_WINDOW * 2
-                } else {
-                    0..usize::MAX
-                };
-                if !text.is_empty() && window.start < width_cols {
-                    let key = {
-                        let mut h = DefaultHasher::new();
-                        text.hash(&mut h);
-                        spans.hash(&mut h);
-                        window.start.hash(&mut h);
-                        font_size.to_bits().hash(&mut h);
-                        theme_fp.hash(&mut h);
-                        h.finish()
-                    };
-                    let frame = state.frame;
-                    let galley = match state.galleys.get_mut(&key) {
-                        Some((g, used)) => {
-                            *used = frame;
-                            g.clone()
-                        }
-                        None => {
-                            let job = line_job(&text, spans, window.clone(), &font, theme);
-                            let g = ui.fonts(|f| f.layout_job(job));
-                            state.galleys.insert(key, (g.clone(), frame));
-                            g
-                        }
-                    };
-                    let x = origin.x + window.start as f32 * char_w;
-                    painter.galley(Pos2::new(round(x), y + text_y), galley, theme.foreground);
+                if let Some(g) = &galley {
+                    painter.galley(Pos2::new(galley_x, y + text_y), g.clone(), theme.foreground);
                 }
 
                 if let Some(w) = &hover_word {
                     if w.start.line == line {
-                        let x0 = origin.x + display_col(&text, w.start.column) as f32 * char_w;
-                        let x1 = origin.x + display_col(&text, w.end.column) as f32 * char_w;
+                        let x0 = col_x(display_col(&text, w.start.column));
+                        let x1 = col_x(display_col(&text, w.end.column));
                         let uy = y + text_y + row_h;
                         painter.line_segment([Pos2::new(x0, uy), Pos2::new(x1, uy)], Stroke::new(1.0_f32, theme.link));
                     }
                 }
 
                 if line == caret_pos.line {
-                    let x = round(origin.x + display_col(&text, caret_pos.column) as f32 * char_w);
-                    let color = if has_focus { theme.caret } else { theme.caret.gamma_multiply(0.4) };
-                    painter.rect_filled(
-                        Rect::from_min_size(Pos2::new(x - 1.0, y), Vec2::new(2.0, line_h)),
-                        0.0,
-                        color,
-                    );
+                    let x = round(col_x(display_col(&text, caret_pos.column)));
+                    let color = if has_focus { theme.caret } else { theme.caret_unfocused() };
+                    painter.rect_filled(Rect::from_min_size(Pos2::new(x - 1.0, y), Vec2::new(2.0, line_h)), 0.0, color);
+                }
+                if let Some(galley) = galley {
+                    drawn_now.push(DrawnLine { line, window_start: window.start, galley });
                 }
             }
+            drawn_now
         });
+        state.drawn = output.inner;
         state.scroll = output.state.offset;
 
         // Evict galleys not drawn recently, but only once the cache is clearly larger than a
@@ -834,7 +792,7 @@ impl<'a> EditorView<'a> {
                     painter.rect_filled(
                         Rect::from_min_size(Pos2::new(mark_x, y), Vec2::new(MARK_W, line_h)),
                         0.0,
-                        color.gamma_multiply(1.6),
+                        color,
                     );
                 }
                 GutterMark::Deleted => {
@@ -856,7 +814,9 @@ impl<'a> EditorView<'a> {
                 }
                 let line = line as usize;
                 let text = doc.line(line);
-                let col = col_from_display(&text, (p.x - origin.x) / char_w - 0.5);
+                // The char under the pointer, not the nearest boundary.
+                let d = display_col_at(&state.drawn, line, p.x - origin.x, char_w);
+                let col = col_from_display(&text, d - 0.5);
                 (col < text.chars().count()).then_some(Position::new(line, col))
             })
         } else {
@@ -1087,4 +1047,52 @@ fn section(range: Range<usize>, kind: HlKind, font: &FontId, theme: &EditorTheme
         byte_range: range,
         format: TextFormat { font_id: font.clone(), color: theme.color(kind), ..Default::default() },
     }
+}
+
+/// Width of one column of `font` as egui lays it out. egui snaps each glyph to the pixel grid,
+/// so the real step between glyphs is the nominal advance rounded to pixels. Column math with
+/// the nominal `glyph_width` drifts by a fraction of a pixel per column.
+pub fn column_advance(fonts: &egui::epaint::Fonts, font: &FontId) -> f32 {
+    const N: usize = 64;
+    let g = fonts.layout_no_wrap("0".repeat(N), font.clone(), Default::default());
+    match g.rows.first().map(|r| &r.glyphs[..]) {
+        Some([first, .., last]) => (last.pos.x - first.pos.x) / (N - 1) as f32,
+        _ => fonts.glyph_width(font, '0'),
+    }
+}
+
+/// X of display column `i` inside a line galley, relative to the galley. Columns past the
+/// last glyph continue with `char_w`.
+fn galley_col_x(g: &Galley, i: usize, char_w: f32, ppp: f32) -> f32 {
+    let glyphs = g.rows.first().map_or(&[][..], |r| &r.glyphs[..]);
+    match (glyphs.get(i), glyphs.last()) {
+        (Some(gl), _) => gl.pos.x,
+        (None, Some(last)) => {
+            // Where egui would put the next glyph: the end, snapped to the pixel grid.
+            let end = ((last.pos.x + last.advance_width) * ppp).round() / ppp;
+            end + (i - glyphs.len()) as f32 * char_w
+        }
+        (None, None) => i as f32 * char_w,
+    }
+}
+
+/// The fractional display column at `x` (relative to the text origin) on `line`, measured on
+/// the glyphs drawn last frame. Lines that were not drawn fall back to `char_w` steps.
+fn display_col_at(drawn: &[DrawnLine], line: usize, x: f32, char_w: f32) -> f32 {
+    let fallback = x / char_w;
+    let Some(d) = drawn.iter().find(|d| d.line == line) else { return fallback };
+    let xr = x - d.window_start as f32 * char_w;
+    let glyphs = d.galley.rows.first().map_or(&[][..], |r| &r.glyphs[..]);
+    if xr < 0.0 || glyphs.is_empty() {
+        return fallback;
+    }
+    let i = glyphs.partition_point(|g| g.pos.x + g.advance_width <= xr);
+    let col = match glyphs.get(i) {
+        Some(g) => i as f32 + ((xr - g.pos.x) / g.advance_width.max(0.01)).clamp(0.0, 1.0),
+        None => {
+            let last = glyphs[glyphs.len() - 1];
+            glyphs.len() as f32 + (xr - last.pos.x - last.advance_width) / char_w
+        }
+    };
+    d.window_start as f32 + col
 }

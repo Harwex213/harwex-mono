@@ -5,10 +5,11 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
-use egui::{pos2, vec2, Color32, FontId, RichText, ScrollArea, Sense, Shape, Stroke, Ui};
+use egui::{pos2, vec2, Color32, Rect, ScrollArea, Sense, Ui};
 use ide_git::ChangeKind;
 
 use crate::state::{AppState, GitInfo};
+use crate::icons::{self, Icon};
 use crate::theme;
 
 #[derive(Clone, Debug)]
@@ -140,17 +141,30 @@ pub fn show(state: &mut AppState, ui: &mut Ui) -> Option<TreeEvent> {
         ui.label("No folder open");
         return None;
     };
+    let t = &theme::T;
     let name = state.project.as_ref().map(|p| p.name.clone()).unwrap_or_default();
-    ui.horizontal(|ui| {
-        ui.label(RichText::new(name).strong());
-        ui.label(RichText::new(root.display().to_string()).weak().size(11.0));
-    });
+    // The root row, like IDEA: always expanded, the name and the full path.
+    let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), t.space.row_h), Sense::hover());
+    {
+        let painter = ui.painter();
+        let cy = rect.center().y;
+        let x = rect.min.x + 4.0;
+        icons::paint(painter, Rect::from_center_size(pos2(x + 6.0, cy), vec2(12.0, 12.0)), Icon::ChevronDown, t.text_dim);
+        icons::folder(painter, pos2(x + 22.0, cy), 15.0);
+        let g = painter.layout_no_wrap(name.clone(), t.semibold(t.font.ui), t.text);
+        let name_w = g.size().x;
+        painter.galley(pos2(x + 34.0, cy - g.size().y / 2.0), g, t.text);
+        painter.with_clip_rect(rect.intersect(ui.clip_rect())).text(pos2(x + 34.0 + name_w + 8.0, cy), egui::Align2::LEFT_CENTER, root.display().to_string(), t.tiny_font(), t.text_dim);
+    }
+    let r = ui.interact(rect, ui.id().with("tree-root"), Sense::hover());
+    crate::util::label_widget(&r, egui::WidgetType::Label, name.clone());
+    crate::util::label_widget(&ui.interact(Rect::from_min_size(rect.right_top(), vec2(0.0, 0.0)), ui.id().with("tree-root-path"), Sense::hover()), egui::WidgetType::Label, root.display().to_string());
 
     let scroll_requested = std::mem::take(&mut state.tree.scroll_to_selected);
     let mut rows = Vec::new();
     let mut missing = Vec::new();
     flatten(&state.tree, &root, 0, &mut rows, &mut missing);
-    let row_h = 20.0;
+    let row_h = t.space.row_h;
     let mut toggle: Option<PathBuf> = None;
     let mut select: Option<PathBuf> = None;
     let mut event = None;
@@ -172,31 +186,25 @@ pub fn show(state: &mut AppState, ui: &mut Ui) -> Option<TreeEvent> {
             crate::util::label_selectable(&resp, rel.display().to_string(), selected == Some(row.entry.path.as_path()));
             let painter = ui.painter();
             if selected == Some(row.entry.path.as_path()) {
-                painter.rect_filled(rect, 0.0, theme::SELECTION_INACTIVE);
+                painter.rect_filled(rect, t.radius.row, t.selection_inactive);
             } else if resp.hovered() {
-                painter.rect_filled(rect, 0.0, theme::HOVER);
+                painter.rect_filled(rect, t.radius.row, t.hover);
             }
-            let x = rect.min.x + 6.0 + row.depth as f32 * 16.0;
+            // Children sit one indent right of the root's chevron.
+            let x = rect.min.x + 4.0 + (row.depth + 1) as f32 * t.space.indent;
             let cy = rect.center().y;
             if row.entry.is_dir {
-                let c = theme::TEXT_DIM;
-                let pts = if row.expanded {
-                    vec![pos2(x, cy - 2.0), pos2(x + 8.0, cy - 2.0), pos2(x + 4.0, cy + 3.0)]
-                } else {
-                    vec![pos2(x + 2.0, cy - 4.0), pos2(x + 7.0, cy), pos2(x + 2.0, cy + 4.0)]
-                };
-                painter.add(Shape::convex_polygon(pts, c, Stroke::NONE));
+                let chevron = if row.expanded { Icon::ChevronDown } else { Icon::ChevronRight };
+                icons::paint(painter, Rect::from_center_size(pos2(x + 6.0, cy), vec2(12.0, 12.0)), chevron, t.text_dim);
             }
             let color = name_color(git, &row.entry.path, row.entry.is_dir);
-            let icon_x = x + 12.0;
-            draw_icon(painter, pos2(icon_x, cy), row.entry);
-            painter.text(
-                pos2(icon_x + 14.0, cy),
-                egui::Align2::LEFT_CENTER,
-                &row.entry.name,
-                FontId::proportional(13.0),
-                color,
-            );
+            let icon_c = pos2(x + 22.0, cy);
+            if row.entry.is_dir {
+                icons::folder(painter, icon_c, 15.0);
+            } else {
+                icons::file(painter, icon_c, 14.0, &row.entry.name);
+            }
+            painter.text(pos2(x + 34.0, cy), egui::Align2::LEFT_CENTER, &row.entry.name, t.ui_font(), color);
             if resp.clicked() {
                 select = Some(row.entry.path.clone());
                 if row.entry.is_dir {
@@ -222,43 +230,23 @@ pub fn show(state: &mut AppState, ui: &mut Ui) -> Option<TreeEvent> {
     event
 }
 
-fn draw_icon(painter: &egui::Painter, center: egui::Pos2, entry: &Entry) {
-    if entry.is_dir {
-        let r = egui::Rect::from_center_size(center, vec2(12.0, 9.0));
-        painter.rect_filled(r, 1.5, Color32::from_rgb(0x87, 0x93, 0x9A));
-        return;
-    }
-    let ext = entry.name.rsplit('.').next().unwrap_or("");
-    let color = match ext {
-        "ts" | "tsx" | "mts" | "cts" => Color32::from_rgb(0x3E, 0x86, 0xC6),
-        "js" | "jsx" | "mjs" | "cjs" => Color32::from_rgb(0xD8, 0xB6, 0x3B),
-        "rs" => Color32::from_rgb(0xC6, 0x6B, 0x3E),
-        "json" => Color32::from_rgb(0x9A, 0x9A, 0x55),
-        "css" | "scss" => Color32::from_rgb(0x6E, 0x58, 0xB8),
-        "md" => Color32::from_rgb(0x6A, 0x9F, 0xB5),
-        _ => Color32::from_gray(140),
-    };
-    let r = egui::Rect::from_center_size(center, vec2(9.0, 11.0));
-    painter.rect_filled(r, 1.0, color);
-}
-
 pub fn name_color(git: &GitInfo, path: &Path, is_dir: bool) -> Color32 {
     if is_dir {
-        return if git.dirty_dirs.contains(path) { theme::GIT_MODIFIED } else { theme::TEXT };
+        return if git.dirty_dirs.contains(path) { theme::T.git_modified } else { theme::T.text };
     }
     match git.status.get(path) {
         Some(kind) => change_color(*kind),
-        None => theme::TEXT,
+        None => theme::T.text,
     }
 }
 
 pub fn change_color(kind: ChangeKind) -> Color32 {
     match kind {
-        ChangeKind::Added => theme::GIT_ADDED,
-        ChangeKind::Modified | ChangeKind::TypeChange => theme::GIT_MODIFIED,
-        ChangeKind::Renamed => theme::GIT_RENAMED,
-        ChangeKind::Deleted => theme::GIT_DELETED,
-        ChangeKind::Untracked => theme::GIT_UNTRACKED,
-        ChangeKind::Conflicted => theme::GIT_CONFLICT,
+        ChangeKind::Added => theme::T.git_added,
+        ChangeKind::Modified | ChangeKind::TypeChange => theme::T.git_modified,
+        ChangeKind::Renamed => theme::T.git_renamed,
+        ChangeKind::Deleted => theme::T.git_deleted,
+        ChangeKind::Untracked => theme::T.git_untracked,
+        ChangeKind::Conflicted => theme::T.git_conflict,
     }
 }

@@ -3,7 +3,7 @@
 //! also carries the repository-wide actions (Update, Push, Fetch, Stash, Unstash), like the
 //! top of IDEA's branches popup.
 
-use egui::{pos2, vec2, Align2, Area, Context, FontId, Frame, Id, Key, Modal, Order, Pos2, Rect, RichText, ScrollArea, Sense, TextEdit, Ui};
+use egui::{pos2, vec2, Align2, Area, Context, Frame, Id, Key, Modal, Order, Pos2, Rect, RichText, ScrollArea, Sense, TextEdit, Ui};
 use ide_git::{BranchInfo, Branches};
 
 use super::remote::run_op;
@@ -135,7 +135,7 @@ pub fn show_windows(state: &mut AppState, ctx: &Context) {
                 }
                 let Some(data) = &b.data else {
                     ui.add_space(4.0);
-                    ui.label(RichText::new("Loading...").color(theme::TEXT_DIM));
+                    ui.label(RichText::new("Loading...").color(theme::T.text_dim));
                     return;
                 };
                 let matches = |name: &str| q.is_empty() || name.to_lowercase().contains(&q);
@@ -155,7 +155,7 @@ pub fn show_windows(state: &mut AppState, ctx: &Context) {
                     }
                     ui.add_space(4.0);
                     ui.separator();
-                    ui.label(RichText::new(title).small().color(theme::TEXT_DIM));
+                    ui.label(RichText::new(title).small().color(theme::T.text_dim));
                     for info in list.iter() {
                         let expanded = b.expanded.as_ref().is_some_and(|(n, g, _)| n == &info.name && *g == group);
                         let resp = branch_row(ui, info, expanded, title);
@@ -165,7 +165,7 @@ pub fn show_windows(state: &mut AppState, ctx: &Context) {
                     }
                 }
                 if q.is_empty() && data.local.is_empty() && data.remote.is_empty() {
-                    ui.label(RichText::new("No branches yet.").color(theme::TEXT_DIM));
+                    ui.label(RichText::new("No branches yet.").color(theme::T.text_dim));
                 }
                 if let Some(h) = hovered {
                     b.expanded = Some(h);
@@ -243,9 +243,9 @@ fn action_row(ui: &mut Ui, label: &str) -> egui::Response {
     let (rect, resp) = ui.allocate_exact_size(vec2(ui.available_width(), ROW_H), Sense::click());
     crate::util::label_widget(&resp, egui::WidgetType::Button, label);
     if resp.hovered() {
-        ui.painter().rect_filled(rect, 3.0, theme::SELECTION);
+        ui.painter().rect_filled(rect, 3.0, theme::T.selection);
     }
-    ui.painter().text(rect.left_center() + vec2(8.0, 0.0), Align2::LEFT_CENTER, label, FontId::proportional(13.0), theme::TEXT_BRIGHT);
+    ui.painter().text(rect.left_center() + vec2(8.0, 0.0), Align2::LEFT_CENTER, label, theme::T.ui_font(), theme::T.text_bright);
     resp
 }
 
@@ -254,23 +254,23 @@ fn branch_row(ui: &mut Ui, info: &BranchInfo, expanded: bool, group: &str) -> eg
     crate::util::label_selectable(&resp, format!("{group} branch {}", info.name), expanded);
     let p = ui.painter();
     if expanded || resp.hovered() {
-        p.rect_filled(rect, 3.0, if expanded { theme::SELECTION } else { theme::HOVER });
+        p.rect_filled(rect, 3.0, if expanded { theme::T.selection } else { theme::T.hover });
     }
     let cy = rect.center().y;
     if info.is_current {
         // A small tag marks the current branch, like IDEA's star/label icon.
-        p.circle_filled(pos2(rect.left() + 10.0, cy), 3.5, theme::MATCH);
+        p.circle_filled(pos2(rect.left() + 10.0, cy), 3.5, theme::T.match_text);
     }
-    let color = if info.is_current { theme::MATCH } else { theme::TEXT_BRIGHT };
-    p.text(pos2(rect.left() + 20.0, cy), Align2::LEFT_CENTER, &info.name, FontId::proportional(13.0), color);
-    p.text(pos2(rect.right() - 8.0, cy), Align2::RIGHT_CENTER, ">", FontId::proportional(12.0), theme::TEXT_DIM);
+    let color = if info.is_current { theme::T.match_text } else { theme::T.text_bright };
+    p.text(pos2(rect.left() + 20.0, cy), Align2::LEFT_CENTER, &info.name, theme::T.ui_font(), color);
+    crate::icons::paint(p, Rect::from_center_size(pos2(rect.right() - 10.0, cy), vec2(11.0, 11.0)), crate::icons::Icon::ChevronRight, theme::T.text_dim);
     // Arrows are drawn as shapes: the default fonts have no arrow glyphs.
     let mut x = rect.right() - 22.0;
-    for (count, up, color) in [(info.behind, false, theme::GIT_MODIFIED), (info.ahead, true, theme::GIT_ADDED)] {
+    for (count, up, color) in [(info.behind, false, theme::T.git_modified), (info.ahead, true, theme::T.git_added)] {
         if count == 0 {
             continue;
         }
-        let r = p.text(pos2(x, cy), Align2::RIGHT_CENTER, count.to_string(), FontId::proportional(12.0), color);
+        let r = p.text(pos2(x, cy), Align2::RIGHT_CENTER, count.to_string(), theme::T.small_font(), color);
         arrow(p, pos2(r.left() - 5.0, cy), up, color);
         x = r.left() - 16.0;
     }
@@ -332,7 +332,7 @@ fn dialogs(state: &mut AppState, ctx: &Context) {
                     Some(f) => format!("Create New Branch from {f}"),
                     None => "Create New Branch".to_string(),
                 };
-                ui.label(RichText::new(title).strong().color(theme::TEXT_BRIGHT));
+                ui.label(RichText::new(title).strong().color(theme::T.text_bright));
                 ui.add_space(6.0);
                 let r = ui.add(TextEdit::singleline(name).hint_text("New branch name").desired_width(f32::INFINITY));
                 // Re-grabbing the focus on the frame Enter released it would hide that Enter.
@@ -363,7 +363,7 @@ fn dialogs(state: &mut AppState, ctx: &Context) {
         BranchDialog::Rename { old, name } => {
             let m = Modal::new(Id::new("git-rename-branch")).show(ctx, |ui| {
                 ui.set_width(400.0);
-                ui.label(RichText::new(format!("Rename {old}")).strong().color(theme::TEXT_BRIGHT));
+                ui.label(RichText::new(format!("Rename {old}")).strong().color(theme::T.text_bright));
                 ui.add_space(6.0);
                 let r = ui.add(TextEdit::singleline(name).desired_width(f32::INFINITY));
                 // Re-grabbing the focus on the frame Enter released it would hide that Enter.
@@ -392,10 +392,10 @@ fn dialogs(state: &mut AppState, ctx: &Context) {
             let m = Modal::new(Id::new("git-delete-branch")).show(ctx, |ui| {
                 ui.set_width(420.0);
                 let what = if *remote { "remote branch" } else { "branch" };
-                ui.label(RichText::new(format!("Delete {what} {name}?")).strong().color(theme::TEXT_BRIGHT));
+                ui.label(RichText::new(format!("Delete {what} {name}?")).strong().color(theme::T.text_bright));
                 ui.add_space(6.0);
                 if *remote {
-                    ui.label(RichText::new("The branch is deleted on the remote server (git push --delete).").color(theme::WARNING));
+                    ui.label(RichText::new("The branch is deleted on the remote server (git push --delete).").color(theme::T.warning));
                 } else {
                     ui.checkbox(force, "Force delete, even if it is not fully merged");
                     if let Some(up) = upstream {

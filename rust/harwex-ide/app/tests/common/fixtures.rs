@@ -1,5 +1,6 @@
 //! Throwaway projects for the UI tests: git repositories with history, branches, a merge, a
-//! bare remote, conflicts and many changes, and a TypeScript project with a dependency.
+//! bare remote, conflicts and many changes, a TypeScript project with a dependency, and a
+//! Cargo workspace for rust-analyzer.
 //!
 //! Each fixture lives at a fixed path, `/private/tmp/harwex-ide-kittest/<suite>/<name>`, so
 //! paths drawn in the UI (the project tree header, notifications) are the same on every run
@@ -11,7 +12,6 @@ use std::process::Command;
 use std::sync::atomic::{AtomicU32, Ordering};
 
 pub const FIXTURE_ROOT: &str = "/private/tmp/harwex-ide-kittest";
-const TYPESCRIPT: &str = "/Users/aleh_kaportsau/Projects/harwex-mono/javascript/node_modules/typescript";
 
 pub struct Fixture {
     /// The fixture's own directory (canonical). Repositories and projects live inside it.
@@ -283,15 +283,38 @@ pub fn big_file_repo(dir: PathBuf) -> Repo {
 // -----------------------------------------------------------------------------------------
 // TypeScript project
 
+// -----------------------------------------------------------------------------------------
+// Test tools: env override, then `<target>/tools/` from `cargo xtask test-tools`, else skip.
+
+const HINT: &str = "run `cargo xtask test-tools`";
+
+/// `<target>/tools/`. `<target>/tmp` exists for every integration test, also with a custom
+/// `CARGO_TARGET_DIR`.
+pub fn tools_dir() -> PathBuf {
+    Path::new(env!("CARGO_TARGET_TMPDIR")).parent().expect("target dir").join("tools")
+}
+
+/// TypeScript 5 (a `typescript` package dir with `lib/tsserver.js`): `HARWEX_TEST_TS5`, else
+/// `<target>/tools/ts5/node_modules/typescript`.
+pub fn typescript() -> Result<PathBuf, String> {
+    let (dir, source) = match std::env::var_os("HARWEX_TEST_TS5") {
+        Some(dir) => (PathBuf::from(dir), "HARWEX_TEST_TS5"),
+        None => (tools_dir().join("ts5/node_modules/typescript"), HINT),
+    };
+    let js = dir.join("lib/tsserver.js");
+    if js.is_file() {
+        Ok(dir)
+    } else {
+        Err(format!("{} is missing ({source})", js.display()))
+    }
+}
+
 /// Why tsserver tests cannot run here, if they cannot.
 pub fn tsserver_missing() -> Option<String> {
     if ide_ts::find_node().is_none() {
         return Some("node was not found".into());
     }
-    if !Path::new(TYPESCRIPT).join("lib/tsserver.js").exists() {
-        return Some(format!("{TYPESCRIPT}/lib/tsserver.js is missing"));
-    }
-    None
+    typescript().err()
 }
 
 /// Returns `true` (and prints why) when the tsserver tests must be skipped.
@@ -307,7 +330,7 @@ pub fn skip_without_tsserver(test: &str) -> bool {
 
 /// A TS project with a dependency in `node_modules/fake-lib` (types in `.d.ts`, code in `.js`)
 /// and a workspace package `@ws/util` linked into `node_modules` like yarn workspaces do.
-/// TypeScript itself is a symlink to harwex-mono's install. The project is also a git repo.
+/// TypeScript itself is a symlink to the TypeScript 5 test install. The project is also a git repo.
 pub fn ts_project(dir: PathBuf) -> Repo {
     let r = Repo::init(dir);
     r.write(".gitignore", "node_modules/\n");
@@ -322,7 +345,7 @@ pub fn ts_project(dir: PathBuf) -> Repo {
     r.write("node_modules/fake-lib/index.js", FAKE_JS);
     std::fs::create_dir_all(r.dir.join("node_modules/@ws")).expect("scope dir");
     std::os::unix::fs::symlink("../../packages/util", r.dir.join("node_modules/@ws/util")).expect("workspace link");
-    std::os::unix::fs::symlink(TYPESCRIPT, r.dir.join("node_modules/typescript")).expect("typescript link");
+    std::os::unix::fs::symlink(typescript().expect("TypeScript 5"), r.dir.join("node_modules/typescript")).expect("typescript link");
     r.commit_all("TS project");
     r
 }
@@ -333,3 +356,72 @@ pub const MAIN_TS: &str = "import { greet, Options } from \"fake-lib\";\nimport 
 pub const FAKE_DTS: &str = "/** Says hello. */\nexport declare function greet(name: string): string;\n\nexport interface Options {\n  a: number;\n}\n\nexport interface Options {\n  b: string;\n}\n";
 
 pub const FAKE_JS: &str = "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.greet = void 0;\nfunction greet(name) {\n  return \"hello \" + name;\n}\nexports.greet = greet;\n";
+
+// -----------------------------------------------------------------------------------------
+// Cargo workspace (rust-analyzer)
+
+/// Points `HARWEX_RUST_ANALYZER` and `RUST_SRC_PATH` at `<target>/tools/` when the
+/// environment names nothing else. A rust-analyzer or rust-src elsewhere on the machine (PATH,
+/// rustup) is never used, so a run does not pass by luck. Called once from `init()`, before
+/// any thread starts.
+pub fn use_test_rust_tools() {
+    let tools = tools_dir();
+    if std::env::var_os("HARWEX_RUST_ANALYZER").is_none() {
+        std::env::set_var("HARWEX_RUST_ANALYZER", tools.join("rust-analyzer/bin/rust-analyzer"));
+    }
+    if std::env::var_os("RUST_SRC_PATH").is_none() {
+        std::env::set_var("RUST_SRC_PATH", tools.join("rust-src/lib/rustlib/src/rust/library"));
+    }
+}
+
+/// Returns `true` (and prints why) when rust-analyzer cannot be found.
+pub fn skip_without_rust_analyzer(test: &str) -> bool {
+    super::init();
+    let configured = PathBuf::from(std::env::var_os("HARWEX_RUST_ANALYZER").unwrap_or_default());
+    if !configured.is_file() {
+        eprintln!("skipping {test}: {} is missing ({HINT})", configured.display());
+        return true;
+    }
+    match harwex_ide::lang::rust::find_rust_analyzer(None) {
+        Ok(found) if found == configured => false,
+        Ok(found) => {
+            eprintln!("skipping {test}: {} does not run, found {} instead", configured.display(), found.display());
+            true
+        }
+        Err(why) => {
+            eprintln!("skipping {test}: {}", why.lines().next().unwrap_or_default());
+            true
+        }
+    }
+}
+
+/// Returns `true` (and prints why) when the standard library sources are missing.
+pub fn skip_without_rust_src(test: &str) -> bool {
+    super::init();
+    match harwex_ide::lang::rust::rust_src_missing() {
+        Some(why) => {
+            eprintln!("skipping {test}: {why} ({HINT})");
+            true
+        }
+        None => false,
+    }
+}
+
+/// A Cargo workspace with two crates: `app` calls `util` (a path dependency) and uses `Vec`
+/// from std. No registry dependencies, so `cargo metadata` needs no network.
+pub fn cargo_project(dir: PathBuf) -> Repo {
+    let r = Repo::init(dir);
+    r.write(".gitignore", "target/\nCargo.lock\n");
+    r.write("Cargo.toml", "[workspace]\nmembers = [\"app\", \"util\"]\nresolver = \"2\"\n");
+    r.write("util/Cargo.toml", "[package]\nname = \"util\"\nversion = \"0.1.0\"\nedition = \"2021\"\n");
+    r.write("util/src/lib.rs", UTIL_RS);
+    r.write("app/Cargo.toml", "[package]\nname = \"app\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[dependencies]\nutil = { path = \"../util\" }\n");
+    r.write("app/src/main.rs", APP_RS);
+    r.commit_all("Cargo workspace");
+    r
+}
+
+/// Line/column of the identifiers the Rust tests aim at (0-based).
+pub const APP_RS: &str = "use util::add;\n\nfn main() {\n    let total = add(1, 2);\n    let words: Vec<String> = Vec::new();\n    let p = util::Point { x: total };\n    println!(\"{} {} {}\", total, words.len(), p.x);\n    let again = add(3, 4);\n    println!(\"{again}\");\n}\n";
+
+pub const UTIL_RS: &str = "/// Adds two numbers.\npub fn add(a: i32, b: i32) -> i32 {\n    a + b\n}\n\n/// A point on a line.\npub struct Point {\n    pub x: i32,\n}\n";

@@ -8,6 +8,7 @@ publish.workspace = true
 eframe.workspace = true
 egui.workspace = true
 ide-git = { path = "../crates/ide-git" }
+ide-lsp = { path = "../crates/ide-lsp" }
 ide-ts = { path = "../crates/ide-ts" }
 ide-editor = { path = "../crates/ide-editor" }
 ide-term = { path = "../crates/ide-term" }
@@ -16,9 +17,15 @@ notify = "8"
 nucleo-matcher = "0.3"
 rfd = "0.15"
 memchr = "2"
+serde_json = "1"
+toml = "1"
 
 # Same major version as eframe's winit, so the macOS event-loop extension trait applies to
 # eframe's builder (background mode in main.rs).
+# The memory indicator reads process stats through libproc (macOS) and sysconf (Linux).
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
 [target.'cfg(target_os = "macos")'.dependencies]
 winit = { version = "0.30", default-features = false }
 

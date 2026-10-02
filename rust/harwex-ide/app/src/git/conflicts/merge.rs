@@ -9,7 +9,7 @@ use std::any::Any;
 use std::ops::Range;
 use std::path::PathBuf;
 
-use egui::{vec2, Color32, FontId, Label, Rect, RichText, ScrollArea, Sense, TextEdit, Ui};
+use egui::{vec2, Color32, Label, Rect, RichText, ScrollArea, Sense, TextEdit, Ui};
 use ide_git::ConflictSides;
 
 use crate::state::TabEnv;
@@ -154,9 +154,9 @@ impl CustomTab for MergeTab {
         ui.add_space(4.0);
         ui.horizontal(|ui| {
             ui.add_space(8.0);
-            ui.label(RichText::new(self.path.display().to_string()).strong().color(theme::TEXT_BRIGHT));
+            ui.label(RichText::new(self.path.display().to_string()).strong().color(theme::T.text_bright));
             let status = if left_n == 0 { "All conflicts resolved".to_string() } else { format!("{left_n} conflict(s) left") };
-            ui.label(RichText::new(status).color(if left_n == 0 { theme::GIT_ADDED } else { theme::WARNING }));
+            ui.label(RichText::new(status).color(if left_n == 0 { theme::T.git_added } else { theme::T.warning }));
             ui.separator();
             if ui.button(format!("Accept {}", self.left)).on_hover_text("Take the left side for every changed block").clicked() {
                 self.take_all(false);
@@ -184,7 +184,7 @@ impl CustomTab for MergeTab {
         if self.confirm_unresolved {
             ui.horizontal(|ui| {
                 ui.add_space(8.0);
-                ui.label(RichText::new(format!("{left_n} conflict(s) are not resolved; the result keeps the base text there. Save anyway?")).color(theme::WARNING));
+                ui.label(RichText::new(format!("{left_n} conflict(s) are not resolved; the result keeps the base text there. Save anyway?")).color(theme::T.warning));
                 if ui.button("Save").clicked() {
                     self.confirm_unresolved = false;
                     self.save(env);
@@ -203,14 +203,14 @@ impl CustomTab for MergeTab {
             for t in [self.left, "Result", self.right] {
                 ui.allocate_ui(vec2(col_w, 18.0), |ui| {
                     ui.set_width(col_w);
-                    ui.label(RichText::new(t).small().color(theme::TEXT_DIM));
+                    ui.label(RichText::new(t).small().color(theme::T.text_dim));
                 });
                 ui.add_space(gap - 6.0);
             }
         });
         ui.separator();
 
-        let font = FontId::monospace(12.5);
+        let font = theme::T.mono_small_font();
         let (line_h, char_w) = ui.fonts(|f| (f.row_height(&font), f.glyph_width(&font, 'M')));
         // The panes scroll sideways together: one offset, a bar at the bottom, and the
         // horizontal wheel or trackpad delta over the rows.
@@ -246,10 +246,8 @@ impl CustomTab for MergeTab {
 }
 
 fn block_colors(b: &Block) -> (Color32, Color32, Color32) {
-    let none = Color32::TRANSPARENT;
-    let changed = Color32::from_rgb(0x2C, 0x3E, 0x56);
-    let conflict = Color32::from_rgb(0x5A, 0x30, 0x30);
-    let resolved = Color32::from_rgb(0x34, 0x44, 0x34);
+    let t = &theme::T;
+    let (none, changed, conflict, resolved) = (t.clear, t.merge_changed, t.merge_conflict, t.merge_resolved);
     match b.kind {
         Kind::Same => (none, none, none),
         Kind::Ours => (changed, changed, none),
@@ -273,12 +271,12 @@ struct Pane {
 fn hscroll_bar(ui: &mut Ui, offset: f32, max: f32, view_w: f32, content_w: f32) -> f32 {
     let (rect, resp) = ui.allocate_exact_size(vec2(ui.available_width(), 12.0), Sense::click_and_drag());
     let track = rect.shrink2(vec2(8.0, 3.0));
-    ui.painter().rect_filled(track, 3.0, theme::TAB_BAR_BG);
+    ui.painter().rect_filled(track, 3.0, theme::T.tab_bar_bg);
     let thumb_w = (track.width() * view_w / content_w).clamp(24.0, track.width());
     let span = (track.width() - thumb_w).max(1.0);
     let x = track.min.x + span * (offset / max);
     let thumb = Rect::from_min_size(egui::pos2(x, track.min.y), vec2(thumb_w, track.height()));
-    let color = if resp.hovered() || resp.dragged() { Color32::from_gray(120) } else { Color32::from_gray(85) };
+    let color = if resp.hovered() || resp.dragged() { theme::T.scrollbar_thumb_active } else { theme::T.scrollbar_thumb };
     ui.painter().rect_filled(thumb, 3.0, color);
     if let Some(p) = resp.interact_pointer_pos() {
         if resp.dragged() || resp.clicked() {
@@ -323,7 +321,7 @@ fn block_row(ui: &mut Ui, idx: usize, b: &mut Block, pane: &Pane) -> bool {
         let shifted = Rect::from_min_size(inner.min - vec2(hscroll, 0.0), vec2(edit_w, inner.height()));
         let mut child = ui.new_child(egui::UiBuilder::new().max_rect(shifted));
         child.set_clip_rect(inner.intersect(ui.clip_rect()));
-        let resp = child.add(TextEdit::multiline(&mut b.result).id_salt(("merge-result", idx)).font(FontId::monospace(12.5)).frame(false).desired_width(edit_w).desired_rows(n).margin(vec2(2.0, 2.0)));
+        let resp = child.add(TextEdit::multiline(&mut b.result).id_salt(("merge-result", idx)).font(theme::T.mono_small_font()).frame(false).desired_width(edit_w).desired_rows(n).margin(vec2(2.0, 2.0)));
         if resp.changed() {
             b.resolved = true;
             changed = true;
@@ -382,7 +380,7 @@ fn folded_row(ui: &mut Ui, b: &mut Block, pane: &Pane) -> bool {
     show(ui, &head);
     ui.horizontal(|ui| {
         ui.add_space(8.0);
-        if ui.add_sized(vec2(col_w * 3.0 + gap * 2.0, 18.0), egui::Button::new(RichText::new(format!("{hidden} unchanged lines")).small()).fill(theme::TAB_BAR_BG)).clicked() {
+        if ui.add_sized(vec2(col_w * 3.0 + gap * 2.0, 18.0), egui::Button::new(RichText::new(format!("{hidden} unchanged lines")).small()).fill(theme::T.tab_bar_bg)).clicked() {
             b.expanded = true;
         }
     });
@@ -396,7 +394,7 @@ fn text_in(ui: &mut Ui, rect: Rect, text: &str, hscroll: f32) {
     let shifted = Rect::from_min_max(inner.min - vec2(hscroll, 0.0), egui::pos2(inner.max.x + 1.0e5, inner.max.y));
     let mut child = ui.new_child(egui::UiBuilder::new().max_rect(shifted));
     child.set_clip_rect(rect.intersect(ui.clip_rect()));
-    child.add(Label::new(RichText::new(text.strip_suffix('\n').unwrap_or(text)).font(FontId::monospace(12.5)).color(theme::TEXT)).extend().selectable(false));
+    child.add(Label::new(RichText::new(text.strip_suffix('\n').unwrap_or(text)).font(theme::T.mono_small_font()).color(theme::T.text)).extend().selectable(false));
 }
 
 /// Splits keeping line terminators, so joined blocks rebuild the text byte for byte.

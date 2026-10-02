@@ -2,14 +2,21 @@
 //!
 //! - `cargo install-ide`: build `harwex-ide` in release and install it for the current user.
 //! - `cargo uninstall-ide`: remove everything `install-ide` created.
+//! - `cargo xtask test-tools`: download the pinned test tools into `target/tools/`.
+//! - `cargo xtask clean-check`: run the tests the way a fresh machine would.
 //!
-//! Only std is used, so the task builds fast and pulls nothing from the network.
+//! Only std is used, so the task builds fast. Only `test-tools` uses the network, through the
+//! system `curl`.
 
 use std::env;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
+
+mod clean_check;
+mod test_tools;
+mod tools;
 
 const BIN_NAME: &str = "harwex-ide";
 const APP_NAME: &str = "Harwex IDE.app";
@@ -19,12 +26,16 @@ const BLOCK_END: &str = "# <<< harwex-ide <<<";
 
 const USAGE: &str = "\
 usage: cargo xtask <install|uninstall> [options]
+       cargo xtask test-tools               download the pinned test tools into target/tools/
+       cargo xtask clean-check [--dir <d>]  run test-tools + cargo test --workspace on a clean copy
 
 options:
   --prefix <dir>  install root (default: ~/opt/harwex-ide); the binary goes to <dir>/bin
   --no-path       do not touch shell rc files
   --no-app        do not create or remove ~/Applications/Harwex IDE.app (macOS)
   --dry-run       print the actions, change nothing
+  --yes, -y       install: install missing rustup components without asking
+  --no-tools      install: skip the language tool checks
 ";
 
 struct Options {
@@ -32,6 +43,8 @@ struct Options {
     path: bool,
     app: bool,
     dry_run: bool,
+    yes: bool,
+    tools: bool,
 }
 
 fn main() -> ExitCode {
@@ -47,12 +60,26 @@ fn main() -> ExitCode {
 fn run() -> Result<(), String> {
     let mut args = env::args().skip(1);
     let command = args.next().ok_or_else(|| USAGE.to_string())?;
+    match command.as_str() {
+        "test-tools" => return test_tools::run(&target_dir(&workspace_root()).join("tools")),
+        "clean-check" => {
+            let dir = match (args.next().as_deref(), args.next()) {
+                (None, _) => None,
+                (Some("--dir"), Some(dir)) => Some(absolute(PathBuf::from(dir))?),
+                _ => return Err(USAGE.to_string()),
+            };
+            return clean_check::run(&workspace_root(), dir);
+        }
+        _ => {}
+    }
     let home = home_dir()?;
     let mut options = Options {
         prefix: home.join("opt").join(BIN_NAME),
         path: true,
         app: true,
         dry_run: false,
+        yes: false,
+        tools: true,
     };
     while let Some(arg) = args.next() {
         match arg.as_str() {
@@ -63,6 +90,8 @@ fn run() -> Result<(), String> {
             "--no-path" => options.path = false,
             "--no-app" => options.app = false,
             "--dry-run" => options.dry_run = true,
+            "--yes" | "-y" => options.yes = true,
+            "--no-tools" => options.tools = false,
             "-h" | "--help" => {
                 print!("{USAGE}");
                 return Ok(());
@@ -88,6 +117,14 @@ fn install(options: &Options, home: &Path) -> Result<(), String> {
     if options.dry_run {
         println!("dry run: nothing will be changed");
     }
+    // Before the build: the questions come while the user still watches the terminal.
+    if options.tools {
+        let tool_options = tools::ToolsOptions {
+            yes: options.yes,
+            dry_run: options.dry_run,
+        };
+        tools::check_and_install(&mut tools::RealHost, home, &tool_options);
+    }
     let built = build(options.dry_run)?;
 
     let bin_dir = options.prefix.join("bin");
@@ -101,7 +138,8 @@ fn install(options: &Options, home: &Path) -> Result<(), String> {
         let app = home.join("Applications").join(APP_NAME);
         println!("create {}", app.display());
         if !options.dry_run {
-            write_app_bundle(&app, &target).map_err(|e| format!("create {}: {e}", app.display()))?;
+            write_app_bundle(&app, &target)
+                .map_err(|e| format!("create {}: {e}", app.display()))?;
         }
     }
 
@@ -220,7 +258,9 @@ fn rc_file(shell: Shell, home: &Path) -> PathBuf {
         Shell::Zsh => home.join(".zshrc"),
         Shell::Bash if cfg!(target_os = "macos") => home.join(".bash_profile"),
         Shell::Bash => home.join(".bashrc"),
-        Shell::Fish => home.join(".config/fish/conf.d").join(format!("{BIN_NAME}.fish")),
+        Shell::Fish => home
+            .join(".config/fish/conf.d")
+            .join(format!("{BIN_NAME}.fish")),
     }
 }
 
@@ -334,6 +374,8 @@ fn uninstall(options: &Options, home: &Path) -> Result<(), String> {
             unregister_path(shell, home, options.dry_run)?;
         }
     }
+    // Toolchain components belong to rustup and other projects use them too.
+    println!("rustup components are kept: remove them with `rustup component remove rust-analyzer rust-src`");
     println!("done");
     Ok(())
 }

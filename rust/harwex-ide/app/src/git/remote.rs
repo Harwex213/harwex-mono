@@ -7,7 +7,7 @@ use std::collections::VecDeque;
 use std::path::PathBuf;
 use std::time::Instant;
 
-use egui::{vec2, Align2, Context, FontId, Id, Key, Modal, RichText, ScrollArea, Sense, TextEdit, Ui};
+use egui::{vec2, Align2, Context, Id, Key, Modal, RichText, ScrollArea, Sense, TextEdit, Ui};
 use ide_git::{CommandOutcome, CommitDetails, CommitInfo, Error, Oid, Repo, StashEntry};
 
 use super::log::{format_time, kind_color, short};
@@ -208,11 +208,11 @@ pub fn show_windows(state: &mut AppState, ctx: &Context) {
 /// Draws the changed files of `details`; returns the clicked path.
 fn files_list(ui: &mut Ui, details: Option<&CommitDetails>, salt: &str) -> Option<PathBuf> {
     let Some(d) = details else {
-        ui.label(RichText::new("Loading...").color(theme::TEXT_DIM));
+        ui.label(RichText::new("Loading...").color(theme::T.text_dim));
         return None;
     };
     let mut clicked = None;
-    ui.label(RichText::new(format!("{} file(s)", d.files.len())).small().color(theme::TEXT_DIM));
+    ui.label(RichText::new(format!("{} file(s)", d.files.len())).small().color(theme::T.text_dim));
     ui.push_id(salt, |ui| {
         ui.spacing_mut().item_spacing.y = 0.0;
         ScrollArea::vertical().auto_shrink([false, false]).show_rows(ui, 20.0, d.files.len(), |ui, range| {
@@ -220,10 +220,10 @@ fn files_list(ui: &mut Ui, details: Option<&CommitDetails>, salt: &str) -> Optio
                 let (rect, resp) = ui.allocate_exact_size(vec2(ui.available_width(), 20.0), Sense::click());
                 crate::util::label_widget(&resp, egui::WidgetType::Button, format!("Changed file {}", f.path.display()));
                 if resp.hovered() {
-                    ui.painter().rect_filled(rect, 0.0, theme::HOVER);
+                    ui.painter().rect_filled(rect, 0.0, theme::T.hover);
                 }
                 let p = ui.painter().with_clip_rect(rect.intersect(ui.clip_rect()));
-                p.text(rect.left_center() + vec2(4.0, 0.0), Align2::LEFT_CENTER, f.path.display().to_string(), FontId::proportional(13.0), kind_color(f.kind));
+                p.text(rect.left_center() + vec2(4.0, 0.0), Align2::LEFT_CENTER, f.path.display().to_string(), theme::T.ui_font(), kind_color(f.kind));
                 if resp.on_hover_text("Show diff").clicked() {
                     clicked = Some(f.path.clone());
                 }
@@ -237,7 +237,7 @@ fn files_list(ui: &mut Ui, details: Option<&CommitDetails>, salt: &str) -> Optio
 /// stretch to the window's unbounded height.
 fn vsep(ui: &mut Ui, h: f32) {
     let (rect, _) = ui.allocate_exact_size(vec2(9.0, h), Sense::hover());
-    ui.painter().vline(rect.center().x, rect.y_range(), egui::Stroke::new(1.0_f32, theme::BORDER));
+    ui.painter().vline(rect.center().x, rect.y_range(), egui::Stroke::new(1.0_f32, theme::T.border));
 }
 
 /// A selectable commit row: subject on the left, hash and date on the right.
@@ -246,14 +246,14 @@ fn commit_row(ui: &mut Ui, c: &CommitInfo, selected: bool) -> egui::Response {
     crate::util::label_selectable(&resp, format!("Commit {}", c.summary), selected);
     let p = ui.painter().with_clip_rect(rect.intersect(ui.clip_rect()));
     if selected {
-        p.rect_filled(rect, 0.0, theme::SELECTION);
+        p.rect_filled(rect, 0.0, theme::T.selection);
     } else if resp.hovered() {
-        p.rect_filled(rect, 0.0, theme::HOVER);
+        p.rect_filled(rect, 0.0, theme::T.hover);
     }
     let right = format!("{}  {}", short(&c.oid), format_time(c.author_time, c.author_offset_minutes));
-    let r = p.text(rect.right_center() - vec2(4.0, 0.0), Align2::RIGHT_CENTER, right, FontId::proportional(11.5), theme::TEXT_DIM);
+    let r = p.text(rect.right_center() - vec2(4.0, 0.0), Align2::RIGHT_CENTER, right, theme::T.tiny_font(), theme::T.text_dim);
     let clip = egui::Rect::from_min_max(rect.min, egui::pos2(r.left() - 8.0, rect.max.y));
-    ui.painter().with_clip_rect(clip.intersect(ui.clip_rect())).text(rect.left_center() + vec2(4.0, 0.0), Align2::LEFT_CENTER, &c.summary, FontId::proportional(13.0), if selected { theme::TEXT_BRIGHT } else { theme::TEXT });
+    ui.painter().with_clip_rect(clip.intersect(ui.clip_rect())).text(rect.left_center() + vec2(4.0, 0.0), Align2::LEFT_CENTER, &c.summary, theme::T.ui_font(), if selected { theme::T.text_bright } else { theme::T.text });
     resp
 }
 
@@ -280,15 +280,15 @@ fn push_window(state: &mut AppState, ctx: &Context) {
                 return;
             }
             if let Some(e) = &d.error {
-                ui.label(RichText::new(e).color(theme::ERROR));
+                ui.label(RichText::new(e).color(theme::T.error));
             }
             let target = match &d.upstream {
                 Some(up) => format!("{branch} -> {up}"),
                 None => format!("{branch} -> {}/{branch}  (new)", d.remote_guess),
             };
-            ui.label(RichText::new(target).strong().color(theme::TEXT_BRIGHT));
+            ui.label(RichText::new(target).strong().color(theme::T.text_bright));
             if d.detached {
-                ui.label(RichText::new("HEAD is detached; check out a branch to push.").color(theme::WARNING));
+                ui.label(RichText::new("HEAD is detached; check out a branch to push.").color(theme::T.warning));
             }
             ui.add_space(4.0);
             let body_h = 320.0;
@@ -297,7 +297,7 @@ fn push_window(state: &mut AppState, ctx: &Context) {
                 ui.allocate_ui(vec2(w * 0.5, body_h), |ui| {
                     ui.set_min_size(vec2(w * 0.5, body_h));
                     ui.vertical(|ui| {
-                        ui.label(RichText::new(format!("{} outgoing commit(s)", d.commits.len())).small().color(theme::TEXT_DIM));
+                        ui.label(RichText::new(format!("{} outgoing commit(s)", d.commits.len())).small().color(theme::T.text_dim));
                         ui.spacing_mut().item_spacing.y = 0.0;
                         ScrollArea::vertical().id_salt("push-commits").auto_shrink([false, false]).show_rows(ui, 22.0, d.commits.len(), |ui, range| {
                             for c in &d.commits[range] {
@@ -322,7 +322,7 @@ fn push_window(state: &mut AppState, ctx: &Context) {
             });
             ui.separator();
             if d.confirm_force {
-                ui.label(RichText::new("Force push overwrites the remote branch if nobody else pushed to it since your last fetch (--force-with-lease). Continue?").color(theme::WARNING));
+                ui.label(RichText::new("Force push overwrites the remote branch if nobody else pushed to it since your last fetch (--force-with-lease). Continue?").color(theme::T.warning));
                 ui.horizontal(|ui| {
                     if ui.button("Force Push").clicked() {
                         d.confirm_force = false;
@@ -391,9 +391,9 @@ fn update_window(state: &mut AppState, ctx: &Context) {
     let mut go: Option<bool> = None;
     let m = Modal::new(Id::new("git-update-dialog")).show(ctx, |ui| {
         ui.set_width(360.0);
-        ui.label(RichText::new("Update Project").strong().color(theme::TEXT_BRIGHT));
+        ui.label(RichText::new("Update Project").strong().color(theme::T.text_bright));
         ui.add_space(6.0);
-        ui.label(RichText::new("Update type").small().color(theme::TEXT_DIM));
+        ui.label(RichText::new("Update type").small().color(theme::T.text_dim));
         ui.radio_value(&mut d.rebase, false, "Merge incoming changes into the current branch");
         ui.radio_value(&mut d.rebase, true, "Rebase the current branch on top of incoming changes");
         ui.add_space(8.0);
@@ -430,8 +430,8 @@ fn stash_window(state: &mut AppState, ctx: &Context) {
     let branch = state.git.branch.clone().unwrap_or_default();
     let m = Modal::new(Id::new("git-stash-dialog")).show(ctx, |ui| {
         ui.set_width(420.0);
-        ui.label(RichText::new("Stash Changes").strong().color(theme::TEXT_BRIGHT));
-        ui.label(RichText::new(format!("Current branch: {branch}")).small().color(theme::TEXT_DIM));
+        ui.label(RichText::new("Stash Changes").strong().color(theme::T.text_bright));
+        ui.label(RichText::new(format!("Current branch: {branch}")).small().color(theme::T.text_dim));
         ui.add_space(6.0);
         let r = ui.add(TextEdit::singleline(&mut d.message).hint_text("Message").desired_width(f32::INFINITY));
         if !d.focused {
@@ -482,7 +482,7 @@ fn unstash_window(state: &mut AppState, ctx: &Context) {
                 return;
             }
             if d.entries.is_empty() {
-                ui.label(RichText::new("There are no stashes.").color(theme::TEXT_DIM));
+                ui.label(RichText::new("There are no stashes.").color(theme::T.text_dim));
                 return;
             }
             let body_h = 280.0;
@@ -498,12 +498,12 @@ fn unstash_window(state: &mut AppState, ctx: &Context) {
                             crate::util::label_selectable(&resp, format!("stash@{{{}}} {}", e.index, e.message), sel);
                             let p = ui.painter().with_clip_rect(rect.intersect(ui.clip_rect()));
                             if sel {
-                                p.rect_filled(rect, 0.0, theme::SELECTION);
+                                p.rect_filled(rect, 0.0, theme::T.selection);
                             } else if resp.hovered() {
-                                p.rect_filled(rect, 0.0, theme::HOVER);
+                                p.rect_filled(rect, 0.0, theme::T.hover);
                             }
-                            let r = p.text(rect.left_center() + vec2(4.0, 0.0), Align2::LEFT_CENTER, format!("stash@{{{}}}", e.index), FontId::monospace(12.0), theme::TEXT_DIM);
-                            p.text(egui::pos2(r.right() + 8.0, rect.center().y), Align2::LEFT_CENTER, &e.message, FontId::proportional(13.0), if sel { theme::TEXT_BRIGHT } else { theme::TEXT });
+                            let r = p.text(rect.left_center() + vec2(4.0, 0.0), Align2::LEFT_CENTER, format!("stash@{{{}}}", e.index), theme::T.mono_small_font(), theme::T.text_dim);
+                            p.text(egui::pos2(r.right() + 8.0, rect.center().y), Align2::LEFT_CENTER, &e.message, theme::T.ui_font(), if sel { theme::T.text_bright } else { theme::T.text });
                             if resp.clicked() {
                                 select = Some(i);
                             }
@@ -527,7 +527,7 @@ fn unstash_window(state: &mut AppState, ctx: &Context) {
             let Some((sel, sel_oid)) = d.selected.and_then(|i| d.entries.get(i)).map(|e| (e.index, e.oid)) else { return };
             if let Some(drop_ix) = d.confirm_drop {
                 let drop_oid = d.entries.iter().find(|e| e.index == drop_ix).map(|e| e.oid);
-                ui.label(RichText::new(format!("Drop stash@{{{drop_ix}}}? Its changes are lost.")).color(theme::WARNING));
+                ui.label(RichText::new(format!("Drop stash@{{{drop_ix}}}? Its changes are lost.")).color(theme::T.warning));
                 ui.horizontal(|ui| {
                     if ui.button("Drop").clicked() {
                         d.confirm_drop = None;

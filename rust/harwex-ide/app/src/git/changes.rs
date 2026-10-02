@@ -7,7 +7,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::ops::Range;
 use std::path::{Path, PathBuf};
 
-use egui::{pos2, vec2, Align2, Color32, Context, FontId, Id, Key, Modal, Modifiers, Rect, RichText, ScrollArea, Sense, Shape, Stroke, Ui};
+use egui::{pos2, vec2, Align2, Context, Id, Key, Modal, Modifiers, Rect, RichText, ScrollArea, Sense, Shape, Stroke, Ui};
 use ide_git::{ChangeKind, FileChange};
 
 use crate::state::AppState;
@@ -281,7 +281,7 @@ enum Event {
 
 pub fn tool_window(state: &mut AppState, ui: &mut Ui) {
     if state.git.repo.is_none() {
-        ui.label(RichText::new("The project is not under git.").color(theme::TEXT_DIM));
+        ui.label(RichText::new("The project is not under git.").color(theme::T.text_dim));
         return;
     }
     if state.git_ui.changes.rows_dirty {
@@ -294,7 +294,7 @@ pub fn tool_window(state: &mut AppState, ui: &mut Ui) {
         .resizable(true)
         .default_height(170.0)
         .height_range(110.0..=500.0)
-        .frame(egui::Frame::NONE.fill(theme::PANEL_BG).inner_margin(egui::Margin::symmetric(0, 6)))
+        .frame(egui::Frame::NONE.fill(theme::T.island_bg).inner_margin(egui::Margin::symmetric(0, 6)))
         .show_inside(ui, |ui| {
             commit = message_area(state, ui);
         });
@@ -302,31 +302,34 @@ pub fn tool_window(state: &mut AppState, ui: &mut Ui) {
     let c = &state.git_ui.changes;
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 2.0;
-        if small_button(ui, "\u{27F3}", "Refresh").clicked() {
+        use crate::icons::Icon;
+        use crate::layout::{icon_button, icon_button_enabled};
+        if icon_button(ui, Icon::Refresh, "Refresh", "Refresh").clicked() {
             events.push(Event::Refresh);
         }
         let sel: Vec<PathBuf> = c.entries.iter().filter(|e| c.selected.contains(&e.path)).map(|e| e.path.clone()).collect();
         let has_sel = !sel.is_empty();
-        if ui.add_enabled(has_sel, egui::Button::new("Rollback").small()).on_hover_text("Rollback selected files").clicked() {
+        if icon_button_enabled(ui, has_sel, Icon::Rollback, "Rollback", "Rollback selected files").clicked() {
             events.push(Event::Rollback(sel.iter().filter(|p| c.entry(p).is_some_and(|e| !e.is_untracked())).cloned().collect()));
         }
-        if ui.add_enabled(sel.len() == 1, egui::Button::new("Diff").small()).on_hover_text("Show Diff").clicked() {
+        if icon_button_enabled(ui, sel.len() == 1, Icon::Diff, "Diff", "Show Diff").clicked() {
             events.push(Event::Diff(sel[0].clone()));
         }
-        ui.separator();
-        if small_button(ui, "+", "Expand All").clicked() {
+        ui.add_space(6.0);
+        if icon_button(ui, Icon::ExpandAll, "Expand All", "Expand All").clicked() {
             events.push(Event::ExpandAll(true));
         }
-        if small_button(ui, "\u{2212}", "Collapse All").clicked() {
+        if icon_button(ui, Icon::CollapseAll, "Collapse All", "Collapse All").clicked() {
             events.push(Event::ExpandAll(false));
         }
+        ui.add_space(6.0);
         let checked = c.prefix.last().copied().unwrap_or(0);
-        ui.label(RichText::new(format!("{checked} of {} selected", c.entries.len())).size(11.0).color(theme::TEXT_DIM));
+        ui.label(RichText::new(format!("{checked} of {} selected", c.entries.len())).size(theme::T.font.tiny).color(theme::T.text_dim));
     });
 
     if c.entries.is_empty() {
         ui.add_space(20.0);
-        ui.vertical_centered(|ui| ui.label(RichText::new("No changes").color(theme::TEXT_DIM)));
+        ui.vertical_centered(|ui| ui.label(RichText::new("No changes").color(theme::T.text_dim)));
     } else {
         draw_tree(c, ui, &mut events);
     }
@@ -339,9 +342,6 @@ pub fn tool_window(state: &mut AppState, ui: &mut Ui) {
     }
 }
 
-fn small_button(ui: &mut Ui, text: &str, tip: &str) -> egui::Response {
-    ui.add(egui::Button::new(text).small()).on_hover_text(tip)
-}
 
 fn draw_tree(c: &ChangesUi, ui: &mut Ui, events: &mut Vec<Event>) {
     let (cmd, shift) = ui.input(|i| (i.modifiers.command, i.modifiers.shift));
@@ -353,9 +353,9 @@ fn draw_tree(c: &ChangesUi, ui: &mut Ui, events: &mut Vec<Event>) {
             let painter = ui.painter();
             let is_sel = matches!(row.kind, RowKind::File(i) if c.selected.contains(&c.entries[i].path));
             if is_sel {
-                painter.rect_filled(rect, 0.0, theme::SELECTION_INACTIVE);
+                painter.rect_filled(rect, 0.0, theme::T.selection_inactive);
             } else if resp.hovered() {
-                painter.rect_filled(rect, 0.0, theme::HOVER);
+                painter.rect_filled(rect, 0.0, theme::T.hover);
             }
             let cy = rect.center().y;
             let mut x = rect.min.x + 4.0 + f32::from(row.depth) * 14.0;
@@ -367,7 +367,7 @@ fn draw_tree(c: &ChangesUi, ui: &mut Ui, events: &mut Vec<Event>) {
                 } else {
                     vec![pos2(x, cy - 2.0), pos2(x + 8.0, cy - 2.0), pos2(x + 4.0, cy + 3.0)]
                 };
-                painter.add(Shape::convex_polygon(pts, theme::TEXT_DIM, Stroke::NONE));
+                painter.add(Shape::convex_polygon(pts, theme::T.text_dim, Stroke::NONE));
             }
             x += 14.0;
             let tri = c.tri(&row.span);
@@ -388,24 +388,23 @@ fn draw_tree(c: &ChangesUi, ui: &mut Ui, events: &mut Vec<Event>) {
             let pointer = resp.interact_pointer_pos();
             paint_checkbox(painter, check, tri, pointer.is_none() && ui.rect_contains_pointer(check.expand(2.0)));
             x += 18.0;
-            let font = FontId::proportional(13.0);
+            let font = theme::T.ui_font();
             match &row.kind {
                 RowKind::Group(g) => {
-                    let galley = painter.layout_no_wrap(g.title().to_string(), font.clone(), theme::TEXT_BRIGHT);
+                    let galley = painter.layout_no_wrap(g.title().to_string(), font.clone(), theme::T.text_bright);
                     let w = galley.size().x;
-                    painter.galley(pos2(x, cy - galley.size().y / 2.0), galley, theme::TEXT_BRIGHT);
+                    painter.galley(pos2(x, cy - galley.size().y / 2.0), galley, theme::T.text_bright);
                     let n = row.span.len();
-                    painter.text(pos2(x + w + 8.0, cy), Align2::LEFT_CENTER, format!("{n} file{}", if n == 1 { "" } else { "s" }), FontId::proportional(11.5), theme::TEXT_DIM);
+                    painter.text(pos2(x + w + 8.0, cy), Align2::LEFT_CENTER, format!("{n} file{}", if n == 1 { "" } else { "s" }), theme::T.tiny_font(), theme::T.text_dim);
                 }
                 RowKind::Dir(name) => {
-                    let r = Rect::from_center_size(pos2(x + 6.0, cy), vec2(12.0, 9.0));
-                    painter.rect_filled(r, 1.5, Color32::from_rgb(0x87, 0x93, 0x9A));
-                    x += 16.0;
-                    let galley = painter.layout_no_wrap(name.clone(), font.clone(), theme::TEXT);
+                    crate::icons::folder(painter, pos2(x + 7.0, cy), 14.0);
+                    x += 18.0;
+                    let galley = painter.layout_no_wrap(name.clone(), font.clone(), theme::T.text);
                     let w = galley.size().x;
-                    painter.galley(pos2(x, cy - galley.size().y / 2.0), galley, theme::TEXT);
+                    painter.galley(pos2(x, cy - galley.size().y / 2.0), galley, theme::T.text);
                     let n = row.span.len();
-                    painter.text(pos2(x + w + 8.0, cy), Align2::LEFT_CENTER, format!("{n} file{}", if n == 1 { "" } else { "s" }), FontId::proportional(11.5), theme::TEXT_DIM);
+                    painter.text(pos2(x + w + 8.0, cy), Align2::LEFT_CENTER, format!("{n} file{}", if n == 1 { "" } else { "s" }), theme::T.tiny_font(), theme::T.text_dim);
                 }
                 RowKind::File(i) => {
                     let e = &c.entries[*i];
@@ -421,7 +420,7 @@ fn draw_tree(c: &ChangesUi, ui: &mut Ui, events: &mut Vec<Event>) {
                         _ => None,
                     };
                     if let Some(extra) = extra {
-                        painter.text(pos2(x + w + 8.0, cy), Align2::LEFT_CENTER, extra, FontId::proportional(11.5), theme::TEXT_DIM);
+                        painter.text(pos2(x + w + 8.0, cy), Align2::LEFT_CENTER, extra, theme::T.tiny_font(), theme::T.text_dim);
                     }
                 }
             }
@@ -500,15 +499,16 @@ fn context_menu(c: &ChangesUi, row: &Row, ui: &mut Ui, events: &mut Vec<Event>) 
 }
 
 fn paint_checkbox(painter: &egui::Painter, r: Rect, tri: Tri, hovered: bool) {
-    let border = if hovered { theme::TEXT_BRIGHT } else { Color32::from_gray(0x80) };
+    let t = &theme::T;
+    let border = if hovered { t.checkbox_border_hover } else { t.checkbox_border };
     match tri {
         Tri::Off => {
-            painter.rect_filled(r, 2.0, Color32::from_rgb(0x43, 0x45, 0x47));
-            painter.rect_stroke(r, 2.0, Stroke::new(1.0_f32, border), egui::StrokeKind::Inside);
+            painter.rect_filled(r, t.radius.small, t.checkbox_bg);
+            painter.rect_stroke(r, t.radius.small, Stroke::new(1.0_f32, border), egui::StrokeKind::Inside);
         }
         Tri::On | Tri::Mixed => {
-            painter.rect_filled(r, 2.0, theme::TAB_ACTIVE_LINE);
-            let s = Stroke::new(1.6_f32, Color32::WHITE);
+            painter.rect_filled(r, t.radius.small, t.accent);
+            let s = Stroke::new(1.6_f32, t.on_accent);
             if tri == Tri::On {
                 painter.line_segment([pos2(r.min.x + 2.5, r.center().y), pos2(r.min.x + 5.0, r.max.y - 3.0)], s);
                 painter.line_segment([pos2(r.min.x + 5.0, r.max.y - 3.0), pos2(r.max.x - 2.5, r.min.y + 3.0)], s);
@@ -550,15 +550,15 @@ fn message_area(state: &mut AppState, ui: &mut Ui) -> Option<bool> {
     ui.add_space(4.0);
     ui.horizontal(|ui| {
         let label = if c.amend { "Amend Commit" } else { "Commit" };
-        let hint = if c.message.trim().is_empty() { "Enter a commit message" } else if checked == 0 && !c.amend { "Select files to commit" } else { "Cmd+Enter" };
-        if ui.add_enabled(can, egui::Button::new(RichText::new(label).strong()).fill(theme::SELECTION)).on_disabled_hover_text(hint).clicked() {
+        let hint = if c.message.trim().is_empty() { "Enter a commit message" } else if checked == 0 && !c.amend { "Select files to commit" } else { "⌘⏎" };
+        if ui.add_enabled(can, egui::Button::new(RichText::new(label).color(theme::T.on_accent)).fill(theme::T.accent)).on_disabled_hover_text(hint).clicked() {
             out = Some(false);
         }
         if ui.add_enabled(can, egui::Button::new(if c.amend { "Amend Commit and Push..." } else { "Commit and Push..." })).on_disabled_hover_text(hint).clicked() {
             out = Some(true);
         }
         if c.committing {
-            ui.add(egui::Spinner::new().size(14.0));
+            ui.add(egui::Spinner::new().size(theme::T.font.hint));
         }
     });
     if amend_changed {
@@ -800,7 +800,7 @@ fn confirm_dialog(state: &mut AppState, ctx: &Context) {
     let entries = &state.git_ui.changes;
     let modal = Modal::new(Id::new("changes-confirm")).show(ctx, |ui| {
         ui.set_width(440.0);
-        ui.label(RichText::new(title).strong().size(14.0));
+        ui.label(RichText::new(title).strong().size(theme::T.font.hint));
         ui.add_space(6.0);
         let n = paths.len();
         let text = match confirm {
@@ -812,7 +812,7 @@ fn confirm_dialog(state: &mut AppState, ctx: &Context) {
         ScrollArea::vertical().max_height(220.0).show(ui, |ui| {
             for p in paths.iter().take(500) {
                 let kind = entries.entry(p).map(|e| e.kind());
-                let color = kind.map_or(theme::TEXT, change_color);
+                let color = kind.map_or(theme::T.text, change_color);
                 let note = match (confirm, kind) {
                     (Confirm::Rollback(_), Some(ChangeKind::Added)) => "  (will be deleted)",
                     _ => "",
@@ -820,7 +820,7 @@ fn confirm_dialog(state: &mut AppState, ctx: &Context) {
                 ui.label(RichText::new(format!("{}{note}", p.display())).color(color).monospace());
             }
             if paths.len() > 500 {
-                ui.label(RichText::new(format!("... and {} more", paths.len() - 500)).color(theme::TEXT_DIM));
+                ui.label(RichText::new(format!("... and {} more", paths.len() - 500)).color(theme::T.text_dim));
             }
         });
         ui.add_space(8.0);

@@ -1,88 +1,14 @@
 //! End-to-end tests against a real tsserver in a throwaway project.
 
-use std::path::{Path, PathBuf};
+mod common;
+
 use std::time::Duration;
 
-use ide_ts::{find_node, Location, TsService};
+use common::{pos, service, single, TsLink};
+use ide_ts::TsService;
 
-const TYPESCRIPT: &str = "/Users/aleh_kaportsau/Projects/harwex-mono/javascript/node_modules/typescript";
-
-struct Project {
-    _tmp: tempfile::TempDir,
-    root: PathBuf,
-    main: PathBuf,
-    main_text: String,
-}
-
-/// Returns `None` (and the test passes with a message) when node or typescript is missing,
-/// so the suite still runs on a machine without a JS toolchain.
-fn project() -> Option<Project> {
-    if find_node().is_none() {
-        eprintln!("skipping: node not found");
-        return None;
-    }
-    if !Path::new(TYPESCRIPT).join("lib/tsserver.js").is_file() {
-        eprintln!("skipping: {TYPESCRIPT} not found");
-        return None;
-    }
-    let tmp = tempfile::tempdir().unwrap();
-    // tsserver answers with real paths; /var is a symlink to /private/var on macOS.
-    let root = tmp.path().canonicalize().unwrap();
-    let write = |rel: &str, text: &str| {
-        let p = root.join(rel);
-        std::fs::create_dir_all(p.parent().unwrap()).unwrap();
-        std::fs::write(p, text).unwrap();
-    };
-    std::fs::create_dir_all(root.join("node_modules")).unwrap();
-    std::os::unix::fs::symlink(TYPESCRIPT, root.join("node_modules/typescript")).unwrap();
-    write(
-        "node_modules/fake-lib/package.json",
-        r#"{"name":"fake-lib","version":"1.0.0","main":"index.js","types":"index.d.ts"}"#,
-    );
-    write(
-        "node_modules/fake-lib/index.d.ts",
-        "/** Says hello. */\nexport declare function greet(name: string): string;\nexport interface Options { loud: boolean }\n",
-    );
-    write(
-        "node_modules/fake-lib/index.js",
-        "\"use strict\";\nexports.greet = greet;\nfunction greet(name) {\n  return \"hi \" + name;\n}\n",
-    );
-    write(
-        "tsconfig.json",
-        r#"{"compilerOptions":{"strict":true,"module":"commonjs","target":"es2020"},"include":["src"]}"#,
-    );
-    write("src/util.ts", "export const answer = 42;\n");
-    // Line 3 has astral chars before `greet`, so a wrong UTF-16 conversion shows up.
-    let main_text = "import { greet, Options } from \"fake-lib\";\nimport { answer } from \"./util\";\nconst s = \"😀😀\"; greet(s);\nconst o: Options = { loud: true };\nconsole.log(answer, o);\n".to_string();
-    write("src/main.ts", &main_text);
-    let main = root.join("src/main.ts");
-    Some(Project {
-        _tmp: tmp,
-        root,
-        main,
-        main_text,
-    })
-}
-
-/// 0-based (line, char column) of the `nth` occurrence of `needle` in `text`.
-fn pos(text: &str, needle: &str, nth: usize) -> (usize, usize) {
-    let byte = text.match_indices(needle).nth(nth).expect("needle not found").0;
-    let before = &text[..byte];
-    let line = before.matches('\n').count();
-    let line_start = before.rfind('\n').map_or(0, |i| i + 1);
-    (line, text[line_start..byte].chars().count())
-}
-
-fn service() -> TsService {
-    let ts = TsService::new();
-    // The first request loads the project and the lib files; a cold disk can be slow.
-    ts.set_timeout(Duration::from_secs(30));
-    ts
-}
-
-fn single(locs: Vec<Location>) -> Location {
-    assert_eq!(locs.len(), 1, "expected one location, got {locs:?}");
-    locs.into_iter().next().unwrap()
+fn project() -> Option<common::Project> {
+    common::project(TsLink::TsServer)
 }
 
 #[test]

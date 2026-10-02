@@ -1,100 +1,22 @@
-//! Code navigation through tsserver: Go to Declaration / Source / Type Definition, Find Usages,
-//! hover quick info and back/forward history.
+//! Code navigation through the language servers: Go to Declaration / Source / Type
+//! Definition, Find Usages, hover info and back/forward history.
 //!
-//! All tsserver traffic goes through one queue thread, so `open`/`change`/`close` and requests
-//! reach tsserver in the order the UI issued them. A request always sees the edits made before it.
+//! Requests go through the language registry (`crate::lang`): TypeScript and JavaScript to
+//! `ide-ts`, Rust to rust-analyzer. Each language has one queue thread, so `open`/`change`/
+//! `close` and requests reach the server in the order the UI issued them. A request always
+//! sees the edits made before it.
 
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::mpsc::{channel, Sender};
-use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use egui::{Context, Frame, Id, Key, LayerId, Pos2, RichText, ScrollArea};
-use ide_editor::{Language, Position};
-use ide_ts::{Location, QuickInfo, Reference, TsService};
+use ide_editor::Position;
 
+use crate::lang::{HoverInfo, Location, Reference};
 use crate::state::AppState;
 use crate::tabs::TabId;
 use crate::theme;
-
-pub enum TsCmd {
-    Open(PathBuf, String),
-    Change(PathBuf, String),
-    Close(PathBuf),
-    Run(Box<dyn FnOnce(&TsService) + Send>),
-}
-
-pub struct TsBridge {
-    tx: Sender<TsCmd>,
-    pub service: TsService,
-    /// Commands sent and not finished yet, so tests can wait for tsserver work.
-    queued: Arc<AtomicUsize>,
-}
-
-impl Default for TsBridge {
-    fn default() -> Self {
-        TsBridge::new()
-    }
-}
-
-impl TsBridge {
-    pub fn new() -> TsBridge {
-        let service = TsService::new();
-        // The first request loads the whole project; in a big workspace that can exceed 5 s.
-        service.set_timeout(Duration::from_secs(20));
-        let (tx, rx) = channel::<TsCmd>();
-        let svc = service.clone();
-        let queued = Arc::new(AtomicUsize::new(0));
-        let done = queued.clone();
-        let _ = std::thread::Builder::new().name("tsserver queue".into()).spawn(move || {
-            while let Ok(cmd) = rx.recv() {
-                match cmd {
-                    TsCmd::Open(p, t) => svc.open(&p, &t),
-                    TsCmd::Change(p, t) => svc.change(&p, &t),
-                    TsCmd::Close(p) => svc.close(&p),
-                    TsCmd::Run(f) => f(&svc),
-                }
-                done.fetch_sub(1, Ordering::SeqCst);
-            }
-            svc.shutdown();
-        });
-        TsBridge { tx, service, queued }
-    }
-
-    fn send(&self, cmd: TsCmd) {
-        self.queued.fetch_add(1, Ordering::SeqCst);
-        if self.tx.send(cmd).is_err() {
-            self.queued.fetch_sub(1, Ordering::SeqCst);
-        }
-    }
-
-    /// Commands waiting for or running on the tsserver queue thread.
-    pub fn queued(&self) -> usize {
-        self.queued.load(Ordering::SeqCst)
-    }
-
-    pub fn open(&self, path: &Path, text: String) {
-        self.send(TsCmd::Open(path.to_path_buf(), text));
-    }
-
-    pub fn change(&self, path: &Path, text: String) {
-        self.send(TsCmd::Change(path.to_path_buf(), text));
-    }
-
-    pub fn close(&self, path: &Path) {
-        self.send(TsCmd::Close(path.to_path_buf()));
-    }
-
-    pub fn run(&self, f: impl FnOnce(&TsService) + Send + 'static) {
-        self.send(TsCmd::Run(Box::new(f)));
-    }
-}
-
-pub fn is_ts_language(lang: Language) -> bool {
-    matches!(lang, Language::TypeScript | Language::Tsx | Language::JavaScript | Language::Jsx)
-}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum NavKind {
@@ -153,7 +75,7 @@ pub struct HoverState {
     key: Option<(PathBuf, Position, Position)>,
     since: Option<Instant>,
     requested: bool,
-    info: Option<QuickInfo>,
+    info: Option<HoverInfo>,
     generation: u64,
 }
 
@@ -189,8 +111,8 @@ impl HoverState {
         self.key.is_some() && !self.requested
     }
 
-    /// The quick info shown in the tooltip, once tsserver answered.
-    pub fn info(&self) -> Option<&QuickInfo> {
+    /// The hover info shown in the tooltip, once the server answered.
+    pub fn info(&self) -> Option<&HoverInfo> {
         self.info.as_ref()
     }
 }
@@ -214,27 +136,26 @@ impl Navigation {
     }
 }
 
-/// Flushes unsent edits of one tab to tsserver. Called before every request, so results never
-/// refer to stale text even when the debounce has not fired yet.
-pub fn flush_ts(state: &mut AppState, tab: TabId) {
+/// Flushes unsent edits of one tab to its language server. Called before every request, so
+/// results never refer to stale text even when the debounce has not fired yet.
+pub fn flush_lsp(state: &mut AppState, tab: TabId) {
     let Some(e) = state.tabs.editor_mut(tab) else { return };
-    if let Some(v) = e.ts_version {
-        if v != e.doc.version() {
-            e.ts_version = Some(e.doc.version());
-            let text = e.doc.text();
-            let path = e.path.clone();
-            state.ts.change(&path, text);
-        }
+    let (Some(lang), Some(v)) = (e.lang, e.lsp_version) else { return };
+    if v != e.doc.version() {
+        e.lsp_version = Some(e.doc.version());
+        let text = e.doc.text();
+        let path = e.path.clone();
+        state.langs.bridge(lang).change(&path, text);
     }
 }
 
-/// Sends edits that have rested for 300 ms. Without this, tsserver would get a full copy of the
-/// file on every keystroke.
-pub fn sync_ts_debounced(state: &mut AppState) {
+/// Sends edits that have rested for 300 ms. Without this, the server would get a full copy of
+/// the file on every keystroke.
+pub fn sync_lsp_debounced(state: &mut AppState) {
     let mut due = Vec::new();
     let mut wake: Option<Duration> = None;
     for (id, e) in state.tabs.editors_mut() {
-        let Some(v) = e.ts_version else { continue };
+        let Some(v) = e.lsp_version else { continue };
         if v == e.doc.version() {
             continue;
         }
@@ -247,7 +168,7 @@ pub fn sync_ts_debounced(state: &mut AppState) {
         }
     }
     for id in due {
-        flush_ts(state, id);
+        flush_lsp(state, id);
     }
     if let Some(w) = wake {
         state.ctx.request_repaint_after(w);
@@ -257,13 +178,18 @@ pub fn sync_ts_debounced(state: &mut AppState) {
 /// Starts a navigation request at `pos` in tab `tab`. The result arrives later on the UI thread.
 pub fn request(state: &mut AppState, kind: NavKind, tab: TabId, pos: Position, anchor: Pos2) {
     let Some(e) = state.tabs.editor_mut(tab) else { return };
-    if !is_ts_language(e.doc.language()) {
-        state.notifications.warn(kind.label(), format!("Navigation works in TypeScript and JavaScript files, not {}.", e.doc.language().name()));
-        return;
-    }
+    let lang = match (e.lang, state.langs.lang_for(&e.path)) {
+        (Some(lang), _) => lang,
+        (None, Err(why)) => {
+            state.notifications.warn(kind.label(), why);
+            return;
+        }
+        // Enabled, but the tab was opened before the project settings allowed it.
+        (None, Ok(lang)) => lang,
+    };
     let path = e.path.clone();
     let word = e.doc.word_at(pos).map(|r| e.doc.slice(e.doc.position_to_char(r.start)..e.doc.position_to_char(r.end))).unwrap_or_default();
-    flush_ts(state, tab);
+    flush_lsp(state, tab);
     state.nav.generation += 1;
     state.nav.popup = None;
     let generation = state.nav.generation;
@@ -274,14 +200,12 @@ pub fn request(state: &mut AppState, kind: NavKind, tab: TabId, pos: Position, a
         state.layout.show(crate::layout::ToolWindow::Usages);
     }
     let from = NavPoint { path: path.clone(), pos };
-    state.ts.run(move |ts| {
+    state.langs.bridge(lang).run(move |server| {
         let _busy = jobs.busy(format!("{}: {word}", kind.label()));
         let started = Instant::now();
         let result = match kind {
-            NavKind::Declaration => ts.definition(&path, pos.line, pos.column).map(NavResult::Locations),
-            NavKind::SourceDefinition => ts.source_definition(&path, pos.line, pos.column).map(NavResult::Locations),
-            NavKind::TypeDefinition => ts.type_definition(&path, pos.line, pos.column).map(NavResult::Locations),
-            NavKind::Usages => ts.references(&path, pos.line, pos.column).map(NavResult::References),
+            NavKind::Usages => server.references(&path, pos.line, pos.column).map(NavResult::References),
+            _ => server.locations(kind, &path, pos.line, pos.column).map(NavResult::Locations),
         };
         let ms = started.elapsed().as_secs_f64() * 1000.0;
         let result = result.map(|r| match r {
@@ -305,7 +229,7 @@ struct NavReply {
     word: String,
     anchor: Pos2,
     ms: f64,
-    result: ide_ts::Result<NavResult>,
+    result: Result<NavResult, String>,
 }
 
 fn dedup(locs: Vec<Location>) -> Vec<Location> {
@@ -355,7 +279,7 @@ fn on_result(state: &mut AppState, reply: NavReply) {
             if kind == NavKind::Usages {
                 state.usages.searching = false;
             }
-            state.notifications.error(format!("{} failed", kind.label()), e.to_string());
+            state.notifications.error(format!("{} failed", kind.label()), e);
         }
         Ok(NavResult::References(refs)) => {
             let mut groups: Vec<UsageGroup> = Vec::new();
@@ -447,13 +371,13 @@ pub fn show_popup(state: &mut AppState, ctx: &Context) {
     }
     let mut chosen = if enter { Some(popup.selected) } else { None };
     let resp = egui::Area::new(Id::new("nav-popup")).fixed_pos(popup.anchor).order(egui::Order::Foreground).constrain(true).show(ctx, |ui| {
-        Frame::popup(ui.style()).fill(theme::POPUP_BG).show(ui, |ui| {
+        Frame::popup(ui.style()).fill(theme::T.popup_bg).show(ui, |ui| {
             ui.set_max_width(720.0);
             ui.label(RichText::new(&popup.title).strong());
             ui.separator();
             ScrollArea::vertical().max_height(360.0).show(ui, |ui| {
                 // Rows look like list items, not buttons, until hovered or selected.
-                ui.visuals_mut().widgets.inactive.weak_bg_fill = egui::Color32::TRANSPARENT;
+                ui.visuals_mut().widgets.inactive.weak_bg_fill = theme::T.clear;
                 ui.visuals_mut().widgets.inactive.bg_stroke = egui::Stroke::NONE;
                 for (i, t) in popup.items.iter().enumerate() {
                     let rel = display_path(&root, &t.location.path);
@@ -477,24 +401,37 @@ pub fn show_popup(state: &mut AppState, ctx: &Context) {
     }
 }
 
-/// Paths inside the project are shown relative; dependency paths start at `node_modules`.
+/// Paths inside the project are shown relative. Dependency paths start at `node_modules`,
+/// at the crate directory of a Cargo registry source (`egui-0.31.1/src/ui.rs`), or at the
+/// standard library (`library/core/src/option.rs`).
 pub fn display_path(root: &Path, path: &Path) -> String {
     if let Ok(rel) = path.strip_prefix(root) {
         return rel.display().to_string();
     }
     let s = path.display().to_string();
-    match s.find("node_modules/") {
-        Some(i) => s[i..].to_string(),
-        None => s,
+    if let Some(i) = s.find("node_modules/") {
+        return s[i..].to_string();
     }
+    if let Some(i) = s.find("/registry/src/") {
+        // Skip the index directory (`index.crates.io-<hash>/`).
+        let rest = &s[i + "/registry/src/".len()..];
+        if let Some(j) = rest.find('/') {
+            return rest[j + 1..].to_string();
+        }
+    }
+    if let Some(i) = s.find("/lib/rustlib/src/rust/") {
+        return s[i + "/lib/rustlib/src/rust/".len()..].to_string();
+    }
+    s
 }
 
-/// Hover handling for the active editor: 500 ms on one identifier asks tsserver for quick info.
+/// Hover handling for the active editor: 500 ms on one identifier asks the server for hover info.
 pub fn hover(state: &mut AppState, tab: TabId, hover: Option<Position>, layer: LayerId) {
     let ctx = state.ctx.clone();
     let Some(e) = state.tabs.editor_mut(tab) else { return };
     let modifiers = ctx.input(|i| i.modifiers);
-    let word = hover.filter(|_| is_ts_language(e.doc.language()) && !modifiers.command).and_then(|p| e.doc.word_at(p));
+    let lang = e.lang;
+    let word = hover.filter(|_| lang.is_some() && !modifiers.command).and_then(|p| e.doc.word_at(p));
     let Some(word) = word else {
         state.nav.hover = HoverState { generation: state.nav.hover.generation, ..Default::default() };
         return;
@@ -516,10 +453,11 @@ pub fn hover(state: &mut AppState, tab: TabId, hover: Option<Position>, layer: L
         let generation = h.generation;
         let path = e.path.clone();
         let pos = word.start;
-        flush_ts(state, tab);
+        flush_lsp(state, tab);
         let jobs = state.jobs.clone();
-        state.ts.run(move |ts| {
-            let info = ts.quick_info(&path, pos.line, pos.column);
+        let Some(lang) = lang else { return };
+        state.langs.bridge(lang).run(move |server| {
+            let info = server.hover(&path, pos.line, pos.column);
             jobs.post(move |state| {
                 if state.nav.hover.generation == generation {
                     state.nav.hover.info = info.ok().flatten();
@@ -531,13 +469,13 @@ pub fn hover(state: &mut AppState, tab: TabId, hover: Option<Position>, layer: L
     if let Some(info) = &state.nav.hover.info {
         egui::show_tooltip_at_pointer(&ctx, layer, Id::new("ts-quick-info"), |ui| {
             ui.set_max_width(640.0);
-            ui.label(RichText::new(&info.display).monospace().color(theme::TEXT_BRIGHT));
+            ui.label(RichText::new(&info.display).monospace().color(theme::T.text_bright));
             if !info.documentation.is_empty() {
                 ui.separator();
                 ui.label(&info.documentation);
             }
-            for tag in info.tags.iter().take(8) {
-                ui.label(RichText::new(format!("@{} {}", tag.name, tag.text)).weak());
+            for (name, text) in info.tags.iter().take(8) {
+                ui.label(RichText::new(format!("@{name} {text}")).weak());
             }
         });
     }
@@ -553,7 +491,7 @@ pub fn show_usages(state: &mut AppState, ui: &mut egui::Ui) {
             ui.spinner();
             ui.label(format!("{}...", u.title));
         } else if u.title.is_empty() {
-            ui.label(RichText::new("Alt+F7 or the editor context menu: Find Usages").weak());
+            ui.label(RichText::new("⌥F7 or the editor context menu: Find Usages").weak());
         } else {
             let n: usize = u.groups.iter().map(|g| g.refs.len()).sum();
             ui.label(RichText::new(format!("{}: {n} usages in {} files{took}", u.title, u.groups.len())).strong());
@@ -563,7 +501,7 @@ pub fn show_usages(state: &mut AppState, ui: &mut egui::Ui) {
     let mut open = None;
     ScrollArea::both().auto_shrink([false, false]).id_salt("usages").show(ui, |ui| {
         for g in &u.groups {
-            egui::CollapsingHeader::new(RichText::new(format!("{}  ({})", display_path(&root, &g.path), g.refs.len())).color(theme::TEXT_BRIGHT))
+            egui::CollapsingHeader::new(RichText::new(format!("{}  ({})", display_path(&root, &g.path), g.refs.len())).color(theme::T.text_bright))
                 .id_salt(&g.path)
                 .default_open(true)
                 .show(ui, |ui| {
@@ -588,5 +526,21 @@ pub fn anchor_for(ctx: &Context, editor_rect: egui::Rect) -> Pos2 {
     match ctx.input(|i| i.pointer.hover_pos()) {
         Some(p) if editor_rect.contains(p) => p + egui::vec2(4.0, 12.0),
         _ => editor_rect.left_top() + egui::vec2(80.0, 40.0),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::display_path;
+    use std::path::Path;
+
+    #[test]
+    fn dependency_paths_are_short() {
+        let root = Path::new("/p/repo");
+        assert_eq!(display_path(root, Path::new("/p/repo/src/main.rs")), "src/main.rs");
+        assert_eq!(display_path(root, Path::new("/p/repo/node_modules/x/index.d.ts")), "node_modules/x/index.d.ts");
+        assert_eq!(display_path(root, Path::new("/h/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/egui-0.31.1/src/ui.rs")), "egui-0.31.1/src/ui.rs");
+        assert_eq!(display_path(root, Path::new("/r/toolchains/stable/lib/rustlib/src/rust/library/core/src/option.rs")), "library/core/src/option.rs");
+        assert_eq!(display_path(root, Path::new("/elsewhere/a.rs")), "/elsewhere/a.rs");
     }
 }

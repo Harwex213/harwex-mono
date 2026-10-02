@@ -1,0 +1,19 @@
+[package]
+name = "ide-lsp"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+serde_json = "1"
+
+# A scripted LSP server for this crate's own tests. Integration tests find it through
+# `CARGO_BIN_EXE_ide-lsp-fake-server`.
+[[bin]]
+name = "ide-lsp-fake-server"
+path = "src/bin/fake_server.rs"
+test = false
+doc = false
+
+[dev-dependencies]
+tempfile = "3"
