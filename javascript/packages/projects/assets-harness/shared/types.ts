@@ -182,6 +182,18 @@ interface Settings {
   blenderPath: string;
 }
 
+/**
+ * Whether the image tool has a ChatGPT login. The tokens stay in the main
+ * process; the renderer only learns who is signed in.
+ */
+interface CodexLogin {
+  signedIn: boolean;
+  /** The ChatGPT account's email. Empty when nobody is signed in. */
+  email: string;
+  /** A `~/.codex/auth.json` with a ChatGPT login exists and can be taken over. */
+  canImport: boolean;
+}
+
 /** Progress the main process pushes to every window. */
 type WorkspaceEvent =
   | { type: "project"; project: Project | null }
@@ -203,6 +215,7 @@ export type {
   AssetTextureSet,
   ChatMessage,
   CloseResult,
+  CodexLogin,
   ImageAttachment,
   ImageKind,
   MessageImage,

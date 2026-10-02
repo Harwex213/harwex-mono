@@ -1,7 +1,7 @@
 import { useSignals } from "@preact/signals-react/runtime";
 import { useEffect, useState } from "react";
 import type { Settings } from "../../shared/types.js";
-import { saveSettings, settings, showSettings } from "../state/store.js";
+import { changeCodexLogin, codexLogin, codexLoginBusy, saveSettings, settings, showSettings } from "../state/store.js";
 
 const FIELDS: { key: keyof Settings; label: string; hint: string }[] = [
   {
@@ -58,6 +58,23 @@ function SettingsDialog(): React.JSX.Element {
         }}
       >
         <h2>Settings</h2>
+        <div className="field">
+          <span>ChatGPT login for pictures</span>
+          <div className="dialog__actions">
+            <small>{codexLogin.value?.signedIn ? `Signed in as ${codexLogin.value.email || "a ChatGPT account"}.` : "Not signed in."}</small>
+            <button
+              type="button"
+              className="button"
+              disabled={codexLoginBusy.value}
+              onClick={() => {
+                void changeCodexLogin("logout");
+              }}
+            >
+              Sign out
+            </button>
+          </div>
+          <small>The Codex SDK makes the pictures of Claude runs on this account. The login is stored in the app's SQLite database.</small>
+        </div>
         {FIELDS.map((field) => {
           return (
             <label key={field.key} className="field">

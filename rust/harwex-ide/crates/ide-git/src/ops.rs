@@ -1,0 +1,349 @@
+use std::collections::BTreeSet;
+use std::path::{Path, PathBuf};
+
+use git2::RepositoryState;
+
+use crate::log::commit_info;
+use crate::{bytes_to_text, is_binary, CommandOutcome, CommitInfo, Error, Oid, Repo, Result};
+
+/// Upper bound for `outgoing` when nothing on any remote limits the walk (a repository
+/// without remotes would otherwise list its entire history).
+const OUTGOING_LIMIT: usize = 1000;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StashEntry {
+    /// Position in `stash@{n}`.
+    pub index: usize,
+    pub message: String,
+    pub oid: Oid,
+    pub time: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ConflictSides {
+    pub path: PathBuf,
+    /// None when the file does not exist on that side (added on one side, deleted on the other).
+    pub base: Option<String>,
+    pub ours: Option<String>,
+    pub theirs: Option<String>,
+    /// Binary conflicts can only be resolved with Accept Yours / Accept Theirs.
+    pub binary: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ConflictChoice {
+    /// "Accept Yours".
+    Ours,
+    /// "Accept Theirs".
+    Theirs,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ResetMode {
+    Soft,
+    Mixed,
+    Hard,
+}
+
+/// An operation that is waiting for the user, e.g. a merge stopped on conflicts.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RepoState {
+    Clean,
+    Merge,
+    Rebase,
+    CherryPick,
+    Revert,
+    Bisect,
+    Other,
+}
+
+impl Repo {
+    // ---- Remote -------------------------------------------------------------------------
+
+    pub fn fetch(&self) -> Result<CommandOutcome> {
+        self.git(&["fetch", "--all", "--prune"])
+    }
+
+    /// IDEA "Update Project". `--autostash` keeps local changes out of the way like IDEA's
+    /// "stash/unstash" update option; without it a rebase refuses to start on a dirty tree.
+    pub fn pull(&self, rebase: bool) -> Result<CommandOutcome> {
+        self.git(&["pull", "--autostash", if rebase { "--rebase" } else { "--no-rebase" }])
+    }
+
+    /// (remote, branch on the remote) the current branch pushes to, if configured.
+    fn upstream_of(&self, repo: &git2::Repository, branch: &str) -> Option<(String, String)> {
+        let config = repo.config().ok()?;
+        let remote = config.get_string(&format!("branch.{branch}.remote")).ok()?;
+        let merge = config.get_string(&format!("branch.{branch}.merge")).ok()?;
+        Some((remote, merge.trim_start_matches("refs/heads/").to_string()))
+    }
+
+    fn default_remote(&self, repo: &git2::Repository) -> Result<String> {
+        let remotes = repo.remotes()?;
+        let names: Vec<&str> = remotes.iter().flatten().collect();
+        if names.contains(&"origin") {
+            return Ok("origin".into());
+        }
+        names
+            .first()
+            .map(|s| s.to_string())
+            .ok_or_else(|| Error::Other("no remote configured".into()))
+    }
+
+    fn current_branch(&self, repo: &git2::Repository) -> Result<String> {
+        if repo.head_detached()? {
+            return Err(Error::Other("HEAD is detached; check out a branch first".into()));
+        }
+        let head = repo.head()?;
+        head.shorthand()
+            .map(str::to_string)
+            .ok_or_else(|| Error::Other("current branch name is not valid UTF-8".into()))
+    }
+
+    /// Commits the push dialog shows: on HEAD but not on its upstream. A branch without an
+    /// upstream lists what no remote branch contains yet.
+    pub fn outgoing(&self) -> Result<Vec<CommitInfo>> {
+        let repo = self.open()?;
+        let Some(_) = repo.head().ok().and_then(|h| h.target()) else {
+            return Ok(Vec::new());
+        };
+        let mut walk = repo.revwalk()?;
+        walk.set_sorting(git2::Sort::TOPOLOGICAL | git2::Sort::TIME)?;
+        walk.push_head()?;
+        let branch = self.current_branch(&repo).ok();
+        let upstream = branch.as_deref().and_then(|b| {
+            let (remote, name) = self.upstream_of(&repo, b)?;
+            repo.refname_to_id(&format!("refs/remotes/{remote}/{name}")).ok()
+        });
+        match upstream {
+            Some(oid) => walk.hide(oid)?,
+            None => walk.hide_glob("refs/remotes")?,
+        }
+        let mut out = Vec::new();
+        for oid in walk.take(OUTGOING_LIMIT) {
+            out.push(commit_info(&repo.find_commit(oid?)?, None));
+        }
+        Ok(out)
+    }
+
+    /// Pushes the current branch to its upstream, or to the default remote under the same
+    /// name when it has none. An explicit refspec avoids `push.default` surprises when the
+    /// upstream has a different name.
+    pub fn push(&self, force_with_lease: bool, set_upstream: bool) -> Result<CommandOutcome> {
+        let repo = self.open()?;
+        let branch = self.current_branch(&repo)?;
+        let (remote, target) = match self.upstream_of(&repo, &branch) {
+            Some(up) => up,
+            None => (self.default_remote(&repo)?, branch.clone()),
+        };
+        let refspec = format!("HEAD:refs/heads/{target}");
+        let mut args = vec!["push"];
+        if force_with_lease {
+            args.push("--force-with-lease");
+        }
+        if set_upstream {
+            args.push("--set-upstream");
+        }
+        args.push(&remote);
+        args.push(&refspec);
+        self.git(&args)
+    }
+
+    // ---- Stash --------------------------------------------------------------------------
+
+    pub fn stash_list(&self) -> Result<Vec<StashEntry>> {
+        let mut repo = self.open()?;
+        let mut raw = Vec::new();
+        repo.stash_foreach(|index, message, oid| {
+            raw.push((index, message.to_string(), *oid));
+            true
+        })?;
+        let mut out = Vec::with_capacity(raw.len());
+        for (index, message, oid) in raw {
+            let time = repo.find_commit(oid).map(|c| c.committer().when().seconds()).unwrap_or(0);
+            out.push(StashEntry { index, message, oid, time });
+        }
+        Ok(out)
+    }
+
+    pub fn stash_save(&self, message: &str, include_untracked: bool) -> Result<()> {
+        let mut args = vec!["stash", "push"];
+        if include_untracked {
+            args.push("--include-untracked");
+        }
+        if !message.trim().is_empty() {
+            args.push("-m");
+            args.push(message);
+        }
+        self.git_ok(&args)?;
+        Ok(())
+    }
+
+    /// Conflicts while applying are a failed outcome; a conflicted `pop` keeps the stash.
+    pub fn stash_apply(&self, index: usize, pop: bool) -> Result<CommandOutcome> {
+        self.stash_apply_with(index, pop, false)
+    }
+
+    /// IDEA's "Reinstate index" option restores what was staged as staged.
+    pub fn stash_apply_with(&self, index: usize, pop: bool, reinstate_index: bool) -> Result<CommandOutcome> {
+        let name = format!("stash@{{{index}}}");
+        let mut args = vec!["stash", if pop { "pop" } else { "apply" }];
+        if reinstate_index {
+            args.push("--index");
+        }
+        args.push(&name);
+        self.git(&args)
+    }
+
+    pub fn stash_drop(&self, index: usize) -> Result<()> {
+        let name = format!("stash@{{{index}}}");
+        self.git_ok(&["stash", "drop", &name])?;
+        Ok(())
+    }
+
+    // ---- Conflicts ----------------------------------------------------------------------
+
+    pub fn conflicts(&self) -> Result<Vec<PathBuf>> {
+        let repo = self.open()?;
+        let index = repo.index()?;
+        let mut paths = BTreeSet::new();
+        for c in index.conflicts()? {
+            let c = c?;
+            let entry = c.our.or(c.their).or(c.ancestor);
+            if let Some(e) = entry {
+                paths.insert(PathBuf::from(String::from_utf8_lossy(&e.path).into_owned()));
+            }
+        }
+        Ok(paths.into_iter().collect())
+    }
+
+    /// Base, ours and theirs texts from the index stages 1, 2 and 3.
+    pub fn conflict_sides(&self, path: &Path) -> Result<ConflictSides> {
+        let repo = self.open()?;
+        let rel = self.rel(path);
+        let index = repo.index()?;
+        let mut sides: [Option<Vec<u8>>; 3] = [None, None, None];
+        let mut found = false;
+        for (slot, stage) in [1, 2, 3].into_iter().enumerate() {
+            if let Some(e) = index.get_path(&rel, stage) {
+                found = true;
+                sides[slot] = Some(repo.find_blob(e.id)?.content().to_vec());
+            }
+        }
+        if !found {
+            return Err(Error::Other(format!("{} is not in conflict", rel.display())));
+        }
+        let binary = sides.iter().flatten().any(|b| is_binary(b));
+        let [base, ours, theirs] = sides.map(|s| if binary { None } else { s.map(|b| bytes_to_text(&b)) });
+        Ok(ConflictSides { path: rel, base, ours, theirs, binary })
+    }
+
+    /// Writes the merged text and stages it, which marks the conflict resolved.
+    pub fn resolve(&self, path: &Path, text: &str) -> Result<()> {
+        let rel = self.rel(path);
+        std::fs::write(self.abs(&rel), text)?;
+        self.git_paths(&["add"], &[rel])
+    }
+
+    /// Accept Yours / Accept Theirs. If the chosen side deleted the file, the resolution is
+    /// the deletion.
+    pub fn resolve_with(&self, path: &Path, choice: ConflictChoice) -> Result<()> {
+        let repo = self.open()?;
+        let rel = self.rel(path);
+        let stage = match choice {
+            ConflictChoice::Ours => 2,
+            ConflictChoice::Theirs => 3,
+        };
+        let exists = repo.index()?.get_path(&rel, stage).is_some();
+        drop(repo);
+        if exists {
+            let flag = match choice {
+                ConflictChoice::Ours => "--ours",
+                ConflictChoice::Theirs => "--theirs",
+            };
+            self.git_paths(&["checkout", flag], std::slice::from_ref(&rel))?;
+            self.git_paths(&["add"], &[rel])
+        } else {
+            self.git_paths(&["rm", "-q", "--ignore-unmatch"], &[rel])
+        }
+    }
+
+    // ---- Log context menu ---------------------------------------------------------------
+
+    /// "Reset Current Branch to Here…".
+    pub fn reset(&self, oid: &Oid, mode: ResetMode) -> Result<CommandOutcome> {
+        let flag = match mode {
+            ResetMode::Soft => "--soft",
+            ResetMode::Mixed => "--mixed",
+            ResetMode::Hard => "--hard",
+        };
+        let rev = oid.to_string();
+        self.git(&["reset", "-q", flag, &rev])
+    }
+
+    /// Reverting a merge undoes what it brought in relative to its first parent.
+    pub fn revert(&self, oid: &Oid) -> Result<CommandOutcome> {
+        let rev = oid.to_string();
+        let mut args = vec!["revert", "--no-edit"];
+        if self.is_merge(oid)? {
+            args.extend(["-m", "1"]);
+        }
+        args.push(&rev);
+        self.git(&args)
+    }
+
+    pub fn cherry_pick(&self, oid: &Oid) -> Result<CommandOutcome> {
+        let rev = oid.to_string();
+        let mut args = vec!["cherry-pick"];
+        if self.is_merge(oid)? {
+            args.extend(["-m", "1"]);
+        }
+        args.push(&rev);
+        self.git(&args)
+    }
+
+    fn is_merge(&self, oid: &Oid) -> Result<bool> {
+        Ok(self.open()?.find_commit(*oid)?.parent_count() > 1)
+    }
+
+    // ---- Operation in progress ----------------------------------------------------------
+
+    pub fn state(&self) -> Result<RepoState> {
+        let repo = self.open()?;
+        Ok(match repo.state() {
+            RepositoryState::Clean => RepoState::Clean,
+            RepositoryState::Merge => RepoState::Merge,
+            RepositoryState::Rebase | RepositoryState::RebaseInteractive | RepositoryState::RebaseMerge => {
+                RepoState::Rebase
+            }
+            RepositoryState::CherryPick | RepositoryState::CherryPickSequence => RepoState::CherryPick,
+            RepositoryState::Revert | RepositoryState::RevertSequence => RepoState::Revert,
+            RepositoryState::Bisect => RepoState::Bisect,
+            _ => RepoState::Other,
+        })
+    }
+
+    /// Aborts whatever merge, rebase, cherry-pick or revert is in progress.
+    pub fn abort_operation(&self) -> Result<CommandOutcome> {
+        let args: &[&str] = match self.state()? {
+            RepoState::Merge => &["merge", "--abort"],
+            RepoState::Rebase => &["rebase", "--abort"],
+            RepoState::CherryPick => &["cherry-pick", "--abort"],
+            RepoState::Revert => &["revert", "--abort"],
+            other => return Err(Error::Other(format!("nothing to abort ({other:?})"))),
+        };
+        self.git(args)
+    }
+
+    /// Continues after all conflicts are resolved and staged.
+    pub fn continue_operation(&self) -> Result<CommandOutcome> {
+        let args: &[&str] = match self.state()? {
+            RepoState::Merge => &["commit", "--no-edit"],
+            RepoState::Rebase => &["rebase", "--continue"],
+            RepoState::CherryPick => &["cherry-pick", "--continue"],
+            RepoState::Revert => &["revert", "--continue"],
+            other => return Err(Error::Other(format!("nothing to continue ({other:?})"))),
+        };
+        self.git(args)
+    }
+}

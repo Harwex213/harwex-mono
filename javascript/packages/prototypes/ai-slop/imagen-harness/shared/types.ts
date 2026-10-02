@@ -122,12 +122,20 @@ interface RunResult {
   message: string;
 }
 
-const IMAGE_MODELS = [
-  "chatgpt images",
-  "recraft",
-  "nano banana 2",
-  "nano banana pro",
-] as const;
+/**
+ * Whether the image runs have a ChatGPT login. The tokens stay in the main
+ * process; the renderer only learns who is signed in.
+ */
+interface CodexLogin {
+  signedIn: boolean;
+  /** The ChatGPT account's email. Empty when nobody is signed in. */
+  email: string;
+  /** A `~/.codex/auth.json` with a ChatGPT login exists and can be taken over. */
+  canImport: boolean;
+}
+
+/** Codex's `image_gen` is the one image model the harness runs. */
+const IMAGE_MODELS = ["chatgpt images"] as const;
 
 const IMAGE_DIMENSIONS = [
   "1024x1024",
@@ -138,6 +146,7 @@ const IMAGE_DIMENSIONS = [
 ] as const;
 
 export type {
+  CodexLogin,
   Graph,
   GraphEdge,
   GraphNode,

@@ -11,6 +11,7 @@ import type {
   AssetIndex,
   ChatMessage,
   CloseResult,
+  CodexLogin,
   Project,
   ReasoningEffort,
   SceneOutline,
@@ -23,6 +24,7 @@ import { startMcpServer } from "./agent/mcp-server.js";
 import { cancelRun, isRunning, runTurn } from "./agent/runner.js";
 import { scanAssets, unwatchAssets, watchAssets } from "./assets.js";
 import { clearConversation, messagesOf, readImage, readTokens } from "./chat.js";
+import { codexLoginStatus, importCodexLogin, loginWithChatGpt, logoutCodex } from "./codex-login.js";
 import {
   closeTab,
   currentProject,
@@ -671,6 +673,22 @@ function registerIpc(): void {
 
   ipcMain.handle(IPC.settingsSet, (_event, settings: Settings): Settings => {
     return writeSettings(settings);
+  });
+
+  ipcMain.handle(IPC.codexLoginStatus, async (): Promise<CodexLogin> => {
+    return await codexLoginStatus();
+  });
+
+  ipcMain.handle(IPC.codexLoginLogin, async (): Promise<CodexLogin> => {
+    return await loginWithChatGpt(readSettings());
+  });
+
+  ipcMain.handle(IPC.codexLoginImport, async (): Promise<CodexLogin> => {
+    return await importCodexLogin();
+  });
+
+  ipcMain.handle(IPC.codexLoginLogout, async (): Promise<CodexLogin> => {
+    return await logoutCodex();
   });
 }
 

@@ -2,6 +2,7 @@ import { useSignals } from "@preact/signals-react/runtime";
 import { useEffect } from "react";
 import {
   activeTab,
+  codexLogin,
   init,
   notice,
   project,
@@ -12,6 +13,7 @@ import {
   showSettings,
 } from "../state/store.js";
 import { AssetsPanel } from "./assets-panel.js";
+import { CodexLoginDialog } from "./codex-login-dialog.js";
 import { NewTabDialog } from "./new-tab-dialog.js";
 import { ProjectDialog, ProjectWelcome } from "./project-picker.js";
 import { SettingsDialog } from "./settings-dialog.js";
@@ -52,6 +54,7 @@ function App(): React.JSX.Element {
       {showNewTab.value ? <NewTabDialog /> : null}
       {showProjects.value ? <ProjectDialog /> : null}
       {showSettings.value ? <SettingsDialog /> : null}
+      {codexLogin.value && !codexLogin.value.signedIn ? <CodexLoginDialog /> : null}
       {notice.value.length > 0 ? <div className="notice">{notice.value}</div> : null}
     </div>
   );

@@ -3,6 +3,7 @@ import type {
   AgentKind,
   AssetIndex,
   ChatMessage,
+  CodexLogin,
   Project,
   ReasoningEffort,
   SceneOutline,
@@ -43,6 +44,9 @@ const attachmentsByTab = signal<Record<string, Attachment[]>>({});
  */
 const draftsByTab = signal<Record<string, string>>({});
 const settings = signal<Settings | null>(null);
+/** The ChatGPT login of the image tool. Null until the main process has answered. */
+const codexLogin = signal<CodexLogin | null>(null);
+const codexLoginBusy = signal(false);
 const notice = signal("");
 const showNewTab = signal(false);
 const showSettings = signal(false);
@@ -142,6 +146,7 @@ async function init(): Promise<void> {
   harness.subscribe(onEvent);
   try {
     settings.value = await harness.settings.get();
+    codexLogin.value = await harness.codexLogin.status();
     project.value = await harness.projects.current();
     assets.value = await harness.projects.assets();
     recentProjects.value = await harness.projects.recent();
@@ -272,6 +277,21 @@ async function restartBlender(tabId: string): Promise<void> {
   }
 }
 
+/**
+ * Runs one step of the ChatGPT login: `codex login`, the takeover of the CLI's
+ * login, or a logout. The startup prompt shows while nobody is signed in.
+ */
+async function changeCodexLogin(step: "login" | "importCurrent" | "logout"): Promise<void> {
+  codexLoginBusy.value = true;
+  try {
+    codexLogin.value = await harness.codexLogin[step]();
+  } catch (error) {
+    fail(error);
+  } finally {
+    codexLoginBusy.value = false;
+  }
+}
+
 async function saveSettings(next: Settings): Promise<void> {
   try {
     settings.value = await harness.settings.set(next);
@@ -389,6 +409,9 @@ export {
   closeTab,
   createTab,
   init,
+  changeCodexLogin,
+  codexLogin,
+  codexLoginBusy,
   loadRecentProjects,
   messagesByTab,
   notice,

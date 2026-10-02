@@ -1,0 +1,27 @@
+[package]
+name = "harwex-ide"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+eframe.workspace = true
+egui.workspace = true
+ide-git = { path = "../crates/ide-git" }
+ide-ts = { path = "../crates/ide-ts" }
+ide-editor = { path = "../crates/ide-editor" }
+ide-term = { path = "../crates/ide-term" }
+ignore = "0.4"
+notify = "8"
+nucleo-matcher = "0.3"
+rfd = "0.15"
+memchr = "2"
+
+# Same major version as eframe's winit, so the macOS event-loop extension trait applies to
+# eframe's builder (background mode in main.rs).
+[target.'cfg(target_os = "macos")'.dependencies]
+winit = { version = "0.30", default-features = false }
+
+[dev-dependencies]
+egui_kittest = { version = "0.31", features = ["wgpu", "snapshot", "eframe"] }
+tempfile = "3"

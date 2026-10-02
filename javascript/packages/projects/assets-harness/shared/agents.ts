@@ -46,7 +46,7 @@ interface AgentInfo {
 const CLAUDE: AgentInfo = {
   kind: "claude",
   label: "Claude Code",
-  hint: "Runs on the `claude` CLI and the login it holds. Reaches the web, and `magnific` when a picture has to be invented.",
+  hint: "Runs on the `claude` CLI and the login it holds. Reaches the web, and `generate_image` (Codex SDK) when a picture has to be invented.",
   models: [
     { slug: "fable", label: "Fable" },
     { slug: "opus", label: "Opus" },

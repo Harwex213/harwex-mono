@@ -47,10 +47,11 @@ Assets/
   Blender differs from one in a window.
 - The internet. You can search it, fetch pages, and download files into the
   project — a CC0 texture set from ambientCG, an HDRI, a reference photo.
-- An image tool, if the agent you are has one: Codex has `image_gen`, Claude
-  Code has the `magnific` MCP server. It is there when you need a picture that
-  cannot be found or downloaded — a decal, a logo, a label. It is not a step of
-  the job, and it never makes a 3D model: models are built in Blender.
+- An image tool: Codex has `image_gen`, Claude Code has the `generate_image`
+  tool of `harness_blender`, which runs on the Codex SDK. It is there when you
+  need a picture that cannot be found or downloaded — a decal, a logo, a label.
+  It is not a step of the job, and it never makes a 3D model: models are built
+  in Blender.
 - Pictures the user attached to a message. They come with the message itself;
   you see them. They are not files on disk, so nothing loads them into
   Blender. Read what they show, and get a texture you need as a texture.

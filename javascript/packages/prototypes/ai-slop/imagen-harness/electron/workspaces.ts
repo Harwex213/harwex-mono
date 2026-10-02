@@ -7,7 +7,8 @@ import type { Recent, Tab } from "../shared/types.js";
 /**
  * Which directories this app has worked in, and which of them are open. It is a
  * list the user builds over months, so it lives in SQLite rather than in a JSON
- * file the app rewrites whole on every change.
+ * file the app rewrites whole on every change. The same database keeps the
+ * ChatGPT login of the image runs.
  *
  * The directory is the identity. There is no separate id to keep in step, and a
  * row is a directory whether it is open, closed, or gone from disk.
@@ -23,6 +24,10 @@ CREATE TABLE IF NOT EXISTS workspaces (
   node_count     INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS workspaces_recent ON workspaces (last_opened_at DESC);
+CREATE TABLE IF NOT EXISTS settings (
+  key   TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
 `;
 
 interface Row {
@@ -159,12 +164,38 @@ async function recents(limit = 40): Promise<Recent[]> {
   );
 }
 
+// ---------------------------------------------------------------------------
+// The ChatGPT login of the image runs: the `auth.json` that `codex login`
+// writes, kept whole under its own key. Codex refreshes the tokens during a
+// run, so the image run writes the file back here after every run.
+
+const CODEX_AUTH_KEY = "codex.auth";
+
+function readCodexAuth(): string | null {
+  const row = database().prepare("SELECT value FROM settings WHERE key = ?").get(CODEX_AUTH_KEY) as unknown as
+    | { value: string }
+    | undefined;
+  return row && row.value.length > 0 ? row.value : null;
+}
+
+function writeCodexAuth(json: string | null): void {
+  if (json === null) {
+    database().prepare("DELETE FROM settings WHERE key = ?").run(CODEX_AUTH_KEY);
+    return;
+  }
+  database()
+    .prepare("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value")
+    .run(CODEX_AUTH_KEY, json);
+}
+
 export {
   closeWorkspace,
   forgetWorkspace,
   isDirectory,
   openTabs,
+  readCodexAuth,
   recents,
   remember,
   setNodeCount,
+  writeCodexAuth,
 };

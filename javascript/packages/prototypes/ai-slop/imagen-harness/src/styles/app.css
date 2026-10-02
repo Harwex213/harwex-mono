@@ -762,3 +762,90 @@ body {
   color: var(--accent);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
+
+/* --- ChatGPT login --------------------------------------------------------- */
+
+.modal {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(8, 9, 14, 0.7);
+}
+
+.dialog {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 440px;
+  max-width: calc(100vw - 40px);
+  padding: 22px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+}
+
+.dialog h2 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 500;
+}
+
+.dialog p {
+  margin: 0;
+  color: var(--text-dim);
+}
+
+.dialog__hint {
+  font-style: italic;
+}
+
+.dialog__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.dialog__button {
+  padding: 8px 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-high);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.dialog__button:hover {
+  border-color: var(--accent);
+}
+
+.dialog__button--primary {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.dialog__button--primary:hover {
+  background: var(--accent);
+}
+
+.dialog__button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.codex-account {
+  color: var(--text-dim);
+}
+
+.codex-account__out {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  cursor: pointer;
+}

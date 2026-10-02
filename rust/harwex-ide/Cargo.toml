@@ -1,0 +1,22 @@
+[workspace]
+resolver = "2"
+members = ["app", "crates/ide-git", "crates/ide-ts", "crates/ide-editor", "crates/ide-term", "xtask"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+# One version of egui for the whole workspace: ide-editor draws with egui and the app hosts it
+# with eframe, so the two must never drift apart.
+[workspace.dependencies]
+egui = "0.31"
+eframe = { version = "0.31", default-features = false, features = ["default_fonts", "wgpu", "persistence"] }
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+
+[profile.dev.package."*"]
+opt-level = 2

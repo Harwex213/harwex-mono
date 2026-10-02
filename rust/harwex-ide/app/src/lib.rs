@@ -1,0 +1,24 @@
+//! harwex-ide as a library: the eframe app and every UI module. `main.rs` only parses the
+//! command line; tests build the same app headlessly with `egui_kittest`.
+
+pub mod app;
+pub mod breadcrumbs;
+pub mod find;
+pub mod git;
+pub mod jobs;
+pub mod launch;
+pub mod layout;
+pub mod nav;
+pub mod notifications;
+pub mod search;
+pub mod state;
+pub mod tabs;
+pub mod terminal;
+pub mod testhook;
+pub mod theme;
+pub mod tree;
+pub mod util;
+pub mod watcher;
+
+pub use app::{AppOptions, IdeApp, TerminalCommand};
+pub use state::AppState;

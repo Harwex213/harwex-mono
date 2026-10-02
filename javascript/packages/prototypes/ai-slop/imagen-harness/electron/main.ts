@@ -13,8 +13,9 @@ import {
   shell,
 } from "electron";
 import { IPC } from "../shared/bridge.js";
-import type { Graph, ImageRunRequest, Recent, RunEvent, RunRequest, Tab } from "../shared/types.js";
+import type { CodexLogin, Graph, ImageRunRequest, Recent, RunEvent, RunRequest, Tab } from "../shared/types.js";
 import { runImageGeneration, runPromptGeneration } from "./agent/runner.js";
+import { codexLoginStatus, importCodexLogin, loginWithChatGpt, logoutCodex } from "./codex-login.js";
 import {
   closeWorkspace,
   forgetWorkspace,
@@ -238,6 +239,22 @@ function registerIpc(): void {
 
   ipcMain.handle(IPC.runImage, (_event, request: ImageRunRequest) => {
     return runImageGeneration(request, broadcast);
+  });
+
+  ipcMain.handle(IPC.codexLoginStatus, async (): Promise<CodexLogin> => {
+    return await codexLoginStatus();
+  });
+
+  ipcMain.handle(IPC.codexLoginLogin, async (): Promise<CodexLogin> => {
+    return await loginWithChatGpt();
+  });
+
+  ipcMain.handle(IPC.codexLoginImport, async (): Promise<CodexLogin> => {
+    return await importCodexLogin();
+  });
+
+  ipcMain.handle(IPC.codexLoginLogout, async (): Promise<CodexLogin> => {
+    return await logoutCodex();
   });
 }
 

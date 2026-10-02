@@ -3,6 +3,7 @@ import type {
   AssetIndex,
   ChatMessage,
   CloseResult,
+  CodexLogin,
   Project,
   ReasoningEffort,
   SceneOutline,
@@ -66,6 +67,15 @@ interface HarnessBridge {
     get(): Promise<Settings>;
     set(settings: Settings): Promise<Settings>;
   };
+  /** The ChatGPT login the image tool runs on. */
+  codexLogin: {
+    status(): Promise<CodexLogin>;
+    /** Runs `codex login`: the ChatGPT sign-in page opens in the browser. */
+    login(): Promise<CodexLogin>;
+    /** Takes over the login of the user's own Codex CLI. */
+    importCurrent(): Promise<CodexLogin>;
+    logout(): Promise<CodexLogin>;
+  };
   /** Progress of every tab in this window. Returns an unsubscribe. */
   subscribe(listener: (event: WorkspaceEvent) => void): () => void;
 }
@@ -95,6 +105,10 @@ const IPC = {
   chatClose: "chat:close",
   settingsGet: "settings:get",
   settingsSet: "settings:set",
+  codexLoginStatus: "codex-login:status",
+  codexLoginLogin: "codex-login:login",
+  codexLoginImport: "codex-login:import",
+  codexLoginLogout: "codex-login:logout",
   event: "workspace:event",
 } as const;
 

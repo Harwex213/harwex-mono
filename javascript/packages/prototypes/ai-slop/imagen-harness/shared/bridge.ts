@@ -1,4 +1,5 @@
 import type {
+  CodexLogin,
   Graph,
   ImageRunRequest,
   Recent,
@@ -42,6 +43,15 @@ interface HarnessBridge {
     /** The image on the system clipboard, as PNG bytes, or null when there is none. */
     readClipboardImage(): Promise<ArrayBuffer | null>;
   };
+  /** The ChatGPT login the image runs use. */
+  codexLogin: {
+    status(): Promise<CodexLogin>;
+    /** Runs `codex login`: the ChatGPT sign-in page opens in the browser. */
+    login(): Promise<CodexLogin>;
+    /** Takes over the login of the user's own Codex CLI. */
+    importCurrent(): Promise<CodexLogin>;
+    logout(): Promise<CodexLogin>;
+  };
   run: {
     prompt(request: RunRequest): Promise<RunResult>;
     image(request: ImageRunRequest): Promise<RunResult>;
@@ -65,6 +75,10 @@ const IPC = {
   fileWriteImage: "file:write-image",
   fileCopyImage: "file:copy-image",
   fileClipboardImage: "file:clipboard-image",
+  codexLoginStatus: "codex-login:status",
+  codexLoginLogin: "codex-login:login",
+  codexLoginImport: "codex-login:import",
+  codexLoginLogout: "codex-login:logout",
   runPrompt: "run:prompt",
   runImage: "run:image",
   runEvent: "run:event",

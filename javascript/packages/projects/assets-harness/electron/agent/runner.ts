@@ -20,6 +20,7 @@ import { claudeDriver } from "./claude.js";
 import { codexDriver, codexHome } from "./codex.js";
 import type { AgentDriver, TurnImage, TurnReport, TurnRequest } from "./driver.js";
 import { MCP_SERVER_NAME } from "./driver.js";
+import { imageTool } from "./image-tool.js";
 import { registerRun } from "./mcp-server.js";
 import { loadSkills } from "./skills.js";
 
@@ -259,7 +260,12 @@ async function runTurn(
   const stopCapturing = deps.captureRenders(tabId, (png, filePath) => {
     attachImage("preview", png, filePath);
   });
-  const run = registerRun(agentTools(session));
+  // Codex makes pictures with its own image_gen; Claude gets the harness's tool for it.
+  const tools = agentTools(session);
+  if (driver.kind === "claude") {
+    tools.push(imageTool(settings, workDir));
+  }
+  const run = registerRun(tools);
   try {
     const sessionId = readSessionId(tabId, driver.kind);
     const turn: TurnRequest = {

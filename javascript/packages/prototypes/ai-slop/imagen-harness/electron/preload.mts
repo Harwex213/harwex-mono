@@ -28,6 +28,12 @@ const bridge: HarnessBridge = {
     copyImage: (dir, id) => ipcRenderer.invoke(IPC.fileCopyImage, dir, id),
     readClipboardImage: () => ipcRenderer.invoke(IPC.fileClipboardImage),
   },
+  codexLogin: {
+    status: () => ipcRenderer.invoke(IPC.codexLoginStatus),
+    login: () => ipcRenderer.invoke(IPC.codexLoginLogin),
+    importCurrent: () => ipcRenderer.invoke(IPC.codexLoginImport),
+    logout: () => ipcRenderer.invoke(IPC.codexLoginLogout),
+  },
   run: {
     prompt: (request) => ipcRenderer.invoke(IPC.runPrompt, request),
     image: (request) => ipcRenderer.invoke(IPC.runImage, request),

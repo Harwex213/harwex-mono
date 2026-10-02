@@ -2743,6 +2743,7 @@ __metadata:
     react-dom: "npm:19.2.0"
     three: "npm:0.185.1"
     typescript: "npm:5.9.3"
+    zod: "npm:4.5.4"
   languageName: unknown
   linkType: soft
 
@@ -3385,6 +3386,7 @@ __metadata:
   dependencies:
     "@anthropic-ai/claude-agent-sdk": "npm:0.3.234"
     "@hw/typescript-config": "workspace:*"
+    "@openai/codex-sdk": "npm:0.153.4"
     "@preact/signals-react": "npm:3.9.0"
     "@rspack/cli": "npm:2.1.4"
     "@rspack/core": "npm:2.1.4"

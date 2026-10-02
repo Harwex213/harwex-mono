@@ -16,13 +16,11 @@ import { MCP_SERVER_NAME, promptText, shorten, summariseCode } from "./driver.js
  * settings and `CLAUDE.md` — written for their code, not for this project —
  * stay out. The harness skills reach it as an appended system prompt.
  *
- * The MCP servers are the harness's alone. A project's `.mcp.json` may name a
+ * The MCP servers are the harness's alone. Pictures come from the harness's
+ * own `generate_image` tool, which runs on the Codex SDK (`image-tool.ts`). A project's `.mcp.json` may name a
  * Blender server of its own, and a second Blender would only confuse the agent
  * about which scene it is editing, so `strictMcpConfig` leaves that file out.
  */
-
-/** Magnific's published MCP endpoint. It signs itself in through OAuth. */
-const MAGNIFIC_URL = "https://mcp.magnific.com";
 
 /** The built-in tools a run may use. The web ones are how it reaches ambientCG and the like. */
 const TOOLS = ["Bash", "Read", "Write", "Edit", "Glob", "Grep", "WebFetch", "WebSearch", "TodoWrite"];
@@ -38,7 +36,6 @@ const TOOLS = ["Bash", "Read", "Write", "Edit", "Glob", "Grep", "WebFetch", "Web
  */
 const ALLOWED = [
   `mcp__${MCP_SERVER_NAME}`,
-  "mcp__magnific",
   "Bash",
   "Read",
   "Glob",
@@ -211,7 +208,6 @@ async function run(request: TurnRequest, out: TurnReport): Promise<void> {
     strictMcpConfig: true,
     mcpServers: {
       [MCP_SERVER_NAME]: { type: "http", url: request.mcpUrl, timeout: 600_000, alwaysLoad: true },
-      magnific: { type: "http", url: MAGNIFIC_URL },
     },
     ...(request.settings.claudeCodePath ? { pathToClaudeCodeExecutable: request.settings.claudeCodePath } : {}),
     ...(request.tab.agentModel ? { model: request.tab.agentModel } : {}),
@@ -295,4 +291,4 @@ const claudeDriver: AgentDriver = {
   run,
 };
 
-export { claudeDriver, MAGNIFIC_URL };
+export { claudeDriver };

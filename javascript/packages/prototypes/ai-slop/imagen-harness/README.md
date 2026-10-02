@@ -61,7 +61,6 @@ about half a second after any change.
 
 ```json
 {
-  "magnificUrl": "https://mcp.magnific.com",
   "agentModel": "claude-sonnet-5"
 }
 ```
@@ -137,23 +136,27 @@ with the working directory as the agent's cwd. Authentication comes from the
 machine's Claude Code credentials: if `claude` works in your terminal, this
 works.
 
-The rules for where a file goes are not in the prompt — they are in the two
-skills under `plugin/`, which every run loads as a local plugin named `imagen`.
+The rules for the prompt file are not in the prompt — they are in the skill
+under `plugin/`, which the prompt run loads as a local plugin named `imagen`.
 Nothing is written into the working directory for them, and `settingSources: []`
 keeps every other setting on the machine out of the run. The app then checks the disk itself: a run
 that ends without the file it was asked for is a failed run, whatever the agent
 said.
 
-The image runs talk to the [Magnific MCP server](https://www.magnific.com/mcp)
-at `https://mcp.magnific.com`, which signs in through OAuth. Add it to Claude
-Code once and complete the sign-in there:
+The image run is not an agent turn. It is one [Codex SDK](https://github.com/openai/codex)
+thread that calls Codex's built-in `image_gen`; the reference images wired in
+are attached to its message. The app takes the picture Codex wrote and stores it
+as `images/<node-id>.png`.
 
-```bash
-claude mcp add --transport http magnific https://mcp.magnific.com
-```
+Codex runs on your ChatGPT account, not on an API key. At startup, while no login
+is stored, the app asks you to sign in: **Sign in with ChatGPT** runs
+`codex login` and opens the sign-in page, **Use the codex CLI login** takes over
+the login of `~/.codex/auth.json`. The login (`auth.json`) is kept in the
+`settings` table of `harness.db`, and every image run writes the refreshed tokens
+back there. The `codex` CLI is looked up on `CODEX_PATH`, `~/.local/bin`, the
+PATH and Homebrew.
 
-The prompt run may use Read, Write, Glob and Skill. The image run also gets Bash,
-because Magnific answers with a URL that has to be downloaded.
+The prompt run may use Read, Write, Glob and Skill.
 
 ## Layout
 
@@ -162,9 +165,10 @@ shared/types.ts         the graph, the runs — both sides speak it
 shared/bridge.ts        what the renderer may ask the main process for
 electron/main.ts        window, IPC, and the imagen:// protocol that serves images
 electron/workspace.ts   graph.json, prompts/, images/
-electron/workspaces.ts  the SQLite list of directories worked in
-electron/agent/         the two runs and the Magnific config
-plugin/                 the `imagen` plugin: the two skills the runs follow
+electron/workspaces.ts  the SQLite list of directories worked in, and the ChatGPT login
+electron/codex-login.ts the ChatGPT sign-in of the image runs
+electron/agent/         the prompt run (Claude) and the image run (Codex SDK)
+plugin/                 the `imagen` plugin: the skill the prompt run follows
 src/state/              signals: the graph, the runs, the viewport, the framing
 src/ui/                 canvas, cards, wires, menu, minimap, directory list
 ```

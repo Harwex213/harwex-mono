@@ -11,9 +11,11 @@ import {
   selectedId,
   setNotice,
 } from "../state/graph-state.js";
+import { codexLogin, loadCodexLogin } from "../state/codex-login.js";
 import { fitContent } from "../state/framing.js";
 import { setScale, viewport } from "../state/viewport.js";
 import { Canvas } from "./canvas.js";
+import { CodexAccount, CodexLoginDialog } from "./codex-login-dialog.js";
 import { RecentsList } from "./recents-list.js";
 import { TabBar } from "./tab-bar.js";
 
@@ -39,6 +41,7 @@ function App(): React.JSX.Element {
 
   useEffect(() => {
     void initTabs();
+    void loadCodexLogin();
   }, []);
 
   useEffect(() => {
@@ -113,6 +116,7 @@ function App(): React.JSX.Element {
     <div className="app">
       <TabBar />
       {activeTab.value ? <Canvas /> : <Welcome />}
+      {codexLogin.value && !codexLogin.value.signedIn ? <CodexLoginDialog /> : null}
       {notice.value.length > 0 ? <div className="notice">{notice.value}</div> : null}
     </div>
   );
@@ -137,6 +141,7 @@ function Welcome(): React.JSX.Element {
         >
           Open a directory…
         </button>
+        <CodexAccount />
       </div>
       <div className="welcome__recents">
         <p className="drop__title">Previous working directories</p>

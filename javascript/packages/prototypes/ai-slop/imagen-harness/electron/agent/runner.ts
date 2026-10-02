@@ -11,14 +11,12 @@ import type {
   RunResult,
 } from "../../shared/types.js";
 import { imagePath, readPrompt } from "../workspace.js";
-import { magnificServer, readConfig } from "./mcp.js";
+import { generateImage } from "./codex-image.js";
+import { readConfig } from "./config.js";
 
 type Emit = (event: RunEvent) => void;
 
 const PROMPT_TOOLS = ["Read", "Write", "Glob", "Skill"];
-/** The image run downloads what Magnific hands back, so it needs a shell. */
-const IMAGE_TOOLS = ["Read", "Write", "Glob", "Bash", "Skill"];
-const MAGNIFIC_TOOLS = "mcp__magnific";
 
 /**
  * The skills ship with the app as a local plugin and are handed to every run,
@@ -29,7 +27,10 @@ const PLUGIN_DIR = path.join(app.getAppPath(), "plugin");
 
 const TOOL_DETAIL_KEYS = ["file_path", "prompt", "command", "url", "pattern", "description"];
 
-/** One run per generator. A rerun cancels the run it replaces. */
+/**
+ * One run per generator. A rerun cancels the run it replaces. The image runs
+ * are Codex threads, not agent turns, and are cancelled through the same map.
+ */
 const running = new Map<string, AbortController>();
 
 function summarizeInput(input: Record<string, unknown>): string {
@@ -46,8 +47,12 @@ function escapeForBlock(text: string): string {
   return text.replace(/\r\n/g, "\n").trim();
 }
 
-/** Turns the wired-in nodes into the text the agent is handed. */
-async function describeInputs(dir: string, inputs: RunInput[]): Promise<string> {
+/**
+ * Turns the wired-in nodes into the text the agent is handed. With
+ * `withImages` off, the reference images are left out, because the image run
+ * attaches them to the message.
+ */
+async function describeInputs(dir: string, inputs: RunInput[], withImages = true): Promise<string> {
   const parts: string[] = [];
   for (const input of inputs) {
     if (input.kind === "text") {
@@ -64,7 +69,9 @@ async function describeInputs(dir: string, inputs: RunInput[]): Promise<string> 
       }
       continue;
     }
-    parts.push(`<reference-image>images/${input.id}.png</reference-image>`);
+    if (withImages) {
+      parts.push(`<reference-image>images/${input.id}.png</reference-image>`);
+    }
   }
   return parts.join("\n\n");
 }
@@ -85,10 +92,7 @@ interface AgentRun {
   prompt: string;
   /** Built-in tools the run may use. Anything left out is not even offered. */
   tools: string[];
-  /** Extra names the run is allowed to call, such as a whole MCP server. */
-  allowed?: string[];
   maxTurns: number;
-  mcpServers?: Options["mcpServers"];
 }
 
 /**
@@ -109,7 +113,7 @@ async function drive(run: AgentRun, emit: Emit): Promise<string> {
     abortController,
     cwd: run.dir,
     tools: run.tools,
-    allowedTools: [...run.tools, ...(run.allowed ?? [])],
+    allowedTools: run.tools,
     permissionMode: "bypassPermissions",
     plugins: [{ type: "local", path: PLUGIN_DIR }],
     // Skills come only from the plugin, so no settings or stale skills from the machine reach the run.
@@ -118,9 +122,6 @@ async function drive(run: AgentRun, emit: Emit): Promise<string> {
   };
   if (config.agentModel) {
     options.model = config.agentModel;
-  }
-  if (run.mcpServers) {
-    options.mcpServers = run.mcpServers;
   }
 
   let lastText = "";
@@ -212,49 +213,47 @@ async function runPromptGeneration(request: RunRequest, emit: Emit): Promise<Run
 
 async function runImageGeneration(request: ImageRunRequest, emit: Emit): Promise<RunResult> {
   emit({ type: "started", generatorId: request.generatorId, targetId: request.targetId });
-  const sources = await describeInputs(request.dir, request.inputs);
-  if (sources.length === 0) {
+  const notes = await describeInputs(request.dir, request.inputs, false);
+  const references = request.inputs
+    .filter((input) => input.kind === "image")
+    .map((input) => imagePath(request.dir, input.id));
+  if (notes.length === 0 && references.length === 0) {
     return failure(emit, request, "Wire a prompt, a note or an image into the generator first.");
   }
-  const prompt = [
-    "Generate one image from the sources below.",
-    "",
-    "Follow the imagen:image-generator skill. It says which server to call and where the file goes.",
-    "",
-    `Node id: ${request.targetId}`,
-    `Model: ${request.model}`,
-    `Size: ${request.dimensions}`,
-    `Write the image to: images/${request.targetId}.png`,
-    "",
-    sources,
-  ].join("\n");
+  const text = [`Size: ${request.dimensions}`, "", notes.length > 0 ? notes : "<note>(only reference images)</note>"].join(
+    "\n",
+  );
 
-  let closing = "";
+  const previous = running.get(request.generatorId);
+  if (previous) {
+    previous.abort();
+  }
+  const abortController = new AbortController();
+  running.set(request.generatorId, abortController);
   try {
-    closing = await drive(
-      {
-        dir: request.dir,
-        generatorId: request.generatorId,
-        targetId: request.targetId,
-        prompt,
-        tools: IMAGE_TOOLS,
-        allowed: [MAGNIFIC_TOOLS],
-        maxTurns: 30,
-        mcpServers: await magnificServer(request.dir),
+    await generateImage({
+      dir: request.dir,
+      targetId: request.targetId,
+      text,
+      references,
+      signal: abortController.signal,
+      onTool: (name, detail) => {
+        emit({ type: "tool", generatorId: request.generatorId, name, detail });
       },
-      emit,
-    );
+      onText: (said) => {
+        emit({ type: "text", generatorId: request.generatorId, text: said });
+      },
+    });
   } catch (error) {
     return failure(emit, request, error instanceof Error ? error.message : String(error));
+  } finally {
+    if (running.get(request.generatorId) === abortController) {
+      running.delete(request.generatorId);
+    }
   }
 
   if (!(await isNonEmptyFile(imagePath(request.dir, request.targetId)))) {
-    const detail = closing.length > 0 ? ` The agent said: ${closing}` : "";
-    return failure(
-      emit,
-      request,
-      `The run wrote no image to images/${request.targetId}.png.${detail}`,
-    );
+    return failure(emit, request, `The run wrote no image to images/${request.targetId}.png.`);
   }
   emit({
     type: "done",

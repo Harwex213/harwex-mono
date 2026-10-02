@@ -1,0 +1,4 @@
+# Written by failed or updated snapshot runs; only <name>.png is the reference.
+*.new.png
+*.diff.png
+*.old.png

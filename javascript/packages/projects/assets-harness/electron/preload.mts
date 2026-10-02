@@ -37,6 +37,12 @@ const bridge: HarnessBridge = {
     get: () => ipcRenderer.invoke(IPC.settingsGet),
     set: (settings) => ipcRenderer.invoke(IPC.settingsSet, settings),
   },
+  codexLogin: {
+    status: () => ipcRenderer.invoke(IPC.codexLoginStatus),
+    login: () => ipcRenderer.invoke(IPC.codexLoginLogin),
+    importCurrent: () => ipcRenderer.invoke(IPC.codexLoginImport),
+    logout: () => ipcRenderer.invoke(IPC.codexLoginLogout),
+  },
   subscribe: (listener) => {
     const handler = (_event: unknown, payload: WorkspaceEvent) => {
       listener(payload);

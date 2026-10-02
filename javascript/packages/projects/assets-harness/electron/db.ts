@@ -7,7 +7,8 @@ import type { AgentKind, Project, ReasoningEffort, Settings, Tab } from "../shar
 
 /**
  * One SQLite file, holding the projects this app has opened, the models it has
- * worked on in them, and the paths it was set up with. Nothing else: a
+ * worked on in them, the paths it was set up with and the ChatGPT login of
+ * the image tool. Nothing else: a
  * conversation, the pictures it showed and the agent session behind it belong
  * to the app while it runs, and are kept in memory by `chat.ts`.
  *
@@ -326,6 +327,31 @@ function writeWindowFullscreen(fullscreen: boolean): void {
     .run(WINDOW_FULLSCREEN_KEY, fullscreen ? "1" : "0");
 }
 
+// ---------------------------------------------------------------------------
+// The ChatGPT login of the image tool: the `auth.json` that `codex login`
+// writes, kept whole under its own key, apart from the settings the dialog
+// edits. Codex refreshes the tokens during a run, so the image tool writes the
+// file back here after every run.
+
+const CODEX_AUTH_KEY = "codex.auth";
+
+function readCodexAuth(): string | null {
+  const row = database().prepare("SELECT value FROM settings WHERE key = ?").get(CODEX_AUTH_KEY) as unknown as
+    | { value: string }
+    | undefined;
+  return row && row.value.length > 0 ? row.value : null;
+}
+
+function writeCodexAuth(json: string | null): void {
+  if (json === null) {
+    database().prepare("DELETE FROM settings WHERE key = ?").run(CODEX_AUTH_KEY);
+    return;
+  }
+  database()
+    .prepare("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value")
+    .run(CODEX_AUTH_KEY, json);
+}
+
 export {
   closeTab,
   currentProject,
@@ -333,11 +359,13 @@ export {
   openTab,
   openTabs,
   recentProjects,
+  readCodexAuth,
   readSettings,
   readTab,
   readWindowFullscreen,
   setTabAgent,
   setTabAgentKind,
+  writeCodexAuth,
   writeSettings,
   writeWindowFullscreen,
 };

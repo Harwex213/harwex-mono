@@ -1,0 +1,5 @@
+[alias]
+# Build harwex-ide in release and install it for the current user (see docs/usage.md).
+install-ide = "run -p xtask --release -- install"
+uninstall-ide = "run -p xtask --release -- uninstall"
+xtask = "run -p xtask --release --"
