@@ -1,3 +1,4 @@
+import { ICONS } from "./icons";
 import { pick } from "./rng";
 import type { TRng } from "./rng";
 
@@ -41,16 +42,30 @@ type TEnemyId =
   | "moth"
   | "bat";
 
+/** What a ranged attacker throws. It only changes how the shot is drawn and how fast it flies. */
+type TProjectile = "stone" | "arrow" | "bullet" | "hex" | "bolt";
+
+/**
+ * Combat stats of the cleanup phase. Distances are in hex steps and speeds in
+ * hex steps per second, so the numbers read the same at any zoom. One hex step
+ * is the distance between two neighbouring hex centres.
+ */
 type TCombatant = {
   readonly label: string;
-  readonly emoji: string;
+  readonly icon: string;
   readonly hp: number;
-  /** Damage per second while a target is in range. */
+  /** Damage of one hit, before the ±15% roll. */
   readonly damage: number;
-  /** Pixels of the arena. Melee is short, ranged reaches across a gap. */
+  /** Seconds between two hits. */
+  readonly cooldown: number;
+  /** Reach in hex steps. Melee is 1: it hits the same or a neighbouring hex. */
   readonly range: number;
-  /** Pixels per second. */
+  /** Hex steps per second. */
   readonly speed: number;
+  /** A flyer crosses open water and ignores hex paths. */
+  readonly flying: boolean;
+  /** `null` for melee. */
+  readonly projectile: TProjectile | null;
 };
 
 type TUnit = TCombatant & {
@@ -62,39 +77,42 @@ type TUnit = TCombatant & {
 
 type TEnemy = TCombatant & {
   readonly id: TEnemyId;
-  readonly flying: boolean;
 };
 
+const MELEE = { range: 1, flying: false, projectile: null } as const;
+const AIR = { range: 1, flying: true, projectile: null } as const;
+
+/* The table is wide on purpose: one row is one unit, so rows compare at a glance. */
 const UNITS: readonly TUnit[] = [
-  { id: "militia", label: "Ополченец", emoji: "🧑‍🌾", unitClass: "melee", hp: 30, damage: 6, range: 16, speed: 42, upkeep: 1 },
-  { id: "spearman", label: "Копейщик", emoji: "🔱", unitClass: "melee", hp: 42, damage: 9, range: 22, speed: 42, upkeep: 1 },
-  { id: "swordsman", label: "Мечник", emoji: "🗡️", unitClass: "melee", hp: 60, damage: 13, range: 16, speed: 44, upkeep: 2 },
-  { id: "halberdier", label: "Алебардист", emoji: "⚔️", unitClass: "melee", hp: 74, damage: 17, range: 24, speed: 40, upkeep: 2 },
-  { id: "knight", label: "Рыцарь", emoji: "🛡️", unitClass: "melee", hp: 110, damage: 22, range: 18, speed: 46, upkeep: 3 },
-  { id: "slinger", label: "Пращник", emoji: "🪨", unitClass: "ranged", hp: 24, damage: 5, range: 70, speed: 38, upkeep: 1 },
-  { id: "archer", label: "Лучник", emoji: "🏹", unitClass: "ranged", hp: 28, damage: 8, range: 90, speed: 38, upkeep: 1 },
-  { id: "longbowman", label: "Длинный лучник", emoji: "🎯", unitClass: "ranged", hp: 32, damage: 11, range: 120, speed: 36, upkeep: 2 },
-  { id: "musketeer", label: "Мушкетёр", emoji: "🔫", unitClass: "ranged", hp: 36, damage: 16, range: 110, speed: 36, upkeep: 3 },
-  { id: "cavalry_slinger", label: "Пращник (кавалерия)", emoji: "🐎", unitClass: "cavalry", hp: 44, damage: 6, range: 70, speed: 78, upkeep: 2 },
-  { id: "cavalry_archer", label: "Лучник (кавалерия)", emoji: "🐎", unitClass: "cavalry", hp: 50, damage: 9, range: 90, speed: 78, upkeep: 2 },
-  { id: "cavalry_longbowman", label: "Длинный лучник (кавалерия)", emoji: "🐎", unitClass: "cavalry", hp: 56, damage: 12, range: 120, speed: 76, upkeep: 3 },
-  { id: "cavalry_musketeer", label: "Мушкетёр (кавалерия)", emoji: "🐎", unitClass: "cavalry", hp: 62, damage: 17, range: 110, speed: 76, upkeep: 4 },
-  { id: "crow", label: "Ворона", emoji: "🐦‍⬛", unitClass: "air", hp: 26, damage: 7, range: 20, speed: 96, upkeep: 1 },
-  { id: "great_eagle", label: "Великий орёл", emoji: "🦅", unitClass: "air", hp: 54, damage: 14, range: 20, speed: 104, upkeep: 3 },
-  { id: "griffin", label: "Грифон", emoji: "🦁", unitClass: "air", hp: 96, damage: 21, range: 22, speed: 92, upkeep: 4 },
+  { id: "militia", label: "Ополченец", icon: ICONS.militia, unitClass: "melee", hp: 30, damage: 6, cooldown: 1, speed: 1.1, upkeep: 1, ...MELEE },
+  { id: "spearman", label: "Копейщик", icon: ICONS.spearman, unitClass: "melee", hp: 42, damage: 8, cooldown: 0.9, speed: 1.1, upkeep: 1, ...MELEE },
+  { id: "swordsman", label: "Мечник", icon: ICONS.swordsman, unitClass: "melee", hp: 60, damage: 12, cooldown: 0.9, speed: 1.1, upkeep: 2, ...MELEE },
+  { id: "halberdier", label: "Алебардист", icon: ICONS.halberdier, unitClass: "melee", hp: 74, damage: 17, cooldown: 1.1, speed: 1, upkeep: 2, ...MELEE },
+  { id: "knight", label: "Рыцарь", icon: ICONS.knight, unitClass: "melee", hp: 110, damage: 22, cooldown: 1, speed: 1.2, upkeep: 3, ...MELEE },
+  { id: "slinger", label: "Пращник", icon: ICONS.slinger, unitClass: "ranged", hp: 24, damage: 5, cooldown: 1.1, range: 2.2, speed: 1, upkeep: 1, flying: false, projectile: "stone" },
+  { id: "archer", label: "Лучник", icon: ICONS.archer, unitClass: "ranged", hp: 28, damage: 7, cooldown: 1.2, range: 3, speed: 1, upkeep: 1, flying: false, projectile: "arrow" },
+  { id: "longbowman", label: "Длинный лучник", icon: ICONS.longbowman, unitClass: "ranged", hp: 32, damage: 10, cooldown: 1.4, range: 4, speed: 0.95, upkeep: 2, flying: false, projectile: "arrow" },
+  { id: "musketeer", label: "Мушкетёр", icon: ICONS.musketeer, unitClass: "ranged", hp: 36, damage: 19, cooldown: 2.2, range: 3.5, speed: 0.9, upkeep: 3, flying: false, projectile: "bullet" },
+  { id: "cavalry_slinger", label: "Пращник (кавалерия)", icon: ICONS.cavalry, unitClass: "cavalry", hp: 44, damage: 6, cooldown: 1.1, range: 2.2, speed: 2, upkeep: 2, flying: false, projectile: "stone" },
+  { id: "cavalry_archer", label: "Лучник (кавалерия)", icon: ICONS.cavalry, unitClass: "cavalry", hp: 50, damage: 8, cooldown: 1.2, range: 3, speed: 2, upkeep: 2, flying: false, projectile: "arrow" },
+  { id: "cavalry_longbowman", label: "Длинный лучник (кавалерия)", icon: ICONS.cavalry, unitClass: "cavalry", hp: 56, damage: 11, cooldown: 1.4, range: 4, speed: 1.9, upkeep: 3, flying: false, projectile: "arrow" },
+  { id: "cavalry_musketeer", label: "Мушкетёр (кавалерия)", icon: ICONS.cavalry, unitClass: "cavalry", hp: 62, damage: 20, cooldown: 2.2, range: 3.5, speed: 1.9, upkeep: 4, flying: false, projectile: "bullet" },
+  { id: "crow", label: "Ворона", icon: ICONS.crow, unitClass: "air", hp: 26, damage: 6, cooldown: 0.8, speed: 2.6, upkeep: 1, ...AIR },
+  { id: "great_eagle", label: "Великий орёл", icon: ICONS.greatEagle, unitClass: "air", hp: 54, damage: 12, cooldown: 0.9, speed: 2.8, upkeep: 3, ...AIR },
+  { id: "griffin", label: "Грифон", icon: ICONS.griffin, unitClass: "air", hp: 96, damage: 20, cooldown: 1, speed: 2.5, upkeep: 4, ...AIR },
 ];
 
 const ENEMIES: readonly TEnemy[] = [
-  { id: "wolf", label: "Волк", emoji: "🐺", hp: 32, damage: 8, range: 16, speed: 62, flying: false },
-  { id: "spider", label: "Паук", emoji: "🕷️", hp: 26, damage: 7, range: 18, speed: 54, flying: false },
-  { id: "leech", label: "Пиявка", emoji: "🪱", hp: 40, damage: 6, range: 14, speed: 30, flying: false },
-  { id: "skeleton", label: "Скелет", emoji: "💀", hp: 44, damage: 10, range: 16, speed: 40, flying: false },
-  { id: "zombie", label: "Зомби", emoji: "🧟", hp: 62, damage: 9, range: 14, speed: 26, flying: false },
-  { id: "ogre", label: "Огр", emoji: "👹", hp: 120, damage: 20, range: 20, speed: 32, flying: false },
-  { id: "witch", label: "Ведьма", emoji: "🧙", hp: 46, damage: 14, range: 95, speed: 34, flying: false },
-  { id: "vampire", label: "Вампир", emoji: "🧛", hp: 88, damage: 18, range: 18, speed: 56, flying: false },
-  { id: "moth", label: "Моль", emoji: "🦋", hp: 30, damage: 8, range: 16, speed: 88, flying: true },
-  { id: "bat", label: "Летучая мышь", emoji: "🦇", hp: 24, damage: 6, range: 14, speed: 100, flying: true },
+  { id: "wolf", label: "Волк", icon: ICONS.wolf, hp: 32, damage: 7, cooldown: 0.8, speed: 1.6, ...MELEE },
+  { id: "spider", label: "Паук", icon: ICONS.spider, hp: 26, damage: 6, cooldown: 0.8, speed: 1.3, ...MELEE },
+  { id: "leech", label: "Пиявка", icon: ICONS.leech, hp: 40, damage: 5, cooldown: 0.7, speed: 0.7, ...MELEE },
+  { id: "skeleton", label: "Скелет", icon: ICONS.skeleton, hp: 44, damage: 9, cooldown: 1, speed: 1, ...MELEE },
+  { id: "zombie", label: "Зомби", icon: ICONS.zombie, hp: 62, damage: 9, cooldown: 1.2, speed: 0.6, ...MELEE },
+  { id: "ogre", label: "Огр", icon: ICONS.ogre, hp: 120, damage: 24, cooldown: 1.6, speed: 0.8, ...MELEE },
+  { id: "witch", label: "Ведьма", icon: ICONS.witch, hp: 46, damage: 12, cooldown: 1.6, range: 3, speed: 0.9, flying: false, projectile: "hex" },
+  { id: "vampire", label: "Вампир", icon: ICONS.vampire, hp: 88, damage: 16, cooldown: 0.9, speed: 1.4, ...MELEE },
+  { id: "moth", label: "Моль", icon: ICONS.moth, hp: 30, damage: 7, cooldown: 0.9, speed: 2.2, ...AIR },
+  { id: "bat", label: "Летучая мышь", icon: ICONS.bat, hp: 24, damage: 5, cooldown: 0.7, speed: 2.6, ...AIR },
 ];
 
 const UNIT_BY_ID = new Map(UNITS.map((unit) => [unit.id, unit]));
@@ -142,5 +160,5 @@ const buildRoster = (population: number, unlocked: readonly TUnitId[], rng: TRng
   return roster;
 };
 
-export type { TCombatant, TEnemy, TEnemyId, TUnit, TUnitClass, TUnitId };
+export type { TCombatant, TEnemy, TEnemyId, TProjectile, TUnit, TUnitClass, TUnitId };
 export { buildRoster, ENEMIES, getEnemy, getUnit, UNITS };

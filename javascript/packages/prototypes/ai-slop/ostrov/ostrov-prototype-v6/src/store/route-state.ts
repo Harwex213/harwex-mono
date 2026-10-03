@@ -1,10 +1,10 @@
 import { signal } from "@preact/signals-react";
 
-/** The four pages of the spec: menu, island, global map, battle. */
-type TPage = "menu" | "island" | "world" | "battle";
+/** The pages of the spec: island, global map, battle. The game opens on the island. */
+type TPage = "island" | "world" | "battle";
 
 const createRouteState = () => ({
-  page: signal<TPage>("menu"),
+  page: signal<TPage>("island"),
   /** Whose island is open. `null` means the player's own island. */
   islandPlayerId: signal<string | null>(null),
 });

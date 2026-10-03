@@ -1,8 +1,13 @@
 import { useSignals } from "@preact/signals-react/runtime";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getBiome } from "../../core/biomes";
-import { canBuildOn, getBuilding } from "../../core/buildings";
+import { buildRefusal } from "../../core/build-check";
+import { getBuilding } from "../../core/buildings";
+import { HEX_ART } from "../../core/hex-art";
+import { canPlaceStronghold, STRONGHOLD_HEX_ART } from "../../core/stronghold";
+import { isRuinedStronghold } from "../../core/structure-hp";
 import { isDead } from "../../core/tax";
+import { findRoll } from "../../core/tax-plan";
 import {
   AXIAL_DIRECTIONS,
   HEX_SIZE,
@@ -13,18 +18,32 @@ import {
   hexToPixel,
 } from "../../core/hex";
 import { useStore } from "../../store/store";
+import { useIslandGround } from "../ground/use-island-ground";
+import { HexHpBar } from "./hex-hp-bar";
+import { HexPlates } from "./hex-plates";
 import type { FC, PointerEvent as ReactPointerEvent } from "react";
-import type { TBuildingId, THex } from "../../core/types";
+import type { TBuildingId, TGameStage, THex, TIsland, TPlayer } from "../../core/types";
 import type {
   TBuildOnHexAction,
   THoverHexAction,
+  TOpenTaxPickAction,
+  TPlaceStrongholdAction,
   TRequestDemolishAction,
   TSelectHexAction,
   TSetCameraAction,
 } from "../../domain/registry";
 
-/** The building art is square and slightly narrower than the hex it stands on. */
-const ART_SPAN = HEX_SIZE * 1.45;
+/**
+ * Hex art is the 256x256 set from `hex-art.ts`, not the 64px icons. The hex
+ * scales it down at every zoom, so the art stays sharp. It sits a little above
+ * the hex centre, because its scorched base reads as the ground of the hex.
+ * A placed building and the ghost of the armed building both read
+ * `building.hexArt`, so both draw the same image.
+ */
+const ART_SPAN = HEX_SIZE * 1.36;
+const ART_LIFT = HEX_SIZE * 0.08;
+/** The skull on a dead hex is smaller than a building, so it reads as a mark. */
+const DEAD_SPAN = HEX_SIZE * 0.8;
 const MIN_SCALE = 0.35;
 const MAX_SCALE = 2.6;
 /** One wheel notch. Zoom is geometric, so a notch is a constant ratio. */
@@ -40,6 +59,33 @@ const FIT_INSET_SIDE_PX = 48;
 const DRAG_SLOP_PX = 4;
 
 const CORNER_POINTS = hexCornerPoints(HEX_SIZE);
+/** Must match the stroke-width of `.hex-outline` in app.css. */
+const OUTLINE_WIDTH = 4;
+/**
+ * A highlight outline is drawn inside its own hex. Its outer side lands on the
+ * hex edge, so the outline of a neighbour never covers it. The corner radius
+ * shrinks by w / sqrt(3), so each edge moves inwards by w / 2.
+ */
+const OUTLINE_POINTS = hexCornerPoints(HEX_SIZE - OUTLINE_WIDTH / Math.sqrt(3));
+
+/** The hex grid toggle is remembered per browser. */
+const GRID_STORAGE_KEY = "ostrov-v6:hex-grid";
+
+const readGridPreference = () => {
+  try {
+    return window.localStorage.getItem(GRID_STORAGE_KEY) !== "off";
+  } catch {
+    return true;
+  }
+};
+
+const writeGridPreference = (isVisible: boolean) => {
+  try {
+    window.localStorage.setItem(GRID_STORAGE_KEY, isVisible ? "on" : "off");
+  } catch {
+    // Storage can be blocked; the toggle then lasts for this page only.
+  }
+};
 
 type TView = {
   readonly x: number;
@@ -50,6 +96,8 @@ type TView = {
 type TIslandCanvasRegistrySlice = {
   buildOnHexAction: TBuildOnHexAction;
   hoverHexAction: THoverHexAction;
+  openTaxPickAction: TOpenTaxPickAction;
+  placeStrongholdAction: TPlaceStrongholdAction;
   requestDemolishAction: TRequestDemolishAction;
   selectHexAction: TSelectHexAction;
   setCameraAction: TSetCameraAction;
@@ -61,24 +109,71 @@ type TIslandCanvasProps = {
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 
+type THexStateContext = {
+  readonly stage: TGameStage;
+  readonly island: TIsland;
+  readonly strongholdHexId: string | null;
+  readonly armedBuildingId: TBuildingId | null;
+  readonly demolishMode: boolean;
+  readonly player: TPlayer | null;
+  readonly stoneDiscount: number;
+};
+
 /** Which visual state a hex is in, which is also its modifier class. */
-const hexStateClass = (
-  hex: THex,
-  armedBuildingId: TBuildingId | null,
-  demolishMode: boolean,
-) => {
-  if (demolishMode) {
-    return hex.building === null ? "hex--blocked" : "hex--demolishable";
+const hexStateClass = (hex: THex, context: THexStateContext) => {
+  // While the stronghold waits for a hex, every hex that can take it pulses.
+  if (context.stage === "setup") {
+    if (hex.id === context.strongholdHexId) {
+      return "";
+    }
+
+    return canPlaceStronghold(context.island, hex.id) ? "hex--buildable" : "hex--blocked";
   }
 
-  if (!armedBuildingId) {
+  if (context.stage !== "play") {
     return "";
   }
 
-  const building = getBuilding(armedBuildingId);
-  const allowed = hex.building === null && canBuildOn(building, hex.biome);
+  // The stronghold keeps its full biome colour: its gold outline already
+  // says that nothing can be built on it or demolished from it.
+  if (hex.id === context.strongholdHexId) {
+    return "";
+  }
 
-  return allowed ? "hex--buildable" : "hex--blocked";
+  if (context.demolishMode) {
+    return hex.building === null ? "hex--blocked" : "hex--demolishable";
+  }
+
+  if (!context.armedBuildingId || !context.player) {
+    return "";
+  }
+
+  // The same rules as the click and the tooltip, the price included.
+  const building = getBuilding(context.armedBuildingId);
+  const refusal = buildRefusal(context.player, hex, building, context.stoneDiscount);
+
+  return refusal === null ? "hex--buildable" : "hex--blocked";
+};
+
+/**
+ * The armed building as a ghost on the hovered hex. The hex draws the ghost
+ * through the same art element as a placed building, so the ghost always
+ * matches the placed look. An occupied hex and the stronghold hex show their
+ * own art, so they get no ghost.
+ */
+const ghostOn = (hex: THex, hoveredHexId: string | null, context: THexStateContext) => {
+  if (context.stage !== "play" || context.demolishMode || !context.armedBuildingId || !context.player) {
+    return null;
+  }
+
+  if (hex.id !== hoveredHexId || hex.building !== null || hex.id === context.strongholdHexId) {
+    return null;
+  }
+
+  const building = getBuilding(context.armedBuildingId);
+  const refusal = buildRefusal(context.player, hex, building, context.stoneDiscount);
+
+  return { building, refused: refusal !== null };
 };
 
 const IslandCanvas: FC<TIslandCanvasProps> = ({ registry }) => {
@@ -90,15 +185,30 @@ const IslandCanvas: FC<TIslandCanvasProps> = ({ registry }) => {
   const hoveredHexId = store.ui.hoveredHexId.value;
   const selectedHexId = store.ui.selectedHexId.value;
   const isReadonly = store.derived.isReadonly.value;
+  const stage = store.game.stage.value;
+  const stoneDiscount = store.derived.techEffects.value.stoneDiscount;
+  const taxPlan = store.derived.humanTaxPlan.value;
+  const isTaxOpen = store.game.tax.value?.status === "rolled";
 
   const containerRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{ x: number; y: number; moved: number; captured: boolean } | null>(null);
   /** How far the pointer travelled in the gesture that just ended. */
   const lastMovedRef = useRef(0);
   const [view, setView] = useState<TView>({ x: 0, y: 0, scale: 1 });
+  const [isGridVisible, setGridVisible] = useState(readGridPreference);
 
   const hexes = player?.island.hexes ?? [];
   const playerId = player?.id ?? null;
+  const strongholdHexId = player?.strongholdHexId ?? null;
+  const stateContext: THexStateContext = {
+    stage,
+    island: player?.island ?? { hexes: [] },
+    strongholdHexId,
+    armedBuildingId,
+    demolishMode,
+    player,
+    stoneDiscount,
+  };
 
   /** Centres the island in the viewport and picks the scale that fits it. */
   const fitToView = useCallback(() => {
@@ -167,6 +277,38 @@ const IslandCanvas: FC<TIslandCanvasProps> = ({ registry }) => {
     };
   }, []);
 
+  const toggleGrid = useCallback(() => {
+    setGridVisible((current) => {
+      writeGridPreference(!current);
+
+      return !current;
+    });
+  }, []);
+
+  // G toggles the hex grid, unless the player is typing in a field.
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (event.repeat || event.ctrlKey || event.metaKey || event.altKey) {
+        return;
+      }
+
+      if (target && (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName))) {
+        return;
+      }
+
+      if (event.code === "KeyG") {
+        toggleGrid();
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [toggleGrid]);
+
   const onPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
     // The pointer is captured only once it starts to drag. Capturing it here
     // would retarget the click to the container, and no hex would ever be hit.
@@ -220,6 +362,17 @@ const IslandCanvas: FC<TIslandCanvasProps> = ({ registry }) => {
       return;
     }
 
+    if (stage === "setup") {
+      registry.placeStrongholdAction(hex.id);
+
+      return;
+    }
+
+    // The start animation owns the screen for its short run.
+    if (stage !== "play") {
+      return;
+    }
+
     if (!isReadonly && demolishMode) {
       registry.requestDemolishAction(hex.id);
 
@@ -232,8 +385,47 @@ const IslandCanvas: FC<TIslandCanvasProps> = ({ registry }) => {
       return;
     }
 
+    // In the tax phase a click on a die opens its face popup.
+    if (!isReadonly && isTaxOpen && findRoll(taxPlan, hex.id)) {
+      registry.openTaxPickAction(hex.id);
+
+      return;
+    }
+
     registry.selectHexAction(hex.id);
   };
+
+  const outlines = hexes
+    .flatMap((hex) => {
+      const center = hexToPixel(hex.q, hex.r, HEX_SIZE);
+      const stateClass = isReadonly ? "" : hexStateClass(hex, stateContext);
+      const isHovered = hex.id === hoveredHexId;
+      const isSelected = hex.id === selectedHexId;
+      const entries: { key: string; className: string; rank: number; x: number; y: number }[] = [];
+
+      if (hex.id === strongholdHexId) {
+        entries.push({
+          key: `stronghold-${hex.id}`,
+          className: "hex-outline hex-outline--stronghold",
+          rank: 1,
+          x: center.x,
+          y: center.y,
+        });
+      }
+
+      if (stateClass || isHovered || isSelected) {
+        entries.push({
+          key: `outline-${hex.id}`,
+          className: `hex-outline ${stateClass} ${isHovered ? "hex--hovered" : ""} ${isSelected ? "hex--selected" : ""}`,
+          rank: isHovered ? 3 : isSelected ? 2 : 0,
+          x: center.x,
+          y: center.y,
+        });
+      }
+
+      return entries;
+    })
+    .sort((left, right) => left.rank - right.rank);
 
   const present = new Set(hexes.map((hex) => hex.id));
   const rimEdges = hexes.flatMap((hex) =>
@@ -246,6 +438,8 @@ const IslandCanvas: FC<TIslandCanvasProps> = ({ registry }) => {
     }),
   );
 
+  const ground = useIslandGround(hexes, playerId ?? "island");
+
   return (
     <div
       className="island-canvas"
@@ -256,9 +450,14 @@ const IslandCanvas: FC<TIslandCanvasProps> = ({ registry }) => {
       onPointerCancel={onPointerUp}
       onPointerLeave={() => registry.hoverHexAction(null, null)}
     >
-      <svg className="island-canvas__svg" role="presentation">
+      <svg
+        className={`island-canvas__svg ${isGridVisible ? "" : "island-canvas__svg--grid-off"}`}
+        role="presentation"
+      >
         <g transform={`translate(${view.x} ${view.y}) scale(${view.scale})`}>
-          {rimEdges.map((edge) => (
+          {/* The painted ground draws its own organic coastline. The hex rim
+              stays as the fallback while it loads or without WebGL2. */}
+          {ground ? null : rimEdges.map((edge) => (
             <line
               className="island-rim"
               key={edge.key}
@@ -269,29 +468,57 @@ const IslandCanvas: FC<TIslandCanvasProps> = ({ registry }) => {
             />
           ))}
 
+          {/* The ground is one painted image of the whole island, under every
+              hex group. Until it is ready, flat biome colours stand in. */}
+          {ground ? (
+            <image
+              className="island-ground"
+              href={ground.href}
+              x={ground.x}
+              y={ground.y}
+              width={ground.width}
+              height={ground.height}
+              preserveAspectRatio="none"
+            />
+          ) : (
+            <g className="island-ground">
+              {hexes.map((hex) => {
+                const center = hexToPixel(hex.q, hex.r, HEX_SIZE);
+
+                return (
+                  <polygon
+                    key={hex.id}
+                    points={CORNER_POINTS}
+                    transform={`translate(${center.x} ${center.y})`}
+                    fill={getBiome(hex.biome).color}
+                  />
+                );
+              })}
+            </g>
+          )}
+
           {hexes.map((hex) => {
             const center = hexToPixel(hex.q, hex.r, HEX_SIZE);
-            const biome = getBiome(hex.biome);
-            const building = hex.building ? getBuilding(hex.building) : null;
-            const stateClass = isReadonly ? "" : hexStateClass(hex, armedBuildingId, demolishMode);
+            const ghost = isReadonly ? null : ghostOn(hex, hoveredHexId, stateContext);
+            const ghostClass = ghost ? `hex--ghost ${ghost.refused ? "hex--ghost-refused" : ""}` : "";
+            const building = hex.building ? getBuilding(hex.building) : (ghost?.building ?? null);
+            const stateClass = isReadonly ? "" : hexStateClass(hex, stateContext);
             const isHovered = hex.id === hoveredHexId;
             const isSelected = hex.id === selectedHexId;
+            const isStronghold = hex.id === strongholdHexId;
 
             return (
               <g
                 key={hex.id}
-                className={`hex ${stateClass} ${isDead(hex) ? "hex--dead" : ""} ${isHovered ? "hex--hovered" : ""} ${isSelected ? "hex--selected" : ""}`}
+                className={`hex ${stateClass} ${isDead(hex) ? "hex--dead" : ""} ${isHovered ? "hex--hovered" : ""} ${isSelected ? "hex--selected" : ""} ${isStronghold ? "hex--stronghold" : ""} ${ghostClass}`}
                 transform={`translate(${center.x} ${center.y})`}
                 onPointerEnter={() => onHexEnter(hex)}
                 onPointerLeave={() => registry.hoverHexAction(null, null)}
                 onClick={() => onHexClick(hex)}
               >
-                <polygon
-                  className="hex__face"
-                  points={CORNER_POINTS}
-                  fill={biome.color}
-                  stroke={biome.edgeColor}
-                />
+                {/* The ground lives in the layer below. The face is the hit
+                    area, the faint grid line and the tint of a blocked hex. */}
+                <polygon className="hex__face" points={CORNER_POINTS} />
 
                 {hex.toxicity > 0 ? (
                   <polygon
@@ -303,47 +530,71 @@ const IslandCanvas: FC<TIslandCanvasProps> = ({ registry }) => {
                 ) : null}
 
                 {isDead(hex) ? (
-                  <text className="hex__dead" textAnchor="middle" dominantBaseline="central">
-                    {"☠️"}
-                  </text>
+                  <image
+                    className="hex__dead"
+                    href={HEX_ART.dead}
+                    x={-DEAD_SPAN / 2}
+                    y={-DEAD_SPAN / 2}
+                    width={DEAD_SPAN}
+                    height={DEAD_SPAN}
+                  />
                 ) : null}
 
                 {building ? (
                   <image
                     className="hex__art"
-                    href={building.art}
+                    href={building.hexArt}
                     x={-ART_SPAN / 2}
-                    y={-ART_SPAN / 2 - HEX_SIZE * 0.18}
+                    y={-ART_SPAN / 2 - ART_LIFT}
                     width={ART_SPAN}
                     height={ART_SPAN}
                     preserveAspectRatio="xMidYMid meet"
                   />
                 ) : null}
 
+                {isStronghold ? (
+                  <image
+                    className={`hex__art hex__art--stronghold ${isRuinedStronghold(player, hex) ? "hex__art--ruined" : ""}`}
+                    href={STRONGHOLD_HEX_ART}
+                    x={-ART_SPAN / 2}
+                    y={-ART_SPAN / 2 - ART_LIFT}
+                    width={ART_SPAN}
+                    height={ART_SPAN}
+                    preserveAspectRatio="xMidYMid meet"
+                  />
+                ) : null}
+
+                <HexHpBar player={player} hex={hex} />
               </g>
             );
           })}
 
-          {hexes.map((hex) => {
-            const center = hexToPixel(hex.q, hex.r, HEX_SIZE);
-            const stateClass = isReadonly ? "" : hexStateClass(hex, armedBuildingId, demolishMode);
-            const isHovered = hex.id === hoveredHexId;
-            const isSelected = hex.id === selectedHexId;
-            if (!stateClass && !isHovered && !isSelected) {
-              return null;
-            }
+          {/* Highlight outlines go above every hex face, so no neighbour face
+              covers them. Hover and selection go last, so they stay on top. */}
+          {outlines.map((outline) => (
+            <polygon
+              key={outline.key}
+              className={outline.className}
+              points={OUTLINE_POINTS}
+              transform={`translate(${outline.x} ${outline.y})`}
+            />
+          ))}
 
-            return (
-              <polygon
-                key={`outline-${hex.id}`}
-                className={`hex-outline ${stateClass} ${isHovered ? "hex--hovered" : ""} ${isSelected ? "hex--selected" : ""}`}
-                points={CORNER_POINTS}
-                transform={`translate(${center.x} ${center.y})`}
-              />
-            );
-          })}
+          {/* The plates go last: no hex, sprite or outline may cover them. */}
+          <HexPlates scale={view.scale} />
         </g>
       </svg>
+
+      <button
+        type="button"
+        className={`island-canvas__grid-toggle ${isGridVisible ? "island-canvas__grid-toggle--on" : ""}`}
+        title="Сетка гексов (G)"
+        aria-pressed={isGridVisible}
+        onPointerDown={(event) => event.stopPropagation()}
+        onClick={toggleGrid}
+      >
+        Сетка
+      </button>
     </div>
   );
 };

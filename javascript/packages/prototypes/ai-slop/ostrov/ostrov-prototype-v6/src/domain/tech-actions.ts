@@ -1,5 +1,6 @@
 import { getTech, isAvailable } from "../core/techs";
 import { replacePlayer } from "./player-updates";
+import { WAITING_NOTICE } from "./ready-actions";
 import { showNotice } from "./ui-actions";
 import type { TStore } from "../store/store";
 import type { TTechId } from "../core/techs";
@@ -8,6 +9,13 @@ import type { TTechId } from "../core/techs";
 const researchTechAction = (store: TStore, techId: TTechId) => {
   const player = store.derived.humanPlayer.peek();
   if (!player) {
+    return;
+  }
+
+  // A player who has pressed "Готов" waits; the phase's choices are made.
+  if (store.derived.isHumanReady.peek()) {
+    showNotice(store, WAITING_NOTICE);
+
     return;
   }
 
@@ -21,7 +29,7 @@ const researchTechAction = (store: TStore, techId: TTechId) => {
   }
 
   if (player.resources.science < tech.cost) {
-    showNotice(store, `Не хватает науки на «${tech.label}»: нужно ${tech.cost} 📖`);
+    showNotice(store, `Не хватает науки на «${tech.label}»: нужно ${tech.cost} науки`);
 
     return;
   }

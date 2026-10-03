@@ -7,6 +7,8 @@ import type { TEndPhaseAction, TSkipTaxAnimationAction } from "../../domain/regi
 /** Geometry of the phase wheel, in the SVG's own units. */
 const WHEEL_RADIUS = 52;
 const ICON_RADIUS = 33;
+/** Side of a phase icon on the wheel, in the same SVG units. */
+const PHASE_ICON_SPAN = 30;
 const QUARTER_DEG = 360 / PHASES.length;
 const HALF_QUARTER_RAD = (QUARTER_DEG / 2 / 180) * Math.PI;
 const SECTOR_EDGE = WHEEL_RADIUS * Math.sin(HALF_QUARTER_RAD);
@@ -32,23 +34,33 @@ type TEndTurnPanelProps = {
 /**
  * The end-turn wheel of the reference: four phases around a disc, the one in
  * play always at north. While an animation owns the turn the same button skips
- * it instead of ending the phase.
+ * it instead of ending the phase. A press marks the player ready, and the
+ * phase ends once every player is ready. While the player waits, the button
+ * takes the readiness back, unless the phase has made it final. In the tax
+ * phase the button collects the rolled dice first.
  */
 const EndTurnPanel: FC<TEndTurnPanelProps> = ({ registry }) => {
   useSignals();
   const store = useStore();
   const current = phaseIndex(store.game.phase.value);
   const busy = store.ui.busy.value;
+  // In the tax phase "Готов" is what pays the dice, so the banner says so.
+  const isTaxOpen = store.game.tax.value?.status === "rolled";
+  const isWaiting = store.derived.isHumanReady.value;
+  const isLocked = store.derived.isReadyLocked.value;
+  const waitingBanner = isLocked ? "Ожидание" : "Отменить";
+  const banner = busy ? "Пропустить" : isWaiting ? waitingBanner : isTaxOpen ? "Собрать" : "Готов";
 
   return (
     <div className="panel end-turn-panel">
       <button
         type="button"
-        className={`end-turn-wheel ${busy ? "end-turn-wheel--busy" : ""}`}
+        className={`end-turn-wheel ${busy ? "end-turn-wheel--busy" : ""} ${isWaiting ? "end-turn-wheel--waiting" : ""}`}
+        title={isWaiting && !isLocked ? "Снять готовность и вернуться к фазе" : undefined}
         onClick={busy ? registry.skipTaxAnimationAction : registry.endPhaseAction}
       >
         <span className="end-turn-wheel__banner">
-          {busy ? "Пропустить" : "Готов"}
+          {banner}
         </span>
 
         <svg className="end-turn-wheel__svg" viewBox="-60 -60 120 120" role="presentation">
@@ -80,13 +92,14 @@ const EndTurnPanel: FC<TEndTurnPanelProps> = ({ registry }) => {
                   key={phase.id}
                   transform={`translate(${x.toFixed(2)} ${y.toFixed(2)}) rotate(${current * QUARTER_DEG})`}
                 >
-                  <text
-                    className={index === current ? "wheel__emoji wheel__emoji--active" : "wheel__emoji"}
-                    textAnchor="middle"
-                    dominantBaseline="central"
-                  >
-                    {phase.emoji}
-                  </text>
+                  <image
+                    className={index === current ? "wheel__icon-art wheel__icon-art--active" : "wheel__icon-art"}
+                    href={phase.icon}
+                    x={-PHASE_ICON_SPAN / 2}
+                    y={-PHASE_ICON_SPAN / 2}
+                    width={PHASE_ICON_SPAN}
+                    height={PHASE_ICON_SPAN}
+                  />
                 </g>
               );
             })}

@@ -34,8 +34,13 @@ type TYieldResourceId =
   | "scouting"
   | "mana";
 
-/** Everything the resources panel shows, including the two negative resources. */
-type TResourceId = TYieldResourceId | "toxicity" | "mad";
+/**
+ * Everything the resources panel shows, including the negative resource, the
+ * mad. Power (власть) is not on any die: the stronghold pays it every turn, and
+ * the tax phase spends it to change a building's rolled face. Toxicity is not a
+ * resource: it lives on the hexes and in the island's meter, `toxicMeter`.
+ */
+type TResourceId = TYieldResourceId | "power" | "mad";
 
 type TResourcePool = Readonly<Record<TResourceId, number>>;
 
@@ -72,7 +77,10 @@ type TBuilding = {
   readonly label: string;
   /** The resource this building exists for, shown as its purpose in the UI. */
   readonly yields: TYieldResourceId;
+  /** The 64px icon, for panels, tooltips and modals. */
   readonly art: string;
+  /** The 256px sprite the island canvas draws on the hex. */
+  readonly hexArt: string;
   readonly cost: TBuildCost;
   /** Faces every copy of this building has, whatever it stands on. */
   readonly baseFaces: readonly TFace[];
@@ -99,6 +107,15 @@ type THex = {
   readonly building: TBuildingId | null;
   /** Accumulated toxicity of the hex, in percent, 0..100. */
   readonly toxicity: number;
+  /**
+   * Battle damage of what stands on the hex. It names what it belongs to, so
+   * a new building on the hex starts at full health. Missing means full health.
+   * See `core/structure-hp.ts`.
+   */
+  readonly damaged?: {
+    readonly kind: TBuildingId | "stronghold";
+    readonly hp: number;
+  };
 };
 
 type TIsland = {
@@ -117,10 +134,26 @@ type TPlayer = {
   readonly techs: number;
   /** The world cell the island is flying over. */
   readonly cellId: string;
+  /** The hex the player's stronghold stands on, or `null` before it is placed. */
+  readonly strongholdHexId: string | null;
+  /**
+   * The island's toxicity meter, 0..1000. The tax phase fills it from the
+   * toxicity the buildings leave on their hexes; only a lucky slot spin lowers
+   * it. See `core/toxic-slot.ts`.
+   */
+  readonly toxicMeter: number;
 };
 
 /** The four phases of the core loop. Only `build` is implemented so far. */
 type TPhase = "build" | "tax" | "scout" | "clear";
+
+/**
+ * The life of a session. In `setup` every player places a stronghold and the
+ * core loop has not started. `starting` and `entering` are the two steps of the
+ * animation after "Начать": the vignette and the start button leave, then the
+ * build phase HUD comes in. `play` is the core loop.
+ */
+type TGameStage = "setup" | "starting" | "entering" | "play";
 
 export type {
   TBiome,
@@ -129,6 +162,7 @@ export type {
   TBuilding,
   TBuildingId,
   TFace,
+  TGameStage,
   THex,
   TIsland,
   TPhase,

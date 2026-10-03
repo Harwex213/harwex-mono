@@ -8,8 +8,14 @@ import {
   getBuilding,
 } from "../../core/buildings";
 import { hexCornerPoints } from "../../core/hex";
+import { ICONS } from "../../core/icons";
 import { getResource } from "../../core/resources";
+import { hexDie } from "../../core/dice";
+import { isStrongholdHex, POWER_PER_TURN, STRONGHOLD_LABEL } from "../../core/stronghold";
 import { useStore } from "../../store/store";
+import { DieAverage, DieFaces } from "./die-faces";
+import { StructureHpLine } from "./hex-hp-bar";
+import { Icon } from "./icon";
 import type { FC } from "react";
 import type { TArmBuildingAction, TCloseHexModalAction } from "../../domain/registry";
 
@@ -28,7 +34,7 @@ type THexModalProps = {
 
 /**
  * The modal the spec opens on the right when a hex is clicked: what the biome
- * is, and which building suits it best. The hint is derived from the yield
+ * is, the die of what stands on it, and which building suits it best. The hint is derived from the yield
  * tables, so it cannot drift away from them.
  */
 const HexModal: FC<THexModalProps> = ({ registry }) => {
@@ -36,6 +42,7 @@ const HexModal: FC<THexModalProps> = ({ registry }) => {
   const store = useStore();
   const hex = store.derived.selectedHex.value;
   const isReadonly = store.derived.isReadonly.value;
+  const player = store.derived.viewedPlayer.value;
 
   if (!hex) {
     return null;
@@ -44,12 +51,17 @@ const HexModal: FC<THexModalProps> = ({ registry }) => {
   const biome = getBiome(hex.biome);
   const allowed = buildingsForBiome(hex.biome);
   const best = bestBuildingForBiome(hex.biome);
-  const standing = hex.building ? getBuilding(hex.building) : null;
+  const building = hex.building ? getBuilding(hex.building) : null;
+  const isStronghold = isStrongholdHex(player, hex.id);
+  const standing = isStronghold ? STRONGHOLD_LABEL : building?.label ?? null;
+  const die = hexDie(player, hex);
+  const hint = best ? `Лучше всего здесь встанет: ${best.label}` : "Строить здесь нечего";
+  const subtitle = isStronghold ? "Твердыня занимает гекс: строить здесь нельзя" : hint;
 
   return (
     <aside className="panel hex-modal">
       <button type="button" className="hex-modal__close" onClick={registry.closeHexModalAction}>
-        {"✕"}
+        <Icon src={ICONS.close} label="Закрыть" size="m" />
       </button>
 
       <svg className="hex-modal__emblem" viewBox="-50 -50 100 100" role="presentation">
@@ -66,12 +78,32 @@ const HexModal: FC<THexModalProps> = ({ registry }) => {
 
       {standing ? (
         <p className="hex-modal__standing">
-          {`Здесь стоит: ${standing.label}`}
+          {`Здесь стоит: ${standing}`}
         </p>
       ) : null}
 
+      <StructureHpLine player={player} hex={hex} className="hex-modal__standing" />
+
+      {die ? (
+        <div className="hex-modal__die">
+          <DieFaces faces={die.faces} biomeFaceIndex={die.biomeFaceIndex} biomeLabel={biome.label} hex={hex} />
+
+          <p className="hex-modal__die-row">
+            {"В среднем за бросок: "}
+            <DieAverage die={die} />
+          </p>
+
+          {isStronghold ? (
+            <p className="hex-modal__die-row">
+              <Icon src={ICONS.power} label="Власть" />
+              {`+${POWER_PER_TURN} власть в конце каждой фазы налогов`}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+
       <h3 className="hex-modal__subtitle">
-        {best ? `Лучше всего здесь встанет: ${best.label}` : "Строить здесь нечего"}
+        {subtitle}
       </h3>
 
       <ul className="hex-modal__list">
@@ -90,9 +122,11 @@ const HexModal: FC<THexModalProps> = ({ registry }) => {
               </span>
 
               <span className="hex-modal__option-numbers">
-                {`${getResource(building.yields).emoji} ${averageYieldOn(building, hex.biome).toFixed(1)}`}
+                <Icon src={getResource(building.yields).icon} label={getResource(building.yields).label} />
+                {averageYieldOn(building, hex.biome).toFixed(1)}
                 {" · "}
-                {`☣️ ${averageToxicityOn(building, hex.biome).toFixed(1)}`}
+                <Icon src={ICONS.toxicity} label="Токсичность" />
+                {averageToxicityOn(building, hex.biome).toFixed(1)}
               </span>
             </button>
           </li>

@@ -1,3 +1,4 @@
+import type { TTechEffects } from "./techs";
 import type { TFace, THex, TPlayer } from "./types";
 
 /**
@@ -11,17 +12,10 @@ const DEAD_TOXICITY_PCT = 100;
 /** Past this, the spec forbids food outright, not merely reduces it. */
 const FOOD_BLOCKED_TOXICITY_PCT = 50;
 /**
- * One ☣️ point on a face is worth this much of the hex. At 4% a swamp mine,
+ * One toxicity point on a face is worth this much of the hex. At 4% a swamp mine,
  * the dirtiest die in the game, kills its own hex in about five turns.
  */
 const TOXICITY_PER_FACE_POINT_PCT = 4;
-/**
- * Invented, as the spec asks. The island's toxicity load is the sum of what
- * lies on its hexes; every full 60 points of it drives one more person mad each
- * turn, and the mad eat food without working. The more a player builds, the
- * faster the island eats its own population.
- */
-const MAD_PER_TOXICITY_STEP_POINTS = 60;
 
 /** What the face actually pays after the hex's toxicity has taken its cut. */
 const effectiveYield = (face: TFace, hex: THex) => {
@@ -45,29 +39,66 @@ const toxicityGain = (face: TFace, hex: THex) => {
   return Math.min(DEAD_TOXICITY_PCT - hex.toxicity, face.toxicity * TOXICITY_PER_FACE_POINT_PCT);
 };
 
-/** The island's whole toxicity load, which is what the HUD shows as ☣️. */
+/**
+ * The island's whole toxicity load: the sum over its hexes. The exploration
+ * phase leaves it in the world cell as the toxic trail.
+ */
 const totalToxicity = (player: TPlayer) => {
   return player.island.hexes.reduce((sum, hex) => sum + hex.toxicity, 0);
 };
 
-/** How many people go mad this turn. Never more people than the island has. */
-const madConversion = (player: TPlayer) => {
-  const driven = Math.floor(totalToxicity(player) / MAD_PER_TOXICITY_STEP_POINTS);
+/** The part of the researched technologies that changes a tax payout. */
+type TPayoutEffects = Pick<TTechEffects, "foodBonus" | "toxicityMultiplier">;
 
-  return Math.min(player.resources.population, driven);
+/**
+ * What one face really pays on one hex this turn: the yield after the hex's
+ * toxicity and the irrigation bonus, and the toxicity in percent it leaves on
+ * the hex. The roll plate, the pick popup and the collection all read this.
+ */
+const facePayout = (face: TFace, hex: THex, effects: TPayoutEffects) => {
+  const raw = effectiveYield(face, hex);
+  // Irrigation adds to a roll that pays food, but never revives a dead hex.
+  const amount = raw > 0 && face.resource === "food" ? raw + effects.foodBonus : raw;
+  const toxicity = Math.round(toxicityGain(face, hex) * effects.toxicityMultiplier);
+
+  return { amount, toxicity };
+};
+
+/**
+ * The madness step of the tax phase. `converted` people go mad, asylums send
+ * up to `curedPerTurn` of the mad back to work, and every mad person left eats
+ * one food without working. Food never drops below zero. The tax phase itself
+ * drives nobody mad any more: people go mad only through the toxicity slot
+ * (`core/toxic-slot.ts`), so it passes 0.
+ */
+const withMadness = (player: TPlayer, converted: number, curedPerTurn: number): TPlayer => {
+  const cured = Math.min(player.resources.mad, curedPerTurn);
+  const mad = player.resources.mad + converted - cured;
+
+  return {
+    ...player,
+    resources: {
+      ...player.resources,
+      population: player.resources.population - converted + cured,
+      mad,
+      food: Math.max(0, player.resources.food - mad),
+    },
+  };
 };
 
 const isDead = (hex: THex) => hex.toxicity >= DEAD_TOXICITY_PCT;
 
 const isFoodBlocked = (hex: THex) => hex.toxicity >= FOOD_BLOCKED_TOXICITY_PCT;
 
+export type { TPayoutEffects };
 export {
   DEAD_TOXICITY_PCT,
   effectiveYield,
+  facePayout,
   FOOD_BLOCKED_TOXICITY_PCT,
   isDead,
   isFoodBlocked,
-  madConversion,
   totalToxicity,
   toxicityGain,
+  withMadness,
 };

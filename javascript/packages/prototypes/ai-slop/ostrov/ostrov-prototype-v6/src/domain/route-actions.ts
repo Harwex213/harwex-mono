@@ -2,35 +2,33 @@ import type { TStore } from "../store/store";
 import type { TPage } from "../store/route-state";
 
 /**
- * A hash router. `#/` is the main menu, `#/island` the player's own island,
- * `#/island/<playerId>` a rival's island read-only, `#/world` the global map
- * and `#/battle` the level of the clearing phase.
+ * A hash router. `#/island` is the player's own island, `#/island/<playerId>`
+ * a rival's island read-only, `#/world` the global map and `#/battle` the level
+ * of the clearing phase. Any other hash opens the player's own island.
  */
 
 const ISLAND_PREFIX = "#/island";
+const WORLD_HASH = "#/world";
 
 const PAGE_BY_HASH: Readonly<Record<string, TPage>> = {
-  "#/world": "world",
+  [WORLD_HASH]: "world",
   "#/battle": "battle",
 };
 
 const navigateToIslandAction = (store: TStore, playerId: string | null) => {
   // The other phases own their own page, and the tax phase flies its motes to
-  // the HUD of the player's own island.
-  if (store.ui.busy.peek() || store.game.phase.peek() !== "build") {
+  // the HUD of the player's own island. Before the game starts the players
+  // list is locked on the player's own island.
+  if (store.ui.busy.peek() || store.game.phase.peek() !== "build" || store.game.stage.peek() !== "play") {
     return;
   }
 
   window.location.hash = playerId ? `${ISLAND_PREFIX}/${playerId}` : ISLAND_PREFIX;
 };
 
-const navigateToMenuAction = (_store: TStore) => {
-  window.location.hash = "#/";
-};
-
 /** Reads the address bar into the store. Also runs once on a cold load. */
 const syncRouteFromHash = (store: TStore) => {
-  const hash = window.location.hash || "#/";
+  const hash = window.location.hash;
 
   // Leaving a page must not leave its popups and armed cards behind.
   store.ui.armedBuilding.value = null;
@@ -38,10 +36,34 @@ const syncRouteFromHash = (store: TStore) => {
   store.ui.selectedHexId.value = null;
   store.ui.hoveredHexId.value = null;
   store.ui.demolishTargetHexId.value = null;
+  store.ui.taxPickHexId.value = null;
 
-  if (!store.game.started.peek()) {
-    store.route.page.value = "menu";
+  // Strongholds are placed on the player's own island, whatever the link says.
+  // The address bar is rewritten too. A stale rival link would otherwise stay
+  // in it, and a click on that rival's row later would not change the hash.
+  // The tax phase happens on the player's own island: the dice lie there and
+  // the motes fly to its HUD. A back button or a typed link cannot leave it.
+  const isLocked = store.game.stage.peek() !== "play" || store.game.phase.peek() === "tax";
+
+  if (isLocked) {
+    store.route.page.value = "island";
     store.route.islandPlayerId.value = null;
+
+    if (hash !== ISLAND_PREFIX) {
+      window.history.replaceState(null, "", ISLAND_PREFIX);
+    }
+
+    return;
+  }
+
+  // A skipped cleanup has no level to show: the player waits on the world map.
+  if (store.derived.isCleanupSkipped.peek()) {
+    store.route.page.value = "world";
+    store.route.islandPlayerId.value = null;
+
+    if (hash !== WORLD_HASH) {
+      window.history.replaceState(null, "", WORLD_HASH);
+    }
 
     return;
   }
@@ -55,7 +77,7 @@ const syncRouteFromHash = (store: TStore) => {
   }
 
   if (!hash.startsWith(ISLAND_PREFIX)) {
-    store.route.page.value = "menu";
+    store.route.page.value = "island";
     store.route.islandPlayerId.value = null;
 
     return;
@@ -67,4 +89,4 @@ const syncRouteFromHash = (store: TStore) => {
   store.route.islandPlayerId.value = rest === "" ? null : rest;
 };
 
-export { navigateToIslandAction, navigateToMenuAction, syncRouteFromHash };
+export { navigateToIslandAction, syncRouteFromHash };

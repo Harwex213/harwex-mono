@@ -1,0 +1,155 @@
+{
+  "nodes": [
+    {
+      "id": "image-1",
+      "type": "image",
+      "image": "wireframe-island-page-images/wireframe-island-page-image-1.png"
+    },
+    {
+      "id": "image-2",
+      "type": "image",
+      "image": "wireframe-island-page-images/wireframe-island-page-image-2.png"
+    },
+    {
+      "id": "image-3",
+      "type": "image",
+      "image": "wireframe-island-page-images/wireframe-island-page-image-3.png"
+    },
+    {
+      "id": "image-4",
+      "type": "image",
+      "image": "wireframe-island-page-images/wireframe-island-page-image-4.png"
+    },
+    {
+      "id": "image-5",
+      "type": "image",
+      "image": "wireframe-island-page-images/wireframe-island-page-image-5.png"
+    },
+    {
+      "id": "image-6",
+      "type": "image",
+      "image": "wireframe-island-page-images/wireframe-island-page-image-6.png"
+    },
+    {
+      "id": "node-7",
+      "type": "block",
+      "text": "референс списка игроков"
+    },
+    {
+      "id": "node-8",
+      "type": "block",
+      "text": "референс острова из гексов"
+    },
+    {
+      "id": "node-9",
+      "type": "block",
+      "text": "референс острова из гексов"
+    },
+    {
+      "id": "node-10",
+      "type": "block",
+      "text": "референс окончания хода"
+    },
+    {
+      "id": "node-11",
+      "type": "block",
+      "text": "референс панели построек"
+    },
+    {
+      "id": "node-12",
+      "type": "block",
+      "text": "референс иконок сноса здания и технологий"
+    },
+    {
+      "id": "wireframe",
+      "type": "block",
+      "text": "wireframe страницы острова\n\nФаза - строительство / сбор налогов"
+    },
+    {
+      "id": "wireframe-2",
+      "type": "block",
+      "text": "wireframe страницы острова\n\nФаза - начало игры"
+    },
+    {
+      "id": "schema-15",
+      "type": "schema",
+      "image": "wireframe-island-page-images/wireframe-island-page-schema-1.svg"
+    },
+    {
+      "id": "schema-16",
+      "type": "schema",
+      "image": "wireframe-island-page-images/wireframe-island-page-schema-2.svg"
+    },
+    {
+      "id": "node-17",
+      "type": "block",
+      "text": "- Кнопка \"Начать\":\n    - disabled, пока игрок не поставит твердыню\n    - enabled, если игрок поставил твердыню\n    - после того как игрок нажал кнопку \"Начать\", применяется эффект виньетки к экрану, кнопка начать уезжает (анимация), и после этого интерфейс фазы строительства выезжает (анимация)\n\n- \"Список игроков\":\n- disabled для выбора игрока\n- строчка игрока отображает галочку, если игрок поставил твердыню"
+    }
+  ],
+  "edges": [
+    {
+      "from": "wireframe",
+      "to": "schema-15"
+    },
+    {
+      "from": "wireframe-2",
+      "to": "schema-16"
+    },
+    {
+      "from": "wireframe",
+      "to": "wireframe-2"
+    },
+    {
+      "from": "node-17",
+      "to": "schema-16"
+    },
+    {
+      "from": "node-7",
+      "to": "image-3"
+    },
+    {
+      "from": "node-8",
+      "to": "image-1"
+    },
+    {
+      "from": "node-9",
+      "to": "image-6"
+    },
+    {
+      "from": "node-10",
+      "to": "image-2"
+    },
+    {
+      "from": "wireframe",
+      "to": "node-10"
+    },
+    {
+      "from": "wireframe",
+      "to": "node-9"
+    },
+    {
+      "from": "wireframe",
+      "to": "node-8"
+    },
+    {
+      "from": "wireframe",
+      "to": "node-7"
+    },
+    {
+      "from": "wireframe",
+      "to": "node-11"
+    },
+    {
+      "from": "node-11",
+      "to": "image-4"
+    },
+    {
+      "from": "wireframe",
+      "to": "node-12"
+    },
+    {
+      "from": "node-12",
+      "to": "image-5"
+    }
+  ]
+}

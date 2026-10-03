@@ -1,27 +1,42 @@
 import { createRng, hashSeed } from "../core/rng";
+import { totalToxicity } from "../core/tax";
 import { rollTrailEvent } from "../core/trail-events";
 import { getCell } from "../core/world-gen";
+import { moveCheck, scoutCheck } from "../core/world-rules";
 import { replacePlayer } from "./player-updates";
+import { WAITING_NOTICE } from "./ready-actions";
 import { showNotice } from "./ui-actions";
 import type { TStore } from "../store/store";
 import type { TWorld } from "../core/world-gen";
 
 /**
  * The exploration phase, on the global map. The player spends scouting to
- * reveal the cells around them and may fly the island one cell over. Staying
- * dumps the island's toxicity into the cell as a trail that never fades.
+ * reveal one chosen cell at a time and may fly the island one cell over.
+ * Staying dumps the island's toxicity into the cell as a trail that never
+ * fades. The rules themselves live in `core/world-rules.ts`.
  */
-
-/** What it costs to reveal everything next to the island. */
-const SCOUT_COST = 2;
 
 const writeWorld = (store: TStore, world: TWorld) => {
   store.world.world.value = world;
 };
 
-const mapCells = (world: TWorld, change: (cellId: string) => Partial<TWorld["cells"][number]>) => ({
-  cells: world.cells.map((cell) => ({ ...cell, ...change(cell.id) })),
-});
+/**
+ * Scouting and the flight belong to the scout phase. They are refused once the
+ * player has pressed "Готов"; a notice says why.
+ */
+const isExplorationOpen = (store: TStore) => {
+  if (store.game.stage.peek() !== "play" || store.game.phase.peek() !== "scout") {
+    return false;
+  }
+
+  if (store.derived.isHumanReady.peek()) {
+    showNotice(store, WAITING_NOTICE);
+
+    return false;
+  }
+
+  return true;
+};
 
 const selectWorldCellAction = (store: TStore, cellId: string) => {
   store.world.selectedCellId.value = cellId;
@@ -35,68 +50,65 @@ const enterExplorationAction = (store: TStore) => {
   store.world.selectedCellId.value = player?.cellId ?? null;
 };
 
-const scoutAction = (store: TStore) => {
+/** Spends scouting on one frontier cell and reveals what is in it. */
+const scoutAction = (store: TStore, cellId: string) => {
+  if (!isExplorationOpen(store)) {
+    return;
+  }
+
   const player = store.derived.humanPlayer.peek();
   const world = store.world.world.peek();
   if (!player || !world) {
     return;
   }
 
-  if (player.resources.scouting < SCOUT_COST) {
-    showNotice(store, `Не хватает разведки: нужно ${SCOUT_COST} 🔭`);
-
-    return;
-  }
-
-  const here = getCell(world, player.cellId);
-  if (!here) {
-    return;
-  }
-
-  const unseen = here.neighbors.filter((id) => getCell(world, id)?.revealed === false);
-  if (unseen.length === 0) {
-    showNotice(store, "Все соседние гексы уже разведаны");
-
-    return;
-  }
-
-  writeWorld(store, mapCells(world, (id) => (unseen.includes(id) ? { revealed: true } : {})));
-
-  replacePlayer(store, {
-    ...player,
-    resources: { ...player.resources, scouting: player.resources.scouting - SCOUT_COST },
-  });
-};
-
-/** One flight per turn, and only to a cell that touches the current one. */
-const moveIslandAction = (store: TStore, cellId: string) => {
-  const player = store.derived.humanPlayer.peek();
-  const world = store.world.world.peek();
-  if (!player || !world) {
-    return;
-  }
-
-  if (store.world.movedThisTurn.peek()) {
-    showNotice(store, "Остров уже перелетал в этом ходу");
-
-    return;
-  }
-
-  const here = getCell(world, player.cellId);
-  if (!here || !here.neighbors.includes(cellId)) {
-    showNotice(store, "Перелететь можно только в соседний гекс");
+  const check = scoutCheck(world, player.cellId, cellId, player.resources.scouting);
+  if (!check.ok) {
+    showNotice(store, check.reason);
 
     return;
   }
 
   writeWorld(store, {
+    ...world,
+    cells: world.cells.map((cell) => (cell.id === cellId ? { ...cell, revealed: true } : cell)),
+  });
+
+  replacePlayer(store, {
+    ...player,
+    resources: { ...player.resources, scouting: player.resources.scouting - check.cost },
+  });
+};
+
+/** One flight per turn, and only to a free cell that touches the current one. */
+const moveIslandAction = (store: TStore, cellId: string) => {
+  if (!isExplorationOpen(store)) {
+    return;
+  }
+
+  const player = store.derived.humanPlayer.peek();
+  const world = store.world.world.peek();
+  if (!player || !world) {
+    return;
+  }
+
+  const check = moveCheck(world, player.cellId, cellId, store.world.movedThisTurn.peek());
+  if (!check.ok) {
+    showNotice(store, check.reason);
+
+    return;
+  }
+
+  writeWorld(store, {
+    ...world,
     cells: world.cells.map((cell) => {
       if (cell.id === player.cellId) {
         return { ...cell, ownerId: null };
       }
 
+      // Flying into an island cell wakes its wild islands for the cleanup.
       if (cell.id === cellId) {
-        return { ...cell, ownerId: player.id, revealed: true };
+        return { ...cell, ownerId: player.id, revealed: true, activated: cell.activated || cell.kind === "island" };
       }
 
       return cell;
@@ -123,8 +135,11 @@ const settleExplorationAction = (store: TStore) => {
     return;
   }
 
-  const trail = player.resources.toxicity;
+  // The trail takes the island's hex load, not the meter: the meter is the
+  // island's own reckoning, the trail is what it leaves in the world.
+  const trail = totalToxicity(player);
   const updated: TWorld = {
+    ...world,
     cells: world.cells.map((cell) => {
       return cell.id === player.cellId ? { ...cell, toxicTrail: cell.toxicTrail + trail } : cell;
     }),
@@ -207,7 +222,6 @@ export {
   enterExplorationAction,
   moveIslandAction,
   scoutAction,
-  SCOUT_COST,
   selectWorldCellAction,
   settleExplorationAction,
 };

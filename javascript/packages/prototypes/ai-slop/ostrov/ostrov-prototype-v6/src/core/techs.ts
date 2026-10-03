@@ -152,7 +152,7 @@ const TECHS: readonly TTech[] = [
     branch: "economy",
     cost: 14,
     requires: [],
-    description: "Каждое здание обходится на 1 🪨 дешевле.",
+    description: "Каждое здание обходится на 1 камень дешевле.",
     unlocks: [],
   },
   {
@@ -161,7 +161,7 @@ const TECHS: readonly TTech[] = [
     branch: "economy",
     cost: 16,
     requires: [],
-    description: "Каждый бросок, который даёт еду, даёт на 1 🍗 больше.",
+    description: "Каждый бросок, который даёт еду, даёт на 1 еду больше.",
     unlocks: [],
   },
   {

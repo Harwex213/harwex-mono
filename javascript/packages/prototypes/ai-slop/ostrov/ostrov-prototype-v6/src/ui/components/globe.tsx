@@ -1,37 +1,34 @@
 import { useSignals } from "@preact/signals-react/runtime";
 import { useEffect, useRef } from "react";
-import * as THREE from "three";
-import { getBiome } from "../../core/biomes";
+import { ICONS } from "../../core/icons";
+import { getCell } from "../../core/world-gen";
+import { cellVisibility, reachableCellIds } from "../../core/world-rules";
 import { useStore } from "../../store/store";
+import { createGlobeScene } from "./globe-scene";
 import type { FC } from "react";
-import type { TWorld } from "../../core/world-gen";
+import type { TPlayer } from "../../core/types";
+import type { TWorld, TWorldCell } from "../../core/world-gen";
 import type { TSelectWorldCellAction } from "../../domain/registry";
+import type { TGlobeMarker, TGlobeScene, TGlobeView } from "./globe-scene";
 
 /**
- * The spec's "3D шар из гексов": the dual of a subdivided icosahedron, one
- * mesh per cell, dragged with the mouse and zoomed with the wheel.
+ * The spec's "3D шар из гексов", drawn as an antique fantasy map: a world of
+ * hexes where each cell is a hand-drawn island, a settlement or clouds over
+ * an inked sea, with hatched mist for the unexplored and badges on top. The scene lives in `globe-scene.ts`; this component turns
+ * the world state into what the scene shows.
  */
 
-const GLOBE_RADIUS = 1;
-/** Cells float just above the sphere, so their edges do not fight with it. */
-const CELL_LIFT = 1.004;
-/**
- * A cell is drawn flat, so its middle dips well below the sphere it sits on.
- * The core has to stay under that dip, or it pokes through every cell as a
- * dark wedge.
- */
-const CORE_RADIUS = 0.9;
-const MARKER_LIFT = 1.06;
-const CAMERA_MIN_Z = 2.1;
-const CAMERA_MAX_Z = 5.4;
-const CAMERA_START_Z = 3.3;
-const ZOOM_STEP = 1.1;
-const DRAG_SPEED = 0.006;
-const DRAG_SLOP_PX = 4;
-const UNSEEN_COLOR = 0x28303c;
-const TOXIC_COLOR = new THREE.Color(0x9bff4f);
 /** A trail this big paints the cell fully toxic. */
 const TOXIC_FULL = 400;
+const FOG_LEVEL = { revealed: 255, frontier: 128, fogged: 0 } as const;
+const FLAG_REACHABLE = 1;
+const FLAG_HOME = 2;
+const BRASS = "#8a6a32";
+const MONSTER_RING = "#7a5a3a";
+/** An activated island: its fight is on. */
+const ACTIVE_RING = "#a3261d";
+/** Wild islands in a cell, drawn as a beast that grows with their number. */
+const MONSTER_ICONS = [ICONS.wolf, ICONS.skeleton, ICONS.ogre];
 
 type TGlobeRegistrySlice = {
   selectWorldCellAction: TSelectWorldCellAction;
@@ -41,20 +38,108 @@ type TGlobeProps = {
   registry: TGlobeRegistrySlice;
 };
 
-const cellColor = (world: TWorld, cellId: string, colorByPlayer: ReadonlyMap<string, string>) => {
-  const cell = world.cells.find((candidate) => candidate.id === cellId);
-  if (!cell) {
-    return new THREE.Color(UNSEEN_COLOR);
-  }
-
+/** The one badge a scouted cell shows: its owner, or its wild islands. */
+const markerFor = (cell: TWorldCell, players: readonly TPlayer[]): TGlobeMarker | null => {
   if (!cell.revealed) {
-    return new THREE.Color(UNSEEN_COLOR);
+    return null;
   }
 
-  const owner = cell.ownerId ? colorByPlayer.get(cell.ownerId) : undefined;
-  const base = new THREE.Color(owner ?? getBiome(cell.biome).color);
+  const owner = cell.ownerId ? players.find((player) => player.id === cell.ownerId) : undefined;
+  if (owner) {
+    return {
+      key: `${cell.id}:owner`,
+      cellIndex: cell.index,
+      icon: ICONS.stronghold,
+      ring: owner.color,
+      size: owner.isHuman ? 1.25 : 1.05,
+    };
+  }
 
-  return base.lerp(TOXIC_COLOR, Math.min(1, cell.toxicTrail / TOXIC_FULL) * 0.7);
+  if (cell.kind !== "island") {
+    return null;
+  }
+
+  if (cell.cleared || cell.islandCount === 0) {
+    return { key: `${cell.id}:cleared`, cellIndex: cell.index, icon: ICONS.check, ring: BRASS, size: 0.6 };
+  }
+
+  const icon = MONSTER_ICONS[Math.min(MONSTER_ICONS.length, cell.islandCount) - 1] ?? ICONS.wolf;
+
+  return {
+    key: `${cell.id}:islands`,
+    cellIndex: cell.index,
+    icon,
+    ring: cell.activated ? ACTIVE_RING : MONSTER_RING,
+    size: 0.42 + cell.islandCount * 0.05,
+  };
+};
+
+/** The compass rose in the corner, as on every old map. */
+const CompassRose: FC = () => {
+  return (
+    <svg className="globe-compass" viewBox="-50 -50 100 100" aria-hidden="true">
+      <circle r="34" fill="none" stroke="#c9b48a" strokeWidth="1.2" />
+      <circle r="27" fill="none" stroke="#c9b48a" strokeWidth="0.6" strokeDasharray="2 2" />
+      <path d="M0 -32 L6 -6 L0 0 L-6 -6 Z" fill="#e8dcc0" stroke="#2a1f14" strokeWidth="0.8" />
+      <path d="M0 46 L6 6 L0 0 L-6 6 Z" fill="#8a7550" stroke="#2a1f14" strokeWidth="0.8" />
+      <path d="M46 0 L6 6 L0 0 L6 -6 Z" fill="#8a7550" stroke="#2a1f14" strokeWidth="0.8" />
+      <path d="M-46 0 L-6 6 L0 0 L-6 -6 Z" fill="#e8dcc0" stroke="#2a1f14" strokeWidth="0.8" />
+      <path d="M0 -6 L22 -22 L6 0 Z M0 6 L-22 22 L-6 0 Z" fill="#a8916a" opacity="0.7" />
+      <path d="M6 0 L22 22 L0 6 Z M-6 0 L-22 -22 L0 -6 Z" fill="#a8916a" opacity="0.7" />
+      <text y="-37" textAnchor="middle" className="globe-compass__n">
+        {"N"}
+      </text>
+    </svg>
+  );
+};
+
+const buildView = (
+  world: TWorld,
+  players: readonly TPlayer[],
+  homeCellId: string,
+  movedThisTurn: boolean,
+  selectedCellId: string | null,
+): TGlobeView => {
+  const state = new Uint8Array(world.cells.length * 4);
+  const ownerIndex = new Map(players.map((player, index) => [player.id, index]));
+  const reachable = new Set(reachableCellIds(world, homeCellId, movedThisTurn));
+  const markers: TGlobeMarker[] = [];
+
+  for (const cell of world.cells) {
+    const offset = cell.index * 4;
+    state[offset] = FOG_LEVEL[cellVisibility(world, cell)];
+
+    // Fog of war hides everything that sits in a cell.
+    if (cell.revealed) {
+      state[offset + 1] = Math.round(Math.sqrt(Math.min(1, cell.toxicTrail / TOXIC_FULL)) * 255);
+      state[offset + 2] = cell.ownerId ? (ownerIndex.get(cell.ownerId) ?? -1) + 1 : 0;
+    }
+
+    let flags = 0;
+    if (reachable.has(cell.id)) {
+      flags |= FLAG_REACHABLE;
+    }
+
+    if (cell.id === homeCellId) {
+      flags |= FLAG_HOME;
+    }
+
+    state[offset + 3] = flags;
+
+    const marker = markerFor(cell, players);
+    if (marker) {
+      markers.push(marker);
+    }
+  }
+
+  const selected = selectedCellId ? getCell(world, selectedCellId) : null;
+
+  return {
+    state,
+    ownerColors: players.map((player) => player.color),
+    selectedIndex: selected ? selected.index : -1,
+    markers,
+  };
 };
 
 const Globe: FC<TGlobeProps> = ({ registry }) => {
@@ -62,251 +147,71 @@ const Globe: FC<TGlobeProps> = ({ registry }) => {
   const store = useStore();
   const world = store.world.world.value;
   const selectedCellId = store.world.selectedCellId.value;
+  const movedThisTurn = store.world.movedThisTurn.value;
   const players = store.game.players.value;
+  const homeCellId = store.derived.humanPlayer.value?.cellId ?? "";
 
   const containerRef = useRef<HTMLDivElement>(null);
-  const sceneRef = useRef<{
-    renderer: THREE.WebGLRenderer;
-    scene: THREE.Scene;
-    camera: THREE.PerspectiveCamera;
-    globe: THREE.Group;
-    cells: THREE.Group;
-    meshes: Map<string, THREE.Mesh>;
-  } | null>(null);
+  const sceneRef = useRef<TGlobeScene | null>(null);
+  const registryRef = useRef(registry);
+  const worldRef = useRef(world);
+  const focusedCellRef = useRef<string | null>(null);
+  registryRef.current = registry;
+  worldRef.current = world;
 
-  // The renderer is built once; the cells are rebuilt whenever the world moves.
+  const seed = world?.seed ?? null;
+  const cellCount = world?.cells.length ?? 0;
+
+  // The scene is built once per planet; state changes only update it.
   useEffect(() => {
     const container = containerRef.current;
-    if (!container) {
-      return;
-    }
-
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-    renderer.setPixelRatio(Math.min(2, window.devicePixelRatio));
-    container.appendChild(renderer.domElement);
-
-    const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 100);
-    camera.position.set(0, 0, CAMERA_START_Z);
-
-    const globe = new THREE.Group();
-    scene.add(globe);
-
-    const core = new THREE.Mesh(
-      new THREE.SphereGeometry(GLOBE_RADIUS * CORE_RADIUS, 48, 32),
-      new THREE.MeshStandardMaterial({ color: 0x0d1420, roughness: 1 }),
-    );
-    globe.add(core);
-
-    const cells = new THREE.Group();
-    globe.add(cells);
-
-    scene.add(new THREE.AmbientLight(0xffffff, 1.5));
-    const key = new THREE.DirectionalLight(0xffffff, 2.2);
-    key.position.set(3, 2, 4);
-    scene.add(key);
-
-    const starGeometry = new THREE.BufferGeometry();
-    const starPositions = new Float32Array(1200 * 3);
-    for (let index = 0; index < 1200; index += 1) {
-      const direction = new THREE.Vector3().randomDirection().multiplyScalar(30 + Math.random() * 20);
-      starPositions.set([direction.x, direction.y, direction.z], index * 3);
-    }
-
-    starGeometry.setAttribute("position", new THREE.BufferAttribute(starPositions, 3));
-    scene.add(new THREE.Points(starGeometry, new THREE.PointsMaterial({ color: 0x8fa3b2, size: 0.12 })));
-
-    sceneRef.current = { renderer, scene, camera, globe, cells, meshes: new Map() };
-
-    const resize = () => {
-      const width = container.clientWidth;
-      const height = container.clientHeight;
-      renderer.setSize(width, height);
-      camera.aspect = width / Math.max(1, height);
-      camera.updateProjectionMatrix();
-    };
-
-    resize();
-    window.addEventListener("resize", resize);
-
-    let frame = requestAnimationFrame(function loop() {
-      renderer.render(scene, camera);
-      frame = requestAnimationFrame(loop);
-    });
-
-    return () => {
-      cancelAnimationFrame(frame);
-      window.removeEventListener("resize", resize);
-      renderer.dispose();
-      container.removeChild(renderer.domElement);
-      sceneRef.current = null;
-    };
-  }, []);
-
-  // Cells, markers and colours follow the world state.
-  useEffect(() => {
-    const current = sceneRef.current;
-    if (!current || !world) {
-      return;
-    }
-
-    const colorByPlayer = new Map(players.map((player) => [player.id, player.color]));
-
-    current.cells.clear();
-    current.meshes.clear();
-
-    for (const cell of world.cells) {
-      const center = new THREE.Vector3(...cell.center);
-      const corners = cell.polygon.map((point) => new THREE.Vector3(...point));
-      const positions: number[] = [];
-
-      for (let index = 0; index < corners.length; index += 1) {
-        const a = corners[index] as THREE.Vector3;
-        const b = corners[(index + 1) % corners.length] as THREE.Vector3;
-        positions.push(
-          center.x * CELL_LIFT, center.y * CELL_LIFT, center.z * CELL_LIFT,
-          a.x * CELL_LIFT, a.y * CELL_LIFT, a.z * CELL_LIFT,
-          b.x * CELL_LIFT, b.y * CELL_LIFT, b.z * CELL_LIFT,
-        );
-      }
-
-      const geometry = new THREE.BufferGeometry();
-      geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
-      geometry.computeVertexNormals();
-
-      const isSelected = cell.id === selectedCellId;
-      const mesh = new THREE.Mesh(
-        geometry,
-        new THREE.MeshStandardMaterial({
-          color: cellColor(world, cell.id, colorByPlayer),
-          roughness: 0.85,
-          // A cell is a fan over corners sorted by angle, and a tie in that
-          // sort flips one wedge. Drawing both sides covers the hole that
-          // back-face culling would otherwise cut into the cell.
-          side: THREE.DoubleSide,
-          emissive: new THREE.Color(isSelected ? 0xd8b45c : 0x000000),
-          emissiveIntensity: isSelected ? 0.55 : 0,
-        }),
-      );
-      mesh.userData.cellId = cell.id;
-      current.cells.add(mesh);
-      current.meshes.set(cell.id, mesh);
-
-      const outline = new THREE.LineLoop(
-        new THREE.BufferGeometry().setFromPoints(corners.map((point) => point.clone().multiplyScalar(CELL_LIFT))),
-        new THREE.LineBasicMaterial({ color: isSelected ? 0xf0d488 : 0x101720 }),
-      );
-      current.cells.add(outline);
-
-      // An unscouted cell gives nothing away, not even who stands on it.
-      if (!cell.revealed) {
-        continue;
-      }
-
-      if (cell.ownerId) {
-        const marker = new THREE.Mesh(
-          new THREE.ConeGeometry(0.045, 0.12, 8),
-          new THREE.MeshStandardMaterial({ color: colorByPlayer.get(cell.ownerId) ?? "#ffffff" }),
-        );
-        marker.position.copy(center.clone().multiplyScalar(MARKER_LIFT));
-        marker.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), center.clone().normalize());
-        current.cells.add(marker);
-
-        continue;
-      }
-
-      // The scouting report: one dot per island sitting in the cell.
-      for (let index = 0; index < cell.islandCount; index += 1) {
-        const dot = new THREE.Mesh(
-          new THREE.SphereGeometry(0.022, 8, 8),
-          new THREE.MeshStandardMaterial({ color: 0xe8f1f2 }),
-        );
-        const offset = new THREE.Vector3(0, 0, 0).randomDirection().multiplyScalar(0.03);
-        dot.position.copy(center.clone().multiplyScalar(MARKER_LIFT).add(offset).addScaledVector(center, index * 0.015));
-        current.cells.add(dot);
-      }
-    }
-  }, [players, selectedCellId, world]);
-
-  // Drag to turn the globe, wheel to zoom, click to pick a cell.
-  useEffect(() => {
-    const container = containerRef.current;
-    const current = sceneRef.current;
+    const current = worldRef.current;
     if (!container || !current) {
       return;
     }
 
-    let dragging = false;
-    let moved = 0;
-    let lastX = 0;
-    let lastY = 0;
+    const scene = createGlobeScene(container, current, {
+      onPick: (cellIndex) => {
+        const cell = worldRef.current?.cells[cellIndex];
+        if (cell) {
+          registryRef.current.selectWorldCellAction(cell.id);
+        }
+      },
+    });
 
-    const onPointerDown = (event: PointerEvent) => {
-      dragging = true;
-      moved = 0;
-      lastX = event.clientX;
-      lastY = event.clientY;
-    };
-
-    const onPointerMove = (event: PointerEvent) => {
-      if (!dragging) {
-        return;
-      }
-
-      const dx = event.clientX - lastX;
-      const dy = event.clientY - lastY;
-      lastX = event.clientX;
-      lastY = event.clientY;
-      moved += Math.abs(dx) + Math.abs(dy);
-
-      current.globe.rotation.y += dx * DRAG_SPEED;
-      current.globe.rotation.x = Math.max(
-        -Math.PI / 2,
-        Math.min(Math.PI / 2, current.globe.rotation.x + dy * DRAG_SPEED),
-      );
-    };
-
-    const onPointerUp = (event: PointerEvent) => {
-      dragging = false;
-      if (moved > DRAG_SLOP_PX) {
-        return;
-      }
-
-      const rect = container.getBoundingClientRect();
-      const pointer = new THREE.Vector2(
-        ((event.clientX - rect.left) / rect.width) * 2 - 1,
-        -((event.clientY - rect.top) / rect.height) * 2 + 1,
-      );
-
-      const raycaster = new THREE.Raycaster();
-      raycaster.setFromCamera(pointer, current.camera);
-      const hit = raycaster.intersectObjects([...current.meshes.values()], false)[0];
-      const cellId = hit?.object.userData.cellId;
-      if (typeof cellId === "string") {
-        registry.selectWorldCellAction(cellId);
-      }
-    };
-
-    const onWheel = (event: WheelEvent) => {
-      event.preventDefault();
-      const factor = Math.pow(ZOOM_STEP, event.deltaY / 100);
-      current.camera.position.z = Math.max(CAMERA_MIN_Z, Math.min(CAMERA_MAX_Z, current.camera.position.z * factor));
-    };
-
-    container.addEventListener("pointerdown", onPointerDown);
-    window.addEventListener("pointermove", onPointerMove);
-    window.addEventListener("pointerup", onPointerUp);
-    container.addEventListener("wheel", onWheel, { passive: false });
+    sceneRef.current = scene;
+    focusedCellRef.current = null;
 
     return () => {
-      container.removeEventListener("pointerdown", onPointerDown);
-      window.removeEventListener("pointermove", onPointerMove);
-      window.removeEventListener("pointerup", onPointerUp);
-      container.removeEventListener("wheel", onWheel);
+      scene.dispose();
+      sceneRef.current = null;
     };
-  }, [registry]);
+  }, [seed, cellCount]);
 
-  return <div className="globe" ref={containerRef} />;
+  useEffect(() => {
+    const scene = sceneRef.current;
+    if (!scene || !world) {
+      return;
+    }
+
+    scene.update(buildView(world, players, homeCellId, movedThisTurn, selectedCellId));
+
+    // The camera starts over the island and follows it when it flies.
+    if (focusedCellRef.current !== homeCellId) {
+      const home = getCell(world, homeCellId);
+      if (home) {
+        scene.focus(home.index, focusedCellRef.current === null);
+      }
+
+      focusedCellRef.current = homeCellId;
+    }
+  }, [world, players, homeCellId, movedThisTurn, selectedCellId, seed, cellCount]);
+
+  return (
+    <div className="globe" ref={containerRef}>
+      <CompassRose />
+    </div>
+  );
 };
 
 export { Globe };

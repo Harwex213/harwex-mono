@@ -1,3 +1,4 @@
+import { ICONS } from "./icons";
 import type { TPhase } from "./types";
 
 /**
@@ -10,14 +11,14 @@ type TPhaseMeta = {
   readonly id: TPhase;
   readonly label: string;
   readonly short: string;
-  readonly emoji: string;
+  readonly icon: string;
 };
 
 const PHASES: readonly TPhaseMeta[] = [
-  { id: "build", label: "Фаза строительства", short: "Строительство", emoji: "⚒️" },
-  { id: "tax", label: "Фаза сбора налогов", short: "Налоги", emoji: "🍗" },
-  { id: "scout", label: "Фаза разведки", short: "Разведка", emoji: "🔭" },
-  { id: "clear", label: "Фаза зачистки", short: "Зачистка", emoji: "⚔️" },
+  { id: "build", label: "Фаза строительства", short: "Строительство", icon: ICONS.hammers },
+  { id: "tax", label: "Фаза сбора налогов", short: "Налоги", icon: ICONS.food },
+  { id: "scout", label: "Фаза разведки", short: "Разведка", icon: ICONS.scouting },
+  { id: "clear", label: "Фаза зачистки", short: "Зачистка", icon: ICONS.army },
 ];
 
 const phaseIndex = (id: TPhase) => PHASES.findIndex((phase) => phase.id === id);

@@ -1,5 +1,7 @@
 import { useSignals } from "@preact/signals-react/runtime";
+import { meterGain } from "../../core/toxic-slot";
 import { useStore } from "../../store/store";
+import { Icon } from "./icon";
 import type { TFlight } from "../../store/ui-state";
 
 /** How high the bezier arcs, as a share of the distance it covers. */
@@ -16,15 +18,16 @@ const flightPath = (flight: TFlight) => {
   return `path("M ${flight.fromX.toFixed(1)} ${flight.fromY.toFixed(1)} Q ${controlX.toFixed(1)} ${controlY.toFixed(1)} ${flight.toX.toFixed(1)} ${flight.toY.toFixed(1)}")`;
 };
 
+/** A toxicity mote flies to the meter, so it shows the meter points it adds. */
 const flightLabel = (flight: TFlight) => {
   if (flight.kind === "toxicity") {
-    return `${flight.emoji} +${flight.amount}%`;
+    return `+${meterGain(flight.amount)}`;
   }
 
-  return `${flight.emoji} +${flight.amount}`;
+  return `+${flight.amount}`;
 };
 
-/** The resources and toxicity flying from the buildings to the HUD. */
+/** The resources and toxicity flying from the buildings to the HUD and the meter. */
 const FlightsLayer = () => {
   useSignals();
   const store = useStore();
@@ -42,6 +45,7 @@ const FlightsLayer = () => {
           key={flight.id}
           style={{ offsetPath: flightPath(flight), animationDelay: `${flight.delayMs}ms` }}
         >
+          <Icon src={flight.icon} size="m" />
           {flightLabel(flight)}
         </span>
       ))}

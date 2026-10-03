@@ -19,6 +19,9 @@ type TCamera = {
   readonly scale: number;
 };
 
+/** What a mote can fly to: a resource icon, or the toxicity meter's flask. */
+type THudAnchorId = TResourceId | "meter";
+
 /**
  * One mote of resource or toxicity flying from a building to its HUD icon. The
  * tax phase creates them all at once with staggered delays, and each one is
@@ -26,8 +29,8 @@ type TCamera = {
  */
 type TFlight = {
   readonly id: string;
-  readonly kind: "yield" | "toxicity" | "mad";
-  readonly emoji: string;
+  readonly kind: "yield" | "toxicity";
+  readonly icon: string;
   readonly amount: number;
   /** The hex the mote came from, for a toxicity mote that has to go back. */
   readonly hexId: string | null;
@@ -48,6 +51,8 @@ const createUiState = () => ({
   /** The hex whose biome modal is open on the right. */
   selectedHexId: signal<string | null>(null),
   techModalOpen: signal<boolean>(false),
+  /** The building whose face popup is open in the tax phase. */
+  taxPickHexId: signal<string | null>(null),
   /** The hex waiting for a "вы уверены?" answer. */
   demolishTargetHexId: signal<string | null>(null),
   /** The toggle inside that modal, remembered for the rest of the session. */
@@ -56,8 +61,11 @@ const createUiState = () => ({
   notice: signal<string | null>(null),
   /** The island layer's transform, mirrored here for the flight animation. */
   camera: signal<TCamera>({ x: 0, y: 0, scale: 1 }),
-  /** Where each resource icon sits on screen, measured by the resources panel. */
-  hudAnchors: signal<Readonly<Partial<Record<TResourceId, TPointerAnchor>>>>({}),
+  /**
+   * Where each resource icon and the meter sit on screen. The resources panel
+   * and the meter measure their own parts, and the action merges them.
+   */
+  hudAnchors: signal<Readonly<Partial<Record<THudAnchorId, TPointerAnchor>>>>({}),
   flights: signal<readonly TFlight[]>([]),
   /** The turn is owned by an animation: end-turn is refused while this is set. */
   busy: signal<boolean>(false),
@@ -65,5 +73,5 @@ const createUiState = () => ({
 
 type TUiState = ReturnType<typeof createUiState>;
 
-export type { TCamera, TFlight, TPointerAnchor, TUiState };
+export type { TCamera, TFlight, THudAnchorId, TPointerAnchor, TUiState };
 export { createUiState };

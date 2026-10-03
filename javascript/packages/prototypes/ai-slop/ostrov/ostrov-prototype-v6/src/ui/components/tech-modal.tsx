@@ -1,7 +1,9 @@
 import { useSignals } from "@preact/signals-react/runtime";
+import { ICONS } from "../../core/icons";
 import { getTech, isAvailable, TECHS } from "../../core/techs";
 import { getUnit } from "../../core/units";
 import { useStore } from "../../store/store";
+import { Icon } from "./icon";
 import type { FC } from "react";
 import type { TTechBranch } from "../../core/techs";
 import type { TCloseTechModalAction, TResearchTechAction } from "../../domain/registry";
@@ -31,6 +33,7 @@ const TechModal: FC<TTechModalProps> = ({ registry }) => {
   const store = useStore();
   const researched = store.game.researched.value;
   const science = store.derived.humanPlayer.value?.resources.science ?? 0;
+  const isWaiting = store.derived.isHumanReady.value;
 
   if (!store.ui.techModalOpen.value) {
     return null;
@@ -42,7 +45,9 @@ const TechModal: FC<TTechModalProps> = ({ registry }) => {
     <div className="modal-backdrop" onClick={registry.closeTechModalAction}>
       <div className="panel modal modal--wide" onClick={(click) => click.stopPropagation()}>
         <h2 className="modal__title">
-          {`Технологии — 📖 ${science}`}
+          {"Технологии — "}
+          <Icon src={ICONS.science} label="Наука" size="m" />
+          {science}
         </h2>
 
         <div className="tech-grid">
@@ -62,7 +67,7 @@ const TechModal: FC<TTechModalProps> = ({ registry }) => {
                     type="button"
                     className={`tech-card ${isOwned ? "tech-card--owned" : ""} ${available ? "" : "tech-card--locked"}`}
                     key={tech.id}
-                    disabled={isOwned || !available || !affordable}
+                    disabled={isWaiting || isOwned || !available || !affordable}
                     onClick={() => registry.researchTechAction(tech.id)}
                   >
                     <span className="tech-card__head">
@@ -71,7 +76,12 @@ const TechModal: FC<TTechModalProps> = ({ registry }) => {
                       </span>
 
                       <span className={affordable || isOwned ? "tech-card__cost" : "tech-card__cost cost--short"}>
-                        {isOwned ? "изучено" : `📖 ${tech.cost}`}
+                        {isOwned ? "изучено" : (
+                          <>
+                            <Icon src={ICONS.science} label="Наука" />
+                            {tech.cost}
+                          </>
+                        )}
                       </span>
                     </span>
 
@@ -81,7 +91,12 @@ const TechModal: FC<TTechModalProps> = ({ registry }) => {
 
                     {tech.unlocks.length > 0 ? (
                       <span className="tech-card__unlocks">
-                        {tech.unlocks.map((unitId) => `${getUnit(unitId).emoji} ${getUnit(unitId).label}`).join(", ")}
+                        {tech.unlocks.map((unitId) => (
+                          <span className="tech-card__unit" key={unitId}>
+                            <Icon src={getUnit(unitId).icon} size="m" />
+                            {getUnit(unitId).label}
+                          </span>
+                        ))}
                       </span>
                     ) : null}
 

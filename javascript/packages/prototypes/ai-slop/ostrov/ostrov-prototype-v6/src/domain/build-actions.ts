@@ -1,5 +1,6 @@
-import { getBiome } from "../core/biomes";
-import { canAfford, canBuildOn, effectiveCost, getBuilding } from "../core/buildings";
+import { buildRefusal } from "../core/build-check";
+import { canAfford, effectiveCost, getBuilding } from "../core/buildings";
+import { isStrongholdHex } from "../core/stronghold";
 import { updateHex } from "./player-updates";
 import { showNotice } from "./ui-actions";
 import type { TStore } from "../store/store";
@@ -11,9 +12,18 @@ import type { TBuildingId } from "../core/types";
  * that is the spec's "уменьшение токсичности через уничтожение".
  */
 
-/** Outside the build phase the island is look-only, as is a rival's island. */
+/**
+ * Outside the build phase the island is look-only, as is a rival's island.
+ * Nothing is built before the game has started either, or once the player has
+ * pressed "Готов" and waits for the rivals.
+ */
 const isBuildingAllowed = (store: TStore) => {
-  return store.game.phase.peek() === "build" && !store.ui.busy.peek();
+  return (
+    store.game.stage.peek() === "play" &&
+    store.game.phase.peek() === "build" &&
+    !store.ui.busy.peek() &&
+    !store.derived.isHumanReady.peek()
+  );
 };
 
 /** Clicking the armed card again disarms it, which is how the player cancels. */
@@ -63,22 +73,10 @@ const buildOnHexAction = (store: TStore, hexId: string) => {
   }
 
   const building = getBuilding(armedId);
-
-  if (hex.building !== null) {
-    showNotice(store, "Гекс уже занят");
-
-    return;
-  }
-
-  if (!canBuildOn(building, hex.biome)) {
-    showNotice(store, `«${building.label}» нельзя строить на биоме «${getBiome(hex.biome).label}»`);
-
-    return;
-  }
-
   const discount = store.derived.techEffects.peek().stoneDiscount;
-  if (!canAfford(player.resources, building, discount)) {
-    showNotice(store, `Не хватает ресурсов на «${building.label}»`);
+  const refusal = buildRefusal(player, hex, building, discount);
+  if (refusal) {
+    showNotice(store, refusal.message);
 
     return;
   }
@@ -127,6 +125,12 @@ const requestDemolishAction = (store: TStore, hexId: string) => {
 
   const hex = player.island.hexes.find((candidate) => candidate.id === hexId);
   if (!hex) {
+    return;
+  }
+
+  if (isStrongholdHex(player, hex.id)) {
+    showNotice(store, "Твердыню снести нельзя");
+
     return;
   }
 

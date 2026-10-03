@@ -7,11 +7,25 @@ import {
   requestDemolishAction,
   toggleDemolishModeAction,
 } from "./build-actions";
-import { endPhaseAction, setNicknameAction, startGameAction } from "./game-actions";
-import { navigateToIslandAction, navigateToMenuAction } from "./route-actions";
-import { setBattleInputAction } from "./battle-actions";
+import { endPhaseAction, startGameAction } from "./game-actions";
+import { navigateToIslandAction } from "./route-actions";
+import { placeStrongholdAction } from "./setup-actions";
+import { closeSlotModalAction } from "./slot-actions";
+import {
+  setCleanupInputAction,
+  setCleanupSpeedAction,
+  stepCleanupAction,
+  toggleCleanupPauseAction,
+} from "./cleanup-actions";
 import { researchTechAction } from "./tech-actions";
-import { setCameraAction, setHudAnchorsAction, skipTaxAnimationAction } from "./tax-actions";
+import {
+  closeTaxPickAction,
+  openTaxPickAction,
+  pickTaxFaceAction,
+  setCameraAction,
+  setHudAnchorsAction,
+  skipTaxAnimationAction,
+} from "./tax-actions";
 import { closeTrailEventAction, moveIslandAction, scoutAction, selectWorldCellAction } from "./world-actions";
 import {
   closeHexModalAction,
@@ -29,11 +43,10 @@ import type { TAppRegistry } from "./registry";
  */
 const createRegistry = (store: TStore) => {
   const rawRegistry = {
-    setNicknameAction,
+    placeStrongholdAction,
     startGameAction,
     endPhaseAction,
     navigateToIslandAction,
-    navigateToMenuAction,
     armBuildingAction,
     disarmAction,
     toggleDemolishModeAction,
@@ -49,12 +62,19 @@ const createRegistry = (store: TStore) => {
     setCameraAction,
     setHudAnchorsAction,
     skipTaxAnimationAction,
+    openTaxPickAction,
+    closeTaxPickAction,
+    pickTaxFaceAction,
+    closeSlotModalAction,
     researchTechAction,
     selectWorldCellAction,
     scoutAction,
     moveIslandAction,
     closeTrailEventAction,
-    setBattleInputAction,
+    setCleanupInputAction,
+    stepCleanupAction,
+    setCleanupSpeedAction,
+    toggleCleanupPauseAction,
   };
 
   // The actions differ in arity, so the store is bound through one shared shape.

@@ -1,10 +1,5 @@
-import farmArt from "../assets/buildings/farm.png";
-import masonsGuildArt from "../assets/buildings/masons-guild.png";
-import mineArt from "../assets/buildings/mine.png";
-import observatoryArt from "../assets/buildings/observatory.png";
-import sawmillArt from "../assets/buildings/sawmill.png";
-import universityArt from "../assets/buildings/university.png";
-import villageArt from "../assets/buildings/village.png";
+import { HEX_ART } from "./hex-art";
+import { ICONS } from "./icons";
 import type {
   TBiomeId,
   TBuildCost,
@@ -54,7 +49,8 @@ const BUILDINGS: readonly TBuilding[] = [
     id: "farm",
     label: "Ферма",
     yields: "food",
-    art: farmArt,
+    art: ICONS.farm,
+    hexArt: HEX_ART.farm,
     cost: { stone: 1, wood: 3, hammers: 1 },
     baseFaces: [face("food", 1, 0), face("food", 5, 0), face("food", 3, 0), face("food", 3, 0)],
     biomeFaces: {
@@ -69,7 +65,8 @@ const BUILDINGS: readonly TBuilding[] = [
     id: "mine",
     label: "Рудник",
     yields: "stone",
-    art: mineArt,
+    art: ICONS.mine,
+    hexArt: HEX_ART.mine,
     cost: { stone: 3, wood: 2, hammers: 2 },
     baseFaces: [face("stone", 1, 0), face("stone", 5, 3), face("stone", 3, 2), face("stone", 3, 1)],
     biomeFaces: {
@@ -84,7 +81,8 @@ const BUILDINGS: readonly TBuilding[] = [
     id: "sawmill",
     label: "Лесопилка",
     yields: "wood",
-    art: sawmillArt,
+    art: ICONS.sawmill,
+    hexArt: HEX_ART.sawmill,
     cost: { stone: 2, wood: 3, hammers: 1 },
     baseFaces: [face("wood", 1, 0), face("wood", 5, 3), face("wood", 3, 2), face("wood", 3, 1)],
     biomeFaces: {
@@ -98,7 +96,8 @@ const BUILDINGS: readonly TBuilding[] = [
     id: "village",
     label: "Деревня",
     yields: "population",
-    art: villageArt,
+    art: ICONS.village,
+    hexArt: HEX_ART.village,
     cost: { stone: 3, wood: 3, hammers: 1 },
     baseFaces: settlementBaseFaces("population"),
     biomeFaces: settlementBiomeFaces("population"),
@@ -107,7 +106,8 @@ const BUILDINGS: readonly TBuilding[] = [
     id: "masons_guild",
     label: "Гильдия масонов",
     yields: "hammers",
-    art: masonsGuildArt,
+    art: ICONS.masonsGuild,
+    hexArt: HEX_ART.masonsGuild,
     cost: { stone: 4, wood: 2, hammers: 2 },
     baseFaces: settlementBaseFaces("hammers"),
     biomeFaces: settlementBiomeFaces("hammers"),
@@ -116,7 +116,8 @@ const BUILDINGS: readonly TBuilding[] = [
     id: "observatory",
     label: "Обсерватория",
     yields: "scouting",
-    art: observatoryArt,
+    art: ICONS.observatory,
+    hexArt: HEX_ART.observatory,
     cost: { stone: 3, wood: 3, hammers: 3 },
     baseFaces: settlementBaseFaces("scouting"),
     biomeFaces: settlementBiomeFaces("scouting"),
@@ -125,7 +126,8 @@ const BUILDINGS: readonly TBuilding[] = [
     id: "university",
     label: "Университет",
     yields: "science",
-    art: universityArt,
+    art: ICONS.university,
+    hexArt: HEX_ART.university,
     cost: { stone: 4, wood: 4, hammers: 3 },
     baseFaces: settlementBaseFaces("science"),
     biomeFaces: settlementBiomeFaces("science"),
@@ -162,17 +164,35 @@ const facesOn = (building: TBuilding, biomeId: TBiomeId): readonly TFace[] => {
   return [...building.baseFaces, biomeFace];
 };
 
-/** Average yield of the die, which is what the hex modal ranks buildings by. */
-const averageYieldOn = (building: TBuilding, biomeId: TBiomeId) => {
-  const faces = facesOn(building, biomeId);
+/**
+ * The mean amount a die pays per roll, before the hex's toxicity. Every
+ * average in the UI comes from here: the hex modal, the build tooltip and the
+ * plate on a built hex, the stronghold's mixed die included.
+ */
+const averageAmount = (faces: readonly TFace[]) => {
+  if (faces.length === 0) {
+    return 0;
+  }
 
   return faces.reduce((sum, item) => sum + item.amount, 0) / faces.length;
 };
 
-const averageToxicityOn = (building: TBuilding, biomeId: TBiomeId) => {
-  const faces = facesOn(building, biomeId);
+/** The mean toxicity a die leaves per roll, in face points. */
+const averageToxicity = (faces: readonly TFace[]) => {
+  if (faces.length === 0) {
+    return 0;
+  }
 
   return faces.reduce((sum, item) => sum + item.toxicity, 0) / faces.length;
+};
+
+/** Average yield of the die, which is what the hex modal ranks buildings by. */
+const averageYieldOn = (building: TBuilding, biomeId: TBiomeId) => {
+  return averageAmount(facesOn(building, biomeId));
+};
+
+const averageToxicityOn = (building: TBuilding, biomeId: TBiomeId) => {
+  return averageToxicity(facesOn(building, biomeId));
 };
 
 /** What the hex modal suggests: the allowed building with the richest die. */
@@ -201,6 +221,8 @@ const canAfford = (pool: TResourcePool, building: TBuilding, stoneDiscount = 0) 
 };
 
 export {
+  averageAmount,
+  averageToxicity,
   averageToxicityOn,
   averageYieldOn,
   bestBuildingForBiome,

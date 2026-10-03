@@ -1,15 +1,17 @@
+import { ICONS } from "./icons";
 import type { TResourceId, TResourcePool } from "./types";
 
 /**
- * The resource table of the spec: three basic resources, five special ones and
- * two negative ones. The emoji are the ones the spec writes.
+ * The resource table of the spec: three basic resources, six special ones and
+ * one negative one. Toxicity left the table for the meter in `toxic-slot.ts`. The spec writes an emoji for each; the game draws the
+ * matching 64x64 icon instead.
  */
 
 type TResourceKind = "basic" | "special" | "negative";
 
 type TResource = {
   readonly id: TResourceId;
-  readonly emoji: string;
+  readonly icon: string;
   readonly label: string;
   readonly kind: TResourceKind;
   /** What the resource is spent on, shown in the resources panel tooltip. */
@@ -17,16 +19,16 @@ type TResource = {
 };
 
 const RESOURCES: readonly TResource[] = [
-  { id: "food", emoji: "🍗", label: "Еда", kind: "basic", feeds: "даёт население" },
-  { id: "stone", emoji: "🪨", label: "Камень", kind: "basic", feeds: "даёт здания" },
-  { id: "wood", emoji: "🪵", label: "Дерево", kind: "basic", feeds: "даёт здания" },
-  { id: "population", emoji: "🧍", label: "Население", kind: "special", feeds: "даёт армию" },
-  { id: "hammers", emoji: "⚒️", label: "Молотки", kind: "special", feeds: "даёт здания" },
-  { id: "science", emoji: "📖", label: "Наука", kind: "special", feeds: "даёт технологии" },
-  { id: "scouting", emoji: "🔭", label: "Разведка", kind: "special", feeds: "даёт разведку" },
-  { id: "mana", emoji: "💠", label: "Мана", kind: "special", feeds: "даёт активные скиллы" },
-  { id: "toxicity", emoji: "☣️", label: "Токсичность", kind: "negative", feeds: "травит остров" },
-  { id: "mad", emoji: "🤖", label: "Сумасшедшие", kind: "negative", feeds: "съедает население" },
+  { id: "food", icon: ICONS.food, label: "Еда", kind: "basic", feeds: "даёт население" },
+  { id: "stone", icon: ICONS.stone, label: "Камень", kind: "basic", feeds: "даёт здания" },
+  { id: "wood", icon: ICONS.wood, label: "Дерево", kind: "basic", feeds: "даёт здания" },
+  { id: "population", icon: ICONS.population, label: "Население", kind: "special", feeds: "даёт армию" },
+  { id: "hammers", icon: ICONS.hammers, label: "Молотки", kind: "special", feeds: "даёт здания" },
+  { id: "science", icon: ICONS.science, label: "Наука", kind: "special", feeds: "даёт технологии" },
+  { id: "scouting", icon: ICONS.scouting, label: "Разведка", kind: "special", feeds: "даёт разведку" },
+  { id: "mana", icon: ICONS.mana, label: "Мана", kind: "special", feeds: "даёт активные скиллы" },
+  { id: "power", icon: ICONS.power, label: "Власть", kind: "special", feeds: "меняет выпавшую грань здания" },
+  { id: "mad", icon: ICONS.mad, label: "Сумасшедшие", kind: "negative", feeds: "съедает население" },
 ];
 
 const RESOURCE_BY_ID = new Map(RESOURCES.map((resource) => [resource.id, resource]));
@@ -49,7 +51,7 @@ const EMPTY_POOL: TResourcePool = {
   science: 0,
   scouting: 0,
   mana: 0,
-  toxicity: 0,
+  power: 0,
   mad: 0,
 };
 
@@ -66,6 +68,8 @@ const STARTING_POOL: TResourcePool = {
   hammers: 6,
   // Enough to scout once before an observatory is standing.
   scouting: 2,
+  // Enough for one face change in the first tax phase, or two cheap ones.
+  power: 2,
 };
 
 const addResources = (pool: TResourcePool, delta: Partial<Record<TResourceId, number>>): TResourcePool => {

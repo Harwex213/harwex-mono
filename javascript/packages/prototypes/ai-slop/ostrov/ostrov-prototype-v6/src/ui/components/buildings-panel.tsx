@@ -1,7 +1,9 @@
 import { useSignals } from "@preact/signals-react/runtime";
 import { BUILDINGS, canAfford, effectiveCost } from "../../core/buildings";
+import { ICONS } from "../../core/icons";
 import { getResource } from "../../core/resources";
 import { useStore } from "../../store/store";
+import { Icon } from "./icon";
 import type { FC } from "react";
 import type { TArmBuildingAction } from "../../domain/registry";
 
@@ -23,7 +25,7 @@ const BuildingsPanel: FC<TBuildingsPanelProps> = ({ registry }) => {
   const store = useStore();
   const pool = store.derived.humanPlayer.value?.resources;
   const armedId = store.ui.armedBuilding.value;
-  const locked = store.game.phase.value !== "build" || store.ui.busy.value;
+  const locked = store.game.phase.value !== "build" || store.ui.busy.value || store.derived.isHumanReady.value;
   const discount = store.derived.techEffects.value.stoneDiscount;
 
   if (!pool) {
@@ -50,32 +52,33 @@ const BuildingsPanel: FC<TBuildingsPanelProps> = ({ registry }) => {
               {building.label}
             </span>
 
-            <span className="building-card__yield">
-              {yields.emoji}
-            </span>
-
             <span className="hint">
               <span className="hint__title">
                 {building.label}
               </span>
 
               <span className="hint__row">
-                {`Даёт: ${yields.emoji} ${yields.label}`}
+                {"Даёт: "}
+                <Icon src={yields.icon} />
+                {yields.label}
               </span>
 
               <span className="hint__row">
                 {"Цена: "}
 
                 <span className={pool.stone >= cost.stone ? "" : "cost--short"}>
-                  {`🪨${cost.stone}`}
+                  <Icon src={ICONS.stone} label="Камень" />
+                  {cost.stone}
                 </span>
 
                 <span className={pool.wood >= cost.wood ? "" : "cost--short"}>
-                  {`🪵${cost.wood}`}
+                  <Icon src={ICONS.wood} label="Дерево" />
+                  {cost.wood}
                 </span>
 
                 <span className={pool.hammers >= cost.hammers ? "" : "cost--short"}>
-                  {`⚒️${cost.hammers}`}
+                  <Icon src={ICONS.hammers} label="Молотки" />
+                  {cost.hammers}
                 </span>
               </span>
 
@@ -83,11 +86,13 @@ const BuildingsPanel: FC<TBuildingsPanelProps> = ({ registry }) => {
                 {building.baseFaces.map((item, index) => (
                   <span className="face" key={`${item.amount}-${item.toxicity}-${index}`}>
                     <span className="face__yield">
-                      {`${yields.emoji} ${item.amount}`}
+                      <Icon src={yields.icon} label={yields.label} />
+                      {item.amount}
                     </span>
 
                     <span className="face__toxicity">
-                      {`☣️ ${item.toxicity}`}
+                      <Icon src={ICONS.toxicity} label="Токсичность" />
+                      {item.toxicity}
                     </span>
                   </span>
                 ))}

@@ -1,5 +1,7 @@
 import { useSignals } from "@preact/signals-react/runtime";
+import { ICONS } from "../../core/icons";
 import { useStore } from "../../store/store";
+import { Icon } from "./icon";
 import type { FC } from "react";
 import type { TOpenTechModalAction, TToggleDemolishModeAction } from "../../domain/registry";
 
@@ -17,7 +19,7 @@ const ToolsPanel: FC<TToolsPanelProps> = ({ registry }) => {
   useSignals();
   const store = useStore();
   const demolishMode = store.ui.demolishMode.value;
-  const locked = store.game.phase.value !== "build" || store.ui.busy.value;
+  const locked = store.game.phase.value !== "build" || store.ui.busy.value || store.derived.isHumanReady.value;
 
   return (
     <div className={`panel tools-panel ${locked ? "panel--locked" : ""}`}>
@@ -26,7 +28,7 @@ const ToolsPanel: FC<TToolsPanelProps> = ({ registry }) => {
         className={`tool-icon has-hint ${demolishMode ? "tool-icon--active" : ""}`}
         onClick={registry.toggleDemolishModeAction}
       >
-        {"⛏️"}
+        <Icon src={ICONS.demolish} size="l" />
 
         <span className="hint">
           <span className="hint__title">
@@ -46,7 +48,7 @@ const ToolsPanel: FC<TToolsPanelProps> = ({ registry }) => {
         className="tool-icon has-hint"
         onClick={registry.openTechModalAction}
       >
-        {"⚗️"}
+        <Icon src={ICONS.technology} size="l" />
 
         <span className="hint">
           <span className="hint__title">

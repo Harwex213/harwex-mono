@@ -1,19 +1,18 @@
-import type { TBattleInput } from "../core/battle-sim";
+import type { TCleanupSpeed } from "../store/battle-state";
 import type { TTechId } from "../core/techs";
-import type { TBuildingId, TResourceId } from "../core/types";
-import type { TCamera, TPointerAnchor } from "../store/ui-state";
+import type { TBuildingId } from "../core/types";
+import type { TCamera, THudAnchorId, TPointerAnchor } from "../store/ui-state";
 
 /**
  * The public contract of the domain layer. It is hand-written, never inferred:
  * the phases after the build phase add their own action types here.
  */
 
-type TSetNicknameAction = (nickname: string) => void;
+type TPlaceStrongholdAction = (hexId: string) => void;
 type TStartGameAction = () => void;
 type TEndPhaseAction = () => void;
 
 type TNavigateToIslandAction = (playerId: string | null) => void;
-type TNavigateToMenuAction = () => void;
 
 type TArmBuildingAction = (buildingId: TBuildingId) => void;
 type TDisarmAction = () => void;
@@ -28,23 +27,29 @@ type TSelectHexAction = (hexId: string) => void;
 type TCloseHexModalAction = () => void;
 type TOpenTechModalAction = () => void;
 type TSetCameraAction = (camera: TCamera) => void;
-type TSetHudAnchorsAction = (anchors: Readonly<Partial<Record<TResourceId, TPointerAnchor>>>) => void;
+type TSetHudAnchorsAction = (anchors: Readonly<Partial<Record<THudAnchorId, TPointerAnchor>>>) => void;
 type TSkipTaxAnimationAction = () => void;
+type TOpenTaxPickAction = (hexId: string) => void;
+type TCloseTaxPickAction = () => void;
+type TPickTaxFaceAction = (hexId: string, faceIndex: number) => void;
+type TCloseSlotModalAction = () => void;
 
 type TResearchTechAction = (techId: TTechId) => void;
 type TSelectWorldCellAction = (cellId: string) => void;
-type TScoutAction = () => void;
+type TScoutAction = (cellId: string) => void;
 type TMoveIslandAction = (cellId: string) => void;
 type TCloseTrailEventAction = () => void;
-type TSetBattleInputAction = (input: Partial<TBattleInput>) => void;
+type TSetCleanupInputAction = (x: number, y: number) => void;
+type TStepCleanupAction = (ticks: number) => void;
+type TSetCleanupSpeedAction = (speed: TCleanupSpeed) => void;
+type TToggleCleanupPauseAction = () => void;
 type TCloseTechModalAction = () => void;
 
 type TAppRegistry = {
-  setNicknameAction: TSetNicknameAction;
+  placeStrongholdAction: TPlaceStrongholdAction;
   startGameAction: TStartGameAction;
   endPhaseAction: TEndPhaseAction;
   navigateToIslandAction: TNavigateToIslandAction;
-  navigateToMenuAction: TNavigateToMenuAction;
   armBuildingAction: TArmBuildingAction;
   disarmAction: TDisarmAction;
   toggleDemolishModeAction: TToggleDemolishModeAction;
@@ -60,12 +65,19 @@ type TAppRegistry = {
   setCameraAction: TSetCameraAction;
   setHudAnchorsAction: TSetHudAnchorsAction;
   skipTaxAnimationAction: TSkipTaxAnimationAction;
+  openTaxPickAction: TOpenTaxPickAction;
+  closeTaxPickAction: TCloseTaxPickAction;
+  pickTaxFaceAction: TPickTaxFaceAction;
+  closeSlotModalAction: TCloseSlotModalAction;
   researchTechAction: TResearchTechAction;
   selectWorldCellAction: TSelectWorldCellAction;
   scoutAction: TScoutAction;
   moveIslandAction: TMoveIslandAction;
   closeTrailEventAction: TCloseTrailEventAction;
-  setBattleInputAction: TSetBattleInputAction;
+  setCleanupInputAction: TSetCleanupInputAction;
+  stepCleanupAction: TStepCleanupAction;
+  setCleanupSpeedAction: TSetCleanupSpeedAction;
+  toggleCleanupPauseAction: TToggleCleanupPauseAction;
 };
 
 export type {
@@ -75,24 +87,30 @@ export type {
   TResearchTechAction,
   TScoutAction,
   TSelectWorldCellAction,
-  TSetBattleInputAction,
+  TSetCleanupInputAction,
+  TSetCleanupSpeedAction,
+  TStepCleanupAction,
+  TToggleCleanupPauseAction,
   TArmBuildingAction,
   TBuildOnHexAction,
   TCancelDemolishAction,
   TCloseHexModalAction,
+  TCloseSlotModalAction,
+  TCloseTaxPickAction,
   TCloseTechModalAction,
   TConfirmDemolishAction,
   TDisarmAction,
   TEndPhaseAction,
   THoverHexAction,
   TNavigateToIslandAction,
-  TNavigateToMenuAction,
+  TOpenTaxPickAction,
   TOpenTechModalAction,
+  TPickTaxFaceAction,
+  TPlaceStrongholdAction,
   TRequestDemolishAction,
   TSelectHexAction,
   TSetCameraAction,
   TSetHudAnchorsAction,
-  TSetNicknameAction,
   TSkipTaxAnimationAction,
   TStartGameAction,
   TToggleDemolishModeAction,

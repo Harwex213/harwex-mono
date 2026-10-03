@@ -200,12 +200,13 @@ const createRival = (
     island,
     resources: addResources(STARTING_POOL, {
       food: randomInt(rng, 0, 40),
-      toxicity: island.hexes.reduce((sum, hex) => sum + hex.toxicity, 0) / island.hexes.length,
       mad: randomInt(rng, 0, 4),
     }),
     army: built + randomInt(rng, 0, 8),
     techs: randomInt(rng, 0, 6),
     cellId: "",
+    strongholdHexId: null,
+    toxicMeter: 0,
   };
 };
 
@@ -223,6 +224,8 @@ const createPlayers = (nickname: string): readonly TPlayer[] => {
     army: 0,
     techs: 0,
     cellId: "",
+    strongholdHexId: null,
+    toxicMeter: 0,
   };
 
   return [human, ...RIVALS.map((rival) => createRival(rival, nickname))];

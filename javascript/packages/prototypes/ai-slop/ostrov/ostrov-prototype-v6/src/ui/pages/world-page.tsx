@@ -1,4 +1,5 @@
 import { useSignals } from "@preact/signals-react/runtime";
+import { useStore } from "../../store/store";
 import { EndTurnPanel } from "../components/end-turn-panel";
 import { Globe } from "../components/globe";
 import { NoticeToast } from "../components/notice-toast";
@@ -6,6 +7,7 @@ import { PlayersPanel } from "../components/players-panel";
 import { ResourcesPanel } from "../components/resources-panel";
 import { TrailEventModal } from "../components/trail-event-modal";
 import { TurnPanel } from "../components/turn-panel";
+import { WaitingOverlay } from "../components/waiting-overlay";
 import { WorldCellPanel } from "../components/world-cell-panel";
 import type { FC } from "react";
 import type { TAppRegistry } from "../../domain/registry";
@@ -20,9 +22,11 @@ type TWorldPageProps = {
  */
 const WorldPage: FC<TWorldPageProps> = ({ registry }) => {
   useSignals();
+  const store = useStore();
+  const waitingClass = store.derived.isHumanReady.value ? "island-page--waiting" : "";
 
   return (
-    <div className="island-page">
+    <div className={`island-page ${waitingClass}`}>
       <Globe registry={registry} />
 
       <div className="island-page__top-left">
@@ -40,6 +44,8 @@ const WorldPage: FC<TWorldPageProps> = ({ registry }) => {
 
         <EndTurnPanel registry={registry} />
       </div>
+
+      <WaitingOverlay />
 
       <NoticeToast />
 
