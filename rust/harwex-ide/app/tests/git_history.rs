@@ -329,6 +329,20 @@ fn start_conflict(name: &str) -> (Fixture, Repo, Ide) {
     (fx, repo, ide)
 }
 
+/// A double click on a conflict row 0.6 s after the click that selected it opens the merge
+/// tab. egui's own count calls it "triple" (`clicks.rs`).
+#[test]
+fn conflict_double_click_after_select() {
+    let (_fx, _repo, mut ide) = start_conflict("double_click_chain");
+    let row = ide.rect("Conflict conflict.txt").center();
+    ide.click_at(row);
+    assert!(ide.is_selected("Conflict conflict.txt"));
+    assert!(ide.active_title().is_none_or(|t| !t.contains("conflict.txt")), "a single click opens nothing");
+    ide.idle(0.6);
+    ide.double_click_now(row);
+    ide.wait_until("merge tab", |ide| ide.active_title().is_some_and(|t| t.contains("conflict.txt")));
+}
+
 #[test]
 fn merge_conflict_resolved_in_merge_tab() {
     let (_fx, repo, mut ide) = start_conflict("conflict");

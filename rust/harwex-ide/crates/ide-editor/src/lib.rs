@@ -20,5 +20,5 @@ pub use find::{FindState, Match, MAX_MATCHES};
 pub use search::{preserve_case, FindOptions, Matcher, SearchFilter, Template};
 pub use highlight::{HlKind, Span};
 pub use language::Language;
-pub use view::{column_advance, EditorAction, EditorGeometry, EditorResponse, EditorState, EditorView, GutterMark, ProblemMark, ProblemSeverity};
+pub use view::{column_advance, ClickChain, CHAIN_DIST, EditorAction, EditorGeometry, EditorResponse, EditorState, EditorView, GutterMark, ProblemMark, ProblemSeverity};
 pub use theme::EditorTheme;

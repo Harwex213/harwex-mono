@@ -4,6 +4,9 @@ One line per task. Details live in `tasks/<id>-<slug>.md`. A closed task loses i
 
 ## Ideas
 
+Tooling:
+- [idea] The workspace is not rustfmt-clean. Run `cargo fmt --all` once and add `cargo fmt --all --check` to "Done means" and to `cargo xtask clean-check`.
+
 Project tree:
 - [idea] Move by Cut+Paste or drag and drop updates imports without a preview dialog. Rename has one ("update N imports in M files", Cancel). Give moves the same preview.
 - [idea] Multi-selection in Project (Cmd+click, Shift+click), so drag and drop and the context menu act on several items.

@@ -80,11 +80,10 @@ impl IdeApp {
     /// `storage` is eframe's storage; tests pass `None` or an in-memory one.
     pub fn create(ctx: &Context, storage: Option<&dyn eframe::Storage>, options: AppOptions) -> IdeApp {
         theme::apply(ctx);
-        // Tests keep egui's fixed interval, so they do not depend on the machine's setting.
-        if !options.deterministic {
-            if let Some(interval) = chrome::system_double_click_interval() {
-                ctx.options_mut(|o| o.input_options.max_double_click_delay = interval);
-            }
+        // Tests take the macOS default instead of the machine's setting, through the same path.
+        let interval = if options.deterministic { Some(chrome::DEFAULT_DOUBLE_CLICK_INTERVAL) } else { chrome::system_double_click_interval() };
+        if let Some(interval) = interval {
+            ctx.options_mut(|o| o.input_options.max_double_click_delay = interval);
         }
         let mut state = AppState::new(ctx.clone(), options.start);
         state.timings.quiet = options.deterministic;
@@ -97,6 +96,12 @@ impl IdeApp {
             None if options.deterministic => std::sync::Arc::new(crate::fileops::RecordingPlatform::new(std::env::temp_dir().join("harwex-ide-test-trash"))),
             None => std::sync::Arc::new(crate::fileops::SystemPlatform),
         };
+        if !options.deterministic {
+            state.input_log = crate::inputlog::InputLog::from_env();
+            if let Some(log) = &state.input_log {
+                log.note(format!("max_double_click_delay {:.3}", ctx.options(|o| o.input_options.max_double_click_delay)));
+            }
+        }
         if options.deterministic {
             state.deterministic = true;
             state.notifications.frozen = true;
@@ -132,6 +137,10 @@ impl IdeApp {
 impl eframe::App for IdeApp {
     fn update(&mut self, ctx: &Context, frame: &mut eframe::Frame) {
         let s = &mut self.state;
+        if let Some(log) = s.input_log.as_mut() {
+            log.begin(ctx);
+        }
+        s.clicks.begin_frame(ctx);
         self.frames += 1;
         if self.frames == 1 {
             s.timings.log("first frame (update called)");
@@ -206,10 +215,16 @@ impl eframe::App for IdeApp {
             // Keeps the spinner turning; ~10 fps is enough and costs nothing measurable.
             ctx.request_repaint_after(std::time::Duration::from_millis(100));
         }
+        if let Some(log) = s.input_log.as_mut() {
+            log.end();
+        }
     }
 
     fn raw_input_hook(&mut self, _ctx: &Context, raw_input: &mut egui::RawInput) {
         crate::testhook::tree_hits::inject(&mut self.state, raw_input);
+        if let Some(log) = self.state.input_log.as_mut() {
+            log.raw(raw_input);
+        }
     }
 
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
@@ -367,8 +382,10 @@ fn title_bar(s: &mut AppState, ctx: &Context) {
         if drag.drag_started() {
             ctx.send_viewport_cmd(ViewportCommand::StartDrag);
         }
-        if drag.double_clicked() {
-            match chrome::system_double_click() {
+        if s.clicks.double(&drag) {
+            // Tests do not depend on the user's macOS setting.
+            let action = if s.deterministic { chrome::DoubleClick::Zoom } else { chrome::system_double_click() };
+            match action {
                 chrome::DoubleClick::Zoom => {
                     let maximized = ctx.input(|i| i.viewport().maximized.unwrap_or(false));
                     ctx.send_viewport_cmd(ViewportCommand::Maximized(!maximized));

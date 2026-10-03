@@ -101,8 +101,10 @@ pub struct Ide {
     /// Current window size (`SIZE` unless a test called `resize`).
     size: Vec2,
     /// egui time of the last click; the next one waits so egui does not merge them into a
-    /// double or triple click.
+    /// double or triple click (`click_gap`).
     last_click: f64,
+    /// Viewport commands the app sent since the last `take_viewport_commands`, from `step`.
+    viewport_commands: Vec<egui::ViewportCommand>,
 }
 
 impl Ide {
@@ -121,7 +123,7 @@ impl Ide {
             .with_max_steps(100)
             .wgpu()
             .build_eframe(move |cc| IdeApp::create(&cc.egui_ctx, storage, options));
-        let mut ide = Ide { harness, suite, pointer: Pos2::new(-10.0, -10.0), size: SIZE, last_click: f64::NEG_INFINITY };
+        let mut ide = Ide { harness, suite, pointer: Pos2::new(-10.0, -10.0), size: SIZE, last_click: f64::NEG_INFINITY, viewport_commands: Vec::new() };
         if has_project {
             ide.wait_for("project loaded", |s| {
                 s.project.as_ref().is_some_and(|p| s.tree.is_loaded(&p.root)) && s.index.build_ms.is_some() && (s.git.repo.is_none() || s.git.status_ms.is_some())
@@ -157,6 +159,14 @@ impl Ide {
     /// One frame.
     pub fn step(&mut self) {
         self.harness.step();
+        if let Some(v) = self.harness.output().viewport_output.get(&egui::ViewportId::ROOT) {
+            self.viewport_commands.extend(v.commands.iter().cloned());
+        }
+    }
+
+    /// The viewport commands (zoom, minimize, drag) sent during `step` calls since the last call.
+    pub fn take_viewport_commands(&mut self) -> Vec<egui::ViewportCommand> {
+        std::mem::take(&mut self.viewport_commands)
     }
 
     pub fn steps(&mut self, n: usize) {
@@ -300,10 +310,46 @@ impl Ide {
     }
 
     /// Lets enough virtual time pass since the last click that the next one counts as new.
+    /// Waits until the next click is a fresh one. egui calls a click "triple" up to twice the
+    /// double-click interval after the click before last.
     fn click_gap(&mut self) {
-        while self.time() - self.last_click < 0.7 {
+        let gap = 2.0 * self.harness.ctx.options(|o| o.input_options.max_double_click_delay) + 0.1;
+        while self.time() - self.last_click < gap {
             self.step();
         }
+    }
+
+    /// Lets `secs` of input time pass with no input.
+    pub fn idle(&mut self, secs: f64) {
+        let end = self.time() + secs;
+        while self.time() < end - 1e-9 {
+            self.step();
+        }
+    }
+
+    /// A double click at `pos` with no pause before it, so it can follow other clicks at once
+    /// the way a user's clicks do.
+    pub fn double_click_now(&mut self, pos: Pos2) {
+        self.move_to(pos);
+        for _ in 0..2 {
+            self.push(Event::PointerButton { pos, button: PointerButton::Primary, pressed: true, modifiers: Modifiers::NONE });
+            self.step();
+            self.push(Event::PointerButton { pos, button: PointerButton::Primary, pressed: false, modifiers: Modifiers::NONE });
+            self.step();
+        }
+        self.last_click = self.time();
+        self.step();
+    }
+
+    /// A single click at `pos` with no pause before it.
+    pub fn click_now(&mut self, pos: Pos2) {
+        self.move_to(pos);
+        self.push(Event::PointerButton { pos, button: PointerButton::Primary, pressed: true, modifiers: Modifiers::NONE });
+        self.step();
+        self.push(Event::PointerButton { pos, button: PointerButton::Primary, pressed: false, modifiers: Modifiers::NONE });
+        self.step();
+        self.last_click = self.time();
+        self.step();
     }
 
     pub fn click_button_at(&mut self, pos: Pos2, button: PointerButton, mods: Modifiers) {
@@ -366,15 +412,7 @@ impl Ide {
 
     pub fn double_click_at(&mut self, pos: Pos2) {
         self.click_gap();
-        self.move_to(pos);
-        for _ in 0..2 {
-            self.push(Event::PointerButton { pos, button: PointerButton::Primary, pressed: true, modifiers: Modifiers::NONE });
-            self.step();
-            self.push(Event::PointerButton { pos, button: PointerButton::Primary, pressed: false, modifiers: Modifiers::NONE });
-            self.step();
-        }
-        self.last_click = self.time();
-        self.step();
+        self.double_click_now(pos);
     }
 
     // ---------------------------------------------------------------------------------------

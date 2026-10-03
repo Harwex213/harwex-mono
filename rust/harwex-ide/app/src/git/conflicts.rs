@@ -235,6 +235,7 @@ fn dialog(state: &mut AppState, ctx: &Context) {
     let mut accept: Option<(PathBuf, ConflictChoice)> = None;
     let mut merge: Option<PathBuf> = None;
     let mut cont = false;
+    let clicks = state.clicks;
     let c = &mut state.git_ui.conflicts;
     let (yours, theirs) = side_labels(c.op);
     let title = if c.op == RepoState::Clean { "Conflicts".to_string() } else { format!("Conflicts ({})", op_name(c.op)) };
@@ -278,7 +279,7 @@ fn dialog(state: &mut AppState, ctx: &Context) {
                             if resp.clicked() {
                                 c.selected = Some(i);
                             }
-                            if resp.double_clicked() {
+                            if clicks.double(&resp) {
                                 merge = Some(f.clone());
                             }
                         }

@@ -4,11 +4,13 @@
 pub mod app;
 pub mod breadcrumbs;
 pub mod chrome;
+pub mod clicks;
 pub mod diagnostics;
 pub mod fileops;
 pub mod find;
 pub mod git;
 pub mod icons;
+pub mod inputlog;
 pub mod jobs;
 pub mod lang;
 pub mod launch;

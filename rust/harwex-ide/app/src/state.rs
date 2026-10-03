@@ -128,6 +128,10 @@ pub struct AppState {
     pub platform: std::sync::Arc<dyn crate::fileops::Platform>,
     /// The Project tree's Cut/Copy mark and file operation dialogs.
     pub tree_ops: crate::tree_menu::TreeOps,
+    /// `HARWEX_IDE_INPUT_LOG`: the input recorder (`inputlog.rs`).
+    pub input_log: Option<crate::inputlog::InputLog>,
+    /// The primary click chain of the frame. Widgets ask it for double clicks (`clicks.rs`).
+    pub clicks: crate::clicks::Clicks,
 }
 
 impl AppState {
@@ -168,6 +172,8 @@ impl AppState {
             memory: Default::default(),
             platform: std::sync::Arc::new(crate::fileops::SystemPlatform),
             tree_ops: Default::default(),
+            input_log: None,
+            clicks: Default::default(),
         }
     }
 

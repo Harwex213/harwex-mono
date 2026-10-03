@@ -178,8 +178,9 @@ enum DragUnit {
 /// The presses of one multi-click (IDEA's model): each press within the double-click interval
 /// of the one before and near it. egui's own click count is not used: it counts on release,
 /// ignores the position and calls a click "triple" up to twice the interval after the first.
-#[derive(Clone, Copy)]
-struct ClickChain {
+/// The app counts the double clicks of all its widgets with it too (`clicks.rs`).
+#[derive(Clone, Copy, Debug)]
+pub struct ClickChain {
     count: u32,
     time: f64,
     pos: Pos2,
@@ -193,7 +194,7 @@ impl Default for ClickChain {
 
 impl ClickChain {
     /// Counts a plain press at `pos` and returns its place in the chain (1, 2, 3, ...).
-    fn press(&mut self, time: f64, pos: Pos2, delay: f64, max_dist: f32) -> u32 {
+    pub fn press(&mut self, time: f64, pos: Pos2, delay: f64, max_dist: f32) -> u32 {
         let goes_on = self.count > 0 && time - self.time <= delay && self.pos.distance(pos) <= max_dist;
         self.count = if goes_on { self.count + 1 } else { 1 };
         self.time = time;
@@ -202,13 +203,13 @@ impl ClickChain {
     }
 
     /// A modified press (Shift, Alt, Cmd, middle) ends the chain.
-    fn reset(&mut self) {
+    pub fn reset(&mut self) {
         *self = ClickChain::default();
     }
 }
 
 /// The longest distance between two presses of one multi-click, in points.
-const CHAIN_DIST: f32 = 6.0;
+pub const CHAIN_DIST: f32 = 6.0;
 
 /// The longest pause between the two Alt presses of a double tap.
 const ALT_DOUBLE_TAP: f64 = 0.4;

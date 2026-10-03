@@ -483,6 +483,7 @@ pub fn tool_window(state: &mut AppState, ui: &mut Ui) {
             commit = message_area(state, ui);
         });
 
+    let clicks = state.clicks;
     let c = &state.git_ui.changes;
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 2.0;
@@ -514,7 +515,7 @@ pub fn tool_window(state: &mut AppState, ui: &mut Ui) {
         ui.add_space(20.0);
         ui.vertical_centered(|ui| ui.label(RichText::new("No changes").color(theme::T.text_dim)));
     } else {
-        draw_tree(c, ui, &mut events);
+        draw_tree(c, clicks, ui, &mut events);
     }
 
     for e in events {
@@ -525,7 +526,7 @@ pub fn tool_window(state: &mut AppState, ui: &mut Ui) {
     }
 }
 
-fn draw_tree(c: &ChangesUi, ui: &mut Ui, events: &mut Vec<Event>) {
+fn draw_tree(c: &ChangesUi, clicks: crate::clicks::Clicks, ui: &mut Ui, events: &mut Vec<Event>) {
     let (cmd, shift, pointer, released, down) = ui.input(|i| (i.modifiers.command, i.modifiers.shift, i.pointer.latest_pos(), i.pointer.primary_released(), i.pointer.primary_down()));
     let dragging = c.drag.is_some();
     let mut target: Option<Group> = None;
@@ -646,12 +647,14 @@ fn draw_tree(c: &ChangesUi, ui: &mut Ui, events: &mut Vec<Event>) {
                     events.push(Event::Toggle(idx));
                 } else {
                     events.push(Event::Select { row: idx, cmd, shift });
-                }
-            }
-            if resp.double_clicked() {
-                match &row.kind {
-                    RowKind::File(i) => events.push(Event::Diff(c.entries[c.items[*i].entry].path.clone())),
-                    _ => events.push(Event::Toggle(idx)),
+                    // A double click on the box or the arrow already acted twice; only the
+                    // rest of the row opens a diff or toggles.
+                    if clicks.double(&resp) {
+                        match &row.kind {
+                            RowKind::File(i) => events.push(Event::Diff(c.entries[c.items[*i].entry].path.clone())),
+                            _ => events.push(Event::Toggle(idx)),
+                        }
+                    }
                 }
             }
             if resp.secondary_clicked() {

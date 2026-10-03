@@ -77,8 +77,13 @@ pub fn system_double_click() -> DoubleClick {
     DoubleClick::Zoom
 }
 
-/// The system double-click interval in seconds, for egui's double-click and the editor's click
-/// chains. egui's own default (0.3 s) is shorter than the macOS default (0.5 s).
+/// The macOS default double-click interval. Tests run with it, so they see the same click
+/// timing as a default Mac.
+pub const DEFAULT_DOUBLE_CLICK_INTERVAL: f64 = 0.5;
+
+/// The system double-click interval in seconds, for egui's double-click and the click chains
+/// of the editor and the Project tree. egui's own default (0.3 s) is shorter than the macOS
+/// default (0.5 s).
 pub fn system_double_click_interval() -> Option<f64> {
     #[cfg(target_os = "macos")]
     {

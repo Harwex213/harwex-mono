@@ -46,6 +46,68 @@ fn layout_renders_with_git_colors() {
     ide.wait_until("src collapsed", |ide| !ide.has("src/app.ts"));
 }
 
+/// A real user's double click often follows other clicks: a click that selected the row, or a
+/// double click a moment ago. egui calls a click "triple" up to twice the double-click interval
+/// after the click before last (1 s with the macOS default), and it ignores where a click lands.
+/// The tree counts its own click chain, so these double clicks toggle and single clicks do not.
+#[test]
+fn double_click_follows_other_clicks() {
+    let fx = Fixture::new(SUITE, "double_click_chain");
+    let repo = basic_repo(fx.path("repo"));
+    let mut ide = Ide::open(SUITE, &repo.dir);
+    let delay = ide.ctx().options(|o| o.input_options.max_double_click_delay);
+    assert_eq!(delay, harwex_ide::chrome::DEFAULT_DOUBLE_CLICK_INTERVAL, "tests run with the macOS default interval");
+    let src = ide.root().join("src");
+    let c = ide.rect("src").center();
+
+    // Click to select, then double click 0.6 s later.
+    ide.click_at(c);
+    ide.idle(0.6);
+    ide.double_click_now(c);
+    assert!(ide.state().tree.is_expanded(&src), "a double click after a selecting click expands");
+
+    // Collapse again 0.6 s after the first double click.
+    ide.idle(0.6);
+    ide.double_click_now(c);
+    assert!(!ide.state().tree.is_expanded(&src), "a second double click collapses");
+
+    // A quick click on another row is a new single click, not the second click of a double.
+    let readme = ide.rect("README.md").center();
+    ide.idle(1.5);
+    ide.click_now(c);
+    ide.idle(0.1);
+    ide.click_now(readme);
+    assert!(ide.state().tabs.list.is_empty(), "a single click on a file opens nothing");
+    assert!(!ide.state().tree.is_expanded(&src));
+
+    // A third quick click on the chevron toggles again; the second one only ends the double click.
+    let chevron = ide.rect("Expand src").center();
+    ide.idle(1.5);
+    ide.click_now(chevron);
+    assert!(ide.state().tree.is_expanded(&src), "a chevron click toggles at once");
+}
+
+/// A double click on the empty title bar zooms the window (the action is fixed to Zoom in
+/// tests), also right after a single click and twice in a row 0.6 s apart.
+#[test]
+fn title_bar_double_click_zooms() {
+    let fx = Fixture::new(SUITE, "title_double_click");
+    let repo = basic_repo(fx.path("repo"));
+    let mut ide = Ide::open(SUITE, &repo.dir);
+    let zooms = |ide: &mut Ide| ide.take_viewport_commands().into_iter().filter(|c| matches!(c, egui::ViewportCommand::Maximized(_))).count();
+    let screen = ide.ctx().screen_rect();
+    let bar = egui::pos2(screen.right() - 120.0, 20.0);
+
+    ide.click_at(bar);
+    assert_eq!(zooms(&mut ide), 0, "a single click does not zoom");
+    ide.idle(0.6);
+    ide.double_click_now(bar);
+    assert_eq!(zooms(&mut ide), 1, "a double click after a single click zooms");
+    ide.idle(0.6);
+    ide.double_click_now(bar);
+    assert_eq!(zooms(&mut ide), 1, "a second double click 0.6 s later zooms again");
+}
+
 #[test]
 fn tabs_open_and_close() {
     let fx = Fixture::new(SUITE, "tabs");

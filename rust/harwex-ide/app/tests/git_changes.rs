@@ -346,6 +346,39 @@ fn rollback_asks_first() {
     assert!(!repo.dir.join("src/added.ts").exists());
 }
 
+/// Double clicks with a user's timing (the shared click chain, `clicks.rs`): a double click
+/// right after a selecting click opens the diff, and two double clicks 0.6 s apart toggle a
+/// directory twice. egui's own count calls both of them "triple".
+#[test]
+fn double_click_after_other_clicks() {
+    let fx = Fixture::new(SUITE, "double_click_chain");
+    let repo = changed_repo(fx.path("repo"));
+    let mut ide = Ide::open(SUITE, &repo.dir);
+    open_commit_window(&mut ide);
+
+    // Away from the box and the arrow: a double click there only toggles them twice.
+    let row = |ide: &Ide, label: &str| {
+        let r = ide.rect(label);
+        egui::pos2(r.right() - 20.0, r.center().y)
+    };
+    let docs = row(&ide, "Directory docs in Unstaged");
+    ide.double_click_now(docs);
+    ide.settle();
+    assert!(!ide.has("docs/notes.md"), "a double click collapses the directory");
+    ide.idle(0.6);
+    ide.double_click_now(docs);
+    ide.settle();
+    assert!(ide.has("docs/notes.md"), "a second double click 0.6 s later expands it again");
+
+    let app = row(&ide, "src/app.ts");
+    ide.idle(1.5);
+    ide.click_now(app);
+    assert!(ide.state().tabs.custom_by_key("diff:wt:src/app.ts").is_none(), "a single click opens nothing");
+    ide.idle(0.6);
+    ide.double_click_now(app);
+    ide.wait_until("diff tab", |ide| ide.state().tabs.custom_by_key("diff:wt:src/app.ts").is_some());
+}
+
 #[test]
 fn diff_tab_with_f7_navigation() {
     let fx = Fixture::new(SUITE, "diff");

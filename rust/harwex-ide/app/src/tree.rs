@@ -398,6 +398,8 @@ pub fn show(state: &mut AppState, ui: &mut Ui) -> Option<TreeEvent> {
     if state.tree.drag.is_some() && ui.input_mut(|i| i.consume_key(egui::Modifiers::NONE, Key::Escape)) {
         state.tree.drag = None;
     }
+    // A double click is press 2 of the app's click chain (`clicks.rs`), not egui's count.
+    let clicks = state.clicks;
     let mut rows = Vec::new();
     let mut missing = Vec::new();
     flatten(&state.tree, &root, 0, &mut rows, &mut missing);
@@ -465,6 +467,8 @@ pub fn show(state: &mut AppState, ui: &mut Ui) -> Option<TreeEvent> {
     let mut drag_refused = false;
     let mut drag_hover: Option<PathBuf> = None;
     let probe = state.test.as_ref().is_some_and(|t| t.tree_hits.is_some());
+    let recording = state.input_log.is_some() && ui.input(|i| i.pointer.any_pressed() || i.pointer.any_released());
+    let mut record: Option<String> = None;
     let mut hit_rows = Vec::new();
     let out = area.show_rows(ui, pitch, rows.len(), |ui, range| {
         // During a drag the row under the pointer decides the target before any row paints,
@@ -557,16 +561,22 @@ pub fn show(state: &mut AppState, ui: &mut Ui) -> Option<TreeEvent> {
             // toggles a folder or opens a file. On the chevron cell the first click of a double
             // click already toggled, so the second one does nothing.
             let on_chevron = chevron_cell.zip(resp.interact_pointer_pos()).is_some_and(|(c, p)| c.contains(p));
+            let double = clicks.double(&resp);
             if (resp.is_pointer_button_down_on() || resp.clicked()) && !on_chevron {
                 select = Some(row.entry.path.clone());
             }
             if resp.clicked() {
                 take_focus = true;
-                if on_chevron && !resp.double_clicked() {
+                if on_chevron && !double {
                     toggle = Some(row.entry.path.clone());
                 }
             }
-            if resp.double_clicked() && !on_chevron {
+            if recording && (resp.contains_pointer() || resp.is_pointer_button_down_on() || resp.clicked()) {
+                let name = row.entry.name.as_str();
+                let (hovered, down_on, clicked, egui_double) = (resp.hovered(), resp.is_pointer_button_down_on(), resp.clicked(), crate::clicks::egui_double(&resp));
+                record = Some(format!("row {name:?} hovered={hovered} down_on={down_on} clicked={clicked} press={} double={double} egui_double={egui_double} on_chevron={on_chevron} dragged={}", clicks.press_count(), resp.dragged()));
+            }
+            if double && !on_chevron {
                 if row.entry.is_dir {
                     toggle = Some(row.entry.path.clone());
                 } else {
@@ -593,6 +603,13 @@ pub fn show(state: &mut AppState, ui: &mut Ui) -> Option<TreeEvent> {
         }
     });
     state.tree.view_offset = out.state.offset.y;
+    if let Some(log) = state.input_log.as_mut() {
+        if recording {
+            let hit = ui.ctx().viewport(|v| v.hits.click.map(|w| w.id));
+            let toggled = toggle.as_ref().map(|p| p.display().to_string());
+            log.tree(format_args!("{} hits.click={hit:?} select={:?} toggle={toggled:?}", record.as_deref().unwrap_or("no row under the pointer"), select.as_ref().and_then(|p| p.file_name())));
+        }
+    }
     if let Some(dir) = &drop_target {
         // The root row sits above the scroll area and a scrolled-out folder is not drawn:
         // those drops have no outline.
