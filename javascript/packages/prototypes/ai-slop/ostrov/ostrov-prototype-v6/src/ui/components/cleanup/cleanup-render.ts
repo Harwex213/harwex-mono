@@ -1,4 +1,4 @@
-import { CLEARED_HOLD, RETREAT_BAND, SINK_SECONDS, TICK_SECONDS } from "../../../core/cleanup-sim";
+import { ATTACH_PULL_SECONDS, RETREAT_BAND, TICK_SECONDS } from "../../../core/cleanup-sim";
 import { HEX_SIZE, hexToPixel } from "../../../core/hex";
 import { getBuilding } from "../../../core/buildings";
 import { ICONS } from "../../../core/icons";
@@ -48,6 +48,8 @@ const BOB_SPEED = 0.9;
 /** A cleared island falls this far while it fades into the haze. */
 const FALL_DISTANCE = 160;
 const LABEL_SPACING = 900;
+const LOST_FADE_SECONDS = 2.5;
+const STITCH_SECONDS = 3;
 
 /* The palette of the antique map. */
 const INK = "#2a1f14";
@@ -75,6 +77,10 @@ type TEffect =
 type TScene = {
   /** One sprite per sim island, `null` while it bakes. */
   readonly sprites: (TIslandSprite | null)[];
+  /** How many hexes the player's current sprite was baked with. */
+  playerBakedHexes: number;
+  /** The player's island position this frame, for islands drawn relative to it. */
+  playerAt: { x: number; y: number } | null;
   effects: TEffect[];
   /** Diagonal ink hatching for the retreat band, made on first use. */
   hatch: CanvasPattern | null;
@@ -128,10 +134,10 @@ const absorbEvents = (scene: TScene, sim: TCleanupSim, events: readonly TSimEven
     } else if (event.type === "razed") {
       scene.effects.push({ kind: "razed", x: event.x, y: event.y, born: time });
     } else if (event.type === "cleared") {
-      const island = sim.islands[event.island];
-      const reward = island ? island.rewardHexes.length : 0;
-      scene.effects.push({ kind: "banner", island: event.island, born: time, text: `Зачищено  +${reward} гекс.` });
-    } else if (event.type === "sunk") {
+      scene.effects.push({ kind: "banner", island: event.island, born: time, text: "Зачищено — пристыкуйте" });
+    } else if (event.type === "attached") {
+      scene.effects.push({ kind: "banner", island: 0, born: time, text: `Присоединено  +${event.joined} гекс.` });
+    } else if (event.type === "lost") {
       const island = sim.islands[event.island];
       if (island) {
         scene.effects.push({
@@ -159,29 +165,38 @@ const islandPosition = (island: TSimIsland, frame: TFrame) => ({
   y: lerp(island.py, island.body.y, frame.alpha) + bobOf(island.index, frame),
 });
 
-const hexPath = (context: CanvasRenderingContext2D, x: number, y: number, size: number) => {
-  context.beginPath();
-  for (let corner = 0; corner < 6; corner += 1) {
-    const angle = ((60 * corner - 30) * Math.PI) / 180;
-    const cx = x + size * Math.cos(angle);
-    const cy = y + size * Math.sin(angle);
-    if (corner === 0) {
-      context.moveTo(cx, cy);
-    } else {
-      context.lineTo(cx, cy);
-    }
-  }
-
-  context.closePath();
-};
-
-/** 0 for a standing island, rising to 1 as a cleared one falls away. */
+/** 0 for a floating island, rising to 1 as an undocked husk falls away into the haze. */
 const fallOf = (island: TSimIsland, time: number) => {
-  if (island.state !== "sinking") {
+  if (island.state !== "lost") {
     return 0;
   }
 
-  return Math.min(1, (time - island.stateTick * TICK_SECONDS) / SINK_SECONDS);
+  return Math.min(1, (time - island.stateTick * TICK_SECONDS) / LOST_FADE_SECONDS);
+};
+
+/**
+ * Where to draw an island. An attached island is drawn on its own until the
+ * player's island has been re-baked with its hexes: first pulled into its
+ * lattice spot, then held there. Returns `null` when it is not drawn.
+ */
+const placementOf = (island: TSimIsland, scene: TScene, frame: TFrame, time: number) => {
+  if (island.state !== "attached") {
+    return fallOf(island, time) >= 1 ? null : islandPosition(island, frame);
+  }
+
+  const attach = island.attach;
+  const base = scene.playerAt;
+  if (!attach || !base || scene.playerBakedHexes >= attach.hexCountAfter) {
+    return null;
+  }
+
+  const t = Math.min(1, (time - attach.tick * TICK_SECONDS) / ATTACH_PULL_SECONDS);
+  const ease = 1 - Math.pow(1 - t, 3);
+
+  return {
+    x: base.x + attach.offsetX + attach.pullX * (1 - ease),
+    y: base.y + attach.offsetY + attach.pullY * (1 - ease),
+  };
 };
 
 /**
@@ -196,14 +211,74 @@ const drawShadows = (context: CanvasRenderingContext2D, sim: TCleanupSim, scene:
 
   for (const island of sim.islands) {
     const sprite = scene.sprites[island.index];
-    if (!sprite || island.state === "sunk") {
+    const at = placementOf(island, scene, frame, time);
+    if (!sprite || !at) {
       continue;
     }
 
-    const at = islandPosition(island, frame);
     const fall = fallOf(island, time);
     context.globalAlpha = SHADOW_ALPHA * (1 - fall);
     context.drawImage(sprite.shadow, at.x + sprite.x + SHADOW_OFFSET_X, at.y + sprite.y + SHADOW_OFFSET_Y, sprite.width, sprite.height);
+  }
+
+  context.globalAlpha = 1;
+};
+
+/** Ink cross-stitches along the seam where an island joined, fading out. */
+const drawStitches = (context: CanvasRenderingContext2D, sim: TCleanupSim, frame: TFrame, time: number) => {
+  const player = sim.islands[0];
+  if (!player) {
+    return;
+  }
+
+  const at = islandPosition(player, frame);
+
+  for (const island of sim.islands) {
+    const attach = island.attach;
+    if (!attach) {
+      continue;
+    }
+
+    const age = time - attach.tick * TICK_SECONDS - ATTACH_PULL_SECONDS * 0.6;
+    if (age < 0 || age > STITCH_SECONDS) {
+      continue;
+    }
+
+    const grow = Math.min(1, age / 0.5);
+    context.globalAlpha = Math.min(1, (STITCH_SECONDS - age) / 1.2);
+    context.lineCap = "round";
+
+    for (const edge of attach.seam) {
+      const x = at.x + edge.x;
+      const y = at.y + edge.y;
+      // Along the edge, across the seam.
+      const ax = -edge.ny;
+      const ay = edge.nx;
+      const half = (HEX_SIZE / 2) * grow;
+
+      context.strokeStyle = INK;
+      context.lineWidth = 2.4;
+      context.setLineDash([5, 4]);
+      context.beginPath();
+      context.moveTo(x - ax * half, y - ay * half);
+      context.lineTo(x + ax * half, y + ay * half);
+      context.stroke();
+      context.setLineDash([]);
+
+      for (const along of [-0.6, 0, 0.6]) {
+        const sx = x + ax * half * along;
+        const sy = y + ay * half * along;
+        context.strokeStyle = CREAM;
+        context.lineWidth = 3.4;
+        context.beginPath();
+        context.moveTo(sx - edge.nx * 7 - ax * 4, sy - edge.ny * 7 - ay * 4);
+        context.lineTo(sx + edge.nx * 7 + ax * 4, sy + edge.ny * 7 + ay * 4);
+        context.stroke();
+        context.strokeStyle = INK;
+        context.lineWidth = 1.6;
+        context.stroke();
+      }
+    }
   }
 
   context.globalAlpha = 1;
@@ -298,11 +373,11 @@ const drawBorder = (context: CanvasRenderingContext2D, sim: TCleanupSim, scene: 
 const drawIslands = (context: CanvasRenderingContext2D, sim: TCleanupSim, scene: TScene, frame: TFrame, time: number) => {
   for (const island of sim.islands) {
     const sprite = scene.sprites[island.index];
-    if (!sprite || island.state === "sunk") {
+    const at = placementOf(island, scene, frame, time);
+    if (!sprite || !at) {
       continue;
     }
 
-    const at = islandPosition(island, frame);
     const fall = fallOf(island, time);
     const drop = fall * fall * FALL_DISTANCE;
     const shrink = 1 - fall * 0.18;
@@ -325,29 +400,16 @@ const drawIslands = (context: CanvasRenderingContext2D, sim: TCleanupSim, scene:
     context.restore();
 
     if (island.state === "cleared") {
-      const age = time - island.stateTick * TICK_SECONDS;
-      const pulse = 0.55 + Math.sin(time * 5) * 0.3;
-      const fade = Math.min(1, age / 0.4) * Math.max(0.2, 1 - Math.max(0, age - CLEARED_HOLD));
-      context.lineWidth = 4;
-      context.strokeStyle = GOLD;
-      context.globalAlpha = pulse * fade;
-      for (const index of island.rewardHexes) {
-        const hex = island.hexes[index];
-        if (!hex) {
-          continue;
-        }
-
-        const center = hexToPixel(hex.q, hex.r, HEX_SIZE);
-        hexPath(context, at.x + center.x, at.y + center.y, HEX_SIZE - 3);
-        context.stroke();
-        context.lineWidth = 1.2;
-        context.strokeStyle = INK;
-        hexPath(context, at.x + center.x, at.y + center.y, HEX_SIZE - 7);
-        context.stroke();
-        context.lineWidth = 4;
-        context.strokeStyle = GOLD;
-      }
-
+      // A husk waiting to be docked: a dashed sepia ring calls for the player.
+      const pulse = 0.45 + Math.sin(time * 4) * 0.25;
+      context.globalAlpha = pulse;
+      context.strokeStyle = SEPIA;
+      context.lineWidth = 3;
+      context.setLineDash([14, 10]);
+      context.beginPath();
+      context.arc(at.x + island.body.centerX, at.y + island.body.centerY, island.body.radius + 24, 0, Math.PI * 2);
+      context.stroke();
+      context.setLineDash([]);
       context.globalAlpha = 1;
     }
   }
@@ -921,11 +983,14 @@ const drawScene = (context: CanvasRenderingContext2D, sim: TCleanupSim, scene: T
   context.imageSmoothingEnabled = true;
   context.imageSmoothingQuality = "high";
 
+  const player = sim.islands[0];
+  scene.playerAt = player ? islandPosition(player, frame) : null;
   drawShadows(context, sim, scene, frame, time);
 
   context.setTransform(ratio * zoom, 0, 0, ratio * zoom, ratio * (width / 2 - camera.x * zoom), ratio * (height / 2 - camera.y * zoom));
   drawBorder(context, sim, scene, frame);
   drawIslands(context, sim, scene, frame, time);
+  drawStitches(context, sim, frame, time);
   drawBridges(context, sim, frame);
   drawDeaths(context, scene, time);
   drawStructures(context, sim, frame, time);

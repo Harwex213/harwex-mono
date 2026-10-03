@@ -1,4 +1,5 @@
-import { findBridges, HEX_STEP, solveCollisions } from "./cleanup-collision";
+import { BRIDGE_GAP, findBridges, HEX_STEP, solveCollisions } from "./cleanup-collision";
+import { planAttachment, seamEdges } from "./cleanup-attach";
 import { islandExtent } from "./cleanup-level";
 import { AXIAL_DIRECTIONS, HEX_SIZE, hexId, hexToPixel } from "./hex";
 import { createRng } from "./rng";
@@ -6,6 +7,7 @@ import { getBuilding } from "./buildings";
 import { STRONGHOLD_HEX_ART, STRONGHOLD_LABEL } from "./stronghold";
 import { STRONGHOLD_DEFENSE } from "./structure-hp";
 import { getEnemy, getUnit } from "./units";
+import type { TSeamEdge } from "./cleanup-attach";
 import type { TBody } from "./cleanup-collision";
 import type { TAnnexedHex, TCleanupHex, TCleanupSide, TIslandBehavior, TLevelBounds, TLevelSpec } from "./cleanup-level";
 import type { TRng } from "./rng";
@@ -73,15 +75,42 @@ const PROJECTILE_SPEED: Readonly<Record<TProjectile, number>> = {
   bolt: 760,
 };
 
-const CLEARED_HOLD = 3;
-const SINK_SECONDS = 2.5;
+/** A cleared island waits this long for the player to dock it, then starts to drift off. */
+const DRIFT_DELAY = 10;
+const DRIFT_AWAY_SPEED = 16;
+/** Seconds after clearing when an undocked island is gone for good. */
+const LOST_AFTER = 24;
+/** How long the attach animation pulls the joining island into its lattice spot. */
+const ATTACH_PULL_SECONDS = 0.6;
 const LOSS_DELAY = 1.5;
 const WIN_DELAY = 1;
 /** The event queue is drained by the renderer; this cap guards a stalled one. */
 const MAX_EVENTS = 400;
 
 type TSimStatus = "running" | "won" | "lost" | "retreated";
-type TIslandState = "active" | "cleared" | "sinking" | "sunk";
+/**
+ * active: guarded by monsters. cleared: an empty husk that floats free until
+ * the player docks it. attached: it joined the player's island. lost: it
+ * drifted off before anyone docked it.
+ */
+type TIslandState = "active" | "cleared" | "attached" | "lost";
+
+/** How an island joined the player's island, for the attach animation and the seam stitches. */
+type TAttachInfo = {
+  readonly tick: number;
+  /** Its origin relative to the player island's origin after the snap. */
+  readonly offsetX: number;
+  readonly offsetY: number;
+  /** Where it was before the snap, relative to where it landed. */
+  readonly pullX: number;
+  readonly pullY: number;
+  /** Shared edges with the old island, in the player island's frame. */
+  readonly seam: readonly TSeamEdge[];
+  /** The player island's hex count right after this join, so the renderer knows when its re-bake covers it. */
+  readonly hexCountAfter: number;
+  readonly joined: number;
+  readonly dropped: number;
+};
 
 type TSimIsland = {
   readonly index: number;
@@ -89,23 +118,22 @@ type TSimIsland = {
   readonly label: string;
   readonly side: TCleanupSide;
   readonly behavior: TIslandBehavior;
-  readonly hexes: readonly TCleanupHex[];
+  /** The player's island grows when another island joins it. */
+  hexes: TCleanupHex[];
   readonly body: TBody;
-  /** Index of the first node of this island in the node arrays. */
-  readonly nodeBase: number;
+  /** The graph node of each hex, by hex index. */
+  nodes: number[];
   readonly homeX: number;
   readonly homeY: number;
   readonly wobblePhase: number;
   readonly garrisonTotal: number;
-  readonly reward: number;
   px: number;
   py: number;
   state: TIslandState;
   stateTick: number;
-  /** Hex indices that join the player when the island is cleared. */
-  rewardHexes: number[];
+  attach: TAttachInfo | null;
   /** The hexes' outer edges relative to the body position. */
-  readonly extent: { readonly minX: number; readonly maxX: number; readonly minY: number; readonly maxY: number };
+  extent: { readonly minX: number; readonly maxX: number; readonly minY: number; readonly maxY: number };
 };
 
 type TSimUnit = {
@@ -175,7 +203,8 @@ type TSimEvent =
   | { readonly type: "ferry"; readonly x: number; readonly y: number }
   | { readonly type: "razed"; readonly x: number; readonly y: number; readonly hex: number }
   | { readonly type: "cleared"; readonly island: number }
-  | { readonly type: "sunk"; readonly island: number };
+  | { readonly type: "attached"; readonly island: number; readonly joined: number }
+  | { readonly type: "lost"; readonly island: number };
 
 type TSimInput = {
   x: number;
@@ -202,19 +231,19 @@ type TCleanupSim = {
   readonly lost: TUnitId[];
   readonly annexed: TAnnexedHex[];
   /* The hex graph. Node n is hex `nodeHex[n]` of island `nodeIsland[n]`. */
-  readonly nodeIsland: Int32Array;
-  readonly nodeHex: Int32Array;
-  readonly nodeX: Float64Array;
-  readonly nodeY: Float64Array;
-  /** Neighbours inside one island. They never change. */
-  readonly innerLinks: readonly (readonly number[])[];
+  nodeIsland: Int32Array;
+  nodeHex: Int32Array;
+  nodeX: Float64Array;
+  nodeY: Float64Array;
+  /** Neighbours inside one island. They change only when an island joins. */
+  innerLinks: number[][];
   /** Neighbours across a bridge, rebuilt every tick. */
   bridgeLinks: number[][];
   /** Smallest gap between each pair of islands, rebuilt every tick. */
   gaps: Float64Array;
   /** Hex steps to the nearest foe, per side, rebuilt every tick. -1 is unreachable. */
-  readonly flowToEnemy: Int32Array;
-  readonly flowToPlayer: Int32Array;
+  flowToEnemy: Int32Array;
+  flowToPlayer: Int32Array;
   nextUnitId: number;
   readonly bounds: TLevelBounds;
   /** 0..1: how far the retreat through the map border has run. */
@@ -222,7 +251,7 @@ type TCleanupSim = {
   /** True while the player's island touches the retreat band. */
   inRetreatBand: boolean;
   /** Hp of each structure on the player's island, by hex index. -1 where nothing stands. */
-  readonly structureHp: Float64Array;
+  structureHp: Float64Array;
   /** Structures standing when the battle began. Zero means defeat by ruin cannot happen. */
   structuresAtStart: number;
   /** Structures razed in this battle. */
@@ -264,6 +293,13 @@ const createBody = (hexes: readonly TCleanupHex[], x: number, y: number, mass: n
   };
 };
 
+const extentOf = (body: TBody) => ({
+  minX: Math.min(...body.localX) - HEX_SIZE,
+  maxX: Math.max(...body.localX) + HEX_SIZE,
+  minY: Math.min(...body.localY) - HEX_SIZE,
+  maxY: Math.max(...body.localY) + HEX_SIZE,
+});
+
 /** The node indices of an island, sorted so that units spread from its middle. */
 const spawnNodes = (island: TSimIsland, rng: TRng, preferHex: number) => {
   const origin = preferHex >= 0 ? hexCenter(island.hexes[preferHex] as TCleanupHex) : { x: island.body.centerX, y: island.body.centerY };
@@ -272,7 +308,7 @@ const spawnNodes = (island: TSimIsland, rng: TRng, preferHex: number) => {
     .map((hex, index) => {
       const center = hexCenter(hex);
 
-      return { node: island.nodeBase + index, order: Math.hypot(center.x - origin.x, center.y - origin.y) + rng() * 20 };
+      return { node: island.nodes[index] as number, order: Math.hypot(center.x - origin.x, center.y - origin.y) + rng() * 20 };
     })
     .sort((a, b) => a.order - b.order)
     .map((entry) => entry.node);
@@ -293,7 +329,7 @@ const addUnit = (
   const angle = id * 2.39996;
   const radius = 10 + (id % 3) * 9;
   const island = sim.islands[homeIsland] as TSimIsland;
-  const hexIndex = node - island.nodeBase;
+  const hexIndex = sim.nodeHex[node] as number;
   const hex = island.hexes[hexIndex] as TCleanupHex;
   const center = hexCenter(hex);
   const slotX = Math.cos(angle) * radius;
@@ -384,7 +420,7 @@ const addStructure = (sim: TCleanupSim, hex: TCleanupHex, index: number) => {
     slotY: 0,
     hp: hex.hp,
     alive: true,
-    node: island.nodeBase + index,
+    node: island.nodes[index] as number,
     nextNode: -1,
     lx: center.x,
     ly: center.y,
@@ -421,25 +457,19 @@ const createCleanup = (level: TLevelSpec, seed: number): TCleanupSim => {
       label: spec.label,
       side: spec.side,
       behavior: spec.behavior,
-      hexes: spec.hexes,
+      hexes: [...spec.hexes],
       body,
-      nodeBase: nodeCount,
+      nodes: spec.hexes.map((_, hexIndex) => nodeCount + hexIndex),
       homeX: spec.x,
       homeY: spec.y,
       wobblePhase: rng() * Math.PI * 2,
       garrisonTotal: spec.garrison.length,
-      reward: spec.reward,
       px: spec.x,
       py: spec.y,
       state: "active",
       stateTick: 0,
-      rewardHexes: [],
-      extent: {
-        minX: Math.min(...body.localX) - HEX_SIZE,
-        maxX: Math.max(...body.localX) + HEX_SIZE,
-        minY: Math.min(...body.localY) - HEX_SIZE,
-        maxY: Math.max(...body.localY) + HEX_SIZE,
-      },
+      attach: null,
+      extent: extentOf(body),
     });
     nodeCount += spec.hexes.length;
   });
@@ -452,12 +482,12 @@ const createCleanup = (level: TLevelSpec, seed: number): TCleanupSim => {
     const byKey = new Map(island.hexes.map((hex, index) => [hexId(hex.q, hex.r), index]));
 
     island.hexes.forEach((hex, index) => {
-      const node = island.nodeBase + index;
+      const node = island.nodes[index] as number;
       nodeIsland[node] = island.index;
       nodeHex[node] = index;
       innerLinks[node] = AXIAL_DIRECTIONS.map((step) => byKey.get(hexId(hex.q + step.q, hex.r + step.r)))
         .filter((neighbor): neighbor is number => neighbor !== undefined)
-        .map((neighbor) => island.nodeBase + neighbor);
+        .map((neighbor) => island.nodes[neighbor] as number);
     });
   }
 
@@ -576,12 +606,15 @@ const leadApproacher = (sim: TCleanupSim) => {
   return best;
 };
 
+/** An island that joined the player's island or drifted off: it no longer moves on its own. */
+const isGone = (island: TSimIsland) => island.state === "attached" || island.state === "lost";
+
 /** Keeps every island inside the map border. An island that hits it stops there. */
 const clampToBounds = (sim: TCleanupSim) => {
   const { halfWidth, halfHeight } = sim.bounds;
 
   for (const island of sim.islands) {
-    if (island.state === "sunk") {
+    if (isGone(island)) {
       continue;
     }
 
@@ -636,7 +669,7 @@ const steerIslands = (sim: TCleanupSim, dt: number) => {
     island.px = body.x;
     island.py = body.y;
 
-    if (island.state === "sunk") {
+    if (isGone(island)) {
       continue;
     }
 
@@ -688,6 +721,16 @@ const steerIslands = (sim: TCleanupSim, dt: number) => {
         }
       }
 
+      // An undocked husk drifts away from the player after a while.
+      const sinceCleared = (sim.tick - island.stateTick) * TICK_SECONDS;
+      if (island.state === "cleared" && sinceCleared > DRIFT_DELAY && player) {
+        const from = islandCenter(island);
+        const to = islandCenter(player);
+        const away = Math.hypot(from.x - to.x, from.y - to.y) || 1;
+        desiredX = ((from.x - to.x) / away) * DRIFT_AWAY_SPEED;
+        desiredY = ((from.y - to.y) / away) * DRIFT_AWAY_SPEED;
+      }
+
       const response = Math.min(1, ENEMY_RESPONSE * dt);
       body.vx += (desiredX - body.vx) * response;
       body.vy += (desiredY - body.vy) * response;
@@ -723,8 +766,8 @@ function refreshWorld(sim: TCleanupSim) {
   }
 
   for (const bridge of bridges) {
-    const nodeA = (sim.islands[bridge.a] as TSimIsland).nodeBase + bridge.hexA;
-    const nodeB = (sim.islands[bridge.b] as TSimIsland).nodeBase + bridge.hexB;
+    const nodeA = (sim.islands[bridge.a] as TSimIsland).nodes[bridge.hexA] as number;
+    const nodeB = (sim.islands[bridge.b] as TSimIsland).nodes[bridge.hexB] as number;
     (sim.bridgeLinks[nodeA] as number[]).push(nodeB);
     (sim.bridgeLinks[nodeB] as number[]).push(nodeA);
   }
@@ -1038,7 +1081,7 @@ const idle = (sim: TCleanupSim, unit: TSimUnit, dt: number) => {
   if (rally >= 0) {
     const target = islandCenter(sim.islands[rally] as TSimIsland);
     const facing = island.hexes
-      .map((_, index) => island.nodeBase + index)
+      .map((_, index) => island.nodes[index] as number)
       .sort((a, b) => {
         const da = Math.hypot((sim.nodeX[a] as number) - target.x, (sim.nodeY[a] as number) - target.y);
         const db = Math.hypot((sim.nodeX[b] as number) - target.x, (sim.nodeY[b] as number) - target.y);
@@ -1124,7 +1167,7 @@ const hoverNodeAt = (sim: TCleanupSim, x: number, y: number) => {
     }
 
     for (let index = 0; index < island.hexes.length; index += 1) {
-      const node = island.nodeBase + index;
+      const node = island.nodes[index] as number;
       const distance = Math.hypot((sim.nodeX[node] as number) - x, (sim.nodeY[node] as number) - y);
       if (distance < bestDistance) {
         best = node;
@@ -1178,7 +1221,8 @@ const stepFlyer = (sim: TCleanupSim, unit: TSimUnit, dt: number) => {
   } else {
     const homeIndex = unit.side === "player" ? 0 : unit.homeIsland;
     const homeIsland = sim.islands[homeIndex] as TSimIsland;
-    const home = homeIsland.state === "sunk" ? islandCenter(sim.islands[0] as TSimIsland) : islandCenter(homeIsland);
+    const gone = homeIsland.state === "attached" || homeIsland.state === "lost";
+    const home = gone ? islandCenter(sim.islands[0] as TSimIsland) : islandCenter(homeIsland);
     const orbit = 50 + (unit.id % 4) * 18;
     const angle = sim.tick * TICK_SECONDS * 0.6 + unit.id;
     goalX = home.x + Math.cos(angle) * orbit;
@@ -1246,95 +1290,210 @@ const garrisonAlive = (sim: TCleanupSim, island: number) => {
   return sim.units.some((unit) => unit.alive && unit.side === "enemy" && unit.homeIsland === island);
 };
 
-/** Cleared, then held, then sunk: the life of an enemy island after its last monster. */
-const stepIslandStates = (sim: TCleanupSim) => {
-  const player = sim.islands[0];
+/** Carries a unit to a home node, as when a lost island leaves it behind. */
+const ferryHome = (sim: TCleanupSim, unit: TSimUnit, node: number) => {
+  const player = sim.islands[0] as TSimIsland;
+  pushEvent(sim, { type: "ferry", x: unit.x, y: unit.y });
+  unit.node = node;
+  unit.nextNode = -1;
+  unit.idlePath = [];
+  const target = slotIn(sim, unit, node, node);
+  unit.lx = target.x;
+  unit.ly = target.y;
+  unit.x = player.body.x + target.x;
+  unit.y = player.body.y + target.y;
+  unit.px = unit.x;
+  unit.py = unit.y;
+  pushEvent(sim, { type: "ferry", x: unit.x, y: unit.y });
+};
 
+const growArray = <T extends Int32Array | Float64Array>(array: T, length: number, fill: number): T => {
+  const next = new (array.constructor as new (size: number) => T)(length);
+  next.fill(fill);
+  next.set(array);
+
+  return next;
+};
+
+/**
+ * Joins a cleared island to the player's island. Its hexes snap to the
+ * player's lattice at the docking offset and become hexes of the player's
+ * island, in the same pattern. Units on them come along. The merged island is
+ * one rigid body from now on. Returns false when no hex would connect.
+ */
+const attachIsland = (sim: TCleanupSim, island: TSimIsland) => {
+  const player = sim.islands[0];
+  if (!player) {
+    return false;
+  }
+
+  const dx = island.body.x - player.body.x;
+  const dy = island.body.y - player.body.y;
+  const plan = planAttachment(player.hexes, island.hexes, dx, dy);
+  if (!plan) {
+    return false;
+  }
+
+  const offset = hexToPixel(plan.offsetQ, plan.offsetR, HEX_SIZE);
+  const oldHexes = player.hexes.map((hex) => ({ q: hex.q, r: hex.r }));
+  const firstNew = sim.nodeIsland.length;
+  const nodeCount = firstNew + plan.kept.length;
+  const newNodeOf = new Map<number, number>();
+
+  sim.nodeIsland = growArray(sim.nodeIsland, nodeCount, 0);
+  sim.nodeHex = growArray(sim.nodeHex, nodeCount, 0);
+  sim.nodeX = growArray(sim.nodeX, nodeCount, 0);
+  sim.nodeY = growArray(sim.nodeY, nodeCount, 0);
+  sim.flowToEnemy = growArray(sim.flowToEnemy, nodeCount, -1);
+  sim.flowToPlayer = growArray(sim.flowToPlayer, nodeCount, -1);
+  sim.structureHp = growArray(sim.structureHp, player.hexes.length + plan.kept.length, -1);
+
+  plan.kept.forEach((hexIndex, order) => {
+    const hex = island.hexes[hexIndex] as TCleanupHex;
+    const q = hex.q + plan.offsetQ;
+    const r = hex.r + plan.offsetR;
+    const node = firstNew + order;
+    newNodeOf.set(island.nodes[hexIndex] as number, node);
+    sim.nodeIsland[node] = 0;
+    sim.nodeHex[node] = player.hexes.length;
+    sim.bridgeLinks.push([]);
+    sim.innerLinks.push([]);
+    player.nodes.push(node);
+    sim.annexed.push({ q, r, biome: hex.biome, toxicity: hex.toxicity });
+    // A wild island brings no buildings: only its ground joins.
+    player.hexes.push({ ...hex, id: hexId(q, r), q, r, building: null, stronghold: false, hp: 0, maxHp: 0 });
+  });
+
+  // The neighbours of every player hex, old and new.
+  const byKey = new Map(player.hexes.map((hex, index) => [hexId(hex.q, hex.r), index]));
+  player.hexes.forEach((hex, index) => {
+    sim.innerLinks[player.nodes[index] as number] = AXIAL_DIRECTIONS.map((step) => byKey.get(hexId(hex.q + step.q, hex.r + step.r)))
+      .filter((neighbor): neighbor is number => neighbor !== undefined)
+      .map((neighbor) => player.nodes[neighbor] as number);
+  });
+
+  // One rigid body: the union of hexes, the summed mass and momentum.
+  const body = player.body;
+  const playerMass = 1 / body.invMass;
+  const joinedMass = plan.kept.length * 1.5;
+  body.vx = (body.vx * playerMass + island.body.vx * joinedMass) / (playerMass + joinedMass);
+  body.vy = (body.vy * playerMass + island.body.vy * joinedMass) / (playerMass + joinedMass);
+  body.invMass = 1 / (playerMass + joinedMass);
+  body.localX = new Float64Array(player.hexes.map((hex) => hexCenter(hex).x));
+  body.localY = new Float64Array(player.hexes.map((hex) => hexCenter(hex).y));
+  const extent = islandExtent(player.hexes);
+  body.centerX = extent.cx;
+  body.centerY = extent.cy;
+  body.radius = extent.radius;
+  player.extent = extentOf(body);
+  player.nodes.forEach((node, index) => {
+    sim.nodeX[node] = body.x + (body.localX[index] as number);
+    sim.nodeY[node] = body.y + (body.localY[index] as number);
+  });
+
+  // Units on the joining island now stand on the player's island.
+  const homeNodes = spawnNodes(player, sim.rng, -1);
+  let spare = 0;
+  for (const unit of sim.units) {
+    if (unit.nextNode >= 0 && sim.nodeIsland[unit.nextNode] === island.index) {
+      unit.nextNode = newNodeOf.get(unit.nextNode) ?? -1;
+    }
+
+    if (!unit.alive || unit.node < 0 || sim.nodeIsland[unit.node] !== island.index) {
+      continue;
+    }
+
+    unit.idlePath = [];
+    const node = newNodeOf.get(unit.node);
+    if (node === undefined) {
+      // Its hex clashed and was dropped: the unit is carried onto the island.
+      ferryHome(sim, unit, homeNodes[spare % homeNodes.length] as number);
+      spare += 1;
+
+      continue;
+    }
+
+    unit.node = node;
+    unit.lx += offset.x;
+    unit.ly += offset.y;
+  }
+
+  island.state = "attached";
+  island.stateTick = sim.tick;
+  island.body.solid = false;
+  island.attach = {
+    tick: sim.tick,
+    offsetX: offset.x,
+    offsetY: offset.y,
+    pullX: dx - offset.x,
+    pullY: dy - offset.y,
+    seam: seamEdges(oldHexes, plan.kept.map((index) => {
+      const hex = island.hexes[index] as TCleanupHex;
+
+      return { q: hex.q + plan.offsetQ, r: hex.r + plan.offsetR };
+    })),
+    hexCountAfter: player.hexes.length,
+    joined: plan.kept.length,
+    dropped: plan.dropped,
+  };
+  pushEvent(sim, { type: "attached", island: island.index, joined: plan.kept.length });
+
+  return true;
+};
+
+/**
+ * The life of an enemy island after its last monster: it floats free as a
+ * husk, joins the player's island the moment the two touch, or drifts off and
+ * is lost if nobody docks it in time.
+ */
+const stepIslandStates = (sim: TCleanupSim) => {
   for (const island of sim.islands) {
     if (island.side !== "enemy") {
       continue;
     }
-
-    const age = (sim.tick - island.stateTick) * TICK_SECONDS;
 
     if (island.state === "active" && !garrisonAlive(sim, island.index)) {
       island.state = "cleared";
       island.stateTick = sim.tick;
       // A cleared island is a husk: the player's island may shove it aside.
       island.body.anchored = false;
-      const toward = player ? islandCenter(player) : { x: 0, y: 0 };
-      island.rewardHexes = island.hexes
-        .map((_, index) => index)
-        .sort((a, b) => {
-          const da = Math.hypot(island.body.x + (island.body.localX[a] as number) - toward.x, island.body.y + (island.body.localY[a] as number) - toward.y);
-          const db = Math.hypot(island.body.x + (island.body.localX[b] as number) - toward.x, island.body.y + (island.body.localY[b] as number) - toward.y);
-
-          return da - db;
-        })
-        .slice(0, island.reward);
-
-      for (const index of island.rewardHexes) {
-        const hex = island.hexes[index] as TCleanupHex;
-        sim.annexed.push({ biome: hex.biome, toxicity: hex.toxicity });
-      }
-
       pushEvent(sim, { type: "cleared", island: island.index });
+    }
 
+    if (island.state !== "cleared") {
       continue;
     }
 
-    if (island.state === "cleared" && age >= CLEARED_HOLD) {
-      const occupied = sim.units.some((unit) => {
-        return unit.alive && unit.side === "enemy" && unit.node >= 0 && sim.nodeIsland[unit.node] === island.index;
-      });
-      if (occupied) {
+    // Touching the player's island: it joins at once.
+    if (gapBetween(sim, 0, island.index) < BRIDGE_GAP && attachIsland(sim, island)) {
+      continue;
+    }
+
+    if ((sim.tick - island.stateTick) * TICK_SECONDS < LOST_AFTER) {
+      continue;
+    }
+
+    // Gone for good. Player units still on it are carried home; monsters go with it.
+    const player = sim.islands[0];
+    const homeNodes = player ? spawnNodes(player, sim.rng, -1) : [];
+    let slot = 0;
+    for (const unit of sim.units) {
+      if (!unit.alive || unit.node < 0 || sim.nodeIsland[unit.node] !== island.index) {
         continue;
       }
 
-      // Anyone still on the island is carried home before it goes under.
-      if (player) {
-        const homeNodes = spawnNodes(player, sim.rng, -1);
-        let slot = 0;
-        for (const unit of sim.units) {
-          if (!unit.alive || unit.node < 0) {
-            continue;
-          }
-
-          const onIsland = sim.nodeIsland[unit.node] === island.index;
-          const heading = unit.nextNode >= 0 && sim.nodeIsland[unit.nextNode] === island.index;
-          if (!onIsland && !heading) {
-            continue;
-          }
-
-          const node = homeNodes[slot % homeNodes.length] as number;
-          slot += 1;
-          pushEvent(sim, { type: "ferry", x: unit.x, y: unit.y });
-          unit.node = node;
-          unit.nextNode = -1;
-          unit.idlePath = [];
-          const target = slotIn(sim, unit, node, node);
-          unit.lx = target.x;
-          unit.ly = target.y;
-          unit.x = player.body.x + target.x;
-          unit.y = player.body.y + target.y;
-          unit.px = unit.x;
-          unit.py = unit.y;
-          pushEvent(sim, { type: "ferry", x: unit.x, y: unit.y });
-        }
+      if (unit.side === "player" && homeNodes.length > 0) {
+        ferryHome(sim, unit, homeNodes[slot % homeNodes.length] as number);
+        slot += 1;
+      } else {
+        unit.alive = false;
       }
-
-      island.state = "sinking";
-      island.stateTick = sim.tick;
-      island.body.solid = false;
-
-      continue;
     }
 
-    if (island.state === "sinking" && age >= SINK_SECONDS) {
-      island.state = "sunk";
-      island.stateTick = sim.tick;
-      pushEvent(sim, { type: "sunk", island: island.index });
-    }
+    island.state = "lost";
+    island.stateTick = sim.tick;
+    island.body.solid = false;
+    pushEvent(sim, { type: "lost", island: island.index });
   }
 };
 
@@ -1345,7 +1504,7 @@ const stepStatus = (sim: TCleanupSim) => {
 
   const enemies = sim.islands.filter((island) => island.side === "enemy");
   // A level with no enemy islands ends at once: there is nothing to clear.
-  const allSunk = enemies.every((island) => island.state === "sunk");
+  const allSunk = enemies.every((island) => isGone(island));
   // Defeat is the last building or the stronghold falling. A wiped army alone
   // does not end the battle: the stronghold keeps shooting.
   const islandRuined = sim.structuresAtStart > 0 && !sim.units.some((unit) => unit.alive && isStructure(unit));
@@ -1502,7 +1661,10 @@ type TIslandSummary = {
   readonly alive: number;
   readonly total: number;
   readonly kinds: readonly TEnemyId[];
-  readonly reward: number;
+  /** Hexes of the island; once attached, the hexes that joined. */
+  readonly hexes: number;
+  /** Whole seconds until an undocked husk is lost, or -1. */
+  readonly driftLeft: number;
 };
 
 type TCleanupHud = {
@@ -1553,7 +1715,8 @@ const summarizeCleanup = (sim: TCleanupSim): TCleanupHud => {
         alive: garrison.length,
         total: island.garrisonTotal,
         kinds: [...new Set(garrison.map((unit) => unit.kind as TEnemyId))],
-        reward: island.reward,
+        hexes: island.attach ? island.attach.joined : island.hexes.length,
+        driftLeft: island.state === "cleared" ? Math.max(0, Math.ceil(LOST_AFTER - (sim.tick - island.stateTick) * TICK_SECONDS)) : -1,
       };
     });
 
@@ -1588,6 +1751,8 @@ type TCleanupResult = {
   readonly outcome: TCleanupOutcome;
   readonly totalIslands: number;
   readonly clearedIslands: number;
+  /** Cleared islands that joined the player's island. */
+  readonly attachedIslands: number;
   readonly annexed: readonly TAnnexedHex[];
   readonly survivors: readonly TUnitId[];
   readonly lost: readonly TUnitId[];
@@ -1616,6 +1781,7 @@ const cleanupResult = (sim: TCleanupSim): TCleanupResult => {
     outcome,
     totalIslands: enemies.length,
     clearedIslands: enemies.filter((island) => island.state !== "active").length,
+    attachedIslands: enemies.filter((island) => island.state === "attached").length,
     // A lost battle claims nothing: the island is in ruins.
     annexed: sim.status === "lost" ? [] : [...sim.annexed],
     survivors,
@@ -1627,6 +1793,7 @@ const cleanupResult = (sim: TCleanupSim): TCleanupResult => {
 };
 
 export type {
+  TAttachInfo,
   TCleanupHud,
   TCleanupOutcome,
   TCleanupResult,
@@ -1641,13 +1808,12 @@ export type {
 };
 export {
   cleanupResult,
-  CLEARED_HOLD,
+  ATTACH_PULL_SECONDS,
   createCleanup,
   drainEvents,
   RETREAT_BAND,
   retreatCleanup,
   setCleanupInput,
-  SINK_SECONDS,
   stepCleanup,
   summarizeCleanup,
   TICK_HZ,

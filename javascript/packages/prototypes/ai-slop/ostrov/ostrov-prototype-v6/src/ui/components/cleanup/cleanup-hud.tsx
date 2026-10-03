@@ -12,9 +12,9 @@ import type { TSetCleanupSpeedAction, TToggleCleanupPauseAction } from "../../..
 
 const STATE_LABEL: Readonly<Record<TIslandState, string>> = {
   active: "",
-  cleared: "зачищен",
-  sinking: "тонет",
-  sunk: "затонул",
+  cleared: "пристыкуйте",
+  attached: "присоединён",
+  lost: "унесло",
 };
 
 const countKinds = (roster: readonly TUnitId[]) => {
@@ -149,7 +149,7 @@ const CleanupIslandsPanel: FC = () => {
             </span>
 
             <span className="cleanup-islands__reward">
-              {`+${island.reward} гекс.`}
+              {island.state === "cleared" ? `${island.driftLeft} с` : island.state === "lost" ? "—" : `${island.hexes} гекс.`}
             </span>
           </div>
         </div>

@@ -33,7 +33,7 @@ type THexModalProps = {
 };
 
 /**
- * The modal the spec opens on the right when a hex is clicked: what the biome
+ * The modal the spec opens on the left, above the resources, when a hex is clicked: what the biome
  * is, the die of what stands on it, and which building suits it best. The hint is derived from the yield
  * tables, so it cannot drift away from them.
  */

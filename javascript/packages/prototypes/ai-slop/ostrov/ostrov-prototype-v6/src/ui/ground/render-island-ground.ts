@@ -1,19 +1,19 @@
-import badlandsTexture from "../../assets/biomes/badlands.png";
-import cliffsTexture from "../../assets/biomes/cliffs.png";
-import craterTexture from "../../assets/biomes/crater.png";
-import desertTexture from "../../assets/biomes/desert.png";
-import forrestTexture from "../../assets/biomes/forrest.png";
-import grasslandTexture from "../../assets/biomes/grassland.png";
-import hillsTexture from "../../assets/biomes/hills.png";
-import mountainsTexture from "../../assets/biomes/mountains.png";
-import plainsTexture from "../../assets/biomes/plains.png";
-import polarDesertTexture from "../../assets/biomes/polar_desert.png";
-import rainforestTexture from "../../assets/biomes/rainforest.png";
-import savannaTexture from "../../assets/biomes/savanna.png";
-import swampTexture from "../../assets/biomes/swamp.png";
-import taigaTexture from "../../assets/biomes/taiga.png";
-import tundraTexture from "../../assets/biomes/tundra.png";
-import volcanoTexture from "../../assets/biomes/volcano.png";
+import badlandsTexture from "../../assets/biomes/badlands.webp";
+import cliffsTexture from "../../assets/biomes/cliffs.webp";
+import craterTexture from "../../assets/biomes/crater.webp";
+import desertTexture from "../../assets/biomes/desert.webp";
+import forrestTexture from "../../assets/biomes/forrest.webp";
+import grasslandTexture from "../../assets/biomes/grassland.webp";
+import hillsTexture from "../../assets/biomes/hills.webp";
+import mountainsTexture from "../../assets/biomes/mountains.webp";
+import plainsTexture from "../../assets/biomes/plains.webp";
+import polarDesertTexture from "../../assets/biomes/polar_desert.webp";
+import rainforestTexture from "../../assets/biomes/rainforest.webp";
+import savannaTexture from "../../assets/biomes/savanna.webp";
+import swampTexture from "../../assets/biomes/swamp.webp";
+import taigaTexture from "../../assets/biomes/taiga.webp";
+import tundraTexture from "../../assets/biomes/tundra.webp";
+import volcanoTexture from "../../assets/biomes/volcano.webp";
 import { BIOMES } from "../../core/biomes";
 import { HEX_SIZE, hexToPixel } from "../../core/hex";
 import type { TBiomeId } from "../../core/types";
@@ -28,6 +28,12 @@ import type { TBiomeId } from "../../core/types";
  * each texture (its luminance) and a small noise, so one biome shows through
  * the other in clumps instead of a smooth gradient. The warp is well below
  * the hex inradius, so the centre of each hex always shows its own biome.
+ * The textures are inked map glyphs, and ink counts as high ground: tree
+ * crowns and peaks of one biome spill over the border into its neighbour.
+ *
+ * The look follows the parchment globe: a slow ink wash and paper grain over
+ * the land, a burnt brown edge along the coast, an ink outline and short
+ * hatching strokes on the water side.
  *
  * The coastline uses the same warp. It may bite at most about 0.2 hex sizes
  * into a rim hex, so the hit area of a hex is still almost all land.
@@ -49,7 +55,7 @@ type TIslandGroundOptions = {
   readonly seed?: number;
   /** Image pixels per world unit. The island canvas zooms up to 2.6. */
   readonly density?: number;
-  /** Colour of the coastline stroke, or null for no stroke. */
+  /** Ink of the coastline outline and hatching, or null for none. */
   readonly rimColor?: string | null;
 };
 
@@ -66,8 +72,8 @@ type TIslandGround = {
 };
 
 /** One texture tile covers this many world units for every biome. */
-const GROUND_TILE_SIZE = HEX_SIZE * 5;
-const TEXTURE_SIZE = 512;
+const GROUND_TILE_SIZE = HEX_SIZE * 6;
+const TEXTURE_SIZE = 1024;
 const ATLAS_COLUMNS = 4;
 const ATLAS_SIZE = TEXTURE_SIZE * ATLAS_COLUMNS;
 /** The axial lookup grid: q and r from -GRID_OFFSET to GRID_OFFSET - 1. */
@@ -77,7 +83,10 @@ const DEFAULT_DENSITY = 2.6;
 const MAX_IMAGE_SIDE = 4096;
 /** The coast grows out by the warp plus the rim stroke. */
 const MARGIN = HEX_SIZE * 0.8;
-const RIM_WIDTH = 3.5;
+/** Width of the ink coastline in world units. */
+const RIM_WIDTH = 2.2;
+/** The ink of the antique map, as on the globe. */
+const DEFAULT_INK = "#2b2015";
 const MAX_BIOMES = 16;
 
 const BIOME_TEXTURES: Readonly<Record<TBiomeId, string>> = {
@@ -138,11 +147,14 @@ const float SQRT3 = 1.7320508;
 const float WARP_AMP = 0.8;
 const float WARP_SCALE = 1.1;
 /** Soft-max sharpness of the biome score. Higher is a narrower blend. */
-const float SHARPNESS = 11.0;
-const float HEIGHT_WEIGHT = 0.11;
+const float SHARPNESS = 16.0;
+const float HEIGHT_WEIGHT = 0.2;
 const float CLUMP_WEIGHT = 0.16;
 const float COAST_GROW = 0.1;
 const float COAST_NIBBLE = 0.12;
+/** Coast hatching: stroke spacing in world units and reach in hex sizes. */
+const float HATCH_PERIOD = 2.6;
+const float HATCH_REACH = 0.22;
 
 const ivec2 NEIGHBOURS[7] = ivec2[7](
   ivec2(0, 0), ivec2(1, 0), ivec2(1, -1), ivec2(0, -1),
@@ -249,7 +261,8 @@ vec4 blendAround(vec2 pw, vec2 p) {
     }
     int index = biome - 1;
     vec3 tex = sampleBiome(index, p);
-    float height = (dot(tex, vec3(0.299, 0.587, 0.114)) - uMeanLum[index]) / 0.06;
+    // Ink is high ground: dark glyphs (tree crowns, peaks) push over the border.
+    float height = (uMeanLum[index] - dot(tex, vec3(0.299, 0.587, 0.114))) / 0.08;
     float clump = valueNoise(p / 7.0 + vec2(qr) * 13.7) - 0.5;
     float score = -hexSdf(pw - hexCenter(qr)) + HEIGHT_WEIGHT * clamp(height, -2.0, 2.0) + CLUMP_WEIGHT * clump;
     scores[i] = score;
@@ -286,8 +299,7 @@ void main() {
   float land = min(landDistance(pw) - COAST_GROW, landDistance(p) + nibble);
   float pixel = uPixel / uHexSize;
   float landAlpha = 1.0 - smoothstep(-pixel, pixel, land);
-  float rimAlpha = uRim.a * (1.0 - smoothstep(uRimWidth / uHexSize - pixel, uRimWidth / uHexSize + pixel, land));
-  if (landAlpha <= 0.0 && rimAlpha <= 0.0) {
+  if (land > HATCH_REACH + 0.08) {
     outColor = vec4(0.0);
     return;
   }
@@ -297,9 +309,33 @@ void main() {
     ground = blendAround(p, p);
   }
   vec3 color = ground.a > 0.0 ? ground.rgb / ground.a : uRim.rgb;
-  vec3 mixed = mix(uRim.rgb, color, landAlpha);
-  float alpha = max(landAlpha, rimAlpha);
-  outColor = vec4(mixed * alpha, alpha);
+
+  // Paper: a slow ink wash and a fine grain over the whole island.
+  color *= 0.9 + 0.2 * fbm(p / (uHexSize * 1.7) + vec2(11.0, 3.0));
+  color *= 0.97 + 0.06 * hash(gl_FragCoord.xy);
+  // Burnt edge: the land browns towards the coast, like the globe islands.
+  float burn = smoothstep(-0.24, 0.0, land) * (0.75 + 0.5 * valueNoise(p / 5.0));
+  color = mix(color, color * vec3(0.66, 0.53, 0.38), clamp(burn, 0.0, 1.0) * 0.75);
+
+  vec4 result = vec4(color * landAlpha, landAlpha);
+
+  // Hatching on the water side of the coast: short diagonal ink strokes that
+  // thin out with distance, as cartographers shade a shoreline.
+  float units = uHexSize;
+  float stripe = abs(fract(dot(p, vec2(0.7071, 0.7071)) / HATCH_PERIOD) - 0.5) * HATCH_PERIOD;
+  float stroke = 1.0 - smoothstep(0.35, 0.35 + uPixel, stripe);
+  float broken = smoothstep(0.3, 0.45, valueNoise(p / 3.0 + vec2(7.0, 1.0)));
+  float reach = HATCH_REACH * (0.6 + 0.6 * valueNoise(p / 9.0));
+  float hatchFade = step(0.0, land) * (1.0 - smoothstep(0.0, reach, land));
+  float hatchAlpha = stroke * broken * hatchFade * uRim.a * 0.55 * (1.0 - landAlpha);
+  result = result * (1.0 - hatchAlpha) + vec4(uRim.rgb * hatchAlpha, hatchAlpha);
+
+  // The ink outline itself, centred on the coast.
+  float halfLine = uRimWidth * 0.5 / units;
+  float lineAlpha = uRim.a * (1.0 - smoothstep(halfLine - pixel, halfLine + pixel, abs(land)));
+  result = result * (1.0 - lineAlpha) + vec4(uRim.rgb * lineAlpha, lineAlpha);
+
+  outColor = result;
 }
 `;
 
@@ -437,7 +473,7 @@ const parseColor = (color: string | null) => {
     parseInt(hex.slice(0, 2), 16) / 255,
     parseInt(hex.slice(2, 4), 16) / 255,
     parseInt(hex.slice(4, 6), 16) / 255,
-    hex.length >= 8 ? parseInt(hex.slice(6, 8), 16) / 255 : 0.85,
+    hex.length >= 8 ? parseInt(hex.slice(6, 8), 16) / 255 : 0.9,
   ] as const;
 };
 
@@ -499,7 +535,7 @@ const renderIslandGround = async (
   gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
   gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8UI, GRID_SIZE, GRID_SIZE, 0, gl.RED_INTEGER, gl.UNSIGNED_BYTE, grid);
 
-  const rim = parseColor(options.rimColor === undefined ? "#b6f05a" : options.rimColor);
+  const rim = parseColor(options.rimColor === undefined ? DEFAULT_INK : options.rimColor);
   gl.uniform2f(gl.getUniformLocation(program, "uOrigin"), x, y);
   gl.uniform2f(gl.getUniformLocation(program, "uSize"), width, height);
   gl.uniform1f(gl.getUniformLocation(program, "uHexSize"), HEX_SIZE);

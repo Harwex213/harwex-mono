@@ -1,4 +1,4 @@
-import { annexHexes, createLevel } from "../core/cleanup-level";
+import { createLevel, joinAnnexed } from "../core/cleanup-level";
 import {
   cleanupResult,
   createCleanup,
@@ -178,9 +178,9 @@ const finishClearingAction = (store: TStore) => {
     const peopleLost = result.lost.reduce((sum, unitId) => sum + getUnit(unitId).upkeep, 0);
     const damage = applyStructureDamage(player, result);
     ruinedNow = damage.ruinedNow;
-    const rng = createRng(hashSeed(`${store.game.nickname.peek()}:annex:${store.game.turn.peek()}`));
     const damaged = withIslandHexes(player, damage.hexes);
-    const grown = result.annexed.length > 0 ? annexHexes(damaged.island, result.annexed, rng) : damaged.island;
+    // The islands that joined in battle keep their exact battle coordinates.
+    const grown = joinAnnexed(damaged.island, result.annexed);
 
     next = {
       ...withIslandHexes(damaged, grown.hexes),

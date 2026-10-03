@@ -36,15 +36,15 @@ type TBody = {
   vy: number;
   /** Inverse mass. A heavier island shoves a lighter one further. */
   invMass: number;
-  /** Hex centres relative to the body position. */
-  readonly localX: Float64Array;
-  readonly localY: Float64Array;
+  /** Hex centres relative to the body position. They grow when an island joins. */
+  localX: Float64Array;
+  localY: Float64Array;
   /** Centroid of the hexes, relative to the body position. */
-  readonly centerX: number;
-  readonly centerY: number;
+  centerX: number;
+  centerY: number;
   /** Centroid to the farthest hex corner. */
-  readonly radius: number;
-  /** A body that is sinking takes no part in collisions. */
+  radius: number;
+  /** A body that has joined another island, or drifted off, takes no part in collisions. */
   solid: boolean;
   /**
    * An anchored body is not pushed by an unanchored one: a guarded enemy

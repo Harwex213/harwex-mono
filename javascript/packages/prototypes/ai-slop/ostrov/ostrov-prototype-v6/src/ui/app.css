@@ -19,6 +19,13 @@
   /* One height for the resources, tools and buildings panels. It fits the two
      stacked tool buttons and a building card with a two-line name. */
   --hud-row-height: 132px;
+  /* The distance from the screen edge to the HUD panels. */
+  --hud-edge: 16px;
+  /* The end-turn panel: the banner, the 224px wheel, the caption and the
+     padding. The hex modal stacks on top of it when the bar wraps. */
+  --end-turn-height: 330px;
+  /* The tallest players panel in the top-left corner. */
+  --players-panel-height: 312px;
 }
 
 * {
@@ -159,8 +166,12 @@ body {
    resources panels add about 40px of padding and gap, so the bar switches
    40px earlier than with one panel. */
 @media (max-width: 1739px) {
+  /* The second row keeps the common row height, so the first row takes the
+     extra height of the end-turn panel. The resources then sit one row and
+     one gap above the bottom, and the hex modal can stack on top of them. */
   .island-page__bottom:has(> .island-page__actions) {
     grid-template-columns: 1fr auto;
+    grid-template-rows: auto var(--hud-row-height);
   }
 
   .island-page__bottom:has(> .island-page__actions) > .resources-panels {
@@ -913,15 +924,59 @@ body {
 
 /* --- hex modal --- */
 
+/* The modal sits on the left, above the resources of the bottom bar. Its
+   bottom offset follows the bar layout. Its height stops below the players
+   panel, and the content scrolls when it does not fit. Without the bar (the
+   start phase, a read-only island) the modal sits on the bottom edge. */
 .hex-modal {
+  --hex-modal-bottom: var(--hud-edge);
   position: absolute;
-  top: 88px;
-  right: 16px;
+  bottom: var(--hex-modal-bottom);
+  left: var(--hud-edge);
   z-index: 6;
   width: 320px;
-  max-height: calc(100% - 264px);
+  max-height: calc(100% - var(--hex-modal-bottom) - var(--hud-edge) - var(--players-panel-height) - var(--gap));
   padding: 16px;
   overflow-y: auto;
+  animation: hex-modal-slide-in 0.35s cubic-bezier(0.2, 0.8, 0.3, 1) both;
+}
+
+/* One row: the resources stand on the bottom edge of the bar. */
+.island-page__bottom ~ .hex-modal {
+  --hex-modal-bottom: calc(var(--hud-edge) + var(--hud-row-height) + var(--gap));
+}
+
+/* Two rows: the resources stand on top of the tools and buildings row. */
+@media (max-width: 1739px) {
+  .island-page__bottom ~ .hex-modal {
+    --hex-modal-bottom: calc(var(--hud-edge) + 2 * var(--hud-row-height) + 2 * var(--gap));
+  }
+}
+
+/* Wrapped: the tools and buildings row spans the full width above the
+   end-turn panel, so the modal stacks on top of that row. */
+@media (max-width: 1103px) {
+  .island-page__bottom ~ .hex-modal {
+    --hex-modal-bottom: calc(var(--hud-edge) + var(--end-turn-height) + var(--hud-row-height) + 2 * var(--gap));
+  }
+}
+
+@keyframes hex-modal-slide-in {
+  from {
+    transform: translateX(-120%);
+    opacity: 0;
+  }
+
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hex-modal {
+    animation: none;
+  }
 }
 
 .hex-modal__close {
@@ -1760,10 +1815,14 @@ body {
   border-bottom: none;
 }
 
-.cleanup-islands__row--cleared,
-.cleanup-islands__row--sinking,
-.cleanup-islands__row--sunk {
+.cleanup-islands__row--attached,
+.cleanup-islands__row--lost {
   opacity: 0.6;
+}
+
+.cleanup-islands__row--cleared .cleanup-islands__state {
+  color: #7a5320;
+  font-weight: 700;
 }
 
 .cleanup-islands__line {
@@ -2365,7 +2424,8 @@ body {
 /* The column sits under the top edge and stops above the bottom bar. The
    reserve is the end-turn panel (about 330px) plus the bar's margin and gap.
    Below 1104px the tools and buildings row wraps above the bar, so the
-   reserve grows by that row. */
+   reserve grows by that row. When the column is shorter than the panel, the
+   flask shrinks first, down to its minimum height. */
 .island-page__right {
   --toxic-reserve: 380px;
   position: absolute;
@@ -2421,19 +2481,21 @@ body {
   flex-direction: column;
   gap: 6px;
   align-items: center;
-  width: 200px;
+  width: 148px;
   min-height: 0;
-  padding: 10px 12px 12px;
+  padding: 10px 8px 12px;
   overflow-x: hidden;
   overflow-y: auto;
   transition: border-color 0.4s ease, box-shadow 0.4s ease;
 }
 
+/* The icon sits above the title, so the panel can stay narrow. */
 .toxic-panel__head {
   display: flex;
-  gap: 8px;
+  flex: none;
+  flex-direction: column;
+  gap: 2px;
   align-items: center;
-  justify-content: center;
 }
 
 .toxic-panel .toxic-panel__icon {
@@ -2449,20 +2511,19 @@ body {
   letter-spacing: 0.5px;
 }
 
+/* A slim, tall flask: 480px when the screen has room, never under 160px. */
 .toxic-meter__flask {
   display: flex;
   flex-direction: column;
-  flex: 1 1 auto;
+  flex: 0 1 480px;
   align-items: center;
-  width: 64px;
-  min-height: 120px;
-  max-height: 280px;
-  height: 240px;
+  width: 40px;
+  min-height: 160px;
 }
 
 .toxic-meter__neck {
   flex: none;
-  width: 28px;
+  width: 20px;
   height: 14px;
   border: 2px solid rgba(200, 222, 232, 0.5);
   border-bottom: none;
@@ -2477,7 +2538,7 @@ body {
   min-height: 0;
   overflow: hidden;
   border: 2px solid rgba(200, 222, 232, 0.55);
-  border-radius: 10px 10px 28px 28px;
+  border-radius: 8px 8px 20px 20px;
   background: linear-gradient(90deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02) 40%, rgba(255, 255, 255, 0.1));
   box-shadow: inset 0 0 12px rgba(0, 0, 0, 0.6);
   transition: border-color 0.4s ease, box-shadow 0.4s ease;
@@ -2507,6 +2568,7 @@ body {
 }
 
 .toxic-meter__counter {
+  flex: none;
   color: var(--text-dim);
   font-size: 14px;
   text-align: center;
@@ -2519,10 +2581,12 @@ body {
 }
 
 .toxic-meter__status {
-  padding: 2px 8px;
+  flex: none;
+  max-width: 100%;
+  padding: 2px 4px;
   border-radius: 6px;
   color: var(--level-color);
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 700;
   line-height: 1.2;
   text-align: center;

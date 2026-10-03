@@ -1,6 +1,6 @@
 import { useSignals } from "@preact/signals-react/runtime";
 import { useEffect, useRef } from "react";
-import { drainEvents, summarizeCleanup, TICK_SECONDS } from "../../../core/cleanup-sim";
+import { ATTACH_PULL_SECONDS, drainEvents, summarizeCleanup, TICK_SECONDS } from "../../../core/cleanup-sim";
 import { useStore } from "../../../store/store";
 import { absorbEvents, drawScene, pruneEffects } from "./cleanup-render";
 import { bakeIsland, releaseSprite } from "./island-sprites";
@@ -125,7 +125,10 @@ const CleanupCanvas: FC<TCleanupCanvasProps> = ({ registry }) => {
       sprites: sim.islands.map(() => null),
       effects: [],
       hatch: null,
+      playerBakedHexes: 0,
+      playerAt: null,
     };
+    let rebaking = false;
     // Without WebGL2 the sky is the plain slate of the stage's CSS background.
     const sky = createSky(skyRef.current, "under", sim.seed);
     const veil = createSky(veilRef.current, "over", sim.seed + 1);
@@ -135,7 +138,8 @@ const CleanupCanvas: FC<TCleanupCanvasProps> = ({ registry }) => {
 
     sim.islands.forEach((island) => {
       const seedKey = island.side === "player" ? playerId : `${sim.seed}:${island.id}`;
-      bakeIsland(island.hexes, island.side, seedKey)
+      const hexCount = island.hexes.length;
+      bakeIsland([...island.hexes], island.side, seedKey)
         .then((sprite) => {
           if (cancelled) {
             releaseSprite(sprite);
@@ -144,6 +148,9 @@ const CleanupCanvas: FC<TCleanupCanvasProps> = ({ registry }) => {
           }
 
           scene.sprites[island.index] = sprite;
+          if (island.index === 0) {
+            scene.playerBakedHexes = hexCount;
+          }
         })
         .catch((error: unknown) => {
           console.error(error);
@@ -238,6 +245,38 @@ const CleanupCanvas: FC<TCleanupCanvasProps> = ({ registry }) => {
       }
 
       const alpha = sim.status === "running" ? clamp(accumulator / TICK_SECONDS, 0, 1) : 1;
+
+      // An island joined: once its pull-in has played, the player's island is
+      // baked again with the new hex set, so the seam blends like any other.
+      const home = sim.islands[0];
+      const pulling = sim.islands.some((island) => {
+        return island.attach !== null && (sim.tick - island.attach.tick) * TICK_SECONDS < ATTACH_PULL_SECONDS;
+      });
+      if (home && !rebaking && !pulling && scene.playerBakedHexes > 0 && home.hexes.length > scene.playerBakedHexes) {
+        rebaking = true;
+        const hexCount = home.hexes.length;
+        bakeIsland([...home.hexes], "player", playerId)
+          .then((sprite) => {
+            if (cancelled) {
+              releaseSprite(sprite);
+
+              return;
+            }
+
+            const old = scene.sprites[0];
+            scene.sprites[0] = sprite;
+            scene.playerBakedHexes = hexCount;
+            if (old) {
+              releaseSprite(old);
+            }
+          })
+          .catch((error: unknown) => {
+            console.error(error);
+          })
+          .finally(() => {
+            rebaking = false;
+          });
+      }
       const simTime = sim.tick * TICK_SECONDS;
       absorbEvents(scene, sim, drainEvents(sim), simTime);
       pruneEffects(scene, simTime);

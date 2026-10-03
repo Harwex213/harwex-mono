@@ -72,8 +72,6 @@ type TIslandSpec = {
   readonly y: number;
   /** Monsters that start on the island. Empty for the player's island. */
   readonly garrison: readonly TEnemyId[];
-  /** Hexes the player annexes when this island is cleared. */
-  readonly reward: number;
 };
 
 /** The map border: a rectangle centred on the world origin. */
@@ -101,8 +99,13 @@ type TLevelSetup = {
   readonly roster: readonly TUnitId[];
 };
 
-/** A hex that joins the player's island when an enemy island is cleared. */
+/**
+ * A hex that joined the player's island in battle, in the player's own axial
+ * coordinates: the island keeps exactly the shape it had at the end of the battle.
+ */
 type TAnnexedHex = {
+  readonly q: number;
+  readonly r: number;
   readonly biome: TBiomeId;
   readonly toxicity: number;
 };
@@ -248,7 +251,6 @@ const createLevel = (setup: TLevelSetup, rng: TRng): TLevelSpec => {
       x: -own.cx,
       y: -own.cy,
       garrison: [],
-      reward: 0,
     },
   ];
 
@@ -291,7 +293,6 @@ const createLevel = (setup: TLevelSetup, rng: TRng): TLevelSpec => {
       x: x - extent.cx,
       y: y - extent.cy,
       garrison,
-      reward: Math.min(hexes.length, 1 + Math.floor(tier / 2) + randomInt(rng, 0, 1)),
     });
   }
 
@@ -308,45 +309,23 @@ const createLevel = (setup: TLevelSetup, rng: TRng): TLevelSpec => {
 };
 
 /**
- * Glues annexed hexes to the rim of the player's island. A free cell with more
- * island neighbours is taken first, so the island grows compact.
+ * Adds the hexes that joined in battle at exactly their battle coordinates.
+ * A hex id that is somehow already taken is skipped, never moved.
  */
-const annexHexes = (island: TIsland, gains: readonly TAnnexedHex[], rng: TRng): TIsland => {
-  const hexes = [...island.hexes];
-
-  for (const gain of gains) {
-    const present = new Set(hexes.map((hex) => hex.id));
-    const frontier = new Map<string, { q: number; r: number; weight: number }>();
-
-    for (const hex of hexes) {
-      for (const cell of hexNeighbors(hex.q, hex.r)) {
-        const key = hexId(cell.q, cell.r);
-        if (present.has(key)) {
-          continue;
-        }
-
-        const entry = frontier.get(key) ?? { q: cell.q, r: cell.r, weight: 0 };
-        frontier.set(key, { ...entry, weight: entry.weight + 1 });
-      }
-    }
-
-    if (frontier.size === 0) {
-      break;
-    }
-
-    const cell = pickWeighted(rng, [...frontier.values()], (candidate) => Math.pow(candidate.weight, 3));
-
-    hexes.push({
-      id: hexId(cell.q, cell.r),
-      q: cell.q,
-      r: cell.r,
+const joinAnnexed = (island: TIsland, gains: readonly TAnnexedHex[]): TIsland => {
+  const taken = new Set(island.hexes.map((hex) => hex.id));
+  const added = gains
+    .filter((gain) => !taken.has(hexId(gain.q, gain.r)))
+    .map((gain) => ({
+      id: hexId(gain.q, gain.r),
+      q: gain.q,
+      r: gain.r,
       biome: gain.biome,
       building: null,
       toxicity: gain.toxicity,
-    });
-  }
+    }));
 
-  return { hexes };
+  return { hexes: [...island.hexes, ...added] };
 };
 
 export type {
@@ -359,4 +338,4 @@ export type {
   TLevelSetup,
   TLevelSpec,
 };
-export { annexHexes, createLevel, islandExtent, raidTier };
+export { createLevel, islandExtent, joinAnnexed, raidTier };
