@@ -1,6 +1,6 @@
 //! Tool window strips and islands, like IDEA's New UI. The left strip toggles the left panel
-//! (top group) and the bottom panel (bottom group); the right strip holds Notifications. One
-//! tool window per side is visible at a time.
+//! (top group) and the bottom panel (bottom group). There is no right strip. One tool window per
+//! side is visible at a time.
 
 use egui::{pos2, vec2, Frame, Id, Margin, Rect, Response, RichText, Sense, Stroke, Ui, UiBuilder, Vec2};
 
@@ -141,19 +141,10 @@ pub fn left_strip(ui: &mut Ui, layout: &mut Layout, badge: impl Fn(ToolWindow) -
         let rect = Rect::from_min_size(pos2(x, full.min.y + 2.0 + i as f32 * step), vec2(b, b));
         strip_button(ui, rect, layout, w, badge(w));
     }
-    let lower = [ToolWindow::Git, ToolWindow::Usages, ToolWindow::Terminal];
-    for (i, w) in lower.into_iter().rev().enumerate() {
+    for (i, w) in ToolWindow::BOTTOM.into_iter().rev().enumerate() {
         let rect = Rect::from_min_size(pos2(x, full.max.y - b - 2.0 - i as f32 * step), vec2(b, b));
         strip_button(ui, rect, layout, w, badge(w));
     }
-}
-
-/// The right strip: Notifications, like IDEA. The window itself opens in the bottom slot.
-pub fn right_strip(ui: &mut Ui, layout: &mut Layout, badge: impl Fn(ToolWindow) -> usize) {
-    let full = ui.max_rect();
-    let b = T.space.strip_button;
-    let rect = Rect::from_min_size(pos2(full.center().x - b / 2.0, full.min.y + 2.0), vec2(b, b));
-    strip_button(ui, rect, layout, ToolWindow::Notifications, badge(ToolWindow::Notifications));
 }
 
 fn strip_button(ui: &mut Ui, rect: Rect, layout: &mut Layout, w: ToolWindow, badge: usize) {
@@ -218,6 +209,12 @@ pub fn island(inner: f32) -> Frame {
 /// The header line of a tool window: the title on the left, `extra` (tabs, actions) after it,
 /// and the hide button on the right. Returns true when the hide button was clicked.
 pub fn header(ui: &mut Ui, title: &str, extra: impl FnOnce(&mut Ui)) -> bool {
+    header_with_actions(ui, title, extra, |_| {})
+}
+
+/// Like `header`, with `actions` (icon buttons) drawn right to left, left of the hide button,
+/// like IDEA's tool window actions.
+pub fn header_with_actions(ui: &mut Ui, title: &str, extra: impl FnOnce(&mut Ui), actions: impl FnOnce(&mut Ui)) -> bool {
     let t = &T;
     let mut hide = false;
     let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), t.space.header_h), Sense::hover());
@@ -229,6 +226,7 @@ pub fn header(ui: &mut Ui, title: &str, extra: impl FnOnce(&mut Ui)) -> bool {
     if icon_button(&mut right, Icon::Minus, &format!("Hide {title}"), "Hide").clicked() {
         hide = true;
     }
+    actions(&mut right);
     let used_right = rect.max.x - right.min_rect().min.x;
     let rest = Rect::from_min_max(pos2(child.cursor().min.x, rect.min.y), pos2(rect.max.x - used_right - 8.0, rect.max.y));
     let mut extra_ui = child.new_child(UiBuilder::new().max_rect(rest).layout(egui::Layout::left_to_right(egui::Align::Center)));

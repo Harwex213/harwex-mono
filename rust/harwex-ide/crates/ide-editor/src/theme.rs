@@ -24,6 +24,30 @@ pub struct EditorTheme {
     pub mark_added: Color32,
     pub mark_modified: Color32,
     pub mark_deleted: Color32,
+    /// Find bar: a match in the text, the current match while In Selection keeps the
+    /// selection, the outline of an excluded match and the marks on the scrollbar.
+    pub find_match: Color32,
+    pub find_current: Color32,
+    pub find_excluded: Color32,
+    pub find_scroll_mark: Color32,
+    /// Scrollbar marks of the carets when there are several.
+    pub caret_scroll_mark: Color32,
+    /// Find bar surfaces: the bar, its bottom line, the input fields and their borders (the
+    /// focused one, and the fill of a query without matches).
+    pub find_bar: Color32,
+    pub find_bar_border: Color32,
+    pub find_field: Color32,
+    pub find_field_border: Color32,
+    pub find_field_focus: Color32,
+    pub find_field_no_match: Color32,
+    /// Find bar text, dimmed text (hints, counter), icons, hover fill, an active toggle's fill
+    /// and the error text of a bad regex.
+    pub find_text: Color32,
+    pub find_text_dim: Color32,
+    pub find_icon: Color32,
+    pub find_hover: Color32,
+    pub find_toggle_on: Color32,
+    pub find_error: Color32,
     /// Indexed by `HlKind as usize`.
     pub kinds: [Color32; HlKind::COUNT],
 }
@@ -74,6 +98,23 @@ impl EditorTheme {
             mark_added: hex(0x549159),
             mark_modified: hex(0x375FAD),
             mark_deleted: hex(0x868A91),
+            find_match: hex(0x32593D),
+            find_current: hex(0x4C8A55),
+            find_excluded: hex(0x868A91),
+            find_scroll_mark: hex(0x6AAB73),
+            caret_scroll_mark: hex(0xA1A3AB),
+            find_bar: hex(0x2B2D30),
+            find_bar_border: hex(0x393B40),
+            find_field: hex(0x1E1F22),
+            find_field_border: hex(0x4E5157),
+            find_field_focus: hex(0x3574F0),
+            find_field_no_match: hex(0x4A2B2B),
+            find_text: hex(0xDFE1E5),
+            find_text_dim: hex(0x868A91),
+            find_icon: hex(0xCED0D6),
+            find_hover: hex(0x393B40),
+            find_toggle_on: hex(0x2E436E),
+            find_error: hex(0xF0524F),
             kinds,
         }
     }
@@ -113,6 +154,23 @@ impl EditorTheme {
             mark_added: hex(0x5A7A5A),
             mark_modified: hex(0x587283),
             mark_deleted: hex(0x656E76),
+            find_match: hex(0x32593D),
+            find_current: hex(0x4C8A55),
+            find_excluded: hex(0x868A91),
+            find_scroll_mark: hex(0x6AAB73),
+            caret_scroll_mark: hex(0xA1A3AB),
+            find_bar: hex(0x2B2D30),
+            find_bar_border: hex(0x393B40),
+            find_field: hex(0x1E1F22),
+            find_field_border: hex(0x4E5157),
+            find_field_focus: hex(0x3574F0),
+            find_field_no_match: hex(0x4A2B2B),
+            find_text: hex(0xDFE1E5),
+            find_text_dim: hex(0x868A91),
+            find_icon: hex(0xCED0D6),
+            find_hover: hex(0x393B40),
+            find_toggle_on: hex(0x2E436E),
+            find_error: hex(0xF0524F),
             kinds,
         }
     }

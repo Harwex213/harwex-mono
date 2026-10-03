@@ -19,6 +19,9 @@
 //!
 //! [memory]
 //! interval_secs = 15                  # how often the status bar's memory indicator samples
+//!
+//! [project]
+//! excluded = ["dist", "build/out"]    # hidden from Search Everywhere and Find in Files
 //! ```
 //!
 //! A missing file means defaults. A broken file also means defaults, plus a warning.
@@ -59,6 +62,8 @@ pub struct IdeConfig {
     pub rust: RustConfig,
     /// How often the memory indicator samples. At least one second.
     pub memory_interval: Duration,
+    /// `[project] excluded`: folders relative to the root, `/`-separated, no trailing slash.
+    pub excluded: Vec<String>,
     /// Problems to show once (parse errors, unknown keys or language names).
     pub warnings: Vec<String>,
     /// Where the file was read from; `None` when there is none.
@@ -74,6 +79,7 @@ impl Default for IdeConfig {
             rust_idle_timeout: None,
             rust: RustConfig::default(),
             memory_interval: crate::memory::DEFAULT_INTERVAL,
+            excluded: Vec::new(),
             warnings: Vec::new(),
             source: None,
         }
@@ -144,10 +150,31 @@ impl IdeConfig {
                         }
                     }
                 }
+                "project" => {
+                    for (k, v) in value.as_table().into_iter().flatten() {
+                        match (k.as_str(), v.as_array()) {
+                            ("excluded", Some(items)) => {
+                                for item in items {
+                                    match item.as_str() {
+                                        Some(s) if !s.trim_matches('/').is_empty() => config.excluded.push(s.trim_matches('/').to_string()),
+                                        _ => config.warnings.push(format!("{CONFIG_PATH}: project.excluded must list folder paths, not {item}")),
+                                    }
+                                }
+                            }
+                            ("excluded", None) => config.warnings.push(format!("{CONFIG_PATH}: project.excluded must be a list like [\"dist\"]")),
+                            (other, _) => config.warnings.push(format!("{CONFIG_PATH}: unknown key project.{other}")),
+                        }
+                    }
+                }
                 other => config.warnings.push(format!("{CONFIG_PATH}: unknown key {other}")),
             }
         }
         config
+    }
+
+    /// The excluded folders as absolute paths under `root`.
+    pub fn excluded_paths(&self, root: &Path) -> Vec<PathBuf> {
+        self.excluded.iter().map(|rel| root.join(rel)).collect()
     }
 
     pub fn enabled(&self, lang: LangId) -> bool {

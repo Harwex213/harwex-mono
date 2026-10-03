@@ -25,16 +25,24 @@ fn layout_renders_with_git_colors() {
     ide.assert_text("Branch main");
     ide.snapshot("layout");
 
-    // A click on a directory row expands it; its children load on a worker.
+    // Like IDEA, a click on a folder row selects it and does not expand it.
     ide.click("src");
+    assert!(ide.is_selected("src"));
+    assert!(!ide.has("src/app.ts"), "a single click does not expand");
+    // A double click expands it; its children load on a worker.
+    ide.double_click("src");
     ide.wait_until("src children listed", |ide| ide.has("src/app.ts"));
-    ide.click("src/core");
+    // A click on the chevron toggles at once.
+    ide.click("Expand src/core");
     ide.wait_until("core children listed", |ide| ide.has("src/core/deep"));
+    assert!(ide.has("Collapse src/core") && ide.has("Expand src/core/deep"));
     assert!(ide.has("src/added.ts") && ide.has("src/util.ts"));
-    ide.snapshot("tree_expanded");
+    // Files have no chevron.
+    assert!(!ide.has("Expand src/util.ts"));
+    ide.snapshot("tree_chevrons");
 
-    // A second click collapses it again.
-    ide.click("src");
+    // A second double click collapses it again.
+    ide.double_click("src");
     ide.wait_until("src collapsed", |ide| !ide.has("src/app.ts"));
 }
 
@@ -43,7 +51,7 @@ fn tabs_open_and_close() {
     let fx = Fixture::new(SUITE, "tabs");
     let repo = basic_repo(fx.path("repo"));
     let mut ide = Ide::open(SUITE, &repo.dir);
-    ide.click("src");
+    ide.double_click("src");
     ide.wait_until("src listed", |ide| ide.has("src/app.ts"));
 
     // Double-click opens a file from the tree.
@@ -204,22 +212,27 @@ fn find_in_files() {
     assert_eq!((c.line, c.column), (3, 12));
 }
 
+/// The status bar holds the breadcrumbs on the left, the language and the memory indicator on
+/// the right. It shows no caret position and no branch; the branch lives in the title bar.
 #[test]
-fn status_bar_shows_caret_language_and_branch() {
+fn status_bar_shows_language_without_caret_or_branch() {
     let fx = Fixture::new(SUITE, "status");
     let repo = basic_repo(fx.path("repo"));
     repo.git(&["checkout", "-q", "-b", "topic"]);
     let mut ide = Ide::open(SUITE, &repo.dir);
     ide.open_file("src/app.ts");
-    // A click in the text moves the caret; the status bar follows (1-based).
     let p = ide.caret_pos(3, 8);
     ide.click_at(p);
     ide.settle();
     let c = ide.state().tabs.active_editor().map(|e| e.view.cursor()).expect("editor");
     assert_eq!((c.line, c.column), (3, 8));
-    ide.assert_text("4:9");
+    ide.assert_no_text("4:9");
     ide.assert_text("TypeScript");
-    ide.assert_text("topic");
+    assert!(!ide.has("topic"), "no branch label in the status bar");
+    let branch = ide.rect("Branch topic");
+    assert!(branch.max.y < 100.0, "the branch stays in the title bar: {branch:?}");
+    let crumb = ide.rect("Breadcrumb app.ts");
+    assert!(crumb.min.y > SIZE.y - harwex_ide::theme::T.space.status_h - 2.0, "the breadcrumbs stay in the status bar: {crumb:?}");
     ide.snapshot("status_bar");
 }
 
@@ -248,8 +261,8 @@ fn tool_window_toggles() {
     assert_eq!(ide.state().layout.bottom, None);
     ide.snapshot("all_hidden");
 
-    // The title bar's Commit button opens the Commit window.
-    ide.click("Commit");
+    // Cmd+K opens the Commit window.
+    ide.cmd(Key::K);
     ide.settle();
     assert_eq!(ide.state().layout.left, Some(ToolWindow::Commit));
 }
@@ -307,36 +320,274 @@ fn empty_editor_hints_and_recent_files() {
     assert!(!ide.state().search.open);
 }
 
-/// The title bar: project badge and name, the branch widget, and the icon buttons on the right.
+/// The title bar: project badge and name, Settings, then the current branch. The branch is
+/// display-only; Ctrl+Shift+` opens the branches popup.
 #[test]
 fn title_bar_widgets() {
     let fx = Fixture::new(SUITE, "title_bar");
     let repo = changed_repo(fx.path("harwex-mono"));
     let mut ide = Ide::open(SUITE, &repo.dir);
-    for label in ["Project harwex-mono", "Branch main", "Update", "Commit", "Push", "Search", "Settings"] {
+    for label in ["Project harwex-mono", "Settings", "Branch main"] {
         assert!(ide.has(label), "title bar has {label:?}; {:?}", ide.labels());
+    }
+    // Update, Commit, Push and Search Everywhere live on their shortcuts only.
+    for label in ["Update", "Commit", "Push", "Search"] {
+        assert!(!ide.has(label), "the title bar has no {label:?} button");
     }
     assert_eq!(harwex_ide::app::initials("harwex-mono"), "HM");
     let title_h = harwex_ide::theme::T.space.title_h;
-    for label in ["Project harwex-mono", "Branch main", "Push", "Settings"] {
+    for label in ["Project harwex-mono", "Settings", "Branch main"] {
         let r = ide.rect(label);
         assert!(r.min.y >= 0.0 && r.max.y <= title_h, "{label} sits inside the title bar: {r:?}");
     }
-    // The widgets read left to right: badge and project, branch; icon buttons at the right edge.
-    assert!(ide.rect("Project harwex-mono").max.x <= ide.rect("Branch main").min.x);
-    assert!(ide.rect("Update").max.x <= ide.rect("Commit").min.x && ide.rect("Commit").max.x <= ide.rect("Push").min.x);
-    assert!(ide.rect("Search").max.x <= ide.rect("Settings").min.x);
-    ide.hover("Branch main");
-    ide.snapshot_here("title_bar");
+    // Left to right: badge and project, Settings, branch.
+    assert!(ide.rect("Project harwex-mono").max.x <= ide.rect("Settings").min.x);
+    assert!(ide.rect("Settings").max.x <= ide.rect("Branch main").min.x);
+    assert!(ide.rect("Branch main").max.x < 640.0, "the whole group sits on the left");
+    ide.snapshot("title_bar");
 
-    // Settings opens a menu; the Search button opens Search Everywhere.
+    // A click on the branch does nothing.
+    ide.click("Branch main");
+    ide.settle();
+    assert!(!ide.state().git_ui.branches.is_open());
+    // Ctrl+Shift+` opens the branches popup below the branch, and closes it again.
+    ide.key_mods(CTRL_SHIFT, Key::Backtick);
+    ide.wait_until("branches popup", |ide| ide.state().git_ui.branches.is_open() && ide.has("Fetch"));
+    ide.key_mods(CTRL_SHIFT, Key::Backtick);
+    ide.settle();
+    assert!(!ide.state().git_ui.branches.is_open());
+
+    // Settings opens a menu.
     ide.click("Settings");
     ide.settle();
     ide.assert_text("Open Folder...");
     ide.key(Key::Escape);
-    ide.click("Search");
+    ide.settle();
+
+    // The shortcuts of the removed buttons still work.
+    ide.double_shift();
     ide.settle();
     assert!(ide.state().search.open && !ide.state().search.recent_mode);
+    ide.key(Key::Escape);
+    ide.settle();
+    ide.cmd(Key::K);
+    ide.settle();
+    assert_eq!(ide.state().layout.left, Some(ToolWindow::Commit));
+}
+
+fn tree_focused(ide: &Ide) -> bool {
+    harwex_ide::tree::has_focus(&ide.ctx())
+}
+
+/// The selected tree row is blue while the tree has keyboard focus and grey once the focus
+/// moves to the editor. A hovered row that is not selected gets only a faint fill.
+#[test]
+fn tree_selection_follows_focus() {
+    let fx = Fixture::new(SUITE, "tree_selection");
+    let repo = basic_repo(fx.path("repo"));
+    let mut ide = Ide::open(SUITE, &repo.dir);
+    assert!(!tree_focused(&ide));
+    ide.double_click("src");
+    ide.wait_until("src listed", |ide| ide.has("src/util.ts"));
+    ide.click("src/util.ts");
+    assert!(tree_focused(&ide) && ide.is_selected("src/util.ts"));
+    ide.hover("docs");
+    ide.snapshot_here("tree_selection_focused");
+
+    // A double click opens the file; the editor takes the focus and the row turns grey.
+    ide.double_click("src/util.ts");
+    ide.wait_for("util.ts tab", |s| s.tabs.active_editor().is_some());
+    ide.settle();
+    assert!(ide.is_focused("Editor util.ts") && !tree_focused(&ide));
+    assert!(ide.is_selected("src/util.ts"));
+    ide.snapshot("tree_selection_unfocused");
+
+    // A click on a row brings the focus back to the tree.
+    ide.click("src/app.ts");
+    assert!(tree_focused(&ide) && ide.is_selected("src/app.ts"));
+    // Escape hands the focus back to the editor.
+    ide.key(Key::Escape);
+    ide.settle();
+    assert!(ide.is_focused("Editor util.ts") && !tree_focused(&ide));
+}
+
+/// The keyboard in the tree, like IDEA: Up and Down move, Right expands or steps in, Left
+/// collapses or goes to the parent, Enter toggles a folder or opens a file.
+#[test]
+fn tree_keyboard() {
+    let fx = Fixture::new(SUITE, "tree_keys");
+    let repo = basic_repo(fx.path("repo"));
+    let mut ide = Ide::open(SUITE, &repo.dir);
+    let root = ide.root();
+    let selected = |ide: &Ide| ide.state().tree.selected.as_ref().map(|p| p.strip_prefix(&root).expect("under root").display().to_string());
+    // Rows: docs, src, .gitignore, README.md.
+    ide.click("docs");
+    ide.key(Key::ArrowDown);
+    assert_eq!(selected(&ide).as_deref(), Some("src"));
+    ide.key(Key::ArrowRight);
+    ide.wait_until("src expanded", |ide| ide.has("src/app.ts"));
+    assert_eq!(selected(&ide).as_deref(), Some("src"), "Right expands first");
+    ide.key(Key::ArrowRight);
+    assert_eq!(selected(&ide).as_deref(), Some("src/core"), "then steps into the folder");
+    ide.key(Key::Enter);
+    ide.wait_until("core expanded", |ide| ide.has("src/core/deep"));
+    ide.key(Key::ArrowDown);
+    assert_eq!(selected(&ide).as_deref(), Some("src/core/deep"));
+    // Left on a collapsed folder goes to its parent; on an expanded one it collapses.
+    ide.key(Key::ArrowLeft);
+    assert_eq!(selected(&ide).as_deref(), Some("src/core"));
+    ide.key(Key::ArrowLeft);
+    ide.settle();
+    assert!(!ide.has("src/core/deep"));
+    ide.key(Key::ArrowDown);
+    ide.key(Key::ArrowDown);
+    assert_eq!(selected(&ide).as_deref(), Some("src/util.ts"));
+    ide.key(Key::ArrowUp);
+    assert_eq!(selected(&ide).as_deref(), Some("src/app.ts"));
+    // Enter on a file opens it.
+    ide.key(Key::Enter);
+    ide.wait_for("app.ts tab", |s| s.tabs.active_editor().is_some());
+    assert_eq!(ide.active_title().as_deref(), Some("app.ts"));
+}
+
+/// A press on a row keeps the tree focused: the selection stays blue through press, hold, a
+/// small drag and release. egui drops the focus of a widget when a press lands outside it, and
+/// the tree's focus widget never counts as hovered, so the tree takes the focus back on press.
+#[test]
+fn tree_keeps_focus_while_pressed() {
+    let fx = Fixture::new(SUITE, "tree_press");
+    let repo = basic_repo(fx.path("repo"));
+    let mut ide = Ide::open(SUITE, &repo.dir);
+    ide.click("README.md");
+    assert!(tree_focused(&ide) && ide.is_selected("README.md"));
+    let p = ide.rect("docs").center();
+    ide.move_to(p);
+    let button = |pressed| egui::Event::PointerButton { pos: p, button: egui::PointerButton::Primary, pressed, modifiers: egui::Modifiers::NONE };
+    ide.harness.input_mut().events.push(button(true));
+    for i in 0..6 {
+        ide.step();
+        assert!(tree_focused(&ide), "the tree keeps the focus in held frame {i}");
+    }
+    ide.move_to(p + egui::vec2(2.0, 1.0));
+    assert!(tree_focused(&ide), "the tree keeps the focus while the pointer moves");
+    assert!(ide.is_selected("docs"), "the press selects the row");
+    ide.snapshot_here("tree_press_held");
+    ide.harness.input_mut().events.push(button(false));
+    ide.step();
+    assert!(tree_focused(&ide) && ide.is_selected("docs"));
+    ide.step();
+    assert!(tree_focused(&ide));
+
+    // A press on an unfocused tree takes the focus at once, before the release.
+    ide.double_click("README.md");
+    ide.wait_for("README tab", |s| s.tabs.active_editor().is_some());
+    ide.settle();
+    assert!(!tree_focused(&ide));
+    ide.move_to(p);
+    ide.harness.input_mut().events.push(button(true));
+    ide.step();
+    ide.step();
+    assert!(tree_focused(&ide), "the press focuses the tree");
+    ide.harness.input_mut().events.push(button(false));
+    ide.step();
+    assert!(tree_focused(&ide) && ide.is_selected("docs"));
+}
+
+/// One consistent folder row: a click anywhere selects it, a double click anywhere toggles it,
+/// and a click in the chevron cell (one indent wide, full row height) toggles at once.
+#[test]
+fn tree_row_hit_zones() {
+    let fx = Fixture::new(SUITE, "tree_zones");
+    let repo = basic_repo(fx.path("repo"));
+    let mut ide = Ide::open(SUITE, &repo.dir);
+    let docs = ide.root().join("docs");
+    let r = ide.rect("docs");
+    // The spacing under the painted row belongs to the row: a click there reaches it.
+    assert_eq!(r.max.y, ide.rect("src").min.y, "the row rects touch");
+    let below = r.min.y + harwex_ide::theme::T.space.row_h + 2.0;
+    assert!(below < r.max.y);
+    // Top-level rows sit one indent right of the root's chevron (see `tree::show`).
+    let x = r.min.x + 4.0 + harwex_ide::theme::T.space.indent;
+    let spots = [
+        ("indent", r.min.x + 6.0, false),
+        ("chevron cell left edge", x - 2.0, true),
+        ("chevron", x + 6.0, true),
+        ("chevron cell right edge", x + 14.0, true),
+        ("gap before the icon", x + 16.0, false),
+        ("icon", x + 22.0, false),
+        ("label", x + 40.0, false),
+        ("after the label", x + 120.0, false),
+    ];
+    for (y_name, y) in [("middle", r.center().y), ("top", r.min.y + 1.0), ("bottom", r.max.y - 1.0), ("spacing below", below)] {
+        for (name, sx, chevron) in spots {
+            let at = egui::pos2(sx, y);
+            let what = format!("{name} ({y_name})");
+            let before = ide.state().tree.is_expanded(&docs);
+            ide.double_click_at(at);
+            ide.settle();
+            assert_ne!(ide.state().tree.is_expanded(&docs), before, "a double click on the {what} toggles");
+
+            ide.click("README.md");
+            let before = ide.state().tree.is_expanded(&docs);
+            ide.click_at(at);
+            ide.settle();
+            if chevron {
+                assert_ne!(ide.state().tree.is_expanded(&docs), before, "a click on the {what} toggles");
+                assert!(ide.is_selected("README.md"), "a click on the {what} keeps the selection");
+            } else {
+                assert_eq!(ide.state().tree.is_expanded(&docs), before, "a click on the {what} does not toggle");
+                assert!(ide.is_selected("docs"), "a click on the {what} selects");
+            }
+        }
+    }
+}
+
+/// "Select Opened File": the header button and Alt+F1 expand the tree down to the active file,
+/// select it and scroll it into view. Alt+F1 does nothing while the terminal has focus.
+#[test]
+fn select_opened_file() {
+    let fx = Fixture::new(SUITE, "select_opened");
+    let repo = basic_repo(fx.path("repo"));
+    // Enough folders above `src` (folders sort first) that the target starts below the
+    // visible part of the tree.
+    for i in 0..60 {
+        repo.write(&format!("a{i:02}/x.txt"), "x\n");
+    }
+    let mut ide = Ide::open(SUITE, &repo.dir);
+    assert!(!ide.is_enabled("Select Opened File"), "no tab, nothing to select");
+    let header = ide.rect("Select Opened File");
+    assert!(header.max.x <= ide.rect("Hide Project").min.x, "the button sits left of the hide button");
+    ide.open_file("src/core/deep/nested.ts");
+    let root = ide.root();
+    assert!(!ide.state().tree.is_expanded(&root.join("src")));
+    assert!(!ide.has("src/core/deep/nested.ts"));
+
+    ide.click("Select Opened File");
+    ide.wait_until("row revealed", |ide| ide.has("src/core/deep/nested.ts"));
+    ide.settle();
+    for dir in ["src", "src/core", "src/core/deep"] {
+        assert!(ide.state().tree.is_expanded(&root.join(dir)), "{dir} expanded");
+    }
+    assert!(ide.is_selected("src/core/deep/nested.ts") && tree_focused(&ide));
+    ide.snapshot("select_opened_file");
+
+    // Alt+F1 from the editor does the same.
+    ide.double_click("src");
+    ide.wait_until("src collapsed", |ide| !ide.has("src/core/deep/nested.ts"));
+    ide.click("Editor nested.ts");
+    assert!(ide.is_focused("Editor nested.ts"));
+    ide.key_mods(ALT, Key::F1);
+    ide.wait_until("row revealed again", |ide| ide.has("src/core/deep/nested.ts"));
+    assert!(ide.is_selected("src/core/deep/nested.ts"));
+
+    // In a focused terminal Alt+F1 belongs to the shell.
+    ide.double_click("src");
+    ide.wait_until("src collapsed", |ide| !ide.has("src/core/deep/nested.ts"));
+    ide.click("Terminal tool window");
+    ide.wait_until("terminal focused", |ide| ide.state().terminals.has_focus(&ide.ctx()));
+    ide.key_mods(ALT, Key::F1);
+    ide.settle();
+    assert!(!ide.state().tree.is_expanded(&root.join("src")));
 }
 
 /// The tool window strips: icons only, the open windows highlighted, tooltips with the titles.
@@ -346,15 +597,19 @@ fn tool_strips() {
     let repo = basic_repo(fx.path("repo"));
     let mut ide = Ide::open(SUITE, &repo.dir);
     let strip_w = harwex_ide::theme::T.space.strip_w;
-    let left = ["Project", "Commit", "Find", "Git", "Find Usages", "Terminal"];
+    let left = ["Project", "Commit", "Find", "Git", "Find Usages", "Terminal", "Notifications"];
     for title in left {
         let r = ide.rect(&format!("{title} tool window"));
         assert!(r.max.x <= strip_w, "{title} is on the left strip: {r:?}");
     }
-    let n = ide.rect("Notifications tool window");
-    assert!(n.min.x >= 1280.0 - strip_w, "Notifications is on the right strip: {n:?}");
-    // The upper group opens left windows, the lower group bottom windows.
+    // The upper group opens left windows, the lower group bottom windows. Notifications ends
+    // the lower group, right under Terminal.
     assert!(ide.rect("Find tool window").max.y < ide.rect("Git tool window").min.y - 200.0);
+    assert!(ide.rect("Terminal tool window").max.y < ide.rect("Notifications tool window").min.y);
+    // No right strip: the editor island ends one island gap before the right window edge.
+    let gap = harwex_ide::theme::T.space.gap;
+    let editor = ide.rect("Empty editor");
+    assert!(editor.max.x <= SIZE.x - gap && editor.max.x > SIZE.x - strip_w, "the editor reaches the right edge: {editor:?}");
     ide.click("Terminal tool window");
     ide.wait_until("terminal open", |ide| ide.state().layout.bottom == Some(ToolWindow::Terminal) && ide.state().terminals.len() == 1);
     ide.settle();
@@ -364,4 +619,8 @@ fn tool_strips() {
     ide.wait_real(std::time::Duration::from_millis(400));
     ide.assert_text("Find Usages  ⌥F7");
     ide.snapshot_here("tool_strips");
+    ide.hover("Notifications tool window");
+    ide.wait_real(std::time::Duration::from_millis(400));
+    ide.assert_text("Notifications");
+    ide.snapshot_here("tool_strips_notifications");
 }

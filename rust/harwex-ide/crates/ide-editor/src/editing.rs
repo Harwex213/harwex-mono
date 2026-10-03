@@ -212,13 +212,14 @@ pub fn backspace(doc: &mut Document, sel: &mut Selection, word: bool) {
     let start = if word {
         word_left(doc, head)
     } else {
-        // Inside leading spaces, delete back to the previous indent stop like IDEA does.
-        let pos = doc.char_to_position(head);
-        let line = doc.line(pos.line);
-        let before: String = line.chars().take(pos.column).collect();
+        // Inside leading spaces, delete back to the previous indent stop like IDEA does. No
+        // line copy: this runs once per caret.
+        let rope = doc.rope();
+        let after_space = rope.char(head - 1) == ' ';
+        let column = if after_space { head - rope.line_to_char(rope.char_to_line(head)) } else { 0 };
         let width = doc.indent().width;
-        if !doc.indent().use_tabs && pos.column > 0 && before.chars().all(|c| c == ' ') {
-            let cut = match pos.column % width {
+        if after_space && !doc.indent().use_tabs && rope.slice(head - column..head).chars().all(|c| c == ' ') {
+            let cut = match column % width {
                 0 => width,
                 r => r,
             };
@@ -337,34 +338,47 @@ pub fn tab(doc: &mut Document, sel: &mut Selection) {
         }
         return;
     }
-    let text = unit.unit();
-    let edits = lines
-        .rev()
-        .filter(|&l| doc.line_len(l) > 0)
-        .map(|l| {
-            let s = doc.line_start(l);
-            (s..s, text.clone())
-        })
-        .collect();
+    let lines: Vec<usize> = lines.collect();
+    let edits = indent_edits(doc, &lines);
     apply_line_edits(doc, sel, edits);
 }
 
-pub fn dedent(doc: &mut Document, sel: &mut Selection) {
-    let lines = selected_lines(doc, sel);
-    let width = doc.indent().width;
-    let edits = lines
+/// One indent unit at the start of every non-empty line of `lines` (ascending), bottom-up.
+pub(crate) fn indent_edits(doc: &Document, lines: &[usize]) -> Vec<(Range<usize>, String)> {
+    let text = doc.indent().unit();
+    lines
+        .iter()
         .rev()
-        .filter_map(|l| {
-            let line = doc.line(l);
-            let n = if line.starts_with('\t') {
+        .filter(|&&l| doc.line_len(l) > 0)
+        .map(|&l| {
+            let s = doc.line_start(l);
+            (s..s, text.clone())
+        })
+        .collect()
+}
+
+/// Removes one indent level from every line of `lines` (ascending), bottom-up.
+pub(crate) fn dedent_edits(doc: &Document, lines: &[usize]) -> Vec<(Range<usize>, String)> {
+    let width = doc.indent().width;
+    lines
+        .iter()
+        .rev()
+        .filter_map(|&l| {
+            let s = doc.line_start(l);
+            let first = doc.char_at(s);
+            let n = if first == Some('\t') {
                 1
             } else {
-                line.chars().take(width).take_while(|c| *c == ' ').count()
+                (0..width.min(doc.line_len(l))).take_while(|&i| doc.char_at(s + i) == Some(' ')).count()
             };
-            let s = doc.line_start(l);
             (n > 0).then(|| (s..s + n, String::new()))
         })
-        .collect::<Vec<_>>();
+        .collect()
+}
+
+pub fn dedent(doc: &mut Document, sel: &mut Selection) {
+    let lines: Vec<usize> = selected_lines(doc, sel).collect();
+    let edits = dedent_edits(doc, &lines);
     if !edits.is_empty() {
         apply_line_edits(doc, sel, edits);
     }
@@ -373,15 +387,29 @@ pub fn dedent(doc: &mut Document, sel: &mut Selection) {
 /// Cmd+/. Comments every selected line at the shallowest indent, or uncomments when all non-blank
 /// lines are already commented.
 pub fn toggle_comment(doc: &mut Document, sel: &mut Selection) {
-    let Some((open, close)) = doc.language().comment_tokens() else {
+    let lines: Vec<usize> = selected_lines(doc, sel).collect();
+    let Some(edits) = comment_edits(doc, &lines) else {
         return;
     };
-    let lines: Vec<usize> = selected_lines(doc, sel).collect();
+    apply_line_edits(doc, sel, edits);
+    // IDEA moves the caret down after commenting a single line so repeated Cmd+/ walks the file.
+    if lines.len() == 1 && sel.is_empty() {
+        let pos = doc.char_to_position(sel.head);
+        if pos.line + 1 < doc.line_count() {
+            *sel = Selection::caret(doc.position_to_char(crate::Position::new(pos.line + 1, pos.column)));
+        }
+    }
+}
+
+/// The edits of Cmd+/ for `lines` (ascending), bottom-up. `None` when the language has no
+/// comment syntax or every line is blank.
+pub(crate) fn comment_edits(doc: &Document, lines: &[usize]) -> Option<Vec<(Range<usize>, String)>> {
+    let (open, close) = doc.language().comment_tokens()?;
     let texts: Vec<String> = lines.iter().map(|&l| doc.line(l)).collect();
     let non_blank: Vec<(usize, &String)> =
         lines.iter().copied().zip(texts.iter()).filter(|(_, t)| !t.trim().is_empty()).collect();
     if non_blank.is_empty() {
-        return;
+        return None;
     }
     let all_commented = non_blank.iter().all(|(_, t)| t.trim_start().starts_with(open));
     let mut edits = Vec::new();
@@ -417,14 +445,7 @@ pub fn toggle_comment(doc: &mut Document, sel: &mut Selection) {
             edits.push((s + min_indent..s + min_indent, format!("{open} ")));
         }
     }
-    apply_line_edits(doc, sel, edits);
-    // IDEA moves the caret down after commenting a single line so repeated Cmd+/ walks the file.
-    if lines.len() == 1 && sel.is_empty() {
-        let pos = doc.char_to_position(sel.head);
-        if pos.line + 1 < doc.line_count() {
-            *sel = Selection::caret(doc.position_to_char(crate::Position::new(pos.line + 1, pos.column)));
-        }
-    }
+    Some(edits)
 }
 
 /// Cmd+D: duplicates the selection, or the current line(s) when nothing is selected.

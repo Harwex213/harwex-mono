@@ -1546,10 +1546,16 @@ dependencies = [
  "memchr",
  "notify",
  "nucleo-matcher",
+ "objc2 0.5.2",
+ "objc2-app-kit 0.2.2",
+ "objc2-foundation 0.2.2",
+ "raw-window-handle",
+ "regex",
  "rfd",
  "serde_json",
  "tempfile",
  "toml",
+ "toml_edit",
  "winit",
 ]
 
@@ -1690,6 +1696,7 @@ version = "0.1.0"
 dependencies = [
  "eframe",
  "egui",
+ "regex",
  "ropey",
  "tree-sitter",
  "tree-sitter-css",
@@ -1733,6 +1740,7 @@ name = "ide-ts"
 version = "0.1.0"
 dependencies = [
  "ide-lsp",
+ "memchr",
  "serde_json",
  "tempfile",
 ]
@@ -3614,6 +3622,7 @@ dependencies = [
  "indexmap",
  "toml_datetime",
  "toml_parser",
+ "toml_writer",
  "winnow",
 ]
 

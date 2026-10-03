@@ -274,6 +274,14 @@ fn new_terminal(s: &mut AppState) {
     }
 }
 
+/// Opens a new terminal tab in `cwd` and shows the Terminal window ("Open In > Terminal").
+pub fn open_at(s: &mut AppState, cwd: PathBuf) {
+    s.layout.show(ToolWindow::Terminal);
+    if let Err(e) = s.terminals.spawn(cwd, s.ctx.clone()) {
+        s.notifications.error("Could not start a terminal", e.to_string());
+    }
+}
+
 /// Test hook: opens the Terminal window and types `command` followed by Enter.
 pub fn test_run(s: &mut AppState, command: String) {
     s.layout.show(ToolWindow::Terminal);

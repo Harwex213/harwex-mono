@@ -1,15 +1,20 @@
 //! Commit tool window: change tree with checkboxes, message, Amend, Commit / Commit and Push.
 //!
+//! The tree has IDEA's staging-area groups: Staged (HEAD vs index), Unstaged (index vs
+//! worktree) and Unversioned Files. A partly staged file has a row in Staged and in Unstaged.
+//! Rows drag between the groups: onto Staged stages, onto Unstaged unstages.
+//!
 //! The tree is flattened into rows once per status change (or collapse click), and only the
 //! visible rows are drawn, so thousands of changed files cost the same per frame as ten.
 
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::ops::Range;
 use std::path::{Path, PathBuf};
 
-use egui::{pos2, vec2, Align2, Context, Id, Key, Modal, Modifiers, Rect, RichText, ScrollArea, Sense, Shape, Stroke, Ui};
+use egui::{pos2, vec2, Align2, Context, CursorIcon, Id, Key, LayerId, Modal, Modifiers, Order, Rect, RichText, ScrollArea, Sense, Shape, Stroke, Ui};
 use ide_git::{ChangeKind, FileChange};
 
+use crate::icons::CheckState;
 use crate::state::AppState;
 use crate::theme;
 use crate::tree::change_color;
@@ -18,41 +23,64 @@ const ROW_H: f32 = 20.0;
 const MESSAGE_ID: &str = "commit-message";
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
-enum Group {
-    Changes,
+pub enum Group {
+    Staged,
+    Unstaged,
     Unversioned,
 }
 
 impl Group {
-    fn title(self) -> &'static str {
+    pub const ALL: [Group; 3] = [Group::Staged, Group::Unstaged, Group::Unversioned];
+
+    pub fn title(self) -> &'static str {
         match self {
-            Group::Changes => "Changes",
+            Group::Staged => "Staged",
+            Group::Unstaged => "Unstaged",
             Group::Unversioned => "Unversioned Files",
         }
     }
+
+    /// Like IDEA: what is staged is meant to be committed; the rest waits for a tick.
+    fn checked_by_default(self) -> bool {
+        self == Group::Staged
+    }
+
+    /// The groups a status entry shows in. Conflicts stay in Unstaged: they are resolved
+    /// through the merge tab, and staging marks them resolved.
+    fn of(e: &FileChange) -> impl Iterator<Item = Group> {
+        let untracked = e.is_untracked();
+        let conflicted = e.kind() == ChangeKind::Conflicted;
+        let staged = !untracked && !conflicted && e.staged.is_some();
+        let unstaged = !untracked && (conflicted || e.unstaged.is_some());
+        [(Group::Staged, staged), (Group::Unstaged, unstaged), (Group::Unversioned, untracked)].into_iter().filter(|(_, on)| *on).map(|(g, _)| g)
+    }
+}
+
+/// A file row's identity: the same path can sit in Staged and in Unstaged.
+type ItemKey = (PathBuf, Group);
+
+/// One file in one group.
+#[derive(Clone, Copy)]
+struct Item {
+    entry: usize,
+    group: Group,
 }
 
 enum RowKind {
-    Group(Group),
+    Group,
     Dir(String),
     File(usize),
 }
 
 struct Row {
     kind: RowKind,
+    group: Group,
     depth: u16,
     /// Collapse key: group name plus directory path.
     key: String,
-    /// Range in `ChangesUi::order` covered by this row (one file for a file row).
+    /// Range in `ChangesUi::order` covered by this row (one item for a file row).
     span: Range<usize>,
     collapsed: bool,
-}
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum Tri {
-    Off,
-    Mixed,
-    On,
 }
 
 enum Confirm {
@@ -60,23 +88,36 @@ enum Confirm {
     Delete(Vec<PathBuf>),
 }
 
+/// Rows being dragged to another group.
+struct Drag {
+    items: Vec<ItemKey>,
+    /// Which groups the items come from, so the per-frame drop check is O(1).
+    from: [bool; 3],
+}
+
 #[derive(Default)]
 pub struct ChangesUi {
-    /// Current status entries, sorted by path. Rows index into this.
+    /// Current status entries, sorted by path.
     entries: Vec<FileChange>,
+    /// Entries per group, in entry order. Rows index into this.
+    items: Vec<Item>,
+    /// Checkbox per item.
     checked: Vec<bool>,
-    /// Checkbox state by path, so a refresh keeps what the user ticked.
-    check_memory: HashMap<PathBuf, bool>,
-    /// Entry indices in display (depth-first) order; group and dir rows cover a contiguous span.
+    /// Checkbox state by item, so a refresh keeps what the user ticked.
+    check_memory: HashMap<ItemKey, bool>,
+    /// Item indices in display (depth-first) order; group and dir rows cover a contiguous span.
     order: Vec<usize>,
     /// Checked counts over `order`, for O(1) tri-state of a directory.
     prefix: Vec<u32>,
+    /// Files with at least one checked row.
+    checked_files: usize,
     rows: Vec<Row>,
     rows_dirty: bool,
     collapsed: HashSet<String>,
-    selected: HashSet<PathBuf>,
+    selected: HashSet<ItemKey>,
     /// Last clicked row, the anchor for Shift+click.
     anchor: Option<usize>,
+    drag: Option<Drag>,
     pub message: String,
     amend: bool,
     /// Message to put back when Amend is unticked; the amended message it replaced it with.
@@ -97,13 +138,46 @@ impl ChangesUi {
 
     /// Paths selected in the tree (click, Cmd+click, Shift+click).
     pub fn selected_paths(&self) -> Vec<PathBuf> {
-        let mut v: Vec<PathBuf> = self.selected.iter().cloned().collect();
-        v.sort();
-        v
+        let v: BTreeSet<PathBuf> = self.selected.iter().map(|(p, _)| p.clone()).collect();
+        v.into_iter().collect()
     }
 
     pub fn has_confirm_dialog(&self) -> bool {
         self.confirm.is_some()
+    }
+
+    /// A drag of rows is in progress.
+    pub fn is_dragging(&self) -> bool {
+        self.drag.is_some()
+    }
+
+    /// Paths with a row in `group`, sorted.
+    pub fn group_paths(&self, group: Group) -> Vec<PathBuf> {
+        self.items.iter().filter(|it| it.group == group).map(|it| self.entries[it.entry].path.clone()).collect()
+    }
+
+    /// Whether the row of `path` in `group` is ticked (`None` when there is no such row).
+    pub fn is_checked(&self, path: &Path, group: Group) -> Option<bool> {
+        let entry = self.entries.binary_search_by(|e| e.path.as_path().cmp(path)).ok()?;
+        self.item_of(entry, group).map(|i| self.checked[i])
+    }
+
+    /// The checkbox state and the muted count text ("2 files") of the group or directory row
+    /// with the a11y label `label`, among the rows shown now.
+    pub fn row_state(&self, label: &str) -> Option<(CheckState, String)> {
+        let row = self.rows.iter().find(|r| !matches!(r.kind, RowKind::File(_)) && self.row_label(r) == label)?;
+        Some((self.tri(&row.span), count_label(row.span.len())))
+    }
+
+    /// The item of `entry` in `group`. Items are in entry order, so this is a binary search.
+    fn item_of(&self, entry: usize, group: Group) -> Option<usize> {
+        let start = self.items.partition_point(|it| it.entry < entry);
+        (start..self.items.len()).take_while(|&i| self.items[i].entry == entry).find(|&i| self.items[i].group == group)
+    }
+
+    fn key(&self, item: usize) -> ItemKey {
+        let it = self.items[item];
+        (self.entries[it.entry].path.clone(), it.group)
     }
 
     fn set_entries(&mut self, mut changes: Vec<FileChange>) {
@@ -111,15 +185,17 @@ impl ChangesUi {
         if changes == self.entries && !self.rows.is_empty() {
             return;
         }
-        // Remember the current boxes before the entries go away.
-        for (e, &c) in self.entries.iter().zip(&self.checked) {
-            self.check_memory.insert(e.path.clone(), c);
+        // Remember the current boxes before the items go away.
+        for i in 0..self.items.len() {
+            let c = self.checked[i];
+            self.check_memory.insert(self.key(i), c);
         }
-        let present: HashSet<&PathBuf> = changes.iter().map(|c| &c.path).collect();
-        self.check_memory.retain(|p, _| present.contains(p));
-        self.selected.retain(|p| present.contains(p));
-        // Like IDEA: tracked changes start ticked, unversioned files start unticked.
-        self.checked = changes.iter().map(|c| self.check_memory.get(&c.path).copied().unwrap_or(!c.is_untracked())).collect();
+        self.items = changes.iter().enumerate().flat_map(|(entry, e)| Group::of(e).map(move |group| Item { entry, group })).collect();
+        let present: HashSet<ItemKey> = self.items.iter().map(|it| (changes[it.entry].path.clone(), it.group)).collect();
+        self.check_memory.retain(|k, _| present.contains(k));
+        self.selected.retain(|k| present.contains(k));
+        // A row new to its group starts with the group's default: newly staged files are ticked.
+        self.checked = self.items.iter().map(|it| self.check_memory.get(&(changes[it.entry].path.clone(), it.group)).copied().unwrap_or(it.group.checked_by_default())).collect();
         self.entries = changes;
         self.rows_dirty = true;
     }
@@ -128,14 +204,15 @@ impl ChangesUi {
         self.rows_dirty = false;
         self.rows.clear();
         self.order.clear();
-        let (tracked, unversioned): (Vec<usize>, Vec<usize>) = (0..self.entries.len()).partition(|&i| !self.entries[i].is_untracked());
-        for (group, files) in [(Group::Changes, tracked), (Group::Unversioned, unversioned)] {
-            if files.is_empty() {
+        for group in Group::ALL {
+            let files: Vec<usize> = (0..self.items.len()).filter(|&i| self.items[i].group == group).collect();
+            // Staged and Unstaged stay visible while empty: each is a drop target.
+            if files.is_empty() && (group == Group::Unversioned || self.items.is_empty()) {
                 continue;
             }
             let mut root = DirNode::default();
             for i in files {
-                let path = &self.entries[i].path;
+                let path = &self.entries[self.items[i].entry].path;
                 let mut node = &mut root;
                 if let Some(parent) = path.parent() {
                     for comp in parent.components() {
@@ -148,8 +225,8 @@ impl ChangesUi {
             let collapsed = self.collapsed.contains(&key);
             let row = self.rows.len();
             let start = self.order.len();
-            self.rows.push(Row { kind: RowKind::Group(group), depth: 0, key: key.clone(), span: 0..0, collapsed });
-            self.emit(&root, &key, 1, collapsed);
+            self.rows.push(Row { kind: RowKind::Group, group, depth: 0, key: key.clone(), span: 0..0, collapsed });
+            self.emit(&root, group, &key, 1, collapsed);
             self.rows[row].span = start..self.order.len();
         }
         self.recount();
@@ -157,7 +234,7 @@ impl ChangesUi {
 
     /// Appends rows for `node`'s children. When `hidden`, files still go into `order` (so the
     /// collapsed parent's span and tri-state stay right) but no rows are added.
-    fn emit(&mut self, node: &DirNode, key: &str, depth: u16, hidden: bool) {
+    fn emit(&mut self, node: &DirNode, group: Group, key: &str, depth: u16, hidden: bool) {
         for (name, child) in &node.dirs {
             // Compress chains of single-directory parents into "a/b/c", like IDEA.
             let mut label = name.clone();
@@ -174,21 +251,21 @@ impl ChangesUi {
             let row = if hidden {
                 None
             } else {
-                self.rows.push(Row { kind: RowKind::Dir(label), depth, key: child_key.clone(), span: 0..0, collapsed });
+                self.rows.push(Row { kind: RowKind::Dir(label), group, depth, key: child_key.clone(), span: 0..0, collapsed });
                 Some(self.rows.len() - 1)
             };
-            self.emit(child, &child_key, depth + 1, hidden || collapsed);
+            self.emit(child, group, &child_key, depth + 1, hidden || collapsed);
             if let Some(r) = row {
                 self.rows[r].span = start..self.order.len();
             }
         }
         let mut files = node.files.clone();
-        files.sort_by(|&a, &b| file_name(&self.entries[a].path).cmp(&file_name(&self.entries[b].path)));
+        files.sort_by_cached_key(|&i| file_name(&self.entries[self.items[i].entry].path));
         for i in files {
             let at = self.order.len();
             self.order.push(i);
             if !hidden {
-                self.rows.push(Row { kind: RowKind::File(i), depth, key: String::new(), span: at..at + 1, collapsed: false });
+                self.rows.push(Row { kind: RowKind::File(i), group, depth, key: String::new(), span: at..at + 1, collapsed: false });
             }
         }
     }
@@ -202,17 +279,22 @@ impl ChangesUi {
             n += u32::from(self.checked[i]);
             self.prefix.push(n);
         }
+        let mut files = vec![false; self.entries.len()];
+        for (it, &c) in self.items.iter().zip(&self.checked) {
+            files[it.entry] |= c;
+        }
+        self.checked_files = files.iter().filter(|&&c| c).count();
     }
 
-    fn tri(&self, span: &Range<usize>) -> Tri {
-        let (Some(a), Some(b)) = (self.prefix.get(span.start), self.prefix.get(span.end)) else { return Tri::Off };
+    fn tri(&self, span: &Range<usize>) -> CheckState {
+        let (Some(a), Some(b)) = (self.prefix.get(span.start), self.prefix.get(span.end)) else { return CheckState::Unchecked };
         let n = (b - a) as usize;
         if n == 0 {
-            Tri::Off
+            CheckState::Unchecked
         } else if n == span.len() {
-            Tri::On
+            CheckState::Checked
         } else {
-            Tri::Mixed
+            CheckState::Partial
         }
     }
 
@@ -225,33 +307,129 @@ impl ChangesUi {
         self.recount();
     }
 
-    /// Paths whose box is ticked, sorted.
+    /// Paths with a ticked row, sorted.
     pub fn checked_paths(&self) -> Vec<PathBuf> {
-        self.entries.iter().zip(&self.checked).filter(|(_, &c)| c).map(|(e, _)| e.path.clone()).collect()
+        let v: BTreeSet<PathBuf> = self.items.iter().zip(&self.checked).filter(|(_, &c)| c).map(|(it, _)| self.entries[it.entry].path.clone()).collect();
+        v.into_iter().collect()
     }
 
-    fn span_paths(&self, span: &Range<usize>) -> Vec<PathBuf> {
-        self.order[span.clone()].iter().map(|&i| self.entries[i].path.clone()).collect()
+    /// What a commit takes: `(whole, staged_only)`. A ticked Unstaged or Unversioned row commits
+    /// the worktree file. A ticked Staged row of a partly staged file commits its index version
+    /// only, unless its Unstaged row is ticked too. A fully staged file is the same either way,
+    /// so it goes the plain `--only` route.
+    pub fn commit_selection(&self) -> (Vec<PathBuf>, Vec<PathBuf>) {
+        let mut whole = BTreeSet::new();
+        let mut staged = BTreeSet::new();
+        for (it, &c) in self.items.iter().zip(&self.checked) {
+            if c {
+                let e = &self.entries[it.entry];
+                if it.group == Group::Staged && e.unstaged.is_some() {
+                    staged.insert(e.path.clone());
+                } else {
+                    whole.insert(e.path.clone());
+                }
+            }
+        }
+        let staged_only = staged.into_iter().filter(|p| !whole.contains(p)).collect();
+        (whole.into_iter().collect(), staged_only)
     }
 
     fn entry(&self, path: &Path) -> Option<&FileChange> {
         self.entries.binary_search_by(|e| e.path.as_path().cmp(path)).ok().map(|i| &self.entries[i])
     }
 
-    /// Paths an action on `row` applies to: the selection if the row is part of it.
-    fn targets(&self, row: &Row) -> Vec<PathBuf> {
+    /// Items an action on `row` applies to: the selection if the row is part of it.
+    fn target_items(&self, row: &Row) -> Vec<usize> {
         match row.kind {
             RowKind::File(i) => {
-                let p = &self.entries[i].path;
-                if self.selected.contains(p) && self.selected.len() > 1 {
-                    self.entries.iter().filter(|e| self.selected.contains(&e.path)).map(|e| e.path.clone()).collect()
+                if self.selected.len() > 1 && self.selected.contains(&self.key(i)) {
+                    (0..self.items.len()).filter(|&j| self.selected.contains(&self.key(j))).collect()
                 } else {
-                    vec![p.clone()]
+                    vec![i]
                 }
             }
-            _ => self.span_paths(&row.span),
+            _ => self.order[row.span.clone()].to_vec(),
         }
     }
+
+    /// Paths of `items`, sorted and without repeats.
+    fn paths_of(&self, items: &[usize]) -> Vec<PathBuf> {
+        let v: BTreeSet<PathBuf> = items.iter().map(|&i| self.entries[self.items[i].entry].path.clone()).collect();
+        v.into_iter().collect()
+    }
+
+    /// What a drop of the dragged rows onto `target` does: the paths to stage or unstage.
+    /// Rows already in `target` are skipped, so a drop on their own group does nothing.
+    fn drop_paths(&self, target: Group) -> Option<(DropOp, Vec<PathBuf>)> {
+        if !self.can_drop(target) {
+            return None;
+        }
+        let drag = self.drag.as_ref()?;
+        let op = if target == Group::Staged { DropOp::Stage } else { DropOp::Unstage };
+        let v: BTreeSet<PathBuf> = drag.items.iter().filter(|(_, g)| drop_source(target, *g)).map(|(p, _)| p.clone()).collect();
+        Some((op, v.into_iter().collect()))
+    }
+
+    /// Whether a drop on `target` would stage or unstage something.
+    fn can_drop(&self, target: Group) -> bool {
+        self.drag.as_ref().is_some_and(|d| Group::ALL.iter().zip(d.from).any(|(&g, has)| has && drop_source(target, g)))
+    }
+
+    /// The a11y label of a row. Directory labels name their group, because the same directory
+    /// can show in several groups. A file is its path; the Staged row of a partly staged file
+    /// gets " in Staged", so both rows of that file have their own label.
+    fn row_label(&self, row: &Row) -> String {
+        match &row.kind {
+            RowKind::Group => format!("{} group", row.group.title()),
+            RowKind::Dir(_) => format!("Directory {} in {}", row.key.split_once('/').map_or(row.key.as_str(), |(_, d)| d), row.group.title()),
+            RowKind::File(i) => {
+                let e = &self.entries[self.items[*i].entry];
+                if row.group == Group::Staged && self.is_partly_staged(e) {
+                    format!("{} in Staged", e.path.display())
+                } else {
+                    e.path.display().to_string()
+                }
+            }
+        }
+    }
+
+    fn is_partly_staged(&self, e: &FileChange) -> bool {
+        Group::of(e).count() == 2
+    }
+
+    /// The hover text of a file row. For a partly staged file it says what a commit takes.
+    fn file_tooltip(&self, item: usize) -> String {
+        let e = &self.entries[self.items[item].entry];
+        let path = e.path.display();
+        if !self.is_partly_staged(e) {
+            return path.to_string();
+        }
+        let ticked = |g: Group| self.item_of(self.items[item].entry, g).is_some_and(|i| self.checked[i]);
+        let takes = if ticked(Group::Unstaged) {
+            "Commit takes the whole file from disk"
+        } else if ticked(Group::Staged) {
+            "Commit takes the staged part only"
+        } else {
+            "Not in the commit"
+        };
+        format!("{path}\nPartly staged. {takes}.")
+    }
+}
+
+/// Rows of `from` dropped on `target` change the index: onto Staged they are staged, onto
+/// Unstaged a Staged row is unstaged. Everything else (the same group, Unversioned) does nothing.
+fn drop_source(target: Group, from: Group) -> bool {
+    match target {
+        Group::Staged => from != Group::Staged,
+        Group::Unstaged => from == Group::Staged,
+        Group::Unversioned => false,
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum DropOp {
+    Stage,
+    Unstage,
 }
 
 #[derive(Default)]
@@ -262,6 +440,10 @@ struct DirNode {
 
 fn file_name(p: &Path) -> String {
     p.file_name().map(|n| n.to_string_lossy().to_lowercase()).unwrap_or_default()
+}
+
+fn count_label(n: usize) -> String {
+    format!("{n} file{}", if n == 1 { "" } else { "s" })
 }
 
 enum Event {
@@ -277,6 +459,8 @@ enum Event {
     Unstage(Vec<PathBuf>),
     ExpandAll(bool),
     Refresh,
+    DragStart(usize),
+    Drop(Option<Group>),
 }
 
 pub fn tool_window(state: &mut AppState, ui: &mut Ui) {
@@ -307,7 +491,7 @@ pub fn tool_window(state: &mut AppState, ui: &mut Ui) {
         if icon_button(ui, Icon::Refresh, "Refresh", "Refresh").clicked() {
             events.push(Event::Refresh);
         }
-        let sel: Vec<PathBuf> = c.entries.iter().filter(|e| c.selected.contains(&e.path)).map(|e| e.path.clone()).collect();
+        let sel = c.selected_paths();
         let has_sel = !sel.is_empty();
         if icon_button_enabled(ui, has_sel, Icon::Rollback, "Rollback", "Rollback selected files").clicked() {
             events.push(Event::Rollback(sel.iter().filter(|p| c.entry(p).is_some_and(|e| !e.is_untracked())).cloned().collect()));
@@ -323,8 +507,7 @@ pub fn tool_window(state: &mut AppState, ui: &mut Ui) {
             events.push(Event::ExpandAll(false));
         }
         ui.add_space(6.0);
-        let checked = c.prefix.last().copied().unwrap_or(0);
-        ui.label(RichText::new(format!("{checked} of {} selected", c.entries.len())).size(theme::T.font.tiny).color(theme::T.text_dim));
+        ui.label(RichText::new(format!("{} of {} selected", c.checked_files, c.entries.len())).size(theme::T.font.tiny).color(theme::T.text_dim));
     });
 
     if c.entries.is_empty() {
@@ -342,24 +525,43 @@ pub fn tool_window(state: &mut AppState, ui: &mut Ui) {
     }
 }
 
-
 fn draw_tree(c: &ChangesUi, ui: &mut Ui, events: &mut Vec<Event>) {
-    let (cmd, shift) = ui.input(|i| (i.modifiers.command, i.modifiers.shift));
-    ScrollArea::both().auto_shrink([false, false]).id_salt("changes-tree").show_rows(ui, ROW_H, c.rows.len(), |ui, range| {
+    let (cmd, shift, pointer, released, down) = ui.input(|i| (i.modifiers.command, i.modifiers.shift, i.pointer.latest_pos(), i.pointer.primary_released(), i.pointer.primary_down()));
+    let dragging = c.drag.is_some();
+    let mut target: Option<Group> = None;
+    ScrollArea::both().auto_shrink([false, false]).drag_to_scroll(false).id_salt("changes-tree").show_rows(ui, ROW_H, c.rows.len(), |ui, range| {
         let width = ui.available_width().max(240.0);
+        let clip = ui.clip_rect();
+        // The drop target is the group of the row under the pointer, found before the rows
+        // are painted so all of them can show the highlight.
+        if dragging {
+            let pitch = ROW_H + ui.spacing().item_spacing.y;
+            let top = ui.cursor().min.y;
+            if let Some(p) = pointer.filter(|p| clip.contains(*p) && p.y >= top) {
+                let idx = range.start + ((p.y - top) / pitch) as usize;
+                target = c.rows.get(idx).map(|r| r.group).filter(|&g| c.can_drop(g));
+            }
+        }
+        let mut target_rect = Rect::NOTHING;
+        // One fill under all target rows, so the spacing between them is covered too.
+        let target_bg = ui.painter().add(Shape::Noop);
         for idx in range {
             let row = &c.rows[idx];
-            let (rect, resp) = ui.allocate_exact_size(vec2(width, ROW_H), Sense::click());
+            let (rect, resp) = ui.allocate_exact_size(vec2(width, ROW_H), Sense::click_and_drag());
             let painter = ui.painter();
-            let is_sel = matches!(row.kind, RowKind::File(i) if c.selected.contains(&c.entries[i].path));
-            if is_sel {
+            let is_sel = matches!(row.kind, RowKind::File(i) if c.selected.contains(&c.key(i)));
+            if target == Some(row.group) {
+                target_rect = target_rect.union(rect);
+            } else if is_sel {
                 painter.rect_filled(rect, 0.0, theme::T.selection_inactive);
-            } else if resp.hovered() {
+            } else if resp.hovered() && !dragging {
                 painter.rect_filled(rect, 0.0, theme::T.hover);
             }
             let cy = rect.center().y;
             let mut x = rect.min.x + 4.0 + f32::from(row.depth) * 14.0;
-            let has_arrow = !matches!(row.kind, RowKind::File(_));
+            // An empty group (Staged or Unstaged, kept as a drop target) has no arrow and no box.
+            let empty = row.span.is_empty();
+            let has_arrow = !matches!(row.kind, RowKind::File(_)) && !empty;
             let arrow = Rect::from_min_size(pos2(x, rect.min.y), vec2(12.0, ROW_H));
             if has_arrow {
                 let pts = if row.collapsed {
@@ -371,31 +573,29 @@ fn draw_tree(c: &ChangesUi, ui: &mut Ui, events: &mut Vec<Event>) {
             }
             x += 14.0;
             let tri = c.tri(&row.span);
-            let check = Rect::from_center_size(pos2(x + 6.0, cy), vec2(12.0, 12.0));
+            let check = Rect::from_center_size(pos2(x + theme::CHECKBOX_SIZE / 2.0, cy), vec2(theme::CHECKBOX_SIZE, theme::CHECKBOX_SIZE));
             // The box is its own widget on top of the row, so it has an accessibility node and
             // takes the click before the row does.
-            let check_resp = ui.interact(check.expand(3.0), resp.id.with("check"), Sense::click());
-            let name = match &row.kind {
-                RowKind::Group(g) => format!("{} group", g.title()),
-                RowKind::Dir(_) => format!("Directory {}", row.key.split_once('/').map_or(row.key.as_str(), |(_, d)| d)),
-                RowKind::File(i) => c.entries[*i].path.display().to_string(),
-            };
+            let name = c.row_label(row);
             crate::util::label_selectable(&resp, name.clone(), is_sel);
-            check_resp.widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::Checkbox, true, tri == Tri::On, format!("Include {name}")));
-            if check_resp.clicked() {
-                events.push(Event::Check(row.span.clone(), tri != Tri::On));
+            if !empty {
+                let check_resp = ui.interact(check.expand(2.0), resp.id.with("check"), Sense::click());
+                check_resp.widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::Checkbox, true, tri == CheckState::Checked, format!("Include {name}")));
+                if check_resp.clicked() {
+                    events.push(Event::Check(row.span.clone(), tri != CheckState::Checked));
+                }
+                crate::icons::checkbox(painter, check, tri, check_resp.hovered() && !dragging);
             }
-            let pointer = resp.interact_pointer_pos();
-            paint_checkbox(painter, check, tri, pointer.is_none() && ui.rect_contains_pointer(check.expand(2.0)));
-            x += 18.0;
+            x += theme::CHECKBOX_SIZE + 6.0;
             let font = theme::T.ui_font();
             match &row.kind {
-                RowKind::Group(g) => {
-                    let galley = painter.layout_no_wrap(g.title().to_string(), font.clone(), theme::T.text_bright);
+                RowKind::Group => {
+                    let galley = painter.layout_no_wrap(row.group.title().to_string(), font.clone(), theme::T.text_bright);
                     let w = galley.size().x;
                     painter.galley(pos2(x, cy - galley.size().y / 2.0), galley, theme::T.text_bright);
-                    let n = row.span.len();
-                    painter.text(pos2(x + w + 8.0, cy), Align2::LEFT_CENTER, format!("{n} file{}", if n == 1 { "" } else { "s" }), theme::T.tiny_font(), theme::T.text_dim);
+                    if !empty {
+                        painter.text(pos2(x + w + 8.0, cy), Align2::LEFT_CENTER, count_label(row.span.len()), theme::T.tiny_font(), theme::T.text_dim);
+                    }
                 }
                 RowKind::Dir(name) => {
                     crate::icons::folder(painter, pos2(x + 7.0, cy), 14.0);
@@ -403,20 +603,24 @@ fn draw_tree(c: &ChangesUi, ui: &mut Ui, events: &mut Vec<Event>) {
                     let galley = painter.layout_no_wrap(name.clone(), font.clone(), theme::T.text);
                     let w = galley.size().x;
                     painter.galley(pos2(x, cy - galley.size().y / 2.0), galley, theme::T.text);
-                    let n = row.span.len();
-                    painter.text(pos2(x + w + 8.0, cy), Align2::LEFT_CENTER, format!("{n} file{}", if n == 1 { "" } else { "s" }), theme::T.tiny_font(), theme::T.text_dim);
+                    painter.text(pos2(x + w + 8.0, cy), Align2::LEFT_CENTER, count_label(row.span.len()), theme::T.tiny_font(), theme::T.text_dim);
                 }
                 RowKind::File(i) => {
-                    let e = &c.entries[*i];
-                    let kind = e.kind();
+                    let e = &c.entries[c.items[*i].entry];
+                    // Each group colors the file by its own side of the change.
+                    let kind = match row.group {
+                        Group::Staged => e.staged.unwrap_or(e.kind()),
+                        Group::Unstaged => e.unstaged.unwrap_or(e.kind()),
+                        Group::Unversioned => ChangeKind::Untracked,
+                    };
                     let color = change_color(kind);
                     let name = e.path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
                     let galley = painter.layout_no_wrap(name, font.clone(), color);
                     let w = galley.size().x;
                     painter.galley(pos2(x, cy - galley.size().y / 2.0), galley, color);
                     let extra = match (&e.old_path, kind) {
-                        (Some(old), _) => Some(format!("from {}", old.display())),
-                        (None, ChangeKind::Deleted) => Some("deleted".into()),
+                        (Some(old), _) if row.group == Group::Staged => Some(format!("from {}", old.display())),
+                        (_, ChangeKind::Deleted) => Some("deleted".into()),
                         _ => None,
                     };
                     if let Some(extra) = extra {
@@ -425,14 +629,19 @@ fn draw_tree(c: &ChangesUi, ui: &mut Ui, events: &mut Vec<Event>) {
                 }
             }
 
+            if resp.drag_started() {
+                events.push(Event::DragStart(idx));
+            }
             let resp = match &row.kind {
-                RowKind::File(i) => resp.on_hover_text_at_pointer(c.entries[*i].path.display().to_string()),
+                RowKind::File(i) if !dragging => resp.on_hover_ui_at_pointer(|ui| {
+                    ui.label(c.file_tooltip(*i));
+                }),
                 _ => resp,
             };
             if resp.clicked() {
                 let p = resp.interact_pointer_pos().unwrap_or_default();
-                if check.expand(3.0).contains(p) {
-                    events.push(Event::Check(row.span.clone(), tri != Tri::On));
+                if !empty && check.expand(2.0).contains(p) {
+                    events.push(Event::Check(row.span.clone(), tri != CheckState::Checked));
                 } else if has_arrow && arrow.expand(2.0).contains(p) {
                     events.push(Event::Toggle(idx));
                 } else {
@@ -441,7 +650,7 @@ fn draw_tree(c: &ChangesUi, ui: &mut Ui, events: &mut Vec<Event>) {
             }
             if resp.double_clicked() {
                 match &row.kind {
-                    RowKind::File(i) => events.push(Event::Diff(c.entries[*i].path.clone())),
+                    RowKind::File(i) => events.push(Event::Diff(c.entries[c.items[*i].entry].path.clone())),
                     _ => events.push(Event::Toggle(idx)),
                 }
             }
@@ -450,15 +659,42 @@ fn draw_tree(c: &ChangesUi, ui: &mut Ui, events: &mut Vec<Event>) {
             }
             resp.context_menu(|ui| context_menu(c, row, ui, events));
         }
+        if let Some(g) = target.filter(|_| target_rect.is_positive()) {
+            ui.painter().set(target_bg, egui::epaint::RectShape::filled(target_rect, theme::T.radius.small, theme::T.drop_target_bg));
+            ui.painter().rect_stroke(target_rect, theme::T.radius.small, Stroke::new(1.0_f32, theme::T.drop_target_border), egui::StrokeKind::Inside);
+            // A hover-only node, so tests (and screen readers) see where a drop would land.
+            let r = ui.interact(target_rect, Id::new("changes-drop-target"), Sense::hover());
+            r.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Other, true, format!("Drop target {}", g.title())));
+        }
     });
+    if let Some(drag) = &c.drag {
+        if released || !down {
+            events.push(Event::Drop(target));
+        } else {
+            ui.ctx().set_cursor_icon(CursorIcon::Grabbing);
+            if let Some(p) = pointer {
+                drag_ghost(ui.ctx(), p, drag.items.len());
+            }
+        }
+    }
+}
+
+/// The count label that follows the pointer during a drag ("3 files").
+fn drag_ghost(ctx: &Context, pointer: egui::Pos2, n: usize) {
+    let painter = ctx.layer_painter(LayerId::new(Order::Tooltip, Id::new("changes-drag-ghost")));
+    let galley = painter.layout_no_wrap(count_label(n), theme::T.ui_font(), theme::T.text_bright);
+    let rect = Rect::from_min_size(pointer + vec2(14.0, 10.0), galley.size() + vec2(16.0, 8.0));
+    painter.rect(rect, theme::T.radius.row, theme::T.popup_bg, Stroke::new(1.0_f32, theme::T.popup_border), egui::StrokeKind::Inside);
+    painter.galley(rect.min + vec2(8.0, 4.0), galley, theme::T.text_bright);
 }
 
 fn context_menu(c: &ChangesUi, row: &Row, ui: &mut Ui, events: &mut Vec<Event>) {
     ui.set_min_width(180.0);
-    let targets = c.targets(row);
+    let items = c.target_items(row);
+    let targets = c.paths_of(&items);
     let entries: Vec<&FileChange> = targets.iter().filter_map(|p| c.entry(p)).collect();
     let single = match row.kind {
-        RowKind::File(i) if targets.len() == 1 => Some(c.entries[i].path.clone()),
+        RowKind::File(_) if targets.len() == 1 => Some(targets[0].clone()),
         _ => None,
     };
     if ui.add_enabled(single.is_some(), egui::Button::new("Show Diff")).clicked() {
@@ -498,28 +734,12 @@ fn context_menu(c: &ChangesUi, row: &Row, ui: &mut Ui, events: &mut Vec<Event>) 
     }
 }
 
-fn paint_checkbox(painter: &egui::Painter, r: Rect, tri: Tri, hovered: bool) {
-    let t = &theme::T;
-    let border = if hovered { t.checkbox_border_hover } else { t.checkbox_border };
-    match tri {
-        Tri::Off => {
-            painter.rect_filled(r, t.radius.small, t.checkbox_bg);
-            painter.rect_stroke(r, t.radius.small, Stroke::new(1.0_f32, border), egui::StrokeKind::Inside);
-        }
-        Tri::On | Tri::Mixed => {
-            painter.rect_filled(r, t.radius.small, t.accent);
-            let s = Stroke::new(1.6_f32, t.on_accent);
-            if tri == Tri::On {
-                painter.line_segment([pos2(r.min.x + 2.5, r.center().y), pos2(r.min.x + 5.0, r.max.y - 3.0)], s);
-                painter.line_segment([pos2(r.min.x + 5.0, r.max.y - 3.0), pos2(r.max.x - 2.5, r.min.y + 3.0)], s);
-            } else {
-                painter.line_segment([pos2(r.min.x + 3.0, r.center().y), pos2(r.max.x - 3.0, r.center().y)], s);
-            }
-        }
-    }
-}
-
 /// The message box, Amend and the commit buttons. Returns `Some(push)` when a button was hit.
+///
+/// The content must fill the panel exactly. `TopBottomPanel` stores its content height as the
+/// panel height every frame, so a box sized from a guessed button height made the panel shrink
+/// by the difference on every repaint (and undid the user's resize). So the buttons go in first
+/// at the bottom, and the box takes exactly the height that is left.
 fn message_area(state: &mut AppState, ui: &mut Ui) -> Option<bool> {
     let c = &mut state.git_ui.changes;
     let mut out = None;
@@ -529,38 +749,50 @@ fn message_area(state: &mut AppState, ui: &mut Ui) -> Option<bool> {
             amend_changed = true;
         }
     });
-    let buttons_h = 30.0;
-    let edit_h = (ui.available_height() - buttons_h).max(40.0);
     let id = Id::new(MESSAGE_ID);
-    ScrollArea::vertical().id_salt("commit-message-scroll").max_height(edit_h).auto_shrink([false, true]).show(ui, |ui| {
-        let r = ui.add_sized(
-            vec2(ui.available_width(), edit_h - 4.0),
-            egui::TextEdit::multiline(&mut c.message).id(id).hint_text("Commit Message").font(egui::TextStyle::Monospace).desired_width(f32::INFINITY),
-        );
-        if std::mem::take(&mut c.focus_message) {
-            r.request_focus();
-        }
-        // Cmd+Enter commits, like IDEA.
-        if r.has_focus() && ui.input_mut(|i| i.consume_key(Modifiers::COMMAND, Key::Enter)) {
-            out = Some(false);
-        }
+    let can_commit = |c: &ChangesUi| !c.committing && !c.message.trim().is_empty() && (c.prefix.last().copied().unwrap_or(0) > 0 || c.amend);
+    ui.with_layout(egui::Layout::bottom_up(egui::Align::Min), |ui| {
+        let checked = c.prefix.last().copied().unwrap_or(0);
+        let can = can_commit(c);
+        // Not `ui.horizontal`: its row starts at `interact_size.y`, and the taller buttons would
+        // grow down past the panel edge. Bottom-aligned items grow upwards.
+        ui.with_layout(egui::Layout::left_to_right(egui::Align::Max), |ui| {
+            let label = if c.amend { "Amend Commit" } else { "Commit" };
+            let hint = if c.message.trim().is_empty() { "Enter a commit message" } else if checked == 0 && !c.amend { "Select files to commit" } else { "⌘⏎" };
+            if ui.add_enabled(can, egui::Button::new(RichText::new(label).color(theme::T.on_accent)).fill(theme::T.accent)).on_disabled_hover_text(hint).clicked() {
+                out = Some(false);
+            }
+            if ui.add_enabled(can, egui::Button::new(if c.amend { "Amend Commit and Push..." } else { "Commit and Push..." })).on_disabled_hover_text(hint).clicked() {
+                out = Some(true);
+            }
+            if c.committing {
+                ui.add(egui::Spinner::new().size(theme::T.font.hint));
+            }
+        });
+        ui.add_space(4.0);
+        ui.allocate_ui_with_layout(ui.available_size(), egui::Layout::top_down(egui::Align::Min), |ui| {
+            let edit_h = ui.available_height().max(40.0);
+            ScrollArea::vertical().id_salt("commit-message-scroll").max_height(edit_h).auto_shrink([false, true]).show(ui, |ui| {
+                let r = ui.add_sized(
+                    vec2(ui.available_width(), edit_h),
+                    egui::TextEdit::multiline(&mut c.message).id(id).hint_text("Commit Message").font(egui::TextStyle::Monospace).desired_width(f32::INFINITY),
+                );
+                if std::mem::take(&mut c.focus_message) {
+                    r.request_focus();
+                }
+                // The buttons above were drawn from the old text; one more frame shows the new state.
+                if r.changed() {
+                    ui.ctx().request_repaint();
+                }
+                // Cmd+Enter commits, like IDEA.
+                if r.has_focus() && ui.input_mut(|i| i.consume_key(Modifiers::COMMAND, Key::Enter)) {
+                    out = Some(false);
+                }
+            });
+        });
     });
-    let checked = c.prefix.last().copied().unwrap_or(0);
-    let can = !c.committing && !c.message.trim().is_empty() && (checked > 0 || c.amend);
-    ui.add_space(4.0);
-    ui.horizontal(|ui| {
-        let label = if c.amend { "Amend Commit" } else { "Commit" };
-        let hint = if c.message.trim().is_empty() { "Enter a commit message" } else if checked == 0 && !c.amend { "Select files to commit" } else { "⌘⏎" };
-        if ui.add_enabled(can, egui::Button::new(RichText::new(label).color(theme::T.on_accent)).fill(theme::T.accent)).on_disabled_hover_text(hint).clicked() {
-            out = Some(false);
-        }
-        if ui.add_enabled(can, egui::Button::new(if c.amend { "Amend Commit and Push..." } else { "Commit and Push..." })).on_disabled_hover_text(hint).clicked() {
-            out = Some(true);
-        }
-        if c.committing {
-            ui.add(egui::Spinner::new().size(theme::T.font.hint));
-        }
-    });
+    // Checked against the text as it is now, after this frame's typing.
+    let can = can_commit(c);
     if amend_changed {
         toggle_amend(state);
     }
@@ -617,10 +849,10 @@ fn handle(state: &mut AppState, e: Event) {
         Event::Select { row, cmd, shift } => select(c, row, cmd, shift),
         Event::SelectIfNot(row) => {
             if let Some(RowKind::File(i)) = c.rows.get(row).map(|r| &r.kind) {
-                let p = c.entries[*i].path.clone();
-                if !c.selected.contains(&p) {
+                let k = c.key(*i);
+                if !c.selected.contains(&k) {
                     c.selected.clear();
-                    c.selected.insert(p);
+                    c.selected.insert(k);
                     c.anchor = Some(row);
                 }
             }
@@ -630,8 +862,8 @@ fn handle(state: &mut AppState, e: Event) {
         Event::Rollback(paths) if !paths.is_empty() => c.confirm = Some(Confirm::Rollback(paths)),
         Event::Delete(paths) if !paths.is_empty() => c.confirm = Some(Confirm::Delete(paths)),
         Event::Rollback(_) | Event::Delete(_) => {}
-        Event::Stage(paths) => git_write(state, "Staging", move |repo| repo.stage(&paths)),
-        Event::Unstage(paths) => git_write(state, "Unstaging", move |repo| repo.unstage(&paths)),
+        Event::Stage(paths) => stage_op(state, DropOp::Stage, paths),
+        Event::Unstage(paths) => stage_op(state, DropOp::Unstage, paths),
         Event::ExpandAll(expand) => {
             if expand {
                 c.collapsed.clear();
@@ -643,12 +875,70 @@ fn handle(state: &mut AppState, e: Event) {
             c.rows_dirty = true;
         }
         Event::Refresh => state.refresh_git(),
+        Event::DragStart(row) => {
+            let Some(r) = c.rows.get(row) else { return };
+            // Like IDEA: a drag on a row outside the selection drags that row alone.
+            if let RowKind::File(i) = r.kind {
+                let k = c.key(i);
+                if !c.selected.contains(&k) {
+                    c.selected.clear();
+                    c.selected.insert(k);
+                    c.anchor = Some(row);
+                }
+            }
+            let items: Vec<ItemKey> = c.target_items(r).into_iter().map(|i| c.key(i)).collect();
+            let from = Group::ALL.map(|g| items.iter().any(|(_, ig)| *ig == g));
+            c.drag = Some(Drag { items, from });
+        }
+        Event::Drop(target) => {
+            let op = target.and_then(|g| c.drop_paths(g));
+            c.drag = None;
+            if let Some((op, paths)) = op {
+                if op == DropOp::Stage {
+                    // A file that already had a Staged row keeps that row's box; it becomes
+                    // ticked too, like every newly staged file.
+                    for i in 0..c.items.len() {
+                        if c.items[i].group == Group::Staged && paths.binary_search(&c.entries[c.items[i].entry].path).is_ok() {
+                            c.checked[i] = true;
+                        }
+                    }
+                    c.recount();
+                }
+                stage_op(state, op, paths);
+            }
+        }
     }
+}
+
+/// Stage or Unstage on a worker through `run_op`, which refreshes git state afterwards.
+fn stage_op(state: &mut AppState, op: DropOp, paths: Vec<PathBuf>) {
+    if paths.is_empty() {
+        return;
+    }
+    let n = count_label(paths.len());
+    let (title, body) = match op {
+        DropOp::Stage => ("Stage", format!("{n} staged")),
+        DropOp::Unstage => ("Unstage", format!("{n} unstaged")),
+    };
+    super::remote::run_op(
+        state,
+        title,
+        body,
+        false,
+        move |repo| {
+            match op {
+                DropOp::Stage => repo.stage(&paths)?,
+                DropOp::Unstage => repo.unstage(&paths)?,
+            }
+            Ok(None)
+        },
+        |_, _| {},
+    );
 }
 
 fn select(c: &mut ChangesUi, row: usize, cmd: bool, shift: bool) {
     let path_of = |c: &ChangesUi, r: usize| match c.rows.get(r).map(|r| &r.kind) {
-        Some(RowKind::File(i)) => Some(c.entries[*i].path.clone()),
+        Some(RowKind::File(i)) => Some(c.key(*i)),
         _ => None,
     };
     if shift {
@@ -704,10 +994,10 @@ fn start_commit(state: &mut AppState, push: bool) {
     if c.committing {
         return;
     }
-    let paths = c.checked_paths();
+    let (paths, staged_only) = c.commit_selection();
     let message = c.message.trim_end().to_string();
     let amend = c.amend;
-    if message.trim().is_empty() || (paths.is_empty() && !amend) {
+    if message.trim().is_empty() || (paths.is_empty() && staged_only.is_empty() && !amend) {
         return;
     }
     c.committing = true;
@@ -720,7 +1010,7 @@ fn start_commit(state: &mut AppState, push: bool) {
             saves.push((id, e.path.clone(), text, token));
         }
     }
-    let n = paths.len();
+    let n = paths.len() + staged_only.len();
     state.jobs.spawn(
         if amend { "Amending commit" } else { "Committing" },
         move || {
@@ -730,7 +1020,7 @@ fn start_commit(state: &mut AppState, push: bool) {
                     saved.push((id, token));
                 }
             }
-            (saved, repo.commit(&message, &paths, amend), message)
+            (saved, repo.commit_selection(&message, &paths, &staged_only, amend), message)
         },
         move |state, (saved, res, message)| {
             for (id, token) in saved {
@@ -928,7 +1218,7 @@ fn test_tick(state: &mut AppState) {
         "--test-git-changes" => {
             state.layout.show(crate::layout::ToolWindow::Commit);
             let c = &state.git_ui.changes;
-            let checked = c.checked.iter().filter(|&&x| x).count();
+            let checked = c.checked_files;
             eprintln!("[test] commit window: {} entries, {checked} checked, status {} changes", c.entries.len(), state.git.changes.len());
         }
         "--test-git-diff" => super::diff::open_worktree_diff(state, &workdir.join(&arg)),
@@ -940,7 +1230,7 @@ fn test_tick(state: &mut AppState) {
             c.message = msg.to_string();
             if !paths.is_empty() {
                 let want: HashSet<PathBuf> = paths.split(',').map(PathBuf::from).collect();
-                c.checked = c.entries.iter().map(|e| want.contains(&e.path)).collect();
+                c.checked = c.items.iter().map(|it| want.contains(&c.entries[it.entry].path)).collect();
                 c.recount();
             }
             start_commit(state, false);

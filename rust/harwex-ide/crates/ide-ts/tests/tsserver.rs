@@ -147,3 +147,8 @@ fn timeout_returns_error() {
     assert_eq!(loc.path, p.root.join("src/util.ts"));
     ts.shutdown();
 }
+
+#[test]
+fn file_rename_updates_imports() {
+    common::check_file_rename(common::TsLink::TsServer);
+}

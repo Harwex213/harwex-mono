@@ -3,6 +3,8 @@
 
 pub mod app;
 pub mod breadcrumbs;
+pub mod chrome;
+pub mod fileops;
 pub mod find;
 pub mod git;
 pub mod icons;
@@ -20,6 +22,7 @@ pub mod terminal;
 pub mod testhook;
 pub mod theme;
 pub mod tree;
+pub mod tree_menu;
 pub mod util;
 pub mod watcher;
 

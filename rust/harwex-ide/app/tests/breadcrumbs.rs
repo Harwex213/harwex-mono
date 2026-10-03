@@ -260,6 +260,80 @@ fn diff_tab_shows_the_diffed_file() {
 }
 
 // ---------------------------------------------------------------------------------------------
+// Files outside the project: the bar starts at a library label, not at `/`.
+
+const REGISTRY_CRATE: &str = "cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228";
+
+/// Opens `path` (absolute, outside the project) and waits for its tab.
+fn open_external(ide: &mut Ide, path: &std::path::Path) {
+    let path = std::fs::canonicalize(path).expect("file exists");
+    ide.state_mut().open_location(&path, None, true);
+    ide.wait_for("external tab", |s| s.tabs.active_editor().is_some_and(|e| e.path == path));
+    ide.settle();
+}
+
+/// The directory of popup level `level`, absolute.
+fn level_dir(ide: &Ide, level: usize) -> Option<std::path::PathBuf> {
+    ide.state().breadcrumbs.popup.as_ref()?.levels.get(level)?.dir_path().map(|d| d.to_path_buf())
+}
+
+#[test]
+fn registry_file_roots_at_crate_and_version() {
+    let fx = Fixture::new(SUITE, "external_registry");
+    let repo = crumbs_repo(&fx);
+    let krate = fx.path(REGISTRY_CRATE);
+    // No `Cargo.toml`: a crate folder without one starts no rust-analyzer, so the status bar
+    // stays still for the snapshot.
+    write(&krate, "README.md", "# serde\n");
+    write(&krate, "src/lib.rs", "pub mod de;\n");
+    write(&krate, "src/de/mod.rs", "pub trait Deserialize {}\n");
+    write(&krate, "src/de/value.rs", "pub struct Value;\n");
+    let mut ide = Ide::open(SUITE, &repo.dir);
+    open_external(&mut ide, &krate.join("src/de/mod.rs"));
+    for label in ["Breadcrumb serde 1.0.228", "Breadcrumb src", "Breadcrumb de", "Breadcrumb mod.rs"] {
+        assert!(ide.has(label), "missing {label}: {:?}", ide.labels());
+    }
+    assert_eq!(ide.state().breadcrumbs.slots.len(), 4, "nothing above the crate folder");
+    assert!(!ide.has("Breadcrumb registry") && !ide.has("Breadcrumb /"));
+
+    // The root popup lists the crate folder, never a folder above it.
+    ide.click("Breadcrumb serde 1.0.228");
+    ide.wait_until("crate popup", |ide| ide.state().breadcrumbs.popup.as_ref().is_some_and(|p| ide.state().breadcrumbs.items(&p.levels[0]).is_some()));
+    ide.settle();
+    let krate = std::fs::canonicalize(&krate).expect("crate dir");
+    assert_eq!(level_dir(&ide, 0).as_deref(), Some(krate.as_path()));
+    assert_eq!(names(ide.state(), 0), ["src", "README.md"]);
+    ide.snapshot("external_registry");
+}
+
+#[test]
+fn other_external_file_shows_three_segments() {
+    let fx = Fixture::new(SUITE, "external_file");
+    let repo = crumbs_repo(&fx);
+    write(&fx.dir, "outside/notes/todo/list.md", "# List\n");
+    write(&fx.dir, "outside/notes/todo/done.md", "# Done\n");
+    let mut ide = Ide::open(SUITE, &repo.dir);
+    open_external(&mut ide, &fx.path("outside/notes/todo/list.md"));
+    for label in ["Breadcrumb External", "Breadcrumb notes", "Breadcrumb todo", "Breadcrumb list.md"] {
+        assert!(ide.has(label), "missing {label}: {:?}", ide.labels());
+    }
+    assert_eq!(ide.state().breadcrumbs.slots.len(), 4);
+
+    // The file segment lists its siblings; the root lists the folder that holds `notes`.
+    ide.click("Breadcrumb list.md");
+    ide.wait_until("siblings", |ide| ide.state().breadcrumbs.popup.as_ref().is_some_and(|p| ide.state().breadcrumbs.items(&p.levels[0]).is_some()));
+    ide.settle();
+    assert_eq!(names(ide.state(), 0), ["done.md", "list.md"]);
+    ide.snapshot("external_file");
+    ide.key(Key::Escape);
+    ide.click("Breadcrumb External");
+    ide.wait_until("root popup", |ide| ide.state().breadcrumbs.popup.as_ref().is_some_and(|p| ide.state().breadcrumbs.items(&p.levels[0]).is_some()));
+    let outside = std::fs::canonicalize(fx.path("outside")).expect("outside dir");
+    assert_eq!(level_dir(&ide, 0).as_deref(), Some(outside.as_path()));
+    assert_eq!(names(ide.state(), 0), ["notes"]);
+}
+
+// ---------------------------------------------------------------------------------------------
 // Navigation-bar keyboard: Alt+Home, segments, popups and hops between them.
 
 fn bar_focused(ide: &Ide) -> bool {

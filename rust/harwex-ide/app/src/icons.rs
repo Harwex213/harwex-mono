@@ -45,6 +45,8 @@ pub enum Icon {
     Diff,
     ExpandAll,
     CollapseAll,
+    /// Select Opened File: a crosshair.
+    Locate,
 }
 
 /// Paints `icon` centered in `rect` (any size; the grid scales to the shorter side).
@@ -185,9 +187,66 @@ pub fn paint(painter: &Painter, rect: Rect, icon: Icon, color: Color32) {
             line(p(4.0, 13.5), p(8.0, 9.5));
             line(p(8.0, 9.5), p(12.0, 13.5));
         }
+        Icon::Locate => {
+            ring(p(8.0, 8.0), 4.5);
+            dot(p(8.0, 8.0), 1.4);
+            line(p(8.0, 1.0), p(8.0, 3.5));
+            line(p(8.0, 12.5), p(8.0, 15.0));
+            line(p(1.0, 8.0), p(3.5, 8.0));
+            line(p(12.5, 8.0), p(15.0, 8.0));
+        }
         Icon::Lock => {
             painter.rect_filled(Rect::from_min_max(p(3.5, 7.5), p(12.5, 14.0)), CornerRadius::same((1.5 * s) as u8), color);
             curve(p(5.5, 7.5), p(5.0, 1.8), p(11.0, 1.8), p(10.5, 7.5));
+        }
+    }
+}
+
+/// The project tree's expand toggle, like IDEA: a thin chevron, `›` when collapsed and `⌄`
+/// when expanded, `T.space.chevron_w` wide and centered on `center`.
+pub fn tree_chevron(painter: &Painter, center: Pos2, expanded: bool, color: Color32) {
+    let half = T.space.chevron_w / 2.0;
+    // The short side of the chevron is half its long side, like IDEA's 8x4 arrow.
+    let q = half / 2.0;
+    let stroke = Stroke::new(T.space.chevron_stroke, color);
+    let (a, b, c) = if expanded {
+        (center + vec2(-half, -q), center + vec2(0.0, q), center + vec2(half, -q))
+    } else {
+        (center + vec2(-q, -half), center + vec2(q, 0.0), center + vec2(-q, half))
+    };
+    painter.line_segment([a, b], stroke);
+    painter.line_segment([b, c], stroke);
+}
+
+/// The state a checkbox shows. `Partial` is a folder with only some children checked.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CheckState {
+    Unchecked,
+    Partial,
+    Checked,
+}
+
+/// IDEA's checkbox in `rect`: a rounded square. Checked is an accent fill with a white check
+/// mark, partial an accent fill with a white dash, unchecked a dark fill with a grey border.
+/// Hover brightens the border (or the fill of a checked box).
+pub fn checkbox(painter: &Painter, rect: Rect, state: CheckState, hovered: bool) {
+    let r = CornerRadius::same(T.radius.small as u8);
+    let s = rect.width() / 14.0;
+    let p = |x: f32, y: f32| rect.min + vec2(x * s, y * s);
+    match state {
+        CheckState::Unchecked => {
+            let border = if hovered { T.checkbox_border_hover } else { T.checkbox_border };
+            painter.add(RectShape::new(rect, r, T.checkbox_bg, Stroke::new(1.0_f32, border), StrokeKind::Inside));
+        }
+        CheckState::Checked | CheckState::Partial => {
+            painter.rect_filled(rect, r, if hovered { T.checkbox_fill_hover } else { T.accent });
+            let mark = Stroke::new(1.6 * s, T.on_accent);
+            if state == CheckState::Checked {
+                painter.line_segment([p(3.6, 7.2), p(6.0, 9.6)], mark);
+                painter.line_segment([p(6.0, 9.6), p(10.6, 4.6)], mark);
+            } else {
+                painter.line_segment([p(3.8, 7.0), p(10.2, 7.0)], mark);
+            }
         }
     }
 }
@@ -201,6 +260,22 @@ pub fn folder(painter: &Painter, center: Pos2, size: f32) {
     painter.rect_filled(tab, r, T.folder);
     painter.rect_filled(body, r, T.folder);
     painter.line_segment([pos2(body.min.x + 1.0, body.min.y + 2.0 * s), pos2(body.max.x - 1.0, body.min.y + 2.0 * s)], Stroke::new(1.0_f32, T.file_fold));
+}
+
+/// Books on a shelf: the root of a file outside the project (a library), like IDEA's
+/// "External Libraries". Two upright books and one leaning book, in the folder color.
+pub fn library(painter: &Painter, center: Pos2, size: f32) {
+    let s = size / 16.0;
+    let o = center - vec2(8.0 * s, 8.0 * s);
+    let p = |x: f32, y: f32| o + vec2(x * s, y * s);
+    let r = CornerRadius::same((1.0 * s).round() as u8);
+    let band = Stroke::new(1.0_f32, T.file_fold);
+    for (x0, x1, top) in [(0.5, 4.8, 1.5), (5.8, 9.6, 3.5)] {
+        painter.rect_filled(Rect::from_min_max(p(x0, top), p(x1, 14.5)), r, T.folder);
+        painter.line_segment([p(x0 + 0.5, top + 2.5), p(x1 - 0.5, top + 2.5)], band);
+    }
+    // A thick segment is a rotated rectangle and needs no allocated polygon.
+    painter.line_segment([p(11.9, 14.3), p(14.1, 4.6)], Stroke::new(4.0 * s, T.folder));
 }
 
 /// A page with a folded corner, colored by the file extension.

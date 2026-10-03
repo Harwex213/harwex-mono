@@ -46,6 +46,18 @@ pub struct Theme {
     pub strip_active_bg: Color32,
     pub selection: Color32,
     pub selection_inactive: Color32,
+    /// Project tree rows: the selected row while the tree has keyboard focus (IDEA's blue).
+    pub tree_selection: Color32,
+    /// The selected row while another window (editor, terminal) has the focus.
+    pub tree_selection_inactive: Color32,
+    /// A row under the pointer that is not selected.
+    pub tree_hover: Color32,
+    /// The thin expand chevron in front of a folder row.
+    pub tree_chevron: Color32,
+    /// Names of excluded folders and their content, IDEA's dimmed orange.
+    pub tree_excluded: Color32,
+    /// The name of a Cut item waiting for Paste.
+    pub tree_cut: Color32,
     pub input_bg: Color32,
     pub input_border: Color32,
     pub button_bg: Color32,
@@ -126,6 +138,11 @@ pub struct Theme {
     pub checkbox_bg: Color32,
     pub checkbox_border: Color32,
     pub checkbox_border_hover: Color32,
+    /// A checked box under the pointer.
+    pub checkbox_fill_hover: Color32,
+    // Drag and drop in the commit tree: the target group's fill and outline.
+    pub drop_target_bg: Color32,
+    pub drop_target_border: Color32,
     /// The memory indicator: the bar's track and the share of RAM in use.
     pub memory_track: Color32,
     pub memory_fill: Color32,
@@ -148,14 +165,22 @@ pub struct Radii {
     pub badge: f32,
 }
 
+/// The side of IDEA's checkbox square (its corners use `Radii::small`).
+pub const CHECKBOX_SIZE: f32 = 14.0;
+
 pub struct Spacing {
     /// Between islands, and between an island and the window edge.
     pub gap: f32,
     /// Inside an island, around its content.
     pub island_pad: f32,
     pub title_h: f32,
-    /// Room for the macOS traffic lights at the left of the title bar.
-    pub traffic_lights_w: f32,
+    /// The macOS window buttons (`chrome::title_bar_layout`): the close button's left inset,
+    /// the distance between two button origins, and the gap from the zoom button to the content.
+    pub lights_inset: f32,
+    pub lights_pitch: f32,
+    pub lights_gap: f32,
+    /// Left inset of the title bar content when no window buttons sit there (full screen, Linux).
+    pub title_pad: f32,
     pub strip_w: f32,
     pub strip_button: f32,
     pub icon: f32,
@@ -164,6 +189,9 @@ pub struct Spacing {
     pub header_h: f32,
     pub row_h: f32,
     pub indent: f32,
+    /// Width of the tree's expand chevron, and its stroke.
+    pub chevron_w: f32,
+    pub chevron_stroke: f32,
     /// Inset of the editor inside its island, so square editor corners stay inside the round ones.
     pub editor_pad: f32,
 }
@@ -195,6 +223,12 @@ impl Theme {
             strip_active_bg: hex(0x2E3035),
             selection: hex(0x2E436E),
             selection_inactive: hex(0x2C2E33),
+            tree_selection: hex(0x2E436E),
+            tree_selection_inactive: hex(0x43454A),
+            tree_hover: hex(0x26282B),
+            tree_chevron: hex(0x8C8F96),
+            tree_excluded: hex(0xA2794F),
+            tree_cut: hex(0x6F737A),
             input_bg: hex(0x191A1C),
             input_border: hex(0x43454A),
             button_bg: hex(0x2B2D30),
@@ -273,6 +307,9 @@ impl Theme {
             checkbox_bg: hex(0x2B2D30),
             checkbox_border: hex(0x6F737A),
             checkbox_border_hover: hex(0xA8ADB5),
+            checkbox_fill_hover: hex(0x4682FA),
+            drop_target_bg: hexa(0x3574F0, 40),
+            drop_target_border: hex(0x3574F0),
             memory_track: hex(0x1E1F22),
             memory_fill: hex(0x2E436E),
 
@@ -281,7 +318,10 @@ impl Theme {
                 gap: 6.0,
                 island_pad: 8.0,
                 title_h: 40.0,
-                traffic_lights_w: 78.0,
+                lights_inset: 12.0,
+                lights_pitch: 20.0,
+                lights_gap: 12.0,
+                title_pad: 10.0,
                 strip_w: 40.0,
                 strip_button: 30.0,
                 icon: 16.0,
@@ -290,6 +330,8 @@ impl Theme {
                 header_h: 32.0,
                 row_h: 22.0,
                 indent: 18.0,
+                chevron_w: 8.0,
+                chevron_stroke: 1.3,
                 editor_pad: 4.0,
             },
             font: FontSizes { ui: 13.0, small: 12.0, tiny: 11.0, mono: 13.0, mono_small: 12.0, hint: 13.0, big: 15.0, welcome: 24.0, badge: 10.5 },

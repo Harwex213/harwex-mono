@@ -4,14 +4,14 @@ One line per task. Details live in `tasks/<id>-<slug>.md`. A closed task loses i
 
 ## Ideas
 
-Flaky:
-- [idea] `git_changes::amend_with_cmd_enter` failed a snapshot once in a full run and passed alone and in the next run. Find the timing dependency. It also failed once under load in `cargo xtask clean-check` (commit box 1 px higher).
+Commit window:
+- [idea] Stage/Unstage (drop or menu) shows a success toast on every action, because it goes through `run_op`. IDEA is silent on success. Make stage/unstage success quiet; keep error toasts.
 
 Memory indicator:
 - [idea] Click on the RAM widget: "Restart language servers". Needs a `Languages` restart that re-opens the open files.
 
 Editor:
-- [idea] Multi-caret, bracket matching, auto-close, folding, soft wrap.
+- [idea] Bracket matching, auto-close, folding, soft wrap.
 - [idea] Find and replace inside the editor.
 - [idea] Make ropey break lines like the servers do. VT, FF and NEL shift TypeScript positions by one line.
 

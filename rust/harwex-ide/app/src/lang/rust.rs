@@ -22,7 +22,7 @@ use ide_lsp::{default_capabilities, ClientConfig, LspClient};
 use serde_json::{json, Value};
 
 use super::config::{IdeConfig, RustConfig};
-use super::{is_library_path, lock, HoverInfo, LangId, LanguageServer, Location, Reference};
+use super::{is_library_path, lock, HoverInfo, LangId, LanguageServer, Location, Reference, RenameEdits};
 use crate::nav::NavKind;
 
 /// How long a request may take in total, retries while loading included. The first request
@@ -161,6 +161,22 @@ pub fn workspace_root(file: &Path) -> Option<PathBuf> {
         }
     }
     workspace.or(nearest)
+}
+
+/// A module that a `mod` item declares: a `.rs` file other than a crate root (`lib.rs`,
+/// `main.rs`, `build.rs`, `src/bin`, `examples`, `tests`, `benches`) and other than `mod.rs`,
+/// or a folder with a `mod.rs` or a sibling `<name>.rs`.
+fn is_declared_module(path: &Path) -> bool {
+    let parent_name = path.parent().and_then(Path::file_name).and_then(|n| n.to_str()).unwrap_or_default();
+    if matches!(parent_name, "bin" | "examples" | "tests" | "benches") {
+        return false;
+    }
+    if path.is_dir() {
+        let sibling = path.with_extension("rs");
+        return path.join("mod.rs").is_file() || sibling.is_file();
+    }
+    let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or_default();
+    path.extension().is_some_and(|e| e == "rs") && !matches!(stem, "lib" | "main" | "build" | "mod")
 }
 
 /// Why jumps into the standard library cannot work, if they cannot: rust-analyzer needs
@@ -428,6 +444,21 @@ impl RustService {
         }
     }
 
+    /// `retry` for questions about a module file or folder. Right after the workspace load
+    /// (`quiescent: true`) rust-analyzer still answers file renames with nothing for a short
+    /// while. A non-root module always has its `mod` declaration, so an empty answer for one
+    /// is asked again until the request timeout.
+    fn retry_module<T>(&self, path: &Path, f: impl Fn(&LspClient, Duration) -> ide_lsp::Result<Vec<T>>) -> Result<Vec<T>, String> {
+        let deadline = Instant::now() + self.timeout;
+        loop {
+            let found = self.retry(path, Vec::is_empty, &f)?;
+            if !found.is_empty() || !is_declared_module(path) || Instant::now() >= deadline {
+                return Ok(found);
+            }
+            std::thread::sleep(Duration::from_millis(200));
+        }
+    }
+
     /// Workspace roots with a server (running or not), for tests and the log.
     pub fn roots(&self) -> Vec<PathBuf> {
         let mut r: Vec<PathBuf> = lock(&self.servers).keys().cloned().collect();
@@ -485,6 +516,33 @@ impl LanguageServer for RustService {
             let (display, documentation) = ide_lsp::split_hover_markdown(&h.markdown);
             HoverInfo { display, documentation, tags: Vec::new() }
         }))
+    }
+
+    // rust-analyzer loads the whole Cargo workspace, so candidates add nothing.
+    fn rename_edits(&self, old: &Path, new: &Path, _candidates: &[PathBuf]) -> Result<RenameEdits, String> {
+        let renames = [(old.to_path_buf(), new.to_path_buf())];
+        let edits = self.retry_module(old, |c, t| c.will_rename_files(&renames, t))?;
+        Ok(RenameEdits { edits, projects_loaded: 0 })
+    }
+
+    fn file_references(&self, path: &Path, _candidates: &[PathBuf]) -> Result<Vec<Reference>, String> {
+        self.retry_module(path, |c, t| c.file_usages(path, t))
+    }
+
+    fn files_renamed(&self, old: &Path, new: &Path) {
+        let servers: Vec<Arc<RaServer>> = lock(&self.servers).values().cloned().collect();
+        for s in servers {
+            let _ = s.client.did_rename_files(&[(old.to_path_buf(), new.to_path_buf())], self.timeout);
+        }
+        lock(&self.files).retain(|p, _| !p.starts_with(old));
+    }
+
+    fn files_deleted(&self, path: &Path) {
+        let servers: Vec<Arc<RaServer>> = lock(&self.servers).values().cloned().collect();
+        for s in servers {
+            s.client.close_under(path);
+        }
+        lock(&self.files).retain(|p, _| !p.starts_with(path));
     }
 
     fn status(&self, path: &Path) -> Option<String> {

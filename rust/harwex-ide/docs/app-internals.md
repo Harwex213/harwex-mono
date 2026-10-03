@@ -21,7 +21,7 @@ Read this file when you add a panel, a custom tab, a Git UI action or a language
 
 ## Git UI
 
-- `app/src/git/mod.rs` holds the hooks the shell calls: `branch_button_clicked`, `update_project_clicked`, `commit_clicked`, `push_clicked`, `commit_tool_window`, `log_tool_window`, `on_editor_action`, `on_gutter_click`, `on_annotation_click`, `show_windows` (every frame after the panels: popups, dialogs) and `on_git_refreshed`.
+- `app/src/git/mod.rs` holds the hooks the shell calls: `open_branches_popup` (Ctrl+Shift+Backtick), `update_project_clicked` (Cmd+T), `push_clicked` (Cmd+Shift+K), `commit_tool_window`, `log_tool_window`, `on_editor_action`, `on_gutter_click`, `on_annotation_click`, `show_windows` (every frame after the panels: popups, dialogs) and `on_git_refreshed`.
 - The modules: `changes.rs` (commit tool window), `diff.rs`, `editor_git.rs` (gutter popup, blame), `log.rs`, `branches.rs`, `remote.rs` (push, update, stash dialogs), `conflicts.rs` and `conflicts/merge.rs`.
 - Entry points other modules call: `diff::open_worktree_diff`, `diff::open_commit_diff`, `log::show_file_history`, `remote::open_push_dialog`.
 - `remote::run_op(state, title, ok_body, check_conflicts, work, then)` runs a git write on a worker. It shows a toast, calls `refresh_git()`, checks for conflicts when asked, and then calls `then(state, ok)`.
@@ -30,7 +30,7 @@ Read this file when you add a panel, a custom tab, a Git UI action or a language
 ## Languages
 
 - `app/src/lang/` is the language registry. `LangId { TypeScript, Rust }` has a `LanguageSpec` each: extensions, root markers, server description, request concurrency.
-- The `LanguageServer` trait: `open`, `change`, `close`, `locations` (Declaration, Source, Type), `references`, `hover`, `status`, `stop_idle`, `running`, `take_notice`, `configure`, `shutdown`.
+- The `LanguageServer` trait: `open`, `change`, `close`, `locations` (Declaration, Source, Type), `references`, `hover`, `rename_edits` and `file_references` (file renames and safe delete, with candidate files), `files_renamed` and `files_deleted`, `status`, `stop_idle`, `running`, `take_notice`, `configure`, `shutdown`.
 - `Bridge` runs one queue thread per language. TypeScript keeps strict request order. A Rust request runs on its own thread once the queue reaches it, so a request that waits for indexing does not hold up the next one.
 - Read-only library paths (`lang::is_library_path`): `node_modules`, `$CARGO_HOME/registry`, `$CARGO_HOME/git`, `$RUST_SRC_PATH` and any `lib/rustlib/src/rust/` path.
 - rust-analyzer (`lang/rust.rs`): the lookup order is `rust.server` from `ide.toml`, `HARWEX_RUST_ANALYZER`, `PATH`, `~/.cargo/bin`, `rustup which rust-analyzer`. A candidate counts only if `--version` answers with `rust-analyzer`. The root is the topmost `Cargo.toml` with a `workspace` table, else the nearest `Cargo.toml`. The init options set `cargo.targetDir: true`, so rust-analyzer builds into its own `target/rust-analyzer` and never takes the lock of the user's `cargo build`. Diagnostics are off.

@@ -18,6 +18,7 @@ The client for TypeScript's own servers: `tsserver` (TypeScript 6 and older, run
 - A position request on a file the editor never opened opens it from disk. Otherwise the server answers "No Project".
 - "No content available" returns `Ok(empty)` or `Ok(None)`, not an error.
 - `kill_server_for` is for tests only.
+- File renames: `edits_for_file_rename(old, new, candidates)` before the move (edited paths are old paths), `files_renamed` / `files_deleted` after. `file_references(path, candidates)` lists importers. `import_candidates` is the text pre-filter (stem, folder for `index`, package name for a package entry) over code files; one file per candidate project is opened first.
 
 ## Test
 
@@ -28,6 +29,7 @@ cargo test -p ide-ts --test workspace -- --nocapture     # navigation timings on
 ```
 
 - The suites link TypeScript from `target/tools/` through `ts5()` / `ts7()` in `tests/common/mod.rs`. `HARWEX_TEST_TS5` and `HARWEX_TEST_TS7` override them (each a `typescript` package dir; TS 7 needs its platform package beside its real dir).
+- `tests/rename_budget.rs` generates 200 projects with 30 importers of one file and asserts the rename preview budget on both backends.
 - `tests/tsserver.rs` links TypeScript 5 into a temp project with a `node_modules/fake-lib` fixture. `tests/native_lsp.rs` links TypeScript 7, and TypeScript 5 as `@typescript/old`. `tests/workspace.rs` generates 40 linked `@ws/*` packages and a `.d.ts` + `.js` dependency, and asserts loose timing budgets for both backends.
 - A missing node or install prints `skipping: ...` with the hint to run `cargo xtask test-tools`, and the test passes. `cargo xtask clean-check` fails on such a line.
 - `HARWEX_NODE` overrides the node lookup. The app suite `cargo test -p harwex-ide --test navigation` covers the UI side.
@@ -41,4 +43,7 @@ cargo test -p ide-ts --test workspace -- --nocapture     # navigation timings on
 - `initialize` waits at least 10 s, so a small request timeout cannot break the handshake.
 - A cold tsserver on the big `mono` repository takes 13-14 s. The app's request timeout is 20 s. The native server takes about 1.2 s.
 - `change` sends the full text. A request holds the server's state lock while it writes to stdin, so a huge `change` briefly blocks other callers of the same server.
+- A server only answers file renames for projects it has loaded. In a monorepo an importer in an unopened package is missed unless a file of its project is opened first; that is what the candidates are for.
+- TypeScript 7 answers `workspace/willRenameFiles` only when the client declares `workspace.fileOperations.willRename`.
+- tsserver's `fileReferences` takes one file. A folder goes through a probe `getEditsForFileRename`.
 - ropey and TypeScript disagree on VT, FF and NEL line breaks. Positions after a form feed are one line off.

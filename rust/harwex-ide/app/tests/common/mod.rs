@@ -29,6 +29,7 @@ const SETTLE_TIMEOUT: Duration = Duration::from_secs(40);
 
 pub const CMD: Modifiers = Modifiers { alt: false, ctrl: false, shift: false, mac_cmd: true, command: true };
 pub const CMD_SHIFT: Modifiers = Modifiers { alt: false, ctrl: false, shift: true, mac_cmd: true, command: true };
+pub const CTRL_SHIFT: Modifiers = Modifiers { alt: false, ctrl: true, shift: true, mac_cmd: false, command: false };
 pub const SHIFT: Modifiers = Modifiers::SHIFT;
 pub const ALT: Modifiers = Modifiers::ALT;
 
@@ -206,8 +207,9 @@ impl Ide {
                 return;
             }
             if start.elapsed() > SETTLE_TIMEOUT {
-                let toasts = self.state().notifications.toast_titles();
-                panic!("timed out waiting for: {what} (toasts: {toasts:?})");
+                // The bodies carry the error text (a git stderr), which names the real cause.
+                let notes: Vec<String> = self.state().notifications.log().iter().map(|n| format!("{}: {}", n.title, n.body)).collect();
+                panic!("timed out waiting for: {what} (notifications: {notes:?})");
             }
             std::thread::sleep(Duration::from_millis(5));
         }
@@ -284,8 +286,8 @@ impl Ide {
         self.step();
     }
 
-    /// Moves the pointer to a spot with no widget (the empty right end of the bottom strip),
-    /// so snapshots carry no hover highlight or tooltip.
+    /// Moves the pointer to a spot with no widget (the `gap` right of the islands, above the
+    /// status bar), so snapshots carry no hover highlight or tooltip.
     pub fn park_mouse(&mut self) {
         let p = Pos2::new(self.size.x - 6.0, self.size.y - 36.0);
         if self.pointer != p {
@@ -453,6 +455,11 @@ impl Ide {
         self.click_at(r.center());
     }
 
+    /// True when the widget labelled `label` has keyboard focus.
+    pub fn is_focused(&self, label: &str) -> bool {
+        self.node(label).is_focused()
+    }
+
     pub fn is_selected(&self, label: &str) -> bool {
         self.node(label).toggled() == Some(egui::accesskit::Toggled::True)
     }
@@ -553,6 +560,31 @@ impl Ide {
     // ---------------------------------------------------------------------------------------
     // Snapshots
 
+    /// Label (or role) and bounds of every widget in the accessibility tree.
+    fn layout_fingerprint(&self) -> Vec<(String, [f64; 4])> {
+        self.harness
+            .query_all_by(|_| true)
+            .filter_map(|n| {
+                let r = n.raw_bounds()?;
+                let key = n.label().or_else(|| n.value()).map_or_else(|| format!("{:?}", n.role()), |s| s.to_string());
+                Some((key, [r.x0, r.y0, r.x1, r.y1]))
+            })
+            .collect()
+    }
+
+    /// Fails when one more frame moves a widget. `settle` trusts egui's repaint request, and a
+    /// layout that changes every frame without asking for a repaint (a panel that resizes to its
+    /// own content) would make the snapshot depend on how many frames the waits took.
+    fn assert_layout_still(&mut self, name: &str) {
+        let before = self.layout_fingerprint();
+        self.step();
+        let after = self.layout_fingerprint();
+        if before != after {
+            let moved: Vec<_> = before.iter().zip(&after).filter(|(a, b)| a != b).take(5).collect();
+            panic!("snapshot {name:?}: the layout still moves without a repaint request (first changes: {moved:?})");
+        }
+    }
+
     /// Parks the mouse, settles, renders and compares with `tests/snapshots/<suite>/<name>.png`.
     pub fn snapshot(&mut self, name: &str) {
         self.park_mouse();
@@ -563,6 +595,7 @@ impl Ide {
     pub fn snapshot_here(&mut self, name: &str) {
         self.settle();
         self.steps(2);
+        self.assert_layout_still(name);
         let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/snapshots").join(self.suite);
         let options = SnapshotOptions::new().output_path(&dir);
         match self.harness.try_snapshot_options(name, &options) {

@@ -61,7 +61,14 @@ impl Repo {
     }
 
     pub(crate) fn git_with_stdin(&self, args: &[&str], stdin: Option<&str>) -> Result<CommandOutcome> {
+        self.git_env(args, stdin, &[])
+    }
+
+    /// Like `git_with_stdin`, with extra environment variables (`GIT_INDEX_FILE` for a commit
+    /// built in a temporary index).
+    pub(crate) fn git_env(&self, args: &[&str], stdin: Option<&str>, env: &[(&str, &Path)]) -> Result<CommandOutcome> {
         let mut cmd = Command::new(git_binary());
+        cmd.envs(env.iter().map(|(k, v)| (*k, *v)));
         cmd.current_dir(&self.workdir)
             .args(args)
             // No terminal to prompt on: a missing credential must fail instead of hanging.
@@ -96,6 +103,10 @@ impl Repo {
     /// Runs `git <args> -- <paths>` in chunks, so a commit of thousands of files does not hit
     /// the OS argument length limit.
     pub(crate) fn git_paths(&self, args: &[&str], paths: &[PathBuf]) -> Result<()> {
+        self.git_paths_env(args, paths, &[])
+    }
+
+    pub(crate) fn git_paths_env(&self, args: &[&str], paths: &[PathBuf], env: &[(&str, &Path)]) -> Result<()> {
         // File names with glob characters must match literally. Per-path magic instead of
         // GIT_LITERAL_PATHSPECS, because that variable breaks `git stash -u`'s cleanup.
         let rel: Vec<String> = paths.iter().map(|p| literal_pathspec(&self.rel(p))).collect();
@@ -103,7 +114,7 @@ impl Repo {
             let mut all: Vec<&str> = args.to_vec();
             all.push("--");
             all.extend(chunk.iter().map(String::as_str));
-            self.git_ok(&all)?;
+            self.git_env(&all, None, env)?.into_result()?;
         }
         Ok(())
     }

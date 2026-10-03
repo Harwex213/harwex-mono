@@ -8,6 +8,7 @@
 //! All calls block. The app calls them from worker threads; `TsService` is `Clone` and
 //! `Send + Sync`, and requests from several threads run concurrently up to the server itself.
 
+mod candidates;
 mod locate;
 mod lsp;
 mod position;
@@ -24,6 +25,7 @@ use std::time::Duration;
 
 use serde_json::{json, Value};
 
+pub use candidates::{import_candidates, import_needles};
 pub use locate::{
     find_global_tsserver, find_global_typescript, find_local_tsserver, find_node, find_typescript, Installation,
     NativeServer, TsServerJs,
@@ -36,7 +38,7 @@ pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// 0-based line, 0-based column in chars (`Location`), and one entry of a Find Usages list
 /// (`Reference`). Shared with every other language through `ide-lsp`.
-pub use ide_lsp::{Location, Reference};
+pub use ide_lsp::{FileEdit, Location, Reference, TextEdit};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct QuickInfoTag {
@@ -194,6 +196,15 @@ impl Default for TsService {
     }
 }
 
+/// What [`TsService::edits_for_file_rename`] found.
+#[derive(Debug, Default)]
+pub struct FileRenameEdits {
+    pub edits: Vec<FileEdit>,
+    /// Projects whose file was opened so the server would load them (the renamed file's own
+    /// project included).
+    pub projects_loaded: usize,
+}
+
 /// The server that answers for one file.
 enum Backend {
     TsServer(Arc<Server>),
@@ -202,6 +213,16 @@ enum Backend {
         fallback: Option<TsServerJs>,
         project_root: Option<PathBuf>,
     },
+}
+
+impl Backend {
+    fn same_server(&self, other: &Backend) -> bool {
+        match (self, other) {
+            (Backend::TsServer(a), Backend::TsServer(b)) => Arc::ptr_eq(a, b),
+            (Backend::Native { lsp: a, .. }, Backend::Native { lsp: b, .. }) => Arc::ptr_eq(a, b),
+            _ => false,
+        }
+    }
 }
 
 impl TsService {
@@ -389,6 +410,129 @@ impl TsService {
         }
     }
 
+    /// The edits that keep imports working when `old` (a file or a folder) moves to `new`.
+    /// Call it before the move: the server reads the old layout. Edited paths are old paths;
+    /// a file inside the moved folder is reported under its old name.
+    ///
+    /// A server only answers for the projects it has loaded. `candidates` are files that may
+    /// import `old` (see [`import_candidates`]); one file per candidate project is opened
+    /// first, so a package that is not loaded yet is not missed.
+    pub fn edits_for_file_rename(&self, old: &Path, new: &Path, candidates: &[PathBuf]) -> Result<FileRenameEdits> {
+        let old = normalize(old);
+        let Some(anchor) = source_file_at(&old) else { return Ok(FileRenameEdits::default()) };
+        let (backends, projects_loaded) = self.load_projects(&anchor, candidates)?;
+        let mut edits: Vec<FileEdit> = Vec::new();
+        for backend in backends {
+            let found = match backend {
+                Backend::TsServer(server) => {
+                    let body = server.request("getEditsForFileRename", json!({"oldFilePath": old, "newFilePath": new}), self.timeout())?;
+                    ts_file_edits(&server, &body)
+                }
+                Backend::Native { lsp, .. } => lsp.will_rename(&old, new, self.timeout())?,
+            };
+            // Two installations can both know a file; the first answer wins.
+            for f in found {
+                if !edits.iter().any(|e| e.path == f.path) {
+                    edits.push(f);
+                }
+            }
+        }
+        Ok(FileRenameEdits { edits, projects_loaded })
+    }
+
+    /// Who imports a file or the modules of a folder. tsserver answers `fileReferences`; the
+    /// native server has no such request, so the edits of a probe rename stand in for it.
+    /// `candidates` load the importing projects first, as in [`TsService::edits_for_file_rename`].
+    pub fn file_references(&self, path: &Path, candidates: &[PathBuf]) -> Result<Vec<Reference>> {
+        let path = normalize(path);
+        let Some(anchor) = source_file_at(&path) else { return Ok(Vec::new()) };
+        let (backends, _) = self.load_projects(&anchor, candidates)?;
+        let mut out: Vec<Reference> = Vec::new();
+        for backend in backends {
+            let found = match backend {
+                Backend::TsServer(server) if anchor == path => {
+                    let body = server.request("fileReferences", json!({"file": path}), self.timeout())?;
+                    ts_references(&server, &body)
+                }
+                Backend::TsServer(server) => {
+                    // `fileReferences` takes one file; a folder is answered by a probe rename.
+                    let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+                    let probe = path.with_file_name(format!("{}{name}", ide_lsp::PROBE_PREFIX));
+                    let body = server.request("getEditsForFileRename", json!({"oldFilePath": path, "newFilePath": probe}), self.timeout())?;
+                    let edits = ts_file_edits(&server, &body);
+                    let mut files = FileTexts::new(|p| server.open_text(p));
+                    edits_as_references(&edits, |p| files.index(p))
+                }
+                Backend::Native { lsp, .. } => lsp.file_usages(&path, self.timeout())?,
+            };
+            for r in found {
+                if !out.contains(&r) {
+                    out.push(r);
+                }
+            }
+        }
+        Ok(out)
+    }
+
+    /// Opens `anchor` and one file of each candidate project (the nearest `tsconfig.json` or
+    /// `jsconfig.json`), so their servers load those projects. Returns each server once, the
+    /// anchor's first, and how many projects were opened.
+    fn load_projects(&self, anchor: &Path, candidates: &[PathBuf]) -> Result<(Vec<Backend>, usize)> {
+        let mut seen_projects: HashMap<PathBuf, ()> = HashMap::new();
+        let mut config_of: HashMap<PathBuf, PathBuf> = HashMap::new();
+        let mut backends: Vec<Backend> = Vec::new();
+        let mut files = vec![anchor.to_path_buf()];
+        files.extend(candidates.iter().map(|c| normalize(c)));
+        for (i, file) in files.iter().enumerate() {
+            let dir = file.parent().unwrap_or(file).to_path_buf();
+            let project = config_of.entry(dir.clone()).or_insert_with(|| project_dir(&dir)).clone();
+            if seen_projects.insert(project, ()).is_some() {
+                continue;
+            }
+            let backend = match self.server_for(file) {
+                Ok(b) => b,
+                // The anchor must work; a candidate under another (broken) install is skipped.
+                Err(e) if i == 0 => return Err(e),
+                Err(_) => continue,
+            };
+            match &backend {
+                Backend::TsServer(server) => {
+                    server.ensure_open(file)?;
+                }
+                Backend::Native { lsp, .. } => {
+                    lsp.ensure_open(file, self.timeout())?;
+                }
+            }
+            if !backends.iter().any(|b| b.same_server(&backend)) {
+                backends.push(backend);
+            }
+        }
+        Ok((backends, seen_projects.len()))
+    }
+
+    /// After a move on disk: files under `old` are closed (the editor re-opens its own files
+    /// under the new name), and the native server hears `didRenameFiles`.
+    pub fn files_renamed(&self, old: &Path, new: &Path) {
+        let (servers, lsps) = self.all_servers();
+        for server in servers {
+            server.close_under(old);
+        }
+        for lsp in lsps {
+            lsp.did_rename(old, new, self.timeout());
+        }
+    }
+
+    /// After a delete: files under `path` are closed, so results stop naming them.
+    pub fn files_deleted(&self, path: &Path) {
+        let (servers, lsps) = self.all_servers();
+        for server in servers {
+            server.close_under(path);
+        }
+        for lsp in lsps {
+            lsp.close_under(path);
+        }
+    }
+
     /// Stops every server. The service stays usable: the next call starts a fresh process.
     pub fn shutdown(&self) {
         let servers: Vec<Arc<Server>> = lock(&self.inner.servers).drain().map(|(_, s)| s).collect();
@@ -488,6 +632,13 @@ impl TsService {
         Ok(server)
     }
 
+    /// Every server created so far. The map locks are released before anyone talks to them.
+    fn all_servers(&self) -> (Vec<Arc<Server>>, Vec<Arc<LspServer>>) {
+        let servers = lock(&self.inner.servers).values().cloned().collect();
+        let lsps = lock(&self.inner.lsp).values().cloned().collect();
+        (servers, lsps)
+    }
+
     fn running_tsserver(&self, tsserver_js: &Path) -> Option<Arc<Server>> {
         lock(&self.inner.servers).get(tsserver_js).cloned()
     }
@@ -539,6 +690,99 @@ fn ts_references(server: &Server, body: &Value) -> Vec<Reference> {
             })
         })
         .collect()
+}
+
+/// `getEditsForFileRename`: `[{fileName, textChanges: [{start, end, newText}]}]`.
+fn ts_file_edits(server: &Server, body: &Value) -> Vec<FileEdit> {
+    let mut files = FileTexts::new(|p| server.open_text(p));
+    let items = body.as_array().map(Vec::as_slice).unwrap_or_default();
+    items
+        .iter()
+        .filter_map(|f| {
+            let path = PathBuf::from(f["fileName"].as_str()?);
+            let index = files.index(&path);
+            let edits: Vec<TextEdit> = f["textChanges"]
+                .as_array()
+                .map(Vec::as_slice)
+                .unwrap_or_default()
+                .iter()
+                .map(|c| {
+                    let (start_line, start_column) = ts_convert(index.as_ref(), &c["start"]);
+                    let (end_line, end_column) = ts_convert(index.as_ref(), &c["end"]);
+                    TextEdit { start_line, start_column, end_line, end_column, new_text: c["newText"].as_str().unwrap_or_default().to_string() }
+                })
+                .collect();
+            (!edits.is_empty()).then_some(FileEdit { path, edits })
+        })
+        .collect()
+}
+
+/// Edits as Find Usages entries: each edited span is one place that names the file.
+fn edits_as_references(edits: &[FileEdit], mut index: impl FnMut(&Path) -> Option<Rc<LineIndex>>) -> Vec<Reference> {
+    let mut out = Vec::new();
+    for f in edits {
+        let lines = index(&f.path);
+        for e in &f.edits {
+            out.push(Reference {
+                location: Location { path: f.path.clone(), line: e.start_line, column: e.start_column },
+                end_line: e.end_line,
+                end_column: e.end_column,
+                line_text: lines.as_ref().map(|i| i.line(e.start_line).to_string()).unwrap_or_default(),
+                is_definition: false,
+                is_write: false,
+            });
+        }
+    }
+    out
+}
+
+/// The folder of the project that owns files in `dir`: the nearest `tsconfig.json` or
+/// `jsconfig.json` above it, else `dir` itself (an inferred project).
+fn project_dir(dir: &Path) -> PathBuf {
+    for d in dir.ancestors() {
+        if d.join("tsconfig.json").is_file() || d.join("jsconfig.json").is_file() {
+            return d.to_path_buf();
+        }
+    }
+    dir.to_path_buf()
+}
+
+const SOURCE_EXTENSIONS: [&str; 8] = ["ts", "tsx", "mts", "cts", "js", "jsx", "mjs", "cjs"];
+
+pub(crate) fn is_source(path: &Path) -> bool {
+    path.extension().and_then(|e| e.to_str()).is_some_and(|e| SOURCE_EXTENSIONS.contains(&e.to_ascii_lowercase().as_str()))
+}
+
+/// A TS or JS file whose project owns `path`: the file itself, else the first source file in
+/// the folder (or next to a non-source file). The server must load that project before a
+/// file rename can be answered. Dependency and VCS folders are skipped.
+fn source_file_at(path: &Path) -> Option<PathBuf> {
+    if path.is_file() && is_source(path) {
+        return Some(path.to_path_buf());
+    }
+    let dir = if path.is_dir() { path } else { path.parent()? };
+    let mut stack = vec![dir.to_path_buf()];
+    let mut seen = 0;
+    while let Some(d) = stack.pop() {
+        let Ok(entries) = std::fs::read_dir(&d) else { continue };
+        let mut entries: Vec<PathBuf> = entries.filter_map(|e| e.ok().map(|e| e.path())).collect();
+        entries.sort();
+        for p in entries {
+            seen += 1;
+            if seen > 5000 {
+                return None;
+            }
+            let name = p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+            if p.is_dir() {
+                if name != "node_modules" && !name.starts_with('.') {
+                    stack.push(p);
+                }
+            } else if is_source(&p) && !name.ends_with(".d.ts") {
+                return Some(p);
+            }
+        }
+    }
+    None
 }
 
 fn ts_quick_info(server: &Server, file: &Path, body: &Value) -> Option<QuickInfo> {

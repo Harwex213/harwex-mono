@@ -273,18 +273,28 @@ impl Repo {
     /// staged, like IDEA. Runs through the CLI so pre-commit and commit-msg hooks run.
     /// With `amend` and no paths, only the message of HEAD changes.
     pub fn commit(&self, message: &str, paths: &[PathBuf], amend: bool) -> Result<CommitOutcome> {
-        if paths.is_empty() && !amend {
+        self.commit_selection(message, paths, &[], amend)
+    }
+
+    /// Like `commit`, plus `staged_only`: paths whose index version is committed, so the
+    /// unstaged rest of a partly staged file stays uncommitted (IDEA's staging area). A path in
+    /// both lists counts as `paths` (the whole worktree file). Other staged changes stay staged.
+    pub fn commit_selection(&self, message: &str, paths: &[PathBuf], staged_only: &[PathBuf], amend: bool) -> Result<CommitOutcome> {
+        if paths.is_empty() && staged_only.is_empty() && !amend {
             return Err(Error::Other("nothing selected to commit".into()));
         }
         let repo = self.open()?;
         let mut rel: Vec<PathBuf> = paths.iter().map(|p| self.rel(p)).collect();
+        let mut index_rel: Vec<PathBuf> = staged_only.iter().map(|p| self.rel(p)).filter(|p| !rel.contains(p)).collect();
         // Committing the new side of a staged rename without the old side would leave the
         // deletion staged and turn the rename into a copy.
         let renames = self.rename_sources(&repo)?;
-        for i in 0..rel.len() {
-            if let Some(old) = renames.get(&rel[i]) {
-                if !rel.contains(old) {
-                    rel.push(old.clone());
+        for list in [&mut rel, &mut index_rel] {
+            for i in 0..list.len() {
+                if let Some(old) = renames.get(&list[i]) {
+                    if !list.contains(old) {
+                        list.push(old.clone());
+                    }
                 }
             }
         }
@@ -310,6 +320,9 @@ impl Repo {
         );
         if concluding && !rel.is_empty() {
             self.git_paths(&["add", "-A"], &rel)?;
+        }
+        if !concluding && !index_rel.is_empty() {
+            return self.commit_in_temp_index(&repo, message, &rel, &index_rel, amend);
         }
 
         // The message goes through a file and the paths through stdin, so neither is limited
@@ -337,6 +350,59 @@ impl Repo {
         let output = result?;
         let oid = if output.success {
             repo.head().ok().and_then(|h| h.target())
+        } else {
+            None
+        };
+        Ok(CommitOutcome { oid, output })
+    }
+
+    /// `git commit --only` takes every path from the worktree. For a staged-only part it
+    /// builds the commit in a temporary index instead: HEAD, plus the real index entries of
+    /// `index_rel`, plus the worktree content of `rel`. Hooks see that index through
+    /// `GIT_INDEX_FILE`, like with `--only`. Afterwards the real index gets `rel` staged, which
+    /// is what `--only` leaves behind too.
+    fn commit_in_temp_index(&self, repo: &git2::Repository, message: &str, rel: &[PathBuf], index_rel: &[PathBuf], amend: bool) -> Result<CommitOutcome> {
+        let tmp = repo.path().join("HARWEX_COMMIT_INDEX");
+        let msg_file = repo.path().join("HARWEX_COMMIT_EDITMSG");
+        let _ = std::fs::remove_file(&tmp);
+        let env = [("GIT_INDEX_FILE", tmp.as_path())];
+        let result = (|| -> Result<CommandOutcome> {
+            let unborn = repo.head().is_err();
+            if unborn {
+                self.git_env(&["read-tree", "--empty"], None, &env)?.into_result()?;
+            } else {
+                self.git_env(&["read-tree", "HEAD"], None, &env)?.into_result()?;
+            }
+            let index = repo.index()?;
+            let zero = Oid::zero();
+            let mut info = String::new();
+            for p in index_rel {
+                match index.get_path(p, 0) {
+                    Some(e) => info.push_str(&format!("{:o} {}\t{}\0", e.mode, e.id, git_path(p))),
+                    // Not in the index: a staged deletion (or the old side of a rename).
+                    None => info.push_str(&format!("0 {zero}\t{}\0", git_path(p))),
+                }
+            }
+            self.git_env(&["update-index", "-z", "--index-info"], Some(&info), &env)?.into_result()?;
+            if !rel.is_empty() {
+                self.git_paths_env(&["add", "-A"], rel, &env)?;
+            }
+            std::fs::write(&msg_file, message)?;
+            let msg_arg = format!("--file={}", msg_file.display());
+            let mut args = vec!["commit", msg_arg.as_str(), "--cleanup=strip"];
+            if amend {
+                args.push("--amend");
+            }
+            self.git_env(&args, None, &env)
+        })();
+        let _ = std::fs::remove_file(&tmp);
+        let _ = std::fs::remove_file(&msg_file);
+        let output = result?;
+        let oid = if output.success {
+            if !rel.is_empty() {
+                self.git_paths(&["add", "-A"], rel)?;
+            }
+            self.open()?.head().ok().and_then(|h| h.target())
         } else {
             None
         };

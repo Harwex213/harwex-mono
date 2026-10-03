@@ -20,6 +20,7 @@ A generic Language Server Protocol client. It exists so every language server (t
 - `Error::is_retryable()` is true for content modified, server cancelled and request cancelled. Adapters retry those.
 - `framing` is also used by the tsserver reader in `ide-ts`. Lengths are UTF-8 bytes.
 - `LocationLink` results use `targetSelectionRange` (the declared name), like tsserver.
+- File operations: `will_rename_files` (before the move) returns `FileEdit`s keyed by the old paths; `did_rename_files` (after) closes files under the old path and notifies only a running server. `file_usages` asks `willRenameFiles` for a probe name (`PROBE_PREFIX`) and turns the edits into `Reference`s. `WorkspaceEdit` parsing reads `documentChanges` or `changes` and skips create/rename/delete operations. `default_capabilities` declares `fileOperations` and `workspaceEdit.documentChanges`.
 
 ## Test
 

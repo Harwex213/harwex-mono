@@ -169,6 +169,14 @@ impl Server {
         Ok(text)
     }
 
+    /// Closes every open file at `prefix` or below it (a moved or deleted folder).
+    pub(crate) fn close_under(&self, prefix: &Path) {
+        let paths: Vec<PathBuf> = lock(&self.state).open.keys().filter(|p| p.starts_with(prefix)).cloned().collect();
+        for p in paths {
+            self.close(&p);
+        }
+    }
+
     /// Text of an open file, for converting result positions without touching the disk.
     pub(crate) fn open_text(&self, path: &Path) -> Option<Arc<str>> {
         lock(&self.state).open.get(path).map(|f| f.text.clone())

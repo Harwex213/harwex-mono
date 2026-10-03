@@ -24,7 +24,7 @@ use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 pub use config::IdeConfig;
-pub use ide_lsp::{Location, Reference};
+pub use ide_lsp::{FileEdit, Location, Reference, TextEdit};
 
 use crate::jobs::Jobs;
 use crate::nav::NavKind;
@@ -101,6 +101,14 @@ pub static RUST_SPEC: LanguageSpec = LanguageSpec {
     concurrent_requests: true,
 };
 
+/// The answer to a rename question.
+#[derive(Debug, Default)]
+pub struct RenameEdits {
+    pub edits: Vec<FileEdit>,
+    /// Projects the server loaded for the question (0 for servers that load everything).
+    pub projects_loaded: usize,
+}
+
 /// Hover text, whichever server produced it.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct HoverInfo {
@@ -122,6 +130,21 @@ pub trait LanguageServer: Send + Sync + 'static {
     fn locations(&self, kind: NavKind, path: &Path, line: usize, column: usize) -> Result<Vec<Location>, String>;
     fn references(&self, path: &Path, line: usize, column: usize) -> Result<Vec<Reference>, String>;
     fn hover(&self, path: &Path, line: usize, column: usize) -> Result<Option<HoverInfo>, String>;
+    /// The edits that keep imports (and Rust `mod` declarations) working when `old`, a file or
+    /// a folder, moves to `new`. Asked before the move. Edited paths are the old paths.
+    /// `candidates` may import `old` (a text pre-filter); a server that loads projects lazily
+    /// loads theirs first.
+    fn rename_edits(&self, _old: &Path, _new: &Path, _candidates: &[PathBuf]) -> Result<RenameEdits, String> {
+        Ok(RenameEdits::default())
+    }
+    /// Places that refer to a file or folder (imports, `mod` declarations).
+    fn file_references(&self, _path: &Path, _candidates: &[PathBuf]) -> Result<Vec<Reference>, String> {
+        Ok(Vec::new())
+    }
+    /// After a move on disk: forget files under `old`, tell the server about the new names.
+    fn files_renamed(&self, _old: &Path, _new: &Path) {}
+    /// After a delete: forget files under `path`.
+    fn files_deleted(&self, _path: &Path) {}
     /// Status bar text for an open file ("TS 7.0.2 native", "rust-analyzer: indexing…").
     fn status(&self, path: &Path) -> Option<String>;
     /// Stops every server that has been idle for `idle` and has no editor file open.

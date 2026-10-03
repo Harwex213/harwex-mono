@@ -9,7 +9,7 @@ use std::time::{Duration, Instant};
 
 use ide_ts::TsService;
 
-use super::{lock, HoverInfo, LanguageServer, Location, Reference};
+use super::{lock, HoverInfo, LanguageServer, Location, Reference, RenameEdits};
 use crate::nav::NavKind;
 
 pub struct TsServer {
@@ -78,6 +78,27 @@ impl LanguageServer for TsServer {
         self.touch();
         let info = self.service.quick_info(path, line, column).map_err(|e| e.to_string())?;
         Ok(info.map(|i| HoverInfo { display: i.display, documentation: i.documentation, tags: i.tags.into_iter().map(|t| (t.name, t.text)).collect() }))
+    }
+
+    fn rename_edits(&self, old: &Path, new: &Path, candidates: &[PathBuf]) -> Result<RenameEdits, String> {
+        self.touch();
+        let found = self.service.edits_for_file_rename(old, new, candidates).map_err(|e| e.to_string())?;
+        Ok(RenameEdits { edits: found.edits, projects_loaded: found.projects_loaded })
+    }
+
+    fn file_references(&self, path: &Path, candidates: &[PathBuf]) -> Result<Vec<Reference>, String> {
+        self.touch();
+        self.service.file_references(path, candidates).map_err(|e| e.to_string())
+    }
+
+    fn files_renamed(&self, old: &Path, new: &Path) {
+        self.service.files_renamed(old, new);
+        lock(&self.labels).retain(|p, _| !p.starts_with(old));
+    }
+
+    fn files_deleted(&self, path: &Path) {
+        self.service.files_deleted(path);
+        lock(&self.labels).retain(|p, _| !p.starts_with(path));
     }
 
     fn status(&self, path: &Path) -> Option<String> {

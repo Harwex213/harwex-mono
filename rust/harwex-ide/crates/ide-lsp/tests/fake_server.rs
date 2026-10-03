@@ -270,3 +270,40 @@ fn missing_program_is_a_spawn_error() {
     client.open(&fx.file, "x", T);
     assert_eq!(client.editor_files(), 1, "open never fails; the file waits for a server");
 }
+
+#[test]
+fn will_rename_files_returns_edits_and_did_rename_closes_old_paths() {
+    let fx = fixture();
+    let client = LspClient::new(config(&fx.root));
+    let other = fx.root.join("src/lib.rs");
+    std::fs::write(&other, "mod main;\n").unwrap();
+    client.open(&fx.file, "fn main() {}\n", T);
+    client.ensure_open(&other, T).unwrap();
+    let init = client.request("test/initializeParams", json!({}), T).unwrap();
+    assert_eq!(init["capabilities"]["workspace"]["fileOperations"]["willRename"], true);
+
+    let new = fx.root.join("src/app.rs");
+    let edits = client.will_rename_files(&[(fx.file.clone(), new.clone())], T).unwrap();
+    let mut paths: Vec<&Path> = edits.iter().map(|e| e.path.as_path()).collect();
+    paths.sort();
+    assert_eq!(paths, [other.as_path(), fx.file.as_path()]);
+    let e = &edits[0].edits[0];
+    assert_eq!((e.start_line, e.start_column, e.end_line, e.end_column), (0, 0, 0, 0));
+    assert_eq!(e.new_text, format!("// {} -> {}\n", uri(&fx.file), uri(&new)));
+
+    let usages = client.file_usages(&fx.file, T).unwrap();
+    assert_eq!(usages.len(), 2, "one per edited file");
+    assert!(usages.iter().all(|u| u.location.line == 0 && u.location.column == 0));
+    assert_eq!(usages.iter().find(|u| u.location.path == other).unwrap().line_text, "mod main;");
+
+    std::fs::rename(&fx.file, &new).unwrap();
+    client.did_rename_files(&[(fx.file.clone(), new.clone())], T).unwrap();
+    assert_eq!(client.open_text(&fx.file), None, "the old path is closed");
+    let renamed = client.request("test/renamed", json!({}), T).unwrap();
+    assert_eq!(renamed, json!([{"oldUri": uri(&fx.file), "newUri": uri(&new)}]));
+    let opened = client.request("test/opened", json!({}), T).unwrap();
+    assert_eq!(opened, json!([uri(&other)]));
+
+    client.close_under(&fx.root.join("src"));
+    assert!(client.open_paths().is_empty());
+}

@@ -122,6 +122,10 @@ pub struct AppState {
     pub deterministic: bool,
     /// The status bar's memory indicator and its sampling thread.
     pub memory: crate::memory::MemoryMonitor,
+    /// Trash, Finder and the clipboard. Tests record the calls instead.
+    pub platform: std::sync::Arc<dyn crate::fileops::Platform>,
+    /// The Project tree's Cut/Copy mark and file operation dialogs.
+    pub tree_ops: crate::tree_menu::TreeOps,
 }
 
 impl AppState {
@@ -159,6 +163,8 @@ impl AppState {
             watch_files: true,
             deterministic: false,
             memory: Default::default(),
+            platform: std::sync::Arc::new(crate::fileops::SystemPlatform),
+            tree_ops: Default::default(),
         }
     }
 
@@ -247,6 +253,7 @@ impl AppState {
         self.apply_ide_config(config);
         // Dialogs and filters of the old repository must not act on the new one.
         self.git_ui = GitUi::default();
+        self.tree_ops = Default::default();
         crate::tree::load_dir(self, root.clone());
         crate::search::rebuild_index(self);
         self.refresh_git();
@@ -285,6 +292,13 @@ impl AppState {
             }
         }
         self.memory.set_interval(config.memory_interval);
+        if let Some(root) = self.project.as_ref().map(|p| p.root.clone()) {
+            let excluded = config.excluded_paths(&root);
+            if excluded != self.tree.excluded {
+                self.tree.excluded = excluded;
+                crate::search::rebuild_index(self);
+            }
+        }
         self.langs.configure(config);
     }
 

@@ -101,10 +101,6 @@ impl LspClient {
         let result = self.request("textDocument/hover", params, timeout)?;
         Ok(parse_hover(&result, &index, line, column))
     }
-
-    fn file_texts(&self) -> FileTexts<impl Fn(&Path) -> Option<Arc<str>> + '_> {
-        FileTexts::new(|p| self.open_text(p), self.config().line_breaks)
-    }
 }
 
 pub(crate) fn parse_hover(result: &Value, index: &LineIndex, line: usize, column: usize) -> Option<Hover> {
@@ -198,7 +194,7 @@ fn u(v: &Value) -> usize {
 
 /// LSP `{line, character}` to editor (line, char column). Without the file text the
 /// character is taken as chars, which is right for ASCII lines.
-fn convert(index: Option<&Rc<LineIndex>>, pos: &Value) -> (usize, usize) {
+pub(crate) fn convert(index: Option<&Rc<LineIndex>>, pos: &Value) -> (usize, usize) {
     let (line, character) = (u(&pos["line"]), u(&pos["character"]));
     match index {
         Some(index) => index.from_lsp(line, character),
@@ -220,7 +216,7 @@ impl<F: Fn(&Path) -> Option<Arc<str>>> FileTexts<F> {
         FileTexts { open_text, breaks, cache: HashMap::new(), uris: HashMap::new() }
     }
 
-    fn index(&mut self, path: &Path) -> Option<Rc<LineIndex>> {
+    pub(crate) fn index(&mut self, path: &Path) -> Option<Rc<LineIndex>> {
         let open_text = &self.open_text;
         let breaks = self.breaks;
         self.cache
@@ -234,7 +230,7 @@ impl<F: Fn(&Path) -> Option<Arc<str>>> FileTexts<F> {
 
     /// The canonical path of a result URI, so a result names a file the same way the editor
     /// does (real path, on-disk case).
-    fn path(&mut self, uri: &str) -> Option<PathBuf> {
+    pub(crate) fn path(&mut self, uri: &str) -> Option<PathBuf> {
         self.uris.entry(uri.to_string()).or_insert_with(|| uri_to_path(uri).map(|p| canonical(&p))).clone()
     }
 }

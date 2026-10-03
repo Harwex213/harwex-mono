@@ -96,7 +96,12 @@ pub fn default_capabilities() -> Value {
             "documentHighlight": {},
             "hover": {"contentFormat": ["markdown", "plaintext"]},
         },
-        "workspace": {"configuration": true, "workspaceFolders": true},
+        "workspace": {
+            "configuration": true,
+            "workspaceFolders": true,
+            "workspaceEdit": {"documentChanges": true},
+            "fileOperations": {"willRename": true, "didRename": true},
+        },
         "window": {"workDoneProgress": true},
     })
 }
@@ -300,6 +305,11 @@ impl LspClient {
     /// Text of an open file, for converting result positions without touching the disk.
     pub fn open_text(&self, path: &Path) -> Option<Arc<str>> {
         lock(&self.state).open.get(path).map(|f| f.text.clone())
+    }
+
+    /// Every open file, editor-opened or opened from disk by a request.
+    pub fn open_paths(&self) -> Vec<PathBuf> {
+        lock(&self.state).open.keys().cloned().collect()
     }
 
     /// Files the editor opened (not the ones a request opened from disk).

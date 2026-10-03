@@ -31,6 +31,8 @@ pub const MAX_ROWS: usize = 18;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SegmentKind {
     Root,
+    /// The root of a file outside the project: a library label like `std` or `serde 1.0.228`.
+    Library,
     Dir,
     File,
 }
@@ -42,14 +44,74 @@ pub struct Segment {
     pub kind: SegmentKind,
 }
 
+/// Where the breadcrumbs of a file outside the project start, like IDEA's "External Libraries".
+/// The label never contains the location of the library on disk, so the bar looks the same on
+/// every machine.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ExternalRoot {
+    pub dir: PathBuf,
+    pub label: String,
+}
+
+/// A generic external file shows at most this many path segments, the file included.
+const EXTERNAL_SEGMENTS: usize = 3;
+
+/// The library root of `file`, a file outside the project:
+/// - rust-src (`…/rust/library/<crate>/src/…`): `<crate>`, rooted at the crate's `src`.
+/// - a Cargo registry (`…/registry/src/<index>/<crate>-<version>/…`): `<crate> <version>`.
+/// - a package under `node_modules`: `<package>` or `@scope/<package>`.
+/// - anything else: `External`, rooted so that at most `EXTERNAL_SEGMENTS` segments follow.
+pub fn external_root(file: &Path) -> ExternalRoot {
+    let comps: Vec<_> = file.components().collect();
+    let name = |i: usize| comps[i].as_os_str().to_string_lossy();
+    let dir = |end: usize| comps[..=end].iter().collect::<PathBuf>();
+    let n = comps.len();
+    // Each pattern needs the file to lie strictly below its root directory.
+    let below = |end: usize| end + 1 < n;
+    if let Some(i) = (1..n).rev().find(|&i| name(i) == "library" && name(i - 1) == "rust" && i + 2 < n && name(i + 2) == "src" && below(i + 2)) {
+        return ExternalRoot { dir: dir(i + 2), label: name(i + 1).into_owned() };
+    }
+    if let Some(i) = (0..n).rev().find(|&i| name(i) == "registry" && i + 3 < n && name(i + 1) == "src" && below(i + 3)) {
+        let folder = name(i + 3);
+        let label = split_crate_version(&folder).map_or_else(|| folder.to_string(), |(c, v)| format!("{c} {v}"));
+        return ExternalRoot { dir: dir(i + 3), label };
+    }
+    if let Some(i) = (0..n).rev().find(|&i| name(i) == "node_modules" && below(i + 1)) {
+        let package = name(i + 1);
+        if package.starts_with('@') && below(i + 2) {
+            return ExternalRoot { dir: dir(i + 2), label: format!("{package}/{}", name(i + 2)) };
+        }
+        return ExternalRoot { dir: dir(i + 1), label: package.into_owned() };
+    }
+    // Keep at least the first component (`/`), so the root is a real directory.
+    let end = n.saturating_sub(EXTERNAL_SEGMENTS + 1);
+    ExternalRoot { dir: comps[..(end + 1).min(n)].iter().collect(), label: "External".to_string() }
+}
+
+/// Splits a registry folder name `<crate>-<version>` at the `-` that starts the version. Crate
+/// names may hold `-` and digits (`md-5-0.10.6`), so the version is the first suffix that looks
+/// like `<major>.<minor>.<patch>`.
+fn split_crate_version(folder: &str) -> Option<(&str, &str)> {
+    folder.match_indices('-').map(|(i, _)| (&folder[..i], &folder[i + 1..])).find(|(c, v)| {
+        let mut parts = v.splitn(3, '.');
+        let numeric = |p: Option<&str>| p.is_some_and(|p| !p.is_empty() && p.bytes().all(|b| b.is_ascii_digit()));
+        let patch = |p: Option<&str>| p.is_some_and(|p| p.bytes().next().is_some_and(|b| b.is_ascii_digit()));
+        !c.is_empty() && numeric(parts.next()) && numeric(parts.next()) && patch(parts.next())
+    })
+}
+
 /// The segments for `file`. Inside the project the first segment is the project root, named
-/// `root_name`. Outside it the path starts at `/`.
+/// `root_name`. Outside it the first segment is the file's library root (`external_root`).
 pub fn segments(root: Option<&Path>, root_name: &str, file: &Path) -> Vec<Segment> {
-    let (base, base_name, rest) = match root.and_then(|r| file.strip_prefix(r).ok().map(|rest| (r, rest))) {
-        Some((r, rest)) => (r.to_path_buf(), root_name.to_string(), rest.to_path_buf()),
-        None => (PathBuf::from("/"), "/".to_string(), file.strip_prefix("/").unwrap_or(file).to_path_buf()),
+    let (base, base_name, kind, rest) = match root.and_then(|r| file.strip_prefix(r).ok().map(|rest| (r, rest))) {
+        Some((r, rest)) => (r.to_path_buf(), root_name.to_string(), SegmentKind::Root, rest.to_path_buf()),
+        None => {
+            let ext = external_root(file);
+            let rest = file.strip_prefix(&ext.dir).unwrap_or(file).to_path_buf();
+            (ext.dir, ext.label, SegmentKind::Library, rest)
+        }
     };
-    let mut out = vec![Segment { path: base.clone(), name: base_name, kind: SegmentKind::Root }];
+    let mut out = vec![Segment { path: base.clone(), name: base_name, kind }];
     let parts: Vec<_> = rest.components().map(|c| c.as_os_str().to_string_lossy().into_owned()).collect();
     let mut path = base;
     for (i, name) in parts.iter().enumerate() {
@@ -423,6 +485,7 @@ pub fn bar(state: &mut AppState, ui: &mut Ui) {
                 let mut x = rect.min.x + PAD;
                 match seg.kind {
                     SegmentKind::Root | SegmentKind::Dir => folder_icon(painter, pos2(x + 7.0, cy)),
+                    SegmentKind::Library => icons::library(painter, pos2(x + 7.0, cy), 14.0),
                     SegmentKind::File => file_icon(painter, pos2(x + 7.0, cy), &seg.name),
                 }
                 x += ICON_W;
@@ -742,12 +805,58 @@ mod tests {
         assert_eq!(s[2].path, Path::new("/p/repo/src/core"));
     }
 
+    fn names_of(s: &[Segment]) -> Vec<&str> {
+        s.iter().map(|s| s.name.as_str()).collect()
+    }
+
     #[test]
-    fn segments_outside_project_start_at_slash() {
-        let s = segments(Some(Path::new("/p/repo")), "repo", Path::new("/usr/lib/x.d.ts"));
-        let names: Vec<_> = s.iter().map(|s| s.name.as_str()).collect();
-        assert_eq!(names, ["/", "usr", "lib", "x.d.ts"]);
-        assert_eq!(s[1].path, Path::new("/usr"));
+    fn rust_src_roots_at_the_crate() {
+        let file = Path::new("/t/rust-src/lib/rustlib/src/rust/library/alloc/src/vec/mod.rs");
+        assert_eq!(external_root(file), ExternalRoot { dir: "/t/rust-src/lib/rustlib/src/rust/library/alloc/src".into(), label: "alloc".into() });
+        let s = segments(Some(Path::new("/p/repo")), "repo", file);
+        assert_eq!(names_of(&s), ["alloc", "vec", "mod.rs"]);
+        assert_eq!(s[0].kind, SegmentKind::Library);
+        assert_eq!(s[1].path, Path::new("/t/rust-src/lib/rustlib/src/rust/library/alloc/src/vec"));
+        let std = Path::new("/t/rust/library/std/src/lib.rs");
+        assert_eq!(names_of(&segments(None, "", std)), ["std", "lib.rs"]);
+    }
+
+    #[test]
+    fn registry_roots_at_crate_and_version() {
+        let file = Path::new("/h/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/de/mod.rs");
+        let r = external_root(file);
+        assert_eq!(r.label, "serde 1.0.228");
+        assert_eq!(r.dir, Path::new("/h/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228"));
+        assert_eq!(names_of(&segments(None, "", file)), ["serde 1.0.228", "src", "de", "mod.rs"]);
+        // Dashes and digits in the crate name, and a pre-release version.
+        assert_eq!(external_root(Path::new("/h/registry/src/i/md-5-0.10.6/src/lib.rs")).label, "md-5 0.10.6");
+        assert_eq!(external_root(Path::new("/h/registry/src/i/base64-0.22.1/src/lib.rs")).label, "base64 0.22.1");
+        assert_eq!(external_root(Path::new("/h/registry/src/i/tokio-macros-2.0.0-rc.1/lib.rs")).label, "tokio-macros 2.0.0-rc.1");
+    }
+
+    #[test]
+    fn npm_packages_root_at_the_package() {
+        let plain = Path::new("/t/ts5/node_modules/typescript/lib/lib.dom.d.ts");
+        assert_eq!(external_root(plain), ExternalRoot { dir: "/t/ts5/node_modules/typescript".into(), label: "typescript".into() });
+        assert_eq!(names_of(&segments(Some(Path::new("/p/repo")), "repo", plain)), ["typescript", "lib", "lib.dom.d.ts"]);
+        let scoped = Path::new("/t/ts7/node_modules/@typescript/native-preview/lib/lib.d.ts");
+        assert_eq!(external_root(scoped), ExternalRoot { dir: "/t/ts7/node_modules/@typescript/native-preview".into(), label: "@typescript/native-preview".into() });
+        // A nested `node_modules` (pnpm): the innermost package wins.
+        let nested = Path::new("/o/node_modules/.pnpm/a@1/node_modules/@s/b/index.d.ts");
+        assert_eq!(external_root(nested).label, "@s/b");
+        // A package inside the project stays under the project root.
+        let inside = Path::new("/p/repo/node_modules/lodash/index.js");
+        assert_eq!(names_of(&segments(Some(Path::new("/p/repo")), "repo", inside)), ["repo", "node_modules", "lodash", "index.js"]);
+    }
+
+    #[test]
+    fn other_external_files_keep_three_segments() {
+        let s = segments(Some(Path::new("/p/repo")), "repo", Path::new("/usr/local/include/lib/x.d.ts"));
+        assert_eq!(names_of(&s), ["External", "include", "lib", "x.d.ts"]);
+        assert_eq!(s[0].path, Path::new("/usr/local"));
+        assert_eq!(s[0].kind, SegmentKind::Library);
+        assert_eq!(names_of(&segments(None, "", Path::new("/etc/hosts"))), ["External", "etc", "hosts"]);
+        assert_eq!(segments(None, "", Path::new("/etc/hosts"))[0].path, Path::new("/"));
     }
 
     #[test]

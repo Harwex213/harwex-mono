@@ -1,3 +1,4 @@
+use std::collections::VecDeque;
 use std::ops::Range;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver, TryRecvError};
@@ -6,6 +7,7 @@ use std::time::{Duration, Instant};
 use ropey::Rope;
 use tree_sitter::{InputEdit, Parser, Point, Tree};
 
+use crate::carets::Carets;
 use crate::highlight::{self, HighlightConfig, Span};
 use crate::language::Language;
 
@@ -50,6 +52,36 @@ impl Selection {
     }
 }
 
+/// One raw text replacement, in char indices of the text before it. `Document::changes_since`
+/// lists them, so a consumer (the find bar) can update its ranges instead of starting over.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct TextChange {
+    pub start: usize,
+    /// Chars removed at `start`.
+    pub removed: usize,
+    /// Chars inserted at `start`.
+    pub inserted: usize,
+}
+
+impl TextChange {
+    /// Maps a char index of the text before the change to the text after it. An index inside
+    /// the removed range moves to the start (`after == false`) or the end of the inserted text.
+    pub fn map(&self, idx: usize, after: bool) -> usize {
+        if idx < self.start || (idx == self.start && !after) {
+            idx
+        } else if idx >= self.start + self.removed {
+            idx - self.removed + self.inserted
+        } else if after {
+            self.start + self.inserted
+        } else {
+            self.start
+        }
+    }
+}
+
+/// How many recent changes the journal keeps. Older versions get `None` and a full rescan.
+const JOURNAL_LEN: usize = 4096;
+
 /// Undo grouping class. Consecutive edits of the same class merge into one undo step.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum EditKind {
@@ -71,8 +103,8 @@ struct Transaction {
     id: u64,
     /// Applied in order; each record's `start` is valid for the text after the previous one.
     edits: Vec<EditRecord>,
-    before: Selection,
-    after: Selection,
+    before: Carets,
+    after: Carets,
     kind: EditKind,
     at: Instant,
 }
@@ -93,7 +125,7 @@ impl History {
         self.undo.last().map_or(0, |t| t.id)
     }
 
-    fn push(&mut self, edits: Vec<EditRecord>, before: Selection, after: Selection, kind: EditKind) {
+    fn push(&mut self, edits: Vec<EditRecord>, before: Carets, after: Carets, kind: EditKind) {
         self.redo.clear();
         let now = Instant::now();
         if !self.sealed && kind != EditKind::Other {
@@ -124,6 +156,9 @@ struct PendingParse {
     /// Edits made while the background parse ran. They are replayed on the tree when it arrives,
     /// so the tree can then be brought up to date with a cheap incremental parse.
     edits: Vec<InputEdit>,
+    /// A batch could not be replayed on the result. It is dropped when it lands, and only then
+    /// the next parse starts, so fast typing never piles up parse threads.
+    discard: bool,
 }
 
 struct Syntax {
@@ -136,7 +171,46 @@ struct Syntax {
     pending: Option<PendingParse>,
     /// Bumped whenever `tree` changes, so view caches know when spans may differ.
     generation: u64,
+    /// After a batch in a big file: the last good tree with the text it belongs to. It colors
+    /// the lines until the worker's fresh tree lands. A tree edited by a file-wide span would
+    /// color garbage, and editing it costs ~5 ms on 200k lines.
+    fallback: Option<(Rope, Tree)>,
 }
+
+/// Raw edits made as one step (many carets, Replace All, undo of either). They reach the syntax
+/// tree and the change journal as one edit that spans them all: tree-sitter's `Tree::edit`
+/// scans the root's children, so 10k separate edits on a 200k-line file would cost seconds.
+struct Batch {
+    /// The text before the batch, kept only when the tree needs it. A live clone makes every
+    /// rope node the batch touches a copy, which is most of the cost at 10k carets.
+    old: Option<Rope>,
+    old_chars: usize,
+    /// The lowest edited char. The text before it is unchanged.
+    lo_char: usize,
+    /// The unchanged tail after the last edited place, in chars.
+    tail_chars: usize,
+    any: bool,
+}
+
+/// An undo step being collected from several `edit` calls (one per caret).
+struct Group {
+    records: Vec<EditRecord>,
+    kind: Option<EditKind>,
+}
+
+impl Group {
+    /// Typing at every caret stays an Insert step, so it groups by word like one caret does.
+    fn add_kind(&mut self, kind: EditKind) {
+        self.kind = Some(match self.kind {
+            None => kind,
+            Some(k) if k == kind => k,
+            Some(_) => EditKind::Other,
+        });
+    }
+}
+
+/// More raw edits than this in one step go through a `Batch`.
+const BATCH_MIN: usize = 16;
 
 /// Files above this size are parsed (at open and after edits) on a worker thread, so the UI never
 /// waits for tree-sitter.
@@ -164,6 +238,10 @@ pub struct Document {
     /// Longest line in chars; only grows between full rescans. It sizes the horizontal scroll
     /// range, where a stale overestimate is harmless and a full scan per edit is not.
     max_line_chars: usize,
+    /// The last raw changes, each tagged with the version it produced.
+    journal: VecDeque<(u64, TextChange)>,
+    batch: Option<Batch>,
+    group: Option<Group>,
 }
 
 /// Indentation style detected from the file, used by Tab, Enter and Shift+Tab.
@@ -219,6 +297,9 @@ impl Document {
             bom: false,
             indent,
             max_line_chars: 0,
+            journal: VecDeque::new(),
+            batch: None,
+            group: None,
         };
         doc.max_line_chars = longest_line(&doc.rope);
         doc.init_syntax();
@@ -245,6 +326,7 @@ impl Document {
             stale: true,
             pending: None,
             generation: 0,
+            fallback: None,
         });
         self.ensure_parsed(false);
     }
@@ -336,6 +418,22 @@ impl Document {
     /// Increments on every edit.
     pub fn version(&self) -> u64 {
         self.version
+    }
+
+    /// The raw changes that turned version `version` into the current text, oldest first.
+    /// `None` when the journal no longer reaches back that far.
+    pub fn changes_since(&self, version: u64) -> Option<Vec<TextChange>> {
+        if version == self.version {
+            return Some(Vec::new());
+        }
+        if version > self.version {
+            return None;
+        }
+        let first = self.journal.front()?.0;
+        if version + 1 < first {
+            return None;
+        }
+        Some(self.journal.iter().filter(|(v, _)| *v > version).map(|(_, c)| *c).collect())
     }
 
     pub fn is_dirty(&self) -> bool {
@@ -453,12 +551,37 @@ impl Document {
 
     /// One undoable edit, grouped with the previous edit when `kind` allows it.
     pub fn edit(&mut self, range: Range<usize>, text: &str, before: Selection, after: Selection, kind: EditKind) {
-        self.transact(vec![(range, text.to_string())], before, after, kind);
+        let len = self.rope.len_chars();
+        let range = range.start.min(len)..range.end.min(len).max(range.start.min(len));
+        if range.is_empty() && text.is_empty() {
+            return;
+        }
+        // No vectors for one edit: at 10k carets this runs 10k times per keystroke.
+        let removed: String = if range.is_empty() { String::new() } else { self.rope.slice(range.clone()).into() };
+        self.replace_raw(range.clone(), text);
+        let record = EditRecord { start: range.start, removed, inserted: text.to_string() };
+        if let Some(g) = &mut self.group {
+            g.records.push(record);
+            g.add_kind(kind);
+            return;
+        }
+        self.history.push(vec![record], Carets::single(before), Carets::single(after), kind);
     }
 
-    /// Several edits applied in order as one undo step. Each range refers to the text produced by
-    /// the previous edit, so callers editing many lines go bottom-up to keep ranges simple.
-    pub fn transact(&mut self, edits: Vec<(Range<usize>, String)>, before: Selection, after: Selection, kind: EditKind) {
+    /// Like `transact`, with the carets to restore on undo and redo.
+    pub fn transact_carets(&mut self, edits: Vec<(Range<usize>, String)>, before: &Carets, after: &Carets, kind: EditKind) {
+        let records = self.apply_edits(edits);
+        if let Some(records) = self.collect(records, kind) {
+            self.history.push(records, before.clone(), after.clone(), kind);
+        }
+    }
+
+    /// Applies edits in order and returns their undo records.
+    fn apply_edits(&mut self, edits: Vec<(Range<usize>, String)>) -> Vec<EditRecord> {
+        let batch = edits.len() > BATCH_MIN && self.batch.is_none();
+        if batch {
+            self.begin_batch();
+        }
         let mut records = Vec::with_capacity(edits.len());
         for (range, text) in edits {
             let len = self.rope.len_chars();
@@ -470,8 +593,109 @@ impl Document {
             self.replace_raw(range.clone(), &text);
             records.push(EditRecord { start: range.start, removed, inserted: text });
         }
-        if !records.is_empty() {
-            self.history.push(records, before, after, kind);
+        if batch {
+            self.finish_batch();
+        }
+        records
+    }
+
+    /// Adds the records to the open group. Returns them when there is no group (or nothing to
+    /// record), so the caller makes them an undo step of their own.
+    fn collect(&mut self, records: Vec<EditRecord>, kind: EditKind) -> Option<Vec<EditRecord>> {
+        if records.is_empty() {
+            return None;
+        }
+        let Some(g) = &mut self.group else { return Some(records) };
+        g.records.extend(records);
+        g.add_kind(kind);
+        None
+    }
+
+    /// Starts one undo step that collects every following `edit` and `transact` until
+    /// `end_group`. Used to run a command at many carets.
+    pub(crate) fn begin_group(&mut self) {
+        self.group = Some(Group { records: Vec::new(), kind: None });
+        self.begin_batch();
+    }
+
+    /// The lowest char an edit of the open group touched, in the current text.
+    pub(crate) fn group_low(&self) -> Option<usize> {
+        self.batch.as_ref().filter(|b| b.any).map(|b| b.lo_char)
+    }
+
+    pub(crate) fn end_group(&mut self, before: &Carets, after: &Carets) {
+        self.finish_batch();
+        let Some(g) = self.group.take() else { return };
+        if !g.records.is_empty() {
+            self.history.push(g.records, before.clone(), after.clone(), g.kind.unwrap_or(EditKind::Other));
+        }
+    }
+
+    fn begin_batch(&mut self) {
+        let big = self.rope.len_bytes() > BACKGROUND_PARSE_BYTES;
+        let needs_old = self.syntax.as_ref().is_some_and(|s| if big { s.tree.is_some() && s.fallback.is_none() } else { true });
+        self.batch = Some(Batch {
+            old: needs_old.then(|| self.rope.clone()),
+            old_chars: self.rope.len_chars(),
+            lo_char: usize::MAX,
+            tail_chars: usize::MAX,
+            any: false,
+        });
+    }
+
+    /// Reports the batch to the journal and the syntax tree as one change.
+    fn finish_batch(&mut self) {
+        let Some(b) = self.batch.take() else { return };
+        if !b.any {
+            return;
+        }
+        let new_chars = self.rope.len_chars();
+        let change = TextChange {
+            start: b.lo_char,
+            removed: b.old_chars - b.tail_chars - b.lo_char,
+            inserted: new_chars - b.tail_chars - b.lo_char,
+        };
+        self.log_change(change);
+        let Some(syntax) = &mut self.syntax else { return };
+        if self.rope.len_bytes() > BACKGROUND_PARSE_BYTES {
+            // The worker parses from scratch: a span over the whole file leaves nothing to reuse.
+            if syntax.fallback.is_none() {
+                if let (Some(tree), Some(old)) = (syntax.tree.take(), b.old) {
+                    syntax.fallback = Some((old, tree));
+                }
+            }
+            syntax.tree = None;
+            if let Some(p) = &mut syntax.pending {
+                p.discard = true;
+            }
+            syntax.stale = true;
+            syntax.generation += 1;
+            return;
+        }
+        let Some(old) = b.old else { return };
+        // The text before `lo` and after the tail is unchanged, so byte offsets there agree.
+        let lo_byte = self.rope.char_to_byte(b.lo_char);
+        let old_end_byte = old.char_to_byte(b.old_chars - b.tail_chars);
+        let new_end_byte = self.rope.char_to_byte(new_chars - b.tail_chars);
+        let old_end_row = old.byte_to_line(old_end_byte);
+        let edit = InputEdit {
+            start_byte: lo_byte,
+            old_end_byte,
+            new_end_byte,
+            start_position: self.point_at(lo_byte),
+            old_end_position: Point { row: old_end_row, column: old_end_byte - old.line_to_byte(old_end_row) },
+            new_end_position: self.point_at(new_end_byte),
+        };
+        self.apply_input_edit(edit);
+    }
+
+    /// Several edits applied in order as one undo step. Each range refers to the text produced by
+    /// the previous edit, so callers editing many lines go bottom-up to keep ranges simple.
+    pub fn transact(&mut self, edits: Vec<(Range<usize>, String)>, before: Selection, after: Selection, kind: EditKind) {
+        // Inside a group the selections are not needed: no Carets get built per caret.
+        let records = self.apply_edits(edits);
+        if let Some(records) = self.collect(records, kind) {
+            self.history.push(records, Carets::single(before), Carets::single(after), kind);
         }
     }
 
@@ -511,24 +735,48 @@ impl Document {
 
     /// Returns the selection to restore, or `None` when there is nothing to undo.
     pub fn undo(&mut self) -> Option<Selection> {
+        self.undo_carets().map(|c| c.primary())
+    }
+
+    pub fn redo(&mut self) -> Option<Selection> {
+        self.redo_carets().map(|c| c.primary())
+    }
+
+    /// Undo that returns every caret to restore.
+    pub fn undo_carets(&mut self) -> Option<Carets> {
         let tx = self.history.undo.pop()?;
+        let batch = tx.edits.len() > BATCH_MIN;
+        if batch {
+            self.begin_batch();
+        }
         for e in tx.edits.iter().rev() {
             let end = e.start + e.inserted.chars().count();
             self.replace_raw(e.start..end, &e.removed);
         }
-        let sel = tx.before;
+        if batch {
+            self.finish_batch();
+        }
+        let sel = tx.before.clone();
         self.history.redo.push(tx);
         self.history.sealed = true;
         Some(sel)
     }
 
-    pub fn redo(&mut self) -> Option<Selection> {
+    /// Redo that returns every caret to restore.
+    pub fn redo_carets(&mut self) -> Option<Carets> {
         let tx = self.history.redo.pop()?;
+        let batch = tx.edits.len() > BATCH_MIN;
+        if batch {
+            self.begin_batch();
+        }
         for e in &tx.edits {
             let end = e.start + e.removed.chars().count();
             self.replace_raw(e.start..end, &e.inserted);
         }
-        let sel = tx.after;
+        if batch {
+            self.finish_batch();
+        }
+        let sel = tx.after.clone();
         self.history.undo.push(tx);
         self.history.sealed = true;
         Some(sel)
@@ -553,6 +801,35 @@ impl Document {
     }
 
     fn replace_raw(&mut self, range: Range<usize>, text: &str) {
+        if let Some(b) = &mut self.batch {
+            b.any = true;
+            b.lo_char = b.lo_char.min(range.start);
+            b.tail_chars = b.tail_chars.min(self.rope.len_chars() - range.end);
+            // Removing a line break joins two lines, which can make a longer one.
+            let joins = match range.len() {
+                0 => false,
+                1 => matches!(self.rope.char(range.start), '\n' | '\r' | '\u{0B}' | '\u{0C}' | '\u{85}' | '\u{2028}' | '\u{2029}'),
+                _ => self.rope.char_to_line(range.start) != self.rope.char_to_line(range.end),
+            };
+            if !range.is_empty() {
+                self.rope.remove(range.clone());
+            }
+            if !text.is_empty() {
+                self.rope.insert(range.start, text);
+            }
+            if text.contains('\n') {
+                let first = self.rope.char_to_line(range.start);
+                let last = self.rope.char_to_line(range.start + text.chars().count());
+                self.grow_max_line(first, last);
+            } else if !text.is_empty() || joins {
+                // Two lookups instead of a line slice; the count may include the line break,
+                // and a 1-char overestimate of the scroll range is harmless.
+                let line = self.rope.char_to_line(range.start);
+                let n = self.rope.line_to_char(line + 1) - self.rope.line_to_char(line);
+                self.max_line_chars = self.max_line_chars.max(n);
+            }
+            return;
+        }
         let start_byte = self.rope.char_to_byte(range.start);
         let old_end_byte = self.rope.char_to_byte(range.end);
         let start_position = self.point_at(start_byte);
@@ -565,26 +842,37 @@ impl Document {
         }
         let new_end_byte = start_byte + text.len();
         let new_end_position = self.point_at(new_end_byte);
-        self.version += 1;
+        self.log_change(TextChange { start: range.start, removed: range.len(), inserted: text.chars().count() });
+        self.grow_max_line(start_position.row, new_end_position.row);
+        self.apply_input_edit(InputEdit {
+            start_byte,
+            old_end_byte,
+            new_end_byte,
+            start_position,
+            old_end_position,
+            new_end_position,
+        });
+    }
 
-        let first = start_position.row;
-        let last = new_end_position.row;
+    fn log_change(&mut self, change: TextChange) {
+        self.version += 1;
+        if self.journal.len() == JOURNAL_LEN {
+            self.journal.pop_front();
+        }
+        self.journal.push_back((self.version, change));
+    }
+
+    fn grow_max_line(&mut self, first: usize, last: usize) {
         for l in first..=last.min(self.rope.len_lines().saturating_sub(1)) {
             let n = self.line_len(l);
             if n > self.max_line_chars {
                 self.max_line_chars = n;
             }
         }
+    }
 
+    fn apply_input_edit(&mut self, edit: InputEdit) {
         if let Some(syntax) = &mut self.syntax {
-            let edit = InputEdit {
-                start_byte,
-                old_end_byte,
-                new_end_byte,
-                start_position,
-                old_end_position,
-                new_end_position,
-            };
             // The edited old tree stays usable for highlighting until the reparse lands.
             if let Some(tree) = &mut syntax.tree {
                 tree.edit(&edit);
@@ -613,15 +901,18 @@ impl Document {
             match got {
                 Ok(tree) => {
                     let p = syntax.pending.take().expect("checked above");
-                    if let Some(mut tree) = tree {
+                    if p.discard {
+                        // Nothing to keep; the next parse below starts from scratch.
+                    } else if let Some(mut tree) = tree {
                         // The worker parsed a snapshot; replay what was typed since then.
                         for e in &p.edits {
                             tree.edit(e);
                         }
                         syntax.tree = Some(tree);
+                        syntax.fallback = None;
                         syntax.generation += 1;
                     }
-                    syntax.stale = !p.edits.is_empty();
+                    syntax.stale = p.discard || !p.edits.is_empty();
                 }
                 Err(TryRecvError::Empty) => return,
                 Err(TryRecvError::Disconnected) => {
@@ -648,13 +939,14 @@ impl Document {
                 let _ = tx.send(tree);
             });
             if spawned.is_ok() {
-                syntax.pending = Some(PendingParse { rx, edits: Vec::new() });
+                syntax.pending = Some(PendingParse { rx, edits: Vec::new(), discard: false });
                 syntax.stale = false;
                 return;
             }
         }
         if let Some(tree) = parse_rope(&mut syntax.parser, &self.rope, syntax.tree.as_ref()) {
             syntax.tree = Some(tree);
+            syntax.fallback = None;
             syntax.generation += 1;
         }
         syntax.stale = false;
@@ -683,8 +975,27 @@ impl Document {
             Some(Syntax { tree: Some(tree), config, .. }) => {
                 highlight::highlight_lines(&self.rope, tree, config, lines)
             }
+            // Old colors on the new text: off by the typed chars until the fresh tree lands.
+            Some(Syntax { fallback: Some((rope, tree)), config, .. }) => {
+                let n = lines.len();
+                let mut out = if lines.start < rope.len_lines() {
+                    highlight::highlight_lines(rope, tree, config, lines.start..lines.end.min(rope.len_lines()))
+                } else {
+                    Vec::new()
+                };
+                out.resize(n, Vec::new());
+                out
+            }
             _ => vec![Vec::new(); lines.len()],
         }
+    }
+
+    /// The current tree (possibly one parse behind) and its highlight query, for classifying
+    /// text on a worker. Tree clones share their storage.
+    pub(crate) fn syntax_snapshot(&mut self) -> Option<(Tree, &'static HighlightConfig)> {
+        self.ensure_parsed(false);
+        let s = self.syntax.as_ref()?;
+        Some((s.tree.clone()?, s.config))
     }
 
     /// The tree-sitter tree, if parsed. Exposed for structural features in the app.

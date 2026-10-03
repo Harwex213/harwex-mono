@@ -105,6 +105,47 @@ fn commit_exactly_the_selected_paths() {
 }
 
 #[test]
+fn commit_staged_part_of_partly_staged_file() {
+    let t = TestRepo::new();
+    t.write("part.txt", "one\ntwo\n");
+    t.write("whole.txt", "w1\n");
+    t.write("other.txt", "o1\n");
+    t.write("gone.txt", "g\n");
+    t.commit_all("init");
+
+    // part.txt: "one" -> "ONE" staged, "two" -> "TWO" only on disk.
+    t.write("part.txt", "ONE\ntwo\n");
+    t.git(&["add", "part.txt"]);
+    t.write("part.txt", "ONE\nTWO\n");
+    // whole.txt is partly staged too, but committed from the worktree.
+    t.write("whole.txt", "w2\n");
+    t.git(&["add", "whole.txt"]);
+    t.write("whole.txt", "w3\n");
+    // A staged deletion committed from the index, and a staged change left out.
+    t.git(&["rm", "-q", "gone.txt"]);
+    t.write("other.txt", "o2\n");
+    t.git(&["add", "other.txt"]);
+
+    let out = t.repo.commit_selection("staged part", &[p("whole.txt")], &[p("part.txt"), p("gone.txt"), p("whole.txt")], false).unwrap();
+    assert!(out.success(), "{:?}", out.output);
+    assert_eq!(out.oid.unwrap().to_string(), t.git(&["rev-parse", "HEAD"]).trim());
+    assert_eq!(t.head_text("part.txt"), "ONE\ntwo\n", "only the staged hunk");
+    assert_eq!(t.head_text("whole.txt"), "w3\n", "a path in both lists commits the worktree");
+    assert!(t.git(&["ls-tree", "--name-only", "HEAD"]).lines().all(|l| l != "gone.txt"));
+    assert_eq!(t.head_text("other.txt"), "o1\n");
+    assert_eq!(t.read("part.txt"), "ONE\nTWO\n", "the worktree keeps the rest");
+
+    let st = t.repo.status().unwrap();
+    let find = |s: &str| st.iter().find(|c| c.path == p(s)).cloned();
+    let part = find("part.txt").expect("rest of part.txt");
+    assert_eq!((part.staged, part.unstaged), (None, Some(ChangeKind::Modified)));
+    assert!(find("whole.txt").is_none());
+    assert!(find("gone.txt").is_none());
+    assert_eq!(find("other.txt").expect("other").staged, Some(ChangeKind::Modified), "other staged changes stay staged");
+    assert!(!t.path().join(".git/HARWEX_COMMIT_INDEX").exists());
+}
+
+#[test]
 fn commit_rename_includes_deletion() {
     let t = TestRepo::new();
     t.write("old.txt", "some content\nthat is long enough\nto be similar\n");

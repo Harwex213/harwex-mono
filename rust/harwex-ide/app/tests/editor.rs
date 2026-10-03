@@ -150,6 +150,120 @@ fn right_click_moves_caret_and_opens_context_menu() {
     ide.key(Key::Escape);
 }
 
+/// Opens the context menu at `(line, column)` and clicks `path` (a submenu first, like "Git").
+fn menu_pick(ide: &mut Ide, line: usize, column: usize, path: &[&str]) {
+    let p = ide.caret_pos(line, column);
+    ide.right_click_at(p);
+    ide.settle();
+    let (item, submenus) = path.split_last().expect("a menu item");
+    for sub in submenus {
+        ide.hover(sub);
+        let wanted = item.to_string();
+        ide.wait_until("submenu", move |ide| ide.has(&wanted));
+    }
+    ide.click(item);
+    ide.settle();
+    assert!(!ide.has("Comment with Line Comment"), "the menu closed");
+}
+
+/// The editor of the active tab has keyboard focus.
+fn editor_focused(ide: &Ide) -> bool {
+    ide.is_focused(&format!("Editor {}", ide.active_title().expect("active tab")))
+}
+
+// Every context-menu item hands the focus back to the editor, so the next key acts on it
+// without a click into the text first.
+
+#[test]
+fn menu_comment_then_undo() {
+    let (_fx, mut ide) = open_util("menu_comment");
+    menu_pick(&mut ide, 4, 13, &["Comment with Line Comment"]);
+    assert_eq!(ide.active_line(4), "// export const ZERO = 0;");
+    assert!(editor_focused(&ide));
+    ide.cmd(Key::Z);
+    ide.settle();
+    assert_eq!(ide.active_text(), UTIL);
+}
+
+#[test]
+fn menu_cut_then_undo() {
+    let (_fx, mut ide) = open_util("menu_cut");
+    let p = ide.char_pos(4, 15);
+    ide.double_click_at(p);
+    assert_eq!(ide.selected_text(), "ZERO");
+    menu_pick(&mut ide, 4, 15, &["Cut"]);
+    assert_eq!(ide.active_line(4), "export const  = 0;");
+    ide.cmd(Key::Z);
+    ide.settle();
+    assert_eq!(ide.active_text(), UTIL);
+}
+
+#[test]
+fn menu_copy_then_type() {
+    let (_fx, mut ide) = open_util("menu_copy");
+    let p = ide.char_pos(4, 15);
+    ide.double_click_at(p);
+    menu_pick(&mut ide, 4, 15, &["Copy"]);
+    assert_eq!(ide.selected_text(), "ZERO");
+    // The selection is still there, so typing replaces it.
+    ide.type_text("ONE");
+    ide.settle();
+    assert_eq!(ide.active_line(4), "export const ONE = 0;");
+}
+
+#[test]
+fn menu_paste_then_type() {
+    let (_fx, mut ide) = open_util("menu_paste");
+    // The test harness has no clipboard, so only the focus is checked here.
+    menu_pick(&mut ide, 4, 0, &["Paste"]);
+    assert!(editor_focused(&ide));
+    ide.type_text("// ");
+    ide.settle();
+    assert_eq!(ide.active_line(4), "// export const ZERO = 0;");
+}
+
+#[test]
+fn menu_go_to_then_type() {
+    let fx = Fixture::new(SUITE, "menu_go_to");
+    let repo = basic_repo(fx.path("repo"));
+    let mut ide = Ide::open(SUITE, &repo.dir);
+    // Markdown has no language server: the request ends in a warning, the focus stays.
+    ide.open_file("README.md");
+    for item in ["Go to Declaration", "Go to Type Definition", "Find Usages"] {
+        menu_pick(&mut ide, 0, 2, &[item]);
+        assert!(editor_focused(&ide), "{item} returns the focus");
+    }
+    ide.type_text("x");
+    ide.settle();
+    assert_eq!(ide.active_line(0), "# xdemo");
+}
+
+#[test]
+fn menu_git_rollback_then_undo() {
+    let fx = Fixture::new(SUITE, "menu_rollback");
+    let repo = changed_repo(fx.path("repo"));
+    let mut ide = Ide::open(SUITE, &repo.dir);
+    ide.open_file("src/app.ts");
+    let changed = ide.active_text();
+    menu_pick(&mut ide, 3, 4, &["Git", "Rollback Lines"]);
+    ide.wait_until("rolled back", |ide| ide.active_line(3) == "  const x = add(1, 2);");
+    assert!(editor_focused(&ide));
+    ide.cmd(Key::Z);
+    ide.settle();
+    assert_eq!(ide.active_text(), changed);
+}
+
+#[test]
+fn menu_git_annotate_then_type() {
+    let (_fx, mut ide) = open_util("menu_annotate");
+    menu_pick(&mut ide, 4, 0, &["Git", "Annotate with Git Blame"]);
+    ide.wait_for("blame shown", |s| s.tabs.active_editor().is_some_and(|e| !e.annotations.is_empty()));
+    assert!(editor_focused(&ide));
+    ide.type_text("// ");
+    ide.settle();
+    assert_eq!(ide.active_line(4), "// export const ZERO = 0;");
+}
+
 #[test]
 fn cmd_hover_underlines_identifier() {
     let (_fx, mut ide) = open_util("cmd_hover");

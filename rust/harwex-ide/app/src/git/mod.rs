@@ -29,6 +29,9 @@ pub struct GitUi {
     pub branches: branches::BranchesUi,
     pub remote: remote::RemoteUi,
     pub conflicts: conflicts::ConflictsUi,
+    /// The bottom-left corner of the title bar's branch widget, drawn last frame. The branches
+    /// popup drops down from it.
+    pub branches_anchor: Option<egui::Pos2>,
 }
 
 impl GitUi {
@@ -38,22 +41,18 @@ impl GitUi {
     }
 }
 
-/// Top bar: the branch button was clicked. `anchor` is the button's bottom-left corner.
-pub fn branch_button_clicked(state: &mut AppState, anchor: egui::Pos2) {
+/// Ctrl+Shift+` ("Branches..."): toggles the branches popup. `anchor` is the bottom-left corner
+/// of the title bar's branch widget.
+pub fn open_branches_popup(state: &mut AppState, anchor: egui::Pos2) {
     branches::open_popup(state, anchor);
 }
 
-/// Top bar: Update Project (pull).
+/// Cmd+T: Update Project (pull).
 pub fn update_project_clicked(state: &mut AppState) {
     remote::open_update_dialog(state);
 }
 
-/// Top bar: Commit. Usually shows the Commit tool window.
-pub fn commit_clicked(state: &mut AppState) {
-    state.layout.show(crate::layout::ToolWindow::Commit);
-}
-
-/// Top bar: Push.
+/// Cmd+Shift+K: Push.
 pub fn push_clicked(state: &mut AppState) {
     remote::open_push_dialog(state);
 }

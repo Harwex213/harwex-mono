@@ -21,11 +21,13 @@ pub struct FileIndex {
     pub build_ms: Option<f64>,
 }
 
-pub fn build_file_list(root: &Path) -> Vec<String> {
+/// Every non-ignored file under `root`, minus the excluded folders in `skip`.
+pub fn build_file_list(root: &Path, skip: &[PathBuf]) -> Vec<String> {
     let out = Mutex::new(Vec::with_capacity(16 * 1024));
+    let skip = skip.to_vec();
     let walker = ignore::WalkBuilder::new(root)
         .hidden(false)
-        .filter_entry(|e| e.file_name() != ".git")
+        .filter_entry(move |e| e.file_name() != ".git" && !skip.iter().any(|s| e.path() == s))
         .threads(std::thread::available_parallelism().map_or(4, |n| n.get().min(8)))
         .build_parallel();
     walker.run(|| {
@@ -58,10 +60,11 @@ pub fn rebuild_index(state: &mut AppState) {
     state.index.building = true;
     let generation = state.project_generation();
     let started = Instant::now();
+    let skip = state.tree.excluded.clone();
     state.jobs.spawn(
         "Indexing files",
         move || {
-            let files = build_file_list(&root);
+            let files = build_file_list(&root, &skip);
             (files, started.elapsed())
         },
         move |state, (files, took)| {

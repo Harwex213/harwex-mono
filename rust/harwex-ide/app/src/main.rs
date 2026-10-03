@@ -26,7 +26,7 @@ fn main() -> eframe::Result {
     let cli_folder = launch::startup_folder(&args, cwd.as_deref(), tty);
 
     // The title bar is ours (theme: Islands Dark): the content runs under a transparent native
-    // title bar, and macOS draws only the traffic lights over it.
+    // title bar, and macOS draws only the traffic lights over it (moved by `chrome::sync`).
     let mut viewport = egui::ViewportBuilder::default()
         .with_inner_size([1400.0, 900.0])
         .with_min_inner_size([640.0, 400.0])

@@ -37,6 +37,7 @@ fn main() {
     // Test request waiting for the client's answer to our `workspace/configuration`.
     let mut waiting_config: Option<Value> = None;
     let mut cancelled: Vec<Value> = Vec::new();
+    let mut renamed: Vec<Value> = Vec::new();
 
     while let Ok(Some(msg)) = read_message(&mut reader) {
         let method = msg["method"].as_str().unwrap_or_default().to_string();
@@ -125,6 +126,22 @@ fn main() {
                         "range": {"start": position, "end": position}}),
                 );
             }
+            // Inserts one comment line per rename at the top of every open document, so tests
+            // can check the conversion and that the request came before the move.
+            ("workspace/willRenameFiles", Some(id)) => {
+                let files = params["files"].as_array().cloned().unwrap_or_default();
+                let mut uris: Vec<&String> = docs.keys().collect();
+                uris.sort();
+                let text: String = files.iter().map(|f| format!("// {} -> {}\n", f["oldUri"].as_str().unwrap_or_default(), f["newUri"].as_str().unwrap_or_default())).collect();
+                let changes: Vec<Value> = uris
+                    .iter()
+                    .map(|u| json!({"textDocument": {"uri": u, "version": null},
+                        "edits": [{"range": {"start": {"line": 0, "character": 0}, "end": {"line": 0, "character": 0}}, "newText": text}]}))
+                    .collect();
+                reply(&out, &id, json!({"documentChanges": changes}));
+            }
+            ("workspace/didRenameFiles", None) => renamed.extend(params["files"].as_array().cloned().unwrap_or_default()),
+            ("test/renamed", Some(id)) => reply(&out, &id, json!(renamed)),
             ("test/sleep", Some(id)) => {
                 let ms = params["ms"].as_u64().unwrap_or(0);
                 let out = out.clone();

@@ -17,7 +17,7 @@ cargo test -p harwex-ide --test git_history  # one suite
 cargo test -p harwex-ide --test shell tabs   # tests whose name contains "tabs"
 ```
 
-Suites in `app/tests/`: `shell`, `editor`, `navigation` (tsserver), `rust_nav` (rust-analyzer), `terminal`, `git_changes`, `git_history`, `breadcrumbs`, `launch`.
+Suites in `app/tests/`: `shell`, `editor`, `navigation` (tsserver), `rust_nav` (rust-analyzer), `terminal`, `git_changes`, `git_history`, `breadcrumbs`, `launch`, `find_replace`.
 
 ## Test tools
 

@@ -211,3 +211,8 @@ fn old_tsserver_is_the_fallback_and_can_be_preferred() {
         svc.shutdown();
     }
 }
+
+#[test]
+fn file_rename_updates_imports() {
+    common::check_file_rename(TsLink::Native);
+}

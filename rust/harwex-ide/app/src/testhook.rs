@@ -3,7 +3,11 @@
 //! ```text
 //! harwex-ide <folder> --open <file> [--goto L:C] [--test-nav <kind>@L:C]... [--test-search <q>]
 //!            [--test-find <q>] [--test-term <command>] [--test-quit]
+//! harwex-ide [folder] --test-chrome
 //! ```
+//!
+//! `--test-chrome` logs the native window buttons' frames next to `chrome::title_bar_layout`,
+//! resizes the window and logs them again, then quits; it exits with 1 on a mismatch.
 //!
 //! `kind` is definition | source | type | usages. Positions are 1-based like the status bar.
 //! Every step runs through `nav::request` on the `--open` file and logs its result to stderr;
@@ -30,6 +34,8 @@ pub struct TestScript {
     /// `--test-git-<step> [arg]`: Git UI steps, run in order by `git::remote::testing`.
     pub git: Vec<(String, Option<String>)>,
     pub quit: bool,
+    /// `--test-chrome`: see `chrome::sync`.
+    pub chrome: Option<crate::chrome::ChromeCheck>,
     started: bool,
     waiting: bool,
     finished_at: Option<Instant>,
@@ -101,6 +107,10 @@ pub fn parse(args: &mut Vec<String>) -> Option<TestScript> {
                 any = true;
             }
             "--test-quit" => t.quit = true,
+            "--test-chrome" => {
+                t.chrome = Some(Default::default());
+                any = true;
+            }
             git if git.starts_with("--test-git-") => {
                 let name = git.trim_start_matches("--test-git-").to_string();
                 let arg = it.as_slice().first().filter(|v| !v.starts_with("--")).cloned();

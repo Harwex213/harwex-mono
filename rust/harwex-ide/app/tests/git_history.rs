@@ -22,8 +22,8 @@ fn open_log(ide: &mut Ide) {
     assert_eq!(ide.state().layout.bottom, Some(ToolWindow::Git));
 }
 
-/// Clicks the last widget labelled `label`: dialogs draw after the top bar, whose buttons share
-/// names with them (Push, Commit).
+/// Clicks the last widget labelled `label` (a dialog button that shares its name with another
+/// widget).
 fn click_last(ide: &mut Ide, label: &str) {
     // Toasts never expire in tests and can cover dialog buttons.
     ide.dismiss_toasts();
@@ -34,8 +34,8 @@ fn click_last(ide: &mut Ide, label: &str) {
 
 fn open_branches(ide: &mut Ide) {
     ide.dismiss_toasts();
-    let label = format!("Branch {}", ide.state().git.branch.clone().expect("branch"));
-    ide.click(&label);
+    // The title bar's branch is display-only; IDEA's "Branches..." shortcut opens the popup.
+    ide.key_mods(CTRL_SHIFT, Key::Backtick);
     ide.wait_until("branches popup", |ide| ide.state().git_ui.branches.is_open() && ide.has("Fetch"));
     ide.settle();
 }
@@ -131,13 +131,15 @@ fn log_paging() {
     assert!(ide.state().git_ui.log.has_more());
     ide.assert_text("300+ commits");
     ide.click("Commit Commit 699");
-    for _ in 0..300 {
+    // The next page loads only while the view is near the end of the loaded rows. A page that
+    // arrives after the last PageDown leaves the view far from the new end, and no further page
+    // loads. So keep paging until the last page is in, and bound the loop by time, not by keys.
+    let start = std::time::Instant::now();
+    while !(ide.state().git_ui.log.commits().len() == 700 && !ide.state().git_ui.log.has_more()) {
+        assert!(start.elapsed() < std::time::Duration::from_secs(60), "all pages: {} commits loaded", ide.state().git_ui.log.commits().len());
         ide.key(Key::PageDown);
-        if ide.state().git_ui.log.commits().len() == 700 {
-            break;
-        }
+        std::thread::sleep(std::time::Duration::from_millis(2));
     }
-    ide.wait_for("all pages", |s| s.git_ui.log.commits().len() == 700 && !s.git_ui.log.has_more());
     ide.settle();
     let last = ide.state().git_ui.log.commits().last().map(|c| c.summary.clone());
     assert_eq!(last.as_deref(), Some("Commit 0"));
@@ -195,7 +197,7 @@ fn push_to_bare_remote_with_set_upstream() {
         String::from_utf8_lossy(&out.stdout).lines().map(str::to_string).collect::<Vec<_>>()
     };
     let mut ide = Ide::open(SUITE, &repo.dir);
-    ide.click("Push");
+    ide.cmd_shift(Key::K);
     ide.wait_for("push dialog", |s| s.git_ui.remote.push_open() && !s.git_ui.remote.push_commits().is_empty());
     ide.settle();
     assert_eq!(ide.state().git_ui.remote.push_commits(), ["Local work to push"]);
@@ -235,7 +237,7 @@ fn diverged(name: &str) -> (Fixture, Repo) {
 fn update_project_merge() {
     let (_fx, repo) = diverged("update_merge");
     let mut ide = Ide::open(SUITE, &repo.dir);
-    ide.click("Update");
+    ide.cmd(Key::T);
     ide.wait_for("update dialog", |s| s.git_ui.remote.update_open());
     ide.settle();
     ide.click("Merge incoming changes into the current branch");

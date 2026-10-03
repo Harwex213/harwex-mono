@@ -22,6 +22,7 @@ Git logic for the IDE's IDEA-style Git UI: status, commit of a file subset, diff
 - Input paths may be absolute (also through `/var` symlinks, also for deleted files) or relative to the workdir. Returned paths are relative to the workdir.
 - Lines are 0-based. Inline diff ranges are char columns.
 - `commit(message, paths, amend)` commits exactly `paths`. Other staged changes stay staged. A rejected commit (hook failure) returns `Ok` with `success() == false` and the stderr.
+- `commit_selection(message, whole, staged_only, amend)` also commits the index version of `staged_only` (a partly staged file without its unstaged rest). It builds the commit in a temporary index (`GIT_INDEX_FILE=.git/HARWEX_COMMIT_INDEX`): HEAD, plus the real index entries of `staged_only`, plus the worktree of `whole`. Hooks see that index. Afterwards `whole` is staged in the real index, like `--only` does.
 - A failed CLI command returns `CommandOutcome` with `success == false` or `Error::Command`. Keep stderr: the UI shows it.
 - Diffs (`similar`, patience) have a 1.5 s line-diff deadline. Word ranges are computed only for blocks of at most 400 lines.
 

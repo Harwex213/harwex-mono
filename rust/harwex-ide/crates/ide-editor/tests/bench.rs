@@ -5,7 +5,7 @@
 use std::time::{Duration, Instant};
 
 use egui::{Event, Pos2, RawInput, Rect, Vec2};
-use ide_editor::{Document, EditKind, EditorState, EditorView, Language, Position, Selection};
+use ide_editor::{Carets, Document, EditKind, EditorState, EditorView, Language, Position, Selection};
 
 const LINES: usize = 200_000;
 
@@ -109,6 +109,54 @@ fn bench_200k_lines() {
         typing.push(frame(&ctx, &mut doc, &mut state, vec![Event::Text(t.into())]));
     }
     assert!(doc.is_dirty(), "typing frames must reach the document");
+
+    // Find bar: type a query into the field, one char per frame. The search runs on a worker,
+    // so these frames cost the same as plain frames.
+    state.open_find(&doc, false);
+    frame(&ctx, &mut doc, &mut state, vec![]);
+    let mut query_typing = Vec::new();
+    for c in "make1234".chars() {
+        query_typing.push(frame(&ctx, &mut doc, &mut state, vec![Event::Text(c.to_string())]));
+    }
+    assert_eq!(state.find().query(), "make1234", "the query field had the keyboard");
+    let t = Instant::now();
+    while !state.find().is_fresh(&doc) {
+        std::thread::sleep(Duration::from_millis(1));
+        frame(&ctx, &mut doc, &mut state, vec![]);
+    }
+    let search_done = t.elapsed();
+    // "make1234" matches make1234 and make12340..make12349.
+    assert_eq!(state.find().counter().1, 11);
+    // A one-letter query hits the match limit; frames stay cheap while the worker runs.
+    let t = Instant::now();
+    let wide_frame = frame(&ctx, &mut doc, &mut state, vec![Event::Key {
+        key: egui::Key::A,
+        physical_key: None,
+        pressed: true,
+        repeat: false,
+        modifiers: egui::Modifiers::COMMAND,
+    }, Event::Text("e".into())]);
+    while !state.find().is_fresh(&doc) {
+        std::thread::sleep(Duration::from_millis(1));
+        frame(&ctx, &mut doc, &mut state, vec![]);
+    }
+    let wide_search = t.elapsed();
+    assert!(state.find().is_capped(), "\"e\" has more than {} matches", ide_editor::MAX_MATCHES);
+    let mut wide_frames = Vec::new();
+    for _ in 0..20 {
+        wide_frames.push(frame(&ctx, &mut doc, &mut state, vec![]));
+    }
+    // Typing in the text with 100k matches: each edit updates the matches of its line.
+    state.request_focus();
+    frame(&ctx, &mut doc, &mut state, vec![]);
+    let mut typing_with_matches = Vec::new();
+    for i in 0..100 {
+        let t = if i % 5 == 4 { " " } else { "e" };
+        typing_with_matches.push(frame(&ctx, &mut doc, &mut state, vec![Event::Text(t.into())]));
+    }
+    assert!(state.find().is_fresh(&doc), "edits update the matches without a full search");
+    let _ = wide_frame;
+
     let avg = |v: &[Duration]| v.iter().sum::<Duration>() / v.len() as u32;
     let max = |v: &[Duration]| v.iter().max().copied().unwrap_or_default();
 
@@ -126,11 +174,92 @@ fn bench_200k_lines() {
     eprintln!("  widget jump-scroll frame avg   {:8.3} ms (max {:.2} ms)", ms(avg(&jumps)), ms(max(&jumps)));
     eprintln!("  widget typing frame avg        {:8.3} ms (max {:.2} ms)", ms(avg(&typing)), ms(max(&typing)));
 
+    eprintln!("  find: query typing frame avg   {:8.3} ms (max {:.2} ms)", ms(avg(&query_typing)), ms(max(&query_typing)));
+    eprintln!("  find: search to result (worker){:8.2} ms (11 matches)", ms(search_done));
+    eprintln!("  find: capped search (worker)   {:8.2} ms ({} matches)", ms(wide_search), ide_editor::MAX_MATCHES);
+    eprintln!("  find: frame with 100k matches  {:8.3} ms (max {:.2} ms)", ms(avg(&wide_frames)), ms(max(&wide_frames)));
+    eprintln!("  find: typing frame, 100k match {:8.3} ms (max {:.2} ms)", ms(avg(&typing_with_matches)), ms(max(&typing_with_matches)));
+
     if !cfg!(debug_assertions) {
         // 120 fps leaves 8.3 ms per frame for the whole app; the editor must use a fraction.
         assert!(edit_avg < Duration::from_millis(4), "keystroke too slow: {edit_avg:?}");
         assert!(avg(&steady) < Duration::from_millis(4), "steady frame too slow");
         assert!(avg(&typing) < Duration::from_millis(8), "typing frame too slow");
         assert!(avg(&jumps) < Duration::from_millis(12), "jump frame too slow");
+        assert!(avg(&query_typing) < Duration::from_millis(8), "find query typing frame too slow");
+        assert!(avg(&wide_frames) < Duration::from_millis(4), "steady frame with matches too slow");
+        assert!(avg(&typing_with_matches) < Duration::from_millis(8), "typing frame with matches too slow");
     }
+}
+
+/// 10k carets on the same 200k-line file: typing, a steady frame, undo and Select All
+/// Occurrences. Run with `cargo test -p ide-editor --release --test bench -- --nocapture`.
+#[test]
+fn bench_10k_carets() {
+    let text = generate();
+    let mut doc = Document::from_text(&text, Language::TypeScript);
+    doc.wait_syntax();
+    let ctx = egui::Context::default();
+    let mut state = EditorState::new();
+    state.request_focus();
+    frame(&ctx, &mut doc, &mut state, vec![]);
+
+    // One caret every 20 lines, inside `id: number;`.
+    const CARETS: usize = 10_000;
+    let sels: Vec<Selection> = (0..CARETS).map(|i| Selection::caret(doc.position_to_char(Position::new(i * 20 + 2, 2)))).collect();
+    state.set_carets(Carets::from_vec(sels, CARETS / 2));
+    state.reveal(Position::new(CARETS / 2 * 20 + 2, 2));
+    frame(&ctx, &mut doc, &mut state, vec![]);
+    state.set_carets(Carets::from_vec(
+        (0..CARETS).map(|i| Selection::caret(doc.position_to_char(Position::new(i * 20 + 2, 2)))).collect(),
+        CARETS / 2,
+    ));
+    let mut steady = Vec::new();
+    for _ in 0..30 {
+        steady.push(frame(&ctx, &mut doc, &mut state, vec![]));
+    }
+    let mut typing = Vec::new();
+    for i in 0..50 {
+        let t = if i % 5 == 4 { " " } else { "x" };
+        typing.push(frame(&ctx, &mut doc, &mut state, vec![Event::Text(t.into())]));
+    }
+    assert_eq!(state.carets().len(), CARETS);
+    assert_eq!(doc.line(2), "  xxxx xxxx xxxx xxxx xxxx xxxx xxxx xxxx xxxx xxxx id: number;");
+    let mut backspace = Vec::new();
+    for _ in 0..10 {
+        backspace.push(frame(&ctx, &mut doc, &mut state, vec![key(egui::Key::Backspace, egui::Modifiers::NONE)]));
+    }
+    let undo_all = frame(&ctx, &mut doc, &mut state, (0..30).map(|_| key(egui::Key::Z, egui::Modifiers::COMMAND)).collect());
+    assert_eq!(doc.text().len(), text.len(), "undo restores the file");
+    assert_eq!(state.carets().len(), CARETS, "undo restores every caret");
+    let (_, reparse) = time(|| doc.wait_syntax());
+
+    // Select All Occurrences of `name` (40k whole-word hits), then type over them.
+    state.set_carets(Carets::single(Selection::caret(doc.position_to_char(Position::new(3, 3)))));
+    frame(&ctx, &mut doc, &mut state, vec![]);
+    let (_, select_all) = time(|| state.select_all_occurrences(&mut doc));
+    assert_eq!(state.carets().len(), LINES / 10 * 2);
+    let replace_40k = frame(&ctx, &mut doc, &mut state, vec![Event::Text("n".into())]);
+    assert_eq!(doc.line(3), "  n: string;");
+
+    let avg = |v: &[Duration]| v.iter().sum::<Duration>() / v.len() as u32;
+    let max = |v: &[Duration]| v.iter().max().copied().unwrap_or_default();
+    eprintln!("ide-editor multi-caret benchmark, {} lines, {} carets", LINES, CARETS);
+    eprintln!("  steady frame avg               {:8.3} ms (max {:.2} ms)", ms(avg(&steady)), ms(max(&steady)));
+    eprintln!("  typing frame avg               {:8.3} ms (max {:.2} ms)", ms(avg(&typing)), ms(max(&typing)));
+    eprintln!("  backspace frame avg            {:8.3} ms (max {:.2} ms)", ms(avg(&backspace)), ms(max(&backspace)));
+    eprintln!("  undo 21 steps in one frame     {:8.2} ms", ms(undo_all));
+    eprintln!("  background reparse after edits {:8.2} ms (off the UI thread)", ms(reparse));
+    eprintln!("  select all occurrences (40k)   {:8.2} ms", ms(select_all));
+    eprintln!("  typing frame at 40k carets     {:8.2} ms", ms(replace_40k));
+
+    if !cfg!(debug_assertions) {
+        assert!(avg(&steady) < Duration::from_millis(4), "steady frame with 10k carets too slow");
+        assert!(avg(&typing) < Duration::from_millis(8), "typing frame with 10k carets too slow");
+        assert!(avg(&backspace) < Duration::from_millis(8), "backspace frame with 10k carets too slow");
+    }
+}
+
+fn key(key: egui::Key, modifiers: egui::Modifiers) -> Event {
+    Event::Key { key, physical_key: None, pressed: true, repeat: false, modifiers }
 }

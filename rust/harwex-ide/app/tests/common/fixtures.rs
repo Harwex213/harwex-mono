@@ -5,7 +5,10 @@
 //! Each fixture lives at a fixed path, `/private/tmp/harwex-ide-kittest/<suite>/<name>`, so
 //! paths drawn in the UI (the project tree header, notifications) are the same on every run
 //! and snapshots stay stable. The directory is wiped when the fixture is created and removed
-//! when it drops (set `KEEP_FIXTURES=1` to keep it for inspection).
+//! when it drops (set `KEEP_FIXTURES=1` to keep it for inspection). Because the path is fixed,
+//! two processes that run the same test at once (two sessions, or clean-check next to a dev
+//! run) would wipe each other's fixture. A lock file next to the directory makes them take
+//! turns.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -16,15 +19,21 @@ pub const FIXTURE_ROOT: &str = "/private/tmp/harwex-ide-kittest";
 pub struct Fixture {
     /// The fixture's own directory (canonical). Repositories and projects live inside it.
     pub dir: PathBuf,
+    /// Held until the fixture drops; another process that wants the same directory waits.
+    _lock: std::fs::File,
 }
 
 impl Fixture {
     pub fn new(suite: &str, name: &str) -> Fixture {
         super::init();
-        let dir = Path::new(FIXTURE_ROOT).join(suite).join(name);
+        let parent = Path::new(FIXTURE_ROOT).join(suite);
+        std::fs::create_dir_all(&parent).expect("create fixture root");
+        let lock = std::fs::File::create(parent.join(format!("{name}.lock"))).expect("create fixture lock");
+        lock.lock().expect("lock fixture");
+        let dir = parent.join(name);
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).expect("create fixture dir");
-        Fixture { dir }
+        Fixture { dir, _lock: lock }
     }
 
     pub fn path(&self, rel: &str) -> PathBuf {
