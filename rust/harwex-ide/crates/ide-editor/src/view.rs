@@ -131,6 +131,8 @@ pub struct EditorState {
     drag_unit: DragUnit,
     /// The presses of the running multi-click.
     click_chain: ClickChain,
+    /// A line selection from a third or later press keeps its caret where the user clicked.
+    inner: Option<InnerCaret>,
     menu_pos: Position,
     cursor_pos: Position,
     highlight: Option<HighlightCache>,
@@ -164,6 +166,17 @@ impl Default for AltTap {
     fn default() -> Self {
         AltTap { held: false, last_press: f64::NEG_INFINITY, armed: false }
     }
+}
+
+/// A caret drawn inside its selection instead of at its head: the line that a third (or later)
+/// press selected, with the caret at the press. `sel` stays the plain selection, so edits, copy,
+/// undo and the caret set see a normal line selection. The caret counts only while `sel` is
+/// still in the caret set and the text has not changed since (`version`).
+#[derive(Clone, Copy, Debug)]
+struct InnerCaret {
+    sel: Selection,
+    at: usize,
+    version: u64,
 }
 
 /// A drag after a single press extends by chars, after a double press by words, after a triple
@@ -315,6 +328,7 @@ impl EditorState {
             dragging: false,
             drag_unit: DragUnit::Char,
             click_chain: ClickChain::default(),
+            inner: None,
             menu_pos: Position::default(),
             cursor_pos: Position::default(),
             highlight: None,
@@ -447,6 +461,30 @@ impl EditorState {
         self.cursor_pos
     }
 
+    /// The char index of the primary caret as drawn. It differs from `selection().head` only
+    /// for a line selection made by a third click, where the caret stays at the click.
+    pub fn caret_char(&self, doc: &Document) -> usize {
+        let p = self.carets.primary();
+        self.shown_head(self.live_inner(doc), &p)
+    }
+
+    /// The inner caret, if it still applies to the current text and caret set.
+    fn live_inner(&self, doc: &Document) -> Option<(Selection, usize)> {
+        let ic = self.inner?;
+        if ic.version != doc.version() || ic.at > doc.len_chars() {
+            return None;
+        }
+        self.carets.touching(ic.sel.range()).contains(&ic.sel).then_some((ic.sel, ic.at))
+    }
+
+    /// Where the caret of `s` is drawn and where moves start from.
+    fn shown_head(&self, inner: Option<(Selection, usize)>, s: &Selection) -> usize {
+        match inner {
+            Some((sel, at)) if sel == *s => at,
+            _ => s.head,
+        }
+    }
+
     /// Raw selection of the primary caret in char indices, as of the last frame.
     pub fn selection(&self) -> Selection {
         self.carets.primary()
@@ -461,6 +499,7 @@ impl EditorState {
     /// the next frame.
     pub fn set_carets(&mut self, carets: Carets) {
         self.carets = carets;
+        self.inner = None;
         self.preferred_cols.clear();
         self.occurrences.clear();
     }
@@ -566,13 +605,13 @@ impl EditorState {
     /// Double Alt + Up/Down (IDEA's Clone Caret Above/Below): a new primary caret one line
     /// above or below the primary, at the same display column.
     pub fn clone_caret(&mut self, doc: &Document, up: bool) {
-        let p = self.carets.primary();
-        let pos = doc.char_to_position(p.head);
+        let head = self.caret_char(doc);
+        let pos = doc.char_to_position(head);
         if (up && pos.line == 0) || (!up && pos.line + 1 >= doc.line_count()) {
             return;
         }
         let want = self.preferred_cols.get(self.carets.primary_index()).copied().unwrap_or_else(|| display_col(&doc.line(pos.line), pos.column));
-        let to = editing::vertical(doc, p.head, if up { -1 } else { 1 }, want);
+        let to = editing::vertical(doc, head, if up { -1 } else { 1 }, want);
         self.carets.push(Selection::caret(to));
         // Every caret keeps the column, so the next clone lines up.
         self.preferred_cols = vec![want; self.carets.len()];
@@ -705,6 +744,7 @@ impl<'a> EditorView<'a> {
         state.carets.clamp(doc.len_chars());
         if let Some((a, h)) = state.pending_selection.take() {
             state.carets = Carets::single(Selection::new(doc.position_to_char(a), doc.position_to_char(h)));
+            state.inner = None;
         }
 
         let full = ui.available_rect_before_wrap();
@@ -802,28 +842,34 @@ impl<'a> EditorView<'a> {
 
         // Mouse. The caret moves on press, not on release, so drag-select starts where the
         // button went down.
-        let (pressed, down, middle_pressed, middle_down, pointer) = ui.input(|i| {
-            (
-                i.pointer.primary_pressed(),
-                i.pointer.primary_down(),
-                i.pointer.button_pressed(egui::PointerButton::Middle),
-                i.pointer.button_down(egui::PointerButton::Middle),
-                i.pointer.interact_pos(),
-            )
+        // A late frame can carry several presses (both clicks of a fast double click), so
+        // every press of the frame counts, in order, at its own position.
+        let (presses, down, middle_down, pointer, now) = ui.input(|i| {
+            // (position, middle button)
+            let presses: Vec<(Pos2, bool)> = i
+                .events
+                .iter()
+                .filter_map(|e| match e {
+                    Event::PointerButton { pos, button: b @ (egui::PointerButton::Primary | egui::PointerButton::Middle), pressed: true, .. } => {
+                        Some((*pos, *b == egui::PointerButton::Middle))
+                    }
+                    _ => None,
+                })
+                .collect();
+            (presses, i.pointer.primary_down(), i.pointer.button_down(egui::PointerButton::Middle), i.pointer.interact_pos(), i.time)
         });
         // Fractional display column and line under `p`, for column selection.
         let cell = |p: Pos2| -> (usize, f32) {
             let line = line_under(p.y);
             (line, display_col_at(&drawn, line, p.x - origin.x, char_w).max(0.0))
         };
-        if (pressed || middle_pressed) && resp.hovered() {
-            if let Some(p) = pointer {
+        let delay = ui.ctx().options(|o| o.input_options.max_double_click_delay);
+        for (p, middle_pressed) in presses {
+            if resp.hovered() && text_rect.contains(p) {
                 resp.request_focus();
                 let idx = hit(doc, p);
-                let plain = pressed && !modifiers.shift && !modifiers.alt && !modifiers.command;
+                let plain = !middle_pressed && !modifiers.shift && !modifiers.alt && !modifiers.command;
                 let count = if plain {
-                    let now = ui.input(|i| i.time);
-                    let delay = ui.ctx().options(|o| o.input_options.max_double_click_delay);
                     state.click_chain.press(now, p, delay, CHAIN_DIST)
                 } else {
                     state.click_chain.reset();
@@ -837,6 +883,7 @@ impl<'a> EditorView<'a> {
                     state.dragging = false;
                 } else if count == 1 {
                     state.set_head(idx, modifiers.shift);
+                    state.inner = None;
                     state.drag_unit = DragUnit::Char;
                     state.dragging = !modifiers.command;
                 } else {
@@ -844,7 +891,11 @@ impl<'a> EditorView<'a> {
                     // chain the whole line. Acting on the press keeps the selection while the
                     // button is down, so the chain never shows a bare caret in between.
                     let r = if count == 2 { editing::word_range(doc, idx) } else { line_range(doc, line_under(p.y)) };
-                    state.carets = Carets::single(Selection::new(r.start, r.end));
+                    let sel = Selection::new(r.start, r.end);
+                    state.carets = Carets::single(sel);
+                    // The line keeps its caret at the click, so each later press of the chain
+                    // moves only the caret.
+                    state.inner = (count > 2).then_some(InnerCaret { sel, at: idx, version: doc.version() });
                     state.drag_unit = if count == 2 { DragUnit::Word(r) } else { DragUnit::Line(r) };
                     state.dragging = true;
                 }
@@ -879,6 +930,7 @@ impl<'a> EditorView<'a> {
                     };
                     if sel != old {
                         state.carets = Carets::single(sel);
+                        state.inner = None;
                     }
                     if !text_rect.contains(p) {
                         caret_moved = true;
@@ -893,6 +945,7 @@ impl<'a> EditorView<'a> {
             if let Some(p) = resp.interact_pointer_pos() {
                 let idx = hit(doc, p);
                 state.carets = Carets::single(Selection::caret(idx));
+                state.inner = None;
                 out_action = Some(EditorAction::GoToDeclaration(doc.char_to_position(idx)));
             }
         }
@@ -904,6 +957,7 @@ impl<'a> EditorView<'a> {
                 let inside = state.carets.all().iter().any(|s| !s.is_empty() && s.start() <= idx && idx <= s.end());
                 if !inside {
                     state.carets = Carets::single(Selection::caret(idx));
+                    state.inner = None;
                 }
                 state.menu_pos = doc.char_to_position(idx);
                 state.preferred_cols.clear();
@@ -1116,7 +1170,7 @@ impl<'a> EditorView<'a> {
             }
             doc.seal_undo_group();
         } else if caret_moved {
-            let p = doc.char_to_position(state.carets.primary().head);
+            let p = doc.char_to_position(state.caret_char(doc));
             let x = display_col(&doc.line(p.line), p.column) as f32 * char_w + TEXT_PAD;
             let y = p.line as f32 * line_h;
             let mut s = state.scroll;
@@ -1139,7 +1193,11 @@ impl<'a> EditorView<'a> {
             }
         }
 
-        let caret_pos = doc.char_to_position(state.carets.primary().head);
+        let inner = state.live_inner(doc);
+        if inner.is_none() {
+            state.inner = None;
+        }
+        let caret_pos = doc.char_to_position(state.shown_head(inner, &state.carets.primary()));
         state.cursor_pos = caret_pos;
 
         // Text area.
@@ -1192,6 +1250,12 @@ impl<'a> EditorView<'a> {
             let first_col = ((viewport.min.x - TEXT_PAD) / char_w).floor().max(0.0) as usize;
             let visible_cols = (viewport.width() / char_w).ceil() as usize + 2;
             let all_carets = &state.carets;
+            let shown = |s: &Selection| -> usize {
+                match inner {
+                    Some((sel, at)) if sel == *s => at,
+                    _ => s.head,
+                }
+            };
             // The problems that touch the visible lines: one pass over a short list, so each
             // line below only walks its own.
             let (vis_start, vis_end) = (doc.line_start(first), if last >= line_count { doc.len_chars() } else { doc.line_start(last) });
@@ -1341,8 +1405,8 @@ impl<'a> EditorView<'a> {
                     }
                 }
 
-                for sel in here.iter().filter(|s| s.head >= ls && s.head <= le) {
-                    let x = round(col_x(display_col(&text, sel.head - ls)));
+                for head in here.iter().map(shown).filter(|&h| h >= ls && h <= le) {
+                    let x = round(col_x(display_col(&text, head - ls)));
                     let color = if has_focus { theme.caret } else { theme.caret_unfocused() };
                     painter.rect_filled(Rect::from_min_max(Pos2::new(x - 1.0, y), Pos2::new(x + 1.0, y_end)), 0.0, color);
                 }
@@ -1358,11 +1422,11 @@ impl<'a> EditorView<'a> {
         if state.carets.is_multi() {
             let key = {
                 let mut h = DefaultHasher::new();
-                (state.carets.all(), line_count, text_rect.height().to_bits(), line_h.to_bits()).hash(&mut h);
+                (state.carets.all(), inner.map(|i| i.1), line_count, text_rect.height().to_bits(), line_h.to_bits()).hash(&mut h);
                 h.finish()
             };
             if state.caret_marks.0 != key {
-                let marks = scroll_marks(doc, state.carets.all(), |s| s.head, text_rect.height(), content.y, line_h);
+                let marks = scroll_marks(doc, state.carets.all(), |s| state.shown_head(inner, s), text_rect.height(), content.y, line_h);
                 state.caret_marks = (key, marks);
             }
             let painter = ui.painter_at(text_rect);
@@ -1431,7 +1495,7 @@ impl<'a> EditorView<'a> {
         // Lines with a caret, among the visible ones.
         let mut caret_rows = vec![false; last.saturating_sub(first)];
         for s in state.carets.touching(doc.line_start(first)..doc.line_start(last)) {
-            let l = doc.char_to_position(s.head).line;
+            let l = doc.char_to_position(state.shown_head(inner, s)).line;
             if let Some(row) = l.checked_sub(first).and_then(|i| caret_rows.get_mut(i)) {
                 *row = true;
             }
@@ -1635,13 +1699,34 @@ fn is_edit_key(key: Key, m: Modifiers) -> bool {
 fn on_key(doc: &mut Document, state: &mut EditorState, key: Key, m: Modifiers, page: usize) -> Option<EditorAction> {
     let shift = m.shift;
     let before = state.carets.clone();
-    let primary = before.primary();
-    let head = primary.head;
+    let inner = state.live_inner(doc);
+    let head = state.shown_head(inner, &before.primary());
     let mut keep_col = false;
     let mut action = None;
+    // A move starts from the drawn caret. For the line selection with an inner caret, a plain
+    // move starts from a bare caret there. Shift keeps the line end that lies against the move
+    // direction as the anchor: the line start for a move forward, the line end for a move back.
+    let forward = match key {
+        Key::ArrowRight | Key::ArrowDown | Key::PageDown | Key::End => true,
+        Key::ArrowLeft | Key::ArrowUp | Key::PageUp | Key::Home => false,
+        _ => true,
+    };
+    let from = move |s: Selection| -> Selection {
+        match inner {
+            Some((sel, at)) if sel == s => {
+                if shift {
+                    Selection::new(if forward { sel.start() } else { sel.end() }, at)
+                } else {
+                    Selection::caret(at)
+                }
+            }
+            _ => s,
+        }
+    };
     // Moves every caret's head; without Shift the selection collapses to it.
     let move_heads = |state: &mut EditorState, f: &dyn Fn(Selection) -> usize| {
         state.carets.map(|_, s| {
+            let s = from(s);
             let to = f(s);
             if shift { Selection::new(s.anchor, to) } else { Selection::caret(to) }
         });
@@ -1682,13 +1767,14 @@ fn on_key(doc: &mut Document, state: &mut EditorState, key: Key, m: Modifiers, p
                 let mut wants = Vec::with_capacity(state.carets.len());
                 for (i, s) in state.carets.all().iter().enumerate() {
                     wants.push(if fresh {
-                        let p = doc.char_to_position(s.head);
+                        let p = doc.char_to_position(from(*s).head);
                         display_col(&doc.line(p.line), p.column)
                     } else {
                         kept[i]
                     });
                 }
                 state.carets.map(|i, s| {
+                    let s = from(s);
                     let to = editing::vertical(doc, s.head, lines, wants[i]);
                     if shift { Selection::new(s.anchor, to) } else { Selection::caret(to) }
                 });
@@ -1765,6 +1851,9 @@ fn on_key(doc: &mut Document, state: &mut EditorState, key: Key, m: Modifiers, p
     }
     if state.carets != before {
         doc.seal_undo_group();
+        // A key that changed the carets ends the inner caret, even when the new selection
+        // happens to equal the old line.
+        state.inner = None;
     }
     action
 }

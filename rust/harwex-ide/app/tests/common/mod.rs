@@ -341,6 +341,28 @@ impl Ide {
         self.step();
     }
 
+    /// One frame `dt` seconds after the previous one, carrying the primary button events
+    /// `buttons` (position, pressed) in order, each after a move to its position. A real UI
+    /// thread that is late gets several button events in one frame; this replays such frames
+    /// with the timing of an input log.
+    pub fn pointer_frame(&mut self, dt: f64, buttons: &[(Pos2, bool)]) {
+        for &(pos, pressed) in buttons {
+            if pos != self.pointer {
+                self.pointer = pos;
+                self.push(Event::PointerMoved(pos));
+            }
+            self.push(Event::PointerButton { pos, button: PointerButton::Primary, pressed, modifiers: Modifiers::NONE });
+        }
+        let time = self.time() + dt;
+        self.harness.input_mut().time = Some(time);
+        self.step();
+        // Later frames go on from this time by `STEP_DT`.
+        self.harness.input_mut().time = None;
+        if buttons.iter().any(|&(_, pressed)| !pressed) {
+            self.last_click = time;
+        }
+    }
+
     /// A single click at `pos` with no pause before it.
     pub fn click_now(&mut self, pos: Pos2) {
         self.move_to(pos);

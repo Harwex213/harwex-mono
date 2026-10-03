@@ -87,6 +87,58 @@ fn double_click_follows_other_clicks() {
     assert!(ide.state().tree.is_expanded(&src), "a chevron click toggles at once");
 }
 
+/// A fast double click as a late UI thread sees it: several button events in one frame, frames
+/// 8 to 30 ms apart, a small move between the presses. Each double click toggles the folder
+/// exactly once. The second double click fired twice when the first release and the second
+/// press shared a frame, so the folder toggled back (task 021).
+#[test]
+fn fast_double_clicks_toggle_once() {
+    let fx = Fixture::new(SUITE, "fast_double_click");
+    let repo = basic_repo(fx.path("repo"));
+    let mut ide = Ide::open(SUITE, &repo.dir);
+    let src = ide.root().join("src");
+    let c = ide.rect("src").center();
+    let near = c + egui::vec2(4.0, 2.0);
+    let (down, up) = (|p| (p, true), |p| (p, false));
+    type Frames = Vec<(f64, Vec<(egui::Pos2, bool)>)>;
+    let mut cases: Vec<(String, Frames)> = vec![
+        ("all four events in one frame".into(), vec![(0.016, vec![down(c), up(c), down(c), up(c)])]),
+        ("release 1 and press 2 in one frame".into(), vec![(0.016, vec![down(c)]), (0.09, vec![up(c), down(c)]), (0.08, vec![up(c)])]),
+        ("press 2 in the frame of click 1".into(), vec![(0.016, vec![down(c), up(c), down(c)]), (0.08, vec![up(c)])]),
+        ("click 2 in the frame of release 1".into(), vec![(0.016, vec![down(c)]), (0.08, vec![up(c), down(c), up(c)])]),
+        ("a 4 pt move between the presses".into(), vec![(0.016, vec![down(c)]), (0.08, vec![up(c)]), (0.1, vec![down(near)]), (0.08, vec![up(near)])]),
+    ];
+    for gap in [0.008, 0.016, 0.030] {
+        cases.push((format!("one event per frame, {gap} s apart"), vec![(gap, vec![down(c)]), (gap, vec![up(c)]), (gap, vec![down(c)]), (gap, vec![up(c)])]));
+        cases.push((format!("one click per frame, {gap} s apart"), vec![(gap, vec![down(c), up(c)]), (gap, vec![down(c), up(c)])]));
+    }
+    ide.move_to(c);
+    let mut failed = Vec::new();
+    for (name, frames) in cases {
+        let before = ide.state().tree.is_expanded(&src);
+        // Each case is a fresh chain: no click in the double-click interval before it.
+        ide.idle(1.5);
+        for (dt, buttons) in &frames {
+            ide.pointer_frame(*dt, buttons);
+        }
+        ide.steps(3);
+        if ide.state().tree.is_expanded(&src) == before {
+            failed.push(format!("{name}: the double click toggles the folder once"));
+            continue;
+        }
+        // A second double click right after the first one toggles back, again exactly once.
+        ide.idle(0.6);
+        for (dt, buttons) in &frames {
+            ide.pointer_frame(*dt, buttons);
+        }
+        ide.steps(3);
+        if ide.state().tree.is_expanded(&src) != before {
+            failed.push(format!("{name}: a second double click 0.6 s later toggles it back"));
+        }
+    }
+    assert!(failed.is_empty(), "{}", failed.join("\n"));
+}
+
 /// A double click on the empty title bar zooms the window (the action is fixed to Zoom in
 /// tests), also right after a single click and twice in a row 0.6 s apart.
 #[test]
@@ -106,6 +158,13 @@ fn title_bar_double_click_zooms() {
     ide.idle(0.6);
     ide.double_click_now(bar);
     assert_eq!(zooms(&mut ide), 1, "a second double click 0.6 s later zooms again");
+    // A late frame with the first release and the second press zooms once, not twice.
+    ide.idle(0.6);
+    ide.pointer_frame(0.016, &[(bar, true)]);
+    ide.pointer_frame(0.09, &[(bar, false), (bar, true)]);
+    ide.pointer_frame(0.08, &[(bar, false)]);
+    ide.steps(2);
+    assert_eq!(zooms(&mut ide), 1, "a double click with merged frames zooms once");
 }
 
 #[test]

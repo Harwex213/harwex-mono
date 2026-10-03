@@ -598,7 +598,7 @@ pub fn goto_next(state: &mut AppState, forward: bool) {
     if starts.is_empty() {
         return;
     }
-    let caret = e.view.selection().head;
+    let caret = e.view.caret_char(&e.doc);
     let target = if forward {
         starts.iter().copied().find(|&s| s > caret).unwrap_or(starts[0])
     } else {

@@ -89,6 +89,23 @@ fn selection_with_keys_mouse_and_double_click() {
 }
 
 #[test]
+fn triple_click_selects_the_line_and_keeps_the_caret_at_the_click() {
+    let (_fx, mut ide) = open_util("line_select");
+    let p = ide.caret_pos(1, 9);
+    ide.click_at(p);
+    ide.click_now(p);
+    ide.click_now(p);
+    assert_eq!(ide.selected_text(), "  return a + b;\n", "the third click selects the line with its newline");
+    assert_eq!(ide.cursor(), (1, 9), "the caret stays at the click");
+    ide.snapshot("line_selected_caret_mid_line");
+
+    // Typing replaces the whole line, like any selection.
+    ide.type_text("x");
+    ide.settle();
+    assert_eq!(ide.active_line(1), "x}");
+}
+
+#[test]
 fn cmd_d_duplicates_and_cmd_slash_comments() {
     let (_fx, mut ide) = open_util("duplicate");
     let p = ide.caret_pos(1, 4);

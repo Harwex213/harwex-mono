@@ -7,7 +7,12 @@
 //!
 //! `Clicks` counts presses instead, like AppKit's click count: each press within the double-click
 //! interval of the one before and near it (`ide_editor::ClickChain`). `IdeApp::update` feeds it
-//! the frame's presses before any widget is drawn. This module is the only place that may call
+//! the frame's button events before any widget is drawn.
+//!
+//! A double click is the release of the chain's second press. A late frame can carry the first
+//! release and the second press together. egui then reports that frame's click, and the frame of
+//! the second release reports another one. So `double` asks which press a click of the frame
+//! ends, not where the chain stands at the end of the frame. This module is the only place that may call
 //! egui's `double_clicked()` or `triple_clicked()` (`tests::no_egui_double_clicks` checks it).
 
 use egui::{Context, Event, PointerButton, Response};
@@ -19,16 +24,29 @@ pub struct Clicks {
     chain: ClickChain,
     /// The place of the last press in its chain (1, 2, 3, ...).
     count: u32,
+    /// The place in its chain of the press that the next primary release ends; 0 when no
+    /// press is held.
+    held: u32,
+    /// A primary release of this frame ended the second press of a chain.
+    second_released: bool,
 }
 
 impl Clicks {
     /// Counts this frame's primary presses. Call once per frame, before the widgets.
     pub fn begin_frame(&mut self, ctx: &Context) {
         let delay = ctx.options(|o| o.input_options.max_double_click_delay);
+        self.second_released = false;
         ctx.input(|i| {
+            // In order: one frame may hold both clicks of a double click.
             for e in &i.events {
-                if let Event::PointerButton { pos, button: PointerButton::Primary, pressed: true, .. } = e {
-                    self.count = self.chain.press(i.time, *pos, delay, CHAIN_DIST);
+                if let Event::PointerButton { pos, button: PointerButton::Primary, pressed, .. } = e {
+                    if *pressed {
+                        self.count = self.chain.press(i.time, *pos, delay, CHAIN_DIST);
+                        self.held = self.count;
+                    } else {
+                        self.second_released |= self.held == 2;
+                        self.held = 0;
+                    }
                 }
             }
         });
@@ -39,9 +57,10 @@ impl Clicks {
         self.count
     }
 
-    /// `resp` got the click of the second press of a chain: a double click.
+    /// `resp` got the click of the second press of a chain: a double click. A frame that ends
+    /// the first click and starts the second press is no double click yet.
     pub fn double(&self, resp: &Response) -> bool {
-        resp.clicked() && self.count == 2
+        resp.clicked() && self.second_released
     }
 }
 
