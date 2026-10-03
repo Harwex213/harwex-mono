@@ -80,6 +80,12 @@ impl IdeApp {
     /// `storage` is eframe's storage; tests pass `None` or an in-memory one.
     pub fn create(ctx: &Context, storage: Option<&dyn eframe::Storage>, options: AppOptions) -> IdeApp {
         theme::apply(ctx);
+        // Tests keep egui's fixed interval, so they do not depend on the machine's setting.
+        if !options.deterministic {
+            if let Some(interval) = chrome::system_double_click_interval() {
+                ctx.options_mut(|o| o.input_options.max_double_click_delay = interval);
+            }
+        }
         let mut state = AppState::new(ctx.clone(), options.start);
         state.timings.quiet = options.deterministic;
         state.timings.log("window created");
@@ -189,6 +195,7 @@ impl eframe::App for IdeApp {
         confirm_close(s, ctx);
         git::show_windows(s, ctx);
         s.notifications.show_toasts(ctx, 48.0);
+        crate::util::close_orphaned_context_menu(ctx);
 
         s.run_commands();
         nav::sync_lsp_debounced(s);
@@ -198,6 +205,10 @@ impl eframe::App for IdeApp {
             // Keeps the spinner turning; ~10 fps is enough and costs nothing measurable.
             ctx.request_repaint_after(std::time::Duration::from_millis(100));
         }
+    }
+
+    fn raw_input_hook(&mut self, _ctx: &Context, raw_input: &mut egui::RawInput) {
+        crate::testhook::tree_hits::inject(&mut self.state, raw_input);
     }
 
     fn save(&mut self, storage: &mut dyn eframe::Storage) {

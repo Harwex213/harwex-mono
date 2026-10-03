@@ -93,11 +93,19 @@ pub struct EditorState {
     /// Scrollbar marks of the carets: the key they were built for and their y fractions.
     caret_marks: (u64, Vec<f32>),
     scroll: Vec2,
+    /// The scroll offset the text was drawn with last frame. The scroll area reports its offset
+    /// after this frame's wheel input, so during a scroll `scroll` is already one step ahead of
+    /// the pixels on screen. Hit tests and the gutter use this one.
+    drawn_scroll: Vec2,
     viewport: Vec2,
     pending_reveal: Option<Position>,
     pending_selection: Option<(Position, Position)>,
     pending_focus: bool,
     dragging: bool,
+    /// What the running drag extends by.
+    drag_unit: DragUnit,
+    /// The presses of the running multi-click.
+    click_chain: ClickChain,
     menu_pos: Position,
     cursor_pos: Position,
     highlight: Option<HighlightCache>,
@@ -130,6 +138,50 @@ impl Default for AltTap {
         AltTap { held: false, last_press: f64::NEG_INFINITY, armed: false }
     }
 }
+
+/// A drag after a single press extends by chars, after a double press by words, after a triple
+/// press by lines. Word and Line hold the range the chain selected on its last press.
+#[derive(Clone, Debug)]
+enum DragUnit {
+    Char,
+    Word(Range<usize>),
+    Line(Range<usize>),
+}
+
+/// The presses of one multi-click (IDEA's model): each press within the double-click interval
+/// of the one before and near it. egui's own click count is not used: it counts on release,
+/// ignores the position and calls a click "triple" up to twice the interval after the first.
+#[derive(Clone, Copy)]
+struct ClickChain {
+    count: u32,
+    time: f64,
+    pos: Pos2,
+}
+
+impl Default for ClickChain {
+    fn default() -> Self {
+        ClickChain { count: 0, time: f64::NEG_INFINITY, pos: Pos2::ZERO }
+    }
+}
+
+impl ClickChain {
+    /// Counts a plain press at `pos` and returns its place in the chain (1, 2, 3, ...).
+    fn press(&mut self, time: f64, pos: Pos2, delay: f64, max_dist: f32) -> u32 {
+        let goes_on = self.count > 0 && time - self.time <= delay && self.pos.distance(pos) <= max_dist;
+        self.count = if goes_on { self.count + 1 } else { 1 };
+        self.time = time;
+        self.pos = pos;
+        self.count
+    }
+
+    /// A modified press (Shift, Alt, Cmd, middle) ends the chain.
+    fn reset(&mut self) {
+        *self = ClickChain::default();
+    }
+}
+
+/// The longest distance between two presses of one multi-click, in points.
+const CHAIN_DIST: f32 = 6.0;
 
 /// The longest pause between the two Alt presses of a double tap.
 const ALT_DOUBLE_TAP: f64 = 0.4;
@@ -172,23 +224,39 @@ pub struct EditorGeometry {
     pub annotation_w: f32,
     /// Left edge of the change-mark bars.
     pub mark_x: f32,
+    /// Pixels per point the rows were snapped with.
+    pub ppp: f32,
 }
 
 impl EditorGeometry {
     /// Center of the character cell at `pos` (tabs expanded like the renderer does).
     pub fn char_center(&self, doc: &Document, pos: Position) -> Pos2 {
         let col = display_col(&doc.line(pos.line), pos.column) as f32;
-        Pos2::new(self.origin.x + (col + 0.5) * self.char_w, self.origin.y + (pos.line as f32 + 0.5) * self.line_h)
+        Pos2::new(self.origin.x + (col + 0.5) * self.char_w, self.row_center(pos.line))
+    }
+
+    /// Screen y of the top of `line`'s row, as drawn.
+    pub fn row_top(&self, line: usize) -> f32 {
+        row_top(self.origin.y, self.line_h, self.ppp, line as isize)
+    }
+
+    /// The line whose drawn row holds `y`. Negative above line 0; past the end is not clamped.
+    pub fn line_at(&self, y: f32) -> isize {
+        line_at_y(self.origin.y, self.line_h, self.ppp, y)
+    }
+
+    fn row_center(&self, line: usize) -> f32 {
+        (self.row_top(line) + self.row_top(line + 1)) / 2.0
     }
 
     /// A point on the change-mark bar of `line`.
     pub fn mark_center(&self, line: usize) -> Pos2 {
-        Pos2::new(self.mark_x + MARK_W / 2.0, self.origin.y + (line as f32 + 0.5) * self.line_h)
+        Pos2::new(self.mark_x + MARK_W / 2.0, self.row_center(line))
     }
 
     /// A point inside the annotation column of `line`.
     pub fn annotation_center(&self, line: usize) -> Pos2 {
-        Pos2::new(self.gutter_rect.min.x + self.annotation_w / 2.0, self.origin.y + (line as f32 + 0.5) * self.line_h)
+        Pos2::new(self.gutter_rect.min.x + self.annotation_w / 2.0, self.row_center(line))
     }
 }
 
@@ -211,11 +279,14 @@ impl EditorState {
             select_all_pending: false,
             caret_marks: (0, Vec::new()),
             scroll: Vec2::ZERO,
+            drawn_scroll: Vec2::ZERO,
             viewport: Vec2::new(800.0, 600.0),
             pending_reveal: None,
             pending_selection: None,
             pending_focus: false,
             dragging: false,
+            drag_unit: DragUnit::Char,
+            click_chain: ClickChain::default(),
             menu_pos: Position::default(),
             cursor_pos: Position::default(),
             highlight: None,
@@ -679,12 +750,15 @@ impl<'a> EditorView<'a> {
         }
 
         let modifiers = ui.input(|i| i.modifiers);
-        let origin = text_rect.min + Vec2::new(TEXT_PAD, 0.0) - state.scroll;
+        let origin = text_rect.min + Vec2::new(TEXT_PAD, 0.0) - state.drawn_scroll;
         let drawn = std::mem::take(&mut state.drawn);
         // Column boundary nearest to `p`, measured on the glyphs drawn last frame when the line
         // was on screen.
+        // The line under `y`, clamped to the document. Rows are drawn at `row_top`, so hit
+        // tests use the same snapped boundaries.
+        let line_under = |y: f32| -> usize { (line_at_y(origin.y, line_h, ppp, y).max(0) as usize).min(line_count.saturating_sub(1)) };
         let hit = |doc: &Document, p: Pos2| -> usize {
-            let line = (((p.y - origin.y) / line_h).floor().max(0.0) as usize).min(line_count.saturating_sub(1));
+            let line = line_under(p.y);
             let text = doc.line(line);
             let d = display_col_at(&drawn, line, p.x - origin.x, char_w);
             doc.line_start(line) + col_from_display(&text, d)
@@ -703,24 +777,40 @@ impl<'a> EditorView<'a> {
         });
         // Fractional display column and line under `p`, for column selection.
         let cell = |p: Pos2| -> (usize, f32) {
-            let line = (((p.y - origin.y) / line_h).floor().max(0.0) as usize).min(line_count.saturating_sub(1));
+            let line = line_under(p.y);
             (line, display_col_at(&drawn, line, p.x - origin.x, char_w).max(0.0))
         };
-        let mut alt_click = false;
         if (pressed || middle_pressed) && resp.hovered() {
             if let Some(p) = pointer {
                 resp.request_focus();
                 let idx = hit(doc, p);
+                let plain = pressed && !modifiers.shift && !modifiers.alt && !modifiers.command;
+                let count = if plain {
+                    let now = ui.input(|i| i.time);
+                    let delay = ui.ctx().options(|o| o.input_options.max_double_click_delay);
+                    state.click_chain.press(now, p, delay, CHAIN_DIST)
+                } else {
+                    state.click_chain.reset();
+                    1
+                };
                 if middle_pressed || (modifiers.alt && modifiers.shift) {
                     state.column_drag = Some(cell(p));
                     state.dragging = false;
                 } else if modifiers.alt && !modifiers.command {
                     state.carets.toggle(idx);
                     state.dragging = false;
-                    alt_click = true;
-                } else {
+                } else if count == 1 {
                     state.set_head(idx, modifiers.shift);
+                    state.drag_unit = DragUnit::Char;
                     state.dragging = !modifiers.command;
+                } else {
+                    // IDEA: the second press selects the word, every later press of the same
+                    // chain the whole line. Acting on the press keeps the selection while the
+                    // button is down, so the chain never shows a bare caret in between.
+                    let r = if count == 2 { editing::word_range(doc, idx) } else { line_range(doc, line_under(p.y)) };
+                    state.carets = Carets::single(Selection::new(r.start, r.end));
+                    state.drag_unit = if count == 2 { DragUnit::Word(r) } else { DragUnit::Line(r) };
+                    state.dragging = true;
                 }
                 state.preferred_cols.clear();
                 state.occurrences.clear();
@@ -745,9 +835,13 @@ impl<'a> EditorView<'a> {
             if down {
                 if let Some(p) = pointer {
                     let idx = hit(doc, p);
-                    let mut sel = state.carets.primary();
-                    if idx != sel.head {
-                        sel.head = idx;
+                    let old = state.carets.primary();
+                    let sel = match &state.drag_unit {
+                        DragUnit::Char => Selection::new(old.anchor, idx),
+                        DragUnit::Word(r0) => span_units(r0, editing::word_range(doc, idx)),
+                        DragUnit::Line(r0) => span_units(r0, line_range(doc, line_under(p.y))),
+                    };
+                    if sel != old {
                         state.carets = Carets::single(sel);
                     }
                     if !text_rect.contains(p) {
@@ -758,16 +852,6 @@ impl<'a> EditorView<'a> {
             } else {
                 state.dragging = false;
             }
-        }
-        if alt_click || state.column_drag.is_some() {
-            // An Alt+click or a column drag is not a word or line selection.
-        } else if resp.triple_clicked() {
-            let line = doc.char_to_position(state.carets.primary().head).line;
-            let end = if line + 1 < line_count { doc.line_start(line + 1) } else { doc.len_chars() };
-            state.carets = Carets::single(Selection::new(doc.line_start(line), end));
-        } else if resp.double_clicked() {
-            let r = editing::word_range(doc, state.carets.primary().head);
-            state.carets = Carets::single(Selection::new(r.start, r.end));
         }
         if resp.clicked() && modifiers.command {
             if let Some(p) = resp.interact_pointer_pos() {
@@ -791,8 +875,9 @@ impl<'a> EditorView<'a> {
         }
         if gutter_resp.clicked() {
             if let Some(p) = gutter_resp.interact_pointer_pos() {
-                let line = ((p.y - origin.y) / line_h).floor().max(0.0) as usize;
-                if line < line_count {
+                let line = line_at_y(origin.y, line_h, ppp, p.y);
+                if line >= 0 && (line as usize) < line_count {
+                    let line = line as usize;
                     if p.x < gutter_rect.min.x + ann_w {
                         annotation_clicked = Some(line);
                     } else {
@@ -1044,6 +1129,7 @@ impl<'a> EditorView<'a> {
         let find_current = if find_in_selection { find.current() } else { None };
         let output = area.show_viewport(&mut child, |ui, viewport| {
             ui.set_min_size(content);
+            let drawn_scroll = text_rect.min - ui.max_rect().min;
             let origin = ui.max_rect().min + Vec2::new(TEXT_PAD, 0.0);
             let first = ((viewport.min.y / line_h).floor().max(0.0) as usize).min(line_count);
             let last = ((viewport.max.y / line_h).ceil().max(0.0) as usize + 1).min(line_count);
@@ -1074,7 +1160,8 @@ impl<'a> EditorView<'a> {
             let mut drawn_now = std::mem::take(&mut drawn_buf);
             drawn_now.clear();
             for line in visible {
-                let y = round(origin.y + line as f32 * line_h);
+                let y = row_top(origin.y, line_h, ppp, line as isize);
+                let y_end = row_top(origin.y, line_h, ppp, line as isize + 1);
                 let text = doc.line(line);
                 let line_start = doc.line_start(line);
                 let line_chars = text.chars().count();
@@ -1133,7 +1220,7 @@ impl<'a> EditorView<'a> {
                 let here = all_carets.touching(ls..le);
                 if here.iter().any(|s| s.is_empty() && s.head >= ls && s.head <= le) {
                     painter.rect_filled(
-                        Rect::from_min_max(Pos2::new(full_left, y), Pos2::new(full_right, y + line_h)),
+                        Rect::from_min_max(Pos2::new(full_left, y), Pos2::new(full_right, y_end)),
                         0.0,
                         theme.current_line,
                     );
@@ -1150,7 +1237,7 @@ impl<'a> EditorView<'a> {
                         if covers_newline {
                             x1 += char_w;
                         }
-                        painter.rect_filled(Rect::from_min_max(Pos2::new(x0, y), Pos2::new(x1, y + line_h)), 0.0, theme.selection);
+                        painter.rect_filled(Rect::from_min_max(Pos2::new(x0, y), Pos2::new(x1, y_end)), 0.0, theme.selection);
                     }
                 }
 
@@ -1174,7 +1261,7 @@ impl<'a> EditorView<'a> {
                             i += 1;
                             continue;
                         }
-                        let r = Rect::from_min_max(Pos2::new(x0, y), Pos2::new(x1.max(x0 + 1.0), y + line_h));
+                        let r = Rect::from_min_max(Pos2::new(x0, y), Pos2::new(x1.max(x0 + 1.0), y_end));
                         if m.excluded {
                             painter.rect_stroke(r, 0.0, Stroke::new(1.0_f32, theme.find_excluded), egui::StrokeKind::Inside);
                         } else if find_current.as_ref() == Some(&m.range) {
@@ -1202,15 +1289,15 @@ impl<'a> EditorView<'a> {
                 for sel in here.iter().filter(|s| s.head >= ls && s.head <= le) {
                     let x = round(col_x(display_col(&text, sel.head - ls)));
                     let color = if has_focus { theme.caret } else { theme.caret_unfocused() };
-                    painter.rect_filled(Rect::from_min_size(Pos2::new(x - 1.0, y), Vec2::new(2.0, line_h)), 0.0, color);
+                    painter.rect_filled(Rect::from_min_max(Pos2::new(x - 1.0, y), Pos2::new(x + 1.0, y_end)), 0.0, color);
                 }
                 if let Some(galley) = galley {
                     drawn_now.push(DrawnLine { line, window_start: window.start, galley });
                 }
             }
-            drawn_now
+            (drawn_now, drawn_scroll)
         });
-        state.drawn = output.inner;
+        (state.drawn, state.drawn_scroll) = output.inner;
         state.scroll = output.state.offset;
 
         if state.carets.is_multi() {
@@ -1259,9 +1346,9 @@ impl<'a> EditorView<'a> {
             [Pos2::new(gutter_rect.right() - 0.5, gutter_rect.top()), Pos2::new(gutter_rect.right() - 0.5, gutter_rect.bottom())],
             Stroke::new(1.0_f32, theme.gutter_separator),
         );
-        let top = text_rect.top() - state.scroll.y;
-        let first = ((state.scroll.y / line_h).floor().max(0.0) as usize).min(line_count);
-        let last = (((state.scroll.y + view.y) / line_h).ceil() as usize + 1).min(line_count);
+        let top = text_rect.top() - state.drawn_scroll.y;
+        let first = ((state.drawn_scroll.y / line_h).floor().max(0.0) as usize).min(line_count);
+        let last = (((state.drawn_scroll.y + view.y) / line_h).ceil() as usize + 1).min(line_count);
         let numbers_right = gutter_rect.min.x + ann_w + numbers_w;
         let text_y = ((line_h - row_h) / 2.0).round();
         // Lines with a caret, among the visible ones.
@@ -1273,7 +1360,7 @@ impl<'a> EditorView<'a> {
             }
         }
         for line in first..last {
-            let y = top + line as f32 * line_h;
+            let y = row_top(top, line_h, ppp, line as isize);
             let current = caret_rows.get(line - first).copied().unwrap_or(false);
             let color = if current { theme.line_number_current } else { theme.line_number };
             painter.text(
@@ -1294,22 +1381,24 @@ impl<'a> EditorView<'a> {
         state.geometry = Some(EditorGeometry {
             text_rect,
             gutter_rect,
-            origin: Pos2::new(text_rect.min.x + TEXT_PAD - state.scroll.x, top),
+            origin: Pos2::new(text_rect.min.x + TEXT_PAD - state.drawn_scroll.x, top),
             char_w,
             line_h,
             annotation_w: ann_w,
             mark_x,
+            ppp,
         });
         for &(line, mark) in marks {
             if line < first || line > last {
                 continue;
             }
-            let y = top + line as f32 * line_h;
+            let y = row_top(top, line_h, ppp, line as isize);
+            let y_end = row_top(top, line_h, ppp, line as isize + 1);
             match mark {
                 GutterMark::Added | GutterMark::Modified => {
                     let color = if mark == GutterMark::Added { theme.mark_added } else { theme.mark_modified };
                     painter.rect_filled(
-                        Rect::from_min_size(Pos2::new(mark_x, y), Vec2::new(MARK_W, line_h)),
+                        Rect::from_min_max(Pos2::new(mark_x, y), Pos2::new(mark_x + MARK_W, y_end)),
                         0.0,
                         color,
                     );
@@ -1327,8 +1416,8 @@ impl<'a> EditorView<'a> {
 
         let hover = if resp.hovered() {
             resp.hover_pos().and_then(|p| {
-                let line = ((p.y - origin.y) / line_h).floor();
-                if line < 0.0 || line as usize >= line_count {
+                let line = line_at_y(origin.y, line_h, ppp, p.y);
+                if line < 0 || line as usize >= line_count {
                     return None;
                 }
                 let line = line as usize;
@@ -1365,6 +1454,42 @@ impl<'a> EditorView<'a> {
 
 /// Y offsets (from the track top) of the 2-px bands of the scrollbar that hold a match. The
 /// cost depends on the track height, not on the number of matches.
+/// Screen y of the top of `line`'s row. Rows are snapped to physical pixels like everything
+/// egui draws; drawing and every hit test go through this one function, so each pixel belongs
+/// to exactly one line.
+fn row_top(origin_y: f32, line_h: f32, ppp: f32, line: isize) -> f32 {
+    ((origin_y + line as f32 * line_h) * ppp).round() / ppp
+}
+
+/// The line whose row (from `row_top(line)` up to `row_top(line + 1)`) holds `y`.
+fn line_at_y(origin_y: f32, line_h: f32, ppp: f32, y: f32) -> isize {
+    // Snapping moves a boundary by at most half a pixel, so the unsnapped guess is off by one
+    // at most.
+    let mut line = ((y - origin_y) / line_h).floor() as isize;
+    if y < row_top(origin_y, line_h, ppp, line) {
+        line -= 1;
+    } else if y >= row_top(origin_y, line_h, ppp, line + 1) {
+        line += 1;
+    }
+    line
+}
+
+/// The chars of `line` plus its line break.
+fn line_range(doc: &Document, line: usize) -> Range<usize> {
+    let end = if line + 1 < doc.line_count() { doc.line_start(line + 1) } else { doc.len_chars() };
+    doc.line_start(line)..end
+}
+
+/// A drag by words or lines: from the unit the chain selected to the unit under the pointer.
+/// The selection keeps the first unit whole, like IDEA.
+fn span_units(first: &Range<usize>, under: Range<usize>) -> Selection {
+    if under.start < first.start {
+        Selection::new(first.end, under.start)
+    } else {
+        Selection::new(first.start, under.end.max(first.end))
+    }
+}
+
 fn scroll_marks<T>(doc: &Document, items: &[T], start: impl Fn(&T) -> usize, track_h: f32, content_h: f32, line_h: f32) -> Vec<f32> {
     let mut out = Vec::new();
     let line_count = doc.line_count();

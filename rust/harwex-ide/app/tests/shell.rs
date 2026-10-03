@@ -493,53 +493,147 @@ fn tree_keeps_focus_while_pressed() {
     assert!(tree_focused(&ide) && ide.is_selected("docs"));
 }
 
-/// One consistent folder row: a click anywhere selects it, a double click anywhere toggles it,
-/// and a click in the chevron cell (one indent wide, full row height) toggles at once.
+/// Sets the width of the left tool window, as a drag of its edge would.
+fn set_left_width(ide: &mut Ide, w: f32) {
+    let id = egui::Id::new("left-tool-window");
+    ide.ctx().data_mut(|d| {
+        let min = d.get_persisted::<egui::containers::panel::PanelState>(id).map_or(egui::pos2(0.0, 0.0), |s| s.rect.min);
+        d.insert_persisted(id, egui::containers::panel::PanelState { rect: egui::Rect::from_min_size(min, egui::vec2(w, 600.0)) });
+    });
+    ide.settle();
+}
+
+/// True while a context menu is drawn (not only open in egui's state).
+fn menu_shown(ide: &Ide) -> bool {
+    ide.ctx().is_context_menu_open() && ide.ctx().memory(|m| m.areas().visible_layer_ids().into_iter().any(|l| l.order == egui::Order::Foreground))
+}
+
+/// What a click, a double click and a right-click at `at` do to the folder `dir`: one letter
+/// each. Click: `s` selects, `t` toggles, `.` nothing. Double click: `t` toggles. Right-click:
+/// `m` shows the menu.
+fn row_outcome(ide: &mut Ide, dir: &std::path::Path, at: egui::Pos2) -> [char; 3] {
+    ide.state_mut().tree.selected = None;
+    let before = ide.state().tree.is_expanded(dir);
+    ide.click_at(at);
+    let toggled = ide.state().tree.is_expanded(dir) != before;
+    let selected = ide.state().tree.selected.as_deref() == Some(dir);
+    let click = match (toggled, selected) {
+        (true, false) => 't',
+        (false, true) => 's',
+        (true, true) => 'B',
+        (false, false) => '.',
+    };
+    ide.state_mut().tree.set_expanded(dir, before);
+    ide.double_click_at(at);
+    let double = if ide.state().tree.is_expanded(dir) != before { 't' } else { '.' };
+    ide.state_mut().tree.set_expanded(dir, before);
+    ide.right_click_at(at);
+    let right = if menu_shown(ide) && ide.state().tree.selected.as_deref() == Some(dir) { 'm' } else { '.' };
+    if ide.ctx().is_context_menu_open() {
+        ide.key(Key::Escape);
+    }
+    ide.settle();
+    [click, double, right]
+}
+
+/// Every point of a folder row behaves the same, except the chevron cell (one indent wide, full
+/// row height), where a click toggles at once. The sweep runs every pixel across the row at
+/// several panel widths and depths, and every few pixels on the top and bottom lines (the
+/// spacing under a row belongs to it).
 #[test]
 fn tree_row_hit_zones() {
     let fx = Fixture::new(SUITE, "tree_zones");
     let repo = basic_repo(fx.path("repo"));
+    repo.write("a_folder_with_a_rather_long_name_to_fill_the_row/inner/x.txt", "x\n");
     let mut ide = Ide::open(SUITE, &repo.dir);
-    let docs = ide.root().join("docs");
+    let root = ide.root();
     let r = ide.rect("docs");
-    // The spacing under the painted row belongs to the row: a click there reaches it.
     assert_eq!(r.max.y, ide.rect("src").min.y, "the row rects touch");
-    let below = r.min.y + harwex_ide::theme::T.space.row_h + 2.0;
-    assert!(below < r.max.y);
-    // Top-level rows sit one indent right of the root's chevron (see `tree::show`).
-    let x = r.min.x + 4.0 + harwex_ide::theme::T.space.indent;
-    let spots = [
-        ("indent", r.min.x + 6.0, false),
-        ("chevron cell left edge", x - 2.0, true),
-        ("chevron", x + 6.0, true),
-        ("chevron cell right edge", x + 14.0, true),
-        ("gap before the icon", x + 16.0, false),
-        ("icon", x + 22.0, false),
-        ("label", x + 40.0, false),
-        ("after the label", x + 120.0, false),
-    ];
-    for (y_name, y) in [("middle", r.center().y), ("top", r.min.y + 1.0), ("bottom", r.max.y - 1.0), ("spacing below", below)] {
-        for (name, sx, chevron) in spots {
-            let at = egui::pos2(sx, y);
-            let what = format!("{name} ({y_name})");
-            let before = ide.state().tree.is_expanded(&docs);
-            ide.double_click_at(at);
-            ide.settle();
-            assert_ne!(ide.state().tree.is_expanded(&docs), before, "a double click on the {what} toggles");
-
-            ide.click("README.md");
-            let before = ide.state().tree.is_expanded(&docs);
-            ide.click_at(at);
-            ide.settle();
-            if chevron {
-                assert_ne!(ide.state().tree.is_expanded(&docs), before, "a click on the {what} toggles");
-                assert!(ide.is_selected("README.md"), "a click on the {what} keeps the selection");
-            } else {
-                assert_eq!(ide.state().tree.is_expanded(&docs), before, "a click on the {what} does not toggle");
-                assert!(ide.is_selected("docs"), "a click on the {what} selects");
+    let src = root.join("src");
+    ide.state_mut().tree.set_expanded(&src, true);
+    ide.state_mut().tree.set_expanded(&root.join("src/core"), true);
+    ide.wait_until("src/core/deep listed", |ide| ide.has("src/core/deep"));
+    let t = &harwex_ide::theme::T;
+    for width in [300.0, 250.0, 400.0, 600.0] {
+        set_left_width(&mut ide, width);
+        for (label, depth) in [("docs", 0), ("src/core/deep", 2)] {
+            let dir = root.join(label);
+            let r = ide.rect(label);
+            // Rows sit one indent right of the root's chevron (see `tree::show`).
+            let x = r.min.x + 4.0 + (depth + 1) as f32 * t.space.indent;
+            let cell = (x + 15.0 - t.space.indent)..(x + 15.0);
+            for (line, y, step) in [("middle", r.center().y, 1.0), ("top", r.min.y + 0.5, 7.0), ("bottom", r.max.y - 0.5, 7.0)] {
+                let mut map = String::new();
+                let mut bad = Vec::new();
+                let mut px = r.min.x + 0.5;
+                while px < r.max.x {
+                    let got = row_outcome(&mut ide, &dir, egui::pos2(px, y));
+                    // Half a pixel either side of the cell edge may go either way.
+                    let edge = (px - cell.start).abs() < 1.0 || (px - cell.end).abs() < 1.0;
+                    let want = if cell.contains(&px) { ['t', 't', 'm'] } else { ['s', 't', 'm'] };
+                    map.push(if got == want { if cell.contains(&px) { 'c' } else { '.' } } else { 'X' });
+                    if got != want && !edge {
+                        bad.push(format!("x={px} got {got:?}"));
+                    }
+                    px += step;
+                }
+                assert!(bad.is_empty(), "panel {width}, {label} ({line}): {map}\n{bad:?}");
             }
         }
     }
+}
+
+/// A context menu belongs to the row that drew it. When that widget is no longer drawn (its tool
+/// window switched by a shortcut, its row scrolled out of view), the menu closes. Before, it
+/// stayed open and invisible: its old rect ate every right-click on the tree under it, and the
+/// tree ignored its keys.
+#[test]
+fn orphaned_context_menu_closes() {
+    let fx = Fixture::new(SUITE, "orphan_menu");
+    let repo = changed_repo(fx.path("repo"));
+    // Enough folders below `src` that the tree scrolls.
+    for i in 0..60 {
+        repo.write(&format!("z{i:02}/x.txt"), "x\n");
+    }
+    let mut ide = Ide::open(SUITE, &repo.dir);
+    let root = ide.root();
+    for dir in ["src", "src/core", "docs"] {
+        ide.state_mut().tree.set_expanded(&root.join(dir), true);
+    }
+    ide.wait_until("src/core listed", |ide| ide.has("src/core/deep"));
+
+    // A menu in the Commit window, then the Project window comes back without a click.
+    ide.state_mut().layout.left = Some(ToolWindow::Commit);
+    ide.settle();
+    let c = ide.rect("src/app.ts");
+    let at = egui::pos2(c.min.x + 120.0, c.center().y);
+    ide.right_click_at(at);
+    assert!(menu_shown(&ide), "the Commit row menu opens");
+    ide.state_mut().layout.left = Some(ToolWindow::Project);
+    ide.settle();
+    assert!(!ide.ctx().is_context_menu_open(), "the menu of a row that is not drawn closes");
+    // A tree row under the old menu rect gets its own menu on a right-click.
+    let row = ["src/util.ts", "src/app.ts", "src/core/deep", "src/core", "src"].into_iter().find(|l| ide.has(l) && ide.rect(l).y_range().contains(at.y)).expect("a tree row at the menu's height");
+    let r = ide.rect(row);
+    ide.right_click_at(egui::pos2(at.x + 40.0, r.center().y));
+    assert!(menu_shown(&ide) && ide.is_selected(row), "a right-click where the old menu was opens the tree menu");
+    ide.key(Key::Escape);
+    ide.settle();
+    assert!(!ide.ctx().is_context_menu_open());
+
+    // A tree row menu, then its row scrolls out of view.
+    ide.right_click("docs");
+    assert!(menu_shown(&ide));
+    // The wheel over the tree, left of the menu.
+    let src = ide.rect("src");
+    ide.move_to(egui::pos2(src.min.x + 20.0, src.center().y));
+    for _ in 0..10 {
+        ide.harness.input_mut().events.push(egui::Event::MouseWheel { unit: egui::MouseWheelUnit::Point, delta: egui::vec2(0.0, -80.0), modifiers: egui::Modifiers::NONE });
+        ide.step();
+    }
+    ide.settle();
+    assert!(!ide.has("docs"), "docs scrolled out of view");
+    assert!(!ide.ctx().is_context_menu_open(), "the menu of a row scrolled out of view closes");
 }
 
 /// "Select Opened File": the header button and Alt+F1 expand the tree down to the active file,

@@ -9,7 +9,7 @@
 
 use egui::{pos2, vec2, Rect, Vec2};
 use objc2::rc::Retained;
-use objc2_app_kit::{NSButton, NSView, NSWindow, NSWindowButton, NSWindowStyleMask};
+use objc2_app_kit::{NSButton, NSEvent, NSView, NSWindow, NSWindowButton, NSWindowStyleMask};
 use objc2_foundation::{ns_string, NSPoint, NSRect, NSSize, NSUserDefaults};
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 
@@ -38,6 +38,12 @@ pub fn double_click_defaults() -> (Option<String>, bool) {
         let action = d.stringForKey(ns_string!("AppleActionOnDoubleClick")).map(|s| s.to_string());
         (action, d.boolForKey(ns_string!("AppleMiniaturizeOnDoubleClick")))
     }
+}
+
+/// The system double-click interval in seconds (System Settings > Mouse > Double-click speed).
+pub fn double_click_interval() -> f64 {
+    // SAFETY: a class getter that reads the user's defaults.
+    unsafe { NSEvent::doubleClickInterval() }
 }
 
 impl Window {

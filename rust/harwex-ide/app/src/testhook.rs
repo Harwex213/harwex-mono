@@ -20,6 +20,8 @@ use std::time::{Duration, Instant};
 use ide_editor::Position;
 
 use crate::nav::{self, NavKind};
+
+pub mod tree_hits;
 use crate::state::AppState;
 
 #[derive(Default)]
@@ -36,6 +38,8 @@ pub struct TestScript {
     pub quit: bool,
     /// `--test-chrome`: see `chrome::sync`.
     pub chrome: Option<crate::chrome::ChromeCheck>,
+    /// `--test-tree-hits <widths>`: see `tree_hits`.
+    pub tree_hits: Option<tree_hits::TreeHits>,
     started: bool,
     waiting: bool,
     finished_at: Option<Instant>,
@@ -107,6 +111,10 @@ pub fn parse(args: &mut Vec<String>) -> Option<TestScript> {
                 any = true;
             }
             "--test-quit" => t.quit = true,
+            "--test-tree-hits" => {
+                t.tree_hits = Some(tree_hits::TreeHits::parse(&it.next().unwrap_or_default()));
+                any = true;
+            }
             "--test-chrome" => {
                 t.chrome = Some(Default::default());
                 any = true;
@@ -131,6 +139,15 @@ pub fn parse(args: &mut Vec<String>) -> Option<TestScript> {
 pub fn tick(state: &mut AppState) {
     let Some(t) = &mut state.test else { return };
     if state.project.is_none() {
+        return;
+    }
+    if t.tree_hits.is_some() {
+        if state.tree.is_loaded(&state.project.as_ref().expect("project").root) {
+            tree_hits::tick(state);
+        }
+        if state.test.as_ref().and_then(|t| t.tree_hits.as_ref()).is_some_and(|h| h.is_done()) {
+            finish(state);
+        }
         return;
     }
     if !t.started {

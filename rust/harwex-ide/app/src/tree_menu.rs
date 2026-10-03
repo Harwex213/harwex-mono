@@ -702,6 +702,15 @@ fn retarget_tabs(state: &mut AppState, old: &Path, new: &Path) {
     }
 }
 
+/// A drop in the Project tree: the same move (with import updates) or copy as Paste after Cut
+/// or Copy. A move into the current parent does nothing.
+pub fn drop_into(state: &mut AppState, src: PathBuf, dir: PathBuf, copy: bool) {
+    if dir.starts_with(&src) {
+        return;
+    }
+    paste(state, src, dir, !copy, None);
+}
+
 /// Paste: resolves the target on a worker; a collision without a policy opens the dialog.
 fn paste(state: &mut AppState, src: PathBuf, dir: PathBuf, cut: bool, collision: Option<Collision>) {
     enum Plan {

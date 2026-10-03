@@ -35,6 +35,32 @@ pub struct ProjectTree {
     focus_pending: bool,
     /// Excluded folders (`[project] excluded`), absolute. Drawn dimmed with their content.
     pub excluded: Vec<PathBuf>,
+    /// The row being dragged, while a drag runs.
+    pub drag: Option<TreeDrag>,
+}
+
+/// A drag of a tree row (drag and drop to move, Alt to copy).
+#[derive(Clone, Debug)]
+pub struct TreeDrag {
+    pub path: PathBuf,
+    pub is_dir: bool,
+    /// The collapsed folder under the pointer and when the pointer reached it (input time).
+    hover: Option<(PathBuf, f64)>,
+}
+
+/// Hovering a collapsed folder this long during a drag expands it.
+pub const DRAG_EXPAND_SECS: f64 = 0.8;
+/// The band at the top and bottom of the tree that scrolls during a drag.
+const DRAG_SCROLL_BAND: f32 = 24.0;
+/// The pointer moves this far from the press before a press becomes a drag (egui's click
+/// distance, so a press is either a click or a drag, never both).
+const DRAG_START_DIST: f32 = 6.0;
+
+/// Where a drop of `src` onto a row lands: the row's folder, or the parent of a file row.
+/// `None` when the drop is refused (the item itself or one of its descendants).
+pub fn drop_dir(src: &Path, row: &Path, row_is_dir: bool) -> Option<PathBuf> {
+    let dir = if row_is_dir { row.to_path_buf() } else { row.parent()?.to_path_buf() };
+    (!dir.starts_with(src)).then_some(dir)
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -83,6 +109,19 @@ impl ProjectTree {
 
     pub fn is_expanded(&self, dir: &Path) -> bool {
         self.expanded.contains(dir)
+    }
+
+    /// The vertical scroll offset drawn last frame.
+    pub fn view_offset(&self) -> f32 {
+        self.view_offset
+    }
+
+    pub fn set_expanded(&mut self, dir: &Path, expanded: bool) {
+        if expanded {
+            self.expanded.insert(dir.to_path_buf());
+        } else {
+            self.expanded.remove(dir);
+        }
     }
 
     /// Gives the tree the keyboard focus the next time it is drawn (after a dialog closes).
@@ -355,6 +394,10 @@ pub fn show(state: &mut AppState, ui: &mut Ui) -> Option<TreeEvent> {
         ui.memory_mut(|m| m.set_focus_lock_filter(focus_id(), egui::EventFilter { tab: false, horizontal_arrows: true, vertical_arrows: true, escape: true }));
     }
 
+    // Escape cancels a drag before the tree's keys see it.
+    if state.tree.drag.is_some() && ui.input_mut(|i| i.consume_key(egui::Modifiers::NONE, Key::Escape)) {
+        state.tree.drag = None;
+    }
     let mut rows = Vec::new();
     let mut missing = Vec::new();
     flatten(&state.tree, &root, 0, &mut rows, &mut missing);
@@ -382,7 +425,9 @@ pub fn show(state: &mut AppState, ui: &mut Ui) -> Option<TreeEvent> {
     // distance for the arrow keys. The row can be missing while its folders still load.
     let scroll_mode = keys.select.as_ref().map(|_| ScrollMode::Nearest).or(state.tree.scroll_to);
     let target_path = keys.select.as_deref().or(state.tree.selected.as_deref());
-    let mut area = ScrollArea::both().auto_shrink([false, false]).id_salt("project-tree");
+    // Rows are exactly the viewport wide, so there is nothing to scroll sideways. A mouse drag
+    // belongs to drag and drop, not to scrolling; the wheel and the trackpad still scroll.
+    let mut area = ScrollArea::vertical().auto_shrink([false, false]).drag_to_scroll(false).id_salt("project-tree");
     let mut scroll_done = false;
     if let Some(mode) = scroll_mode {
         match target_path.and_then(|s| rows.iter().position(|r| r.entry.path == s)) {
@@ -411,10 +456,54 @@ pub fn show(state: &mut AppState, ui: &mut Ui) -> Option<TreeEvent> {
     let mut menu_cmd: Option<(TreeCommand, Target)> = None;
     let selected = keys.select.as_deref().or(state.tree.selected.as_deref());
     ui.spacing_mut().item_spacing.y = 0.0;
+    let (pointer, released, down, alt, now) = ui.input(|i| (i.pointer.latest_pos(), i.pointer.primary_released(), i.pointer.primary_down(), i.modifiers.alt, i.time));
+    let dragging = state.tree.drag.clone();
+    let mut drag_start: Option<TreeDrag> = None;
+    // The folder a drop would go into, and its row rect when that row is drawn.
+    let mut drop_target: Option<PathBuf> = None;
+    let mut outline = Rect::NOTHING;
+    let mut drag_refused = false;
+    let mut drag_hover: Option<PathBuf> = None;
+    let probe = state.test.as_ref().is_some_and(|t| t.tree_hits.is_some());
+    let mut hit_rows = Vec::new();
     let out = area.show_rows(ui, pitch, rows.len(), |ui, range| {
+        // During a drag the row under the pointer decides the target before any row paints,
+        // so the target folder row can show the outline wherever it is drawn.
+        let target_dir = &mut drop_target;
+        if let (Some(drag), Some(p)) = (&dragging, pointer) {
+            let top = ui.cursor().min.y;
+            let clip = ui.clip_rect();
+            if clip.contains(p) && p.y >= top {
+                let idx = range.start + ((p.y - top) / pitch) as usize;
+                if let Some(r) = rows.get(idx).filter(|_| idx < range.end) {
+                    match drop_dir(&drag.path, &r.entry.path, r.entry.is_dir) {
+                        Some(dir) => *target_dir = Some(dir),
+                        None => drag_refused = true,
+                    }
+                    if r.entry.is_dir && !r.expanded {
+                        drag_hover = Some(r.entry.path.clone());
+                    }
+                }
+            }
+            // Near the top or bottom edge the tree scrolls, faster closer to the edge.
+            if let Some(dy) = [(clip.min.y, -1.0), (clip.max.y, 1.0)].into_iter().find_map(|(edge, dir)| {
+                let d = (p.y - edge).abs();
+                (clip.x_range().contains(p.x) && d < DRAG_SCROLL_BAND).then_some(dir * (DRAG_SCROLL_BAND - d + 4.0) * 0.5)
+            }) {
+                ui.scroll_with_delta(vec2(0.0, -dy));
+                ui.ctx().request_repaint();
+            }
+        }
         for row in &rows[range] {
-            let (hit, resp) = ui.allocate_exact_size(vec2(ui.available_width().max(260.0), pitch), Sense::click());
+            // The row id follows the path, not the row's position: an open context menu belongs
+            // to its row and closes when that row is no longer drawn (`util::close_orphaned_context_menu`),
+            // instead of moving to whatever row takes the position after a scroll or a reload.
+            let (_, hit) = ui.allocate_space(vec2(ui.available_width(), pitch));
+            let resp = ui.interact(hit, Id::new(("tree-row", &row.entry.path)), Sense::click_and_drag());
             let rect = Rect::from_min_size(hit.min, vec2(hit.width(), row_h));
+            if probe {
+                hit_rows.push(crate::testhook::tree_hits::HitRow { path: row.entry.path.clone(), is_dir: row.entry.is_dir, rect: hit, id: resp.id });
+            }
             let rel = row.entry.path.strip_prefix(&root).unwrap_or(&row.entry.path);
             let is_selected = selected == Some(row.entry.path.as_path());
             crate::util::label_selectable(&resp, rel.display().to_string(), is_selected);
@@ -433,8 +522,18 @@ pub fn show(state: &mut AppState, ui: &mut Ui) -> Option<TreeEvent> {
             let painter = ui.painter();
             if is_selected {
                 painter.rect_filled(rect, t.radius.row, if focused { t.tree_selection } else { t.tree_selection_inactive });
-            } else if ui.rect_contains_pointer(hit) {
+            } else if dragging.is_none() && ui.rect_contains_pointer(hit) {
                 painter.rect_filled(rect, t.radius.row, t.tree_hover);
+            }
+            if target_dir.as_deref() == Some(row.entry.path.as_path()) {
+                outline = rect;
+            }
+            // A press that moves a few points becomes a drag of this row.
+            if dragging.is_none() && resp.dragged() {
+                let moved = ui.input(|i| i.pointer.press_origin().zip(i.pointer.latest_pos()).is_some_and(|(a, b)| a.distance(b) >= DRAG_START_DIST));
+                if moved {
+                    drag_start = Some(TreeDrag { path: row.entry.path.clone(), is_dir: row.entry.is_dir, hover: None });
+                }
             }
             if row.entry.is_dir {
                 icons::tree_chevron(painter, chevron_c, row.expanded, t.tree_chevron);
@@ -494,6 +593,59 @@ pub fn show(state: &mut AppState, ui: &mut Ui) -> Option<TreeEvent> {
         }
     });
     state.tree.view_offset = out.state.offset.y;
+    if let Some(dir) = &drop_target {
+        // The root row sits above the scroll area and a scrolled-out folder is not drawn:
+        // those drops have no outline.
+        if outline.is_positive() {
+            ui.painter().with_clip_rect(out.inner_rect).rect_stroke(outline, t.radius.row, egui::Stroke::new(1.5_f32, t.drop_target_border), egui::StrokeKind::Inside);
+        }
+        // A hover-only node, so tests (and screen readers) see where a drop would land.
+        let rel = dir.strip_prefix(&root).ok().filter(|r| !r.as_os_str().is_empty()).map_or(name.clone(), |r| r.display().to_string());
+        let node = ui.interact(if outline.is_positive() { outline } else { Rect::from_min_size(out.inner_rect.min, vec2(0.0, 0.0)) }, Id::new("tree-drop-target"), Sense::hover());
+        crate::util::label_widget(&node, egui::WidgetType::Other, format!("Drop target {rel}"));
+    }
+    let mut drop: Option<(PathBuf, PathBuf, bool)> = None;
+    if let Some(start) = drag_start {
+        state.tree.drag = Some(start);
+    } else if let Some(drag) = state.tree.drag.as_mut() {
+        if released || !down {
+            if let Some(dir) = drop_target.take() {
+                drop = Some((drag.path.clone(), dir, alt));
+            }
+            state.tree.drag = None;
+        } else {
+            // Hovering a collapsed folder expands it after a moment.
+            match (&drag_hover, &drag.hover) {
+                (Some(h), Some((p, since))) if h == p => {
+                    if now - since >= DRAG_EXPAND_SECS {
+                        state.tree.expanded.insert(h.clone());
+                        drag.hover = None;
+                    } else {
+                        ui.ctx().request_repaint_after(std::time::Duration::from_secs_f64(DRAG_EXPAND_SECS - (now - since)));
+                    }
+                }
+                (Some(h), _) => {
+                    drag.hover = Some((h.clone(), now));
+                    ui.ctx().request_repaint_after(std::time::Duration::from_secs_f64(DRAG_EXPAND_SECS));
+                }
+                (None, _) => drag.hover = None,
+            }
+            let refused = drag_refused || drop_target.is_none();
+            ui.ctx().set_cursor_icon(if refused {
+                egui::CursorIcon::NotAllowed
+            } else if alt {
+                egui::CursorIcon::Copy
+            } else {
+                egui::CursorIcon::Grabbing
+            });
+            if let Some(p) = pointer {
+                drag_ghost(ui.ctx(), p, &drag.path);
+            }
+        }
+    }
+    if let Some(h) = state.test.as_mut().and_then(|t| t.tree_hits.as_mut()) {
+        h.rows = hit_rows;
+    }
     if scroll_done {
         state.tree.scroll_to = None;
     }
@@ -524,6 +676,9 @@ pub fn show(state: &mut AppState, ui: &mut Ui) -> Option<TreeEvent> {
     for dir in missing {
         load_dir(state, dir);
     }
+    if let Some((src, dir, copy)) = drop {
+        crate::tree_menu::drop_into(state, src, dir, copy);
+    }
     if let Some((cmd, target)) = menu_cmd.or(key_target) {
         crate::tree_menu::run(state, cmd, target);
         // The menu took the focus. Commands that open no dialog, search or terminal hand it
@@ -537,6 +692,17 @@ pub fn show(state: &mut AppState, ui: &mut Ui) -> Option<TreeEvent> {
         }
     }
     event
+}
+
+/// The item name that follows the pointer during a drag.
+fn drag_ghost(ctx: &egui::Context, pointer: egui::Pos2, path: &Path) {
+    let t = &theme::T;
+    let painter = ctx.layer_painter(egui::LayerId::new(egui::Order::Tooltip, Id::new("tree-drag-ghost")));
+    let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    let galley = painter.layout_no_wrap(name, t.ui_font(), t.text_bright);
+    let rect = Rect::from_min_size(pointer + vec2(14.0, 10.0), galley.size() + vec2(16.0, 8.0));
+    painter.rect(rect, t.radius.row, t.popup_bg, egui::Stroke::new(1.0_f32, t.popup_border), egui::StrokeKind::Inside);
+    painter.galley(rect.min + vec2(8.0, 4.0), galley, t.text_bright);
 }
 
 pub fn name_color(git: &GitInfo, path: &Path, is_dir: bool) -> Color32 {

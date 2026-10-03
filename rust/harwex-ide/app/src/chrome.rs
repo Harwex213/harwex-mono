@@ -77,6 +77,17 @@ pub fn system_double_click() -> DoubleClick {
     DoubleClick::Zoom
 }
 
+/// The system double-click interval in seconds, for egui's double-click and the editor's click
+/// chains. egui's own default (0.3 s) is shorter than the macOS default (0.5 s).
+pub fn system_double_click_interval() -> Option<f64> {
+    #[cfg(target_os = "macos")]
+    {
+        Some(macos::double_click_interval()).filter(|s| s.is_finite() && *s > 0.0)
+    }
+    #[cfg(not(target_os = "macos"))]
+    None
+}
+
 /// The `--test-chrome` check: the button frames after the window settles, then again after a
 /// resize, which makes macOS lay the buttons out anew.
 #[derive(Default)]

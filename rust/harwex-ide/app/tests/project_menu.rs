@@ -1,7 +1,9 @@
 //! The Project tree's context menu and file operations: the menu on a file and a folder, Cut
 //! (grey name) and Escape, Paste as move and copy with a collision, New File with folders,
 //! Rename with the import preview (tsserver and rust-analyzer), safe Delete to the (recorded)
-//! Trash, Replace in Files, exclusion, paths, Open In, Git Rollback and Reload from Disk.
+//! Trash, Replace in Files, exclusion, paths, Open In, Git Rollback, Reload from Disk, and
+//! drag and drop (move with import updates, Alt copies, refused drops, auto-expand and
+//! auto-scroll).
 //!
 //! The app gets a recording platform in deterministic mode, so nothing here touches the real
 //! Trash, Finder or clipboard.
@@ -509,4 +511,130 @@ fn rename_preview_keeps_frames_fast_in_a_monorepo() {
     // Blocking the UI on the servers would take about as long as the whole preview.
     assert!(worst < Duration::from_millis(250), "a frame took {worst:?} during the rename preview");
     assert!(took < Duration::from_secs(20), "the preview took {took:?}");
+}
+
+// -----------------------------------------------------------------------------------------
+// Drag and drop
+
+/// Presses on `from` and moves to `to` in small steps, holding `mods`. The button stays down.
+fn drag_to(ide: &mut Ide, from: egui::Pos2, to: egui::Pos2, mods: Modifiers) {
+    ide.harness.input_mut().modifiers = mods;
+    ide.move_to(from);
+    ide.harness.input_mut().events.push(Event::PointerButton { pos: from, button: egui::PointerButton::Primary, pressed: true, modifiers: mods });
+    ide.step();
+    for i in 1..=8 {
+        ide.move_to(from + (to - from) * (i as f32 / 8.0));
+    }
+}
+
+/// Releases the button where the pointer is.
+fn release(ide: &mut Ide) {
+    let pos = ide.ctx().input(|i| i.pointer.latest_pos()).expect("pointer");
+    let mods = ide.harness.input_mut().modifiers;
+    ide.harness.input_mut().events.push(Event::PointerButton { pos, button: egui::PointerButton::Primary, pressed: false, modifiers: mods });
+    ide.step();
+    ide.harness.input_mut().modifiers = Modifiers::NONE;
+    ide.step();
+}
+
+#[test]
+fn drag_moves_a_file_and_updates_imports() {
+    if skip_without_tsserver("drag_moves_a_file_and_updates_imports") {
+        return;
+    }
+    let fx = Fixture::new(SUITE, "drag_ts");
+    let repo = ts_project(fx.path("repo"));
+    repo.write("src/lib/keep.ts", "export const keep = 1;\n");
+    repo.commit_all("lib");
+    let mut ide = Ide::open(SUITE, &repo.dir);
+    ide.open_file("src/main.ts");
+    reveal(&mut ide, "src/local.ts");
+    let from = ide.rect("src/local.ts").center();
+    let to = ide.rect("src/lib").center();
+    drag_to(&mut ide, from, to, Modifiers::NONE);
+    assert!(ide.has("Drop target src/lib"), "the folder under the pointer is the target");
+    assert_eq!(ide.cursor_icon(), egui::CursorIcon::Grabbing);
+    release(&mut ide);
+    let root = ide.root();
+    ide.wait_for("moved", |_| root.join("src/lib/local.ts").is_file() && !root.join("src/local.ts").exists());
+    ide.wait_for("saved", |s| s.tabs.editors().all(|e| !e.doc.is_dirty()));
+    ide.settle();
+    assert!(repo.read("src/main.ts").contains("from \"./lib/local\""), "{}", repo.read("src/main.ts"));
+    assert!(ide.has("src/lib/local.ts"));
+}
+
+#[test]
+fn drag_and_drop_in_the_tree() {
+    let fx = Fixture::new(SUITE, "drag");
+    let repo = basic_repo(fx.path("repo"));
+    // Enough folders after `src` that the tree scrolls.
+    for i in 0..60 {
+        repo.write(&format!("z{i:02}/x.txt"), "x\n");
+    }
+    let mut ide = Ide::open(SUITE, &repo.dir);
+    let root = ide.root();
+    reveal(&mut ide, "docs/notes.md");
+    reveal(&mut ide, "src/util.ts");
+
+    // In progress: the ghost follows the pointer, the target folder row has an outline. A
+    // file row targets its parent folder.
+    let from = ide.rect("src/util.ts").center();
+    let over = ide.rect("docs/notes.md").center();
+    drag_to(&mut ide, from, over, Modifiers::NONE);
+    assert!(ide.has("Drop target docs"), "a file row targets its folder");
+    ide.snapshot_here("drag_in_progress");
+    // Escape cancels the drag: nothing moves.
+    ide.key(Key::Escape);
+    release(&mut ide);
+    ide.settle();
+    assert!(root.join("src/util.ts").is_file() && !root.join("docs/util.ts").exists());
+
+    // Alt during the drop copies.
+    let from = ide.rect("src/util.ts").center();
+    let to = ide.rect("docs").center();
+    drag_to(&mut ide, from, to, ALT);
+    assert_eq!(ide.cursor_icon(), egui::CursorIcon::Copy);
+    release(&mut ide);
+    ide.wait_for("copied", |_| root.join("docs/util.ts").is_file());
+    ide.settle();
+    assert!(root.join("src/util.ts").is_file(), "a copy keeps the original");
+
+    // A folder into its own descendant is refused: no target, the not-allowed cursor.
+    reveal(&mut ide, "src/core/deep/nested.ts");
+    let from = ide.rect("src").center();
+    let to = ide.rect("src/core/deep").center();
+    drag_to(&mut ide, from, to, Modifiers::NONE);
+    assert!(!ide.labels().iter().any(|l| l.starts_with("Drop target")), "no target inside the dragged folder");
+    assert_eq!(ide.cursor_icon(), egui::CursorIcon::NotAllowed);
+    release(&mut ide);
+    ide.settle();
+    assert!(root.join("src/core/deep/nested.ts").is_file() && !root.join("src/core/deep/src").exists());
+
+    // A drop into the current parent does nothing.
+    let from = ide.rect("src/util.ts").center();
+    let to = ide.rect("src/app.ts").center();
+    drag_to(&mut ide, from, to, Modifiers::NONE);
+    release(&mut ide);
+    ide.settle();
+    assert!(root.join("src/util.ts").is_file() && !dialog_open(&ide));
+
+    // Hovering a collapsed folder expands it after a moment.
+    let z = root.join("z00");
+    assert!(!ide.state().tree.is_expanded(&z));
+    let from = ide.rect("docs/notes.md").center();
+    let to = ide.rect("z00").center();
+    drag_to(&mut ide, from, to, Modifiers::NONE);
+    ide.steps(4);
+    assert!(!ide.state().tree.is_expanded(&z), "not at once");
+    ide.steps(16);
+    assert!(ide.state().tree.is_expanded(&z), "after {} s", harwex_ide::tree::DRAG_EXPAND_SECS);
+    // Near the bottom edge the tree scrolls while the pointer stays there.
+    let last = (0..60).rev().map(|i| format!("z{i:02}")).find(|l| ide.has(l)).expect("a visible z row");
+    let edge = ide.rect(&last).min.y + 2.0;
+    let before = ide.state().tree.view_offset();
+    ide.move_to(egui::pos2(from.x, edge));
+    ide.steps(10);
+    assert!(ide.state().tree.view_offset() > before + 20.0, "auto-scroll: {before} -> {}", ide.state().tree.view_offset());
+    release(&mut ide);
+    ide.settle();
 }

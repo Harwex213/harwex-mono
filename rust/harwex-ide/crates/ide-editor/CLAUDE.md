@@ -17,6 +17,7 @@ The text buffer (`Document`, on ropey), tree-sitter highlighting and the egui ed
 - The dirty flag follows the undo stack: undoing back to the saved state is clean again.
 - One `EditorState` per tab. `EditorView` fills `ui.available_rect_before_wrap()`. `read_only(true)` drops every edit but keeps selection, copy and navigation.
 - `hover` is set only over real characters.
+- Mouse: the editor counts its own click chain on press (`ClickChain`): presses within egui's `max_double_click_delay` and 6 pt of the last one. Press 1 places the caret, press 2 selects the word, press 3 and later the whole line. A drag then extends by chars, words or lines. Shift, Alt, Cmd and middle presses end the chain. The app sets `max_double_click_delay` to the system interval outside tests.
 - Find bar: each `EditorState` owns a `FindState`. The app calls `open_find`, `find_next` and `find_previous`; the view draws the bar at the top of its rect. Replace and Replace All edit through `Document::edit`/`transact`, so Replace All is one undo step.
 - `Document::changes_since(version)` lists the raw changes since a version (a journal of the last 4096), so ranges can follow edits. `None` means rescan.
 - Carets: `EditorState` holds a `Carets` set (sorted, never overlapping, one primary). `selection()`, `cursor()`, scrolling, navigation and the find bar use the primary. A command at every caret runs through `carets::edit_each`: bottom-up, one undo step (`Document::begin_group`/`end_group`). Line commands (Tab over a selection, Shift+Tab, Cmd+/) touch each line once (`carets::apply_line_edits`). `undo_carets`/`redo_carets` bring every caret back; `undo()` returns the primary.
@@ -26,6 +27,7 @@ The text buffer (`Document`, on ropey), tree-sitter highlighting and the egui ed
 
 - Lay out only the visible lines. Never build one galley for the whole file. Line galleys are cached by content hash, so the cache survives edits above.
 - Highlight only the visible lines plus a margin. A burst of edits costs one reparse. Files over 256 KB parse on a worker. Files over 32 MB get no tree.
+- Row y and line go through one pair of functions: `row_top` (snapped to physical pixels) for drawing, and `line_at_y` for every hit test (click, drag, hover, gutter, `EditorGeometry::line_at`). Each pixel then belongs to exactly one line. `tests/click.rs` sweeps this at 1×, 1.5× and 2×.
 - Caret x, selection rects and the Cmd+hover underline take their x from the line galley's glyphs (`galley_col_x`). Click-to-column and hover hit-test the glyphs drawn last frame (`display_col_at`). Everything else uses `column_advance(fonts, font)`, the measured step of the same font id and size. Never use a guessed width like `glyph_width('M')`. `tests/caret.rs` checks this at 1×, 1.5× and 2× pixels per point.
 - The caret does not blink on purpose, so idle frames cost nothing.
 - More than 16 raw edits in one step form a batch: one journal change that spans them and one tree edit. Above 256 KB the batch drops the tree instead and highlights with the last good tree and its old text until the worker's parse lands. A parse in flight is marked to discard, so fast typing never stacks parse threads.
@@ -53,3 +55,6 @@ The release benchmark asserts: keystroke < 4 ms, steady frame < 4 ms, typing fra
 - After a multi-caret edit in a file over 256 KB, colors lag by the typed chars for up to ~0.5 s (the full reparse). A file-wide `Tree::edit` would cost ~5 ms and color garbage.
 - Double Alt (Clone Caret) is detected from modifier edges between frames: two presses within 0.4 s, the second held. Any other key in between cancels it.
 - The bar draws its own line icons (`find_bar.rs`, same 16-grid as the app's `icons.rs`): a library crate cannot use `app`.
+- egui's `double_clicked()`/`triple_clicked()` do not fit an editor. egui counts on release, ignores where the click lands and uses a fixed 0.3 s. It calls a click "triple" up to 0.6 s after the click before last. So slow chains drop back to a single click, and quick clicks on different lines select a line.
+- At 1.5× a 21 pt row is 31.5 px. Snapped rows alternate between 31 and 32 px, so `floor((y - origin) / line_h)` misses the drawn row by one pixel. Use `line_at_y`.
+- `ScrollArea`'s output offset already holds this frame's wheel input, but the frame drew its content at the old offset. Hit tests and the gutter use `drawn_scroll`, the offset the text was drawn with.

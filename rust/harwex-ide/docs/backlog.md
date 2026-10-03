@@ -4,7 +4,12 @@ One line per task. Details live in `tasks/<id>-<slug>.md`. A closed task loses i
 
 ## Ideas
 
+Project tree:
+- [idea] Move by Cut+Paste or drag and drop updates imports without a preview dialog. Rename has one ("update N imports in M files", Cancel). Give moves the same preview.
+- [idea] Multi-selection in Project (Cmd+click, Shift+click), so drag and drop and the context menu act on several items.
+
 Commit window:
+- [idea] Commit tree rows are `available_width().max(240)` wide inside `ScrollArea::both`, so in a narrow panel the clipped end of each row takes no clicks (same bug task 014 fixed in Project). Make rows exactly the viewport wide.
 - [idea] Stage/Unstage (drop or menu) shows a success toast on every action, because it goes through `run_op`. IDEA is silent on success. Make stage/unstage success quiet; keep error toasts.
 
 Memory indicator:

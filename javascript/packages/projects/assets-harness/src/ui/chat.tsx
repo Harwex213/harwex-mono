@@ -5,6 +5,8 @@ import { imageUrl } from "../state/bridge.js";
 import { messagesByTab } from "../state/store.js";
 import { ImageModal } from "./image-modal.js";
 
+const a: number = "a";
+
 /**
  * A picture in the chat is a thumbnail. Pressing it opens the full one over
  * the window, where it can be zoomed and moved — the chat column is no place
