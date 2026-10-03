@@ -2,6 +2,8 @@
 
 mod common;
 
+const LINK: common::TsLink = TsLink::TsServer;
+
 use std::time::Duration;
 
 use common::{pos, service, single, TsLink};
@@ -151,4 +153,26 @@ fn timeout_returns_error() {
 #[test]
 fn file_rename_updates_imports() {
     common::check_file_rename(common::TsLink::TsServer);
+}
+
+#[test]
+fn diagnostics_of_unsaved_text() {
+    let Some(p) = common::project(LINK) else { return };
+    let ts = service();
+    // An unsaved edit: a type error after two astral chars, and an unused local.
+    let text = format!("{}\nconst bad: number = \"😀\" + \"x\";\nfunction f() {{ const unused = 1; }}\nf();\n", p.main_text);
+    ts.open(&p.main, &text);
+    let d = ts.diagnostics(&p.main).unwrap();
+    let errors: Vec<_> = d.iter().filter(|d| d.severity == ide_ts::Severity::Error).collect();
+    assert_eq!(errors.len(), 1, "{d:#?}");
+    let (line, column) = pos(&text, "bad", 0);
+    assert_eq!((errors[0].line, errors[0].column, errors[0].end_column), (line, column, column + 3), "{d:#?}");
+    assert_eq!(errors[0].code.as_deref(), Some("2322"));
+    assert!(errors[0].message.contains("not assignable"), "{}", errors[0].message);
+    let unused: Vec<_> = d.iter().filter(|d| d.unnecessary).collect();
+    assert!(unused.iter().any(|u| u.column == pos(&text, "unused", 0).1), "{d:#?}");
+    // Fixed in the buffer: the next request sees it.
+    ts.change(&p.main, &p.main_text);
+    assert!(ts.diagnostics(&p.main).unwrap().iter().all(|d| d.severity != ide_ts::Severity::Error));
+    ts.shutdown();
 }

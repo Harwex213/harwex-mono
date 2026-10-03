@@ -101,6 +101,8 @@ pub struct AppState {
     /// Language servers by language, with the project's `.harwex/ide.toml`.
     pub langs: Languages,
     pub nav: Navigation,
+    /// Detection cache and request generation of the diagnostics layer.
+    pub diagnostics: crate::diagnostics::DiagnosticsState,
     pub usages: UsagesView,
     pub find: FindInFiles,
     pub search: SearchEverywhere,
@@ -147,6 +149,7 @@ impl AppState {
             git_ui: GitUi::default(),
             langs,
             nav: Navigation::default(),
+            diagnostics: Default::default(),
             usages: UsagesView::default(),
             find: FindInFiles::default(),
             search: SearchEverywhere::default(),
@@ -183,7 +186,7 @@ impl AppState {
             let version = e.doc.version();
             let ts = e.lsp_version.is_some_and(|v| v != version);
             let marks = workdir.as_ref().is_some_and(|w| e.path.starts_with(w)) && (e.marks_in_flight || e.marks_for != Some(version));
-            ts || marks
+            ts || marks || e.problems.pending(version)
         });
         editors || self.git_ui.has_pending_debounce(&self.tabs) || self.nav.hover.is_waiting()
     }
@@ -247,6 +250,7 @@ impl AppState {
         self.find.reset();
         self.usages = UsagesView::default();
         self.nav.reset();
+        self.diagnostics.reset();
         self.opening.clear();
         self.watcher = None;
         self.git = GitInfo { repo, ..Default::default() };
@@ -285,11 +289,18 @@ impl AppState {
             let langs: Vec<&str> = crate::lang::LangId::ALL.into_iter().filter(|l| config.enabled(*l)).map(|l| l.key()).collect();
             self.timings.log(format!("{}: languages {langs:?}", src.display()));
         }
+        let diagnostics_changed = config.diagnostics != self.langs.config.diagnostics || config.languages != self.langs.config.languages;
         for (_, e) in self.tabs.editors_mut() {
             if e.lang.is_some_and(|l| !config.enabled(l)) {
                 e.lang = None;
                 e.lsp_version = None;
             }
+            if diagnostics_changed {
+                e.problems.reset();
+            }
+        }
+        if diagnostics_changed {
+            self.diagnostics.reset();
         }
         self.memory.set_interval(config.memory_interval);
         if let Some(root) = self.project.as_ref().map(|p| p.root.clone()) {
@@ -398,6 +409,9 @@ impl AppState {
                 if let Some(lang) = e.lang {
                     self.langs.bridge(lang).close(&e.path);
                 }
+                if e.problems.plan.as_ref().is_some_and(|p| p.oxlint.is_some() || p.eslint.is_some()) {
+                    self.langs.lint.close(&e.path);
+                }
             }
             TabContent::Custom(mut c) => {
                 let mut commands = Vec::new();
@@ -443,6 +457,8 @@ impl AppState {
                 match res {
                     Ok(()) => {
                         e.doc.mark_saved(token);
+                        // IDEA checks again on save; servers that read the disk see it now.
+                        e.problems.force = true;
                         if then_close {
                             state.close_tab(id, false);
                         }

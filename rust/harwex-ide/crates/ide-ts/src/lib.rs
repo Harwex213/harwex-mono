@@ -38,7 +38,7 @@ pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// 0-based line, 0-based column in chars (`Location`), and one entry of a Find Usages list
 /// (`Reference`). Shared with every other language through `ide-lsp`.
-pub use ide_lsp::{FileEdit, Location, Reference, TextEdit};
+pub use ide_lsp::{Diagnostic, FileEdit, Location, Reference, Severity, TextEdit};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct QuickInfoTag {
@@ -410,6 +410,30 @@ impl TsService {
         }
     }
 
+    /// Errors, warnings and unused-code hints of an open file, from the server that serves
+    /// it: tsserver's `syntacticDiagnosticsSync` + `semanticDiagnosticsSync` +
+    /// `suggestionDiagnosticsSync`, or the native server's `textDocument/diagnostic`. Hints
+    /// other than unused code (refactoring suggestions) are dropped on both backends.
+    pub fn diagnostics(&self, path: &Path) -> Result<Vec<Diagnostic>> {
+        let path = normalize(path);
+        let mut out = match self.server_for(&path)? {
+            Backend::TsServer(server) => {
+                let text = server.ensure_open(&path)?;
+                let index = LineIndex::new(text);
+                let mut out = Vec::new();
+                for command in ["syntacticDiagnosticsSync", "semanticDiagnosticsSync", "suggestionDiagnosticsSync"] {
+                    let body = server.request(command, json!({"file": path, "includeLinePosition": false}), self.timeout())?;
+                    out.extend(ts_diagnostics(&index, &body));
+                }
+                out
+            }
+            Backend::Native { lsp, .. } => lsp.diagnostics(&path, self.timeout())?,
+        };
+        out.retain(|d| d.severity != Severity::Hint || d.unnecessary);
+        out.sort_by_key(|d| (d.line, d.column, d.severity));
+        Ok(out)
+    }
+
     /// The edits that keep imports working when `old` (a file or a folder) moves to `new`.
     /// Call it before the move: the server reads the old layout. Edited paths are old paths;
     /// a file inside the moved folder is reported under its old name.
@@ -717,6 +741,36 @@ fn ts_file_edits(server: &Server, body: &Value) -> Vec<FileEdit> {
         .collect()
 }
 
+/// tsserver diagnostics (`{start, end, text, code, category, reportsUnnecessary}`) in editor
+/// coordinates.
+fn ts_diagnostics(index: &LineIndex, body: &Value) -> Vec<Diagnostic> {
+    let items = body.as_array().map(Vec::as_slice).unwrap_or_default();
+    items
+        .iter()
+        .map(|d| {
+            let (line, column) = index.editor_pos(d["start"]["line"].as_u64().unwrap_or(1) as usize, d["start"]["offset"].as_u64().unwrap_or(1) as usize);
+            let (end_line, end_column) = index.editor_pos(d["end"]["line"].as_u64().unwrap_or(1) as usize, d["end"]["offset"].as_u64().unwrap_or(1) as usize);
+            let severity = match d["category"].as_str() {
+                Some("warning") => Severity::Warning,
+                Some("suggestion") => Severity::Hint,
+                Some("message") => Severity::Information,
+                _ => Severity::Error,
+            };
+            Diagnostic {
+                line,
+                column,
+                end_line,
+                end_column,
+                severity,
+                code: d["code"].as_u64().map(|c| c.to_string()),
+                source: Some(d["source"].as_str().unwrap_or("ts").to_string()),
+                message: display_text(&d["text"]),
+                unnecessary: d["reportsUnnecessary"].as_bool().unwrap_or(false),
+            }
+        })
+        .collect()
+}
+
 /// Edits as Find Usages entries: each edited span is one place that names the file.
 fn edits_as_references(edits: &[FileEdit], mut index: impl FnMut(&Path) -> Option<Rc<LineIndex>>) -> Vec<Reference> {
     let mut out = Vec::new();
@@ -985,6 +1039,19 @@ mod tests {
 
         let (display, doc, tags) = parse_hover_markdown("```typescript\nlet x: number\n```\n");
         assert_eq!((display.as_str(), doc.as_str(), tags.len()), ("let x: number", "", 0));
+    }
+
+    #[test]
+    fn tsserver_diagnostics_convert_categories() {
+        let index = LineIndex::new("let 😀 = x;\n");
+        let body = json!([
+            {"start": {"line": 1, "offset": 10}, "end": {"line": 1, "offset": 11}, "text": "Cannot find name 'x'.", "code": 2304, "category": "error"},
+            {"start": {"line": 1, "offset": 5}, "end": {"line": 1, "offset": 7}, "text": "unused", "code": 6133, "category": "suggestion", "reportsUnnecessary": true},
+        ]);
+        let d = ts_diagnostics(&index, &body);
+        assert_eq!((d[0].line, d[0].column, d[0].end_column, d[0].severity), (0, 8, 9, Severity::Error));
+        assert_eq!((d[0].code.as_deref(), d[0].source.as_deref()), (Some("2304"), Some("ts")));
+        assert_eq!((d[1].column, d[1].end_column, d[1].severity, d[1].unnecessary), (4, 5, Severity::Hint, true));
     }
 
     #[test]

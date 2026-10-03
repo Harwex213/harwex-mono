@@ -95,12 +95,15 @@ pub fn default_capabilities() -> Value {
             "references": {},
             "documentHighlight": {},
             "hover": {"contentFormat": ["markdown", "plaintext"]},
+            "diagnostic": {"dynamicRegistration": false, "tagSupport": {"valueSet": [1, 2]}},
+            "publishDiagnostics": {"tagSupport": {"valueSet": [1, 2]}},
         },
         "workspace": {
             "configuration": true,
             "workspaceFolders": true,
             "workspaceEdit": {"documentChanges": true},
             "fileOperations": {"willRename": true, "didRename": true},
+            "diagnostics": {"refreshSupport": true},
         },
         "window": {"workDoneProgress": true},
     })
@@ -116,6 +119,9 @@ pub struct Progress {
 }
 
 type ProgressMap = Arc<Mutex<BTreeMap<String, Progress>>>;
+/// The last `publishDiagnostics` array per file, raw: it is converted with the file's text
+/// when someone reads it.
+type PushedMap = Arc<Mutex<HashMap<PathBuf, Value>>>;
 
 struct OpenFile {
     text: Arc<str>,
@@ -203,6 +209,7 @@ pub struct LspClient {
     config: ClientConfig,
     state: Mutex<State>,
     progress: ProgressMap,
+    pushed: PushedMap,
     spawns: AtomicUsize,
 }
 
@@ -216,6 +223,7 @@ impl LspClient {
                 last_activity: Instant::now(),
             }),
             progress: Arc::default(),
+            pushed: Arc::default(),
             spawns: AtomicUsize::new(0),
         }
     }
@@ -259,6 +267,7 @@ impl LspClient {
     pub fn close(&self, path: &Path) {
         let mut state = lock(&self.state);
         state.last_activity = Instant::now();
+        lock(&self.pushed).remove(path);
         if state.open.remove(path).is_none() {
             return;
         }
@@ -346,6 +355,11 @@ impl LspClient {
         lock(&self.progress).values().cloned().collect()
     }
 
+    /// The diagnostics the server last pushed for `path`, raw LSP items.
+    pub fn pushed(&self, path: &Path) -> Option<Value> {
+        lock(&self.pushed).get(path).cloned()
+    }
+
     /// Sends a notification. Starts the server if needed.
     pub fn notify(&self, method: &str, params: Value, timeout: Duration) -> Result<(), Error> {
         let mut state = lock(&self.state);
@@ -394,6 +408,7 @@ impl LspClient {
             // Drop kills it if it is still running.
         }
         lock(&self.progress).clear();
+        lock(&self.pushed).clear();
     }
 
     /// Kills the process, as a crash would. The next call restarts it.
@@ -489,6 +504,7 @@ impl LspClient {
                 pending: pending.clone(),
                 alive: alive.clone(),
                 progress: self.progress.clone(),
+                pushed: self.pushed.clone(),
                 configuration: self.config.configuration.clone(),
                 on_notification: self.config.on_notification.clone(),
             };
@@ -515,6 +531,7 @@ struct Reader {
     pending: Pending,
     alive: Arc<AtomicBool>,
     progress: ProgressMap,
+    pushed: PushedMap,
     configuration: Option<ConfigurationHandler>,
     on_notification: Option<NotificationHandler>,
 }
@@ -530,10 +547,23 @@ impl Reader {
                     Some(id) => {
                         let result = server_request_result(method, &msg["params"], self.configuration.as_ref());
                         let _ = write(&self.writer, &json!({"jsonrpc": "2.0", "id": id, "result": result}));
+                        // Refresh requests (`workspace/diagnostic/refresh`) mean "ask again";
+                        // the adapter hears them like notifications.
+                        if method.ends_with("/refresh") {
+                            if let Some(handler) = &self.on_notification {
+                                handler(method, &msg["params"]);
+                            }
+                        }
                     }
                     None => {
                         if method == "$/progress" {
                             track_progress(&self.progress, &msg["params"]);
+                        }
+                        if method == "textDocument/publishDiagnostics" {
+                            let params = &msg["params"];
+                            if let Some(path) = params["uri"].as_str().and_then(crate::uri::uri_to_path) {
+                                lock(&self.pushed).insert(path, params["diagnostics"].clone());
+                            }
                         }
                         if let Some(handler) = &self.on_notification {
                             handler(method, &msg["params"]);

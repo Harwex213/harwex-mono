@@ -36,6 +36,15 @@ Read this file when you add a panel, a custom tab, a Git UI action or a language
 - rust-analyzer (`lang/rust.rs`): the lookup order is `rust.server` from `ide.toml`, `HARWEX_RUST_ANALYZER`, `PATH`, `~/.cargo/bin`, `rustup which rust-analyzer`. A candidate counts only if `--version` answers with `rust-analyzer`. The root is the topmost `Cargo.toml` with a `workspace` table, else the nearest `Cargo.toml`. The init options set `cargo.targetDir: true`, so rust-analyzer builds into its own `target/rust-analyzer` and never takes the lock of the user's `cargo build`. Diagnostics are off.
 - rust-analyzer loading: `experimental/serverStatus` and `$/progress` feed a per-server status. An empty answer while the server is not quiescent waits for the next status change. "content modified" and "server cancelled" retry after 100 ms. Both stop at the 20 s request timeout.
 
+## Diagnostics
+
+- `app/src/diagnostics/`: `strategy.rs` (markers on disk, the pure `plan`), `oxlint.rs` (the oxlint `LintSource`), `eslint.rs` + `eslint_server.js` (the ESLint `LintSource` and the node script it runs with `node -e`), `problems.rs` (the counts widget, the hover text, the Problems tool window), `mod.rs` (`Problem`, `FileProblems` per editor tab, `LintQueue`, scheduling, F2).
+- `EditorTab::problems` holds the plan, the last result per `SourceId` with the doc version it belongs to, and `marks` for `EditorView::problems`. `refresh(&doc)` shifts results through `Document::changes_since` once per version.
+- `diagnostics::schedule` runs every frame: detection on a worker (cached per directory in `state.diagnostics`), then a request 300 ms after the last edit, or at once after a save (`force`). `FileProblems::pending` is part of `is_idle()`.
+- TS requests: `LanguageServer::diagnostics` on the TypeScript bridge, after `nav::flush_lsp`. Lint requests: `state.langs.lint` (one thread, `LintCmd`). A request carries a generation; the queue skips one that is no longer the newest, and `deliver` drops a stale answer.
+- A new linter: implement `LintSource`, add a `SourceId` and a `LintTarget` variant, extend `strategy::plan`. The UI needs no change. `LintQueue::counts(source)` gives the lint calls made and the stale requests skipped (tests check debounce with it).
+- ESLint: `strategy::detect` finds the nearest config, the install and the TS project (`Markers::eslint_*`); `EslintPlan` carries the config dir and the root. The request is `textDocument/diagnostic` with an extra `harwex: {configDir, legacy}`. A cold (config dir, project) pair holds `jobs.busy("ESLint: loading <project>")` for the lint.
+
 ## Memory indicator
 
 - `app/src/memory.rs`: a `memory sampler` thread walks the process tree from our pid every `[memory] interval_secs` and posts an `Arc<Sample>` to `state.memory.sample`. The status bar draws nothing until the first sample.

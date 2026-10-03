@@ -47,6 +47,12 @@ pub enum Icon {
     CollapseAll,
     /// Select Opened File: a crosshair.
     Locate,
+    /// Problems tool window: a ring with an exclamation mark.
+    Problems,
+    /// An error: a filled circle with an exclamation mark cut out (paint it in `T.error`).
+    Error,
+    /// A warning: a filled triangle with an exclamation mark cut out.
+    Warning,
 }
 
 /// Paints `icon` centered in `rect` (any size; the grid scales to the shorter side).
@@ -194,6 +200,23 @@ pub fn paint(painter: &Painter, rect: Rect, icon: Icon, color: Color32) {
             line(p(8.0, 12.5), p(8.0, 15.0));
             line(p(1.0, 8.0), p(3.5, 8.0));
             line(p(12.5, 8.0), p(15.0, 8.0));
+        }
+        Icon::Problems => {
+            ring(p(8.0, 8.0), 6.0);
+            line(p(8.0, 4.5), p(8.0, 9.0));
+            dot(p(8.0, 11.5), 0.9);
+        }
+        Icon::Error => {
+            dot(p(8.0, 8.0), 6.5);
+            let cut = Stroke::new((1.6 * s).max(1.0), T.island_bg);
+            painter.line_segment([p(8.0, 4.3), p(8.0, 9.0)], cut);
+            painter.add(CircleShape::filled(p(8.0, 11.6), 1.0 * s, T.island_bg));
+        }
+        Icon::Warning => {
+            painter.add(Shape::convex_polygon(vec![p(8.0, 1.5), p(15.0, 14.0), p(1.0, 14.0)], color, Stroke::NONE));
+            let cut = Stroke::new((1.6 * s).max(1.0), T.island_bg);
+            painter.line_segment([p(8.0, 5.8), p(8.0, 10.0)], cut);
+            painter.add(CircleShape::filled(p(8.0, 12.0), 1.0 * s, T.island_bg));
         }
         Icon::Lock => {
             painter.rect_filled(Rect::from_min_max(p(3.5, 7.5), p(12.5, 14.0)), CornerRadius::same((1.5 * s) as u8), color);

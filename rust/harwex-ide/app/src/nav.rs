@@ -426,8 +426,16 @@ pub fn display_path(root: &Path, path: &Path) -> String {
 }
 
 /// Hover handling for the active editor: 500 ms on one identifier asks the server for hover info.
-pub fn hover(state: &mut AppState, tab: TabId, hover: Option<Position>, layer: LayerId) {
+pub fn hover(state: &mut AppState, tab: TabId, hover: Option<Position>, layer: LayerId, problems: &[(ide_editor::ProblemSeverity, String, String)]) {
     let ctx = state.ctx.clone();
+    // Problems under the pointer show at once; quick info joins below once it arrives.
+    let info_shown = state.nav.hover.info.is_some() && state.nav.hover.requested;
+    if !problems.is_empty() && !info_shown {
+        egui::show_tooltip_at_pointer(&ctx, layer, Id::new("ts-quick-info"), |ui| {
+            ui.set_max_width(640.0);
+            crate::diagnostics::problems::hover_ui(ui, problems);
+        });
+    }
     let Some(e) = state.tabs.editor_mut(tab) else { return };
     let modifiers = ctx.input(|i| i.modifiers);
     let lang = e.lang;
@@ -469,6 +477,10 @@ pub fn hover(state: &mut AppState, tab: TabId, hover: Option<Position>, layer: L
     if let Some(info) = &state.nav.hover.info {
         egui::show_tooltip_at_pointer(&ctx, layer, Id::new("ts-quick-info"), |ui| {
             ui.set_max_width(640.0);
+            if !problems.is_empty() {
+                crate::diagnostics::problems::hover_ui(ui, problems);
+                ui.separator();
+            }
             ui.label(RichText::new(&info.display).monospace().color(theme::T.text_bright));
             if !info.documentation.is_empty() {
                 ui.separator();

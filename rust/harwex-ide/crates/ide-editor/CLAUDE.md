@@ -21,6 +21,7 @@ The text buffer (`Document`, on ropey), tree-sitter highlighting and the egui ed
 - Find bar: each `EditorState` owns a `FindState`. The app calls `open_find`, `find_next` and `find_previous`; the view draws the bar at the top of its rect. Replace and Replace All edit through `Document::edit`/`transact`, so Replace All is one undo step.
 - `Document::changes_since(version)` lists the raw changes since a version (a journal of the last 4096), so ranges can follow edits. `None` means rescan.
 - Carets: `EditorState` holds a `Carets` set (sorted, never overlapping, one primary). `selection()`, `cursor()`, scrolling, navigation and the find bar use the primary. A command at every caret runs through `carets::edit_each`: bottom-up, one undo step (`Document::begin_group`/`end_group`). Line commands (Tab over a selection, Shift+Tab, Cmd+/) touch each line once (`carets::apply_line_edits`). `undo_carets`/`redo_carets` bring every caret back; `undo()` returns the primary.
+- Problems: `EditorView::problems(&[ProblemMark])`, sorted by `start`, char indices of the current text. The view draws a wave (error, warning, weak) or a dotted line (unused) under the visible lines and per-severity scrollbar marks cached by a hash of the list. The app shifts the marks through edits; the view never does.
 - Every context-menu item returns keyboard focus to the editor. The press on the menu takes the focus away, so a new item must keep the `request_focus` after the menu closure.
 
 ## Speed rules
@@ -41,7 +42,7 @@ cargo test -p ide-editor
 cargo test -p ide-editor --release --test bench -- --nocapture   # 200k-line TS file, asserts budgets
 ```
 
-The release benchmark asserts: keystroke < 4 ms, steady frame < 4 ms, typing frame < 8 ms, jump-scroll frame < 12 ms, and for the find bar: query typing frame < 8 ms, steady frame with 100k matches < 4 ms, typing frame with 100k matches < 8 ms, and with 10k carets (`bench_10k_carets`): steady frame < 4 ms, typing and Backspace frames < 8 ms. A change in the widget or the highlighter must keep it green. Put the new timings into `docs/timings.md`. Widget behaviour inside the IDE is covered by the app's `editor` and `find_replace` suites (`cargo test -p harwex-ide --test editor`). Do not run `examples/editor.rs`: it opens a foreground window.
+The release benchmark asserts: keystroke < 4 ms, steady frame < 4 ms, typing frame < 8 ms, jump-scroll frame < 12 ms, and for the find bar: query typing frame < 8 ms, steady frame with 100k matches < 4 ms, typing frame with 100k matches < 8 ms, with 10k carets (`bench_10k_carets`): steady frame < 4 ms, typing and Backspace frames < 8 ms, and with 10k problem underlines (`bench_10k_problems`): steady frame < 4 ms, jump-scroll frame < 12 ms. A change in the widget or the highlighter must keep it green. Put the new timings into `docs/timings.md`. Widget behaviour inside the IDE is covered by the app's `editor` and `find_replace` suites (`cargo test -p harwex-ide --test editor`). Do not run `examples/editor.rs`: it opens a foreground window.
 
 ## Traps
 

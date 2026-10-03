@@ -32,6 +32,11 @@ pub struct EditorTheme {
     pub find_scroll_mark: Color32,
     /// Scrollbar marks of the carets when there are several.
     pub caret_scroll_mark: Color32,
+    /// Problem underlines and scrollbar marks: error, warning, weak warning, unused.
+    pub problem_error: Color32,
+    pub problem_warning: Color32,
+    pub problem_weak: Color32,
+    pub problem_unused: Color32,
     /// Find bar surfaces: the bar, its bottom line, the input fields and their borders (the
     /// focused one, and the fill of a query without matches).
     pub find_bar: Color32,
@@ -103,6 +108,10 @@ impl EditorTheme {
             find_excluded: hex(0x868A91),
             find_scroll_mark: hex(0x6AAB73),
             caret_scroll_mark: hex(0xA1A3AB),
+            problem_error: hex(0xF75464),
+            problem_warning: hex(0xE0A54B),
+            problem_weak: hex(0x8C8F94),
+            problem_unused: hex(0x6F737A),
             find_bar: hex(0x2B2D30),
             find_bar_border: hex(0x393B40),
             find_field: hex(0x1E1F22),
@@ -159,6 +168,10 @@ impl EditorTheme {
             find_excluded: hex(0x868A91),
             find_scroll_mark: hex(0x6AAB73),
             caret_scroll_mark: hex(0xA1A3AB),
+            problem_error: hex(0xF75464),
+            problem_warning: hex(0xE0A54B),
+            problem_weak: hex(0x8C8F94),
+            problem_unused: hex(0x6F737A),
             find_bar: hex(0x2B2D30),
             find_bar_border: hex(0x393B40),
             find_field: hex(0x1E1F22),
@@ -177,6 +190,15 @@ impl EditorTheme {
 
     pub fn color(&self, kind: HlKind) -> Color32 {
         self.kinds[kind as usize]
+    }
+
+    pub fn problem(&self, severity: crate::ProblemSeverity) -> Color32 {
+        match severity {
+            crate::ProblemSeverity::Error => self.problem_error,
+            crate::ProblemSeverity::Warning => self.problem_warning,
+            crate::ProblemSeverity::Weak => self.problem_weak,
+            crate::ProblemSeverity::Unused => self.problem_unused,
+        }
     }
 
     /// The caret drawn while the editor has no keyboard focus.

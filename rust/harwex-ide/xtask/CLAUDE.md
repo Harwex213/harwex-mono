@@ -40,6 +40,8 @@ Every probe goes through the `Host` trait (commands, files, env, TTY, prompt, ou
 ## Test tools (`src/test_tools.rs`, `src/clean_check.rs`)
 
 - `test-tools` writes only under `<target>/tools/`. The pinned versions and the channel manifest sha256 are the constants at the top of `src/test_tools.rs`. Keep `RUST` at the toolchain's version. npm tarballs are checked against the registry's `dist.integrity`, Rust tarballs against the pinned manifest. A stamp per tool dir makes a second run offline.
+- oxlint is pinned with its native binding (`@oxlint/binding-<os>-<arch>`), `oxlint-tsgolint` and its platform binary, all in `oxlint/node_modules`. The app finds tsgolint beside the real oxlint dir and passes it as `OXLINT_TSGOLINT_PATH`.
+- ESLint is a whole npm tree, so it is pinned by `src/eslint.lock` (install dir, tarball URL, sha512 per package) instead of single packages. Regenerate the lock from the `package-lock.json` of an `npm install` of the pinned versions, and keep `ESLINT`, `ESLINT_JS` and `TYPESCRIPT_ESLINT` in step (a unit test checks them). The stamp holds a hash of the lock.
 - Trap: the rustup build of rust-analyzer needs `../lib/librustc_driver-*.dylib`, so `test-tools` also extracts that file from the `rustc` component.
 - `clean-check` copies the workspace without `target/` to `$TMPDIR/harwex-clean`, clears the env (empty HOME, TMPDIR and CARGO_TARGET_DIR, real CARGO_HOME/RUSTUP_HOME, PATH = wrappers for cargo/rustc/rustdoc/git/node plus the OS base dirs) and runs `test-tools` + `cargo test --workspace` under `sandbox-exec`. Details in `docs/testing.md`.
 

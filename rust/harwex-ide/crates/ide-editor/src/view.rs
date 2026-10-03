@@ -30,6 +30,31 @@ pub enum GutterMark {
     Deleted,
 }
 
+/// How a problem is drawn: a red, orange or grey wave, or a grey dotted line for unused code
+/// and hints.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum ProblemSeverity {
+    Error,
+    Warning,
+    /// IDEA's "weak warning" (LSP information).
+    Weak,
+    /// Unused code and hints.
+    Unused,
+}
+
+impl ProblemSeverity {
+    pub const ALL: [ProblemSeverity; 4] = [ProblemSeverity::Error, ProblemSeverity::Warning, ProblemSeverity::Weak, ProblemSeverity::Unused];
+}
+
+/// A problem underline in char indices of the current text. The app keeps the list sorted by
+/// `start` and shifts it through edits.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct ProblemMark {
+    pub start: usize,
+    pub end: usize,
+    pub severity: ProblemSeverity,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum EditorAction {
     /// Context menu, Cmd+B, Cmd+click.
@@ -124,6 +149,8 @@ pub struct EditorState {
     find_scroll: Option<Range<usize>>,
     /// Scrollbar marks of the matches: the key they were built for and their y fractions.
     find_marks: (u64, Vec<f32>),
+    /// Scrollbar marks of the problems, per severity, with the key they were built for.
+    problem_marks: (u64, Vec<(ProblemSeverity, f32)>),
 }
 
 #[derive(Clone, Copy)]
@@ -298,6 +325,7 @@ impl EditorState {
             find: FindState::default(),
             find_scroll: None,
             find_marks: (0, Vec::new()),
+            problem_marks: (0, Vec::new()),
         }
     }
 
@@ -588,6 +616,7 @@ pub struct EditorView<'a> {
     state: &'a mut EditorState,
     marks: &'a [(usize, GutterMark)],
     annotations: &'a [String],
+    problems: &'a [ProblemMark],
     theme: Option<&'a EditorTheme>,
     font_size: f32,
     read_only: bool,
@@ -609,7 +638,13 @@ enum MenuCmd {
 
 impl<'a> EditorView<'a> {
     pub fn new(doc: &'a mut Document, state: &'a mut EditorState) -> Self {
-        EditorView { doc, state, marks: &[], annotations: &[], theme: None, font_size: 13.0, read_only: false }
+        EditorView { doc, state, marks: &[], annotations: &[], problems: &[], theme: None, font_size: 13.0, read_only: false }
+    }
+
+    /// Problems to underline and to mark on the scrollbar, sorted by `start`.
+    pub fn problems(mut self, problems: &'a [ProblemMark]) -> Self {
+        self.problems = problems;
+        self
     }
 
     pub fn gutter_marks(mut self, marks: &'a [(usize, GutterMark)]) -> Self {
@@ -641,7 +676,7 @@ impl<'a> EditorView<'a> {
     }
 
     pub fn show(self, ui: &mut Ui) -> EditorResponse {
-        let EditorView { doc, state, marks, annotations, theme, font_size, read_only } = self;
+        let EditorView { doc, state, marks, annotations, problems, theme, font_size, read_only } = self;
         let default_theme;
         let theme = match theme {
             Some(t) => t,
@@ -1156,6 +1191,10 @@ impl<'a> EditorView<'a> {
             let first_col = ((viewport.min.x - TEXT_PAD) / char_w).floor().max(0.0) as usize;
             let visible_cols = (viewport.width() / char_w).ceil() as usize + 2;
             let all_carets = &state.carets;
+            // The problems that touch the visible lines: one pass over a short list, so each
+            // line below only walks its own.
+            let (vis_start, vis_end) = (doc.line_start(first), if last >= line_count { doc.len_chars() } else { doc.line_start(last) });
+            let visible_problems: Vec<&ProblemMark> = problems[..problems.partition_point(|m| m.start <= vis_end)].iter().filter(|m| m.end >= vis_start).collect();
 
             let mut drawn_now = std::mem::take(&mut drawn_buf);
             drawn_now.clear();
@@ -1277,6 +1316,21 @@ impl<'a> EditorView<'a> {
                     painter.galley(Pos2::new(galley_x, y + text_y), g.clone(), theme.foreground);
                 }
 
+                for m in visible_problems.iter().filter(|m| m.start <= le && m.end >= ls && !(m.end == ls && m.start < ls)) {
+                    let a = m.start.max(ls) - ls;
+                    let b = m.end.min(le) - ls;
+                    let x0 = col_x(display_col(&text, a));
+                    // An empty range (a missing token) still gets one char of underline.
+                    let x1 = if b > a { col_x(display_col(&text, b)) } else { x0 + char_w };
+                    let uy = y + text_y + row_h + 1.0;
+                    let color = theme.problem(m.severity);
+                    if m.severity == ProblemSeverity::Unused {
+                        dotted(&painter, x0, x1, uy, color);
+                    } else {
+                        wave(&painter, x0, x1, uy, color);
+                    }
+                }
+
                 if let Some(w) = &hover_word {
                     if w.start.line == line {
                         let x0 = col_x(display_col(&text, w.start.column));
@@ -1329,6 +1383,28 @@ impl<'a> EditorView<'a> {
             for &y in &state.find_marks.1 {
                 let r = Rect::from_min_size(Pos2::new(text_rect.right() - 7.0, text_rect.top() + y), Vec2::new(6.0, 2.0));
                 painter.rect_filled(r, 0.0, theme.find_scroll_mark);
+            }
+        }
+
+        if !problems.is_empty() {
+            let key = {
+                let mut h = DefaultHasher::new();
+                (problems, line_count, text_rect.height().to_bits(), line_h.to_bits()).hash(&mut h);
+                h.finish()
+            };
+            if state.problem_marks.0 != key {
+                let mut out = Vec::new();
+                // Weaker first, so an error band is drawn over a warning at the same y.
+                for sev in ProblemSeverity::ALL.into_iter().rev() {
+                    let starts: Vec<usize> = problems.iter().filter(|m| m.severity == sev).map(|m| m.start).collect();
+                    out.extend(scroll_marks(doc, &starts, |s| *s, text_rect.height(), content.y, line_h).into_iter().map(|y| (sev, y)));
+                }
+                state.problem_marks = (key, out);
+            }
+            let painter = ui.painter_at(text_rect);
+            for &(sev, y) in &state.problem_marks.1 {
+                let r = Rect::from_min_size(Pos2::new(text_rect.right() - 7.0, text_rect.top() + y), Vec2::new(6.0, 2.0));
+                painter.rect_filled(r, 0.0, theme.problem(sev));
             }
         }
 
@@ -1449,6 +1525,29 @@ impl<'a> EditorView<'a> {
             has_focus,
             response: resp,
         }
+    }
+}
+
+/// IDEA's error underline: a wave with a 4 px period under the text.
+fn wave(painter: &egui::Painter, x0: f32, x1: f32, y: f32, color: egui::Color32) {
+    let mut points = Vec::with_capacity(((x1 - x0) / 2.0) as usize + 2);
+    let mut x = x0;
+    let mut up = false;
+    while x < x1 {
+        points.push(Pos2::new(x, if up { y - 1.0 } else { y + 1.0 }));
+        x += 2.0;
+        up = !up;
+    }
+    points.push(Pos2::new(x1, if up { y - 1.0 } else { y + 1.0 }));
+    painter.add(egui::Shape::line(points, Stroke::new(1.0_f32, color)));
+}
+
+/// A dotted underline for unused code and hints.
+fn dotted(painter: &egui::Painter, x0: f32, x1: f32, y: f32, color: egui::Color32) {
+    let mut x = x0;
+    while x < x1 {
+        painter.rect_filled(Rect::from_min_size(Pos2::new(x, y), Vec2::new(1.0, 1.0)), 0.0, color);
+        x += 3.0;
     }
 }
 

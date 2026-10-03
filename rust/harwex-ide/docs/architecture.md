@@ -28,7 +28,28 @@ A change that breaks a rule needs a written reason under "Recorded exceptions" a
 7. The watcher (`app/src/watcher.rs`) batches events until 200 ms of quiet, or at most 1 s after the first event. `AppState` then reloads only the directories, editors and git state that the batch touches, and re-reads `.harwex/ide.toml` when it changed. rust-analyzer watches the files itself.
 8. There are no plugins.
 9. Asserted budgets: the `ide-editor` release benchmark and the warm Go to Declaration in `rust_nav` (< 500 ms). There is no cold-start budget for language servers, because the cold time depends on the workspace. See `docs/timings.md`.
-10. `app/src/lang/config.rs` parses `.harwex/ide.toml`: `languages`, `idle_timeout_secs`, `[rust]` (`server`, `idle_timeout_secs`, `check_on_save`, `build_scripts`, `proc_macros`), `[rust.init]` and `[ts] idle_timeout_secs`. Problems become warning toasts and fall back to defaults.
+10. `app/src/lang/config.rs` parses `.harwex/ide.toml`: `languages`, `idle_timeout_secs`, `[rust]` (`server`, `idle_timeout_secs`, `check_on_save`, `build_scripts`, `proc_macros`), `[rust.init]`, `[ts] idle_timeout_secs` and `[diagnostics]` (`ts`, `[diagnostics.oxlint] enabled, type_aware, type_check`, `[diagnostics.eslint] enabled`). Problems become warning toasts and fall back to defaults.
+
+## Diagnostics: sources and why no extra type checker
+
+Problems come from processes that already run or that the project already uses (rules 3, 5 and 6). `app/src/diagnostics/strategy.rs` decides per package with a pure function (package markers plus `ide.toml` to a plan).
+
+- TypeScript errors come from the TS server that serves navigation: tsserver's `syntacticDiagnosticsSync` + `semanticDiagnosticsSync` + `suggestionDiagnosticsSync`, or the native server's pull `textDocument/diagnostic`. A second type checker (`tsc --noEmit --watch`, a type-aware linter's own program) would load the same projects again and double the memory: on the `mono` repository the TS server holds about 1.1 GB for three packages.
+- Lint errors come from one `oxlint --lsp` per workspace root (the topmost directory with an oxlint config and an oxlint install), started on the first linted file and stopped after the idle timeout. Type-aware rules use the installed `oxlint-tsgolint`; the language server runs it per lint request, so it holds no memory between requests.
+- ESLint errors come from one node process per workspace root (the topmost directory with `node_modules/eslint` above the config). It runs our small script (`diagnostics/eslint_server.js`), not the `vscode-eslint` server: the script keeps one `ESLint` instance per config directory, so a config loads once per process, and it speaks only the LSP subset `ide-lsp` has. The app finds the nearest `eslint.config.*` (or `.eslintrc*` for ESLint 8 and 9) and sends its directory with each request. ESLint never checks types for the editor; the TS server does.
+- typescript-eslint's type-aware rules (`projectService`) build a second TypeScript program inside the ESLint process. That breaks the "no second type checker" idea above, and it is the user's choice in their config, so the app does not hide it: the first lint per TS project shows "ESLint: loading <project>" in the status bar, and the server drops its TS projects when the last file closes (the heap shrinks; the process keeps its pages until the idle stop).
+- oxlint type-check would replace the TS server's errors. The oxlint 1.77 language server has no setting for it, and a measurement on `mono` found 0 of 3 TypeScript errors through it. The plan therefore keeps the TS server for TypeScript errors. `strategy::oxlint_lsp_has_type_check` is the switch when a newer oxlint gains it.
+- Only open files are checked: debounced 300 ms, on save, with stale queued requests skipped. TS requests ride the TypeScript queue after the text sync; linters share one lint queue (`state.langs.lint`). Results are shifted through the document's edit journal until new ones arrive.
+- New sources implement `diagnostics::LintSource` and add a `SourceId`; the UI reads only `Problem`s.
+
+### Linters on a huge monorepo
+
+Measured on a generated monorepo of 200 packages (`docs/timings.md`): ESLint needs 0.36 s to the first diagnostics without types and 0.47 s with `projectService`, then 5-11 ms per file; its process holds 270-450 MB. oxlint needs about 0.05 s cold, 1-11 ms warm and 24 MB. Both stay far below the 300 ms debounce once warm.
+
+- Prefer oxlint for the rules it has, type-aware ones included (`oxlint-tsgolint` runs per request and holds no memory between requests).
+- Keep ESLint for rules and plugins oxlint lacks. When both are configured, both run; the cost of ESLint is one node process for the whole repository, not one per package.
+- Type-aware ESLint rules cost a TS program per open package on top of the TS server. On a machine short of memory, turn them off in the IDE (`HARWEX_IDE` is set in the ESLint process) or move them to oxlint.
+- Whole-graph rules (`import-x/no-cycle`) are cheap in the long-lived process: the import graph is cached between lints (+56 ms cold, +1 ms warm on a 200-file cycle).
 
 ## Recorded exceptions
 

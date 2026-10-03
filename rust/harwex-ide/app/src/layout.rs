@@ -18,6 +18,8 @@ pub enum ToolWindow {
     /// Git log. Body drawn by `git::log_tool_window`.
     Git,
     Usages,
+    /// Errors and warnings of the current file.
+    Problems,
     Terminal,
     Notifications,
 }
@@ -30,7 +32,7 @@ pub enum Side {
 
 impl ToolWindow {
     pub const LEFT: [ToolWindow; 3] = [ToolWindow::Project, ToolWindow::Commit, ToolWindow::Find];
-    pub const BOTTOM: [ToolWindow; 4] = [ToolWindow::Git, ToolWindow::Usages, ToolWindow::Terminal, ToolWindow::Notifications];
+    pub const BOTTOM: [ToolWindow; 5] = [ToolWindow::Git, ToolWindow::Usages, ToolWindow::Problems, ToolWindow::Terminal, ToolWindow::Notifications];
 
     pub fn title(self) -> &'static str {
         match self {
@@ -39,6 +41,7 @@ impl ToolWindow {
             ToolWindow::Find => "Find",
             ToolWindow::Git => "Git",
             ToolWindow::Usages => "Find Usages",
+            ToolWindow::Problems => "Problems",
             ToolWindow::Terminal => "Terminal",
             ToolWindow::Notifications => "Notifications",
         }
@@ -112,6 +115,7 @@ impl ToolWindow {
             ToolWindow::Find => Icon::Find,
             ToolWindow::Git => Icon::Branch,
             ToolWindow::Usages => Icon::Usages,
+            ToolWindow::Problems => Icon::Problems,
             ToolWindow::Terminal => Icon::Terminal,
             ToolWindow::Notifications => Icon::Notifications,
         }

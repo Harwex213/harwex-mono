@@ -15,11 +15,13 @@ Read this file when a change touches a hot path and you need the budget or a ref
 | find bar: typing frame in the text with 100k matches (incremental update) | < 8 ms | same |
 | 10k carets: steady frame | < 4 ms | same (`bench_10k_carets`) |
 | 10k carets: typing frame / Backspace frame, avg | < 8 ms / < 8 ms | same |
+| 10k problem underlines: steady frame / jump-scroll frame | < 4 ms / < 12 ms | same (`bench_10k_problems`) |
 | warm Go to Declaration in Rust | < 500 ms | `cargo test -p harwex-ide --test rust_nav` |
 | git status warm / log page of 200 / log at skip 1000, generated 4000-file repo | < 150 / 100 / 100 ms | `cargo test -p ide-git --test large_repo` |
 | TS cold / warm definition, source definition, references, generated 1240-file workspace | < 15 s / 50 ms, < 3 s, < 5 s | `cargo test -p ide-ts --test workspace` |
 | file rename preview (pre-filter + loading 30 importer projects + edits), generated 200-project workspace, warm server | pre-filter < 500 ms; native < 2 s, tsserver < 8 s | `cargo test -p ide-ts --test rename_budget -- --nocapture` |
 | UI frame while a rename preview loads 30 projects (tsserver, 60 projects) | < 250 ms worst frame (parallel suite) | `cargo test -p harwex-ide --test project_menu rename_preview_keeps_frames_fast` |
+| ESLint and oxlint, generated 200-package monorepo: warm per-file lint after an edit (median) / cold first diagnostics | < 300 ms without types, < 1 s type-aware / < 20 s | `cargo test -p harwex-ide --test lint_budget -- --nocapture` |
 | one memory indicator sample (thread CPU time, median of 30) | < 0.5 ms | `cargo test -p harwex-ide --test memory sampling_cost -- --nocapture` |
 
 The benchmark file has 200k lines (4.2 MB of TypeScript).
@@ -62,6 +64,29 @@ ide-git on the generated repo (`cargo test -p ide-git --test large_repo -- --noc
 TypeScript on the generated workspace (`cargo test -p ide-ts --test workspace -- --nocapture`, 1240 files): cold definition 72 ms native / 490 ms tsserver, warm under 0.4 ms, references with 2401 results 89 ms / 195 ms.
 
 File rename on the generated monorepo (`cargo test -p ide-ts --test rename_budget -- --nocapture`, debug, 1002 files in 201 projects, 30 importers): pre-filter 13 ms over 1002 code files (31 candidates), whole preview 59 ms native / 0.9 s tsserver, 31 projects loaded, 31 files changed. In the app (`project_menu`, tsserver, 60 projects): preview about 1 s, worst UI frame under 1 ms when the test runs alone.
+
+10k problem underlines on the same file (every 20 lines, all four severities): steady frame 0.14 ms, jump-scroll frame 0.45 ms.
+
+Diagnostics on the `mono` repository (read-only, three files in three packages, unsaved edits that add one TS error each):
+
+| | TS server (TS 7.0.2 native, pull) | oxlint 1.77 LSP, type-aware | oxlint 1.77 CLI `--type-aware --type-check` |
+|---|---|---|---|
+| TS errors found (of 3) | 3 (2322, 2345, 2339) | 0: the server has no type check, and all 3 edited buffers crash it (panic in `disable_fix.rs:52`) | not comparable: reads the disk only; on the unchanged files 0 errors, like the TS server |
+| cold start | initialize 44 ms, first file 74 ms, all three 1.1 s | first file 6.1 s (loads the JS configs of 616 packages), all three 7.6 s | 0.17-1.5 s per run |
+| memory | 1.07 GB phys_footprint (the server navigation already uses) | 0.30 GB (node); tsgolint runs per request | up to 1.09 GB max RSS per run (tsgolint) |
+
+Linters on the generated monorepo (`cargo test -p harwex-ide --test lint_budget -- --nocapture`: 200 packages with 5 files each, a per-package `eslint.config.mjs` from a shared root module, `@eslint/js` recommended + typescript-eslint recommended, or `recommendedTypeChecked` with `projectService`; one root `.oxlintrc.json`). Memory is the phys_footprint of the linter's process tree.
+
+| | cold first file (process start included) | cold file in a 2nd package | warm per file after an edit | memory, 1 / 22 packages | memory after all files closed |
+|---|---|---|---|---|---|
+| ESLint 10.12, no types | 360 ms | 9 ms | 5 ms | 270 / 315 MB | 315 MB |
+| ESLint 10.12 + typescript-eslint 8.71, `projectService` | 470 ms | 55 ms | 11 ms | 350 / 450 MB | 450 MB (heap 190 → 85 MB) |
+| oxlint 1.77, no types | 45 ms | 1 ms | 1 ms | 24 / 24 MB | 24 MB |
+| oxlint 1.77 + tsgolint, type-aware | 50 ms | 11 ms | 11 ms | 24 / 24 MB | 24 MB |
+
+After the last close the ESLint server drops its instances and TS projects; the V8 heap shrinks, the process keeps its pages until the idle stop. `import-x/no-cycle` (eslint-plugin-import-x 4.17, measured by hand, not pinned): on the shallow graph +20 ms cold, warm unchanged; on a 200-file import cycle +56 ms cold, warm 2.4 ms instead of 1.4 ms, because the import graph stays cached in the process.
+
+Budgets: none asserted for the cold start on a real repository, because it depends on the workspace. The editor stays in the frame budgets above with any number of problems.
 
 Memory indicator: one sample of 9 processes costs 113 µs of CPU in release (137 µs in debug), with about 1140 processes on the machine. Each `proc_listchildpids` call scans every process, so the cost grows with the number of processes in the walked tree. Terminal subtrees are not walked.
 

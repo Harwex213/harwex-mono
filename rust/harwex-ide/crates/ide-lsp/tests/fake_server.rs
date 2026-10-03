@@ -307,3 +307,35 @@ fn will_rename_files_returns_edits_and_did_rename_closes_old_paths() {
     client.close_under(&fx.root.join("src"));
     assert!(client.open_paths().is_empty());
 }
+
+#[test]
+fn diagnostics_are_pulled_with_editor_columns() {
+    let fx = fixture();
+    let client = LspClient::new(config(&fx.root));
+    client.open(&fx.file, "let 😀 = ERR;\n// WARN HINT\n", T);
+    assert!(client.supports_pull_diagnostics(T).unwrap());
+    let d = client.diagnostics(&fx.file, T).unwrap();
+    let got: Vec<(usize, usize, usize, ide_lsp::Severity, bool)> = d.iter().map(|d| (d.line, d.column, d.end_column, d.severity, d.unnecessary)).collect();
+    assert_eq!(
+        got,
+        [(0, 8, 11, ide_lsp::Severity::Error, false), (1, 3, 7, ide_lsp::Severity::Warning, false), (1, 8, 12, ide_lsp::Severity::Hint, true)]
+    );
+    assert_eq!(d[0].code.as_deref(), Some("fake-err"));
+    assert_eq!(d[0].source.as_deref(), Some("fake"));
+    // An edit is seen by the next pull.
+    client.change(&fx.file, "fine\n", T);
+    assert!(client.diagnostics(&fx.file, T).unwrap().is_empty());
+}
+
+#[test]
+fn pushed_diagnostics_are_kept_per_file() {
+    let fx = fixture();
+    let client = LspClient::new(config(&fx.root));
+    client.open(&fx.file, "x\n", T);
+    let params = json!({"uri": uri(&fx.file), "diagnostics": [{"range": {"start": {"line": 0, "character": 0}, "end": {"line": 0, "character": 1}}, "severity": 2, "message": "pushed"}]});
+    client.request("test/notify", json!({"method": "textDocument/publishDiagnostics", "params": params}), T).unwrap();
+    let raw = client.pushed(&fx.file).expect("stored");
+    assert_eq!(raw[0]["message"], "pushed");
+    client.close(&fx.file);
+    assert!(client.pushed(&fx.file).is_none(), "closing forgets the file's diagnostics");
+}

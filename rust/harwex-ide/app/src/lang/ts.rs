@@ -80,6 +80,11 @@ impl LanguageServer for TsServer {
         Ok(info.map(|i| HoverInfo { display: i.display, documentation: i.documentation, tags: i.tags.into_iter().map(|t| (t.name, t.text)).collect() }))
     }
 
+    fn diagnostics(&self, path: &Path) -> Result<Option<Vec<ide_lsp::Diagnostic>>, String> {
+        self.touch();
+        self.service.diagnostics(path).map(Some).map_err(|e| e.to_string())
+    }
+
     fn rename_edits(&self, old: &Path, new: &Path, candidates: &[PathBuf]) -> Result<RenameEdits, String> {
         self.touch();
         let found = self.service.edits_for_file_rename(old, new, candidates).map_err(|e| e.to_string())?;

@@ -199,6 +199,7 @@ impl eframe::App for IdeApp {
 
         s.run_commands();
         nav::sync_lsp_debounced(s);
+        crate::diagnostics::schedule(s);
         s.schedule_gutter();
         testhook::tick(s);
         if !s.jobs.running().is_empty() {
@@ -256,6 +257,11 @@ fn shortcuts(s: &mut AppState, ctx: &Context) {
     // IDEA's "Branches..." (Ctrl+Shift+`) and "Select In > Project View" (Alt+F1).
     let ctrl_shift = Modifiers::CTRL | Modifiers::SHIFT;
     let (branches, select_in) = ctx.input_mut(|i| (i.consume_key(ctrl_shift, Key::Backtick), i.consume_key(Modifiers::ALT, Key::F1)));
+    // Shift+F2 first: `consume_key(NONE, F2)` ignores an extra Shift.
+    let (prev_problem, next_problem) = ctx.input_mut(|i| (i.consume_key(Modifiers::SHIFT, Key::F2), i.consume_key(Modifiers::NONE, Key::F2)));
+    if prev_problem || next_problem {
+        crate::diagnostics::goto_next(s, next_problem);
+    }
     editor_find_keys(s, ctx);
     if select_in {
         tree::select_opened_file(s);
@@ -620,6 +626,7 @@ fn tool_window_body(s: &mut AppState, ui: &mut egui::Ui, w: ToolWindow) {
         }
         ToolWindow::Git => git::log_tool_window(s, ui),
         ToolWindow::Usages => nav::show_usages(s, ui),
+        ToolWindow::Problems => crate::diagnostics::problems::tool_window(s, ui),
         ToolWindow::Terminal => crate::terminal::tool_window(s, ui),
         ToolWindow::Notifications => s.notifications.show_log(ui),
     }
@@ -651,7 +658,9 @@ fn editor_area(s: &mut AppState, ui: &mut egui::Ui) {
     let Some(tab) = tabs.get_mut(active) else { return };
     let out = match &mut tab.content {
         TabContent::Editor(e) => {
+            e.problems.refresh(&e.doc);
             let r = EditorView::new(&mut e.doc, &mut e.view)
+                .problems(&e.problems.marks)
                 .gutter_marks(&e.marks)
                 .annotations(&e.annotations)
                 .theme(editor_theme)
@@ -659,8 +668,11 @@ fn editor_area(s: &mut AppState, ui: &mut egui::Ui) {
                 .show(ui);
             if r.changed {
                 e.last_edit = Instant::now();
+                e.problems.refresh(&e.doc);
             }
-            Some(r)
+            let next_problem = crate::diagnostics::problems::counts_widget(ui, e.view.geometry().map_or(r.response.rect, |g| g.text_rect), e);
+            let hover_problems = r.hover.map(|p| crate::diagnostics::hover_lines(e, p)).unwrap_or_default();
+            Some((r, next_problem, hover_problems))
         }
         TabContent::Custom(c) => {
             let mut env = TabEnv {
@@ -676,7 +688,10 @@ fn editor_area(s: &mut AppState, ui: &mut egui::Ui) {
             None
         }
     };
-    let Some(r) = out else { return };
+    let Some((r, next_problem, hover_problems)) = out else { return };
+    if next_problem {
+        crate::diagnostics::goto_next(s, true);
+    }
     let rect = r.response.rect;
     if let Some(action) = r.action {
         let anchor = nav::anchor_for(ui.ctx(), rect);
@@ -697,7 +712,8 @@ fn editor_area(s: &mut AppState, ui: &mut egui::Ui) {
         git::on_annotation_click(s, active, line);
     }
     let menu_open = ui.ctx().memory(|m| m.any_popup_open());
-    nav::hover(s, active, if menu_open || s.nav.popup.is_some() { None } else { r.hover }, r.response.layer_id);
+    let quiet = menu_open || s.nav.popup.is_some();
+    nav::hover(s, active, if quiet { None } else { r.hover }, r.response.layer_id, if quiet { &[] } else { &hover_problems });
 }
 
 /// IDEA's hint list in an empty editor.

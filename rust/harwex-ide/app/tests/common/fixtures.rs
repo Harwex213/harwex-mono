@@ -337,6 +337,156 @@ pub fn skip_without_tsserver(test: &str) -> bool {
     }
 }
 
+/// TypeScript 7 (a `typescript` package dir with its native platform package beside its real
+/// dir): `HARWEX_TEST_TS7`, else `<target>/tools/ts7/node_modules/typescript`.
+pub fn typescript7() -> Result<PathBuf, String> {
+    let (dir, source) = match std::env::var_os("HARWEX_TEST_TS7") {
+        Some(dir) => (PathBuf::from(dir), "HARWEX_TEST_TS7"),
+        None => (tools_dir().join("ts7/node_modules/typescript"), HINT),
+    };
+    if dir.join("package.json").is_file() {
+        Ok(dir)
+    } else {
+        Err(format!("{} is missing ({source})", dir.display()))
+    }
+}
+
+/// Returns `true` (and prints why) when the TypeScript 7 tests must be skipped.
+pub fn skip_without_ts7(test: &str) -> bool {
+    match typescript7() {
+        Ok(_) => false,
+        Err(why) => {
+            eprintln!("skipping {test}: {why}");
+            true
+        }
+    }
+}
+
+/// oxlint (an `oxlint` package dir; its native binding and `oxlint-tsgolint` sit beside its
+/// real dir, as npm installs them): `HARWEX_TEST_OXLINT`, else
+/// `<target>/tools/oxlint/node_modules/oxlint`.
+pub fn oxlint() -> Result<PathBuf, String> {
+    let (dir, source) = match std::env::var_os("HARWEX_TEST_OXLINT") {
+        Some(dir) => (PathBuf::from(dir), "HARWEX_TEST_OXLINT"),
+        None => (tools_dir().join("oxlint/node_modules/oxlint"), HINT),
+    };
+    if ide_ts::find_node().is_none() {
+        return Err("node was not found".into());
+    }
+    if dir.join("bin/oxlint").is_file() {
+        Ok(dir)
+    } else {
+        Err(format!("{} is missing ({source})", dir.join("bin/oxlint").display()))
+    }
+}
+
+/// Returns `true` (and prints why) when the oxlint tests must be skipped. They also need
+/// tsserver for the TypeScript errors.
+pub fn skip_without_oxlint(test: &str) -> bool {
+    if skip_without_tsserver(test) {
+        return true;
+    }
+    match oxlint() {
+        Ok(_) => false,
+        Err(why) => {
+            eprintln!("skipping {test}: {why}");
+            true
+        }
+    }
+}
+
+/// ESLint's npm tree (a `node_modules` dir with `eslint`, `@eslint/js`, `typescript-eslint`
+/// and `typescript`): `HARWEX_TEST_ESLINT`, else `<target>/tools/eslint/node_modules`.
+pub fn eslint_modules() -> Result<PathBuf, String> {
+    let (dir, source) = match std::env::var_os("HARWEX_TEST_ESLINT") {
+        Some(dir) => (PathBuf::from(dir), "HARWEX_TEST_ESLINT"),
+        None => (tools_dir().join("eslint/node_modules"), HINT),
+    };
+    if ide_ts::find_node().is_none() {
+        return Err("node was not found".into());
+    }
+    for pkg in ["eslint", "@eslint/js", "typescript-eslint", "typescript"] {
+        if !dir.join(pkg).join("package.json").is_file() {
+            return Err(format!("{} is missing ({source})", dir.join(pkg).display()));
+        }
+    }
+    Ok(dir)
+}
+
+/// Returns `true` (and prints why) when the ESLint tests must be skipped.
+pub fn skip_without_eslint(test: &str) -> bool {
+    match eslint_modules() {
+        Ok(_) => false,
+        Err(why) => {
+            eprintln!("skipping {test}: {why}");
+            true
+        }
+    }
+}
+
+/// Links ESLint's npm tree into `<root>/node_modules`, as a workspace root install.
+pub fn link_eslint(root: &Path) {
+    let modules = eslint_modules().expect("ESLint");
+    std::fs::create_dir_all(root.join("node_modules/@eslint")).expect("node_modules");
+    for pkg in ["eslint", "@eslint/js", "typescript-eslint", "typescript"] {
+        std::os::unix::fs::symlink(modules.join(pkg), root.join("node_modules").join(pkg)).expect("eslint link");
+    }
+}
+
+/// A flat ESLint config. `typed` adds typescript-eslint's `projectService` and a type-aware
+/// rule; `rules` is the JS object text of extra rules.
+pub fn eslint_config(typed: bool, rules: &str) -> String {
+    let typed_part = if typed {
+        "  {\n    languageOptions: { parserOptions: { projectService: true, tsconfigRootDir: import.meta.dirname } },\n    rules: { \"@typescript-eslint/no-floating-promises\": \"error\" },\n  },\n"
+    } else {
+        ""
+    };
+    format!("import tseslint from \"typescript-eslint\";\n\nexport default [\n  {{ ignores: [\"eslint.config.mjs\"] }},\n  tseslint.configs.base,\n{typed_part}  {{ files: [\"**/*.ts\"], rules: {rules} }},\n];\n")
+}
+
+/// A workspace with two packages and one ESLint install at the root: `packages/strict` has
+/// a type-aware config (`no-debugger` error, `eqeqeq` warning, `no-floating-promises`) and
+/// `packages/loose` a plain one (`no-console` warning only). Both hold `PROBLEMS_TS`.
+pub fn eslint_project(dir: PathBuf) -> Repo {
+    let r = Repo::init(dir);
+    r.write(".gitignore", "node_modules/\n");
+    r.write("package.json", "{ \"name\": \"lint-ws\", \"private\": true, \"workspaces\": [\"packages/*\"] }\n");
+    let tsconfig = "{\n  \"compilerOptions\": { \"strict\": true, \"module\": \"commonjs\", \"target\": \"es2020\", \"lib\": [\"es2020\", \"dom\"] },\n  \"include\": [\"src\"]\n}\n";
+    for (pkg, typed, rules) in [("strict", true, "{ \"no-debugger\": \"error\", eqeqeq: \"warn\" }"), ("loose", false, "{ \"no-console\": \"warn\" }")] {
+        r.write(&format!("packages/{pkg}/package.json"), &format!("{{ \"name\": \"{pkg}\", \"private\": true }}\n"));
+        r.write(&format!("packages/{pkg}/tsconfig.json"), tsconfig);
+        r.write(&format!("packages/{pkg}/eslint.config.mjs"), &eslint_config(typed, rules));
+        r.write(&format!("packages/{pkg}/src/app.ts"), PROBLEMS_TS);
+    }
+    link_eslint(&r.dir);
+    r.commit_all("ESLint workspace");
+    r
+}
+
+/// A TS file with a type error (line 3), oxlint errors (`debugger` on line 4, a floating
+/// promise on line 5, type-aware) and an oxlint warning (`==` on line 6).
+pub const PROBLEMS_TS: &str = "export async function load(): Promise<number> {\n  return 1;\n}\nconst count: number = \"three\";\ndebugger;\nload();\nif (count == 2) {\n  console.log(count);\n}\n";
+
+/// A project for the diagnostics tests: `src/app.ts` (`PROBLEMS_TS`), a strict tsconfig and
+/// TypeScript linked in (`native` picks TypeScript 7, else TypeScript 5). With `oxlint`, an
+/// `.oxlintrc.json` and oxlint linked into `node_modules`.
+pub fn problems_project(dir: PathBuf, native: bool, with_oxlint: bool) -> Repo {
+    let r = Repo::init(dir);
+    r.write(".gitignore", "node_modules/\n");
+    r.write("package.json", "{ \"name\": \"problems\", \"private\": true }\n");
+    r.write("tsconfig.json", "{\n  \"compilerOptions\": { \"strict\": true, \"module\": \"commonjs\", \"target\": \"es2020\", \"lib\": [\"es2020\", \"dom\"] },\n  \"include\": [\"src\"]\n}\n");
+    r.write("src/app.ts", PROBLEMS_TS);
+    std::fs::create_dir_all(r.dir.join("node_modules")).expect("node_modules");
+    let ts = if native { typescript7().expect("TypeScript 7") } else { typescript().expect("TypeScript 5") };
+    std::os::unix::fs::symlink(ts, r.dir.join("node_modules/typescript")).expect("typescript link");
+    if with_oxlint {
+        r.write(".oxlintrc.json", "{\n  \"rules\": { \"no-debugger\": \"error\", \"eqeqeq\": \"warn\", \"typescript/no-floating-promises\": \"error\" }\n}\n");
+        std::os::unix::fs::symlink(oxlint().expect("oxlint"), r.dir.join("node_modules/oxlint")).expect("oxlint link");
+    }
+    r.commit_all("Problems project");
+    r
+}
+
 /// A TS project with a dependency in `node_modules/fake-lib` (types in `.d.ts`, code in `.js`)
 /// and a workspace package `@ws/util` linked into `node_modules` like yarn workspaces do.
 /// TypeScript itself is a symlink to the TypeScript 5 test install. The project is also a git repo.

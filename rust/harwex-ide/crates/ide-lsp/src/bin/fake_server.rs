@@ -69,6 +69,7 @@ fn main() {
                             "referencesProvider": true,
                             "documentHighlightProvider": true,
                             "hoverProvider": true,
+                            "diagnosticProvider": {"interFileDependencies": false, "workspaceDiagnostics": false},
                             "experimental": {"fakeFeature": true},
                         },
                         "serverInfo": {"name": "fake", "version": "1"},
@@ -125,6 +126,25 @@ fn main() {
                     json!({"contents": {"kind": "markdown", "value": "```rust\nfn fake()\n```\n\n---\n\nFake docs."},
                         "range": {"start": position, "end": position}}),
                 );
+            }
+            // Every `ERR`, `WARN` and `HINT` in the text is a diagnostic, columns in UTF-16.
+            ("textDocument/diagnostic", Some(id)) => {
+                let text = docs.get(&uri).map(|(_, t)| t.clone()).unwrap_or_default();
+                let mut items = Vec::new();
+                for (line_no, line) in text.lines().enumerate() {
+                    for (word, severity) in [("ERR", 1), ("WARN", 2), ("HINT", 4)] {
+                        for (byte, _) in line.match_indices(word) {
+                            let col: usize = line[..byte].encode_utf16().count();
+                            let mut d = json!({"range": {"start": {"line": line_no, "character": col}, "end": {"line": line_no, "character": col + word.len()}},
+                                "severity": severity, "code": format!("fake-{}", word.to_lowercase()), "source": "fake", "message": format!("{word} here")});
+                            if severity == 4 {
+                                d["tags"] = json!([1]);
+                            }
+                            items.push(d);
+                        }
+                    }
+                }
+                reply(&out, &id, json!({"kind": "full", "items": items}));
             }
             // Inserts one comment line per rename at the top of every open document, so tests
             // can check the conversion and that the request came before the move.

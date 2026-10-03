@@ -154,6 +154,10 @@ pub trait LanguageServer: Send + Sync + 'static {
     fn running(&self) -> usize;
     /// A warning to show once, e.g. "rust-analyzer not found".
     fn take_notice(&self) -> Option<(String, String)>;
+    /// Errors and warnings of an open file. `Ok(None)` when this server does not report them.
+    fn diagnostics(&self, _path: &Path) -> Result<Option<Vec<ide_lsp::Diagnostic>>, String> {
+        Ok(None)
+    }
     /// New project settings. Servers started with older settings stop.
     fn configure(&self, _config: &IdeConfig) {}
     fn shutdown(&self);
@@ -288,6 +292,8 @@ impl Bridge {
 /// Every language the app knows, with its bridge and the project's settings.
 pub struct Languages {
     bridges: HashMap<LangId, Bridge>,
+    /// Linters (oxlint, ESLint), one queue for all of them.
+    pub lint: crate::diagnostics::LintQueue,
     pub config: IdeConfig,
 }
 
@@ -295,8 +301,11 @@ impl Languages {
     pub fn new(jobs: Jobs, repaint: Arc<dyn Fn() + Send + Sync>) -> Languages {
         let mut bridges = HashMap::new();
         bridges.insert(LangId::TypeScript, Bridge::new(LangId::TypeScript, Arc::new(ts::TsServer::new()), Some(jobs.clone())));
-        bridges.insert(LangId::Rust, Bridge::new(LangId::Rust, Arc::new(rust::RustService::new(repaint)), Some(jobs)));
-        Languages { bridges, config: IdeConfig::default() }
+        bridges.insert(LangId::Rust, Bridge::new(LangId::Rust, Arc::new(rust::RustService::new(repaint)), Some(jobs.clone())));
+        let sources: Vec<Arc<dyn crate::diagnostics::LintSource>> =
+            vec![Arc::new(crate::diagnostics::oxlint::OxlintSource::default()), Arc::new(crate::diagnostics::eslint::EslintSource::new(Some(jobs.clone())))];
+        let lint = crate::diagnostics::LintQueue::new(sources, Some(jobs));
+        Languages { bridges, lint, config: IdeConfig::default() }
     }
 
     /// Applies a project's `.harwex/ide.toml` (or the defaults when it has none).
@@ -304,6 +313,10 @@ impl Languages {
         for b in self.bridges.values() {
             b.configure(&config);
         }
+        if config.diagnostics != self.config.diagnostics {
+            self.lint.reset();
+        }
+        self.lint.set_idle_timeout(config.idle_timeout);
         self.config = config;
     }
 
@@ -322,7 +335,7 @@ impl Languages {
 
     /// Commands waiting for or running on any language queue.
     pub fn queued(&self) -> usize {
-        self.bridges.values().map(Bridge::queued).sum()
+        self.bridges.values().map(Bridge::queued).sum::<usize>() + self.lint.queued()
     }
 
     /// Server processes running now, per language.
@@ -339,6 +352,7 @@ impl Languages {
         for b in self.bridges.values() {
             b.server.shutdown();
         }
+        self.lint.shutdown();
     }
 }
 
@@ -416,7 +430,8 @@ mod tests {
 
     #[test]
     fn disabled_language_says_why() {
-        let mut langs = Languages { bridges: HashMap::new(), config: IdeConfig::parse("languages = [\"ts\"]") };
+        let lint = crate::diagnostics::LintQueue::new(Vec::new(), None);
+        let mut langs = Languages { bridges: HashMap::new(), lint, config: IdeConfig::parse("languages = [\"ts\"]") };
         assert_eq!(langs.lang_for(Path::new("/p/a.ts")), Ok(LangId::TypeScript));
         let why = langs.lang_for(Path::new("/p/a.rs")).unwrap_err();
         assert!(why.contains("Rust support is turned off"), "{why}");

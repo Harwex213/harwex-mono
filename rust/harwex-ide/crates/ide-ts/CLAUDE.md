@@ -17,6 +17,7 @@ The client for TypeScript's own servers: `tsserver` (TypeScript 6 and older, run
 - Every request has a timeout (default 5 s) and returns `Error::Timeout` instead of hanging. A dead server restarts on the next call and gets every open file back with its last editor text, unsaved edits included.
 - A position request on a file the editor never opened opens it from disk. Otherwise the server answers "No Project".
 - "No content available" returns `Ok(empty)` or `Ok(None)`, not an error.
+- `diagnostics(path)`: tsserver `syntacticDiagnosticsSync` + `semanticDiagnosticsSync` + `suggestionDiagnosticsSync` (tsserver runs with `--suppressDiagnosticEvents`, so no events), or the native server's pull. Hints that are not unused code (refactoring suggestions) are dropped on both backends.
 - `kill_server_for` is for tests only.
 - File renames: `edits_for_file_rename(old, new, candidates)` before the move (edited paths are old paths), `files_renamed` / `files_deleted` after. `file_references(path, candidates)` lists importers. `import_candidates` is the text pre-filter (stem, folder for `index`, package name for a package entry) over code files; one file per candidate project is opened first.
 

@@ -9,6 +9,7 @@
 //! All calls block. Callers use worker threads; [`LspClient`] is `Send + Sync`.
 
 mod client;
+mod diagnostics;
 mod edits;
 mod features;
 pub mod framing;
@@ -22,6 +23,7 @@ use std::time::Duration;
 pub use client::{
     default_capabilities, keep_stderr_tail, lock, read_text, ClientConfig, ConfigurationHandler, LspClient, NotificationHandler, Progress,
 };
+pub use diagnostics::{parse_diagnostics, Diagnostic, Severity};
 pub use edits::{FileEdit, TextEdit, PROBE_PREFIX};
 pub use features::{canonical, hover_markdown, split_hover_markdown, Hover};
 pub use position::{LineBreaks, LineIndex};

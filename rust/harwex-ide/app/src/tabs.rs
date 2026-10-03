@@ -37,6 +37,8 @@ pub struct EditorTab {
     pub(crate) lsp_version: Option<u64>,
     pub(crate) last_edit: Instant,
     pub(crate) saving: bool,
+    /// Errors and warnings from the TS server and the linters.
+    pub problems: crate::diagnostics::FileProblems,
 }
 
 impl EditorTab {
@@ -55,6 +57,7 @@ impl EditorTab {
             lsp_version: None,
             last_edit: Instant::now(),
             saving: false,
+            problems: Default::default(),
         }
     }
 

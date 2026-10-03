@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
-use ide_lsp::{ClientConfig, FileEdit, Hover, LineBreaks, LspClient};
+use ide_lsp::{ClientConfig, Diagnostic, FileEdit, Hover, LineBreaks, LspClient};
 use serde_json::json;
 
 use crate::{Error, Location, Reference};
@@ -41,6 +41,8 @@ impl LspServer {
                 "references": {},
                 "documentHighlight": {},
                 "hover": {"contentFormat": ["markdown", "plaintext"]},
+                "diagnostic": {"dynamicRegistration": false, "tagSupport": {"valueSet": [1, 2]}},
+                "publishDiagnostics": {"tagSupport": {"valueSet": [1, 2]}},
             },
             "workspace": {
                 "configuration": true,
@@ -48,6 +50,7 @@ impl LspServer {
                 "workspaceEdit": {"documentChanges": true},
                 // TypeScript 7 answers `willRenameFiles` only when the client says it sends it.
                 "fileOperations": {"willRename": true, "didRename": true},
+                "diagnostics": {"refreshSupport": true},
             },
             "window": {"workDoneProgress": false},
         });
@@ -88,6 +91,10 @@ impl LspServer {
 
     pub(crate) fn hover(&self, path: &Path, line: usize, column: usize, timeout: Duration) -> Result<Option<Hover>, Error> {
         self.client.hover(path, line, column, timeout).map_err(map_err)
+    }
+
+    pub(crate) fn diagnostics(&self, path: &Path, timeout: Duration) -> Result<Vec<Diagnostic>, Error> {
+        self.client.diagnostics(path, timeout).map_err(map_err)
     }
 
     pub(crate) fn will_rename(&self, old: &Path, new: &Path, timeout: Duration) -> Result<Vec<FileEdit>, Error> {

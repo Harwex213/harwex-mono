@@ -17,6 +17,17 @@
 //! [ts]
 //! idle_timeout_secs = 600
 //!
+//! [diagnostics]
+//! ts = true                           # TypeScript errors from the TS server (default on)
+//!
+//! [diagnostics.oxlint]                # default: on where a package has an oxlint config
+//! enabled = true
+//! type_aware = true                   # default: on when oxlint-tsgolint is installed
+//! type_check = false                  # TS errors from oxlint; default: on when supported
+//!
+//! [diagnostics.eslint]                # default: on where a package has an ESLint config
+//! enabled = true
+//!
 //! [memory]
 //! interval_secs = 15                  # how often the status bar's memory indicator samples
 //!
@@ -52,6 +63,26 @@ impl Default for RustConfig {
     }
 }
 
+/// `[diagnostics]`. `None` means "decide from what the package has installed".
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct DiagnosticsConfig {
+    pub ts: Option<bool>,
+    pub oxlint: OxlintConfig,
+    pub eslint: EslintConfig,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct EslintConfig {
+    pub enabled: Option<bool>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct OxlintConfig {
+    pub enabled: Option<bool>,
+    pub type_aware: Option<bool>,
+    pub type_check: Option<bool>,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct IdeConfig {
     /// Languages whose servers may start. `None` means all.
@@ -60,6 +91,7 @@ pub struct IdeConfig {
     pub ts_idle_timeout: Option<Duration>,
     pub rust_idle_timeout: Option<Duration>,
     pub rust: RustConfig,
+    pub diagnostics: DiagnosticsConfig,
     /// How often the memory indicator samples. At least one second.
     pub memory_interval: Duration,
     /// `[project] excluded`: folders relative to the root, `/`-separated, no trailing slash.
@@ -78,6 +110,7 @@ impl Default for IdeConfig {
             ts_idle_timeout: None,
             rust_idle_timeout: None,
             rust: RustConfig::default(),
+            diagnostics: DiagnosticsConfig::default(),
             memory_interval: crate::memory::DEFAULT_INTERVAL,
             excluded: Vec::new(),
             warnings: Vec::new(),
@@ -138,6 +171,7 @@ impl IdeConfig {
                         }
                     }
                 }
+                "diagnostics" => parse_diagnostics(value, &mut config),
                 "memory" => {
                     for (k, v) in value.as_table().into_iter().flatten() {
                         match k.as_str() {
@@ -221,6 +255,57 @@ fn parse_rust(value: &toml::Value, config: &mut IdeConfig) {
     }
 }
 
+fn parse_diagnostics(value: &toml::Value, config: &mut IdeConfig) {
+    let Some(table) = value.as_table() else {
+        config.warnings.push(format!("{CONFIG_PATH}: [diagnostics] must be a table"));
+        return;
+    };
+    let flag = |v: &toml::Value, key: &str, warnings: &mut Vec<String>| match v.as_bool() {
+        Some(b) => Some(b),
+        None => {
+            warnings.push(format!("{CONFIG_PATH}: {key} must be true or false"));
+            None
+        }
+    };
+    for (k, v) in table {
+        match k.as_str() {
+            "ts" => config.diagnostics.ts = flag(v, "diagnostics.ts", &mut config.warnings),
+            "oxlint" => {
+                let Some(ox) = v.as_table() else {
+                    config.warnings.push(format!("{CONFIG_PATH}: [diagnostics.oxlint] must be a table"));
+                    continue;
+                };
+                for (k, v) in ox {
+                    let key = format!("diagnostics.oxlint.{k}");
+                    let slot = match k.as_str() {
+                        "enabled" => &mut config.diagnostics.oxlint.enabled,
+                        "type_aware" => &mut config.diagnostics.oxlint.type_aware,
+                        "type_check" => &mut config.diagnostics.oxlint.type_check,
+                        _ => {
+                            config.warnings.push(format!("{CONFIG_PATH}: unknown key {key}"));
+                            continue;
+                        }
+                    };
+                    *slot = flag(v, &key, &mut config.warnings);
+                }
+            }
+            "eslint" => {
+                let Some(es) = v.as_table() else {
+                    config.warnings.push(format!("{CONFIG_PATH}: [diagnostics.eslint] must be a table"));
+                    continue;
+                };
+                for (k, v) in es {
+                    match k.as_str() {
+                        "enabled" => config.diagnostics.eslint.enabled = flag(v, "diagnostics.eslint.enabled", &mut config.warnings),
+                        _ => config.warnings.push(format!("{CONFIG_PATH}: unknown key diagnostics.eslint.{k}")),
+                    }
+                }
+            }
+            other => config.warnings.push(format!("{CONFIG_PATH}: unknown key diagnostics.{other}")),
+        }
+    }
+}
+
 /// Seconds as a `Duration`. Fractions are allowed, so tests can use a short timeout.
 fn secs(value: &toml::Value, key: &str, warnings: &mut Vec<String>) -> Option<Duration> {
     let n = value.as_float().or_else(|| value.as_integer().map(|i| i as f64));
@@ -288,6 +373,21 @@ mod tests {
         let low = IdeConfig::parse("[memory]\ninterval_secs = 0.1\n");
         assert_eq!(low.memory_interval, Duration::from_secs(15));
         assert!(low.warnings[0].contains("at least 1"), "{:?}", low.warnings);
+    }
+
+    #[test]
+    fn diagnostics_section() {
+        assert_eq!(IdeConfig::default().diagnostics, DiagnosticsConfig::default());
+        let c = IdeConfig::parse("[diagnostics]\nts = false\n\n[diagnostics.oxlint]\nenabled = true\ntype_aware = false\ntype_check = true\n");
+        assert!(c.warnings.is_empty(), "{:?}", c.warnings);
+        assert_eq!(c.diagnostics.ts, Some(false));
+        assert_eq!(c.diagnostics.oxlint, OxlintConfig { enabled: Some(true), type_aware: Some(false), type_check: Some(true) });
+        let c = IdeConfig::parse("[diagnostics.eslint]\nenabled = false\n");
+        assert!(c.warnings.is_empty(), "{:?}", c.warnings);
+        assert_eq!(c.diagnostics.eslint, EslintConfig { enabled: Some(false) });
+        let bad = IdeConfig::parse("[diagnostics]\nts = 1\ncolour = true\n[diagnostics.oxlint]\nfast = true\n[diagnostics.eslint]\nfix = true\n");
+        assert_eq!(bad.warnings.len(), 4, "{:?}", bad.warnings);
+        assert_eq!(bad.diagnostics, DiagnosticsConfig::default());
     }
 
     #[test]

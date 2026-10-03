@@ -27,20 +27,22 @@ The language-server suites run against pinned tools, never against another repos
 cargo xtask test-tools
 ```
 
-It downloads into `target/tools/` (or `$CARGO_TARGET_DIR/tools/`) and verifies every file: TypeScript 5.9.3 (`ts5/`), TypeScript 7.0.2 with its platform package (`ts7/`), rust-analyzer (`rust-analyzer/bin`, plus the `librustc_driver` it links) and rust-src (`rust-src/lib/rustlib/src/rust/library`). The pins are at the top of `xtask/src/test_tools.rs`. A second run needs no network. `cargo clean` deletes the tools.
+It downloads into `target/tools/` (or `$CARGO_TARGET_DIR/tools/`) and verifies every file: TypeScript 5.9.3 (`ts5/`), TypeScript 7.0.2 with its platform package (`ts7/`), oxlint 1.77.0 with its native binding, `oxlint-tsgolint` 7.0.2002 and its platform binary (`oxlint/`), ESLint 10.12.0 with `@eslint/js`, typescript-eslint 8.71.0 and TypeScript 5.9.3 as a full npm tree pinned by `xtask/src/eslint.lock` (`eslint/`), rust-analyzer (`rust-analyzer/bin`, plus the `librustc_driver` it links) and rust-src (`rust-src/lib/rustlib/src/rust/library`). The pins are at the top of `xtask/src/test_tools.rs`. A second run needs no network. `cargo clean` deletes the tools.
 
 Each test helper looks up a tool in one order: the env override, then `target/tools/`, then it prints a `skipping ...` line that says to run `cargo xtask test-tools`, and the test passes.
 
 | Tool | Override | Helper |
 |---|---|---|
 | TypeScript 5 (a `typescript` package dir) | `HARWEX_TEST_TS5` | `app/tests/common/fixtures.rs` `typescript()`, `crates/ide-ts/tests/common` `ts5()` |
-| TypeScript 7 (a `typescript` package dir, its platform package beside its real dir) | `HARWEX_TEST_TS7` | `crates/ide-ts/tests/common` `ts7()` |
+| TypeScript 7 (a `typescript` package dir, its platform package beside its real dir) | `HARWEX_TEST_TS7` | `crates/ide-ts/tests/common` `ts7()`, `app/tests/common/fixtures.rs` `typescript7()` |
+| oxlint (an `oxlint` package dir; its binding and `oxlint-tsgolint` beside its real dir) | `HARWEX_TEST_OXLINT` | `app/tests/common/fixtures.rs` `oxlint()` |
+| ESLint (a `node_modules` dir with `eslint`, `@eslint/js`, `typescript-eslint`, `typescript`) | `HARWEX_TEST_ESLINT` | `app/tests/common/fixtures.rs` `eslint_modules()` |
 | rust-analyzer | `HARWEX_RUST_ANALYZER` | `app/tests/common/fixtures.rs` `use_test_rust_tools()` |
 | rust-src `library` dir | `RUST_SRC_PATH` | same |
 
 A rust-analyzer on PATH or a rust-src in rustup is not used, so a run never passes by luck. Never install either into `~/.rustup` for the tests.
 
-The timing checks that used to read other repositories now run on generated trees: `crates/ide-git/tests/large_repo.rs` (4000 files, about 1400 commits with merges, a dirty worktree) and `crates/ide-ts/tests/workspace.rs` (40 linked workspace packages and a `.d.ts` + `.js` dependency). Their budgets are in `docs/timings.md`.
+The timing checks that used to read other repositories now run on generated trees: `crates/ide-git/tests/large_repo.rs` (4000 files, about 1400 commits with merges, a dirty worktree), `crates/ide-ts/tests/workspace.rs` (40 linked workspace packages and a `.d.ts` + `.js` dependency) and `app/tests/lint_budget.rs` (ESLint and oxlint on 200 packages, without and with type-aware rules). Their budgets are in `docs/timings.md`.
 
 ## Clean-machine check
 

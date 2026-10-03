@@ -21,7 +21,8 @@ Editor:
 - [idea] Make ropey break lines like the servers do. VT, FF and NEL shift TypeScript positions by one line.
 
 Navigation and languages:
-- [idea] Show diagnostics. TypeScript events and `publishDiagnostics` are dropped, and rust-analyzer runs with diagnostics off.
+- [idea] Rust diagnostics: rust-analyzer runs with diagnostics off. Turn them on as a source in the diagnostics layer.
+- [idea] Problems window: a "Project Errors" tab, quick fixes (oxlint and TS code actions) and Alt+Enter.
 - [idea] Incremental `textChanges` / `didChange` instead of full text on every edit, for 100k-line files.
 - [idea] Nav chooser previews and Find in Files columns read the unsaved buffer, not the disk. A BOM shifts Find in Files columns on line 1.
 - [idea] Share unsaved edits between two TypeScript servers (two `node_modules/typescript` installs in one workspace).

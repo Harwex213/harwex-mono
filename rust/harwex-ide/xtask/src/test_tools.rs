@@ -6,6 +6,12 @@
 //! - `ts5/node_modules/typescript`: TypeScript 5 with `lib/tsserver.js`.
 //! - `ts7/node_modules/typescript` and `ts7/node_modules/@typescript/typescript-<os>-<arch>`:
 //!   TypeScript 7 and its native platform package, side by side as npm installs them.
+//! - `oxlint/node_modules/oxlint`, `@oxlint/binding-<os>-<arch>`, `oxlint-tsgolint` and
+//!   `@oxlint-tsgolint/<os>-<arch>`: oxlint with its native binding and the type-aware
+//!   backend (tsgolint), side by side as npm installs them.
+//! - `eslint/node_modules/...`: ESLint, `@eslint/js`, typescript-eslint and TypeScript 5 with
+//!   every dependency, laid out as in `eslint.lock` (an npm install tree). The lock names each
+//!   tarball and its integrity, so the whole tree is pinned, not only the top packages.
 //! - `rust-analyzer/rust-analyzer`: the binary from the `rust-analyzer-preview` component.
 //! - `rust-src/lib/rustlib/src/rust/library`: the standard library sources.
 //!
@@ -23,6 +29,16 @@ use std::process::{Command, Stdio};
 /// The pinned versions. Bump them here and rerun `cargo xtask test-tools`.
 pub const TYPESCRIPT_5: &str = "5.9.3";
 pub const TYPESCRIPT_7: &str = "7.0.2";
+/// oxlint and its type-aware backend. The binding and the platform binary share the version
+/// of their main package.
+pub const OXLINT: &str = "1.77.0";
+pub const OXLINT_TSGOLINT: &str = "7.0.2002";
+/// ESLint and typescript-eslint. `eslint.lock` pins them with every dependency; a test checks
+/// that the lock holds these versions. Regenerate the lock from an `npm install` when bumping.
+pub const ESLINT: &str = "10.12.0";
+pub const ESLINT_JS: &str = "10.0.1";
+pub const TYPESCRIPT_ESLINT: &str = "8.71.0";
+const ESLINT_LOCK: &str = include_str!("eslint.lock");
 /// The Rust release that rust-analyzer and rust-src come from. Keep it at the toolchain's
 /// version, so the std sources match the compiler.
 pub const RUST: &str = "1.97.1";
@@ -38,6 +54,23 @@ pub fn run(tools: &Path) -> Result<(), String> {
     provision(tools, "ts5", &[("typescript", TYPESCRIPT_5)], |stage| npm_group(stage, &[("typescript", TYPESCRIPT_5)]))?;
     let ts7 = [("typescript", TYPESCRIPT_7), (platform.as_str(), TYPESCRIPT_7)];
     provision(tools, "ts7", &ts7, |stage| npm_group(stage, &ts7))?;
+    let (binding, tsgolint) = oxlint_platform_packages();
+    let oxlint = [
+        ("oxlint", OXLINT),
+        (binding.as_str(), OXLINT),
+        ("oxlint-tsgolint", OXLINT_TSGOLINT),
+        (tsgolint.as_str(), OXLINT_TSGOLINT),
+    ];
+    provision(tools, "oxlint", &oxlint, |stage| npm_group(stage, &oxlint))?;
+    let lock_hash = format!("{:016x}", fnv1a(ESLINT_LOCK.as_bytes()));
+    let eslint = [
+        ("eslint", ESLINT),
+        ("@eslint/js", ESLINT_JS),
+        ("typescript-eslint", TYPESCRIPT_ESLINT),
+        ("typescript", TYPESCRIPT_5),
+        ("eslint.lock", lock_hash.as_str()),
+    ];
+    provision(tools, "eslint", &eslint, |stage| npm_lock(stage, ESLINT_LOCK))?;
 
     let triple = host_triple()?;
     provision(tools, "rust-analyzer", &[("rust-analyzer", RUST), ("target", triple.as_str())], |stage| {
@@ -80,6 +113,8 @@ pub fn run(tools: &Path) -> Result<(), String> {
     println!("test tools in {}:", tools.display());
     println!("  typescript {TYPESCRIPT_5:<8} ts5/node_modules/typescript       (override: HARWEX_TEST_TS5)");
     println!("  typescript {TYPESCRIPT_7:<8} ts7/node_modules/typescript       (override: HARWEX_TEST_TS7)");
+    println!("  oxlint {OXLINT:<12} oxlint/node_modules/oxlint         (override: HARWEX_TEST_OXLINT)");
+    println!("  eslint {ESLINT:<12} eslint/node_modules/eslint         (override: HARWEX_TEST_ESLINT, typescript-eslint {TYPESCRIPT_ESLINT})");
     println!("  rust-analyzer {RUST:<5} rust-analyzer/bin/rust-analyzer   (override: HARWEX_RUST_ANALYZER)");
     println!("  rust-src {RUST:<10} rust-src/lib/rustlib/src/rust/library (override: RUST_SRC_PATH)");
     Ok(())
@@ -132,6 +167,74 @@ fn npm_group(stage: &Path, packages: &[(&str, &str)]) -> Result<(), String> {
         remove(&unpacked)?;
     }
     Ok(())
+}
+
+/// One package of a lock: where it goes, its tarball and the base64 sha512 of the tarball.
+#[derive(Debug, PartialEq, Eq)]
+pub struct LockEntry<'a> {
+    pub dir: &'a str,
+    pub url: &'a str,
+    pub sha512: &'a str,
+}
+
+/// The lines of a lock file (`<dir> <url> sha512-<base64>`; `#` starts a comment).
+pub fn parse_lock(lock: &str) -> Result<Vec<LockEntry<'_>>, String> {
+    let mut out = Vec::new();
+    for line in lock.lines().map(str::trim).filter(|l| !l.is_empty() && !l.starts_with('#')) {
+        let parts: Vec<&str> = line.split_whitespace().collect();
+        let [dir, url, integrity] = parts[..] else { return Err(format!("bad lock line: {line}")) };
+        let sha512 = integrity.strip_prefix("sha512-").ok_or_else(|| format!("{dir}: integrity is not sha512: {integrity}"))?;
+        if !dir.starts_with("node_modules/") || dir.split('/').any(|p| p == ".." || p.is_empty()) {
+            return Err(format!("bad install dir in the lock: {dir}"));
+        }
+        if !url.starts_with(REGISTRY) {
+            return Err(format!("{dir}: tarball is not from {REGISTRY}: {url}"));
+        }
+        out.push(LockEntry { dir, url, sha512 });
+    }
+    Ok(out)
+}
+
+/// Unpacks every package of a lock into `stage/<dir>`, eight downloads at a time.
+fn npm_lock(stage: &Path, lock: &str) -> Result<(), String> {
+    let entries = parse_lock(lock)?;
+    // Parents first, so a nested `node_modules` lands inside an unpacked package.
+    let mut entries: Vec<&LockEntry> = entries.iter().collect();
+    entries.sort_by_key(|e| e.dir.matches("/node_modules/").count());
+    for depth in 0..=entries.last().map_or(0, |e| e.dir.matches("/node_modules/").count()) {
+        let level: Vec<&&LockEntry> = entries.iter().filter(|e| e.dir.matches("/node_modules/").count() == depth).collect();
+        for chunk in level.chunks(8) {
+            let results: Vec<Result<(), String>> = std::thread::scope(|scope| {
+                let handles: Vec<_> = chunk
+                    .iter()
+                    .enumerate()
+                    .map(|(i, e)| scope.spawn(move || npm_package(&stage.join(format!(".dl{i}")), e.url, e.sha512, &stage.join(e.dir))))
+                    .collect();
+                handles.into_iter().map(|h| h.join().unwrap_or_else(|_| Err("download thread panicked".into()))).collect()
+            });
+            results.into_iter().collect::<Result<Vec<()>, String>>()?;
+        }
+    }
+    Ok(())
+}
+
+/// Downloads one npm tarball into `scratch`, checks it and moves its top dir to `target`.
+fn npm_package(scratch: &Path, url: &str, sha512: &str, target: &Path) -> Result<(), String> {
+    remove(scratch)?;
+    fs::create_dir_all(scratch).map_err(|e| e.to_string())?;
+    let file = fetch(scratch, url, Hash::Sha512Base64(sha512))?;
+    let unpacked = scratch.join(".unpacked");
+    fs::create_dir_all(&unpacked).map_err(|e| e.to_string())?;
+    unpack(&file, &unpacked, &[])?;
+    let top = single_child(&unpacked)?;
+    fs::create_dir_all(target.parent().unwrap()).map_err(|e| e.to_string())?;
+    fs::rename(&top, target).map_err(|e| format!("move {} to {}: {e}", top.display(), target.display()))?;
+    remove(scratch)
+}
+
+/// 64-bit FNV-1a, for the stamp: a changed lock provisions again.
+fn fnv1a(bytes: &[u8]) -> u64 {
+    bytes.iter().fold(0xcbf2_9ce4_8422_2325, |h, &b| (h ^ u64::from(b)).wrapping_mul(0x0100_0000_01b3))
 }
 
 /// The channel manifest, cached in `tools/` and checked against the pinned sha256 each time.
@@ -319,8 +422,15 @@ pub fn base64(bytes: &[u8]) -> String {
     out
 }
 
-/// `@typescript/typescript-<os>-<arch>`, named the way npm names `process.platform`/`arch`.
-fn npm_platform_package() -> Result<String, String> {
+/// `@oxlint/binding-<os>-<arch>[-gnu]` and `@oxlint-tsgolint/<os>-<arch>`.
+fn oxlint_platform_packages() -> (String, String) {
+    let (os, arch) = npm_os_arch();
+    let libc = if os == "linux" { "-gnu" } else { "" };
+    (format!("@oxlint/binding-{os}-{arch}{libc}"), format!("@oxlint-tsgolint/{os}-{arch}"))
+}
+
+/// `process.platform` and `process.arch` of node for this machine.
+fn npm_os_arch() -> (&'static str, &'static str) {
     let os = match env::consts::OS {
         "macos" => "darwin",
         "windows" => "win32",
@@ -331,6 +441,12 @@ fn npm_platform_package() -> Result<String, String> {
         "x86_64" => "x64",
         other => other,
     };
+    (os, arch)
+}
+
+/// `@typescript/typescript-<os>-<arch>`, named the way npm names `process.platform`/`arch`.
+fn npm_platform_package() -> Result<String, String> {
+    let (os, arch) = npm_os_arch();
     Ok(format!("@typescript/typescript-{os}-{arch}"))
 }
 
@@ -374,6 +490,20 @@ mod tests {
         assert_eq!(json_string(dist, "tarball").as_deref(), Some("https://r/t.tgz"));
         assert_eq!(json_string(dist, "integrity").as_deref(), Some("sha512-AB=="));
         assert_eq!(json_string(dist, "missing"), None);
+    }
+
+    #[test]
+    fn eslint_lock_pins_the_named_versions() {
+        let entries = parse_lock(ESLINT_LOCK).unwrap();
+        for (name, version) in [("eslint", ESLINT), ("@eslint/js", ESLINT_JS), ("typescript-eslint", TYPESCRIPT_ESLINT), ("typescript", TYPESCRIPT_5)] {
+            let dir = format!("node_modules/{name}");
+            let e = entries.iter().find(|e| e.dir == dir).unwrap_or_else(|| panic!("{dir} is not in eslint.lock"));
+            let base = name.rsplit('/').next().unwrap();
+            assert!(e.url.ends_with(&format!("/{base}-{version}.tgz")), "{dir}: {}", e.url);
+        }
+        assert!(parse_lock("node_modules/../x https://registry.npmjs.org/x.tgz sha512-AA==").is_err());
+        assert!(parse_lock("node_modules/x https://evil.example/x.tgz sha512-AA==").is_err());
+        assert!(parse_lock("node_modules/x https://registry.npmjs.org/x.tgz sha1-AA==").is_err());
     }
 
     #[test]

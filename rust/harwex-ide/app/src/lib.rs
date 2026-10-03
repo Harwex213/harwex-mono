@@ -4,6 +4,7 @@
 pub mod app;
 pub mod breadcrumbs;
 pub mod chrome;
+pub mod diagnostics;
 pub mod fileops;
 pub mod find;
 pub mod git;

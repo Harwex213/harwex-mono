@@ -263,3 +263,44 @@ fn bench_10k_carets() {
 fn key(key: egui::Key, modifiers: egui::Modifiers) -> Event {
     Event::Key { key, physical_key: None, pressed: true, repeat: false, modifiers }
 }
+
+/// 10k problem underlines over the 200k-line file: the steady frame and the frame after a
+/// scroll stay in the budgets (squiggles cost the visible lines, scrollbar marks the track).
+#[test]
+fn bench_10k_problems() {
+    use ide_editor::{ProblemMark, ProblemSeverity};
+    let text = generate();
+    let mut doc = Document::from_text(&text, Language::TypeScript);
+    doc.wait_syntax();
+    let mut state = EditorState::new();
+    let problems: Vec<ProblemMark> = (0..10_000)
+        .map(|i| {
+            let start = doc.line_start(i * 20 + 3) + 2;
+            let severity = ProblemSeverity::ALL[i % 4];
+            ProblemMark { start, end: start + 5, severity }
+        })
+        .collect();
+    let ctx = egui::Context::default();
+    let run = |doc: &mut Document, state: &mut EditorState, events: Vec<Event>| -> Duration {
+        let input = RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(1400.0, 900.0))), events, ..Default::default() };
+        let t = Instant::now();
+        let _ = ctx.run(input, |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                EditorView::new(doc, state).problems(&problems).show(ui);
+            });
+        });
+        t.elapsed()
+    };
+    for _ in 0..3 {
+        run(&mut doc, &mut state, vec![]);
+    }
+    let steady: Vec<Duration> = (0..20).map(|_| run(&mut doc, &mut state, vec![])).collect();
+    let steady = steady.iter().sum::<Duration>() / steady.len() as u32;
+    state.reveal(Position::new(LINES / 2, 0));
+    let jump = run(&mut doc, &mut state, vec![]);
+    println!("10k problems: steady frame {:.2} ms, jump frame {:.2} ms", ms(steady), ms(jump));
+    if !cfg!(debug_assertions) {
+        assert!(steady < Duration::from_millis(4), "steady frame {steady:?}");
+        assert!(jump < Duration::from_millis(12), "jump frame {jump:?}");
+    }
+}

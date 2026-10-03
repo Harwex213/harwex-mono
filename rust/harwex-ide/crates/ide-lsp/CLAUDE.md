@@ -19,6 +19,7 @@ A generic Language Server Protocol client. It exists so every language server (t
 - The reader thread answers server requests at once: `workspace/configuration` from the `configuration` handler (else `null` per item), `workspace/applyEdit` as not applied, everything else `null`. Never block the reader thread. A blocked reader stalls every request of that server.
 - `Error::is_retryable()` is true for content modified, server cancelled and request cancelled. Adapters retry those.
 - `framing` is also used by the tsserver reader in `ide-ts`. Lengths are UTF-8 bytes.
+- Diagnostics: `diagnostics(path)` pulls `textDocument/diagnostic` when the server has `diagnosticProvider`, else returns the last `publishDiagnostics` for the file (kept raw by the reader, dropped on `close`). Positions convert with the text the server has. `default_capabilities` declares pull and push with `tagSupport` (unused code arrives as tag 1 only then). Server `*/refresh` requests also reach `on_notification`.
 - `LocationLink` results use `targetSelectionRange` (the declared name), like tsserver.
 - File operations: `will_rename_files` (before the move) returns `FileEdit`s keyed by the old paths; `did_rename_files` (after) closes files under the old path and notifies only a running server. `file_usages` asks `willRenameFiles` for a probe name (`PROBE_PREFIX`) and turns the edits into `Reference`s. `WorkspaceEdit` parsing reads `documentChanges` or `changes` and skips create/rename/delete operations. `default_capabilities` declares `fileOperations` and `workspaceEdit.documentChanges`.
 
@@ -34,4 +35,5 @@ Integration tests run against `src/bin/fake_server.rs`, a scripted LSP server (`
 
 - The state lock is held only by callers of one server. Never hold it across a wait for a response.
 - `initialize` has its own minimum timeout (`min_initialize_timeout`), so a small request timeout cannot break the handshake.
-- Server notifications other than progress (`publishDiagnostics`, `window/logMessage`) reach only `on_notification`. Nothing shows them yet.
+- Server notifications other than progress and `publishDiagnostics` (`window/logMessage`) reach only `on_notification`.
+- The TypeScript 7 server tags unused code only when the pull capability (`textDocument.diagnostic`) declares `tagSupport`; without it unused locals arrive as plain hints.
