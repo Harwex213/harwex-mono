@@ -126,6 +126,9 @@ impl IdeApp {
         if let Some(layout) = storage.and_then(|s| s.get_string(STORAGE_LAYOUT)).and_then(|t| layout::Layout::from_storage(&t)) {
             state.layout = layout;
         }
+        if let Some(storage) = storage {
+            git::load_storage(&mut state, storage);
+        }
         let last = if options.restore_last_folder { storage.and_then(|s| s.get_string(STORAGE_LAST_FOLDER)).map(PathBuf::from) } else { None };
         if let Some(folder) = options.project.or(last) {
             state.open_project(folder);
@@ -232,6 +235,7 @@ impl eframe::App for IdeApp {
             storage.set_string(STORAGE_LAST_FOLDER, p.root.display().to_string());
         }
         storage.set_string(STORAGE_LAYOUT, self.state.layout.to_storage());
+        git::save_storage(&self.state, storage);
     }
 
     fn on_exit(&mut self) {
@@ -596,6 +600,7 @@ fn tool_window(s: &mut AppState, ui: &mut egui::Ui, w: ToolWindow) {
                 icons::paint(ui.painter(), r, Icon::ChevronDown, t.text_dim);
             }
             ToolWindow::Terminal => crate::terminal::header_tabs(s, ui),
+            ToolWindow::Git => git::log_header(s, ui),
             _ => {}
         };
         let actions = |ui: &mut egui::Ui| {

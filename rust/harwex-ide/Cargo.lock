@@ -1712,6 +1712,7 @@ name = "ide-git"
 version = "0.1.0"
 dependencies = [
  "git2",
+ "regex",
  "similar",
  "tempfile",
 ]
@@ -1731,6 +1732,7 @@ dependencies = [
  "alacritty_terminal",
  "eframe",
  "egui",
+ "egui_kittest",
  "libc",
  "portable-pty",
 ]

@@ -3,7 +3,7 @@
 //! the `[project] excluded` list in `.harwex/ide.toml`.
 //!
 //! Everything here blocks on the disk; callers run it on a worker. The calls that reach the
-//! system (Trash, Finder, the clipboard) go through [`Platform`], so tests swap them out.
+//! system (Trash, Finder, the clipboard, the URL opener) go through [`Platform`], so tests swap them out.
 
 use std::path::{Component, Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -20,6 +20,8 @@ pub trait Platform: Send + Sync {
     fn reveal(&self, path: &Path) -> Result<(), String>;
     /// Puts text on the clipboard. Called on the UI thread.
     fn copy_text(&self, ctx: &egui::Context, text: &str);
+    /// Opens a URL in the default browser or mail app (`open`). Blocking: call it on a worker.
+    fn open_url(&self, url: &str) -> Result<(), String>;
     /// What a recording platform saw, oldest first ("trash /p/a.ts"). Empty for the real one.
     fn calls(&self) -> Vec<String> {
         Vec::new()
@@ -54,6 +56,20 @@ impl Platform for SystemPlatform {
 
     fn copy_text(&self, ctx: &egui::Context, text: &str) {
         ctx.copy_text(text.to_string());
+    }
+
+    fn open_url(&self, url: &str) -> Result<(), String> {
+        let program = if cfg!(target_os = "macos") { "/usr/bin/open" } else { "xdg-open" };
+        let mut cmd = std::process::Command::new(program);
+        // The caller passes only http, https, file and mailto URLs, so the argument never
+        // starts with `-` and cannot be read as an option.
+        cmd.arg(url);
+        let status = cmd.status().map_err(|e| e.to_string())?;
+        if status.success() {
+            Ok(())
+        } else {
+            Err(format!("{cmd:?} failed: {status}"))
+        }
     }
 }
 
@@ -108,6 +124,11 @@ impl Platform for RecordingPlatform {
 
     fn copy_text(&self, _ctx: &egui::Context, text: &str) {
         self.record(format!("copy {text}"));
+    }
+
+    fn open_url(&self, url: &str) -> Result<(), String> {
+        self.record(format!("open-url {url}"));
+        Ok(())
     }
 
     fn calls(&self) -> Vec<String> {

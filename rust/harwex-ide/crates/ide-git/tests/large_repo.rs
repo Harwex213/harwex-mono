@@ -128,7 +128,7 @@ fn status_and_log_budgets_on_generated_large_repo() {
     assert_eq!(deep.len(), 200);
     let (branches, branches_time) = timed(|| git.branches().unwrap());
     assert_eq!(branches.local.len(), 1 + MAIN_COMMITS / MERGE_EVERY);
-    let filter = LogFilter { path: Some(PathBuf::from(file(7))), ..Default::default() };
+    let filter = LogFilter { paths: vec![PathBuf::from(file(7))], ..Default::default() };
     let (by_path, by_path_time) = timed(|| git.log(&filter, 0, 50).unwrap());
     assert!(!by_path.is_empty());
 

@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use std::time::Instant;
 
 use egui::{vec2, Align2, Context, Id, Key, Modal, RichText, ScrollArea, Sense, TextEdit, Ui};
-use ide_git::{CommandOutcome, CommitDetails, CommitInfo, Error, Oid, Repo, StashEntry};
+use ide_git::{CommandOutcome, CommitDetails, CommitInfo, Error, Oid, PushTarget, Repo, StashEntry};
 
 use super::log::{format_time, kind_color, short};
 use crate::state::AppState;
@@ -32,10 +32,10 @@ pub struct RemoteUi {
 struct PushDialog {
     loading: bool,
     error: Option<String>,
+    /// The local branch to push; None while HEAD is detached.
     branch: Option<String>,
     detached: bool,
-    upstream: Option<String>,
-    remote_guess: String,
+    target: Option<PushTarget>,
     commits: Vec<CommitInfo>,
     selected: Option<Oid>,
     details: Option<CommitDetails>,
@@ -75,6 +75,11 @@ impl RemoteUi {
         self.push.is_some()
     }
 
+    /// The branch the push dialog pushes, once it is known.
+    pub fn push_branch(&self) -> Option<String> {
+        self.push.as_ref().and_then(|p| p.branch.clone())
+    }
+
     /// Subjects of the outgoing commits the push dialog lists.
     pub fn push_commits(&self) -> Vec<String> {
         self.push.as_ref().map(|p| p.commits.iter().map(|c| c.summary.clone()).collect()).unwrap_or_default()
@@ -98,28 +103,50 @@ impl RemoteUi {
     }
 }
 
+/// The push dialog for the current branch (Cmd+Shift+K, the toolbar and branch popups).
 pub fn open_push_dialog(state: &mut AppState) {
+    open_push(state, None);
+}
+
+/// The push dialog for the local branch `branch`, checked out or not (the branch tree).
+pub fn open_push_dialog_for(state: &mut AppState, branch: String) {
+    open_push(state, Some(branch));
+}
+
+fn open_push(state: &mut AppState, branch: Option<String>) {
     let Some(repo) = state.git.repo.clone() else { return };
-    state.git_ui.remote.push = Some(PushDialog { loading: true, ..Default::default() });
+    state.git_ui.remote.push = Some(PushDialog { loading: true, branch: branch.clone(), ..Default::default() });
     state.jobs.spawn(
         "Collecting outgoing commits",
-        move || (repo.outgoing(), repo.branches()),
-        |state, (out, branches)| {
+        move || {
+            // The current branch is resolved on the worker, so the list and the target agree.
+            let name = branch.or_else(|| repo.branches().ok().and_then(|b| b.current));
+            let commits = match &name {
+                Some(n) => repo.outgoing_of(n),
+                None => repo.outgoing(),
+            };
+            let target = name.as_deref().map(|n| repo.push_target(n));
+            (name, commits, target)
+        },
+        |state, (name, commits, target)| {
             let Some(d) = state.git_ui.remote.push.as_mut() else { return };
             d.loading = false;
-            match out {
+            d.detached = name.is_none();
+            d.branch = name;
+            match commits {
                 Ok(list) => {
                     d.selected = list.first().map(|c| c.oid);
                     d.commits = list;
                 }
                 Err(e) => d.error = Some(e.to_string()),
             }
-            if let Ok(b) = branches {
-                d.detached = b.detached;
-                d.branch = b.current.clone();
-                d.upstream = b.local.iter().find(|x| x.is_current).and_then(|x| x.upstream.clone());
-                d.remote_guess = b.remote.first().and_then(|r| r.name.split('/').next()).unwrap_or("origin").to_string();
-                d.set_upstream = d.upstream.is_none();
+            match target {
+                Some(Ok(t)) => {
+                    d.set_upstream = !t.tracked;
+                    d.target = Some(t);
+                }
+                Some(Err(e)) => d.error = Some(e.to_string()),
+                None => {}
             }
             if let Some(oid) = d.selected {
                 load_details(state, oid, DetailsTarget::Push);
@@ -264,7 +291,11 @@ fn push_window(state: &mut AppState, ctx: &Context) {
     let mut select: Option<Oid> = None;
     let mut diff: Option<(Oid, PathBuf)> = None;
     let branch = d.branch.clone().unwrap_or_else(|| "HEAD".into());
-    egui::Window::new(format!("Push Commits to {}", d.upstream.as_deref().map(|u| u.split('/').next().unwrap_or(u)).unwrap_or(&d.remote_guess)))
+    let title = match &d.target {
+        Some(t) => format!("Push {branch} to {}", t.remote),
+        None => format!("Push {branch}"),
+    };
+    egui::Window::new(title)
         .id(Id::new("git-push-window"))
         .open(&mut open)
         .collapsible(false)
@@ -282,11 +313,10 @@ fn push_window(state: &mut AppState, ctx: &Context) {
             if let Some(e) = &d.error {
                 ui.label(RichText::new(e).color(theme::T.error));
             }
-            let target = match &d.upstream {
-                Some(up) => format!("{branch} -> {up}"),
-                None => format!("{branch} -> {}/{branch}  (new)", d.remote_guess),
-            };
-            ui.label(RichText::new(target).strong().color(theme::T.text_bright));
+            if let Some(t) = &d.target {
+                let new = if t.tracked { "" } else { "  (new)" };
+                ui.label(RichText::new(format!("{branch} -> {}/{}{new}", t.remote, t.branch)).strong().color(theme::T.text_bright));
+            }
             if d.detached {
                 ui.label(RichText::new("HEAD is detached; check out a branch to push.").color(theme::T.warning));
             }
@@ -321,12 +351,13 @@ fn push_window(state: &mut AppState, ctx: &Context) {
                 });
             });
             ui.separator();
+            let untracked = d.target.as_ref().is_some_and(|t| !t.tracked);
             if d.confirm_force {
                 ui.label(RichText::new("Force push overwrites the remote branch if nobody else pushed to it since your last fetch (--force-with-lease). Continue?").color(theme::T.warning));
                 ui.horizontal(|ui| {
                     if ui.button("Force Push").clicked() {
                         d.confirm_force = false;
-                        deferred = Some(push_job(true, d.set_upstream && d.upstream.is_none()));
+                        deferred = d.branch.clone().map(|b| push_job(b, true, d.set_upstream && untracked));
                         d.pushing = true;
                     }
                     if ui.button("Cancel").clicked() {
@@ -337,11 +368,11 @@ fn push_window(state: &mut AppState, ctx: &Context) {
             }
             ui.horizontal(|ui| {
                 ui.checkbox(&mut d.force, "Force push (with lease)");
-                if d.upstream.is_none() {
+                if untracked {
                     ui.checkbox(&mut d.set_upstream, "Set upstream");
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    let can = !d.pushing && !d.detached && (d.upstream.is_none() || !d.commits.is_empty() || d.force);
+                    let can = !d.pushing && d.branch.is_some() && d.target.is_some() && (untracked || !d.commits.is_empty() || d.force);
                     if d.pushing {
                         ui.spinner();
                     }
@@ -349,7 +380,7 @@ fn push_window(state: &mut AppState, ctx: &Context) {
                         if d.force {
                             d.confirm_force = true;
                         } else {
-                            deferred = Some(push_job(false, d.set_upstream && d.upstream.is_none()));
+                            deferred = d.branch.clone().map(|b| push_job(b, false, d.set_upstream && untracked));
                             d.pushing = true;
                         }
                     }
@@ -372,10 +403,10 @@ fn push_window(state: &mut AppState, ctx: &Context) {
     }
 }
 
-fn push_job(force: bool, set_upstream: bool) -> Box<dyn FnOnce(&mut AppState)> {
+fn push_job(branch: String, force: bool, set_upstream: bool) -> Box<dyn FnOnce(&mut AppState)> {
     Box::new(move |state| {
-        let title = if force { "Force Push" } else { "Push" };
-        run_op(state, title, "Pushed", false, move |r| r.push(force, set_upstream).map(Some), |state, ok| {
+        let title = format!("{} {branch}", if force { "Force Push" } else { "Push" });
+        run_op(state, title, "Pushed", false, move |r| r.push_branch(&branch, force, set_upstream).map(Some), |state, ok| {
             if ok {
                 state.git_ui.remote.push = None;
             } else if let Some(d) = state.git_ui.remote.push.as_mut() {

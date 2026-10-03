@@ -47,13 +47,13 @@ fn log_filters_paging_and_graph_with_merge() {
     assert_eq!(r.len(), 2, "C plus the merge message mentioning feature");
     let by_hash = LogFilter { text: Some(c[..8].to_string()), ..Default::default() };
     assert_eq!(t.repo.log(&by_hash, 0, 10).unwrap()[0].oid.to_string(), c);
-    let path = LogFilter { path: Some(p("c.txt")), ..Default::default() };
+    let path = LogFilter { paths: vec![p("c.txt")], ..Default::default() };
     let r = t.repo.log(&path, 0, 10).unwrap();
     assert_eq!(r.len(), 1);
     assert_eq!(r[0].oid.to_string(), c);
-    let author = LogFilter { author: Some("nobody".into()), ..Default::default() };
+    let author = LogFilter { authors: vec!["nobody".into()], ..Default::default() };
     assert!(t.repo.log(&author, 0, 10).unwrap().is_empty());
-    let branch = LogFilter { branch: Some("feature".into()), ..Default::default() };
+    let branch = LogFilter { branches: vec!["feature".into()], ..Default::default() };
     assert_eq!(t.repo.log(&branch, 0, 10).unwrap().len(), 2);
 
     let rows = t.repo.graph(&log);
@@ -189,6 +189,82 @@ fn branches_ahead_behind_fetch_pull_push() {
     let ro = br.local.iter().find(|b| b.name == "remote-only").unwrap();
     assert_eq!(ro.upstream.as_deref(), Some("origin/remote-only"));
     assert_eq!(br.recent.first().map(String::as_str), Some("topic"));
+}
+
+/// Push of a branch that is not checked out: new upstream, existing upstream under another
+/// name, force-with-lease; HEAD and the worktree never move.
+#[test]
+fn push_non_current_branch() {
+    let (remote, _seed, t) = with_remote();
+    let remote_rev = |r: &str| git_in(remote.path(), &["rev-parse", r]).trim().to_string();
+    t.repo.create_branch("feature", None, false).unwrap();
+    t.git(&["checkout", "-q", "feature"]);
+    t.write("feat.txt", "1\n");
+    let f1 = t.commit_all("feature one");
+    t.write("feat.txt", "2\n");
+    let f2 = t.commit_all("feature two");
+    t.git(&["checkout", "-q", "main"]);
+    let head = t.git(&["rev-parse", "HEAD"]);
+
+    // No upstream: outgoing lists what no remote has, the push creates the branch and tracks it.
+    let out: Vec<String> = t.repo.outgoing_of("feature").unwrap().into_iter().map(|c| c.summary).collect();
+    assert_eq!(out, ["feature two", "feature one"]);
+    assert!(t.repo.outgoing().unwrap().is_empty(), "HEAD (main) has nothing to push");
+    let target = t.repo.push_target("feature").unwrap();
+    assert_eq!((target.remote.as_str(), target.branch.as_str(), target.tracked), ("origin", "feature", false));
+    let res = t.repo.push_branch("feature", false, true).unwrap();
+    assert!(res.success, "{res:?}");
+    assert_eq!(remote_rev("refs/heads/feature"), f2);
+    let feature = t.repo.branches().unwrap().local.into_iter().find(|b| b.name == "feature").unwrap();
+    assert_eq!(feature.upstream.as_deref(), Some("origin/feature"));
+    assert!(t.repo.outgoing_of("feature").unwrap().is_empty());
+    assert_eq!(t.git(&["rev-parse", "HEAD"]), head);
+    assert_eq!(t.repo.branches().unwrap().current.as_deref(), Some("main"));
+
+    // An existing upstream with a different name gets the push, not a same-named branch.
+    t.git(&["branch", "--set-upstream-to=origin/main", "feature"]);
+    let target = t.repo.push_target("feature").unwrap();
+    assert_eq!((target.branch.as_str(), target.tracked), ("main", true));
+    assert_eq!(t.repo.outgoing_of("feature").unwrap().len(), 2);
+    let res = t.repo.push_branch("feature", false, false).unwrap();
+    assert!(res.success, "{res:?}");
+    assert_eq!(remote_rev("refs/heads/main"), f2);
+
+    // A rewritten branch needs force-with-lease; a plain push is rejected.
+    t.git(&["branch", "--set-upstream-to=origin/feature", "feature"]);
+    t.git(&["branch", "-f", "feature", &f1]);
+    t.git(&["checkout", "-q", "feature"]);
+    t.write("feat.txt", "rewritten\n");
+    let rewritten = t.commit_all("feature rewritten");
+    t.git(&["checkout", "-q", "main"]);
+    t.repo.fetch().unwrap();
+    let res = t.repo.push_branch("feature", false, false).unwrap();
+    assert!(!res.success, "a non-fast-forward push must fail");
+    assert_eq!(remote_rev("refs/heads/feature"), f2);
+    let res = t.repo.push_branch("feature", true, false).unwrap();
+    assert!(res.success, "{res:?}");
+    assert_eq!(remote_rev("refs/heads/feature"), rewritten);
+    assert_eq!(t.repo.branches().unwrap().current.as_deref(), Some("main"));
+
+    // Force-with-lease refuses when the remote moved since the last fetch.
+    let other = tempfile::tempdir().unwrap();
+    git_in(other.path(), &["clone", "-q", "-b", "feature", remote.path().to_str().unwrap(), "."]);
+    configure(other.path());
+    std::fs::write(other.path().join("o.txt"), "o\n").unwrap();
+    git_in(other.path(), &["add", "-A"]);
+    git_in(other.path(), &["commit", "-q", "-m", "someone else"]);
+    git_in(other.path(), &["push", "-q", "origin", "feature"]);
+    let theirs = remote_rev("refs/heads/feature");
+    let res = t.repo.push_branch("feature", true, false).unwrap();
+    assert!(!res.success, "stale lease must be rejected");
+    assert_eq!(remote_rev("refs/heads/feature"), theirs);
+
+    // A branch that tracks a local branch pushes to the default remote under its own name.
+    t.git(&["branch", "--track", "local-child", "main"]);
+    let target = t.repo.push_target("local-child").unwrap();
+    assert_eq!((target.remote.as_str(), target.branch.as_str(), target.tracked), ("origin", "local-child", false));
+    assert!(t.repo.push_branch("missing", false, false).is_err());
+    assert_eq!(t.git(&["rev-parse", "HEAD"]), head);
 }
 
 #[test]

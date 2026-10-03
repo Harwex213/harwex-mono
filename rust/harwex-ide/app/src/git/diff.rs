@@ -71,6 +71,10 @@ enum Source {
     Worktree { abs: PathBuf, rel: PathBuf },
     /// Parent vs commit. `abs` is the file's place in the working tree.
     Commit { oid: Oid, rel: PathBuf, abs: PathBuf },
+    /// The combined change of several log commits (`Repo::diff_commits_file`).
+    Commits { oids: Vec<Oid>, rel: PathBuf, abs: PathBuf },
+    /// A revision vs the file on disk (Compare with Local).
+    RevLocal { rev: String, rel: PathBuf, abs: PathBuf },
 }
 
 /// One side of the diff.
@@ -277,6 +281,15 @@ impl DiffTab {
                 let short = &oid.to_string()[..8];
                 (format!("diff:{oid}:{}", rel.display()), format!("{} @ {short}", name_of(rel)), format!("{}: changes in {short}", rel.display()))
             }
+            Source::Commits { oids, rel, .. } => {
+                let ids: Vec<String> = oids.iter().map(|o| o.to_string()[..8].to_string()).collect();
+                let n = oids.len();
+                (format!("diff:{}:{}", ids.join(","), rel.display()), format!("{} @ {n} commits", name_of(rel)), format!("{}: changes in {}", rel.display(), ids.join(", ")))
+            }
+            Source::RevLocal { rev, rel, .. } => {
+                let short = &rev[..rev.len().min(8)];
+                (format!("diff:local:{rev}:{}", rel.display()), format!("{} ({short} vs Local)", name_of(rel)), format!("{}: {short} vs the working tree", rel.display()))
+            }
         };
         DiffTab { key, title, tooltip, source, load: Load::Loading, t: 0.0, hscroll: 0.0, current: None, goto_first: true, reloading: false, reload_pending: false, view_lines: 30.0, dragging_thumb: None }
     }
@@ -357,7 +370,7 @@ impl DiffTab {
 
     fn rel(&self) -> &Path {
         match &self.source {
-            Source::Worktree { rel, .. } | Source::Commit { rel, .. } => rel,
+            Source::Worktree { rel, .. } | Source::Commit { rel, .. } | Source::Commits { rel, .. } | Source::RevLocal { rel, .. } => rel,
         }
     }
 }
@@ -378,7 +391,7 @@ impl CustomTab for DiffTab {
     }
     fn file_path(&self) -> Option<PathBuf> {
         match &self.source {
-            Source::Worktree { abs, .. } | Source::Commit { abs, .. } => Some(abs.clone()),
+            Source::Worktree { abs, .. } | Source::Commit { abs, .. } | Source::Commits { abs, .. } | Source::RevLocal { abs, .. } => Some(abs.clone()),
         }
     }
     fn as_any_mut(&mut self) -> &mut dyn Any {
@@ -599,6 +612,11 @@ fn side_titles(source: &Source, d: &FileDiff) -> (String, String) {
             let short = &oid.to_string()[..8];
             (format!("{short}^  {old_path}{}", missing(d.old_exists)), format!("{short}  {new_path}{}", missing(d.new_exists)))
         }
+        Source::Commits { oids, .. } => {
+            let (first, last) = (oids.first().map(|o| o.to_string()[..8].to_string()).unwrap_or_default(), oids.last().map(|o| o.to_string()[..8].to_string()).unwrap_or_default());
+            (format!("before {first}  {old_path}{}", missing(d.old_exists)), format!("{last}  {new_path}{}", missing(d.new_exists)))
+        }
+        Source::RevLocal { rev, .. } => (format!("{}  {old_path}{}", &rev[..rev.len().min(8)], missing(d.old_exists)), format!("Working tree  {new_path}{}", missing(d.new_exists))),
     }
 }
 
@@ -793,6 +811,24 @@ pub fn open_commit_diff(state: &mut AppState, oid: ide_git::Oid, path: &Path) {
     open(state, Source::Commit { oid, rel, abs });
 }
 
+/// Opens a diff tab for `path` over several log commits: before the oldest one that changes
+/// it vs after the newest one. One commit is `open_commit_diff`.
+pub fn open_commits_diff(state: &mut AppState, oids: &[ide_git::Oid], path: &Path) {
+    if let [one] = oids {
+        return open_commit_diff(state, *one, path);
+    }
+    let Some(repo) = state.git.repo.clone() else { return };
+    let (rel, abs) = rel_and_abs(&repo, path);
+    open(state, Source::Commits { oids: oids.to_vec(), rel, abs });
+}
+
+/// Opens a diff tab: `path` at revision `rev` vs the file on disk (Compare with Local).
+pub fn open_rev_local_diff(state: &mut AppState, rev: &str, path: &Path) {
+    let Some(repo) = state.git.repo.clone() else { return };
+    let (rel, abs) = rel_and_abs(&repo, path);
+    open(state, Source::RevLocal { rev: rev.to_string(), rel, abs });
+}
+
 fn open(state: &mut AppState, source: Source) {
     let tab = DiffTab::new(source.clone());
     let key = tab.key.clone();
@@ -824,7 +860,7 @@ fn reload(state: &mut AppState, key: &str) {
     let buffer = buffer_text(state, &source);
     let key = key.to_string();
     let label = format!("Loading diff of {}", name_of(match &source {
-        Source::Worktree { rel, .. } | Source::Commit { rel, .. } => rel,
+        Source::Worktree { rel, .. } | Source::Commit { rel, .. } | Source::Commits { rel, .. } | Source::RevLocal { rel, .. } => rel,
     }));
     state.jobs.spawn(
         label,
@@ -832,6 +868,8 @@ fn reload(state: &mut AppState, key: &str) {
             let diff = match &source {
                 Source::Worktree { rel, .. } => repo.diff_file(rel, DiffSide::HeadVsWorktree),
                 Source::Commit { oid, rel, .. } => repo.diff_commit_file(oid, rel),
+                Source::Commits { oids, rel, .. } => repo.diff_commits_file(oids, rel),
+                Source::RevLocal { rev, rel, .. } => repo.diff_with_working_tree_file(rev, rel),
             };
             match diff {
                 Ok(d) => {
@@ -871,7 +909,7 @@ pub fn on_git_refreshed(state: &mut AppState) {
         .list
         .iter_mut()
         .filter_map(|t| match &mut t.content {
-            crate::tabs::TabContent::Custom(c) => c.as_any_mut().downcast_mut::<DiffTab>().filter(|d| matches!(d.source, Source::Worktree { .. })).map(|d| d.key.clone()),
+            crate::tabs::TabContent::Custom(c) => c.as_any_mut().downcast_mut::<DiffTab>().filter(|d| matches!(d.source, Source::Worktree { .. } | Source::RevLocal { .. })).map(|d| d.key.clone()),
             _ => None,
         })
         .collect();

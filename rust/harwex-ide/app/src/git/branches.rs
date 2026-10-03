@@ -37,7 +37,7 @@ enum BranchDialog {
 }
 
 #[derive(Clone)]
-enum Action {
+pub(crate) enum Action {
     Checkout(String),
     NewFrom(Option<String>),
     Merge(String),
@@ -291,7 +291,8 @@ pub(crate) fn arrow(p: &egui::Painter, c: Pos2, up: bool, color: egui::Color32) 
     p.line_segment([pos2(c.x + 3.5, c.y + 1.5 * s), pos2(c.x, c.y + 5.0 * s)], stroke);
 }
 
-fn run_action(state: &mut AppState, a: Action) {
+/// Also runs the branch actions of the Git window's branch tree.
+pub(crate) fn run_action(state: &mut AppState, a: Action) {
     let current = state.git.branch.clone().unwrap_or_else(|| "HEAD".into());
     match a {
         Action::Checkout(name) => {
@@ -318,6 +319,11 @@ fn run_action(state: &mut AppState, a: Action) {
         Action::Stash => super::remote::open_stash_dialog(state),
         Action::Unstash => super::remote::open_unstash_dialog(state),
     }
+}
+
+/// The Delete dialog for a branch picked outside the popup (the Git window's branch tree).
+pub(crate) fn open_delete_dialog(state: &mut AppState, name: String, remote: bool, upstream: Option<String>) {
+    state.git_ui.branches.dialog = Some(BranchDialog::Delete { name, remote, force: false, upstream, delete_upstream: false });
 }
 
 fn dialogs(state: &mut AppState, ctx: &Context) {

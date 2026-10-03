@@ -3,7 +3,7 @@
 //! pause so the previous step's result is drawn (and can be screenshotted).
 //!
 //! Steps: `log`, `select <row>`, `filter <text>`, `filehistory <path>`, `branches`,
-//! `branch-menu <name>`, `checkout <branch>`, `merge <branch>`, `rebase <branch>`, `push`,
+//! `branch-menu <name>`, `checkout <branch>`, `merge <branch>`, `rebase <branch>`, `push [branch]`,
 //! `update`, `stash`, `unstash`, `conflicts`, `mergetool <path>`, `take <ours|theirs>`, `save`, `dump`, `logaction <copy|checkout|newbranch|reset|revert|cherry-pick>`, `wait <ms>`.
 
 use std::path::PathBuf;
@@ -43,7 +43,8 @@ pub(super) fn tick(state: &mut AppState) {
         "branches" => super::super::branches::open_popup(state, egui::pos2(120.0, 34.0)),
         "branch-menu" => super::super::branches::test_expand(state, &arg_s),
         "checkout" | "merge" | "rebase" => super::super::branches::test_action(state, &name, &arg_s),
-        "push" => super::open_push_dialog(state),
+        "push" if arg_s.is_empty() => super::open_push_dialog(state),
+        "push" => super::open_push_dialog_for(state, arg_s.clone()),
         "update" => super::open_update_dialog(state),
         "stash" => super::open_stash_dialog(state),
         "unstash" => super::open_unstash_dialog(state),
@@ -61,8 +62,13 @@ pub(super) fn tick(state: &mut AppState) {
             super::run_op(state, "New Branch", format!("Created {n}"), false, move |r| r.create_branch(&n, None, true).map(|_| None), |_, _| {});
         }
         "push-go" => {
-            let up = state.git_ui.remote.push.as_ref().map(|p| p.set_upstream && p.upstream.is_none()).unwrap_or(false);
-            super::push_job(false, up)(state);
+            let job = state.git_ui.remote.push.as_ref().and_then(|p| {
+                let up = p.set_upstream && p.target.as_ref().is_some_and(|t| !t.tracked);
+                p.branch.clone().map(|b| super::push_job(b, false, up))
+            });
+            if let Some(job) = job {
+                job(state);
+            }
         }
         "stash-go" => {
             state.git_ui.remote.stash = None;
@@ -87,7 +93,7 @@ fn dump(state: &mut AppState) {
     let r = &state.git_ui.remote;
     if let Some(p) = &r.push {
         let subjects: Vec<&str> = p.commits.iter().take(5).map(|c| c.summary.as_str()).collect();
-        eprintln!("[test-git] push dialog: branch {:?} upstream {:?} {} commits {:?} files {:?}", p.branch, p.upstream, p.commits.len(), subjects, p.details.as_ref().map(|d| d.files.len()));
+        eprintln!("[test-git] push dialog: branch {:?} target {:?} {} commits {:?} files {:?}", p.branch, p.target, p.commits.len(), subjects, p.details.as_ref().map(|d| d.files.len()));
     }
     if let Some(u) = &r.unstash {
         let msgs: Vec<&str> = u.entries.iter().map(|e| e.message.as_str()).collect();

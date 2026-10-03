@@ -1,7 +1,9 @@
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::atomic::Ordering;
 use std::sync::OnceLock;
+use std::time::SystemTime;
 
 use crate::{Error, Repo, Result};
 
@@ -26,6 +28,62 @@ impl CommandOutcome {
             Err(Error::Command(self))
         }
     }
+}
+
+/// One git CLI run, for the Console tab. Each command sends two events with the same `id`:
+/// one when it starts (`finished == None`) and one when it ends.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CommandEvent {
+    /// Unique per sink; shared by the start and finish events of one command.
+    pub id: u64,
+    /// Arguments after `git`.
+    pub args: Vec<String>,
+    pub cwd: PathBuf,
+    pub started: SystemTime,
+    pub finished: Option<SystemTime>,
+    /// None while running, or when the process could not start or was killed by a signal.
+    pub exit_code: Option<i32>,
+    pub stdout: String,
+    /// On a spawn failure, the OS error.
+    pub stderr: String,
+    /// The command only reads (blame, diff for a patch). The Console may hide these.
+    pub read_only: bool,
+}
+
+impl CommandEvent {
+    pub fn is_finished(&self) -> bool {
+        self.finished.is_some()
+    }
+
+    pub fn success(&self) -> bool {
+        self.exit_code == Some(0)
+    }
+
+    /// `git <args>` as typed in a shell (arguments with spaces are quoted).
+    pub fn command_line(&self) -> String {
+        let mut out = String::from("git");
+        for a in &self.args {
+            out.push(' ');
+            if a.is_empty() || a.contains(char::is_whitespace) {
+                out.push('"');
+                out.push_str(a);
+                out.push('"');
+            } else {
+                out.push_str(a);
+            }
+        }
+        out
+    }
+}
+
+/// Git subcommands that never write. They are still logged, with `read_only` set.
+const READ_ONLY: &[&str] = &["blame", "diff", "diff-tree", "show", "log", "rev-parse", "ls-files", "cat-file"];
+
+/// Arguments of one CLI run, so new options do not multiply the helper functions.
+#[derive(Default)]
+pub(crate) struct Run<'a> {
+    pub stdin: Option<&'a [u8]>,
+    pub env: &'a [(&'a str, &'a Path)],
 }
 
 /// A GUI app on macOS starts with a minimal PATH, so `git` may not be found by name.
@@ -67,8 +125,47 @@ impl Repo {
     /// Like `git_with_stdin`, with extra environment variables (`GIT_INDEX_FILE` for a commit
     /// built in a temporary index).
     pub(crate) fn git_env(&self, args: &[&str], stdin: Option<&str>, env: &[(&str, &Path)]) -> Result<CommandOutcome> {
+        Ok(self.git_run(args, Run { stdin: stdin.map(str::as_bytes), env })?.0)
+    }
+
+    /// The one place that spawns git. Returns the outcome plus the raw stdout bytes, which a
+    /// patch needs unchanged (file contents need not be UTF-8).
+    pub(crate) fn git_run(&self, args: &[&str], run: Run<'_>) -> Result<(CommandOutcome, Vec<u8>)> {
+        let event = self.sink.as_ref().map(|sink| {
+            let ev = CommandEvent {
+                id: sink.next_id.fetch_add(1, Ordering::Relaxed),
+                args: args.iter().map(|a| a.to_string()).collect(),
+                cwd: self.workdir.clone(),
+                started: SystemTime::now(),
+                finished: None,
+                exit_code: None,
+                stdout: String::new(),
+                stderr: String::new(),
+                read_only: args.first().is_some_and(|a| READ_ONLY.contains(a)),
+            };
+            // A closed receiver only means nobody shows the console.
+            let _ = sink.tx.send(ev.clone());
+            ev
+        });
+        let result = self.spawn_git(args, &run);
+        if let (Some(sink), Some(mut ev)) = (self.sink.as_ref(), event) {
+            ev.finished = Some(SystemTime::now());
+            match &result {
+                Ok((o, _)) => {
+                    ev.exit_code = o.code;
+                    ev.stdout = o.stdout.clone();
+                    ev.stderr = o.stderr.clone();
+                }
+                Err(e) => ev.stderr = e.to_string(),
+            }
+            let _ = sink.tx.send(ev);
+        }
+        result
+    }
+
+    fn spawn_git(&self, args: &[&str], run: &Run<'_>) -> Result<(CommandOutcome, Vec<u8>)> {
         let mut cmd = Command::new(git_binary());
-        cmd.envs(env.iter().map(|(k, v)| (*k, *v)));
+        cmd.envs(run.env.iter().map(|(k, v)| (*k, *v)));
         cmd.current_dir(&self.workdir)
             .args(args)
             // No terminal to prompt on: a missing credential must fail instead of hanging.
@@ -78,21 +175,26 @@ impl Repo {
             .env("GIT_SEQUENCE_EDITOR", "true")
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
-            .stdin(if stdin.is_some() { Stdio::piped() } else { Stdio::null() });
+            .stdin(if run.stdin.is_some() { Stdio::piped() } else { Stdio::null() });
         let mut child = cmd.spawn()?;
-        if let Some(input) = stdin {
-            // Dropping the handle closes the pipe so git sees EOF.
+        if let Some(input) = run.stdin {
+            // Written from a thread: a large input could otherwise deadlock against a full
+            // stdout pipe. Dropping the handle closes the pipe so git sees EOF.
             let mut pipe = child.stdin.take().expect("stdin is piped");
-            pipe.write_all(input.as_bytes())?;
+            let input = input.to_vec();
+            std::thread::spawn(move || {
+                let _ = pipe.write_all(&input);
+            });
         }
         let out = child.wait_with_output()?;
-        Ok(CommandOutcome {
+        let outcome = CommandOutcome {
             success: out.status.success(),
             code: out.status.code(),
             command: format!("git {}", args.join(" ")),
             stdout: String::from_utf8_lossy(&out.stdout).into_owned(),
             stderr: String::from_utf8_lossy(&out.stderr).into_owned(),
-        })
+        };
+        Ok((outcome, out.stdout))
     }
 
     /// Runs a command whose failure is an error for the caller (`Result<()>` APIs).

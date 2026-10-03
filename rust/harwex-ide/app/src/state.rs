@@ -259,10 +259,15 @@ impl AppState {
         self.diagnostics.reset();
         self.opening.clear();
         self.watcher = None;
+        // The Console sink goes on before anything clones the handle into a worker.
+        let repo = repo.map(|r| crate::git::console::attach(r, &self.jobs, generation));
         self.git = GitInfo { repo, ..Default::default() };
         self.apply_ide_config(config);
         // Dialogs and filters of the old repository must not act on the new one.
+        // Favourite branches are app storage for every repository, not state of this one.
+        let favorites = std::mem::take(&mut self.git_ui.window.favorites);
         self.git_ui = GitUi::default();
+        self.git_ui.window.favorites = favorites;
         self.tree_ops = Default::default();
         crate::tree::load_dir(self, root.clone());
         crate::search::rebuild_index(self);

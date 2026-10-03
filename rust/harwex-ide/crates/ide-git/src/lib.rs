@@ -13,20 +13,25 @@ mod diff;
 mod graph;
 mod log;
 mod ops;
+mod selection;
 mod status;
 mod text_diff;
 
 use std::fmt;
 use std::path::{Component, Path, PathBuf};
+use std::sync::atomic::AtomicU64;
+use std::sync::mpsc::Sender;
+use std::sync::Arc;
 
 pub use git2::Oid;
 
-pub use branches::{BranchInfo, Branches};
-pub use cli::CommandOutcome;
+pub use branches::{BranchInfo, Branches, TagInfo};
+pub use cli::{CommandEvent, CommandOutcome};
 pub use diff::{DiffHunk, DiffSide, FileDiff, LineChange, LineChangeKind, LineKind, LinePair};
-pub use graph::{layout as graph_layout, GraphEdge, GraphRow};
+pub use graph::{layout as graph_layout, ArrowDir, GraphArrow, GraphEdge, GraphRow, LONG_EDGE_ROWS};
 pub use log::{BlameLine, ChangedFile, CommitDetails, CommitInfo, LogFilter, RefKind, RefLabel};
-pub use ops::{ConflictChoice, ConflictSides, RepoState, ResetMode, StashEntry};
+pub use selection::{BranchCompare, COMPARE_LIMIT};
+pub use ops::{ConflictChoice, ConflictSides, PushTarget, RepoState, ResetMode, StashEntry};
 pub use status::{ChangeKind, CommitOutcome, FileChange};
 pub use text_diff::{diff_texts, line_changes_between};
 
@@ -78,6 +83,14 @@ pub type Result<T> = std::result::Result<T, Error>;
 #[derive(Debug, Clone)]
 pub struct Repo {
     workdir: PathBuf,
+    /// Where CLI runs are reported. Clones share it, so ids stay unique across workers.
+    sink: Option<Arc<CommandSink>>,
+}
+
+#[derive(Debug)]
+struct CommandSink {
+    tx: Sender<CommandEvent>,
+    next_id: AtomicU64,
 }
 
 // The app moves a `Repo` into worker threads.
@@ -97,7 +110,20 @@ impl Repo {
         // Canonical form, so that absolute paths from the app (which may come through a
         // symlink such as /var -> /private/var on macOS) can be made relative reliably.
         let workdir = workdir.canonicalize().unwrap_or_else(|_| workdir.to_path_buf());
-        Ok(Repo { workdir })
+        Ok(Repo { workdir, sink: None })
+    }
+
+    /// Reports every git CLI command of this handle and its clones (start and finish) to
+    /// `tx`. Clone the `Repo` after this call so workers share the sink. Reads through
+    /// libgit2 are not commands and are not reported.
+    pub fn set_command_sink(&mut self, tx: Sender<CommandEvent>) {
+        self.sink = Some(Arc::new(CommandSink { tx, next_id: AtomicU64::new(1) }));
+    }
+
+    /// Builder form of `set_command_sink`.
+    pub fn with_command_sink(mut self, tx: Sender<CommandEvent>) -> Repo {
+        self.set_command_sink(tx);
+        self
     }
 
     pub fn workdir(&self) -> &Path {

@@ -81,7 +81,7 @@ pub struct LineChange {
     pub old_text: String,
 }
 
-fn build(path: PathBuf, old_path: Option<PathBuf>, old: Option<Vec<u8>>, new: Option<Vec<u8>>) -> FileDiff {
+pub(crate) fn build(path: PathBuf, old_path: Option<PathBuf>, old: Option<Vec<u8>>, new: Option<Vec<u8>>) -> FileDiff {
     let binary = old.as_deref().is_some_and(is_binary) || new.as_deref().is_some_and(is_binary);
     let old_exists = old.is_some();
     let new_exists = new.is_some();
@@ -141,7 +141,7 @@ impl Repo {
         }
     }
 
-    fn worktree_bytes(&self, rel: &Path) -> Result<Option<Vec<u8>>> {
+    pub(crate) fn worktree_bytes(&self, rel: &Path) -> Result<Option<Vec<u8>>> {
         match std::fs::read(self.abs(rel)) {
             Ok(b) => Ok(Some(b)),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),

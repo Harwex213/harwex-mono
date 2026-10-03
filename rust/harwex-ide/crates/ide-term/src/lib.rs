@@ -12,13 +12,16 @@
 //!   queries) go through a channel, so a large paste or a child that stops reading never
 //!   blocks the UI or the parser.
 
+mod blocks;
 mod keys;
 mod links;
 mod theme;
 mod view;
 
 pub use keys::{key_to_bytes, paste_bytes, KeyMode};
-pub use links::{path_at, resolve as resolve_path, PathHit};
+pub use links::{
+    hyperlink_at, is_openable_url, path_at, resolve as resolve_path, url_at, PathHit, UrlHit,
+};
 pub use theme::TerminalTheme;
 pub use view::{TerminalResponse, TerminalView};
 

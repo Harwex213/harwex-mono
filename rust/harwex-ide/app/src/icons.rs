@@ -316,6 +316,39 @@ pub fn file(painter: &Painter, center: Pos2, size: f32, name: &str) {
     }
 }
 
+/// A segment from `a` to `b` whose width shrinks from `w` to zero, in `steps` thick segments.
+/// It fills the spikes of the star and the tip of the tag without an allocated polygon.
+fn taper(painter: &Painter, a: Pos2, b: Pos2, w: f32, color: Color32) {
+    const STEPS: usize = 5;
+    for i in 0..STEPS {
+        let (t0, t1) = (i as f32 / STEPS as f32, (i + 1) as f32 / STEPS as f32);
+        let width = w * (1.0 - (t0 + t1) / 2.0);
+        painter.line_segment([a + (b - a) * t0, a + (b - a) * t1], Stroke::new(width, color));
+    }
+}
+
+/// A filled price tag pointing up-left with a hole punched in `hole` color: the current branch
+/// (yellow) and tags in the Git window's branch tree.
+pub fn tag(painter: &Painter, center: Pos2, size: f32, color: Color32, hole: Color32) {
+    let s = size / 16.0;
+    let o = center - vec2(8.0 * s, 8.0 * s);
+    let p = |x: f32, y: f32| o + vec2(x * s, y * s);
+    painter.line_segment([p(13.5, 13.5), p(7.0, 7.0)], Stroke::new(8.0 * s, color));
+    taper(painter, p(7.2, 7.2), p(2.2, 2.2), 8.0 * s * 1.0, color);
+    painter.add(CircleShape::filled(p(7.0, 7.0), 1.3 * s, hole));
+}
+
+/// A filled five-pointed star: a favourite branch.
+pub fn star(painter: &Painter, center: Pos2, size: f32, color: Color32) {
+    let s = size / 16.0;
+    let c = center + vec2(0.0, 0.6 * s);
+    for k in 0..5 {
+        let a = -std::f32::consts::FRAC_PI_2 + k as f32 * std::f32::consts::TAU / 5.0;
+        taper(painter, c, c + vec2(a.cos(), a.sin()) * 7.5 * s, 4.6 * s, color);
+    }
+    painter.add(CircleShape::filled(c, 2.6 * s, color));
+}
+
 pub fn file_color(name: &str) -> Color32 {
     let ext = name.rsplit_once('.').map_or("", |(_, e)| e);
     match ext {

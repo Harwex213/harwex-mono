@@ -39,19 +39,61 @@ pub struct CommitInfo {
 }
 
 /// All fields are optional; the default shows every branch, like IDEA's "Branch: All".
+/// Each list matches when any of its entries matches; different fields must all match.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct LogFilter {
-    /// A branch, tag or any revision. None walks HEAD plus all local and remote branches.
-    pub branch: Option<String>,
-    /// Case-insensitive substring of the message, or a hash prefix.
+    /// Branches, tags or any revisions to walk. `"HEAD"` is the checked-out revision.
+    /// Empty walks HEAD plus all local and remote branches.
+    pub branches: Vec<String>,
+    /// Text of the message. A hash prefix also matches (always case-insensitive).
     pub text: Option<String>,
-    /// Case-insensitive substring of the author name or email.
-    pub author: Option<String>,
-    /// Only commits that change this file or directory.
-    pub path: Option<PathBuf>,
+    /// `text` is a regular expression (Rust `regex` syntax) instead of a substring.
+    pub text_regex: bool,
+    /// Without it the text match ignores case.
+    pub text_case_sensitive: bool,
+    /// Case-insensitive substrings of the author name or email.
+    pub authors: Vec<String>,
+    /// Only commits that change one of these files or directories.
+    pub paths: Vec<PathBuf>,
+    /// Hide commits with more than one parent.
+    pub no_merges: bool,
     /// Author time bounds, seconds since the epoch, inclusive.
     pub since: Option<i64>,
     pub until: Option<i64>,
+}
+
+/// The compiled text part of a `LogFilter`.
+enum TextMatcher {
+    Regex(regex::Regex),
+    /// The needle, lowercased unless the match is case-sensitive.
+    Substring { needle: String, case_sensitive: bool },
+}
+
+impl TextMatcher {
+    fn new(filter: &LogFilter) -> Result<Option<(TextMatcher, String)>> {
+        let Some(text) = filter.text.as_deref().filter(|t| !t.is_empty()) else { return Ok(None) };
+        let hash = text.to_lowercase();
+        let m = if filter.text_regex {
+            let re = regex::RegexBuilder::new(text)
+                .case_insensitive(!filter.text_case_sensitive)
+                .build()
+                .map_err(|e| Error::Other(format!("invalid regular expression: {e}")))?;
+            TextMatcher::Regex(re)
+        } else if filter.text_case_sensitive {
+            TextMatcher::Substring { needle: text.to_string(), case_sensitive: true }
+        } else {
+            TextMatcher::Substring { needle: hash.clone(), case_sensitive: false }
+        };
+        Ok(Some((m, hash)))
+    }
+
+    fn matches(&self, message: &str) -> bool {
+        match self {
+            TextMatcher::Regex(re) => re.is_match(message),
+            TextMatcher::Substring { needle, case_sensitive: true } => message.contains(needle.as_str()),
+            TextMatcher::Substring { needle, case_sensitive: false } => contains_ci(message, needle),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -86,9 +128,9 @@ pub struct BlameLine {
     pub original_line: usize,
 }
 
-type RefMap = HashMap<Oid, Vec<RefLabel>>;
+pub(crate) type RefMap = HashMap<Oid, Vec<RefLabel>>;
 
-fn ref_map(repo: &git2::Repository) -> Result<RefMap> {
+pub(crate) fn ref_map(repo: &git2::Repository) -> Result<RefMap> {
     let mut map: RefMap = HashMap::new();
     let head = repo.head().ok();
     let head_name = head.as_ref().and_then(|h| h.name().map(str::to_string));
@@ -144,7 +186,7 @@ pub(crate) fn commit_info(commit: &git2::Commit, refs: Option<&RefMap>) -> Commi
 /// Whether `commit` changes `rel`. Compares tree entry ids, so it reads no blobs. A merge
 /// counts only when it differs from every parent, which matches git's default history
 /// simplification and hides merges that just carried the change along.
-fn touches(commit: &git2::Commit, rel: &Path) -> Result<bool> {
+pub(crate) fn touches(commit: &git2::Commit, rel: &Path) -> Result<bool> {
     let id = entry_id(&commit.tree()?, rel);
     if commit.parent_count() == 0 {
         return Ok(id.is_some());
@@ -157,7 +199,7 @@ fn touches(commit: &git2::Commit, rel: &Path) -> Result<bool> {
     Ok(true)
 }
 
-fn entry_id(tree: &git2::Tree, rel: &Path) -> Option<Oid> {
+pub(crate) fn entry_id(tree: &git2::Tree, rel: &Path) -> Option<Oid> {
     if rel.as_os_str().is_empty() {
         return Some(tree.id());
     }
@@ -183,6 +225,23 @@ pub(crate) fn rename_source(
     Ok(None)
 }
 
+/// Files of a diff with renames detected, in git's path order.
+pub(crate) fn changed_files(diff: &mut git2::Diff) -> Result<Vec<ChangedFile>> {
+    let mut find = DiffFindOptions::new();
+    find.renames(true);
+    diff.find_similar(Some(&mut find))?;
+    Ok(diff
+        .deltas()
+        .filter_map(|d| {
+            let kind = delta_kind(d.status());
+            let path = d.new_file().path().or_else(|| d.old_file().path())?.to_path_buf();
+            let old_path =
+                (kind == ChangeKind::Renamed).then(|| d.old_file().path().map(Path::to_path_buf)).flatten();
+            Some(ChangedFile { path, old_path, kind })
+        })
+        .collect())
+}
+
 fn delta_kind(d: Delta) -> ChangeKind {
     match d {
         Delta::Added | Delta::Copied | Delta::Untracked => ChangeKind::Added,
@@ -206,23 +265,23 @@ impl Repo {
         let refs = ref_map(&repo)?;
         let mut walk = repo.revwalk()?;
         walk.set_sorting(Sort::TOPOLOGICAL | Sort::TIME)?;
-        match &filter.branch {
-            Some(rev) => {
+        if filter.branches.is_empty() {
+            // An unborn branch has nothing to walk; that is an empty log, not an error.
+            if repo.head().ok().and_then(|h| h.target()).is_some() {
+                walk.push_head()?;
+            }
+            walk.push_glob("refs/heads")?;
+            walk.push_glob("refs/remotes")?;
+        } else {
+            for rev in &filter.branches {
                 let commit = repo.revparse_single(rev)?.peel_to_commit()?;
                 walk.push(commit.id())?;
             }
-            None => {
-                // An unborn branch has nothing to walk; that is an empty log, not an error.
-                if repo.head().ok().and_then(|h| h.target()).is_some() {
-                    walk.push_head()?;
-                }
-                walk.push_glob("refs/heads")?;
-                walk.push_glob("refs/remotes")?;
-            }
         }
-        let text = filter.text.as_deref().map(str::to_lowercase).filter(|s| !s.is_empty());
-        let author = filter.author.as_deref().map(str::to_lowercase).filter(|s| !s.is_empty());
-        let path = filter.path.as_deref().map(|p| self.rel(p));
+        let text = TextMatcher::new(filter)?;
+        let authors: Vec<String> =
+            filter.authors.iter().map(|a| a.trim().to_lowercase()).filter(|a| !a.is_empty()).collect();
+        let paths: Vec<PathBuf> = filter.paths.iter().map(|p| self.rel(p)).collect();
         let mut out = Vec::with_capacity(limit.min(1024));
         let mut skipped = 0;
         for oid in walk {
@@ -231,17 +290,21 @@ impl Repo {
             }
             let oid = oid?;
             let commit = repo.find_commit(oid)?;
-            if let Some(t) = &text {
+            if filter.no_merges && commit.parent_count() > 1 {
+                continue;
+            }
+            if let Some((m, hash)) = &text {
                 let msg = String::from_utf8_lossy(commit.message_bytes());
-                if !contains_ci(&msg, t) && !oid.to_string().starts_with(t.as_str()) {
+                // Without the trailing newline, so `$` anchors at the end of the text.
+                if !m.matches(msg.trim_end()) && !oid.to_string().starts_with(hash.as_str()) {
                     continue;
                 }
             }
-            if let Some(a) = &author {
+            if !authors.is_empty() {
                 let sig = commit.author();
                 let name = String::from_utf8_lossy(sig.name_bytes());
                 let email = String::from_utf8_lossy(sig.email_bytes());
-                if !contains_ci(&name, a) && !contains_ci(&email, a) {
+                if !authors.iter().any(|a| contains_ci(&name, a) || contains_ci(&email, a)) {
                     continue;
                 }
             }
@@ -249,8 +312,15 @@ impl Repo {
             if filter.since.is_some_and(|s| t < s) || filter.until.is_some_and(|u| t > u) {
                 continue;
             }
-            if let Some(p) = &path {
-                if !touches(&commit, p)? {
+            if !paths.is_empty() {
+                let mut any = false;
+                for p in &paths {
+                    if touches(&commit, p)? {
+                        any = true;
+                        break;
+                    }
+                }
+                if !any {
                     continue;
                 }
             }
@@ -273,20 +343,7 @@ impl Repo {
             Err(_) => None,
         };
         let mut diff = repo.diff_tree_to_tree(parent_tree.as_ref(), Some(&tree), None)?;
-        let mut find = DiffFindOptions::new();
-        find.renames(true);
-        diff.find_similar(Some(&mut find))?;
-        let files = diff
-            .deltas()
-            .filter_map(|d| {
-                let kind = delta_kind(d.status());
-                let path = d.new_file().path().or_else(|| d.old_file().path())?.to_path_buf();
-                let old_path = (kind == ChangeKind::Renamed)
-                    .then(|| d.old_file().path().map(Path::to_path_buf))
-                    .flatten();
-                Some(ChangedFile { path, old_path, kind })
-            })
-            .collect();
+        let files = changed_files(&mut diff)?;
         let committer = commit.committer();
         Ok(CommitDetails {
             info: commit_info(&commit, Some(&refs)),

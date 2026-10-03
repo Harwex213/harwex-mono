@@ -19,6 +19,11 @@ pub mod branches;
 pub mod conflicts;
 pub mod log;
 pub mod remote;
+// Git tool window rebuild: task 028 (window, branch_tree, console), task 029 (log, commit_changes).
+pub mod branch_tree;
+pub mod commit_changes;
+pub mod console;
+pub mod window;
 
 /// Git UI state. Each sub-module owns its own state struct.
 #[derive(Default)]
@@ -29,6 +34,7 @@ pub struct GitUi {
     pub branches: branches::BranchesUi,
     pub remote: remote::RemoteUi,
     pub conflicts: conflicts::ConflictsUi,
+    pub window: window::GitWindowUi,
     /// The bottom-left corner of the title bar's branch widget, drawn last frame. The branches
     /// popup drops down from it.
     pub branches_anchor: Option<egui::Pos2>,
@@ -64,7 +70,21 @@ pub fn commit_tool_window(state: &mut AppState, ui: &mut Ui) {
 
 /// Body of the bottom "Git" (log) tool window.
 pub fn log_tool_window(state: &mut AppState, ui: &mut Ui) {
-    log::tool_window(state, ui);
+    window::tool_window(state, ui);
+}
+
+/// The Git tool window's header right of its title: the Log / Console / History tabs.
+pub fn log_header(state: &mut AppState, ui: &mut Ui) {
+    window::header_tabs(state, ui);
+}
+
+/// Git UI settings in app storage (favourite branches), read once at startup.
+pub fn load_storage(state: &mut AppState, storage: &dyn eframe::Storage) {
+    window::load_storage(state, storage);
+}
+
+pub fn save_storage(state: &AppState, storage: &mut dyn eframe::Storage) {
+    window::save_storage(state, storage);
 }
 
 /// Editor context-menu actions under "Git >". `tab` is the editor tab they came from.
@@ -96,5 +116,6 @@ pub fn show_windows(state: &mut AppState, ctx: &Context) {
 pub fn on_git_refreshed(state: &mut AppState) {
     changes::on_git_refreshed(state);
     log::on_git_refreshed(state);
+    window::on_git_refreshed(state);
     conflicts::on_git_refreshed(state);
 }

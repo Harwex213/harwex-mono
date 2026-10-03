@@ -8,6 +8,8 @@ publish.workspace = true
 # Network goes through the git CLI, so libgit2 needs neither https nor ssh (no openssl to build).
 git2 = { version = "0.20", default-features = false }
 similar = "2"
+# Log text filter with the `.*` toggle. Already in the workspace lock through other crates.
+regex = "1"
 
 [dev-dependencies]
 tempfile = "3"

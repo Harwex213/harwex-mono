@@ -1,67 +1,170 @@
-//! Git log tool window: lane graph, filters, paging, details pane, commit context menu.
+//! Git log: one `LogView` per Log tab of the Git window (filter bar, commit table, changes
+//! pane), plus `LogUi`, the state all tabs share: branch names, HEAD, the git user, the modal
+//! dialogs and the inbox that carries worker results back to the view that asked.
+//!
+//! The Git window (`window.rs`) owns the views and lends one to `log_body` per frame, so a
+//! worker result cannot reach its view through `AppState`. Jobs post a `ViewMsg` into
+//! `LogUi::inbox` under the view id, and the view drains it the next time it is drawn.
 
-use std::collections::hash_map::DefaultHasher;
-use std::hash::{Hash, Hasher};
+mod filters;
+mod table;
+
+use std::collections::HashMap;
+use std::hash::{DefaultHasher, Hash, Hasher};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
-use egui::{pos2, vec2, Align2, Color32, Context, CornerRadius, Frame, Id, Key, Margin, Modal, Rect, RichText, ScrollArea, Sense, Stroke, TextEdit, Ui};
-use ide_git::{ChangeKind, CommitDetails, CommitInfo, GraphRow, LogFilter, Oid, RefKind, ResetMode};
+use egui::{Context, Frame, Id, Key, Margin, Modal, RichText, TextEdit, Ui};
+use ide_git::{ChangeKind, ChangedFile, CommitDetails, CommitInfo, GraphRow, LogFilter, Oid, ResetMode};
 
+use super::commit_changes::{self, ChangesPane};
 use crate::layout::ToolWindow;
 use crate::state::AppState;
 use crate::theme;
 
+pub use table::{draw_graph, draw_ref_label, RowStyle, LANE_COLORS};
+
 /// Commits per page. A page of the whole history costs a few ms; a path-filtered page costs
 /// more because every commit's tree is compared, so the page stays moderate.
 const PAGE: usize = 300;
-const ROW_H: f32 = 22.0;
-const LANE_W: f32 = 12.0;
-/// Wider graphs are clipped; IDEA also collapses very wide graphs.
-const MAX_LANES: usize = 24;
-const AUTHOR_W: f32 = 150.0;
-const DATE_W: f32 = 130.0;
+/// The text filter reloads once typing rests this long.
+const DEBOUNCE: Duration = Duration::from_millis(300);
 
-pub const LANE_COLORS: [Color32; 8] = theme::T.lanes;
+static NEXT_VIEW: AtomicU64 = AtomicU64::new(1);
 
+/// State shared by every Log tab.
+#[derive(Default)]
 pub struct LogUi {
-    // Filter inputs as typed.
-    text: String,
-    author: String,
-    branch: Option<String>,
-    path: Option<PathBuf>,
-    /// Debounce for the text boxes: reload once typing rests.
+    /// Worker results per view id, drained when that view is drawn.
+    inbox: HashMap<u64, Vec<ViewMsg>>,
+    /// Local and remote branch names, for the Branch filter popup.
+    branch_names: (Vec<String>, Vec<String>),
+    /// The commit HEAD points to; its graph node is a hollow circle.
+    head: Option<Oid>,
+    refs_fingerprint: Option<u64>,
+    /// Bumped when a ref moved; each view reloads when it sees a newer epoch.
+    refs_epoch: u64,
+    /// `user.name` and `user.email`, for "me" and the bold author.
+    me: Option<(String, String)>,
+    /// The project generation `me` was asked for.
+    me_asked: Option<u64>,
+    dialog: Option<LogDialog>,
+    /// Views whose text filter waits for the debounce, with the edit time.
+    debouncing: HashMap<u64, Instant>,
+    /// Set by Show History; the Git window opens a History tab from it, or the next drawn
+    /// Log tab takes it.
+    pending_history: Option<PathBuf>,
+    /// The view drawn last, for the `--test-git-*` hooks.
+    active: Option<u64>,
+    /// A view was drawn once, so ref moves matter.
+    drawn: bool,
+    pub(crate) last_load_ms: Option<f64>,
+}
+
+impl LogUi {
+    /// A text filter waits for its debounce. Loads are jobs and count as in flight anyway.
+    /// An entry of a closed tab expires on its own.
+    pub(crate) fn filter_pending(&self) -> bool {
+        self.debouncing.values().any(|t| t.elapsed() < DEBOUNCE + Duration::from_secs(2))
+    }
+
+    /// The git user (`user.name`, `user.email`), once loaded.
+    pub fn me(&self) -> Option<&(String, String)> {
+        self.me.as_ref()
+    }
+
+    pub fn head(&self) -> Option<Oid> {
+        self.head
+    }
+
+    /// The commit is the git user's own: same email, or same name when no email is set.
+    pub fn is_me(&self, c: &CommitInfo) -> bool {
+        self.me.as_ref().is_some_and(|(name, email)| if email.is_empty() { !name.is_empty() && c.author_name == *name } else { c.author_email.eq_ignore_ascii_case(email) })
+    }
+
+    fn post(&mut self, view: u64, msg: ViewMsg) {
+        self.inbox.entry(view).or_default().push(msg);
+    }
+}
+
+/// A worker result (or a test hook command) for one view.
+enum ViewMsg {
+    Page { request: u64, skip: usize, limit: usize, filter: LogFilter, result: Result<Vec<CommitInfo>, String>, ms: f64 },
+    Changes { key: Vec<Oid>, result: Result<Vec<ChangedFile>, String> },
+    Details { oid: Oid, result: Result<CommitDetails, String> },
+    TestSelect(usize),
+    TestFilter(String),
+    TestOpenFile(usize),
+    TestAction(String),
+    TestDescribe,
+}
+
+/// One author entry of the User filter.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Author {
+    /// The git user, from `Repo::user`.
+    Me,
+    Name(String),
+}
+
+/// The filter of one Log tab as the user set it.
+#[derive(Clone, Debug)]
+pub struct ViewFilter {
+    pub text: String,
+    pub regex: bool,
+    pub case_sensitive: bool,
+    /// Empty shows all branches.
+    pub branches: Vec<String>,
+    pub authors: Vec<Author>,
+    /// Absolute paths (files or folders).
+    pub paths: Vec<PathBuf>,
+    pub no_merges: bool,
+}
+
+impl Default for ViewFilter {
+    fn default() -> Self {
+        // A new Log tab shows the history of HEAD, like IDEA's "Branch: HEAD".
+        ViewFilter { text: String::new(), regex: false, case_sensitive: false, branches: vec!["HEAD".into()], authors: Vec::new(), paths: Vec::new(), no_merges: false }
+    }
+}
+
+/// One Log tab of the Git window: its filters, loaded commits, selection and changes pane.
+pub struct LogView {
+    pub(super) id: u64,
+    pub(super) filter: ViewFilter,
+    /// The text box changed; the reload waits for the debounce.
     edited_at: Option<Instant>,
-    commits: Vec<CommitInfo>,
+    pub(super) commits: Vec<CommitInfo>,
     graph: Vec<GraphRow>,
     has_more: bool,
     loading: bool,
     /// Bumped on every reload, so pages of an older filter are dropped.
     request: u64,
     needs_load: bool,
-    /// Set by a refresh while the window is hidden; the next draw reloads.
-    stale: bool,
-    selected: Option<Oid>,
-    details: Option<CommitDetails>,
-    details_for: Option<Oid>,
-    branch_names: (Vec<String>, Vec<String>),
-    refs_fingerprint: Option<u64>,
-    dialog: Option<LogDialog>,
+    /// `LogUi::refs_epoch` of the last load.
+    epoch: u64,
     error: Option<String>,
+    /// Selected commits; the last one is the lead (the details pane shows it).
+    pub(super) selection: Vec<Oid>,
+    /// Shift+click and Shift+arrows extend from here.
+    anchor: Option<Oid>,
+    /// Row index to scroll into view.
     scroll_to: Option<usize>,
-    /// Viewport of the commit list from the last frame, for keyboard scrolling.
+    /// The commit list's viewport last frame, for keyboard paging.
     view_offset: f32,
     view_height: f32,
-    pub(crate) last_load_ms: Option<f64>,
+    /// Authors of the loaded commits, for the User popup.
+    authors_seen: Vec<String>,
+    popups: filters::Popups,
+    pub(super) changes: ChangesPane,
 }
 
-impl Default for LogUi {
+impl Default for LogView {
     fn default() -> Self {
-        LogUi {
-            text: String::new(),
-            author: String::new(),
-            branch: None,
-            path: None,
+        LogView {
+            id: NEXT_VIEW.fetch_add(1, Ordering::Relaxed),
+            filter: ViewFilter::default(),
             edited_at: None,
             commits: Vec::new(),
             graph: Vec::new(),
@@ -69,37 +172,50 @@ impl Default for LogUi {
             loading: false,
             request: 0,
             needs_load: true,
-            stale: false,
-            selected: None,
-            details: None,
-            details_for: None,
-            branch_names: (Vec::new(), Vec::new()),
-            refs_fingerprint: None,
-            dialog: None,
+            epoch: 0,
             error: None,
+            selection: Vec::new(),
+            anchor: None,
             scroll_to: None,
             view_offset: 0.0,
             view_height: 0.0,
-            last_load_ms: None,
+            authors_seen: Vec::new(),
+            popups: filters::Popups::default(),
+            changes: ChangesPane::default(),
         }
     }
 }
 
-enum LogDialog {
-    NewBranch { from: Oid, name: String, checkout: bool },
-    Reset { oid: Oid, mode: ResetMode, confirm_hard: bool },
-}
+impl LogView {
+    /// A Log tab with the history of one file or folder (absolute path), all branches.
+    pub fn file_history(path: PathBuf) -> LogView {
+        let mut v = LogView::default();
+        v.filter.branches.clear();
+        v.filter.paths = vec![path];
+        v
+    }
 
-enum RowAction {
-    CopyHash(Oid),
-    Checkout(Oid),
-    NewBranch(Oid),
-    Reset(Oid),
-    Revert(Oid),
-    CherryPick(Oid),
-}
+    /// The tab title after "Log: ": the branch filter.
+    pub fn filter_label(&self) -> String {
+        if self.filter.branches.is_empty() {
+            "all".to_owned()
+        } else {
+            self.filter.branches.join(", ")
+        }
+    }
 
-impl LogUi {
+    /// Filters the log by these branches (empty: all branches) and reloads.
+    pub fn set_branches(&mut self, branches: Vec<String>) {
+        if self.filter.branches != branches {
+            self.filter.branches = branches;
+            self.needs_load = true;
+        }
+    }
+
+    pub fn filter(&self) -> &ViewFilter {
+        &self.filter
+    }
+
     /// Loaded commits, newest first.
     pub fn commits(&self) -> &[CommitInfo] {
         &self.commits
@@ -118,220 +234,361 @@ impl LogUi {
         self.loading
     }
 
+    pub fn error(&self) -> Option<&str> {
+        self.error.as_deref()
+    }
+
+    /// Selected commits in the order they were selected.
+    pub fn selection(&self) -> &[Oid] {
+        &self.selection
+    }
+
+    /// The commit the details pane shows (the last one selected).
     pub fn selected(&self) -> Option<Oid> {
-        self.selected
+        self.selection.last().copied()
     }
 
-    /// Details of the selected commit, once loaded.
+    /// Details of the lead commit, once loaded.
     pub fn details(&self) -> Option<&CommitDetails> {
-        self.details.as_ref()
+        self.changes.details()
     }
 
-    /// The text or author filter was edited and the debounced reload has not run yet.
-    pub(crate) fn filter_pending(&self) -> bool {
-        self.edited_at.is_some() || self.loading
+    /// Combined changes of the selection, once loaded.
+    pub fn changes(&self) -> Option<&[ChangedFile]> {
+        self.changes.files()
     }
 
-    fn filter(&self) -> LogFilter {
-        let opt = |s: &str| {
-            let t = s.trim();
-            (!t.is_empty()).then(|| t.to_string())
-        };
-        LogFilter { branch: self.branch.clone(), text: opt(&self.text), author: opt(&self.author), path: self.path.clone(), since: None, until: None }
+    /// The changes pane (its tree rows and file selection).
+    pub fn changes_pane(&self) -> &ChangesPane {
+        &self.changes
+    }
+
+    /// How the commit table draws row `i`.
+    pub fn row_style(&self, ui: &LogUi, i: usize) -> RowStyle {
+        let c = &self.commits[i];
+        RowStyle { bold_author: ui.is_me(c), dimmed: c.parents.len() > 1, hollow: ui.head == Some(c.oid) }
+    }
+
+    /// The selection sorted oldest first (log order is newest first).
+    pub(super) fn selection_oldest_first(&self) -> Vec<Oid> {
+        let mut rows: Vec<(usize, Oid)> = self.selection.iter().map(|o| (self.commits.iter().position(|c| c.oid == *o).unwrap_or(usize::MAX), *o)).collect();
+        rows.sort_by_key(|r| std::cmp::Reverse(r.0));
+        rows.into_iter().map(|(_, o)| o).collect()
+    }
+
+    fn log_filter(&self, me: Option<&(String, String)>) -> LogFilter {
+        let text = self.filter.text.trim();
+        let authors = self
+            .filter
+            .authors
+            .iter()
+            .filter_map(|a| match a {
+                Author::Me => me.map(|(name, email)| if email.is_empty() { name.clone() } else { email.clone() }),
+                Author::Name(n) => Some(n.clone()),
+            })
+            .collect();
+        LogFilter {
+            branches: self.filter.branches.clone(),
+            text: (!text.is_empty()).then(|| text.to_string()),
+            text_regex: self.filter.regex,
+            text_case_sensitive: self.filter.case_sensitive,
+            authors,
+            paths: self.filter.paths.clone(),
+            no_merges: self.filter.no_merges,
+            ..LogFilter::default()
+        }
+    }
+
+    fn apply(&mut self, state: &mut AppState, msg: ViewMsg) {
+        match msg {
+            ViewMsg::Page { request, skip, limit, filter, result, ms } => {
+                if request != self.request {
+                    return;
+                }
+                self.loading = false;
+                match result {
+                    Ok(list) => {
+                        self.has_more = list.len() >= limit;
+                        let n = list.len();
+                        if skip == 0 {
+                            self.commits = list;
+                        } else {
+                            self.commits.extend(list);
+                        }
+                        // Earlier rows depend only on earlier commits, so a full recompute
+                        // keeps them; it costs microseconds per thousand rows.
+                        self.graph = layout_graph(&self.commits, &filter);
+                        let mut seen: Vec<String> = self.commits.iter().map(|c| c.author_name.clone()).collect();
+                        seen.sort_unstable();
+                        seen.dedup();
+                        self.authors_seen = seen;
+                        let commits = &self.commits;
+                        self.selection.retain(|s| commits.iter().any(|c| c.oid == *s));
+                        if self.selection.is_empty() {
+                            if let Some(first) = self.commits.first() {
+                                self.selection = vec![first.oid];
+                                self.anchor = Some(first.oid);
+                                self.scroll_to = Some(0);
+                            }
+                        }
+                        state.git_ui.log.last_load_ms = Some(ms);
+                        let total = self.commits.len();
+                        state.timings.log(format!("[git log] page at {skip}: {n} commits, {total} total, {ms:.1} ms"));
+                    }
+                    Err(e) => {
+                        if skip == 0 {
+                            self.commits.clear();
+                            self.graph.clear();
+                        }
+                        self.has_more = false;
+                        self.error = Some(e);
+                    }
+                }
+            }
+            ViewMsg::Changes { key, result } => self.changes.set_files(key, result),
+            ViewMsg::Details { oid, result } => {
+                if let Err(e) = &result {
+                    state.notifications.log_only(crate::notifications::Level::Warning, "Cannot read commit", e.clone());
+                }
+                self.changes.set_details(oid, result.ok());
+            }
+            ViewMsg::TestSelect(row) => {
+                if let Some(c) = self.commits.get(row) {
+                    self.selection = vec![c.oid];
+                    self.anchor = Some(c.oid);
+                    self.scroll_to = Some(row);
+                }
+            }
+            ViewMsg::TestFilter(text) => {
+                self.filter.text = text;
+                self.text_edited(state);
+            }
+            ViewMsg::TestOpenFile(n) => {
+                let oids = self.selection_oldest_first();
+                match self.changes.files().and_then(|f| f.get(n)).map(|f| f.path.clone()) {
+                    Some(path) => super::diff::open_commits_diff(state, &oids, &path),
+                    None => eprintln!("[test-git] logfile: no changes or no file {n}"),
+                }
+            }
+            ViewMsg::TestAction(what) => {
+                if let Some(oid) = self.selected() {
+                    let action = match what.as_str() {
+                        "checkout" => RowAction::Checkout(oid),
+                        "newbranch" => RowAction::NewBranch(oid),
+                        "newtag" => RowAction::NewTag(oid),
+                        "reset" => RowAction::Reset(oid),
+                        "revert" => RowAction::Revert(oid),
+                        "cherry-pick" => RowAction::CherryPick(oid),
+                        _ => RowAction::CopyHash(oid),
+                    };
+                    let ctx = state.ctx.clone();
+                    run_action(state, &ctx, action);
+                }
+            }
+            ViewMsg::TestDescribe => {
+                let top: Vec<&str> = self.commits.iter().take(4).map(|c| c.summary.as_str()).collect();
+                eprintln!(
+                    "[test-git] log: {} commits (more {}), branches {:?}, paths {:?}, top {top:?}, selected {}, changes {:?}",
+                    self.commits.len(),
+                    self.has_more,
+                    self.filter.branches,
+                    self.filter.paths,
+                    self.selection.len(),
+                    self.changes.files().map(<[ChangedFile]>::len)
+                );
+            }
+        }
+    }
+
+    /// The text box changed: reload after the debounce.
+    pub(super) fn text_edited(&mut self, state: &mut AppState) {
+        let now = Instant::now();
+        self.edited_at = Some(now);
+        state.git_ui.log.debouncing.insert(self.id, now);
+    }
+
+    /// A filter other than the text changed: reload now.
+    pub(super) fn filter_changed(&mut self, state: &mut AppState) {
+        self.edited_at = None;
+        state.git_ui.log.debouncing.remove(&self.id);
+        reload(state, self, 0);
     }
 }
 
-pub fn tool_window(state: &mut AppState, ui: &mut Ui) {
+#[derive(Clone)]
+enum LogDialog {
+    NewBranch { from: Oid, name: String, checkout: bool },
+    NewTag { oid: Oid, name: String },
+    Reset { oid: Oid, mode: ResetMode, confirm_hard: bool },
+    CreatePatch { oids: Vec<Oid>, paths: Vec<PathBuf>, dest: String },
+}
+
+enum RowAction {
+    CopyHash(Oid),
+    Checkout(Oid),
+    NewBranch(Oid),
+    NewTag(Oid),
+    Reset(Oid),
+    Revert(Oid),
+    CherryPick(Oid),
+}
+
+/// Filter bar, commit table and changes pane of one Log tab, inside `ui`'s rect.
+pub fn log_body(state: &mut AppState, view: &mut LogView, ui: &mut Ui) {
     if state.git.repo.is_none() {
         ui.label(RichText::new("The project is not inside a git repository.").color(theme::T.text_dim));
         return;
     }
     {
         let log = &mut state.git_ui.log;
-        if log.needs_load || log.stale {
-            let keep = if log.stale { log.commits.len() } else { 0 };
-            log.needs_load = false;
-            log.stale = false;
-            reload(state, keep);
+        log.active = Some(view.id);
+        log.drawn = true;
+        if let Some(path) = log.pending_history.take() {
+            view.filter.paths = vec![path];
+            view.filter.text.clear();
+            view.filter.authors.clear();
+            view.selection.clear();
+            view.needs_load = true;
         }
     }
-    if let Some(at) = state.git_ui.log.edited_at {
+    ask_me(state);
+    if let Some(msgs) = state.git_ui.log.inbox.remove(&view.id) {
+        for m in msgs {
+            view.apply(state, m);
+        }
+    }
+    if view.needs_load || view.epoch != state.git_ui.log.refs_epoch {
+        // A ref move keeps as many rows as are loaded, so the scroll position stays.
+        let keep = if view.needs_load { 0 } else { view.commits.len() };
+        view.needs_load = false;
+        reload(state, view, keep);
+    }
+    if let Some(at) = view.edited_at {
         let rest = at.elapsed();
-        if rest >= Duration::from_millis(300) {
-            state.git_ui.log.edited_at = None;
-            reload(state, 0);
+        if rest >= DEBOUNCE {
+            view.edited_at = None;
+            state.git_ui.log.debouncing.remove(&view.id);
+            reload(state, view, 0);
         } else {
-            ui.ctx().request_repaint_after(Duration::from_millis(300) - rest);
+            ui.ctx().request_repaint_after(DEBOUNCE - rest);
         }
     }
 
-    filter_bar(state, ui);
-    ui.add_space(2.0);
-    egui::SidePanel::right("git-log-details")
+    filters::bar(state, view, ui);
+    egui::SidePanel::right(Id::new(("git-log-changes", view.id)))
         .resizable(true)
-        .default_width(360.0)
-        .width_range(200.0..=900.0)
-        .frame(Frame::NONE.inner_margin(Margin { left: 8, right: 0, top: 0, bottom: 0 }))
-        .show_inside(ui, |ui| details_pane(state, ui));
-    egui::CentralPanel::default().frame(Frame::NONE).show_inside(ui, |ui| commit_table(state, ui));
+        .default_width(380.0)
+        .width_range(220.0..=900.0)
+        .frame(Frame::NONE.inner_margin(Margin { left: 6, right: 0, top: 0, bottom: 0 }))
+        .show_inside(ui, |ui| commit_changes::show(state, view, ui));
+    egui::CentralPanel::default().frame(Frame::NONE).show_inside(ui, |ui| table::show(state, view, ui));
 }
 
-fn filter_bar(state: &mut AppState, ui: &mut Ui) {
-    let mut changed_now = false;
-    let mut close_path = false;
-    let mut refresh = false;
-    let log = &mut state.git_ui.log;
-    ui.horizontal(|ui| {
-        let r = ui.add(TextEdit::singleline(&mut log.text).hint_text("Text or hash").desired_width(180.0));
-        if r.changed() {
-            log.edited_at = Some(Instant::now());
-        }
-        let before = log.branch.clone();
-        let label = log.branch.clone().unwrap_or_else(|| "All".into());
-        egui::ComboBox::from_id_salt("git-log-branch").selected_text(format!("Branch: {label}")).width(170.0).height(400.0).show_ui(ui, |ui| {
-            ui.selectable_value(&mut log.branch, None, "All");
-            if !log.branch_names.0.is_empty() {
-                ui.label(RichText::new("Local").small().color(theme::T.text_dim));
-            }
-            for b in &log.branch_names.0 {
-                ui.selectable_value(&mut log.branch, Some(b.clone()), b);
-            }
-            if !log.branch_names.1.is_empty() {
-                ui.label(RichText::new("Remote").small().color(theme::T.text_dim));
-            }
-            for b in &log.branch_names.1 {
-                ui.selectable_value(&mut log.branch, Some(b.clone()), b);
-            }
-        });
-        if log.branch != before {
-            changed_now = true;
-        }
-        let r = ui.add(TextEdit::singleline(&mut log.author).hint_text("Author").desired_width(130.0));
-        if r.changed() {
-            log.edited_at = Some(Instant::now());
-        }
-        if let Some(p) = &log.path {
-            Frame::NONE.fill(theme::T.tab_active_bg).corner_radius(CornerRadius::same(3)).inner_margin(Margin::symmetric(6, 1)).show(ui, |ui| {
-                ui.horizontal(|ui| {
-                    ui.label(RichText::new(format!("Path: {}", p.display())).color(theme::T.text_bright));
-                    if ui.small_button("x").on_hover_text("Show the whole history").clicked() {
-                        close_path = true;
-                    }
-                });
-            });
-        }
-        if ui.small_button("Refresh").clicked() {
-            refresh = true;
-        }
-        let count = log.commits.len();
-        let more = if log.has_more { "+" } else { "" };
-        let text = if log.loading { format!("{count}{more} commits, loading...") } else { format!("{count}{more} commits") };
-        ui.label(RichText::new(text).small().color(theme::T.text_dim));
-    });
-    if close_path {
-        log.path = None;
-        changed_now = true;
-    }
-    if changed_now {
-        log.edited_at = None;
-        reload(state, 0);
-    } else if refresh {
-        let keep = state.git_ui.log.commits.len();
-        reload(state, keep);
-    }
-}
-
-/// Loads the first page again with the current filter. `keep` loads at least that many
-/// commits, so a refresh after a commit keeps the scroll position.
-fn reload(state: &mut AppState, keep: usize) {
-    let Some(repo) = state.git.repo.clone() else { return };
-    let log = &mut state.git_ui.log;
-    log.request += 1;
-    let request = log.request;
-    log.loading = true;
-    log.error = None;
-    let filter = log.filter();
-    let used = filter.clone();
-    let limit = keep.max(PAGE);
+/// Loads `user.name`/`user.email` once per project.
+fn ask_me(state: &mut AppState) {
     let generation = state.project_generation();
-    let started = Instant::now();
+    if state.git_ui.log.me_asked == Some(generation) {
+        return;
+    }
+    state.git_ui.log.me_asked = Some(generation);
+    let Some(repo) = state.git.repo.clone() else { return };
     state.jobs.spawn_quiet(
-        move || {
-            let commits = repo.log(&filter, 0, limit);
-            let branches = repo.branches();
-            (commits, branches)
-        },
-        move |state, (commits, branches)| {
-            if state.project_generation() != generation {
-                return;
-            }
-            apply_branches(state, branches.ok());
-            let log = &mut state.git_ui.log;
-            if log.request != request {
-                return;
-            }
-            log.loading = false;
-            let ms = started.elapsed().as_secs_f64() * 1000.0;
-            log.last_load_ms = Some(ms);
-            match commits {
-                Ok(list) => {
-                    log.has_more = list.len() >= limit;
-                    log.commits = list;
-                    log.graph = layout_graph(&log.commits, &used);
-                    let still_there = log.selected.is_some_and(|s| log.commits.iter().any(|c| c.oid == s));
-                    if !still_there {
-                        log.selected = log.commits.first().map(|c| c.oid);
-                        log.scroll_to = Some(0);
-                    }
-                    let n = log.commits.len();
-                    state.timings.log(format!("[git log] loaded {n} commits in {ms:.1} ms"));
-                }
-                Err(e) => {
-                    log.commits.clear();
-                    log.graph.clear();
-                    log.has_more = false;
-                    log.error = Some(e.to_string());
-                }
+        move || repo.user().ok().flatten(),
+        move |state, me| {
+            if state.project_generation() == generation {
+                state.git_ui.log.me = me;
             }
         },
     );
 }
 
-fn load_more(state: &mut AppState) {
+/// Loads the first page again with the view's filter. `keep` loads at least that many
+/// commits, so a reload after a ref move keeps the scroll position.
+fn reload(state: &mut AppState, view: &mut LogView, keep: usize) {
     let Some(repo) = state.git.repo.clone() else { return };
-    let log = &mut state.git_ui.log;
-    if log.loading || !log.has_more {
-        return;
-    }
-    log.loading = true;
-    let request = log.request;
-    let filter = log.filter();
-    let used = filter.clone();
-    let skip = log.commits.len();
+    view.request += 1;
+    view.loading = true;
+    view.error = None;
+    view.epoch = state.git_ui.log.refs_epoch;
+    let request = view.request;
+    let filter = view.log_filter(state.git_ui.log.me.as_ref());
+    let limit = keep.max(PAGE);
+    let generation = state.project_generation();
+    let id = view.id;
     let started = Instant::now();
     state.jobs.spawn_quiet(
-        move || repo.log(&filter, skip, PAGE),
-        move |state, res| {
-            let log = &mut state.git_ui.log;
-            if log.request != request {
+        move || {
+            let commits = repo.log(&filter, 0, limit).map_err(|e| e.to_string());
+            let branches = repo.branches().ok();
+            (filter, commits, branches)
+        },
+        move |state, (filter, result, branches)| {
+            if state.project_generation() != generation {
                 return;
             }
-            log.loading = false;
-            match res {
-                Ok(list) => {
-                    log.has_more = list.len() >= PAGE;
-                    log.commits.extend(list);
-                    // The layout of earlier rows depends only on earlier commits, so a full
-                    // recompute keeps them unchanged; it costs microseconds per thousand rows.
-                    log.graph = layout_graph(&log.commits, &used);
-                    let n = log.commits.len();
-                    let ms = started.elapsed().as_secs_f64() * 1000.0;
-                    state.timings.log(format!("[git log] page at {skip}: {n} commits total, {ms:.1} ms"));
-                }
-                Err(e) => {
-                    log.has_more = false;
-                    log.error = Some(e.to_string());
-                }
+            if let Some(b) = branches {
+                apply_branches(state, &b);
+                state.git_ui.log.refs_fingerprint.get_or_insert(fingerprint(&b));
+            }
+            let ms = started.elapsed().as_secs_f64() * 1000.0;
+            state.git_ui.log.post(id, ViewMsg::Page { request, skip: 0, limit, filter, result, ms });
+        },
+    );
+}
+
+fn load_more(state: &mut AppState, view: &mut LogView) {
+    let Some(repo) = state.git.repo.clone() else { return };
+    if view.loading || !view.has_more {
+        return;
+    }
+    view.loading = true;
+    let request = view.request;
+    let filter = view.log_filter(state.git_ui.log.me.as_ref());
+    let skip = view.commits.len();
+    let generation = state.project_generation();
+    let id = view.id;
+    let started = Instant::now();
+    state.jobs.spawn_quiet(
+        move || {
+            let result = repo.log(&filter, skip, PAGE).map_err(|e| e.to_string());
+            (filter, result)
+        },
+        move |state, (filter, result)| {
+            if state.project_generation() != generation {
+                return;
+            }
+            let ms = started.elapsed().as_secs_f64() * 1000.0;
+            state.git_ui.log.post(id, ViewMsg::Page { request, skip, limit: PAGE, filter, result, ms });
+        },
+    );
+}
+
+/// Starts loading the combined changes of `key` (the selection, sorted) for a view.
+pub(super) fn load_changes(state: &mut AppState, view_id: u64, key: Vec<Oid>) {
+    let Some(repo) = state.git.repo.clone() else { return };
+    let generation = state.project_generation();
+    state.jobs.spawn_quiet(
+        move || {
+            let result = repo.changes_of(&key).map_err(|e| e.to_string());
+            (key, result)
+        },
+        move |state, (key, result)| {
+            if state.project_generation() == generation {
+                state.git_ui.log.post(view_id, ViewMsg::Changes { key, result });
+            }
+        },
+    );
+}
+
+/// Starts loading the details of the lead commit for a view.
+pub(super) fn load_details(state: &mut AppState, view_id: u64, oid: Oid) {
+    let Some(repo) = state.git.repo.clone() else { return };
+    let generation = state.project_generation();
+    state.jobs.spawn_quiet(
+        move || repo.commit_details(&oid).map_err(|e| e.to_string()),
+        move |state, result| {
+            if state.project_generation() == generation {
+                state.git_ui.log.post(view_id, ViewMsg::Details { oid, result });
             }
         },
     );
@@ -340,7 +597,7 @@ fn load_more(state: &mut AppState) {
 /// A text, author or path filter hides the parents of most rows, so a real layout would open
 /// a lane per row. Those views draw one straight line instead, like IDEA's filtered log.
 fn layout_graph(commits: &[CommitInfo], filter: &LogFilter) -> Vec<GraphRow> {
-    if filter.text.is_none() && filter.author.is_none() && filter.path.is_none() {
+    if filter.text.is_none() && filter.authors.is_empty() && filter.paths.is_empty() && !filter.no_merges {
         return ide_git::graph_layout(commits);
     }
     let linear: Vec<CommitInfo> = commits
@@ -351,11 +608,10 @@ fn layout_graph(commits: &[CommitInfo], filter: &LogFilter) -> Vec<GraphRow> {
     ide_git::graph_layout(&linear)
 }
 
-fn apply_branches(state: &mut AppState, branches: Option<ide_git::Branches>) {
-    let Some(b) = branches else { return };
+fn apply_branches(state: &mut AppState, b: &ide_git::Branches) {
     let log = &mut state.git_ui.log;
     log.branch_names = (b.local.iter().map(|x| x.name.clone()).collect(), b.remote.iter().map(|x| x.name.clone()).collect());
-    log.refs_fingerprint = Some(fingerprint(&b));
+    log.head = b.head;
 }
 
 fn fingerprint(b: &ide_git::Branches) -> u64 {
@@ -369,331 +625,8 @@ fn fingerprint(b: &ide_git::Branches) -> u64 {
     h.finish()
 }
 
-fn commit_table(state: &mut AppState, ui: &mut Ui) {
-    let full = ui.available_rect_before_wrap();
-    // Header.
-    let (header, _) = ui.allocate_exact_size(vec2(full.width(), 18.0), Sense::hover());
-    let painter = ui.painter();
-    let dim = theme::T.text_dim;
-    let small = theme::T.tiny_font();
-    painter.text(pos2(header.left() + 6.0, header.center().y), Align2::LEFT_CENTER, "Subject", small.clone(), dim);
-    let author_x = header.right() - DATE_W - AUTHOR_W;
-    painter.text(pos2(author_x + 4.0, header.center().y), Align2::LEFT_CENTER, "Author", small.clone(), dim);
-    painter.text(pos2(header.right() - DATE_W + 4.0, header.center().y), Align2::LEFT_CENTER, "Date", small, dim);
-    painter.hline(header.x_range(), header.bottom() - 0.5, Stroke::new(1.0_f32, theme::T.border));
-
-    if let Some(err) = state.git_ui.log.error.clone() {
-        ui.label(RichText::new(err).color(theme::T.error));
-        return;
-    }
-    if state.git_ui.log.commits.is_empty() {
-        let text = if state.git_ui.log.loading { "Loading..." } else { "No commits match the filter." };
-        ui.label(RichText::new(text).color(theme::T.text_dim));
-        return;
-    }
-
-    let table_id = Id::new("git-log-table");
-    let has_focus = ui.memory(|m| m.has_focus(table_id));
-    keyboard(state, ui, has_focus);
-
-    let n = state.git_ui.log.commits.len();
-    let mut scroll = ScrollArea::vertical().id_salt("git-log-rows").auto_shrink([false, false]);
-    if let Some(i) = state.git_ui.log.scroll_to.take() {
-        let log = &state.git_ui.log;
-        let top = i as f32 * ROW_H;
-        if top < log.view_offset || top + ROW_H > log.view_offset + log.view_height {
-            scroll = scroll.vertical_scroll_offset((top - log.view_height / 2.0).max(0.0));
-        }
-    }
-    let mut action: Option<RowAction> = None;
-    let mut clicked: Option<usize> = None;
-    let mut want_more = false;
-    ui.spacing_mut().item_spacing.y = 0.0;
-    let out = scroll.show_rows(ui, ROW_H, n, |ui, range| {
-        let log = &state.git_ui.log;
-        let lanes = log.graph[range.clone()].iter().map(|g| g.width.max(g.lane + 1)).max().unwrap_or(1).min(MAX_LANES);
-        let graph_w = lanes as f32 * LANE_W + 8.0;
-        if range.end + 60 >= n && log.has_more && !log.loading {
-            want_more = true;
-        }
-        for i in range {
-            let (rect, resp) = ui.allocate_exact_size(vec2(ui.available_width(), ROW_H), Sense::click());
-            let commit = &log.commits[i];
-            let selected = log.selected == Some(commit.oid);
-            crate::util::label_selectable(&resp, format!("Commit {}", commit.summary), selected);
-            draw_row(ui, rect, commit, &log.graph[i], graph_w, selected, has_focus, resp.hovered());
-            if resp.clicked() || resp.secondary_clicked() {
-                clicked = Some(i);
-            }
-            let oid = commit.oid;
-            resp.context_menu(|ui| {
-                ui.set_min_width(220.0);
-                if ui.button("Copy Revision Number").clicked() {
-                    action = Some(RowAction::CopyHash(oid));
-                    ui.close_menu();
-                }
-                ui.separator();
-                if ui.button("Checkout Revision").clicked() {
-                    action = Some(RowAction::Checkout(oid));
-                    ui.close_menu();
-                }
-                if ui.button("New Branch...").clicked() {
-                    action = Some(RowAction::NewBranch(oid));
-                    ui.close_menu();
-                }
-                if ui.button("Reset Current Branch to Here...").clicked() {
-                    action = Some(RowAction::Reset(oid));
-                    ui.close_menu();
-                }
-                ui.separator();
-                if ui.button("Revert Commit").clicked() {
-                    action = Some(RowAction::Revert(oid));
-                    ui.close_menu();
-                }
-                if ui.button("Cherry-Pick").clicked() {
-                    action = Some(RowAction::CherryPick(oid));
-                    ui.close_menu();
-                }
-            });
-        }
-    });
-    {
-        let log = &mut state.git_ui.log;
-        log.view_offset = out.state.offset.y;
-        log.view_height = out.inner_rect.height();
-    }
-    if let Some(i) = clicked {
-        let log = &mut state.git_ui.log;
-        log.selected = Some(log.commits[i].oid);
-        ui.memory_mut(|m| m.request_focus(table_id));
-    }
-    // Keep the focus id alive so arrow keys keep working after a click.
-    ui.interact(out.inner_rect, table_id, Sense::focusable_noninteractive());
-    if want_more {
-        load_more(state);
-    }
-    if let Some(a) = action {
-        run_action(state, ui.ctx(), a);
-    }
-}
-
-fn keyboard(state: &mut AppState, ui: &mut Ui, has_focus: bool) {
-    if !has_focus {
-        return;
-    }
-    let (up, down, page_up, page_down) = ui.input_mut(|i| {
-        (
-            i.consume_key(egui::Modifiers::NONE, Key::ArrowUp),
-            i.consume_key(egui::Modifiers::NONE, Key::ArrowDown),
-            i.consume_key(egui::Modifiers::NONE, Key::PageUp),
-            i.consume_key(egui::Modifiers::NONE, Key::PageDown),
-        )
-    });
-    let log = &mut state.git_ui.log;
-    let n = log.commits.len();
-    if n == 0 {
-        return;
-    }
-    let cur = log.selected.and_then(|s| log.commits.iter().position(|c| c.oid == s)).unwrap_or(0);
-    let page = ((log.view_height / ROW_H) as usize).max(1);
-    let next = if up {
-        cur.saturating_sub(1)
-    } else if down {
-        (cur + 1).min(n - 1)
-    } else if page_up {
-        cur.saturating_sub(page)
-    } else if page_down {
-        (cur + page).min(n - 1)
-    } else {
-        return;
-    };
-    log.selected = Some(log.commits[next].oid);
-    log.scroll_to = Some(next);
-}
-
-#[allow(clippy::too_many_arguments)]
-fn draw_row(ui: &Ui, rect: Rect, c: &CommitInfo, g: &GraphRow, graph_w: f32, selected: bool, focused: bool, hovered: bool) {
-    let painter = ui.painter();
-    if selected {
-        painter.rect_filled(rect, 0.0, if focused { theme::T.selection } else { theme::T.selection_inactive });
-    } else if hovered {
-        painter.rect_filled(rect, 0.0, theme::T.hover);
-    }
-    let graph_rect = Rect::from_min_size(rect.min, vec2(graph_w, rect.height()));
-    draw_graph(&painter.with_clip_rect(graph_rect.intersect(painter.clip_rect())), graph_rect, g, c.parents.len() > 1);
-
-    let author_x = rect.right() - DATE_W - AUTHOR_W;
-    let subject_rect = Rect::from_min_max(pos2(graph_rect.right(), rect.top()), pos2(author_x - 6.0, rect.bottom()));
-    let sp = painter.with_clip_rect(subject_rect.intersect(painter.clip_rect()));
-    let mut x = subject_rect.left();
-    let cy = rect.center().y;
-    for r in c.refs.iter().take(4) {
-        x += draw_ref_label(&sp, pos2(x, cy), r) + 4.0;
-    }
-    if c.refs.len() > 4 {
-        let g = sp.layout_no_wrap(format!("+{}", c.refs.len() - 4), theme::T.tiny_font(), theme::T.text_dim);
-        let w = g.size().x;
-        sp.galley(pos2(x, cy - g.size().y / 2.0), g, theme::T.text_dim);
-        x += w + 4.0;
-    }
-    let text_color = if selected { theme::T.text_bright } else { theme::T.text };
-    sp.text(pos2(x + 2.0, cy), Align2::LEFT_CENTER, &c.summary, theme::T.ui_font(), text_color);
-
-    let ap = painter.with_clip_rect(Rect::from_min_max(pos2(author_x, rect.top()), pos2(rect.right() - DATE_W - 4.0, rect.bottom())).intersect(painter.clip_rect()));
-    let dim = if selected { theme::T.text } else { theme::T.text_dim };
-    ap.text(pos2(author_x + 4.0, cy), Align2::LEFT_CENTER, &c.author_name, theme::T.small_font(), dim);
-    painter.text(pos2(rect.right() - DATE_W + 4.0, cy), Align2::LEFT_CENTER, format_time(c.author_time, c.author_offset_minutes), theme::T.small_font(), dim);
-}
-
-/// Draws one row of the lane graph. A segment between two rows is a straight line from lane
-/// `from` at the upper center to lane `to` at the lower center; each row draws the half that
-/// lies inside it, so rows can be drawn independently.
-pub fn draw_graph(painter: &egui::Painter, rect: Rect, g: &GraphRow, merge: bool) {
-    let x = |lane: usize| rect.left() + 6.0 + lane as f32 * LANE_W + LANE_W / 2.0;
-    let (top, mid, bottom) = (rect.top(), rect.center().y, rect.bottom());
-    let color = |c: usize| LANE_COLORS[c % LANE_COLORS.len()];
-    for e in &g.up {
-        let half = (x(e.from) + x(e.to)) / 2.0;
-        painter.line_segment([pos2(half, top), pos2(x(e.to), mid)], Stroke::new(1.6_f32, color(e.color)));
-    }
-    for e in &g.down {
-        let half = (x(e.from) + x(e.to)) / 2.0;
-        painter.line_segment([pos2(x(e.from), mid), pos2(half, bottom)], Stroke::new(1.6_f32, color(e.color)));
-    }
-    let center = pos2(x(g.lane), mid);
-    if merge {
-        painter.circle_filled(center, 4.0, theme::T.island_bg);
-        painter.circle_stroke(center, 3.5, Stroke::new(1.6_f32, color(g.color)));
-    } else {
-        painter.circle_filled(center, 4.0, color(g.color));
-    }
-}
-
-/// Draws a branch/tag label at `left_center`; returns its width.
-pub fn draw_ref_label(painter: &egui::Painter, left_center: egui::Pos2, r: &ide_git::RefLabel) -> f32 {
-    let (bg, fg) = match r.kind {
-        RefKind::Head => theme::T.ref_head,
-        RefKind::LocalBranch if r.is_current => theme::T.ref_current,
-        RefKind::LocalBranch => theme::T.ref_local,
-        RefKind::RemoteBranch => theme::T.ref_remote,
-        RefKind::Tag => theme::T.ref_tag,
-    };
-    let galley = painter.layout_no_wrap(r.name.clone(), theme::T.tiny_font(), fg);
-    let size = galley.size() + vec2(8.0, 2.0);
-    let rect = Rect::from_min_size(pos2(left_center.x, left_center.y - size.y / 2.0), size);
-    painter.rect_filled(rect, 3.0, bg);
-    painter.galley(pos2(rect.left() + 4.0, rect.top() + 1.0), galley, fg);
-    size.x
-}
-
-fn details_pane(state: &mut AppState, ui: &mut Ui) {
-    let selected = state.git_ui.log.selected;
-    let Some(oid) = selected else {
-        ui.label(RichText::new("Select a commit to see its details.").color(theme::T.text_dim));
-        return;
-    };
-    if state.git_ui.log.details_for != Some(oid) {
-        state.git_ui.log.details_for = Some(oid);
-        if let Some(repo) = state.git.repo.clone() {
-            state.jobs.spawn_quiet(
-                move || repo.commit_details(&oid),
-                move |state, res| {
-                    let log = &mut state.git_ui.log;
-                    if log.details_for != Some(oid) {
-                        return;
-                    }
-                    match res {
-                        Ok(d) => log.details = Some(d),
-                        Err(e) => {
-                            log.details = None;
-                            state.notifications.log_only(crate::notifications::Level::Warning, "Cannot read commit", e.to_string());
-                        }
-                    }
-                },
-            );
-        }
-    }
-    let Some(d) = state.git_ui.log.details.as_ref().filter(|d| d.info.oid == oid) else {
-        ui.label(RichText::new("Loading...").color(theme::T.text_dim));
-        return;
-    };
-    let mut open: Option<PathBuf> = None;
-    let filter_path = state.git_ui.log.path.clone();
-    let total_h = ui.available_height();
-    ui.label(RichText::new(format!("Changed files ({})", d.files.len())).small().color(theme::T.text_dim));
-    let files_h = (total_h * 0.5).max(80.0);
-    ui.push_id("git-log-files", |ui| {
-        ui.spacing_mut().item_spacing.y = 0.0;
-        ScrollArea::vertical().max_height(files_h).auto_shrink([false, true]).show_rows(ui, 20.0, d.files.len(), |ui, range| {
-            for f in &d.files[range] {
-                let (rect, resp) = ui.allocate_exact_size(vec2(ui.available_width(), 20.0), Sense::click());
-                crate::util::label_widget(&resp, egui::WidgetType::Button, format!("Changed file {}", f.path.display()));
-                if resp.hovered() {
-                    ui.painter().rect_filled(rect, 0.0, theme::T.hover);
-                }
-                let color = kind_color(f.kind);
-                let name = f.path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-                let dir = f.path.parent().map(|p| p.display().to_string()).unwrap_or_default();
-                let p = ui.painter().with_clip_rect(rect.intersect(ui.clip_rect()));
-                let strong = filter_path.as_ref().is_some_and(|fp| f.path.starts_with(fp));
-                let font = if strong { theme::T.semibold(theme::T.font.ui) } else { theme::T.ui_font() };
-                let r = p.text(pos2(rect.left() + 4.0, rect.center().y), Align2::LEFT_CENTER, &name, font, color);
-                let mut extra = dir;
-                if let Some(old) = &f.old_path {
-                    extra = format!("{extra}  (from {})", old.display());
-                }
-                p.text(pos2(r.right() + 8.0, rect.center().y), Align2::LEFT_CENTER, extra, theme::T.tiny_font(), theme::T.text_dim);
-                let resp = resp.on_hover_text(f.path.display().to_string());
-                if resp.clicked() {
-                    open = Some(f.path.clone());
-                }
-            }
-        });
-    });
-    ui.add_space(6.0);
-    ui.separator();
-    ScrollArea::vertical().id_salt("git-log-message").auto_shrink([false, false]).show(ui, |ui| {
-        ui.add(egui::Label::new(RichText::new(d.message.trim_end()).color(theme::T.text_bright)).wrap());
-        ui.add_space(8.0);
-        let info = &d.info;
-        ui.horizontal(|ui| {
-            ui.label(RichText::new(info.oid.to_string()).monospace().color(theme::T.text_dim));
-            if ui.small_button("Copy").on_hover_text("Copy Revision Number").clicked() {
-                ui.ctx().copy_text(info.oid.to_string());
-            }
-        });
-        ui.label(format!("{} <{}>", info.author_name, info.author_email));
-        ui.label(RichText::new(format!("on {}", format_time_full(info.author_time, info.author_offset_minutes))).color(theme::T.text_dim));
-        if d.committer_name != info.author_name || d.committer_email != info.author_email {
-            ui.label(RichText::new(format!("committed by {} <{}>", d.committer_name, d.committer_email)).color(theme::T.text_dim));
-        }
-        if !info.parents.is_empty() {
-            let parents: Vec<String> = info.parents.iter().map(short).collect();
-            ui.label(RichText::new(format!("parents: {}", parents.join(", "))).color(theme::T.text_dim));
-        }
-        if !info.refs.is_empty() {
-            ui.horizontal_wrapped(|ui| {
-                for r in &info.refs {
-                    let (rect, _) = ui.allocate_exact_size(vec2(ui.fonts(|f| f.layout_no_wrap(r.name.clone(), theme::T.tiny_font(), theme::T.text).size().x) + 8.0, 16.0), Sense::hover());
-                    draw_ref_label(ui.painter(), rect.left_center(), r);
-                }
-            });
-        }
-    });
-    if let Some(path) = open {
-        super::diff::open_commit_diff(state, oid, &path);
-    }
-}
-
-pub fn kind_color(kind: ChangeKind) -> Color32 {
-    match kind {
-        ChangeKind::Added => theme::T.git_added,
-        ChangeKind::Modified | ChangeKind::TypeChange => theme::T.git_modified,
-        ChangeKind::Deleted => theme::T.git_deleted,
-        ChangeKind::Renamed => theme::T.git_renamed,
-        ChangeKind::Untracked => theme::T.git_untracked,
-        ChangeKind::Conflicted => theme::T.git_conflict,
-    }
+pub fn kind_color(kind: ChangeKind) -> egui::Color32 {
+    crate::tree::change_color(kind)
 }
 
 pub fn short(oid: &Oid) -> String {
@@ -704,7 +637,7 @@ fn run_action(state: &mut AppState, ctx: &Context, action: RowAction) {
     use super::remote::run_op;
     match action {
         RowAction::CopyHash(oid) => {
-            ctx.copy_text(oid.to_string());
+            state.platform.copy_text(ctx, &oid.to_string());
             state.notifications.info("Copied", oid.to_string());
         }
         RowAction::Checkout(oid) => {
@@ -712,29 +645,35 @@ fn run_action(state: &mut AppState, ctx: &Context, action: RowAction) {
             run_op(state, "Checkout Revision", body, false, move |r| r.checkout_revision(&oid).map(|_| None), |_, _| {});
         }
         RowAction::NewBranch(oid) => state.git_ui.log.dialog = Some(LogDialog::NewBranch { from: oid, name: String::new(), checkout: true }),
+        RowAction::NewTag(oid) => state.git_ui.log.dialog = Some(LogDialog::NewTag { oid, name: String::new() }),
         RowAction::Reset(oid) => state.git_ui.log.dialog = Some(LogDialog::Reset { oid, mode: ResetMode::Mixed, confirm_hard: false }),
         RowAction::Revert(oid) => run_op(state, format!("Revert {}", short(&oid)), "Reverted", true, move |r| r.revert(&oid).map(Some), |_, _| {}),
         RowAction::CherryPick(oid) => run_op(state, format!("Cherry-pick {}", short(&oid)), "Cherry-picked", true, move |r| r.cherry_pick(&oid).map(Some), |_, _| {}),
     }
 }
 
-/// Shows the Git tool window filtered to the history of one file. Called by "Git > Show History".
+/// Opens the Create Patch dialog for these files of the selected commits.
+pub(super) fn open_patch_dialog(state: &mut AppState, oids: Vec<Oid>, paths: Vec<PathBuf>) {
+    let Some(repo) = state.git.repo.as_ref() else { return };
+    let name = oids.last().map(short).unwrap_or_default();
+    let dest = repo.workdir().join(format!("{name}.patch")).display().to_string();
+    state.git_ui.log.dialog = Some(LogDialog::CreatePatch { oids, paths, dest });
+}
+
+/// Shows the history of one file. The Git window opens a History tab for it
+/// (`take_file_history`); without one, the next drawn Log tab filters by the path.
 pub fn show_file_history(state: &mut AppState, path: &Path) {
-    let rel = match state.git.repo.as_ref() {
-        Some(r) => {
-            // Editor paths are canonical already; no disk access on the UI thread.
-            path.strip_prefix(r.workdir()).map(Path::to_path_buf).unwrap_or_else(|_| path.to_path_buf())
-        }
-        None => return,
-    };
-    let log = &mut state.git_ui.log;
-    log.path = Some(rel);
-    log.text.clear();
-    log.author.clear();
-    log.edited_at = None;
-    log.selected = None;
+    if state.git.repo.is_none() {
+        return;
+    }
+    // Editor and tree paths are canonical already; no disk access on the UI thread.
+    state.git_ui.log.pending_history = Some(path.to_path_buf());
     state.layout.show(ToolWindow::Git);
-    reload(state, 0);
+}
+
+/// The view for a pending Show History request, for the Git window's History tab.
+pub fn take_file_history(state: &mut AppState) -> Option<LogView> {
+    state.git_ui.log.pending_history.take().map(LogView::file_history)
 }
 
 pub fn show_windows(state: &mut AppState, ctx: &Context) {
@@ -765,6 +704,34 @@ pub fn show_windows(state: &mut AppState, ctx: &Context) {
                             let body = format!("Created branch {n}");
                             let rev = from.to_string();
                             super::remote::run_op(state, "New Branch", body, false, move |r| r.create_branch(&n, Some(&rev), co).map(|_| None), |_, _| {});
+                        }));
+                    }
+                    if ui.button("Cancel").clicked() {
+                        close = true;
+                    }
+                });
+            });
+            close |= m.should_close();
+        }
+        LogDialog::NewTag { oid, name } => {
+            let oid = *oid;
+            let m = Modal::new(Id::new("git-log-new-tag")).show(ctx, |ui| {
+                ui.set_width(380.0);
+                ui.label(RichText::new(format!("New tag on {}", short(&oid))).strong());
+                ui.add_space(6.0);
+                let r = ui.add(TextEdit::singleline(name).hint_text("Tag name").desired_width(f32::INFINITY));
+                if !r.lost_focus() {
+                    r.request_focus();
+                }
+                ui.add_space(6.0);
+                let enter = r.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter));
+                ui.horizontal(|ui| {
+                    let valid = !name.trim().is_empty() && !name.contains(' ');
+                    if (ui.add_enabled(valid, egui::Button::new("Create")).clicked() || (enter && valid)) && submit.is_none() {
+                        let n = name.trim().to_string();
+                        submit = Some(Box::new(move |state| {
+                            let body = format!("Created tag {n}");
+                            super::remote::run_op(state, "New Tag", body, false, move |r| r.create_tag(&n, &oid, None).map(|_| None), |_, _| {});
                         }));
                     }
                     if ui.button("Cancel").clicked() {
@@ -813,6 +780,31 @@ pub fn show_windows(state: &mut AppState, ctx: &Context) {
             });
             close |= m.should_close();
         }
+        LogDialog::CreatePatch { oids, paths, dest } => {
+            let m = Modal::new(Id::new("git-log-create-patch")).show(ctx, |ui| {
+                ui.set_width(520.0);
+                let files = if paths.is_empty() { "all files".to_string() } else { format!("{} file(s)", paths.len()) };
+                ui.label(RichText::new(format!("Create Patch: {files} of {} commit(s)", oids.len())).strong());
+                ui.add_space(6.0);
+                let r = ui.add(TextEdit::singleline(dest).hint_text("Patch file").desired_width(f32::INFINITY));
+                if !r.lost_focus() {
+                    r.request_focus();
+                }
+                ui.add_space(6.0);
+                let enter = r.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter));
+                ui.horizontal(|ui| {
+                    let valid = !dest.trim().is_empty();
+                    if (ui.add_enabled(valid, egui::Button::new("Save Patch")).clicked() || (enter && valid)) && submit.is_none() {
+                        let (oids, paths, dest) = (oids.clone(), paths.clone(), PathBuf::from(dest.trim()));
+                        submit = Some(Box::new(move |state| save_patch(state, oids, paths, dest)));
+                    }
+                    if ui.button("Cancel").clicked() {
+                        close = true;
+                    }
+                });
+            });
+            close |= m.should_close();
+        }
     }
     if let Some(f) = submit {
         state.git_ui.log.dialog = None;
@@ -822,6 +814,23 @@ pub fn show_windows(state: &mut AppState, ctx: &Context) {
     }
 }
 
+fn save_patch(state: &mut AppState, oids: Vec<Oid>, paths: Vec<PathBuf>, dest: PathBuf) {
+    let Some(repo) = state.git.repo.clone() else { return };
+    let dest = if dest.is_absolute() { dest } else { repo.workdir().join(dest) };
+    state.jobs.spawn(
+        "Create Patch",
+        move || {
+            let text = repo.patch(&oids, &paths).map_err(|e| e.to_string())?;
+            std::fs::write(&dest, text).map_err(|e| format!("{}: {e}", dest.display()))?;
+            Ok::<PathBuf, String>(dest)
+        },
+        |state, res| match res {
+            Ok(p) => state.notifications.info("Patch created", p.display().to_string()),
+            Err(e) => state.notifications.error("Create Patch failed", e),
+        },
+    );
+}
+
 fn reset_job(oid: Oid, mode: ResetMode) -> Box<dyn FnOnce(&mut AppState)> {
     Box::new(move |state| {
         let body = format!("Reset ({mode:?}) to {}", short(&oid));
@@ -829,13 +838,12 @@ fn reset_job(oid: Oid, mode: ResetMode) -> Box<dyn FnOnce(&mut AppState)> {
     })
 }
 
+/// A status refresh follows every file save; the views reload only when a ref moved.
 pub fn on_git_refreshed(state: &mut AppState) {
-    let log = &state.git_ui.log;
-    if log.needs_load {
+    if !state.git_ui.log.drawn {
         return;
     }
     let Some(repo) = state.git.repo.clone() else { return };
-    // A status refresh follows every file save; the log reloads only when a ref moved.
     let generation = state.project_generation();
     state.jobs.spawn_quiet(
         move || repo.branches().ok(),
@@ -844,22 +852,19 @@ pub fn on_git_refreshed(state: &mut AppState) {
                 return;
             }
             let Some(b) = b else { return };
+            apply_branches(state, &b);
             let fp = fingerprint(&b);
-            let changed = state.git_ui.log.refs_fingerprint != Some(fp);
-            apply_branches(state, Some(b));
-            if changed {
-                if state.layout.bottom == Some(ToolWindow::Git) {
-                    let keep = state.git_ui.log.commits.len();
-                    reload(state, keep);
-                } else {
-                    state.git_ui.log.stale = true;
-                }
+            let log = &mut state.git_ui.log;
+            if log.refs_fingerprint != Some(fp) {
+                log.refs_fingerprint = Some(fp);
+                log.refs_epoch += 1;
+                state.ctx.request_repaint();
             }
         },
     );
 }
 
-/// Today/yesterday get a relative day, like IDEA; older dates show the day.
+/// "Today 17:05", "Yesterday 22:15", older days "01.10.2026, 13:18", like IDEA.
 pub fn format_time(secs: i64, offset_min: i32) -> String {
     let local = secs + offset_min as i64 * 60;
     let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0) + offset_min as i64 * 60;
@@ -873,7 +878,7 @@ pub fn format_time(secs: i64, offset_min: i32) -> String {
         format!("Yesterday {hm}")
     } else {
         let (y, m, d) = civil_from_days(day);
-        format!("{y:04}-{m:02}-{d:02} {hm}")
+        format!("{d:02}.{m:02}.{y:04}, {hm}")
     }
 }
 
@@ -901,52 +906,42 @@ fn civil_from_days(z: i64) -> (i64, u32, u32) {
     (y, m, d)
 }
 
-/// Test hook: selects the n-th loaded commit and shows the Git tool window.
-pub(crate) fn test_select(state: &mut AppState, row: usize) {
+// Test hooks for `--test-git-*` (remote/testing.rs). They act on the Log tab drawn last.
+
+fn post_active(state: &mut AppState, msg: ViewMsg) {
     state.layout.show(ToolWindow::Git);
     let log = &mut state.git_ui.log;
-    if let Some(c) = log.commits.get(row) {
-        log.selected = Some(c.oid);
-        log.scroll_to = Some(row);
+    match log.active {
+        Some(id) => log.post(id, msg),
+        None => eprintln!("[test-git] no Log tab was drawn yet"),
     }
+    state.ctx.request_repaint();
+}
+
+/// Test hook: selects the n-th loaded commit and shows the Git tool window.
+pub(crate) fn test_select(state: &mut AppState, row: usize) {
+    post_active(state, ViewMsg::TestSelect(row));
 }
 
 /// Test hook: types into the text filter.
 pub(crate) fn test_filter(state: &mut AppState, text: &str) {
-    state.layout.show(ToolWindow::Git);
-    state.git_ui.log.text = text.to_string();
-    state.git_ui.log.edited_at = Some(Instant::now());
+    post_active(state, ViewMsg::TestFilter(text.to_string()));
 }
 
-pub(crate) fn test_describe(state: &AppState) -> String {
-    let l = &state.git_ui.log;
-    let top: Vec<String> = l.commits.iter().take(4).map(|c| c.summary.clone()).collect();
-    format!("log: {} commits (more {}), path {:?}, top {top:?}, details files {:?}", l.commits.len(), l.has_more, l.path, l.details.as_ref().map(|d| d.files.len()))
+/// Test hook: the drawn Log tab prints its state on the next frame.
+pub(crate) fn test_describe(state: &mut AppState) -> String {
+    post_active(state, ViewMsg::TestDescribe);
+    "log: described on the next frame".to_string()
 }
 
-/// Test hook: clicks the n-th file in the details pane of the selected commit.
+/// Test hook: Show Diff of the n-th changed file of the selection.
 pub(crate) fn test_open_file(state: &mut AppState, n: usize) {
-    let Some(oid) = state.git_ui.log.selected else { return };
-    let Some(path) = state.git_ui.log.details.as_ref().and_then(|d| d.files.get(n)).map(|f| f.path.clone()) else {
-        eprintln!("[test-git] logfile: no details or no file {n}");
-        return;
-    };
-    super::diff::open_commit_diff(state, oid, &path);
+    post_active(state, ViewMsg::TestOpenFile(n));
 }
 
 /// Test hook: runs a context-menu action on the selected commit.
 pub(crate) fn test_action(state: &mut AppState, what: &str) {
-    let Some(oid) = state.git_ui.log.selected else { return };
-    let action = match what {
-        "checkout" => RowAction::Checkout(oid),
-        "newbranch" => RowAction::NewBranch(oid),
-        "reset" => RowAction::Reset(oid),
-        "revert" => RowAction::Revert(oid),
-        "cherry-pick" => RowAction::CherryPick(oid),
-        _ => RowAction::CopyHash(oid),
-    };
-    let ctx = state.ctx.clone();
-    run_action(state, &ctx, action);
+    post_active(state, ViewMsg::TestAction(what.to_string()));
 }
 
 #[cfg(test)]
@@ -956,5 +951,6 @@ mod tests {
         assert_eq!(super::civil_from_days(0), (1970, 1, 1));
         assert_eq!(super::civil_from_days(20_454), (2026, 1, 1));
         assert_eq!(super::format_time_full(951_782_400, 0), "2000-02-29 00:00:00 +0000");
+        assert_eq!(super::format_time(951_782_400 + 13 * 3600 + 18 * 60, 0), "29.02.2000, 13:18");
     }
 }

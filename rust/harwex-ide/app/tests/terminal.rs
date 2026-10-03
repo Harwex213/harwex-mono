@@ -1,5 +1,5 @@
 //! Terminal tool window: Alt+F12, typing into the shell, tabs, Escape routing (prompt vs the
-//! alternate screen), shortcut blocking, path links and the exited-shell bar. Shells run
+//! alternate screen), shortcut blocking, path and URL links and the exited-shell bar. Shells run
 //! `zsh -f` with a fixed prompt, so the user's rc files do not matter.
 
 mod common;
@@ -168,4 +168,191 @@ fn exited_shell_shows_a_bar() {
     ide.settle();
     assert!(ide.state().terminals.is_empty());
     assert_eq!(ide.state().layout.bottom, None, "closing the last terminal hides the window");
+}
+
+#[test]
+fn shift_enter_does_not_run_the_line() {
+    let (_fx, mut ide) = open_terminal("shift_enter");
+    // EDITOR=vi in the environment would pick zsh's vi keymap, where ESC CR runs the line.
+    ide.type_text("bindkey -e\n");
+    wait_screen(&mut ide, "$", 2);
+    ide.type_text("echo first-$((40+2))");
+    ide.key_mods(SHIFT, Key::Enter);
+    ide.type_text("echo second-$((50+5))");
+    wait_screen(&mut ide, "second-$((50+5))", 1);
+    // Give a wrongly executed first line time to print.
+    std::thread::sleep(std::time::Duration::from_millis(300));
+    ide.settle();
+    let s = screen(&ide, 0);
+    assert!(!s.contains("first-42"), "Shift+Enter ran the line:\n{s}");
+    // The continuation sits on its own row: zsh inserted a newline into the buffer.
+    assert!(s.lines().any(|l| l.trim_start().starts_with("echo second-")), "{s}");
+    // Plain Enter runs both lines.
+    ide.type_text("\n");
+    wait_screen(&mut ide, "second-55", 1);
+    let s = screen(&ide, 0);
+    assert!(s.lines().any(|l| l == "first-42"), "{s}");
+}
+
+/// URLs the app handed to the (recording) platform opener. Tests never start a browser.
+fn opened_urls(ide: &Ide) -> Vec<String> {
+    ide.state().platform.calls().into_iter().filter_map(|c| c.strip_prefix("open-url ").map(str::to_string)).collect()
+}
+
+#[test]
+fn cmd_click_opens_a_url() {
+    let (_fx, mut ide) = open_terminal("url");
+    ide.type_text("echo 'docs: https://example.com/a_(b).'\n");
+    wait_screen(&mut ide, "docs: https://example.com/a_(b).", 2);
+    let s = screen(&ide, 0);
+    let row = s.lines().position(|l| l == "docs: https://example.com/a_(b).").expect("output row");
+    let p = cell_pos(&ide, row, 14);
+
+    // Without Cmd the URL is plain text, and a click opens nothing.
+    ide.move_to(p);
+    ide.steps(2);
+    assert_eq!(ide.cursor_icon(), egui::CursorIcon::Text, "a URL is a link only with Cmd held");
+    ide.click_at(p);
+    ide.settle();
+    assert!(opened_urls(&ide).is_empty());
+
+    // With Cmd held it is a link.
+    ide.harness.input_mut().modifiers = CMD;
+    ide.move_to(p);
+    ide.steps(2);
+    assert_eq!(ide.cursor_icon(), egui::CursorIcon::PointingHand);
+    ide.snapshot_here("url_hover");
+    ide.harness.input_mut().modifiers = egui::Modifiers::NONE;
+    ide.step();
+
+    ide.click_button_at(p, egui::PointerButton::Primary, CMD);
+    ide.wait_until("URL opened", |ide| !opened_urls(ide).is_empty());
+    // The balanced parens stay, the final "." does not.
+    assert_eq!(opened_urls(&ide), ["https://example.com/a_(b)"]);
+    assert_eq!(ide.tab_titles(), ["app.ts"], "a URL opens no editor tab");
+}
+
+#[test]
+fn cmd_click_opens_the_osc8_target() {
+    let (_fx, mut ide) = open_terminal("osc8");
+    // The text says one thing, the hyperlink points elsewhere; the hyperlink wins.
+    ide.type_text("printf '\\e]8;;https://real.example/x\\e\\\\https://shown.example\\e]8;;\\e\\\\ end\\n'\n");
+    wait_screen(&mut ide, "https://shown.example end", 1);
+    let s = screen(&ide, 0);
+    let row = s.lines().position(|l| l == "https://shown.example end").expect("output row");
+    ide.click_button_at(cell_pos(&ide, row, 10), egui::PointerButton::Primary, CMD);
+    ide.wait_until("URL opened", |ide| !opened_urls(ide).is_empty());
+    assert_eq!(opened_urls(&ide), ["https://real.example/x"]);
+}
+
+/// Opens a terminal and two more tabs; returns the shell pids in tab order.
+fn three_tabs(name: &str) -> (Fixture, Ide, Vec<u32>) {
+    let (fx, mut ide) = open_terminal(name);
+    for n in 2..=3 {
+        ide.click("+");
+        ide.wait_for("another terminal", move |s| s.terminals.len() == n);
+        wait_prompt(&mut ide);
+    }
+    let before = pids(&ide);
+    (fx, ide, before)
+}
+
+fn pids(ide: &Ide) -> Vec<u32> {
+    let terms = &ide.state().terminals;
+    (0..terms.len()).map(|i| terms.terminal(i).and_then(|t| t.process_id()).expect("shell pid")).collect()
+}
+
+/// The tab rects in the tool window header, left to right.
+fn tab_rects(ide: &Ide) -> Vec<egui::Rect> {
+    let mut rects: Vec<_> = ide.rects("zsh").into_iter().filter(|r| (r.height() - 24.0).abs() < 0.5).collect();
+    rects.sort_by(|a, b| a.min.x.total_cmp(&b.min.x));
+    rects
+}
+
+/// Presses at `from` and moves the pointer to `to` in steps, with the button held.
+fn press_and_move(ide: &mut Ide, from: Pos2, to: Pos2) {
+    ide.move_to(from);
+    ide.pointer_frame(1.0 / 60.0, &[(from, true)]);
+    for i in 1..=6 {
+        ide.move_to(from + (to - from) * (i as f32 / 6.0));
+    }
+}
+
+fn release(ide: &mut Ide, at: Pos2) {
+    ide.pointer_frame(1.0 / 60.0, &[(at, false)]);
+    ide.settle();
+}
+
+#[test]
+fn drag_moves_a_tab_after_the_third() {
+    let (_fx, mut ide, before) = three_tabs("drag_reorder");
+    assert_eq!(ide.state().terminals.active_index(), 2);
+    let rects = tab_rects(&ide);
+    assert_eq!(rects.len(), 3);
+    // Grab the first tab by its title and drag it past the middle of the third.
+    let from = Pos2::new(rects[0].min.x + 12.0, rects[0].center().y);
+    let to = Pos2::new(rects[2].max.x - 4.0, rects[2].center().y + 3.0);
+    // Halfway: the tab floats over the gap between the second and the third tab.
+    let half = Pos2::new(from.x + (rects[1].min.x - rects[0].min.x) * 1.5, from.y);
+    press_and_move(&mut ide, from, half);
+    assert!(ide.state().terminals.is_dragging_tab(), "the move past the threshold started a drag");
+    assert_eq!(pids(&ide), before, "nothing moves before the release");
+    ide.snapshot_here("tab_drag");
+    // The second tab made room: it moved into the first slot.
+    let during = tab_rects(&ide);
+    assert!((during[0].min.x - rects[0].min.x).abs() < 0.5, "{during:?}");
+    for i in 1..=6 {
+        ide.move_to(half + (to - half) * (i as f32 / 6.0));
+    }
+
+    release(&mut ide, to);
+    assert!(!ide.state().terminals.is_dragging_tab());
+    assert_eq!(pids(&ide), [before[1], before[2], before[0]], "same shells, new order");
+    assert_eq!(ide.state().terminals.active_index(), 2, "the dragged tab is active");
+    assert!(terminal_focused(&ide), "focus goes to the moved terminal");
+    let id = ide.state().terminals.widget_id(2).expect("widget id");
+    assert_eq!(ide.ctx().memory(|m| m.focused()), Some(id));
+    // The moved shell still works.
+    ide.type_text("echo moved-$((6*7))\n");
+    wait_screen(&mut ide, "moved-42", 1);
+}
+
+#[test]
+fn click_without_movement_does_not_reorder() {
+    let (_fx, mut ide, before) = three_tabs("drag_click");
+    let rects = tab_rects(&ide);
+    // A tiny wobble stays under egui's drag threshold: a click, not a drag.
+    let p = Pos2::new(rects[0].min.x + 12.0, rects[0].center().y);
+    press_and_move(&mut ide, p, p + egui::vec2(2.0, 0.0));
+    assert!(!ide.state().terminals.is_dragging_tab());
+    release(&mut ide, p + egui::vec2(2.0, 0.0));
+    assert_eq!(pids(&ide), before);
+    assert_eq!(ide.state().terminals.active_index(), 0, "the click selected the first tab");
+}
+
+#[test]
+fn escape_or_a_far_release_cancels_the_drag() {
+    let (_fx, mut ide, before) = three_tabs("drag_cancel");
+    let rects = tab_rects(&ide);
+    let from = Pos2::new(rects[0].min.x + 12.0, rects[0].center().y);
+    let to = Pos2::new(rects[2].max.x - 4.0, rects[2].center().y);
+
+    // Escape puts the tab back; the release afterwards changes nothing.
+    press_and_move(&mut ide, from, to);
+    assert!(ide.state().terminals.is_dragging_tab());
+    ide.key(Key::Escape);
+    assert!(!ide.state().terminals.is_dragging_tab(), "Escape ended the drag");
+    release(&mut ide, to);
+    assert_eq!(pids(&ide), before, "Escape cancelled the move");
+    assert_eq!(ide.state().terminals.active_index(), 2, "the cancelled drag did not select a tab");
+    assert_eq!(ide.state().layout.bottom, Some(ToolWindow::Terminal));
+
+    // A release far below the strip (over the terminal output) cancels too.
+    let away = Pos2::new(to.x, to.y + 200.0);
+    press_and_move(&mut ide, from, to);
+    ide.move_to(away);
+    assert!(ide.state().terminals.is_dragging_tab());
+    release(&mut ide, away);
+    assert!(!ide.state().terminals.is_dragging_tab());
+    assert_eq!(pids(&ide), before, "a release away from the strip cancelled the move");
 }

@@ -33,6 +33,16 @@ pub struct Branches {
     pub recent: Vec<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TagInfo {
+    /// Short name: `v1.0`.
+    pub name: String,
+    /// The commit the tag points to (peeled through an annotated tag object).
+    pub oid: Oid,
+    /// An annotated tag has its own object with a message; a lightweight tag is a bare ref.
+    pub annotated: bool,
+}
+
 const RECENT_LIMIT: usize = 10;
 
 impl Repo {
@@ -110,6 +120,53 @@ impl Repo {
         }
 
         Ok(Branches { current, head, detached, local, remote, recent })
+    }
+
+    /// Tags that point at commits, sorted by name. Checkout of a tag goes through
+    /// `checkout_revision(&tag.oid)` or `checkout(name)`; both leave a detached HEAD.
+    pub fn tags(&self) -> Result<Vec<TagInfo>> {
+        let repo = self.open()?;
+        let mut out = Vec::new();
+        for r in repo.references_glob("refs/tags/*")? {
+            let r = r?;
+            let Some(name) = r.name().and_then(|n| n.strip_prefix("refs/tags/")) else { continue };
+            // A tag of a tree or blob has no place in the log.
+            let Ok(commit) = r.peel_to_commit() else { continue };
+            let annotated = r.target().and_then(|t| repo.find_tag(t).ok()).is_some();
+            out.push(TagInfo { name: name.to_string(), oid: commit.id(), annotated });
+        }
+        out.sort_by(|a, b| a.name.cmp(&b.name));
+        Ok(out)
+    }
+
+    /// "New Tag…" in the log. A non-empty `message` makes an annotated tag.
+    pub fn create_tag(&self, name: &str, oid: &Oid, message: Option<&str>) -> Result<()> {
+        let rev = oid.to_string();
+        match message.filter(|m| !m.trim().is_empty()) {
+            Some(m) => self.git_ok(&["tag", "-a", "-m", m, name, &rev])?,
+            None => self.git_ok(&["tag", name, &rev])?,
+        };
+        Ok(())
+    }
+
+    /// Deletes the local tag only; the remote keeps its copy.
+    pub fn delete_tag(&self, name: &str) -> Result<()> {
+        self.git_ok(&["tag", "-d", name])?;
+        Ok(())
+    }
+
+    /// `user.name` and `user.email` from the effective git config (repository, global,
+    /// system), so the log can mark the user's own commits. None when neither is set; a
+    /// missing half is an empty string.
+    pub fn user(&self) -> Result<Option<(String, String)>> {
+        let repo = self.open()?;
+        let config = repo.config()?;
+        let name = config.get_string("user.name").ok();
+        let email = config.get_string("user.email").ok();
+        if name.is_none() && email.is_none() {
+            return Ok(None);
+        }
+        Ok(Some((name.unwrap_or_default(), email.unwrap_or_default())))
     }
 
     /// Checks out a local branch. For a remote branch such as `origin/feature` without a

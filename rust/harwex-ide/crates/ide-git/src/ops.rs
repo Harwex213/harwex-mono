@@ -10,6 +10,17 @@ use crate::{bytes_to_text, is_binary, CommandOutcome, CommitInfo, Error, Oid, Re
 /// without remotes would otherwise list its entire history).
 const OUTGOING_LIMIT: usize = 1000;
 
+/// The remote branch a local branch pushes to.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PushTarget {
+    pub remote: String,
+    /// Branch name on the remote.
+    pub branch: String,
+    /// The branch has a configured upstream. Otherwise the push goes to the default remote
+    /// under the same name and creates the branch there.
+    pub tracked: bool,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StashEntry {
     /// Position in `stash@{n}`.
@@ -70,11 +81,16 @@ impl Repo {
         self.git(&["pull", "--autostash", if rebase { "--rebase" } else { "--no-rebase" }])
     }
 
-    /// (remote, branch on the remote) the current branch pushes to, if configured.
+    /// (remote, branch on the remote) the local branch `branch` pushes to, if configured.
     fn upstream_of(&self, repo: &git2::Repository, branch: &str) -> Option<(String, String)> {
         let config = repo.config().ok()?;
         let remote = config.get_string(&format!("branch.{branch}.remote")).ok()?;
         let merge = config.get_string(&format!("branch.{branch}.merge")).ok()?;
+        // A branch that tracks another local branch (`remote = .`) has no remote upstream;
+        // pushing to "." would move that local branch instead.
+        if remote == "." {
+            return None;
+        }
         Some((remote, merge.trim_start_matches("refs/heads/").to_string()))
     }
 
@@ -100,19 +116,35 @@ impl Repo {
             .ok_or_else(|| Error::Other("current branch name is not valid UTF-8".into()))
     }
 
-    /// Commits the push dialog shows: on HEAD but not on its upstream. A branch without an
-    /// upstream lists what no remote branch contains yet.
+    /// Commits the push dialog shows for the current branch (HEAD while detached).
     pub fn outgoing(&self) -> Result<Vec<CommitInfo>> {
         let repo = self.open()?;
-        let Some(_) = repo.head().ok().and_then(|h| h.target()) else {
+        let Some(tip) = repo.head().ok().and_then(|h| h.target()) else {
             return Ok(Vec::new());
         };
+        let branch = self.current_branch(&repo).ok();
+        self.outgoing_from(&repo, tip, branch.as_deref())
+    }
+
+    /// Commits the push dialog shows for the local branch `name`: on the branch but not on
+    /// its upstream. A branch without an upstream lists what no remote branch contains yet.
+    pub fn outgoing_of(&self, name: &str) -> Result<Vec<CommitInfo>> {
+        let repo = self.open()?;
+        let tip = self.local_tip(&repo, name)?;
+        self.outgoing_from(&repo, tip, Some(name))
+    }
+
+    fn local_tip(&self, repo: &git2::Repository, name: &str) -> Result<git2::Oid> {
+        let branch = repo.find_branch(name, git2::BranchType::Local)?;
+        branch.get().target().ok_or_else(|| Error::Other(format!("branch {name} has no commit")))
+    }
+
+    fn outgoing_from(&self, repo: &git2::Repository, tip: git2::Oid, branch: Option<&str>) -> Result<Vec<CommitInfo>> {
         let mut walk = repo.revwalk()?;
         walk.set_sorting(git2::Sort::TOPOLOGICAL | git2::Sort::TIME)?;
-        walk.push_head()?;
-        let branch = self.current_branch(&repo).ok();
-        let upstream = branch.as_deref().and_then(|b| {
-            let (remote, name) = self.upstream_of(&repo, b)?;
+        walk.push(tip)?;
+        let upstream = branch.and_then(|b| {
+            let (remote, name) = self.upstream_of(repo, b)?;
             repo.refname_to_id(&format!("refs/remotes/{remote}/{name}")).ok()
         });
         match upstream {
@@ -126,17 +158,30 @@ impl Repo {
         Ok(out)
     }
 
-    /// Pushes the current branch to its upstream, or to the default remote under the same
-    /// name when it has none. An explicit refspec avoids `push.default` surprises when the
-    /// upstream has a different name.
+    /// Where `push_branch(name)` sends the local branch `name`.
+    pub fn push_target(&self, name: &str) -> Result<PushTarget> {
+        let repo = self.open()?;
+        self.local_tip(&repo, name)?;
+        Ok(match self.upstream_of(&repo, name) {
+            Some((remote, branch)) => PushTarget { remote, branch, tracked: true },
+            None => PushTarget { remote: self.default_remote(&repo)?, branch: name.to_string(), tracked: false },
+        })
+    }
+
+    /// Pushes the current branch. See `push_branch`.
     pub fn push(&self, force_with_lease: bool, set_upstream: bool) -> Result<CommandOutcome> {
         let repo = self.open()?;
         let branch = self.current_branch(&repo)?;
-        let (remote, target) = match self.upstream_of(&repo, &branch) {
-            Some(up) => up,
-            None => (self.default_remote(&repo)?, branch.clone()),
-        };
-        let refspec = format!("HEAD:refs/heads/{target}");
+        self.push_branch(&branch, force_with_lease, set_upstream)
+    }
+
+    /// Pushes the local branch `name` to its upstream, or to the default remote under the
+    /// same name when it has none. Never checks out. An explicit refspec avoids
+    /// `push.default` surprises when the upstream has a different name or the branch is not
+    /// the current one.
+    pub fn push_branch(&self, name: &str, force_with_lease: bool, set_upstream: bool) -> Result<CommandOutcome> {
+        let PushTarget { remote, branch: target, .. } = self.push_target(name)?;
+        let refspec = format!("refs/heads/{name}:refs/heads/{target}");
         let mut args = vec!["push"];
         if force_with_lease {
             args.push("--force-with-lease");

@@ -15,6 +15,9 @@ pub struct KeyMode {
     /// Treat Option/Alt as Meta (prefix ESC). With it off, macOS Option produces its composed
     /// character through the Text event instead.
     pub alt_is_meta: bool,
+    /// The program enabled the kitty keyboard protocol ("disambiguate escape codes"). Shift+Enter
+    /// is then `CSI 13;2u` instead of the legacy `ESC CR`.
+    pub kitty_disambiguate: bool,
 }
 
 /// xterm modifier parameter: 1 + shift + 2*alt + 4*ctrl. 1 means "no modifiers".
@@ -120,6 +123,17 @@ pub fn key_to_bytes(key: Key, mods: Modifiers, mode: KeyMode) -> Option<Vec<u8>>
     }
 
     let bytes = match key {
+        // Shift+Enter is a newline inside the prompt of Claude Code and similar TUIs. Without the
+        // kitty protocol they read it as ESC CR, the bytes of Alt+Enter (what Claude Code's
+        // `/terminal-setup` binds in other terminals). zsh's emacs keymap inserts a literal
+        // newline for ESC CR, so the shell does not run the line either.
+        Key::Enter if mods.shift && !mods.ctrl => {
+            if mode.kitty_disambiguate {
+                format!("\x1b[13;{}u", xterm_modifier(Modifiers { alt, ..mods })).into_bytes()
+            } else {
+                b"\x1b\r".to_vec()
+            }
+        }
         Key::Enter => with_meta(alt, b"\r"),
         Key::Tab if mods.shift => b"\x1b[Z".to_vec(),
         Key::Tab => with_meta(alt, b"\t"),
@@ -192,10 +206,12 @@ mod tests {
     const NORMAL: KeyMode = KeyMode {
         app_cursor: false,
         alt_is_meta: true,
+        kitty_disambiguate: false,
     };
     const APP: KeyMode = KeyMode {
         app_cursor: true,
         alt_is_meta: true,
+        kitty_disambiguate: false,
     };
 
     fn mods(ctrl: bool, alt: bool, shift: bool) -> Modifiers {
@@ -277,10 +293,51 @@ mod tests {
         assert_eq!(k(Key::ArrowRight, alt).unwrap(), b"\x1bf");
         assert_eq!(k(Key::Backspace, alt).unwrap(), b"\x1b\x7f");
         let compose = KeyMode {
-            app_cursor: false,
             alt_is_meta: false,
+            ..NORMAL
         };
         assert_eq!(key_to_bytes(Key::B, alt, compose), None);
+    }
+
+    #[test]
+    fn shift_enter_is_a_newline_not_a_submit() {
+        let none = Modifiers::NONE;
+        let shift = mods(false, false, true);
+        assert_eq!(k(Key::Enter, none).unwrap(), b"\r");
+        assert_eq!(k(Key::Enter, shift).unwrap(), b"\x1b\r");
+        // Same bytes with Option as compose key: Shift alone decides.
+        let compose = KeyMode {
+            alt_is_meta: false,
+            ..NORMAL
+        };
+        assert_eq!(key_to_bytes(Key::Enter, shift, compose).unwrap(), b"\x1b\r");
+        assert_eq!(key_to_bytes(Key::Enter, shift, APP).unwrap(), b"\x1b\r");
+        // Ctrl+Enter and Ctrl+Shift+Enter keep sending CR; Cmd+Enter stays with the app.
+        assert_eq!(k(Key::Enter, mods(true, false, false)).unwrap(), b"\r");
+        assert_eq!(k(Key::Enter, mods(true, false, true)).unwrap(), b"\r");
+        let cmd_shift = Modifiers {
+            mac_cmd: true,
+            command: true,
+            shift: true,
+            ..Modifiers::NONE
+        };
+        assert_eq!(k(Key::Enter, cmd_shift), None);
+    }
+
+    #[test]
+    fn shift_enter_under_the_kitty_protocol() {
+        let kitty = KeyMode {
+            kitty_disambiguate: true,
+            ..NORMAL
+        };
+        let shift = mods(false, false, true);
+        assert_eq!(key_to_bytes(Key::Enter, shift, kitty).unwrap(), b"\x1b[13;2u");
+        assert_eq!(
+            key_to_bytes(Key::Enter, mods(false, true, true), kitty).unwrap(),
+            b"\x1b[13;4u"
+        );
+        // Plain Enter stays CR: the protocol keeps legacy Enter under "disambiguate".
+        assert_eq!(key_to_bytes(Key::Enter, Modifiers::NONE, kitty).unwrap(), b"\r");
     }
 
     #[test]

@@ -11,8 +11,8 @@ use std::sync::atomic::Ordering;
 use alacritty_terminal::grid::{Dimensions, Scroll};
 use alacritty_terminal::index::{Column, Line, Point, Side};
 use alacritty_terminal::selection::{Selection, SelectionType};
-use alacritty_terminal::term::cell::Flags;
-use alacritty_terminal::term::TermMode;
+use alacritty_terminal::term::cell::{Flags, Hyperlink};
+use alacritty_terminal::term::{Term, TermMode};
 use alacritty_terminal::vte::ansi::{Color, CursorShape, NamedColor};
 use egui::text::{LayoutJob, TextFormat};
 use egui::{
@@ -20,14 +20,15 @@ use egui::{
     Pos2, Rect, Sense, Stroke, StrokeKind, Ui,
 };
 
+use crate::blocks;
 use crate::keys::{key_to_bytes, paste_bytes, KeyMode};
-use crate::links::{path_at, resolve};
+use crate::links::{hyperlink_at, is_openable_url, path_at, resolve, url_at, UrlHit};
 use crate::theme::{dim, from_rgb, TerminalTheme, NO_COLOR};
-use crate::{Emulator, Terminal};
+use crate::Terminal;
 
 /// Two clicks closer than this on the same cell count as a double click.
 const MULTI_CLICK_SECONDS: f64 = 0.4;
-/// How far a logical (wrapped) line is followed when looking for a path.
+/// How far a logical (wrapped) line is followed when looking for a path or a URL.
 const MAX_WRAPPED_ROWS: i32 = 16;
 
 #[derive(Clone, Copy)]
@@ -67,6 +68,8 @@ pub(crate) struct ViewState {
     mouse_down: Option<(u8, usize, usize)>,
     /// Last link lookup: (token, bases) -> resolved path. Saves a stat per frame while hovering.
     link_cache: Option<(String, Option<PathBuf>)>,
+    /// Tessellated spinner stars and other drawn symbols, reused every frame.
+    symbols: blocks::SymbolCache,
 }
 
 pub struct TerminalView<'a> {
@@ -81,6 +84,9 @@ pub struct TerminalResponse {
     /// A clicked `path:line:col`. The path exists on disk; line and column are 1-based as
     /// printed in the output.
     pub open_path: Option<(PathBuf, Option<usize>, Option<usize>)>,
+    /// A URL Cmd+clicked (Ctrl+clicked off macOS): an OSC 8 hyperlink's URI or a URL in the
+    /// text. Its scheme is http, https, file or mailto. The widget never opens it itself.
+    pub open_url: Option<String>,
     /// The widget's egui response (focus, hover, context menu).
     pub response: egui::Response,
 }
@@ -188,6 +194,11 @@ impl<'a> TerminalView<'a> {
             let t = term.emulator.lock();
             (*t.mode(), t.grid().display_offset())
         };
+        let key_mode = KeyMode {
+            app_cursor: mode.contains(TermMode::APP_CURSOR),
+            alt_is_meta,
+            kitty_disambiguate: mode.contains(TermMode::DISAMBIGUATE_ESC_CODES),
+        };
         let mouse_mode = mode.intersects(TermMode::MOUSE_MODE) && !modifiers.shift;
         let sgr = mode.contains(TermMode::SGR_MOUSE);
         let hovered = ui.rect_contains_pointer(rect);
@@ -212,10 +223,6 @@ impl<'a> TerminalView<'a> {
 
         // Keyboard.
         if has_focus {
-            let key_mode = KeyMode {
-                app_cursor: mode.contains(TermMode::APP_CURSOR),
-                alt_is_meta,
-            };
             // macOS sends a composed character ("∫") right after Option+B; with Alt as Meta the
             // key event already produced ESC b, so that text must be dropped.
             let mut suppress_text = false;
@@ -322,10 +329,6 @@ impl<'a> TerminalView<'a> {
                         Key::ArrowUp
                     } else {
                         Key::ArrowDown
-                    };
-                    let key_mode = KeyMode {
-                        app_cursor: mode.contains(TermMode::APP_CURSOR),
-                        alt_is_meta,
                     };
                     let bytes =
                         key_to_bytes(key, egui::Modifiers::NONE, key_mode).unwrap_or_default();
@@ -436,19 +439,25 @@ impl<'a> TerminalView<'a> {
             ctx.copy_text(text);
         }
 
-        // Link under the pointer.
+        // Link under the pointer. A URL is a link only while Cmd is held, like iTerm; a path
+        // is a link on plain hover.
         let mut link: Option<(PathBuf, Option<usize>, Option<usize>)> = None;
+        let mut url: Option<String> = None;
         let mut link_cells: Vec<(usize, usize, usize)> = Vec::new();
         if hovered && !mouse_mode && !term.view.selecting {
             if let Some(pos) = latest_pos {
                 let (row, col, _) = cell_at(pos);
-                let found = {
+                let (url_hit, path_hit, start) = {
                     let t = term.emulator.lock();
-                    let (chars, index, start) =
-                        logical_line(&t, grid_point(row, col, display_offset));
-                    path_at(&chars, index).map(|hit| (hit, start))
+                    let line = logical_line(&t, grid_point(row, col, display_offset));
+                    let url_hit = if modifiers.command {
+                        url_under(&line).filter(|h| is_openable_url(&h.url))
+                    } else {
+                        None
+                    };
+                    (url_hit, path_at(&line.chars, line.index), line.start)
                 };
-                if let Some((hit, start)) = found {
+                if let Some(hit) = path_hit {
                     let cached = match &term.view.link_cache {
                         Some((token, resolved)) if *token == hit.path => resolved.clone(),
                         _ => {
@@ -468,13 +477,25 @@ impl<'a> TerminalView<'a> {
                         link_cells = spans(start, hit.start, hit.end, cols, display_offset, rows);
                     }
                 }
+                // A URL wins over a path at the same cell. The exception is a `file://` URL
+                // whose path exists: the editor opens it at its line instead of the browser.
+                if let Some(hit) = url_hit {
+                    let is_file = hit.url.get(..7).is_some_and(|s| s.eq_ignore_ascii_case("file://"));
+                    if !(is_file && link.is_some()) {
+                        link = None;
+                        link_cells = spans(start, hit.start, hit.end, cols, display_offset, rows);
+                        url = Some(hit.url);
+                    }
+                }
             }
         }
         let mut open_path = None;
-        if link.is_some() {
+        let mut open_url = None;
+        if link.is_some() || url.is_some() {
             ctx.set_cursor_icon(CursorIcon::PointingHand);
             if response.clicked() {
                 open_path = link.take();
+                open_url = url.take();
             }
         } else if hovered && !mouse_mode {
             ctx.set_cursor_icon(CursorIcon::Text);
@@ -557,6 +578,12 @@ impl<'a> TerminalView<'a> {
         let x_of = |col: usize| rect.left() + col as f32 * cell_w;
         let y_of = |row: usize| rect.top() + row as f32 * cell_h;
         let mut jobs: Vec<(Pos2, LayoutJob, bool)> = Vec::with_capacity(rows * 4);
+        // Block elements and a few symbols are drawn, not typeset (`blocks.rs`). They share one
+        // mesh for the frame.
+        let mut block_mesh = egui::Mesh::default();
+        // Backgrounds snap to the pixel grid like the drawn blocks, so a background run ends on
+        // the same pixel as the block next to it.
+        let snap = |v: f32| (v * ppp).round() / ppp;
         let text_job = |text: String, style: TextStyle| {
             let line = |on: bool| {
                 if on {
@@ -589,9 +616,9 @@ impl<'a> TerminalView<'a> {
                     c1 += 1;
                 }
                 if bg != theme.background && bg != NO_COLOR {
-                    let r = Rect::from_min_size(
-                        pos2(x_of(c0), y),
-                        vec2((c1 - c0) as f32 * cell_w, cell_h),
+                    let r = Rect::from_min_max(
+                        pos2(snap(x_of(c0)), snap(y)),
+                        pos2(snap(x_of(c1)), snap(y + cell_h)),
                     );
                     painter.rect_filled(r, 0.0, bg);
                 }
@@ -645,6 +672,14 @@ impl<'a> TerminalView<'a> {
                     }
                     continue;
                 }
+                if blocks::is_drawn(cell.c) && !view.zerowidth.contains_key(&index) {
+                    flush(&mut run, run_start, run_style.take(), &mut jobs);
+                    let wide = flags.contains(Flags::WIDE_CHAR);
+                    let w = if wide { 2.0 * cell_w } else { cell_w };
+                    let r = Rect::from_min_size(pos2(x_of(col), y), vec2(w, cell_h));
+                    blocks::paint(cell.c, r, cell.fg, ppp, &mut block_mesh, &mut view.symbols);
+                    continue;
+                }
                 let simple = cell.c.is_ascii()
                     && !flags.contains(Flags::WIDE_CHAR)
                     && !view.zerowidth.contains_key(&index);
@@ -666,6 +701,9 @@ impl<'a> TerminalView<'a> {
                 run.push(cell.c);
             }
             flush(&mut run, run_start, run_style.take(), &mut jobs);
+        }
+        if !block_mesh.is_empty() {
+            painter.add(block_mesh);
         }
         let galleys: Vec<_> = ui.fonts(|f| {
             jobs.into_iter()
@@ -719,14 +757,31 @@ impl<'a> TerminalView<'a> {
 
         TerminalResponse {
             open_path,
+            open_url,
             response,
         }
     }
 }
 
-/// Collects the logical line around `point`: rows joined by soft wraps. Returns its cells, the
-/// index of `point` in them, and the grid line where it starts.
-fn logical_line(term: &Emulator, point: Point) -> (Vec<char>, usize, Line) {
+/// The logical line around a point: rows joined by soft wraps.
+struct LogicalLine {
+    chars: Vec<char>,
+    /// The OSC 8 hyperlink of each cell.
+    links: Vec<Option<Hyperlink>>,
+    /// Index of the point in `chars`.
+    index: usize,
+    /// Grid line of the first row.
+    start: Line,
+}
+
+/// The URL at the line's point. An OSC 8 hyperlink wins over URL text: its visible text often
+/// differs from the URI.
+fn url_under(line: &LogicalLine) -> Option<UrlHit> {
+    hyperlink_at(&line.links, line.index).or_else(|| url_at(&line.chars, line.index))
+}
+
+/// Collects the logical line around `point`: rows joined by soft wraps.
+fn logical_line<T>(term: &Term<T>, point: Point) -> LogicalLine {
     let grid = term.grid();
     let cols = grid.columns();
     let last = Column(cols - 1);
@@ -742,13 +797,24 @@ fn logical_line(term: &Emulator, point: Point) -> (Vec<char>, usize, Line) {
     while end < grid.bottommost_line() && end.0 - point.line.0 < MAX_WRAPPED_ROWS && wraps(end) {
         end = Line(end.0 + 1);
     }
-    let mut chars = Vec::with_capacity(cols * (end.0 - start.0 + 1) as usize);
+    let len = cols * (end.0 - start.0 + 1) as usize;
+    let mut chars = Vec::with_capacity(len);
+    let mut links = Vec::with_capacity(len);
     for line in start.0..=end.0 {
         let row = &grid[Line(line)];
-        chars.extend((0..cols).map(|c| row[Column(c)].c));
+        for c in 0..cols {
+            let cell = &row[Column(c)];
+            chars.push(cell.c);
+            links.push(cell.hyperlink());
+        }
     }
     let index = (point.line.0 - start.0) as usize * cols + point.column.0;
-    (chars, index, start)
+    LogicalLine {
+        chars,
+        links,
+        index,
+        start,
+    }
 }
 
 /// Splits a cell range of a logical line into visible `(row, start_col, end_col)` pieces.
@@ -835,6 +901,48 @@ mod tests {
             mouse_report(0, 0, 0, false, false),
             [0x1b, b'[', b'M', 35, 33, 33]
         );
+    }
+
+    /// A 10-column emulator that has parsed `bytes`.
+    fn emulator(bytes: &[u8]) -> Term<alacritty_terminal::event::VoidListener> {
+        let size = crate::GridSize { cols: 10, rows: 5 };
+        let mut term = Term::new(
+            alacritty_terminal::term::Config::default(),
+            &size,
+            alacritty_terminal::event::VoidListener,
+        );
+        let mut parser: alacritty_terminal::vte::ansi::Processor =
+            alacritty_terminal::vte::ansi::Processor::new();
+        parser.advance(&mut term, bytes);
+        term
+    }
+
+    fn url_at_cell(term: &Term<alacritty_terminal::event::VoidListener>, line: i32, col: usize) -> Option<(String, Line, usize, usize)> {
+        let line = logical_line(term, Point::new(Line(line), Column(col)));
+        url_under(&line).map(|h| (h.url, line.start, h.start, h.end))
+    }
+
+    #[test]
+    fn url_across_a_soft_wrap() {
+        // 10 columns: "go https:/" | "/a.dev/xy " — the emulator wraps, it is one logical line.
+        let term = emulator(b"go https://a.dev/xy\r\nnext");
+        let want = Some(("https://a.dev/xy".to_string(), Line(0), 3, 19));
+        assert_eq!(url_at_cell(&term, 0, 5), want);
+        assert_eq!(url_at_cell(&term, 1, 4), want, "the second row finds the same URL");
+        assert_eq!(spans(Line(0), 3, 19, 10, 0, 5), vec![(0, 3, 10), (1, 0, 9)]);
+        assert_eq!(url_at_cell(&term, 2, 1), None, "a hard newline ends the line");
+    }
+
+    #[test]
+    fn osc8_wins_over_text() {
+        // The link text is itself a URL, but the URI behind it differs.
+        let term = emulator(b"\x1b]8;;https://real.dev/\x1b\\https://x\x1b]8;;\x1b\\ z");
+        assert_eq!(
+            url_at_cell(&term, 0, 2),
+            Some(("https://real.dev/".to_string(), Line(0), 0, 9))
+        );
+        // Plain text after the link (" z", wrapped onto row 1) has no hyperlink.
+        assert_eq!(url_at_cell(&term, 1, 0), None);
     }
 
     #[test]
