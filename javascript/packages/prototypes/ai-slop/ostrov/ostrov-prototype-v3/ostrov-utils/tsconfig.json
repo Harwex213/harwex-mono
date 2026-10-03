@@ -1,0 +1,10 @@
+{
+  "extends": "@hw/typescript-config/base.json",
+  "compilerOptions": {
+    "noEmit": true
+  },
+  "include": [
+    "./src/**/*",
+    "./exports.ts"
+  ]
+}

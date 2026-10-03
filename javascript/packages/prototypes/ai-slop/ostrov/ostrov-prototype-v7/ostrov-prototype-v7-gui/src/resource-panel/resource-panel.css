@@ -1,0 +1,61 @@
+.ostrov-resources {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 18px 22px;
+  border: 1px solid var(--ostrov-goldShadow);
+  border-radius: 18px;
+  background: var(--ostrov-ink);
+  font-family: var(--ostrov-font);
+  font-weight: var(--ostrov-weight);
+}
+
+.ostrov-resources__grid {
+  display: grid;
+  grid-template-columns: repeat(var(--ostrov-resources-columns, 4), minmax(0, 1fr));
+  column-gap: 20px;
+  row-gap: 16px;
+  justify-items: start;
+}
+
+.ostrov-resources__cell {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.ostrov-resources__icon {
+  flex: none;
+  font-size: 40px;
+  line-height: 1;
+}
+
+.ostrov-resources__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.ostrov-resources__value {
+  font-size: 26px;
+  line-height: 1.15;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.ostrov-resources__value--normal {
+  color: var(--ostrov-light);
+}
+
+.ostrov-resources__value--positive {
+  color: var(--ostrov-positive);
+}
+
+.ostrov-resources__label {
+  font-size: 14px;
+  line-height: 1.2;
+  color: var(--ostrov-muted);
+  overflow-wrap: anywhere;
+}

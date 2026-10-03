@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Ostrov v7 · виджеты</title>
+    <style>
+      :root {
+        --bg: #07111a;
+        --surface: #12202e;
+        --line: #26425c;
+        --text: #f2f6fa;
+        --muted: #6d8299;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background: var(--bg);
+        color: var(--text);
+        font: 14px/1.5 system-ui, -apple-system, Segoe UI, sans-serif;
+      }
+
+      #root {
+        display: grid;
+        grid-template-columns: 240px minmax(0, 1fr);
+        align-items: start;
+        gap: 24px;
+        padding: 24px;
+      }
+
+      aside {
+        position: sticky;
+        top: 24px;
+        display: grid;
+        gap: 20px;
+      }
+
+      nav {
+        display: grid;
+        gap: 4px;
+      }
+
+      nav a {
+        padding: 8px 12px;
+        border-radius: 8px;
+        color: var(--text);
+        text-decoration: none;
+      }
+
+      nav a:hover {
+        background: var(--surface);
+      }
+
+      nav a.current {
+        background: var(--line);
+      }
+
+      .stage {
+        display: grid;
+        gap: 16px;
+        align-content: start;
+        min-width: 0;
+      }
+
+      .stage h1 {
+        margin: 0;
+        font-size: 20px;
+      }
+
+      .tiles {
+        display: grid;
+        gap: 20px;
+      }
+
+      .tile {
+        display: grid;
+        gap: 8px;
+        justify-items: start;
+        padding: 16px;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: var(--surface);
+        min-width: 0;
+      }
+
+      .tile h2 {
+        margin: 0;
+        font-size: 15px;
+      }
+
+      .meta {
+        margin: 0;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .preview {
+        box-sizing: border-box;
+        width: 100%;
+        min-width: 0;
+        padding: 24px;
+        overflow: auto;
+        display: flex;
+        justify-content: center;
+        border-radius: 8px;
+        background: var(--ostrov-night);
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+  </body>
+</html>
