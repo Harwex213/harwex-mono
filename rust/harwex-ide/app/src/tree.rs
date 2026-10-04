@@ -25,7 +25,16 @@ pub struct ProjectTree {
     dirs: HashMap<PathBuf, Vec<Entry>>,
     loading: HashSet<PathBuf>,
     expanded: HashSet<PathBuf>,
+    /// The lead row of the selection: the keyboard caret, and the one row of a single selection.
     pub selected: Option<PathBuf>,
+    /// Every selected row in tree order while several are selected. It counts only while it
+    /// holds `selected`, so code that sets `selected` alone gets a single selection.
+    multi: Vec<PathBuf>,
+    /// The fixed end of a Shift range (Shift+click, Shift+arrows).
+    anchor: Option<PathBuf>,
+    /// A plain press on a row of a multi-selection keeps the selection until the release (so a
+    /// drag moves every selected row); the release without a drag selects only this row.
+    press_pending: Option<PathBuf>,
     /// Set once, for the timings log.
     pub root_load_ms: Option<f64>,
     scroll_to: Option<ScrollMode>,
@@ -39,11 +48,11 @@ pub struct ProjectTree {
     pub drag: Option<TreeDrag>,
 }
 
-/// A drag of a tree row (drag and drop to move, Alt to copy).
+/// A drag of tree rows (drag and drop to move, Alt to copy): the pressed row, or every
+/// selected row when the pressed row is part of the selection.
 #[derive(Clone, Debug)]
 pub struct TreeDrag {
-    pub path: PathBuf,
-    pub is_dir: bool,
+    pub paths: Vec<PathBuf>,
     /// The collapsed folder under the pointer and when the pointer reached it (input time).
     hover: Option<(PathBuf, f64)>,
 }
@@ -56,11 +65,34 @@ const DRAG_SCROLL_BAND: f32 = 24.0;
 /// distance, so a press is either a click or a drag, never both).
 const DRAG_START_DIST: f32 = 6.0;
 
-/// Where a drop of `src` onto a row lands: the row's folder, or the parent of a file row.
-/// `None` when the drop is refused (the item itself or one of its descendants).
-pub fn drop_dir(src: &Path, row: &Path, row_is_dir: bool) -> Option<PathBuf> {
+/// Where a drop of `srcs` onto a row lands: the row's folder, or the parent of a file row.
+/// `None` when the drop is refused (one of the items itself or one of its descendants).
+pub fn drop_dir(srcs: &[PathBuf], row: &Path, row_is_dir: bool) -> Option<PathBuf> {
     let dir = if row_is_dir { row.to_path_buf() } else { row.parent()?.to_path_buf() };
-    (!dir.starts_with(src)).then_some(dir)
+    (!srcs.iter().any(|s| dir.starts_with(s))).then_some(dir)
+}
+
+/// The paths an operation on several items acts on: no duplicates, and no item inside another
+/// selected folder (the folder carries it along). The order stays.
+pub fn top_level(paths: &[PathBuf]) -> Vec<PathBuf> {
+    let mut out: Vec<PathBuf> = Vec::new();
+    for p in paths {
+        if !paths.iter().any(|q| q != p && p.starts_with(q)) && !out.contains(p) {
+            out.push(p.clone());
+        }
+    }
+    out
+}
+
+/// The rows from `anchor` to `to`, both included, in tree order. Only `to` when the anchor is
+/// not a visible row.
+fn row_range(rows: &[Row], anchor: Option<&Path>, to: &Path) -> Vec<PathBuf> {
+    let b = rows.iter().position(|r| r.entry.path == to);
+    let a = anchor.and_then(|a| rows.iter().position(|r| r.entry.path == a)).or(b);
+    match (a, b) {
+        (Some(a), Some(b)) => rows[a.min(b)..=a.max(b)].iter().map(|r| r.entry.path.clone()).collect(),
+        _ => vec![to.to_path_buf()],
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -136,14 +168,102 @@ impl ProjectTree {
         if let Some(sel) = self.selected.as_ref().and_then(moved) {
             self.selected = Some(sel);
         }
+        for p in &mut self.multi {
+            if let Some(m) = moved(p) {
+                *p = m;
+            }
+        }
+        if let Some(a) = self.anchor.as_ref().and_then(moved) {
+            self.anchor = Some(a);
+        }
         self.dirs.retain(|d, _| !d.starts_with(old));
+    }
+
+    /// Every selected path: the multi-selection, or the lead row alone.
+    pub fn selection(&self) -> Vec<PathBuf> {
+        match &self.selected {
+            Some(lead) if self.multi.len() > 1 && self.multi.contains(lead) => self.multi.clone(),
+            Some(lead) => vec![lead.clone()],
+            None => Vec::new(),
+        }
+    }
+
+    /// How many rows are selected.
+    pub fn selection_len(&self) -> usize {
+        match &self.selected {
+            Some(lead) if self.multi.len() > 1 && self.multi.contains(lead) => self.multi.len(),
+            Some(_) => 1,
+            None => 0,
+        }
+    }
+
+    pub fn is_selected(&self, path: &Path) -> bool {
+        match &self.selected {
+            Some(lead) if self.multi.len() > 1 && self.multi.contains(lead) => self.multi.iter().any(|p| p == path),
+            Some(lead) => lead == path,
+            None => false,
+        }
+    }
+
+    /// Selects one row; it becomes the anchor of the next Shift range.
+    pub fn select_one(&mut self, path: PathBuf) {
+        self.multi.clear();
+        self.anchor = Some(path.clone());
+        self.selected = Some(path);
+    }
+
+    /// Selects `paths` (in tree order) with `lead` as the caret. Tests and Cmd+A use it.
+    pub fn select_many(&mut self, paths: Vec<PathBuf>, lead: PathBuf) {
+        if self.anchor.as_ref().is_none_or(|a| !paths.contains(a)) {
+            self.anchor = Some(lead.clone());
+        }
+        self.multi = paths;
+        if !self.multi.contains(&lead) {
+            self.multi.push(lead.clone());
+        }
+        self.selected = Some(lead);
+    }
+
+    /// Cmd+click: adds the row to the selection or takes it out. The row becomes the anchor.
+    pub fn toggle_selected(&mut self, path: PathBuf) {
+        let mut cur = self.selection();
+        if let Some(i) = cur.iter().position(|p| *p == path) {
+            cur.remove(i);
+            match cur.last().cloned() {
+                Some(lead) => {
+                    self.multi = cur;
+                    self.selected = Some(lead);
+                }
+                None => {
+                    self.multi.clear();
+                    self.selected = None;
+                }
+            }
+        } else {
+            cur.push(path.clone());
+            self.multi = cur;
+            self.selected = Some(path.clone());
+        }
+        self.anchor = Some(path);
+    }
+
+    /// Drops `path` and everything under it from the selection (after a delete or a move away).
+    pub fn deselect_under(&mut self, path: &Path) {
+        self.multi.retain(|p| !p.starts_with(path));
+        if self.selected.as_ref().is_some_and(|s| s.starts_with(path)) {
+            self.selected = self.multi.last().cloned().or_else(|| path.parent().map(Path::to_path_buf));
+        }
+    }
+
+    /// Whether a listed entry is a folder (`false` for paths the tree has not listed).
+    pub fn entry_is_dir(&self, path: &Path) -> bool {
+        path.parent().and_then(|p| self.dirs.get(p)).and_then(|entries| entries.iter().find(|e| e.path == path)).is_some_and(|e| e.is_dir)
     }
 
     /// The selected folder, or the folder of the selected file.
     pub fn selected_dir(&self) -> Option<PathBuf> {
         let sel = self.selected.as_ref()?;
-        let is_dir = sel.parent().and_then(|p| self.dirs.get(p)).and_then(|entries| entries.iter().find(|e| &e.path == sel)).is_some_and(|e| e.is_dir);
-        if is_dir {
+        if self.entry_is_dir(sel) {
             Some(sel.clone())
         } else {
             sel.parent().map(Path::to_path_buf)
@@ -154,8 +274,8 @@ impl ProjectTree {
         self.excluded.iter().any(|e| path.starts_with(e))
     }
 
-    /// Selects a file and expands its parents, e.g. for "Select Opened File".
-    pub fn reveal(&mut self, root: &Path, path: &Path) {
+    /// Expands the parents of `path` up to `root`.
+    pub fn expand_to(&mut self, root: &Path, path: &Path) {
         let mut p = path.parent();
         while let Some(dir) = p {
             if !dir.starts_with(root) {
@@ -164,7 +284,12 @@ impl ProjectTree {
             self.expanded.insert(dir.to_path_buf());
             p = dir.parent();
         }
-        self.selected = Some(path.to_path_buf());
+    }
+
+    /// Selects a file and expands its parents, e.g. for "Select Opened File".
+    pub fn reveal(&mut self, root: &Path, path: &Path) {
+        self.expand_to(root, path);
+        self.select_one(path.to_path_buf());
         self.scroll_to = Some(ScrollMode::Center);
     }
 }
@@ -216,6 +341,15 @@ fn flatten<'a>(tree: &'a ProjectTree, dir: &Path, depth: usize, out: &mut Vec<Ro
     }
 }
 
+/// A row press, applied after the rows are drawn.
+enum Press {
+    One(PathBuf),
+    Toggle(PathBuf),
+    /// The range in tree order and the pressed row (the new lead).
+    Range(Vec<PathBuf>, PathBuf),
+    Pending(PathBuf),
+}
+
 pub enum TreeEvent {
     Open(PathBuf),
 }
@@ -247,6 +381,8 @@ pub fn select_opened_file(state: &mut AppState) {
 #[derive(Default)]
 struct KeyOutcome {
     select: Option<PathBuf>,
+    /// Shift+arrows and Cmd+A: the new selection in tree order and its lead row.
+    many: Option<(Vec<PathBuf>, PathBuf)>,
     toggle: Option<PathBuf>,
     open: Option<PathBuf>,
     to_editor: bool,
@@ -309,9 +445,28 @@ fn command_keys(ui: &Ui, cut_pending: bool) -> Option<TreeCommand> {
 
 /// Arrow keys, Enter and Escape while the tree has focus, like IDEA: Up and Down move the
 /// selection, Right expands (or steps into the folder), Left collapses (or goes to the parent).
-fn keyboard(ui: &Ui, rows: &[Row], selected: Option<&Path>, cut_pending: bool) -> KeyOutcome {
+fn keyboard(ui: &Ui, rows: &[Row], selected: Option<&Path>, anchor: Option<&Path>, cut_pending: bool) -> KeyOutcome {
     let mut out = KeyOutcome { command: command_keys(ui, cut_pending), ..Default::default() };
     let none = egui::Modifiers::NONE;
+    // Before the plain arrows: consume_key ignores an extra Shift.
+    let (shift_up, shift_down, all) = ui.input_mut(|i| (i.consume_key(egui::Modifiers::SHIFT, Key::ArrowUp), i.consume_key(egui::Modifiers::SHIFT, Key::ArrowDown), i.consume_key(egui::Modifiers::COMMAND, Key::A)));
+    if all && !rows.is_empty() {
+        let lead = selected.filter(|s| rows.iter().any(|r| r.entry.path == *s)).map_or_else(|| rows[0].entry.path.clone(), Path::to_path_buf);
+        out.many = Some((rows.iter().map(|r| r.entry.path.clone()).collect(), lead));
+    }
+    if shift_up || shift_down {
+        let cur = selected.and_then(|s| rows.iter().position(|r| r.entry.path == s));
+        let next = match cur {
+            Some(i) if shift_up => i.checked_sub(1),
+            Some(i) => (i + 1 < rows.len()).then_some(i + 1),
+            None => (!rows.is_empty()).then_some(0),
+        };
+        if let Some(n) = next {
+            let to = rows[n].entry.path.clone();
+            let anchor = anchor.or(selected);
+            out.many = Some((row_range(rows, anchor, &to), to));
+        }
+    }
     let (up, down, left, right, enter, escape) = ui.input_mut(|i| {
         (
             i.consume_key(none, Key::ArrowUp),
@@ -405,15 +560,15 @@ pub fn show(state: &mut AppState, ui: &mut Ui) -> Option<TreeEvent> {
     flatten(&state.ws.tree, &root, 0, &mut rows, &mut missing);
     // An open context menu needs Escape and the arrows itself.
     let menu_open = ui.ctx().is_context_menu_open();
-    let keys = if focused && !menu_open { keyboard(ui, &rows, state.ws.tree.selected.as_deref(), state.ws.tree_ops.has_cut()) } else { KeyOutcome::default() };
-    // A key command acts on the selected row; the root when nothing is selected.
+    let keys = if focused && !menu_open { keyboard(ui, &rows, state.ws.tree.selected.as_deref(), state.ws.tree.anchor.as_deref(), state.ws.tree_ops.has_cut()) } else { KeyOutcome::default() };
+    // A key command acts on the selected rows; the root when no visible row is selected.
     let key_target = keys.command.map(|c| {
-        let sel = state.ws.tree.selected.clone().filter(|s| s.starts_with(&root));
-        let target = match sel.and_then(|s| rows.iter().find(|r| r.entry.path == s)) {
-            Some(r) => Target { path: r.entry.path.clone(), is_dir: r.entry.is_dir },
-            None => Target { path: root.clone(), is_dir: true },
-        };
-        (c, target)
+        let sel = state.ws.tree.selection();
+        let mut targets: Vec<Target> = rows.iter().filter(|r| sel.contains(&r.entry.path)).map(|r| Target { path: r.entry.path.clone(), is_dir: r.entry.is_dir }).collect();
+        if targets.is_empty() {
+            targets.push(Target { path: root.clone(), is_dir: true });
+        }
+        (c, targets)
     });
     let row_h = t.space.row_h;
     // Each row owns the spacing below it, so a click between two painted rows still hits one.
@@ -425,8 +580,9 @@ pub fn show(state: &mut AppState, ui: &mut Ui) -> Option<TreeEvent> {
 
     // Scroll the selected row into view: centered for "Select Opened File", by the least
     // distance for the arrow keys. The row can be missing while its folders still load.
-    let scroll_mode = keys.select.as_ref().map(|_| ScrollMode::Nearest).or(state.ws.tree.scroll_to);
-    let target_path = keys.select.as_deref().or(state.ws.tree.selected.as_deref());
+    let key_lead = keys.select.as_deref().or(keys.many.as_ref().map(|m| m.1.as_path()));
+    let scroll_mode = key_lead.map(|_| ScrollMode::Nearest).or(state.ws.tree.scroll_to);
+    let target_path = key_lead.or(state.ws.tree.selected.as_deref());
     // Rows are exactly the viewport wide, so there is nothing to scroll sideways. A mouse drag
     // belongs to drag and drop, not to scrolling; the wheel and the trackpad still scroll.
     let mut area = ScrollArea::vertical().auto_shrink([false, false]).drag_to_scroll(false).id_salt("project-tree");
@@ -455,10 +611,13 @@ pub fn show(state: &mut AppState, ui: &mut Ui) -> Option<TreeEvent> {
     let git = &state.ws.git;
     let ops = &state.ws.tree_ops;
     let tree = &state.ws.tree;
-    let mut menu_cmd: Option<(TreeCommand, Target)> = None;
-    let selected = keys.select.as_deref().or(state.ws.tree.selected.as_deref());
+    let mut menu_cmd: Option<(TreeCommand, Vec<Target>)> = None;
+    let key_select = keys.select.as_deref();
+    let sel_len = tree.selection_len();
     ui.spacing_mut().item_spacing.y = 0.0;
-    let (pointer, released, down, alt, now) = ui.input(|i| (i.pointer.latest_pos(), i.pointer.primary_released(), i.pointer.primary_down(), i.modifiers.alt, i.time));
+    let (pointer, released, down, alt, now, pressed, mods) = ui.input(|i| (i.pointer.latest_pos(), i.pointer.primary_released(), i.pointer.primary_down(), i.modifiers.alt, i.time, i.pointer.primary_pressed(), i.modifiers));
+    // What a row press asks for, applied after the rows are drawn.
+    let mut press: Option<Press> = None;
     let dragging = state.ws.tree.drag.clone();
     let mut drag_start: Option<TreeDrag> = None;
     // The folder a drop would go into, and its row rect when that row is drawn.
@@ -480,7 +639,7 @@ pub fn show(state: &mut AppState, ui: &mut Ui) -> Option<TreeEvent> {
             if clip.contains(p) && p.y >= top {
                 let idx = range.start + ((p.y - top) / pitch) as usize;
                 if let Some(r) = rows.get(idx).filter(|_| idx < range.end) {
-                    match drop_dir(&drag.path, &r.entry.path, r.entry.is_dir) {
+                    match drop_dir(&drag.paths, &r.entry.path, r.entry.is_dir) {
                         Some(dir) => *target_dir = Some(dir),
                         None => drag_refused = true,
                     }
@@ -509,7 +668,10 @@ pub fn show(state: &mut AppState, ui: &mut Ui) -> Option<TreeEvent> {
                 hit_rows.push(crate::testhook::tree_hits::HitRow { path: row.entry.path.clone(), is_dir: row.entry.is_dir, rect: hit, id: resp.id });
             }
             let rel = row.entry.path.strip_prefix(&root).unwrap_or(&row.entry.path);
-            let is_selected = selected == Some(row.entry.path.as_path());
+            let is_selected = match key_select {
+                Some(s) => s == row.entry.path,
+                None => tree.is_selected(&row.entry.path),
+            };
             crate::util::label_selectable(&resp, rel.display().to_string(), is_selected);
             // Children sit one indent right of the root's chevron.
             let x = rect.min.x + 4.0 + (row.depth + 1) as f32 * t.space.indent;
@@ -536,7 +698,9 @@ pub fn show(state: &mut AppState, ui: &mut Ui) -> Option<TreeEvent> {
             if dragging.is_none() && resp.dragged() {
                 let moved = ui.input(|i| i.pointer.press_origin().zip(i.pointer.latest_pos()).is_some_and(|(a, b)| a.distance(b) >= DRAG_START_DIST));
                 if moved {
-                    drag_start = Some(TreeDrag { path: row.entry.path.clone(), is_dir: row.entry.is_dir, hover: None });
+                    // A row of a multi-selection drags the whole selection.
+                    let paths = if sel_len > 1 && tree.is_selected(&row.entry.path) { top_level(&tree.selection()) } else { vec![row.entry.path.clone()] };
+                    drag_start = Some(TreeDrag { paths, hover: None });
                 }
             }
             if row.entry.is_dir {
@@ -562,8 +726,18 @@ pub fn show(state: &mut AppState, ui: &mut Ui) -> Option<TreeEvent> {
             // click already toggled, so the second one does nothing.
             let on_chevron = chevron_cell.zip(resp.interact_pointer_pos()).is_some_and(|(c, p)| c.contains(p));
             let double = clicks.double(&resp);
-            if (resp.is_pointer_button_down_on() || resp.clicked()) && !on_chevron {
-                select = Some(row.entry.path.clone());
+            if pressed && (resp.is_pointer_button_down_on() || resp.clicked()) && !on_chevron {
+                // Cmd toggles the row, Shift selects the range from the anchor, a plain press
+                // on a row of a multi-selection waits for the release.
+                press = Some(if mods.command {
+                    Press::Toggle(row.entry.path.clone())
+                } else if mods.shift {
+                    Press::Range(row_range(&rows, tree.anchor.as_deref().or(tree.selected.as_deref()), &row.entry.path), row.entry.path.clone())
+                } else if sel_len > 1 && tree.is_selected(&row.entry.path) {
+                    Press::Pending(row.entry.path.clone())
+                } else {
+                    Press::One(row.entry.path.clone())
+                });
             }
             if resp.clicked() {
                 take_focus = true;
@@ -583,21 +757,31 @@ pub fn show(state: &mut AppState, ui: &mut Ui) -> Option<TreeEvent> {
                     event = Some(TreeEvent::Open(row.entry.path.clone()));
                 }
             }
-            // Right-click selects the row too, like IDEA.
+            // Right-click selects the row too, like IDEA; on a row of a multi-selection it keeps
+            // the selection, and the menu acts on all of it.
+            let in_multi = sel_len > 1 && tree.is_selected(&row.entry.path);
             if resp.secondary_clicked() {
-                select = Some(row.entry.path.clone());
+                if !in_multi {
+                    select = Some(row.entry.path.clone());
+                }
                 take_focus = true;
             }
             resp.context_menu(|ui| {
-                let target = Target { path: row.entry.path.clone(), is_dir: row.entry.is_dir };
+                let targets: Vec<Target> = if in_multi {
+                    tree.selection().into_iter().map(|p| Target { is_dir: tree.entry_is_dir(&p), path: p }).collect()
+                } else {
+                    vec![Target { path: row.entry.path.clone(), is_dir: row.entry.is_dir }]
+                };
+                let changed = |t: &Target| if t.is_dir { git.dirty_dirs.contains(&t.path) } else { git.status.get(&t.path).is_some_and(|k| *k != ChangeKind::Untracked) };
                 let info = MenuInfo {
                     can_paste: ops.clip.is_some(),
-                    excluded: tree.excluded.contains(&target.path),
-                    has_changes: if target.is_dir { git.dirty_dirs.contains(&target.path) } else { git.status.get(&target.path).is_some_and(|k| *k != ChangeKind::Untracked) },
+                    excluded: tree.excluded.contains(&targets[0].path),
+                    has_changes: targets.iter().any(changed),
                     has_repo: git.repo.is_some(),
+                    count: targets.len(),
                 };
-                if let Some(cmd) = crate::tree_menu::menu(ui, &target, &info) {
-                    menu_cmd = Some((cmd, target));
+                if let Some(cmd) = crate::tree_menu::menu(ui, &targets[0], &info) {
+                    menu_cmd = Some((cmd, targets));
                 }
             });
         }
@@ -621,13 +805,14 @@ pub fn show(state: &mut AppState, ui: &mut Ui) -> Option<TreeEvent> {
         let node = ui.interact(if outline.is_positive() { outline } else { Rect::from_min_size(out.inner_rect.min, vec2(0.0, 0.0)) }, crate::workspace::wid("tree-drop-target"), Sense::hover());
         crate::util::label_widget(&node, egui::WidgetType::Other, format!("Drop target {rel}"));
     }
-    let mut drop: Option<(PathBuf, PathBuf, bool)> = None;
+    let mut drop: Option<(Vec<PathBuf>, PathBuf, bool)> = None;
     if let Some(start) = drag_start {
         state.ws.tree.drag = Some(start);
+        state.ws.tree.press_pending = None;
     } else if let Some(drag) = state.ws.tree.drag.as_mut() {
         if released || !down {
             if let Some(dir) = drop_target.take() {
-                drop = Some((drag.path.clone(), dir, alt));
+                drop = Some((drag.paths.clone(), dir, alt));
             }
             state.ws.tree.drag = None;
         } else {
@@ -656,7 +841,7 @@ pub fn show(state: &mut AppState, ui: &mut Ui) -> Option<TreeEvent> {
                 egui::CursorIcon::Grabbing
             });
             if let Some(p) = pointer {
-                drag_ghost(ui.ctx(), p, &drag.path);
+                drag_ghost(ui.ctx(), p, &drag.paths);
             }
         }
     }
@@ -675,8 +860,36 @@ pub fn show(state: &mut AppState, ui: &mut Ui) -> Option<TreeEvent> {
     if take_focus || pressed_on_tree {
         ui.memory_mut(|m| m.request_focus(focus_id()));
     }
+    let tree = &mut state.ws.tree;
+    let pressed_row = press.is_some();
+    match press {
+        Some(Press::Toggle(p)) => tree.toggle_selected(p),
+        Some(Press::Range(paths, lead)) => tree.select_many(paths, lead),
+        Some(Press::Pending(p)) => {
+            // The lead moves, the selection stays until the release.
+            tree.selected = Some(p.clone());
+            tree.press_pending = Some(p);
+        }
+        Some(Press::One(p)) => {
+            tree.press_pending = None;
+            tree.select_one(p);
+        }
+        None => {}
+    }
+    // A release ends a pending press; no drag started, so the row alone stays selected. egui
+    // reports no click for a long press, so the release counts, not the click.
+    if (released || !down) && !pressed_row {
+        if let Some(p) = tree.press_pending.take() {
+            if tree.drag.is_none() {
+                tree.select_one(p);
+            }
+        }
+    }
     if let Some(s) = select.or(keys.select) {
-        state.ws.tree.selected = Some(s);
+        tree.select_one(s);
+    }
+    if let Some((paths, lead)) = keys.many {
+        tree.select_many(paths, lead);
     }
     if let Some(dir) = toggle {
         if !state.ws.tree.expanded.remove(&dir) {
@@ -693,11 +906,11 @@ pub fn show(state: &mut AppState, ui: &mut Ui) -> Option<TreeEvent> {
     for dir in missing {
         load_dir(state, dir);
     }
-    if let Some((src, dir, copy)) = drop {
-        crate::tree_menu::drop_into(state, src, dir, copy);
+    if let Some((srcs, dir, copy)) = drop {
+        crate::tree_menu::drop_into(state, srcs, dir, copy);
     }
-    if let Some((cmd, target)) = menu_cmd.or(key_target) {
-        crate::tree_menu::run(state, cmd, target);
+    if let Some((cmd, targets)) = menu_cmd.or(key_target) {
+        crate::tree_menu::run(state, cmd, targets);
         // The menu took the focus. Commands that open no dialog, search or terminal hand it
         // back; a dialog keeps it for its text box.
         let stays = matches!(
@@ -711,11 +924,14 @@ pub fn show(state: &mut AppState, ui: &mut Ui) -> Option<TreeEvent> {
     event
 }
 
-/// The item name that follows the pointer during a drag.
-fn drag_ghost(ctx: &egui::Context, pointer: egui::Pos2, path: &Path) {
+/// The item name ("N items" for several) that follows the pointer during a drag.
+fn drag_ghost(ctx: &egui::Context, pointer: egui::Pos2, paths: &[PathBuf]) {
     let t = &theme::T;
     let painter = ctx.layer_painter(egui::LayerId::new(egui::Order::Tooltip, crate::workspace::wid("tree-drag-ghost")));
-    let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    let name = match paths {
+        [one] => one.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(),
+        many => format!("{} items", many.len()),
+    };
     let galley = painter.layout_no_wrap(name, t.ui_font(), t.text_bright);
     let rect = Rect::from_min_size(pointer + vec2(14.0, 10.0), galley.size() + vec2(16.0, 8.0));
     painter.rect(rect, t.radius.row, t.popup_bg, egui::Stroke::new(1.0_f32, t.popup_border), egui::StrokeKind::Inside);

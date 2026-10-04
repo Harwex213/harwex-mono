@@ -9,7 +9,7 @@ use std::path::{Component, Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
 
-use crate::lang::{Location, Reference, TextEdit};
+use crate::lang::{FileEdit, Location, Reference, TextEdit};
 
 /// The calls that leave the app. The UI holds one `Arc<dyn Platform>`; tests pass a
 /// [`RecordingPlatform`], so a test run never touches the real Trash, Finder or clipboard.
@@ -224,6 +224,12 @@ pub enum Collision {
 
 /// A free name for a second copy of `name` in `dir`, like Finder: `a copy.ts`, `a copy 2.ts`.
 pub fn keep_both_path(dir: &Path, name: &str) -> PathBuf {
+    keep_both_path_avoiding(dir, name, &std::collections::HashSet::new())
+}
+
+/// Like `keep_both_path`, and also skips the names in `taken` (targets planned by the same
+/// paste that do not exist yet).
+pub fn keep_both_path_avoiding(dir: &Path, name: &str, taken: &std::collections::HashSet<PathBuf>) -> PathBuf {
     let (stem, ext) = match name.rfind('.') {
         Some(i) if i > 0 => (&name[..i], &name[i..]),
         _ => (name, ""),
@@ -232,7 +238,7 @@ pub fn keep_both_path(dir: &Path, name: &str) -> PathBuf {
     loop {
         let candidate = if n == 1 { format!("{stem} copy{ext}") } else { format!("{stem} copy {n}{ext}") };
         let p = dir.join(candidate);
-        if !p.exists() && p.symlink_metadata().is_err() {
+        if !p.exists() && p.symlink_metadata().is_err() && !taken.contains(&p) {
             return p;
         }
         n += 1;
@@ -374,6 +380,66 @@ const TS_EXTENSIONS: [&str; 8] = ["ts", "tsx", "mts", "cts", "js", "jsx", "mjs",
 
 fn ext_of(p: &Path) -> String {
     p.extension().and_then(|e| e.to_str()).unwrap_or_default().to_ascii_lowercase()
+}
+
+/// Joins the import edits of several moves done together (Cut + Paste or a drop of several
+/// items). Each server answer assumes only its own item moves. One clash needs a fix: a moved
+/// file that imports another moved item gets an edit from both moves at the same place. The
+/// edit of the imported item's move names the item's new place from the importer's old
+/// folder; it is re-based to the importer's new folder. `moves` pairs (old, new) by index with
+/// `per_move`.
+pub fn merge_move_edits(moves: &[(PathBuf, PathBuf)], per_move: Vec<Vec<FileEdit>>) -> Vec<FileEdit> {
+    let mut out: Vec<FileEdit> = Vec::new();
+    for (i, files) in per_move.into_iter().enumerate() {
+        for f in files {
+            let at = match out.iter().position(|o| o.path == f.path) {
+                Some(at) => at,
+                None => {
+                    out.push(FileEdit { path: f.path.clone(), edits: Vec::new() });
+                    out.len() - 1
+                }
+            };
+            // The move that carries the edited file itself, if any.
+            let own = moves.iter().position(|(old, _)| f.path.starts_with(old));
+            for e in f.edits {
+                let same = |x: &TextEdit| (x.start_line, x.start_column, x.end_line, x.end_column) == (e.start_line, e.start_column, e.end_line, e.end_column);
+                let Some(k) = out[at].edits.iter().position(same) else {
+                    out[at].edits.push(e);
+                    continue;
+                };
+                if out[at].edits[k].new_text == e.new_text {
+                    continue;
+                }
+                // The text of the other move: it already names the imported item's new place.
+                let theirs = if own == Some(i) { out[at].edits[k].new_text.clone() } else { e.new_text.clone() };
+                let rebased = own.and_then(|j| {
+                    let (old, new) = &moves[j];
+                    let new_file = moved_path(&f.path, old, new)?;
+                    rebase_specifier(&theirs, f.path.parent()?, new_file.parent()?)
+                });
+                out[at].edits[k].new_text = rebased.unwrap_or(theirs);
+            }
+        }
+    }
+    out.retain(|f| !f.edits.is_empty());
+    out
+}
+
+/// A relative import specifier written in `old_dir`, rewritten for a file in `new_dir` so it
+/// names the same place. `None` for a specifier that is not relative (a package name).
+pub fn rebase_specifier(spec: &str, old_dir: &Path, new_dir: &Path) -> Option<String> {
+    if !(spec.starts_with("./") || spec.starts_with("../")) {
+        return None;
+    }
+    let target = normalize(&old_dir.join(spec));
+    let new_dir = normalize(new_dir);
+    let from: Vec<Component> = new_dir.components().collect();
+    let to: Vec<Component> = target.components().collect();
+    let common = from.iter().zip(&to).take_while(|(a, b)| a == b).count();
+    let mut parts: Vec<String> = vec!["..".into(); from.len() - common];
+    parts.extend(to[common..].iter().map(|c| c.as_os_str().to_string_lossy().into_owned()));
+    let joined = parts.join("/");
+    Some(if joined.starts_with("..") { joined } else { format!("./{joined}") })
 }
 
 /// `a/./b/../c` -> `a/c`, without touching the disk.
@@ -522,6 +588,38 @@ pub fn set_excluded(root: &Path, rel: &str, excluded: bool) -> Result<(), String
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn spec_edit(line: usize, text: &str) -> TextEdit {
+        TextEdit { start_line: line, start_column: 20, end_line: line, end_column: 25, new_text: text.into() }
+    }
+
+    #[test]
+    fn rebase_specifier_follows_the_importer() {
+        let p = Path::new;
+        assert_eq!(rebase_specifier("../lib/b", p("/r/src"), p("/r/lib")).as_deref(), Some("./b"));
+        assert_eq!(rebase_specifier("./x/b", p("/r/src"), p("/r/src/deep")).as_deref(), Some("../x/b"));
+        assert_eq!(rebase_specifier("./deep/x/b", p("/r/src"), p("/r/src/deep")).as_deref(), Some("./x/b"));
+        assert_eq!(rebase_specifier("./b", p("/r/src"), p("/r/lib/a")).as_deref(), Some("../../src/b"));
+        assert_eq!(rebase_specifier("fake-lib", p("/r/src"), p("/r/lib")), None);
+    }
+
+    #[test]
+    fn merged_moves_fix_imports_between_moved_files() {
+        // src/a.ts imports ./b; both move to lib/. main.ts imports both.
+        let moves = vec![(PathBuf::from("/r/src/a.ts"), PathBuf::from("/r/lib/a.ts")), (PathBuf::from("/r/src/b.ts"), PathBuf::from("/r/lib/b.ts"))];
+        let a_move = vec![FileEdit { path: "/r/src/a.ts".into(), edits: vec![spec_edit(0, "../src/b")] }, FileEdit { path: "/r/main.ts".into(), edits: vec![spec_edit(0, "./lib/a")] }];
+        let b_move = vec![FileEdit { path: "/r/src/a.ts".into(), edits: vec![spec_edit(0, "../lib/b")] }, FileEdit { path: "/r/main.ts".into(), edits: vec![spec_edit(1, "./lib/b")] }];
+        let merged = merge_move_edits(&moves, vec![a_move, b_move]);
+        assert_eq!(merged.len(), 2);
+        assert_eq!(merged[0].path, PathBuf::from("/r/src/a.ts"));
+        assert_eq!(merged[0].edits, vec![spec_edit(0, "./b")]);
+        assert_eq!(merged[1].edits, vec![spec_edit(0, "./lib/a"), spec_edit(1, "./lib/b")]);
+        // The other order gives the same text.
+        let a_move = vec![FileEdit { path: "/r/src/a.ts".into(), edits: vec![spec_edit(0, "../src/b")] }];
+        let b_move = vec![FileEdit { path: "/r/src/a.ts".into(), edits: vec![spec_edit(0, "../lib/b")] }];
+        let merged = merge_move_edits(&[moves[1].clone(), moves[0].clone()], vec![b_move, a_move]);
+        assert_eq!(merged[0].edits, vec![spec_edit(0, "./b")]);
+    }
 
     fn tmp() -> (tempfile::TempDir, PathBuf) {
         let t = tempfile::tempdir().unwrap();

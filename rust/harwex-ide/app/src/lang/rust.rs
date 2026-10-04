@@ -616,6 +616,15 @@ impl LanguageServer for RustService {
         }
         lock(&self.files).clear();
     }
+
+    fn restart(&self) {
+        self.shutdown();
+        // A rust-analyzer installed since the last lookup is found, and a missing one is
+        // reported again.
+        *lock(&self.exe) = None;
+        self.warned_missing.store(false, Ordering::SeqCst);
+        lock(&self.roots).clear();
+    }
 }
 
 #[cfg(test)]

@@ -70,7 +70,9 @@ fn main() -> eframe::Result {
         // folder or tool window layout in ~/Library/Application Support/harwex-ide.
         native.persistence_path = Some(std::env::temp_dir().join("harwex-ide-background.ron"));
     }
-    let options = AppOptions { project: cli_folder, test, start, instance: server, ..AppOptions::default() };
+    // Background runs keep their terminal tabs in the temp dir, like their eframe storage above.
+    let terminal_db = harwex_ide::terminal_store::default_db_path(background);
+    let options = AppOptions { project: cli_folder, test, start, instance: server, terminal_db, ..AppOptions::default() };
     eframe::run_native("harwex-ide", native, Box::new(move |cc| Ok(Box::new(IdeApp::create(&cc.egui_ctx, cc.storage, options)))))
 }
 

@@ -464,7 +464,6 @@ fn title_bar_widgets() {
     // Left to right: badge and project, Settings, branch.
     assert!(ide.rect("Project harwex-mono").max.x <= ide.rect("Settings").min.x);
     assert!(ide.rect("Settings").max.x <= ide.rect("Branch main").min.x);
-    assert!(ide.rect("Branch main").max.x < 640.0, "the whole group sits on the left");
     ide.snapshot("title_bar");
 
     // A click on the branch does nothing.
@@ -494,6 +493,77 @@ fn title_bar_widgets() {
     ide.cmd(Key::K);
     ide.settle();
     assert_eq!(ide.state().ws.layout.left, Some(ToolWindow::Commit));
+}
+
+/// The group of project, Settings and branch sits on the window's center at any width that has
+/// room for it. A narrow window moves it right of the macOS buttons, and a long branch name
+/// truncates. The popups drop down from the widgets.
+#[test]
+fn title_bar_group_centered() {
+    let fx = Fixture::new(SUITE, "title_centered");
+    let repo = changed_repo(fx.path("harwex-mono"));
+    let mut ide = Ide::open(SUITE, &repo.dir);
+    let group = |ide: &Ide, branch: &str| {
+        let project = ide.rect("Project harwex-mono");
+        let branch = ide.rect(&format!("Branch {branch}"));
+        (project.min.x, branch.max.x)
+    };
+    for width in [1280.0, 900.0] {
+        ide.resize(egui::vec2(width, 800.0));
+        let (left, right) = group(&ide, "main");
+        assert!(((left + right) / 2.0 - width / 2.0).abs() <= 1.0, "the group is centered at {width}: {left}..{right}");
+    }
+    // The popups open under their widgets.
+    let project = ide.rect("Project harwex-mono");
+    ide.click("Project harwex-mono");
+    ide.settle();
+    let open = ide.rect("Open...");
+    assert!(ide.state().projects.open);
+    assert!(open.min.y > project.max.y && (open.min.x - project.min.x).abs() < 40.0, "the projects popup hangs under the widget: {open:?} vs {project:?}");
+    ide.key(Key::Escape);
+    ide.settle();
+    let settings = ide.rect("Settings");
+    ide.click("Settings");
+    ide.settle();
+    let item = ide.node_containing("Open Folder...").raw_bounds().map(|r| egui::Rect::from_min_max(egui::pos2(r.x0 as f32, r.y0 as f32), egui::pos2(r.x1 as f32, r.y1 as f32))).expect("the settings menu has bounds");
+    assert!(item.min.y > settings.max.y && (item.min.x - settings.min.x).abs() < 40.0, "the settings menu hangs under the gear: {item:?} vs {settings:?}");
+    ide.key(Key::Escape);
+    ide.settle();
+    let branch = ide.rect("Branch main");
+    ide.key_mods(CTRL_SHIFT, Key::Backtick);
+    ide.wait_until("branches popup", |ide| ide.state().ws.git_ui.branches.is_open() && ide.has("Local branch main"));
+    let fetch = ide.rect("Fetch");
+    assert!(fetch.min.y > branch.max.y && (fetch.min.x - branch.min.x).abs() < 40.0, "the branches popup hangs under the branch: {fetch:?} vs {branch:?}");
+    // The popup now sits near the right edge: the branch submenu opens beside it and leaves the
+    // hovered row uncovered.
+    let row = ide.rect("Local branch main");
+    ide.hover("Local branch main");
+    ide.wait_until("branch submenu", |ide| ide.has("New Branch from 'main'..."));
+    let item = ide.rect("New Branch from 'main'...");
+    assert!(item.max.x <= row.min.x || item.min.x >= row.max.x, "the submenu leaves the row free: {item:?} vs {row:?}");
+    assert!(item.max.x <= 900.0, "the submenu stays inside the window: {item:?}");
+    ide.snapshot("branch_submenu_left");
+    ide.park_mouse();
+    ide.key_mods(CTRL_SHIFT, Key::Backtick);
+    ide.settle();
+
+    // Too narrow to center: the group starts right after the macOS buttons.
+    let content_x = harwex_ide::chrome::title_bar_layout(true, false, harwex_ide::chrome::BUTTON_SIZE).content_x;
+    ide.resize(egui::vec2(400.0, 800.0));
+    let (left, right) = group(&ide, "main");
+    assert_eq!(left, content_x, "the group clears the macOS buttons");
+    assert!(right <= 400.0 - harwex_ide::theme::T.space.title_pad);
+    ide.snapshot("title_bar_narrow");
+
+    // A long branch name truncates with an ellipsis.
+    let long = "feature/a-very-long-branch-name-that-does-not-fit";
+    repo.git(&["checkout", "-q", "-b", long]);
+    ide.state_mut().refresh_git();
+    ide.wait_until("branch name", |ide| ide.has(&format!("Branch {long}")));
+    let (left, right) = group(&ide, long);
+    assert_eq!(left, content_x);
+    assert!(right <= 400.0 - harwex_ide::theme::T.space.title_pad, "the branch truncates: {right}");
+    ide.snapshot("title_bar_truncated");
 }
 
 fn tree_focused(ide: &Ide) -> bool {

@@ -44,10 +44,12 @@ pub struct EditorTab {
 impl EditorTab {
     pub fn new(path: PathBuf, doc: Document) -> EditorTab {
         let read_only = crate::lang::is_library_path(&path);
+        let mut view = EditorState::new();
+        view.set_soft_wrap(ide_editor::wrap::default_for(&path, doc.language()));
         EditorTab {
             path,
             doc,
-            view: EditorState::new(),
+            view,
             marks: Vec::new(),
             annotations: Vec::new(),
             read_only,

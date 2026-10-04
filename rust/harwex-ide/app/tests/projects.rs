@@ -256,3 +256,48 @@ fn popup_snapshot() {
     ide.hover("Open project harwex-notes");
     ide.snapshot_here("popup_hover");
 }
+
+/// A Recent folder deleted from disk (task 039): the row draws grey after the worker check, a
+/// press shows a toast and opens nothing, and its cross still removes it. An existing Recent
+/// row still opens.
+#[test]
+fn missing_recent_folder_is_grey_and_does_not_open() {
+    let fx = Fixture::new(SUITE, "missing");
+    let a = basic_repo(fx.path("alpha"));
+    let b = basic_repo(fx.path("beta"));
+    let c = basic_repo(fx.path("gamma"));
+    let mut ide = Ide::open(SUITE, &a.dir);
+    let gone = canonical(&c.dir);
+    {
+        let recent = &mut ide.state_mut().projects;
+        recent.note_opened(&gone);
+        recent.note_opened(&canonical(&b.dir));
+    }
+    std::fs::remove_dir_all(&c.dir).expect("delete gamma");
+
+    ide.click("Project alpha");
+    ide.settle();
+    assert!(ide.state().projects.is_missing(&gone));
+    assert!(!ide.state().projects.is_missing(&canonical(&b.dir)));
+    assert_eq!(recent_rows(&ide), vec!["beta", "gamma (missing)"]);
+    ide.snapshot("popup_missing");
+
+    ide.click("Recent project gamma (missing)");
+    ide.settle();
+    assert_eq!(ide.state().workspaces().len(), 1, "a missing folder does not open");
+    assert!(popup_open(&ide), "the popup stays open, so the row can be removed");
+    let toast = format!("Folder not found: {}", gone.display());
+    assert!(ide.state().notifications.toast_titles().contains(&toast), "{:?}", ide.state().notifications.toast_titles());
+
+    ide.hover("Recent project gamma (missing)");
+    ide.click("Remove recent project gamma");
+    ide.settle();
+    assert_eq!(recent_rows(&ide), vec!["beta"]);
+    assert!(!ide.state().projects.recent.contains(&gone));
+
+    ide.click("Recent project beta");
+    let rb = canonical(&b.dir);
+    ide.wait_for("beta opened from Recent", move |s| s.ws.project.as_ref().is_some_and(|p| p.root == rb) && s.ws.git.status_ms.is_some());
+    ide.settle();
+    assert_eq!(ide.state().workspaces().len(), 2);
+}

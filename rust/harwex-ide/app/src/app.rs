@@ -49,6 +49,9 @@ pub struct AppOptions {
     pub start: Instant,
     /// The single-instance socket this process bound (`instance.rs`). `None` in tests.
     pub instance: Option<crate::instance::Server>,
+    /// The SQLite file that keeps terminal tabs per project (`terminal_store.rs`). `None` (the
+    /// default) keeps no tabs; tests that need it point it into their fixture folder.
+    pub terminal_db: Option<PathBuf>,
 }
 
 impl Default for AppOptions {
@@ -65,6 +68,7 @@ impl Default for AppOptions {
             platform: None,
             start: Instant::now(),
             instance: None,
+            terminal_db: None,
         }
     }
 }
@@ -95,6 +99,7 @@ impl IdeApp {
         state.watch_files = options.watch_files;
         state.terminal_command = options.terminal.clone();
         state.ws.terminals.command = options.terminal;
+        state.terminal_store = options.terminal_db.map(crate::terminal_store::TerminalStore::new);
         state.platform = match options.platform {
             Some(p) => p,
             None if options.deterministic => std::sync::Arc::new(crate::fileops::RecordingPlatform::new(std::env::temp_dir().join("harwex-ide-test-trash"))),
@@ -179,7 +184,13 @@ impl eframe::App for IdeApp {
         status_bar(s, ctx);
         let t = &theme::T;
         let unread = s.notifications.unread;
-        let badge = |w: ToolWindow| if w == ToolWindow::Notifications { unread } else { 0 };
+        let (terminals, changes) = (s.ws.terminals.len(), s.ws.git.changes.len());
+        let badge = |w: ToolWindow| match w {
+            ToolWindow::Notifications if unread > 0 => layout::StripBadge::Dot,
+            ToolWindow::Terminal => layout::StripBadge::Count(terminals),
+            ToolWindow::Commit => layout::StripBadge::Count(changes),
+            _ => layout::StripBadge::None,
+        };
         let window = Frame::NONE.fill(t.window_bg);
         egui::SidePanel::left("left-strip").exact_width(t.space.strip_w).resizable(false).show_separator_line(false).frame(window).show(ctx, |ui| {
             layout::left_strip(ui, &mut s.ws.layout, badge);
@@ -254,9 +265,13 @@ impl eframe::App for IdeApp {
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
         crate::persist::save(&mut self.state, storage);
         git::save_storage(&self.state, storage);
+        // Terminal tabs live in their own database; this refreshes the shells' directories.
+        crate::terminal::save_all(&mut self.state);
     }
 
     fn on_exit(&mut self) {
+        // Before the shells die: their working directories are read now.
+        crate::terminal::flush_on_exit(&mut self.state);
         self.state.shutdown_all();
     }
 }
@@ -388,8 +403,9 @@ fn editor_find_keys(s: &mut AppState, ctx: &Context) {
 }
 
 /// The title bar, merged with the window chrome like IDEA's New UI: the macOS window buttons,
-/// vertically centered (`chrome`), then the project widget (badge, name), Settings and the current branch.
-/// A soft tint of the badge color runs across it from the left.
+/// vertically centered (`chrome`), and a group of the project widget (badge, name), Settings and
+/// the current branch, centered on the window (`title_group_place`). A soft tint of the badge
+/// color runs across it from the left.
 fn title_bar(s: &mut AppState, ctx: &Context) {
     let t = &theme::T;
     egui::TopBottomPanel::top("title-bar").exact_height(t.space.title_h).show_separator_line(false).frame(Frame::NONE.fill(t.window_bg)).show(ctx, |ui| {
@@ -416,22 +432,39 @@ fn title_bar(s: &mut AppState, ctx: &Context) {
                 chrome::DoubleClick::Nothing => {}
             }
         }
-        let left_inset = chrome::current(ctx).content_x;
+        let has_branch = s.ws.git.repo.is_some();
+        let branch_label = has_branch.then(|| {
+            let branch = s.ws.git.branch.clone().unwrap_or_else(|| "...".into());
+            if s.ws.git.detached {
+                format!("detached: {branch}")
+            } else {
+                branch
+            }
+        });
+        let project_text = name.as_deref().unwrap_or("Open Folder...").to_string();
+        let project_badge = name.as_deref().map(|n| (initials(n), badge.unwrap_or(t.accent)));
+        let measure = |text: &str, font: egui::FontId| ui.painter().layout_no_wrap(text.to_string(), font, t.text).size().x;
+        let project_text_w = measure(&project_text, t.semibold(t.font.ui));
+        let branch_text_w = branch_label.as_deref().map_or(0.0, |b| measure(b, t.ui_font()));
+        let place = title_group_place(
+            full.min.x..full.max.x,
+            full.min.x + chrome::current(ctx).content_x,
+            TitleGroup { project_fixed: title_widget_fixed_w(project_badge.is_some()), project_text: project_text_w, settings: t.space.strip_button - 4.0, branch_fixed: has_branch.then_some(BRANCH_FIXED_W), branch_text: branch_text_w },
+        );
         let mut row = ui.new_child(UiBuilder::new().max_rect(full.shrink2(egui::vec2(0.0, 6.0))).layout(Layout::left_to_right(Align::Center)));
-        row.add_space(left_inset);
-        row.spacing_mut().item_spacing.x = 2.0;
-        let project = title_widget(&mut row, name.as_deref().map(|n| (initials(n), badge.unwrap_or(t.accent))), name.as_deref().unwrap_or("Open Folder..."), &format!("Project {}", name.as_deref().unwrap_or("")), s.projects.open);
+        row.add_space(place.x - full.min.x);
+        row.spacing_mut().item_spacing.x = 0.0;
+        let open_projects = s.all_ws().count();
+        let project = title_widget(&mut row, project_badge, &project_text, place.project_text, &format!("Project {}", name.as_deref().unwrap_or("")), s.projects.open, open_projects);
         crate::projects_popup::on_widget(s, &row, &project);
-        row.add_space(4.0);
+        row.add_space(TITLE_GAP);
         let settings = layout::icon_button(&mut row, Icon::Settings, "Settings", "Settings");
         settings_menu(s, &row, &settings);
         // The branch is display-only. The branches popup opens with Ctrl+Shift+` and drops
         // down from here.
-        if s.ws.git.repo.is_some() {
-            row.add_space(4.0);
-            let branch = s.ws.git.branch.clone().unwrap_or_else(|| "...".into());
-            let label = if s.ws.git.detached { format!("detached: {branch}") } else { branch };
-            let r = branch_widget(&mut row, &label);
+        if let Some(label) = branch_label {
+            row.add_space(TITLE_GAP);
+            let r = branch_widget(&mut row, &label, place.branch_text);
             s.ws.git_ui.branches_anchor = Some(r.rect.left_bottom() + egui::vec2(0.0, 4.0));
         }
     });
@@ -464,18 +497,91 @@ pub fn initials(name: &str) -> String {
     out.to_uppercase()
 }
 
-/// A title bar widget: an optional badge, a text and a dropdown chevron, with a hover fill.
-/// `open`: its popup is open, so it keeps the hover fill.
-fn title_widget(ui: &mut egui::Ui, badge: Option<(String, egui::Color32)>, text: &str, label: &str, open: bool) -> egui::Response {
+/// The space between the project widget, Settings and the branch.
+const TITLE_GAP: f32 = 6.0;
+/// The branch widget without its text: padding, icon, gap, padding.
+const BRANCH_FIXED_W: f32 = 8.0 + 16.0 + 6.0 + 8.0;
+/// A name never truncates below this width.
+const TITLE_TEXT_MIN_W: f32 = 24.0;
+
+/// The project widget without its text: padding, badge, chevron.
+fn title_widget_fixed_w(badge: bool) -> f32 {
+    let badge_w = if badge { 20.0 + 8.0 } else { 0.0 };
+    8.0 + badge_w + 6.0 + 12.0 + 8.0
+}
+
+/// The widths of the title bar group: the project widget, Settings and the optional branch.
+#[derive(Clone, Copy, Debug)]
+pub struct TitleGroup {
+    pub project_fixed: f32,
+    pub project_text: f32,
+    pub settings: f32,
+    pub branch_fixed: Option<f32>,
+    pub branch_text: f32,
+}
+
+/// Where the title bar group goes: its left x and the text widths after truncation.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct TitlePlace {
+    pub x: f32,
+    pub project_text: f32,
+    pub branch_text: f32,
+}
+
+/// Centers the group on the window width (`bar`). A narrow window moves the group right until it
+/// starts at `content_x` (after the macOS buttons). When the group still does not fit before the
+/// right padding, the longer name truncates first, then both.
+pub fn title_group_place(bar: std::ops::Range<f32>, content_x: f32, g: TitleGroup) -> TitlePlace {
+    let right = bar.end - theme::T.space.title_pad;
+    let fixed = g.project_fixed + TITLE_GAP + g.settings + g.branch_fixed.map_or(0.0, |b| TITLE_GAP + b);
+    let branch_text = if g.branch_fixed.is_some() { g.branch_text } else { 0.0 };
+    let (mut project_text, mut branch_text) = (g.project_text, branch_text);
+    let room = (right - content_x - fixed).max(0.0);
+    if project_text + branch_text > room {
+        if g.branch_fixed.is_none() {
+            project_text = room;
+        } else {
+            let half = room / 2.0;
+            if project_text <= half {
+                branch_text = room - project_text;
+            } else if branch_text <= half {
+                project_text = room - branch_text;
+            } else {
+                project_text = half;
+                branch_text = half;
+            }
+        }
+        project_text = project_text.max(TITLE_TEXT_MIN_W.min(g.project_text));
+        branch_text = branch_text.max(TITLE_TEXT_MIN_W.min(g.branch_text));
+    }
+    let width = fixed + project_text + branch_text;
+    let center = (bar.start + bar.end) / 2.0;
+    let x = (center - width / 2.0).max(content_x).round();
+    TitlePlace { x, project_text, branch_text }
+}
+
+/// One line of `text`, cut with `…` to `max_w`.
+fn title_galley(ui: &egui::Ui, text: &str, font: egui::FontId, max_w: f32) -> std::sync::Arc<egui::Galley> {
     let t = &theme::T;
-    let font = t.semibold(t.font.ui);
-    let galley = ui.painter().layout_no_wrap(text.to_string(), font, t.text);
+    let mut job = egui::text::LayoutJob::simple_singleline(text.to_string(), font, t.text);
+    job.wrap = egui::text::TextWrapping::truncate_at_width(max_w.ceil());
+    ui.painter().layout_job(job)
+}
+
+/// A title bar widget: an optional badge, a text and a dropdown chevron, with a hover fill.
+/// `text_w`: the room for the text, which truncates with `…` beyond it. `open`: its popup is
+/// open, so it keeps the hover fill. `projects`: the open projects; a count badge on the
+/// initials shows it above 1.
+fn title_widget(ui: &mut egui::Ui, badge: Option<(String, egui::Color32)>, text: &str, text_w: f32, label: &str, open: bool, projects: usize) -> egui::Response {
+    let t = &theme::T;
+    let galley = title_galley(ui, text, t.semibold(t.font.ui), text_w);
     let badge_w = if badge.is_some() { 20.0 + 8.0 } else { 0.0 };
-    let size = egui::vec2(8.0 + badge_w + galley.size().x + 6.0 + 12.0 + 8.0, t.space.title_h - 12.0);
+    let size = egui::vec2(title_widget_fixed_w(badge.is_some()) + text_w, t.space.title_h - 12.0);
     let (rect, resp) = ui.allocate_exact_size(size, Sense::click());
     crate::util::label_widget(&resp, egui::WidgetType::Button, label);
     let painter = ui.painter();
-    if resp.hovered() || open {
+    let hovered = resp.hovered() || open;
+    if hovered {
         painter.rect_filled(rect, t.radius.button, t.hover_on_window);
     }
     let mut x = rect.min.x + 8.0;
@@ -483,19 +589,24 @@ fn title_widget(ui: &mut egui::Ui, badge: Option<(String, egui::Color32)>, text:
         let b = Rect::from_min_size(egui::pos2(x, rect.center().y - 10.0), egui::vec2(20.0, 20.0));
         painter.rect_filled(b, t.radius.badge, color);
         painter.text(b.center(), egui::Align2::CENTER_CENTER, initials, t.semibold(t.font.badge), t.badge_text);
+        if projects > 1 {
+            // The tint under the bar is faint; the plain bar color makes a clean enough ring.
+            let ring = if hovered { t.hover_on_window } else { t.window_bg };
+            crate::badge::show(ui, Id::new("title-projects-badge"), b.right_top() + egui::vec2(-1.0, 1.0), projects, ring, format!("{projects} open projects"));
+        }
         x += badge_w;
     }
     painter.galley(egui::pos2(x, rect.center().y - galley.size().y / 2.0), galley.clone(), t.text);
-    x += galley.size().x + 6.0;
+    x = rect.max.x - 8.0 - 12.0;
     icons::paint(painter, Rect::from_center_size(egui::pos2(x + 6.0, rect.center().y + 1.0), egui::vec2(12.0, 12.0)), Icon::ChevronDown, t.text_dim);
     resp
 }
 
 /// The current branch: an icon and the name. It takes no clicks.
-fn branch_widget(ui: &mut egui::Ui, branch: &str) -> egui::Response {
+fn branch_widget(ui: &mut egui::Ui, branch: &str, text_w: f32) -> egui::Response {
     let t = &theme::T;
-    let galley = ui.painter().layout_no_wrap(branch.to_string(), t.ui_font(), t.text);
-    let size = egui::vec2(8.0 + 16.0 + 6.0 + galley.size().x + 8.0, t.space.title_h - 12.0);
+    let galley = title_galley(ui, branch, t.ui_font(), text_w);
+    let size = egui::vec2(BRANCH_FIXED_W + text_w, t.space.title_h - 12.0);
     let (rect, resp) = ui.allocate_exact_size(size, Sense::hover());
     crate::util::label_widget(&resp, egui::WidgetType::Label, format!("Branch {branch}"));
     let painter = ui.painter();
@@ -634,6 +745,11 @@ fn tool_window(s: &mut AppState, ui: &mut egui::Ui, w: ToolWindow) {
                 layout::Side::Left => s.ws.layout.left = None,
                 layout::Side::Bottom => s.ws.layout.bottom = None,
             }
+            return;
+        }
+        // The header can hide its own window (closing the last terminal tab does). The body
+        // must not run then: the Terminal body would start a new shell in the hidden window.
+        if s.ws.layout.left != Some(w) && s.ws.layout.bottom != Some(w) {
             return;
         }
         tool_window_body(s, ui, w);

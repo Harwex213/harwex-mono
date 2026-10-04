@@ -356,3 +356,179 @@ fn escape_or_a_far_release_cancels_the_drag() {
     assert!(!ide.state().ws.terminals.is_dragging_tab());
     assert_eq!(pids(&ide), before, "a release away from the strip cancelled the move");
 }
+
+/// The header tab labelled `label` (the tab, not its close button or the rename box).
+fn tab_rect(ide: &Ide, label: &str) -> egui::Rect {
+    let rects: Vec<_> = ide.rects(label).into_iter().filter(|r| (r.height() - 24.0).abs() < 0.5).collect();
+    assert_eq!(rects.len(), 1, "one tab labelled {label:?}: {rects:?}");
+    rects[0]
+}
+
+fn names(ide: &Ide) -> Vec<Option<String>> {
+    let terms = &ide.state().ws.terminals;
+    (0..terms.len()).map(|i| terms.name(i).map(str::to_string)).collect()
+}
+
+#[test]
+fn double_click_renames_a_tab_inline() {
+    let (_fx, mut ide) = open_terminal("rename");
+    ide.click("+");
+    ide.wait_for("second terminal", |s| s.ws.terminals.len() == 2);
+    wait_prompt(&mut ide);
+
+    // A double click on the first tab opens the name editor with the title selected.
+    let first = tab_rects(&ide)[0];
+    ide.double_click_now(first.left_center() + egui::vec2(12.0, 0.0));
+    ide.settle();
+    assert!(ide.state().ws.terminals.is_renaming());
+    assert!(ide.is_focused("Tab name"), "the name box has the focus");
+    ide.type_text("build");
+    ide.snapshot("rename_inline");
+    // Enter keeps the name and gives the keys back to the terminal.
+    ide.key(Key::Enter);
+    ide.settle();
+    assert!(!ide.state().ws.terminals.is_renaming());
+    assert_eq!(names(&ide), [Some("build".to_string()), None]);
+    assert_eq!(ide.state().ws.terminals.title(0).as_deref(), Some("build"));
+    assert!(ide.has("build"), "the tab shows its name");
+    assert!(terminal_focused(&ide), "Enter returns the focus to the terminal");
+    assert_eq!(ide.state().ws.terminals.active_index(), 0);
+    assert!(!screen(&ide, 0).contains("build"), "the typed name never reached the shell");
+
+    // Escape cancels: the second tab keeps the shell's title.
+    let second = tab_rect(&ide, "zsh");
+    ide.double_click_at(second.left_center() + egui::vec2(12.0, 0.0));
+    ide.settle();
+    assert!(ide.state().ws.terminals.is_renaming());
+    ide.type_text("never");
+    ide.key(Key::Escape);
+    ide.settle();
+    assert!(!ide.state().ws.terminals.is_renaming());
+    assert_eq!(names(&ide), [Some("build".to_string()), None]);
+    assert_eq!(ide.state().ws.layout.bottom, Some(ToolWindow::Terminal), "Escape only closed the name box");
+
+    // The context menu renames too; an empty name goes back to the shell's title.
+    ide.right_click_at(tab_rect(&ide, "build").center());
+    ide.click("Rename Tab…");
+    ide.settle();
+    assert!(ide.is_focused("Tab name"));
+    ide.key(Key::Backspace);
+    ide.key(Key::Enter);
+    ide.settle();
+    assert_eq!(names(&ide), [None, None]);
+    assert_eq!(ide.state().ws.terminals.title(0).as_deref(), Some("zsh"));
+}
+
+/// Options for project `root` with the terminal database `db`.
+fn persist_options(root: &std::path::Path, db: &std::path::Path) -> harwex_ide::AppOptions {
+    let mut options = test_options(Some(root));
+    options.terminal_db = Some(db.to_path_buf());
+    options
+}
+
+/// Quits like the window closing: eframe's exit hook saves the tabs, then the shells stop.
+fn quit(mut ide: Ide) {
+    eframe::App::on_exit(ide.harness.state_mut());
+}
+
+fn wait_tabs(ide: &mut Ide, n: usize) {
+    ide.wait_for(&format!("{n} terminal tabs"), move |s| !s.ws.terminals.is_loading() && s.ws.terminals.len() == n);
+}
+
+#[test]
+fn tabs_survive_a_restart_per_project() {
+    assert!(harwex_ide::AppOptions::default().terminal_db.is_none(), "without a path nothing is persisted");
+    let fx = Fixture::new(SUITE, "persist");
+    let a = basic_repo(fx.path("a")).dir;
+    let b = basic_repo(fx.path("b")).dir;
+    let db = fx.path("state/terminals.sqlite");
+
+    // Session 1: three tabs in A (the second renamed, the third in src/), one in B.
+    let mut ide = Ide::with_options(SUITE, persist_options(&a, &db), None);
+    ide.key_mods(ALT, Key::F12);
+    wait_tabs(&mut ide, 1);
+    wait_prompt(&mut ide);
+    for n in 2..=3 {
+        ide.click("+");
+        wait_tabs(&mut ide, n);
+        wait_prompt(&mut ide);
+    }
+    ide.right_click_at(tab_rects(&ide)[1].center());
+    ide.click("Rename Tab…");
+    ide.settle();
+    assert!(ide.is_focused("Tab name"), "the name box has the focus");
+    // The name and Enter arrive in one frame, like a fast typist's.
+    ide.type_text("server\n");
+    ide.settle();
+    // The third tab is the second one still titled "zsh".
+    ide.click_at(tab_rects(&ide)[1].center());
+    ide.settle();
+    ide.type_text("cd src\n");
+    wait_screen(&mut ide, "$", 2);
+    assert_eq!(names(&ide), [None, Some("server".to_string()), None]);
+    assert!(db.is_file(), "the database is the test's own file: {}", db.display());
+
+    ide.state_mut().open_workspace(b.clone());
+    ide.wait_for("B open", |s| s.ws.project.as_ref().is_some_and(|p| s.ws.tree.is_loaded(&p.root)));
+    ide.settle();
+    ide.key_mods(ALT, Key::F12);
+    wait_tabs(&mut ide, 1);
+    wait_prompt(&mut ide);
+    quit(ide);
+
+    // Session 2: A comes back with its tabs, and no shell runs until a tab is shown.
+    let mut ide = Ide::with_options(SUITE, persist_options(&a, &db), None);
+    wait_tabs(&mut ide, 3);
+    let terms = &ide.state().ws.terminals;
+    assert_eq!(names(&ide), [None, Some("server".to_string()), None]);
+    assert_eq!(terms.active_index(), 2);
+    assert!((0..3).all(|i| !terms.is_started(i)), "restored tabs start lazily");
+    assert_eq!(terms.shell_pids().count(), 0);
+    assert!(ide.state().ws.layout.bottom.is_none());
+
+    // Showing the window starts only the active tab, in the folder it was in.
+    ide.key_mods(ALT, Key::F12);
+    ide.wait_for("active shell", |s| s.ws.terminals.is_started(2));
+    wait_prompt(&mut ide);
+    let terms = &ide.state().ws.terminals;
+    assert!(!terms.is_started(0) && !terms.is_started(1));
+    assert_eq!(terms.terminal(2).expect("started").cwd(), a.join("src"));
+    assert!(ide.has("server"), "the renamed tab shows its name before its shell starts");
+    ide.click_at(tab_rect(&ide, "server").center());
+    ide.wait_for("second shell", |s| s.ws.terminals.is_started(1));
+    assert_eq!(ide.state().ws.terminals.terminal(1).expect("started").cwd(), a);
+    assert_eq!(ide.state().ws.terminals.title(1).as_deref(), Some("server"));
+
+    // B keeps its own list.
+    ide.state_mut().open_workspace(b.clone());
+    ide.wait_for("B open", |s| s.ws.project.as_ref().is_some_and(|p| s.ws.tree.is_loaded(&p.root)));
+    wait_tabs(&mut ide, 1);
+    assert!(!ide.state().ws.terminals.is_started(0));
+    quit(ide);
+}
+
+#[test]
+fn closing_the_last_tab_saves_an_empty_list() {
+    let fx = Fixture::new(SUITE, "persist_empty");
+    let a = basic_repo(fx.path("a")).dir;
+    let db = fx.path("state/terminals.sqlite");
+    let mut ide = Ide::with_options(SUITE, persist_options(&a, &db), None);
+    ide.key_mods(ALT, Key::F12);
+    wait_tabs(&mut ide, 1);
+    wait_prompt(&mut ide);
+    ide.click("x");
+    // `settle` waits out the debounced save.
+    ide.settle();
+    assert!(ide.state().ws.terminals.is_empty());
+    let conn = harwex_ide::terminal_store::open(&db).expect("open the test database");
+    let saved = harwex_ide::terminal_store::load(&conn, &a).expect("load").expect("a saved row");
+    assert!(saved.tabs.is_empty(), "{saved:?}");
+    quit(ide);
+
+    let mut ide = Ide::with_options(SUITE, persist_options(&a, &db), None);
+    wait_tabs(&mut ide, 0);
+    // The window opens with a fresh shell, as without a saved list.
+    ide.key_mods(ALT, Key::F12);
+    wait_tabs(&mut ide, 1);
+    wait_prompt(&mut ide);
+}

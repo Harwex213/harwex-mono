@@ -167,7 +167,7 @@ impl Workspace {
     }
 
     /// Work that waits for a quiet period before it starts: language server sync and gutter marks
-    /// after an edit, the log filter, re-blame, the hover request.
+    /// after an edit, the log filter, re-blame, the hover request, the terminal tabs' save.
     pub fn has_pending_debounce(&self) -> bool {
         let workdir = self.git.repo.as_ref().map(|r| r.workdir().to_path_buf());
         let editors = self.tabs.editors().any(|e| {
@@ -176,7 +176,7 @@ impl Workspace {
             let marks = workdir.as_ref().is_some_and(|w| e.path.starts_with(w)) && (e.marks_in_flight || e.marks_for != Some(version));
             ts || marks || e.problems.pending(version)
         });
-        editors || self.git_ui.has_pending_debounce(&self.tabs) || self.nav.hover.is_waiting()
+        editors || self.git_ui.has_pending_debounce(&self.tabs) || self.nav.hover.is_waiting() || self.terminals.save_pending()
     }
 
     /// Stops what this workspace runs: terminal shells and language servers (on a worker, so

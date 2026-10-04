@@ -126,6 +126,8 @@ pub struct AppState {
     pub confirm_close_ws: Option<WorkspaceId>,
     /// The title bar's project selector and the Recent Projects list (`projects_popup.rs`).
     pub projects: crate::projects_popup::ProjectsUi,
+    /// Terminal tabs per project (`terminal_store.rs`). `None`: tabs are not persisted.
+    pub terminal_store: Option<crate::terminal_store::TerminalStore>,
 }
 
 impl AppState {
@@ -158,6 +160,7 @@ impl AppState {
             saved: HashMap::new(),
             confirm_close_ws: None,
             projects: Default::default(),
+            terminal_store: None,
         };
         state.ws.visible.store(true, std::sync::atomic::Ordering::Relaxed);
         state.enter_context();
@@ -377,6 +380,7 @@ impl AppState {
             self.others.remove(i)
         };
         self.remember(&closed);
+        crate::terminal::save_closed(self, &closed);
         closed.shutdown();
     }
 
@@ -407,6 +411,7 @@ impl AppState {
                 crate::nav::sync_lsp_debounced(s);
                 crate::diagnostics::schedule(s);
                 s.schedule_gutter();
+                crate::terminal::tick(s);
                 if s.ws.close_when_saved && !s.ws.tabs.editors().any(|e| e.saving) {
                     s.ws.close_when_saved = false;
                     // A failed save keeps the file dirty; then the workspace stays open.
@@ -484,6 +489,8 @@ impl AppState {
         // The Console sink goes on before anything clones the handle into a worker.
         let repo = repo.map(|r| crate::git::console::attach(r, &self.jobs, generation));
         self.ws.git = GitInfo { repo, ..Default::default() };
+        // Stop Language Servers survives a restart; set before any file of the project opens.
+        self.ws.langs.set_off(self.saved.get(&root).is_some_and(|s| s.langs_off));
         self.apply_ide_config(config);
         // Dialogs and filters of another repository must not act on this one. Favourite
         // branches are app storage for every repository, not state of this one.
@@ -494,6 +501,7 @@ impl AppState {
         crate::tree::load_dir(self, root.clone());
         crate::search::rebuild_index(self);
         self.refresh_git();
+        crate::terminal::restore(self, root.clone());
         self.restore_saved(&root);
         if !self.watch_files {
             return;

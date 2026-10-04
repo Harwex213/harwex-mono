@@ -555,6 +555,11 @@ fn drag_moves_a_file_and_updates_imports() {
     assert!(ide.has("Drop target src/lib"), "the folder under the pointer is the target");
     assert_eq!(ide.cursor_icon(), egui::CursorIcon::Grabbing);
     release(&mut ide);
+    // The import update waits for the preview, like Rename.
+    ide.wait_for("move preview", |s| matches!(&s.ws.tree_ops.dialog, Some(harwex_ide::tree_menu::Dialog::Move(d)) if matches!(d.phase, harwex_ide::tree_menu::MovePhase::Preview(_))));
+    ide.settle();
+    ide.assert_text("Move \"local.ts\" to src/lib and update 1 import in 1 file");
+    ide.click("Move");
     let root = ide.root();
     ide.wait_for("moved", |_| root.join("src/lib/local.ts").is_file() && !root.join("src/local.ts").exists());
     ide.wait_for("saved", |s| s.ws.tabs.editors().all(|e| !e.doc.is_dirty()));

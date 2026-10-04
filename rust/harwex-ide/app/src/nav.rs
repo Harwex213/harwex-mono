@@ -125,6 +125,14 @@ impl Navigation {
         *self = Navigation { generation, ..Default::default() };
     }
 
+    /// The language servers restarted: answers to requests sent before are dropped, and the
+    /// hover asks again.
+    pub fn cancel_requests(&mut self) {
+        self.generation += 1;
+        self.popup = None;
+        self.hover = HoverState { generation: self.hover.generation + 1, ..Default::default() };
+    }
+
     pub fn push_back(&mut self, p: NavPoint) {
         if self.back.last() != Some(&p) {
             self.back.push(p);
@@ -177,6 +185,10 @@ pub fn sync_lsp_debounced(state: &mut AppState) {
 
 /// Starts a navigation request at `pos` in tab `tab`. The result arrives later on the UI thread.
 pub fn request(state: &mut AppState, kind: NavKind, tab: TabId, pos: Position, anchor: Pos2) {
+    // Stop Language Servers: the status bar says so; a toast per Cmd+B would be noise.
+    if state.ws.langs.is_off() {
+        return;
+    }
     let Some(e) = state.ws.tabs.editor_mut(tab) else { return };
     let lang = match (e.lang, state.ws.langs.lang_for(&e.path)) {
         (Some(lang), _) => lang,
@@ -436,10 +448,11 @@ pub fn hover(state: &mut AppState, tab: TabId, hover: Option<Position>, layer: L
             crate::diagnostics::problems::hover_ui(ui, problems);
         });
     }
+    let off = state.ws.langs.is_off();
     let Some(e) = state.ws.tabs.editor_mut(tab) else { return };
     let modifiers = ctx.input(|i| i.modifiers);
     let lang = e.lang;
-    let word = hover.filter(|_| lang.is_some() && !modifiers.command).and_then(|p| e.doc.word_at(p));
+    let word = hover.filter(|_| lang.is_some() && !off && !modifiers.command).and_then(|p| e.doc.word_at(p));
     let Some(word) = word else {
         state.ws.nav.hover = HoverState { generation: state.ws.nav.hover.generation, ..Default::default() };
         return;

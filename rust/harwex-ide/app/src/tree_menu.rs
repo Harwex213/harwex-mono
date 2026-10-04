@@ -68,10 +68,17 @@ pub enum TreeCommand {
     CancelCut,
 }
 
-/// The Cut or Copy mark. A cut item draws grey until it is pasted or Escape cancels it.
+impl TreeCommand {
+    /// Commands that need exactly one item; the menu disables them for several.
+    pub fn single_only(self) -> bool {
+        !matches!(self, TreeCommand::Cut | TreeCommand::Copy | TreeCommand::CancelCut | TreeCommand::CopyAbsPath | TreeCommand::CopyProjectPath | TreeCommand::Delete | TreeCommand::GitRollback | TreeCommand::ReloadFromDisk)
+    }
+}
+
+/// The Cut or Copy mark. Cut items draw grey until they are pasted or Escape cancels them.
 #[derive(Clone, Debug)]
 pub struct Clip {
-    pub path: PathBuf,
+    pub paths: Vec<PathBuf>,
     pub cut: bool,
 }
 
@@ -110,18 +117,56 @@ pub enum Usages {
 }
 
 pub struct Delete {
-    pub target: Target,
+    /// One or more items; none inside another.
+    pub targets: Vec<Target>,
     pub safe: bool,
     pub usages: Usages,
 }
+
+/// One item of a move: Cut + Paste or a drop.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Move {
+    pub src: PathBuf,
+    pub dst: PathBuf,
+    /// Trash an existing `dst` first.
+    pub overwrite: bool,
+}
+
+pub enum MovePhase {
+    /// `since` is the input time of the start: the dialog shows only when the servers take a
+    /// while, so a move without imports does not flash a dialog.
+    Computing { generation: u64, progress: Progress, since: f64 },
+    Preview(Box<QueryResult>),
+}
+
+/// The answer to one "already exists" dialog.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Clash {
+    Policy(Collision),
+    /// Leave this item where it is.
+    Skip,
+}
+
+/// The import preview of a move, like Rename's: Move or Cancel before anything is written.
+pub struct MoveDialog {
+    pub moves: Vec<Move>,
+    pub dir: PathBuf,
+    pub phase: MovePhase,
+}
+
+/// The Computing phase of a move stays hidden this long (input time).
+pub const MOVE_DIALOG_DELAY: f64 = 0.3;
 
 pub enum Dialog {
     NewEntry(NewEntry),
     Rename(Rename),
     Delete(Delete),
-    /// The paste target exists: Overwrite, Keep Both or Cancel.
-    Collision { src: PathBuf, dir: PathBuf, cut: bool },
-    Rollback { target: Target, files: Vec<PathBuf> },
+    Move(MoveDialog),
+    /// The paste target of `srcs[at]` exists on disk or is the target of an earlier item of the
+    /// same paste: Overwrite, Keep Both, Skip (several items) or Cancel. One dialog per clash;
+    /// `decided` holds the answers so far, one slot per item.
+    Collision { srcs: Vec<PathBuf>, dir: PathBuf, cut: bool, decided: Vec<Option<Clash>>, at: usize },
+    Rollback { paths: Vec<PathBuf>, files: Vec<PathBuf> },
     /// Dirty tabs to reload from disk after a confirmation.
     Reload { tabs: Vec<TabId>, names: Vec<String> },
 }
@@ -140,9 +185,19 @@ impl TreeOps {
         self.clip.as_ref().is_some_and(|c| c.cut)
     }
 
-    /// Whether `path` is the cut item or inside it (drawn grey).
+    /// Whether `path` is a cut item or inside one (drawn grey).
     pub fn is_cut(&self, path: &Path) -> bool {
-        self.clip.as_ref().is_some_and(|c| c.cut && path.starts_with(&c.path))
+        self.clip.as_ref().is_some_and(|c| c.cut && c.paths.iter().any(|p| path.starts_with(p)))
+    }
+
+    /// Forgets clip items at or under `path` (deleted or moved away).
+    fn unclip_under(&mut self, path: &Path) {
+        if let Some(c) = &mut self.clip {
+            c.paths.retain(|p| !p.starts_with(path));
+            if c.paths.is_empty() {
+                self.clip = None;
+            }
+        }
     }
 
     fn next_generation(&mut self) -> (u64, Arc<AtomicBool>) {
@@ -169,13 +224,18 @@ pub struct MenuInfo {
     pub excluded: bool,
     pub has_changes: bool,
     pub has_repo: bool,
+    /// The items the menu acts on: the selection when the row is part of it.
+    pub count: usize,
 }
 
-/// Draws the menu items. Returns the picked command.
+/// Draws the menu items. Returns the picked command. With several items the commands that
+/// need one item are disabled.
 pub fn menu(ui: &mut Ui, target: &Target, info: &MenuInfo) -> Option<TreeCommand> {
     ui.set_min_width(260.0);
     let mut picked = None;
+    let several = info.count > 1;
     let mut item = |ui: &mut Ui, label: &str, shortcut: &str, enabled: bool, cmd: TreeCommand| {
+        let enabled = enabled && !(several && cmd.single_only());
         if ui.add_enabled(enabled, egui::Button::new(label).shortcut_text(shortcut)).clicked() {
             picked = Some(cmd);
             ui.close_menu();
@@ -204,7 +264,7 @@ pub fn menu(ui: &mut Ui, target: &Target, info: &MenuInfo) -> Option<TreeCommand
     item(ui, "Git Show History", "", info.has_repo, TreeCommand::GitHistory);
     ui.separator();
     item(ui, "Reload from Disk", "", true, TreeCommand::ReloadFromDisk);
-    if target.is_dir {
+    if target.is_dir && !several {
         if info.excluded {
             item(ui, "Cancel Exclusion", "", true, TreeCommand::CancelExclusion);
         } else {
@@ -214,28 +274,42 @@ pub fn menu(ui: &mut Ui, target: &Target, info: &MenuInfo) -> Option<TreeCommand
     picked
 }
 
-/// Runs a menu command or a tree key on `target`.
-pub fn run(state: &mut AppState, cmd: TreeCommand, target: Target) {
+/// Runs a menu command or a tree key on `targets` (the selection, at least one item). A
+/// command that needs one item does nothing for several.
+pub fn run(state: &mut AppState, cmd: TreeCommand, targets: Vec<Target>) {
     let Some(root) = state.ws.project.as_ref().map(|p| p.root.clone()) else { return };
+    let Some(target) = targets.first().cloned() else { return };
+    if targets.len() > 1 && cmd.single_only() {
+        return;
+    }
+    let paths: Vec<PathBuf> = targets.iter().map(|t| t.path.clone()).collect();
     match cmd {
         TreeCommand::NewFile | TreeCommand::NewDir => {
             let is_dir = cmd == TreeCommand::NewDir;
             state.ws.tree_ops.dialog = Some(Dialog::NewEntry(NewEntry { dir: target.dir(), is_dir, name: String::new(), error: None, focus: true, busy: false }));
         }
         TreeCommand::Cut | TreeCommand::Copy => {
-            // The name goes to the clipboard too: macOS sends ⌘V as a paste event only when
+            let paths = crate::tree::top_level(&paths);
+            // The names go to the clipboard too: macOS sends ⌘V as a paste event only when
             // the clipboard holds text.
-            state.platform.copy_text(&state.ctx, &fileops::file_name(&target.path));
-            state.ws.tree_ops.clip = Some(Clip { path: target.path, cut: cmd == TreeCommand::Cut });
+            let names: Vec<String> = paths.iter().map(|p| fileops::file_name(p)).collect();
+            state.platform.copy_text(&state.ctx, &names.join("\n"));
+            state.ws.tree_ops.clip = Some(Clip { paths, cut: cmd == TreeCommand::Cut });
         }
         TreeCommand::CancelCut => state.ws.tree_ops.clip = None,
         TreeCommand::Paste => {
             if let Some(clip) = state.ws.tree_ops.clip.clone() {
-                paste(state, clip.path, target.dir(), clip.cut, None);
+                paste(state, clip.paths, target.dir(), clip.cut, Vec::new());
             }
         }
-        TreeCommand::CopyAbsPath => state.platform.copy_text(&state.ctx, &target.path.display().to_string()),
-        TreeCommand::CopyProjectPath => state.platform.copy_text(&state.ctx, &fileops::relative(&root, &target.path)),
+        TreeCommand::CopyAbsPath => {
+            let lines: Vec<String> = paths.iter().map(|p| p.display().to_string()).collect();
+            state.platform.copy_text(&state.ctx, &lines.join("\n"));
+        }
+        TreeCommand::CopyProjectPath => {
+            let lines: Vec<String> = paths.iter().map(|p| fileops::relative(&root, p)).collect();
+            state.platform.copy_text(&state.ctx, &lines.join("\n"));
+        }
         TreeCommand::FindUsages => find_usages(state, target),
         TreeCommand::FindInFiles => state.ws.find.open_scoped(Some(target.dir()), false),
         TreeCommand::ReplaceInFiles => state.ws.find.open_scoped(Some(target.dir()), true),
@@ -245,7 +319,13 @@ pub fn run(state: &mut AppState, cmd: TreeCommand, target: Target) {
             state.ws.tree_ops.dialog = Some(Dialog::Rename(Rename { target, name, error: None, text_occurrences: false, phase: RenamePhase::Edit, focus: true }));
         }
         TreeCommand::Delete => {
-            state.ws.tree_ops.dialog = Some(Dialog::Delete(Delete { target: target.clone(), safe: true, usages: Usages::Off }));
+            // The project root itself is never deleted from the tree.
+            let top = crate::tree::top_level(&paths);
+            let targets: Vec<Target> = targets.into_iter().filter(|t| top.contains(&t.path) && t.path != root).collect();
+            if targets.is_empty() {
+                return;
+            }
+            state.ws.tree_ops.dialog = Some(Dialog::Delete(Delete { targets, safe: true, usages: Usages::Off }));
             start_delete_search(state);
         }
         TreeCommand::OpenInFinder => {
@@ -263,15 +343,16 @@ pub fn run(state: &mut AppState, cmd: TreeCommand, target: Target) {
         TreeCommand::OpenInTerminal => crate::terminal::open_at(state, target.dir()),
         TreeCommand::GitRollback => {
             let Some(workdir) = state.ws.git.repo.as_ref().map(|r| r.workdir().to_path_buf()) else { return };
-            let files: Vec<PathBuf> = state.ws.git.changes.iter().filter(|c| !c.is_untracked()).map(|c| workdir.join(&c.path)).filter(|p| p.starts_with(&target.path)).collect();
+            let files: Vec<PathBuf> = state.ws.git.changes.iter().filter(|c| !c.is_untracked()).map(|c| workdir.join(&c.path)).filter(|p| paths.iter().any(|t| p.starts_with(t))).collect();
             if files.is_empty() {
-                state.notifications.info("Nothing to roll back", format!("{} has no changes.", fileops::relative(&root, &target.path)));
+                let names: Vec<String> = paths.iter().map(|p| fileops::relative(&root, p)).collect();
+                state.notifications.info("Nothing to roll back", format!("{} {} no changes.", names.join(", "), plural(names.len(), "has", "have")));
             } else {
-                state.ws.tree_ops.dialog = Some(Dialog::Rollback { target, files });
+                state.ws.tree_ops.dialog = Some(Dialog::Rollback { paths, files });
             }
         }
         TreeCommand::GitHistory => crate::git::log::show_file_history(state, &target.path),
-        TreeCommand::ReloadFromDisk => reload_from_disk(state, target),
+        TreeCommand::ReloadFromDisk => reload_from_disk(state, &targets),
         TreeCommand::Exclude | TreeCommand::CancelExclusion => {
             let rel = fileops::relative(&root, &target.path);
             let exclude = cmd == TreeCommand::Exclude;
@@ -395,6 +476,25 @@ fn ask(state: &mut AppState, target: PathBuf, question: Question, progress: Prog
             ask_servers(state, target, question, langs, candidates, result, progress, cancel, root, excluded, done);
         },
     );
+}
+
+type DoneMany = Box<dyn FnOnce(&mut AppState, Vec<QueryResult>) + Send>;
+
+/// `ask` for several items, one after the other (each language has one queue anyway). `done`
+/// gets one result per question, in order, unless `cancel` was set.
+fn ask_many(state: &mut AppState, questions: Vec<(PathBuf, Question)>, progress: Progress, cancel: Arc<AtomicBool>, done: DoneMany) {
+    fn next(state: &mut AppState, mut rest: std::collections::VecDeque<(PathBuf, Question)>, mut acc: Vec<QueryResult>, progress: Progress, cancel: Arc<AtomicBool>, done: DoneMany) {
+        let Some((target, question)) = rest.pop_front() else {
+            done(state, acc);
+            return;
+        };
+        let (p, c) = (progress.clone(), cancel.clone());
+        ask(state, target, question, progress, cancel, Box::new(move |state, result| {
+            acc.push(result);
+            next(state, rest, acc, p, c, done);
+        }));
+    }
+    next(state, questions.into(), Vec::new(), progress, cancel, done);
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -567,46 +667,65 @@ fn start_rename_query(state: &mut AppState) {
     );
 }
 
-/// Moves `old` to `new` (a rename or a paste after Cut) and applies the import edits: closed
-/// files in parallel on workers, open documents through the edit API, one undo step each.
-/// `overwrite` trashes an existing `new` first.
+/// Moves `old` to `new` (a rename) and applies the import edits.
 fn relocate(state: &mut AppState, old: PathBuf, new: PathBuf, edits: Vec<FileEdit>, overwrite: bool) {
+    relocate_all(state, vec![Move { src: old, dst: new, overwrite }], edits);
+}
+
+/// Where `path` ends up after `moves`.
+fn after_moves(path: &Path, moves: &[Move]) -> Option<PathBuf> {
+    moves.iter().find_map(|m| fileops::moved_path(path, &m.src, &m.dst))
+}
+
+/// Moves items (a rename, a paste after Cut, a drop) and applies the import edits: closed
+/// files in parallel on workers, open documents through the edit API, one undo step each.
+/// A move that fails stops the rest; the moves before it stay done.
+fn relocate_all(state: &mut AppState, moves: Vec<Move>, edits: Vec<FileEdit>) {
+    let Some(first) = moves.first().map(|m| m.src.clone()) else { return };
     let (open, closed): (Vec<FileEdit>, Vec<FileEdit>) = edits.into_iter().partition(|f| state.ws.tabs.editor_by_path(&f.path).is_some());
-    let closed: Vec<FileEdit> = closed.into_iter().map(|f| FileEdit { path: fileops::moved_path(&f.path, &old, &new).unwrap_or(f.path), edits: f.edits }).collect();
+    let closed: Vec<FileEdit> = closed.into_iter().map(|f| FileEdit { path: after_moves(&f.path, &moves).unwrap_or(f.path), edits: f.edits }).collect();
     let platform = state.platform.clone();
     let generation = state.project_generation();
-    let (o, n) = (old.clone(), new.clone());
+    let todo = moves.clone();
     let closed_paths: Vec<PathBuf> = closed.iter().map(|f| f.path.clone()).collect();
     let closed_edits: usize = closed.iter().map(|f| f.edits.len()).sum();
+    let label = if moves.len() == 1 { format!("Moving {}", fileops::file_name(&first)) } else { format!("Moving {} items", moves.len()) };
     state.jobs.spawn(
-        format!("Moving {}", fileops::file_name(&old)),
-        move || -> Result<Vec<String>, String> {
-            if overwrite {
-                platform.trash(&n)?;
+        label,
+        move || -> (usize, Option<String>, Vec<String>) {
+            for (i, m) in todo.iter().enumerate() {
+                let res = if m.overwrite { platform.trash(&m.dst) } else { Ok(()) }.and_then(|()| fileops::move_path(&m.src, &m.dst));
+                if let Err(e) = res {
+                    return (i, Some(e), Vec::new());
+                }
             }
-            fileops::move_path(&o, &n)?;
-            Ok(apply_closed(&closed))
+            // Edits for files that did not move stay valid; all moves went through here.
+            (todo.len(), None, apply_closed(&closed))
         },
-        move |state, res| {
+        move |state, (done_count, error, errors)| {
             if state.project_generation() != generation {
                 return;
             }
-            let errors = match res {
-                Ok(errors) => errors,
-                Err(e) => {
-                    state.notifications.error(format!("Cannot move {}", fileops::file_name(&old)), e);
-                    return;
-                }
-            };
-            for lang in LangId::ALL {
-                let (o, n) = (old.clone(), new.clone());
-                state.ws.langs.bridge(lang).run(move |s| s.files_renamed(&o, &n));
+            // After a failed move no import edit is applied: the edits assume every move.
+            let failed = error.is_some();
+            if let Some(e) = error {
+                let name = fileops::file_name(&moves[done_count].src);
+                state.notifications.error(format!("Cannot move {name}"), e);
             }
-            retarget_tabs(state, &old, &new);
-            let mut edited = closed_edits;
-            let mut files = closed_paths.len();
-            for f in open {
-                let path = fileops::moved_path(&f.path, &old, &new).unwrap_or(f.path);
+            let moves: Vec<Move> = moves.into_iter().take(done_count).collect();
+            if moves.is_empty() {
+                return;
+            }
+            for m in &moves {
+                for lang in LangId::ALL {
+                    let (o, n) = (m.src.clone(), m.dst.clone());
+                    state.ws.langs.bridge(lang).run(move |s| s.files_renamed(&o, &n));
+                }
+                retarget_tabs(state, &m.src, &m.dst);
+            }
+            let (mut edited, mut files) = if failed { (0, 0) } else { (closed_edits, closed_paths.len()) };
+            for f in open.into_iter().filter(|_| !failed) {
+                let path = after_moves(&f.path, &moves).unwrap_or(f.path);
                 if let Some(id) = state.ws.tabs.editor_by_path(&path) {
                     edited += f.edits.len();
                     files += 1;
@@ -614,25 +733,36 @@ fn relocate(state: &mut AppState, old: PathBuf, new: PathBuf, edits: Vec<FileEdi
                     state.save_tab(id, false);
                 }
             }
-            state.ws.tree.rekey(&old, &new);
-            if state.ws.tree_ops.clip.as_ref().is_some_and(|c| c.path.starts_with(&old)) {
-                state.ws.tree_ops.clip = None;
+            for m in &moves {
+                state.ws.tree.rekey(&m.src, &m.dst);
+                state.ws.tree_ops.unclip_under(&m.src);
             }
             if let Some(root) = state.ws.project.as_ref().map(|p| p.root.clone()) {
-                state.ws.tree.reveal(&root, &new);
+                let news: Vec<PathBuf> = moves.iter().map(|m| m.dst.clone()).collect();
+                state.ws.tree.reveal(&root, &news[0]);
+                if news.len() > 1 {
+                    for n in &news[1..] {
+                        state.ws.tree.expand_to(&root, n);
+                    }
+                    let lead = news[0].clone();
+                    state.ws.tree.select_many(news, lead);
+                }
             }
             let mut paths: HashSet<PathBuf> = closed_paths.into_iter().collect();
-            for p in [&old, &new] {
-                paths.insert(p.clone());
-                if let Some(parent) = p.parent() {
-                    paths.insert(parent.to_path_buf());
+            for m in &moves {
+                for p in [&m.src, &m.dst] {
+                    paths.insert(p.clone());
+                    if let Some(parent) = p.parent() {
+                        paths.insert(parent.to_path_buf());
+                    }
                 }
             }
             state.on_fs_batch(FsBatch { paths, structure_changed: true, git_changed: true });
             for e in &errors {
                 state.notifications.error("Import update failed", e.clone());
             }
-            state.notifications.log_only(Level::Info, format!("Moved {} to {}", fileops::file_name(&old), fileops::file_name(&new)), format!("Updated {edited} imports in {files} files."));
+            let what = if moves.len() == 1 { format!("Moved {} to {}", fileops::file_name(&moves[0].src), fileops::file_name(&moves[0].dst)) } else { format!("Moved {} items", moves.len()) };
+            state.notifications.log_only(Level::Info, what, format!("Updated {edited} imports in {files} files."));
         },
     );
 }
@@ -703,78 +833,174 @@ fn retarget_tabs(state: &mut AppState, old: &Path, new: &Path) {
 }
 
 /// A drop in the Project tree: the same move (with import updates) or copy as Paste after Cut
-/// or Copy. A move into the current parent does nothing.
-pub fn drop_into(state: &mut AppState, src: PathBuf, dir: PathBuf, copy: bool) {
-    if dir.starts_with(&src) {
+/// or Copy. Items already in `dir` do not move.
+pub fn drop_into(state: &mut AppState, srcs: Vec<PathBuf>, dir: PathBuf, copy: bool) {
+    if srcs.iter().any(|s| dir.starts_with(s)) {
         return;
     }
-    paste(state, src, dir, !copy, None);
+    paste(state, srcs, dir, !copy, Vec::new());
 }
 
-/// Paste: resolves the target on a worker; a collision without a policy opens the dialog.
-fn paste(state: &mut AppState, src: PathBuf, dir: PathBuf, cut: bool, collision: Option<Collision>) {
+/// Paste: resolves the targets on a worker, in order. A target that exists on disk, or that
+/// an earlier item of the same paste already takes (two items with one name from different
+/// folders), is a clash: without an answer in `decided` it opens the dialog, and the answer
+/// re-runs the paste. A move asks the servers for import edits first (`start_move`).
+fn paste(state: &mut AppState, srcs: Vec<PathBuf>, dir: PathBuf, cut: bool, decided: Vec<Option<Clash>>) {
     enum Plan {
-        Choose,
-        Go { target: PathBuf, overwrite: bool },
-        Nothing,
+        Choose(usize),
+        Go(Vec<Move>),
     }
-    let (s, d) = (src.clone(), dir.clone());
+    let (s, d, answers) = (srcs.clone(), dir.clone(), decided.clone());
     state.jobs.spawn_quiet(
         move || -> Result<Plan, String> {
-            let target = fileops::paste_target(&s, &d)?;
-            if target == s {
-                return Ok(if cut { Plan::Nothing } else { Plan::Go { target: fileops::keep_both_path(&d, &fileops::file_name(&s)), overwrite: false } });
+            let mut moves: Vec<Move> = Vec::new();
+            let mut taken: HashSet<PathBuf> = HashSet::new();
+            for (i, src) in s.iter().enumerate() {
+                let target = fileops::paste_target(src, &d)?;
+                let name = fileops::file_name(src);
+                if target == *src && !taken.contains(&target) {
+                    // A move into its own folder does nothing; a copy there keeps both.
+                    if !cut {
+                        let dst = fileops::keep_both_path_avoiding(&d, &name, &taken);
+                        taken.insert(dst.clone());
+                        moves.push(Move { src: src.clone(), dst, overwrite: false });
+                    } else {
+                        taken.insert(target);
+                    }
+                    continue;
+                }
+                let on_disk = target != *src && target.symlink_metadata().is_ok();
+                if !on_disk && !taken.contains(&target) {
+                    taken.insert(target.clone());
+                    moves.push(Move { src: src.clone(), dst: target, overwrite: false });
+                    continue;
+                }
+                match answers.get(i).copied().flatten() {
+                    None => return Ok(Plan::Choose(i)),
+                    Some(Clash::Skip) => {}
+                    Some(Clash::Policy(Collision::KeepBoth)) => {
+                        let dst = fileops::keep_both_path_avoiding(&d, &name, &taken);
+                        taken.insert(dst.clone());
+                        moves.push(Move { src: src.clone(), dst, overwrite: false });
+                    }
+                    // The overwritten item goes to the Trash, also when an earlier item of this
+                    // paste put it there: the items run in order.
+                    Some(Clash::Policy(Collision::Overwrite)) => {
+                        let overwrite = on_disk || taken.contains(&target);
+                        moves.push(Move { src: src.clone(), dst: target, overwrite });
+                    }
+                }
             }
-            if target.symlink_metadata().is_err() {
-                return Ok(Plan::Go { target, overwrite: false });
-            }
-            Ok(match collision {
-                None => Plan::Choose,
-                Some(Collision::KeepBoth) => Plan::Go { target: fileops::keep_both_path(&d, &fileops::file_name(&s)), overwrite: false },
-                Some(Collision::Overwrite) => Plan::Go { target, overwrite: true },
-            })
+            Ok(Plan::Go(moves))
         },
         move |state, plan| match plan {
             Err(e) => state.notifications.error("Cannot paste", e),
-            Ok(Plan::Nothing) => {}
-            Ok(Plan::Choose) => state.ws.tree_ops.dialog = Some(Dialog::Collision { src, dir, cut }),
-            Ok(Plan::Go { target, overwrite }) if cut => {
-                // A move keeps imports working, like a rename. No dialog can cancel it.
-                let cancel = Arc::new(AtomicBool::new(false));
-                let progress: Progress = Arc::default();
-                let t = target.clone();
-                ask(state, src.clone(), Question::Rename { new: target, text_occurrences: false }, progress, cancel, Box::new(move |state, result| {
-                    for e in &result.errors {
-                        state.notifications.warn("Imports not updated", e.clone());
-                    }
-                    relocate(state, src, t, result.edits, overwrite);
-                }));
+            Ok(Plan::Choose(at)) => {
+                let mut decided = decided;
+                decided.resize(srcs.len(), None);
+                state.ws.tree_ops.dialog = Some(Dialog::Collision { srcs, dir, cut, decided, at });
             }
-            Ok(Plan::Go { target, overwrite }) => {
-                let platform = state.platform.clone();
-                let t = target.clone();
-                state.jobs.spawn(
-                    format!("Copying {}", fileops::file_name(&src)),
-                    move || {
-                        if overwrite {
-                            platform.trash(&t)?;
-                        }
-                        fileops::copy_path(&src, &t)
-                    },
-                    move |state, res| match res {
-                        Ok(()) => {
-                            let paths: HashSet<PathBuf> = [target.clone(), dir.clone()].into_iter().collect();
-                            state.on_fs_batch(FsBatch { paths, structure_changed: true, git_changed: true });
-                            if let Some(root) = state.ws.project.as_ref().map(|p| p.root.clone()) {
-                                state.ws.tree.reveal(&root, &target);
-                            }
-                        }
-                        Err(e) => state.notifications.error("Cannot paste", e),
-                    },
-                );
+            Ok(Plan::Go(moves)) if moves.is_empty() => {}
+            Ok(Plan::Go(moves)) if cut => start_move(state, moves, dir),
+            Ok(Plan::Go(copies)) => copy_all(state, copies, dir),
+        },
+    );
+}
+
+fn copy_all(state: &mut AppState, copies: Vec<Move>, dir: PathBuf) {
+    let platform = state.platform.clone();
+    let todo = copies.clone();
+    let label = if copies.len() == 1 { format!("Copying {}", fileops::file_name(&copies[0].src)) } else { format!("Copying {} items", copies.len()) };
+    state.jobs.spawn(
+        label,
+        move || -> Result<(), String> {
+            for c in &todo {
+                if c.overwrite {
+                    platform.trash(&c.dst)?;
+                }
+                fileops::copy_path(&c.src, &c.dst)?;
+            }
+            Ok(())
+        },
+        move |state, res| {
+            if let Err(e) = res {
+                state.notifications.error("Cannot paste", e);
+            }
+            // Some copies may exist even after an error.
+            let mut paths: HashSet<PathBuf> = copies.iter().map(|c| c.dst.clone()).collect();
+            paths.insert(dir);
+            state.on_fs_batch(FsBatch { paths, structure_changed: true, git_changed: true });
+            if let Some(root) = state.ws.project.as_ref().map(|p| p.root.clone()) {
+                let news: Vec<PathBuf> = copies.into_iter().map(|c| c.dst).collect();
+                state.ws.tree.reveal(&root, &news[0]);
+                if news.len() > 1 {
+                    let lead = news[0].clone();
+                    state.ws.tree.select_many(news, lead);
+                }
             }
         },
     );
+}
+
+/// A move keeps imports working, like a rename: the servers answer for every item, then the
+/// preview shows the combined edits. A move without edits goes ahead at once.
+fn start_move(state: &mut AppState, moves: Vec<Move>, dir: PathBuf) {
+    let (generation, cancel) = state.ws.tree_ops.next_generation();
+    let progress: Progress = Arc::new(Mutex::new("Preparing...".into()));
+    let since = state.ctx.input(|i| i.time);
+    state.ws.tree_ops.dialog = Some(Dialog::Move(MoveDialog { moves: moves.clone(), dir, phase: MovePhase::Computing { generation, progress: progress.clone(), since } }));
+    let questions: Vec<(PathBuf, Question)> = moves.iter().map(|m| (m.src.clone(), Question::Rename { new: m.dst.clone(), text_occurrences: false })).collect();
+    let started = Instant::now();
+    ask_many(state, questions, progress, cancel, Box::new(move |state, results| {
+        let Some(Dialog::Move(d)) = &mut state.ws.tree_ops.dialog else { return };
+        if !matches!(&d.phase, MovePhase::Computing { generation: g, .. } if *g == generation) {
+            return;
+        }
+        let result = combine_moves(&moves, results);
+        state.timings.log(format!(
+            "move preview of {} items: {} candidates, {} projects loaded, {} edits in {} files, {:.0} ms",
+            moves.len(),
+            result.candidates,
+            result.projects,
+            result.edit_count(),
+            result.edits.len(),
+            started.elapsed().as_secs_f64() * 1000.0
+        ));
+        if result.edits.is_empty() {
+            // Nothing to preview. A server that could not answer (none installed) must not
+            // block a plain move: it moves, and a warning says the imports stayed.
+            state.ws.tree_ops.dialog = None;
+            state.ws.tree.focus_pending();
+            for e in &result.errors {
+                state.notifications.warn("Imports not updated", e.clone());
+            }
+            relocate_all(state, moves, Vec::new());
+        } else {
+            d.phase = MovePhase::Preview(Box::new(result));
+        }
+    }));
+}
+
+/// One result for a move of several items: the edits merged (`fileops::merge_move_edits`),
+/// the counts added up.
+fn combine_moves(moves: &[Move], results: Vec<QueryResult>) -> QueryResult {
+    let mut out = QueryResult::default();
+    let mut per_move = Vec::new();
+    for r in results {
+        out.scanned = out.scanned.max(r.scanned);
+        out.candidates += r.candidates;
+        out.projects += r.projects;
+        out.answered += r.answered;
+        for e in r.errors {
+            if !out.errors.contains(&e) {
+                out.errors.push(e);
+            }
+        }
+        per_move.push(r.edits);
+    }
+    let pairs: Vec<(PathBuf, PathBuf)> = moves.iter().map(|m| (m.src.clone(), m.dst.clone())).collect();
+    out.edits = fileops::merge_move_edits(&pairs, per_move);
+    out
 }
 
 fn start_delete_search(state: &mut AppState) {
@@ -786,51 +1012,62 @@ fn start_delete_search(state: &mut AppState) {
     }
     let progress: Progress = Arc::new(Mutex::new("Preparing...".into()));
     d.usages = Usages::Searching { generation, progress: progress.clone() };
-    let target = d.target.path.clone();
-    ask(state, target, Question::Usages, progress, cancel, Box::new(move |state, result| {
+    let targets: Vec<PathBuf> = d.targets.iter().map(|t| t.path.clone()).collect();
+    let questions = targets.iter().map(|t| (t.clone(), Question::Usages)).collect();
+    ask_many(state, questions, progress, cancel, Box::new(move |state, results| {
         let Some(Dialog::Delete(d)) = &mut state.ws.tree_ops.dialog else { return };
         if matches!(&d.usages, Usages::Searching { generation: g, .. } if *g == generation) {
-            d.usages = Usages::Found(result.refs);
+            // A usage inside another deleted item goes away with it.
+            let mut refs: Vec<Reference> = results.into_iter().flat_map(|r| r.refs).filter(|r| !targets.iter().any(|t| r.location.path.starts_with(t))).collect();
+            refs.sort_by(|a, b| (&a.location.path, a.location.line).cmp(&(&b.location.path, b.location.line)));
+            refs.dedup_by(|a, b| a.location == b.location);
+            d.usages = Usages::Found(refs);
         }
     }));
 }
 
-fn delete(state: &mut AppState, target: Target) {
+/// Moves the items to the Trash (through `state.platform`), one worker for all of them.
+fn delete(state: &mut AppState, targets: Vec<Target>) {
     let platform = state.platform.clone();
-    let path = target.path.clone();
+    let paths: Vec<PathBuf> = targets.into_iter().map(|t| t.path).collect();
+    let todo = paths.clone();
     let generation = state.project_generation();
+    let label = if paths.len() == 1 { format!("Deleting {}", fileops::file_name(&paths[0])) } else { format!("Deleting {} items", paths.len()) };
     state.jobs.spawn(
-        format!("Deleting {}", fileops::file_name(&path)),
-        move || platform.trash(&path),
-        move |state, res| {
+        label,
+        move || todo.iter().map(|p| platform.trash(p)).collect::<Vec<Result<(), String>>>(),
+        move |state, results| {
             if state.project_generation() != generation {
                 return;
             }
-            if let Err(e) = res {
-                state.notifications.error(format!("Cannot move {} to the Trash", fileops::file_name(&target.path)), e);
+            let mut batch: HashSet<PathBuf> = HashSet::new();
+            let mut trashed = Vec::new();
+            for (path, res) in paths.into_iter().zip(results) {
+                if let Err(e) = res {
+                    state.notifications.error(format!("Cannot move {} to the Trash", fileops::file_name(&path)), e);
+                    continue;
+                }
+                let ids: Vec<TabId> = state.ws.tabs.editors_mut().filter(|(_, e)| e.path.starts_with(&path)).map(|(id, _)| id).collect();
+                for id in ids {
+                    state.close_tab(id, true);
+                }
+                for lang in LangId::ALL {
+                    let p = path.clone();
+                    state.ws.langs.bridge(lang).run(move |s| s.files_deleted(&p));
+                }
+                state.ws.tree_ops.unclip_under(&path);
+                state.ws.tree.deselect_under(&path);
+                if let Some(parent) = path.parent() {
+                    batch.insert(parent.to_path_buf());
+                }
+                batch.insert(path.clone());
+                trashed.push(fileops::file_name(&path));
+            }
+            if trashed.is_empty() {
                 return;
             }
-            let path = target.path;
-            let ids: Vec<TabId> = state.ws.tabs.editors_mut().filter(|(_, e)| e.path.starts_with(&path)).map(|(id, _)| id).collect();
-            for id in ids {
-                state.close_tab(id, true);
-            }
-            for lang in LangId::ALL {
-                let p = path.clone();
-                state.ws.langs.bridge(lang).run(move |s| s.files_deleted(&p));
-            }
-            if state.ws.tree_ops.clip.as_ref().is_some_and(|c| c.path.starts_with(&path)) {
-                state.ws.tree_ops.clip = None;
-            }
-            if state.ws.tree.selected.as_ref().is_some_and(|s| s.starts_with(&path)) {
-                state.ws.tree.selected = path.parent().map(Path::to_path_buf);
-            }
-            let mut paths: HashSet<PathBuf> = HashSet::from([path.clone()]);
-            if let Some(parent) = path.parent() {
-                paths.insert(parent.to_path_buf());
-            }
-            state.on_fs_batch(FsBatch { paths, structure_changed: true, git_changed: true });
-            state.notifications.log_only(Level::Info, format!("Moved {} to the Trash", fileops::file_name(&path)), String::new());
+            state.on_fs_batch(FsBatch { paths: batch, structure_changed: true, git_changed: true });
+            state.notifications.log_only(Level::Info, format!("Moved {} to the Trash", trashed.join(", ")), String::new());
         },
     );
 }
@@ -861,12 +1098,12 @@ fn find_usages(state: &mut AppState, target: Target) {
     }));
 }
 
-fn reload_from_disk(state: &mut AppState, target: Target) {
-    let tabs: Vec<(TabId, bool, String)> = state.ws.tabs.editors_mut().filter(|(_, e)| e.path.starts_with(&target.path)).map(|(id, e)| (id, e.doc.is_dirty(), e.file_name())).collect();
+fn reload_from_disk(state: &mut AppState, targets: &[Target]) {
+    let tabs: Vec<(TabId, bool, String)> = state.ws.tabs.editors_mut().filter(|(_, e)| targets.iter().any(|t| e.path.starts_with(&t.path))).map(|(id, e)| (id, e.doc.is_dirty(), e.file_name())).collect();
     let clean: Vec<TabId> = tabs.iter().filter(|t| !t.1).map(|t| t.0).collect();
     reload_tabs(state, clean);
-    if target.is_dir {
-        let paths = HashSet::from([target.path.clone()]);
+    let paths: HashSet<PathBuf> = targets.iter().filter(|t| t.is_dir).map(|t| t.path.clone()).collect();
+    if !paths.is_empty() {
         state.on_fs_batch(FsBatch { paths, structure_changed: true, git_changed: false });
     }
     let dirty: Vec<(TabId, String)> = tabs.into_iter().filter(|t| t.1).map(|t| (t.0, t.2)).collect();
@@ -959,7 +1196,8 @@ enum Action {
     RenameBack,
     DeleteToggle,
     DeleteGo,
-    Paste(Collision),
+    MoveApply,
+    Paste(Clash),
     Rollback,
     Reload,
 }
@@ -968,6 +1206,13 @@ enum Action {
 /// never reach the editor behind the modal.
 pub fn show_dialogs(state: &mut AppState, ctx: &Context) {
     let Some(dialog) = &mut state.ws.tree_ops.dialog else { return };
+    if let Dialog::Move(MoveDialog { phase: MovePhase::Computing { since, .. }, .. }) = dialog {
+        let wait = MOVE_DIALOG_DELAY - (ctx.input(|i| i.time) - *since);
+        if wait > 0.0 {
+            ctx.request_repaint_after(std::time::Duration::from_secs_f64(wait));
+            return;
+        }
+    }
     let root = state.ws.project.as_ref().map(|p| p.root.clone()).unwrap_or_default();
     let enter = ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, Key::Enter));
     let t = &theme::T;
@@ -995,9 +1240,18 @@ pub fn show_dialogs(state: &mut AppState, ctx: &Context) {
             }
             Dialog::Rename(r) => rename_ui(ui, r, &root, enter, &mut action),
             Dialog::Delete(d) => {
-                let kind = if d.target.is_dir { "directory" } else { "file" };
-                ui.label(RichText::new(if d.target.is_dir { "Delete Directory" } else { "Delete File" }).strong());
-                ui.label(format!("Move the {kind} \"{}\" to the Trash?", fileops::file_name(&d.target.path)));
+                match d.targets.as_slice() {
+                    [one] => {
+                        let kind = if one.is_dir { "directory" } else { "file" };
+                        ui.label(RichText::new(if one.is_dir { "Delete Directory" } else { "Delete File" }).strong());
+                        ui.label(format!("Move the {kind} \"{}\" to the Trash?", fileops::file_name(&one.path)));
+                    }
+                    many => {
+                        ui.label(RichText::new(format!("Delete {} Items", many.len())).strong());
+                        let names: Vec<String> = many.iter().map(|t| fileops::file_name(&t.path)).collect();
+                        ui.label(format!("Move {} items to the Trash: {}?", many.len(), names.join(", ")));
+                    }
+                }
                 let before = d.safe;
                 ui.checkbox(&mut d.safe, "Search for usages (safe delete)");
                 if d.safe != before {
@@ -1027,14 +1281,24 @@ pub fn show_dialogs(state: &mut AppState, ctx: &Context) {
                     action = Some(Action::DeleteGo);
                 }
             }
-            Dialog::Collision { src, dir, .. } => {
+            Dialog::Move(d) => move_ui(ui, d, &root, enter, &mut action),
+            Dialog::Collision { srcs, dir, at, .. } => {
                 ui.label(RichText::new("File Already Exists").strong());
-                ui.label(format!("\"{}\" already exists in {}.", fileops::file_name(src), display_rel(&root, dir)));
-                buttons(ui, &mut action, &[("Overwrite", true, Action::Paste(Collision::Overwrite)), ("Keep Both", true, Action::Paste(Collision::KeepBoth)), ("Cancel", true, Action::Close)]);
+                ui.label(format!("\"{}\" already exists in {}.", fileops::file_name(&srcs[*at]), display_rel(&root, dir)));
+                if srcs.len() > 1 {
+                    ui.label(RichText::new(format!("Item {} of {}: {}", *at + 1, srcs.len(), fileops::relative(&root, &srcs[*at]))).color(t.text_dim).size(t.font.small));
+                }
+                let mut items = vec![("Overwrite", true, Action::Paste(Clash::Policy(Collision::Overwrite))), ("Keep Both", true, Action::Paste(Clash::Policy(Collision::KeepBoth)))];
+                if srcs.len() > 1 {
+                    items.push(("Skip", true, Action::Paste(Clash::Skip)));
+                }
+                items.push(("Cancel", true, Action::Close));
+                buttons(ui, &mut action, &items);
             }
-            Dialog::Rollback { target, files } => {
+            Dialog::Rollback { paths, files } => {
                 ui.label(RichText::new("Rollback Changes").strong());
-                ui.label(format!("Roll back {} changed files in {}? Local changes are lost.", files.len(), display_rel(&root, &target.path)));
+                let names: Vec<String> = paths.iter().map(|p| display_rel(&root, p)).collect();
+                ui.label(format!("Roll back {} changed files in {}? Local changes are lost.", files.len(), names.join(", ")));
                 ScrollArea::vertical().max_height(160.0).id_salt("rollback-files").show(ui, |ui| {
                     for f in files.iter() {
                         ui.label(RichText::new(fileops::relative(&root, f)).monospace().size(t.font.small));
@@ -1093,12 +1357,20 @@ pub fn show_dialogs(state: &mut AppState, ctx: &Context) {
             state.ws.tree_ops.cancel_running();
             let Some(Dialog::Delete(d)) = state.ws.tree_ops.dialog.take() else { return };
             state.ws.tree.focus_pending();
-            delete(state, d.target);
+            delete(state, d.targets);
+        }
+        Action::MoveApply => {
+            let Some(Dialog::Move(d)) = state.ws.tree_ops.dialog.take() else { return };
+            state.ws.tree.focus_pending();
+            if let MovePhase::Preview(result) = d.phase {
+                relocate_all(state, d.moves, result.edits);
+            }
         }
         Action::Paste(policy) => {
-            let Some(Dialog::Collision { src, dir, cut }) = state.ws.tree_ops.dialog.take() else { return };
+            let Some(Dialog::Collision { srcs, dir, cut, mut decided, at }) = state.ws.tree_ops.dialog.take() else { return };
             state.ws.tree.focus_pending();
-            paste(state, src, dir, cut, Some(policy));
+            decided[at] = Some(policy);
+            paste(state, srcs, dir, cut, decided);
         }
         Action::Rollback => {
             let Some(Dialog::Rollback { files, .. }) = state.ws.tree_ops.dialog.take() else { return };
@@ -1185,6 +1457,52 @@ fn rename_ui(ui: &mut Ui, r: &mut Rename, root: &Path, enter: bool, action: &mut
             buttons(ui, action, &[("Rename", true, Action::RenameApply), ("Back", true, Action::RenameBack), ("Cancel", true, Action::Close)]);
             if enter {
                 *action = Some(Action::RenameApply);
+            }
+        }
+    }
+}
+
+/// The move preview: "Move N items to <dir> and update N imports in M files", Move / Cancel.
+fn move_ui(ui: &mut Ui, d: &MoveDialog, root: &Path, enter: bool, action: &mut Option<Action>) {
+    let t = &theme::T;
+    let what = match d.moves.as_slice() {
+        [one] => format!("\"{}\"", fileops::file_name(&one.src)),
+        many => format!("{} items", many.len()),
+    };
+    ui.label(RichText::new("Move and Update Imports").strong());
+    match &d.phase {
+        MovePhase::Computing { progress, .. } => {
+            ui.label(RichText::new(format!("Move {what} to {}", display_rel(root, &d.dir))).color(t.text_dim).size(t.font.small));
+            ui.horizontal(|ui| {
+                ui.spinner();
+                ui.label(RichText::new(lock(progress).clone()).color(t.text_dim));
+            });
+            buttons(ui, action, &[("Cancel", true, Action::Close)]);
+        }
+        MovePhase::Preview(result) => {
+            let n = result.edit_count();
+            let files = result.edits.len();
+            ui.label(RichText::new(format!("Move {what} to {} and update {n} {} in {files} {}", display_rel(root, &d.dir), plural(n, "import", "imports"), plural(files, "file", "files"))).color(t.text_bright));
+            if d.moves.len() > 1 {
+                let names: Vec<String> = d.moves.iter().map(|m| fileops::relative(root, &m.src)).collect();
+                ui.label(RichText::new(names.join(", ")).color(t.text_dim).size(t.font.small));
+            }
+            let mut stats = format!("Scanned {} code files: {} candidates", result.scanned, result.candidates);
+            if result.projects > 0 {
+                stats.push_str(&format!(", {} projects loaded", result.projects));
+            }
+            ui.label(RichText::new(stats).color(t.text_dim).size(t.font.small));
+            ScrollArea::vertical().max_height(200.0).id_salt("move-files").show(ui, |ui| {
+                for f in &result.edits {
+                    ui.label(RichText::new(format!("{}  ({})", fileops::relative(root, &f.path), f.edits.len())).monospace().size(t.font.small));
+                }
+            });
+            for e in &result.errors {
+                ui.label(RichText::new(e).color(t.warning).size(t.font.small));
+            }
+            buttons(ui, action, &[("Move", true, Action::MoveApply), ("Cancel", true, Action::Close)]);
+            if enter {
+                *action = Some(Action::MoveApply);
             }
         }
     }

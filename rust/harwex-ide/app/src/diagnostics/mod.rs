@@ -19,7 +19,7 @@ pub mod strategy;
 
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::mpsc::{channel, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -241,6 +241,13 @@ impl FileProblems {
         self.detecting || self.plan.is_some() && (self.requested != Some(version) || self.force)
     }
 
+    /// The servers restarted: answers in flight are dropped and the tab is checked again at
+    /// once. The old results stay visible until the new ones land.
+    pub fn recheck(&mut self) {
+        self.latest.fetch_add(1, Ordering::SeqCst);
+        self.force = true;
+    }
+
     /// Forgets the plan and the results (the settings changed). The tab is checked again.
     pub fn reset(&mut self) {
         let latest = self.latest.clone();
@@ -288,6 +295,8 @@ enum LintCmd {
     Lint { target: LintTarget, path: PathBuf, text: String, latest: Arc<AtomicU64>, generation: u64, done: LintDone },
     Close(PathBuf),
     Reset,
+    /// Restart Language Servers: `Reset`, then the callback.
+    Restart(Box<dyn FnOnce() + Send>),
     IdleTimeout(Duration),
 }
 
@@ -299,6 +308,8 @@ pub struct LintQueue {
     sources: Arc<Vec<Arc<dyn LintSource>>>,
     /// Lint calls made and requests skipped as stale, per source (tests read them).
     counts: Arc<Mutex<HashMap<SourceId, LintCounts>>>,
+    /// Stop Language Servers: lint requests are answered with nothing and start no linter.
+    off: Arc<AtomicBool>,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -313,7 +324,8 @@ impl LintQueue {
         let queued = Arc::new(AtomicUsize::new(0));
         let sources = Arc::new(sources);
         let counts: Arc<Mutex<HashMap<SourceId, LintCounts>>> = Arc::default();
-        let (done_count, srcs, counted) = (queued.clone(), sources.clone(), counts.clone());
+        let off = Arc::new(AtomicBool::new(false));
+        let (done_count, srcs, counted, stopped) = (queued.clone(), sources.clone(), counts.clone(), off.clone());
         let _ = std::thread::Builder::new().name("lint queue".into()).spawn(move || {
             let mut idle = crate::lang::config::DEFAULT_IDLE_TIMEOUT;
             let mut last_check = Instant::now();
@@ -323,7 +335,7 @@ impl LintQueue {
                     Ok(cmd) => {
                         match cmd {
                             LintCmd::Lint { target, path, text, latest, generation, done } => {
-                                let stale = latest.load(Ordering::SeqCst) != generation;
+                                let stale = latest.load(Ordering::SeqCst) != generation || stopped.load(Ordering::SeqCst);
                                 {
                                     let mut c = crate::lang::lock(&counted);
                                     let c = c.entry(target.source()).or_default();
@@ -343,6 +355,10 @@ impl LintQueue {
                             }
                             LintCmd::Close(p) => srcs.iter().for_each(|s| s.close(&p)),
                             LintCmd::Reset => srcs.iter().for_each(|s| s.shutdown()),
+                            LintCmd::Restart(done) => {
+                                srcs.iter().for_each(|s| s.shutdown());
+                                done();
+                            }
                             LintCmd::IdleTimeout(d) => idle = d,
                         }
                         done_count.fetch_sub(1, Ordering::SeqCst);
@@ -365,7 +381,12 @@ impl LintQueue {
             }
             srcs.iter().for_each(|s| s.shutdown());
         });
-        LintQueue { tx, queued, sources, counts }
+        LintQueue { tx, queued, sources, counts, off }
+    }
+
+    /// The Stop Language Servers switch; `Languages` shares it with the language queues.
+    pub fn off_flag(&self) -> Arc<AtomicBool> {
+        self.off.clone()
     }
 
     pub fn counts(&self, source: SourceId) -> LintCounts {
@@ -390,6 +411,12 @@ impl LintQueue {
     /// Stops every linter: the settings changed. The next file starts them again.
     pub fn reset(&self) {
         self.send(LintCmd::Reset);
+    }
+
+    /// Stops every linter in queue order and then runs `done` on the queue thread. The next
+    /// lint request starts them again.
+    pub fn restart(&self, done: impl FnOnce() + Send + 'static) {
+        self.send(LintCmd::Restart(Box::new(done)));
     }
 
     pub fn set_idle_timeout(&self, idle: Duration) {

@@ -176,17 +176,28 @@ pub fn show_windows(state: &mut AppState, ctx: &Context) {
     });
     new_rects.push(area.response.rect);
 
-    // The submenu sits to the right of the hovered row, like IDEA's.
+    // The submenu sits to the right of the hovered row, like IDEA's. A popup near the right
+    // window edge (under the centered title bar branch) puts it on the left instead; egui would
+    // otherwise push it back over the hovered row.
     if let (Some((name, group, y)), Some(data)) = (b.expanded.clone(), b.data.as_ref()) {
         let remote = group == 2;
         let info = if remote { data.remote.iter().find(|x| x.name == name) } else { data.local.iter().find(|x| x.name == name) };
         if let Some(info) = info {
-            let pos = pos2(area.response.rect.right() + 2.0, y - 6.0);
+            // Rows take the available width, so the submenu gets a definite width: the widest
+            // row text, at least 240.
+            let cur = current.clone().unwrap_or_else(|| "HEAD".into());
+            let texts = [format!("New Branch from '{name}'..."), format!("Merge '{name}' into '{cur}'"), format!("Rebase '{cur}' onto '{name}'")];
+            let text_w = ctx.fonts(|f| texts.iter().map(|t| f.layout_no_wrap(t.clone(), theme::T.ui_font(), theme::T.text).size().x).fold(0.0_f32, f32::max));
+            let inner_w = (text_w + 16.0).max(240.0);
+            let width = inner_w + Frame::popup(&ctx.style()).total_margin().sum().x;
+            let popup = area.response.rect;
+            let screen = ctx.screen_rect();
+            let x = if popup.right() + 2.0 + width <= screen.right() { popup.right() + 2.0 } else { (popup.left() - 2.0 - width).max(screen.left()) };
+            let pos = pos2(x, y - 6.0);
             let sub = Area::new(crate::workspace::wid("git-branches-submenu")).order(Order::Foreground).fixed_pos(pos).show(ctx, |ui| {
                 Frame::popup(ui.style()).show(ui, |ui| {
-                    ui.set_min_width(240.0);
+                    ui.set_width(inner_w);
                     ui.spacing_mut().item_spacing.y = 0.0;
-                    let cur = current.clone().unwrap_or_else(|| "HEAD".into());
                     let is_current = info.is_current;
                     if !is_current && action_row(ui, "Checkout").clicked() {
                         action = Some(Action::Checkout(name.clone()));

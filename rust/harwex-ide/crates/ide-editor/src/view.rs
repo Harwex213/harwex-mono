@@ -1,3 +1,4 @@
+use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::ops::Range;
@@ -19,7 +20,9 @@ use crate::find::{FindState, MAX_MATCHES};
 use crate::find_bar::{self, BarCmd, BarEnv, BarIds, HISTORY_LEN};
 use crate::search::{FindOptions, Matcher};
 use crate::highlight::{HlKind, Span};
+use crate::layout::{CaretMoves, LineMoves, NoWrap, RowLayout};
 use crate::theme::EditorTheme;
+use crate::wrap::{DrawnRow, LineRows, RowMoves, SoftWrap, WrapMap};
 
 /// Extra per-line marks drawn in the gutter (git change bars).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -153,6 +156,29 @@ pub struct EditorState {
     find_marks: (u64, Vec<f32>),
     /// Scrollbar marks of the problems, per severity, with the key they were built for.
     problem_marks: (u64, Vec<(ProblemSeverity, f32)>),
+    /// The layout strategy: soft wrap (plain text, Markdown) or one row per line.
+    soft_wrap: bool,
+    /// Visual rows per line while soft wrap is on.
+    wrap: WrapMap,
+    /// The rows drawn last frame while soft wrap is on, for hit tests.
+    drawn_rows: Vec<DrawnRow>,
+    /// The top line on screen last frame, so a re-wrap or a toggle keeps it in place.
+    anchor: Option<Anchor>,
+    /// Whether last frame drew wrapped rows.
+    drawn_wrap: bool,
+    /// Soft wrap: caret heads on a row boundary that sit at the end of the upper row (IDEA's
+    /// affinity), with the doc version they were set for.
+    lean: (Vec<usize>, u64),
+}
+
+/// The line at the top of the viewport: the line, the visual row inside it, the row it had in
+/// the content, and the pixels scrolled past that row's top.
+#[derive(Clone, Copy, Debug)]
+struct Anchor {
+    line: usize,
+    k: usize,
+    row: usize,
+    off: f32,
 }
 
 #[derive(Clone, Copy)]
@@ -244,7 +270,7 @@ fn session_id() -> Id {
 }
 
 /// One line as drawn last frame.
-struct DrawnLine {
+pub(crate) struct DrawnLine {
     line: usize,
     /// First display column in the galley (non-zero for windows of very long lines).
     window_start: usize,
@@ -270,18 +296,21 @@ pub struct EditorGeometry {
 }
 
 impl EditorGeometry {
-    /// Center of the character cell at `pos` (tabs expanded like the renderer does).
+    /// Center of the character cell at `pos` (tabs expanded like the renderer does), for the
+    /// unwrapped layout. `EditorState::char_center` works in both layouts.
     pub fn char_center(&self, doc: &Document, pos: Position) -> Pos2 {
         let col = display_col(&doc.line(pos.line), pos.column) as f32;
         Pos2::new(self.origin.x + (col + 0.5) * self.char_w, self.row_center(pos.line))
     }
 
-    /// Screen y of the top of `line`'s row, as drawn.
-    pub fn row_top(&self, line: usize) -> f32 {
-        row_top(self.origin.y, self.line_h, self.ppp, line as isize)
+    /// Screen y of the top of visual row `row`, as drawn. Without soft wrap a row is a line;
+    /// with it, `EditorState::visual_row` gives the row of a position.
+    pub fn row_top(&self, row: usize) -> f32 {
+        row_top(self.origin.y, self.line_h, self.ppp, row as isize)
     }
 
-    /// The line whose drawn row holds `y`. Negative above line 0; past the end is not clamped.
+    /// The visual row whose drawn band holds `y` (the line without soft wrap). Negative above
+    /// row 0; past the end is not clamped.
     pub fn line_at(&self, y: f32) -> isize {
         line_at_y(self.origin.y, self.line_h, self.ppp, y)
     }
@@ -341,6 +370,12 @@ impl EditorState {
             find_scroll: None,
             find_marks: (0, Vec::new()),
             problem_marks: (0, Vec::new()),
+            soft_wrap: false,
+            wrap: WrapMap::default(),
+            drawn_rows: Vec::new(),
+            anchor: None,
+            drawn_wrap: false,
+            lean: (Vec::new(), 0),
         }
     }
 
@@ -499,6 +534,7 @@ impl EditorState {
     /// the next frame.
     pub fn set_carets(&mut self, carets: Carets) {
         self.carets = carets;
+        self.lean.0.clear();
         self.inner = None;
         self.preferred_cols.clear();
         self.occurrences.clear();
@@ -638,6 +674,63 @@ impl EditorState {
         self.galleys.clear();
         self.advance = None;
         self.drawn.clear();
+        self.drawn_rows.clear();
+        self.wrap.reset();
+    }
+
+    /// Soft wrap: long lines break into visual rows at the editor's width. The app turns it
+    /// on for plain text and Markdown (`Language::soft_wraps`); the context menu toggles it.
+    /// It takes effect on the next frame, with the top line kept in place.
+    pub fn set_soft_wrap(&mut self, on: bool) {
+        if self.soft_wrap != on {
+            self.soft_wrap = on;
+            self.wrap.reset();
+        }
+    }
+
+    pub fn soft_wrap(&self) -> bool {
+        self.soft_wrap
+    }
+
+    /// False while a sweep still counts the rows of lines off screen (a big file just opened,
+    /// toggled or resized). The view asks for frames until it is done.
+    pub fn wrap_settled(&self) -> bool {
+        !self.wrap.sweeping()
+    }
+
+    /// The row width in display columns that the last frame wrapped at; `None` when it drew
+    /// one row per line.
+    pub fn wrap_cols(&self) -> Option<usize> {
+        self.drawn_wrap.then(|| self.wrap.cols())
+    }
+
+    /// The visual row of `pos` as drawn last frame. Without soft wrap it is the line.
+    pub fn visual_row(&self, doc: &Document, pos: Position) -> usize {
+        if !self.drawn_wrap {
+            return pos.line;
+        }
+        let text = doc.line(pos.line);
+        let rows = LineRows::new(&text, self.wrap.cols());
+        self.wrap.row_of_line(pos.line) + rows.row_of(pos.column)
+    }
+
+    /// Center of the character cell at `pos` as drawn last frame, in both layouts. `None`
+    /// before the first frame.
+    pub fn char_center(&self, doc: &Document, pos: Position) -> Option<Pos2> {
+        let g = self.geometry?;
+        if !self.drawn_wrap {
+            return Some(g.char_center(doc, pos));
+        }
+        let text = doc.line(pos.line);
+        let rows = LineRows::new(&text, self.wrap.cols());
+        let k = rows.row_of(pos.column);
+        let d = rows.display_col(&text, k, pos.column) - rows.starts[k].col;
+        let row = self.wrap.row_of_line(pos.line) + k;
+        let x = match self.drawn_rows.iter().find(|r| r.line == pos.line && r.row == k) {
+            Some(r) => g.origin.x + r.x + galley_col_x(&r.galley, d, g.char_w, g.ppp),
+            None => g.origin.x + (rows.x_offset(k) + d) as f32 * g.char_w,
+        };
+        Some(Pos2::new(x + g.char_w / 2.0, g.row_center(row)))
     }
 
     /// Moves the primary caret and drops the others (a plain click).
@@ -674,6 +767,7 @@ enum MenuCmd {
     Copy,
     Paste,
     Comment,
+    SoftWrap,
 }
 
 impl<'a> EditorView<'a> {
@@ -742,6 +836,9 @@ impl<'a> EditorView<'a> {
 
         // External edits (rollback, reload) can shrink the text under a stale selection.
         state.carets.clamp(doc.len_chars());
+        if state.pending_selection.is_some() || state.pending_reveal.is_some() {
+            state.lean.0.clear();
+        }
         if let Some((a, h)) = state.pending_selection.take() {
             state.carets = Carets::single(Selection::new(doc.position_to_char(a), doc.position_to_char(h)));
             state.inner = None;
@@ -828,17 +925,20 @@ impl<'a> EditorView<'a> {
         let modifiers = ui.input(|i| i.modifiers);
         let origin = text_rect.min + Vec2::new(TEXT_PAD, 0.0) - state.drawn_scroll;
         let drawn = std::mem::take(&mut state.drawn);
-        // Column boundary nearest to `p`, measured on the glyphs drawn last frame when the line
-        // was on screen.
-        // The line under `y`, clamped to the document. Rows are drawn at `row_top`, so hit
-        // tests use the same snapped boundaries.
-        let line_under = |y: f32| -> usize { (line_at_y(origin.y, line_h, ppp, y).max(0) as usize).min(line_count.saturating_sub(1)) };
-        let hit = |doc: &Document, p: Pos2| -> usize {
-            let line = line_under(p.y);
-            let text = doc.line(line);
-            let d = display_col_at(&drawn, line, p.x - origin.x, char_w);
-            doc.line_start(line) + col_from_display(&text, d)
-        };
+        let drawn_rows = std::mem::take(&mut state.drawn_rows);
+        let wrappable = crate::wrap::allowed(doc.language());
+        let wrap_on = state.soft_wrap && wrappable;
+        let wrap_map = RefCell::new(std::mem::take(&mut state.wrap));
+        let wrap_cols = wrap_cols(text_rect.width(), char_w);
+        // Hit tests aim at what the last frame drew, in the layout it drew with.
+        let no_wrap = NoWrap { origin, line_h, ppp, char_w, line_count, drawn: &drawn };
+        let soft = SoftWrap { map: &wrap_map, drawn: &drawn_rows, origin, line_h, ppp, char_w, lean: Cell::new(false) };
+        let layout: &dyn RowLayout = if state.drawn_wrap { &soft } else { &no_wrap };
+        let line_moves = LineMoves;
+        let lean_in = if wrap_on && state.lean.1 == doc.version() { std::mem::take(&mut state.lean.0) } else { Vec::new() };
+        let row_moves = RowMoves { cols: wrap_cols, map: &wrap_map, lean_in: RefCell::new(lean_in), lean_out: RefCell::new(Vec::new()) };
+        let moves: &dyn CaretMoves = if wrap_on { &row_moves } else { &line_moves };
+        let hit = |doc: &Document, p: Pos2| -> usize { layout.hit(doc, p) };
 
         // Mouse. The caret moves on press, not on release, so drag-select starts where the
         // button went down.
@@ -858,16 +958,13 @@ impl<'a> EditorView<'a> {
                 .collect();
             (presses, i.pointer.primary_down(), i.pointer.button_down(egui::PointerButton::Middle), i.pointer.interact_pos(), i.time)
         });
-        // Fractional display column and line under `p`, for column selection.
-        let cell = |p: Pos2| -> (usize, f32) {
-            let line = line_under(p.y);
-            (line, display_col_at(&drawn, line, p.x - origin.x, char_w).max(0.0))
-        };
         let delay = ui.ctx().options(|o| o.input_options.max_double_click_delay);
         for (p, middle_pressed) in presses {
             if resp.hovered() && text_rect.contains(p) {
                 resp.request_focus();
                 let idx = hit(doc, p);
+                // A press past the end of a wrapped row keeps the caret at that row's end.
+                let leans = layout.leans();
                 let plain = !middle_pressed && !modifiers.shift && !modifiers.alt && !modifiers.command;
                 let count = if plain {
                     state.click_chain.press(now, p, delay, CHAIN_DIST)
@@ -876,13 +973,17 @@ impl<'a> EditorView<'a> {
                     1
                 };
                 if middle_pressed || (modifiers.alt && modifiers.shift) {
-                    state.column_drag = Some(cell(p));
+                    state.column_drag = Some(layout.cell(doc, p));
                     state.dragging = false;
                 } else if modifiers.alt && !modifiers.command {
                     state.carets.toggle(idx);
                     state.dragging = false;
+                    if leans {
+                        row_moves.lean_in.borrow_mut().push(idx);
+                    }
                 } else if count == 1 {
                     state.set_head(idx, modifiers.shift);
+                    *row_moves.lean_in.borrow_mut() = if leans { vec![idx] } else { Vec::new() };
                     state.inner = None;
                     state.drag_unit = DragUnit::Char;
                     state.dragging = !modifiers.command;
@@ -890,7 +991,7 @@ impl<'a> EditorView<'a> {
                     // IDEA: the second press selects the word, every later press of the same
                     // chain the whole line. Acting on the press keeps the selection while the
                     // button is down, so the chain never shows a bare caret in between.
-                    let r = if count == 2 { editing::word_range(doc, idx) } else { line_range(doc, line_under(p.y)) };
+                    let r = if count == 2 { editing::word_range(doc, idx) } else { line_range(doc, layout.line_under(doc, p.y)) };
                     let sel = Selection::new(r.start, r.end);
                     state.carets = Carets::single(sel);
                     // The line keeps its caret at the click, so each later press of the chain
@@ -907,7 +1008,7 @@ impl<'a> EditorView<'a> {
         if let Some((line0, col0)) = state.column_drag {
             if down || middle_down {
                 if let Some(p) = pointer {
-                    let (line1, col1) = cell(p);
+                    let (line1, col1) = layout.cell(doc, p);
                     state.carets = column_selection(doc, line0, col0, line1, col1);
                     if !text_rect.contains(p) {
                         caret_moved = true;
@@ -926,7 +1027,7 @@ impl<'a> EditorView<'a> {
                     let sel = match &state.drag_unit {
                         DragUnit::Char => Selection::new(old.anchor, idx),
                         DragUnit::Word(r0) => span_units(r0, editing::word_range(doc, idx)),
-                        DragUnit::Line(r0) => span_units(r0, line_range(doc, line_under(p.y))),
+                        DragUnit::Line(r0) => span_units(r0, line_range(doc, layout.line_under(doc, p.y))),
                     };
                     if sel != old {
                         state.carets = Carets::single(sel);
@@ -965,9 +1066,7 @@ impl<'a> EditorView<'a> {
         }
         if gutter_resp.clicked() {
             if let Some(p) = gutter_resp.interact_pointer_pos() {
-                let line = line_at_y(origin.y, line_h, ppp, p.y);
-                if line >= 0 && (line as usize) < line_count {
-                    let line = line as usize;
+                if let Some(line) = layout.gutter_line(doc, p.y) {
                     if p.x < gutter_rect.min.x + ann_w {
                         annotation_clicked = Some(line);
                     } else {
@@ -1016,6 +1115,7 @@ impl<'a> EditorView<'a> {
                             continue;
                         }
                         let single = t.chars().count() == 1;
+                        row_moves.lean_in.borrow_mut().clear();
                         carets::edit_each(doc, &mut state.carets, |doc, sel, _| {
                             if single {
                                 editing::type_char(doc, sel, &t);
@@ -1038,6 +1138,7 @@ impl<'a> EditorView<'a> {
                     }
                     Event::Paste(_) if read_only => {}
                     Event::Paste(t) => {
+                        row_moves.lean_in.borrow_mut().clear();
                         carets::paste(doc, &mut state.carets, &t);
                         caret_moved = true;
                     }
@@ -1047,8 +1148,14 @@ impl<'a> EditorView<'a> {
                         if read_only && is_edit_key(key, m) {
                             continue;
                         }
-                        if let Some(action) = on_key(doc, state, key, m, page) {
+                        let before = state.carets.clone();
+                        if let Some(action) = on_key(doc, state, key, m, page, moves) {
                             out_action = Some(action);
+                        }
+                        // A key that moved the carets sets their side anew.
+                        let out = std::mem::take(&mut *row_moves.lean_out.borrow_mut());
+                        if state.carets != before {
+                            *row_moves.lean_in.borrow_mut() = out;
                         }
                         caret_moved = true;
                     }
@@ -1064,6 +1171,7 @@ impl<'a> EditorView<'a> {
         let sel_lines = editing::selected_lines(doc, &state.carets.primary());
         let lines_changed = marks.iter().any(|(l, _)| sel_lines.contains(l));
         let has_comment = doc.language().comment_tokens().is_some();
+        let soft_wrap = state.soft_wrap;
         resp.context_menu(|ui| {
             ui.set_min_width(220.0);
             let mut item = |ui: &mut Ui, label: &str, shortcut: &str, enabled: bool, cmd: MenuCmd| {
@@ -1096,6 +1204,14 @@ impl<'a> EditorView<'a> {
                 git(ui, "Show History", true, EditorAction::GitShowHistory);
                 git(ui, "Rollback Lines", lines_changed && !read_only, EditorAction::GitRollbackLines);
             });
+            if wrappable {
+                ui.separator();
+                let mut on = soft_wrap;
+                if ui.checkbox(&mut on, "Soft-Wrap").clicked() {
+                    menu_cmd = Some(MenuCmd::SoftWrap);
+                    ui.close_menu();
+                }
+            }
         });
         // The press on a menu item took the focus away from the editor. Every item hands it
         // back, so Cmd+Z and typing act on the editor at once. The app may move it on (a new
@@ -1120,6 +1236,11 @@ impl<'a> EditorView<'a> {
                 carets::toggle_comment(doc, &mut state.carets);
                 caret_moved = true;
             }
+            // The strategy changes on the next frame; this one keeps the layout it hit-tested.
+            Some(MenuCmd::SoftWrap) => {
+                state.set_soft_wrap(!soft_wrap);
+                ui.ctx().request_repaint();
+            }
             None => {}
         }
 
@@ -1131,33 +1252,42 @@ impl<'a> EditorView<'a> {
 
         let changed = doc.version() != version_before;
         let line_count = doc.line_count();
+        if wrap_on {
+            wrap_map.borrow_mut().sync(doc, wrap_cols);
+        }
+        let wrap_gen = if wrap_on { wrap_map.borrow().gen() } else { 0 };
 
         // Scrolling target for this frame.
         let view = text_rect.size();
         state.viewport = view;
-        let content = Vec2::new(
-            (doc.max_line_chars() as f32 + 8.0) * char_w + TEXT_PAD * 2.0,
-            line_count as f32 * line_h + (view.y - 3.0 * line_h).max(0.0),
-        );
+        let content = if wrap_on {
+            // No horizontal scroll: rows end at the viewport.
+            Vec2::new(view.x, wrap_map.borrow().total() as f32 * line_h + (view.y - 3.0 * line_h).max(0.0))
+        } else {
+            Vec2::new(
+                (doc.max_line_chars() as f32 + 8.0) * char_w + TEXT_PAD * 2.0,
+                line_count as f32 * line_h + (view.y - 3.0 * line_h).max(0.0),
+            )
+        };
         let mut new_scroll = None;
         if let Some(pos) = state.pending_reveal.take() {
             let idx = doc.position_to_char(pos);
             state.carets = Carets::single(Selection::caret(idx));
             state.preferred_cols.clear();
-            let p = doc.char_to_position(idx);
-            let x = display_col(&doc.line(p.line), p.column) as f32 * char_w;
-            let y = p.line as f32 * line_h - view.y / 2.0 + line_h / 2.0;
+            let (col, row) = moves.place(doc, idx);
+            let x = col as f32 * char_w;
+            let y = row as f32 * line_h - view.y / 2.0 + line_h / 2.0;
             let sx = if x > view.x - 4.0 * char_w { x - view.x / 2.0 } else { 0.0 };
             new_scroll = Some(Vec2::new(sx.max(0.0), y.max(0.0)));
             doc.seal_undo_group();
         } else if let Some(r) = state.find_scroll.take() {
             // A match off screen is centered, like IDEA; one on screen does not move the view.
-            let p = doc.char_to_position(r.start);
-            let e = doc.char_to_position(r.end);
-            let x0 = display_col(&doc.line(p.line), p.column) as f32 * char_w;
-            let x1 = display_col(&doc.line(e.line), e.column) as f32 * char_w + TEXT_PAD;
-            let y0 = p.line as f32 * line_h;
-            let y1 = (e.line + 1) as f32 * line_h;
+            let (p_col, p_row) = moves.place(doc, r.start);
+            let (e_col, e_row) = moves.place(doc, r.end);
+            let x0 = p_col as f32 * char_w;
+            let x1 = e_col as f32 * char_w + TEXT_PAD;
+            let y0 = p_row as f32 * line_h;
+            let y1 = (e_row + 1) as f32 * line_h;
             let mut s = state.scroll;
             if y0 < s.y || y1 > s.y + view.y {
                 s.y = (y0 - view.y / 2.0 + line_h / 2.0).clamp(0.0, (content.y - view.y).max(0.0));
@@ -1170,9 +1300,9 @@ impl<'a> EditorView<'a> {
             }
             doc.seal_undo_group();
         } else if caret_moved {
-            let p = doc.char_to_position(state.caret_char(doc));
-            let x = display_col(&doc.line(p.line), p.column) as f32 * char_w + TEXT_PAD;
-            let y = p.line as f32 * line_h;
+            let (col, row) = moves.place(doc, state.caret_char(doc));
+            let x = col as f32 * char_w + TEXT_PAD;
+            let y = row as f32 * line_h;
             let mut s = state.scroll;
             let margin_y = line_h;
             if y < s.y + margin_y * 0.0 {
@@ -1192,6 +1322,33 @@ impl<'a> EditorView<'a> {
                 new_scroll = Some(s);
             }
         }
+        if wrap_on {
+            // Soft-wrapped rows never scroll sideways.
+            if let Some(s) = &mut new_scroll {
+                s.x = 0.0;
+            }
+        }
+        if new_scroll.is_none() {
+            // A toggle or a re-wrap above the viewport keeps the top line in place.
+            if let Some(a) = state.anchor {
+                let row = if wrap_on {
+                    let m = wrap_map.borrow();
+                    let line = a.line.min(m.line_count().saturating_sub(1));
+                    m.row_of_line(line) + a.k.min(m.rows(line) - 1)
+                } else {
+                    a.line.min(line_count.saturating_sub(1))
+                };
+                if wrap_on != state.drawn_wrap || (wrap_on && row != a.row) {
+                    let y = (row as f32 * line_h + a.off).clamp(0.0, (content.y - view.y).max(0.0));
+                    new_scroll = Some(Vec2::new(if wrap_on { 0.0 } else { state.scroll.x }, y));
+                }
+            }
+        }
+
+        // The sides that still belong to a caret head.
+        let mut lean = row_moves.lean_in.take();
+        lean.retain(|h| state.carets.touching(*h..*h).iter().any(|s| s.head == *h));
+        state.lean = (lean, doc.version());
 
         let inner = state.live_inner(doc);
         if inner.is_none() {
@@ -1217,6 +1374,7 @@ impl<'a> EditorView<'a> {
         };
 
         let mut drawn_buf = drawn;
+        let mut rows_buf = drawn_rows;
         let find = &state.find;
         let find_matches = if find.is_open() { find.matches() } else { &[] };
         let find_in_selection = find.in_selection();
@@ -1225,6 +1383,28 @@ impl<'a> EditorView<'a> {
             ui.set_min_size(content);
             let drawn_scroll = text_rect.min - ui.max_rect().min;
             let origin = ui.max_rect().min + Vec2::new(TEXT_PAD, 0.0);
+            if wrap_on {
+                rows_buf.clear();
+                WrapPaint {
+                    doc: &mut *doc,
+                    map: &mut wrap_map.borrow_mut(),
+                    highlight: &mut state.highlight,
+                    galleys: &mut state.galleys,
+                    frame: state.frame,
+                    carets: &state.carets,
+                    lean: &state.lean.0,
+                    inner,
+                    find_matches,
+                    find_in_selection,
+                    find_current: find_current.clone(),
+                    problems,
+                    hover_word: hover_word.clone(),
+                    style: RowStyle { theme, font: &font, font_size, theme_fp, line_h, row_h, char_w, ppp, has_focus },
+                    drawn: &mut rows_buf,
+                }
+                .paint(ui, viewport, origin);
+                return (Vec::new(), drawn_scroll);
+            }
             let first = ((viewport.min.y / line_h).floor().max(0.0) as usize).min(line_count);
             let last = ((viewport.max.y / line_h).ceil().max(0.0) as usize + 1).min(line_count);
             let visible = first..last;
@@ -1417,16 +1597,24 @@ impl<'a> EditorView<'a> {
             (drawn_now, drawn_scroll)
         });
         (state.drawn, state.drawn_scroll) = output.inner;
+        state.drawn_rows = rows_buf;
         state.scroll = output.state.offset;
+        if wrap_on && wrap_map.borrow().sweeping() {
+            ui.ctx().request_repaint();
+        }
 
         if state.carets.is_multi() {
             let key = {
                 let mut h = DefaultHasher::new();
-                (state.carets.all(), inner.map(|i| i.1), line_count, text_rect.height().to_bits(), line_h.to_bits()).hash(&mut h);
+                (state.carets.all(), inner.map(|i| i.1), line_count, text_rect.height().to_bits(), line_h.to_bits(), wrap_gen).hash(&mut h);
                 h.finish()
             };
             if state.caret_marks.0 != key {
-                let marks = scroll_marks(doc, state.carets.all(), |s| state.shown_head(inner, s), text_rect.height(), content.y, line_h);
+                let marks = if wrap_on {
+                    wrap_scroll_marks(doc, &wrap_map.borrow(), state.carets.all(), |s| state.shown_head(inner, s), text_rect.height(), content.y, line_h)
+                } else {
+                    scroll_marks(doc, state.carets.all(), |s| state.shown_head(inner, s), text_rect.height(), content.y, line_h)
+                };
                 state.caret_marks = (key, marks);
             }
             let painter = ui.painter_at(text_rect);
@@ -1438,11 +1626,16 @@ impl<'a> EditorView<'a> {
         if state.find.is_open() && !state.find.matches().is_empty() {
             let key = {
                 let mut h = DefaultHasher::new();
-                (state.find.gen, doc.version(), line_count, text_rect.height().to_bits(), line_h.to_bits()).hash(&mut h);
+                (state.find.gen, doc.version(), line_count, text_rect.height().to_bits(), line_h.to_bits(), wrap_gen).hash(&mut h);
                 h.finish()
             };
             if state.find_marks.0 != key {
-                state.find_marks = (key, scroll_marks(doc, state.find.matches(), |m| m.range.start, text_rect.height(), content.y, line_h));
+                let marks = if wrap_on {
+                    wrap_scroll_marks(doc, &wrap_map.borrow(), state.find.matches(), |m| m.range.start, text_rect.height(), content.y, line_h)
+                } else {
+                    scroll_marks(doc, state.find.matches(), |m| m.range.start, text_rect.height(), content.y, line_h)
+                };
+                state.find_marks = (key, marks);
             }
             let painter = ui.painter_at(text_rect);
             for &y in &state.find_marks.1 {
@@ -1454,7 +1647,7 @@ impl<'a> EditorView<'a> {
         if !problems.is_empty() {
             let key = {
                 let mut h = DefaultHasher::new();
-                (problems, line_count, text_rect.height().to_bits(), line_h.to_bits()).hash(&mut h);
+                (problems, line_count, text_rect.height().to_bits(), line_h.to_bits(), wrap_gen).hash(&mut h);
                 h.finish()
             };
             if state.problem_marks.0 != key {
@@ -1462,7 +1655,12 @@ impl<'a> EditorView<'a> {
                 // Weaker first, so an error band is drawn over a warning at the same y.
                 for sev in ProblemSeverity::ALL.into_iter().rev() {
                     let starts: Vec<usize> = problems.iter().filter(|m| m.severity == sev).map(|m| m.start).collect();
-                    out.extend(scroll_marks(doc, &starts, |s| *s, text_rect.height(), content.y, line_h).into_iter().map(|y| (sev, y)));
+                    let ys = if wrap_on {
+                        wrap_scroll_marks(doc, &wrap_map.borrow(), &starts, |s| *s, text_rect.height(), content.y, line_h)
+                    } else {
+                        scroll_marks(doc, &starts, |s| *s, text_rect.height(), content.y, line_h)
+                    };
+                    out.extend(ys.into_iter().map(|y| (sev, y)));
                 }
                 state.problem_marks = (key, out);
             }
@@ -1492,29 +1690,31 @@ impl<'a> EditorView<'a> {
         let last = (((state.drawn_scroll.y + view.y) / line_h).ceil() as usize + 1).min(line_count);
         let numbers_right = gutter_rect.min.x + ann_w + numbers_w;
         let text_y = ((line_h - row_h) / 2.0).round();
-        // Lines with a caret, among the visible ones.
-        let mut caret_rows = vec![false; last.saturating_sub(first)];
-        for s in state.carets.touching(doc.line_start(first)..doc.line_start(last)) {
-            let l = doc.char_to_position(state.shown_head(inner, s)).line;
-            if let Some(row) = l.checked_sub(first).and_then(|i| caret_rows.get_mut(i)) {
-                *row = true;
+        if !wrap_on {
+            // Lines with a caret, among the visible ones.
+            let mut caret_rows = vec![false; last.saturating_sub(first)];
+            for s in state.carets.touching(doc.line_start(first)..doc.line_start(last)) {
+                let l = doc.char_to_position(state.shown_head(inner, s)).line;
+                if let Some(row) = l.checked_sub(first).and_then(|i| caret_rows.get_mut(i)) {
+                    *row = true;
+                }
             }
-        }
-        for line in first..last {
-            let y = row_top(top, line_h, ppp, line as isize);
-            let current = caret_rows.get(line - first).copied().unwrap_or(false);
-            let color = if current { theme.line_number_current } else { theme.line_number };
-            painter.text(
-                Pos2::new(numbers_right - char_w, y + text_y),
-                Align2::RIGHT_TOP,
-                (line + 1).to_string(),
-                font.clone(),
-                color,
-            );
-            if let Some(a) = annotations.get(line) {
-                if !a.is_empty() {
-                    let a: String = a.chars().take(40).collect();
-                    painter.text(Pos2::new(gutter_rect.min.x + char_w * 0.5, y + text_y), Align2::LEFT_TOP, a, font.clone(), theme.annotation);
+            for line in first..last {
+                let y = row_top(top, line_h, ppp, line as isize);
+                let current = caret_rows.get(line - first).copied().unwrap_or(false);
+                let color = if current { theme.line_number_current } else { theme.line_number };
+                painter.text(
+                    Pos2::new(numbers_right - char_w, y + text_y),
+                    Align2::RIGHT_TOP,
+                    (line + 1).to_string(),
+                    font.clone(),
+                    color,
+                );
+                if let Some(a) = annotations.get(line) {
+                    if !a.is_empty() {
+                        let a: String = a.chars().take(40).collect();
+                        painter.text(Pos2::new(gutter_rect.min.x + char_w * 0.5, y + text_y), Align2::LEFT_TOP, a, font.clone(), theme.annotation);
+                    }
                 }
             }
         }
@@ -1529,33 +1729,44 @@ impl<'a> EditorView<'a> {
             mark_x,
             ppp,
         });
-        for &(line, mark) in marks {
-            if line < first || line > last {
-                continue;
-            }
-            let y = row_top(top, line_h, ppp, line as isize);
-            let y_end = row_top(top, line_h, ppp, line as isize + 1);
-            match mark {
-                GutterMark::Added | GutterMark::Modified => {
-                    let color = if mark == GutterMark::Added { theme.mark_added } else { theme.mark_modified };
-                    painter.rect_filled(
-                        Rect::from_min_max(Pos2::new(mark_x, y), Pos2::new(mark_x + MARK_W, y_end)),
-                        0.0,
-                        color,
-                    );
+        if wrap_on {
+            let gutter = GutterStyle { theme, font: &font, top, line_h, ppp, text_y, char_w, numbers_right, mark_x, left: gutter_rect.min.x };
+            let carets = (&state.carets, inner);
+            wrap_gutter(&painter, &gutter, doc, &wrap_map.borrow(), carets, (state.drawn_scroll.y, view.y), annotations, marks);
+        } else {
+            for &(line, mark) in marks {
+                if line < first || line > last {
+                    continue;
                 }
-                GutterMark::Deleted => {
-                    let tip = Pos2::new(mark_x + MARK_W + 2.0, y);
-                    painter.add(egui::Shape::convex_polygon(
-                        vec![Pos2::new(mark_x, y - 4.0), tip, Pos2::new(mark_x, y + 4.0)],
-                        theme.mark_deleted,
-                        Stroke::NONE,
-                    ));
+                let y = row_top(top, line_h, ppp, line as isize);
+                let y_end = row_top(top, line_h, ppp, line as isize + 1);
+                match mark {
+                    GutterMark::Added | GutterMark::Modified => {
+                        let color = if mark == GutterMark::Added { theme.mark_added } else { theme.mark_modified };
+                        painter.rect_filled(
+                            Rect::from_min_max(Pos2::new(mark_x, y), Pos2::new(mark_x + MARK_W, y_end)),
+                            0.0,
+                            color,
+                        );
+                    }
+                    GutterMark::Deleted => {
+                        let tip = Pos2::new(mark_x + MARK_W + 2.0, y);
+                        painter.add(egui::Shape::convex_polygon(
+                            vec![Pos2::new(mark_x, y - 4.0), tip, Pos2::new(mark_x, y + 4.0)],
+                            theme.mark_deleted,
+                            Stroke::NONE,
+                        ));
+                    }
                 }
             }
         }
 
-        let hover = if resp.hovered() {
+        let hover = if resp.hovered() && wrap_on {
+            // The rows this frame drew, at the offset it drew them with.
+            let origin = Pos2::new(text_rect.min.x + TEXT_PAD - state.drawn_scroll.x, top);
+            let soft = SoftWrap { map: &wrap_map, drawn: &state.drawn_rows, origin, line_h, ppp, char_w, lean: Cell::new(false) };
+            resp.hover_pos().and_then(|p| soft.hover(doc, p))
+        } else if resp.hovered() {
             resp.hover_pos().and_then(|p| {
                 let line = line_at_y(origin.y, line_h, ppp, p.y);
                 if line < 0 || line as usize >= line_count {
@@ -1571,6 +1782,13 @@ impl<'a> EditorView<'a> {
         } else {
             None
         };
+        // The top line, so a re-wrap or a toggle next frame keeps it in place.
+        let top_row = (state.drawn_scroll.y / line_h).floor().max(0.0) as usize;
+        let (line, k) = if wrap_on { wrap_map.borrow().line_of_row(top_row) } else { (top_row, 0) };
+        state.anchor = Some(Anchor { line, k, row: top_row, off: state.drawn_scroll.y - top_row as f32 * line_h });
+        state.drawn_wrap = wrap_on;
+        // An editor without soft wrap keeps no row table.
+        state.wrap = if wrap_on { wrap_map.into_inner() } else { WrapMap::default() };
         if resp.hovered() {
             let icon = if hover_word.is_some() { CursorIcon::PointingHand } else { CursorIcon::Text };
             ui.ctx().set_cursor_icon(icon);
@@ -1592,6 +1810,355 @@ impl<'a> EditorView<'a> {
         }
     }
 }
+
+/// Where the gutter draws.
+struct GutterStyle<'a> {
+    theme: &'a EditorTheme,
+    font: &'a FontId,
+    /// Screen y of row 0.
+    top: f32,
+    line_h: f32,
+    ppp: f32,
+    text_y: f32,
+    char_w: f32,
+    numbers_right: f32,
+    mark_x: f32,
+    left: f32,
+}
+
+/// The gutter of the soft-wrap strategy: a line number, annotation and caret highlight on the
+/// first visual row of a line; change marks span all its rows.
+#[allow(clippy::too_many_arguments)]
+fn wrap_gutter(
+    painter: &egui::Painter,
+    g: &GutterStyle,
+    doc: &Document,
+    map: &WrapMap,
+    (carets, inner): (&Carets, Option<(Selection, usize)>),
+    (scroll_y, view_h): (f32, f32),
+    annotations: &[String],
+    marks: &[(usize, GutterMark)],
+) {
+    let theme = g.theme;
+    let line_count = doc.line_count().min(map.line_count());
+    let first_row = (scroll_y / g.line_h).floor().max(0.0) as usize;
+    let last_row = ((scroll_y + view_h) / g.line_h).ceil() as usize + 1;
+    let (first, _) = map.line_of_row(first_row.min(map.total() - 1));
+    let mut last = first;
+    while last < line_count && map.row_of_line(last) < last_row {
+        last += 1;
+    }
+    let mut caret_lines = vec![false; last - first];
+    for s in carets.touching(doc.line_start(first)..doc.line_start(last)) {
+        let head = match inner {
+            Some((sel, at)) if sel == *s => at,
+            _ => s.head,
+        };
+        if let Some(c) = doc.char_to_position(head).line.checked_sub(first).and_then(|i| caret_lines.get_mut(i)) {
+            *c = true;
+        }
+    }
+    let y_of = |row: usize| row_top(g.top, g.line_h, g.ppp, row as isize);
+    for line in first..last {
+        let y = y_of(map.row_of_line(line));
+        let color = if caret_lines[line - first] { theme.line_number_current } else { theme.line_number };
+        painter.text(Pos2::new(g.numbers_right - g.char_w, y + g.text_y), Align2::RIGHT_TOP, (line + 1).to_string(), g.font.clone(), color);
+        if let Some(a) = annotations.get(line).filter(|a| !a.is_empty()) {
+            let a: String = a.chars().take(40).collect();
+            painter.text(Pos2::new(g.left + g.char_w * 0.5, y + g.text_y), Align2::LEFT_TOP, a, g.font.clone(), theme.annotation);
+        }
+    }
+    for &(line, mark) in marks {
+        if line < first || line > last || line >= line_count {
+            continue;
+        }
+        let row = map.row_of_line(line);
+        let (y, y_end) = (y_of(row), y_of(row + map.rows(line)));
+        match mark {
+            GutterMark::Added | GutterMark::Modified => {
+                let color = if mark == GutterMark::Added { theme.mark_added } else { theme.mark_modified };
+                painter.rect_filled(Rect::from_min_max(Pos2::new(g.mark_x, y), Pos2::new(g.mark_x + MARK_W, y_end)), 0.0, color);
+            }
+            GutterMark::Deleted => {
+                let tip = Pos2::new(g.mark_x + MARK_W + 2.0, y);
+                painter.add(egui::Shape::convex_polygon(vec![Pos2::new(g.mark_x, y - 4.0), tip, Pos2::new(g.mark_x, y + 4.0)], theme.mark_deleted, Stroke::NONE));
+            }
+        }
+    }
+}
+
+/// `scroll_marks` for soft-wrapped rows: the track maps to visual rows, each band to the lines
+/// of its rows.
+fn wrap_scroll_marks<T>(doc: &Document, map: &WrapMap, items: &[T], start: impl Fn(&T) -> usize, track_h: f32, content_h: f32, line_h: f32) -> Vec<f32> {
+    let mut out = Vec::new();
+    let line_count = doc.line_count().min(map.line_count());
+    if track_h <= 0.0 || content_h <= 0.0 {
+        return out;
+    }
+    let total = map.total();
+    let per_px = content_h / track_h / line_h;
+    let mut y = 0.0;
+    while y < track_h {
+        let r0 = (y * per_px).floor() as usize;
+        if r0 >= total {
+            break;
+        }
+        let r1 = (((y + 2.0) * per_px).ceil() as usize).max(r0 + 1).min(total);
+        let l0 = map.line_of_row(r0).0;
+        let l1 = (map.line_of_row(r1 - 1).0 + 1).min(line_count);
+        let c0 = doc.line_start(l0);
+        let c1 = if l1 >= line_count { doc.len_chars() + 1 } else { doc.line_start(l1) };
+        let i = items.partition_point(|m| start(m) < c0);
+        if items.get(i).is_some_and(|m| start(m) < c1) {
+            out.push(y);
+        }
+        y += 2.0;
+    }
+    out
+}
+
+/// What a row of text is drawn with.
+struct RowStyle<'a> {
+    theme: &'a EditorTheme,
+    font: &'a FontId,
+    font_size: f32,
+    theme_fp: u64,
+    line_h: f32,
+    row_h: f32,
+    char_w: f32,
+    ppp: f32,
+    has_focus: bool,
+}
+
+/// The paint pass of the soft-wrap strategy: the visible visual rows, each a display-column
+/// window of its line. The unwrapped layout keeps its own loop in `show`.
+struct WrapPaint<'a> {
+    doc: &'a mut Document,
+    map: &'a mut WrapMap,
+    highlight: &'a mut Option<HighlightCache>,
+    galleys: &'a mut HashMap<u64, (Arc<Galley>, u64)>,
+    frame: u64,
+    carets: &'a Carets,
+    lean: &'a [usize],
+    inner: Option<(Selection, usize)>,
+    find_matches: &'a [crate::find::Match],
+    find_in_selection: bool,
+    find_current: Option<Range<usize>>,
+    problems: &'a [ProblemMark],
+    hover_word: Option<Range<Position>>,
+    style: RowStyle<'a>,
+    drawn: &'a mut Vec<DrawnRow>,
+}
+
+impl WrapPaint<'_> {
+    fn paint(self, ui: &mut Ui, viewport: Rect, origin: Pos2) {
+        let WrapPaint { doc, map, highlight, galleys, frame, carets, lean, inner, find_matches, find_in_selection, find_current, problems, hover_word, style, drawn } = self;
+        let RowStyle { theme, font, font_size, theme_fp, line_h, row_h, char_w, ppp, has_focus } = style;
+        let line_count = doc.line_count();
+        let cols = map.cols();
+        let first_row = (viewport.min.y / line_h).floor().max(0.0) as usize;
+        let last_row = (viewport.max.y / line_h).ceil().max(0.0) as usize + 1;
+        let (first_line, _) = map.line_of_row(first_row.min(map.total() - 1));
+        // Every line has at least one row, so this many lines cover the viewport.
+        let last_line = (first_line + (last_row - first_row) + 1).min(line_count);
+
+        let version = doc.highlight_version();
+        let cached = highlight.as_ref().is_some_and(|c| c.version == version && c.lines.start <= first_line && c.lines.end >= last_line);
+        if !cached {
+            let margin = (last_line - first_line).max(60);
+            let lines = first_line.saturating_sub(margin)..(last_line + margin).min(line_count);
+            let spans = doc.highlight(lines.clone());
+            *highlight = Some(HighlightCache { version: doc.highlight_version(), lines, spans });
+        }
+        let hl = highlight.as_ref().expect("filled above");
+
+        let painter = ui.painter().clone();
+        let round = |v: f32| (v * ppp).round() / ppp;
+        let full_left = ui.clip_rect().left();
+        let full_right = ui.clip_rect().right();
+        let text_y = ((line_h - row_h) / 2.0).round();
+        let shown = |s: &Selection| -> usize {
+            match inner {
+                Some((sel, at)) if sel == *s => at,
+                _ => s.head,
+            }
+        };
+        let (vis_start, vis_end) = (doc.line_start(first_line), if last_line >= line_count { doc.len_chars() } else { doc.line_start(last_line) });
+        let visible_problems: Vec<&ProblemMark> = problems[..problems.partition_point(|m| m.start <= vis_end)].iter().filter(|m| m.end >= vis_start).collect();
+        let caret_color = if has_focus { theme.caret } else { theme.caret_unfocused() };
+
+        let mut counts = Vec::new();
+        let mut row = map.row_of_line(first_line);
+        let mut line = first_line;
+        while line < line_count && row < last_row {
+            let text = doc.line(line);
+            let rows = map.line_rows(doc.version(), line, &text, cols);
+            if rows.count() != map.rows(line) {
+                counts.push((line, rows.count()));
+            }
+            let spans: &[Span] = line.checked_sub(hl.lines.start).and_then(|i| hl.spans.get(i)).map_or(&[], |v| v.as_slice());
+            let ls = doc.line_start(line);
+            let le = ls + rows.len;
+            let here = carets.touching(ls..le);
+            for k in 0..rows.count() {
+                let r = row + k;
+                if r < first_row {
+                    continue;
+                }
+                if r >= last_row {
+                    break;
+                }
+                let y = row_top(origin.y, line_h, ppp, r as isize);
+                let y_end = row_top(origin.y, line_h, ppp, r as isize + 1);
+                let last = k + 1 == rows.count();
+                let chars = rows.chars(k);
+                let (rs, re) = (ls + chars.start, ls + chars.end);
+                let window = rows.starts[k].col..if last { usize::MAX } else { rows.starts[k + 1].col };
+                // A boundary index belongs to the next row; the line end to the last row.
+                let in_row = |i: usize| i >= rs && (i < re || (last && i == re));
+                // A caret that leans back is drawn at the end of the upper row.
+                let caret_in = |h: usize| if lean.contains(&h) { (h == re && !last) || (in_row(h) && h != rs) } else { in_row(h) };
+
+                let galley = if chars.is_empty() {
+                    None
+                } else {
+                    // The row's own text and spans: hashing the whole line per row would cost
+                    // a giant line once per visible row.
+                    let bytes = rows.bytes(k, text.len());
+                    let key = {
+                        let mut h = DefaultHasher::new();
+                        text[bytes.clone()].hash(&mut h);
+                        spans.iter().filter(|s| (s.start as usize) < bytes.end && s.end as usize > bytes.start).for_each(|s| s.hash(&mut h));
+                        window.start.hash(&mut h);
+                        window.end.hash(&mut h);
+                        font_size.to_bits().hash(&mut h);
+                        theme_fp.hash(&mut h);
+                        h.finish()
+                    };
+                    Some(match galleys.get_mut(&key) {
+                        Some((g, used)) => {
+                            *used = frame;
+                            g.clone()
+                        }
+                        None => {
+                            let job = row_job(&text[bytes.clone()], spans, bytes.start, window.start, font, theme);
+                            let g = ui.fonts(|f| f.layout_job(job));
+                            galleys.insert(key, (g.clone(), frame));
+                            g
+                        }
+                    })
+                };
+                let galley_x = round(origin.x + rows.x_offset(k) as f32 * char_w);
+                // Screen x of char index `i` of this row.
+                let x_of = |i: usize| -> f32 {
+                    let d = rows.display_col(&text, k, i - ls) - window.start;
+                    match &galley {
+                        Some(g) => galley_x + galley_col_x(g, d, char_w, ppp),
+                        None => galley_x + d as f32 * char_w,
+                    }
+                };
+
+                if here.iter().any(|s| s.is_empty() && caret_in(s.head)) {
+                    painter.rect_filled(Rect::from_min_max(Pos2::new(full_left, y), Pos2::new(full_right, y_end)), 0.0, theme.current_line);
+                }
+
+                for sel in here.iter().filter(|s| !s.is_empty()) {
+                    let sr = sel.range();
+                    let a = sr.start.max(rs);
+                    let b = sr.end.min(re);
+                    let covers_newline = last && sr.start <= re && sr.end > re;
+                    if a < b || covers_newline && a <= re {
+                        let x0 = x_of(a);
+                        let mut x1 = x_of(b.max(a));
+                        if covers_newline {
+                            x1 += char_w;
+                        }
+                        painter.rect_filled(Rect::from_min_max(Pos2::new(x0, y), Pos2::new(x1, y_end)), 0.0, theme.selection);
+                    }
+                }
+
+                if !find_matches.is_empty() {
+                    let mut i = find_matches.partition_point(|m| m.range.end <= rs);
+                    while let Some(m) = find_matches.get(i) {
+                        i += 1;
+                        if m.range.start > re || (!last && m.range.start == re) {
+                            break;
+                        }
+                        if !find_in_selection && here.iter().any(|s| s.range() == m.range) {
+                            continue;
+                        }
+                        let a = m.range.start.max(rs);
+                        let b = m.range.end.min(re);
+                        let x0 = x_of(a);
+                        let mut x1 = x_of(b.max(a));
+                        if last && m.range.end > re {
+                            x1 += char_w;
+                        }
+                        let r = Rect::from_min_max(Pos2::new(x0, y), Pos2::new(x1.max(x0 + 1.0), y_end));
+                        if m.excluded {
+                            painter.rect_stroke(r, 0.0, Stroke::new(1.0_f32, theme.find_excluded), egui::StrokeKind::Inside);
+                        } else if find_current.as_ref() == Some(&m.range) {
+                            painter.rect_filled(r, 0.0, theme.find_current);
+                        } else {
+                            painter.rect_filled(r, 0.0, theme.find_match);
+                        }
+                    }
+                }
+
+                if let Some(g) = &galley {
+                    painter.galley(Pos2::new(galley_x, y + text_y), g.clone(), theme.foreground);
+                }
+
+                let uy = y + text_y + row_h + 1.0;
+                for m in visible_problems.iter().filter(|m| m.start <= re && m.end >= rs && !(m.end == rs && m.start < rs) && (last || m.start < re)) {
+                    let a = m.start.max(rs);
+                    let b = m.end.min(re);
+                    let x0 = x_of(a);
+                    // An empty range (a missing token) still gets one char of underline.
+                    let x1 = if b > a { x_of(b) } else { x0 + char_w };
+                    let color = theme.problem(m.severity);
+                    if m.severity == ProblemSeverity::Unused {
+                        dotted(&painter, x0, x1, uy, color);
+                    } else {
+                        wave(&painter, x0, x1, uy, color);
+                    }
+                }
+
+                if let Some(w) = hover_word.as_ref().filter(|w| w.start.line == line) {
+                    let a = (ls + w.start.column).max(rs);
+                    let b = (ls + w.end.column).min(re);
+                    if a < b {
+                        let uy = y + text_y + row_h;
+                        painter.line_segment([Pos2::new(x_of(a), uy), Pos2::new(x_of(b), uy)], Stroke::new(1.0_f32, theme.link));
+                    }
+                }
+
+                for head in here.iter().map(shown).filter(|&h| caret_in(h)) {
+                    let x = round(x_of(head));
+                    painter.rect_filled(Rect::from_min_max(Pos2::new(x - 1.0, y), Pos2::new(x + 1.0, y_end)), 0.0, caret_color);
+                }
+                if let Some(galley) = galley {
+                    drawn.push(DrawnRow { line, row: k, x: galley_x - origin.x, galley });
+                }
+            }
+            row += rows.count();
+            line += 1;
+        }
+        for (line, n) in counts {
+            map.set(line, n);
+        }
+        map.fix();
+    }
+}
+
+/// Width of a soft-wrapped row in display columns: the text area minus the left pad and a
+/// right margin for the caret and the scrollbar.
+fn wrap_cols(text_w: f32, char_w: f32) -> usize {
+    ((text_w - TEXT_PAD - WRAP_MARGIN) / char_w).floor().max(8.0) as usize
+}
+
+/// Space right of a soft-wrapped row: the scrollbar and its marks.
+const WRAP_MARGIN: f32 = 16.0;
 
 /// IDEA's error underline: a wave with a 4 px period under the text.
 fn wave(painter: &egui::Painter, x0: f32, x1: f32, y: f32, color: egui::Color32) {
@@ -1621,12 +2188,12 @@ fn dotted(painter: &egui::Painter, x0: f32, x1: f32, y: f32, color: egui::Color3
 /// Screen y of the top of `line`'s row. Rows are snapped to physical pixels like everything
 /// egui draws; drawing and every hit test go through this one function, so each pixel belongs
 /// to exactly one line.
-fn row_top(origin_y: f32, line_h: f32, ppp: f32, line: isize) -> f32 {
+pub(crate) fn row_top(origin_y: f32, line_h: f32, ppp: f32, line: isize) -> f32 {
     ((origin_y + line as f32 * line_h) * ppp).round() / ppp
 }
 
 /// The line whose row (from `row_top(line)` up to `row_top(line + 1)`) holds `y`.
-fn line_at_y(origin_y: f32, line_h: f32, ppp: f32, y: f32) -> isize {
+pub(crate) fn line_at_y(origin_y: f32, line_h: f32, ppp: f32, y: f32) -> isize {
     // Snapping moves a boundary by at most half a pixel, so the unsnapped guess is off by one
     // at most.
     let mut line = ((y - origin_y) / line_h).floor() as isize;
@@ -1696,7 +2263,7 @@ fn is_edit_key(key: Key, m: Modifiers) -> bool {
     }
 }
 
-fn on_key(doc: &mut Document, state: &mut EditorState, key: Key, m: Modifiers, page: usize) -> Option<EditorAction> {
+fn on_key(doc: &mut Document, state: &mut EditorState, key: Key, m: Modifiers, page: usize, moves: &dyn CaretMoves) -> Option<EditorAction> {
     let shift = m.shift;
     let before = state.carets.clone();
     let inner = state.live_inner(doc);
@@ -1734,7 +2301,7 @@ fn on_key(doc: &mut Document, state: &mut EditorState, key: Key, m: Modifiers, p
     match key {
         Key::ArrowLeft => move_heads(state, &|s: Selection| {
             if m.command {
-                editing::smart_home(doc, s.head)
+                moves.home(doc, s.head)
             } else if m.alt {
                 editing::word_left(doc, s.head)
             } else if !s.is_empty() && !shift {
@@ -1745,7 +2312,7 @@ fn on_key(doc: &mut Document, state: &mut EditorState, key: Key, m: Modifiers, p
         }),
         Key::ArrowRight => move_heads(state, &|s: Selection| {
             if m.command {
-                editing::line_end_of(doc, s.head)
+                moves.end(doc, s.head)
             } else if m.alt {
                 editing::word_right(doc, s.head)
             } else if !s.is_empty() && !shift {
@@ -1767,15 +2334,14 @@ fn on_key(doc: &mut Document, state: &mut EditorState, key: Key, m: Modifiers, p
                 let mut wants = Vec::with_capacity(state.carets.len());
                 for (i, s) in state.carets.all().iter().enumerate() {
                     wants.push(if fresh {
-                        let p = doc.char_to_position(from(*s).head);
-                        display_col(&doc.line(p.line), p.column)
+                        moves.x_col(doc, from(*s).head)
                     } else {
                         kept[i]
                     });
                 }
                 state.carets.map(|i, s| {
                     let s = from(s);
-                    let to = editing::vertical(doc, s.head, lines, wants[i]);
+                    let to = moves.vertical(doc, s.head, lines, wants[i]);
                     if shift { Selection::new(s.anchor, to) } else { Selection::caret(to) }
                 });
                 if state.carets.len() == wants.len() {
@@ -1784,8 +2350,8 @@ fn on_key(doc: &mut Document, state: &mut EditorState, key: Key, m: Modifiers, p
                 keep_col = true;
             }
         }
-        Key::Home => move_heads(state, &|s: Selection| editing::smart_home(doc, s.head)),
-        Key::End => move_heads(state, &|s: Selection| editing::line_end_of(doc, s.head)),
+        Key::Home => move_heads(state, &|s: Selection| moves.home(doc, s.head)),
+        Key::End => move_heads(state, &|s: Selection| moves.end(doc, s.head)),
         Key::Backspace => {
             if m.command {
                 carets::edit_each(doc, &mut state.carets, |doc, sel, _| editing::delete_line(doc, sel));
@@ -1959,6 +2525,53 @@ fn line_job(text: &str, spans: &[Span], window: Range<usize>, font: &FontId, the
     job
 }
 
+/// `line_job` for one soft-wrapped row. `text` is the row's slice of its line, starting at byte
+/// `byte0` and display column `col0` of the line, so tabs expand like in the whole line and the
+/// cost is the row, not the line.
+fn row_job(text: &str, spans: &[Span], byte0: usize, col0: usize, font: &FontId, theme: &EditorTheme) -> LayoutJob {
+    let mut job = LayoutJob::default();
+    job.wrap.max_width = f32::INFINITY;
+    job.break_on_newline = false;
+    let mut out = String::with_capacity(text.len());
+    let mut sections: Vec<LayoutSection> = Vec::new();
+    let mut d = col0;
+    let mut si = spans.partition_point(|s| (s.end as usize) <= byte0);
+    let mut cur_kind = HlKind::None;
+    let mut sec_start = 0usize;
+    for (b, c) in text.char_indices() {
+        let b = byte0 + b;
+        let next = editing::advance(d, c);
+        while si < spans.len() && spans[si].end as usize <= b {
+            si += 1;
+        }
+        let kind = match spans.get(si) {
+            Some(s) if (s.start as usize) <= b => s.kind,
+            _ => HlKind::None,
+        };
+        if kind != cur_kind && out.len() > sec_start {
+            sections.push(section(sec_start..out.len(), cur_kind, font, theme));
+            sec_start = out.len();
+        }
+        cur_kind = kind;
+        if c == '\t' {
+            for _ in d..next {
+                out.push(' ');
+            }
+        } else if c.is_control() {
+            out.push(' ');
+        } else {
+            out.push(c);
+        }
+        d = next;
+    }
+    if out.len() > sec_start {
+        sections.push(section(sec_start..out.len(), cur_kind, font, theme));
+    }
+    job.text = out;
+    job.sections = sections;
+    job
+}
+
 fn section(range: Range<usize>, kind: HlKind, font: &FontId, theme: &EditorTheme) -> LayoutSection {
     LayoutSection {
         leading_space: 0.0,
@@ -1981,7 +2594,7 @@ pub fn column_advance(fonts: &egui::epaint::Fonts, font: &FontId) -> f32 {
 
 /// X of display column `i` inside a line galley, relative to the galley. Columns past the
 /// last glyph continue with `char_w`.
-fn galley_col_x(g: &Galley, i: usize, char_w: f32, ppp: f32) -> f32 {
+pub(crate) fn galley_col_x(g: &Galley, i: usize, char_w: f32, ppp: f32) -> f32 {
     let glyphs = g.rows.first().map_or(&[][..], |r| &r.glyphs[..]);
     match (glyphs.get(i), glyphs.last()) {
         (Some(gl), _) => gl.pos.x,
@@ -1996,7 +2609,7 @@ fn galley_col_x(g: &Galley, i: usize, char_w: f32, ppp: f32) -> f32 {
 
 /// The fractional display column at `x` (relative to the text origin) on `line`, measured on
 /// the glyphs drawn last frame. Lines that were not drawn fall back to `char_w` steps.
-fn display_col_at(drawn: &[DrawnLine], line: usize, x: f32, char_w: f32) -> f32 {
+pub(crate) fn display_col_at(drawn: &[DrawnLine], line: usize, x: f32, char_w: f32) -> f32 {
     let fallback = x / char_w;
     let Some(d) = drawn.iter().find(|d| d.line == line) else { return fallback };
     let xr = x - d.window_start as f32 * char_w;

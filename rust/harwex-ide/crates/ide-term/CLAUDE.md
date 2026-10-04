@@ -36,7 +36,6 @@ cargo test -p ide-term --release -- --ignored --nocapture throughput   # through
 ```
 
 Unit tests spawn real PTYs with short scripts. App behaviour (Alt+F12, focus, Escape routing, link clicks) is covered by `cargo test -p harwex-ide --test terminal`. Do not run `examples/term.rs`: it opens a foreground window. `HARWEX_TERM_CMD` and `HARWEX_TERM_STATS` exist only for that example.
-`tests/glyphs.rs` snapshots the Claude Code banner and every drawn glyph (`tests/snapshots/`, same rules as `docs/testing.md`).
 
 ## Traps
 
@@ -50,7 +49,7 @@ Unit tests spawn real PTYs with short scripts. App behaviour (Alt+F12, focus, Es
 - zsh's vi keymap (picked when `$EDITOR`/`$VISUAL` contains `vi`) reads `ESC CR` as Escape plus accept-line. Tests that type Shift+Enter run `bindkey -e` first.
 - URL text ends at whitespace, quotes, `<>`, box drawing and `…`. Trailing `.,;:!?'"` and an unbalanced `)]}` are cut off. URLs are searched on the logical line (soft-wrapped rows joined), so a URL across a wrap is one link. A program that wraps with its own newlines breaks the URL.
 - Relative link paths resolve against the foreground process's cwd first (`proc_pidinfo`), then against the spawn directory.
-- `blocks.rs` draws Block Elements (U+2580–U+259F), sextants (U+1FB00–U+1FB3B), the Claude Code spinner stars `✢ ✳ ✶ ✻ ✽` and `⎿`. The font is not used for them. JetBrains Mono's block glyphs overshoot the cell by up to 2 px and smear the logo. No bundled font has the sextants, `✢ ✻ ✽` or `⎿`.
+- `blocks.rs` draws Block Elements (U+2580–U+259F), sextants (U+1FB00–U+1FB3B), the Claude Code spinner stars `✢ ✳ ✶ ✻ ✽` and `⎿`. The font is not used for them. JetBrains Mono's block glyphs overshoot the cell by up to 2 px and smear the logo. No bundled font has the sextants, `✢ ✻ ✽` or `⎿`. There is deliberately no screenshot test of a real program's output (the Claude Code banner): such snapshots race the program and were flaky; `blocks.rs` unit tests cover the geometry.
 - Drawn rectangles and background runs snap to the physical pixel grid. Neighbour cells then share one edge pixel, so blocks join without seams. An unsnapped rectangle gets an anti-aliased edge that shows as a line between rows.
 - Claude Code draws the logo's eyes as the black background (`rgb(0,0,0)`) that a quadrant glyph leaves uncovered. A glyph that bleeds out of its cell hides the eyes.
 - Stars are tessellated once per char and cell size (`SymbolCache`) and then copied into the frame's block mesh. A 200x60 screen of stars still costs about 3 ms per frame in release, because each star has about 100 vertices.

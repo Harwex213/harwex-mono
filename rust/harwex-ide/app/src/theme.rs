@@ -107,6 +107,9 @@ pub struct Theme {
     pub badge_text: Color32,
     /// Alpha of the badge color tint across the title bar, at its strongest.
     pub title_tint_alpha: u8,
+    /// Count badges (`badge.rs`): the pill and its number.
+    pub count_badge_bg: Color32,
+    pub count_badge_text: Color32,
 
     // Git log.
     pub lanes: [Color32; 8],
@@ -194,6 +197,12 @@ pub struct Spacing {
     pub chevron_stroke: f32,
     /// Inset of the editor inside its island, so square editor corners stay inside the round ones.
     pub editor_pad: f32,
+    /// Count badges: the pill's height, the padding beside the number, the ring around it
+    /// and the number's vertical nudge.
+    pub count_badge_h: f32,
+    pub count_badge_pad: f32,
+    pub count_badge_ring: f32,
+    pub count_badge_text_dy: f32,
 }
 
 pub struct FontSizes {
@@ -206,6 +215,7 @@ pub struct FontSizes {
     pub big: f32,
     pub welcome: f32,
     pub badge: f32,
+    pub count_badge: f32,
 }
 
 impl Theme {
@@ -271,6 +281,8 @@ impl Theme {
             badges: [hex(0x3574F0), hex(0xB4572C), hex(0x4C9A5F), hex(0x8C55C9), hex(0x2F8F9D), hex(0xB8443F)],
             badge_text: hex(0xFFFFFF),
             title_tint_alpha: 46,
+            count_badge_bg: hex(0x3574F0),
+            count_badge_text: hex(0xFFFFFF),
 
             lanes: [
                 hex(0x5F9EE6),
@@ -333,8 +345,12 @@ impl Theme {
                 chevron_w: 8.0,
                 chevron_stroke: 1.3,
                 editor_pad: 4.0,
+                count_badge_h: 13.0,
+                count_badge_pad: 3.5,
+                count_badge_ring: 1.5,
+                count_badge_text_dy: 0.0,
             },
-            font: FontSizes { ui: 13.0, small: 12.0, tiny: 11.0, mono: 13.0, mono_small: 12.0, hint: 13.0, big: 15.0, welcome: 24.0, badge: 10.5 },
+            font: FontSizes { ui: 13.0, small: 12.0, tiny: 11.0, mono: 13.0, mono_small: 12.0, hint: 13.0, big: 15.0, welcome: 24.0, badge: 10.5, count_badge: 9.0 },
 
             editor: EditorTheme::islands_dark(),
             terminal: TerminalTheme::islands_dark(),

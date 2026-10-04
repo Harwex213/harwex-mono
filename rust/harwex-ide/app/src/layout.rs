@@ -136,7 +136,17 @@ impl ToolWindow {
 
 /// The left strip, like IDEA's New UI: the left tool windows at the top, the bottom tool
 /// windows at the bottom. Icons only; the active one has a filled rounded highlight.
-pub fn left_strip(ui: &mut Ui, layout: &mut Layout, badge: impl Fn(ToolWindow) -> usize) {
+/// What a strip button shows over its icon's top-right corner.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum StripBadge {
+    None,
+    /// Something new (unread notifications).
+    Dot,
+    /// A count badge (`badge.rs`); hidden at 0.
+    Count(usize),
+}
+
+pub fn left_strip(ui: &mut Ui, layout: &mut Layout, badge: impl Fn(ToolWindow) -> StripBadge) {
     let full = ui.max_rect();
     let t = &T;
     let b = t.space.strip_button;
@@ -152,7 +162,7 @@ pub fn left_strip(ui: &mut Ui, layout: &mut Layout, badge: impl Fn(ToolWindow) -
     }
 }
 
-fn strip_button(ui: &mut Ui, rect: Rect, layout: &mut Layout, w: ToolWindow, badge: usize) {
+fn strip_button(ui: &mut Ui, rect: Rect, layout: &mut Layout, w: ToolWindow, badge: StripBadge) {
     let t = &T;
     let resp = ui.interact(rect, crate::workspace::wid(("strip", w.title())), Sense::click());
     let active = layout.left == Some(w) || layout.bottom == Some(w);
@@ -164,10 +174,27 @@ fn strip_button(ui: &mut Ui, rect: Rect, layout: &mut Layout, w: ToolWindow, bad
         painter.rect_filled(rect, t.radius.button, t.hover_on_window);
     }
     let color = if active { t.icon_active } else { t.icon };
-    icons::paint(painter, Rect::from_center_size(rect.center(), Vec2::splat(t.space.icon)), w.icon(), color);
-    if badge > 0 {
-        let c = pos2(rect.max.x - 6.0, rect.min.y + 6.0);
-        painter.circle(c, 3.5, t.accent, Stroke::new(1.5_f32, t.window_bg));
+    let icon = Rect::from_center_size(rect.center(), Vec2::splat(t.space.icon));
+    icons::paint(painter, icon, w.icon(), color);
+    match badge {
+        StripBadge::None | StripBadge::Count(0) => {}
+        StripBadge::Dot => {
+            let c = pos2(rect.max.x - 6.0, rect.min.y + 6.0);
+            painter.circle(c, 3.5, t.accent, Stroke::new(1.5_f32, t.window_bg));
+        }
+        StripBadge::Count(n) => {
+            let ring = if active {
+                t.strip_active_bg
+            } else if resp.hovered() {
+                t.hover_on_window
+            } else {
+                t.window_bg
+            };
+            let label = format!("{}, {}", w.title(), count_label(w, n));
+            // A little outside the icon's corner, so the pill covers less of the glyph.
+            let corner = icon.right_top() + vec2(1.5, -1.5);
+            crate::badge::show(ui, crate::workspace::wid(("strip-badge", w.title())), corner, n, ring, label);
+        }
     }
     let tip = match w.shortcut() {
         "" => w.title().to_string(),
@@ -175,6 +202,15 @@ fn strip_button(ui: &mut Ui, rect: Rect, layout: &mut Layout, w: ToolWindow, bad
     };
     if resp.on_hover_text(tip).clicked() {
         layout.toggle(w);
+    }
+}
+
+/// "3 tabs", "1 changed file": what a strip button's count means.
+fn count_label(w: ToolWindow, n: usize) -> String {
+    match w {
+        ToolWindow::Terminal => crate::badge::plural(n, "tab", "tabs"),
+        ToolWindow::Commit => crate::badge::plural(n, "changed file", "changed files"),
+        _ => n.to_string(),
     }
 }
 

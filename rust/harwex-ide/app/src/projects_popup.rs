@@ -6,7 +6,11 @@
 //! ids. Rows act on the press (`pressed`), like the other popups of the app. The Recent list is
 //! app storage (`persist.rs`, key `recent_projects`), newest first; it also holds the open
 //! projects, which the popup hides.
+//!
+//! A Recent folder can vanish from disk. Each opening of the popup checks the Recent roots on a
+//! worker; a missing one draws grey, and a press on it only shows a toast. Its cross still works.
 
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 use egui::{pos2, vec2, Align2, Context, Id, Key, Modifiers, Rect, Response, Sense, Ui};
@@ -49,6 +53,10 @@ pub struct ProjectsUi {
     keys: Keys,
     /// `$HOME`, read once, for the `~` paths.
     home: Option<Option<PathBuf>>,
+    /// Recent roots whose folder was missing at the last check. Empty until the check answers.
+    missing: HashSet<PathBuf>,
+    /// Bumped on each opening; an answer of an older opening is dropped.
+    check_gen: u64,
 }
 
 impl ProjectsUi {
@@ -72,6 +80,11 @@ impl ProjectsUi {
         self.recent.iter().filter(|r| !open.contains(r)).take(MAX_SHOWN).cloned().collect()
     }
 
+    /// True when the last check found no folder at `root`.
+    pub fn is_missing(&self, root: &Path) -> bool {
+        self.missing.contains(root)
+    }
+
     fn tilde(&mut self, path: &Path) -> String {
         let home = self.home.get_or_insert_with(|| std::env::var_os("HOME").map(PathBuf::from).filter(|h| h.is_absolute()));
         match home.as_ref().and_then(|h| path.strip_prefix(h).ok()) {
@@ -87,7 +100,7 @@ impl ProjectsUi {
 enum Item {
     OpenFolder,
     Project { id: WorkspaceId, name: String, root: PathBuf, active: bool },
-    Recent { name: String, root: PathBuf },
+    Recent { name: String, root: PathBuf, missing: bool },
 }
 
 enum Action {
@@ -95,6 +108,7 @@ enum Action {
     Activate(WorkspaceId),
     Close(WorkspaceId),
     OpenRecent(PathBuf),
+    Missing(PathBuf),
     Remove(PathBuf),
 }
 
@@ -112,8 +126,25 @@ pub fn on_widget(s: &mut AppState, ui: &Ui, resp: &Response) {
         } else {
             s.projects.open = true;
             s.projects.selected = 0;
+            check_missing(s);
         }
     }
+}
+
+/// Checks on a worker which Recent folders still exist. Rows draw normal until the answer.
+fn check_missing(s: &mut AppState) {
+    s.projects.missing.clear();
+    s.projects.check_gen += 1;
+    let generation = s.projects.check_gen;
+    let roots = s.projects.recent.clone();
+    s.jobs.window().spawn_quiet(
+        move || roots.into_iter().filter(|r| !r.is_dir()).collect::<HashSet<_>>(),
+        move |state, missing| {
+            if state.projects.check_gen == generation {
+                state.projects.missing = missing;
+            }
+        },
+    );
 }
 
 /// Takes the popup's keys at the start of the frame, before the editor or a terminal sees them.
@@ -139,7 +170,7 @@ fn items(s: &AppState) -> Vec<Item> {
     let open = s.workspaces();
     let roots: Vec<PathBuf> = open.iter().filter_map(|w| w.root.clone()).collect();
     out.extend(open.into_iter().filter_map(|w| Some(Item::Project { id: w.id, name: w.name, root: w.root?, active: w.is_active })));
-    out.extend(s.projects.recent_shown(&roots).into_iter().map(|root| Item::Recent { name: name_of(&root), root }));
+    out.extend(s.projects.recent_shown(&roots).into_iter().map(|root| Item::Recent { name: name_of(&root), missing: s.projects.is_missing(&root), root }));
     out
 }
 
@@ -180,6 +211,7 @@ pub fn show(s: &mut AppState, ctx: &Context) {
         actions.push(match &items[sel] {
             Item::OpenFolder => Action::OpenFolder,
             Item::Project { id, .. } => Action::Activate(*id),
+            Item::Recent { root, missing: true, .. } => Action::Missing(root.clone()),
             Item::Recent { root, .. } => Action::OpenRecent(root.clone()),
         });
     }
@@ -252,6 +284,7 @@ pub fn show(s: &mut AppState, ctx: &Context) {
                 let label = match item {
                     Item::OpenFolder => "Open...".to_string(),
                     Item::Project { name, .. } => format!("Open project {name}"),
+                    Item::Recent { name, missing: true, .. } => format!("Recent project {name} (missing)"),
                     Item::Recent { name, .. } => format!("Recent project {name}"),
                 };
                 crate::util::label_selectable(&resp, label, i == sel);
@@ -277,6 +310,7 @@ pub fn show(s: &mut AppState, ctx: &Context) {
                         (Item::Project { id, .. }, true) => Action::Close(*id),
                         (Item::Project { id, .. }, false) => Action::Activate(*id),
                         (Item::Recent { root, .. }, true) => Action::Remove(root.clone()),
+                        (Item::Recent { root, missing: true, .. }, false) => Action::Missing(root.clone()),
                         (Item::Recent { root, .. }, false) => Action::OpenRecent(root.clone()),
                     });
                 }
@@ -310,6 +344,8 @@ pub fn show(s: &mut AppState, ctx: &Context) {
                 s.projects.open = false;
                 s.open_workspace(root);
             }
+            // The popup stays open, so the user can remove the row with its cross.
+            Action::Missing(root) => s.notifications.warn(format!("Folder not found: {}", root.display()), String::new()),
             Action::Close(id) => {
                 s.close_workspace(id);
                 // Unsaved files: the prompt takes over.
@@ -343,12 +379,16 @@ fn paint_row(ui: &Ui, rect: Rect, item: &Item, path: &str, selected: bool, hover
         }
         Item::Project { name, .. } | Item::Recent { name, .. } => {
             let active = matches!(item, Item::Project { active: true, .. });
+            let missing = matches!(item, Item::Recent { missing: true, .. });
+            let name_color = if missing { t.text_dim } else { text_color };
+            let badge_color = if missing { t.badge_color(name).gamma_multiply(0.35) } else { t.badge_color(name) };
+            let badge_text = if missing { t.badge_text.gamma_multiply(0.6) } else { t.badge_text };
             let badge = Rect::from_min_size(pos2(rect.min.x + 8.0, rect.min.y + 7.0), vec2(BADGE, BADGE));
-            painter.rect_filled(badge, t.radius.badge, t.badge_color(name));
-            painter.text(badge.center(), Align2::CENTER_CENTER, crate::app::initials(name), t.semibold(t.font.badge), t.badge_text);
+            painter.rect_filled(badge, t.radius.badge, badge_color);
+            painter.text(badge.center(), Align2::CENTER_CENTER, crate::app::initials(name), t.semibold(t.font.badge), badge_text);
             let x = badge.max.x + 10.0;
             let name_font = if active { t.semibold(t.font.ui) } else { t.ui_font() };
-            painter.text(pos2(x, badge.center().y), Align2::LEFT_CENTER, name, name_font, text_color);
+            painter.text(pos2(x, badge.center().y), Align2::LEFT_CENTER, name, name_font, name_color);
             painter.text(pos2(x, rect.min.y + 36.0), Align2::LEFT_CENTER, path, t.small_font(), t.text_dim);
             let cross = Rect::from_center_size(pos2(rect.max.x - CROSS_W / 2.0, badge.center().y), vec2(14.0, 14.0));
             if hovered {

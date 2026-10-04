@@ -216,11 +216,13 @@ pub struct MemoryMonitor {
     /// Pids that count as other projects on top of the workspaces' own. Tests set it: a fake
     /// process tree has no real servers to own.
     pub extra_others: Vec<Pid>,
+    /// The menu a press on the widget opens (Restart Language Servers).
+    pub menu_open: bool,
 }
 
 impl Default for MemoryMonitor {
     fn default() -> Self {
-        MemoryMonitor { tx: None, sample: None, interval: DEFAULT_INTERVAL, sent_excluded: Vec::new(), sent_others: Vec::new(), extra_others: Vec::new() }
+        MemoryMonitor { tx: None, sample: None, interval: DEFAULT_INTERVAL, sent_excluded: Vec::new(), sent_others: Vec::new(), extra_others: Vec::new(), menu_open: false }
     }
 }
 
@@ -314,24 +316,114 @@ pub fn status_widget(s: &mut AppState, ui: &mut Ui) {
     s.memory.others(others.iter().copied());
     let Some(sample) = s.memory.sample.clone() else { return };
     let t = &theme::T;
+    let off = s.ws.langs.is_off();
     let text = format!("{} of {}M", mib(sample.total), mib(sample.ram));
     let font = FontId::proportional(t.font.small);
-    let galley = ui.painter().layout_no_wrap(text, font, t.text);
-    let size = vec2(galley.size().x + 16.0, 18.0);
-    let (rect, response) = ui.allocate_exact_size(size, Sense::hover());
-    response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Other, true, "Memory indicator"));
+    let galley = ui.painter().layout_no_wrap(text, font.clone(), t.text);
+    // Stop Language Servers: the widget says so, so a dead Cmd+B has a visible reason.
+    let off_galley = off.then(|| ui.painter().layout_no_wrap("servers off".into(), font, t.text_dim));
+    let off_w = off_galley.as_ref().map_or(0.0, |g| g.size().x + 10.0);
+    let size = vec2(galley.size().x + 16.0 + off_w, 18.0);
+    let (rect, response) = ui.allocate_exact_size(size, Sense::click());
+    response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, "Memory indicator"));
+    if crate::clicks::pressed(&response) {
+        s.memory.menu_open = !s.memory.menu_open;
+    }
     let radius = CornerRadius::from(t.radius.small);
-    let track = if response.hovered() { t.hover } else { t.memory_track };
+    let track = if response.hovered() || s.memory.menu_open { t.hover } else { t.memory_track };
     ui.painter().rect_filled(rect, radius, track);
     let share = if sample.ram > 0 { (sample.total as f64 / sample.ram as f64).clamp(0.0, 1.0) as f32 } else { 0.0 };
     if share > 0.0 {
         let fill = Rect::from_min_size(rect.min, vec2((rect.width() * share).max(2.0), rect.height()));
         ui.painter().rect_filled(fill, radius, t.memory_fill);
     }
-    ui.painter().galley(Align2::CENTER_CENTER.align_size_within_rect(galley.size(), rect).min, galley, t.text);
+    let text_rect = Rect::from_min_size(rect.min, vec2(rect.width() - off_w, rect.height()));
+    ui.painter().galley(Align2::CENTER_CENTER.align_size_within_rect(galley.size(), text_rect).min, galley, t.text);
+    if let Some(g) = off_galley {
+        let at = Align2::RIGHT_CENTER.align_size_within_rect(g.size(), rect.shrink2(vec2(8.0, 0.0))).min;
+        ui.painter().galley(at, g, t.text_dim);
+    }
+    if s.memory.menu_open {
+        menu(s, ui.ctx(), rect);
+        return;
+    }
     let deterministic = s.deterministic;
     let interval = s.memory.interval;
-    response.on_hover_ui(|ui| tooltip(ui, &sample, interval, deterministic));
+    response.on_hover_ui(|ui| {
+        tooltip(ui, &sample, interval, deterministic);
+        if off {
+            ui.label(RichText::new("Language servers of this project are stopped.").size(theme::T.font.small).color(theme::T.warning));
+        }
+    });
+}
+
+const MENU_ROW_H: f32 = 26.0;
+const MENU_PAD: f32 = 6.0;
+const MENU_W: f32 = 300.0;
+
+/// The widget's menu, above the status bar at the widget's right edge. Rows act on the press.
+/// A press outside it or Escape closes it.
+fn menu(s: &mut AppState, ctx: &egui::Context, widget: Rect) {
+    use crate::lang::restart::{language_servers, Action, Scope};
+    let t = &theme::T;
+    let mut rows = if s.ws.langs.is_off() {
+        vec![("Start Language Servers", Scope::Active, Action::Start)]
+    } else {
+        vec![("Restart Language Servers", Scope::Active, Action::Restart), ("Stop Language Servers", Scope::Active, Action::Stop)]
+    };
+    let projects: Vec<bool> = s.all_ws().filter(|w| w.project.is_some()).map(|w| w.langs.is_off()).collect();
+    if projects.len() > 1 {
+        if projects.iter().any(|off| !off) {
+            rows.push(("Restart Language Servers (All Projects)", Scope::All, Action::Restart));
+            rows.push(("Stop Language Servers (All Projects)", Scope::All, Action::Stop));
+        }
+        if projects.iter().any(|off| *off) {
+            rows.push(("Start Language Servers (All Projects)", Scope::All, Action::Start));
+        }
+    }
+    let frame = egui::Frame::popup(&ctx.style())
+        .fill(t.popup_bg)
+        .stroke(egui::Stroke::new(1.0_f32, t.popup_border))
+        .corner_radius(CornerRadius::same(t.radius.popup as u8))
+        .inner_margin(egui::Margin::same(MENU_PAD as i8))
+        .shadow(t.popup_shadow());
+    let margin = frame.total_margin().sum();
+    let height = rows.len() as f32 * MENU_ROW_H;
+    let screen = ctx.screen_rect();
+    let x = (widget.max.x - MENU_W - margin.x).max(screen.min.x);
+    let pos = egui::pos2(x, widget.min.y - 4.0 - height - margin.y);
+    let mut chosen = None;
+    let area = egui::Area::new(egui::Id::new("memory-menu")).order(egui::Order::Foreground).fixed_pos(pos).constrain(false).show(ctx, |ui| {
+        frame.show(ui, |ui| {
+            // An explicit size: an Area otherwise offers its content last frame's size.
+            ui.set_width(MENU_W);
+            ui.set_height(height);
+            let origin = ui.min_rect().min;
+            for (i, (label, scope, action)) in rows.iter().enumerate() {
+                let row = Rect::from_min_size(origin + vec2(0.0, i as f32 * MENU_ROW_H), vec2(MENU_W, MENU_ROW_H));
+                let resp = ui.interact(row, egui::Id::new(("memory-menu-row", *label)), Sense::click());
+                crate::util::label_widget(&resp, egui::WidgetType::Button, *label);
+                if resp.hovered() {
+                    ui.painter().rect_filled(row, t.radius.row, t.selection);
+                }
+                let color = if resp.hovered() { t.text_bright } else { t.text };
+                ui.painter().text(egui::pos2(row.min.x + 10.0, row.center().y), Align2::LEFT_CENTER, *label, t.ui_font(), color);
+                if crate::clicks::pressed(&resp) {
+                    chosen = Some((*scope, *action));
+                }
+            }
+        });
+    });
+    let menu_rect = area.response.rect;
+    let pressed_outside = ctx.input(|i| i.pointer.any_pressed() && i.pointer.interact_pos().is_some_and(|p| !menu_rect.contains(p) && !widget.contains(p)));
+    let escape = ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape));
+    if pressed_outside || escape {
+        s.memory.menu_open = false;
+    }
+    if let Some((scope, action)) = chosen {
+        s.memory.menu_open = false;
+        language_servers(s, scope, action);
+    }
 }
 
 fn tooltip(ui: &mut Ui, sample: &Sample, interval: Duration, deterministic: bool) {

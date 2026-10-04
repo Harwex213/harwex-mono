@@ -13,12 +13,13 @@
 //! the UI thread (rule 1).
 
 pub mod config;
+pub mod restart;
 pub mod rust;
 pub mod ts;
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::mpsc::{channel, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
@@ -161,13 +162,58 @@ pub trait LanguageServer: Send + Sync + 'static {
     /// New project settings. Servers started with older settings stop.
     fn configure(&self, _config: &IdeConfig) {}
     fn shutdown(&self);
+    /// Restart Language Servers: stop every server like `shutdown` and forget cached lookups,
+    /// so a server installed since then is found. The next call starts a fresh process.
+    fn restart(&self) {
+        self.shutdown();
+    }
     /// Process ids of the running servers. Must not wait on a busy server.
     fn pids(&self) -> Vec<u32> {
         Vec::new()
     }
 }
 
+/// What a request gets while the user turned the servers off (Stop Language Servers): nothing
+/// starts, files are not sent, and questions get empty answers.
+struct OffServer;
+
+/// The error of a navigation request while the servers are off. The UI checks `is_off` first,
+/// so users never see it.
+pub const OFF_MESSAGE: &str = "Language servers are stopped.";
+
+/// The status bar label of a file while the servers are off.
+pub const OFF_STATUS: &str = "Language servers off";
+
+impl LanguageServer for OffServer {
+    fn open(&self, _path: &Path, _text: &str) {}
+    fn change(&self, _path: &Path, _text: &str) {}
+    fn close(&self, _path: &Path) {}
+    fn locations(&self, _kind: NavKind, _path: &Path, _line: usize, _column: usize) -> Result<Vec<Location>, String> {
+        Err(OFF_MESSAGE.into())
+    }
+    fn references(&self, _path: &Path, _line: usize, _column: usize) -> Result<Vec<Reference>, String> {
+        Err(OFF_MESSAGE.into())
+    }
+    fn hover(&self, _path: &Path, _line: usize, _column: usize) -> Result<Option<HoverInfo>, String> {
+        Ok(None)
+    }
+    fn status(&self, _path: &Path) -> Option<String> {
+        None
+    }
+    fn stop_idle(&self, _idle: Duration) -> Vec<String> {
+        Vec::new()
+    }
+    fn running(&self) -> usize {
+        0
+    }
+    fn take_notice(&self) -> Option<(String, String)> {
+        None
+    }
+    fn shutdown(&self) {}
+}
+
 type Run = Box<dyn FnOnce(&dyn LanguageServer) + Send>;
+type Done = Box<dyn FnOnce() + Send>;
 
 enum Cmd {
     Open(PathBuf, String),
@@ -175,6 +221,17 @@ enum Cmd {
     Close(PathBuf),
     Run(Run),
     Configure(Box<IdeConfig>),
+    Restart(Restart),
+}
+
+/// The queue's part of a restart (`Bridge::restart`).
+struct Restart {
+    /// The stop that ran at once on its own thread, so a request stuck on the old server
+    /// failed without waiting for its timeout. Joined before the files open again.
+    early: Option<std::thread::JoinHandle<()>>,
+    /// Every open file of this language with its editor text, unsaved edits included.
+    docs: Vec<(PathBuf, String)>,
+    done: Done,
 }
 
 /// One queue thread per language. Sync commands and requests leave in UI order, so a request
@@ -190,7 +247,9 @@ pub struct Bridge {
 }
 
 impl Bridge {
-    pub fn new(lang: LangId, server: Arc<dyn LanguageServer>, jobs: Option<Jobs>) -> Bridge {
+    /// `off` is the project's Stop Language Servers switch, shared by every queue: while it is
+    /// set, sync commands are dropped and requests run against `OffServer`.
+    pub fn new(lang: LangId, server: Arc<dyn LanguageServer>, jobs: Option<Jobs>, off: Arc<AtomicBool>) -> Bridge {
         let (tx, rx) = channel::<Cmd>();
         let queued = Arc::new(AtomicUsize::new(0));
         let idle_ms = Arc::new(std::sync::atomic::AtomicU64::new(config::DEFAULT_IDLE_TIMEOUT.as_millis() as u64));
@@ -205,7 +264,11 @@ impl Bridge {
                 match rx.recv_timeout(tick.saturating_sub(last_check.elapsed())) {
                     Ok(cmd) => {
                         let mut finished_here = true;
+                        let stopped = off.load(Ordering::SeqCst);
                         match cmd {
+                            // The editor text goes out again with the next start.
+                            Cmd::Open(..) | Cmd::Change(..) | Cmd::Close(..) if stopped => {}
+                            Cmd::Run(f) if stopped => f(&OffServer),
                             Cmd::Open(p, t) => srv.open(&p, &t),
                             Cmd::Change(p, t) => srv.change(&p, &t),
                             Cmd::Close(p) => srv.close(&p),
@@ -227,6 +290,18 @@ impl Bridge {
                                 }
                             }
                             Cmd::Run(f) => f(srv.as_ref()),
+                            Cmd::Restart(r) => {
+                                if let Some(early) = r.early {
+                                    let _ = early.join();
+                                }
+                                // Requests queued before the restart may have started a server
+                                // with files from disk; stop it too.
+                                srv.shutdown();
+                                for (path, text) in &r.docs {
+                                    srv.open(path, text);
+                                }
+                                (r.done)();
+                            }
                         }
                         if finished_here {
                             done.fetch_sub(1, Ordering::SeqCst);
@@ -291,6 +366,26 @@ impl Bridge {
     pub fn server(&self) -> &Arc<dyn LanguageServer> {
         &self.server
     }
+
+    /// Stops the servers now and opens `docs` on fresh ones once the queue reaches this point.
+    /// Commands sent later (edits, requests) go to the new servers. `done` runs on the queue
+    /// thread after the files were opened again.
+    pub fn restart(&self, docs: Vec<(PathBuf, String)>, done: impl FnOnce() + Send + 'static) {
+        // The early stop counts as queued work, so tests and `is_idle` wait for it.
+        self.queued.fetch_add(1, Ordering::SeqCst);
+        let (srv, queued) = (self.server.clone(), self.queued.clone());
+        let early = std::thread::Builder::new()
+            .name(format!("{} restart", self.lang.key()))
+            .spawn(move || {
+                srv.restart();
+                queued.fetch_sub(1, Ordering::SeqCst);
+            })
+            .ok();
+        if early.is_none() {
+            self.queued.fetch_sub(1, Ordering::SeqCst);
+        }
+        self.send(Cmd::Restart(Restart { early, docs, done: Box::new(done) }));
+    }
 }
 
 /// Every language the app knows, with its bridge and the project's settings.
@@ -299,17 +394,80 @@ pub struct Languages {
     /// Linters (oxlint, ESLint), one queue for all of them.
     pub lint: crate::diagnostics::LintQueue,
     pub config: IdeConfig,
+    /// For bridges made after `new` (`set_server`).
+    jobs: Option<Jobs>,
+    /// Stop Language Servers: shared with every queue and the lint queue.
+    off: Arc<AtomicBool>,
 }
 
 impl Languages {
     pub fn new(jobs: Jobs, repaint: Arc<dyn Fn() + Send + Sync>) -> Languages {
-        let mut bridges = HashMap::new();
-        bridges.insert(LangId::TypeScript, Bridge::new(LangId::TypeScript, Arc::new(ts::TsServer::new()), Some(jobs.clone())));
-        bridges.insert(LangId::Rust, Bridge::new(LangId::Rust, Arc::new(rust::RustService::new(repaint)), Some(jobs.clone())));
         let sources: Vec<Arc<dyn crate::diagnostics::LintSource>> =
             vec![Arc::new(crate::diagnostics::oxlint::OxlintSource::default()), Arc::new(crate::diagnostics::eslint::EslintSource::new(Some(jobs.clone())))];
-        let lint = crate::diagnostics::LintQueue::new(sources, Some(jobs));
-        Languages { bridges, lint, config: IdeConfig::default() }
+        let lint = crate::diagnostics::LintQueue::new(sources, Some(jobs.clone()));
+        let off = lint.off_flag();
+        let mut bridges = HashMap::new();
+        bridges.insert(LangId::TypeScript, Bridge::new(LangId::TypeScript, Arc::new(ts::TsServer::new()), Some(jobs.clone()), off.clone()));
+        bridges.insert(LangId::Rust, Bridge::new(LangId::Rust, Arc::new(rust::RustService::new(repaint)), Some(jobs.clone()), off.clone()));
+        Languages { bridges, lint, config: IdeConfig::default(), jobs: Some(jobs), off }
+    }
+
+    /// Replaces a language's server, for tests with a fake one. The old queue stops its
+    /// server. Call it before a file of that language opens.
+    #[doc(hidden)]
+    pub fn set_server(&mut self, lang: LangId, server: Arc<dyn LanguageServer>) {
+        let bridge = Bridge::new(lang, server, self.jobs.clone(), self.off.clone());
+        bridge.configure(&self.config);
+        self.bridges.insert(lang, bridge);
+    }
+
+    /// Restart Language Servers for this project: every language server and linter stops
+    /// now, and `docs` (language, path, editor text) open again on fresh servers in the queue
+    /// order. `done` runs once on a worker thread when every queue has finished its part.
+    pub fn restart(&self, docs: Vec<(LangId, PathBuf, String)>, done: impl FnOnce() + Send + 'static) {
+        let parts = self.bridges.len() + 1;
+        let left = Arc::new(AtomicUsize::new(parts));
+        let done: Arc<Mutex<Option<Done>>> = Arc::new(Mutex::new(Some(Box::new(done))));
+        let finish = move || {
+            let (left, done) = (left.clone(), done.clone());
+            move || {
+                if left.fetch_sub(1, Ordering::SeqCst) == 1 {
+                    if let Some(f) = lock(&done).take() {
+                        f();
+                    }
+                }
+            }
+        };
+        let mut langs: Vec<LangId> = self.bridges.keys().copied().collect();
+        langs.sort();
+        for lang in langs {
+            let mine = docs.iter().filter(|(l, _, _)| *l == lang).map(|(_, p, t)| (p.clone(), t.clone())).collect();
+            self.bridges[&lang].restart(mine, finish());
+        }
+        self.lint.restart(finish());
+    }
+
+    /// True after Stop Language Servers, until Start.
+    pub fn is_off(&self) -> bool {
+        self.off.load(Ordering::SeqCst)
+    }
+
+    /// Sets the switch without stopping anything: a project that loads with its servers off.
+    pub fn set_off(&self, off: bool) {
+        self.off.store(off, Ordering::SeqCst);
+    }
+
+    /// Stop Language Servers: every server and linter stops, and nothing starts them until
+    /// `start`. `done` runs once on a worker thread when every queue has stopped its servers.
+    pub fn stop(&self, done: impl FnOnce() + Send + 'static) {
+        self.set_off(true);
+        self.restart(Vec::new(), done);
+    }
+
+    /// Start Language Servers: the restart path with the switch back on.
+    pub fn start(&self, docs: Vec<(LangId, PathBuf, String)>, done: impl FnOnce() + Send + 'static) {
+        self.set_off(false);
+        self.restart(docs, done);
     }
 
     /// Applies a project's `.harwex/ide.toml` (or the defaults when it has none).
@@ -348,6 +506,9 @@ impl Languages {
     }
 
     pub fn status(&self, lang: LangId, path: &Path) -> Option<String> {
+        if self.is_off() {
+            return Some(OFF_STATUS.to_string());
+        }
         self.bridges[&lang].server.status(path)
     }
 
@@ -457,7 +618,8 @@ mod tests {
     #[test]
     fn disabled_language_says_why() {
         let lint = crate::diagnostics::LintQueue::new(Vec::new(), None);
-        let mut langs = Languages { bridges: HashMap::new(), lint, config: IdeConfig::parse("languages = [\"ts\"]") };
+        let off = lint.off_flag();
+        let mut langs = Languages { bridges: HashMap::new(), lint, config: IdeConfig::parse("languages = [\"ts\"]"), jobs: None, off };
         assert_eq!(langs.lang_for(Path::new("/p/a.ts")), Ok(LangId::TypeScript));
         let why = langs.lang_for(Path::new("/p/a.rs")).unwrap_err();
         assert!(why.contains("Rust support is turned off"), "{why}");

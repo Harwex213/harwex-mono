@@ -6,6 +6,8 @@
 //! - `active_project`: the active root.
 //! - `project_state`: one line per known project: `root \t layout \t active file \t files...`.
 //!   Closed projects stay, so a project opened again gets its layout back.
+//! - `languages_off`: roots whose language servers the user stopped (Stop Language Servers),
+//!   one per line. They stay off when the project opens again.
 //! - `recent_projects`: the Recent Projects of the project selector, one root per line, newest
 //!   first (`projects_popup.rs`).
 //! - `last_folder` and `tool_windows`: the active root and its layout. Older versions wrote only
@@ -26,6 +28,7 @@ pub const STORAGE_OPEN_PROJECTS: &str = "open_projects";
 pub const STORAGE_ACTIVE_PROJECT: &str = "active_project";
 pub const STORAGE_PROJECT_STATE: &str = "project_state";
 pub const STORAGE_RECENT_PROJECTS: &str = "recent_projects";
+pub const STORAGE_LANGUAGES_OFF: &str = "languages_off";
 /// Projects remembered in `project_state`; the oldest closed ones drop out first.
 const MAX_SAVED: usize = 50;
 
@@ -36,6 +39,8 @@ pub struct SavedWorkspace {
     /// Open editor files, in tab order. Canonical.
     pub files: Vec<PathBuf>,
     pub active_file: Option<PathBuf>,
+    /// Stop Language Servers is on for the project. Stored under its own key.
+    pub langs_off: bool,
 }
 
 impl SavedWorkspace {
@@ -49,7 +54,7 @@ impl SavedWorkspace {
                 TabContent::Custom(_) => None,
             })
             .collect();
-        SavedWorkspace { layout: ws.layout, files, active_file: ws.tabs.active_editor().map(|e| e.path.clone()) }
+        SavedWorkspace { layout: ws.layout, files, active_file: ws.tabs.active_editor().map(|e| e.path.clone()), langs_off: ws.langs.is_off() }
     }
 
     fn to_line(&self, root: &std::path::Path) -> String {
@@ -65,7 +70,7 @@ impl SavedWorkspace {
         let layout = Layout::from_storage(parts.next()?)?;
         let active_file = parts.next().filter(|a| !a.is_empty()).map(PathBuf::from);
         let files = parts.filter(|p| !p.is_empty()).map(PathBuf::from).collect();
-        Some((root, SavedWorkspace { layout, files, active_file }))
+        Some((root, SavedWorkspace { layout, files, active_file, langs_off: false }))
     }
 }
 
@@ -84,6 +89,10 @@ pub fn load(state: &mut AppState, storage: &dyn eframe::Storage) -> Restore {
     }
     if let Some(text) = storage.get_string(STORAGE_PROJECT_STATE) {
         state.saved = text.lines().filter_map(SavedWorkspace::from_line).collect::<HashMap<_, _>>();
+    }
+    for root in storage.get_string(STORAGE_LANGUAGES_OFF).unwrap_or_default().lines().filter(|l| !l.is_empty()) {
+        let layout = state.default_layout;
+        state.saved.entry(PathBuf::from(root)).or_insert_with(|| SavedWorkspace { layout, files: Vec::new(), active_file: None, langs_off: false }).langs_off = true;
     }
     let last = storage.get_string(STORAGE_LAST_FOLDER).filter(|l| !l.is_empty()).map(PathBuf::from);
     let roots: Vec<PathBuf> = match storage.get_string(STORAGE_OPEN_PROJECTS) {
@@ -133,6 +142,9 @@ pub fn save(state: &mut AppState, storage: &mut dyn eframe::Storage) {
         state.saved.insert(root, saved);
     }
     storage.set_string(STORAGE_PROJECT_STATE, lines.join("\n"));
+    let mut off: Vec<String> = state.saved.iter().filter(|(_, s)| s.langs_off).map(|(r, _)| r.display().to_string()).collect();
+    off.sort();
+    storage.set_string(STORAGE_LANGUAGES_OFF, off.join("\n"));
 }
 
 #[cfg(test)]
@@ -146,11 +158,12 @@ mod tests {
             layout: Layout { left: Some(ToolWindow::Commit), bottom: None },
             files: vec![PathBuf::from("/p/a.rs"), PathBuf::from("/p/b c.rs")],
             active_file: Some(PathBuf::from("/p/b c.rs")),
+            langs_off: false,
         };
         let (root, back) = SavedWorkspace::from_line(&s.to_line(std::path::Path::new("/p"))).expect("parses");
         assert_eq!(root, PathBuf::from("/p"));
         assert_eq!(back, s);
-        let none = SavedWorkspace { layout: Layout::default(), files: vec![], active_file: None };
+        let none = SavedWorkspace { layout: Layout::default(), files: vec![], active_file: None, langs_off: false };
         assert_eq!(SavedWorkspace::from_line(&none.to_line(std::path::Path::new("/q"))).map(|(_, s)| s), Some(none));
         assert!(SavedWorkspace::from_line("").is_none());
     }

@@ -64,6 +64,12 @@ impl Clicks {
     }
 }
 
+/// The primary press on `resp` in this frame. Menus and popups act on the press, not on the
+/// release, so a press held a little long still counts.
+pub fn pressed(resp: &Response) -> bool {
+    resp.is_pointer_button_down_on() && resp.ctx.input(|i| i.pointer.primary_pressed())
+}
+
 /// egui's own count of the frame's primary click, for the input log only.
 pub fn egui_click_kind(ctx: &Context) -> &'static str {
     ctx.input(|i| {

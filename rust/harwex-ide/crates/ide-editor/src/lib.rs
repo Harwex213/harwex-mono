@@ -10,9 +10,11 @@ mod find;
 mod find_bar;
 mod highlight;
 mod language;
+mod layout;
 mod search;
 mod theme;
 mod view;
+pub mod wrap;
 
 pub use carets::Carets;
 pub use document::{Document, EditKind, Indent, Position, Selection, TextChange};

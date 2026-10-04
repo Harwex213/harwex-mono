@@ -304,3 +304,160 @@ fn bench_10k_problems() {
         assert!(jump < Duration::from_millis(12), "jump frame {jump:?}");
     }
 }
+
+/// A 100k-line Markdown file with soft wrap: long paragraphs, list items, headings.
+fn generate_markdown(lines: usize) -> String {
+    let para = "Soft wrap breaks this paragraph into visual rows at the width of the editor, at word boundaries when it can, \
+and the editor keeps scrolling and typing inside its frame budget because only the visible rows are laid out and every \
+other line keeps a cached row count.";
+    let mut s = String::with_capacity(lines * 140);
+    for i in 0..lines {
+        match i % 10 {
+            0 => s.push_str(&format!("## Section {i}\n")),
+            1 | 5 | 9 => s.push('\n'),
+            2 | 6 => s.push_str(&format!("{para} ({i})\n")),
+            3 => s.push_str(&format!("- item {i}: {}\n", &para[..120])),
+            4 => s.push_str(&format!("  continued {i} {}\n", &para[..200])),
+            _ => s.push_str(&format!("Short line {i}.\n")),
+        }
+    }
+    s
+}
+
+/// Soft wrap on a 100k-line Markdown file: the first frames (a sweep counts the rows), steady,
+/// jump-scroll, typing and resize frames. Run with
+/// `cargo test -p ide-editor --release --test bench -- --nocapture`.
+#[test]
+fn bench_wrapped_markdown() {
+    const MD_LINES: usize = 100_000;
+    let text = generate_markdown(MD_LINES);
+    let mut doc = Document::from_text(&text, Language::Markdown);
+    doc.wait_syntax();
+    let ctx = egui::Context::default();
+    let mut state = EditorState::new();
+    state.set_soft_wrap(true);
+    state.request_focus();
+    let mut width = 1400.0;
+    let run = |doc: &mut Document, state: &mut EditorState, width: f32, events: Vec<Event>| -> Duration {
+        let input = RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(width, 900.0))), events, ..Default::default() };
+        let t = Instant::now();
+        let _ = ctx.run(input, |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                EditorView::new(doc, state).show(ui);
+            });
+        });
+        t.elapsed()
+    };
+    let first = run(&mut doc, &mut state, width, vec![]);
+    // The sweep counts the rows of the whole file over a few frames.
+    let mut sweep = Vec::new();
+    let top_before = state.visual_row(&doc, Position::new(MD_LINES / 2, 0));
+    while !state.wrap_settled() {
+        sweep.push(run(&mut doc, &mut state, width, vec![]));
+        assert!(sweep.len() < 1000, "the sweep ends");
+    }
+    let cols = state.wrap_cols().expect("Markdown wraps");
+    // Every line is counted: line 2 of each block of 10 wraps.
+    let mid = MD_LINES / 2 + 2;
+    let rows_mid = state.visual_row(&doc, Position::new(mid + 1, 0)) - state.visual_row(&doc, Position::new(mid, 0));
+    assert!(rows_mid > 1, "a paragraph wraps at {cols} columns");
+    assert!(state.visual_row(&doc, Position::new(MD_LINES / 2, 0)) > top_before, "the sweep counted the rows above the middle");
+
+    let mut steady = Vec::new();
+    for _ in 0..50 {
+        steady.push(run(&mut doc, &mut state, width, vec![]));
+    }
+    let mut jumps = Vec::new();
+    for i in 0..50 {
+        state.reveal(Position::new((i * 3_919) % MD_LINES, 0));
+        jumps.push(run(&mut doc, &mut state, width, vec![]));
+    }
+    state.reveal(Position::new(mid, 10));
+    run(&mut doc, &mut state, width, vec![]);
+    let mut typing = Vec::new();
+    for i in 0..100 {
+        let t = if i % 5 == 4 { " " } else { "x" };
+        typing.push(run(&mut doc, &mut state, width, vec![Event::Text(t.into())]));
+    }
+    assert!(doc.is_dirty());
+    // Scroll by wheel: the frame that moves the viewport.
+    let mut scrolls = Vec::new();
+    for _ in 0..50 {
+        let wheel = Event::MouseWheel { unit: egui::MouseWheelUnit::Point, delta: Vec2::new(0.0, -300.0), modifiers: egui::Modifiers::NONE };
+        scrolls.push(run(&mut doc, &mut state, width, vec![Event::PointerMoved(Pos2::new(700.0, 400.0)), wheel]));
+    }
+    // A window resize drag: a new width every frame re-wraps the visible rows and runs a sweep slice.
+    let mut resize = Vec::new();
+    for _ in 0..30 {
+        width -= 10.0;
+        resize.push(run(&mut doc, &mut state, width, vec![]));
+    }
+    let mut settle = 0;
+    while !state.wrap_settled() {
+        run(&mut doc, &mut state, width, vec![]);
+        settle += 1;
+        assert!(settle < 1000, "the sweep ends");
+    }
+    assert!(state.wrap_cols().expect("wrapped") < cols, "the narrower window wraps at fewer columns");
+
+    let avg = |v: &[Duration]| v.iter().sum::<Duration>() / v.len() as u32;
+    let max = |v: &[Duration]| v.iter().max().copied().unwrap_or_default();
+    eprintln!("ide-editor soft wrap benchmark, {} lines, {:.1} MB, {} columns", MD_LINES, text.len() as f64 / 1e6, cols);
+    eprintln!("  first frame                    {:8.2} ms", ms(first));
+    eprintln!("  sweep frames                   {:8} (avg {:.2} ms, max {:.2} ms)", sweep.len(), ms(avg(&sweep)), ms(max(&sweep)));
+    eprintln!("  steady frame avg               {:8.3} ms (max {:.2} ms)", ms(avg(&steady)), ms(max(&steady)));
+    eprintln!("  jump-scroll frame avg          {:8.3} ms (max {:.2} ms)", ms(avg(&jumps)), ms(max(&jumps)));
+    eprintln!("  wheel scroll frame avg         {:8.3} ms (max {:.2} ms)", ms(avg(&scrolls)), ms(max(&scrolls)));
+    eprintln!("  typing frame avg               {:8.3} ms (max {:.2} ms)", ms(avg(&typing)), ms(max(&typing)));
+    eprintln!("  resize frame avg               {:8.3} ms (max {:.2} ms), then {} sweep frames", ms(avg(&resize)), ms(max(&resize)), settle);
+
+    if !cfg!(debug_assertions) {
+        assert!(avg(&steady) < Duration::from_millis(4), "steady frame too slow");
+        assert!(avg(&jumps) < Duration::from_millis(12), "jump frame too slow");
+        assert!(avg(&scrolls) < Duration::from_millis(8), "scroll frame too slow");
+        assert!(avg(&typing) < Duration::from_millis(8), "typing frame too slow");
+        assert!(avg(&sweep) < Duration::from_millis(12), "sweep frame too slow");
+        assert!(avg(&resize) < Duration::from_millis(12), "resize frame too slow");
+    }
+}
+
+/// One 2 MB line of plain text with soft wrap (a log line, a dump): about 13k visual rows.
+#[test]
+fn bench_wrapped_giant_line() {
+    let line = "word ".repeat(400_000);
+    let text = format!("start\n{line}\nend\n");
+    let mut doc = Document::from_text(&text, Language::Plain);
+    let ctx = egui::Context::default();
+    let mut state = EditorState::new();
+    state.set_soft_wrap(true);
+    state.request_focus();
+    let run = |doc: &mut Document, state: &mut EditorState, events: Vec<Event>| -> Duration {
+        let input = RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(1400.0, 900.0))), events, ..Default::default() };
+        let t = Instant::now();
+        let _ = ctx.run(input, |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                EditorView::new(doc, state).show(ui);
+            });
+        });
+        t.elapsed()
+    };
+    while !state.wrap_settled() || state.wrap_cols().is_none() {
+        run(&mut doc, &mut state, vec![]);
+    }
+    // The middle of the line.
+    state.reveal(Position::new(1, line.len() / 2));
+    run(&mut doc, &mut state, vec![]);
+    let steady: Vec<Duration> = (0..20).map(|_| run(&mut doc, &mut state, vec![])).collect();
+    let typing: Vec<Duration> = (0..20).map(|_| run(&mut doc, &mut state, vec![Event::Text("x".into())])).collect();
+    let down: Vec<Duration> = (0..20).map(|_| run(&mut doc, &mut state, vec![key(egui::Key::ArrowDown, egui::Modifiers::NONE)])).collect();
+    assert!(state.visual_row(&doc, Position::new(2, 0)) > 10_000);
+    let avg = |v: &[Duration]| v.iter().sum::<Duration>() / v.len() as u32;
+    let max = |v: &[Duration]| v.iter().max().copied().unwrap_or_default();
+    eprintln!("soft wrap, one 2 MB line: steady {:.2} ms (max {:.2}), typing {:.2} ms (max {:.2}), Down {:.2} ms (max {:.2})",
+        ms(avg(&steady)), ms(max(&steady)), ms(avg(&typing)), ms(max(&typing)), ms(avg(&down)), ms(max(&down)));
+    if !cfg!(debug_assertions) {
+        assert!(avg(&steady) < Duration::from_millis(4), "steady frame too slow");
+        assert!(avg(&typing) < Duration::from_millis(8), "typing frame too slow");
+        assert!(avg(&down) < Duration::from_millis(8), "Down frame too slow");
+    }
+}
