@@ -161,6 +161,10 @@ pub trait LanguageServer: Send + Sync + 'static {
     /// New project settings. Servers started with older settings stop.
     fn configure(&self, _config: &IdeConfig) {}
     fn shutdown(&self);
+    /// Process ids of the running servers. Must not wait on a busy server.
+    fn pids(&self) -> Vec<u32> {
+        Vec::new()
+    }
 }
 
 type Run = Box<dyn FnOnce(&dyn LanguageServer) + Send>;
@@ -348,6 +352,28 @@ impl Languages {
     }
 
     /// Stops every server now. Called on exit, on the UI thread, because nothing waits then.
+    /// Server and linter processes running now (`Workspace::owned_pids`).
+    pub fn pids(&self) -> Vec<u32> {
+        let mut pids: Vec<u32> = self.bridges.values().flat_map(|b| b.server.pids()).collect();
+        pids.extend(self.lint.pids());
+        pids
+    }
+
+    /// Like `shutdown`, on a thread of its own: a server's polite exit can take a second, and a
+    /// closing project must not stall the UI thread.
+    pub fn shutdown_detached(&self) {
+        let servers: Vec<Arc<dyn LanguageServer>> = self.bridges.values().map(|b| b.server.clone()).collect();
+        let lint = self.lint.sources();
+        let _ = std::thread::Builder::new().name("project shutdown".into()).spawn(move || {
+            for s in servers {
+                s.shutdown();
+            }
+            for l in lint.iter() {
+                l.shutdown();
+            }
+        });
+    }
+
     pub fn shutdown(&self) {
         for b in self.bridges.values() {
             b.server.shutdown();

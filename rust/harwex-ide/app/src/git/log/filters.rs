@@ -1,5 +1,5 @@
 //! The filter bar of a Log tab: Text or hash (with regex and case toggles), Branch, User and
-//! Paths popups, and the No Merges and Refresh actions on the right.
+//! Paths popups, then the No Merges and Refresh actions. The bar spans only the commit table.
 
 use std::path::Path;
 use std::sync::Arc;
@@ -41,29 +41,25 @@ struct Changes {
 pub(super) fn bar(state: &mut AppState, view: &mut LogView, ui: &mut Ui) {
     let t = &theme::T;
     let mut ch = Changes::default();
-    let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), BAR_H), Sense::hover());
+    let (rect, resp) = ui.allocate_exact_size(vec2(ui.available_width(), BAR_H), Sense::hover());
+    crate::util::label_widget(&resp, egui::WidgetType::Other, "Log filter bar");
     let mut row = ui.new_child(egui::UiBuilder::new().max_rect(rect).layout(Layout::left_to_right(Align::Center)));
+    // A narrow table column clips the filters that do not fit; they never reach the changes pane.
+    row.set_clip_rect(rect.intersect(ui.clip_rect()));
     row.spacing_mut().item_spacing.x = 4.0;
     search_box(&mut row, view, &mut ch);
     row.add_space(8.0);
     branch_filter(state, &mut row, view, &mut ch);
     user_filter(state, &mut row, view, &mut ch);
     paths_filter(state, &mut row, view, &mut ch);
-
-    let mut right = row.new_child(egui::UiBuilder::new().max_rect(rect).layout(Layout::right_to_left(Align::Center)));
-    right.spacing_mut().item_spacing.x = 4.0;
-    if crate::layout::icon_button(&mut right, Icon::Refresh, "Refresh log", "Refresh").clicked() {
-        ch.refresh = true;
-    }
-    if toggle(&mut right, "No Merges", "No Merges", view.filter.no_merges, "Hide merge commits").clicked() {
+    row.add_space(8.0);
+    if toggle(&mut row, "No Merges", "No Merges", view.filter.no_merges, "Hide merge commits").clicked() {
         view.filter.no_merges = !view.filter.no_merges;
         ch.now = true;
     }
-    let count = view.commits.len();
-    let more = if view.has_more { "+" } else { "" };
-    let text = if view.loading { format!("{count}{more} commits, loading...") } else { format!("{count}{more} commits") };
-    right.add_space(6.0);
-    right.label(RichText::new(text).size(t.font.small).color(t.text_dim));
+    if crate::layout::icon_button(&mut row, Icon::Refresh, "Refresh log", "Refresh").clicked() {
+        ch.refresh = true;
+    }
     ui.painter().hline(rect.x_range(), rect.bottom() - 0.5, Stroke::new(1.0_f32, t.border));
 
     if ch.now {
@@ -192,13 +188,13 @@ fn branch_filter(state: &mut AppState, ui: &mut Ui, view: &mut LogView, ch: &mut
     let set = !view.filter.branches.is_empty();
     let text = if set { format!("Branch: {}", view.filter.branches.join(", ")) } else { "Branch".to_string() };
     let resp = chip(ui, &text, set, "Branch filter");
-    let id = Id::new(("git-log-branch-popup", view.id));
+    let id = crate::workspace::wid(("git-log-branch-popup", view.id));
     let opened = popup_toggle(ui, id, &resp);
     if set && cross(ui, "Reset branch filter") {
         view.filter.branches.clear();
         ch.now = true;
     }
-    let (local, remote) = &state.git_ui.log.branch_names;
+    let (local, remote) = &state.ws.git_ui.log.branch_names;
     let q = &mut view.popups.branch_query;
     let branches = &mut view.filter.branches;
     egui::popup_below_widget(ui, id, &resp, PopupCloseBehavior::CloseOnClickOutside, |ui| {
@@ -235,13 +231,13 @@ fn user_filter(state: &mut AppState, ui: &mut Ui, view: &mut LogView, ch: &mut C
         "User".to_string()
     };
     let resp = chip(ui, &text, set, "User filter");
-    let id = Id::new(("git-log-user-popup", view.id));
+    let id = crate::workspace::wid(("git-log-user-popup", view.id));
     let opened = popup_toggle(ui, id, &resp);
     if set && cross(ui, "Reset user filter") {
         view.filter.authors.clear();
         ch.now = true;
     }
-    let me = state.git_ui.log.me.clone();
+    let me = state.ws.git_ui.log.me.clone();
     let q = &mut view.popups.user_query;
     let authors = &mut view.filter.authors;
     let seen = &view.authors_seen;
@@ -261,7 +257,7 @@ fn user_filter(state: &mut AppState, ui: &mut Ui, view: &mut LogView, ch: &mut C
 }
 
 fn paths_filter(state: &mut AppState, ui: &mut Ui, view: &mut LogView, ch: &mut Changes) {
-    let root = state.project.as_ref().map(|p| p.root.clone()).unwrap_or_default();
+    let root = state.ws.project.as_ref().map(|p| p.root.clone()).unwrap_or_default();
     let rel = |p: &Path| p.strip_prefix(&root).unwrap_or(p).display().to_string();
     let set = !view.filter.paths.is_empty();
     let text = match view.filter.paths.as_slice() {
@@ -270,7 +266,7 @@ fn paths_filter(state: &mut AppState, ui: &mut Ui, view: &mut LogView, ch: &mut 
         many => format!("Paths: {} paths", many.len()),
     };
     let resp = chip(ui, &text, set, "Paths filter");
-    let id = Id::new(("git-log-paths-popup", view.id));
+    let id = crate::workspace::wid(("git-log-paths-popup", view.id));
     let opened = popup_toggle(ui, id, &resp);
     if set && cross(ui, "Reset paths filter") {
         view.filter.paths.clear();
@@ -279,7 +275,7 @@ fn paths_filter(state: &mut AppState, ui: &mut Ui, view: &mut LogView, ch: &mut 
     if !ui.memory(|m| m.is_popup_open(id)) {
         return;
     }
-    let files = state.index.files.clone();
+    let files = state.ws.index.files.clone();
     let key = Arc::as_ptr(&files) as usize;
     if view.popups.path_candidates.as_ref().is_none_or(|(k, _)| *k != key) {
         view.popups.path_candidates = Some((key, path_candidates(&files)));

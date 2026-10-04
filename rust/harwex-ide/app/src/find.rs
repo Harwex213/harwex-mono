@@ -10,7 +10,7 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
-use egui::{Id, Key, Modal, RichText, ScrollArea, TextEdit};
+use egui::{Key, Modal, RichText, ScrollArea, TextEdit};
 use ide_editor::{EditKind, Position};
 
 use crate::notifications::Level;
@@ -249,8 +249,8 @@ pub fn search(root: &Path, query: &Query, skip: &[PathBuf], cancel: &AtomicBool)
 }
 
 pub fn start(state: &mut AppState) {
-    let Some(project_root) = state.project.as_ref().map(|p| p.root.clone()) else { return };
-    let f = &mut state.find;
+    let Some(project_root) = state.ws.project.as_ref().map(|p| p.root.clone()) else { return };
+    let f = &mut state.ws.find;
     if f.query.is_empty() {
         return;
     }
@@ -269,28 +269,28 @@ pub fn start(state: &mut AppState) {
     f.searched = Some((query.clone(), scope.clone()));
     let generation = f.generation;
     let root = scope.unwrap_or(project_root);
-    let skip = state.tree.excluded.clone();
+    let skip = state.ws.tree.excluded.clone();
     let started = Instant::now();
-    state.layout.left = Some(crate::layout::ToolWindow::Find);
+    state.ws.layout.left = Some(crate::layout::ToolWindow::Find);
     let label = query.text.clone();
     state.jobs.spawn(
         format!("Searching for \"{label}\""),
         move || search(&root, &query, &skip, &cancel),
         move |state, res| {
-            if state.find.generation != generation {
+            if state.ws.find.generation != generation {
                 return;
             }
-            state.find.searching = false;
-            state.find.took_ms = started.elapsed().as_secs_f64() * 1000.0;
+            state.ws.find.searching = false;
+            state.ws.find.took_ms = started.elapsed().as_secs_f64() * 1000.0;
             match res {
                 Ok((results, truncated)) => {
-                    state.find.results = results;
-                    state.find.truncated = truncated;
-                    state.timings.log(format!("find in files: {} hits in {:.0} ms", state.find.hit_count(), state.find.took_ms));
+                    state.ws.find.results = results;
+                    state.ws.find.truncated = truncated;
+                    state.timings.log(format!("find in files: {} hits in {:.0} ms", state.ws.find.hit_count(), state.ws.find.took_ms));
                 }
                 Err(e) => {
-                    state.find.results.clear();
-                    state.find.error = Some(e);
+                    state.ws.find.results.clear();
+                    state.ws.find.error = Some(e);
                 }
             }
         },
@@ -299,15 +299,15 @@ pub fn start(state: &mut AppState) {
 
 /// The Cmd+Shift+F / Cmd+Shift+R dialog.
 pub fn show_dialog(state: &mut AppState, ctx: &egui::Context) {
-    if !state.find.dialog_open {
+    if !state.ws.find.dialog_open {
         return;
     }
-    let root = state.project.as_ref().map(|p| p.root.clone()).unwrap_or_default();
+    let root = state.ws.project.as_ref().map(|p| p.root.clone()).unwrap_or_default();
     let enter = ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, Key::Enter));
     let mut go = enter;
-    let f = &mut state.find;
+    let f = &mut state.ws.find;
     let t = &theme::T;
-    let modal = Modal::new(Id::new("find-in-files")).area(Modal::default_area(Id::new("find-in-files-area")).anchor(egui::Align2::CENTER_TOP, [0.0, 90.0])).show(ctx, |ui| {
+    let modal = Modal::new(crate::workspace::wid("find-in-files")).area(Modal::default_area(crate::workspace::wid("find-in-files-area")).anchor(egui::Align2::CENTER_TOP, [0.0, 90.0])).show(ctx, |ui| {
         ui.set_width(560.0);
         ui.horizontal(|ui| {
             ui.label(RichText::new(if f.replace_mode { "Replace in Files" } else { "Find in Files" }).strong());
@@ -338,10 +338,10 @@ pub fn show_dialog(state: &mut AppState, ctx: &egui::Context) {
         });
     });
     if go {
-        state.find.dialog_open = false;
+        state.ws.find.dialog_open = false;
         start(state);
     } else if modal.should_close() {
-        state.find.dialog_open = false;
+        state.ws.find.dialog_open = false;
     }
 }
 
@@ -350,12 +350,12 @@ pub fn show_dialog(state: &mut AppState, ctx: &egui::Context) {
 pub fn replace_all(state: &mut AppState) {
     let mut open_files: Vec<(crate::tabs::TabId, Vec<FindHit>)> = Vec::new();
     let mut closed: Vec<(PathBuf, Vec<FindHit>)> = Vec::new();
-    for (path, hits) in &state.find.results {
+    for (path, hits) in &state.ws.find.results {
         let hits: Vec<FindHit> = hits.iter().filter(|h| h.include && h.replacement.is_some()).cloned().collect();
         if hits.is_empty() {
             continue;
         }
-        match state.tabs.editor_by_path(path) {
+        match state.ws.tabs.editor_by_path(path) {
             Some(id) => open_files.push((id, hits)),
             None => closed.push((path.clone(), hits)),
         }
@@ -363,7 +363,7 @@ pub fn replace_all(state: &mut AppState) {
     let mut replaced = 0;
     let mut files = 0;
     for (id, hits) in open_files {
-        let Some(e) = state.tabs.editor_mut(id) else { continue };
+        let Some(e) = state.ws.tabs.editor_mut(id) else { continue };
         let mut edits: Vec<(std::ops::Range<usize>, String)> = Vec::new();
         for h in &hits {
             let line: Vec<char> = e.doc.line(h.line).trim_end_matches(['\n', '\r']).chars().collect();
@@ -387,18 +387,18 @@ pub fn replace_all(state: &mut AppState) {
         e.doc.seal_undo_group();
         state.save_tab(id, false);
     }
-    state.find.replacing = true;
+    state.ws.find.replacing = true;
     state.jobs.spawn(
         "Replacing in files",
         move || replace_in_closed_files(&closed),
         move |state, (n, f, errors)| {
-            state.find.replacing = false;
+            state.ws.find.replacing = false;
             for e in errors {
                 state.notifications.error("Replace failed", e);
             }
             let (n, f) = (n + replaced, f + files);
             state.notifications.log_only(Level::Info, "Replace in Files", format!("Replaced {n} occurrences in {f} files."));
-            let paths: HashSet<PathBuf> = state.find.results.iter().map(|(p, _)| p.clone()).collect();
+            let paths: HashSet<PathBuf> = state.ws.find.results.iter().map(|(p, _)| p.clone()).collect();
             state.on_fs_batch(crate::watcher::FsBatch { paths, structure_changed: false, git_changed: true });
             start(state);
         },
@@ -460,9 +460,9 @@ pub fn replace_in_file(path: &Path, hits: &[FindHit]) -> Result<usize, String> {
 
 /// The Find tool window body. Returns a location to open.
 pub fn show_results(state: &mut AppState, ui: &mut egui::Ui) -> Option<(PathBuf, Position)> {
-    let root = state.project.as_ref().map(|p| p.root.clone()).unwrap_or_default();
+    let root = state.ws.project.as_ref().map(|p| p.root.clone()).unwrap_or_default();
     let deterministic = state.deterministic;
-    let f = &mut state.find;
+    let f = &mut state.ws.find;
     let t = &theme::T;
     let took = if deterministic { String::new() } else { format!(" ({:.0} ms)", f.took_ms) };
     let replace = f.searched.as_ref().is_some_and(|(q, _)| q.replacement.is_some());

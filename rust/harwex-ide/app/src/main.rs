@@ -9,7 +9,7 @@
 use std::io::IsTerminal;
 use std::time::Instant;
 
-use harwex_ide::{launch, testhook, AppOptions, IdeApp};
+use harwex_ide::{instance, launch, testhook, AppOptions, IdeApp};
 
 fn main() -> eframe::Result {
     let start = Instant::now();
@@ -24,6 +24,27 @@ fn main() -> eframe::Result {
     let tty = std::io::stdin().is_terminal() || std::io::stdout().is_terminal();
     let cwd = std::env::current_dir().ok();
     let cli_folder = launch::startup_folder(&args, cwd.as_deref(), tty);
+
+    // Single instance: a running IDE takes the folder and this process exits.
+    let new_instance = launch::take_new_instance_flag(&mut args);
+    let socket_env = std::env::var(instance::SOCKET_ENV).ok();
+    let mut server = None;
+    if let Some(socket) = instance::socket_for(new_instance, background, socket_env.as_deref()) {
+        let req = match &cli_folder {
+            Some(folder) => instance::Request::Open(launch::handoff_folder(folder, cwd.as_deref())),
+            None => instance::Request::Activate,
+        };
+        match instance::claim(&socket, &req, instance::ACK_TIMEOUT) {
+            instance::Claim::HandedOff => {
+                eprintln!("[harwex-ide] handed over to the running instance");
+                return Ok(());
+            }
+            instance::Claim::Primary(s) => server = Some(s),
+            instance::Claim::Alone(why) => eprintln!("[harwex-ide] single instance off: {why}"),
+        }
+    }
+    // Removes the socket file once the window closes.
+    let _socket_file = server.as_ref().map(instance::Server::cleanup);
 
     // The title bar is ours (theme: Islands Dark): the content runs under a transparent native
     // title bar, and macOS draws only the traffic lights over it (moved by `chrome::sync`).
@@ -49,7 +70,7 @@ fn main() -> eframe::Result {
         // folder or tool window layout in ~/Library/Application Support/harwex-ide.
         native.persistence_path = Some(std::env::temp_dir().join("harwex-ide-background.ron"));
     }
-    let options = AppOptions { project: cli_folder, test, start, ..AppOptions::default() };
+    let options = AppOptions { project: cli_folder, test, start, instance: server, ..AppOptions::default() };
     eframe::run_native("harwex-ide", native, Box::new(move |cc| Ok(Box::new(IdeApp::create(&cc.egui_ctx, cc.storage, options)))))
 }
 

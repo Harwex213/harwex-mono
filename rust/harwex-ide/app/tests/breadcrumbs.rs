@@ -22,8 +22,8 @@ fn crumbs_repo(fx: &Fixture) -> Repo {
 
 /// Directories of the open popup levels, relative to the root ("…" for the hidden-segment list).
 fn levels(s: &AppState) -> Vec<String> {
-    let root = s.project.as_ref().map(|p| p.root.clone()).unwrap_or_default();
-    s.breadcrumbs.popup.as_ref().map_or_else(Vec::new, |p| {
+    let root = s.ws.project.as_ref().map(|p| p.root.clone()).unwrap_or_default();
+    s.ws.breadcrumbs.popup.as_ref().map_or_else(Vec::new, |p| {
         p.levels
             .iter()
             .map(|l| match &l.source {
@@ -36,21 +36,21 @@ fn levels(s: &AppState) -> Vec<String> {
 
 /// The selected entry of popup level `level`, relative to the root.
 fn selected(s: &AppState, level: usize) -> Option<String> {
-    let root = s.project.as_ref()?.root.clone();
-    let p = s.breadcrumbs.popup.as_ref()?;
+    let root = s.ws.project.as_ref()?.root.clone();
+    let p = s.ws.breadcrumbs.popup.as_ref()?;
     let l = p.levels.get(level)?;
-    let e = s.breadcrumbs.items(l)?.get(l.selected?)?;
+    let e = s.ws.breadcrumbs.items(l)?.get(l.selected?)?;
     Some(e.path.strip_prefix(&root).unwrap_or(&e.path).display().to_string())
 }
 
 fn names(s: &AppState, level: usize) -> Vec<String> {
-    let p = s.breadcrumbs.popup.as_ref().expect("popup open");
-    s.breadcrumbs.items(&p.levels[level]).unwrap_or_default().iter().map(|e| e.name.clone()).collect()
+    let p = s.ws.breadcrumbs.popup.as_ref().expect("popup open");
+    s.ws.breadcrumbs.items(&p.levels[level]).unwrap_or_default().iter().map(|e| e.name.clone()).collect()
 }
 
 fn active_rel(ide: &Ide) -> String {
     let root = ide.root();
-    let e = ide.state().tabs.active_editor().expect("active editor");
+    let e = ide.state().ws.tabs.active_editor().expect("active editor");
     e.path.strip_prefix(&root).unwrap_or(&e.path).display().to_string()
 }
 
@@ -59,13 +59,13 @@ fn bar_shows_the_active_file() {
     let fx = Fixture::new(SUITE, "bar");
     let repo = crumbs_repo(&fx);
     let mut ide = Ide::open(SUITE, &repo.dir);
-    assert!(ide.state().breadcrumbs.slots.is_empty(), "no tab, no breadcrumbs");
+    assert!(ide.state().ws.breadcrumbs.slots.is_empty(), "no tab, no breadcrumbs");
     ide.open_file("src/core/deep/nested.ts");
     for label in ["Breadcrumb repo", "Breadcrumb src", "Breadcrumb core", "Breadcrumb deep", "Breadcrumb nested.ts"] {
         assert!(ide.has(label), "missing {label}");
     }
-    assert_eq!(ide.state().breadcrumbs.slots.len(), 5);
-    assert!(!ide.state().breadcrumbs.slots.iter().any(|s| matches!(s, Slot::Hidden(_))));
+    assert_eq!(ide.state().ws.breadcrumbs.slots.len(), 5);
+    assert!(!ide.state().ws.breadcrumbs.slots.iter().any(|s| matches!(s, Slot::Hidden(_))));
     ide.snapshot("bar");
 
     // The bar follows the active tab; a modified file is drawn in the git color.
@@ -110,9 +110,9 @@ fn popup_lists_children_and_opens_nested_popups() {
 
     // A click on a file opens it and closes the popup.
     ide.click("Breadcrumb item src/core/fresh.ts");
-    ide.wait_for("fresh.ts open", |s| s.tabs.active_tab().is_some_and(|t| t.title() == "fresh.ts"));
+    ide.wait_for("fresh.ts open", |s| s.ws.tabs.active_tab().is_some_and(|t| t.title() == "fresh.ts"));
     ide.settle();
-    assert!(ide.state().breadcrumbs.popup.is_none());
+    assert!(ide.state().ws.breadcrumbs.popup.is_none());
     assert!(ide.has("Breadcrumb fresh.ts"));
 
     // A click outside closes the popup; a second click on the open segment closes it too.
@@ -120,12 +120,12 @@ fn popup_lists_children_and_opens_nested_popups() {
     ide.wait_until("root popup", |ide| ide.has("Breadcrumb item README.md"));
     assert_eq!(names(ide.state(), 0), ["docs", "src", ".gitignore", "README.md"]);
     ide.click("Breadcrumb repo");
-    assert!(ide.state().breadcrumbs.popup.is_none());
+    assert!(ide.state().ws.breadcrumbs.popup.is_none());
     ide.click("Breadcrumb core");
     ide.wait_until("core popup", |ide| ide.has("Breadcrumb item src/core/deep"));
     let editor = ide.rect("Editor fresh.ts").center();
     ide.click_at(editor);
-    assert!(ide.state().breadcrumbs.popup.is_none());
+    assert!(ide.state().ws.breadcrumbs.popup.is_none());
 
     // The file segment lists its siblings with the file selected.
     ide.click("Breadcrumb fresh.ts");
@@ -158,7 +158,7 @@ fn keyboard_moves_enters_and_opens() {
     ide.key(Key::ArrowRight);
     ide.wait_until("core popup", |ide| ide.has("Breadcrumb item src/core/fresh.ts"));
     ide.settle();
-    assert_eq!(ide.state().breadcrumbs.popup.as_ref().map(|p| p.focus), Some(1));
+    assert_eq!(ide.state().ws.breadcrumbs.popup.as_ref().map(|p| p.focus), Some(1));
     assert_eq!(selected(ide.state(), 1).as_deref(), Some("src/core/deep"));
     ide.key(Key::ArrowDown);
     assert_eq!(selected(ide.state(), 1).as_deref(), Some("src/core/fresh.ts"));
@@ -167,7 +167,7 @@ fn keyboard_moves_enters_and_opens() {
     // Left goes back and closes the nested popup.
     ide.key(Key::ArrowLeft);
     assert_eq!(levels(ide.state()), ["src"]);
-    assert_eq!(ide.state().breadcrumbs.popup.as_ref().map(|p| p.focus), Some(0));
+    assert_eq!(ide.state().ws.breadcrumbs.popup.as_ref().map(|p| p.focus), Some(0));
 
     // Enter on a directory enters it; Enter on a file opens the file.
     ide.key(Key::Enter);
@@ -178,16 +178,16 @@ fn keyboard_moves_enters_and_opens() {
     assert_eq!(ide.cursor(), (0, 0));
     assert_eq!(ide.active_text(), text);
     ide.key(Key::Enter);
-    ide.wait_for("fresh.ts open", |s| s.tabs.active_tab().is_some_and(|t| t.title() == "fresh.ts"));
+    ide.wait_for("fresh.ts open", |s| s.ws.tabs.active_tab().is_some_and(|t| t.title() == "fresh.ts"));
     ide.settle();
-    assert!(ide.state().breadcrumbs.popup.is_none());
+    assert!(ide.state().ws.breadcrumbs.popup.is_none());
     assert_eq!(ide.active_text(), "export const fresh = 1;\n", "Enter did not type a newline");
 
     // Escape closes the popup.
     ide.click("Breadcrumb src");
     ide.wait_until("src popup", |ide| ide.has("Breadcrumb item src/app.ts"));
     ide.key(Key::Escape);
-    assert!(ide.state().breadcrumbs.popup.is_none());
+    assert!(ide.state().ws.breadcrumbs.popup.is_none());
     assert!(!ide.has("Breadcrumb item src/app.ts"));
     assert_eq!(active_rel(&ide), "src/core/fresh.ts");
 }
@@ -199,11 +199,11 @@ fn narrow_window_collapses_the_middle() {
     let mut ide = Ide::open(SUITE, &repo.dir);
     let deep = "src/core/deep/level_one/level_two/level_three/target_file_name.ts";
     ide.open_file(deep);
-    assert!(!ide.state().breadcrumbs.slots.iter().any(|s| matches!(s, Slot::Hidden(_))), "1280 px fits the whole path");
+    assert!(!ide.state().ws.breadcrumbs.slots.iter().any(|s| matches!(s, Slot::Hidden(_))), "1280 px fits the whole path");
     ide.snapshot("wide_deep_path");
 
     ide.resize(egui::vec2(640.0, 800.0));
-    let slots = ide.state().breadcrumbs.slots.clone();
+    let slots = ide.state().ws.breadcrumbs.slots.clone();
     let hidden = slots.iter().find_map(|s| match s {
         Slot::Hidden(r) => Some(r.clone()),
         Slot::Segment(_) => None,
@@ -231,9 +231,9 @@ fn narrow_window_collapses_the_middle() {
     ide.snapshot_here("narrow_hidden_popup");
 
     ide.click("Breadcrumb item src/core/fresh.ts");
-    ide.wait_for("fresh.ts open", |s| s.tabs.active_tab().is_some_and(|t| t.title() == "fresh.ts"));
+    ide.wait_for("fresh.ts open", |s| s.ws.tabs.active_tab().is_some_and(|t| t.title() == "fresh.ts"));
     ide.settle();
-    assert!(ide.state().breadcrumbs.popup.is_none());
+    assert!(ide.state().ws.breadcrumbs.popup.is_none());
 }
 
 #[test]
@@ -243,7 +243,7 @@ fn diff_tab_shows_the_diffed_file() {
     let mut ide = Ide::open(SUITE, &repo.dir);
     let path = ide.root().join("src/util.ts");
     harwex_ide::git::diff::open_worktree_diff(ide.state_mut(), &path);
-    ide.wait_for("diff tab", |s| s.tabs.active_tab().is_some_and(|t| t.title() == "util.ts (Diff)"));
+    ide.wait_for("diff tab", |s| s.ws.tabs.active_tab().is_some_and(|t| t.title() == "util.ts (Diff)"));
     ide.settle();
     assert!(ide.has("Breadcrumb repo") && ide.has("Breadcrumb src") && ide.has("Breadcrumb util.ts"));
     ide.snapshot("diff_tab");
@@ -253,7 +253,7 @@ fn diff_tab_shows_the_diffed_file() {
     ide.wait_until("src popup", |ide| ide.has("Breadcrumb item src/app.ts"));
     ide.settle();
     ide.click("Breadcrumb item src/app.ts");
-    ide.wait_for("app.ts open", |s| s.tabs.active_tab().is_some_and(|t| t.title() == "app.ts"));
+    ide.wait_for("app.ts open", |s| s.ws.tabs.active_tab().is_some_and(|t| t.title() == "app.ts"));
     ide.settle();
     assert_eq!(ide.tab_titles(), ["util.ts (Diff)", "app.ts"]);
     assert!(ide.has("Breadcrumb app.ts"));
@@ -268,13 +268,13 @@ const REGISTRY_CRATE: &str = "cargo/registry/src/index.crates.io-1949cf8c6b5b557
 fn open_external(ide: &mut Ide, path: &std::path::Path) {
     let path = std::fs::canonicalize(path).expect("file exists");
     ide.state_mut().open_location(&path, None, true);
-    ide.wait_for("external tab", |s| s.tabs.active_editor().is_some_and(|e| e.path == path));
+    ide.wait_for("external tab", |s| s.ws.tabs.active_editor().is_some_and(|e| e.path == path));
     ide.settle();
 }
 
 /// The directory of popup level `level`, absolute.
 fn level_dir(ide: &Ide, level: usize) -> Option<std::path::PathBuf> {
-    ide.state().breadcrumbs.popup.as_ref()?.levels.get(level)?.dir_path().map(|d| d.to_path_buf())
+    ide.state().ws.breadcrumbs.popup.as_ref()?.levels.get(level)?.dir_path().map(|d| d.to_path_buf())
 }
 
 #[test]
@@ -293,12 +293,12 @@ fn registry_file_roots_at_crate_and_version() {
     for label in ["Breadcrumb serde 1.0.228", "Breadcrumb src", "Breadcrumb de", "Breadcrumb mod.rs"] {
         assert!(ide.has(label), "missing {label}: {:?}", ide.labels());
     }
-    assert_eq!(ide.state().breadcrumbs.slots.len(), 4, "nothing above the crate folder");
+    assert_eq!(ide.state().ws.breadcrumbs.slots.len(), 4, "nothing above the crate folder");
     assert!(!ide.has("Breadcrumb registry") && !ide.has("Breadcrumb /"));
 
     // The root popup lists the crate folder, never a folder above it.
     ide.click("Breadcrumb serde 1.0.228");
-    ide.wait_until("crate popup", |ide| ide.state().breadcrumbs.popup.as_ref().is_some_and(|p| ide.state().breadcrumbs.items(&p.levels[0]).is_some()));
+    ide.wait_until("crate popup", |ide| ide.state().ws.breadcrumbs.popup.as_ref().is_some_and(|p| ide.state().ws.breadcrumbs.items(&p.levels[0]).is_some()));
     ide.settle();
     let krate = std::fs::canonicalize(&krate).expect("crate dir");
     assert_eq!(level_dir(&ide, 0).as_deref(), Some(krate.as_path()));
@@ -317,17 +317,17 @@ fn other_external_file_shows_three_segments() {
     for label in ["Breadcrumb External", "Breadcrumb notes", "Breadcrumb todo", "Breadcrumb list.md"] {
         assert!(ide.has(label), "missing {label}: {:?}", ide.labels());
     }
-    assert_eq!(ide.state().breadcrumbs.slots.len(), 4);
+    assert_eq!(ide.state().ws.breadcrumbs.slots.len(), 4);
 
     // The file segment lists its siblings; the root lists the folder that holds `notes`.
     ide.click("Breadcrumb list.md");
-    ide.wait_until("siblings", |ide| ide.state().breadcrumbs.popup.as_ref().is_some_and(|p| ide.state().breadcrumbs.items(&p.levels[0]).is_some()));
+    ide.wait_until("siblings", |ide| ide.state().ws.breadcrumbs.popup.as_ref().is_some_and(|p| ide.state().ws.breadcrumbs.items(&p.levels[0]).is_some()));
     ide.settle();
     assert_eq!(names(ide.state(), 0), ["done.md", "list.md"]);
     ide.snapshot("external_file");
     ide.key(Key::Escape);
     ide.click("Breadcrumb External");
-    ide.wait_until("root popup", |ide| ide.state().breadcrumbs.popup.as_ref().is_some_and(|p| ide.state().breadcrumbs.items(&p.levels[0]).is_some()));
+    ide.wait_until("root popup", |ide| ide.state().ws.breadcrumbs.popup.as_ref().is_some_and(|p| ide.state().ws.breadcrumbs.items(&p.levels[0]).is_some()));
     let outside = std::fs::canonicalize(fx.path("outside")).expect("outside dir");
     assert_eq!(level_dir(&ide, 0).as_deref(), Some(outside.as_path()));
     assert_eq!(names(ide.state(), 0), ["notes"]);
@@ -337,15 +337,15 @@ fn other_external_file_shows_three_segments() {
 // Navigation-bar keyboard: Alt+Home, segments, popups and hops between them.
 
 fn bar_focused(ide: &Ide) -> bool {
-    ide.state().breadcrumbs.bar_focused(&ide.ctx())
+    ide.state().ws.breadcrumbs.bar_focused(&ide.ctx())
 }
 
 fn selected_slot(ide: &Ide) -> Option<usize> {
-    ide.state().breadcrumbs.selected_slot
+    ide.state().ws.breadcrumbs.selected_slot
 }
 
 fn focus_level(ide: &Ide) -> Option<usize> {
-    ide.state().breadcrumbs.popup.as_ref().map(|p| p.focus)
+    ide.state().ws.breadcrumbs.popup.as_ref().map(|p| p.focus)
 }
 
 fn alt_home(ide: &mut Ide) {
@@ -381,7 +381,7 @@ fn alt_home_focuses_the_bar_and_moves_between_segments() {
     alt_home(&mut ide);
     assert_eq!(selected_slot(&ide), Some(4));
     assert!(bar_focused(&ide));
-    assert!(ide.state().breadcrumbs.popup.is_none());
+    assert!(ide.state().ws.breadcrumbs.popup.is_none());
     assert!(ide.is_selected("Breadcrumb nested.ts"));
     ide.snapshot("nav_bar_focused");
 
@@ -400,7 +400,7 @@ fn alt_home_focuses_the_bar_and_moves_between_segments() {
         ide.key(Key::ArrowRight);
     }
     assert_eq!(selected_slot(&ide), Some(4));
-    assert!(ide.state().breadcrumbs.popup.is_none(), "Left and Right open no popup");
+    assert!(ide.state().ws.breadcrumbs.popup.is_none(), "Left and Right open no popup");
 
     // Up leaves the bar; the editor has the keyboard again.
     ide.key(Key::ArrowUp);
@@ -440,7 +440,7 @@ fn alt_home_focuses_the_bar_and_moves_between_segments() {
     key_then(&mut ide, Key::Enter, 0, "src/core/deep");
     assert_eq!(levels(ide.state()), ["src/core"]);
     ide.key(Key::Escape);
-    assert!(ide.state().breadcrumbs.popup.is_none());
+    assert!(ide.state().ws.breadcrumbs.popup.is_none());
     assert_eq!(ide.active_text(), text, "no key reached the editor");
     assert_eq!(active_rel(&ide), "src/core/deep/nested.ts");
 }
@@ -474,7 +474,7 @@ fn popup_keys_wrap_enter_back_out_and_hop_between_segments() {
 
     // Up on the first row of the first level goes back to the segments.
     ide.key(Key::ArrowUp);
-    assert!(ide.state().breadcrumbs.popup.is_none());
+    assert!(ide.state().ws.breadcrumbs.popup.is_none());
     assert!(bar_focused(&ide));
     assert_eq!(selected_slot(&ide), Some(1));
     assert!(ide.is_selected("Breadcrumb src"));
@@ -542,11 +542,11 @@ fn popup_keys_wrap_enter_back_out_and_hop_between_segments() {
     assert_eq!(selected_slot(&ide), Some(4), "the file segment lists its siblings");
     ide.key(Key::ArrowRight);
     assert_eq!(selected_slot(&ide), Some(4), "no segment after the file");
-    assert!(ide.state().breadcrumbs.popup.is_some());
+    assert!(ide.state().ws.breadcrumbs.popup.is_some());
 
     // Escape closes everything and gives the editor the keyboard back.
     ide.key(Key::Escape);
-    assert!(ide.state().breadcrumbs.popup.is_none());
+    assert!(ide.state().ws.breadcrumbs.popup.is_none());
     assert!(!bar_focused(&ide) && selected_slot(&ide).is_none());
     assert_eq!(ide.cursor(), (0, 0), "no arrow reached the editor");
     assert_eq!(ide.active_text(), text, "no key reached the editor");
@@ -560,9 +560,9 @@ fn popup_keys_wrap_enter_back_out_and_hop_between_segments() {
     key_then(&mut ide, Key::Enter, 0, "src/core/deep");
     ide.key(Key::ArrowDown);
     ide.key(Key::Enter);
-    ide.wait_for("fresh.ts open", |s| s.tabs.active_tab().is_some_and(|t| t.title() == "fresh.ts"));
+    ide.wait_for("fresh.ts open", |s| s.ws.tabs.active_tab().is_some_and(|t| t.title() == "fresh.ts"));
     ide.settle();
-    assert!(ide.state().breadcrumbs.popup.is_none() && selected_slot(&ide).is_none());
+    assert!(ide.state().ws.breadcrumbs.popup.is_none() && selected_slot(&ide).is_none());
     assert_eq!(ide.active_text(), "export const fresh = 1;\n");
 }
 
@@ -575,7 +575,7 @@ fn keyboard_moves_over_the_ellipsis_segment() {
     ide.resize(egui::vec2(640.0, 800.0));
     ide.park_mouse();
     let text = ide.active_text();
-    let slots = ide.state().breadcrumbs.slots.clone();
+    let slots = ide.state().ws.breadcrumbs.slots.clone();
     assert!(matches!(slots[1], Slot::Hidden(_)), "the second slot is the ellipsis");
     let last = slots.len() - 1;
 
@@ -589,7 +589,7 @@ fn keyboard_moves_over_the_ellipsis_segment() {
     ide.snapshot("nav_ellipsis_selected");
 
     // Down lists the hidden segments with the one nearest to the file selected.
-    let hidden = ide.state().breadcrumbs.slots.iter().find_map(|s| match s {
+    let hidden = ide.state().ws.breadcrumbs.slots.iter().find_map(|s| match s {
         Slot::Hidden(r) => Some(r.clone()),
         Slot::Segment(_) => None,
     });
@@ -620,7 +620,7 @@ fn keyboard_moves_over_the_ellipsis_segment() {
     }
     assert_eq!(selected(ide.state(), 0).as_deref(), Some("src"));
     ide.key(Key::ArrowUp);
-    assert!(ide.state().breadcrumbs.popup.is_none() && bar_focused(&ide));
+    assert!(ide.state().ws.breadcrumbs.popup.is_none() && bar_focused(&ide));
     assert!(ide.is_selected("Breadcrumb …"));
     ide.key(Key::Escape);
     assert_eq!(ide.cursor(), (0, 0));
@@ -646,7 +646,7 @@ fn keyboard_works_after_a_click_and_not_in_the_terminal() {
     ide.key(Key::ArrowUp);
     assert_eq!(selected(ide.state(), 0).as_deref(), Some("docs"));
     ide.key(Key::ArrowUp);
-    assert!(ide.state().breadcrumbs.popup.is_none() && bar_focused(&ide));
+    assert!(ide.state().ws.breadcrumbs.popup.is_none() && bar_focused(&ide));
     assert!(ide.is_selected("Breadcrumb repo"));
     ide.key(Key::ArrowRight);
     assert!(ide.is_selected("Breadcrumb src"));
@@ -658,11 +658,11 @@ fn keyboard_works_after_a_click_and_not_in_the_terminal() {
 
     // Alt+Home is skipped while a terminal has focus.
     ide.key_mods(Modifiers::ALT, Key::F12);
-    ide.wait_until("terminal focus", |ide| ide.state().terminals.has_focus(&ide.ctx()));
+    ide.wait_until("terminal focus", |ide| ide.state().ws.terminals.has_focus(&ide.ctx()));
     alt_home(&mut ide);
     assert_eq!(selected_slot(&ide), None);
     assert!(!bar_focused(&ide));
-    assert!(ide.state().terminals.has_focus(&ide.ctx()));
+    assert!(ide.state().ws.terminals.has_focus(&ide.ctx()));
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -701,20 +701,20 @@ fn mono_repo(fx: &Fixture) -> Repo {
 }
 
 fn popup_rects(ide: &Ide) -> Vec<egui::Rect> {
-    ide.state().breadcrumbs.popup_rects.clone()
+    ide.state().ws.breadcrumbs.popup_rects.clone()
 }
 
 fn baseline(ide: &Ide) -> f32 {
-    ide.state().breadcrumbs.baseline.expect("status bar drawn")
+    ide.state().ws.breadcrumbs.baseline.expect("status bar drawn")
 }
 
 /// Rows of level `level` that are fully visible inside its popup.
 fn visible_rows(ide: &Ide, level: usize) -> Vec<String> {
     let s = ide.state();
     let root = ide.root();
-    let p = s.breadcrumbs.popup.as_ref().expect("popup open");
+    let p = s.ws.breadcrumbs.popup.as_ref().expect("popup open");
     let rect = popup_rects(ide)[level];
-    s.breadcrumbs
+    s.ws.breadcrumbs
         .items(&p.levels[level])
         .unwrap_or_default()
         .iter()
@@ -731,12 +731,12 @@ fn assert_rests_on_status_bar(ide: &Ide) {
     let base = baseline(ide);
     let rects = popup_rects(ide);
     let s = ide.state();
-    let p = s.breadcrumbs.popup.as_ref().expect("popup open");
+    let p = s.ws.breadcrumbs.popup.as_ref().expect("popup open");
     let mut margins = Vec::new();
     for (i, r) in rects.iter().enumerate() {
         assert!((r.max.y - base).abs() < 0.5, "level {i} bottom {} != status bar top {base}", r.max.y);
         assert!(r.min.y >= 0.0, "level {i} leaves the window at the top");
-        let rows = s.breadcrumbs.items(&p.levels[i]).map_or(1, |v| v.len().clamp(1, 18));
+        let rows = s.ws.breadcrumbs.items(&p.levels[i]).map_or(1, |v| v.len().clamp(1, 18));
         margins.push(r.height() - rows as f32 * ROW_H);
     }
     assert!(margins.windows(2).all(|m| (m[0] - m[1]).abs() < 0.5), "heights are whole rows plus the same padding: {margins:?}");
@@ -840,13 +840,13 @@ fn chain_moves_left_at_the_right_edge() {
         assert!(width >= chain, "the test window fits the chain");
         ide.resize(egui::vec2(width, 800.0));
         ide.settle();
-        let moved = ide.state().breadcrumbs.popup.as_ref().expect("a resize keeps the popup").anchor.x;
+        let moved = ide.state().ws.breadcrumbs.popup.as_ref().expect("a resize keeps the popup").anchor.x;
         if (moved - anchor).abs() <= 0.5 {
             break;
         }
         anchor = moved;
     }
-    assert!(ide.state().breadcrumbs.popup.is_some(), "a resize keeps the popup");
+    assert!(ide.state().ws.breadcrumbs.popup.is_some(), "a resize keeps the popup");
     assert_rests_on_status_bar(&ide);
     let rects = popup_rects(&ide);
     assert_eq!(rects.len(), 3);

@@ -1,12 +1,12 @@
 //! The right pane of a Log tab: the changed files of the selected commits as a tree in the
-//! Project tree's look, the commit info below it, and the file context menu (Show Diff,
+//! Project tree's look, and the file context menu (Show Diff,
 //! Compare with Local, Edit Source, Cherry-Pick Selected Changes, Create Patch, Copy Patch).
 
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
-use egui::{pos2, vec2, Align, Align2, Frame, Id, Key, Layout, Margin, Modifiers, Rect, RichText, ScrollArea, Sense, Ui};
-use ide_git::{ChangeKind, ChangedFile, CommitDetails, Oid};
+use egui::{pos2, vec2, Align, Align2, Frame, Id, Key, Layout, Modifiers, Rect, RichText, ScrollArea, Sense, Ui};
+use ide_git::{ChangeKind, ChangedFile, Oid};
 
 use super::log::{self, LogView};
 use crate::icons::{self, Icon};
@@ -166,9 +166,6 @@ pub struct ChangesPane {
     files: Vec<ChangedFile>,
     error: Option<String>,
     tree: Tree,
-    /// The lead commit whose details were asked for last.
-    details_requested: Option<Oid>,
-    details: Option<CommitDetails>,
     /// Collapsed folders by path. Everything starts expanded.
     collapsed: HashSet<PathBuf>,
     /// Selected rows by path; files or folders.
@@ -183,10 +180,6 @@ impl ChangesPane {
     /// The files of the current selection, once loaded.
     pub fn files(&self) -> Option<&[ChangedFile]> {
         (self.requested.as_ref() == Some(&self.key) && self.error.is_none()).then_some(self.files.as_slice())
-    }
-
-    pub fn details(&self) -> Option<&CommitDetails> {
-        self.details.as_ref().filter(|d| Some(d.info.oid) == self.details_requested)
     }
 
     /// The visible tree rows.
@@ -238,12 +231,6 @@ impl ChangesPane {
             self.collapsed.clear();
             self.selected.clear();
             self.anchor = None;
-        }
-    }
-
-    pub(super) fn set_details(&mut self, oid: Oid, details: Option<CommitDetails>) {
-        if self.details_requested == Some(oid) {
-            self.details = details;
         }
     }
 
@@ -314,13 +301,6 @@ pub(super) fn show(state: &mut AppState, view: &mut LogView, ui: &mut Ui) {
         view.changes.requested = Some(key.clone());
         log::load_changes(state, view.id, key);
     }
-    let lead = view.selected();
-    if view.changes.details_requested != lead {
-        view.changes.details_requested = lead;
-        if let Some(oid) = lead {
-            log::load_details(state, view.id, oid);
-        }
-    }
 
     let mut expand_all = false;
     let mut collapse_all = false;
@@ -345,13 +325,6 @@ pub(super) fn show(state: &mut AppState, view: &mut LogView, ui: &mut Ui) {
         pane.collapsed = pane.tree.folders().map(|n| n.path.clone()).collect();
     }
 
-    egui::TopBottomPanel::bottom(Id::new(("git-log-commit-info", view.id)))
-        .resizable(true)
-        .default_height((ui.available_height() * 0.35).max(60.0))
-        .height_range(60.0..=600.0)
-        .frame(Frame::NONE.inner_margin(Margin { left: 4, right: 4, top: 6, bottom: 0 }))
-        .show_inside(ui, |ui| commit_info(state, view.changes.details(), ui));
-
     let oids = view.selection_oldest_first();
     egui::CentralPanel::default().frame(Frame::NONE).show_inside(ui, |ui| {
         if let Some(e) = &view.changes.error {
@@ -374,7 +347,7 @@ pub(super) fn show(state: &mut AppState, view: &mut LogView, ui: &mut Ui) {
 
 /// The focus id of a view's changes tree.
 fn focus_id(view_id: u64) -> Id {
-    Id::new(("git-changes-tree", view_id))
+    crate::workspace::wid(("git-changes-tree", view_id))
 }
 
 fn tree(state: &mut AppState, view_id: u64, pane: &mut ChangesPane, ui: &mut Ui) -> Option<(FileAction, Vec<ChangedFile>)> {
@@ -388,10 +361,10 @@ fn tree(state: &mut AppState, view_id: u64, pane: &mut ChangesPane, ui: &mut Ui)
     }
     let clicks = state.clicks;
     // Files at the top of the repository: the root row shows the repository folder.
-    let root_name = state.git.repo.as_ref().and_then(|r| r.workdir().file_name()).map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    let root_name = state.ws.git.repo.as_ref().and_then(|r| r.workdir().file_name()).map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
     let (command, shift) = ui.input(|i| (i.modifiers.command, i.modifiers.shift));
     let row_h = t.space.row_h;
-    let mut area = ScrollArea::vertical().id_salt(("git-changes-rows", view_id)).auto_shrink([false, false]);
+    let mut area = ScrollArea::vertical().id_salt(("git-changes-rows", view_id)).auto_shrink([false, false]).drag_to_scroll(false);
     if let Some(i) = pane.scroll_to.take() {
         let top = i as f32 * row_h;
         if top < pane.view_offset {
@@ -409,7 +382,7 @@ fn tree(state: &mut AppState, view_id: u64, pane: &mut ChangesPane, ui: &mut Ui)
         for i in range {
             let row = &rows[i];
             let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), row_h), Sense::hover());
-            let resp = ui.interact(rect, Id::new(("git-change-row", view_id, &row.path)), Sense::click());
+            let resp = ui.interact(rect, crate::workspace::wid(("git-change-row", view_id, &row.path)), Sense::click());
             let selected = pane.selected.contains(&row.path);
             let name = if i == 0 && row.name.is_empty() { root_name.as_str() } else { row.name.as_str() };
             let label = match (i, row.is_dir) {
@@ -499,7 +472,8 @@ fn tree(state: &mut AppState, view_id: u64, pane: &mut ChangesPane, ui: &mut Ui)
     if let Some(p) = toggle {
         pane.toggle(&p);
     }
-    ui.interact(out.inner_rect, focus, Sense::focusable_noninteractive());
+    let node = ui.interact(out.inner_rect, focus, Sense::focusable_noninteractive());
+    crate::util::label_widget(&node, egui::WidgetType::Other, "Changes tree");
     if pressed.is_some() || right.is_some() {
         ui.memory_mut(|m| m.request_focus(focus));
     }
@@ -559,51 +533,9 @@ fn keyboard(pane: &mut ChangesPane, rows: &[ChangeRow], ui: &mut Ui) -> Option<F
     None
 }
 
-fn commit_info(state: &mut AppState, details: Option<&CommitDetails>, ui: &mut Ui) {
-    let t = &theme::T;
-    let Some(d) = details else {
-        ui.label(RichText::new("Loading...").color(t.text_dim));
-        return;
-    };
-    let mut copy: Option<String> = None;
-    ScrollArea::vertical().id_salt("git-log-message").auto_shrink([false, false]).show(ui, |ui| {
-        ui.add(egui::Label::new(RichText::new(d.message.trim_end()).color(t.text_bright)).wrap());
-        ui.add_space(8.0);
-        let info = &d.info;
-        ui.horizontal(|ui| {
-            ui.label(RichText::new(info.oid.to_string()).monospace().color(t.text_dim));
-            if ui.small_button("Copy").on_hover_text("Copy Revision Number").clicked() {
-                copy = Some(info.oid.to_string());
-            }
-        });
-        ui.label(format!("{} <{}>", info.author_name, info.author_email));
-        ui.label(RichText::new(format!("on {}", log::format_time_full(info.author_time, info.author_offset_minutes))).color(t.text_dim));
-        if d.committer_name != info.author_name || d.committer_email != info.author_email {
-            ui.label(RichText::new(format!("committed by {} <{}>", d.committer_name, d.committer_email)).color(t.text_dim));
-        }
-        if !info.parents.is_empty() {
-            let parents: Vec<String> = info.parents.iter().map(log::short).collect();
-            ui.label(RichText::new(format!("parents: {}", parents.join(", "))).color(t.text_dim));
-        }
-        if !info.refs.is_empty() {
-            ui.horizontal_wrapped(|ui| {
-                for r in &info.refs {
-                    let w = ui.fonts(|f| f.layout_no_wrap(r.name.clone(), t.tiny_font(), t.text).size().x) + 8.0;
-                    let (rect, _) = ui.allocate_exact_size(vec2(w, 16.0), Sense::hover());
-                    log::draw_ref_label(ui.painter(), rect.left_center(), r);
-                }
-            });
-        }
-    });
-    if let Some(text) = copy {
-        let ctx = ui.ctx().clone();
-        state.platform.copy_text(&ctx, &text);
-    }
-}
-
 /// Runs a file action on `files` of the selected commits (`oids`, oldest first).
 pub fn run_file_action(state: &mut AppState, oids: Vec<Oid>, files: Vec<ChangedFile>, action: FileAction) {
-    let Some(repo) = state.git.repo.clone() else { return };
+    let Some(repo) = state.ws.git.repo.clone() else { return };
     let paths: Vec<PathBuf> = files.iter().map(|f| f.path.clone()).collect();
     match action {
         FileAction::ShowDiff => {

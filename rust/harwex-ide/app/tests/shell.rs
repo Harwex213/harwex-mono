@@ -16,12 +16,12 @@ fn layout_renders_with_git_colors() {
     let repo = changed_repo(fx.path("repo"));
     let mut ide = Ide::open(SUITE, &repo.dir);
     let root = ide.root();
-    let status = &ide.state().git.status;
+    let status = &ide.state().ws.git.status;
     assert_eq!(status.get(&root.join("src/app.ts")), Some(&ChangeKind::Modified));
     assert_eq!(status.get(&root.join("src/added.ts")), Some(&ChangeKind::Added));
     assert_eq!(status.get(&root.join("scratch.txt")), Some(&ChangeKind::Untracked));
     assert_eq!(status.get(&root.join("docs/notes.md")), Some(&ChangeKind::Deleted));
-    assert!(ide.state().git.dirty_dirs.contains(&root.join("src")));
+    assert!(ide.state().ws.git.dirty_dirs.contains(&root.join("src")));
     ide.assert_text("Branch main");
     ide.snapshot("layout");
 
@@ -64,12 +64,12 @@ fn double_click_follows_other_clicks() {
     ide.click_at(c);
     ide.idle(0.6);
     ide.double_click_now(c);
-    assert!(ide.state().tree.is_expanded(&src), "a double click after a selecting click expands");
+    assert!(ide.state().ws.tree.is_expanded(&src), "a double click after a selecting click expands");
 
     // Collapse again 0.6 s after the first double click.
     ide.idle(0.6);
     ide.double_click_now(c);
-    assert!(!ide.state().tree.is_expanded(&src), "a second double click collapses");
+    assert!(!ide.state().ws.tree.is_expanded(&src), "a second double click collapses");
 
     // A quick click on another row is a new single click, not the second click of a double.
     let readme = ide.rect("README.md").center();
@@ -77,14 +77,14 @@ fn double_click_follows_other_clicks() {
     ide.click_now(c);
     ide.idle(0.1);
     ide.click_now(readme);
-    assert!(ide.state().tabs.list.is_empty(), "a single click on a file opens nothing");
-    assert!(!ide.state().tree.is_expanded(&src));
+    assert!(ide.state().ws.tabs.list.is_empty(), "a single click on a file opens nothing");
+    assert!(!ide.state().ws.tree.is_expanded(&src));
 
     // A third quick click on the chevron toggles again; the second one only ends the double click.
     let chevron = ide.rect("Expand src").center();
     ide.idle(1.5);
     ide.click_now(chevron);
-    assert!(ide.state().tree.is_expanded(&src), "a chevron click toggles at once");
+    assert!(ide.state().ws.tree.is_expanded(&src), "a chevron click toggles at once");
 }
 
 /// A fast double click as a late UI thread sees it: several button events in one frame, frames
@@ -115,14 +115,14 @@ fn fast_double_clicks_toggle_once() {
     ide.move_to(c);
     let mut failed = Vec::new();
     for (name, frames) in cases {
-        let before = ide.state().tree.is_expanded(&src);
+        let before = ide.state().ws.tree.is_expanded(&src);
         // Each case is a fresh chain: no click in the double-click interval before it.
         ide.idle(1.5);
         for (dt, buttons) in &frames {
             ide.pointer_frame(*dt, buttons);
         }
         ide.steps(3);
-        if ide.state().tree.is_expanded(&src) == before {
+        if ide.state().ws.tree.is_expanded(&src) == before {
             failed.push(format!("{name}: the double click toggles the folder once"));
             continue;
         }
@@ -132,7 +132,7 @@ fn fast_double_clicks_toggle_once() {
             ide.pointer_frame(*dt, buttons);
         }
         ide.steps(3);
-        if ide.state().tree.is_expanded(&src) != before {
+        if ide.state().ws.tree.is_expanded(&src) != before {
             failed.push(format!("{name}: a second double click 0.6 s later toggles it back"));
         }
     }
@@ -177,11 +177,11 @@ fn tabs_open_and_close() {
 
     // Double-click opens a file from the tree.
     ide.double_click("src/app.ts");
-    ide.wait_for("app.ts tab", |s| s.tabs.list.len() == 1);
+    ide.wait_for("app.ts tab", |s| s.ws.tabs.list.len() == 1);
     ide.double_click("src/util.ts");
-    ide.wait_for("util.ts tab", |s| s.tabs.list.len() == 2);
+    ide.wait_for("util.ts tab", |s| s.ws.tabs.list.len() == 2);
     ide.double_click("README.md");
-    ide.wait_for("README tab", |s| s.tabs.list.len() == 3);
+    ide.wait_for("README tab", |s| s.ws.tabs.list.len() == 3);
     ide.settle();
     assert_eq!(ide.tab_titles(), ["app.ts", "util.ts", "README.md"]);
     assert_eq!(ide.active_title().as_deref(), Some("README.md"));
@@ -221,20 +221,20 @@ fn dirty_dot_save_and_close_prompt() {
     // Typing goes to the focused editor at the caret (start of the file).
     ide.type_text("// edited\n");
     ide.settle();
-    assert!(ide.state().tabs.active_tab().is_some_and(|t| t.is_dirty()));
+    assert!(ide.state().ws.tabs.active_tab().is_some_and(|t| t.is_dirty()));
     assert!(ide.active_text().starts_with("// edited\nexport function add"));
     ide.snapshot("dirty_tab");
 
     // Cmd+S writes on a worker and clears the dot.
     ide.cmd(Key::S);
-    ide.wait_for("saved", |s| s.tabs.active_tab().is_some_and(|t| !t.is_dirty()));
+    ide.wait_for("saved", |s| s.ws.tabs.active_tab().is_some_and(|t| !t.is_dirty()));
     assert!(repo.read("src/util.ts").starts_with("// edited\n"));
 
     // Closing a dirty tab asks first. "Don't Save" closes it and keeps the disk file.
     ide.type_text("x");
     ide.cmd(Key::W);
     ide.settle();
-    assert!(ide.state().confirm_close.is_some());
+    assert!(ide.state().ws.confirm_close.is_some());
     ide.assert_text("Save changes to util.ts?");
     ide.snapshot("close_prompt");
     ide.click("Cancel");
@@ -255,23 +255,23 @@ fn search_everywhere_with_double_shift() {
     let mut ide = Ide::open(SUITE, &repo.dir);
     ide.double_shift();
     ide.settle();
-    assert!(ide.state().search.open, "Shift Shift opens Search Everywhere");
+    assert!(ide.state().ws.search.open, "Shift Shift opens Search Everywhere");
     ide.type_text("util");
-    ide.wait_for("results", |s| !s.search.results().is_empty());
+    ide.wait_for("results", |s| !s.ws.search.results().is_empty());
     ide.settle();
-    assert_eq!(ide.state().search.results()[0].path, "src/util.ts");
+    assert_eq!(ide.state().ws.search.results()[0].path, "src/util.ts");
     ide.snapshot("search_util");
     ide.key(Key::Enter);
-    ide.wait_for("util.ts opened", |s| s.tabs.active_editor().is_some_and(|e| e.path.ends_with("src/util.ts")));
-    assert!(!ide.state().search.open);
+    ide.wait_for("util.ts opened", |s| s.ws.tabs.active_editor().is_some_and(|e| e.path.ends_with("src/util.ts")));
+    assert!(!ide.state().ws.search.open);
 
     // Escape closes the popup without opening anything.
     ide.double_shift();
     ide.settle();
-    assert!(ide.state().search.open);
+    assert!(ide.state().ws.search.open);
     ide.key(Key::Escape);
     ide.settle();
-    assert!(!ide.state().search.open);
+    assert!(!ide.state().ws.search.open);
     assert_eq!(ide.tab_titles(), ["util.ts"]);
 }
 
@@ -287,11 +287,11 @@ fn search_everywhere_ranking_with_cmd_shift_o() {
     let mut ide = Ide::open(SUITE, &repo.dir);
     ide.cmd_shift(Key::O);
     ide.settle();
-    assert!(ide.state().search.open, "Cmd+Shift+O opens Search Everywhere");
+    assert!(ide.state().ws.search.open, "Cmd+Shift+O opens Search Everywhere");
     ide.type_text("appts");
-    ide.wait_for("results", |s| s.search.results().len() >= 3);
+    ide.wait_for("results", |s| s.ws.search.results().len() >= 3);
     ide.settle();
-    let paths: Vec<String> = ide.state().search.results().iter().map(|h| h.path.clone()).collect();
+    let paths: Vec<String> = ide.state().ws.search.results().iter().map(|h| h.path.clone()).collect();
     assert_eq!(paths[0], "src/app.ts", "the exact file name wins: {paths:?}");
     let pos = |p: &str| paths.iter().position(|x| x == p).unwrap_or(usize::MAX);
     assert!(pos("src/app.ts") < pos("packages/a/p/p/t/s.ts"), "{paths:?}");
@@ -299,10 +299,10 @@ fn search_everywhere_ranking_with_cmd_shift_o() {
 
     // Arrow keys move the selection; Enter opens the selected file.
     ide.key(Key::ArrowDown);
-    assert_eq!(ide.state().search.selected(), 1);
+    assert_eq!(ide.state().ws.search.selected(), 1);
     let second = paths[1].clone();
     ide.key(Key::Enter);
-    ide.wait_for("second hit opened", |s| s.tabs.active_editor().is_some_and(|e| e.path.ends_with(&second)));
+    ide.wait_for("second hit opened", |s| s.ws.tabs.active_editor().is_some_and(|e| e.path.ends_with(&second)));
 }
 
 #[test]
@@ -312,24 +312,24 @@ fn find_in_files() {
     let mut ide = Ide::open(SUITE, &repo.dir);
     ide.cmd_shift(Key::F);
     ide.settle();
-    assert!(ide.state().find.dialog_open);
+    assert!(ide.state().ws.find.dialog_open);
     ide.type_text("add");
     ide.snapshot("find_dialog");
     ide.key(Key::Enter);
-    ide.wait_for("search finished", |s| !s.find.searching && !s.find.searched_for.is_empty());
+    ide.wait_for("search finished", |s| !s.ws.find.searching && !s.ws.find.searched_for.is_empty());
     ide.settle();
-    assert_eq!(ide.state().layout.left, Some(ToolWindow::Find));
+    assert_eq!(ide.state().ws.layout.left, Some(ToolWindow::Find));
     // `add` appears in app.ts twice (import, call) and in util.ts once.
-    assert_eq!(ide.state().find.hit_count(), 3);
-    assert_eq!(ide.state().find.results.len(), 2);
+    assert_eq!(ide.state().ws.find.hit_count(), 3);
+    assert_eq!(ide.state().ws.find.results.len(), 2);
     ide.assert_text("\"add\": 3 matches in 2 files");
     ide.snapshot("find_results");
 
     // A click on a hit opens the file at the match.
     ide.click_containing("const x = add(1, 2);");
-    ide.wait_for("app.ts opened", |s| s.tabs.active_editor().is_some_and(|e| e.path.ends_with("src/app.ts")));
+    ide.wait_for("app.ts opened", |s| s.ws.tabs.active_editor().is_some_and(|e| e.path.ends_with("src/app.ts")));
     ide.settle();
-    let c = ide.state().tabs.active_editor().map(|e| e.view.cursor()).expect("editor");
+    let c = ide.state().ws.tabs.active_editor().map(|e| e.view.cursor()).expect("editor");
     assert_eq!((c.line, c.column), (3, 12));
 }
 
@@ -345,7 +345,7 @@ fn status_bar_shows_language_without_caret_or_branch() {
     let p = ide.caret_pos(3, 8);
     ide.click_at(p);
     ide.settle();
-    let c = ide.state().tabs.active_editor().map(|e| e.view.cursor()).expect("editor");
+    let c = ide.state().ws.tabs.active_editor().map(|e| e.view.cursor()).expect("editor");
     assert_eq!((c.line, c.column), (3, 8));
     ide.assert_no_text("4:9");
     ide.assert_text("TypeScript");
@@ -362,30 +362,30 @@ fn tool_window_toggles() {
     let fx = Fixture::new(SUITE, "toggles");
     let repo = changed_repo(fx.path("repo"));
     let mut ide = Ide::open(SUITE, &repo.dir);
-    assert_eq!(ide.state().layout.left, Some(ToolWindow::Project));
+    assert_eq!(ide.state().ws.layout.left, Some(ToolWindow::Project));
     ide.click("Commit tool window");
     ide.settle();
-    assert_eq!(ide.state().layout.left, Some(ToolWindow::Commit));
+    assert_eq!(ide.state().ws.layout.left, Some(ToolWindow::Commit));
     assert!(ide.is_selected("Commit tool window"));
     ide.click("Notifications tool window");
     ide.settle();
-    assert_eq!(ide.state().layout.bottom, Some(ToolWindow::Notifications));
+    assert_eq!(ide.state().ws.layout.bottom, Some(ToolWindow::Notifications));
     ide.snapshot("commit_and_notifications");
 
     // Clicking the active strip button hides the window.
     ide.click("Commit tool window");
     ide.settle();
-    assert_eq!(ide.state().layout.left, None);
+    assert_eq!(ide.state().ws.layout.left, None);
     // The header's hide button hides the bottom window.
     ide.click("Hide Notifications");
     ide.settle();
-    assert_eq!(ide.state().layout.bottom, None);
+    assert_eq!(ide.state().ws.layout.bottom, None);
     ide.snapshot("all_hidden");
 
     // Cmd+K opens the Commit window.
     ide.cmd(Key::K);
     ide.settle();
-    assert_eq!(ide.state().layout.left, Some(ToolWindow::Commit));
+    assert_eq!(ide.state().ws.layout.left, Some(ToolWindow::Commit));
 }
 
 #[test]
@@ -407,10 +407,10 @@ fn layout_persists_through_storage() {
     // A new app restores the layout and reopens the last folder from the same storage.
     let options = harwex_ide::AppOptions { project: None, restore_last_folder: true, ..test_options(None) };
     let mut ide = Ide::with_options(SUITE, options, Some(&storage));
-    ide.wait_for("last folder reopened", |s| s.project.as_ref().is_some_and(|p| p.root == root) && s.git.status_ms.is_some());
+    ide.wait_for("last folder reopened", |s| s.ws.project.as_ref().is_some_and(|p| p.root == root) && s.ws.git.status_ms.is_some());
     ide.settle();
-    assert_eq!(ide.state().layout.left, Some(ToolWindow::Find));
-    assert_eq!(ide.state().layout.bottom, Some(ToolWindow::Git));
+    assert_eq!(ide.state().ws.layout.left, Some(ToolWindow::Find));
+    assert_eq!(ide.state().ws.layout.bottom, Some(ToolWindow::Git));
     ide.snapshot("restored_layout");
 }
 
@@ -422,23 +422,23 @@ fn empty_editor_hints_and_recent_files() {
     let repo = basic_repo(fx.path("repo"));
     let mut ide = Ide::open(SUITE, &repo.dir);
     assert!(ide.has("Empty editor"));
-    assert!(ide.state().tabs.list.is_empty());
+    assert!(ide.state().ws.tabs.list.is_empty());
     ide.snapshot("empty_editor");
 
     ide.open_file("src/util.ts");
     ide.open_file("src/app.ts");
     ide.cmd(Key::E);
     ide.settle();
-    assert!(ide.state().search.open && ide.state().search.recent_mode);
-    let hits: Vec<String> = ide.state().search.results().iter().map(|h| h.path.clone()).collect();
+    assert!(ide.state().ws.search.open && ide.state().ws.search.recent_mode);
+    let hits: Vec<String> = ide.state().ws.search.results().iter().map(|h| h.path.clone()).collect();
     assert_eq!(hits, ["src/app.ts", "src/util.ts"]);
-    assert_eq!(ide.state().search.selected(), 1, "the previous file is preselected");
+    assert_eq!(ide.state().ws.search.selected(), 1, "the previous file is preselected");
     ide.assert_text("Recent Files");
     ide.snapshot("recent_files");
     ide.key(Key::Enter);
     ide.settle();
     assert_eq!(ide.active_title().as_deref(), Some("util.ts"));
-    assert!(!ide.state().search.open);
+    assert!(!ide.state().ws.search.open);
 }
 
 /// The title bar: project badge and name, Settings, then the current branch. The branch is
@@ -470,13 +470,13 @@ fn title_bar_widgets() {
     // A click on the branch does nothing.
     ide.click("Branch main");
     ide.settle();
-    assert!(!ide.state().git_ui.branches.is_open());
+    assert!(!ide.state().ws.git_ui.branches.is_open());
     // Ctrl+Shift+` opens the branches popup below the branch, and closes it again.
     ide.key_mods(CTRL_SHIFT, Key::Backtick);
-    ide.wait_until("branches popup", |ide| ide.state().git_ui.branches.is_open() && ide.has("Fetch"));
+    ide.wait_until("branches popup", |ide| ide.state().ws.git_ui.branches.is_open() && ide.has("Fetch"));
     ide.key_mods(CTRL_SHIFT, Key::Backtick);
     ide.settle();
-    assert!(!ide.state().git_ui.branches.is_open());
+    assert!(!ide.state().ws.git_ui.branches.is_open());
 
     // Settings opens a menu.
     ide.click("Settings");
@@ -488,12 +488,12 @@ fn title_bar_widgets() {
     // The shortcuts of the removed buttons still work.
     ide.double_shift();
     ide.settle();
-    assert!(ide.state().search.open && !ide.state().search.recent_mode);
+    assert!(ide.state().ws.search.open && !ide.state().ws.search.recent_mode);
     ide.key(Key::Escape);
     ide.settle();
     ide.cmd(Key::K);
     ide.settle();
-    assert_eq!(ide.state().layout.left, Some(ToolWindow::Commit));
+    assert_eq!(ide.state().ws.layout.left, Some(ToolWindow::Commit));
 }
 
 fn tree_focused(ide: &Ide) -> bool {
@@ -517,7 +517,7 @@ fn tree_selection_follows_focus() {
 
     // A double click opens the file; the editor takes the focus and the row turns grey.
     ide.double_click("src/util.ts");
-    ide.wait_for("util.ts tab", |s| s.tabs.active_editor().is_some());
+    ide.wait_for("util.ts tab", |s| s.ws.tabs.active_editor().is_some());
     ide.settle();
     assert!(ide.is_focused("Editor util.ts") && !tree_focused(&ide));
     assert!(ide.is_selected("src/util.ts"));
@@ -540,7 +540,7 @@ fn tree_keyboard() {
     let repo = basic_repo(fx.path("repo"));
     let mut ide = Ide::open(SUITE, &repo.dir);
     let root = ide.root();
-    let selected = |ide: &Ide| ide.state().tree.selected.as_ref().map(|p| p.strip_prefix(&root).expect("under root").display().to_string());
+    let selected = |ide: &Ide| ide.state().ws.tree.selected.as_ref().map(|p| p.strip_prefix(&root).expect("under root").display().to_string());
     // Rows: docs, src, .gitignore, README.md.
     ide.click("docs");
     ide.key(Key::ArrowDown);
@@ -567,7 +567,7 @@ fn tree_keyboard() {
     assert_eq!(selected(&ide).as_deref(), Some("src/app.ts"));
     // Enter on a file opens it.
     ide.key(Key::Enter);
-    ide.wait_for("app.ts tab", |s| s.tabs.active_editor().is_some());
+    ide.wait_for("app.ts tab", |s| s.ws.tabs.active_editor().is_some());
     assert_eq!(ide.active_title().as_deref(), Some("app.ts"));
 }
 
@@ -601,7 +601,7 @@ fn tree_keeps_focus_while_pressed() {
 
     // A press on an unfocused tree takes the focus at once, before the release.
     ide.double_click("README.md");
-    ide.wait_for("README tab", |s| s.tabs.active_editor().is_some());
+    ide.wait_for("README tab", |s| s.ws.tabs.active_editor().is_some());
     ide.settle();
     assert!(!tree_focused(&ide));
     ide.move_to(p);
@@ -633,23 +633,23 @@ fn menu_shown(ide: &Ide) -> bool {
 /// each. Click: `s` selects, `t` toggles, `.` nothing. Double click: `t` toggles. Right-click:
 /// `m` shows the menu.
 fn row_outcome(ide: &mut Ide, dir: &std::path::Path, at: egui::Pos2) -> [char; 3] {
-    ide.state_mut().tree.selected = None;
-    let before = ide.state().tree.is_expanded(dir);
+    ide.state_mut().ws.tree.selected = None;
+    let before = ide.state().ws.tree.is_expanded(dir);
     ide.click_at(at);
-    let toggled = ide.state().tree.is_expanded(dir) != before;
-    let selected = ide.state().tree.selected.as_deref() == Some(dir);
+    let toggled = ide.state().ws.tree.is_expanded(dir) != before;
+    let selected = ide.state().ws.tree.selected.as_deref() == Some(dir);
     let click = match (toggled, selected) {
         (true, false) => 't',
         (false, true) => 's',
         (true, true) => 'B',
         (false, false) => '.',
     };
-    ide.state_mut().tree.set_expanded(dir, before);
+    ide.state_mut().ws.tree.set_expanded(dir, before);
     ide.double_click_at(at);
-    let double = if ide.state().tree.is_expanded(dir) != before { 't' } else { '.' };
-    ide.state_mut().tree.set_expanded(dir, before);
+    let double = if ide.state().ws.tree.is_expanded(dir) != before { 't' } else { '.' };
+    ide.state_mut().ws.tree.set_expanded(dir, before);
     ide.right_click_at(at);
-    let right = if menu_shown(ide) && ide.state().tree.selected.as_deref() == Some(dir) { 'm' } else { '.' };
+    let right = if menu_shown(ide) && ide.state().ws.tree.selected.as_deref() == Some(dir) { 'm' } else { '.' };
     if ide.ctx().is_context_menu_open() {
         ide.key(Key::Escape);
     }
@@ -671,8 +671,8 @@ fn tree_row_hit_zones() {
     let r = ide.rect("docs");
     assert_eq!(r.max.y, ide.rect("src").min.y, "the row rects touch");
     let src = root.join("src");
-    ide.state_mut().tree.set_expanded(&src, true);
-    ide.state_mut().tree.set_expanded(&root.join("src/core"), true);
+    ide.state_mut().ws.tree.set_expanded(&src, true);
+    ide.state_mut().ws.tree.set_expanded(&root.join("src/core"), true);
     ide.wait_until("src/core/deep listed", |ide| ide.has("src/core/deep"));
     let t = &harwex_ide::theme::T;
     for width in [300.0, 250.0, 400.0, 600.0] {
@@ -719,18 +719,18 @@ fn orphaned_context_menu_closes() {
     let mut ide = Ide::open(SUITE, &repo.dir);
     let root = ide.root();
     for dir in ["src", "src/core", "docs"] {
-        ide.state_mut().tree.set_expanded(&root.join(dir), true);
+        ide.state_mut().ws.tree.set_expanded(&root.join(dir), true);
     }
     ide.wait_until("src/core listed", |ide| ide.has("src/core/deep"));
 
     // A menu in the Commit window, then the Project window comes back without a click.
-    ide.state_mut().layout.left = Some(ToolWindow::Commit);
+    ide.state_mut().ws.layout.left = Some(ToolWindow::Commit);
     ide.settle();
     let c = ide.rect("src/app.ts");
     let at = egui::pos2(c.min.x + 120.0, c.center().y);
     ide.right_click_at(at);
     assert!(menu_shown(&ide), "the Commit row menu opens");
-    ide.state_mut().layout.left = Some(ToolWindow::Project);
+    ide.state_mut().ws.layout.left = Some(ToolWindow::Project);
     ide.settle();
     assert!(!ide.ctx().is_context_menu_open(), "the menu of a row that is not drawn closes");
     // A tree row under the old menu rect gets its own menu on a right-click.
@@ -774,14 +774,14 @@ fn select_opened_file() {
     assert!(header.max.x <= ide.rect("Hide Project").min.x, "the button sits left of the hide button");
     ide.open_file("src/core/deep/nested.ts");
     let root = ide.root();
-    assert!(!ide.state().tree.is_expanded(&root.join("src")));
+    assert!(!ide.state().ws.tree.is_expanded(&root.join("src")));
     assert!(!ide.has("src/core/deep/nested.ts"));
 
     ide.click("Select Opened File");
     ide.wait_until("row revealed", |ide| ide.has("src/core/deep/nested.ts"));
     ide.settle();
     for dir in ["src", "src/core", "src/core/deep"] {
-        assert!(ide.state().tree.is_expanded(&root.join(dir)), "{dir} expanded");
+        assert!(ide.state().ws.tree.is_expanded(&root.join(dir)), "{dir} expanded");
     }
     assert!(ide.is_selected("src/core/deep/nested.ts") && tree_focused(&ide));
     ide.snapshot("select_opened_file");
@@ -799,10 +799,10 @@ fn select_opened_file() {
     ide.double_click("src");
     ide.wait_until("src collapsed", |ide| !ide.has("src/core/deep/nested.ts"));
     ide.click("Terminal tool window");
-    ide.wait_until("terminal focused", |ide| ide.state().terminals.has_focus(&ide.ctx()));
+    ide.wait_until("terminal focused", |ide| ide.state().ws.terminals.has_focus(&ide.ctx()));
     ide.key_mods(ALT, Key::F1);
     ide.settle();
-    assert!(!ide.state().tree.is_expanded(&root.join("src")));
+    assert!(!ide.state().ws.tree.is_expanded(&root.join("src")));
 }
 
 /// The tool window strips: icons only, the open windows highlighted, tooltips with the titles.
@@ -826,7 +826,7 @@ fn tool_strips() {
     let editor = ide.rect("Empty editor");
     assert!(editor.max.x <= SIZE.x - gap && editor.max.x > SIZE.x - strip_w, "the editor reaches the right edge: {editor:?}");
     ide.click("Terminal tool window");
-    ide.wait_until("terminal open", |ide| ide.state().layout.bottom == Some(ToolWindow::Terminal) && ide.state().terminals.len() == 1);
+    ide.wait_until("terminal open", |ide| ide.state().ws.layout.bottom == Some(ToolWindow::Terminal) && ide.state().ws.terminals.len() == 1);
     ide.settle();
     assert!(ide.is_selected("Project tool window") && ide.is_selected("Terminal tool window"));
     assert!(!ide.is_selected("Commit tool window"));

@@ -23,6 +23,25 @@ pub fn startup_folder(args: &[String], cwd: Option<&Path>, tty: bool) -> Option<
     from_terminal.then(|| cwd.to_path_buf())
 }
 
+/// The folder as the running instance must see it: canonical when it exists, else made
+/// absolute against `cwd`. The new process is not the UI thread, so it may block on the disk.
+pub fn handoff_folder(folder: &Path, cwd: Option<&Path>) -> PathBuf {
+    if let Ok(real) = std::fs::canonicalize(folder) {
+        return real;
+    }
+    match cwd {
+        Some(cwd) if folder.is_relative() => cwd.join(folder),
+        _ => folder.to_path_buf(),
+    }
+}
+
+/// `--new-instance` starts a separate IDE even when one already runs.
+pub fn take_new_instance_flag(args: &mut Vec<String>) -> bool {
+    let before = args.len();
+    args.retain(|a| a != "--new-instance");
+    args.len() != before
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -57,6 +76,22 @@ mod tests {
     #[test]
     fn flags_are_not_paths() {
         assert_eq!(startup_folder(&args(&["--verbose"]), Some(Path::new("/work")), false), Some(PathBuf::from("/work")));
+    }
+
+    #[test]
+    fn new_instance_flag_is_removed() {
+        let mut a = args(&["--new-instance", "dir"]);
+        assert!(take_new_instance_flag(&mut a));
+        assert_eq!(a, args(&["dir"]));
+        assert!(!take_new_instance_flag(&mut a));
+    }
+
+    #[test]
+    fn handoff_folder_is_absolute() {
+        let tmp = std::env::temp_dir();
+        let real = std::fs::canonicalize(&tmp).expect("canonical temp dir");
+        assert_eq!(handoff_folder(&tmp, None), real);
+        assert_eq!(handoff_folder(Path::new("no/such/dir"), Some(Path::new("/work"))), PathBuf::from("/work/no/such/dir"));
     }
 
     #[test]

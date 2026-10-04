@@ -138,11 +138,11 @@ pub fn parse(args: &mut Vec<String>) -> Option<TestScript> {
 /// Advances the script; called once per frame.
 pub fn tick(state: &mut AppState) {
     let Some(t) = &mut state.test else { return };
-    if state.project.is_none() {
+    if state.ws.project.is_none() {
         return;
     }
     if t.tree_hits.is_some() {
-        if state.tree.is_loaded(&state.project.as_ref().expect("project").root) {
+        if state.ws.tree.is_loaded(&state.ws.project.as_ref().expect("project").root) {
             tree_hits::tick(state);
         }
         if state.test.as_ref().and_then(|t| t.tree_hits.as_ref()).is_some_and(|h| h.is_done()) {
@@ -162,11 +162,11 @@ pub fn tick(state: &mut AppState) {
             state.open_location(&p, goto, false);
         }
         if let Some(q) = search {
-            state.search.open();
-            state.search.query = q;
+            state.ws.search.open();
+            state.ws.search.query = q;
         }
         if let Some(q) = find {
-            state.find.query = q;
+            state.ws.find.query = q;
             crate::find::start(state);
         }
         if let Some(cmd) = term {
@@ -178,7 +178,7 @@ pub fn tick(state: &mut AppState) {
         return;
     }
     // Steps run on the --open file; wait until its tab exists.
-    let tab = t.open.as_ref().and_then(|p| std::fs::canonicalize(p).ok()).and_then(|p| state.tabs.editor_by_path(&p));
+    let tab = t.open.as_ref().and_then(|p| std::fs::canonicalize(p).ok()).and_then(|p| state.ws.tabs.editor_by_path(&p));
     let Some(tab) = tab else {
         if t.open.is_none() {
             finish(state);

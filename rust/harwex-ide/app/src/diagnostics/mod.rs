@@ -7,8 +7,8 @@
 //! - Only open files are checked. After an edit the request waits 300 ms, older requests in
 //!   the queues are skipped, and the previous results stay visible, shifted through the
 //!   edit journal, until new ones arrive. A save asks again at once.
-//! - TS requests go through the TypeScript queue of `state.langs`, after the text sync.
-//!   Linters run on `state.langs.lint`, one queue thread for every `LintSource`.
+//! - TS requests go through the TypeScript queue of `state.ws.langs`, after the text sync.
+//!   Linters run on `state.ws.langs.lint`, one queue thread for every `LintSource`.
 //! - The UI (squiggles, scrollbar marks, the counts widget, F2, the Problems window) reads
 //!   only `Problem`s, so a new source plugs in as a `LintSource` and a `SourceId`.
 
@@ -276,6 +276,10 @@ pub trait LintSource: Send + Sync + 'static {
     fn stop_idle(&self, idle: Duration) -> Vec<String>;
     fn running(&self) -> usize;
     fn shutdown(&self);
+    /// Process ids of the running linter servers. Must not wait on a busy server.
+    fn pids(&self) -> Vec<u32> {
+        Vec::new()
+    }
 }
 
 type LintDone = Box<dyn FnOnce(Option<Result<Vec<Diagnostic>, String>>) + Send>;
@@ -397,6 +401,14 @@ impl LintQueue {
         self.sources.iter().filter(|s| s.id() == source).map(|s| s.running()).sum()
     }
 
+    pub fn pids(&self) -> Vec<u32> {
+        self.sources.iter().flat_map(|s| s.pids()).collect()
+    }
+
+    pub fn sources(&self) -> Arc<Vec<Arc<dyn LintSource>>> {
+        self.sources.clone()
+    }
+
     pub fn shutdown(&self) {
         for s in self.sources.iter() {
             s.shutdown();
@@ -427,7 +439,7 @@ pub fn schedule(state: &mut AppState) {
     let mut wake: Option<Duration> = None;
     let mut detect = Vec::new();
     let mut due = Vec::new();
-    for (id, e) in state.tabs.editors_mut() {
+    for (id, e) in state.ws.tabs.editors_mut() {
         if LangId::for_path(&e.path) != Some(LangId::TypeScript) || e.read_only {
             continue;
         }
@@ -463,11 +475,11 @@ pub fn schedule(state: &mut AppState) {
 
 fn start_detection(state: &mut AppState, id: TabId, path: PathBuf) {
     let dir = path.parent().unwrap_or(&path).to_path_buf();
-    if let Some(m) = state.diagnostics.markers.get(&dir).cloned() {
+    if let Some(m) = state.ws.diagnostics.markers.get(&dir).cloned() {
         apply_markers(state, id, m);
         return;
     }
-    if let Some(e) = state.tabs.editor_mut(id) {
+    if let Some(e) = state.ws.tabs.editor_mut(id) {
         e.problems.detecting = true;
     }
     let generation = state.project_generation();
@@ -477,8 +489,8 @@ fn start_detection(state: &mut AppState, id: TabId, path: PathBuf) {
             if state.project_generation() != generation {
                 return;
             }
-            state.diagnostics.markers.insert(dir, markers.clone());
-            if let Some(e) = state.tabs.editor_mut(id) {
+            state.ws.diagnostics.markers.insert(dir, markers.clone());
+            if let Some(e) = state.ws.tabs.editor_mut(id) {
                 e.problems.detecting = false;
             }
             apply_markers(state, id, markers);
@@ -487,14 +499,14 @@ fn start_detection(state: &mut AppState, id: TabId, path: PathBuf) {
 }
 
 fn apply_markers(state: &mut AppState, id: TabId, markers: Markers) {
-    let config = state.langs.config.diagnostics.clone();
-    let Some(e) = state.tabs.editor_mut(id) else { return };
+    let config = state.ws.langs.config.diagnostics.clone();
+    let Some(e) = state.ws.tabs.editor_mut(id) else { return };
     let plan = strategy::plan(e.lang == Some(LangId::TypeScript), &markers, &config);
     let notes = plan.notes.clone();
     e.problems.plan = Some(plan);
     for note in notes {
-        if !state.diagnostics.noted.contains(&note) {
-            state.diagnostics.noted.push(note.clone());
+        if !state.ws.diagnostics.noted.contains(&note) {
+            state.ws.diagnostics.noted.push(note.clone());
             state.notifications.log_only(crate::notifications::Level::Warning, "Diagnostics", note);
         }
     }
@@ -502,9 +514,9 @@ fn apply_markers(state: &mut AppState, id: TabId, markers: Markers) {
 
 /// Asks every planned source for the tab's current text.
 pub fn request(state: &mut AppState, id: TabId) {
-    state.diagnostics.generation += 1;
-    let generation = state.diagnostics.generation;
-    let Some(e) = state.tabs.editor_mut(id) else { return };
+    state.ws.diagnostics.generation += 1;
+    let generation = state.ws.diagnostics.generation;
+    let Some(e) = state.ws.tabs.editor_mut(id) else { return };
     let Some(plan) = e.problems.plan.clone() else { return };
     let version = e.doc.version();
     e.problems.requested = Some(version);
@@ -526,7 +538,7 @@ pub fn request(state: &mut AppState, id: TabId) {
     if plan.ts {
         crate::nav::flush_lsp(state, id);
         let (jobs, path, text, latest) = (state.jobs.clone(), path.clone(), text.clone(), latest.clone());
-        state.langs.bridge(LangId::TypeScript).run(move |server| {
+        state.ws.langs.bridge(LangId::TypeScript).run(move |server| {
             if latest.load(Ordering::SeqCst) != generation {
                 return;
             }
@@ -538,7 +550,7 @@ pub fn request(state: &mut AppState, id: TabId) {
     for target in targets {
         let source = target.source();
         let (jobs, done_text) = (state.jobs.clone(), text.clone());
-        state.langs.lint.send(LintCmd::Lint {
+        state.ws.langs.lint.send(LintCmd::Lint {
             target,
             path: path.clone(),
             text: text.to_string(),
@@ -554,7 +566,7 @@ pub fn request(state: &mut AppState, id: TabId) {
 }
 
 fn deliver(state: &mut AppState, id: TabId, generation: u64, version: u64, source: SourceId, result: Result<Option<Vec<Problem>>, String>) {
-    let Some(e) = state.tabs.editor_mut(id) else { return };
+    let Some(e) = state.ws.tabs.editor_mut(id) else { return };
     if e.problems.latest.load(Ordering::SeqCst) != generation {
         return;
     }
@@ -569,8 +581,8 @@ fn deliver(state: &mut AppState, id: TabId, generation: u64, version: u64, sourc
             e.problems.results.remove(&source);
             e.problems.results_gen += 1;
             let note = format!("{}: {err}", source.name());
-            if !state.diagnostics.noted.contains(&note) {
-                state.diagnostics.noted.push(note.clone());
+            if !state.ws.diagnostics.noted.contains(&note) {
+                state.ws.diagnostics.noted.push(note.clone());
                 match source {
                     // Navigation already tells about a missing or broken TS server; a second
                     // notice for the same cause is noise.
@@ -585,7 +597,7 @@ fn deliver(state: &mut AppState, id: TabId, generation: u64, version: u64, sourc
 /// F2 (`forward`) and Shift+F2: the next or previous problem in the active editor, errors
 /// first like IDEA, wrapping around the file.
 pub fn goto_next(state: &mut AppState, forward: bool) {
-    let Some(e) = state.tabs.active_editor_mut() else { return };
+    let Some(e) = state.ws.tabs.active_editor_mut() else { return };
     e.problems.refresh(&e.doc);
     let errors = e.problems.count(ProblemSeverity::Error) > 0;
     let starts: Vec<usize> = e
@@ -633,8 +645,8 @@ pub fn file_rows(e: &crate::tabs::EditorTab) -> Vec<(Position, &Problem)> {
 /// Every source and process for the tests and the log.
 pub fn running(state: &AppState, source: SourceId) -> usize {
     match source {
-        SourceId::TypeScript => state.langs.running(LangId::TypeScript),
-        other => state.langs.lint.running(other),
+        SourceId::TypeScript => state.ws.langs.running(LangId::TypeScript),
+        other => state.ws.langs.lint.running(other),
     }
 }
 

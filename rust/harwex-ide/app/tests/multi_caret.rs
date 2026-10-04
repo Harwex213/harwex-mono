@@ -29,7 +29,7 @@ fn open_multi(name: &str) -> (Fixture, Ide) {
 
 /// Every caret as ((line, column) of the anchor, (line, column) of the head).
 fn carets(ide: &Ide) -> Vec<((usize, usize), (usize, usize))> {
-    let e = ide.state().tabs.active_editor().expect("editor");
+    let e = ide.state().ws.tabs.active_editor().expect("editor");
     let pos = |i: usize| {
         let p = e.doc.char_to_position(i);
         (p.line, p.column)
@@ -42,7 +42,7 @@ fn heads(ide: &Ide) -> Vec<(usize, usize)> {
 }
 
 fn selected_texts(ide: &Ide) -> Vec<String> {
-    let e = ide.state().tabs.active_editor().expect("editor");
+    let e = ide.state().ws.tabs.active_editor().expect("editor");
     e.view.carets().all().iter().map(|s| e.doc.slice(s.range())).collect()
 }
 
@@ -134,7 +134,7 @@ fn select_all_occurrences_from_the_find_bar() {
     ide.click("Select All Occurrences");
     ide.settle();
     assert_eq!(selected_texts(&ide), vec!["total"; 3]);
-    assert!(!ide.state().tabs.active_editor().expect("editor").view.find().is_open(), "the bar closes");
+    assert!(!ide.state().ws.tabs.active_editor().expect("editor").view.find().is_open(), "the bar closes");
     assert!(ide.is_focused("Editor multi.ts"), "typing goes to the carets");
     ide.snapshot("select_all");
 }

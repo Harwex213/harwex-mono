@@ -2,7 +2,7 @@
 //! (top group) and the bottom panel (bottom group). There is no right strip. One tool window per
 //! side is visible at a time.
 
-use egui::{pos2, vec2, Frame, Id, Margin, Rect, Response, RichText, Sense, Stroke, Ui, UiBuilder, Vec2};
+use egui::{pos2, vec2, Frame, Margin, Rect, Response, RichText, Sense, Stroke, Ui, UiBuilder, Vec2};
 
 use crate::icons::{self, Icon};
 use crate::theme::T;
@@ -56,6 +56,7 @@ impl ToolWindow {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Layout {
     pub left: Option<ToolWindow>,
     pub bottom: Option<ToolWindow>,
@@ -153,7 +154,7 @@ pub fn left_strip(ui: &mut Ui, layout: &mut Layout, badge: impl Fn(ToolWindow) -
 
 fn strip_button(ui: &mut Ui, rect: Rect, layout: &mut Layout, w: ToolWindow, badge: usize) {
     let t = &T;
-    let resp = ui.interact(rect, Id::new(("strip", w.title())), Sense::click());
+    let resp = ui.interact(rect, crate::workspace::wid(("strip", w.title())), Sense::click());
     let active = layout.left == Some(w) || layout.bottom == Some(w);
     crate::util::label_selectable(&resp, format!("{} tool window", w.title()), active);
     let painter = ui.painter();

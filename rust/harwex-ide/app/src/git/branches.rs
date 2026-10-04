@@ -3,7 +3,7 @@
 //! also carries the repository-wide actions (Update, Push, Fetch, Stash, Unstash), like the
 //! top of IDEA's branches popup.
 
-use egui::{pos2, vec2, Align2, Area, Context, Frame, Id, Key, Modal, Order, Pos2, Rect, RichText, ScrollArea, Sense, TextEdit, Ui};
+use egui::{pos2, vec2, Align2, Area, Context, Frame, Key, Modal, Order, Pos2, Rect, RichText, ScrollArea, Sense, TextEdit, Ui};
 use ide_git::{BranchInfo, Branches};
 
 use super::remote::run_op;
@@ -58,7 +58,7 @@ impl BranchesUi {
 }
 
 pub fn open_popup(state: &mut AppState, anchor: egui::Pos2) {
-    let b = &mut state.git_ui.branches;
+    let b = &mut state.ws.git_ui.branches;
     if b.open {
         b.open = false;
         return;
@@ -73,12 +73,12 @@ pub fn open_popup(state: &mut AppState, anchor: egui::Pos2) {
 }
 
 fn reload(state: &mut AppState) {
-    let Some(repo) = state.git.repo.clone() else { return };
-    state.git_ui.branches.loading = true;
+    let Some(repo) = state.ws.git.repo.clone() else { return };
+    state.ws.git_ui.branches.loading = true;
     state.jobs.spawn_quiet(
         move || repo.branches(),
         |state, res| {
-            let b = &mut state.git_ui.branches;
+            let b = &mut state.ws.git_ui.branches;
             b.loading = false;
             match res {
                 Ok(d) => b.data = Some(d),
@@ -90,14 +90,14 @@ fn reload(state: &mut AppState) {
 
 pub fn show_windows(state: &mut AppState, ctx: &Context) {
     dialogs(state, ctx);
-    if !state.git_ui.branches.open {
+    if !state.ws.git_ui.branches.open {
         return;
     }
     let mut action: Option<Action> = None;
     let mut new_rects = Vec::new();
-    let b = &mut state.git_ui.branches;
+    let b = &mut state.ws.git_ui.branches;
     let current = b.data.as_ref().and_then(|d| d.current.clone());
-    let area = Area::new(Id::new("git-branches-popup")).order(Order::Foreground).fixed_pos(b.anchor).show(ctx, |ui| {
+    let area = Area::new(crate::workspace::wid("git-branches-popup")).order(Order::Foreground).fixed_pos(b.anchor).show(ctx, |ui| {
         Frame::popup(ui.style()).show(ui, |ui| {
             ui.set_width(POPUP_W);
             let r = ui.add(TextEdit::singleline(&mut b.query).hint_text("Search for branches and actions").desired_width(f32::INFINITY));
@@ -182,7 +182,7 @@ pub fn show_windows(state: &mut AppState, ctx: &Context) {
         let info = if remote { data.remote.iter().find(|x| x.name == name) } else { data.local.iter().find(|x| x.name == name) };
         if let Some(info) = info {
             let pos = pos2(area.response.rect.right() + 2.0, y - 6.0);
-            let sub = Area::new(Id::new("git-branches-submenu")).order(Order::Foreground).fixed_pos(pos).show(ctx, |ui| {
+            let sub = Area::new(crate::workspace::wid("git-branches-submenu")).order(Order::Foreground).fixed_pos(pos).show(ctx, |ui| {
                 Frame::popup(ui.style()).show(ui, |ui| {
                     ui.set_min_width(240.0);
                     ui.spacing_mut().item_spacing.y = 0.0;
@@ -226,7 +226,7 @@ pub fn show_windows(state: &mut AppState, ctx: &Context) {
     }
 
     let (escape, clicked_at) = ctx.input(|i| (i.key_pressed(Key::Escape), if i.pointer.any_pressed() { i.pointer.interact_pos() } else { None }));
-    let b = &mut state.git_ui.branches;
+    let b = &mut state.ws.git_ui.branches;
     // Rects of the previous frame avoid closing on the click that opened the popup.
     let outside = clicked_at.is_some_and(|p| !b.rects.is_empty() && !b.rects.iter().chain(&new_rects).any(|r| r.contains(p)));
     b.rects = new_rects;
@@ -234,7 +234,7 @@ pub fn show_windows(state: &mut AppState, ctx: &Context) {
         b.open = false;
     }
     if let Some(a) = action {
-        state.git_ui.branches.open = false;
+        state.ws.git_ui.branches.open = false;
         run_action(state, a);
     }
 }
@@ -293,13 +293,13 @@ pub(crate) fn arrow(p: &egui::Painter, c: Pos2, up: bool, color: egui::Color32) 
 
 /// Also runs the branch actions of the Git window's branch tree.
 pub(crate) fn run_action(state: &mut AppState, a: Action) {
-    let current = state.git.branch.clone().unwrap_or_else(|| "HEAD".into());
+    let current = state.ws.git.branch.clone().unwrap_or_else(|| "HEAD".into());
     match a {
         Action::Checkout(name) => {
             let body = format!("Checked out {name}");
             run_op(state, "Checkout", body, false, move |r| r.checkout(&name).map(|_| None), |_, _| {});
         }
-        Action::NewFrom(from) => state.git_ui.branches.dialog = Some(BranchDialog::New { from, name: String::new(), checkout: true }),
+        Action::NewFrom(from) => state.ws.git_ui.branches.dialog = Some(BranchDialog::New { from, name: String::new(), checkout: true }),
         Action::Merge(name) => {
             let title = format!("Merge {name} into {current}");
             run_op(state, title, "Merged", true, move |r| r.merge(&name).map(Some), |_, _| {});
@@ -308,10 +308,10 @@ pub(crate) fn run_action(state: &mut AppState, a: Action) {
             let title = format!("Rebase {current} onto {name}");
             run_op(state, title, "Rebased", true, move |r| r.rebase(&name).map(Some), |_, _| {});
         }
-        Action::Rename(old) => state.git_ui.branches.dialog = Some(BranchDialog::Rename { name: old.clone(), old }),
+        Action::Rename(old) => state.ws.git_ui.branches.dialog = Some(BranchDialog::Rename { name: old.clone(), old }),
         Action::Delete(name, remote) => {
-            let upstream = if remote { None } else { state.git_ui.branches.data.as_ref().and_then(|d| d.local.iter().find(|x| x.name == name)).and_then(|x| x.upstream.clone()) };
-            state.git_ui.branches.dialog = Some(BranchDialog::Delete { name, remote, force: false, upstream, delete_upstream: false });
+            let upstream = if remote { None } else { state.ws.git_ui.branches.data.as_ref().and_then(|d| d.local.iter().find(|x| x.name == name)).and_then(|x| x.upstream.clone()) };
+            state.ws.git_ui.branches.dialog = Some(BranchDialog::Delete { name, remote, force: false, upstream, delete_upstream: false });
         }
         Action::Update => super::remote::open_update_dialog(state),
         Action::Push => super::remote::open_push_dialog(state),
@@ -323,16 +323,16 @@ pub(crate) fn run_action(state: &mut AppState, a: Action) {
 
 /// The Delete dialog for a branch picked outside the popup (the Git window's branch tree).
 pub(crate) fn open_delete_dialog(state: &mut AppState, name: String, remote: bool, upstream: Option<String>) {
-    state.git_ui.branches.dialog = Some(BranchDialog::Delete { name, remote, force: false, upstream, delete_upstream: false });
+    state.ws.git_ui.branches.dialog = Some(BranchDialog::Delete { name, remote, force: false, upstream, delete_upstream: false });
 }
 
 fn dialogs(state: &mut AppState, ctx: &Context) {
-    let Some(dialog) = state.git_ui.branches.dialog.as_mut() else { return };
+    let Some(dialog) = state.ws.git_ui.branches.dialog.as_mut() else { return };
     let mut close = false;
     let mut submit: super::remote::Deferred = None;
     match dialog {
         BranchDialog::New { from, name, checkout } => {
-            let m = Modal::new(Id::new("git-new-branch")).show(ctx, |ui| {
+            let m = Modal::new(crate::workspace::wid("git-new-branch")).show(ctx, |ui| {
                 ui.set_width(400.0);
                 let title = match from {
                     Some(f) => format!("Create New Branch from {f}"),
@@ -367,7 +367,7 @@ fn dialogs(state: &mut AppState, ctx: &Context) {
             close |= m.should_close();
         }
         BranchDialog::Rename { old, name } => {
-            let m = Modal::new(Id::new("git-rename-branch")).show(ctx, |ui| {
+            let m = Modal::new(crate::workspace::wid("git-rename-branch")).show(ctx, |ui| {
                 ui.set_width(400.0);
                 ui.label(RichText::new(format!("Rename {old}")).strong().color(theme::T.text_bright));
                 ui.add_space(6.0);
@@ -395,7 +395,7 @@ fn dialogs(state: &mut AppState, ctx: &Context) {
             close |= m.should_close();
         }
         BranchDialog::Delete { name, remote, force, upstream, delete_upstream } => {
-            let m = Modal::new(Id::new("git-delete-branch")).show(ctx, |ui| {
+            let m = Modal::new(crate::workspace::wid("git-delete-branch")).show(ctx, |ui| {
                 ui.set_width(420.0);
                 let what = if *remote { "remote branch" } else { "branch" };
                 ui.label(RichText::new(format!("Delete {what} {name}?")).strong().color(theme::T.text_bright));
@@ -437,10 +437,10 @@ fn dialogs(state: &mut AppState, ctx: &Context) {
         }
     }
     if let Some(f) = submit {
-        state.git_ui.branches.dialog = None;
+        state.ws.git_ui.branches.dialog = None;
         f(state);
     } else if close {
-        state.git_ui.branches.dialog = None;
+        state.ws.git_ui.branches.dialog = None;
     }
 }
 
@@ -452,7 +452,7 @@ fn valid_name(name: &str) -> bool {
 
 /// Test hook: opens the submenu of a branch (local first, then remote).
 pub(crate) fn test_expand(state: &mut AppState, name: &str) {
-    let b = &mut state.git_ui.branches;
+    let b = &mut state.ws.git_ui.branches;
     let remote = b.data.as_ref().is_some_and(|d| !d.local.iter().any(|x| x.name == name));
     let y = b.anchor.y + 200.0;
     b.expanded = Some((name.to_string(), if remote { 2 } else { 1 }, y));

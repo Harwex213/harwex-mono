@@ -33,11 +33,11 @@ fn open_find_ts(name: &str) -> (Fixture, Ide) {
 }
 
 fn counter(ide: &Ide) -> (Option<usize>, usize) {
-    ide.state().tabs.active_editor().expect("editor").view.find().counter()
+    ide.state().ws.tabs.active_editor().expect("editor").view.find().counter()
 }
 
 fn bar_open(ide: &Ide) -> bool {
-    ide.state().tabs.active_editor().expect("editor").view.find().is_open()
+    ide.state().ws.tabs.active_editor().expect("editor").view.find().is_open()
 }
 
 #[test]
@@ -75,7 +75,7 @@ fn selection_prefills_and_keys_cycle() {
     assert_eq!(ide.selected_text(), "total");
     ide.cmd(Key::F);
     ide.settle();
-    assert_eq!(ide.state().tabs.active_editor().expect("editor").view.find().query(), "total");
+    assert_eq!(ide.state().ws.tabs.active_editor().expect("editor").view.find().query(), "total");
     assert_eq!(counter(&ide), (Some(3), 7), "the selected occurrence is the current one");
 
     // Enter and Shift+Enter in the field, Cmd+G and Shift+Cmd+G anywhere.
@@ -222,7 +222,7 @@ fn read_only_tab_searches_but_does_not_replace() {
     let mut ide = Ide::open(SUITE, &repo.dir);
     let path = std::fs::canonicalize(repo.dir.join("node_modules/dep/index.js")).expect("file");
     ide.state_mut().open_location(&path, None, true);
-    ide.wait_for("dep tab", |s| s.tabs.active_editor().is_some_and(|e| e.path == path));
+    ide.wait_for("dep tab", |s| s.ws.tabs.active_editor().is_some_and(|e| e.path == path));
     ide.settle();
     ide.cmd(Key::R);
     ide.type_text("module");

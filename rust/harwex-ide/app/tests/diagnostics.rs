@@ -14,7 +14,7 @@ const SUITE: &str = "diagnostics";
 
 /// (line, column, severity, origin) of the active editor's problems.
 fn problems(ide: &Ide) -> Vec<(usize, usize, ProblemSeverity, String)> {
-    let Some(e) = ide.state().tabs.active_editor() else { return Vec::new() };
+    let Some(e) = ide.state().ws.tabs.active_editor() else { return Vec::new() };
     e.problems.current.iter().map(|p| {
         let pos = e.doc.char_to_position(p.start);
         (pos.line, pos.column, p.severity, p.origin())
@@ -66,7 +66,7 @@ fn native_ts7_type_error() {
     ide.wait_until("the TS error", |ide| has(ide, "ts(2322)"));
     let p = problems(&ide);
     assert!(p.contains(&(3, 6, ProblemSeverity::Error, "ts(2322)".into())), "{p:?}");
-    let label = ide.state().tabs.active_editor().and_then(|e| e.lang.map(|l| ide.state().langs.status(l, &e.path)));
+    let label = ide.state().ws.tabs.active_editor().and_then(|e| e.lang.map(|l| ide.state().ws.langs.status(l, &e.path)));
     assert!(format!("{label:?}").contains("native"), "{label:?}");
 }
 
@@ -133,7 +133,7 @@ fn unsaved_edits_shift_and_recheck() {
     // An unsaved new error appears after the debounce; nothing was written to disk.
     ide.type_text("debugger;\n");
     ide.wait_until("the new problem", |ide| problems(ide).iter().filter(|p| p.3 == "oxlint(no-debugger)").count() == 2);
-    assert!(ide.state().tabs.active_editor().expect("editor").doc.is_dirty());
+    assert!(ide.state().ws.tabs.active_editor().expect("editor").doc.is_dirty());
     // Fixing the type error in the buffer removes it.
     let fx_line = ide.active_line(6);
     assert!(fx_line.contains("\"three\""), "{fx_line}");
@@ -154,7 +154,7 @@ fn ide_toml_switches_sources_off() {
     ide.settle();
     ide.wait_real(std::time::Duration::from_millis(400));
     ide.settle();
-    let e = ide.state().tabs.active_editor().expect("editor");
+    let e = ide.state().ws.tabs.active_editor().expect("editor");
     let plan = e.problems.plan.clone().expect("planned");
     assert!(plan.is_empty(), "{plan:?}");
     assert!(problems(&ide).is_empty());
@@ -195,7 +195,7 @@ fn open_eslint(name: &str, ide_toml: Option<&str>, file: &str) -> (Fixture, Ide)
 }
 
 fn eslint_runs(ide: &Ide) -> u64 {
-    ide.state().langs.lint.counts(SourceId::Eslint).runs
+    ide.state().ws.langs.lint.counts(SourceId::Eslint).runs
 }
 
 #[test]
@@ -257,7 +257,7 @@ fn eslint_typing_is_debounced_and_unsaved() {
     ide.settle();
     let runs = eslint_runs(&ide) - before;
     assert!(runs <= 2, "one lint after the typing rests, not one per key: {runs}");
-    assert!(ide.state().tabs.active_editor().expect("editor").doc.is_dirty());
+    assert!(ide.state().ws.tabs.active_editor().expect("editor").doc.is_dirty());
 }
 
 #[test]
@@ -269,7 +269,7 @@ fn eslint_off_in_ide_toml() {
     ide.wait_until("the TS error", |ide| has(ide, "ts(2322)"));
     ide.wait_real(std::time::Duration::from_millis(400));
     ide.settle();
-    let plan = ide.state().tabs.active_editor().and_then(|e| e.problems.plan.clone()).expect("planned");
+    let plan = ide.state().ws.tabs.active_editor().and_then(|e| e.problems.plan.clone()).expect("planned");
     assert!(plan.ts && plan.eslint.is_none(), "{plan:?}");
     assert!(problems(&ide).iter().all(|p| !p.3.starts_with("eslint")), "{:?}", problems(&ide));
     assert_eq!(harwex_ide::diagnostics::running(ide.state(), SourceId::Eslint), 0, "ESLint never started");

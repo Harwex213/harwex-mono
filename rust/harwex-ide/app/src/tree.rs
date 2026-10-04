@@ -171,7 +171,7 @@ impl ProjectTree {
 
 /// Starts loading `dir` on a worker unless it is already loading.
 pub fn load_dir(state: &mut AppState, dir: PathBuf) {
-    if !state.tree.loading.insert(dir.clone()) {
+    if !state.ws.tree.loading.insert(dir.clone()) {
         return;
     }
     let generation = state.project_generation();
@@ -186,12 +186,12 @@ pub fn load_dir(state: &mut AppState, dir: PathBuf) {
             if state.project_generation() != generation {
                 return;
             }
-            if state.project.as_ref().is_some_and(|p| p.root == dir) && state.tree.root_load_ms.is_none() {
+            if state.ws.project.as_ref().is_some_and(|p| p.root == dir) && state.ws.tree.root_load_ms.is_none() {
                 let ms = took.as_secs_f64() * 1000.0;
-                state.tree.root_load_ms = Some(ms);
+                state.ws.tree.root_load_ms = Some(ms);
                 state.timings.log(format!("project tree root listed in {ms:.1} ms ({} entries)", entries.len()));
             }
-            state.tree.set_dir(dir, entries);
+            state.ws.tree.set_dir(dir, entries);
         },
     );
 }
@@ -223,7 +223,7 @@ pub enum TreeEvent {
 /// The focus id of the tree. The tree "has focus" (blue selection, arrow keys) while egui's
 /// keyboard focus is on this id.
 pub fn focus_id() -> Id {
-    Id::new("project-tree")
+    crate::workspace::wid("project-tree")
 }
 
 pub fn has_focus(ctx: &egui::Context) -> bool {
@@ -233,14 +233,14 @@ pub fn has_focus(ctx: &egui::Context) -> bool {
 /// "Select Opened File" (the header button, Alt+F1): expands the tree down to the active tab's
 /// file, selects its row, scrolls it into view and gives the tree the focus.
 pub fn select_opened_file(state: &mut AppState) {
-    let Some(root) = state.project.as_ref().map(|p| p.root.clone()) else { return };
+    let Some(root) = state.ws.project.as_ref().map(|p| p.root.clone()) else { return };
     let Some(file) = crate::breadcrumbs::active_file(state) else { return };
     if !file.starts_with(&root) {
         return;
     }
-    state.layout.show(crate::layout::ToolWindow::Project);
-    state.tree.reveal(&root, &file);
-    state.tree.focus_pending = true;
+    state.ws.layout.show(crate::layout::ToolWindow::Project);
+    state.ws.tree.reveal(&root, &file);
+    state.ws.tree.focus_pending = true;
 }
 
 /// What the keyboard asked for this frame, applied after the rows are drawn.
@@ -362,12 +362,12 @@ fn keyboard(ui: &Ui, rows: &[Row], selected: Option<&Path>, cut_pending: bool) -
 
 /// The Project tool window body.
 pub fn show(state: &mut AppState, ui: &mut Ui) -> Option<TreeEvent> {
-    let Some(root) = state.project.as_ref().map(|p| p.root.clone()) else {
+    let Some(root) = state.ws.project.as_ref().map(|p| p.root.clone()) else {
         ui.label("No folder open");
         return None;
     };
     let t = &theme::T;
-    let name = state.project.as_ref().map(|p| p.name.clone()).unwrap_or_default();
+    let name = state.ws.project.as_ref().map(|p| p.name.clone()).unwrap_or_default();
     // The root row, like IDEA: always expanded, the name and the full path.
     let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), t.space.row_h), Sense::hover());
     {
@@ -385,7 +385,7 @@ pub fn show(state: &mut AppState, ui: &mut Ui) -> Option<TreeEvent> {
     crate::util::label_widget(&r, egui::WidgetType::Label, name.clone());
     crate::util::label_widget(&ui.interact(Rect::from_min_size(rect.right_top(), vec2(0.0, 0.0)), ui.id().with("tree-root-path"), Sense::hover()), egui::WidgetType::Label, root.display().to_string());
 
-    if std::mem::take(&mut state.tree.focus_pending) {
+    if std::mem::take(&mut state.ws.tree.focus_pending) {
         ui.memory_mut(|m| m.request_focus(focus_id()));
     }
     let focused = ui.memory(|m| m.has_focus(focus_id()));
@@ -395,20 +395,20 @@ pub fn show(state: &mut AppState, ui: &mut Ui) -> Option<TreeEvent> {
     }
 
     // Escape cancels a drag before the tree's keys see it.
-    if state.tree.drag.is_some() && ui.input_mut(|i| i.consume_key(egui::Modifiers::NONE, Key::Escape)) {
-        state.tree.drag = None;
+    if state.ws.tree.drag.is_some() && ui.input_mut(|i| i.consume_key(egui::Modifiers::NONE, Key::Escape)) {
+        state.ws.tree.drag = None;
     }
     // A double click is press 2 of the app's click chain (`clicks.rs`), not egui's count.
     let clicks = state.clicks;
     let mut rows = Vec::new();
     let mut missing = Vec::new();
-    flatten(&state.tree, &root, 0, &mut rows, &mut missing);
+    flatten(&state.ws.tree, &root, 0, &mut rows, &mut missing);
     // An open context menu needs Escape and the arrows itself.
     let menu_open = ui.ctx().is_context_menu_open();
-    let keys = if focused && !menu_open { keyboard(ui, &rows, state.tree.selected.as_deref(), state.tree_ops.has_cut()) } else { KeyOutcome::default() };
+    let keys = if focused && !menu_open { keyboard(ui, &rows, state.ws.tree.selected.as_deref(), state.ws.tree_ops.has_cut()) } else { KeyOutcome::default() };
     // A key command acts on the selected row; the root when nothing is selected.
     let key_target = keys.command.map(|c| {
-        let sel = state.tree.selected.clone().filter(|s| s.starts_with(&root));
+        let sel = state.ws.tree.selected.clone().filter(|s| s.starts_with(&root));
         let target = match sel.and_then(|s| rows.iter().find(|r| r.entry.path == s)) {
             Some(r) => Target { path: r.entry.path.clone(), is_dir: r.entry.is_dir },
             None => Target { path: root.clone(), is_dir: true },
@@ -425,8 +425,8 @@ pub fn show(state: &mut AppState, ui: &mut Ui) -> Option<TreeEvent> {
 
     // Scroll the selected row into view: centered for "Select Opened File", by the least
     // distance for the arrow keys. The row can be missing while its folders still load.
-    let scroll_mode = keys.select.as_ref().map(|_| ScrollMode::Nearest).or(state.tree.scroll_to);
-    let target_path = keys.select.as_deref().or(state.tree.selected.as_deref());
+    let scroll_mode = keys.select.as_ref().map(|_| ScrollMode::Nearest).or(state.ws.tree.scroll_to);
+    let target_path = keys.select.as_deref().or(state.ws.tree.selected.as_deref());
     // Rows are exactly the viewport wide, so there is nothing to scroll sideways. A mouse drag
     // belongs to drag and drop, not to scrolling; the wheel and the trackpad still scroll.
     let mut area = ScrollArea::vertical().auto_shrink([false, false]).drag_to_scroll(false).id_salt("project-tree");
@@ -434,7 +434,7 @@ pub fn show(state: &mut AppState, ui: &mut Ui) -> Option<TreeEvent> {
     if let Some(mode) = scroll_mode {
         match target_path.and_then(|s| rows.iter().position(|r| r.entry.path == s)) {
             Some(i) => {
-                let (top, view, off) = (i as f32 * pitch, ui.available_height(), state.tree.view_offset);
+                let (top, view, off) = (i as f32 * pitch, ui.available_height(), state.ws.tree.view_offset);
                 let visible = top >= off && top + pitch <= off + view;
                 let new = match mode {
                     _ if visible => None,
@@ -452,14 +452,14 @@ pub fn show(state: &mut AppState, ui: &mut Ui) -> Option<TreeEvent> {
             None => {}
         }
     }
-    let git = &state.git;
-    let ops = &state.tree_ops;
-    let tree = &state.tree;
+    let git = &state.ws.git;
+    let ops = &state.ws.tree_ops;
+    let tree = &state.ws.tree;
     let mut menu_cmd: Option<(TreeCommand, Target)> = None;
-    let selected = keys.select.as_deref().or(state.tree.selected.as_deref());
+    let selected = keys.select.as_deref().or(state.ws.tree.selected.as_deref());
     ui.spacing_mut().item_spacing.y = 0.0;
     let (pointer, released, down, alt, now) = ui.input(|i| (i.pointer.latest_pos(), i.pointer.primary_released(), i.pointer.primary_down(), i.modifiers.alt, i.time));
-    let dragging = state.tree.drag.clone();
+    let dragging = state.ws.tree.drag.clone();
     let mut drag_start: Option<TreeDrag> = None;
     // The folder a drop would go into, and its row rect when that row is drawn.
     let mut drop_target: Option<PathBuf> = None;
@@ -503,7 +503,7 @@ pub fn show(state: &mut AppState, ui: &mut Ui) -> Option<TreeEvent> {
             // to its row and closes when that row is no longer drawn (`util::close_orphaned_context_menu`),
             // instead of moving to whatever row takes the position after a scroll or a reload.
             let (_, hit) = ui.allocate_space(vec2(ui.available_width(), pitch));
-            let resp = ui.interact(hit, Id::new(("tree-row", &row.entry.path)), Sense::click_and_drag());
+            let resp = ui.interact(hit, crate::workspace::wid(("tree-row", &row.entry.path)), Sense::click_and_drag());
             let rect = Rect::from_min_size(hit.min, vec2(hit.width(), row_h));
             if probe {
                 hit_rows.push(crate::testhook::tree_hits::HitRow { path: row.entry.path.clone(), is_dir: row.entry.is_dir, rect: hit, id: resp.id });
@@ -520,7 +520,7 @@ pub fn show(state: &mut AppState, ui: &mut Ui) -> Option<TreeEvent> {
             // row has no zone where a click or a double click lands on a different widget.
             let chevron_cell = row.entry.is_dir.then(|| Rect::from_min_max(pos2(x + 15.0 - t.space.indent, hit.min.y), pos2(x + 15.0, hit.max.y)));
             if let Some(cell) = chevron_cell {
-                let r = ui.interact(cell, Id::new(("tree-chevron", &row.entry.path)), Sense::hover());
+                let r = ui.interact(cell, crate::workspace::wid(("tree-chevron", &row.entry.path)), Sense::hover());
                 crate::util::label_widget(&r, egui::WidgetType::Button, format!("{} {}", if row.expanded { "Collapse" } else { "Expand" }, rel.display()));
             }
             let painter = ui.painter();
@@ -602,7 +602,7 @@ pub fn show(state: &mut AppState, ui: &mut Ui) -> Option<TreeEvent> {
             });
         }
     });
-    state.tree.view_offset = out.state.offset.y;
+    state.ws.tree.view_offset = out.state.offset.y;
     if let Some(log) = state.input_log.as_mut() {
         if recording {
             let hit = ui.ctx().viewport(|v| v.hits.click.map(|w| w.id));
@@ -618,24 +618,24 @@ pub fn show(state: &mut AppState, ui: &mut Ui) -> Option<TreeEvent> {
         }
         // A hover-only node, so tests (and screen readers) see where a drop would land.
         let rel = dir.strip_prefix(&root).ok().filter(|r| !r.as_os_str().is_empty()).map_or(name.clone(), |r| r.display().to_string());
-        let node = ui.interact(if outline.is_positive() { outline } else { Rect::from_min_size(out.inner_rect.min, vec2(0.0, 0.0)) }, Id::new("tree-drop-target"), Sense::hover());
+        let node = ui.interact(if outline.is_positive() { outline } else { Rect::from_min_size(out.inner_rect.min, vec2(0.0, 0.0)) }, crate::workspace::wid("tree-drop-target"), Sense::hover());
         crate::util::label_widget(&node, egui::WidgetType::Other, format!("Drop target {rel}"));
     }
     let mut drop: Option<(PathBuf, PathBuf, bool)> = None;
     if let Some(start) = drag_start {
-        state.tree.drag = Some(start);
-    } else if let Some(drag) = state.tree.drag.as_mut() {
+        state.ws.tree.drag = Some(start);
+    } else if let Some(drag) = state.ws.tree.drag.as_mut() {
         if released || !down {
             if let Some(dir) = drop_target.take() {
                 drop = Some((drag.path.clone(), dir, alt));
             }
-            state.tree.drag = None;
+            state.ws.tree.drag = None;
         } else {
             // Hovering a collapsed folder expands it after a moment.
             match (&drag_hover, &drag.hover) {
                 (Some(h), Some((p, since))) if h == p => {
                     if now - since >= DRAG_EXPAND_SECS {
-                        state.tree.expanded.insert(h.clone());
+                        state.ws.tree.expanded.insert(h.clone());
                         drag.hover = None;
                     } else {
                         ui.ctx().request_repaint_after(std::time::Duration::from_secs_f64(DRAG_EXPAND_SECS - (now - since)));
@@ -664,7 +664,7 @@ pub fn show(state: &mut AppState, ui: &mut Ui) -> Option<TreeEvent> {
         h.rows = hit_rows;
     }
     if scroll_done {
-        state.tree.scroll_to = None;
+        state.ws.tree.scroll_to = None;
     }
     // Keep the focus id alive, so the arrow keys keep working after a click.
     ui.interact(out.inner_rect, focus_id(), Sense::focusable_noninteractive());
@@ -676,15 +676,15 @@ pub fn show(state: &mut AppState, ui: &mut Ui) -> Option<TreeEvent> {
         ui.memory_mut(|m| m.request_focus(focus_id()));
     }
     if let Some(s) = select.or(keys.select) {
-        state.tree.selected = Some(s);
+        state.ws.tree.selected = Some(s);
     }
     if let Some(dir) = toggle {
-        if !state.tree.expanded.remove(&dir) {
-            state.tree.expanded.insert(dir);
+        if !state.ws.tree.expanded.remove(&dir) {
+            state.ws.tree.expanded.insert(dir);
         }
     }
     if keys.to_editor {
-        if let Some(e) = state.tabs.active_editor_mut() {
+        if let Some(e) = state.ws.tabs.active_editor_mut() {
             e.view.request_focus();
         } else {
             ui.memory_mut(|m| m.surrender_focus(focus_id()));
@@ -704,8 +704,8 @@ pub fn show(state: &mut AppState, ui: &mut Ui) -> Option<TreeEvent> {
             cmd,
             TreeCommand::Cut | TreeCommand::Copy | TreeCommand::CancelCut | TreeCommand::Paste | TreeCommand::CopyAbsPath | TreeCommand::CopyProjectPath | TreeCommand::OpenInFinder | TreeCommand::ReloadFromDisk | TreeCommand::Exclude | TreeCommand::CancelExclusion | TreeCommand::GitHistory
         );
-        if stays && state.tree_ops.dialog.is_none() {
-            state.tree.focus_pending = true;
+        if stays && state.ws.tree_ops.dialog.is_none() {
+            state.ws.tree.focus_pending = true;
         }
     }
     event
@@ -714,7 +714,7 @@ pub fn show(state: &mut AppState, ui: &mut Ui) -> Option<TreeEvent> {
 /// The item name that follows the pointer during a drag.
 fn drag_ghost(ctx: &egui::Context, pointer: egui::Pos2, path: &Path) {
     let t = &theme::T;
-    let painter = ctx.layer_painter(egui::LayerId::new(egui::Order::Tooltip, Id::new("tree-drag-ghost")));
+    let painter = ctx.layer_painter(egui::LayerId::new(egui::Order::Tooltip, crate::workspace::wid("tree-drag-ghost")));
     let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
     let galley = painter.layout_no_wrap(name, t.ui_font(), t.text_bright);
     let rect = Rect::from_min_size(pointer + vec2(14.0, 10.0), galley.size() + vec2(16.0, 8.0));

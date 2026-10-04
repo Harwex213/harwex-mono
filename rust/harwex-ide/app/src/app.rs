@@ -15,8 +15,7 @@ use crate::icons::{self, Icon};
 use crate::memory::{MemorySource, ProcessSource, RealSource};
 use crate::{breadcrumbs, chrome, find, git, search, testhook, theme, tree};
 
-pub const STORAGE_LAST_FOLDER: &str = "last_folder";
-pub const STORAGE_LAYOUT: &str = "tool_windows";
+pub use crate::persist::{STORAGE_LAST_FOLDER, STORAGE_LAYOUT};
 
 /// The shell a new terminal tab runs instead of the user's login shell.
 #[derive(Clone, Debug, Default)]
@@ -27,8 +26,9 @@ pub struct TerminalCommand {
 
 /// How the app starts. `main.rs` fills it from the command line; tests build it by hand.
 pub struct AppOptions {
-    /// Folder to open. `None` falls back to the stored last folder (if `restore_last_folder`).
+    /// Folder to open and activate, next to the restored ones.
     pub project: Option<PathBuf>,
+    /// Reopen the projects of the last run (`persist.rs`).
     pub restore_last_folder: bool,
     /// File watching through `notify`. Tests turn it off: events arrive at OS-dependent times.
     pub watch_files: bool,
@@ -47,6 +47,8 @@ pub struct AppOptions {
     pub platform: Option<std::sync::Arc<dyn crate::fileops::Platform>>,
     /// Process start, for the timings log.
     pub start: Instant,
+    /// The single-instance socket this process bound (`instance.rs`). `None` in tests.
+    pub instance: Option<crate::instance::Server>,
 }
 
 impl Default for AppOptions {
@@ -62,6 +64,7 @@ impl Default for AppOptions {
             memory: MemorySource::Auto,
             platform: None,
             start: Instant::now(),
+            instance: None,
         }
     }
 }
@@ -90,7 +93,8 @@ impl IdeApp {
         state.timings.log("window created");
         state.test = options.test;
         state.watch_files = options.watch_files;
-        state.terminals.command = options.terminal;
+        state.terminal_command = options.terminal.clone();
+        state.ws.terminals.command = options.terminal;
         state.platform = match options.platform {
             Some(p) => p,
             None if options.deterministic => std::sync::Arc::new(crate::fileops::RecordingPlatform::new(std::env::temp_dir().join("harwex-ide-test-trash"))),
@@ -113,25 +117,40 @@ impl IdeApp {
             MemorySource::Custom(s) => Some(s),
         };
         if let Some(source) = source {
-            state.memory.start(source, state.jobs.clone());
+            state.memory.start(source, state.jobs.window());
         }
         if options.find_node_at_start {
             // Warms ide-ts's node lookup (a login-shell probe can take ~0.5 s) before the
             // first navigation request needs it.
-            state.jobs.spawn_quiet(ide_ts::find_node, |state, node| match node {
+            state.jobs.window().spawn_quiet(ide_ts::find_node, |state, node| match node {
                 Some(n) => state.timings.log(format!("node: {}", n.display())),
                 None => state.notifications.warn("node not found", "TypeScript navigation needs node on PATH, in nvm or in /opt/homebrew/bin."),
             });
         }
-        if let Some(layout) = storage.and_then(|s| s.get_string(STORAGE_LAYOUT)).and_then(|t| layout::Layout::from_storage(&t)) {
-            state.layout = layout;
-        }
+        let mut restore = crate::persist::Restore::default();
         if let Some(storage) = storage {
             git::load_storage(&mut state, storage);
+            restore = crate::persist::load(&mut state, storage);
         }
-        let last = if options.restore_last_folder { storage.and_then(|s| s.get_string(STORAGE_LAST_FOLDER)).map(PathBuf::from) } else { None };
-        if let Some(folder) = options.project.or(last) {
-            state.open_project(folder);
+        if options.restore_last_folder {
+            let mut active = None;
+            for root in restore.roots {
+                let id = state.open_workspace(root.clone());
+                if restore.active.as_ref() == Some(&root) {
+                    active = Some(id);
+                }
+            }
+            if let Some(id) = active {
+                state.activate(id);
+            }
+        }
+        if let Some(folder) = options.project {
+            state.open_workspace(folder);
+        }
+        if let Some(server) = options.instance {
+            // A background or test window never pulls itself to the front.
+            let focus = !options.deterministic && std::env::var_os("HARWEX_IDE_BACKGROUND").is_none_or(|v| v != "1");
+            server.serve(state.jobs.window(), focus);
         }
         IdeApp::new(state)
     }
@@ -163,16 +182,16 @@ impl eframe::App for IdeApp {
         let badge = |w: ToolWindow| if w == ToolWindow::Notifications { unread } else { 0 };
         let window = Frame::NONE.fill(t.window_bg);
         egui::SidePanel::left("left-strip").exact_width(t.space.strip_w).resizable(false).show_separator_line(false).frame(window).show(ctx, |ui| {
-            layout::left_strip(ui, &mut s.layout, badge);
+            layout::left_strip(ui, &mut s.ws.layout, badge);
         });
         // Islands: each tool window and the editor sit on the window background as a rounded
         // surface. Half a gap on each inner edge makes one gap between neighbours. No strip
         // sits on the right, so the islands keep a full gap to the right window edge.
         let half = (t.space.gap / 2.0) as i8;
         let gap = t.space.gap as i8;
-        let (has_left, has_bottom) = (s.layout.left.is_some(), s.layout.bottom.is_some());
-        if let Some(w) = s.layout.bottom {
-            egui::TopBottomPanel::bottom("bottom-tool-window")
+        let (has_left, has_bottom) = (s.ws.layout.left.is_some(), s.ws.layout.bottom.is_some());
+        if let Some(w) = s.ws.layout.bottom {
+            egui::TopBottomPanel::bottom(crate::workspace::wid("bottom-tool-window"))
                 .default_height(240.0)
                 .height_range(80.0..=900.0)
                 .resizable(true)
@@ -180,8 +199,8 @@ impl eframe::App for IdeApp {
                 .frame(window.inner_margin(Margin { top: half, right: gap, ..Margin::ZERO }))
                 .show(ctx, |ui| tool_window(s, ui, w));
         }
-        if let Some(w) = s.layout.left {
-            egui::SidePanel::left("left-tool-window")
+        if let Some(w) = s.ws.layout.left {
+            egui::SidePanel::left(crate::workspace::wid("left-tool-window"))
                 .default_width(300.0)
                 .width_range(160.0..=900.0)
                 .show_separator_line(false)
@@ -190,9 +209,12 @@ impl eframe::App for IdeApp {
         }
         let editor_margin = Margin { left: if has_left { half } else { 0 }, right: gap, bottom: if has_bottom { half } else { 0 }, ..Margin::ZERO };
         egui::CentralPanel::default().frame(window.inner_margin(editor_margin)).show(ctx, |ui| {
-            layout::island(t.space.editor_pad).show(ui, |ui| {
-                ui.set_min_size(ui.available_size());
-                editor_area(s, ui);
+            // The central panel's id is egui's own; the salt keeps the editor's ids per project.
+            ui.push_id(crate::workspace::salt(), |ui| {
+                layout::island(t.space.editor_pad).show(ui, |ui| {
+                    ui.set_min_size(ui.available_size());
+                    editor_area(s, ui);
+                });
             });
         });
         open_dropped_files(s, ctx);
@@ -204,15 +226,14 @@ impl eframe::App for IdeApp {
         crate::tree_menu::show_dialogs(s, ctx);
         nav::show_popup(s, ctx);
         breadcrumbs::show_popup(s, ctx);
+        crate::projects_popup::show(s, ctx);
         confirm_close(s, ctx);
+        confirm_close_workspace(s, ctx);
         git::show_windows(s, ctx);
         s.notifications.show_toasts(ctx, 48.0);
         crate::util::close_orphaned_context_menu(ctx);
 
-        s.run_commands();
-        nav::sync_lsp_debounced(s);
-        crate::diagnostics::schedule(s);
-        s.schedule_gutter();
+        s.tick_workspaces();
         testhook::tick(s);
         if !s.jobs.running().is_empty() {
             // Keeps the spinner turning; ~10 fps is enough and costs nothing measurable.
@@ -231,21 +252,18 @@ impl eframe::App for IdeApp {
     }
 
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
-        if let Some(p) = &self.state.project {
-            storage.set_string(STORAGE_LAST_FOLDER, p.root.display().to_string());
-        }
-        storage.set_string(STORAGE_LAYOUT, self.state.layout.to_storage());
+        crate::persist::save(&mut self.state, storage);
         git::save_storage(&self.state, storage);
     }
 
     fn on_exit(&mut self) {
-        self.state.terminals.kill_all();
-        self.state.langs.shutdown();
+        self.state.shutdown_all();
     }
 }
 
 fn shortcuts(s: &mut AppState, ctx: &Context) {
     nav::take_popup_keys(s, ctx);
+    crate::projects_popup::take_keys(s, ctx);
     breadcrumbs::take_keys(s, ctx);
     // A focused terminal gets every key except Alt+F12 and Escape.
     if crate::terminal::shortcuts(s, ctx) {
@@ -285,12 +303,12 @@ fn shortcuts(s: &mut AppState, ctx: &Context) {
     if select_in {
         tree::select_opened_file(s);
     }
-    if recent_e && s.project.is_some() {
-        s.search.open_recent();
+    if recent_e && s.ws.project.is_some() {
+        s.ws.search.open_recent();
     }
-    if s.git.repo.is_some() {
+    if s.ws.git.repo.is_some() {
         if branches {
-            let anchor = s.git_ui.branches_anchor.unwrap_or(pos2(chrome::current(ctx).content_x, theme::T.space.title_h));
+            let anchor = s.ws.git_ui.branches_anchor.unwrap_or(pos2(chrome::current(ctx).content_x, theme::T.space.title_h));
             git::open_branches_popup(s, anchor);
         }
         if push_k {
@@ -300,30 +318,30 @@ fn shortcuts(s: &mut AppState, ctx: &Context) {
             git::update_project_clicked(s);
         }
     }
-    let double_shift = s.search.detect_double_shift(ctx);
-    if (search_o || double_shift) && s.project.is_some() {
-        s.search.open();
+    let double_shift = s.ws.search.detect_double_shift(ctx);
+    if (search_o || double_shift) && s.ws.project.is_some() {
+        s.ws.search.open();
     }
-    if find_f && s.project.is_some() {
+    if find_f && s.ws.project.is_some() {
         // From the Project tree, Find and Replace in Files search the selected folder.
         if tree::has_focus(ctx) {
-            let dir = s.tree.selected_dir();
-            s.find.open_scoped(dir, replace_r);
+            let dir = s.ws.tree.selected_dir();
+            s.ws.find.open_scoped(dir, replace_r);
         } else {
-            let selected = s.tabs.active_editor().map(|e| e.doc.slice(e.view.selection().range()));
-            s.find.open_scoped(None, replace_r);
-            s.find.open_dialog(selected);
+            let selected = s.ws.tabs.active_editor().map(|e| e.doc.slice(e.view.selection().range()));
+            s.ws.find.open_scoped(None, replace_r);
+            s.ws.find.open_dialog(selected);
         }
     }
     if save_all {
         s.save_all();
     } else if save {
-        if let Some(id) = s.tabs.active {
+        if let Some(id) = s.ws.tabs.active {
             s.save_tab(id, false);
         }
     }
     if close {
-        if let Some(id) = s.tabs.active {
+        if let Some(id) = s.ws.tabs.active {
             s.close_tab(id, false);
         }
     }
@@ -341,7 +359,7 @@ fn shortcuts(s: &mut AppState, ctx: &Context) {
 fn editor_find_keys(s: &mut AppState, ctx: &Context) {
     let ctrl_cmd = Modifiers::COMMAND | Modifiers::CTRL;
     let cmd_shift = Modifiers::COMMAND | Modifiers::SHIFT;
-    let Some(e) = s.tabs.active_editor_mut() else { return };
+    let Some(e) = s.ws.tabs.active_editor_mut() else { return };
     let free = ctx.memory(|m| m.focused()).is_none() || e.view.owns_focus(ctx);
     if !free {
         return;
@@ -376,7 +394,7 @@ fn title_bar(s: &mut AppState, ctx: &Context) {
     let t = &theme::T;
     egui::TopBottomPanel::top("title-bar").exact_height(t.space.title_h).show_separator_line(false).frame(Frame::NONE.fill(t.window_bg)).show(ctx, |ui| {
         let full = ui.max_rect();
-        let name = s.project.as_ref().map(|p| p.name.clone());
+        let name = s.ws.project.as_ref().map(|p| p.name.clone());
         let badge = name.as_deref().map(|n| t.badge_color(n));
         if let Some(color) = badge {
             paint_tint(ui.painter(), full, color);
@@ -402,21 +420,19 @@ fn title_bar(s: &mut AppState, ctx: &Context) {
         let mut row = ui.new_child(UiBuilder::new().max_rect(full.shrink2(egui::vec2(0.0, 6.0))).layout(Layout::left_to_right(Align::Center)));
         row.add_space(left_inset);
         row.spacing_mut().item_spacing.x = 2.0;
-        let project = title_widget(&mut row, name.as_deref().map(|n| (initials(n), badge.unwrap_or(t.accent))), name.as_deref().unwrap_or("Open Folder..."), &format!("Project {}", name.as_deref().unwrap_or("")));
-        if project.on_hover_text("Open another folder").clicked() {
-            s.pick_folder();
-        }
+        let project = title_widget(&mut row, name.as_deref().map(|n| (initials(n), badge.unwrap_or(t.accent))), name.as_deref().unwrap_or("Open Folder..."), &format!("Project {}", name.as_deref().unwrap_or("")), s.projects.open);
+        crate::projects_popup::on_widget(s, &row, &project);
         row.add_space(4.0);
         let settings = layout::icon_button(&mut row, Icon::Settings, "Settings", "Settings");
         settings_menu(s, &row, &settings);
         // The branch is display-only. The branches popup opens with Ctrl+Shift+` and drops
         // down from here.
-        if s.git.repo.is_some() {
+        if s.ws.git.repo.is_some() {
             row.add_space(4.0);
-            let branch = s.git.branch.clone().unwrap_or_else(|| "...".into());
-            let label = if s.git.detached { format!("detached: {branch}") } else { branch };
+            let branch = s.ws.git.branch.clone().unwrap_or_else(|| "...".into());
+            let label = if s.ws.git.detached { format!("detached: {branch}") } else { branch };
             let r = branch_widget(&mut row, &label);
-            s.git_ui.branches_anchor = Some(r.rect.left_bottom() + egui::vec2(0.0, 4.0));
+            s.ws.git_ui.branches_anchor = Some(r.rect.left_bottom() + egui::vec2(0.0, 4.0));
         }
     });
 }
@@ -449,7 +465,8 @@ pub fn initials(name: &str) -> String {
 }
 
 /// A title bar widget: an optional badge, a text and a dropdown chevron, with a hover fill.
-fn title_widget(ui: &mut egui::Ui, badge: Option<(String, egui::Color32)>, text: &str, label: &str) -> egui::Response {
+/// `open`: its popup is open, so it keeps the hover fill.
+fn title_widget(ui: &mut egui::Ui, badge: Option<(String, egui::Color32)>, text: &str, label: &str, open: bool) -> egui::Response {
     let t = &theme::T;
     let font = t.semibold(t.font.ui);
     let galley = ui.painter().layout_no_wrap(text.to_string(), font, t.text);
@@ -458,7 +475,7 @@ fn title_widget(ui: &mut egui::Ui, badge: Option<(String, egui::Color32)>, text:
     let (rect, resp) = ui.allocate_exact_size(size, Sense::click());
     crate::util::label_widget(&resp, egui::WidgetType::Button, label);
     let painter = ui.painter();
-    if resp.hovered() {
+    if resp.hovered() || open {
         painter.rect_filled(rect, t.radius.button, t.hover_on_window);
     }
     let mut x = rect.min.x + 8.0;
@@ -501,7 +518,7 @@ fn settings_menu(s: &mut AppState, ui: &egui::Ui, button: &egui::Response) {
             close(ui);
             s.pick_folder();
         }
-        let config = s.project.as_ref().map(|p| p.root.join(".harwex/ide.toml"));
+        let config = s.ws.project.as_ref().map(|p| p.root.join(".harwex/ide.toml"));
         if ui.add_enabled(config.is_some(), egui::Button::new("Project Settings (.harwex/ide.toml)")).clicked() {
             close(ui);
             if let Some(path) = config {
@@ -511,7 +528,7 @@ fn settings_menu(s: &mut AppState, ui: &egui::Ui, button: &egui::Response) {
         ui.separator();
         if ui.add(egui::Button::new("Notifications")).clicked() {
             close(ui);
-            s.layout.show(ToolWindow::Notifications);
+            s.ws.layout.show(ToolWindow::Notifications);
         }
     });
 }
@@ -529,12 +546,12 @@ fn status_bar(s: &mut AppState, ctx: &Context) {
             .response
             .rect;
         let left = Rect::from_min_max(full.min, pos2((right.min.x - 16.0).max(full.min.x), full.max.y));
-        ui.scope_builder(UiBuilder::new().max_rect(left).layout(Layout::left_to_right(Align::Center)), |ui| {
+        ui.scope_builder(UiBuilder::new().max_rect(left).layout(Layout::left_to_right(Align::Center)).id_salt(crate::workspace::salt()), |ui| {
             ui.set_clip_rect(left);
             breadcrumbs::bar(s, ui);
             if let Some(note) = s.notifications.log().last() {
                 if note.time.elapsed().as_secs() < 60 && ui.available_width() > 60.0 {
-                    if !s.breadcrumbs.slots.is_empty() {
+                    if !s.ws.breadcrumbs.slots.is_empty() {
                         ui.add_space(12.0);
                     }
                     ui.add(egui::Label::new(RichText::new(&note.title).size(t.font.small).color(t.text_dim)).truncate());
@@ -543,7 +560,7 @@ fn status_bar(s: &mut AppState, ctx: &Context) {
         });
     });
     // The breadcrumb popups rest on the top edge of the status bar.
-    s.breadcrumbs.baseline = Some(panel.response.rect.min.y);
+    s.ws.breadcrumbs.baseline = Some(panel.response.rect.min.y);
 }
 
 fn status_right(s: &mut AppState, ui: &mut egui::Ui) {
@@ -558,11 +575,11 @@ fn status_right(s: &mut AppState, ui: &mut egui::Ui) {
     // The branch lives in the title bar; the caret position is not shown. The language stays:
     // it tells whether the IDE understands the file or treats it as plain text.
     crate::memory::status_widget(s, ui);
-    if let Some(tab) = s.tabs.active_tab() {
+    if let Some(tab) = s.ws.tabs.active_tab() {
         match &tab.content {
             TabContent::Editor(e) => {
                 item(ui, e.doc.language().name(), t.text);
-                if let Some(backend) = e.lang.and_then(|l| s.langs.status(l, &e.path)).filter(|_| wide) {
+                if let Some(backend) = e.lang.and_then(|l| s.ws.langs.status(l, &e.path)).filter(|_| wide) {
                     item(ui, &backend, t.text_dim);
                 }
                 if e.read_only {
@@ -614,8 +631,8 @@ fn tool_window(s: &mut AppState, ui: &mut egui::Ui, w: ToolWindow) {
         }
         if hide {
             match w.side() {
-                layout::Side::Left => s.layout.left = None,
-                layout::Side::Bottom => s.layout.bottom = None,
+                layout::Side::Left => s.ws.layout.left = None,
+                layout::Side::Bottom => s.ws.layout.bottom = None,
             }
             return;
         }
@@ -625,7 +642,7 @@ fn tool_window(s: &mut AppState, ui: &mut egui::Ui, w: ToolWindow) {
 
 fn open_dropped_files(s: &mut AppState, ctx: &Context) {
     let dropped: Vec<PathBuf> = ctx.input(|i| i.raw.dropped_files.iter().filter_map(|f| f.path.clone()).collect());
-    if s.project.is_none() {
+    if s.ws.project.is_none() {
         return;
     }
     for path in dropped {
@@ -655,15 +672,15 @@ fn tool_window_body(s: &mut AppState, ui: &mut egui::Ui, w: ToolWindow) {
 }
 
 fn editor_area(s: &mut AppState, ui: &mut egui::Ui) {
-    if s.project.is_none() {
+    if s.ws.project.is_none() {
         welcome(s, ui);
         return;
     }
-    if !s.tabs.list.is_empty() {
-        match s.tabs.show_bar(ui) {
+    if !s.ws.tabs.list.is_empty() {
+        match s.ws.tabs.show_bar(ui) {
             Some(TabBarEvent::Activate(id)) => {
-                s.tabs.activate(id);
-                if let Some(e) = s.tabs.editor_mut(id) {
+                s.ws.tabs.activate(id);
+                if let Some(e) = s.ws.tabs.editor_mut(id) {
                     e.view.request_focus();
                 }
             }
@@ -671,12 +688,13 @@ fn editor_area(s: &mut AppState, ui: &mut egui::Ui) {
             None => {}
         }
     }
-    let Some(active) = s.tabs.active else {
+    let Some(active) = s.ws.tabs.active else {
         empty_editor_hints(ui);
         return;
     };
 
-    let AppState { tabs, jobs, notifications, project, git: git_info, commands, editor_theme, .. } = &mut *s;
+    let AppState { ws, jobs, notifications, editor_theme, .. } = &mut *s;
+    let crate::workspace::Workspace { tabs, project, git: git_info, commands, .. } = ws;
     let Some(tab) = tabs.get_mut(active) else { return };
     let out = match &mut tab.content {
         TabContent::Editor(e) => {
@@ -734,7 +752,7 @@ fn editor_area(s: &mut AppState, ui: &mut egui::Ui) {
         git::on_annotation_click(s, active, line);
     }
     let menu_open = ui.ctx().memory(|m| m.any_popup_open());
-    let quiet = menu_open || s.nav.popup.is_some();
+    let quiet = menu_open || s.ws.nav.popup.is_some();
     nav::hover(s, active, if quiet { None } else { r.hover }, r.response.layer_id, if quiet { &[] } else { &hover_problems });
 }
 
@@ -764,7 +782,7 @@ fn empty_editor_hints(ui: &mut egui::Ui) {
             painter.galley(pos2(x + a.size().x + gap, y - k.size().y / 2.0), k, t.link);
         }
     }
-    let resp = ui.interact(rect, Id::new("empty-editor"), Sense::hover());
+    let resp = ui.interact(rect, crate::workspace::wid("empty-editor"), Sense::hover());
     crate::util::label_widget(&resp, egui::WidgetType::Other, "Empty editor");
 }
 
@@ -776,18 +794,18 @@ fn welcome(s: &mut AppState, ui: &mut egui::Ui) {
         if ui.add(egui::Button::new(RichText::new("Open Folder...").size(theme::T.font.big)).corner_radius(CornerRadius::same(4)).min_size(egui::vec2(160.0, 32.0))).clicked() {
             s.pick_folder();
         }
-        let _ = ui.interact(ui.max_rect(), Id::new("welcome"), Sense::hover());
+        let _ = ui.interact(ui.max_rect(), crate::workspace::wid("welcome"), Sense::hover());
     });
 }
 
 fn confirm_close(s: &mut AppState, ctx: &Context) {
-    let Some(id) = s.confirm_close else { return };
-    let Some(title) = s.tabs.get(id).map(|t| t.title()) else {
-        s.confirm_close = None;
+    let Some(id) = s.ws.confirm_close else { return };
+    let Some(title) = s.ws.tabs.get(id).map(|t| t.title()) else {
+        s.ws.confirm_close = None;
         return;
     };
     let mut choice = None;
-    let modal = Modal::new(Id::new("confirm-close")).show(ctx, |ui| {
+    let modal = Modal::new(crate::workspace::wid("confirm-close")).show(ctx, |ui| {
         ui.set_width(360.0);
         ui.label(RichText::new(format!("Save changes to {title}?")).strong());
         ui.add_space(8.0);
@@ -808,14 +826,64 @@ fn confirm_close(s: &mut AppState, ctx: &Context) {
     }
     match choice {
         Some(0) => {
-            s.confirm_close = None;
+            s.ws.confirm_close = None;
             s.save_tab(id, true);
         }
         Some(1) => {
-            s.confirm_close = None;
+            s.ws.confirm_close = None;
             s.close_tab(id, true);
         }
-        Some(_) => s.confirm_close = None,
+        Some(_) => s.ws.confirm_close = None,
+        None => {}
+    }
+}
+
+/// "Close project?" for a workspace with unsaved files (`AppState::close_workspace`). The
+/// workspace is active while the prompt shows.
+fn confirm_close_workspace(s: &mut AppState, ctx: &Context) {
+    let Some(id) = s.confirm_close_ws else { return };
+    if s.ws.id != id && !s.activate(id) {
+        s.confirm_close_ws = None;
+        return;
+    }
+    let dirty: Vec<String> = s.ws.tabs.list.iter().filter(|t| t.is_dirty()).map(|t| t.title()).collect();
+    if dirty.is_empty() {
+        // Saved meanwhile: nothing to ask.
+        s.confirm_close_ws = None;
+        s.close_workspace_now(id);
+        return;
+    }
+    let name = s.ws.project.as_ref().map_or_else(String::new, |p| p.name.clone());
+    let mut choice = None;
+    let modal = Modal::new(Id::new("confirm-close-project")).show(ctx, |ui| {
+        ui.set_width(380.0);
+        ui.label(RichText::new(format!("Close project {name}?")).strong());
+        ui.add_space(4.0);
+        ui.label(format!("Unsaved changes: {}.", dirty.join(", ")));
+        ui.add_space(8.0);
+        ui.horizontal(|ui| {
+            if ui.button("Save and Close").clicked() {
+                choice = Some(0);
+            }
+            if ui.button("Close Without Saving").clicked() {
+                choice = Some(1);
+            }
+            if ui.button("Cancel").clicked() {
+                choice = Some(2);
+            }
+        });
+    });
+    if choice.is_none() && modal.should_close() {
+        choice = Some(2);
+    }
+    match choice {
+        Some(0) => {
+            s.confirm_close_ws = None;
+            s.save_all();
+            s.ws.close_when_saved = true;
+        }
+        Some(1) => s.close_workspace_now(id),
+        Some(_) => s.confirm_close_ws = None,
         None => {}
     }
 }

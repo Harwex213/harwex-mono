@@ -9,14 +9,23 @@ use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use crate::state::AppState;
+use crate::workspace::WorkspaceId;
 
 /// A piece of work for the UI thread.
 pub type UiCallback = Box<dyn FnOnce(&mut AppState) + Send>;
 
+/// A callback and the workspace it belongs to (`None`: the window itself).
+pub type Posted = (Option<WorkspaceId>, UiCallback);
+
 /// Cheap to clone; clones share the channel and the list of running tasks.
+///
+/// Every handle carries a workspace tag. `state.jobs` carries the workspace in context, and a
+/// clone keeps the tag it was made with, so a worker started for project A delivers to A even
+/// when B is active by then. A callback of a closed workspace is dropped.
 #[derive(Clone)]
 pub struct Jobs {
-    tx: Sender<UiCallback>,
+    tx: Sender<Posted>,
+    ws: Option<WorkspaceId>,
     ctx: egui::Context,
     running: Arc<Mutex<Vec<RunningJob>>>,
     next_id: Arc<AtomicU64>,
@@ -50,10 +59,30 @@ impl Drop for RunningGuard {
 }
 
 impl Jobs {
-    pub fn new(ctx: egui::Context) -> (Jobs, Receiver<UiCallback>) {
+    pub fn new(ctx: egui::Context) -> (Jobs, Receiver<Posted>) {
         let (tx, rx) = channel();
-        let jobs = Jobs { tx, ctx, running: Arc::default(), next_id: Arc::new(AtomicU64::new(1)), in_flight: Arc::default() };
+        let jobs = Jobs { tx, ws: None, ctx, running: Arc::default(), next_id: Arc::new(AtomicU64::new(1)), in_flight: Arc::default() };
         (jobs, rx)
+    }
+
+    /// A handle whose callbacks run with workspace `ws` in context (`None`: the active one,
+    /// for window-level work such as the memory sampler).
+    pub fn for_ws(&self, ws: Option<WorkspaceId>) -> Jobs {
+        Jobs { ws, ..self.clone() }
+    }
+
+    /// A handle for window-level work: its callbacks run whatever workspace is open.
+    pub fn window(&self) -> Jobs {
+        self.for_ws(None)
+    }
+
+    /// The workspace this handle delivers to.
+    pub fn workspace(&self) -> Option<WorkspaceId> {
+        self.ws
+    }
+
+    pub(crate) fn set_workspace(&mut self, ws: Option<WorkspaceId>) {
+        self.ws = ws;
     }
 
     #[allow(dead_code)] // Extension surface for the Git UI phase.
@@ -131,7 +160,7 @@ impl Jobs {
     pub fn post(&self, f: impl FnOnce(&mut AppState) + Send + 'static) {
         self.in_flight.fetch_add(1, Ordering::SeqCst);
         // A send error means the app is shutting down; the result is no longer wanted.
-        if self.tx.send(Box::new(f)).is_err() {
+        if self.tx.send((self.ws, Box::new(f))).is_err() {
             self.in_flight.fetch_sub(1, Ordering::SeqCst);
         }
         self.ctx.request_repaint();

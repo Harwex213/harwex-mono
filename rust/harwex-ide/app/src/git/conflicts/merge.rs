@@ -112,11 +112,11 @@ impl MergeTab {
                 let ok = crate::git::remote::report(state, title, &format!("{} saved and staged", key.trim_start_matches("merge:")), res);
                 state.refresh_git();
                 if ok {
-                    if let Some(id) = state.tabs.custom_by_key(&key) {
+                    if let Some(id) = state.ws.tabs.custom_by_key(&key) {
                         state.close_tab(id, true);
                     }
                     super::merge_saved(state);
-                } else if let Some(t) = state.tabs.custom_mut::<MergeTab>(&key) {
+                } else if let Some(t) = state.ws.tabs.custom_mut::<MergeTab>(&key) {
                     t.saving = false;
                 }
             },

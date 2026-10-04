@@ -220,7 +220,7 @@ struct Keys {
 /// The egui focus target of the bar while it has the keyboard. Holding egui focus takes it from
 /// the editor, and the focus lock stops egui from moving focus with the arrows.
 pub fn focus_id() -> Id {
-    Id::new("breadcrumbs-keyboard")
+    crate::workspace::wid("breadcrumbs-keyboard")
 }
 
 #[derive(Default)]
@@ -273,18 +273,18 @@ impl Breadcrumbs {
 
 /// The file the active tab shows (an editor's file, or the file of a diff tab).
 pub fn active_file(state: &AppState) -> Option<PathBuf> {
-    state.tabs.active_tab().and_then(|t| t.file_path())
+    state.ws.tabs.active_tab().and_then(|t| t.file_path())
 }
 
 fn active_segments(state: &AppState) -> Option<Vec<Segment>> {
     let file = active_file(state)?;
-    let project = state.project.as_ref();
+    let project = state.ws.project.as_ref();
     Some(segments(project.map(|p| p.root.as_path()), project.map_or("", |p| p.name.as_str()), &file))
 }
 
 /// Lists `dir` on a worker. A cached listing stays on screen until the fresh one arrives.
 fn request(state: &mut AppState, dir: PathBuf) {
-    if !state.breadcrumbs.loading.insert(dir.clone()) {
+    if !state.ws.breadcrumbs.loading.insert(dir.clone()) {
         return;
     }
     let generation = state.project_generation();
@@ -292,9 +292,9 @@ fn request(state: &mut AppState, dir: PathBuf) {
     state.jobs.spawn_quiet(
         move || tree::list_dir(&d),
         move |state, entries| {
-            state.breadcrumbs.loading.remove(&dir);
+            state.ws.breadcrumbs.loading.remove(&dir);
             if state.project_generation() == generation {
-                state.breadcrumbs.listings.insert(dir, entries);
+                state.ws.breadcrumbs.listings.insert(dir, entries);
             }
         },
     );
@@ -310,23 +310,23 @@ fn slot_opener(slot: &Slot) -> Opener {
 /// Opens the popup of slot `index` of the last drawn bar, as the keyboard does.
 fn open_slot(state: &mut AppState, index: usize) {
     let Some(segs) = active_segments(state) else { return };
-    let (Some(slot), Some(rect)) = (state.breadcrumbs.slots.get(index).cloned(), state.breadcrumbs.slot_rects.get(index).copied()) else { return };
+    let (Some(slot), Some(rect)) = (state.ws.breadcrumbs.slots.get(index).cloned(), state.ws.breadcrumbs.slot_rects.get(index).copied()) else { return };
     open_popup(state, slot_opener(&slot), &segs, rect.left_top());
-    state.breadcrumbs.selected_slot = Some(index);
+    state.ws.breadcrumbs.selected_slot = Some(index);
 }
 
 /// Gives the bar the keyboard with slot `index` selected and no popup open.
 fn focus_bar(state: &mut AppState, ctx: &Context, index: usize) {
-    state.breadcrumbs.popup = None;
-    state.breadcrumbs.selected_slot = Some(index);
-    state.breadcrumbs.refocus = !ctx.memory(|m| m.has_focus(focus_id()));
+    state.ws.breadcrumbs.popup = None;
+    state.ws.breadcrumbs.selected_slot = Some(index);
+    state.ws.breadcrumbs.refocus = !ctx.memory(|m| m.has_focus(focus_id()));
     ctx.memory_mut(|m| m.request_focus(focus_id()));
 }
 
 /// Leaves the breadcrumbs and gives the keyboard back to the editor.
 fn leave(state: &mut AppState, ctx: &Context) {
-    state.breadcrumbs.popup = None;
-    state.breadcrumbs.selected_slot = None;
+    state.ws.breadcrumbs.popup = None;
+    state.ws.breadcrumbs.selected_slot = None;
     crate::terminal::focus_editor(state, ctx);
 }
 
@@ -336,7 +336,7 @@ pub fn shortcut(state: &mut AppState, ctx: &Context) {
     if !ctx.input_mut(|i| i.consume_key(egui::Modifiers::ALT, Key::Home)) {
         return;
     }
-    if let Some(last) = state.breadcrumbs.slots.len().checked_sub(1) {
+    if let Some(last) = state.ws.breadcrumbs.slots.len().checked_sub(1) {
         focus_bar(state, ctx, last);
     }
 }
@@ -350,7 +350,7 @@ fn open_popup(state: &mut AppState, opener: Opener, segs: &[Segment], anchor: Po
             Level::dir(segs[dir_index].path.clone(), &file)
         }
         Opener::Hidden => {
-            let hidden = state.breadcrumbs.slots.iter().find_map(|s| match s {
+            let hidden = state.ws.breadcrumbs.slots.iter().find_map(|s| match s {
                 Slot::Hidden(r) => Some(r.clone()),
                 Slot::Segment(_) => None,
             });
@@ -362,13 +362,13 @@ fn open_popup(state: &mut AppState, opener: Opener, segs: &[Segment], anchor: Po
     if let Some(d) = level.dir_path() {
         request(state, d.to_path_buf());
     }
-    state.breadcrumbs.popup = Some(Popup { levels: vec![level], focus: 0, opener, file, anchor });
+    state.ws.breadcrumbs.popup = Some(Popup { levels: vec![level], focus: 0, opener, file, anchor });
 }
 
 /// Consumes the keys of the focused bar or the open popup before the editor sees them, and
 /// applies the bar's own keys. Call at the start of the frame.
 pub fn take_keys(state: &mut AppState, ctx: &Context) {
-    let crumbs = &mut state.breadcrumbs;
+    let crumbs = &mut state.ws.breadcrumbs;
     if std::mem::take(&mut crumbs.refocus) && crumbs.selected_slot.is_some() {
         ctx.memory_mut(|m| m.request_focus(focus_id()));
     }
@@ -388,13 +388,13 @@ pub fn take_keys(state: &mut AppState, ctx: &Context) {
         right: i.consume_key(none, Key::ArrowRight),
         enter: i.consume_key(none, Key::Enter),
     });
-    if state.breadcrumbs.popup.is_some() {
-        state.breadcrumbs.keys = keys;
+    if state.ws.breadcrumbs.popup.is_some() {
+        state.ws.breadcrumbs.keys = keys;
         return;
     }
     // The bar has the keyboard and no popup is open.
-    let len = state.breadcrumbs.slots.len();
-    let Some(sel) = state.breadcrumbs.selected_slot.filter(|_| len > 0) else {
+    let len = state.ws.breadcrumbs.slots.len();
+    let Some(sel) = state.ws.breadcrumbs.selected_slot.filter(|_| len > 0) else {
         leave(state, ctx);
         return;
     };
@@ -404,9 +404,9 @@ pub fn take_keys(state: &mut AppState, ctx: &Context) {
     } else if keys.down || keys.enter {
         open_slot(state, sel);
     } else if keys.left {
-        state.breadcrumbs.selected_slot = Some(sel.saturating_sub(1));
+        state.ws.breadcrumbs.selected_slot = Some(sel.saturating_sub(1));
     } else if keys.right {
-        state.breadcrumbs.selected_slot = Some((sel + 1).min(len - 1));
+        state.ws.breadcrumbs.selected_slot = Some((sel + 1).min(len - 1));
     }
 }
 
@@ -428,14 +428,14 @@ fn segment_width(ui: &Ui, seg: &Segment) -> f32 {
 /// Draws the breadcrumbs into `ui` (the left part of the status bar).
 pub fn bar(state: &mut AppState, ui: &mut Ui) {
     let Some(segs) = active_segments(state) else {
-        state.breadcrumbs.popup = None;
-        state.breadcrumbs.slots.clear();
-        state.breadcrumbs.bar_rect = None;
+        state.ws.breadcrumbs.popup = None;
+        state.ws.breadcrumbs.slots.clear();
+        state.ws.breadcrumbs.bar_rect = None;
         return;
     };
     let file = segs.last().map(|s| s.path.clone()).unwrap_or_default();
-    if state.breadcrumbs.popup.as_ref().is_some_and(|p| p.file != file) {
-        state.breadcrumbs.popup = None;
+    if state.ws.breadcrumbs.popup.as_ref().is_some_and(|p| p.file != file) {
+        state.ws.breadcrumbs.popup = None;
     }
     // Slots touch; the separators carry the gaps, so `fit` sees the real widths.
     ui.spacing_mut().item_spacing.x = 0.0;
@@ -444,9 +444,9 @@ pub fn bar(state: &mut AppState, ui: &mut Ui) {
     let height = ui.available_height();
     let start = ui.cursor().min;
     let mut clicked: Option<(Opener, Pos2)> = None;
-    let open = state.breadcrumbs.popup.as_ref().map(|p| p.opener);
-    let bar_focused = state.breadcrumbs.bar_focused(ui.ctx());
-    let keyboard = if bar_focused { state.breadcrumbs.selected_slot.map(|s| s.min(slots.len().saturating_sub(1))) } else { None };
+    let open = state.ws.breadcrumbs.popup.as_ref().map(|p| p.opener);
+    let bar_focused = state.ws.breadcrumbs.bar_focused(ui.ctx());
+    let keyboard = if bar_focused { state.ws.breadcrumbs.selected_slot.map(|s| s.min(slots.len().saturating_sub(1))) } else { None };
     let mut slot_rects = Vec::with_capacity(slots.len());
     let mut anchor = None;
     for (n, slot) in slots.iter().enumerate() {
@@ -490,7 +490,7 @@ pub fn bar(state: &mut AppState, ui: &mut Ui) {
                 }
                 x += ICON_W;
                 let color = match seg.kind {
-                    SegmentKind::File => tree::name_color(&state.git, &seg.path, false),
+                    SegmentKind::File => tree::name_color(&state.ws.git, &seg.path, false),
                     _ => theme::T.text,
                 };
                 painter.text(pos2(x, cy), Align2::LEFT_CENTER, &seg.name, font(), color);
@@ -501,21 +501,21 @@ pub fn bar(state: &mut AppState, ui: &mut Ui) {
             clicked = Some((opener, rect.left_top()));
         }
     }
-    state.breadcrumbs.bar_rect = Some(Rect::from_min_max(start, pos2(ui.cursor().min.x, start.y + height)));
-    if state.breadcrumbs.selected_slot.is_some() {
+    state.ws.breadcrumbs.bar_rect = Some(Rect::from_min_max(start, pos2(ui.cursor().min.x, start.y + height)));
+    if state.ws.breadcrumbs.selected_slot.is_some() {
         // The focus target must exist every frame, or egui drops its focus. It has no size, so
         // any press, even on a segment, takes the keyboard away from the bar.
         ui.interact(Rect::from_min_size(start, egui::Vec2::ZERO), focus_id(), Sense::focusable_noninteractive());
         ui.memory_mut(|m| m.set_focus_lock_filter(focus_id(), egui::EventFilter { tab: true, horizontal_arrows: true, vertical_arrows: true, escape: true }));
     }
-    state.breadcrumbs.slots = slots;
-    state.breadcrumbs.slot_rects = slot_rects;
-    if let (Some(p), Some(a)) = (state.breadcrumbs.popup.as_mut(), anchor) {
+    state.ws.breadcrumbs.slots = slots;
+    state.ws.breadcrumbs.slot_rects = slot_rects;
+    if let (Some(p), Some(a)) = (state.ws.breadcrumbs.popup.as_mut(), anchor) {
         p.anchor = a;
     }
     if let Some((opener, at)) = clicked {
         if open == Some(opener) {
-            state.breadcrumbs.popup = None;
+            state.ws.breadcrumbs.popup = None;
         } else {
             open_popup(state, opener, &segs, at);
         }
@@ -531,12 +531,12 @@ enum Action {
 
 /// Draws the open popup levels and applies keys, hover and clicks. Call after the panels.
 pub fn show_popup(state: &mut AppState, ctx: &Context) {
-    let keys = std::mem::take(&mut state.breadcrumbs.keys);
-    let Some(popup) = state.breadcrumbs.popup.as_mut() else {
-        state.breadcrumbs.popup_rects.clear();
+    let keys = std::mem::take(&mut state.ws.breadcrumbs.keys);
+    let Some(popup) = state.ws.breadcrumbs.popup.as_mut() else {
+        state.ws.breadcrumbs.popup_rects.clear();
         return;
     };
-    let listings = &state.breadcrumbs.listings;
+    let listings = &state.ws.breadcrumbs.listings;
     let items_of = |level: &Level| -> Option<Vec<Entry>> {
         match &level.source {
             LevelSource::Dir(d) => listings.get(d).cloned(),
@@ -606,8 +606,8 @@ pub fn show_popup(state: &mut AppState, ctx: &Context) {
     }
 
     let pointer_moved = ctx.input(|i| i.pointer.delta() != egui::Vec2::ZERO);
-    let root = state.project.as_ref().map(|p| p.root.clone());
-    let git = &state.git;
+    let root = state.ws.project.as_ref().map(|p| p.root.clone());
+    let git = &state.ws.git;
     let mut popup_rects = Vec::new();
     // The directory each level shows, to know whether a row's nested popup is already open.
     let level_dirs: Vec<Option<PathBuf>> = popup.levels.iter().map(|l| l.dir_path().map(Path::to_path_buf)).collect();
@@ -619,7 +619,7 @@ pub fn show_popup(state: &mut AppState, ctx: &Context) {
     let frame = egui::Frame::popup(&ctx.style()).fill(theme::T.popup_bg).corner_radius(egui::CornerRadius::same(theme::T.radius.popup as u8)).inner_margin(egui::Margin::same(4)).shadow(shadow);
     let margin = frame.total_margin().sum();
     let screen = ctx.screen_rect();
-    let baseline = state.breadcrumbs.baseline.unwrap_or(screen.max.y).min(screen.max.y);
+    let baseline = state.ws.breadcrumbs.baseline.unwrap_or(screen.max.y).min(screen.max.y);
     let fit_rows = ((baseline - screen.min.y - margin.y) / ROW_H).floor().max(1.0) as usize;
     let max_rows = MAX_ROWS.min(fit_rows);
     let level_items: Vec<Option<Vec<Entry>>> = popup.levels.iter().map(&items_of).collect();
@@ -649,7 +649,7 @@ pub fn show_popup(state: &mut AppState, ctx: &Context) {
         let pos = pos2(xs[li], baseline - size.y - margin.y);
         let focused = li == popup.focus;
         let key = level_dirs[li].clone().unwrap_or_default();
-        let resp = egui::Area::new(Id::new(("breadcrumb-popup", li, &key))).order(egui::Order::Foreground).fixed_pos(pos).constrain(false).show(ctx, |ui| {
+        let resp = egui::Area::new(crate::workspace::wid(("breadcrumb-popup", li, &key))).order(egui::Order::Foreground).fixed_pos(pos).constrain(false).show(ctx, |ui| {
             frame.show(ui, |ui| {
                 // An explicit size: an Area otherwise offers its content last frame's size.
                 ui.set_width(size.x);
@@ -725,7 +725,7 @@ pub fn show_popup(state: &mut AppState, ctx: &Context) {
     }
 
     let pressed_outside = ctx.input(|i| {
-        i.pointer.any_pressed() && i.pointer.interact_pos().is_some_and(|p| !popup_rects.iter().any(|r| r.contains(p)) && !state.breadcrumbs.bar_rect.is_some_and(|r| r.contains(p)))
+        i.pointer.any_pressed() && i.pointer.interact_pos().is_some_and(|p| !popup_rects.iter().any(|r| r.contains(p)) && !state.ws.breadcrumbs.bar_rect.is_some_and(|r| r.contains(p)))
     });
 
     let mut open_file = None;
@@ -750,7 +750,7 @@ pub fn show_popup(state: &mut AppState, ctx: &Context) {
             }
         }
     }
-    state.breadcrumbs.popup_rects = popup_rects;
+    state.ws.breadcrumbs.popup_rects = popup_rects;
     for d in to_list {
         request(state, d);
     }
@@ -759,19 +759,19 @@ pub fn show_popup(state: &mut AppState, ctx: &Context) {
         return;
     }
     if pressed_outside || open_file.is_some() {
-        state.breadcrumbs.popup = None;
-        state.breadcrumbs.selected_slot = None;
+        state.ws.breadcrumbs.popup = None;
+        state.ws.breadcrumbs.selected_slot = None;
     }
     if let Some(p) = open_file {
         state.open_location(&p, None, true);
         return;
     }
-    let Some(current) = state.breadcrumbs.popup_slot() else { return };
+    let Some(current) = state.ws.breadcrumbs.popup_slot() else { return };
     if to_bar {
         focus_bar(state, ctx, current);
     } else if let Some(next) = hop {
         let target = if next { current + 1 } else { current.wrapping_sub(1) };
-        if target < state.breadcrumbs.slots.len() {
+        if target < state.ws.breadcrumbs.slots.len() {
             open_slot(state, target);
         }
     }

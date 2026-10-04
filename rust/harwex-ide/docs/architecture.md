@@ -39,7 +39,7 @@ Problems come from processes that already run or that the project already uses (
 - ESLint errors come from one node process per workspace root (the topmost directory with `node_modules/eslint` above the config). It runs our small script (`diagnostics/eslint_server.js`), not the `vscode-eslint` server: the script keeps one `ESLint` instance per config directory, so a config loads once per process, and it speaks only the LSP subset `ide-lsp` has. The app finds the nearest `eslint.config.*` (or `.eslintrc*` for ESLint 8 and 9) and sends its directory with each request. ESLint never checks types for the editor; the TS server does.
 - typescript-eslint's type-aware rules (`projectService`) build a second TypeScript program inside the ESLint process. That breaks the "no second type checker" idea above, and it is the user's choice in their config, so the app does not hide it: the first lint per TS project shows "ESLint: loading <project>" in the status bar, and the server drops its TS projects when the last file closes (the heap shrinks; the process keeps its pages until the idle stop).
 - oxlint type-check would replace the TS server's errors. The oxlint 1.77 language server has no setting for it, and a measurement on `mono` found 0 of 3 TypeScript errors through it. The plan therefore keeps the TS server for TypeScript errors. `strategy::oxlint_lsp_has_type_check` is the switch when a newer oxlint gains it.
-- Only open files are checked: debounced 300 ms, on save, with stale queued requests skipped. TS requests ride the TypeScript queue after the text sync; linters share one lint queue (`state.langs.lint`). Results are shifted through the document's edit journal until new ones arrive.
+- Only open files are checked: debounced 300 ms, on save, with stale queued requests skipped. TS requests ride the TypeScript queue after the text sync; linters share one lint queue (`state.ws.langs.lint`). Results are shifted through the document's edit journal until new ones arrive.
 - New sources implement `diagnostics::LintSource` and add a `SourceId`; the UI reads only `Problem`s.
 
 ### Linters on a huge monorepo
@@ -54,3 +54,4 @@ Measured on a generated monorepo of 200 packages (`docs/timings.md`): ESLint nee
 ## Recorded exceptions
 
 - Rule 1: `on_exit` stops the language servers on the UI thread. Nothing waits for the UI at that point.
+- Rule 6: each open project (workspace, task 032) has its own language servers. Two projects that share one TypeScript installation or one Cargo workspace in the same window run two servers. Projects are separate roots in practice, and a shared server would need a cross-workspace registry for routing replies and idle stops.

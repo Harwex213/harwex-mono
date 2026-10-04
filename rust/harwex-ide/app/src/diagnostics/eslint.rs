@@ -43,6 +43,8 @@ struct Server {
 pub struct EslintSource {
     /// Keyed by the workspace root.
     servers: Mutex<HashMap<PathBuf, Arc<Mutex<Server>>>>,
+    /// Pid cells of the servers' clients: readable while a lint holds a server's lock.
+    pids: Mutex<Vec<Arc<std::sync::atomic::AtomicU32>>>,
     /// Which server each linted file was opened in, so `close` reaches it.
     files: Mutex<HashMap<PathBuf, PathBuf>>,
     jobs: Option<Jobs>,
@@ -50,7 +52,7 @@ pub struct EslintSource {
 
 impl EslintSource {
     pub fn new(jobs: Option<Jobs>) -> EslintSource {
-        EslintSource { servers: Mutex::default(), files: Mutex::default(), jobs }
+        EslintSource { servers: Mutex::default(), pids: Mutex::default(), files: Mutex::default(), jobs }
     }
 
     fn server(&self, plan: &EslintPlan) -> Result<Arc<Mutex<Server>>, String> {
@@ -71,7 +73,9 @@ impl EslintSource {
         // A config can leave out its type-aware rules in the IDE (docs/usage.md).
         config.env.push(("HARWEX_IDE".into(), "1".into()));
         config.language_id = super::oxlint::language_id;
-        let server = Arc::new(Mutex::new(Server { client: LspClient::new(config), crashes: 0, broken: None, warm: HashSet::new() }));
+        let client = LspClient::new(config);
+        lock(&self.pids).push(client.pid_cell());
+        let server = Arc::new(Mutex::new(Server { client, crashes: 0, broken: None, warm: HashSet::new() }));
         lock(&self.servers).insert(root.clone(), server.clone());
         Ok(server)
     }
@@ -163,7 +167,14 @@ impl LintSource for EslintSource {
         servers.iter().filter(|s| lock(s).client.is_running()).count()
     }
 
+    fn pids(&self) -> Vec<u32> {
+        // Never waits: a cell list being extended right now is skipped for this call.
+        let Ok(cells) = self.pids.try_lock() else { return Vec::new() };
+        cells.iter().map(|c| c.load(std::sync::atomic::Ordering::Relaxed)).filter(|&p| p != 0).collect()
+    }
+
     fn shutdown(&self) {
+        lock(&self.pids).clear();
         let servers: Vec<Arc<Mutex<Server>>> = lock(&self.servers).drain().map(|(_, s)| s).collect();
         for s in servers {
             lock(&s).client.shutdown();

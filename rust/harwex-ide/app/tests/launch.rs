@@ -34,7 +34,7 @@ fn terminal_start_opens_the_cwd() {
     assert_eq!(folder.as_deref(), Some(here.dir.as_path()));
     let mut ide = Ide::with_options(SUITE, options(folder), Some(&storage));
     let root = std::fs::canonicalize(&here.dir).expect("canonical");
-    ide.wait_for("cwd opened", |s| s.project.as_ref().is_some_and(|p| p.root == root) && s.git.status_ms.is_some());
+    ide.wait_for("cwd opened", |s| s.ws.project.as_ref().is_some_and(|p| p.root == root) && s.ws.git.status_ms.is_some());
     ide.settle();
     ide.snapshot("terminal_cwd");
 }
@@ -50,7 +50,7 @@ fn spotlight_start_reopens_the_last_folder() {
     assert_eq!(folder, None);
     let mut ide = Ide::with_options(SUITE, options(folder), Some(&storage));
     let root = std::fs::canonicalize(&last.dir).expect("canonical");
-    ide.wait_for("last folder reopened", |s| s.project.as_ref().is_some_and(|p| p.root == root) && s.git.status_ms.is_some());
+    ide.wait_for("last folder reopened", |s| s.ws.project.as_ref().is_some_and(|p| p.root == root) && s.ws.git.status_ms.is_some());
     ide.settle();
     ide.snapshot("spotlight_last_folder");
 }
@@ -67,7 +67,7 @@ fn explicit_path_wins_over_cwd_and_last_folder() {
     let folder = startup_folder(&args, Some(&here.dir), true);
     let mut ide = Ide::with_options(SUITE, options(folder), Some(&storage));
     let root = std::fs::canonicalize(&other.dir).expect("canonical");
-    ide.wait_for("argument opened", |s| s.project.as_ref().is_some_and(|p| p.root == root) && s.git.status_ms.is_some());
+    ide.wait_for("argument opened", |s| s.ws.project.as_ref().is_some_and(|p| p.root == root) && s.ws.git.status_ms.is_some());
     ide.settle();
-    assert_eq!(ide.state().project.as_ref().map(|p| p.name.as_str()), Some("other"));
+    assert_eq!(ide.state().ws.project.as_ref().map(|p| p.name.as_str()), Some("other"));
 }

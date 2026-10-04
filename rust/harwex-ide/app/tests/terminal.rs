@@ -11,21 +11,21 @@ use harwex_ide::layout::ToolWindow;
 const SUITE: &str = "terminal";
 
 fn screen(ide: &Ide, index: usize) -> String {
-    ide.state().terminals.terminal(index).map(|t| t.screen_text()).unwrap_or_default()
+    ide.state().ws.terminals.terminal(index).map(|t| t.screen_text()).unwrap_or_default()
 }
 
 fn terminal_focused(ide: &Ide) -> bool {
-    ide.state().terminals.has_focus(&ide.ctx())
+    ide.state().ws.terminals.has_focus(&ide.ctx())
 }
 
 /// Waits until the active terminal's screen contains `text` `times` times.
 fn wait_screen(ide: &mut Ide, text: &str, times: usize) {
     let t = text.to_string();
-    ide.wait_until(&format!("{times}x {text:?} on the terminal"), move |ide| screen(ide, ide.state().terminals.active_index()).matches(&t).count() >= times);
+    ide.wait_until(&format!("{times}x {text:?} on the terminal"), move |ide| screen(ide, ide.state().ws.terminals.active_index()).matches(&t).count() >= times);
 }
 
 fn wait_prompt(ide: &mut Ide) {
-    ide.wait_until("shell prompt", |ide| screen(ide, ide.state().terminals.active_index()).lines().any(|l| l.starts_with("$")));
+    ide.wait_until("shell prompt", |ide| screen(ide, ide.state().ws.terminals.active_index()).lines().any(|l| l.starts_with("$")));
 }
 
 /// Screen position of a cell of the active terminal.
@@ -43,7 +43,7 @@ fn open_terminal(name: &str) -> (Fixture, Ide) {
     let mut ide = Ide::open(SUITE, &repo.dir);
     ide.open_file("src/app.ts");
     ide.key_mods(ALT, Key::F12);
-    ide.wait_for("terminal spawned", |s| !s.terminals.is_empty());
+    ide.wait_for("terminal spawned", |s| !s.ws.terminals.is_empty());
     wait_prompt(&mut ide);
     (fx, ide)
 }
@@ -51,7 +51,7 @@ fn open_terminal(name: &str) -> (Fixture, Ide) {
 #[test]
 fn alt_f12_runs_a_command() {
     let (_fx, mut ide) = open_terminal("echo");
-    assert_eq!(ide.state().layout.bottom, Some(ToolWindow::Terminal));
+    assert_eq!(ide.state().ws.layout.bottom, Some(ToolWindow::Terminal));
     assert!(terminal_focused(&ide), "Alt+F12 focuses the new terminal");
     ide.type_text("echo hello-from-test\n");
     // Once in the typed command line, once as output.
@@ -59,13 +59,13 @@ fn alt_f12_runs_a_command() {
     wait_screen(&mut ide, "$", 2);
     let s = screen(&ide, 0);
     assert!(s.lines().any(|l| l == "hello-from-test"), "{s}");
-    assert_eq!(ide.state().terminals.terminal(0).expect("terminal").title(), "zsh");
+    assert_eq!(ide.state().ws.terminals.terminal(0).expect("terminal").title(), "zsh");
     ide.snapshot("echo");
 
     // Alt+F12 on a focused terminal hides the window and gives the editor the keys back.
     ide.key_mods(ALT, Key::F12);
     ide.settle();
-    assert_eq!(ide.state().layout.bottom, None);
+    assert_eq!(ide.state().ws.layout.bottom, None);
     ide.type_text("Z");
     assert!(ide.active_text().starts_with('Z'), "typing reaches the editor again");
 }
@@ -74,9 +74,9 @@ fn alt_f12_runs_a_command() {
 fn plus_opens_a_second_tab() {
     let (_fx, mut ide) = open_terminal("tabs");
     ide.click("+");
-    ide.wait_for("second terminal", |s| s.terminals.len() == 2);
+    ide.wait_for("second terminal", |s| s.ws.terminals.len() == 2);
     wait_prompt(&mut ide);
-    assert_eq!(ide.state().terminals.active_index(), 1);
+    assert_eq!(ide.state().ws.terminals.active_index(), 1);
     ide.type_text("echo second\n");
     wait_screen(&mut ide, "second", 2);
     assert!(!screen(&ide, 0).contains("second"), "the first shell did not get the input");
@@ -85,11 +85,11 @@ fn plus_opens_a_second_tab() {
     // Clicking the first tab label switches back; "x" closes a tab and kills its shell.
     ide.click_nth("zsh", 0);
     ide.settle();
-    assert_eq!(ide.state().terminals.active_index(), 0);
+    assert_eq!(ide.state().ws.terminals.active_index(), 0);
     let n = ide.rects("x").len();
     ide.click_nth("x", n - 1);
     ide.settle();
-    assert_eq!(ide.state().terminals.len(), 1);
+    assert_eq!(ide.state().ws.terminals.len(), 1);
 }
 
 #[test]
@@ -102,7 +102,7 @@ fn escape_at_the_prompt_returns_to_the_editor() {
     assert!(ide.node("Editor app.ts").is_focused(), "the editor has focus");
     ide.type_text("Q");
     assert!(ide.active_text().starts_with('Q'));
-    assert_eq!(ide.state().layout.bottom, Some(ToolWindow::Terminal), "the window stays open");
+    assert_eq!(ide.state().ws.layout.bottom, Some(ToolWindow::Terminal), "the window stays open");
 }
 
 #[test]
@@ -111,7 +111,7 @@ fn escape_goes_to_the_program_on_the_alternate_screen() {
     let lines: String = (1..=200).map(|i| format!("line {i}\n")).collect();
     write(&fx.path("repo"), "lines.txt", &lines);
     ide.type_text("less lines.txt\n");
-    ide.wait_until("less on the alternate screen", |ide| ide.state().terminals.terminal(0).is_some_and(|t| t.is_alt_screen()));
+    ide.wait_until("less on the alternate screen", |ide| ide.state().ws.terminals.terminal(0).is_some_and(|t| t.is_alt_screen()));
     wait_screen(&mut ide, "line 1", 1);
     ide.key(Key::Escape);
     ide.settle();
@@ -119,7 +119,7 @@ fn escape_goes_to_the_program_on_the_alternate_screen() {
     ide.snapshot("less");
     // less reads Escape as the start of a two-key command; the first "q" completes it.
     ide.type_text("qq");
-    ide.wait_until("less quit", |ide| ide.state().terminals.terminal(0).is_some_and(|t| !t.is_alt_screen()));
+    ide.wait_until("less quit", |ide| ide.state().ws.terminals.terminal(0).is_some_and(|t| !t.is_alt_screen()));
 }
 
 #[test]
@@ -129,7 +129,7 @@ fn terminal_focus_blocks_cmd_k() {
     wait_screen(&mut ide, "before-clear", 2);
     ide.cmd(Key::K);
     ide.settle();
-    assert_eq!(ide.state().layout.left, Some(ToolWindow::Project), "Cmd+K did not open the Commit window");
+    assert_eq!(ide.state().ws.layout.left, Some(ToolWindow::Project), "Cmd+K did not open the Commit window");
     // The terminal used Cmd+K itself: the scrollback is cleared.
     ide.wait_until("screen cleared", |ide| !screen(ide, 0).contains("before-clear"));
     // Cmd+W does not close the editor tab while the terminal has focus.
@@ -151,7 +151,7 @@ fn path_link_opens_the_file() {
     assert_eq!(ide.cursor_icon(), egui::CursorIcon::PointingHand, "a path under the pointer is a link");
     ide.snapshot_here("link_hover");
     ide.click_at(p);
-    ide.wait_for("util.ts opened", |s| s.tabs.active_editor().is_some_and(|e| e.path.ends_with("src/util.ts")));
+    ide.wait_for("util.ts opened", |s| s.ws.tabs.active_editor().is_some_and(|e| e.path.ends_with("src/util.ts")));
     ide.settle();
     // `path:2:5` is 1-based; the editor is 0-based.
     assert_eq!(ide.cursor(), (1, 4));
@@ -161,13 +161,13 @@ fn path_link_opens_the_file() {
 fn exited_shell_shows_a_bar() {
     let (_fx, mut ide) = open_terminal("exited");
     ide.type_text("exit\n");
-    ide.wait_until("shell exited", |ide| ide.state().terminals.terminal(0).is_some_and(|t| !t.is_alive()));
+    ide.wait_until("shell exited", |ide| ide.state().ws.terminals.terminal(0).is_some_and(|t| !t.is_alive()));
     ide.wait_until("exit bar", |ide| ide.shows_text("[process exited]"));
     ide.snapshot("exited");
     ide.click("Close");
     ide.settle();
-    assert!(ide.state().terminals.is_empty());
-    assert_eq!(ide.state().layout.bottom, None, "closing the last terminal hides the window");
+    assert!(ide.state().ws.terminals.is_empty());
+    assert_eq!(ide.state().ws.layout.bottom, None, "closing the last terminal hides the window");
 }
 
 #[test]
@@ -250,7 +250,7 @@ fn three_tabs(name: &str) -> (Fixture, Ide, Vec<u32>) {
     let (fx, mut ide) = open_terminal(name);
     for n in 2..=3 {
         ide.click("+");
-        ide.wait_for("another terminal", move |s| s.terminals.len() == n);
+        ide.wait_for("another terminal", move |s| s.ws.terminals.len() == n);
         wait_prompt(&mut ide);
     }
     let before = pids(&ide);
@@ -258,7 +258,7 @@ fn three_tabs(name: &str) -> (Fixture, Ide, Vec<u32>) {
 }
 
 fn pids(ide: &Ide) -> Vec<u32> {
-    let terms = &ide.state().terminals;
+    let terms = &ide.state().ws.terminals;
     (0..terms.len()).map(|i| terms.terminal(i).and_then(|t| t.process_id()).expect("shell pid")).collect()
 }
 
@@ -286,7 +286,7 @@ fn release(ide: &mut Ide, at: Pos2) {
 #[test]
 fn drag_moves_a_tab_after_the_third() {
     let (_fx, mut ide, before) = three_tabs("drag_reorder");
-    assert_eq!(ide.state().terminals.active_index(), 2);
+    assert_eq!(ide.state().ws.terminals.active_index(), 2);
     let rects = tab_rects(&ide);
     assert_eq!(rects.len(), 3);
     // Grab the first tab by its title and drag it past the middle of the third.
@@ -295,7 +295,7 @@ fn drag_moves_a_tab_after_the_third() {
     // Halfway: the tab floats over the gap between the second and the third tab.
     let half = Pos2::new(from.x + (rects[1].min.x - rects[0].min.x) * 1.5, from.y);
     press_and_move(&mut ide, from, half);
-    assert!(ide.state().terminals.is_dragging_tab(), "the move past the threshold started a drag");
+    assert!(ide.state().ws.terminals.is_dragging_tab(), "the move past the threshold started a drag");
     assert_eq!(pids(&ide), before, "nothing moves before the release");
     ide.snapshot_here("tab_drag");
     // The second tab made room: it moved into the first slot.
@@ -306,11 +306,11 @@ fn drag_moves_a_tab_after_the_third() {
     }
 
     release(&mut ide, to);
-    assert!(!ide.state().terminals.is_dragging_tab());
+    assert!(!ide.state().ws.terminals.is_dragging_tab());
     assert_eq!(pids(&ide), [before[1], before[2], before[0]], "same shells, new order");
-    assert_eq!(ide.state().terminals.active_index(), 2, "the dragged tab is active");
+    assert_eq!(ide.state().ws.terminals.active_index(), 2, "the dragged tab is active");
     assert!(terminal_focused(&ide), "focus goes to the moved terminal");
-    let id = ide.state().terminals.widget_id(2).expect("widget id");
+    let id = ide.state().ws.terminals.widget_id(2).expect("widget id");
     assert_eq!(ide.ctx().memory(|m| m.focused()), Some(id));
     // The moved shell still works.
     ide.type_text("echo moved-$((6*7))\n");
@@ -324,10 +324,10 @@ fn click_without_movement_does_not_reorder() {
     // A tiny wobble stays under egui's drag threshold: a click, not a drag.
     let p = Pos2::new(rects[0].min.x + 12.0, rects[0].center().y);
     press_and_move(&mut ide, p, p + egui::vec2(2.0, 0.0));
-    assert!(!ide.state().terminals.is_dragging_tab());
+    assert!(!ide.state().ws.terminals.is_dragging_tab());
     release(&mut ide, p + egui::vec2(2.0, 0.0));
     assert_eq!(pids(&ide), before);
-    assert_eq!(ide.state().terminals.active_index(), 0, "the click selected the first tab");
+    assert_eq!(ide.state().ws.terminals.active_index(), 0, "the click selected the first tab");
 }
 
 #[test]
@@ -339,20 +339,20 @@ fn escape_or_a_far_release_cancels_the_drag() {
 
     // Escape puts the tab back; the release afterwards changes nothing.
     press_and_move(&mut ide, from, to);
-    assert!(ide.state().terminals.is_dragging_tab());
+    assert!(ide.state().ws.terminals.is_dragging_tab());
     ide.key(Key::Escape);
-    assert!(!ide.state().terminals.is_dragging_tab(), "Escape ended the drag");
+    assert!(!ide.state().ws.terminals.is_dragging_tab(), "Escape ended the drag");
     release(&mut ide, to);
     assert_eq!(pids(&ide), before, "Escape cancelled the move");
-    assert_eq!(ide.state().terminals.active_index(), 2, "the cancelled drag did not select a tab");
-    assert_eq!(ide.state().layout.bottom, Some(ToolWindow::Terminal));
+    assert_eq!(ide.state().ws.terminals.active_index(), 2, "the cancelled drag did not select a tab");
+    assert_eq!(ide.state().ws.layout.bottom, Some(ToolWindow::Terminal));
 
     // A release far below the strip (over the terminal output) cancels too.
     let away = Pos2::new(to.x, to.y + 200.0);
     press_and_move(&mut ide, from, to);
     ide.move_to(away);
-    assert!(ide.state().terminals.is_dragging_tab());
+    assert!(ide.state().ws.terminals.is_dragging_tab());
     release(&mut ide, away);
-    assert!(!ide.state().terminals.is_dragging_tab());
+    assert!(!ide.state().ws.terminals.is_dragging_tab());
     assert_eq!(pids(&ide), before, "a release away from the strip cancelled the move");
 }

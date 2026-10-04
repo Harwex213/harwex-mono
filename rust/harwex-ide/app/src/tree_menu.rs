@@ -3,7 +3,7 @@
 //! safe Delete to the Trash, Open In, Git, Reload from Disk and folder exclusion.
 //!
 //! Disk work runs in `fileops` on workers. Rename, move and safe delete ask the language
-//! servers through `state.langs`: first a text pre-filter over the file index finds candidate
+//! servers through `state.ws.langs`: first a text pre-filter over the file index finds candidate
 //! importers (so a TypeScript server loads their projects), then the servers answer. A
 //! running question shows its progress in the dialog and can be cancelled; a cancelled or
 //! stale answer is dropped by its generation.
@@ -14,7 +14,7 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
-use egui::{Context, Id, Key, Modal, RichText, ScrollArea, TextEdit, Ui};
+use egui::{Context, Key, Modal, RichText, ScrollArea, TextEdit, Ui};
 use ide_editor::{EditKind, Position};
 
 use crate::fileops::{self, Collision};
@@ -216,36 +216,36 @@ pub fn menu(ui: &mut Ui, target: &Target, info: &MenuInfo) -> Option<TreeCommand
 
 /// Runs a menu command or a tree key on `target`.
 pub fn run(state: &mut AppState, cmd: TreeCommand, target: Target) {
-    let Some(root) = state.project.as_ref().map(|p| p.root.clone()) else { return };
+    let Some(root) = state.ws.project.as_ref().map(|p| p.root.clone()) else { return };
     match cmd {
         TreeCommand::NewFile | TreeCommand::NewDir => {
             let is_dir = cmd == TreeCommand::NewDir;
-            state.tree_ops.dialog = Some(Dialog::NewEntry(NewEntry { dir: target.dir(), is_dir, name: String::new(), error: None, focus: true, busy: false }));
+            state.ws.tree_ops.dialog = Some(Dialog::NewEntry(NewEntry { dir: target.dir(), is_dir, name: String::new(), error: None, focus: true, busy: false }));
         }
         TreeCommand::Cut | TreeCommand::Copy => {
             // The name goes to the clipboard too: macOS sends ⌘V as a paste event only when
             // the clipboard holds text.
             state.platform.copy_text(&state.ctx, &fileops::file_name(&target.path));
-            state.tree_ops.clip = Some(Clip { path: target.path, cut: cmd == TreeCommand::Cut });
+            state.ws.tree_ops.clip = Some(Clip { path: target.path, cut: cmd == TreeCommand::Cut });
         }
-        TreeCommand::CancelCut => state.tree_ops.clip = None,
+        TreeCommand::CancelCut => state.ws.tree_ops.clip = None,
         TreeCommand::Paste => {
-            if let Some(clip) = state.tree_ops.clip.clone() {
+            if let Some(clip) = state.ws.tree_ops.clip.clone() {
                 paste(state, clip.path, target.dir(), clip.cut, None);
             }
         }
         TreeCommand::CopyAbsPath => state.platform.copy_text(&state.ctx, &target.path.display().to_string()),
         TreeCommand::CopyProjectPath => state.platform.copy_text(&state.ctx, &fileops::relative(&root, &target.path)),
         TreeCommand::FindUsages => find_usages(state, target),
-        TreeCommand::FindInFiles => state.find.open_scoped(Some(target.dir()), false),
-        TreeCommand::ReplaceInFiles => state.find.open_scoped(Some(target.dir()), true),
+        TreeCommand::FindInFiles => state.ws.find.open_scoped(Some(target.dir()), false),
+        TreeCommand::ReplaceInFiles => state.ws.find.open_scoped(Some(target.dir()), true),
         TreeCommand::Rename => {
             let name = fileops::file_name(&target.path);
-            state.tree_ops.cancel_running();
-            state.tree_ops.dialog = Some(Dialog::Rename(Rename { target, name, error: None, text_occurrences: false, phase: RenamePhase::Edit, focus: true }));
+            state.ws.tree_ops.cancel_running();
+            state.ws.tree_ops.dialog = Some(Dialog::Rename(Rename { target, name, error: None, text_occurrences: false, phase: RenamePhase::Edit, focus: true }));
         }
         TreeCommand::Delete => {
-            state.tree_ops.dialog = Some(Dialog::Delete(Delete { target: target.clone(), safe: true, usages: Usages::Off }));
+            state.ws.tree_ops.dialog = Some(Dialog::Delete(Delete { target: target.clone(), safe: true, usages: Usages::Off }));
             start_delete_search(state);
         }
         TreeCommand::OpenInFinder => {
@@ -262,12 +262,12 @@ pub fn run(state: &mut AppState, cmd: TreeCommand, target: Target) {
         }
         TreeCommand::OpenInTerminal => crate::terminal::open_at(state, target.dir()),
         TreeCommand::GitRollback => {
-            let Some(workdir) = state.git.repo.as_ref().map(|r| r.workdir().to_path_buf()) else { return };
-            let files: Vec<PathBuf> = state.git.changes.iter().filter(|c| !c.is_untracked()).map(|c| workdir.join(&c.path)).filter(|p| p.starts_with(&target.path)).collect();
+            let Some(workdir) = state.ws.git.repo.as_ref().map(|r| r.workdir().to_path_buf()) else { return };
+            let files: Vec<PathBuf> = state.ws.git.changes.iter().filter(|c| !c.is_untracked()).map(|c| workdir.join(&c.path)).filter(|p| p.starts_with(&target.path)).collect();
             if files.is_empty() {
                 state.notifications.info("Nothing to roll back", format!("{} has no changes.", fileops::relative(&root, &target.path)));
             } else {
-                state.tree_ops.dialog = Some(Dialog::Rollback { target, files });
+                state.ws.tree_ops.dialog = Some(Dialog::Rollback { target, files });
             }
         }
         TreeCommand::GitHistory => crate::git::log::show_file_history(state, &target.path),
@@ -355,14 +355,14 @@ fn set_progress(progress: &Progress, ctx: &Context, text: String) {
 /// worker, then each language's server on its queue, then the fallbacks. `done` runs on the
 /// UI thread unless `cancel` was set.
 fn ask(state: &mut AppState, target: PathBuf, question: Question, progress: Progress, cancel: Arc<AtomicBool>, done: Done) {
-    let Some(root) = state.project.as_ref().map(|p| p.root.clone()) else { return };
+    let Some(root) = state.ws.project.as_ref().map(|p| p.root.clone()) else { return };
     // The servers must see the editor text, not an older copy.
-    let ids: Vec<TabId> = state.tabs.editors_mut().map(|(id, _)| id).collect();
+    let ids: Vec<TabId> = state.ws.tabs.editors_mut().map(|(id, _)| id).collect();
     for id in ids {
         crate::nav::flush_lsp(state, id);
     }
-    let index = state.index.files.clone();
-    let excluded = state.tree.excluded.clone();
+    let index = state.ws.index.files.clone();
+    let excluded = state.ws.tree.excluded.clone();
     let ctx = state.ctx.clone();
     let name = fileops::file_name(&target);
     let label = match &question {
@@ -390,7 +390,7 @@ fn ask(state: &mut AppState, target: PathBuf, question: Question, progress: Prog
             if cancel.load(Ordering::Relaxed) {
                 return;
             }
-            let langs: Vec<LangId> = langs.into_iter().filter(|l| state.langs.config.enabled(*l)).collect();
+            let langs: Vec<LangId> = langs.into_iter().filter(|l| state.ws.langs.config.enabled(*l)).collect();
             let result = QueryResult { scanned, candidates: candidates.len(), ..Default::default() };
             ask_servers(state, target, question, langs, candidates, result, progress, cancel, root, excluded, done);
         },
@@ -437,7 +437,7 @@ fn ask_servers(state: &mut AppState, target: PathBuf, question: Question, langs:
     for lang in langs {
         let (shared, left, after, target, question, progress, candidates, cancel, ctx, jobs) =
             (shared.clone(), left.clone(), after.clone(), target.clone(), question.clone(), progress.clone(), candidates.clone(), cancel.clone(), ctx.clone(), state.jobs.clone());
-        state.langs.bridge(lang).run(move |server: &dyn LanguageServer| {
+        state.ws.langs.bridge(lang).run(move |server: &dyn LanguageServer| {
             if !cancel.load(Ordering::Relaxed) {
                 let _busy = jobs.busy(format!("{}: {}", lang.spec().name, fileops::file_name(&target)));
                 let n = candidates.len();
@@ -526,8 +526,8 @@ fn text_occurrences(root: &Path, target: &Path, excluded: &[PathBuf], edits: &[F
 // Rename, move, paste, delete
 
 fn start_rename_query(state: &mut AppState) {
-    let (generation, cancel) = state.tree_ops.next_generation();
-    let Some(Dialog::Rename(r)) = &mut state.tree_ops.dialog else { return };
+    let (generation, cancel) = state.ws.tree_ops.next_generation();
+    let Some(Dialog::Rename(r)) = &mut state.ws.tree_ops.dialog else { return };
     let new = r.target.path.with_file_name(r.name.trim());
     let progress: Progress = Arc::new(Mutex::new("Preparing...".into()));
     r.phase = RenamePhase::Computing { generation, progress: progress.clone() };
@@ -542,7 +542,7 @@ fn start_rename_query(state: &mut AppState) {
         progress,
         cancel,
         Box::new(move |state, result| {
-            let Some(Dialog::Rename(r)) = &mut state.tree_ops.dialog else { return };
+            let Some(Dialog::Rename(r)) = &mut state.ws.tree_ops.dialog else { return };
             if !matches!(&r.phase, RenamePhase::Computing { generation: g, .. } if *g == generation) {
                 return;
             }
@@ -557,8 +557,8 @@ fn start_rename_query(state: &mut AppState) {
                 started.elapsed().as_secs_f64() * 1000.0
             ));
             if result.edits.is_empty() && result.text_hits.is_empty() && result.errors.is_empty() {
-                state.tree_ops.dialog = None;
-                state.tree.focus_pending();
+                state.ws.tree_ops.dialog = None;
+                state.ws.tree.focus_pending();
                 relocate(state, target, new2, Vec::new(), false);
             } else {
                 r.phase = RenamePhase::Preview { new, result: Box::new(result) };
@@ -571,7 +571,7 @@ fn start_rename_query(state: &mut AppState) {
 /// files in parallel on workers, open documents through the edit API, one undo step each.
 /// `overwrite` trashes an existing `new` first.
 fn relocate(state: &mut AppState, old: PathBuf, new: PathBuf, edits: Vec<FileEdit>, overwrite: bool) {
-    let (open, closed): (Vec<FileEdit>, Vec<FileEdit>) = edits.into_iter().partition(|f| state.tabs.editor_by_path(&f.path).is_some());
+    let (open, closed): (Vec<FileEdit>, Vec<FileEdit>) = edits.into_iter().partition(|f| state.ws.tabs.editor_by_path(&f.path).is_some());
     let closed: Vec<FileEdit> = closed.into_iter().map(|f| FileEdit { path: fileops::moved_path(&f.path, &old, &new).unwrap_or(f.path), edits: f.edits }).collect();
     let platform = state.platform.clone();
     let generation = state.project_generation();
@@ -600,26 +600,26 @@ fn relocate(state: &mut AppState, old: PathBuf, new: PathBuf, edits: Vec<FileEdi
             };
             for lang in LangId::ALL {
                 let (o, n) = (old.clone(), new.clone());
-                state.langs.bridge(lang).run(move |s| s.files_renamed(&o, &n));
+                state.ws.langs.bridge(lang).run(move |s| s.files_renamed(&o, &n));
             }
             retarget_tabs(state, &old, &new);
             let mut edited = closed_edits;
             let mut files = closed_paths.len();
             for f in open {
                 let path = fileops::moved_path(&f.path, &old, &new).unwrap_or(f.path);
-                if let Some(id) = state.tabs.editor_by_path(&path) {
+                if let Some(id) = state.ws.tabs.editor_by_path(&path) {
                     edited += f.edits.len();
                     files += 1;
                     apply_to_tab(state, id, &f.edits);
                     state.save_tab(id, false);
                 }
             }
-            state.tree.rekey(&old, &new);
-            if state.tree_ops.clip.as_ref().is_some_and(|c| c.path.starts_with(&old)) {
-                state.tree_ops.clip = None;
+            state.ws.tree.rekey(&old, &new);
+            if state.ws.tree_ops.clip.as_ref().is_some_and(|c| c.path.starts_with(&old)) {
+                state.ws.tree_ops.clip = None;
             }
-            if let Some(root) = state.project.as_ref().map(|p| p.root.clone()) {
-                state.tree.reveal(&root, &new);
+            if let Some(root) = state.ws.project.as_ref().map(|p| p.root.clone()) {
+                state.ws.tree.reveal(&root, &new);
             }
             let mut paths: HashSet<PathBuf> = closed_paths.into_iter().collect();
             for p in [&old, &new] {
@@ -663,7 +663,7 @@ fn apply_closed(files: &[FileEdit]) -> Vec<String> {
 /// One undoable step per document. Ranges are taken from the current text and applied last
 /// first, so each stays valid.
 fn apply_to_tab(state: &mut AppState, id: TabId, edits: &[Edit]) {
-    let Some(e) = state.tabs.editor_mut(id) else { return };
+    let Some(e) = state.ws.tabs.editor_mut(id) else { return };
     let mut sorted: Vec<&Edit> = edits.iter().collect();
     sorted.sort_by_key(|t| std::cmp::Reverse((t.start_line, t.start_column)));
     let ranges: Vec<(std::ops::Range<usize>, String)> = sorted
@@ -683,12 +683,12 @@ fn apply_to_tab(state: &mut AppState, id: TabId, edits: &[Edit]) {
 
 /// Editor tabs under `old` follow the move: new path, language server re-open.
 fn retarget_tabs(state: &mut AppState, old: &Path, new: &Path) {
-    let moved: Vec<(TabId, PathBuf)> = state.tabs.editors_mut().filter_map(|(id, e)| fileops::moved_path(&e.path, old, new).map(|p| (id, p))).collect();
+    let moved: Vec<(TabId, PathBuf)> = state.ws.tabs.editors_mut().filter_map(|(id, e)| fileops::moved_path(&e.path, old, new).map(|p| (id, p))).collect();
     for (id, path) in moved {
-        let lang = state.langs.lang_for(&path).ok();
-        let Some(e) = state.tabs.editor_mut(id) else { continue };
+        let lang = state.ws.langs.lang_for(&path).ok();
+        let Some(e) = state.ws.tabs.editor_mut(id) else { continue };
         if let Some(l) = e.lang {
-            state.langs.bridge(l).close(&e.path);
+            state.ws.langs.bridge(l).close(&e.path);
         }
         e.path = path.clone();
         e.read_only = crate::lang::is_library_path(&path);
@@ -696,7 +696,7 @@ fn retarget_tabs(state: &mut AppState, old: &Path, new: &Path) {
         e.lang = lang;
         e.lsp_version = None;
         if let Some(l) = lang {
-            state.langs.bridge(l).open(&path, e.doc.text());
+            state.ws.langs.bridge(l).open(&path, e.doc.text());
             e.lsp_version = Some(e.doc.version());
         }
     }
@@ -737,7 +737,7 @@ fn paste(state: &mut AppState, src: PathBuf, dir: PathBuf, cut: bool, collision:
         move |state, plan| match plan {
             Err(e) => state.notifications.error("Cannot paste", e),
             Ok(Plan::Nothing) => {}
-            Ok(Plan::Choose) => state.tree_ops.dialog = Some(Dialog::Collision { src, dir, cut }),
+            Ok(Plan::Choose) => state.ws.tree_ops.dialog = Some(Dialog::Collision { src, dir, cut }),
             Ok(Plan::Go { target, overwrite }) if cut => {
                 // A move keeps imports working, like a rename. No dialog can cancel it.
                 let cancel = Arc::new(AtomicBool::new(false));
@@ -765,8 +765,8 @@ fn paste(state: &mut AppState, src: PathBuf, dir: PathBuf, cut: bool, collision:
                         Ok(()) => {
                             let paths: HashSet<PathBuf> = [target.clone(), dir.clone()].into_iter().collect();
                             state.on_fs_batch(FsBatch { paths, structure_changed: true, git_changed: true });
-                            if let Some(root) = state.project.as_ref().map(|p| p.root.clone()) {
-                                state.tree.reveal(&root, &target);
+                            if let Some(root) = state.ws.project.as_ref().map(|p| p.root.clone()) {
+                                state.ws.tree.reveal(&root, &target);
                             }
                         }
                         Err(e) => state.notifications.error("Cannot paste", e),
@@ -778,8 +778,8 @@ fn paste(state: &mut AppState, src: PathBuf, dir: PathBuf, cut: bool, collision:
 }
 
 fn start_delete_search(state: &mut AppState) {
-    let (generation, cancel) = state.tree_ops.next_generation();
-    let Some(Dialog::Delete(d)) = &mut state.tree_ops.dialog else { return };
+    let (generation, cancel) = state.ws.tree_ops.next_generation();
+    let Some(Dialog::Delete(d)) = &mut state.ws.tree_ops.dialog else { return };
     if !d.safe {
         d.usages = Usages::Off;
         return;
@@ -788,7 +788,7 @@ fn start_delete_search(state: &mut AppState) {
     d.usages = Usages::Searching { generation, progress: progress.clone() };
     let target = d.target.path.clone();
     ask(state, target, Question::Usages, progress, cancel, Box::new(move |state, result| {
-        let Some(Dialog::Delete(d)) = &mut state.tree_ops.dialog else { return };
+        let Some(Dialog::Delete(d)) = &mut state.ws.tree_ops.dialog else { return };
         if matches!(&d.usages, Usages::Searching { generation: g, .. } if *g == generation) {
             d.usages = Usages::Found(result.refs);
         }
@@ -811,19 +811,19 @@ fn delete(state: &mut AppState, target: Target) {
                 return;
             }
             let path = target.path;
-            let ids: Vec<TabId> = state.tabs.editors_mut().filter(|(_, e)| e.path.starts_with(&path)).map(|(id, _)| id).collect();
+            let ids: Vec<TabId> = state.ws.tabs.editors_mut().filter(|(_, e)| e.path.starts_with(&path)).map(|(id, _)| id).collect();
             for id in ids {
                 state.close_tab(id, true);
             }
             for lang in LangId::ALL {
                 let p = path.clone();
-                state.langs.bridge(lang).run(move |s| s.files_deleted(&p));
+                state.ws.langs.bridge(lang).run(move |s| s.files_deleted(&p));
             }
-            if state.tree_ops.clip.as_ref().is_some_and(|c| c.path.starts_with(&path)) {
-                state.tree_ops.clip = None;
+            if state.ws.tree_ops.clip.as_ref().is_some_and(|c| c.path.starts_with(&path)) {
+                state.ws.tree_ops.clip = None;
             }
-            if state.tree.selected.as_ref().is_some_and(|s| s.starts_with(&path)) {
-                state.tree.selected = path.parent().map(Path::to_path_buf);
+            if state.ws.tree.selected.as_ref().is_some_and(|s| s.starts_with(&path)) {
+                state.ws.tree.selected = path.parent().map(Path::to_path_buf);
             }
             let mut paths: HashSet<PathBuf> = HashSet::from([path.clone()]);
             if let Some(parent) = path.parent() {
@@ -840,11 +840,11 @@ fn find_usages(state: &mut AppState, target: Target) {
     let cancel = Arc::new(AtomicBool::new(false));
     let name = fileops::file_name(&target.path);
     let title = format!("Usages of {name}");
-    state.usages = UsagesView { title: title.clone(), groups: Vec::new(), searching: true, took_ms: 0.0 };
-    state.layout.show(crate::layout::ToolWindow::Usages);
+    state.ws.usages = UsagesView { title: title.clone(), groups: Vec::new(), searching: true, took_ms: 0.0 };
+    state.ws.layout.show(crate::layout::ToolWindow::Usages);
     let started = Instant::now();
     ask(state, target.path, Question::Usages, Arc::default(), cancel, Box::new(move |state, result| {
-        if state.usages.title != title {
+        if state.ws.usages.title != title {
             return;
         }
         let mut groups: Vec<UsageGroup> = Vec::new();
@@ -854,7 +854,7 @@ fn find_usages(state: &mut AppState, target: Target) {
                 None => groups.push(UsageGroup { path: r.location.path.clone(), refs: vec![r] }),
             }
         }
-        state.usages = UsagesView { title, groups, searching: false, took_ms: started.elapsed().as_secs_f64() * 1000.0 };
+        state.ws.usages = UsagesView { title, groups, searching: false, took_ms: started.elapsed().as_secs_f64() * 1000.0 };
         for e in result.errors {
             state.notifications.log_only(Level::Warning, "Find Usages", e);
         }
@@ -862,7 +862,7 @@ fn find_usages(state: &mut AppState, target: Target) {
 }
 
 fn reload_from_disk(state: &mut AppState, target: Target) {
-    let tabs: Vec<(TabId, bool, String)> = state.tabs.editors_mut().filter(|(_, e)| e.path.starts_with(&target.path)).map(|(id, e)| (id, e.doc.is_dirty(), e.file_name())).collect();
+    let tabs: Vec<(TabId, bool, String)> = state.ws.tabs.editors_mut().filter(|(_, e)| e.path.starts_with(&target.path)).map(|(id, e)| (id, e.doc.is_dirty(), e.file_name())).collect();
     let clean: Vec<TabId> = tabs.iter().filter(|t| !t.1).map(|t| t.0).collect();
     reload_tabs(state, clean);
     if target.is_dir {
@@ -871,20 +871,20 @@ fn reload_from_disk(state: &mut AppState, target: Target) {
     }
     let dirty: Vec<(TabId, String)> = tabs.into_iter().filter(|t| t.1).map(|t| (t.0, t.2)).collect();
     if !dirty.is_empty() {
-        state.tree_ops.dialog = Some(Dialog::Reload { tabs: dirty.iter().map(|d| d.0).collect(), names: dirty.into_iter().map(|d| d.1).collect() });
+        state.ws.tree_ops.dialog = Some(Dialog::Reload { tabs: dirty.iter().map(|d| d.0).collect(), names: dirty.into_iter().map(|d| d.1).collect() });
     }
 }
 
 /// Re-reads the tabs' files on a worker and replaces their text, unsaved edits included.
 fn reload_tabs(state: &mut AppState, ids: Vec<TabId>) {
     for id in ids {
-        let Some(path) = state.tabs.editor_mut(id).map(|e| e.path.clone()) else { continue };
+        let Some(path) = state.ws.tabs.editor_mut(id).map(|e| e.path.clone()) else { continue };
         state.jobs.spawn_quiet(
             move || std::fs::read(&path).map_err(|e| format!("{}: {e}", path.display())),
             move |state, res| match res {
                 Ok(bytes) => {
                     let tracked = {
-                        let Some(e) = state.tabs.editor_mut(id) else { return };
+                        let Some(e) = state.ws.tabs.editor_mut(id) else { return };
                         e.doc.reload_from_bytes(&bytes);
                         e.invalidate_marks();
                         e.lsp_version.is_some()
@@ -900,7 +900,7 @@ fn reload_tabs(state: &mut AppState, ids: Vec<TabId>) {
 }
 
 fn create(state: &mut AppState) {
-    let Some(Dialog::NewEntry(n)) = &mut state.tree_ops.dialog else { return };
+    let Some(Dialog::NewEntry(n)) = &mut state.ws.tree_ops.dialog else { return };
     if let Err(e) = fileops::check_new_name(&n.name) {
         n.error = Some(e);
         return;
@@ -916,7 +916,7 @@ fn create(state: &mut AppState) {
             }
             match res {
                 Ok((dir, path)) => {
-                    state.tree_ops.dialog = None;
+                    state.ws.tree_ops.dialog = None;
                     let mut paths: HashSet<PathBuf> = HashSet::new();
                     let mut p = Some(path.as_path());
                     while let Some(x) = p {
@@ -927,17 +927,17 @@ fn create(state: &mut AppState) {
                         p = x.parent();
                     }
                     state.on_fs_batch(FsBatch { paths, structure_changed: true, git_changed: true });
-                    if let Some(root) = state.project.as_ref().map(|p| p.root.clone()) {
-                        state.tree.reveal(&root, &path);
+                    if let Some(root) = state.ws.project.as_ref().map(|p| p.root.clone()) {
+                        state.ws.tree.reveal(&root, &path);
                     }
                     if is_dir {
-                        state.tree.focus_pending();
+                        state.ws.tree.focus_pending();
                     } else {
                         state.open_location(&path, None, true);
                     }
                 }
                 Err(e) => {
-                    if let Some(Dialog::NewEntry(n)) = &mut state.tree_ops.dialog {
+                    if let Some(Dialog::NewEntry(n)) = &mut state.ws.tree_ops.dialog {
                         n.busy = false;
                         n.error = Some(e);
                     }
@@ -967,12 +967,12 @@ enum Action {
 /// Draws the open dialog, after the panels. Enter and Escape are read at the start, so they
 /// never reach the editor behind the modal.
 pub fn show_dialogs(state: &mut AppState, ctx: &Context) {
-    let Some(dialog) = &mut state.tree_ops.dialog else { return };
-    let root = state.project.as_ref().map(|p| p.root.clone()).unwrap_or_default();
+    let Some(dialog) = &mut state.ws.tree_ops.dialog else { return };
+    let root = state.ws.project.as_ref().map(|p| p.root.clone()).unwrap_or_default();
     let enter = ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, Key::Enter));
     let t = &theme::T;
     let mut action: Option<Action> = None;
-    let modal = Modal::new(Id::new("tree-dialog")).area(Modal::default_area(Id::new("tree-dialog-area")).anchor(egui::Align2::CENTER_TOP, [0.0, 90.0])).show(ctx, |ui| {
+    let modal = Modal::new(crate::workspace::wid("tree-dialog")).area(Modal::default_area(crate::workspace::wid("tree-dialog-area")).anchor(egui::Align2::CENTER_TOP, [0.0, 90.0])).show(ctx, |ui| {
         ui.set_width(520.0);
         match dialog {
             Dialog::NewEntry(n) => {
@@ -1058,52 +1058,52 @@ pub fn show_dialogs(state: &mut AppState, ctx: &Context) {
     let Some(action) = action else { return };
     match action {
         Action::Close => {
-            state.tree_ops.cancel_running();
-            state.tree_ops.dialog = None;
-            state.tree.focus_pending();
+            state.ws.tree_ops.cancel_running();
+            state.ws.tree_ops.dialog = None;
+            state.ws.tree.focus_pending();
         }
         Action::Create => create(state),
         Action::RenameNext => {
-            let Some(Dialog::Rename(r)) = &mut state.tree_ops.dialog else { return };
+            let Some(Dialog::Rename(r)) = &mut state.ws.tree_ops.dialog else { return };
             match fileops::check_rename(&r.name) {
                 Err(e) => r.error = Some(e),
                 Ok(()) if r.name.trim() == fileops::file_name(&r.target.path) => {
-                    state.tree_ops.dialog = None;
-                    state.tree.focus_pending();
+                    state.ws.tree_ops.dialog = None;
+                    state.ws.tree.focus_pending();
                 }
                 Ok(()) => start_rename_query(state),
             }
         }
         Action::RenameBack => {
-            state.tree_ops.cancel_running();
-            if let Some(Dialog::Rename(r)) = &mut state.tree_ops.dialog {
+            state.ws.tree_ops.cancel_running();
+            if let Some(Dialog::Rename(r)) = &mut state.ws.tree_ops.dialog {
                 r.phase = RenamePhase::Edit;
                 r.focus = true;
             }
         }
         Action::RenameApply => {
-            let Some(Dialog::Rename(r)) = state.tree_ops.dialog.take() else { return };
-            state.tree.focus_pending();
+            let Some(Dialog::Rename(r)) = state.ws.tree_ops.dialog.take() else { return };
+            state.ws.tree.focus_pending();
             if let RenamePhase::Preview { new, result } = r.phase {
                 relocate(state, r.target.path, new, result.edits, false);
             }
         }
         Action::DeleteToggle => start_delete_search(state),
         Action::DeleteGo => {
-            state.tree_ops.cancel_running();
-            let Some(Dialog::Delete(d)) = state.tree_ops.dialog.take() else { return };
-            state.tree.focus_pending();
+            state.ws.tree_ops.cancel_running();
+            let Some(Dialog::Delete(d)) = state.ws.tree_ops.dialog.take() else { return };
+            state.ws.tree.focus_pending();
             delete(state, d.target);
         }
         Action::Paste(policy) => {
-            let Some(Dialog::Collision { src, dir, cut }) = state.tree_ops.dialog.take() else { return };
-            state.tree.focus_pending();
+            let Some(Dialog::Collision { src, dir, cut }) = state.ws.tree_ops.dialog.take() else { return };
+            state.ws.tree.focus_pending();
             paste(state, src, dir, cut, Some(policy));
         }
         Action::Rollback => {
-            let Some(Dialog::Rollback { files, .. }) = state.tree_ops.dialog.take() else { return };
-            state.tree.focus_pending();
-            let Some(repo) = state.git.repo.clone() else { return };
+            let Some(Dialog::Rollback { files, .. }) = state.ws.tree_ops.dialog.take() else { return };
+            state.ws.tree.focus_pending();
+            let Some(repo) = state.ws.git.repo.clone() else { return };
             let f = files.clone();
             state.jobs.spawn(
                 "Rolling back",
@@ -1118,8 +1118,8 @@ pub fn show_dialogs(state: &mut AppState, ctx: &Context) {
             );
         }
         Action::Reload => {
-            let Some(Dialog::Reload { tabs, .. }) = state.tree_ops.dialog.take() else { return };
-            state.tree.focus_pending();
+            let Some(Dialog::Reload { tabs, .. }) = state.ws.tree_ops.dialog.take() else { return };
+            state.ws.tree.focus_pending();
             reload_tabs(state, tabs);
         }
     }

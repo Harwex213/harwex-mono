@@ -577,6 +577,12 @@ impl LanguageServer for RustService {
         lock(&self.notice).take()
     }
 
+    fn pids(&self) -> Vec<u32> {
+        // Never waits: the map is locked only briefly, and a busy moment is skipped.
+        let Ok(servers) = self.servers.try_lock() else { return Vec::new() };
+        servers.values().filter_map(|s| s.client.pid()).collect()
+    }
+
     fn configure(&self, config: &IdeConfig) {
         let servers: Vec<Arc<RaServer>> = lock(&self.servers).values().cloned().collect();
         if !config.enabled(LangId::Rust) {

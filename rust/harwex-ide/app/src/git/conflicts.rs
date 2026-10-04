@@ -4,7 +4,7 @@ mod merge;
 
 use std::path::PathBuf;
 
-use egui::{vec2, Align2, Context, Frame, Id, Modal, RichText, ScrollArea, Sense};
+use egui::{vec2, Align2, Context, Frame, Modal, RichText, ScrollArea, Sense};
 use ide_git::{ConflictChoice, RepoState};
 
 use super::remote::run_op;
@@ -66,8 +66,8 @@ pub fn on_git_refreshed(state: &mut AppState) {
 /// when there are conflicts; without it the dialog only opens when conflicts newly appear
 /// (for example after a merge in the terminal).
 fn check(state: &mut AppState, open: bool) {
-    let Some(repo) = state.git.repo.clone() else { return };
-    let c = &mut state.git_ui.conflicts;
+    let Some(repo) = state.ws.git.repo.clone() else { return };
+    let c = &mut state.ws.git_ui.conflicts;
     if c.checking {
         c.check_again = Some(c.check_again.unwrap_or(false) || open);
         return;
@@ -79,11 +79,11 @@ fn check(state: &mut AppState, open: bool) {
         move |state, (op, files)| {
             // Cleared before the generation check, or a check that outlived a project switch
             // would block every later check.
-            state.git_ui.conflicts.checking = false;
+            state.ws.git_ui.conflicts.checking = false;
             if state.project_generation() != generation {
                 return;
             }
-            let c = &mut state.git_ui.conflicts;
+            let c = &mut state.ws.git_ui.conflicts;
             let appeared = c.files.is_empty() && !files.is_empty();
             if (open || appeared) && !files.is_empty() {
                 c.dialog_open = true;
@@ -133,7 +133,7 @@ pub fn show_windows(state: &mut AppState, ctx: &Context) {
 /// it pushes the editor down instead of covering a tab's toolbar (the merge tab's buttons sat
 /// under the old floating banner).
 pub fn banner(state: &mut AppState, ctx: &Context) {
-    let c = &state.git_ui.conflicts;
+    let c = &state.ws.git_ui.conflicts;
     if matches!(c.op, RepoState::Clean | RepoState::Bisect) {
         return;
     }
@@ -144,7 +144,7 @@ pub fn banner(state: &mut AppState, ctx: &Context) {
     let mut abort = false;
     let busy = c.busy;
     let fill = theme::T.banner_bg;
-    egui::TopBottomPanel::top("git-op-banner").frame(Frame::NONE.fill(fill).inner_margin(egui::Margin::symmetric(10, 4))).show(ctx, |ui| {
+    egui::TopBottomPanel::top(crate::workspace::wid("git-op-banner")).frame(Frame::NONE.fill(fill).inner_margin(egui::Margin::symmetric(10, 4))).show(ctx, |ui| {
         ui.horizontal(|ui| {
             {
                 let text = if n > 0 { format!("{name} in progress: {n} conflicted file(s)") } else { format!("{name} in progress: all conflicts resolved") };
@@ -168,31 +168,31 @@ pub fn banner(state: &mut AppState, ctx: &Context) {
         });
     });
     if resolve {
-        state.git_ui.conflicts.dialog_open = true;
+        state.ws.git_ui.conflicts.dialog_open = true;
     }
     if cont {
         continue_operation(state);
     }
     if abort {
-        state.git_ui.conflicts.confirm_abort = true;
+        state.ws.git_ui.conflicts.confirm_abort = true;
     }
 }
 
 fn continue_operation(state: &mut AppState) {
-    let name = op_name(state.git_ui.conflicts.op);
-    state.git_ui.conflicts.busy = true;
+    let name = op_name(state.ws.git_ui.conflicts.op);
+    state.ws.git_ui.conflicts.busy = true;
     run_op(state, format!("Continue {}", name.to_lowercase()), format!("{name} finished"), true, |r| r.continue_operation().map(Some), |state, _| {
-        state.git_ui.conflicts.busy = false;
+        state.ws.git_ui.conflicts.busy = false;
     });
 }
 
 fn abort_confirm(state: &mut AppState, ctx: &Context) {
-    if !state.git_ui.conflicts.confirm_abort {
+    if !state.ws.git_ui.conflicts.confirm_abort {
         return;
     }
-    let name = op_name(state.git_ui.conflicts.op);
+    let name = op_name(state.ws.git_ui.conflicts.op);
     let mut choice = None;
-    let m = Modal::new(Id::new("git-abort-confirm")).show(ctx, |ui| {
+    let m = Modal::new(crate::workspace::wid("git-abort-confirm")).show(ctx, |ui| {
         ui.set_width(380.0);
         ui.label(RichText::new(format!("Abort {}?", name.to_lowercase())).strong().color(theme::T.text_bright));
         ui.label(RichText::new("The working tree returns to the state before the operation started. Resolved files are lost.").color(theme::T.warning));
@@ -211,24 +211,24 @@ fn abort_confirm(state: &mut AppState, ctx: &Context) {
     }
     match choice {
         Some(true) => abort_operation(state),
-        Some(false) => state.git_ui.conflicts.confirm_abort = false,
+        Some(false) => state.ws.git_ui.conflicts.confirm_abort = false,
         None => {}
     }
 }
 
 fn abort_operation(state: &mut AppState) {
-    let name = op_name(state.git_ui.conflicts.op);
-    let c = &mut state.git_ui.conflicts;
+    let name = op_name(state.ws.git_ui.conflicts.op);
+    let c = &mut state.ws.git_ui.conflicts;
     c.confirm_abort = false;
     c.busy = true;
     c.dialog_open = false;
     run_op(state, format!("Abort {}", name.to_lowercase()), format!("{name} aborted"), true, |r| r.abort_operation().map(Some), |state, _| {
-        state.git_ui.conflicts.busy = false;
+        state.ws.git_ui.conflicts.busy = false;
     });
 }
 
 fn dialog(state: &mut AppState, ctx: &Context) {
-    if !state.git_ui.conflicts.dialog_open {
+    if !state.ws.git_ui.conflicts.dialog_open {
         return;
     }
     let mut open = true;
@@ -236,11 +236,11 @@ fn dialog(state: &mut AppState, ctx: &Context) {
     let mut merge: Option<PathBuf> = None;
     let mut cont = false;
     let clicks = state.clicks;
-    let c = &mut state.git_ui.conflicts;
+    let c = &mut state.ws.git_ui.conflicts;
     let (yours, theirs) = side_labels(c.op);
     let title = if c.op == RepoState::Clean { "Conflicts".to_string() } else { format!("Conflicts ({})", op_name(c.op)) };
     egui::Window::new(title)
-        .id(Id::new("git-conflicts-window"))
+        .id(crate::workspace::wid("git-conflicts-window"))
         .open(&mut open)
         .collapsible(false)
         .resizable(false)
@@ -307,21 +307,21 @@ fn dialog(state: &mut AppState, ctx: &Context) {
             });
         });
     if !open {
-        state.git_ui.conflicts.dialog_open = false;
+        state.ws.git_ui.conflicts.dialog_open = false;
     }
     if cont {
-        state.git_ui.conflicts.dialog_open = false;
+        state.ws.git_ui.conflicts.dialog_open = false;
         continue_operation(state);
     }
     if let Some((path, choice)) = accept {
-        state.git_ui.conflicts.busy = true;
+        state.ws.git_ui.conflicts.busy = true;
         let side = match choice {
             ConflictChoice::Ours => yours,
             ConflictChoice::Theirs => theirs,
         };
         let body = format!("{} resolved with {side}", path.display());
         run_op(state, "Resolve Conflict", body, false, move |r| r.resolve_with(&path, choice).map(|_| None), |state, _| {
-            state.git_ui.conflicts.busy = false;
+            state.ws.git_ui.conflicts.busy = false;
             check(state, false);
         });
     }
@@ -332,17 +332,17 @@ fn dialog(state: &mut AppState, ctx: &Context) {
 
 /// Opens the three-pane merge tab for a conflicted file (path relative to the workdir).
 pub fn open_merge(state: &mut AppState, path: PathBuf) {
-    let Some(repo) = state.git.repo.clone() else { return };
-    let op = state.git_ui.conflicts.op;
+    let Some(repo) = state.ws.git.repo.clone() else { return };
+    let op = state.ws.git_ui.conflicts.op;
     state.jobs.spawn(
         format!("Loading conflict in {}", path.display()),
         move || repo.conflict_sides(&path),
         move |state, res| match res {
             Ok(sides) if sides.binary => state.notifications.warn("Binary conflict", format!("{} is binary; use Accept Yours or Accept Theirs.", sides.path.display())),
             Ok(sides) => {
-                state.git_ui.conflicts.dialog_open = false;
+                state.ws.git_ui.conflicts.dialog_open = false;
                 let (l, r) = side_labels(op);
-                state.tabs.open_custom(Box::new(merge::MergeTab::new(sides, l, r)));
+                state.ws.tabs.open_custom(Box::new(merge::MergeTab::new(sides, l, r)));
             }
             Err(e) => state.notifications.error("Cannot load the conflict", e.to_string()),
         },
@@ -356,8 +356,8 @@ pub(crate) fn merge_saved(state: &mut AppState) {
 
 /// Test hook: resolves every block of the active merge tab with one side.
 pub(crate) fn test_take_all(state: &mut AppState, theirs: bool) {
-    let Some(id) = state.tabs.active else { return };
-    if let Some(crate::tabs::TabContent::Custom(c)) = state.tabs.get_mut(id).map(|t| &mut t.content) {
+    let Some(id) = state.ws.tabs.active else { return };
+    if let Some(crate::tabs::TabContent::Custom(c)) = state.ws.tabs.get_mut(id).map(|t| &mut t.content) {
         if let Some(m) = c.as_any_mut().downcast_mut::<merge::MergeTab>() {
             m.take_all(theirs);
         }
@@ -365,14 +365,14 @@ pub(crate) fn test_take_all(state: &mut AppState, theirs: bool) {
 }
 
 pub(crate) fn test_describe(state: &AppState) -> String {
-    let c = &state.git_ui.conflicts;
+    let c = &state.ws.git_ui.conflicts;
     format!("conflicts: op {:?}, files {:?}, dialog open {}", c.op, c.files, c.dialog_open)
 }
 
 /// Test hook: presses "Save and Mark Resolved" in the active merge tab.
 pub(crate) fn test_save(state: &mut AppState) {
-    let Some(id) = state.tabs.active else { return };
-    let Some(crate::tabs::TabContent::Custom(c)) = state.tabs.get_mut(id).map(|t| &mut t.content) else { return };
+    let Some(id) = state.ws.tabs.active else { return };
+    let Some(crate::tabs::TabContent::Custom(c)) = state.ws.tabs.get_mut(id).map(|t| &mut t.content) else { return };
     let Some(m) = c.as_any_mut().downcast_mut::<merge::MergeTab>() else { return };
     let text = m.result_text();
     let path = m.path().to_path_buf();

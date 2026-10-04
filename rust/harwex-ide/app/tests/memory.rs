@@ -17,7 +17,8 @@ const SUITE: &str = "memory";
 const MB: u64 = 1024 * 1024;
 
 /// A fixed tree: the IDE, tsserver with its typings installer, rust-analyzer with its
-/// proc-macro server, a git command, and cargo. The clock moves 15 s per sample, so CPU% is
+/// proc-macro server, a git command, cargo, and the TypeScript server of another project (41050,
+/// with a helper 41051). The clock moves 15 s per sample, so CPU% is
 /// the same on every run.
 struct FakeTree {
     base: Instant,
@@ -36,7 +37,8 @@ impl ProcessSource for FakeTree {
     }
     fn children(&self, pid: Pid, out: &mut Vec<Pid>) {
         out.extend_from_slice(match pid {
-            41000 => &[41010, 41020, 41030, 41040],
+            41000 => &[41010, 41020, 41030, 41040, 41050],
+            41050 => &[41051],
             41010 => &[41011],
             41020 => &[41021],
             41030 => &[41031],
@@ -53,6 +55,8 @@ impl ProcessSource for FakeTree {
             41030 => ("git", 9, 100),
             41031 => ("git-remote-https", 12, 100),
             41040 => ("cargo", 18, 75),
+            41050 => ("node", 520, 900),
+            41051 => ("node", 64, 0),
             _ => return None,
         };
         let k = self.samples.load(Ordering::SeqCst);
@@ -83,22 +87,31 @@ fn widget_and_tooltip() {
     options.memory = MemorySource::Custom(Arc::new(FakeTree::new()));
     let mut ide = Ide::with_options(SUITE, options, None);
     wait_sample(&mut ide, 0);
+    // The first sample has no ownership sets yet: the other project's server counts as ours.
+    let first = ide.state().memory.sample.clone().unwrap();
+    assert_eq!(first.group_total(Kind::OtherProjects), 0);
+    // The fake tree has no workspace to own 41050, so the test names it. The next frame sends
+    // it to the thread, before the sample request on the same channel.
+    ide.state_mut().memory.extra_others = vec![41050];
+    ide.step();
     // The second sample has CPU% for every process.
     ide.state().memory.sample_now();
     wait_sample(&mut ide, 1);
     let sample = ide.state().memory.sample.clone().unwrap();
-    assert_eq!(sample.total, (312 + 186 + 41 + 1240 + 24 + 18) * MB, "git and its helper are left out");
-    assert_eq!(sample.group_total(Kind::LanguageServer), (186 + 41 + 1240 + 24) * MB);
+    assert_eq!(sample.total, (312 + 186 + 41 + 1240 + 24 + 18 + 520 + 64) * MB, "git and its helper are left out; other projects count");
+    assert_eq!(sample.group_total(Kind::LanguageServer), (186 + 41 + 1240 + 24) * MB, "only the active project's servers");
+    assert_eq!(sample.group_total(Kind::OtherProjects), (520 + 64) * MB);
     assert_eq!(sample.rows.iter().find(|r| r.pid == 41020).unwrap().cpu, Some(42.0));
     assert!(ide.has("Memory indicator"), "{:?}", ide.labels());
     ide.snapshot("status_bar");
 
     ide.hover("Memory indicator");
     ide.wait_until("memory tooltip", |ide| ide.shows_text("Language servers"));
-    for text in ["IDE itself", "1.5 GB", "312 MB", "Other", "  rust-analyzer-proc-macro-srv", "42.0%", "Sampled every 15 s"] {
+    for text in ["IDE itself", "1.5 GB", "312 MB", "Other", "  rust-analyzer-proc-macro-srv", "42.0%", "Other projects", "584 MB", "Sampled every 15 s"] {
         assert!(ide.shows_text(text), "{text:?} missing");
     }
     assert!(!ide.shows_text("git-remote-https"));
+    assert!(!ide.shows_text("41050"), "other projects are one line, not one row per process");
     ide.snapshot_here("tooltip");
 }
 
@@ -173,14 +186,14 @@ fn terminal_shell_subtree_is_excluded() {
     options.memory = MemorySource::Real;
     let mut ide = Ide::with_options(SUITE, options, None);
     ide.key_mods(ALT, Key::F12);
-    ide.wait_for("terminal spawned", |s| !s.terminals.is_empty());
-    let screen = |ide: &Ide| ide.state().terminals.terminal(0).map(|t| t.screen_text()).unwrap_or_default();
+    ide.wait_for("terminal spawned", |s| !s.ws.terminals.is_empty());
+    let screen = |ide: &Ide| ide.state().ws.terminals.terminal(0).map(|t| t.screen_text()).unwrap_or_default();
     ide.wait_until("shell prompt", move |ide| screen(ide).lines().any(|l| l.starts_with('$')));
     ide.type_text("sleep 300 & echo SLEEP_PID=$!\n");
     ide.wait_until("sleep pid", move |ide| screen(ide).lines().any(|l| l.starts_with("SLEEP_PID=")));
     let text = screen(&ide);
     let sleep: Pid = text.lines().find_map(|l| l.strip_prefix("SLEEP_PID=")).unwrap().trim().parse().unwrap();
-    let shell = ide.state().terminals.terminal(0).unwrap().process_id().unwrap();
+    let shell = ide.state().ws.terminals.terminal(0).unwrap().process_id().unwrap();
     let mut kids = Vec::new();
     source.children(shell, &mut kids);
     assert!(kids.contains(&sleep), "sleep {sleep} runs under the shell {shell}: {kids:?}");

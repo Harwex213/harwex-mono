@@ -11,7 +11,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::ops::Range;
 use std::path::{Path, PathBuf};
 
-use egui::{pos2, vec2, Align2, Context, CursorIcon, Id, Key, LayerId, Modal, Modifiers, Order, Rect, RichText, ScrollArea, Sense, Shape, Stroke, Ui};
+use egui::{pos2, vec2, Align2, Context, CursorIcon, Key, LayerId, Modal, Modifiers, Order, Rect, RichText, ScrollArea, Sense, Shape, Stroke, Ui};
 use ide_git::{ChangeKind, FileChange};
 
 use crate::icons::CheckState;
@@ -464,17 +464,17 @@ enum Event {
 }
 
 pub fn tool_window(state: &mut AppState, ui: &mut Ui) {
-    if state.git.repo.is_none() {
+    if state.ws.git.repo.is_none() {
         ui.label(RichText::new("The project is not under git.").color(theme::T.text_dim));
         return;
     }
-    if state.git_ui.changes.rows_dirty {
-        state.git_ui.changes.rebuild();
+    if state.ws.git_ui.changes.rows_dirty {
+        state.ws.git_ui.changes.rebuild();
     }
     let mut events = Vec::new();
     let mut commit: Option<bool> = None;
 
-    egui::TopBottomPanel::bottom("commit-message-panel")
+    egui::TopBottomPanel::bottom(crate::workspace::wid("commit-message-panel"))
         .resizable(true)
         .default_height(170.0)
         .height_range(110.0..=500.0)
@@ -484,7 +484,7 @@ pub fn tool_window(state: &mut AppState, ui: &mut Ui) {
         });
 
     let clicks = state.clicks;
-    let c = &state.git_ui.changes;
+    let c = &state.ws.git_ui.changes;
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 2.0;
         use crate::icons::Icon;
@@ -666,7 +666,7 @@ fn draw_tree(c: &ChangesUi, clicks: crate::clicks::Clicks, ui: &mut Ui, events: 
             ui.painter().set(target_bg, egui::epaint::RectShape::filled(target_rect, theme::T.radius.small, theme::T.drop_target_bg));
             ui.painter().rect_stroke(target_rect, theme::T.radius.small, Stroke::new(1.0_f32, theme::T.drop_target_border), egui::StrokeKind::Inside);
             // A hover-only node, so tests (and screen readers) see where a drop would land.
-            let r = ui.interact(target_rect, Id::new("changes-drop-target"), Sense::hover());
+            let r = ui.interact(target_rect, crate::workspace::wid("changes-drop-target"), Sense::hover());
             r.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Other, true, format!("Drop target {}", g.title())));
         }
     });
@@ -684,7 +684,7 @@ fn draw_tree(c: &ChangesUi, clicks: crate::clicks::Clicks, ui: &mut Ui, events: 
 
 /// The count label that follows the pointer during a drag ("3 files").
 fn drag_ghost(ctx: &Context, pointer: egui::Pos2, n: usize) {
-    let painter = ctx.layer_painter(LayerId::new(Order::Tooltip, Id::new("changes-drag-ghost")));
+    let painter = ctx.layer_painter(LayerId::new(Order::Tooltip, crate::workspace::wid("changes-drag-ghost")));
     let galley = painter.layout_no_wrap(count_label(n), theme::T.ui_font(), theme::T.text_bright);
     let rect = Rect::from_min_size(pointer + vec2(14.0, 10.0), galley.size() + vec2(16.0, 8.0));
     painter.rect(rect, theme::T.radius.row, theme::T.popup_bg, Stroke::new(1.0_f32, theme::T.popup_border), egui::StrokeKind::Inside);
@@ -744,7 +744,7 @@ fn context_menu(c: &ChangesUi, row: &Row, ui: &mut Ui, events: &mut Vec<Event>) 
 /// by the difference on every repaint (and undid the user's resize). So the buttons go in first
 /// at the bottom, and the box takes exactly the height that is left.
 fn message_area(state: &mut AppState, ui: &mut Ui) -> Option<bool> {
-    let c = &mut state.git_ui.changes;
+    let c = &mut state.ws.git_ui.changes;
     let mut out = None;
     let mut amend_changed = false;
     ui.horizontal(|ui| {
@@ -752,7 +752,7 @@ fn message_area(state: &mut AppState, ui: &mut Ui) -> Option<bool> {
             amend_changed = true;
         }
     });
-    let id = Id::new(MESSAGE_ID);
+    let id = crate::workspace::wid(MESSAGE_ID);
     let can_commit = |c: &ChangesUi| !c.committing && !c.message.trim().is_empty() && (c.prefix.last().copied().unwrap_or(0) > 0 || c.amend);
     ui.with_layout(egui::Layout::bottom_up(egui::Align::Min), |ui| {
         let checked = c.prefix.last().copied().unwrap_or(0);
@@ -806,7 +806,7 @@ fn message_area(state: &mut AppState, ui: &mut Ui) -> Option<bool> {
 }
 
 fn toggle_amend(state: &mut AppState) {
-    let c = &mut state.git_ui.changes;
+    let c = &mut state.ws.git_ui.changes;
     if !c.amend {
         // Put the user's own draft back if the amended message was not edited.
         if let Some((draft, amended)) = c.amend_restore.take() {
@@ -816,11 +816,11 @@ fn toggle_amend(state: &mut AppState) {
         }
         return;
     }
-    let Some(repo) = state.git.repo.clone() else { return };
+    let Some(repo) = state.ws.git.repo.clone() else { return };
     state.jobs.spawn_quiet(
         move || repo.last_commit_message(),
         |state, res| {
-            let c = &mut state.git_ui.changes;
+            let c = &mut state.ws.git_ui.changes;
             if !c.amend {
                 return;
             }
@@ -837,8 +837,8 @@ fn toggle_amend(state: &mut AppState) {
 }
 
 fn handle(state: &mut AppState, e: Event) {
-    let Some(workdir) = state.git.repo.as_ref().map(|r| r.workdir().to_path_buf()) else { return };
-    let c = &mut state.git_ui.changes;
+    let Some(workdir) = state.ws.git.repo.as_ref().map(|r| r.workdir().to_path_buf()) else { return };
+    let c = &mut state.ws.git_ui.changes;
     match e {
         Event::Toggle(row) => {
             if let Some(r) = c.rows.get(row) {
@@ -977,7 +977,7 @@ fn select(c: &mut ChangesUi, row: usize, cmd: bool, shift: bool) {
 
 /// Runs a git write on a worker, toasts a failure with its stderr and refreshes status.
 fn git_write(state: &mut AppState, label: &str, work: impl FnOnce(&ide_git::Repo) -> ide_git::Result<()> + Send + 'static) {
-    let Some(repo) = state.git.repo.clone() else { return };
+    let Some(repo) = state.ws.git.repo.clone() else { return };
     let title = format!("{label} failed");
     state.jobs.spawn(
         label,
@@ -992,8 +992,8 @@ fn git_write(state: &mut AppState, label: &str, work: impl FnOnce(&ide_git::Repo
 }
 
 fn start_commit(state: &mut AppState, push: bool) {
-    let Some(repo) = state.git.repo.clone() else { return };
-    let c = &mut state.git_ui.changes;
+    let Some(repo) = state.ws.git.repo.clone() else { return };
+    let c = &mut state.ws.git_ui.changes;
     if c.committing {
         return;
     }
@@ -1007,7 +1007,7 @@ fn start_commit(state: &mut AppState, push: bool) {
     // IDEA saves every document before a commit. The texts are written by the commit worker
     // itself, so git sees them before it runs and the UI thread never touches the disk.
     let mut saves = Vec::new();
-    for (id, e) in state.tabs.editors_mut() {
+    for (id, e) in state.ws.tabs.editors_mut() {
         if e.doc.is_dirty() && !e.read_only && !e.saving {
             let (text, token) = e.doc.save_snapshot();
             saves.push((id, e.path.clone(), text, token));
@@ -1027,18 +1027,18 @@ fn start_commit(state: &mut AppState, push: bool) {
         },
         move |state, (saved, res, message)| {
             for (id, token) in saved {
-                if let Some(e) = state.tabs.editor_mut(id) {
+                if let Some(e) = state.ws.tabs.editor_mut(id) {
                     e.doc.mark_saved(token);
                 }
             }
-            state.git_ui.changes.committing = false;
+            state.ws.git_ui.changes.committing = false;
             let subject = message.lines().next().unwrap_or_default().to_string();
             match res {
                 Ok(outcome) if outcome.success() => {
                     let hash = outcome.oid.map(|o| o.to_string()[..8].to_string()).unwrap_or_default();
                     let what = if n == 0 { "Amended the commit message".to_string() } else { format!("{n} file{} committed", if n == 1 { "" } else { "s" }) };
                     state.notifications.info(what, format!("{hash} {subject}"));
-                    let c = &mut state.git_ui.changes;
+                    let c = &mut state.ws.git_ui.changes;
                     c.message.clear();
                     c.amend = false;
                     c.amend_restore = None;
@@ -1065,8 +1065,8 @@ fn start_commit(state: &mut AppState, push: bool) {
 pub fn show_windows(state: &mut AppState, ctx: &Context) {
     // Cmd+K opens the Commit window and focuses the message. Shift is excluded because
     // consume_key would otherwise also take Cmd+Shift+K (Push).
-    let cmd_k = !state.terminals.has_focus(ctx)
-        && state.git.repo.is_some()
+    let cmd_k = !state.ws.terminals.has_focus(ctx)
+        && state.ws.git.repo.is_some()
         && ctx.input_mut(|i| {
             let m = i.modifiers;
             if m.command && !m.shift && !m.alt && i.key_pressed(Key::K) {
@@ -1076,22 +1076,22 @@ pub fn show_windows(state: &mut AppState, ctx: &Context) {
             }
         });
     if cmd_k {
-        state.layout.show(crate::layout::ToolWindow::Commit);
-        state.git_ui.changes.focus_message = true;
+        state.ws.layout.show(crate::layout::ToolWindow::Commit);
+        state.ws.git_ui.changes.focus_message = true;
     }
     confirm_dialog(state, ctx);
     test_tick(state);
 }
 
 fn confirm_dialog(state: &mut AppState, ctx: &Context) {
-    let Some(confirm) = &state.git_ui.changes.confirm else { return };
+    let Some(confirm) = &state.ws.git_ui.changes.confirm else { return };
     let (title, paths, button) = match confirm {
         Confirm::Rollback(p) => ("Rollback Changes", p, "Rollback"),
         Confirm::Delete(p) => ("Delete", p, "Delete"),
     };
     let mut choice: Option<bool> = None;
-    let entries = &state.git_ui.changes;
-    let modal = Modal::new(Id::new("changes-confirm")).show(ctx, |ui| {
+    let entries = &state.ws.git_ui.changes;
+    let modal = Modal::new(crate::workspace::wid("changes-confirm")).show(ctx, |ui| {
         ui.set_width(440.0);
         ui.label(RichText::new(title).strong().size(theme::T.font.hint));
         ui.add_space(6.0);
@@ -1130,14 +1130,14 @@ fn confirm_dialog(state: &mut AppState, ctx: &Context) {
         choice = Some(false);
     }
     let Some(ok) = choice else { return };
-    let Some(confirm) = state.git_ui.changes.confirm.take() else { return };
+    let Some(confirm) = state.ws.git_ui.changes.confirm.take() else { return };
     if !ok {
         return;
     }
     match confirm {
         Confirm::Rollback(paths) => git_write(state, "Rolling back", move |repo| repo.rollback(&paths)),
         Confirm::Delete(paths) => {
-            let Some(workdir) = state.git.repo.as_ref().map(|r| r.workdir().to_path_buf()) else { return };
+            let Some(workdir) = state.ws.git.repo.as_ref().map(|r| r.workdir().to_path_buf()) else { return };
             state.jobs.spawn(
                 "Deleting files",
                 move || {
@@ -1163,8 +1163,8 @@ fn confirm_dialog(state: &mut AppState, ctx: &Context) {
 }
 
 pub fn on_git_refreshed(state: &mut AppState) {
-    let changes = state.git.changes.clone();
-    state.git_ui.changes.set_entries(changes);
+    let changes = state.ws.git.changes.clone();
+    state.ws.git_ui.changes.set_entries(changes);
     super::diff::on_git_refreshed(state);
     super::editor_git::on_git_refreshed(state);
 }
@@ -1191,7 +1191,7 @@ pub fn test_queue(flag: &str, arg: String) {
 }
 
 fn test_tick(state: &mut AppState) {
-    if state.project.is_none() || state.git.repo.is_none() || state.git.status_ms.is_none() {
+    if state.ws.project.is_none() || state.ws.git.repo.is_none() || state.ws.git.status_ms.is_none() {
         return;
     }
     let step = TEST.with(|t| {
@@ -1214,22 +1214,22 @@ fn test_tick(state: &mut AppState) {
     });
     let Some((flag, arg)) = step else { return };
     state.ctx.request_repaint_after(std::time::Duration::from_millis(1300));
-    let workdir = state.git.repo.as_ref().map(|r| r.workdir().to_path_buf()).unwrap_or_default();
+    let workdir = state.ws.git.repo.as_ref().map(|r| r.workdir().to_path_buf()).unwrap_or_default();
     eprintln!("[test] {flag} {arg}");
-    let active = state.tabs.active;
+    let active = state.ws.tabs.active;
     match flag.as_str() {
         "--test-git-changes" => {
-            state.layout.show(crate::layout::ToolWindow::Commit);
-            let c = &state.git_ui.changes;
+            state.ws.layout.show(crate::layout::ToolWindow::Commit);
+            let c = &state.ws.git_ui.changes;
             let checked = c.checked_files;
-            eprintln!("[test] commit window: {} entries, {checked} checked, status {} changes", c.entries.len(), state.git.changes.len());
+            eprintln!("[test] commit window: {} entries, {checked} checked, status {} changes", c.entries.len(), state.ws.git.changes.len());
         }
         "--test-git-diff" => super::diff::open_worktree_diff(state, &workdir.join(&arg)),
         "--test-git-diff-next" => super::diff::test_next(state, arg.trim().parse().unwrap_or(1)),
         "--test-git-commit" => {
             let (msg, paths) = arg.split_once('\u{1}').unwrap_or((arg.as_str(), ""));
-            state.layout.show(crate::layout::ToolWindow::Commit);
-            let c = &mut state.git_ui.changes;
+            state.ws.layout.show(crate::layout::ToolWindow::Commit);
+            let c = &mut state.ws.git_ui.changes;
             c.message = msg.to_string();
             if !paths.is_empty() {
                 let want: HashSet<PathBuf> = paths.split(',').map(PathBuf::from).collect();
@@ -1239,7 +1239,7 @@ fn test_tick(state: &mut AppState) {
             start_commit(state, false);
         }
         "--test-git-annotate" | "--test-git-gutter" | "--test-git-rollback-lines" | "--test-git-blame-click" | "--test-git-history" => {
-            if let Some(id) = active.filter(|&id| state.tabs.editor_mut(id).is_some()) {
+            if let Some(id) = active.filter(|&id| state.ws.tabs.editor_mut(id).is_some()) {
                 super::editor_git::test_step(state, id, &flag, &arg);
             } else {
                 eprintln!("[test] {flag}: no active editor");

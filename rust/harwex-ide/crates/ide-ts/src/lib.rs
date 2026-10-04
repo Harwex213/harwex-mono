@@ -557,6 +557,19 @@ impl TsService {
         }
     }
 
+    /// Pids of the server processes started so far (some may have exited). Never waits: a map
+    /// that is locked right now (a server being created) is skipped for this call.
+    pub fn pids(&self) -> Vec<u32> {
+        let mut pids: Vec<u32> = Vec::new();
+        if let Ok(servers) = self.inner.servers.try_lock() {
+            pids.extend(servers.values().filter_map(|s| s.pid()));
+        }
+        if let Ok(lsp) = self.inner.lsp.try_lock() {
+            pids.extend(lsp.values().filter_map(|s| s.pid()));
+        }
+        pids
+    }
+
     /// Stops every server. The service stays usable: the next call starts a fresh process.
     pub fn shutdown(&self) {
         let servers: Vec<Arc<Server>> = lock(&self.inner.servers).drain().map(|(_, s)| s).collect();

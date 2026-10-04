@@ -1,7 +1,7 @@
 //! Git UI entry points. The app shell calls these hooks; the Git UI phase replaces the bodies
 //! (and adds sibling modules under `app/src/git/`) without touching the shell.
 //!
-//! Data the shell already keeps fresh: `state.git` (repo handle, branch, status map; refreshed
+//! Data the shell already keeps fresh: `state.ws.git` (repo handle, branch, status map; refreshed
 //! after file changes and `.git` changes). Call `state.refresh_git()` after any git write.
 
 use egui::{Context, Ui};
@@ -112,7 +112,7 @@ pub fn show_windows(state: &mut AppState, ctx: &Context) {
     log::show_windows(state, ctx);
 }
 
-/// After the shell refreshed `state.git` (status and branch).
+/// After the shell refreshed `state.ws.git` (status and branch).
 pub fn on_git_refreshed(state: &mut AppState) {
     changes::on_git_refreshed(state);
     log::on_git_refreshed(state);

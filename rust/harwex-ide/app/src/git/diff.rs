@@ -398,7 +398,7 @@ impl CustomTab for DiffTab {
         self
     }
     fn ui(&mut self, ui: &mut Ui, env: &mut TabEnv) {
-        let body_id = Id::new(("diff-body", &self.key));
+        let body_id = crate::workspace::wid(("diff-body", &self.key));
         toolbar(self, ui, env, body_id);
         match &self.load {
             Load::Loading => {
@@ -799,14 +799,14 @@ fn rel_and_abs(repo: &Repo, path: &Path) -> (PathBuf, PathBuf) {
 
 /// Opens (or focuses) a diff tab: HEAD vs the working tree for `path`.
 pub fn open_worktree_diff(state: &mut AppState, path: &Path) {
-    let Some(repo) = state.git.repo.clone() else { return };
+    let Some(repo) = state.ws.git.repo.clone() else { return };
     let (rel, abs) = rel_and_abs(&repo, path);
     open(state, Source::Worktree { abs, rel });
 }
 
 /// Opens (or focuses) a diff tab for `path` as changed by commit `oid` (parent vs commit).
 pub fn open_commit_diff(state: &mut AppState, oid: ide_git::Oid, path: &Path) {
-    let Some(repo) = state.git.repo.clone() else { return };
+    let Some(repo) = state.ws.git.repo.clone() else { return };
     let (rel, abs) = rel_and_abs(&repo, path);
     open(state, Source::Commit { oid, rel, abs });
 }
@@ -817,14 +817,14 @@ pub fn open_commits_diff(state: &mut AppState, oids: &[ide_git::Oid], path: &Pat
     if let [one] = oids {
         return open_commit_diff(state, *one, path);
     }
-    let Some(repo) = state.git.repo.clone() else { return };
+    let Some(repo) = state.ws.git.repo.clone() else { return };
     let (rel, abs) = rel_and_abs(&repo, path);
     open(state, Source::Commits { oids: oids.to_vec(), rel, abs });
 }
 
 /// Opens a diff tab: `path` at revision `rev` vs the file on disk (Compare with Local).
 pub fn open_rev_local_diff(state: &mut AppState, rev: &str, path: &Path) {
-    let Some(repo) = state.git.repo.clone() else { return };
+    let Some(repo) = state.ws.git.repo.clone() else { return };
     let (rel, abs) = rel_and_abs(&repo, path);
     open(state, Source::RevLocal { rev: rev.to_string(), rel, abs });
 }
@@ -832,24 +832,24 @@ pub fn open_rev_local_diff(state: &mut AppState, rev: &str, path: &Path) {
 fn open(state: &mut AppState, source: Source) {
     let tab = DiffTab::new(source.clone());
     let key = tab.key.clone();
-    if state.tabs.custom_by_key(&key).is_some() {
-        state.tabs.open_custom(Box::new(tab));
+    if state.ws.tabs.custom_by_key(&key).is_some() {
+        state.ws.tabs.open_custom(Box::new(tab));
         reload(state, &key);
         return;
     }
-    state.tabs.open_custom(Box::new(tab));
+    state.ws.tabs.open_custom(Box::new(tab));
     reload(state, &key);
 }
 
 /// The unsaved editor buffer for a worktree diff, so the diff shows what the user sees.
 fn buffer_text(state: &AppState, source: &Source) -> Option<String> {
     let Source::Worktree { abs, .. } = source else { return None };
-    state.tabs.editors().find(|e| &e.path == abs && e.doc.is_dirty()).map(|e| e.doc.text())
+    state.ws.tabs.editors().find(|e| &e.path == abs && e.doc.is_dirty()).map(|e| e.doc.text())
 }
 
 fn reload(state: &mut AppState, key: &str) {
-    let Some(repo) = state.git.repo.clone() else { return };
-    let Some(tab) = state.tabs.custom_mut::<DiffTab>(key) else { return };
+    let Some(repo) = state.ws.git.repo.clone() else { return };
+    let Some(tab) = state.ws.tabs.custom_mut::<DiffTab>(key) else { return };
     if tab.reloading {
         tab.reload_pending = true;
         return;
@@ -883,7 +883,7 @@ fn reload(state: &mut AppState, key: &str) {
             }
         },
         move |state, res: Result<Option<Model>, String>| {
-            let Some(tab) = state.tabs.custom_mut::<DiffTab>(&key) else { return };
+            let Some(tab) = state.ws.tabs.custom_mut::<DiffTab>(&key) else { return };
             tab.reloading = false;
             match res {
                 Ok(Some(m)) => tab.set_model(m),
@@ -905,7 +905,7 @@ fn reload(state: &mut AppState, key: &str) {
 /// re-reads them. Unchanged texts are detected on the worker and cost no UI work.
 pub fn on_git_refreshed(state: &mut AppState) {
     let keys: Vec<String> = state
-        .tabs
+        .ws.tabs
         .list
         .iter_mut()
         .filter_map(|t| match &mut t.content {
@@ -920,8 +920,8 @@ pub fn on_git_refreshed(state: &mut AppState) {
 
 /// Test hook: presses F7 `n` times on the active diff tab and logs where it landed.
 pub fn test_next(state: &mut AppState, n: usize) {
-    let Some(id) = state.tabs.active else { return };
-    let Some(crate::tabs::TabContent::Custom(c)) = state.tabs.get_mut(id).map(|t| &mut t.content) else { return };
+    let Some(id) = state.ws.tabs.active else { return };
+    let Some(crate::tabs::TabContent::Custom(c)) = state.ws.tabs.get_mut(id).map(|t| &mut t.content) else { return };
     let Some(tab) = c.as_any_mut().downcast_mut::<DiffTab>() else { return };
     for _ in 0..n {
         tab.step(true);

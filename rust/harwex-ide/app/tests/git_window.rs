@@ -20,10 +20,10 @@ fn branchy_repo(fx: &Fixture) -> Repo {
 }
 
 fn open_git(ide: &mut Ide) {
-    if ide.state().layout.bottom != Some(ToolWindow::Git) {
+    if ide.state().ws.layout.bottom != Some(ToolWindow::Git) {
         ide.click("Git tool window");
     }
-    ide.wait_for("branches loaded", |s| s.git_ui.window.refs.is_some());
+    ide.wait_for("branches loaded", |s| s.ws.git_ui.window.refs.is_some());
     ide.settle();
     // A taller Git window, like the reference screenshot: drag the editor/Git border up.
     let top = ide.rect("Hide Git").min.y - 8.0;
@@ -32,11 +32,11 @@ fn open_git(ide: &mut Ide) {
 }
 
 fn titles(ide: &Ide) -> Vec<String> {
-    ide.state().git_ui.window.tab_titles()
+    ide.state().ws.git_ui.window.tab_titles()
 }
 
 fn active_title(ide: &Ide) -> String {
-    ide.state().git_ui.window.active_title()
+    ide.state().ws.git_ui.window.active_title()
 }
 
 /// Clicks a context-menu entry (menus close on click; the label must be unique on screen).
@@ -61,7 +61,7 @@ fn tabs_plus_close_and_overflow() {
     ide.click("New Log tab");
     ide.settle();
     assert_eq!(titles(&ide), ["Log: HEAD", "Log: HEAD"]);
-    assert_eq!(ide.state().git_ui.window.active(), 1);
+    assert_eq!(ide.state().ws.git_ui.window.active(), 1);
     // Each Log tab has its own branch filter.
     ide.click("Tree branch feature");
     ide.settle();
@@ -69,7 +69,7 @@ fn tabs_plus_close_and_overflow() {
     ide.click("Close Log: feature");
     ide.settle();
     assert_eq!(titles(&ide), ["Log: HEAD"]);
-    assert_eq!(ide.state().git_ui.window.active(), 0);
+    assert_eq!(ide.state().ws.git_ui.window.active(), 0);
 
     // Many tabs do not fit: `⌄` appears and lists all of them.
     assert!(!ide.has("Show all tabs"));
@@ -85,7 +85,7 @@ fn tabs_plus_close_and_overflow() {
     ide.snapshot("overflow_list");
     ide.click_nth("Switch to Log: HEAD", 0);
     ide.settle();
-    assert_eq!(ide.state().git_ui.window.active(), 0);
+    assert_eq!(ide.state().ws.git_ui.window.active(), 0);
 }
 
 #[test]
@@ -185,23 +185,23 @@ fn push_non_current_branch_from_tree() {
     ide.settle();
 
     menu(&mut ide, "Tree branch release", "Push...");
-    ide.wait_for("push dialog", |s| s.git_ui.remote.push_open() && !s.git_ui.remote.push_commits().is_empty());
+    ide.wait_for("push dialog", |s| s.ws.git_ui.remote.push_open() && !s.ws.git_ui.remote.push_commits().is_empty());
     ide.settle();
-    assert_eq!(ide.state().git_ui.remote.push_branch().as_deref(), Some("release"));
+    assert_eq!(ide.state().ws.git_ui.remote.push_branch().as_deref(), Some("release"));
     // The list holds release's commits; main's unpushed commit is shared, so it is listed too.
-    assert_eq!(ide.state().git_ui.remote.push_commits(), ["Release notes", "Release prep", "Local work to push"]);
+    assert_eq!(ide.state().ws.git_ui.remote.push_commits(), ["Release notes", "Release prep", "Local work to push"]);
     ide.assert_text("release -> origin/release  (new)");
     assert!(ide.is_selected("Set upstream"));
     ide.snapshot("push_other_branch");
     click_last(&mut ide, "Push");
-    ide.wait_for("pushed", |s| !s.git_ui.remote.push_open());
+    ide.wait_for("pushed", |s| !s.ws.git_ui.remote.push_open());
     assert_eq!(remote_log("release")[..3], ["Release notes", "Release prep", "Local work to push"]);
     assert_eq!(repo.git(&["rev-parse", "--abbrev-ref", "release@{u}"]).trim(), "origin/release");
     assert_eq!(repo.branch(), "main");
     assert_eq!(repo.git(&["rev-parse", "HEAD"]), head);
     // main stays unpushed; the command went through the Console.
     assert_eq!(remote_log("main")[0], "Initial commit");
-    let entries = ide.state().git_ui.window.console.entries();
+    let entries = ide.state().ws.git_ui.window.console.entries();
     let push = entries.iter().find(|e| e.args.first().map(String::as_str) == Some("push")).expect("push logged");
     assert!(push.is_finished() && push.success(), "{push:?}");
     assert!(push.args.iter().any(|a| a == "refs/heads/release:refs/heads/release"), "{:?}", push.args);
@@ -218,7 +218,7 @@ fn favourites_sort_first_and_persist() {
         open_git(&mut ide);
         assert!(ide.rect("Tree branch NAPI---FLOCK").min.y > ide.rect("Tree folder prototype").min.y);
         menu(&mut ide, "Tree branch NAPI---FLOCK", "Add to Favorites");
-        assert!(ide.state().git_ui.window.is_favorite(&root, "NAPI---FLOCK", false));
+        assert!(ide.state().ws.git_ui.window.is_favorite(&root, "NAPI---FLOCK", false));
         // A favourite moves to the top of its folder, above the folders.
         assert!(ide.rect("Tree branch NAPI---FLOCK").min.y < ide.rect("Tree folder agent").min.y);
         menu(&mut ide, "Tree branch prototype/ostrov", "Add to Favorites");
@@ -233,10 +233,10 @@ fn favourites_sort_first_and_persist() {
     // A new app reads them back from the same storage.
     let mut ide = Ide::with_options(SUITE, test_options(Some(&repo.dir)), Some(&storage));
     open_git(&mut ide);
-    assert!(ide.state().git_ui.window.is_favorite(&root, "NAPI---FLOCK", false));
+    assert!(ide.state().ws.git_ui.window.is_favorite(&root, "NAPI---FLOCK", false));
     assert!(ide.rect("Tree branch NAPI---FLOCK").min.y < ide.rect("Tree folder agent").min.y);
     menu(&mut ide, "Tree branch NAPI---FLOCK", "Remove from Favorites");
-    assert!(!ide.state().git_ui.window.is_favorite(&root, "NAPI---FLOCK", false));
+    assert!(!ide.state().ws.git_ui.window.is_favorite(&root, "NAPI---FLOCK", false));
 }
 
 #[test]
@@ -250,16 +250,16 @@ fn checkout_from_menu_and_console_reopens() {
     repo.git(&["checkout", "-q", "main"]);
     let mut ide = Ide::open(SUITE, &repo.dir);
     open_git(&mut ide);
-    assert!(!ide.state().git_ui.window.has_console());
+    assert!(!ide.state().ws.git_ui.window.has_console());
 
     // Checkout runs on a worker (`run_op`); the Console opens without taking the selection.
     menu(&mut ide, "Tree branch feature", "Checkout");
-    ide.wait_for("checked out", |s| s.git.branch.as_deref() == Some("feature"));
+    ide.wait_for("checked out", |s| s.ws.git.branch.as_deref() == Some("feature"));
     ide.settle();
     assert_eq!(repo.branch(), "feature");
     assert!(titles(&ide).contains(&"Console".to_string()), "{:?}", titles(&ide));
-    assert_eq!(ide.state().git_ui.window.active(), 0);
-    let entries = &ide.state().git_ui.window.console.entries();
+    assert_eq!(ide.state().ws.git_ui.window.active(), 0);
+    let entries = &ide.state().ws.git_ui.window.console.entries();
     let co = entries.iter().find(|e| e.args.first().map(String::as_str) == Some("checkout")).expect("checkout logged");
     assert!(co.is_finished() && co.success(), "{co:?}");
 
@@ -275,7 +275,7 @@ fn checkout_from_menu_and_console_reopens() {
     ide.settle();
     menu(&mut ide, "Tree branch wip", "Delete");
     click_last(&mut ide, "Delete");
-    ide.wait_for("delete failed", |s| s.git_ui.window.console.entries().iter().any(|e| e.args.first().map(String::as_str) == Some("branch") && e.is_finished()));
+    ide.wait_for("delete failed", |s| s.ws.git_ui.window.console.entries().iter().any(|e| e.args.first().map(String::as_str) == Some("branch") && e.is_finished()));
     ide.settle();
     assert!(repo.git(&["branch", "--list", "wip"]).contains("wip"));
     ide.click("Git tab Console");
@@ -287,12 +287,12 @@ fn checkout_from_menu_and_console_reopens() {
     ide.click("Git tab Console");
     ide.click("Close Console");
     ide.settle();
-    assert!(!ide.state().git_ui.window.has_console());
+    assert!(!ide.state().ws.git_ui.window.has_console());
     ide.dismiss_toasts();
     menu(&mut ide, "Tree branch main", "Checkout");
-    ide.wait_for("checked out main", |s| s.git.branch.as_deref() == Some("main"));
+    ide.wait_for("checked out main", |s| s.ws.git.branch.as_deref() == Some("main"));
     ide.settle();
-    assert!(ide.state().git_ui.window.has_console());
+    assert!(ide.state().ws.git_ui.window.has_console());
     assert_eq!(active_title(&ide), "Log: HEAD");
 }
 
@@ -307,10 +307,10 @@ fn compare_with_current_and_tag_menu() {
     let mut ide = Ide::open(SUITE, &repo.dir);
     open_git(&mut ide);
     menu(&mut ide, "Tree branch topic", "Compare with Current");
-    ide.wait_for("compare loaded", |s| s.git_ui.window.compare_counts().is_some());
+    ide.wait_for("compare loaded", |s| s.ws.git_ui.window.compare_counts().is_some());
     ide.settle();
     assert_eq!(active_title(&ide), "Compare with topic");
-    let (only_current, only_other) = ide.state().git_ui.window.compare_counts().expect("counts");
+    let (only_current, only_other) = ide.state().ws.git_ui.window.compare_counts().expect("counts");
     assert_eq!(only_other, 1);
     assert!(only_current >= 2, "{only_current}");
     ide.click("Commit Topic work");

@@ -69,7 +69,7 @@ pub fn attach(mut repo: Repo, jobs: &Jobs, generation: u64) -> Repo {
 
 pub fn on_event(state: &mut AppState, ev: CommandEvent) {
     let writes = !ev.read_only && !ev.is_finished();
-    state.git_ui.window.console.store(ev);
+    state.ws.git_ui.window.console.store(ev);
     if writes {
         super::window::reopen_console(state);
     }
@@ -78,7 +78,7 @@ pub fn on_event(state: &mut AppState, ev: CommandEvent) {
 pub fn body(state: &mut AppState, ui: &mut Ui) {
     let t = &theme::T;
     let deterministic = state.deterministic;
-    let console = &mut state.git_ui.window.console;
+    let console = &mut state.ws.git_ui.window.console;
     ui.horizontal(|ui| {
         if ui.small_button("Clear").clicked() {
             console.entries.clear();

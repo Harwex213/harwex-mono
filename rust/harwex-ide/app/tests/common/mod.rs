@@ -126,7 +126,7 @@ impl Ide {
         let mut ide = Ide { harness, suite, pointer: Pos2::new(-10.0, -10.0), size: SIZE, last_click: f64::NEG_INFINITY, viewport_commands: Vec::new() };
         if has_project {
             ide.wait_for("project loaded", |s| {
-                s.project.as_ref().is_some_and(|p| s.tree.is_loaded(&p.root)) && s.index.build_ms.is_some() && (s.git.repo.is_none() || s.git.status_ms.is_some())
+                s.ws.project.as_ref().is_some_and(|p| s.ws.tree.is_loaded(&p.root)) && s.ws.index.build_ms.is_some() && (s.ws.git.repo.is_none() || s.ws.git.status_ms.is_some())
             });
         }
         ide.settle();
@@ -153,7 +153,7 @@ impl Ide {
     }
 
     pub fn root(&self) -> PathBuf {
-        self.state().project.as_ref().expect("a project is open").root.clone()
+        self.state().ws.project.as_ref().expect("a project is open").root.clone()
     }
 
     /// One frame.
@@ -197,7 +197,7 @@ impl Ide {
             }
             if start.elapsed() > SETTLE_TIMEOUT {
                 let jobs: Vec<String> = self.state().jobs.running().into_iter().map(|j| j.label).collect();
-                panic!("settle timed out: in flight {}, language queues {}, running {jobs:?}", self.state().jobs.in_flight(), self.state().langs.queued());
+                panic!("settle timed out: in flight {}, language queues {}, running {jobs:?}", self.state().jobs.in_flight(), self.state().ws.langs.queued());
             }
         }
     }
@@ -560,7 +560,7 @@ impl Ide {
 
     /// Geometry of the active editor, from the last frame.
     pub fn editor_geometry(&self) -> ide_editor::EditorGeometry {
-        self.state().tabs.active_editor().and_then(|e| e.view.geometry()).expect("an editor is drawn")
+        self.state().ws.tabs.active_editor().and_then(|e| e.view.geometry()).expect("an editor is drawn")
     }
 
     /// A point just right of the left edge of a character cell: a click there puts the caret
@@ -572,42 +572,42 @@ impl Ide {
 
     /// Screen position of the center of a character of the active editor (0-based).
     pub fn char_pos(&self, line: usize, column: usize) -> Pos2 {
-        let e = self.state().tabs.active_editor().expect("active editor");
+        let e = self.state().ws.tabs.active_editor().expect("active editor");
         e.view.geometry().expect("editor drawn").char_center(&e.doc, ide_editor::Position::new(line, column))
     }
 
     /// Caret of the active editor as (line, column), 0-based.
     pub fn cursor(&self) -> (usize, usize) {
-        let c = self.state().tabs.active_editor().expect("active editor").view.cursor();
+        let c = self.state().ws.tabs.active_editor().expect("active editor").view.cursor();
         (c.line, c.column)
     }
 
     pub fn selected_text(&self) -> String {
-        let e = self.state().tabs.active_editor().expect("active editor");
+        let e = self.state().ws.tabs.active_editor().expect("active editor");
         e.doc.slice(e.view.selection().range())
     }
 
     pub fn active_line(&self, line: usize) -> String {
-        self.state().tabs.active_editor().expect("active editor").doc.line(line)
+        self.state().ws.tabs.active_editor().expect("active editor").doc.line(line)
     }
 
     pub fn active_text(&self) -> String {
-        self.state().tabs.active_editor().expect("active editor").doc.text()
+        self.state().ws.tabs.active_editor().expect("active editor").doc.text()
     }
 
     pub fn active_title(&self) -> Option<String> {
-        self.state().tabs.active_tab().map(|t| t.title())
+        self.state().ws.tabs.active_tab().map(|t| t.title())
     }
 
     pub fn tab_titles(&self) -> Vec<String> {
-        self.state().tabs.list.iter().map(|t| t.title()).collect()
+        self.state().ws.tabs.list.iter().map(|t| t.title()).collect()
     }
 
     /// Opens `rel` (relative to the project root) and waits for its tab.
     pub fn open_file(&mut self, rel: &str) {
         let path = std::fs::canonicalize(self.root().join(rel)).expect("file exists");
         self.state_mut().open_location(&path, None, true);
-        self.wait_for(&format!("tab for {rel}"), |s| s.tabs.active_editor().is_some_and(|e| e.path == path));
+        self.wait_for(&format!("tab for {rel}"), |s| s.ws.tabs.active_editor().is_some_and(|e| e.path == path));
         self.settle();
     }
 

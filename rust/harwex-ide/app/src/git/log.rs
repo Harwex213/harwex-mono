@@ -15,8 +15,8 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
-use egui::{Context, Frame, Id, Key, Margin, Modal, RichText, TextEdit, Ui};
-use ide_git::{ChangeKind, ChangedFile, CommitDetails, CommitInfo, GraphRow, LogFilter, Oid, ResetMode};
+use egui::{Context, Frame, Key, Margin, Modal, RichText, TextEdit, Ui};
+use ide_git::{ChangeKind, ChangedFile, CommitInfo, GraphRow, LogFilter, Oid, ResetMode};
 
 use super::commit_changes::{self, ChangesPane};
 use crate::layout::ToolWindow;
@@ -92,7 +92,6 @@ impl LogUi {
 enum ViewMsg {
     Page { request: u64, skip: usize, limit: usize, filter: LogFilter, result: Result<Vec<CommitInfo>, String>, ms: f64 },
     Changes { key: Vec<Oid>, result: Result<Vec<ChangedFile>, String> },
-    Details { oid: Oid, result: Result<CommitDetails, String> },
     TestSelect(usize),
     TestFilter(String),
     TestOpenFile(usize),
@@ -145,7 +144,7 @@ pub struct LogView {
     /// `LogUi::refs_epoch` of the last load.
     epoch: u64,
     error: Option<String>,
-    /// Selected commits; the last one is the lead (the details pane shows it).
+    /// Selected commits; the last one is the lead.
     pub(super) selection: Vec<Oid>,
     /// Shift+click and Shift+arrows extend from here.
     anchor: Option<Oid>,
@@ -243,14 +242,9 @@ impl LogView {
         &self.selection
     }
 
-    /// The commit the details pane shows (the last one selected).
+    /// The lead commit (the last one selected).
     pub fn selected(&self) -> Option<Oid> {
         self.selection.last().copied()
-    }
-
-    /// Details of the lead commit, once loaded.
-    pub fn details(&self) -> Option<&CommitDetails> {
-        self.changes.details()
     }
 
     /// Combined changes of the selection, once loaded.
@@ -331,7 +325,7 @@ impl LogView {
                                 self.scroll_to = Some(0);
                             }
                         }
-                        state.git_ui.log.last_load_ms = Some(ms);
+                        state.ws.git_ui.log.last_load_ms = Some(ms);
                         let total = self.commits.len();
                         state.timings.log(format!("[git log] page at {skip}: {n} commits, {total} total, {ms:.1} ms"));
                     }
@@ -346,12 +340,6 @@ impl LogView {
                 }
             }
             ViewMsg::Changes { key, result } => self.changes.set_files(key, result),
-            ViewMsg::Details { oid, result } => {
-                if let Err(e) = &result {
-                    state.notifications.log_only(crate::notifications::Level::Warning, "Cannot read commit", e.clone());
-                }
-                self.changes.set_details(oid, result.ok());
-            }
             ViewMsg::TestSelect(row) => {
                 if let Some(c) = self.commits.get(row) {
                     self.selection = vec![c.oid];
@@ -404,13 +392,13 @@ impl LogView {
     pub(super) fn text_edited(&mut self, state: &mut AppState) {
         let now = Instant::now();
         self.edited_at = Some(now);
-        state.git_ui.log.debouncing.insert(self.id, now);
+        state.ws.git_ui.log.debouncing.insert(self.id, now);
     }
 
     /// A filter other than the text changed: reload now.
     pub(super) fn filter_changed(&mut self, state: &mut AppState) {
         self.edited_at = None;
-        state.git_ui.log.debouncing.remove(&self.id);
+        state.ws.git_ui.log.debouncing.remove(&self.id);
         reload(state, self, 0);
     }
 }
@@ -435,12 +423,12 @@ enum RowAction {
 
 /// Filter bar, commit table and changes pane of one Log tab, inside `ui`'s rect.
 pub fn log_body(state: &mut AppState, view: &mut LogView, ui: &mut Ui) {
-    if state.git.repo.is_none() {
+    if state.ws.git.repo.is_none() {
         ui.label(RichText::new("The project is not inside a git repository.").color(theme::T.text_dim));
         return;
     }
     {
-        let log = &mut state.git_ui.log;
+        let log = &mut state.ws.git_ui.log;
         log.active = Some(view.id);
         log.drawn = true;
         if let Some(path) = log.pending_history.take() {
@@ -452,12 +440,12 @@ pub fn log_body(state: &mut AppState, view: &mut LogView, ui: &mut Ui) {
         }
     }
     ask_me(state);
-    if let Some(msgs) = state.git_ui.log.inbox.remove(&view.id) {
+    if let Some(msgs) = state.ws.git_ui.log.inbox.remove(&view.id) {
         for m in msgs {
             view.apply(state, m);
         }
     }
-    if view.needs_load || view.epoch != state.git_ui.log.refs_epoch {
+    if view.needs_load || view.epoch != state.ws.git_ui.log.refs_epoch {
         // A ref move keeps as many rows as are loaded, so the scroll position stays.
         let keep = if view.needs_load { 0 } else { view.commits.len() };
         view.needs_load = false;
@@ -467,36 +455,44 @@ pub fn log_body(state: &mut AppState, view: &mut LogView, ui: &mut Ui) {
         let rest = at.elapsed();
         if rest >= DEBOUNCE {
             view.edited_at = None;
-            state.git_ui.log.debouncing.remove(&view.id);
+            state.ws.git_ui.log.debouncing.remove(&view.id);
             reload(state, view, 0);
         } else {
             ui.ctx().request_repaint_after(DEBOUNCE - rest);
         }
     }
 
-    filters::bar(state, view, ui);
-    egui::SidePanel::right(Id::new(("git-log-changes", view.id)))
+    // The changes pane takes the full body height; the filter bar spans only the table column,
+    // like IDEA, so it follows the splitter.
+    let pane = egui::SidePanel::right(crate::workspace::wid(("git-log-changes", view.id)))
         .resizable(true)
         .default_width(380.0)
         .width_range(220.0..=900.0)
         .frame(Frame::NONE.inner_margin(Margin { left: 6, right: 0, top: 0, bottom: 0 }))
         .show_inside(ui, |ui| commit_changes::show(state, view, ui));
-    egui::CentralPanel::default().frame(Frame::NONE).show_inside(ui, |ui| table::show(state, view, ui));
+    let node = ui.interact(pane.response.rect, crate::workspace::wid(("git-log-changes-node", view.id)), egui::Sense::hover());
+    crate::util::label_widget(&node, egui::WidgetType::Other, "Log changes pane");
+    // The gap keeps the table's scroll bar out of the splitter's grab area; without it the
+    // scroll bar takes the press and the splitter can be grabbed only right of the edge.
+    egui::CentralPanel::default().frame(Frame::NONE.inner_margin(Margin { left: 0, right: 6, top: 0, bottom: 0 })).show_inside(ui, |ui| {
+        filters::bar(state, view, ui);
+        table::show(state, view, ui);
+    });
 }
 
 /// Loads `user.name`/`user.email` once per project.
 fn ask_me(state: &mut AppState) {
     let generation = state.project_generation();
-    if state.git_ui.log.me_asked == Some(generation) {
+    if state.ws.git_ui.log.me_asked == Some(generation) {
         return;
     }
-    state.git_ui.log.me_asked = Some(generation);
-    let Some(repo) = state.git.repo.clone() else { return };
+    state.ws.git_ui.log.me_asked = Some(generation);
+    let Some(repo) = state.ws.git.repo.clone() else { return };
     state.jobs.spawn_quiet(
         move || repo.user().ok().flatten(),
         move |state, me| {
             if state.project_generation() == generation {
-                state.git_ui.log.me = me;
+                state.ws.git_ui.log.me = me;
             }
         },
     );
@@ -505,13 +501,13 @@ fn ask_me(state: &mut AppState) {
 /// Loads the first page again with the view's filter. `keep` loads at least that many
 /// commits, so a reload after a ref move keeps the scroll position.
 fn reload(state: &mut AppState, view: &mut LogView, keep: usize) {
-    let Some(repo) = state.git.repo.clone() else { return };
+    let Some(repo) = state.ws.git.repo.clone() else { return };
     view.request += 1;
     view.loading = true;
     view.error = None;
-    view.epoch = state.git_ui.log.refs_epoch;
+    view.epoch = state.ws.git_ui.log.refs_epoch;
     let request = view.request;
-    let filter = view.log_filter(state.git_ui.log.me.as_ref());
+    let filter = view.log_filter(state.ws.git_ui.log.me.as_ref());
     let limit = keep.max(PAGE);
     let generation = state.project_generation();
     let id = view.id;
@@ -528,22 +524,22 @@ fn reload(state: &mut AppState, view: &mut LogView, keep: usize) {
             }
             if let Some(b) = branches {
                 apply_branches(state, &b);
-                state.git_ui.log.refs_fingerprint.get_or_insert(fingerprint(&b));
+                state.ws.git_ui.log.refs_fingerprint.get_or_insert(fingerprint(&b));
             }
             let ms = started.elapsed().as_secs_f64() * 1000.0;
-            state.git_ui.log.post(id, ViewMsg::Page { request, skip: 0, limit, filter, result, ms });
+            state.ws.git_ui.log.post(id, ViewMsg::Page { request, skip: 0, limit, filter, result, ms });
         },
     );
 }
 
 fn load_more(state: &mut AppState, view: &mut LogView) {
-    let Some(repo) = state.git.repo.clone() else { return };
+    let Some(repo) = state.ws.git.repo.clone() else { return };
     if view.loading || !view.has_more {
         return;
     }
     view.loading = true;
     let request = view.request;
-    let filter = view.log_filter(state.git_ui.log.me.as_ref());
+    let filter = view.log_filter(state.ws.git_ui.log.me.as_ref());
     let skip = view.commits.len();
     let generation = state.project_generation();
     let id = view.id;
@@ -558,14 +554,14 @@ fn load_more(state: &mut AppState, view: &mut LogView) {
                 return;
             }
             let ms = started.elapsed().as_secs_f64() * 1000.0;
-            state.git_ui.log.post(id, ViewMsg::Page { request, skip, limit: PAGE, filter, result, ms });
+            state.ws.git_ui.log.post(id, ViewMsg::Page { request, skip, limit: PAGE, filter, result, ms });
         },
     );
 }
 
 /// Starts loading the combined changes of `key` (the selection, sorted) for a view.
 pub(super) fn load_changes(state: &mut AppState, view_id: u64, key: Vec<Oid>) {
-    let Some(repo) = state.git.repo.clone() else { return };
+    let Some(repo) = state.ws.git.repo.clone() else { return };
     let generation = state.project_generation();
     state.jobs.spawn_quiet(
         move || {
@@ -574,21 +570,7 @@ pub(super) fn load_changes(state: &mut AppState, view_id: u64, key: Vec<Oid>) {
         },
         move |state, (key, result)| {
             if state.project_generation() == generation {
-                state.git_ui.log.post(view_id, ViewMsg::Changes { key, result });
-            }
-        },
-    );
-}
-
-/// Starts loading the details of the lead commit for a view.
-pub(super) fn load_details(state: &mut AppState, view_id: u64, oid: Oid) {
-    let Some(repo) = state.git.repo.clone() else { return };
-    let generation = state.project_generation();
-    state.jobs.spawn_quiet(
-        move || repo.commit_details(&oid).map_err(|e| e.to_string()),
-        move |state, result| {
-            if state.project_generation() == generation {
-                state.git_ui.log.post(view_id, ViewMsg::Details { oid, result });
+                state.ws.git_ui.log.post(view_id, ViewMsg::Changes { key, result });
             }
         },
     );
@@ -609,7 +591,7 @@ fn layout_graph(commits: &[CommitInfo], filter: &LogFilter) -> Vec<GraphRow> {
 }
 
 fn apply_branches(state: &mut AppState, b: &ide_git::Branches) {
-    let log = &mut state.git_ui.log;
+    let log = &mut state.ws.git_ui.log;
     log.branch_names = (b.local.iter().map(|x| x.name.clone()).collect(), b.remote.iter().map(|x| x.name.clone()).collect());
     log.head = b.head;
 }
@@ -644,9 +626,9 @@ fn run_action(state: &mut AppState, ctx: &Context, action: RowAction) {
             let body = format!("HEAD is now at {} (detached)", short(&oid));
             run_op(state, "Checkout Revision", body, false, move |r| r.checkout_revision(&oid).map(|_| None), |_, _| {});
         }
-        RowAction::NewBranch(oid) => state.git_ui.log.dialog = Some(LogDialog::NewBranch { from: oid, name: String::new(), checkout: true }),
-        RowAction::NewTag(oid) => state.git_ui.log.dialog = Some(LogDialog::NewTag { oid, name: String::new() }),
-        RowAction::Reset(oid) => state.git_ui.log.dialog = Some(LogDialog::Reset { oid, mode: ResetMode::Mixed, confirm_hard: false }),
+        RowAction::NewBranch(oid) => state.ws.git_ui.log.dialog = Some(LogDialog::NewBranch { from: oid, name: String::new(), checkout: true }),
+        RowAction::NewTag(oid) => state.ws.git_ui.log.dialog = Some(LogDialog::NewTag { oid, name: String::new() }),
+        RowAction::Reset(oid) => state.ws.git_ui.log.dialog = Some(LogDialog::Reset { oid, mode: ResetMode::Mixed, confirm_hard: false }),
         RowAction::Revert(oid) => run_op(state, format!("Revert {}", short(&oid)), "Reverted", true, move |r| r.revert(&oid).map(Some), |_, _| {}),
         RowAction::CherryPick(oid) => run_op(state, format!("Cherry-pick {}", short(&oid)), "Cherry-picked", true, move |r| r.cherry_pick(&oid).map(Some), |_, _| {}),
     }
@@ -654,36 +636,36 @@ fn run_action(state: &mut AppState, ctx: &Context, action: RowAction) {
 
 /// Opens the Create Patch dialog for these files of the selected commits.
 pub(super) fn open_patch_dialog(state: &mut AppState, oids: Vec<Oid>, paths: Vec<PathBuf>) {
-    let Some(repo) = state.git.repo.as_ref() else { return };
+    let Some(repo) = state.ws.git.repo.as_ref() else { return };
     let name = oids.last().map(short).unwrap_or_default();
     let dest = repo.workdir().join(format!("{name}.patch")).display().to_string();
-    state.git_ui.log.dialog = Some(LogDialog::CreatePatch { oids, paths, dest });
+    state.ws.git_ui.log.dialog = Some(LogDialog::CreatePatch { oids, paths, dest });
 }
 
 /// Shows the history of one file. The Git window opens a History tab for it
 /// (`take_file_history`); without one, the next drawn Log tab filters by the path.
 pub fn show_file_history(state: &mut AppState, path: &Path) {
-    if state.git.repo.is_none() {
+    if state.ws.git.repo.is_none() {
         return;
     }
     // Editor and tree paths are canonical already; no disk access on the UI thread.
-    state.git_ui.log.pending_history = Some(path.to_path_buf());
-    state.layout.show(ToolWindow::Git);
+    state.ws.git_ui.log.pending_history = Some(path.to_path_buf());
+    state.ws.layout.show(ToolWindow::Git);
 }
 
 /// The view for a pending Show History request, for the Git window's History tab.
 pub fn take_file_history(state: &mut AppState) -> Option<LogView> {
-    state.git_ui.log.pending_history.take().map(LogView::file_history)
+    state.ws.git_ui.log.pending_history.take().map(LogView::file_history)
 }
 
 pub fn show_windows(state: &mut AppState, ctx: &Context) {
-    let Some(dialog) = state.git_ui.log.dialog.as_mut() else { return };
+    let Some(dialog) = state.ws.git_ui.log.dialog.as_mut() else { return };
     let mut close = false;
     let mut submit: super::remote::Deferred = None;
     match dialog {
         LogDialog::NewBranch { from, name, checkout } => {
             let from = *from;
-            let m = Modal::new(Id::new("git-log-new-branch")).show(ctx, |ui| {
+            let m = Modal::new(crate::workspace::wid("git-log-new-branch")).show(ctx, |ui| {
                 ui.set_width(380.0);
                 ui.label(RichText::new(format!("New branch from {}", short(&from))).strong());
                 ui.add_space(6.0);
@@ -715,7 +697,7 @@ pub fn show_windows(state: &mut AppState, ctx: &Context) {
         }
         LogDialog::NewTag { oid, name } => {
             let oid = *oid;
-            let m = Modal::new(Id::new("git-log-new-tag")).show(ctx, |ui| {
+            let m = Modal::new(crate::workspace::wid("git-log-new-tag")).show(ctx, |ui| {
                 ui.set_width(380.0);
                 ui.label(RichText::new(format!("New tag on {}", short(&oid))).strong());
                 ui.add_space(6.0);
@@ -743,8 +725,8 @@ pub fn show_windows(state: &mut AppState, ctx: &Context) {
         }
         LogDialog::Reset { oid, mode, confirm_hard } => {
             let oid = *oid;
-            let branch = state.git.branch.clone().unwrap_or_default();
-            let m = Modal::new(Id::new("git-log-reset")).show(ctx, |ui| {
+            let branch = state.ws.git.branch.clone().unwrap_or_default();
+            let m = Modal::new(crate::workspace::wid("git-log-reset")).show(ctx, |ui| {
                 ui.set_width(440.0);
                 ui.label(RichText::new(format!("Reset {branch} to {}", short(&oid))).strong());
                 ui.add_space(6.0);
@@ -781,7 +763,7 @@ pub fn show_windows(state: &mut AppState, ctx: &Context) {
             close |= m.should_close();
         }
         LogDialog::CreatePatch { oids, paths, dest } => {
-            let m = Modal::new(Id::new("git-log-create-patch")).show(ctx, |ui| {
+            let m = Modal::new(crate::workspace::wid("git-log-create-patch")).show(ctx, |ui| {
                 ui.set_width(520.0);
                 let files = if paths.is_empty() { "all files".to_string() } else { format!("{} file(s)", paths.len()) };
                 ui.label(RichText::new(format!("Create Patch: {files} of {} commit(s)", oids.len())).strong());
@@ -807,15 +789,15 @@ pub fn show_windows(state: &mut AppState, ctx: &Context) {
         }
     }
     if let Some(f) = submit {
-        state.git_ui.log.dialog = None;
+        state.ws.git_ui.log.dialog = None;
         f(state);
     } else if close {
-        state.git_ui.log.dialog = None;
+        state.ws.git_ui.log.dialog = None;
     }
 }
 
 fn save_patch(state: &mut AppState, oids: Vec<Oid>, paths: Vec<PathBuf>, dest: PathBuf) {
-    let Some(repo) = state.git.repo.clone() else { return };
+    let Some(repo) = state.ws.git.repo.clone() else { return };
     let dest = if dest.is_absolute() { dest } else { repo.workdir().join(dest) };
     state.jobs.spawn(
         "Create Patch",
@@ -840,10 +822,10 @@ fn reset_job(oid: Oid, mode: ResetMode) -> Box<dyn FnOnce(&mut AppState)> {
 
 /// A status refresh follows every file save; the views reload only when a ref moved.
 pub fn on_git_refreshed(state: &mut AppState) {
-    if !state.git_ui.log.drawn {
+    if !state.ws.git_ui.log.drawn {
         return;
     }
-    let Some(repo) = state.git.repo.clone() else { return };
+    let Some(repo) = state.ws.git.repo.clone() else { return };
     let generation = state.project_generation();
     state.jobs.spawn_quiet(
         move || repo.branches().ok(),
@@ -854,7 +836,7 @@ pub fn on_git_refreshed(state: &mut AppState) {
             let Some(b) = b else { return };
             apply_branches(state, &b);
             let fp = fingerprint(&b);
-            let log = &mut state.git_ui.log;
+            let log = &mut state.ws.git_ui.log;
             if log.refs_fingerprint != Some(fp) {
                 log.refs_fingerprint = Some(fp);
                 log.refs_epoch += 1;
@@ -909,8 +891,8 @@ fn civil_from_days(z: i64) -> (i64, u32, u32) {
 // Test hooks for `--test-git-*` (remote/testing.rs). They act on the Log tab drawn last.
 
 fn post_active(state: &mut AppState, msg: ViewMsg) {
-    state.layout.show(ToolWindow::Git);
-    let log = &mut state.git_ui.log;
+    state.ws.layout.show(ToolWindow::Git);
+    let log = &mut state.ws.git_ui.log;
     match log.active {
         Some(id) => log.post(id, msg),
         None => eprintln!("[test-git] no Log tab was drawn yet"),

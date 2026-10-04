@@ -1,7 +1,9 @@
 //! The memory indicator in the status bar, like IDEA's "2766 of 5100M" widget.
 //!
 //! The total covers harwex-ide and every process it started (language servers and their
-//! helpers). Two kinds of subtrees stay out of it: terminal shells (the user runs anything
+//! helpers) for all open projects. The tooltip lists the active project's processes by group.
+//! The processes of the other open projects (`Workspace::owned_pids` and their child trees)
+//! add up to one "Other projects" line. Two kinds of subtrees stay out of it: terminal shells (the user runs anything
 //! there) and git commands. A worker thread samples every `interval` (15 s by default,
 //! `[memory] interval_secs` in `.harwex/ide.toml`) and posts the result to the UI thread.
 //!
@@ -68,6 +70,8 @@ pub enum Kind {
     Ide,
     LanguageServer,
     Other,
+    /// Processes owned by a workspace that is not active, with their child trees.
+    OtherProjects,
 }
 
 impl Kind {
@@ -76,6 +80,7 @@ impl Kind {
             Kind::Ide => "IDE itself",
             Kind::LanguageServer => "Language servers",
             Kind::Other => "Other",
+            Kind::OtherProjects => "Other projects",
         }
     }
 }
@@ -139,9 +144,15 @@ impl Sampler {
         Sampler { source, prev: HashMap::new(), prev_at: None, seq: 0 }
     }
 
-    /// One sample. `excluded` are terminal shells: they and their subtrees are skipped, and
-    /// the walk never lists their children.
+    /// One sample with no other projects open. See `sample_with`.
     pub fn sample(&mut self, excluded: &[Pid]) -> Sample {
+        self.sample_with(excluded, &[])
+    }
+
+    /// One sample. `excluded` are terminal shells: they and their subtrees are skipped, and
+    /// the walk never lists their children. `others` are the processes of the workspaces that
+    /// are not active: they and their subtrees count as `Kind::OtherProjects`.
+    pub fn sample_with(&mut self, excluded: &[Pid], others: &[Pid]) -> Sample {
         let cpu_start = thread_cpu_time();
         let src = &*self.source;
         let now = src.now();
@@ -159,6 +170,8 @@ impl Sampler {
             }
             let Some(st) = src.stat(pid) else { continue };
             let kind = match kind {
+                // An owned pid may sit at any depth (a server started through a wrapper).
+                _ if others.contains(&pid) => Kind::OtherProjects,
                 Some(k) => k,
                 None if is_git(&st.name) => continue,
                 None => classify(&st.name),
@@ -185,6 +198,7 @@ impl Sampler {
 
 enum Msg {
     Exclude(Vec<Pid>),
+    Others(Vec<Pid>),
     Interval(Duration),
     Now,
 }
@@ -197,11 +211,16 @@ pub struct MemoryMonitor {
     pub interval: Duration,
     /// The shell pids last sent to the thread, so a frame sends only changes.
     sent_excluded: Vec<Pid>,
+    /// The pids of the other projects last sent to the thread.
+    sent_others: Vec<Pid>,
+    /// Pids that count as other projects on top of the workspaces' own. Tests set it: a fake
+    /// process tree has no real servers to own.
+    pub extra_others: Vec<Pid>,
 }
 
 impl Default for MemoryMonitor {
     fn default() -> Self {
-        MemoryMonitor { tx: None, sample: None, interval: DEFAULT_INTERVAL, sent_excluded: Vec::new() }
+        MemoryMonitor { tx: None, sample: None, interval: DEFAULT_INTERVAL, sent_excluded: Vec::new(), sent_others: Vec::new(), extra_others: Vec::new() }
     }
 }
 
@@ -213,11 +232,16 @@ impl MemoryMonitor {
         let spawned = std::thread::Builder::new().name("memory sampler".into()).spawn(move || {
             let mut sampler = Sampler::new(source);
             let mut excluded: Vec<Pid> = Vec::new();
+            let mut others: Vec<Pid> = Vec::new();
             let mut next = Instant::now();
             loop {
                 match rx.recv_timeout(next.saturating_duration_since(Instant::now())) {
                     Ok(Msg::Exclude(pids)) => {
                         excluded = pids;
+                        continue;
+                    }
+                    Ok(Msg::Others(pids)) => {
+                        others = pids;
                         continue;
                     }
                     Ok(Msg::Interval(d)) => {
@@ -228,7 +252,7 @@ impl MemoryMonitor {
                     Ok(Msg::Now) | Err(RecvTimeoutError::Timeout) => {}
                     Err(RecvTimeoutError::Disconnected) => return,
                 }
-                let sample = Arc::new(sampler.sample(&excluded));
+                let sample = Arc::new(sampler.sample_with(&excluded, &others));
                 next = Instant::now() + interval;
                 jobs.post(move |state| state.memory.sample = Some(sample));
             }
@@ -263,6 +287,16 @@ impl MemoryMonitor {
         self.send(Msg::Exclude(self.sent_excluded.clone()));
     }
 
+    /// Sends the pids owned by the workspaces that are not active, when they changed since the
+    /// last call. Allocates only on a change, so it can run every frame.
+    pub fn others(&mut self, pids: impl Iterator<Item = Pid> + Clone) {
+        if self.tx.is_none() || pids.clone().eq(self.sent_others.iter().copied()) {
+            return;
+        }
+        self.sent_others = pids.collect();
+        self.send(Msg::Others(self.sent_others.clone()));
+    }
+
     fn send(&self, msg: Msg) {
         if let Some(tx) = &self.tx {
             let _ = tx.send(msg);
@@ -272,7 +306,12 @@ impl MemoryMonitor {
 
 /// The status bar widget. Hidden until the first sample arrives.
 pub fn status_widget(s: &mut AppState, ui: &mut Ui) {
-    s.memory.exclude(s.terminals.shell_pids());
+    let shells: Vec<Pid> = s.all_ws().flat_map(|w| w.terminals.shell_pids()).collect();
+    s.memory.exclude(shells.iter().copied());
+    let active = s.active_id();
+    let mut others: Vec<Pid> = s.all_ws().filter(|w| w.id != active).flat_map(|w| w.owned_pids()).collect();
+    others.extend_from_slice(&s.memory.extra_others);
+    s.memory.others(others.iter().copied());
     let Some(sample) = s.memory.sample.clone() else { return };
     let t = &theme::T;
     let text = format!("{} of {}M", mib(sample.total), mib(sample.ram));
@@ -327,6 +366,15 @@ fn tooltip(ui: &mut Ui, sample: &Sample, interval: Duration, deterministic: bool
                 right(ui, 48.0, small(cpu).color(t.text_dim));
                 ui.end_row();
             }
+        }
+        // One line for all other projects: the rows above stay about the project in view.
+        let others = sample.group_total(Kind::OtherProjects);
+        if sample.rows.iter().any(|r| r.kind == Kind::OtherProjects) {
+            ui.label(small(Kind::OtherProjects.title().into()).color(t.text_dim));
+            ui.label("");
+            right(ui, 64.0, small(size_text(others)).color(t.text_dim));
+            ui.label("");
+            ui.end_row();
         }
     });
     ui.add_space(6.0);
@@ -556,6 +604,65 @@ mod tests {
         assert_eq!(s.total, (1 + 2 + 3 + 4 + 5 + 10) * MB, "the shell subtree (6, 7) and git (8, 9) are left out");
         assert!(s.rows.iter().all(|r| r.cpu.is_none()), "the first sample has no CPU%");
         assert_eq!(s.seq, 1);
+    }
+
+    /// `Fake` plus a second project: its tsserver (11, a `node` with a helper 12) and its
+    /// terminal shell (13, running a build 14), all direct children of the IDE.
+    struct TwoProjects;
+
+    impl ProcessSource for TwoProjects {
+        fn self_pid(&self) -> Pid {
+            1
+        }
+        fn children(&self, pid: Pid, out: &mut Vec<Pid>) {
+            match pid {
+                1 => out.extend_from_slice(&[2, 4, 6, 8, 10, 11, 13]),
+                11 => out.push(12),
+                13 => out.push(14),
+                _ => Fake.children(pid, out),
+            }
+        }
+        fn stat(&self, pid: Pid) -> Option<ProcStat> {
+            let name = match pid {
+                11 | 12 => "node",
+                13 => "zsh",
+                14 => "cargo",
+                _ => return Fake.stat(pid),
+            };
+            Some(ProcStat { name: name.into(), memory: pid as u64 * MB, cpu_ns: 0 })
+        }
+        fn physical_ram(&self) -> u64 {
+            Fake.physical_ram()
+        }
+    }
+
+    #[test]
+    fn background_project_lands_in_other_projects() {
+        let mut sampler = Sampler::new(Arc::new(TwoProjects));
+        // The UI sends every shell as excluded and the background workspace's owned pids
+        // (its shell 13 and its server 11) as others.
+        let s = sampler.sample_with(&[6, 13], &[13, 11]);
+        let pids = |k: Kind| s.rows.iter().filter(|r| r.kind == k).map(|r| r.pid).collect::<Vec<_>>();
+        assert_eq!(pids(Kind::Ide), vec![1]);
+        assert_eq!(pids(Kind::LanguageServer), vec![5, 4, 3, 2], "only the active project's servers");
+        assert_eq!(pids(Kind::Other), vec![10]);
+        assert_eq!(pids(Kind::OtherProjects), vec![12, 11], "the server and its helper subtree");
+        assert_eq!(s.group_total(Kind::OtherProjects), (11 + 12) * MB);
+        assert_eq!(s.total, (1 + 2 + 3 + 4 + 5 + 10 + 11 + 12) * MB, "the total counts all projects; shells stay out");
+
+        // Without the ownership sets the same server counts as the active project's.
+        let s = sampler.sample(&[6, 13]);
+        assert!(s.rows.iter().all(|r| r.kind != Kind::OtherProjects));
+        assert_eq!(s.group_total(Kind::LanguageServer), (2 + 3 + 4 + 5 + 11 + 12) * MB);
+    }
+
+    #[test]
+    fn owned_pid_below_a_wrapper_is_found() {
+        // A background server 3 runs under the active project's node 2 (a wrapper).
+        let mut sampler = Sampler::new(Arc::new(Fake));
+        let s = sampler.sample_with(&[6], &[3]);
+        let kind = |pid: Pid| s.rows.iter().find(|r| r.pid == pid).unwrap().kind;
+        assert_eq!((kind(2), kind(3)), (Kind::LanguageServer, Kind::OtherProjects));
     }
 
     #[test]

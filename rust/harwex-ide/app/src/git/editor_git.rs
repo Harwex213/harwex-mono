@@ -5,7 +5,7 @@ use std::ops::Range;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
-use egui::{Align2, Area, Context, Frame, Id, Key, Order, Pos2, RichText, ScrollArea};
+use egui::{Align2, Area, Context, Frame, Key, Order, Pos2, RichText, ScrollArea};
 use ide_editor::EditorAction;
 use ide_git::{BlameLine, CommitDetails, LineChange, LineChangeKind, Oid};
 
@@ -55,12 +55,12 @@ pub fn on_editor_action(state: &mut AppState, tab: TabId, action: &EditorAction)
     match action {
         EditorAction::GitAnnotate => toggle_annotate(state, tab),
         EditorAction::GitShowHistory => {
-            if let Some(path) = state.tabs.editor_mut(tab).map(|e| e.path.clone()) {
+            if let Some(path) = state.ws.tabs.editor_mut(tab).map(|e| e.path.clone()) {
                 super::log::show_file_history(state, &path);
             }
         }
         EditorAction::GitRollbackLines => {
-            let Some(e) = state.tabs.editor_mut(tab) else { return };
+            let Some(e) = state.ws.tabs.editor_mut(tab) else { return };
             let sel = e.view.selection();
             let start = e.doc.char_to_position(sel.start());
             let end = e.doc.char_to_position(sel.end());
@@ -73,33 +73,33 @@ pub fn on_editor_action(state: &mut AppState, tab: TabId, action: &EditorAction)
 }
 
 pub fn on_gutter_click(state: &mut AppState, tab: TabId, line: usize) {
-    let Some(repo) = state.git.repo.clone() else { return };
-    let Some(e) = state.tabs.editor_mut(tab) else { return };
+    let Some(repo) = state.ws.git.repo.clone() else { return };
+    let Some(e) = state.ws.tabs.editor_mut(tab) else { return };
     let text = e.doc.text();
     let version = e.doc.version();
     let path = e.path.clone();
     let anchor = state.ctx.input(|i| i.pointer.interact_pos()).unwrap_or(Pos2::new(300.0, 200.0));
-    state.git_ui.editor.gutter = None;
+    state.ws.git_ui.editor.gutter = None;
     state.jobs.spawn_quiet(
         move || repo.line_changes(&path, &text),
         move |state, res| {
             let Ok(changes) = res else { return };
             // The text changed since the click (or a newer click is pending): the lines are stale.
-            if state.tabs.editor_mut(tab).map(|e| e.doc.version()) != Some(version) {
+            if state.ws.tabs.editor_mut(tab).map(|e| e.doc.version()) != Some(version) {
                 return;
             }
             let hit = changes.into_iter().find(|c| c.lines.contains(&line) || (c.lines.is_empty() && (c.lines.start == line || c.lines.start == line + 1)));
             if let Some(change) = hit {
-                state.git_ui.editor.gutter = Some(GutterPopup { tab, change, anchor, version });
+                state.ws.git_ui.editor.gutter = Some(GutterPopup { tab, change, anchor, version });
             }
         },
     );
 }
 
 pub fn on_annotation_click(state: &mut AppState, tab: TabId, line: usize) {
-    let Some(b) = state.git_ui.editor.blame.get(&tab) else { return };
+    let Some(b) = state.ws.git_ui.editor.blame.get(&tab) else { return };
     // Between an edit and the next blame the line numbers do not match the text.
-    if state.tabs.get(tab).and_then(|t| t.editor()).map(|e| e.doc.version()) != Some(b.version) {
+    if state.ws.tabs.get(tab).and_then(|t| t.editor()).map(|e| e.doc.version()) != Some(b.version) {
         state.notifications.info("Annotations are updating", "Click again in a moment.");
         return;
     }
@@ -109,17 +109,17 @@ pub fn on_annotation_click(state: &mut AppState, tab: TabId, line: usize) {
         return;
     }
     let oid = bl.oid;
-    let Some(repo) = state.git.repo.clone() else { return };
-    let Some(path) = state.tabs.editor_mut(tab).map(|e| e.path.clone()) else { return };
+    let Some(repo) = state.ws.git.repo.clone() else { return };
+    let Some(path) = state.ws.tabs.editor_mut(tab).map(|e| e.path.clone()) else { return };
     let anchor = state.ctx.input(|i| i.pointer.interact_pos()).unwrap_or(Pos2::new(300.0, 200.0));
-    state.git_ui.editor.commit = Some(CommitPopup { tab, path, oid, anchor, details: None });
+    state.ws.git_ui.editor.commit = Some(CommitPopup { tab, path, oid, anchor, details: None });
     state.jobs.spawn_quiet(
         move || repo.commit_details(&oid).map_err(|e| e.to_string()),
         move |state, res| {
             if state.test.is_some() {
                 eprintln!("[test] commit popup: {:?}", res.as_ref().map(|d| (d.info.summary.clone(), d.info.author_name.clone(), d.files.len())));
             }
-            if let Some(p) = &mut state.git_ui.editor.commit {
+            if let Some(p) = &mut state.ws.git_ui.editor.commit {
                 if p.oid == oid {
                     p.details = Some(res);
                 }
@@ -131,8 +131,8 @@ pub fn on_annotation_click(state: &mut AppState, tab: TabId, line: usize) {
 /// Reverts the changes touching `lines` in the buffer. The new text goes through
 /// `Document::set_text`, so Cmd+Z brings the change back.
 fn rollback(state: &mut AppState, tab: TabId, lines: Range<usize>) {
-    let Some(repo) = state.git.repo.clone() else { return };
-    let Some(e) = state.tabs.editor_mut(tab) else { return };
+    let Some(repo) = state.ws.git.repo.clone() else { return };
+    let Some(e) = state.ws.tabs.editor_mut(tab) else { return };
     if e.read_only {
         return;
     }
@@ -143,7 +143,7 @@ fn rollback(state: &mut AppState, tab: TabId, lines: Range<usize>) {
         move || repo.rollback_lines(&path, &text, lines).map(|new| (new, text)),
         move |state, res| match res {
             Ok((new, old)) => {
-                let Some(e) = state.tabs.editor_mut(tab) else { return };
+                let Some(e) = state.ws.tabs.editor_mut(tab) else { return };
                 if e.doc.version() != version {
                     state.notifications.warn("Rollback skipped", "The file changed while the rollback was computed. Try again.");
                     return;
@@ -156,7 +156,7 @@ fn rollback(state: &mut AppState, tab: TabId, lines: Range<usize>) {
                 if state.test.is_some() {
                     eprintln!("[test] rollback lines applied");
                 }
-                let Some(e) = state.tabs.editor_mut(tab) else { return };
+                let Some(e) = state.ws.tabs.editor_mut(tab) else { return };
                 e.doc.seal_undo_group();
                 e.doc.set_text(&new);
                 e.doc.seal_undo_group();
@@ -171,23 +171,23 @@ fn rollback(state: &mut AppState, tab: TabId, lines: Range<usize>) {
 }
 
 fn toggle_annotate(state: &mut AppState, tab: TabId) {
-    if state.git_ui.editor.blame.remove(&tab).is_some() {
-        if let Some(e) = state.tabs.editor_mut(tab) {
+    if state.ws.git_ui.editor.blame.remove(&tab).is_some() {
+        if let Some(e) = state.ws.tabs.editor_mut(tab) {
             e.annotations.clear();
         }
         return;
     }
-    state.git_ui.editor.blame.insert(tab, Blame { lines: Vec::new(), version: u64::MAX, in_flight: false });
+    state.ws.git_ui.editor.blame.insert(tab, Blame { lines: Vec::new(), version: u64::MAX, in_flight: false });
     run_blame(state, tab);
 }
 
 fn run_blame(state: &mut AppState, tab: TabId) {
-    let Some(repo) = state.git.repo.clone() else { return };
-    let Some(b) = state.git_ui.editor.blame.get_mut(&tab) else { return };
+    let Some(repo) = state.ws.git.repo.clone() else { return };
+    let Some(b) = state.ws.git_ui.editor.blame.get_mut(&tab) else { return };
     if b.in_flight {
         return;
     }
-    let Some(e) = state.tabs.editor_mut(tab) else { return };
+    let Some(e) = state.ws.tabs.editor_mut(tab) else { return };
     b.in_flight = true;
     let text = e.doc.text();
     let version = e.doc.version();
@@ -196,7 +196,7 @@ fn run_blame(state: &mut AppState, tab: TabId) {
         "Annotating",
         move || repo.blame_text(&path, &text),
         move |state, res| {
-            let Some(b) = state.git_ui.editor.blame.get_mut(&tab) else { return };
+            let Some(b) = state.ws.git_ui.editor.blame.get_mut(&tab) else { return };
             b.in_flight = false;
             match res {
                 Ok(lines) => {
@@ -206,12 +206,12 @@ fn run_blame(state: &mut AppState, tab: TabId) {
                     }
                     b.lines = lines;
                     b.version = version;
-                    if let Some(e) = state.tabs.editor_mut(tab) {
+                    if let Some(e) = state.ws.tabs.editor_mut(tab) {
                         e.annotations = annotations;
                     }
                 }
                 Err(err) => {
-                    state.git_ui.editor.blame.remove(&tab);
+                    state.ws.git_ui.editor.blame.remove(&tab);
                     state.notifications.error("Annotate failed", err.to_string());
                 }
             }
@@ -260,14 +260,14 @@ fn format_time(time: i64, offset_minutes: i32) -> String {
 
 /// Re-blames annotated tabs after edits (debounced) and after commits.
 fn refresh_blames(state: &mut AppState, force: bool) {
-    let ids: Vec<TabId> = state.git_ui.editor.blame.keys().copied().collect();
+    let ids: Vec<TabId> = state.ws.git_ui.editor.blame.keys().copied().collect();
     for id in ids {
-        let Some(e) = state.tabs.editor_mut(id) else {
-            state.git_ui.editor.blame.remove(&id);
+        let Some(e) = state.ws.tabs.editor_mut(id) else {
+            state.ws.git_ui.editor.blame.remove(&id);
             continue;
         };
         let (version, rest) = (e.doc.version(), e.last_edit.elapsed());
-        let Some(b) = state.git_ui.editor.blame.get(&id) else { continue };
+        let Some(b) = state.ws.git_ui.editor.blame.get(&id) else { continue };
         if b.in_flight {
             continue;
         }
@@ -297,15 +297,15 @@ fn popup_frame() -> Frame {
 }
 
 fn gutter_popup(state: &mut AppState, ctx: &Context) {
-    let Some(p) = &state.git_ui.editor.gutter else { return };
-    let version = state.tabs.get(p.tab).and_then(|t| t.editor()).map(|e| e.doc.version());
-    if state.tabs.active != Some(p.tab) || version != Some(p.version) {
-        state.git_ui.editor.gutter = None;
+    let Some(p) = &state.ws.git_ui.editor.gutter else { return };
+    let version = state.ws.tabs.get(p.tab).and_then(|t| t.editor()).map(|e| e.doc.version());
+    if state.ws.tabs.active != Some(p.tab) || version != Some(p.version) {
+        state.ws.git_ui.editor.gutter = None;
         return;
     }
     let mut action = None;
     let c = &p.change;
-    let area = Area::new(Id::new("git-gutter-popup")).order(Order::Foreground).fixed_pos(p.anchor + egui::vec2(8.0, 4.0)).pivot(Align2::LEFT_TOP).constrain(true).show(ctx, |ui| {
+    let area = Area::new(crate::workspace::wid("git-gutter-popup")).order(Order::Foreground).fixed_pos(p.anchor + egui::vec2(8.0, 4.0)).pivot(Align2::LEFT_TOP).constrain(true).show(ctx, |ui| {
         popup_frame().show(ui, |ui| {
             ui.set_max_width(700.0);
             ui.horizontal(|ui| {
@@ -341,34 +341,34 @@ fn gutter_popup(state: &mut AppState, ctx: &Context) {
     let escape = ctx.input(|i| i.key_pressed(Key::Escape));
     match action {
         Some(0) => {
-            state.git_ui.editor.gutter = None;
+            state.ws.git_ui.editor.gutter = None;
             // A deletion has an empty range at the line after it, which rollback_lines treats
             // as "the change next to this line".
             let range = if lines.is_empty() { lines.start..lines.start } else { lines };
             rollback(state, tab, range);
         }
         Some(1) => {
-            state.git_ui.editor.gutter = None;
-            if let Some(path) = state.tabs.editor_mut(tab).map(|e| e.path.clone()) {
+            state.ws.git_ui.editor.gutter = None;
+            if let Some(path) = state.ws.tabs.editor_mut(tab).map(|e| e.path.clone()) {
                 super::diff::open_worktree_diff(state, &path);
             }
         }
         Some(_) => {
             ctx.copy_text(old_text);
         }
-        None if clicked_outside || escape => state.git_ui.editor.gutter = None,
+        None if clicked_outside || escape => state.ws.git_ui.editor.gutter = None,
         None => {}
     }
 }
 
 fn commit_popup(state: &mut AppState, ctx: &Context) {
-    let Some(p) = &state.git_ui.editor.commit else { return };
-    if state.tabs.active != Some(p.tab) {
-        state.git_ui.editor.commit = None;
+    let Some(p) = &state.ws.git_ui.editor.commit else { return };
+    if state.ws.tabs.active != Some(p.tab) {
+        state.ws.git_ui.editor.commit = None;
         return;
     }
     let mut action = None;
-    let area = Area::new(Id::new("git-commit-popup")).order(Order::Foreground).fixed_pos(p.anchor + egui::vec2(8.0, 4.0)).pivot(Align2::LEFT_TOP).constrain(true).show(ctx, |ui| {
+    let area = Area::new(crate::workspace::wid("git-commit-popup")).order(Order::Foreground).fixed_pos(p.anchor + egui::vec2(8.0, 4.0)).pivot(Align2::LEFT_TOP).constrain(true).show(ctx, |ui| {
         popup_frame().show(ui, |ui| {
             ui.set_max_width(560.0);
             match &p.details {
@@ -416,11 +416,11 @@ fn commit_popup(state: &mut AppState, ctx: &Context) {
     let escape = ctx.input(|i| i.key_pressed(Key::Escape));
     match action {
         Some(0) => {
-            state.git_ui.editor.commit = None;
+            state.ws.git_ui.editor.commit = None;
             super::diff::open_commit_diff(state, oid, &path);
         }
         Some(_) => ctx.copy_text(oid.to_string()),
-        None if clicked_outside || escape => state.git_ui.editor.commit = None,
+        None if clicked_outside || escape => state.ws.git_ui.editor.commit = None,
         None => {}
     }
 }
@@ -434,7 +434,7 @@ pub fn test_step(state: &mut AppState, tab: TabId, flag: &str, arg: &str) {
         "--test-git-gutter" => {
             state.ctx.input_mut(|i| i.pointer = Default::default());
             on_gutter_click(state, tab, line);
-            if let Some(p) = &mut state.git_ui.editor.gutter {
+            if let Some(p) = &mut state.ws.git_ui.editor.gutter {
                 p.anchor = Pos2::new(420.0, 160.0);
             }
             // The popup arrives with the job; pin its anchor then.
@@ -442,7 +442,7 @@ pub fn test_step(state: &mut AppState, tab: TabId, flag: &str, arg: &str) {
             std::thread::spawn(move || {
                 std::thread::sleep(Duration::from_millis(400));
                 jobs.post(|state| {
-                    if let Some(p) = &mut state.git_ui.editor.gutter {
+                    if let Some(p) = &mut state.ws.git_ui.editor.gutter {
                         p.anchor = Pos2::new(420.0, 160.0);
                     }
                 });
@@ -451,7 +451,7 @@ pub fn test_step(state: &mut AppState, tab: TabId, flag: &str, arg: &str) {
         "--test-git-rollback-lines" => rollback(state, tab, line..line + 1),
         "--test-git-blame-click" => {
             on_annotation_click(state, tab, line);
-            if let Some(p) = &mut state.git_ui.editor.commit {
+            if let Some(p) = &mut state.ws.git_ui.editor.commit {
                 p.anchor = Pos2::new(420.0, 160.0);
             }
         }

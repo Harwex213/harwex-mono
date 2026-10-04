@@ -110,7 +110,7 @@ impl Terminals {
             None => Terminal::spawn(&cwd, ctx)?,
         };
         self.next_serial += 1;
-        self.tabs.push(TermTab { term, id: Id::new(("terminal-tab", self.next_serial)) });
+        self.tabs.push(TermTab { term, id: crate::workspace::wid(("terminal-tab", self.next_serial)) });
         self.active = self.tabs.len() - 1;
         self.focus_pending = true;
         Ok(())
@@ -148,28 +148,28 @@ impl Terminals {
 /// Handles Alt+F12 and Escape. Returns true when a terminal has focus; the caller then skips
 /// its own global shortcuts.
 pub fn shortcuts(s: &mut AppState, ctx: &Context) -> bool {
-    let focused = s.terminals.has_focus(ctx);
-    if s.terminals.drag.is_some() && ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::Escape)) {
+    let focused = s.ws.terminals.has_focus(ctx);
+    if s.ws.terminals.drag.is_some() && ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::Escape)) {
         // The tab goes back to its place; egui must forget the drag too, or the release drops it.
-        s.terminals.drag = None;
+        s.ws.terminals.drag = None;
         ctx.stop_dragging();
         return focused;
     }
     let toggle = ctx.input_mut(|i| i.consume_key(Modifiers::ALT, Key::F12));
     if toggle {
-        if s.layout.bottom != Some(ToolWindow::Terminal) {
-            s.layout.show(ToolWindow::Terminal);
-            s.terminals.focus_pending = true;
+        if s.ws.layout.bottom != Some(ToolWindow::Terminal) {
+            s.ws.layout.show(ToolWindow::Terminal);
+            s.ws.terminals.focus_pending = true;
         } else if focused {
-            s.layout.bottom = None;
+            s.ws.layout.bottom = None;
             focus_editor(s, ctx);
         } else {
-            s.terminals.focus_pending = true;
+            s.ws.terminals.focus_pending = true;
         }
         return true;
     }
     // vim, less and htop run on the alternate screen and need Escape themselves.
-    if focused && !s.terminals.focused_is_alt_screen(ctx) && ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::Escape)) {
+    if focused && !s.ws.terminals.focused_is_alt_screen(ctx) && ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::Escape)) {
         focus_editor(s, ctx);
     }
     focused
@@ -177,7 +177,7 @@ pub fn shortcuts(s: &mut AppState, ctx: &Context) -> bool {
 
 /// Moves keyboard focus to the active editor, or drops it when no editor is open.
 pub(crate) fn focus_editor(s: &mut AppState, ctx: &Context) {
-    if let Some(e) = s.tabs.active_editor_mut() {
+    if let Some(e) = s.ws.tabs.active_editor_mut() {
         e.view.request_focus();
         return;
     }
@@ -193,7 +193,7 @@ pub fn header_tabs(s: &mut AppState, ui: &mut Ui) {
     const GAP: f32 = 2.0;
     const CLOSE_W: f32 = 16.0;
     ui.spacing_mut().item_spacing.x = GAP;
-    let terms = &mut s.terminals;
+    let terms = &mut s.ws.terminals;
 
     // Measure every tab first: a drag needs the whole strip to place the others.
     let tabs: Vec<_> = terms
@@ -342,7 +342,7 @@ pub fn header_tabs(s: &mut AppState, ui: &mut Ui) {
         terms.close(i);
         if terms.tabs.is_empty() {
             // Like IDEA: closing the last terminal hides the window; reopening starts a new one.
-            s.layout.bottom = None;
+            s.ws.layout.bottom = None;
             let ctx = ui.ctx().clone();
             focus_editor(s, &ctx);
             return;
@@ -362,15 +362,15 @@ fn drop_zone(strip: egui::Rect) -> egui::Rect {
 
 /// Body of the Terminal tool window. Spawns the first shell when the window opens empty.
 pub fn tool_window(s: &mut AppState, ui: &mut Ui) {
-    if s.terminals.tabs.is_empty() {
+    if s.ws.terminals.tabs.is_empty() {
         new_terminal(s);
-        if s.terminals.tabs.is_empty() {
+        if s.ws.terminals.tabs.is_empty() {
             ui.label(RichText::new("Could not start a shell. See Notifications.").color(theme::T.text_dim));
             return;
         }
     }
 
-    let terms = &mut s.terminals;
+    let terms = &mut s.ws.terminals;
     let active = terms.active.min(terms.tabs.len() - 1);
     terms.active = active;
     let tab = &mut terms.tabs[active];
@@ -383,7 +383,7 @@ pub fn tool_window(s: &mut AppState, ui: &mut Ui) {
         if close_dead {
             terms.close(active);
             if terms.tabs.is_empty() {
-                s.layout.bottom = None;
+                s.ws.layout.bottom = None;
             }
             return;
         }
@@ -432,23 +432,23 @@ fn open_url(s: &mut AppState, url: String) {
 }
 
 fn new_terminal(s: &mut AppState) {
-    let cwd = s.project.as_ref().map(|p| p.root.clone()).or_else(|| std::env::var_os("HOME").map(PathBuf::from)).unwrap_or_else(|| PathBuf::from("/"));
-    if let Err(e) = s.terminals.spawn(cwd, s.ctx.clone()) {
+    let cwd = s.ws.project.as_ref().map(|p| p.root.clone()).or_else(|| std::env::var_os("HOME").map(PathBuf::from)).unwrap_or_else(|| PathBuf::from("/"));
+    if let Err(e) = s.ws.terminals.spawn(cwd, s.ctx.clone()) {
         s.notifications.error("Could not start a terminal", e.to_string());
     }
 }
 
 /// Opens a new terminal tab in `cwd` and shows the Terminal window ("Open In > Terminal").
 pub fn open_at(s: &mut AppState, cwd: PathBuf) {
-    s.layout.show(ToolWindow::Terminal);
-    if let Err(e) = s.terminals.spawn(cwd, s.ctx.clone()) {
+    s.ws.layout.show(ToolWindow::Terminal);
+    if let Err(e) = s.ws.terminals.spawn(cwd, s.ctx.clone()) {
         s.notifications.error("Could not start a terminal", e.to_string());
     }
 }
 
 /// Test hook: opens the Terminal window and types `command` followed by Enter.
 pub fn test_run(s: &mut AppState, command: String) {
-    s.layout.show(ToolWindow::Terminal);
-    s.terminals.focus_pending = true;
-    s.terminals.pending_input = Some(format!("{command}\r"));
+    s.ws.layout.show(ToolWindow::Terminal);
+    s.ws.terminals.focus_pending = true;
+    s.ws.terminals.pending_input = Some(format!("{command}\r"));
 }

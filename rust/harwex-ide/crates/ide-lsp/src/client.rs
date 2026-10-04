@@ -9,7 +9,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::io::{BufReader, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, Command, Stdio};
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering};
 use std::sync::mpsc::{self, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::thread;
@@ -211,6 +211,9 @@ pub struct LspClient {
     progress: ProgressMap,
     pushed: PushedMap,
     spawns: AtomicUsize,
+    /// Pid of the last started process, 0 before the first start and after `shutdown`.
+    /// Shared and lock-free, so a UI thread can read it while a request holds `state`.
+    pid: Arc<AtomicU32>,
 }
 
 impl LspClient {
@@ -225,7 +228,18 @@ impl LspClient {
             progress: Arc::default(),
             pushed: Arc::default(),
             spawns: AtomicUsize::new(0),
+            pid: Arc::default(),
         }
+    }
+
+    /// Pid of the server process last started; it may have exited since. Never waits.
+    pub fn pid(&self) -> Option<u32> {
+        Some(self.pid.load(Ordering::Relaxed)).filter(|&p| p != 0)
+    }
+
+    /// The cell behind `pid`, for owners that keep the client behind their own lock.
+    pub fn pid_cell(&self) -> Arc<AtomicU32> {
+        self.pid.clone()
     }
 
     pub fn config(&self) -> &ClientConfig {
@@ -396,6 +410,7 @@ impl LspClient {
     pub fn shutdown(&self) {
         let mut state = lock(&self.state);
         state.open.clear();
+        self.pid.store(0, Ordering::Relaxed);
         if let Some(mut p) = state.process.take() {
             if let Ok((_, rx)) = p.start_request("shutdown", None) {
                 let _ = rx.recv_timeout(Duration::from_millis(500));
@@ -440,6 +455,7 @@ impl LspClient {
         state.process = None;
         lock(&self.progress).clear();
         let mut p = self.spawn()?;
+        self.pid.store(p.child.id(), Ordering::Relaxed);
         let (_, rx) = p.start_request("initialize", Some(self.initialize_params()))?;
         let wait = timeout.max(self.config.min_initialize_timeout);
         let result = match rx.recv_timeout(wait) {

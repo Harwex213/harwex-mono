@@ -6,11 +6,14 @@ One line per task. Details live in `tasks/<id>-<slug>.md`. A closed task loses i
 ## Ideas
 
 Git window:
-- [idea] Commit info shows only the commit's own refs. IDEA lists every branch that contains the commit. Needs a backend call (`git branch --contains`, on a worker).
+- [idea] In a very narrow commit table the date column draws over the graph (`git_history/filter_bar_narrow.png`). Shrink or hide columns by priority.
 - [idea] Create Patch asks for a path in a text box. Use a native save dialog through `state.platform`.
-- [idea] The commit info pane takes its height on first show; in a short Git window the changes tree gets ~3 rows. Give the tree a minimum share.
 - [idea] Ref labels cut the HEAD commit message without an ellipsis (`Afte`). Truncate the message with `…` and collapse labels to `+N` earlier.
 - [idea] The reference's vertical toolbar left of the branch tree and the `⋮` header menu are not built.
+
+Project selector:
+- [idea] Type-to-filter in the project selector.
+- [idea] Grey out a recent project whose folder no longer exists (disk check on a worker).
 
 Tooling:
 - [idea] The workspace is not rustfmt-clean. Run `cargo fmt --all` once and add `cargo fmt --all --check` to "Done means" and to `cargo xtask clean-check`.

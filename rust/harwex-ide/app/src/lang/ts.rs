@@ -131,6 +131,10 @@ impl LanguageServer for TsServer {
         None
     }
 
+    fn pids(&self) -> Vec<u32> {
+        self.service.pids()
+    }
+
     fn shutdown(&self) {
         self.service.shutdown();
         *lock(&self.last_used) = None;

@@ -20,7 +20,7 @@ const SUITE: &str = "project_menu";
 fn reveal(ide: &mut Ide, rel: &str) {
     let root = ide.root();
     let path = root.join(rel);
-    ide.state_mut().tree.reveal(&root, &path);
+    ide.state_mut().ws.tree.reveal(&root, &path);
     ide.settle();
 }
 
@@ -39,7 +39,7 @@ fn calls(ide: &Ide) -> Vec<String> {
 }
 
 fn dialog_open(ide: &Ide) -> bool {
-    ide.state().tree_ops.dialog.is_some()
+    ide.state().ws.tree_ops.dialog.is_some()
 }
 
 #[test]
@@ -52,7 +52,7 @@ fn menu_on_file_and_folder() {
     ide.right_click("src");
     ide.settle();
     let root = ide.root();
-    assert_eq!(ide.state().tree.selected.as_deref(), Some(root.join("src").as_path()), "right-click selects the row");
+    assert_eq!(ide.state().ws.tree.selected.as_deref(), Some(root.join("src").as_path()), "right-click selects the row");
     for label in ["New File...", "Cut", "Paste", "Copy Absolute Path", "Find in Files...", "Replace in Files...", "Rename...", "Delete...", "Open In Terminal", "Git Rollback...", "Mark Directory as Excluded"] {
         assert!(ide.has(label), "menu item {label}");
     }
@@ -63,7 +63,7 @@ fn menu_on_file_and_folder() {
 
     ide.right_click("src/app.ts");
     ide.settle();
-    assert_eq!(ide.state().tree.selected.as_deref(), Some(root.join("src/app.ts").as_path()));
+    assert_eq!(ide.state().ws.tree.selected.as_deref(), Some(root.join("src/app.ts").as_path()));
     assert!(!ide.has("Mark Directory as Excluded"), "folders only");
     ide.snapshot("menu_file");
 
@@ -71,12 +71,12 @@ fn menu_on_file_and_folder() {
     ide.click("Copy Project Path");
     ide.settle();
     assert_eq!(calls(&ide).last().map(String::as_str), Some("copy src/app.ts"));
-    assert!(ide.state().tree_ops.dialog.is_none());
+    assert!(ide.state().ws.tree_ops.dialog.is_none());
     clipboard_event(&mut ide, Event::Copy, CMD_SHIFT);
     assert_eq!(calls(&ide).last().cloned(), Some(format!("copy {}", root.join("src/app.ts").display())));
     ide.key_mods(ALT, Key::C);
     assert_eq!(calls(&ide).last().map(String::as_str), Some("copy src/app.ts"));
-    assert!(ide.state().tree_ops.clip.is_none(), "path copies do not mark the file");
+    assert!(ide.state().ws.tree_ops.clip.is_none(), "path copies do not mark the file");
 
     // Open In: Finder goes through the platform, Terminal opens a tab in the file's folder.
     ide.right_click("src/app.ts");
@@ -86,11 +86,11 @@ fn menu_on_file_and_folder() {
     assert_eq!(calls(&ide).last().cloned(), Some(format!("reveal {}", root.join("src/app.ts").display())));
     ide.right_click("src/app.ts");
     ide.settle();
-    let before = ide.state().terminals.len();
+    let before = ide.state().ws.terminals.len();
     ide.click("Open In Terminal");
     ide.settle();
-    assert_eq!(ide.state().terminals.len(), before + 1);
-    let term = ide.state().terminals.terminal(ide.state().terminals.active_index()).expect("terminal");
+    assert_eq!(ide.state().ws.terminals.len(), before + 1);
+    let term = ide.state().ws.terminals.terminal(ide.state().ws.terminals.active_index()).expect("terminal");
     assert_eq!(term.cwd(), root.join("src"));
 }
 
@@ -104,14 +104,14 @@ fn cut_turns_grey_and_escape_cancels() {
     ide.settle();
     clipboard_event(&mut ide, Event::Cut, CMD);
     let root = ide.root();
-    assert!(ide.state().tree_ops.is_cut(&root.join("src/util.ts")));
+    assert!(ide.state().ws.tree_ops.is_cut(&root.join("src/util.ts")));
     assert_eq!(calls(&ide).last().map(String::as_str), Some("copy util.ts"), "the name goes to the clipboard so ⌘V arrives");
     assert!(tree_focused(&ide));
     ide.snapshot("cut_grey");
 
     ide.key(Key::Escape);
     ide.settle();
-    assert!(ide.state().tree_ops.clip.is_none(), "Escape cancels the cut");
+    assert!(ide.state().ws.tree_ops.clip.is_none(), "Escape cancels the cut");
     assert!(tree_focused(&ide), "the tree keeps the focus");
 }
 
@@ -134,7 +134,7 @@ fn paste_moves_and_copies() {
     clipboard_event(&mut ide, Event::Copy, CMD);
     ide.click("other");
     clipboard_event(&mut ide, Event::Paste("util.ts".into()), CMD);
-    ide.wait_for("collision dialog", |s| s.tree_ops.dialog.is_some());
+    ide.wait_for("collision dialog", |s| s.ws.tree_ops.dialog.is_some());
     ide.settle();
     ide.assert_text("\"util.ts\" already exists in other.");
     ide.snapshot("paste_collision");
@@ -147,7 +147,7 @@ fn paste_moves_and_copies() {
     // Overwrite moves the old file to the (recorded) Trash first.
     ide.click("other");
     clipboard_event(&mut ide, Event::Paste("util.ts".into()), CMD);
-    ide.wait_for("collision dialog", |s| s.tree_ops.dialog.is_some());
+    ide.wait_for("collision dialog", |s| s.ws.tree_ops.dialog.is_some());
     ide.click("Overwrite");
     ide.wait_for("overwrite", |_| std::fs::read_to_string(root.join("other/util.ts")).is_ok_and(|t| t.contains("add")));
     ide.settle();
@@ -162,10 +162,10 @@ fn paste_moves_and_copies() {
     clipboard_event(&mut ide, Event::Paste("nested.ts".into()), CMD);
     ide.wait_for("moved", |_| root.join("docs/nested.ts").is_file() && !root.join("src/core/deep/nested.ts").exists());
     ide.settle();
-    assert!(ide.state().tree_ops.clip.is_none(), "the cut is used up");
-    let tab = ide.state().tabs.active_editor().expect("tab");
+    assert!(ide.state().ws.tree_ops.clip.is_none(), "the cut is used up");
+    let tab = ide.state().ws.tabs.active_editor().expect("tab");
     assert_eq!(tab.path, root.join("docs/nested.ts"), "the tab follows the move");
-    assert_eq!(ide.state().tree.selected.as_deref(), Some(root.join("docs/nested.ts").as_path()));
+    assert_eq!(ide.state().ws.tree.selected.as_deref(), Some(root.join("docs/nested.ts").as_path()));
     assert!(ide.has("docs/nested.ts"), "the tree shows the new place");
     assert!(!ide.has("src/core/deep/nested.ts"));
 }
@@ -184,7 +184,7 @@ fn new_file_creates_folders_and_opens_it() {
     ide.snapshot("new_file_dialog");
     ide.key(Key::Enter);
     let root = ide.root();
-    ide.wait_for("file created and opened", |s| s.tabs.active_editor().is_some_and(|e| e.path == root.join("src/a/b/c.ts")));
+    ide.wait_for("file created and opened", |s| s.ws.tabs.active_editor().is_some_and(|e| e.path == root.join("src/a/b/c.ts")));
     ide.settle();
     assert!(root.join("src/a/b/c.ts").is_file());
     assert!(ide.has("src/a/b/c.ts"), "the tree reveals the new file");
@@ -195,7 +195,7 @@ fn new_file_creates_folders_and_opens_it() {
     ide.click("New File...");
     ide.settle();
     ide.type_text("util.ts\n");
-    ide.wait_for("error", |s| matches!(&s.tree_ops.dialog, Some(harwex_ide::tree_menu::Dialog::NewEntry(n)) if n.error.is_some()));
+    ide.wait_for("error", |s| matches!(&s.ws.tree_ops.dialog, Some(harwex_ide::tree_menu::Dialog::NewEntry(n)) if n.error.is_some()));
     ide.key(Key::Escape);
     ide.settle();
     assert!(!dialog_open(&ide));
@@ -218,7 +218,7 @@ fn rename_updates_imports_after_a_preview() {
     // The name without the extension is selected, so typing replaces it.
     ide.type_text("helpers");
     ide.key(Key::Enter);
-    ide.wait_for("preview", |s| matches!(&s.tree_ops.dialog, Some(harwex_ide::tree_menu::Dialog::Rename(r)) if matches!(r.phase, harwex_ide::tree_menu::RenamePhase::Preview { .. })));
+    ide.wait_for("preview", |s| matches!(&s.ws.tree_ops.dialog, Some(harwex_ide::tree_menu::Dialog::Rename(r)) if matches!(r.phase, harwex_ide::tree_menu::RenamePhase::Preview { .. })));
     ide.settle();
     ide.assert_text("Rename to \"helpers.ts\" and update 1 import in 1 file");
     ide.snapshot("rename_preview");
@@ -227,10 +227,10 @@ fn rename_updates_imports_after_a_preview() {
     ide.wait_for("renamed", |_| root.join("src/helpers.ts").is_file() && !root.join("src/local.ts").exists());
     ide.settle();
     // main.ts is open: the edit went through the document (one undo step) and was saved.
-    let main = ide.state().tabs.editors().find(|e| e.path.ends_with("src/main.ts")).expect("main.ts tab");
+    let main = ide.state().ws.tabs.editors().find(|e| e.path.ends_with("src/main.ts")).expect("main.ts tab");
     assert!(main.doc.text().contains("import { localHelper } from \"./helpers\";"), "{}", main.doc.text());
     assert!(main.doc.can_undo());
-    ide.wait_for("saved", |s| s.tabs.editors().all(|e| !e.doc.is_dirty()));
+    ide.wait_for("saved", |s| s.ws.tabs.editors().all(|e| !e.doc.is_dirty()));
     assert!(repo.read("src/main.ts").contains("from \"./helpers\""));
     assert!(ide.has("src/helpers.ts"));
 }
@@ -274,12 +274,12 @@ fn rename_rust_module_updates_mod_and_paths() {
     ide.click("util/src/shapes.rs");
     ide.key_mods(SHIFT, Key::F6);
     ide.type_text("geometry\n");
-    ide.wait_for("preview", |s| matches!(&s.tree_ops.dialog, Some(harwex_ide::tree_menu::Dialog::Rename(r)) if matches!(r.phase, harwex_ide::tree_menu::RenamePhase::Preview { .. })));
+    ide.wait_for("preview", |s| matches!(&s.ws.tree_ops.dialog, Some(harwex_ide::tree_menu::Dialog::Rename(r)) if matches!(r.phase, harwex_ide::tree_menu::RenamePhase::Preview { .. })));
     ide.settle();
     ide.key(Key::Enter);
     let root = ide.root();
     ide.wait_for("renamed", |_| root.join("util/src/geometry.rs").is_file());
-    ide.wait_for("saved", |s| s.tabs.editors().all(|e| !e.doc.is_dirty()) && s.is_idle());
+    ide.wait_for("saved", |s| s.ws.tabs.editors().all(|e| !e.doc.is_dirty()) && s.is_idle());
     assert!(repo.read("util/src/lib.rs").starts_with("pub mod geometry;"), "{}", repo.read("util/src/lib.rs"));
     assert!(repo.read("app/src/main.rs").contains("util::geometry::Circle"), "{}", repo.read("app/src/main.rs"));
 }
@@ -296,7 +296,7 @@ fn safe_delete_lists_usages_and_trashes() {
     reveal(&mut ide, "src/local.ts");
     ide.click("src/local.ts");
     ide.key(Key::Backspace);
-    ide.wait_for("usages", |s| matches!(&s.tree_ops.dialog, Some(harwex_ide::tree_menu::Dialog::Delete(d)) if matches!(&d.usages, harwex_ide::tree_menu::Usages::Found(r) if !r.is_empty())));
+    ide.wait_for("usages", |s| matches!(&s.ws.tree_ops.dialog, Some(harwex_ide::tree_menu::Dialog::Delete(d)) if matches!(&d.usages, harwex_ide::tree_menu::Usages::Found(r) if !r.is_empty())));
     ide.settle();
     ide.assert_text("1 usage in 1 file still refers to it:");
     ide.assert_text("src/main.ts:2  import { localHelper } from \"./local\";");
@@ -307,7 +307,7 @@ fn safe_delete_lists_usages_and_trashes() {
     ide.wait_for("trashed", |_| !root.join("src/local.ts").exists());
     ide.settle();
     assert_eq!(calls(&ide), [format!("trash {}", root.join("src/local.ts").display())]);
-    assert!(ide.state().tabs.editors().all(|e| !e.path.ends_with("src/local.ts")), "its tab closed");
+    assert!(ide.state().ws.tabs.editors().all(|e| !e.path.ends_with("src/local.ts")), "its tab closed");
     assert!(!ide.has("src/local.ts"));
 }
 
@@ -323,8 +323,8 @@ fn find_usages_of_a_file() {
     ide.right_click("src/local.ts");
     ide.settle();
     ide.click("Find Usages");
-    ide.wait_for("usages", |s| !s.usages.searching && !s.usages.groups.is_empty());
-    let u = &ide.state().usages;
+    ide.wait_for("usages", |s| !s.ws.usages.searching && !s.ws.usages.groups.is_empty());
+    let u = &ide.state().ws.usages;
     assert_eq!(u.title, "Usages of local.ts");
     assert_eq!(u.groups.len(), 1);
     assert!(u.groups[0].path.ends_with("src/main.ts"));
@@ -340,7 +340,7 @@ fn safe_delete_falls_back_to_a_text_search() {
     reveal(&mut ide, "src/util.ts");
     ide.click("src/util.ts");
     ide.key(Key::Delete);
-    ide.wait_for("usages", |s| matches!(&s.tree_ops.dialog, Some(harwex_ide::tree_menu::Dialog::Delete(d)) if matches!(&d.usages, harwex_ide::tree_menu::Usages::Found(_))));
+    ide.wait_for("usages", |s| matches!(&s.ws.tree_ops.dialog, Some(harwex_ide::tree_menu::Dialog::Delete(d)) if matches!(&d.usages, harwex_ide::tree_menu::Usages::Found(_))));
     ide.settle();
     ide.assert_text("src/app.ts:1  import { add } from \"./util\";");
     // Turning safe delete off drops the list; Cancel keeps the file.
@@ -364,8 +364,8 @@ fn replace_in_files_in_a_folder() {
     ide.click("src");
     ide.cmd_shift(Key::R);
     ide.settle();
-    assert!(ide.state().find.dialog_open && ide.state().find.replace_mode);
-    assert_eq!(ide.state().find.scope.as_deref(), Some(ide.root().join("src").as_path()));
+    assert!(ide.state().ws.find.dialog_open && ide.state().ws.find.replace_mode);
+    assert_eq!(ide.state().ws.find.scope.as_deref(), Some(ide.root().join("src").as_path()));
     ide.type_text("add");
     // The replacement field is the second text box.
     let boxes = ide.role_rects(egui::accesskit::Role::TextInput);
@@ -373,24 +373,24 @@ fn replace_in_files_in_a_folder() {
     ide.type_text("plus");
     ide.click("Words");
     ide.key(Key::Enter);
-    ide.wait_for("search finished", |s| !s.find.searching && !s.find.searched_for.is_empty());
+    ide.wait_for("search finished", |s| !s.ws.find.searching && !s.ws.find.searched_for.is_empty());
     ide.settle();
     // `add` as a word: the import and the call in app.ts, the function in util.ts. docs/ is
     // outside the folder.
-    assert_eq!(ide.state().find.hit_count(), 3);
+    assert_eq!(ide.state().ws.find.hit_count(), 3);
     ide.assert_text("\"add\": 3 matches in 2 files in src");
     ide.snapshot("replace_preview");
     // Leave the import unchecked, then Replace All.
     ide.click("Replace src/app.ts:1");
     ide.settle();
-    assert_eq!(ide.state().find.checked_count(), 2);
+    assert_eq!(ide.state().ws.find.checked_count(), 2);
     ide.click("Replace All");
-    ide.wait_for("replaced", |s| !s.find.replacing && !s.find.searching && s.tabs.editors().all(|e| !e.doc.is_dirty()));
+    ide.wait_for("replaced", |s| !s.ws.find.replacing && !s.ws.find.searching && s.ws.tabs.editors().all(|e| !e.doc.is_dirty()));
     ide.settle();
     assert_eq!(repo.read("src/app.ts"), APP_TS.replace("add(1, 2)", "plus(1, 2)"));
     assert!(repo.read("src/util.ts").starts_with("export function plus("));
     assert_eq!(repo.read("docs/add.md"), "add here\n");
-    let util = ide.state().tabs.editors().find(|e| e.path.ends_with("src/util.ts")).expect("util tab");
+    let util = ide.state().ws.tabs.editors().find(|e| e.path.ends_with("src/util.ts")).expect("util tab");
     assert!(util.doc.text().starts_with("export function plus("), "the open document changed through the edit API");
     assert!(util.doc.can_undo());
 }
@@ -401,32 +401,32 @@ fn excluded_folder_is_dimmed_and_hidden_from_search() {
     let repo = basic_repo(fx.path("repo"));
     repo.write("dist/bundle.js", "add();\n");
     let mut ide = Ide::open(SUITE, &repo.dir);
-    assert!(ide.state().index.files.iter().any(|f| f == "dist/bundle.js"));
+    assert!(ide.state().ws.index.files.iter().any(|f| f == "dist/bundle.js"));
     reveal(&mut ide, "dist/bundle.js");
     ide.right_click("dist");
     ide.settle();
     ide.click("Mark Directory as Excluded");
     let root = ide.root();
-    ide.wait_for("excluded", |s| s.tree.excluded == [root.join("dist")]);
+    ide.wait_for("excluded", |s| s.ws.tree.excluded == [root.join("dist")]);
     ide.settle();
     assert!(repo.read(".harwex/ide.toml").contains("[project]\nexcluded = [\"dist\"]"), "{}", repo.read(".harwex/ide.toml"));
-    assert!(!ide.state().index.files.iter().any(|f| f.starts_with("dist/")), "Search Everywhere skips it");
+    assert!(!ide.state().ws.index.files.iter().any(|f| f.starts_with("dist/")), "Search Everywhere skips it");
     ide.snapshot("excluded_folder");
 
     // From a file at the root, Find in Files searches the whole project.
     ide.click("README.md");
     ide.cmd_shift(Key::F);
     ide.type_text("add\n");
-    ide.wait_for("search finished", |s| !s.find.searching && !s.find.searched_for.is_empty());
-    assert!(ide.state().find.results.iter().all(|(p, _)| !p.starts_with(root.join("dist"))), "Find in Files skips it");
+    ide.wait_for("search finished", |s| !s.ws.find.searching && !s.ws.find.searched_for.is_empty());
+    assert!(ide.state().ws.find.results.iter().all(|(p, _)| !p.starts_with(root.join("dist"))), "Find in Files skips it");
     ide.assert_text("\"add\": 3 matches in 2 files");
-    ide.state_mut().layout.show(harwex_ide::layout::ToolWindow::Project);
+    ide.state_mut().ws.layout.show(harwex_ide::layout::ToolWindow::Project);
     ide.settle();
 
     ide.right_click("dist");
     ide.settle();
     ide.click("Cancel Exclusion");
-    ide.wait_for("included", |s| s.tree.excluded.is_empty() && s.index.files.iter().any(|f| f == "dist/bundle.js"));
+    ide.wait_for("included", |s| s.ws.tree.excluded.is_empty() && s.ws.index.files.iter().any(|f| f == "dist/bundle.js"));
 }
 
 #[test]
@@ -443,7 +443,7 @@ fn git_rollback_and_reload_from_disk() {
     ide.click("Rollback");
     ide.wait_for("rolled back", |_| std::fs::read_to_string(fx.path("repo/src/app.ts")).is_ok_and(|t| t == APP_TS));
     ide.settle();
-    assert_eq!(ide.state().git.status.get(&ide.root().join("src/app.ts")), None);
+    assert_eq!(ide.state().ws.git.status.get(&ide.root().join("src/app.ts")), None);
 
     // Reload from Disk asks before it drops unsaved edits.
     ide.open_file("src/util.ts");
@@ -457,7 +457,7 @@ fn git_rollback_and_reload_from_disk() {
     ide.settle();
     ide.assert_text("util.ts has unsaved changes. Reload from disk and lose them?");
     ide.click("Reload");
-    ide.wait_for("reloaded", |s| s.tabs.active_editor().is_some_and(|e| e.doc.text() == "export const fromDisk = 1;\n" && !e.doc.is_dirty()));
+    ide.wait_for("reloaded", |s| s.ws.tabs.active_editor().is_some_and(|e| e.doc.text() == "export const fromDisk = 1;\n" && !e.doc.is_dirty()));
 }
 
 /// The UI keeps its frame budget while a rename preview loads 30 TypeScript projects.
@@ -494,7 +494,7 @@ fn rename_preview_keeps_frames_fast_in_a_monorepo() {
         let t = Instant::now();
         ide.step();
         worst = worst.max(t.elapsed());
-        let done = matches!(&ide.state().tree_ops.dialog, Some(harwex_ide::tree_menu::Dialog::Rename(r)) if matches!(r.phase, harwex_ide::tree_menu::RenamePhase::Preview { .. }));
+        let done = matches!(&ide.state().ws.tree_ops.dialog, Some(harwex_ide::tree_menu::Dialog::Rename(r)) if matches!(r.phase, harwex_ide::tree_menu::RenamePhase::Preview { .. }));
         if done {
             break;
         }
@@ -502,7 +502,7 @@ fn rename_preview_keeps_frames_fast_in_a_monorepo() {
         std::thread::sleep(Duration::from_millis(2));
     }
     let took = started.elapsed();
-    let Some(harwex_ide::tree_menu::Dialog::Rename(r)) = &ide.state().tree_ops.dialog else { unreachable!() };
+    let Some(harwex_ide::tree_menu::Dialog::Rename(r)) = &ide.state().ws.tree_ops.dialog else { unreachable!() };
     let harwex_ide::tree_menu::RenamePhase::Preview { result, .. } = &r.phase else { unreachable!() };
     eprintln!("monorepo rename preview: {took:?}, worst frame {worst:?}, {} candidates, {} projects, {} files", result.candidates, result.projects, result.edits.len());
     assert_eq!(result.edits.len(), IMPORTERS, "every importer changes");
@@ -557,7 +557,7 @@ fn drag_moves_a_file_and_updates_imports() {
     release(&mut ide);
     let root = ide.root();
     ide.wait_for("moved", |_| root.join("src/lib/local.ts").is_file() && !root.join("src/local.ts").exists());
-    ide.wait_for("saved", |s| s.tabs.editors().all(|e| !e.doc.is_dirty()));
+    ide.wait_for("saved", |s| s.ws.tabs.editors().all(|e| !e.doc.is_dirty()));
     ide.settle();
     assert!(repo.read("src/main.ts").contains("from \"./lib/local\""), "{}", repo.read("src/main.ts"));
     assert!(ide.has("src/lib/local.ts"));
@@ -620,21 +620,21 @@ fn drag_and_drop_in_the_tree() {
 
     // Hovering a collapsed folder expands it after a moment.
     let z = root.join("z00");
-    assert!(!ide.state().tree.is_expanded(&z));
+    assert!(!ide.state().ws.tree.is_expanded(&z));
     let from = ide.rect("docs/notes.md").center();
     let to = ide.rect("z00").center();
     drag_to(&mut ide, from, to, Modifiers::NONE);
     ide.steps(4);
-    assert!(!ide.state().tree.is_expanded(&z), "not at once");
+    assert!(!ide.state().ws.tree.is_expanded(&z), "not at once");
     ide.steps(16);
-    assert!(ide.state().tree.is_expanded(&z), "after {} s", harwex_ide::tree::DRAG_EXPAND_SECS);
+    assert!(ide.state().ws.tree.is_expanded(&z), "after {} s", harwex_ide::tree::DRAG_EXPAND_SECS);
     // Near the bottom edge the tree scrolls while the pointer stays there.
     let last = (0..60).rev().map(|i| format!("z{i:02}")).find(|l| ide.has(l)).expect("a visible z row");
     let edge = ide.rect(&last).min.y + 2.0;
-    let before = ide.state().tree.view_offset();
+    let before = ide.state().ws.tree.view_offset();
     ide.move_to(egui::pos2(from.x, edge));
     ide.steps(10);
-    assert!(ide.state().tree.view_offset() > before + 20.0, "auto-scroll: {before} -> {}", ide.state().tree.view_offset());
+    assert!(ide.state().ws.tree.view_offset() > before + 20.0, "auto-scroll: {before} -> {}", ide.state().ws.tree.view_offset());
     release(&mut ide);
     ide.settle();
 }

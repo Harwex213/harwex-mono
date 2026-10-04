@@ -33,6 +33,8 @@ struct Server {
 #[derive(Default)]
 pub struct OxlintSource {
     servers: Mutex<HashMap<Key, Arc<Mutex<Server>>>>,
+    /// Pid cells of the servers' clients: readable while a lint holds a server's lock.
+    pids: Mutex<Vec<Arc<std::sync::atomic::AtomicU32>>>,
     /// Which server each linted file was opened in, so `close` reaches it.
     files: Mutex<HashMap<PathBuf, Key>>,
 }
@@ -60,7 +62,9 @@ impl OxlintSource {
         config.initialization_options = Some(json!([{"workspaceUri": ide_lsp::path_to_uri(&plan.install.root), "options": options}]));
         let answer = options.clone();
         config.configuration = Some(Arc::new(move |_item: &Value| answer.clone()));
-        let server = Arc::new(Mutex::new(Server { client: LspClient::new(config), crashes: 0, broken: None }));
+        let client = LspClient::new(config);
+        lock(&self.pids).push(client.pid_cell());
+        let server = Arc::new(Mutex::new(Server { client, crashes: 0, broken: None }));
         lock(&self.servers).insert(key.clone(), server.clone());
         Ok((key, server))
     }
@@ -151,7 +155,14 @@ impl LintSource for OxlintSource {
         servers.iter().filter(|s| lock(s).client.is_running()).count()
     }
 
+    fn pids(&self) -> Vec<u32> {
+        // Never waits: a cell list being extended right now is skipped for this call.
+        let Ok(cells) = self.pids.try_lock() else { return Vec::new() };
+        cells.iter().map(|c| c.load(std::sync::atomic::Ordering::Relaxed)).filter(|&p| p != 0).collect()
+    }
+
     fn shutdown(&self) {
+        lock(&self.pids).clear();
         let servers: Vec<Arc<Mutex<Server>>> = lock(&self.servers).drain().map(|(_, s)| s).collect();
         for s in servers {
             lock(&s).client.shutdown();

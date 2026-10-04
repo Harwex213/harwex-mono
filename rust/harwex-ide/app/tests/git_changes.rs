@@ -20,11 +20,11 @@ const SUITE: &str = "git_changes";
 fn open_commit_window(ide: &mut Ide) {
     ide.click("Commit tool window");
     ide.settle();
-    assert_eq!(ide.state().layout.left, Some(ToolWindow::Commit));
+    assert_eq!(ide.state().ws.layout.left, Some(ToolWindow::Commit));
 }
 
 fn checked(ide: &Ide) -> Vec<String> {
-    ide.state().git_ui.changes.checked_paths().iter().map(|p| p.display().to_string()).collect()
+    ide.state().ws.git_ui.changes.checked_paths().iter().map(|p| p.display().to_string()).collect()
 }
 
 /// The Commit button of the tool window (the top bar has one too, drawn first).
@@ -45,7 +45,7 @@ fn index_state(dir: &Path, rel: &str) -> Option<(Option<ide_git::ChangeKind>, Op
 }
 
 fn row_state(ide: &Ide, label: &str) -> (CheckState, String) {
-    ide.state().git_ui.changes.row_state(label).unwrap_or_else(|| panic!("no group or directory row {label:?}"))
+    ide.state().ws.git_ui.changes.row_state(label).unwrap_or_else(|| panic!("no group or directory row {label:?}"))
 }
 
 /// Presses on `from` and moves onto `to` in a few frames, without releasing.
@@ -68,13 +68,13 @@ fn drag_release(ide: &mut Ide, at: Pos2) {
 fn drag_rows(ide: &mut Ide, from: &str, to: &str) {
     let (a, b) = (ide.rect(from).center(), ide.rect(to).center());
     ide.drag(a, b);
-    assert!(!ide.state().git_ui.changes.is_dragging());
+    assert!(!ide.state().ws.git_ui.changes.is_dragging());
     ide.wait_for("git write", |s| s.is_idle());
     ide.settle();
 }
 
 fn diff_tab<'a>(ide: &'a mut Ide, key: &str) -> &'a mut DiffTab {
-    ide.state_mut().tabs.custom_mut::<DiffTab>(key).unwrap_or_else(|| panic!("diff tab {key}"))
+    ide.state_mut().ws.tabs.custom_mut::<DiffTab>(key).unwrap_or_else(|| panic!("diff tab {key}"))
 }
 
 #[test]
@@ -130,10 +130,10 @@ fn commit_window_tree_and_checkboxes() {
 
     // Click, Cmd+click and Shift+click select rows.
     ide.click("src/added.ts");
-    assert_eq!(ide.state().git_ui.changes.selected_paths(), [PathBuf::from("src/added.ts")]);
+    assert_eq!(ide.state().ws.git_ui.changes.selected_paths(), [PathBuf::from("src/added.ts")]);
     let r = ide.rect("docs/notes.md").center();
     ide.click_button_at(r, egui::PointerButton::Primary, CMD);
-    assert_eq!(ide.state().git_ui.changes.selected_paths(), [PathBuf::from("docs/notes.md"), PathBuf::from("src/added.ts")]);
+    assert_eq!(ide.state().ws.git_ui.changes.selected_paths(), [PathBuf::from("docs/notes.md"), PathBuf::from("src/added.ts")]);
     // A click on the group arrow collapses it.
     let g = ide.rect("Unstaged group");
     ide.click_at(egui::pos2(g.left() + 8.0, g.center().y));
@@ -157,27 +157,27 @@ fn drag_between_groups_stages_and_unstages() {
     assert_eq!(index_state(&repo.dir, "src/app.ts"), Some((None, Some(ide_git::ChangeKind::Modified))));
 
     drag_rows(&mut ide, "src/app.ts", "Staged group");
-    ide.wait_for("app.ts staged", |s| s.git_ui.changes.group_paths(Group::Staged).contains(&PathBuf::from("src/app.ts")));
+    ide.wait_for("app.ts staged", |s| s.ws.git_ui.changes.group_paths(Group::Staged).contains(&PathBuf::from("src/app.ts")));
     assert_eq!(index_state(&repo.dir, "src/app.ts"), Some((Some(ide_git::ChangeKind::Modified), None)));
     // A newly staged file is ticked.
-    assert_eq!(ide.state().git_ui.changes.is_checked(Path::new("src/app.ts"), Group::Staged), Some(true));
+    assert_eq!(ide.state().ws.git_ui.changes.is_checked(Path::new("src/app.ts"), Group::Staged), Some(true));
     assert!(ide.has("Directory src in Staged"));
     ide.dismiss_toasts();
 
     drag_rows(&mut ide, "src/app.ts", "Unstaged group");
-    ide.wait_for("app.ts unstaged", |s| s.git_ui.changes.group_paths(Group::Unstaged).contains(&PathBuf::from("src/app.ts")));
+    ide.wait_for("app.ts unstaged", |s| s.ws.git_ui.changes.group_paths(Group::Unstaged).contains(&PathBuf::from("src/app.ts")));
     assert_eq!(index_state(&repo.dir, "src/app.ts"), Some((None, Some(ide_git::ChangeKind::Modified))));
-    assert_eq!(ide.state().git_ui.changes.is_checked(Path::new("src/app.ts"), Group::Unstaged), Some(false));
+    assert_eq!(ide.state().ws.git_ui.changes.is_checked(Path::new("src/app.ts"), Group::Unstaged), Some(false));
 
     // An unversioned file dropped on Staged is added.
     drag_rows(&mut ide, "scratch.txt", "Staged group");
-    ide.wait_for("scratch.txt added", |s| s.git_ui.changes.group_paths(Group::Staged).contains(&PathBuf::from("scratch.txt")));
+    ide.wait_for("scratch.txt added", |s| s.ws.git_ui.changes.group_paths(Group::Staged).contains(&PathBuf::from("scratch.txt")));
     assert_eq!(index_state(&repo.dir, "scratch.txt"), Some((Some(ide_git::ChangeKind::Added), None)));
     assert!(!ide.has("Unversioned Files group"));
 
     // Unstaging the added file sends it back to Unversioned.
     drag_rows(&mut ide, "scratch.txt", "Unstaged group");
-    ide.wait_for("scratch.txt unversioned", |s| s.git_ui.changes.group_paths(Group::Unversioned).contains(&PathBuf::from("scratch.txt")));
+    ide.wait_for("scratch.txt unversioned", |s| s.ws.git_ui.changes.group_paths(Group::Unversioned).contains(&PathBuf::from("scratch.txt")));
     assert_eq!(index_state(&repo.dir, "scratch.txt"), Some((None, Some(ide_git::ChangeKind::Untracked))));
 }
 
@@ -193,16 +193,16 @@ fn drag_multi_selection_onto_staged() {
     ide.click_button_at(r, PointerButton::Primary, CMD);
     let r = ide.rect("scratch.txt").center();
     ide.click_button_at(r, PointerButton::Primary, CMD);
-    assert_eq!(ide.state().git_ui.changes.selected_paths().len(), 3);
+    assert_eq!(ide.state().ws.git_ui.changes.selected_paths().len(), 3);
 
     let (from, to) = (ide.rect("docs/notes.md").center(), ide.rect("src/added.ts").center());
     drag_hold(&mut ide, from, to);
-    assert!(ide.state().git_ui.changes.is_dragging());
+    assert!(ide.state().ws.git_ui.changes.is_dragging());
     assert!(ide.has("Drop target Staged"), "{:?}", ide.labels());
     ide.snapshot_here("drag_over_staged");
     drag_release(&mut ide, to);
-    assert!(!ide.state().git_ui.changes.is_dragging());
-    ide.wait_for("three files staged", |s| s.git_ui.changes.group_paths(Group::Staged).len() == 4);
+    assert!(!ide.state().ws.git_ui.changes.is_dragging());
+    ide.wait_for("three files staged", |s| s.ws.git_ui.changes.group_paths(Group::Staged).len() == 4);
     for (rel, kind) in [("src/app.ts", ide_git::ChangeKind::Modified), ("docs/notes.md", ide_git::ChangeKind::Deleted), ("scratch.txt", ide_git::ChangeKind::Added)] {
         assert_eq!(index_state(&repo.dir, rel), Some((Some(kind), None)), "{rel}");
     }
@@ -225,7 +225,7 @@ fn partly_staged_file_commits_staged_part() {
     open_commit_window(&mut ide);
     assert!(ide.has("src/app.ts in Staged"), "{:?}", ide.labels());
     assert!(ide.has("src/app.ts"));
-    let c = &ide.state().git_ui.changes;
+    let c = &ide.state().ws.git_ui.changes;
     assert_eq!(c.is_checked(Path::new("src/app.ts"), Group::Staged), Some(true));
     assert_eq!(c.is_checked(Path::new("src/app.ts"), Group::Unstaged), Some(false));
     ide.hover("src/app.ts in Staged");
@@ -234,7 +234,7 @@ fn partly_staged_file_commits_staged_part() {
     click_message_box(&mut ide);
     ide.type_text("Staged part");
     click_commit_button(&mut ide);
-    ide.wait_for("commit done", |s| !s.git_ui.changes.is_committing() && s.git_ui.changes.message.is_empty());
+    ide.wait_for("commit done", |s| !s.ws.git_ui.changes.is_committing() && s.ws.git_ui.changes.message.is_empty());
     ide.settle();
     assert_eq!(repo.subjects("HEAD")[0], "Staged part");
     assert_eq!(repo.git(&["show", "HEAD:src/app.ts"]), staged);
@@ -256,10 +256,10 @@ fn commit_of_exactly_the_checked_files() {
     assert!(!ide.is_enabled_nth("Commit", ide.rects("Commit").len() - 1), "no message, no commit");
     click_message_box(&mut ide);
     ide.type_text("Partial commit");
-    assert_eq!(ide.state().git_ui.changes.message, "Partial commit");
+    assert_eq!(ide.state().ws.git_ui.changes.message, "Partial commit");
     ide.snapshot("before_commit");
     click_commit_button(&mut ide);
-    ide.wait_for("commit done", |s| !s.git_ui.changes.is_committing() && s.git_ui.changes.message.is_empty());
+    ide.wait_for("commit done", |s| !s.ws.git_ui.changes.is_committing() && s.ws.git_ui.changes.message.is_empty());
     ide.settle();
     assert_eq!(repo.subjects("HEAD")[0], "Partial commit");
     assert_eq!(repo.files_in("HEAD"), ["scratch.txt", "src/added.ts", "src/app.ts"]);
@@ -277,20 +277,20 @@ fn amend_with_cmd_enter() {
     // Cmd+K opens the Commit window and focuses the message box.
     ide.cmd(Key::K);
     ide.settle();
-    assert_eq!(ide.state().layout.left, Some(ToolWindow::Commit));
+    assert_eq!(ide.state().ws.layout.left, Some(ToolWindow::Commit));
     ide.type_text("draft");
-    assert_eq!(ide.state().git_ui.changes.message, "draft");
+    assert_eq!(ide.state().ws.git_ui.changes.message, "draft");
 
     // Amend fills in the last commit's message; unticking restores the draft.
     ide.click("Amend");
-    ide.wait_for("last message", |s| s.git_ui.changes.message == "Initial commit");
+    ide.wait_for("last message", |s| s.ws.git_ui.changes.message == "Initial commit");
     assert!(ide.has("Amend Commit"));
     ide.snapshot("amend");
     ide.click("Amend");
     ide.settle();
-    assert_eq!(ide.state().git_ui.changes.message, "draft");
+    assert_eq!(ide.state().ws.git_ui.changes.message, "draft");
     ide.click("Amend");
-    ide.wait_for("last message again", |s| s.git_ui.changes.message == "Initial commit");
+    ide.wait_for("last message again", |s| s.ws.git_ui.changes.message == "Initial commit");
 
     // Commit only the modified file into the amended commit, with Cmd+Enter in the box.
     ide.click("Include src/added.ts");
@@ -299,7 +299,7 @@ fn amend_with_cmd_enter() {
     ide.cmd(Key::End);
     ide.type_text(" (amended)");
     ide.key_mods(CMD, Key::Enter);
-    ide.wait_for("amend done", |s| !s.git_ui.changes.is_committing() && !s.git_ui.changes.is_amend());
+    ide.wait_for("amend done", |s| !s.ws.git_ui.changes.is_committing() && !s.ws.git_ui.changes.is_amend());
     ide.settle();
     assert_eq!(repo.subjects("HEAD"), ["Initial commit (amended)"]);
     assert_eq!(repo.subjects("HEAD").len(), before, "amend replaced the commit");
@@ -317,7 +317,7 @@ fn rollback_asks_first() {
     ide.click("src/app.ts");
     ide.click("Rollback");
     ide.settle();
-    assert!(ide.state().git_ui.changes.has_confirm_dialog());
+    assert!(ide.state().ws.git_ui.changes.has_confirm_dialog());
     ide.assert_text("Roll back 1 file to HEAD? Local changes are lost.");
     ide.snapshot("rollback_confirm");
     ide.click("Cancel");
@@ -327,7 +327,7 @@ fn rollback_asks_first() {
     ide.settle();
     let n = ide.rects("Rollback").len();
     ide.click_nth("Rollback", n - 1);
-    ide.wait_for("rolled back", |s| !s.git.status.keys().any(|p| p.ends_with("src/app.ts")));
+    ide.wait_for("rolled back", |s| !s.ws.git.status.keys().any(|p| p.ends_with("src/app.ts")));
     assert_eq!(repo.read("src/app.ts"), APP_TS);
 
     // The context menu's Rollback... on an added file deletes it, and says so first.
@@ -342,7 +342,7 @@ fn rollback_asks_first() {
     ide.snapshot("rollback_added_confirm");
     let n = ide.rects("Rollback").len();
     ide.click_nth("Rollback", n - 1);
-    ide.wait_for("added file gone", |s| !s.git.status.keys().any(|p| p.ends_with("src/added.ts")));
+    ide.wait_for("added file gone", |s| !s.ws.git.status.keys().any(|p| p.ends_with("src/added.ts")));
     assert!(!repo.dir.join("src/added.ts").exists());
 }
 
@@ -373,10 +373,10 @@ fn double_click_after_other_clicks() {
     let app = row(&ide, "src/app.ts");
     ide.idle(1.5);
     ide.click_now(app);
-    assert!(ide.state().tabs.custom_by_key("diff:wt:src/app.ts").is_none(), "a single click opens nothing");
+    assert!(ide.state().ws.tabs.custom_by_key("diff:wt:src/app.ts").is_none(), "a single click opens nothing");
     ide.idle(0.6);
     ide.double_click_now(app);
-    ide.wait_until("diff tab", |ide| ide.state().tabs.custom_by_key("diff:wt:src/app.ts").is_some());
+    ide.wait_until("diff tab", |ide| ide.state().ws.tabs.custom_by_key("diff:wt:src/app.ts").is_some());
 }
 
 #[test]
@@ -387,8 +387,8 @@ fn diff_tab_with_f7_navigation() {
     open_commit_window(&mut ide);
     // Double-click on a changed file opens its diff in a tab.
     ide.double_click("big.ts");
-    ide.wait_until("diff loaded", |ide| ide.state().tabs.custom_by_key("diff:wt:big.ts").is_some());
-    ide.wait_for("diff model", |s| s.tabs.active_tab().is_some_and(|t| t.title() == "big.ts (Diff)") && s.is_idle());
+    ide.wait_until("diff loaded", |ide| ide.state().ws.tabs.custom_by_key("diff:wt:big.ts").is_some());
+    ide.wait_for("diff model", |s| s.ws.tabs.active_tab().is_some_and(|t| t.title() == "big.ts (Diff)") && s.is_idle());
     let hunks = diff_tab(&mut ide, "diff:wt:big.ts").hunk_count();
     assert_eq!(hunks, Some(4));
     ide.assert_text("4 differences");
@@ -410,7 +410,7 @@ fn diff_tab_with_f7_navigation() {
 
     // Jump to Source opens the file at the current change.
     ide.click("Jump to Source");
-    ide.wait_for("big.ts editor", |s| s.tabs.active_editor().is_some_and(|e| e.path.ends_with("big.ts")));
+    ide.wait_for("big.ts editor", |s| s.ws.tabs.active_editor().is_some_and(|e| e.path.ends_with("big.ts")));
     ide.settle();
     let start = diff_tab(&mut ide, "diff:wt:big.ts").hunk_new_start(2).expect("hunk");
     assert_eq!(ide.cursor().0, start);
@@ -454,9 +454,9 @@ fn annotate_column_and_commit_popup() {
     ide.hover("Git");
     ide.wait_until("git submenu", |ide| ide.has("Annotate with Git Blame"));
     ide.click("Annotate with Git Blame");
-    ide.wait_for("blame", |s| s.tabs.active_editor().is_some_and(|e| !e.annotations.is_empty()));
+    ide.wait_for("blame", |s| s.ws.tabs.active_editor().is_some_and(|e| !e.annotations.is_empty()));
     ide.settle();
-    let ann = ide.state().tabs.active_editor().expect("editor").annotations.clone();
+    let ann = ide.state().ws.tabs.active_editor().expect("editor").annotations.clone();
     assert_eq!(ann.len(), 6);
     assert!(ann[0].starts_with("2024-01-01 Test User"), "{ann:?}");
     ide.snapshot("annotations");
@@ -470,10 +470,10 @@ fn annotate_column_and_commit_popup() {
     ide.assert_text("Test User <test@example.com>");
     ide.snapshot_here("commit_popup");
     ide.click("Show Diff");
-    ide.wait_until("commit diff tab", |ide| ide.state().tabs.active_tab().is_some_and(|t| t.title().starts_with("util.ts @ ")));
+    ide.wait_until("commit diff tab", |ide| ide.state().ws.tabs.active_tab().is_some_and(|t| t.title().starts_with("util.ts @ ")));
     ide.settle();
-    let key = ide.state().tabs.list.iter().find_map(|t| t.title().starts_with("util.ts @ ").then_some(t.id)).expect("tab");
-    assert!(ide.state().tabs.get(key).is_some());
+    let key = ide.state().ws.tabs.list.iter().find_map(|t| t.title().starts_with("util.ts @ ").then_some(t.id)).expect("tab");
+    assert!(ide.state().ws.tabs.get(key).is_some());
     ide.assert_text("1 difference");
 }
 
@@ -484,7 +484,7 @@ fn many_changes_render() {
     let repo = many_changes_repo(fx.path("repo"), 1200);
     let mut ide = Ide::open(SUITE, &repo.dir);
     open_commit_window(&mut ide);
-    assert_eq!(ide.state().git.changes.len(), 1200);
+    assert_eq!(ide.state().ws.git.changes.len(), 1200);
     ide.assert_text("0 of 1200 selected");
     // Collapse All keeps the directories; only drawn rows have widgets.
     ide.click("Collapse All");
@@ -494,7 +494,7 @@ fn many_changes_render() {
     ide.snapshot("many_collapsed");
     // The whole group drags onto the empty Staged group, and every file comes in ticked.
     drag_rows(&mut ide, "Unstaged group", "Staged group");
-    ide.wait_for("all staged", |s| s.git_ui.changes.group_paths(Group::Staged).len() == 1200);
+    ide.wait_for("all staged", |s| s.ws.git_ui.changes.group_paths(Group::Staged).len() == 1200);
     ide.settle();
     ide.assert_text("1200 of 1200 selected");
     assert_eq!(index_state(&repo.dir, "pkg0/mod0/file0.txt"), Some((Some(ide_git::ChangeKind::Modified), None)));

@@ -28,11 +28,11 @@ fn open_main(name: &str, ide_toml: Option<&str>) -> Option<(Fixture, Ide)> {
 }
 
 fn active_path(ide: &Ide) -> String {
-    ide.state().tabs.active_editor().map(|e| e.path.display().to_string()).unwrap_or_default()
+    ide.state().ws.tabs.active_editor().map(|e| e.path.display().to_string()).unwrap_or_default()
 }
 
 fn active_file(ide: &Ide) -> PathBuf {
-    ide.state().tabs.active_editor().map(|e| e.path.clone()).unwrap_or_default()
+    ide.state().ws.tabs.active_editor().map(|e| e.path.clone()).unwrap_or_default()
 }
 
 fn wait_for_file(ide: &mut Ide, suffix: &str) {
@@ -43,27 +43,27 @@ fn wait_for_file(ide: &mut Ide, suffix: &str) {
 
 /// Waits until rust-analyzer has loaded the workspace, so the status bar is stable.
 fn wait_ready(ide: &mut Ide) {
-    ide.wait_until("rust-analyzer ready", |ide| ide.state().langs.status(LangId::Rust, &active_file(ide)).as_deref() == Some("rust-analyzer"));
+    ide.wait_until("rust-analyzer ready", |ide| ide.state().ws.langs.status(LangId::Rust, &active_file(ide)).as_deref() == Some("rust-analyzer"));
     ide.settle();
 }
 
 /// Stops the servers before the fixture directory goes away.
 fn finish(ide: Ide) {
-    ide.state().langs.shutdown();
+    ide.state().ws.langs.shutdown();
 }
 
 #[test]
 fn cmd_b_jumps_across_crates() {
     let Some((_fx, mut ide)) = open_main("cross_crate", None) else { return };
-    assert_eq!(ide.state().langs.running(LangId::Rust), 1, "opening a .rs file starts rust-analyzer");
-    assert_eq!(ide.state().langs.running(LangId::TypeScript), 0, "a Rust project never starts a TypeScript server");
+    assert_eq!(ide.state().ws.langs.running(LangId::Rust), 1, "opening a .rs file starts rust-analyzer");
+    assert_eq!(ide.state().ws.langs.running(LangId::TypeScript), 0, "a Rust project never starts a TypeScript server");
     // `add` in `let total = add(1, 2);`
     let p = ide.caret_pos(3, 17);
     ide.click_at(p);
     ide.cmd(Key::B);
     wait_for_file(&mut ide, "util/src/lib.rs");
     assert_eq!(ide.cursor(), (1, 7), "the caret lands on the function name");
-    assert!(!ide.state().tabs.active_editor().expect("editor").read_only, "workspace crates stay editable");
+    assert!(!ide.state().ws.tabs.active_editor().expect("editor").read_only, "workspace crates stay editable");
     wait_ready(&mut ide);
     ide.assert_text("rust-analyzer");
     ide.snapshot("cross_crate_add");
@@ -77,7 +77,7 @@ fn cmd_b_jumps_across_crates() {
     ide.cmd_shift(Key::B);
     wait_for_file(&mut ide, "util/src/lib.rs");
     assert_eq!(ide.cursor(), (6, 11), "Type Definition of `p` is `struct Point`");
-    assert_eq!(ide.state().langs.running(LangId::Rust), 1, "one server for the whole workspace");
+    assert_eq!(ide.state().ws.langs.running(LangId::Rust), 1, "one server for the whole workspace");
 
     // Budget (rule 9): a warm Go to Declaration answers well under half a second, even in a
     // debug build. Locally it takes about a millisecond.
@@ -87,7 +87,7 @@ fn cmd_b_jumps_across_crates() {
     ide.click_at(p);
     ide.cmd(Key::B);
     wait_for_file(&mut ide, "util/src/lib.rs");
-    let ms = ide.state().nav.last_ms.expect("latency");
+    let ms = ide.state().ws.nav.last_ms.expect("latency");
     assert!(ms < 500.0, "warm Go to Declaration took {ms:.1} ms");
     finish(ide);
 }
@@ -103,12 +103,12 @@ fn cmd_b_on_std_type_opens_rust_src_read_only() {
     ide.click_at(p);
     ide.cmd(Key::B);
     wait_for_file(&mut ide, "alloc/src/vec/mod.rs");
-    let e = ide.state().tabs.active_editor().expect("editor");
+    let e = ide.state().ws.tabs.active_editor().expect("editor");
     assert!(e.read_only, "standard library sources open read-only");
     let line = ide.cursor().0;
     assert!(ide.active_line(line).contains("pub struct Vec"), "landed on {:?}", ide.active_line(line));
     // The std file is served by the same server; it must not start one for the sysroot.
-    assert_eq!(ide.state().langs.running(LangId::Rust), 1);
+    assert_eq!(ide.state().ws.langs.running(LangId::Rust), 1);
     wait_ready(&mut ide);
     ide.snapshot("std_vec");
     finish(ide);
@@ -121,9 +121,9 @@ fn find_usages_across_crates() {
     ide.right_click_at(p);
     ide.settle();
     ide.click("Find Usages");
-    ide.wait_for("usages", |s| !s.usages.searching && !s.usages.groups.is_empty());
+    ide.wait_for("usages", |s| !s.ws.usages.searching && !s.ws.usages.groups.is_empty());
     ide.settle();
-    let groups = &ide.state().usages.groups;
+    let groups = &ide.state().ws.usages.groups;
     let in_main = groups.iter().find(|g| g.path.ends_with("app/src/main.rs")).map_or(0, |g| g.refs.len());
     let in_util = groups.iter().find(|g| g.path.ends_with("util/src/lib.rs")).map_or(0, |g| g.refs.len());
     // The `use`, two calls, and the declaration.
@@ -147,7 +147,7 @@ fn hover_shows_signature_and_docs() {
     let p = ide.char_pos(3, 17);
     ide.move_to(p);
     ide.wait_real(std::time::Duration::from_millis(650));
-    ide.wait_for("hover info", |s| s.nav.hover.info().is_some());
+    ide.wait_for("hover info", |s| s.ws.nav.hover.info().is_some());
     ide.wait_until("hover tooltip", |ide| ide.shows_text("pub fn add(a: i32, b: i32) -> i32"));
     ide.assert_text("Adds two numbers.");
     ide.snapshot_here("hover_add");
@@ -157,31 +157,31 @@ fn hover_shows_signature_and_docs() {
 #[test]
 fn idle_server_stops_after_the_last_file_closes() {
     let Some((_fx, mut ide)) = open_main("idle", Some("[rust]\nidle_timeout_secs = 0.5\n")) else { return };
-    assert_eq!(ide.state().langs.running(LangId::Rust), 1);
+    assert_eq!(ide.state().ws.langs.running(LangId::Rust), 1);
     // An open file keeps the server alive past the timeout.
     ide.wait_real(std::time::Duration::from_millis(1200));
-    assert_eq!(ide.state().langs.running(LangId::Rust), 1, "an open .rs file keeps rust-analyzer running");
+    assert_eq!(ide.state().ws.langs.running(LangId::Rust), 1, "an open .rs file keeps rust-analyzer running");
     ide.cmd(Key::W);
     ide.settle();
-    assert!(ide.state().tabs.active_editor().is_none());
-    ide.wait_until("idle stop", |ide| ide.state().langs.running(LangId::Rust) == 0);
+    assert!(ide.state().ws.tabs.active_editor().is_none());
+    ide.wait_until("idle stop", |ide| ide.state().ws.langs.running(LangId::Rust) == 0);
     // Opening a Rust file again starts a fresh server.
     ide.open_file("util/src/lib.rs");
-    assert_eq!(ide.state().langs.running(LangId::Rust), 1);
+    assert_eq!(ide.state().ws.langs.running(LangId::Rust), 1);
     finish(ide);
 }
 
 #[test]
 fn ide_toml_can_turn_rust_off() {
     let Some((_fx, mut ide)) = open_main("rust_off", Some("languages = [\"ts\"]\n")) else { return };
-    assert_eq!(ide.state().langs.running(LangId::Rust), 0, "no server for a turned-off language");
-    assert_eq!(ide.state().tabs.active_editor().expect("editor").lang, None);
+    assert_eq!(ide.state().ws.langs.running(LangId::Rust), 0, "no server for a turned-off language");
+    assert_eq!(ide.state().ws.tabs.active_editor().expect("editor").lang, None);
     let p = ide.caret_pos(3, 17);
     ide.click_at(p);
     ide.cmd(Key::B);
     ide.settle();
     ide.assert_text("Rust support is turned off in .harwex/ide.toml");
-    assert_eq!(ide.state().langs.running(LangId::Rust), 0, "Cmd+B does not start it either");
+    assert_eq!(ide.state().ws.langs.running(LangId::Rust), 0, "Cmd+B does not start it either");
     assert!(active_path(&ide).ends_with("app/src/main.rs"));
     ide.snapshot("rust_off_toast");
 }
@@ -196,8 +196,8 @@ fn missing_server_says_how_to_install() {
     ide.open_file("app/src/main.rs");
     ide.wait_until("missing toast", |ide| ide.shows_text("rust-analyzer not found"));
     ide.assert_text("rustup component add rust-analyzer");
-    assert_eq!(ide.state().langs.running(LangId::Rust), 0);
+    assert_eq!(ide.state().ws.langs.running(LangId::Rust), 0);
     let path = active_file(&ide);
-    assert_eq!(ide.state().langs.status(LangId::Rust, &path).as_deref(), Some("no rust-analyzer"));
+    assert_eq!(ide.state().ws.langs.status(LangId::Rust, &path).as_deref(), Some("no rust-analyzer"));
     ide.snapshot("missing_server");
 }

@@ -22,11 +22,17 @@ pub trait Platform: Send + Sync {
     fn copy_text(&self, ctx: &egui::Context, text: &str);
     /// Opens a URL in the default browser or mail app (`open`). Blocking: call it on a worker.
     fn open_url(&self, url: &str) -> Result<(), String>;
+    /// Starts the native folder picker. Called on the UI thread (rfd creates the dialog there);
+    /// the caller awaits the answer on a worker. `None` when the user cancels.
+    fn pick_folder(&self, start: Option<&Path>) -> FolderPick;
     /// What a recording platform saw, oldest first ("trash /p/a.ts"). Empty for the real one.
     fn calls(&self) -> Vec<String> {
         Vec::new()
     }
 }
+
+/// The folder picker's pending answer, awaited on a worker with `util::block_on`.
+pub type FolderPick = std::pin::Pin<Box<dyn std::future::Future<Output = Option<PathBuf>> + Send>>;
 
 /// The real system: NSFileManager's Trash, `open -R`, egui's clipboard output.
 pub struct SystemPlatform;
@@ -71,6 +77,16 @@ impl Platform for SystemPlatform {
             Err(format!("{cmd:?} failed: {status}"))
         }
     }
+
+    fn pick_folder(&self, start: Option<&Path>) -> FolderPick {
+        let dialog = rfd::AsyncFileDialog::new().set_title("Open Folder");
+        let dialog = match start {
+            Some(dir) => dialog.set_directory(dir),
+            None => dialog,
+        };
+        let fut = dialog.pick_folder();
+        Box::pin(async move { fut.await.map(|h| h.path().to_path_buf()) })
+    }
 }
 
 #[cfg(target_os = "macos")]
@@ -95,11 +111,18 @@ pub struct RecordingPlatform {
     trash_dir: PathBuf,
     calls: Mutex<Vec<String>>,
     next: AtomicU64,
+    /// What the next folder pick answers (`set_picked_folder`); `None` acts as Cancel.
+    picked: Mutex<Option<PathBuf>>,
 }
 
 impl RecordingPlatform {
     pub fn new(trash_dir: PathBuf) -> RecordingPlatform {
-        RecordingPlatform { trash_dir, calls: Mutex::default(), next: AtomicU64::new(1) }
+        RecordingPlatform { trash_dir, calls: Mutex::default(), next: AtomicU64::new(1), picked: Mutex::default() }
+    }
+
+    /// The folder the next `pick_folder` returns, as if the user chose it.
+    pub fn set_picked_folder(&self, folder: Option<PathBuf>) {
+        *crate::lang::lock(&self.picked) = folder;
     }
 
     fn record(&self, call: String) {
@@ -129,6 +152,12 @@ impl Platform for RecordingPlatform {
     fn open_url(&self, url: &str) -> Result<(), String> {
         self.record(format!("open-url {url}"));
         Ok(())
+    }
+
+    fn pick_folder(&self, start: Option<&Path>) -> FolderPick {
+        self.record(format!("pick-folder {}", start.map(|p| p.display().to_string()).unwrap_or_default()));
+        let picked = crate::lang::lock(&self.picked).take();
+        Box::pin(std::future::ready(picked))
     }
 
     fn calls(&self) -> Vec<String> {

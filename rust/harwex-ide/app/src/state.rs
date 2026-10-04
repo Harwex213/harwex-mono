@@ -9,19 +9,18 @@ use std::time::{Duration, Instant};
 use ide_editor::{Document, EditorTheme, GutterMark, Position};
 use ide_git::{ChangeKind, FileChange, LineChangeKind, Repo};
 
-use crate::find::FindInFiles;
 use crate::git::GitUi;
-use crate::jobs::{Jobs, UiCallback};
+use crate::jobs::{Jobs, Posted};
+use crate::lang::IdeConfig;
 use crate::layout::Layout;
-use crate::lang::{IdeConfig, Languages};
-use crate::nav::{self, NavPoint, Navigation, UsagesView};
+use crate::nav::{self, NavPoint, UsagesView};
 use crate::notifications::Notifications;
-use crate::search::{FileIndex, SearchEverywhere};
-use crate::tabs::{CustomTab, EditorTab, TabContent, TabId, Tabs};
+use crate::search::FileIndex;
+use crate::tabs::{CustomTab, EditorTab, TabContent, TabId};
 use crate::testhook::TestScript;
 use crate::theme;
-use crate::tree::ProjectTree;
-use crate::watcher::{FsBatch, Watcher};
+use crate::watcher::FsBatch;
+use crate::workspace::{Workspace, WorkspaceId, WorkspaceInfo};
 
 pub struct Project {
     /// Canonical.
@@ -87,37 +86,24 @@ impl Timings {
 
 pub struct AppState {
     pub ctx: egui::Context,
+    /// Tagged with the workspace in context (`Jobs::for_ws`).
     pub jobs: Jobs,
-    inbox: Receiver<UiCallback>,
+    inbox: Receiver<Posted>,
+    /// Window-level: toasts and the log of every workspace.
     pub notifications: Notifications,
-    pub project: Option<Project>,
+    /// The workspace in context: the active one while a frame draws, the job's own one while
+    /// its callback runs (`with_ws`). See `workspace.rs`.
+    pub ws: Workspace,
+    /// Every other open workspace, in no particular order (`workspaces()` sorts by id).
+    others: Vec<Workspace>,
+    active: WorkspaceId,
+    next_ws: u64,
+    /// Nesting of `with_ws`. At 0, `ws` is the active workspace.
+    depth: u32,
     next_generation: u64,
-    pub tabs: Tabs,
-    pub tree: ProjectTree,
-    pub breadcrumbs: crate::breadcrumbs::Breadcrumbs,
-    pub git: GitInfo,
-    #[allow(dead_code)] // Extension surface for the Git UI phase.
-    pub git_ui: GitUi,
-    /// Language servers by language, with the project's `.harwex/ide.toml`.
-    pub langs: Languages,
-    pub nav: Navigation,
-    /// Detection cache and request generation of the diagnostics layer.
-    pub diagnostics: crate::diagnostics::DiagnosticsState,
-    pub usages: UsagesView,
-    pub find: FindInFiles,
-    pub search: SearchEverywhere,
-    pub index: FileIndex,
-    pub layout: Layout,
-    pub terminals: crate::terminal::Terminals,
-    pub watcher: Option<Watcher>,
     pub timings: Timings,
     pub test: Option<TestScript>,
     pub editor_theme: EditorTheme,
-    pub commands: Vec<AppCommand>,
-    /// A dirty tab waiting for "Save / Don't Save / Cancel".
-    pub confirm_close: Option<TabId>,
-    /// Paths being loaded on a worker, with the position to reveal once the tab exists.
-    opening: HashMap<PathBuf, Option<Position>>,
     /// Start a file watcher for each opened project.
     pub watch_files: bool,
     /// Snapshot tests: no durations or clocks in the UI (see `AppOptions::deterministic`).
@@ -126,95 +112,318 @@ pub struct AppState {
     pub memory: crate::memory::MemoryMonitor,
     /// Trash, Finder and the clipboard. Tests record the calls instead.
     pub platform: std::sync::Arc<dyn crate::fileops::Platform>,
-    /// The Project tree's Cut/Copy mark and file operation dialogs.
-    pub tree_ops: crate::tree_menu::TreeOps,
     /// `HARWEX_IDE_INPUT_LOG`: the input recorder (`inputlog.rs`).
     pub input_log: Option<crate::inputlog::InputLog>,
     /// The primary click chain of the frame. Widgets ask it for double clicks (`clicks.rs`).
     pub clicks: crate::clicks::Clicks,
+    /// The shell of new terminal tabs, for every workspace (`AppOptions::terminal`).
+    pub terminal_command: Option<crate::app::TerminalCommand>,
+    /// The layout a project without a saved one starts with.
+    pub default_layout: Layout,
+    /// Layout and open files per canonical root, from app storage and closed workspaces.
+    pub saved: HashMap<PathBuf, crate::persist::SavedWorkspace>,
+    /// A workspace with unsaved files waiting for "Save / Don't Save / Cancel" before it closes.
+    pub confirm_close_ws: Option<WorkspaceId>,
+    /// The title bar's project selector and the Recent Projects list (`projects_popup.rs`).
+    pub projects: crate::projects_popup::ProjectsUi,
 }
 
 impl AppState {
     pub fn new(ctx: egui::Context, start: Instant) -> AppState {
         let (jobs, inbox) = Jobs::new(ctx.clone());
-        let repaint_ctx = ctx.clone();
-        let langs = Languages::new(jobs.clone(), std::sync::Arc::new(move || repaint_ctx.request_repaint()));
-        AppState {
+        let first = WorkspaceId(1);
+        let ws = Workspace::new(first, &jobs, &ctx, None, Layout::default());
+        let mut state = AppState {
             ctx,
             jobs,
             inbox,
             notifications: Notifications::default(),
-            project: None,
+            ws,
+            others: Vec::new(),
+            active: first,
+            next_ws: 2,
+            depth: 0,
             next_generation: 0,
-            tabs: Tabs::default(),
-            tree: ProjectTree::default(),
-            breadcrumbs: Default::default(),
-            git: GitInfo::default(),
-            git_ui: GitUi::default(),
-            langs,
-            nav: Navigation::default(),
-            diagnostics: Default::default(),
-            usages: UsagesView::default(),
-            find: FindInFiles::default(),
-            search: SearchEverywhere::default(),
-            index: FileIndex::default(),
-            layout: Layout::default(),
-            terminals: Default::default(),
-            watcher: None,
             timings: Timings { start, quiet: false },
             test: None,
             editor_theme: theme::T.editor.clone(),
-            commands: Vec::new(),
-            confirm_close: None,
-            opening: HashMap::new(),
             watch_files: true,
             deterministic: false,
             memory: Default::default(),
             platform: std::sync::Arc::new(crate::fileops::SystemPlatform),
-            tree_ops: Default::default(),
             input_log: None,
             clicks: Default::default(),
-        }
+            terminal_command: None,
+            default_layout: Layout::default(),
+            saved: HashMap::new(),
+            confirm_close_ws: None,
+            projects: Default::default(),
+        };
+        state.ws.visible.store(true, std::sync::atomic::Ordering::Relaxed);
+        state.enter_context();
+        state
     }
 
-    /// True when no background work is pending: no job thread, no callback waiting for the
-    /// UI thread, no language server request in the queue, no git refresh. Tests step frames until
-    /// this holds. Long-lived threads (file watcher, terminals) do not count.
+    /// True when no background work is pending in any workspace: no job thread, no callback
+    /// waiting for the UI thread, no language server request in the queue, no git refresh.
+    /// Tests step frames until this holds. Long-lived threads (file watcher, terminals) do not
+    /// count.
     pub fn is_idle(&self) -> bool {
-        self.jobs.in_flight() == 0 && self.langs.queued() == 0 && !self.git.refreshing && !self.index.building && !self.has_pending_debounce()
+        self.jobs.in_flight() == 0 && self.all_ws().all(Workspace::is_idle)
     }
 
-    /// Work that waits for a quiet period before it starts: language server sync and gutter marks
-    /// after an edit, the log filter, re-blame, the hover request.
+    /// Work in the active workspace that waits for a quiet period (`Workspace::has_pending_debounce`).
     pub fn has_pending_debounce(&self) -> bool {
-        let workdir = self.git.repo.as_ref().map(|r| r.workdir().to_path_buf());
-        let editors = self.tabs.editors().any(|e| {
-            let version = e.doc.version();
-            let ts = e.lsp_version.is_some_and(|v| v != version);
-            let marks = workdir.as_ref().is_some_and(|w| e.path.starts_with(w)) && (e.marks_in_flight || e.marks_for != Some(version));
-            ts || marks || e.problems.pending(version)
-        });
-        editors || self.git_ui.has_pending_debounce(&self.tabs) || self.nav.hover.is_waiting()
+        self.ws.has_pending_debounce()
     }
 
-    /// Runs the callbacks that workers sent since the last frame.
+    /// Runs the callbacks that workers sent since the last frame, each with its own workspace in
+    /// context. Callbacks of a closed workspace are dropped.
     pub fn drain_inbox(&mut self) {
         // Collect first: a callback may spawn jobs whose replies must wait for the next frame,
         // or this loop could run forever.
-        let pending: Vec<UiCallback> = self.inbox.try_iter().collect();
+        let pending: Vec<Posted> = self.inbox.try_iter().collect();
         let n = pending.len();
-        for f in pending {
-            f(self);
+        for (ws, f) in pending {
+            match ws {
+                None => f(self),
+                Some(id) => {
+                    self.with_ws(id, f);
+                }
+            }
         }
         self.jobs.delivered(n);
     }
 
     /// Changes whenever a different folder opens. Callbacks compare it to drop stale results.
     pub fn project_generation(&self) -> u64 {
-        self.project.as_ref().map_or(0, |p| p.generation)
+        self.ws.project.as_ref().map_or(0, |p| p.generation)
     }
 
-    pub fn open_project(&mut self, path: PathBuf) {
+    // -----------------------------------------------------------------------------------------
+    // Workspaces
+
+    /// Every open workspace: the one in context first, then the others.
+    pub fn all_ws(&self) -> impl Iterator<Item = &Workspace> {
+        std::iter::once(&self.ws).chain(self.others.iter())
+    }
+
+    /// The active (drawn) workspace's id.
+    pub fn active_id(&self) -> WorkspaceId {
+        self.active
+    }
+
+    /// The open workspaces in open order, for the project selector.
+    pub fn workspaces(&self) -> Vec<WorkspaceInfo> {
+        let mut out: Vec<WorkspaceInfo> = self.all_ws().map(|w| w.info(self.active)).collect();
+        out.sort_by_key(|w| w.id);
+        out
+    }
+
+    pub fn workspace(&self, id: WorkspaceId) -> Option<&Workspace> {
+        self.all_ws().find(|w| w.id == id)
+    }
+
+    pub fn workspace_mut(&mut self, id: WorkspaceId) -> Option<&mut Workspace> {
+        if self.ws.id == id {
+            return Some(&mut self.ws);
+        }
+        self.others.iter_mut().find(|w| w.id == id)
+    }
+
+    /// Runs `f` with workspace `id` in context (`state.ws` is that workspace inside `f`).
+    /// `None` when the workspace was closed. Do not keep references across the call.
+    pub fn with_ws<R>(&mut self, id: WorkspaceId, f: impl FnOnce(&mut AppState) -> R) -> Option<R> {
+        let prev = self.ws.id;
+        if prev == id {
+            return Some(f(self));
+        }
+        self.swap_in(id)?;
+        self.depth += 1;
+        let r = f(self);
+        self.depth -= 1;
+        if self.depth == 0 {
+            self.swap_in(self.active);
+        } else if self.swap_in(prev).is_none() {
+            // `f` closed the outer workspace; the active one takes the context.
+            self.swap_in(self.active);
+        }
+        Some(r)
+    }
+
+    /// Puts workspace `id` into `self.ws`. `None` when no such workspace is open.
+    fn swap_in(&mut self, id: WorkspaceId) -> Option<()> {
+        if self.ws.id != id {
+            let i = self.others.iter().position(|w| w.id == id)?;
+            std::mem::swap(&mut self.ws, &mut self.others[i]);
+        }
+        self.enter_context();
+        Some(())
+    }
+
+    /// The jobs tag and the egui id salt follow the workspace in context.
+    fn enter_context(&mut self) {
+        self.jobs.set_workspace(Some(self.ws.id));
+        crate::workspace::set_salt(self.ws.ui_salt());
+    }
+
+    fn add_workspace(&mut self) -> WorkspaceId {
+        let id = WorkspaceId(self.next_ws);
+        self.next_ws += 1;
+        let ws = Workspace::new(id, &self.jobs, &self.ctx, self.terminal_command.clone(), self.default_layout);
+        self.others.push(ws);
+        id
+    }
+
+    /// Opens `root` as a workspace and makes it active. A workspace that already shows (or is
+    /// loading) the same root is activated instead. An empty window (a blank workspace) takes the
+    /// project itself. Canonicalizing runs on a worker: when `root` turns out to be another
+    /// spelling of an open root, the new workspace closes again and the open one is activated.
+    pub fn open_workspace(&mut self, root: PathBuf) -> WorkspaceId {
+        let open = self.all_ws().find(|w| w.project.as_ref().is_some_and(|p| p.root == root) || w.pending_root.as_ref() == Some(&root)).map(|w| w.id);
+        if let Some(id) = open {
+            self.activate(id);
+            return id;
+        }
+        let id = if self.workspace(self.active).is_some_and(Workspace::is_blank) { self.active } else { self.add_workspace() };
+        self.activate(id);
+        if let (Some(saved), Some(ws)) = (self.saved.get(&root).cloned(), self.workspace_mut(id)) {
+            ws.layout = saved.layout;
+        }
+        self.with_ws(id, |state| state.load_project(root));
+        id
+    }
+
+    /// Makes `id` the drawn workspace. False when it is not open.
+    pub fn activate(&mut self, id: WorkspaceId) -> bool {
+        if self.workspace(id).is_none() {
+            return false;
+        }
+        if id == self.active {
+            return true;
+        }
+        // Favourite branches are app storage for every repository; they live in the active
+        // workspace's Git UI and move along.
+        let favorites = self
+            .workspace_mut(self.active)
+            .map(|w| {
+                w.visible.store(false, std::sync::atomic::Ordering::Relaxed);
+                std::mem::take(&mut w.git_ui.window.favorites)
+            })
+            .unwrap_or_default();
+        self.active = id;
+        if let Some(ws) = self.workspace_mut(id) {
+            ws.visible.store(true, std::sync::atomic::Ordering::Relaxed);
+            ws.git_ui.window.favorites = favorites;
+            if let Some(e) = ws.tabs.active_editor_mut() {
+                e.view.request_focus();
+            }
+        }
+        if self.depth == 0 {
+            self.swap_in(id);
+        }
+        self.update_title();
+        self.ctx.request_repaint();
+        true
+    }
+
+    fn update_title(&self) {
+        let title = match self.workspace(self.active).and_then(|w| w.project.as_ref()) {
+            Some(p) => format!("{} - harwex-ide", p.name),
+            None => "harwex-ide".into(),
+        };
+        self.ctx.send_viewport_cmd(egui::ViewportCommand::Title(title));
+    }
+
+    /// Closes workspace `id`. With unsaved files it is activated and asks first
+    /// (`confirm_close_ws`), like closing a dirty tab.
+    pub fn close_workspace(&mut self, id: WorkspaceId) {
+        let Some(ws) = self.workspace(id) else { return };
+        if ws.tabs.list.iter().any(|t| t.is_dirty()) {
+            self.activate(id);
+            self.confirm_close_ws = Some(id);
+            return;
+        }
+        self.close_workspace_now(id);
+    }
+
+    /// Closes workspace `id` without asking: unsaved edits are lost. Its terminals and language
+    /// servers stop. Closing the last workspace leaves a blank one (the welcome screen).
+    pub fn close_workspace_now(&mut self, id: WorkspaceId) {
+        if self.workspace(id).is_none() {
+            return;
+        }
+        if self.confirm_close_ws == Some(id) {
+            self.confirm_close_ws = None;
+        }
+        if self.ws.id == id && self.others.is_empty() {
+            self.add_workspace();
+        }
+        if self.active == id {
+            // The previous workspace in open order, else the next one.
+            let mut ids: Vec<WorkspaceId> = self.all_ws().map(|w| w.id).filter(|&w| w != id).collect();
+            ids.sort();
+            let next = ids.iter().rev().find(|&&w| w < id).or_else(|| ids.first()).copied().expect("another workspace");
+            self.activate(next);
+        }
+        let mut closed = if self.ws.id == id {
+            // Only inside a callback of the closing workspace: the active one takes the context.
+            let i = self.others.iter().position(|w| w.id == self.active).unwrap_or(0);
+            let closed = std::mem::replace(&mut self.ws, self.others.remove(i));
+            self.enter_context();
+            closed
+        } else {
+            let i = self.others.iter().position(|w| w.id == id).expect("open workspace");
+            self.others.remove(i)
+        };
+        self.remember(&closed);
+        closed.shutdown();
+    }
+
+    /// Stops every workspace's shells and servers and waits for the servers to exit. Called on
+    /// app exit.
+    pub fn shutdown_all(&mut self) {
+        for w in std::iter::once(&mut self.ws).chain(self.others.iter_mut()) {
+            w.terminals.kill_all();
+            w.langs.shutdown();
+        }
+    }
+
+    /// Keeps the layout and open files of `ws` for the next time its root opens.
+    pub(crate) fn remember(&mut self, ws: &Workspace) {
+        if let Some(p) = &ws.project {
+            self.saved.insert(p.root.clone(), crate::persist::SavedWorkspace::of(ws));
+        }
+    }
+
+    /// Per-frame work of every workspace, the active one first: commands from custom tabs,
+    /// debounced language server sync, diagnostics, gutter marks, a pending close.
+    pub fn tick_workspaces(&mut self) {
+        let mut ids: Vec<WorkspaceId> = self.all_ws().map(|w| w.id).collect();
+        ids.sort_by_key(|&id| id != self.active);
+        for id in ids {
+            self.with_ws(id, |s| {
+                s.run_commands();
+                crate::nav::sync_lsp_debounced(s);
+                crate::diagnostics::schedule(s);
+                s.schedule_gutter();
+                if s.ws.close_when_saved && !s.ws.tabs.editors().any(|e| e.saving) {
+                    s.ws.close_when_saved = false;
+                    // A failed save keeps the file dirty; then the workspace stays open.
+                    if !s.ws.tabs.list.iter().any(|t| t.is_dirty()) {
+                        s.close_workspace_now(s.ws.id);
+                    }
+                }
+            });
+        }
+    }
+
+    // -----------------------------------------------------------------------------------------
+    // Project
+
+    /// Loads the folder `path` into the workspace in context (it must be blank).
+    fn load_project(&mut self, path: PathBuf) {
+        self.ws.pending_root = Some(path.clone());
         self.jobs.spawn(
             "Opening project",
             move || {
@@ -226,52 +435,66 @@ impl AppState {
                 let config = IdeConfig::load(&root);
                 Ok((root, repo, config))
             },
-            move |state, res: Result<(PathBuf, Option<Repo>, IdeConfig), String>| match res {
-                Ok((root, repo, config)) => state.install_project(root, repo, config),
-                Err(e) => state.notifications.error("Cannot open folder", e),
+            move |state, res: Result<(PathBuf, Option<Repo>, IdeConfig), String>| {
+                state.ws.pending_root = None;
+                match res {
+                    Ok((root, repo, config)) => {
+                        let id = state.ws.id;
+                        let twin = state.all_ws().find(|w| w.id != id && w.project.as_ref().is_some_and(|p| p.root == root)).map(|w| w.id);
+                        match twin {
+                            Some(open) => {
+                                // Another spelling of a root that is open already.
+                                let was_active = state.active == id;
+                                if state.ws.is_blank() {
+                                    state.close_workspace_now(id);
+                                }
+                                if was_active {
+                                    state.activate(open);
+                                }
+                            }
+                            None => state.install_project(root, repo, config),
+                        }
+                    }
+                    Err(e) => state.notifications.error("Cannot open folder", e),
+                }
             },
         );
     }
 
     fn install_project(&mut self, root: PathBuf, repo: Option<Repo>, config: IdeConfig) {
-        // Closing the tabs below would drop unsaved edits without a prompt.
-        let dirty: Vec<String> = self.tabs.list.iter().filter(|t| t.is_dirty()).map(|t| t.title()).collect();
-        if !dirty.is_empty() {
-            self.notifications.warn("Folder not opened", format!("Save or close the modified files first: {}.", dirty.join(", ")));
-            return;
-        }
-        let ids: Vec<TabId> = self.tabs.list.iter().map(|t| t.id).collect();
-        for id in ids {
-            self.close_tab(id, true);
-        }
         self.next_generation += 1;
         let generation = self.next_generation;
         let name = root.file_name().map_or_else(|| root.display().to_string(), |n| n.to_string_lossy().into_owned());
-        self.ctx.send_viewport_cmd(egui::ViewportCommand::Title(format!("{name} - harwex-ide")));
-        self.project = Some(Project { root: root.clone(), name, generation });
-        self.tree.clear();
-        self.breadcrumbs = Default::default();
-        self.index = FileIndex::default();
-        self.search.reset();
-        self.find.reset();
-        self.usages = UsagesView::default();
-        self.nav.reset();
-        self.diagnostics.reset();
-        self.opening.clear();
-        self.watcher = None;
+        self.ws.project = Some(Project { root: root.clone(), name, generation });
+        // The egui id salt follows the root.
+        self.enter_context();
+        if self.ws.id == self.active {
+            self.update_title();
+        }
+        self.ws.tree.clear();
+        self.ws.breadcrumbs = Default::default();
+        self.ws.index = FileIndex::default();
+        self.ws.search.reset();
+        self.ws.find.reset();
+        self.ws.usages = UsagesView::default();
+        self.ws.nav.reset();
+        self.ws.diagnostics.reset();
+        self.ws.opening.clear();
+        self.ws.watcher = None;
         // The Console sink goes on before anything clones the handle into a worker.
         let repo = repo.map(|r| crate::git::console::attach(r, &self.jobs, generation));
-        self.git = GitInfo { repo, ..Default::default() };
+        self.ws.git = GitInfo { repo, ..Default::default() };
         self.apply_ide_config(config);
-        // Dialogs and filters of the old repository must not act on the new one.
-        // Favourite branches are app storage for every repository, not state of this one.
-        let favorites = std::mem::take(&mut self.git_ui.window.favorites);
-        self.git_ui = GitUi::default();
-        self.git_ui.window.favorites = favorites;
-        self.tree_ops = Default::default();
+        // Dialogs and filters of another repository must not act on this one. Favourite
+        // branches are app storage for every repository, not state of this one.
+        let favorites = std::mem::take(&mut self.ws.git_ui.window.favorites);
+        self.ws.git_ui = GitUi::default();
+        self.ws.git_ui.window.favorites = favorites;
+        self.ws.tree_ops = Default::default();
         crate::tree::load_dir(self, root.clone());
         crate::search::rebuild_index(self);
         self.refresh_git();
+        self.restore_saved(&root);
         if !self.watch_files {
             return;
         }
@@ -283,8 +506,40 @@ impl AppState {
                     return;
                 }
                 match res {
-                    Ok(w) => state.watcher = Some(w),
+                    Ok(w) => state.ws.watcher = Some(w),
                     Err(e) => state.notifications.warn("File watching is off", e.to_string()),
+                }
+            },
+        );
+    }
+
+    /// Applies the saved layout and reopens the saved files of `root`, once per workspace.
+    fn restore_saved(&mut self, root: &Path) {
+        if std::mem::replace(&mut self.ws.restored, true) {
+            return;
+        }
+        let Some(saved) = self.saved.get(root).cloned() else { return };
+        self.ws.layout = saved.layout;
+        if saved.files.is_empty() {
+            return;
+        }
+        let generation = self.project_generation();
+        let files = saved.files;
+        let active = saved.active_file;
+        self.jobs.spawn(
+            "Reopening files",
+            move || files.into_iter().filter_map(|p| Document::open(&p).ok().map(|d| (p, d))).collect::<Vec<_>>(),
+            move |state, docs| {
+                if state.project_generation() != generation {
+                    return;
+                }
+                for (path, doc) in docs {
+                    if state.ws.tabs.editor_by_path(&path).is_none() {
+                        state.add_editor_tab(path, doc, None);
+                    }
+                }
+                if let Some(id) = active.and_then(|a| state.ws.tabs.editor_by_path(&a)) {
+                    state.activate_editor(id, None);
                 }
             },
         );
@@ -300,8 +555,8 @@ impl AppState {
             let langs: Vec<&str> = crate::lang::LangId::ALL.into_iter().filter(|l| config.enabled(*l)).map(|l| l.key()).collect();
             self.timings.log(format!("{}: languages {langs:?}", src.display()));
         }
-        let diagnostics_changed = config.diagnostics != self.langs.config.diagnostics || config.languages != self.langs.config.languages;
-        for (_, e) in self.tabs.editors_mut() {
+        let diagnostics_changed = config.diagnostics != self.ws.langs.config.diagnostics || config.languages != self.ws.langs.config.languages;
+        for (_, e) in self.ws.tabs.editors_mut() {
             if e.lang.is_some_and(|l| !config.enabled(l)) {
                 e.lang = None;
                 e.lsp_version = None;
@@ -311,22 +566,22 @@ impl AppState {
             }
         }
         if diagnostics_changed {
-            self.diagnostics.reset();
+            self.ws.diagnostics.reset();
         }
         self.memory.set_interval(config.memory_interval);
-        if let Some(root) = self.project.as_ref().map(|p| p.root.clone()) {
+        if let Some(root) = self.ws.project.as_ref().map(|p| p.root.clone()) {
             let excluded = config.excluded_paths(&root);
-            if excluded != self.tree.excluded {
-                self.tree.excluded = excluded;
+            if excluded != self.ws.tree.excluded {
+                self.ws.tree.excluded = excluded;
                 crate::search::rebuild_index(self);
             }
         }
-        self.langs.configure(config);
+        self.ws.langs.configure(config);
     }
 
     /// The active editor's file and caret, for navigation history.
     pub fn current_point(&self) -> Option<NavPoint> {
-        self.tabs.active_editor().map(|e| NavPoint { path: e.path.clone(), pos: e.view.cursor() })
+        self.ws.tabs.active_editor().map(|e| NavPoint { path: e.path.clone(), pos: e.view.cursor() })
     }
 
     /// Opens a file (on a worker) and reveals `pos`. `record` pushes the current place onto the
@@ -335,19 +590,19 @@ impl AppState {
         if record {
             if let Some(cur) = self.current_point() {
                 if cur.path != path || Some(cur.pos) != pos {
-                    self.nav.push_back(cur);
+                    self.ws.nav.push_back(cur);
                 }
             }
         }
-        if let Some(id) = self.tabs.editor_by_path(path) {
+        if let Some(id) = self.ws.tabs.editor_by_path(path) {
             self.activate_editor(id, pos);
             return;
         }
-        if let Some(slot) = self.opening.get_mut(path) {
+        if let Some(slot) = self.ws.opening.get_mut(path) {
             *slot = pos;
             return;
         }
-        self.opening.insert(path.to_path_buf(), pos);
+        self.ws.opening.insert(path.to_path_buf(), pos);
         let requested = path.to_path_buf();
         let generation = self.project_generation();
         self.jobs.spawn(
@@ -361,10 +616,10 @@ impl AppState {
                 if state.project_generation() != generation {
                     return;
                 }
-                let pos = state.opening.remove(&requested).flatten();
+                let pos = state.ws.opening.remove(&requested).flatten();
                 match doc {
                     Ok(doc) => {
-                        if let Some(id) = state.tabs.editor_by_path(&canonical) {
+                        if let Some(id) = state.ws.tabs.editor_by_path(&canonical) {
                             state.activate_editor(id, pos);
                         } else {
                             state.add_editor_tab(canonical, doc, pos);
@@ -377,23 +632,23 @@ impl AppState {
     }
 
     fn activate_editor(&mut self, id: TabId, pos: Option<Position>) {
-        self.tabs.activate(id);
-        if let Some(e) = self.tabs.editor_mut(id) {
+        self.ws.tabs.activate(id);
+        if let Some(e) = self.ws.tabs.editor_mut(id) {
             if let Some(p) = pos {
                 e.view.reveal(p);
             }
             e.view.request_focus();
             let path = e.path.clone();
-            self.search.touch(&path);
-            self.tree.selected = Some(path);
+            self.ws.search.touch(&path);
+            self.ws.tree.selected = Some(path);
         }
     }
 
     fn add_editor_tab(&mut self, path: PathBuf, doc: Document, pos: Option<Position>) {
         let mut tab = EditorTab::new(path.clone(), doc);
-        if let Ok(lang) = self.langs.lang_for(&path) {
+        if let Ok(lang) = self.ws.langs.lang_for(&path) {
             // The first open file of a language starts its server (rule 5).
-            self.langs.bridge(lang).open(&path, tab.doc.text());
+            self.ws.langs.bridge(lang).open(&path, tab.doc.text());
             tab.lang = Some(lang);
             tab.lsp_version = Some(tab.doc.version());
         }
@@ -401,27 +656,27 @@ impl AppState {
             tab.view.reveal(p);
         }
         tab.view.request_focus();
-        self.tabs.add(TabContent::Editor(Box::new(tab)));
-        self.search.touch(&path);
-        self.tree.selected = Some(path);
+        self.ws.tabs.add(TabContent::Editor(Box::new(tab)));
+        self.ws.search.touch(&path);
+        self.ws.tree.selected = Some(path);
     }
 
     /// Closes a tab. A dirty tab asks first unless `force`.
     pub fn close_tab(&mut self, id: TabId, force: bool) {
-        let Some(tab) = self.tabs.get(id) else { return };
+        let Some(tab) = self.ws.tabs.get(id) else { return };
         if tab.is_dirty() && !force {
-            self.tabs.activate(id);
-            self.confirm_close = Some(id);
+            self.ws.tabs.activate(id);
+            self.ws.confirm_close = Some(id);
             return;
         }
-        let Some(tab) = self.tabs.remove(id) else { return };
+        let Some(tab) = self.ws.tabs.remove(id) else { return };
         match tab.content {
             TabContent::Editor(e) => {
                 if let Some(lang) = e.lang {
-                    self.langs.bridge(lang).close(&e.path);
+                    self.ws.langs.bridge(lang).close(&e.path);
                 }
                 if e.problems.plan.as_ref().is_some_and(|p| p.oxlint.is_some() || p.eslint.is_some()) {
-                    self.langs.lint.close(&e.path);
+                    self.ws.langs.lint.close(&e.path);
                 }
             }
             TabContent::Custom(mut c) => {
@@ -429,24 +684,24 @@ impl AppState {
                 let mut env = TabEnv {
                     jobs: &self.jobs,
                     notifications: &mut self.notifications,
-                    project: self.project.as_ref(),
-                    git: &self.git,
+                    project: self.ws.project.as_ref(),
+                    git: &self.ws.git,
                     commands: &mut commands,
                     tab_id: id,
                     editor_theme: &self.editor_theme,
                 };
                 c.on_close(&mut env);
-                self.commands.extend(commands);
+                self.ws.commands.extend(commands);
             }
         }
-        if let Some(e) = self.tabs.active_editor_mut() {
+        if let Some(e) = self.ws.tabs.active_editor_mut() {
             e.view.request_focus();
         }
     }
 
     /// Writes the tab's text on a worker. `then_close` closes the tab once the write succeeded.
     pub fn save_tab(&mut self, id: TabId, then_close: bool) {
-        let Some(e) = self.tabs.editor_mut(id) else { return };
+        let Some(e) = self.ws.tabs.editor_mut(id) else { return };
         if e.read_only {
             // The view ignores edits, so there is nothing to write.
             return;
@@ -463,7 +718,7 @@ impl AppState {
         self.jobs.spawn_quiet(
             move || std::fs::write(&path, text).map_err(|err| format!("{}: {err}", path.display())),
             move |state, res| {
-                let Some(e) = state.tabs.editor_mut(id) else { return };
+                let Some(e) = state.ws.tabs.editor_mut(id) else { return };
                 e.saving = false;
                 match res {
                     Ok(()) => {
@@ -481,7 +736,7 @@ impl AppState {
     }
 
     pub fn save_all(&mut self) {
-        let ids: Vec<TabId> = self.tabs.editors_mut().filter(|(_, e)| e.doc.is_dirty() && !e.read_only).map(|(id, _)| id).collect();
+        let ids: Vec<TabId> = self.ws.tabs.editors_mut().filter(|(_, e)| e.doc.is_dirty() && !e.read_only).map(|(id, _)| id).collect();
         for id in ids {
             self.save_tab(id, false);
         }
@@ -495,16 +750,16 @@ impl AppState {
 
     fn refresh_git_inner(&mut self, invalidate_marks: bool) {
         if invalidate_marks {
-            for (_, e) in self.tabs.editors_mut() {
+            for (_, e) in self.ws.tabs.editors_mut() {
                 e.invalidate_marks();
             }
         }
-        let Some(repo) = self.git.repo.clone() else { return };
-        if self.git.refreshing {
-            self.git.refresh_queued = true;
+        let Some(repo) = self.ws.git.repo.clone() else { return };
+        if self.ws.git.refreshing {
+            self.ws.git.refresh_queued = true;
             return;
         }
-        self.git.refreshing = true;
+        self.ws.git.refreshing = true;
         let generation = self.project_generation();
         let started = Instant::now();
         self.jobs.spawn(
@@ -518,26 +773,26 @@ impl AppState {
                 if state.project_generation() != generation {
                     return;
                 }
-                state.git.refreshing = false;
+                state.ws.git.refreshing = false;
                 let ms = took.as_secs_f64() * 1000.0;
-                if state.git.status_ms.is_none() {
+                if state.ws.git.status_ms.is_none() {
                     state.timings.log(format!("git status + branch in {ms:.1} ms"));
                 }
-                state.git.status_ms = Some(ms);
+                state.ws.git.status_ms = Some(ms);
                 match status {
                     Ok(changes) => state.apply_status(changes),
                     Err(e) => state.notifications.log_only(crate::notifications::Level::Warning, "git status failed", e.to_string()),
                 }
                 if let Ok(b) = branches {
-                    state.git.detached = b.detached;
-                    state.git.branch = match (b.current, b.head) {
+                    state.ws.git.detached = b.detached;
+                    state.ws.git.branch = match (b.current, b.head) {
                         (Some(name), _) if !b.detached => Some(name),
                         (_, Some(oid)) => Some(oid.to_string()[..8].to_string()),
                         (name, None) => name,
                     };
                 }
                 crate::git::on_git_refreshed(state);
-                if std::mem::take(&mut state.git.refresh_queued) {
+                if std::mem::take(&mut state.ws.git.refresh_queued) {
                     state.refresh_git_inner(false);
                 }
             },
@@ -545,7 +800,7 @@ impl AppState {
     }
 
     fn apply_status(&mut self, changes: Vec<FileChange>) {
-        let Some(workdir) = self.git.repo.as_ref().map(|r| r.workdir().to_path_buf()) else { return };
+        let Some(workdir) = self.ws.git.repo.as_ref().map(|r| r.workdir().to_path_buf()) else { return };
         let mut status = HashMap::with_capacity(changes.len());
         let mut dirs = HashSet::new();
         for c in &changes {
@@ -559,18 +814,18 @@ impl AppState {
             }
             status.insert(abs, c.kind());
         }
-        self.git.status = status;
-        self.git.dirty_dirs = dirs;
-        self.git.changes = changes;
+        self.ws.git.status = status;
+        self.ws.git.dirty_dirs = dirs;
+        self.ws.git.changes = changes;
     }
 
     /// Starts gutter recomputation for tabs whose text rested for 300 ms since the last edit.
     pub fn schedule_gutter(&mut self) {
-        let Some(repo) = self.git.repo.clone() else { return };
+        let Some(repo) = self.ws.git.repo.clone() else { return };
         let workdir = repo.workdir().to_path_buf();
         let mut wake: Option<Duration> = None;
         let mut due = Vec::new();
-        for (id, e) in self.tabs.editors_mut() {
+        for (id, e) in self.ws.tabs.editors_mut() {
             if e.marks_in_flight || e.marks_for == Some(e.doc.version()) || !e.path.starts_with(&workdir) {
                 continue;
             }
@@ -585,7 +840,7 @@ impl AppState {
             due.push(id);
         }
         for id in due {
-            let Some(e) = self.tabs.editor_mut(id) else { continue };
+            let Some(e) = self.ws.tabs.editor_mut(id) else { continue };
             e.marks_in_flight = true;
             let version = e.doc.version();
             e.marks_for = Some(version);
@@ -595,7 +850,7 @@ impl AppState {
             self.jobs.spawn_quiet(
                 move || repo.line_changes(&path, &text),
                 move |state, res| {
-                    let Some(e) = state.tabs.editor_mut(id) else { return };
+                    let Some(e) = state.ws.tabs.editor_mut(id) else { return };
                     e.marks_in_flight = false;
                     if let Ok(changes) = res {
                         e.marks = to_marks(&changes);
@@ -616,11 +871,11 @@ impl AppState {
         // Directory listings.
         let mut reload: HashSet<PathBuf> = HashSet::new();
         for p in &batch.paths {
-            if self.tree.is_loaded(p) {
+            if self.ws.tree.is_loaded(p) {
                 reload.insert(p.clone());
             }
             if let Some(parent) = p.parent() {
-                if self.tree.is_loaded(parent) {
+                if self.ws.tree.is_loaded(parent) {
                     reload.insert(parent.to_path_buf());
                 }
             }
@@ -633,7 +888,7 @@ impl AppState {
                 move |state, entries| {
                     if state.project_generation() == generation {
                         if let Some(entries) = entries {
-                            state.tree.set_dir(dir, entries);
+                            state.ws.tree.set_dir(dir, entries);
                         }
                     }
                 },
@@ -641,7 +896,7 @@ impl AppState {
         }
         // Open, unmodified editors follow the disk, like IDEA.
         let changed: Vec<(TabId, PathBuf)> = self
-            .tabs
+            .ws.tabs
             .editors_mut()
             .filter(|(_, e)| batch.paths.contains(&e.path) && !e.doc.is_dirty() && !e.saving)
             .map(|(id, e)| (id, e.path.clone()))
@@ -653,7 +908,7 @@ impl AppState {
                     let Some(bytes) = bytes else { return };
                     let tracked;
                     {
-                        let Some(e) = state.tabs.editor_mut(id) else { return };
+                        let Some(e) = state.ws.tabs.editor_mut(id) else { return };
                         if e.doc.is_dirty() || !e.doc.reload_from_bytes(&bytes) {
                             return;
                         }
@@ -666,7 +921,7 @@ impl AppState {
                 },
             );
         }
-        if let Some(root) = self.project.as_ref().map(|p| p.root.clone()) {
+        if let Some(root) = self.ws.project.as_ref().map(|p| p.root.clone()) {
             if batch.paths.contains(&root.join(crate::lang::config::CONFIG_PATH)) {
                 let generation = self.project_generation();
                 self.jobs.spawn_quiet(
@@ -686,12 +941,12 @@ impl AppState {
     }
 
     pub fn run_commands(&mut self) {
-        for cmd in std::mem::take(&mut self.commands) {
+        for cmd in std::mem::take(&mut self.ws.commands) {
             match cmd {
                 AppCommand::OpenLocation { path, pos } => self.open_location(&path, pos, true),
                 AppCommand::CloseTab(id) => self.close_tab(id, false),
                 AppCommand::OpenCustomTab(tab) => {
-                    self.tabs.open_custom(tab);
+                    self.ws.tabs.open_custom(tab);
                 }
                 AppCommand::RefreshGit => self.refresh_git(),
             }
@@ -699,18 +954,15 @@ impl AppState {
     }
 
     /// Shows the native folder picker without blocking the UI thread.
+    /// The picker goes through `state.platform`, so tests answer it without a dialog.
     pub fn pick_folder(&mut self) {
-        let dialog = rfd::AsyncFileDialog::new().set_title("Open Folder");
-        let dialog = match &self.project {
-            Some(p) => dialog.set_directory(p.root.parent().unwrap_or(&p.root)),
-            None => dialog,
-        };
-        let fut = dialog.pick_folder();
-        self.jobs.spawn_quiet(
-            move || crate::util::block_on(fut).map(|h| h.path().to_path_buf()),
+        let start = self.ws.project.as_ref().map(|p| p.root.parent().unwrap_or(&p.root).to_path_buf());
+        let fut = self.platform.pick_folder(start.as_deref());
+        self.jobs.window().spawn_quiet(
+            move || crate::util::block_on(fut),
             |state, picked| {
                 if let Some(p) = picked {
-                    state.open_project(p);
+                    state.open_workspace(p);
                 }
             },
         );

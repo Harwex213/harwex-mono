@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::io::{BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, Command, Stdio};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::mpsc::{self, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::thread;
@@ -78,6 +78,8 @@ pub(crate) struct Server {
     tsserver_js: PathBuf,
     project_root: Option<PathBuf>,
     state: Mutex<State>,
+    /// Pid of the last started process (0: none). Lock-free: requests hold `state`.
+    pid: AtomicU32,
 }
 
 impl Server {
@@ -90,7 +92,12 @@ impl Server {
                 process: None,
                 open: HashMap::new(),
             }),
+            pid: AtomicU32::new(0),
         }
+    }
+
+    pub(crate) fn pid(&self) -> Option<u32> {
+        Some(self.pid.load(Ordering::Relaxed)).filter(|&p| p != 0)
     }
 
     pub(crate) fn open(&self, path: &Path, text: &str) {
@@ -234,6 +241,7 @@ impl Server {
     pub(crate) fn shutdown(&self) {
         let mut state = lock(&self.state);
         state.open.clear();
+        self.pid.store(0, Ordering::Relaxed);
         if let Some(mut process) = state.process.take() {
             let _ = process.send("exit", json!({}));
             let deadline = Instant::now() + Duration::from_millis(500);
@@ -267,6 +275,7 @@ impl Server {
         // Drop the dead process first so its pending requests fail instead of waiting.
         state.process = None;
         let mut process = self.spawn()?;
+        self.pid.store(process.child.id(), Ordering::Relaxed);
         let _ = process.send(
             "configure",
             json!({

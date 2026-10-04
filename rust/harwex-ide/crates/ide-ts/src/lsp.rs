@@ -23,6 +23,10 @@ pub(crate) struct LspServer {
 }
 
 impl LspServer {
+    pub(crate) fn pid(&self) -> Option<u32> {
+        self.client.pid()
+    }
+
     pub(crate) fn new(exe: PathBuf, project_root: Option<PathBuf>) -> LspServer {
         let mut config = ClientConfig::new("tsc-lsp", exe);
         config.args = vec!["--lsp".into(), "--stdio".into()];

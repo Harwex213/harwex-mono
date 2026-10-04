@@ -114,7 +114,7 @@ pub fn tick(state: &mut AppState) {
                 None => '_',
             },
             Kind::Click | Kind::Double => {
-                let tree = &state.tree;
+                let tree = &state.ws.tree;
                 let selected = tree.selected.as_deref() == Some(row.path.as_path()) && h.before_selected.as_deref() != Some(row.path.as_path());
                 let toggled = tree.is_expanded(&row.path) != h.before_expanded;
                 match (p.kind, toggled, selected) {
@@ -134,9 +134,9 @@ pub fn tick(state: &mut AppState) {
         // Undo what the probe changed, so every probe starts from the same tree.
         if row.is_dir {
             let expanded = h.before_expanded;
-            state.tree.set_expanded(&row.path, expanded);
+            state.ws.tree.set_expanded(&row.path, expanded);
         }
-        state.tree.selected = None;
+        state.ws.tree.selected = None;
         let h = state.test.as_mut().and_then(|t| t.tree_hits.as_mut()).expect("hook");
         h.wait = if p.kind == Kind::Hover { 0 } else { 1 };
         return;
@@ -147,8 +147,8 @@ pub fn tick(state: &mut AppState) {
     if let Some(p) = h.probes.pop_front() {
         let row = &h.probing[p.row];
         let at = pos2(p.x, row.rect.center().y);
-        h.before_selected = state.tree.selected.clone();
-        h.before_expanded = state.tree.is_expanded(&row.path);
+        h.before_selected = state.ws.tree.selected.clone();
+        h.before_expanded = state.ws.tree.is_expanded(&row.path);
         // A second of quiet input time: the probe is a fresh click, never part of the last one.
         h.clock += 1.0;
         let mut first = vec![Event::PointerMoved(at)];
@@ -191,7 +191,7 @@ pub fn tick(state: &mut AppState) {
         h.width = w;
         let ctx2 = ctx.clone();
         ctx2.data_mut(|d| {
-            let id = Id::new("left-tool-window");
+            let id = crate::workspace::wid("left-tool-window");
             let old: Option<egui::containers::panel::PanelState> = d.get_persisted(id);
             let min = old.map_or(pos2(40.0, 40.0), |s| s.rect.min);
             d.insert_persisted(id, egui::containers::panel::PanelState { rect: Rect::from_min_size(min, egui::vec2(w, 600.0)) });
@@ -235,5 +235,5 @@ pub fn tick(state: &mut AppState) {
 }
 
 fn current_width(ctx: &egui::Context) -> f32 {
-    ctx.data_mut(|d| d.get_persisted::<egui::containers::panel::PanelState>(Id::new("left-tool-window")).map_or(0.0, |s| s.rect.width()))
+    ctx.data_mut(|d| d.get_persisted::<egui::containers::panel::PanelState>(crate::workspace::wid("left-tool-window")).map_or(0.0, |s| s.rect.width()))
 }

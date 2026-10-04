@@ -1,7 +1,7 @@
 //! The commit table of a Log tab: author, lane graph, subject with ref labels, date. Rows are
 //! virtualized; the selection is a set of commits (click, Cmd+click, Shift+click, arrows).
 
-use egui::{pos2, vec2, Align2, Color32, Id, Key, Modifiers, Rect, RichText, ScrollArea, Sense, Stroke, Ui};
+use egui::{pos2, vec2, Align2, Color32, Key, Modifiers, Rect, RichText, ScrollArea, Sense, Stroke, Ui};
 use ide_git::{ArrowDir, CommitInfo, GraphRow, Oid, RefKind};
 
 use super::{load_more, run_action, LogView, RowAction};
@@ -80,14 +80,14 @@ pub(super) fn show(state: &mut AppState, view: &mut LogView, ui: &mut Ui) {
         return;
     }
 
-    let table_id = Id::new(("git-log-table", view.id));
+    let table_id = crate::workspace::wid(("git-log-table", view.id));
     let has_focus = ui.memory(|m| m.has_focus(table_id));
     if has_focus && !ui.ctx().is_context_menu_open() {
         keyboard(view, ui);
     }
 
     let n = view.commits.len();
-    let mut scroll = ScrollArea::vertical().id_salt(("git-log-rows", view.id)).auto_shrink([false, false]);
+    let mut scroll = ScrollArea::vertical().id_salt(("git-log-rows", view.id)).auto_shrink([false, false]).drag_to_scroll(false);
     // The viewport height is known from the second frame on; until then the scroll waits.
     if let Some(i) = view.scroll_to.filter(|_| view.view_height > 0.0) {
         view.scroll_to = None;
@@ -97,7 +97,7 @@ pub(super) fn show(state: &mut AppState, view: &mut LogView, ui: &mut Ui) {
             scroll = scroll.vertical_scroll_offset(y.max(0.0));
         }
     }
-    let log = &state.git_ui.log;
+    let log = &state.ws.git_ui.log;
     let (command, shift) = ui.input(|i| (i.modifiers.command, i.modifiers.shift));
     let mut action: Option<RowAction> = None;
     let mut pressed: Option<usize> = None;
@@ -114,7 +114,7 @@ pub(super) fn show(state: &mut AppState, view: &mut LogView, ui: &mut Ui) {
             let commit = &view.commits[i];
             let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), ROW_H), Sense::hover());
             // The id follows the commit, so an open context menu stays with its row.
-            let resp = ui.interact(rect, Id::new(("git-log-row", view.id, commit.oid)), Sense::click());
+            let resp = ui.interact(rect, crate::workspace::wid(("git-log-row", view.id, commit.oid)), Sense::click());
             let selected = view.selection.contains(&commit.oid);
             crate::util::label_selectable(&resp, format!("Commit {}", commit.summary), selected);
             let style = view.row_style(log, i);

@@ -10,7 +10,7 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
-use egui::{Context, Frame, Id, Key, LayerId, Pos2, RichText, ScrollArea};
+use egui::{Context, Frame, Key, LayerId, Pos2, RichText, ScrollArea};
 use ide_editor::Position;
 
 use crate::lang::{HoverInfo, Location, Reference};
@@ -139,13 +139,13 @@ impl Navigation {
 /// Flushes unsent edits of one tab to its language server. Called before every request, so
 /// results never refer to stale text even when the debounce has not fired yet.
 pub fn flush_lsp(state: &mut AppState, tab: TabId) {
-    let Some(e) = state.tabs.editor_mut(tab) else { return };
+    let Some(e) = state.ws.tabs.editor_mut(tab) else { return };
     let (Some(lang), Some(v)) = (e.lang, e.lsp_version) else { return };
     if v != e.doc.version() {
         e.lsp_version = Some(e.doc.version());
         let text = e.doc.text();
         let path = e.path.clone();
-        state.langs.bridge(lang).change(&path, text);
+        state.ws.langs.bridge(lang).change(&path, text);
     }
 }
 
@@ -154,7 +154,7 @@ pub fn flush_lsp(state: &mut AppState, tab: TabId) {
 pub fn sync_lsp_debounced(state: &mut AppState) {
     let mut due = Vec::new();
     let mut wake: Option<Duration> = None;
-    for (id, e) in state.tabs.editors_mut() {
+    for (id, e) in state.ws.tabs.editors_mut() {
         let Some(v) = e.lsp_version else { continue };
         if v == e.doc.version() {
             continue;
@@ -177,8 +177,8 @@ pub fn sync_lsp_debounced(state: &mut AppState) {
 
 /// Starts a navigation request at `pos` in tab `tab`. The result arrives later on the UI thread.
 pub fn request(state: &mut AppState, kind: NavKind, tab: TabId, pos: Position, anchor: Pos2) {
-    let Some(e) = state.tabs.editor_mut(tab) else { return };
-    let lang = match (e.lang, state.langs.lang_for(&e.path)) {
+    let Some(e) = state.ws.tabs.editor_mut(tab) else { return };
+    let lang = match (e.lang, state.ws.langs.lang_for(&e.path)) {
         (Some(lang), _) => lang,
         (None, Err(why)) => {
             state.notifications.warn(kind.label(), why);
@@ -190,17 +190,17 @@ pub fn request(state: &mut AppState, kind: NavKind, tab: TabId, pos: Position, a
     let path = e.path.clone();
     let word = e.doc.word_at(pos).map(|r| e.doc.slice(e.doc.position_to_char(r.start)..e.doc.position_to_char(r.end))).unwrap_or_default();
     flush_lsp(state, tab);
-    state.nav.generation += 1;
-    state.nav.popup = None;
-    let generation = state.nav.generation;
+    state.ws.nav.generation += 1;
+    state.ws.nav.popup = None;
+    let generation = state.ws.nav.generation;
     let jobs = state.jobs.clone();
     if kind == NavKind::Usages {
-        state.usages.searching = true;
-        state.usages.title = format!("Usages of {word}");
-        state.layout.show(crate::layout::ToolWindow::Usages);
+        state.ws.usages.searching = true;
+        state.ws.usages.title = format!("Usages of {word}");
+        state.ws.layout.show(crate::layout::ToolWindow::Usages);
     }
     let from = NavPoint { path: path.clone(), pos };
-    state.langs.bridge(lang).run(move |server| {
+    state.ws.langs.bridge(lang).run(move |server| {
         let _busy = jobs.busy(format!("{}: {word}", kind.label()));
         let started = Instant::now();
         let result = match kind {
@@ -251,7 +251,7 @@ fn with_previews(locs: Vec<Location>) -> Vec<NavTarget> {
 
 fn on_result(state: &mut AppState, reply: NavReply) {
     let NavReply { kind, generation, from, word, anchor, ms, result } = reply;
-    state.nav.last_ms = Some(ms);
+    state.ws.nav.last_ms = Some(ms);
     let test = state.test.is_some();
     match &result {
         Ok(NavResult::Targets(t)) => {
@@ -267,17 +267,17 @@ fn on_result(state: &mut AppState, reply: NavReply) {
     if test {
         crate::testhook::step_done(state);
     }
-    if generation != state.nav.generation {
+    if generation != state.ws.nav.generation {
         // A newer request replaced this one. The Usages spinner must not wait for it.
-        if kind == NavKind::Usages && state.usages.title == format!("Usages of {word}") {
-            state.usages.searching = false;
+        if kind == NavKind::Usages && state.ws.usages.title == format!("Usages of {word}") {
+            state.ws.usages.searching = false;
         }
         return;
     }
     match result {
         Err(e) => {
             if kind == NavKind::Usages {
-                state.usages.searching = false;
+                state.ws.usages.searching = false;
             }
             state.notifications.error(format!("{} failed", kind.label()), e);
         }
@@ -293,8 +293,8 @@ fn on_result(state: &mut AppState, reply: NavReply) {
                 g.refs.sort_by_key(|r| (r.location.line, r.location.column));
             }
             groups.sort_by(|a, b| a.path.cmp(&b.path));
-            state.usages = UsagesView { title: format!("Usages of {word}"), groups, searching: false, took_ms: ms };
-            state.layout.show(crate::layout::ToolWindow::Usages);
+            state.ws.usages = UsagesView { title: format!("Usages of {word}"), groups, searching: false, took_ms: ms };
+            state.ws.layout.show(crate::layout::ToolWindow::Usages);
         }
         Ok(NavResult::Targets(mut targets)) => match targets.len() {
             0 => state.notifications.info(
@@ -311,7 +311,7 @@ fn on_result(state: &mut AppState, reply: NavReply) {
                 jump_from(state, from, &t);
             }
             _ => {
-                state.nav.popup = Some(NavPopup { title: format!("Choose declaration of {word}"), anchor, items: targets, selected: 0, from, keys: Default::default() });
+                state.ws.nav.popup = Some(NavPopup { title: format!("Choose declaration of {word}"), anchor, items: targets, selected: 0, from, keys: Default::default() });
             }
         },
         Ok(NavResult::Locations(_)) => {}
@@ -319,17 +319,17 @@ fn on_result(state: &mut AppState, reply: NavReply) {
 }
 
 pub fn go_back(state: &mut AppState) {
-    let Some(p) = state.nav.back.pop() else { return };
+    let Some(p) = state.ws.nav.back.pop() else { return };
     if let Some(cur) = state.current_point() {
-        state.nav.forward.push(cur);
+        state.ws.nav.forward.push(cur);
     }
     state.open_location(&p.path, Some(p.pos), false);
 }
 
 pub fn go_forward(state: &mut AppState) {
-    let Some(p) = state.nav.forward.pop() else { return };
+    let Some(p) = state.ws.nav.forward.pop() else { return };
     if let Some(cur) = state.current_point() {
-        state.nav.back.push(cur);
+        state.ws.nav.back.push(cur);
     }
     state.open_location(&p.path, Some(p.pos), false);
 }
@@ -339,7 +339,7 @@ pub fn go_forward(state: &mut AppState) {
 fn jump_from(state: &mut AppState, from: NavPoint, t: &NavTarget) {
     let pos = Position::new(t.location.line, t.location.column);
     if from.path != t.location.path || from.pos != pos {
-        state.nav.push_back(from);
+        state.ws.nav.push_back(from);
     }
     state.open_location(&t.location.path, Some(pos), false);
 }
@@ -347,7 +347,7 @@ fn jump_from(state: &mut AppState, from: NavPoint, t: &NavTarget) {
 /// Takes the chooser's keys before any widget runs. The editor or terminal keeps keyboard
 /// focus behind the popup, and it would otherwise also get Enter and the arrows.
 pub fn take_popup_keys(state: &mut AppState, ctx: &Context) {
-    let Some(popup) = &mut state.nav.popup else { return };
+    let Some(popup) = &mut state.ws.nav.popup else { return };
     popup.keys = ctx.input_mut(|i| {
         (
             i.consume_key(egui::Modifiers::NONE, Key::Escape),
@@ -360,8 +360,8 @@ pub fn take_popup_keys(state: &mut AppState, ctx: &Context) {
 
 /// The chooser shown when a request has several results.
 pub fn show_popup(state: &mut AppState, ctx: &Context) {
-    let Some(popup) = &mut state.nav.popup else { return };
-    let root = state.project.as_ref().map(|p| p.root.clone()).unwrap_or_default();
+    let Some(popup) = &mut state.ws.nav.popup else { return };
+    let root = state.ws.project.as_ref().map(|p| p.root.clone()).unwrap_or_default();
     let (esc, up, down, enter) = std::mem::take(&mut popup.keys);
     if up {
         popup.selected = popup.selected.saturating_sub(1);
@@ -370,7 +370,7 @@ pub fn show_popup(state: &mut AppState, ctx: &Context) {
         popup.selected += 1;
     }
     let mut chosen = if enter { Some(popup.selected) } else { None };
-    let resp = egui::Area::new(Id::new("nav-popup")).fixed_pos(popup.anchor).order(egui::Order::Foreground).constrain(true).show(ctx, |ui| {
+    let resp = egui::Area::new(crate::workspace::wid("nav-popup")).fixed_pos(popup.anchor).order(egui::Order::Foreground).constrain(true).show(ctx, |ui| {
         Frame::popup(ui.style()).fill(theme::T.popup_bg).show(ui, |ui| {
             ui.set_max_width(720.0);
             ui.label(RichText::new(&popup.title).strong());
@@ -394,10 +394,10 @@ pub fn show_popup(state: &mut AppState, ctx: &Context) {
     if let Some(i) = chosen {
         let t = popup.items.swap_remove(i);
         let from = popup.from.clone();
-        state.nav.popup = None;
+        state.ws.nav.popup = None;
         jump_from(state, from, &t);
     } else if esc || clicked_outside {
-        state.nav.popup = None;
+        state.ws.nav.popup = None;
     }
 }
 
@@ -429,23 +429,23 @@ pub fn display_path(root: &Path, path: &Path) -> String {
 pub fn hover(state: &mut AppState, tab: TabId, hover: Option<Position>, layer: LayerId, problems: &[(ide_editor::ProblemSeverity, String, String)]) {
     let ctx = state.ctx.clone();
     // Problems under the pointer show at once; quick info joins below once it arrives.
-    let info_shown = state.nav.hover.info.is_some() && state.nav.hover.requested;
+    let info_shown = state.ws.nav.hover.info.is_some() && state.ws.nav.hover.requested;
     if !problems.is_empty() && !info_shown {
-        egui::show_tooltip_at_pointer(&ctx, layer, Id::new("ts-quick-info"), |ui| {
+        egui::show_tooltip_at_pointer(&ctx, layer, crate::workspace::wid("ts-quick-info"), |ui| {
             ui.set_max_width(640.0);
             crate::diagnostics::problems::hover_ui(ui, problems);
         });
     }
-    let Some(e) = state.tabs.editor_mut(tab) else { return };
+    let Some(e) = state.ws.tabs.editor_mut(tab) else { return };
     let modifiers = ctx.input(|i| i.modifiers);
     let lang = e.lang;
     let word = hover.filter(|_| lang.is_some() && !modifiers.command).and_then(|p| e.doc.word_at(p));
     let Some(word) = word else {
-        state.nav.hover = HoverState { generation: state.nav.hover.generation, ..Default::default() };
+        state.ws.nav.hover = HoverState { generation: state.ws.nav.hover.generation, ..Default::default() };
         return;
     };
     let key = (e.path.clone(), word.start, word.end);
-    let h = &mut state.nav.hover;
+    let h = &mut state.ws.nav.hover;
     if h.key.as_ref() != Some(&key) {
         h.generation += 1;
         *h = HoverState { key: Some(key), since: Some(Instant::now()), generation: h.generation, ..Default::default() };
@@ -464,18 +464,18 @@ pub fn hover(state: &mut AppState, tab: TabId, hover: Option<Position>, layer: L
         flush_lsp(state, tab);
         let jobs = state.jobs.clone();
         let Some(lang) = lang else { return };
-        state.langs.bridge(lang).run(move |server| {
+        state.ws.langs.bridge(lang).run(move |server| {
             let info = server.hover(&path, pos.line, pos.column);
             jobs.post(move |state| {
-                if state.nav.hover.generation == generation {
-                    state.nav.hover.info = info.ok().flatten();
+                if state.ws.nav.hover.generation == generation {
+                    state.ws.nav.hover.info = info.ok().flatten();
                 }
             });
         });
         return;
     }
-    if let Some(info) = &state.nav.hover.info {
-        egui::show_tooltip_at_pointer(&ctx, layer, Id::new("ts-quick-info"), |ui| {
+    if let Some(info) = &state.ws.nav.hover.info {
+        egui::show_tooltip_at_pointer(&ctx, layer, crate::workspace::wid("ts-quick-info"), |ui| {
             ui.set_max_width(640.0);
             if !problems.is_empty() {
                 crate::diagnostics::problems::hover_ui(ui, problems);
@@ -495,8 +495,8 @@ pub fn hover(state: &mut AppState, tab: TabId, hover: Option<Position>, layer: L
 
 /// The Find Usages tool window body.
 pub fn show_usages(state: &mut AppState, ui: &mut egui::Ui) {
-    let root = state.project.as_ref().map(|p| p.root.clone()).unwrap_or_default();
-    let u = &state.usages;
+    let root = state.ws.project.as_ref().map(|p| p.root.clone()).unwrap_or_default();
+    let u = &state.ws.usages;
     let took = if state.deterministic { String::new() } else { format!(" ({:.0} ms)", u.took_ms) };
     ui.horizontal(|ui| {
         if u.searching {

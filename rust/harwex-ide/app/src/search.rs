@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
-use egui::{text::LayoutJob, FontId, Id, Key, Modal, RichText, ScrollArea, TextEdit, TextFormat};
+use egui::{text::LayoutJob, FontId, Key, Modal, RichText, ScrollArea, TextEdit, TextFormat};
 use nucleo_matcher::pattern::{CaseMatching, Normalization, Pattern};
 use nucleo_matcher::{Config, Matcher, Utf32Str};
 
@@ -52,15 +52,15 @@ pub fn build_file_list(root: &Path, skip: &[PathBuf]) -> Vec<String> {
 }
 
 pub fn rebuild_index(state: &mut AppState) {
-    let Some(root) = state.project.as_ref().map(|p| p.root.clone()) else { return };
-    if state.index.building {
-        state.index.rebuild_queued = true;
+    let Some(root) = state.ws.project.as_ref().map(|p| p.root.clone()) else { return };
+    if state.ws.index.building {
+        state.ws.index.rebuild_queued = true;
         return;
     }
-    state.index.building = true;
+    state.ws.index.building = true;
     let generation = state.project_generation();
     let started = Instant::now();
-    let skip = state.tree.excluded.clone();
+    let skip = state.ws.tree.excluded.clone();
     state.jobs.spawn(
         "Indexing files",
         move || {
@@ -72,18 +72,18 @@ pub fn rebuild_index(state: &mut AppState) {
                 return;
             }
             let ms = took.as_secs_f64() * 1000.0;
-            if state.index.build_ms.is_none() {
+            if state.ws.index.build_ms.is_none() {
                 state.timings.log(format!("file index built in {ms:.1} ms ({} files)", files.len()));
             }
-            state.index.build_ms = Some(ms);
-            state.index.files = Arc::new(files);
-            state.index.building = false;
-            if std::mem::take(&mut state.index.rebuild_queued) {
+            state.ws.index.build_ms = Some(ms);
+            state.ws.index.files = Arc::new(files);
+            state.ws.index.building = false;
+            if std::mem::take(&mut state.ws.index.rebuild_queued) {
                 rebuild_index(state);
             }
             // Results computed against the old list may point at deleted files.
-            if state.search.open {
-                state.search.last_query = None;
+            if state.ws.search.open {
+                state.ws.search.last_query = None;
             }
         },
     );
@@ -239,29 +239,29 @@ impl SearchEverywhere {
 
 /// Draws the popup and returns a file to open.
 pub fn show(state: &mut AppState, ctx: &egui::Context) -> Option<PathBuf> {
-    if !state.search.open {
+    if !state.ws.search.open {
         return None;
     }
-    let root = state.project.as_ref().map(|p| p.root.clone())?;
-    if state.search.recent_mode && state.search.last_query.as_deref() != Some(state.search.query.as_str()) {
+    let root = state.ws.project.as_ref().map(|p| p.root.clone())?;
+    if state.ws.search.recent_mode && state.ws.search.last_query.as_deref() != Some(state.ws.search.query.as_str()) {
         // A few dozen paths: matching them is cheaper than a round trip to a worker.
-        let s = &mut state.search;
+        let s = &mut state.ws.search;
         s.last_query = Some(s.query.clone());
         let rel: Vec<String> = s.recent.iter().map(|p| p.strip_prefix(&root).unwrap_or(p).to_string_lossy().replace('\\', "/")).collect();
         s.results = if s.query.trim().is_empty() { rel.into_iter().map(|path| SearchHit { path, indices: Vec::new() }).collect() } else { match_files(&rel, &s.query) };
         s.selected = usize::from(s.query.trim().is_empty() && s.results.len() > 1);
-    } else if !state.search.recent_mode && state.search.last_query.as_deref() != Some(state.search.query.as_str()) {
-        state.search.last_query = Some(state.search.query.clone());
-        state.search.generation += 1;
-        let generation = state.search.generation;
-        let files = state.index.files.clone();
-        let query = state.search.query.clone();
+    } else if !state.ws.search.recent_mode && state.ws.search.last_query.as_deref() != Some(state.ws.search.query.as_str()) {
+        state.ws.search.last_query = Some(state.ws.search.query.clone());
+        state.ws.search.generation += 1;
+        let generation = state.ws.search.generation;
+        let files = state.ws.index.files.clone();
+        let query = state.ws.search.query.clone();
         state.jobs.spawn_quiet(
             move || match_files(&files, &query),
             move |state, hits| {
-                if state.search.generation == generation {
-                    state.search.results = hits;
-                    state.search.selected = 0;
+                if state.ws.search.generation == generation {
+                    state.ws.search.results = hits;
+                    state.ws.search.selected = 0;
                 }
             },
         );
@@ -275,7 +275,7 @@ pub fn show(state: &mut AppState, ctx: &egui::Context) -> Option<PathBuf> {
             i.consume_key(egui::Modifiers::NONE, Key::Enter),
         )
     });
-    let s = &mut state.search;
+    let s = &mut state.ws.search;
     if up {
         s.selected = s.selected.saturating_sub(1);
     }
@@ -287,10 +287,10 @@ pub fn show(state: &mut AppState, ctx: &egui::Context) -> Option<PathBuf> {
             chosen = Some(root.join(&hit.path));
         }
     }
-    let indexing = state.index.building;
-    let count = state.index.files.len();
-    let modal = Modal::new(Id::new("search-everywhere"))
-        .area(Modal::default_area(Id::new("search-everywhere-area")).anchor(egui::Align2::CENTER_TOP, [0.0, 90.0]))
+    let indexing = state.ws.index.building;
+    let count = state.ws.index.files.len();
+    let modal = Modal::new(crate::workspace::wid("search-everywhere"))
+        .area(Modal::default_area(crate::workspace::wid("search-everywhere-area")).anchor(egui::Align2::CENTER_TOP, [0.0, 90.0]))
         .show(ctx, |ui| {
             ui.set_width(640.0);
             ui.horizontal(|ui| {

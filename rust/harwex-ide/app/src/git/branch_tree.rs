@@ -232,7 +232,7 @@ pub enum TreeAction {
 }
 
 pub fn focus_id(tab: u64) -> Id {
-    Id::new(("git-branch-tree", tab))
+    crate::workspace::wid(("git-branch-tree", tab))
 }
 
 /// The search field and the tree. `tab` keys the widget ids, so each Log tab has its own.
@@ -241,13 +241,13 @@ pub fn show(state: &mut AppState, tree: &mut TreeState, tab: u64, ui: &mut Ui) -
     let mut actions = Vec::new();
     // The search field, with a magnifier inside like IDEA's "Branch or tag".
     ui.add_space(4.0);
-    let search = ui.add(TextEdit::singleline(&mut tree.query).hint_text("Branch or tag").desired_width(f32::INFINITY).margin(egui::Margin { left: 28, right: 4, top: 3, bottom: 3 }).id(Id::new(("git-branch-search", tab))));
+    let search = ui.add(TextEdit::singleline(&mut tree.query).hint_text("Branch or tag").desired_width(f32::INFINITY).margin(egui::Margin { left: 28, right: 4, top: 3, bottom: 3 }).id(crate::workspace::wid(("git-branch-search", tab))));
     crate::util::label_widget(&search, egui::WidgetType::TextEdit, "Branch or tag");
     icons::paint(ui.painter(), Rect::from_center_size(pos2(ui.max_rect().min.x + 14.0, search.rect.center().y), vec2(14.0, 14.0)), icons::Icon::Search, t.text_dim);
     ui.add_space(4.0);
 
-    let Some(repo_dir) = state.git.repo.as_ref().map(|r| r.workdir().to_path_buf()) else { return actions };
-    let win = &state.git_ui.window;
+    let Some(repo_dir) = state.ws.git.repo.as_ref().map(|r| r.workdir().to_path_buf()) else { return actions };
+    let win = &state.ws.git_ui.window;
     let Some(refs) = win.refs.as_ref() else {
         ui.label(RichText::new("Loading branches...").color(t.text_dim));
         return actions;
@@ -275,7 +275,7 @@ pub fn show(state: &mut AppState, tree: &mut TreeState, tab: u64, ui: &mut Ui) -
     let mut area = ScrollArea::vertical().auto_shrink([false, false]).id_salt(("git-branch-rows", tab));
     if std::mem::take(&mut tree.scroll_to_selected) {
         if let Some(i) = tree.selected.as_ref().and_then(|k| rows.iter().position(|r| &r.key == k)) {
-            let off = ui.ctx().data(|d| d.get_temp::<f32>(Id::new(("git-branch-offset", tab)))).unwrap_or(0.0);
+            let off = ui.ctx().data(|d| d.get_temp::<f32>(crate::workspace::wid(("git-branch-offset", tab)))).unwrap_or(0.0);
             let (top, view) = (i as f32 * row_h, ui.available_height());
             if top < off {
                 area = area.vertical_scroll_offset(top);
@@ -293,7 +293,7 @@ pub fn show(state: &mut AppState, tree: &mut TreeState, tab: u64, ui: &mut Ui) -
         ui.spacing_mut().item_spacing.y = 0.0;
         for row in &rows[range] {
             let (_, rect) = ui.allocate_space(vec2(ui.available_width(), row_h));
-            let resp = ui.interact(rect, Id::new(("git-branch-row", tab, &row.key)), Sense::click());
+            let resp = ui.interact(rect, crate::workspace::wid(("git-branch-row", tab, &row.key)), Sense::click());
             let selected = tree.selected.as_deref() == Some(row.key.as_str());
             crate::util::label_selectable(&resp, row.label(), selected);
             let painter = ui.painter();
@@ -378,7 +378,7 @@ pub fn show(state: &mut AppState, tree: &mut TreeState, tab: u64, ui: &mut Ui) -
             }
         }
     });
-    ui.ctx().data_mut(|d| d.insert_temp(Id::new(("git-branch-offset", tab)), out.state.offset.y));
+    ui.ctx().data_mut(|d| d.insert_temp(crate::workspace::wid(("git-branch-offset", tab)), out.state.offset.y));
     if take_focus {
         // Re-requested on the press frame, after the interact call (see `tree::show`).
         focus_resp.request_focus();
@@ -408,7 +408,7 @@ fn badges(ui: &Ui, b: &BranchRow, at: egui::Pos2) {
         let w = g.size().x;
         painter.galley(pos2(x + 12.0, at.y - g.size().y / 2.0), g, color);
         let r = Rect::from_min_size(pos2(x, at.y - 7.0), vec2(12.0 + w, 14.0));
-        let node = ui.interact(r, Id::new(("git-branch-badge", &b.name, b.remote, up)), Sense::hover());
+        let node = ui.interact(r, crate::workspace::wid(("git-branch-badge", &b.name, b.remote, up)), Sense::hover());
         crate::util::label_widget(&node, egui::WidgetType::Label, format!("{}: {n} {what}", b.name));
         x += 12.0 + w + 6.0;
     }

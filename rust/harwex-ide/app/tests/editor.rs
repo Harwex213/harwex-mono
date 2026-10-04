@@ -48,7 +48,7 @@ fn typing_undo_redo() {
     }
     ide.settle();
     assert_eq!(ide.active_text(), UTIL);
-    assert!(!ide.state().tabs.active_tab().expect("tab").is_dirty(), "undo to the saved state is clean");
+    assert!(!ide.state().ws.tabs.active_tab().expect("tab").is_dirty(), "undo to the saved state is clean");
 
     // Redo brings the typing back, up to the Backspace.
     ide.cmd_shift(Key::Z);
@@ -274,7 +274,7 @@ fn menu_git_rollback_then_undo() {
 fn menu_git_annotate_then_type() {
     let (_fx, mut ide) = open_util("menu_annotate");
     menu_pick(&mut ide, 4, 0, &["Git", "Annotate with Git Blame"]);
-    ide.wait_for("blame shown", |s| s.tabs.active_editor().is_some_and(|e| !e.annotations.is_empty()));
+    ide.wait_for("blame shown", |s| s.ws.tabs.active_editor().is_some_and(|e| !e.annotations.is_empty()));
     assert!(editor_focused(&ide));
     ide.type_text("// ");
     ide.settle();
@@ -303,9 +303,9 @@ fn node_modules_tab_is_read_only() {
     let mut ide = Ide::open(SUITE, &repo.dir);
     let path = std::fs::canonicalize(repo.dir.join("node_modules/dep/index.js")).expect("file");
     ide.state_mut().open_location(&path, None, true);
-    ide.wait_for("dep tab", |s| s.tabs.active_editor().is_some_and(|e| e.path == path));
+    ide.wait_for("dep tab", |s| s.ws.tabs.active_editor().is_some_and(|e| e.path == path));
     ide.settle();
-    assert!(ide.state().tabs.active_editor().expect("editor").read_only);
+    assert!(ide.state().ws.tabs.active_editor().expect("editor").read_only);
     ide.assert_text("read-only");
 
     // Typing, Backspace, Enter, Cmd+D and Cmd+/ change nothing.
@@ -317,7 +317,7 @@ fn node_modules_tab_is_read_only() {
     ide.cmd(Key::Slash);
     ide.settle();
     assert_eq!(ide.active_text(), "module.exports = 1;\n");
-    assert!(!ide.state().tabs.active_tab().expect("tab").is_dirty());
+    assert!(!ide.state().ws.tabs.active_tab().expect("tab").is_dirty());
     // Navigation and selection still work.
     ide.key_mods(SHIFT, Key::ArrowRight);
     assert_eq!(ide.selected_text(), ".");
@@ -341,7 +341,7 @@ fn gutter_marks_for_changed_lines() {
     let repo = changed_repo(fx.path("repo"));
     let mut ide = Ide::open(SUITE, &repo.dir);
     ide.open_file("src/app.ts");
-    let marks = ide.state().tabs.active_editor().expect("editor").marks.clone();
+    let marks = ide.state().ws.tabs.active_editor().expect("editor").marks.clone();
     assert_eq!(marks, vec![(3, GutterMark::Modified)], "the changed call on line 4");
 
     // An inserted line gets an Added bar; deleting a line leaves a Deleted triangle.
@@ -352,7 +352,7 @@ fn gutter_marks_for_changed_lines() {
     ide.click_at(p);
     ide.key_mods(CMD, Key::Backspace);
     ide.settle();
-    let marks = ide.state().tabs.active_editor().expect("editor").marks.clone();
+    let marks = ide.state().ws.tabs.active_editor().expect("editor").marks.clone();
     assert!(marks.contains(&(0, GutterMark::Added)), "{marks:?}");
     assert!(marks.contains(&(4, GutterMark::Modified)), "{marks:?}");
     assert!(marks.iter().any(|(_, m)| *m == GutterMark::Deleted), "{marks:?}");

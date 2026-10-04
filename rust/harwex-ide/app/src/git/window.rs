@@ -8,7 +8,7 @@
 use std::collections::{BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
 
-use egui::{pos2, vec2, Frame, Id, Margin, Rect, RichText, ScrollArea, Sense, Ui};
+use egui::{pos2, vec2, Frame, Margin, Rect, RichText, ScrollArea, Sense, Ui};
 use ide_git::{BranchCompare, ChangedFile, CommitInfo, Oid};
 
 use super::branch_tree::{self, Refs, TreeAction, TreeState};
@@ -164,7 +164,7 @@ impl GitWindowUi {
 
 /// A writing git command started: a closed Console tab comes back, without taking the focus.
 pub fn reopen_console(state: &mut AppState) {
-    let w = &mut state.git_ui.window;
+    let w = &mut state.ws.git_ui.window;
     if !w.has_console() {
         w.push_tab(TabKind::Console, false);
     }
@@ -174,7 +174,7 @@ pub fn reopen_console(state: &mut AppState) {
 /// tab, or activates the open History tab of the same path.
 fn take_history(state: &mut AppState) {
     let Some(view) = log::take_file_history(state) else { return };
-    let w = &mut state.git_ui.window;
+    let w = &mut state.ws.git_ui.window;
     let path = view.filter().paths.clone();
     match w.tabs.iter().position(|t| matches!(&t.kind, TabKind::History(v) if v.filter().paths == path)) {
         Some(i) => w.active = i,
@@ -184,18 +184,18 @@ fn take_history(state: &mut AppState) {
 
 /// After `refresh_git`: branches may have moved, so the tree reads them again.
 pub fn on_git_refreshed(state: &mut AppState) {
-    state.git_ui.window.refs_stale = true;
-    if state.layout.bottom == Some(ToolWindow::Git) {
+    state.ws.git_ui.window.refs_stale = true;
+    if state.ws.layout.bottom == Some(ToolWindow::Git) {
         load_refs(state);
     }
 }
 
 fn load_refs(state: &mut AppState) {
-    let w = &mut state.git_ui.window;
+    let w = &mut state.ws.git_ui.window;
     if w.refs_loading {
         return;
     }
-    let Some(repo) = state.git.repo.clone() else { return };
+    let Some(repo) = state.ws.git.repo.clone() else { return };
     w.refs_loading = true;
     w.refs_stale = false;
     let generation = state.project_generation();
@@ -205,13 +205,13 @@ fn load_refs(state: &mut AppState) {
             if state.project_generation() != generation {
                 return;
             }
-            let w = &mut state.git_ui.window;
+            let w = &mut state.ws.git_ui.window;
             w.refs_loading = false;
             match res {
                 Ok(r) => w.refs = Some(r),
                 Err(e) => state.notifications.error("Cannot list branches", e.to_string()),
             }
-            if state.git_ui.window.refs_stale {
+            if state.ws.git_ui.window.refs_stale {
                 load_refs(state);
             }
         },
@@ -225,14 +225,14 @@ pub fn load_storage(state: &mut AppState, storage: &dyn eframe::Storage) {
         let Some(dir) = parts.next().filter(|d| !d.is_empty()) else { continue };
         let set: BTreeSet<String> = parts.filter(|p| !p.is_empty()).map(str::to_string).collect();
         if !set.is_empty() {
-            state.git_ui.window.favorites.insert(PathBuf::from(dir), set);
+            state.ws.git_ui.window.favorites.insert(PathBuf::from(dir), set);
         }
     }
 }
 
 pub fn save_storage(state: &AppState, storage: &mut dyn eframe::Storage) {
     let mut lines: Vec<String> = state
-        .git_ui
+        .ws.git_ui
         .window
         .favorites
         .iter()
@@ -251,7 +251,7 @@ pub fn header_tabs(state: &mut AppState, ui: &mut Ui) {
     take_history(state);
     let t = &theme::T;
     ui.spacing_mut().item_spacing.x = 2.0;
-    let w = &mut state.git_ui.window;
+    let w = &mut state.ws.git_ui.window;
     let font = t.ui_font();
     let tabs: Vec<(String, f32, bool)> = w
         .tabs
@@ -298,12 +298,12 @@ pub fn header_tabs(state: &mut AppState, ui: &mut Ui) {
         let (title, width, closable) = &tabs[i];
         let (rect, _) = ui.allocate_exact_size(vec2(*width, TAB_H), Sense::hover());
         let id = w.tabs[i].id;
-        let resp = ui.interact(rect, Id::new(("git-window-tab", id)), Sense::click());
+        let resp = ui.interact(rect, crate::workspace::wid(("git-window-tab", id)), Sense::click());
         let active = i == w.active;
         crate::util::label_selectable(&resp, format!("Git tab {title}"), active);
         let close_rect = Rect::from_center_size(pos2(rect.max.x - 4.0 - CLOSE_W / 2.0, rect.center().y), vec2(CLOSE_W, CLOSE_W));
         let close_resp = closable.then(|| {
-            let r = ui.interact(close_rect, Id::new(("git-window-tab-close", id)), Sense::click());
+            let r = ui.interact(close_rect, crate::workspace::wid(("git-window-tab-close", id)), Sense::click());
             crate::util::label_widget(&r, egui::WidgetType::Button, format!("Close {title}"));
             r
         });
@@ -335,7 +335,7 @@ pub fn header_tabs(state: &mut AppState, ui: &mut Ui) {
     }
     if overflow {
         let more = crate::layout::icon_button(ui, Icon::ChevronDown, "Show all tabs", "Show all tabs");
-        let popup_id = Id::new("git-window-all-tabs");
+        let popup_id = crate::workspace::wid("git-window-all-tabs");
         if more.clicked() {
             ui.memory_mut(|m| m.toggle_popup(popup_id));
         }
@@ -362,15 +362,15 @@ pub fn header_tabs(state: &mut AppState, ui: &mut Ui) {
 // Body
 
 pub fn tool_window(state: &mut AppState, ui: &mut Ui) {
-    if state.git.repo.is_none() {
+    if state.ws.git.repo.is_none() {
         ui.label(RichText::new("The project is not inside a git repository.").color(theme::T.text_dim));
         return;
     }
     take_history(state);
-    if state.git_ui.window.refs_stale {
+    if state.ws.git_ui.window.refs_stale {
         load_refs(state);
     }
-    let w = &mut state.git_ui.window;
+    let w = &mut state.ws.git_ui.window;
     w.active = w.active.min(w.tabs.len() - 1);
     let index = w.active;
     let id = w.tabs[index].id;
@@ -379,7 +379,7 @@ pub fn tool_window(state: &mut AppState, ui: &mut Ui) {
     let mut actions = Vec::new();
     match &mut kind {
         TabKind::Log(tab) => {
-            egui::SidePanel::left(Id::new(("git-branch-tree-panel", id)))
+            egui::SidePanel::left(crate::workspace::wid(("git-branch-tree-panel", id)))
                 .resizable(true)
                 .default_width(240.0)
                 .width_range(150.0..=600.0)
@@ -397,8 +397,8 @@ pub fn tool_window(state: &mut AppState, ui: &mut Ui) {
         TabKind::Compare(c) => compare_body(state, c, id, ui),
         TabKind::WorktreeDiff(d) => worktree_diff_body(state, d, ui),
     }
-    if let Some(i) = state.git_ui.window.index_of(id) {
-        state.git_ui.window.tabs[i].kind = kind;
+    if let Some(i) = state.ws.git_ui.window.index_of(id) {
+        state.ws.git_ui.window.tabs[i].kind = kind;
     }
     for a in actions {
         apply(state, a);
@@ -422,8 +422,8 @@ fn apply(state: &mut AppState, a: TreeAction) {
             super::remote::run_op(state, "Delete Tag", body, false, move |r| r.delete_tag(&n).map(|_| None), |_, _| {});
         }
         TreeAction::ToggleFavorite(key) => {
-            let Some(dir) = state.git.repo.as_ref().map(|r| r.workdir().to_path_buf()) else { return };
-            let set = state.git_ui.window.favorites.entry(dir).or_default();
+            let Some(dir) = state.ws.git.repo.as_ref().map(|r| r.workdir().to_path_buf()) else { return };
+            let set = state.ws.git_ui.window.favorites.entry(dir).or_default();
             if !set.remove(&key) {
                 set.insert(key);
             }
@@ -434,15 +434,15 @@ fn apply(state: &mut AppState, a: TreeAction) {
 }
 
 fn open_compare(state: &mut AppState, other: String) {
-    let w = &mut state.git_ui.window;
+    let w = &mut state.ws.git_ui.window;
     if let Some(i) = w.tabs.iter().position(|t| matches!(&t.kind, TabKind::Compare(c) if c.other == other)) {
         w.active = i;
     } else {
-        let current = state.git.branch.clone().unwrap_or_else(|| "HEAD".into());
+        let current = state.ws.git.branch.clone().unwrap_or_else(|| "HEAD".into());
         w.push_tab(TabKind::Compare(Box::new(CompareTab { current, other: other.clone(), data: None, selected: None, files: None })), true);
     }
-    let Some(repo) = state.git.repo.clone() else { return };
-    let id = state.git_ui.window.tabs[state.git_ui.window.active].id;
+    let Some(repo) = state.ws.git.repo.clone() else { return };
+    let id = state.ws.git_ui.window.tabs[state.ws.git_ui.window.active].id;
     state.jobs.spawn(
         format!("Comparing with {other}"),
         move || repo.compare_with_branch(&other).map_err(|e| e.to_string()),
@@ -455,14 +455,14 @@ fn open_compare(state: &mut AppState, other: String) {
 }
 
 fn open_worktree_diff(state: &mut AppState, rev: String) {
-    let w = &mut state.git_ui.window;
+    let w = &mut state.ws.git_ui.window;
     if let Some(i) = w.tabs.iter().position(|t| matches!(&t.kind, TabKind::WorktreeDiff(d) if d.rev == rev)) {
         w.active = i;
     } else {
         w.push_tab(TabKind::WorktreeDiff(Box::new(WorktreeDiffTab { rev: rev.clone(), files: None })), true);
     }
-    let Some(repo) = state.git.repo.clone() else { return };
-    let id = state.git_ui.window.tabs[state.git_ui.window.active].id;
+    let Some(repo) = state.ws.git.repo.clone() else { return };
+    let id = state.ws.git_ui.window.tabs[state.ws.git_ui.window.active].id;
     state.jobs.spawn(
         format!("Comparing {rev} with the working tree"),
         move || repo.diff_with_working_tree(&rev).map_err(|e| e.to_string()),
@@ -475,7 +475,7 @@ fn open_worktree_diff(state: &mut AppState, rev: String) {
 }
 
 fn tab_kind_mut(state: &mut AppState, id: u64) -> Option<&mut TabKind> {
-    let w = &mut state.git_ui.window;
+    let w = &mut state.ws.git_ui.window;
     let i = w.index_of(id)?;
     Some(&mut w.tabs[i].kind)
 }
@@ -533,7 +533,7 @@ fn compare_body(state: &mut AppState, c: &mut CompareTab, id: u64, ui: &mut Ui) 
     };
     let mut pick: Option<Oid> = None;
     let mut open: Option<(Oid, PathBuf)> = None;
-    egui::SidePanel::right(Id::new(("git-compare-files", id))).resizable(true).default_width(320.0).width_range(160.0..=700.0).frame(Frame::NONE.inner_margin(Margin { left: 8, right: 0, top: 0, bottom: 0 })).show_inside(ui, |ui| {
+    egui::SidePanel::right(crate::workspace::wid(("git-compare-files", id))).resizable(true).default_width(320.0).width_range(160.0..=700.0).frame(Frame::NONE.inner_margin(Margin { left: 8, right: 0, top: 0, bottom: 0 })).show_inside(ui, |ui| {
         match &c.files {
             None => {
                 ui.label(RichText::new("Select a commit to see its files.").color(t.text_dim));
@@ -569,13 +569,13 @@ fn compare_body(state: &mut AppState, c: &mut CompareTab, id: u64, ui: &mut Ui) 
         });
     });
     if let Some((oid, path)) = open {
-        let abs = state.git.repo.as_ref().map_or(path.clone(), |r| r.workdir().join(&path));
+        let abs = state.ws.git.repo.as_ref().map_or(path.clone(), |r| r.workdir().join(&path));
         super::diff::open_commit_diff(state, oid, &abs);
     }
     if let Some(oid) = pick.filter(|o| c.selected != Some(*o)) {
         c.selected = Some(oid);
         c.files = None;
-        let Some(repo) = state.git.repo.clone() else { return };
+        let Some(repo) = state.ws.git.repo.clone() else { return };
         state.jobs.spawn_quiet(
             move || repo.changes_of(&[oid]).map_err(|e| e.to_string()),
             move |state, res| {

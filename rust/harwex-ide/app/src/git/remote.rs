@@ -7,7 +7,7 @@ use std::collections::VecDeque;
 use std::path::PathBuf;
 use std::time::Instant;
 
-use egui::{vec2, Align2, Context, Id, Key, Modal, RichText, ScrollArea, Sense, TextEdit, Ui};
+use egui::{vec2, Align2, Context, Key, Modal, RichText, ScrollArea, Sense, TextEdit, Ui};
 use ide_git::{CommandOutcome, CommitDetails, CommitInfo, Error, Oid, PushTarget, Repo, StashEntry};
 
 use super::log::{format_time, kind_color, short};
@@ -114,8 +114,8 @@ pub fn open_push_dialog_for(state: &mut AppState, branch: String) {
 }
 
 fn open_push(state: &mut AppState, branch: Option<String>) {
-    let Some(repo) = state.git.repo.clone() else { return };
-    state.git_ui.remote.push = Some(PushDialog { loading: true, branch: branch.clone(), ..Default::default() });
+    let Some(repo) = state.ws.git.repo.clone() else { return };
+    state.ws.git_ui.remote.push = Some(PushDialog { loading: true, branch: branch.clone(), ..Default::default() });
     state.jobs.spawn(
         "Collecting outgoing commits",
         move || {
@@ -129,7 +129,7 @@ fn open_push(state: &mut AppState, branch: Option<String>) {
             (name, commits, target)
         },
         |state, (name, commits, target)| {
-            let Some(d) = state.git_ui.remote.push.as_mut() else { return };
+            let Some(d) = state.ws.git_ui.remote.push.as_mut() else { return };
             d.loading = false;
             d.detached = name.is_none();
             d.branch = name;
@@ -156,27 +156,27 @@ fn open_push(state: &mut AppState, branch: Option<String>) {
 }
 
 pub fn open_update_dialog(state: &mut AppState) {
-    if state.git.repo.is_none() {
+    if state.ws.git.repo.is_none() {
         return;
     }
-    state.git_ui.remote.update = Some(UpdateDialog { rebase: state.git_ui.remote.update_rebase });
+    state.ws.git_ui.remote.update = Some(UpdateDialog { rebase: state.ws.git_ui.remote.update_rebase });
 }
 
 pub fn open_stash_dialog(state: &mut AppState) {
-    if state.git.repo.is_none() {
+    if state.ws.git.repo.is_none() {
         return;
     }
-    state.git_ui.remote.stash = Some(StashDialog::default());
+    state.ws.git_ui.remote.stash = Some(StashDialog::default());
 }
 
 pub fn open_unstash_dialog(state: &mut AppState) {
-    let Some(repo) = state.git.repo.clone() else { return };
-    let keep = state.git_ui.remote.unstash.as_ref().map(|d| d.reinstate_index).unwrap_or(false);
-    state.git_ui.remote.unstash = Some(UnstashDialog { loading: true, reinstate_index: keep, ..Default::default() });
+    let Some(repo) = state.ws.git.repo.clone() else { return };
+    let keep = state.ws.git_ui.remote.unstash.as_ref().map(|d| d.reinstate_index).unwrap_or(false);
+    state.ws.git_ui.remote.unstash = Some(UnstashDialog { loading: true, reinstate_index: keep, ..Default::default() });
     state.jobs.spawn_quiet(
         move || repo.stash_list(),
         |state, res| {
-            let Some(d) = state.git_ui.remote.unstash.as_mut() else { return };
+            let Some(d) = state.ws.git_ui.remote.unstash.as_mut() else { return };
             d.loading = false;
             match res {
                 Ok(list) => {
@@ -200,11 +200,11 @@ enum DetailsTarget {
 }
 
 fn load_details(state: &mut AppState, oid: Oid, target: DetailsTarget) {
-    let Some(repo) = state.git.repo.clone() else { return };
+    let Some(repo) = state.ws.git.repo.clone() else { return };
     state.jobs.spawn_quiet(
         move || repo.commit_details(&oid).ok(),
         move |state, d| {
-            let r = &mut state.git_ui.remote;
+            let r = &mut state.ws.git_ui.remote;
             match target {
                 DetailsTarget::Push => {
                     if let Some(p) = r.push.as_mut().filter(|p| p.selected == Some(oid)) {
@@ -285,7 +285,7 @@ fn commit_row(ui: &mut Ui, c: &CommitInfo, selected: bool) -> egui::Response {
 }
 
 fn push_window(state: &mut AppState, ctx: &Context) {
-    let Some(d) = state.git_ui.remote.push.as_mut() else { return };
+    let Some(d) = state.ws.git_ui.remote.push.as_mut() else { return };
     let mut open = true;
     let mut deferred: Deferred = None;
     let mut select: Option<Oid> = None;
@@ -296,7 +296,7 @@ fn push_window(state: &mut AppState, ctx: &Context) {
         None => format!("Push {branch}"),
     };
     egui::Window::new(title)
-        .id(Id::new("git-push-window"))
+        .id(crate::workspace::wid("git-push-window"))
         .open(&mut open)
         .collapsible(false)
         .resizable(false)
@@ -393,7 +393,7 @@ fn push_window(state: &mut AppState, ctx: &Context) {
         load_details(state, oid, DetailsTarget::Push);
     }
     if !open {
-        state.git_ui.remote.push = None;
+        state.ws.git_ui.remote.push = None;
     }
     if let Some((oid, path)) = diff {
         super::diff::open_commit_diff(state, oid, &path);
@@ -408,8 +408,8 @@ fn push_job(branch: String, force: bool, set_upstream: bool) -> Box<dyn FnOnce(&
         let title = format!("{} {branch}", if force { "Force Push" } else { "Push" });
         run_op(state, title, "Pushed", false, move |r| r.push_branch(&branch, force, set_upstream).map(Some), |state, ok| {
             if ok {
-                state.git_ui.remote.push = None;
-            } else if let Some(d) = state.git_ui.remote.push.as_mut() {
+                state.ws.git_ui.remote.push = None;
+            } else if let Some(d) = state.ws.git_ui.remote.push.as_mut() {
                 d.pushing = false;
             }
         });
@@ -417,10 +417,10 @@ fn push_job(branch: String, force: bool, set_upstream: bool) -> Box<dyn FnOnce(&
 }
 
 fn update_window(state: &mut AppState, ctx: &Context) {
-    let Some(d) = state.git_ui.remote.update.as_mut() else { return };
+    let Some(d) = state.ws.git_ui.remote.update.as_mut() else { return };
     let mut close = false;
     let mut go: Option<bool> = None;
-    let m = Modal::new(Id::new("git-update-dialog")).show(ctx, |ui| {
+    let m = Modal::new(crate::workspace::wid("git-update-dialog")).show(ctx, |ui| {
         ui.set_width(360.0);
         ui.label(RichText::new("Update Project").strong().color(theme::T.text_bright));
         ui.add_space(6.0);
@@ -441,11 +441,11 @@ fn update_window(state: &mut AppState, ctx: &Context) {
         close = true;
     }
     if let Some(rebase) = go {
-        state.git_ui.remote.update = None;
-        state.git_ui.remote.update_rebase = rebase;
+        state.ws.git_ui.remote.update = None;
+        state.ws.git_ui.remote.update_rebase = rebase;
         update_project(state, rebase);
     } else if close {
-        state.git_ui.remote.update = None;
+        state.ws.git_ui.remote.update = None;
     }
 }
 
@@ -455,11 +455,11 @@ pub fn update_project(state: &mut AppState, rebase: bool) {
 }
 
 fn stash_window(state: &mut AppState, ctx: &Context) {
-    let Some(d) = state.git_ui.remote.stash.as_mut() else { return };
+    let Some(d) = state.ws.git_ui.remote.stash.as_mut() else { return };
     let mut close = false;
     let mut go = false;
-    let branch = state.git.branch.clone().unwrap_or_default();
-    let m = Modal::new(Id::new("git-stash-dialog")).show(ctx, |ui| {
+    let branch = state.ws.git.branch.clone().unwrap_or_default();
+    let m = Modal::new(crate::workspace::wid("git-stash-dialog")).show(ctx, |ui| {
         ui.set_width(420.0);
         ui.label(RichText::new("Stash Changes").strong().color(theme::T.text_bright));
         ui.label(RichText::new(format!("Current branch: {branch}")).small().color(theme::T.text_dim));
@@ -487,21 +487,21 @@ fn stash_window(state: &mut AppState, ctx: &Context) {
     if go {
         let message = d.message.clone();
         let untracked = d.include_untracked;
-        state.git_ui.remote.stash = None;
+        state.ws.git_ui.remote.stash = None;
         run_op(state, "Stash Changes", "Changes stashed", false, move |r| r.stash_save(&message, untracked).map(|_| None), |_, _| {});
     } else if close {
-        state.git_ui.remote.stash = None;
+        state.ws.git_ui.remote.stash = None;
     }
 }
 
 fn unstash_window(state: &mut AppState, ctx: &Context) {
-    let Some(d) = state.git_ui.remote.unstash.as_mut() else { return };
+    let Some(d) = state.ws.git_ui.remote.unstash.as_mut() else { return };
     let mut open = true;
     let mut select: Option<usize> = None;
     let mut deferred: Deferred = None;
     let mut diff: Option<(Oid, PathBuf)> = None;
     egui::Window::new("Unstash Changes")
-        .id(Id::new("git-unstash-window"))
+        .id(crate::workspace::wid("git-unstash-window"))
         .open(&mut open)
         .collapsible(false)
         .resizable(false)
@@ -565,7 +565,7 @@ fn unstash_window(state: &mut AppState, ctx: &Context) {
                         d.busy = true;
                         deferred = Some(Box::new(move |state| {
                             run_op(state, "Drop Stash", format!("Dropped stash@{{{drop_ix}}}"), false, move |r| r.stash_drop(stash_index(r, drop_ix, drop_oid)?).map(|_| None), |state, _| {
-                                if state.git_ui.remote.unstash.is_some() {
+                                if state.ws.git_ui.remote.unstash.is_some() {
                                     open_unstash_dialog(state);
                                 }
                             });
@@ -592,8 +592,8 @@ fn unstash_window(state: &mut AppState, ctx: &Context) {
                                     let title = if pop { "Unstash (pop)" } else { "Unstash (apply)" };
                                     run_op(state, title, format!("Applied stash@{{{sel}}}"), true, move |r| r.stash_apply_with(stash_index(r, sel, Some(sel_oid))?, pop, reinstate).map(Some), |state, ok| {
                                         if ok {
-                                            state.git_ui.remote.unstash = None;
-                                        } else if let Some(d) = state.git_ui.remote.unstash.as_mut() {
+                                            state.ws.git_ui.remote.unstash = None;
+                                        } else if let Some(d) = state.ws.git_ui.remote.unstash.as_mut() {
                                             d.busy = false;
                                         }
                                     });
@@ -615,7 +615,7 @@ fn unstash_window(state: &mut AppState, ctx: &Context) {
         }
     }
     if !open {
-        state.git_ui.remote.unstash = None;
+        state.ws.git_ui.remote.unstash = None;
     }
     if let Some((oid, path)) = diff {
         super::diff::open_commit_diff(state, oid, &path);
@@ -636,7 +636,7 @@ where
     W: FnOnce(&Repo) -> OpResult + Send + 'static,
     T: FnOnce(&mut AppState, bool) + Send + 'static,
 {
-    let Some(repo) = state.git.repo.clone() else {
+    let Some(repo) = state.ws.git.repo.clone() else {
         state.notifications.warn("No git repository", "The project is not inside a git repository.");
         return;
     };

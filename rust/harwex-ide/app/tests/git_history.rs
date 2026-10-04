@@ -14,7 +14,7 @@ use ide_git::RepoState;
 const SUITE: &str = "git_history";
 
 fn view(ide: &Ide) -> &LogView {
-    &ide.state().git_ui.window.log_tab(0).expect("the main Log tab").view
+    &ide.state().ws.git_ui.window.log_tab(0).expect("the main Log tab").view
 }
 
 fn subjects(ide: &Ide) -> Vec<String> {
@@ -22,14 +22,14 @@ fn subjects(ide: &Ide) -> Vec<String> {
 }
 
 fn loaded(s: &harwex_ide::state::AppState) -> bool {
-    s.git_ui.window.log_tab(0).is_some_and(|t| !t.view.is_loading() && t.view.error().is_none()) && s.is_idle()
+    s.ws.git_ui.window.log_tab(0).is_some_and(|t| !t.view.is_loading() && t.view.error().is_none()) && s.is_idle()
 }
 
 fn open_log(ide: &mut Ide) {
     ide.click("Git tool window");
-    ide.wait_for("log loaded", |s| s.git_ui.window.log_tab(0).is_some_and(|t| !t.view.is_loading() && !t.view.commits().is_empty()));
+    ide.wait_for("log loaded", |s| s.ws.git_ui.window.log_tab(0).is_some_and(|t| !t.view.is_loading() && !t.view.commits().is_empty()));
     ide.settle();
-    assert_eq!(ide.state().layout.bottom, Some(ToolWindow::Git));
+    assert_eq!(ide.state().ws.layout.bottom, Some(ToolWindow::Git));
 }
 
 /// Drags the top edge of the bottom tool window up, so the Git window shows more rows.
@@ -71,7 +71,7 @@ fn open_branches(ide: &mut Ide) {
     ide.dismiss_toasts();
     // The title bar's branch is display-only; IDEA's "Branches..." shortcut opens the popup.
     ide.key_mods(CTRL_SHIFT, Key::Backtick);
-    ide.wait_until("branches popup", |ide| ide.state().git_ui.branches.is_open() && ide.has("Fetch"));
+    ide.wait_until("branches popup", |ide| ide.state().ws.git_ui.branches.is_open() && ide.has("Fetch"));
     ide.settle();
 }
 
@@ -98,7 +98,7 @@ fn log_graph_details_and_commit_diff() {
     assert!(v.graph()[merge].down.len() >= 2, "the merge row opens a second lane");
     assert!(v.graph().iter().any(|g| g.lane == 1), "side commits sit in their own lane");
     // HEAD's node is hollow, the merge row is grey, and every commit is the user's own.
-    let log = &ide.state().git_ui.log;
+    let log = &ide.state().ws.git_ui.log;
     assert!(v.row_style(log, 0).hollow && !v.row_style(log, 1).hollow);
     assert!(v.row_style(log, merge).dimmed && !v.row_style(log, 0).dimmed);
     assert!((0..v.commits().len()).all(|i| v.row_style(log, i).bold_author));
@@ -107,7 +107,7 @@ fn log_graph_details_and_commit_diff() {
     // Selecting a commit loads its files; a double click on a file opens the commit diff.
     ide.click("Commit More side work");
     wait_changes(&mut ide);
-    assert!(view(&ide).details().is_some_and(|d| d.info.summary == "More side work"));
+    assert!(view(&ide).selected().is_some_and(|o| view(&ide).commits().iter().any(|c| c.oid == o && c.summary == "More side work")));
     assert_eq!(view(&ide).changes().map(<[_]>::len), Some(1));
     ide.double_click("Changed file src/side.ts");
     ide.wait_until("commit diff tab", |ide| ide.active_title().is_some_and(|t| t.starts_with("side.ts @ ")));
@@ -190,6 +190,73 @@ fn log_branch_filter_and_no_merges() {
     assert!(view(&ide).commits().iter().all(|c| c.parents.len() < 2));
 }
 
+/// Hovers the splitter left of the changes pane and checks the resize cursor on both sides of
+/// the edge: the table's scroll bar must not cover the grab area.
+fn splitter_x(ide: &mut Ide, edge: f32, y: f32) -> f32 {
+    for x in [edge - 4.0, edge + 4.0, edge] {
+        ide.move_to(egui::pos2(x, y));
+        ide.steps(2);
+        assert_eq!(ide.cursor_icon(), egui::CursorIcon::ResizeHorizontal, "resize cursor at x {x}, edge {edge}");
+    }
+    edge
+}
+
+/// The filter bar spans only the table column, with No Merges and Refresh right after Paths and
+/// no commit count. The changes pane starts at the filter bar's top and holds only the tree.
+#[test]
+fn log_filter_bar_spans_the_table_and_changes_pane_is_only_the_tree() {
+    let fx = Fixture::new(SUITE, "filter_bar");
+    let repo = history_repo(fx.path("repo"));
+    let mut ide = Ide::open(SUITE, &repo.dir);
+    open_log(&mut ide);
+    ide.click("Commit More side work");
+    wait_changes(&mut ide);
+
+    let check = |ide: &Ide| {
+        let bar = ide.rect("Log filter bar");
+        let pane = ide.rect("Log changes pane");
+        let table_right = ide.rect("Commit More side work").max.x;
+        assert!((bar.max.x - table_right).abs() <= 1.0, "the bar ends at the table's right edge: {bar:?}, table right {table_right}");
+        assert!(bar.max.x <= pane.min.x, "the bar stays left of the changes pane: {bar:?} {pane:?}");
+        assert!((pane.min.y - bar.min.y).abs() <= 1.0, "the changes pane starts at the bar's top: {pane:?} {bar:?}");
+        let paths = ide.rect("Paths filter");
+        let merges = ide.rect("No Merges");
+        let refresh = ide.rect("Refresh log");
+        assert!(merges.min.x > paths.max.x && merges.min.x - paths.max.x < 20.0, "No Merges right after Paths: {paths:?} {merges:?}");
+        assert!(refresh.min.x > merges.max.x && refresh.max.x <= bar.max.x, "Refresh after No Merges, inside the bar: {refresh:?} {bar:?}");
+        assert!((merges.center().y - bar.center().y).abs() < 4.0, "No Merges sits in the bar row");
+        // The tree fills the pane down to its bottom; no commit info below it.
+        let tree = ide.rect("Changes tree");
+        assert!((tree.max.y - pane.max.y).abs() <= 1.0, "the tree reaches the pane's bottom: {tree:?} {pane:?}");
+    };
+    check(&ide);
+    ide.assert_no_text(" commits");
+    assert!(!ide.has("Copy"), "no hash Copy button in the changes pane");
+    let oid = view(&ide).selected().expect("selected commit").to_string();
+    ide.assert_no_text(&oid);
+    ide.snapshot("filter_bar_and_changes_pane");
+
+    // The bar follows the splitter.
+    let before = ide.rect("Log filter bar").max.x;
+    let pane = ide.rect("Log changes pane");
+    let y = pane.center().y;
+    let x = splitter_x(&mut ide, pane.min.x, y);
+    ide.drag(egui::pos2(x, y), egui::pos2(x - 100.0, y));
+    ide.settle();
+    let after = ide.rect("Log filter bar").max.x;
+    assert!(after < before - 80.0, "the bar shrinks with the table: {before} -> {after}");
+    check(&ide);
+
+    // A narrow table clips the filters that do not fit; nothing reaches the changes pane.
+    let pane = ide.rect("Log changes pane");
+    let x = splitter_x(&mut ide, pane.min.x, y);
+    ide.drag(egui::pos2(x, y), egui::pos2(x - 400.0, y));
+    ide.settle();
+    let (bar, pane) = (ide.rect("Log filter bar"), ide.rect("Log changes pane"));
+    assert!(bar.width() < 500.0 && bar.max.x <= pane.min.x, "narrow bar: {bar:?} {pane:?}");
+    ide.snapshot("filter_bar_narrow");
+}
+
 /// A repository with a second author: "Other Dev" wrote one commit.
 fn two_authors_repo(fx: &Fixture) -> Repo {
     let repo = history_repo(fx.path("repo"));
@@ -208,7 +275,7 @@ fn log_user_and_paths_filters() {
     assert_eq!(subjects(&ide).len(), 8);
     // Only the user's own commits have a bold author.
     let v = view(&ide);
-    let log = &ide.state().git_ui.log;
+    let log = &ide.state().ws.git_ui.log;
     assert_eq!(v.commits()[0].author_name, "Other Dev");
     assert!(!v.row_style(log, 0).bold_author && v.row_style(log, 1).bold_author);
     ide.snapshot("log_authors");
@@ -411,7 +478,7 @@ fn changes_menu_edit_source_and_compare_with_local() {
     // Compare with Local: the commit's file vs the file on disk (main lacks TWO).
     ide.click("Git tool window");
     ide.settle();
-    if ide.state().layout.bottom != Some(ToolWindow::Git) {
+    if ide.state().ws.layout.bottom != Some(ToolWindow::Git) {
         ide.click("Git tool window");
         ide.settle();
     }
@@ -437,7 +504,6 @@ fn log_paging() {
     open_log(&mut ide);
     assert_eq!(view(&ide).commits().len(), 300);
     assert!(view(&ide).has_more());
-    ide.assert_text("300+ commits");
     ide.click("Commit Commit 699");
     // The next page loads only while the view is near the end of the loaded rows. A page that
     // arrives after the last PageDown leaves the view far from the new end, and no further page
@@ -451,7 +517,6 @@ fn log_paging() {
     ide.settle();
     let last = view(&ide).commits().last().map(|c| c.summary.clone());
     assert_eq!(last.as_deref(), Some("Commit 0"));
-    ide.assert_text("700 commits");
 }
 
 #[test]
@@ -482,9 +547,9 @@ fn branches_popup_search_checkout_and_new_branch() {
     // The submenu checks out the hovered branch.
     branch_menu(&mut ide, "Local branch feature");
     ide.click("Checkout");
-    ide.wait_for("checked out", |s| s.git.branch.as_deref() == Some("feature"));
+    ide.wait_for("checked out", |s| s.ws.git.branch.as_deref() == Some("feature"));
     assert_eq!(repo.branch(), "feature");
-    assert!(!ide.state().git_ui.branches.is_open());
+    assert!(!ide.state().ws.git_ui.branches.is_open());
 
     // + New Branch... asks for a name and checks the branch out.
     open_branches(&mut ide);
@@ -492,7 +557,7 @@ fn branches_popup_search_checkout_and_new_branch() {
     ide.settle();
     ide.assert_text("Create New Branch");
     ide.type_text("topic/new\n");
-    ide.wait_for("new branch", |s| s.git.branch.as_deref() == Some("topic/new"));
+    ide.wait_for("new branch", |s| s.ws.git.branch.as_deref() == Some("topic/new"));
     assert_eq!(repo.branch(), "topic/new");
 }
 
@@ -506,13 +571,13 @@ fn push_to_bare_remote_with_set_upstream() {
     };
     let mut ide = Ide::open(SUITE, &repo.dir);
     ide.cmd_shift(Key::K);
-    ide.wait_for("push dialog", |s| s.git_ui.remote.push_open() && !s.git_ui.remote.push_commits().is_empty());
+    ide.wait_for("push dialog", |s| s.ws.git_ui.remote.push_open() && !s.ws.git_ui.remote.push_commits().is_empty());
     ide.settle();
-    assert_eq!(ide.state().git_ui.remote.push_commits(), ["Local work to push"]);
+    assert_eq!(ide.state().ws.git_ui.remote.push_commits(), ["Local work to push"]);
     ide.assert_text("main -> origin/main");
     ide.snapshot("push_dialog");
     click_last(&mut ide, "Push");
-    ide.wait_for("pushed", |s| !s.git_ui.remote.push_open());
+    ide.wait_for("pushed", |s| !s.ws.git_ui.remote.push_open());
     assert_eq!(remote_log("main")[0], "Local work to push");
 
     // A branch without upstream: the dialog offers "Set upstream" (on by default).
@@ -520,15 +585,15 @@ fn push_to_bare_remote_with_set_upstream() {
     repo.write("topic.txt", "topic\n");
     repo.commit_all("Topic work");
     ide.state_mut().refresh_git();
-    ide.wait_for("on topic", |s| s.git.branch.as_deref() == Some("topic"));
+    ide.wait_for("on topic", |s| s.ws.git.branch.as_deref() == Some("topic"));
     ide.cmd_shift(Key::K);
-    ide.wait_for("push dialog for topic", |s| s.git_ui.remote.push_open() && !s.git_ui.remote.push_commits().is_empty());
+    ide.wait_for("push dialog for topic", |s| s.ws.git_ui.remote.push_open() && !s.ws.git_ui.remote.push_commits().is_empty());
     ide.settle();
     ide.assert_text("topic -> origin/topic  (new)");
     assert!(ide.is_selected("Set upstream"));
     ide.snapshot("push_new_branch");
     click_last(&mut ide, "Push");
-    ide.wait_for("pushed topic", |s| !s.git_ui.remote.push_open());
+    ide.wait_for("pushed topic", |s| !s.ws.git_ui.remote.push_open());
     assert_eq!(remote_log("topic")[0], "Topic work");
     assert_eq!(repo.git(&["rev-parse", "--abbrev-ref", "topic@{u}"]).trim(), "origin/topic");
 }
@@ -546,12 +611,12 @@ fn update_project_merge() {
     let (_fx, repo) = diverged("update_merge");
     let mut ide = Ide::open(SUITE, &repo.dir);
     ide.cmd(Key::T);
-    ide.wait_for("update dialog", |s| s.git_ui.remote.update_open());
+    ide.wait_for("update dialog", |s| s.ws.git_ui.remote.update_open());
     ide.settle();
     ide.click("Merge incoming changes into the current branch");
     ide.snapshot("update_dialog");
     ide.click("OK");
-    ide.wait_for("updated", |s| !s.git_ui.remote.update_open() && s.is_idle());
+    ide.wait_for("updated", |s| !s.ws.git_ui.remote.update_open() && s.is_idle());
     ide.wait_until("merge done", |_| repo.git(&["log", "-1", "--format=%p"]).split_whitespace().count() == 2);
     let s = repo.subjects("HEAD");
     assert!(s.contains(&"Remote change".to_string()) && s.contains(&"Local work to push".to_string()), "{s:?}");
@@ -563,7 +628,7 @@ fn update_project_rebase_with_cmd_t() {
     let (_fx, repo) = diverged("update_rebase");
     let mut ide = Ide::open(SUITE, &repo.dir);
     ide.cmd(Key::T);
-    ide.wait_for("update dialog", |s| s.git_ui.remote.update_open());
+    ide.wait_for("update dialog", |s| s.ws.git_ui.remote.update_open());
     ide.click("Rebase the current branch on top of incoming changes");
     ide.click("OK");
     ide.wait_until("rebased", |_| repo.subjects("HEAD").first().map(String::as_str) == Some("Local work to push") && repo.subjects("HEAD").get(1).map(String::as_str) == Some("Remote change"));
@@ -581,13 +646,13 @@ fn stash_and_unstash_pop_and_drop_by_id() {
         ide.settle();
         open_branches(ide);
         ide.click("Stash Changes...");
-        ide.wait_for("stash dialog", |s| s.git_ui.remote.stash_open());
+        ide.wait_for("stash dialog", |s| s.ws.git_ui.remote.stash_open());
         ide.settle();
         ide.type_text(message);
         ide.click("Include untracked files");
         ide.dismiss_toasts();
         ide.click("Create Stash");
-        ide.wait_for("stashed", |s| !s.git_ui.remote.stash_open() && s.is_idle());
+        ide.wait_for("stashed", |s| !s.ws.git_ui.remote.stash_open() && s.is_idle());
     };
     stash(&mut ide, "src/util.ts", "wip one");
     stash(&mut ide, "new.txt", "wip two");
@@ -595,7 +660,7 @@ fn stash_and_unstash_pop_and_drop_by_id() {
 
     open_branches(&mut ide);
     ide.click("Unstash Changes...");
-    ide.wait_for("unstash list", |s| s.git_ui.remote.unstash_entries().is_some_and(|e| e.len() == 2) && !s.git_ui.remote.unstash_busy());
+    ide.wait_for("unstash list", |s| s.ws.git_ui.remote.unstash_entries().is_some_and(|e| e.len() == 2) && !s.ws.git_ui.remote.unstash_busy());
     ide.settle();
     ide.snapshot("unstash_dialog");
 
@@ -604,7 +669,7 @@ fn stash_and_unstash_pop_and_drop_by_id() {
     ide.settle();
     ide.dismiss_toasts();
     ide.click("Pop");
-    ide.wait_for("popped", |s| s.git_ui.remote.unstash_entries().is_none() && s.is_idle());
+    ide.wait_for("popped", |s| s.ws.git_ui.remote.unstash_entries().is_none() && s.is_idle());
     assert!(repo.read("src/util.ts").starts_with("wip one"));
     assert_eq!(repo.git(&["stash", "list", "--format=%s"]).trim(), "On main: wip two");
 
@@ -612,7 +677,7 @@ fn stash_and_unstash_pop_and_drop_by_id() {
     // still remove the entry the dialog showed.
     open_branches(&mut ide);
     ide.click("Unstash Changes...");
-    ide.wait_for("unstash list", |s| s.git_ui.remote.unstash_entries().is_some_and(|e| e.len() == 1) && !s.git_ui.remote.unstash_busy());
+    ide.wait_for("unstash list", |s| s.ws.git_ui.remote.unstash_entries().is_some_and(|e| e.len() == 1) && !s.ws.git_ui.remote.unstash_busy());
     repo.write("other.txt", "other\n");
     repo.git(&["stash", "push", "-u", "-q", "-m", "made outside"]);
     ide.dismiss_toasts();
@@ -621,7 +686,7 @@ fn stash_and_unstash_pop_and_drop_by_id() {
     ide.assert_text("Drop stash@{0}? Its changes are lost.");
     let n = ide.rects("Drop").len();
     ide.click_nth("Drop", n - 1);
-    ide.wait_for("dropped", |s| s.is_idle() && s.git_ui.remote.unstash_entries().is_some_and(|e| e.len() == 1));
+    ide.wait_for("dropped", |s| s.is_idle() && s.ws.git_ui.remote.unstash_entries().is_some_and(|e| e.len() == 1));
     assert_eq!(repo.git(&["stash", "list", "--format=%s"]).trim(), "On main: made outside");
 }
 
@@ -632,7 +697,7 @@ fn start_conflict(name: &str) -> (Fixture, Repo, Ide) {
     open_branches(&mut ide);
     branch_menu(&mut ide, "Local branch conflict-b");
     ide.click("Merge 'conflict-b' into 'conflict-a'");
-    ide.wait_for("conflicts dialog", |s| s.git_ui.conflicts.dialog_open() && s.git_ui.conflicts.files().len() == 1 && s.is_idle());
+    ide.wait_for("conflicts dialog", |s| s.ws.git_ui.conflicts.dialog_open() && s.ws.git_ui.conflicts.files().len() == 1 && s.is_idle());
     ide.settle();
     (fx, repo, ide)
 }
@@ -654,7 +719,7 @@ fn conflict_double_click_after_select() {
 #[test]
 fn merge_conflict_resolved_in_merge_tab() {
     let (_fx, repo, mut ide) = start_conflict("conflict");
-    assert_eq!(ide.state().git_ui.conflicts.op(), RepoState::Merge);
+    assert_eq!(ide.state().ws.git_ui.conflicts.op(), RepoState::Merge);
     ide.assert_text("1 file(s) have conflicts. Pick a side, or merge them by hand.");
     ide.dismiss_toasts();
     ide.snapshot("conflicts_dialog");
@@ -666,7 +731,7 @@ fn merge_conflict_resolved_in_merge_tab() {
     ide.click("Accept Theirs");
     ide.settle();
     ide.click("Save and Mark Resolved");
-    ide.wait_for("resolved", |s| s.git_ui.conflicts.files().is_empty() && s.is_idle());
+    ide.wait_for("resolved", |s| s.ws.git_ui.conflicts.files().is_empty() && s.is_idle());
     ide.settle();
     assert_eq!(repo.read("conflict.txt"), "line one\ntheirs version\nline three\n");
     ide.assert_text("Merge in progress: all conflicts resolved");
@@ -675,7 +740,7 @@ fn merge_conflict_resolved_in_merge_tab() {
 
     // Continue commits the merge.
     ide.click("Continue");
-    ide.wait_for("merge committed", |s| s.git_ui.conflicts.op() == RepoState::Clean && s.is_idle());
+    ide.wait_for("merge committed", |s| s.ws.git_ui.conflicts.op() == RepoState::Clean && s.is_idle());
     assert_eq!(repo.git(&["log", "-1", "--format=%p"]).split_whitespace().count(), 2);
     assert!(repo.status_short().is_empty());
 }
@@ -685,7 +750,7 @@ fn abort_from_the_banner() {
     let (_fx, repo, mut ide) = start_conflict("abort");
     // Closing the dialog leaves the banner.
     ide.click("Accept Yours");
-    ide.wait_for("resolved with ours", |s| s.git_ui.conflicts.files().is_empty() && s.is_idle());
+    ide.wait_for("resolved with ours", |s| s.ws.git_ui.conflicts.files().is_empty() && s.is_idle());
     ide.settle();
     ide.dismiss_toasts();
     ide.click("Abort");
@@ -694,7 +759,7 @@ fn abort_from_the_banner() {
     ide.snapshot("abort_confirm");
     let n = ide.rects("Abort").len();
     ide.click_nth("Abort", n - 1);
-    ide.wait_for("aborted", |s| s.git_ui.conflicts.op() == RepoState::Clean && s.is_idle());
+    ide.wait_for("aborted", |s| s.ws.git_ui.conflicts.op() == RepoState::Clean && s.is_idle());
     assert_eq!(repo.read("conflict.txt"), "line one\nours version\nline three\n");
     assert!(repo.status_short().is_empty());
     assert!(!ide.shows_text("Merge in progress"));
@@ -718,7 +783,7 @@ fn log_context_menu_new_branch_and_reset() {
     // Regression: Enter in the name box used to do nothing, because the box took the focus
     // back on the same frame.
     ide.type_text("from-log\n");
-    ide.wait_for("branch from log", |s| s.git.branch.as_deref() == Some("from-log"));
+    ide.wait_for("branch from log", |s| s.ws.git.branch.as_deref() == Some("from-log"));
     assert_eq!(repo.subjects("HEAD")[0], "Add ONE");
     // The new ref reloads the log; a menu opened before the reload lands would close with it.
     ide.settle();

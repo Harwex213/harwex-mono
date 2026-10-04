@@ -102,7 +102,7 @@ enum Row {
 
 /// The Problems tool window body: the active file's problems grouped by severity.
 pub fn tool_window(state: &mut AppState, ui: &mut Ui) {
-    let file: Option<(PathBuf, String, Vec<Row>)> = state.tabs.active_editor_mut().map(|e| {
+    let file: Option<(PathBuf, String, Vec<Row>)> = state.ws.tabs.active_editor_mut().map(|e| {
         e.problems.refresh(&e.doc);
         let rows = super::file_rows(e);
         let mut out = Vec::new();
