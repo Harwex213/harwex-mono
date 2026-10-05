@@ -305,34 +305,6 @@ fn search_everywhere_ranking_with_cmd_shift_o() {
     ide.wait_for("second hit opened", |s| s.ws.tabs.active_editor().is_some_and(|e| e.path.ends_with(&second)));
 }
 
-#[test]
-fn find_in_files() {
-    let fx = Fixture::new(SUITE, "find");
-    let repo = basic_repo(fx.path("repo"));
-    let mut ide = Ide::open(SUITE, &repo.dir);
-    ide.cmd_shift(Key::F);
-    ide.settle();
-    assert!(ide.state().ws.find.dialog_open);
-    ide.type_text("add");
-    ide.snapshot("find_dialog");
-    ide.key(Key::Enter);
-    ide.wait_for("search finished", |s| !s.ws.find.searching && !s.ws.find.searched_for.is_empty());
-    ide.settle();
-    assert_eq!(ide.state().ws.layout.left, Some(ToolWindow::Find));
-    // `add` appears in app.ts twice (import, call) and in util.ts once.
-    assert_eq!(ide.state().ws.find.hit_count(), 3);
-    assert_eq!(ide.state().ws.find.results.len(), 2);
-    ide.assert_text("\"add\": 3 matches in 2 files");
-    ide.snapshot("find_results");
-
-    // A click on a hit opens the file at the match.
-    ide.click_containing("const x = add(1, 2);");
-    ide.wait_for("app.ts opened", |s| s.ws.tabs.active_editor().is_some_and(|e| e.path.ends_with("src/app.ts")));
-    ide.settle();
-    let c = ide.state().ws.tabs.active_editor().map(|e| e.view.cursor()).expect("editor");
-    assert_eq!((c.line, c.column), (3, 12));
-}
-
 /// The status bar holds the breadcrumbs on the left, the language and the memory indicator on
 /// the right. It shows no caret position and no branch; the branch lives in the title bar.
 #[test]
@@ -395,12 +367,12 @@ fn layout_persists_through_storage() {
     let mut storage = MemoryStorage::default();
     {
         let mut ide = Ide::open(SUITE, &repo.dir);
-        ide.click("Find tool window");
+        ide.click("Commit tool window");
         ide.click("Git tool window");
         ide.settle();
         eframe::App::save(ide.harness.state_mut(), &mut storage);
     }
-    assert_eq!(storage.map.get("tool_windows").map(String::as_str), Some("left=Find;bottom=Git"));
+    assert_eq!(storage.map.get("tool_windows").map(String::as_str), Some("left=Commit;bottom=Git"));
     let root = std::fs::canonicalize(&repo.dir).expect("canonical");
     assert_eq!(storage.map.get("last_folder").map(String::as_str), root.to_str());
 
@@ -409,7 +381,7 @@ fn layout_persists_through_storage() {
     let mut ide = Ide::with_options(SUITE, options, Some(&storage));
     ide.wait_for("last folder reopened", |s| s.ws.project.as_ref().is_some_and(|p| p.root == root) && s.ws.git.status_ms.is_some());
     ide.settle();
-    assert_eq!(ide.state().ws.layout.left, Some(ToolWindow::Find));
+    assert_eq!(ide.state().ws.layout.left, Some(ToolWindow::Commit));
     assert_eq!(ide.state().ws.layout.bottom, Some(ToolWindow::Git));
     ide.snapshot("restored_layout");
 }
@@ -882,14 +854,15 @@ fn tool_strips() {
     let repo = basic_repo(fx.path("repo"));
     let mut ide = Ide::open(SUITE, &repo.dir);
     let strip_w = harwex_ide::theme::T.space.strip_w;
-    let left = ["Project", "Commit", "Find", "Git", "Find Usages", "Terminal", "Notifications"];
+    let left = ["Project", "Commit", "Find", "Git", "Problems", "Terminal", "Notifications"];
     for title in left {
         let r = ide.rect(&format!("{title} tool window"));
         assert!(r.max.x <= strip_w, "{title} is on the left strip: {r:?}");
     }
     // The upper group opens left windows, the lower group bottom windows. Notifications ends
     // the lower group, right under Terminal.
-    assert!(ide.rect("Find tool window").max.y < ide.rect("Git tool window").min.y - 200.0);
+    assert!(ide.rect("Commit tool window").max.y < ide.rect("Find tool window").min.y - 200.0);
+    assert!(ide.rect("Find tool window").max.y < ide.rect("Git tool window").min.y);
     assert!(ide.rect("Terminal tool window").max.y < ide.rect("Notifications tool window").min.y);
     // No right strip: the editor island ends one island gap before the right window edge.
     let gap = harwex_ide::theme::T.space.gap;
@@ -900,9 +873,9 @@ fn tool_strips() {
     ide.settle();
     assert!(ide.is_selected("Project tool window") && ide.is_selected("Terminal tool window"));
     assert!(!ide.is_selected("Commit tool window"));
-    ide.hover("Find Usages tool window");
+    ide.hover("Commit tool window");
     ide.wait_real(std::time::Duration::from_millis(400));
-    ide.assert_text("Find Usages  ⌥F7");
+    ide.assert_text("Commit  ⌘K");
     ide.snapshot_here("tool_strips");
     ide.hover("Notifications tool window");
     ide.wait_real(std::time::Duration::from_millis(400));

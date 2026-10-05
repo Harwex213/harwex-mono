@@ -121,22 +121,24 @@ fn find_usages_across_crates() {
     ide.right_click_at(p);
     ide.settle();
     ide.click("Find Usages");
-    ide.wait_for("usages", |s| !s.ws.usages.searching && !s.ws.usages.groups.is_empty());
+    ide.wait_for("usages", |s| s.ws.find_window.active_tab().is_some_and(|t| !t.searching && !t.items.is_empty()));
     ide.settle();
-    let groups = &ide.state().ws.usages.groups;
-    let in_main = groups.iter().find(|g| g.path.ends_with("app/src/main.rs")).map_or(0, |g| g.refs.len());
-    let in_util = groups.iter().find(|g| g.path.ends_with("util/src/lib.rs")).map_or(0, |g| g.refs.len());
+    let items = &ide.state().ws.find_window.active_tab().expect("usages tab").items;
+    let in_main = items.iter().filter(|i| i.path.ends_with("app/src/main.rs")).count();
+    let in_util: Vec<_> = items.iter().filter(|i| i.path.ends_with("util/src/lib.rs")).collect();
     // The `use`, two calls, and the declaration.
-    assert_eq!((in_main, in_util), (3, 1), "{:?}", groups.iter().map(|g| (&g.path, g.refs.len())).collect::<Vec<_>>());
-    let decl = &groups.iter().find(|g| g.path.ends_with("util/src/lib.rs")).expect("util group").refs[0];
-    assert!(decl.is_definition);
-    ide.assert_text("Usages of add: 4 usages in 2 files");
+    assert_eq!((in_main, in_util.len()), (3, 1), "{items:?}");
+    assert_eq!(in_util[0].kind, Some(harwex_ide::find_window::UsageKind::Declaration));
+    ide.assert_text("Declarations group");
     wait_ready(&mut ide);
     ide.snapshot("usages_add");
 
-    ide.click_containing("let again = add(3, 4);");
+    // The last usage (Previous Occurrence wraps there), opened by a double click.
+    ide.click("Previous Occurrence");
     ide.settle();
-    assert_eq!(ide.cursor().0, 7);
+    ide.double_click("app/src/main.rs:8:17");
+    ide.settle();
+    assert_eq!(ide.cursor(), (7, 16));
     finish(ide);
 }
 

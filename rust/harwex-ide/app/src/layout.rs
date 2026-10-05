@@ -13,11 +13,12 @@ pub enum ToolWindow {
     Project,
     /// Git changes / commit. Body drawn by `git::commit_tool_window`.
     Commit,
-    Find,
     // Bottom side.
+    /// Find Usages and Find in Files results, one tab per search. Body drawn by
+    /// `find_window::show`.
+    Find,
     /// Git log. Body drawn by `git::log_tool_window`.
     Git,
-    Usages,
     /// Errors and warnings of the current file.
     Problems,
     Terminal,
@@ -31,8 +32,8 @@ pub enum Side {
 }
 
 impl ToolWindow {
-    pub const LEFT: [ToolWindow; 3] = [ToolWindow::Project, ToolWindow::Commit, ToolWindow::Find];
-    pub const BOTTOM: [ToolWindow; 5] = [ToolWindow::Git, ToolWindow::Usages, ToolWindow::Problems, ToolWindow::Terminal, ToolWindow::Notifications];
+    pub const LEFT: [ToolWindow; 2] = [ToolWindow::Project, ToolWindow::Commit];
+    pub const BOTTOM: [ToolWindow; 5] = [ToolWindow::Find, ToolWindow::Git, ToolWindow::Problems, ToolWindow::Terminal, ToolWindow::Notifications];
 
     pub fn title(self) -> &'static str {
         match self {
@@ -40,7 +41,6 @@ impl ToolWindow {
             ToolWindow::Commit => "Commit",
             ToolWindow::Find => "Find",
             ToolWindow::Git => "Git",
-            ToolWindow::Usages => "Find Usages",
             ToolWindow::Problems => "Problems",
             ToolWindow::Terminal => "Terminal",
             ToolWindow::Notifications => "Notifications",
@@ -76,9 +76,14 @@ impl Layout {
     }
 
     /// Parses `to_storage` output. Unknown names close the slot; a broken string is ignored.
+    /// Older layouts had a left "Find" (Find in Files) and a bottom "Find Usages": the first
+    /// closes the left slot, the second becomes the bottom Find window.
     pub fn from_storage(text: &str) -> Option<Layout> {
         let mut layout = Layout { left: None, bottom: None };
-        let find = |name: &str, side: Side| ToolWindow::LEFT.iter().chain(ToolWindow::BOTTOM.iter()).copied().find(|w| w.title() == name && w.side() == side);
+        let find = |name: &str, side: Side| {
+            let name = if name == "Find Usages" { "Find" } else { name };
+            ToolWindow::LEFT.iter().chain(ToolWindow::BOTTOM.iter()).copied().find(|w| w.title() == name && w.side() == side)
+        };
         let mut seen = false;
         for part in text.split(';') {
             let (key, value) = part.split_once('=')?;
@@ -115,7 +120,6 @@ impl ToolWindow {
             ToolWindow::Commit => Icon::Commit,
             ToolWindow::Find => Icon::Find,
             ToolWindow::Git => Icon::Branch,
-            ToolWindow::Usages => Icon::Usages,
             ToolWindow::Problems => Icon::Problems,
             ToolWindow::Terminal => Icon::Terminal,
             ToolWindow::Notifications => Icon::Notifications,
@@ -126,8 +130,6 @@ impl ToolWindow {
     fn shortcut(self) -> &'static str {
         match self {
             ToolWindow::Commit => "⌘K",
-            ToolWindow::Find => "⇧⌘F",
-            ToolWindow::Usages => "⌥F7",
             ToolWindow::Terminal => "⌥F12",
             _ => "",
         }
@@ -291,5 +293,14 @@ mod tests {
         let wrong = Layout::from_storage("left=Git;bottom=Project").unwrap();
         assert_eq!((wrong.left, wrong.bottom), (None, None));
         assert!(Layout::from_storage("garbage").is_none());
+    }
+
+    #[test]
+    fn old_find_windows_migrate() {
+        // The left Find in Files window is gone; the bottom Find Usages window is now Find.
+        let old = Layout::from_storage("left=Find;bottom=Find Usages").unwrap();
+        assert_eq!((old.left, old.bottom), (None, Some(ToolWindow::Find)));
+        let back = Layout::from_storage(&Layout { left: Some(ToolWindow::Project), bottom: Some(ToolWindow::Find) }.to_storage()).unwrap();
+        assert_eq!((back.left, back.bottom), (Some(ToolWindow::Project), Some(ToolWindow::Find)));
     }
 }

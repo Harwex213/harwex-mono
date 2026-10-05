@@ -135,6 +135,7 @@ impl IdeApp {
         let mut restore = crate::persist::Restore::default();
         if let Some(storage) = storage {
             git::load_storage(&mut state, storage);
+            find::load_storage(&mut state, storage);
             restore = crate::persist::load(&mut state, storage);
         }
         if options.restore_last_folder {
@@ -265,6 +266,7 @@ impl eframe::App for IdeApp {
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
         crate::persist::save(&mut self.state, storage);
         git::save_storage(&self.state, storage);
+        find::save_storage(&self.state, storage);
         // Terminal tabs live in their own database; this refreshes the shells' directories.
         crate::terminal::save_all(&mut self.state);
     }
@@ -278,6 +280,7 @@ impl eframe::App for IdeApp {
 
 fn shortcuts(s: &mut AppState, ctx: &Context) {
     nav::take_popup_keys(s, ctx);
+    find::take_keys(s, ctx);
     crate::projects_popup::take_keys(s, ctx);
     breadcrumbs::take_keys(s, ctx);
     // A focused terminal gets every key except Alt+F12 and Escape.
@@ -729,6 +732,7 @@ fn tool_window(s: &mut AppState, ui: &mut egui::Ui, w: ToolWindow) {
             }
             ToolWindow::Terminal => crate::terminal::header_tabs(s, ui),
             ToolWindow::Git => git::log_header(s, ui),
+            ToolWindow::Find => crate::find_window::header_tabs(s, ui),
             _ => {}
         };
         let actions = |ui: &mut egui::Ui| {
@@ -774,13 +778,8 @@ fn tool_window_body(s: &mut AppState, ui: &mut egui::Ui, w: ToolWindow) {
             }
         }
         ToolWindow::Commit => git::commit_tool_window(s, ui),
-        ToolWindow::Find => {
-            if let Some((p, pos)) = find::show_results(s, ui) {
-                s.open_location(&p, Some(pos), true);
-            }
-        }
+        ToolWindow::Find => crate::find_window::show(s, ui),
         ToolWindow::Git => git::log_tool_window(s, ui),
-        ToolWindow::Usages => nav::show_usages(s, ui),
         ToolWindow::Problems => crate::diagnostics::problems::tool_window(s, ui),
         ToolWindow::Terminal => crate::terminal::tool_window(s, ui),
         ToolWindow::Notifications => s.notifications.show_log(ui),

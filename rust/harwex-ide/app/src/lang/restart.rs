@@ -73,7 +73,7 @@ pub fn language_servers(state: &mut AppState, scope: Scope, action: Action) {
 fn project(s: &mut AppState, action: Action, tally: Arc<Mutex<Tally>>) {
     s.ws.nav.cancel_requests();
     // A Find Usages search in flight never reports back now.
-    s.ws.usages.searching = false;
+    crate::find_window::cancel_searches(s);
     let mut docs = Vec::new();
     for (_, e) in s.ws.tabs.editors_mut() {
         if action == Action::Stop {

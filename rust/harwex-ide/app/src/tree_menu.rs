@@ -19,7 +19,6 @@ use ide_editor::{EditKind, Position};
 
 use crate::fileops::{self, Collision};
 use crate::lang::{lock, FileEdit, LangId, LanguageServer, Reference, TextEdit as Edit};
-use crate::nav::{UsageGroup, UsagesView};
 use crate::notifications::Level;
 use crate::state::AppState;
 use crate::tabs::TabId;
@@ -310,7 +309,7 @@ pub fn run(state: &mut AppState, cmd: TreeCommand, targets: Vec<Target>) {
             let lines: Vec<String> = paths.iter().map(|p| fileops::relative(&root, p)).collect();
             state.platform.copy_text(&state.ctx, &lines.join("\n"));
         }
-        TreeCommand::FindUsages => find_usages(state, target),
+        TreeCommand::FindUsages => find_file_usages(state, target.path, None),
         TreeCommand::FindInFiles => state.ws.find.open_scoped(Some(target.dir()), false),
         TreeCommand::ReplaceInFiles => state.ws.find.open_scoped(Some(target.dir()), true),
         TreeCommand::Rename => {
@@ -1072,29 +1071,16 @@ fn delete(state: &mut AppState, targets: Vec<Target>) {
     );
 }
 
-fn find_usages(state: &mut AppState, target: Target) {
-    // A newer Find Usages replaces the title, which drops this answer.
+/// Find Usages of a file: its importers fill Find window tab `into` (a rerun) or a new tab.
+pub fn find_file_usages(state: &mut AppState, path: PathBuf, into: Option<u64>) {
     let cancel = Arc::new(AtomicBool::new(false));
-    let name = fileops::file_name(&target.path);
-    let title = format!("Usages of {name}");
-    state.ws.usages = UsagesView { title: title.clone(), groups: Vec::new(), searching: true, took_ms: 0.0 };
-    state.ws.layout.show(crate::layout::ToolWindow::Usages);
-    let started = Instant::now();
-    ask(state, target.path, Question::Usages, Arc::default(), cancel, Box::new(move |state, result| {
-        if state.ws.usages.title != title {
-            return;
-        }
-        let mut groups: Vec<UsageGroup> = Vec::new();
-        for r in result.refs {
-            match groups.iter_mut().find(|g| g.path == r.location.path) {
-                Some(g) => g.refs.push(r),
-                None => groups.push(UsageGroup { path: r.location.path.clone(), refs: vec![r] }),
-            }
-        }
-        state.ws.usages = UsagesView { title, groups, searching: false, took_ms: started.elapsed().as_secs_f64() * 1000.0 };
+    let origin = crate::find_window::UsageOrigin::File { path: path.clone() };
+    let (tab, generation) = crate::find_window::start_usages(state, origin, into);
+    ask(state, path, Question::Usages, Arc::default(), cancel, Box::new(move |state, result| {
         for e in result.errors {
             state.notifications.log_only(Level::Warning, "Find Usages", e);
         }
+        crate::find_window::finish_usages(state, tab, generation, Ok(result.refs));
     }));
 }
 

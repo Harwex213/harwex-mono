@@ -21,7 +21,7 @@ use crate::git::GitUi;
 use crate::jobs::Jobs;
 use crate::lang::Languages;
 use crate::layout::Layout;
-use crate::nav::{Navigation, UsagesView};
+use crate::nav::Navigation;
 use crate::search::{FileIndex, SearchEverywhere};
 use crate::state::{AppCommand, GitInfo, Project};
 use crate::tabs::{TabId, Tabs};
@@ -58,7 +58,8 @@ pub struct Workspace {
     pub nav: Navigation,
     /// Detection cache and request generation of the diagnostics layer.
     pub diagnostics: crate::diagnostics::DiagnosticsState,
-    pub usages: UsagesView,
+    /// The bottom Find window: Find Usages and Find in Files result tabs.
+    pub find_window: crate::find_window::FindWindow,
     pub find: FindInFiles,
     pub search: SearchEverywhere,
     pub index: FileIndex,
@@ -112,7 +113,7 @@ impl Workspace {
             langs,
             nav: Navigation::default(),
             diagnostics: Default::default(),
-            usages: UsagesView::default(),
+            find_window: Default::default(),
             find: FindInFiles::default(),
             search: SearchEverywhere::default(),
             index: FileIndex::default(),
@@ -176,7 +177,7 @@ impl Workspace {
             let marks = workdir.as_ref().is_some_and(|w| e.path.starts_with(w)) && (e.marks_in_flight || e.marks_for != Some(version));
             ts || marks || e.problems.pending(version)
         });
-        editors || self.git_ui.has_pending_debounce(&self.tabs) || self.nav.hover.is_waiting() || self.terminals.save_pending()
+        editors || self.git_ui.has_pending_debounce(&self.tabs) || self.nav.hover.is_waiting() || self.terminals.save_pending() || self.find.has_pending_debounce() || self.find_window.is_pending()
     }
 
     /// Stops what this workspace runs: terminal shells and language servers (on a worker, so

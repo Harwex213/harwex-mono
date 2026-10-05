@@ -323,11 +323,10 @@ fn find_usages_of_a_file() {
     ide.right_click("src/local.ts");
     ide.settle();
     ide.click("Find Usages");
-    ide.wait_for("usages", |s| !s.ws.usages.searching && !s.ws.usages.groups.is_empty());
-    let u = &ide.state().ws.usages;
-    assert_eq!(u.title, "Usages of local.ts");
-    assert_eq!(u.groups.len(), 1);
-    assert!(u.groups[0].path.ends_with("src/main.ts"));
+    ide.wait_for("usages", |s| s.ws.find_window.active_tab().is_some_and(|t| !t.searching && !t.items.is_empty()));
+    let u = ide.state().ws.find_window.active_tab().expect("usages tab");
+    assert_eq!(u.title, "local.ts in Project Files");
+    assert!(u.items.iter().all(|i| i.path.ends_with("src/main.ts")), "{:?}", u.items);
 }
 
 #[test]
@@ -365,29 +364,28 @@ fn replace_in_files_in_a_folder() {
     ide.cmd_shift(Key::R);
     ide.settle();
     assert!(ide.state().ws.find.dialog_open && ide.state().ws.find.replace_mode);
-    assert_eq!(ide.state().ws.find.scope.as_deref(), Some(ide.root().join("src").as_path()));
+    let src = ide.root().join("src");
+    assert_eq!(ide.state().ws.find.search_scope(&ide.root()), harwex_ide::find::SearchScope::Directory { path: src, recursive: true });
     ide.type_text("add");
-    // The replacement field is the second text box.
-    let boxes = ide.role_rects(egui::accesskit::Role::TextInput);
-    ide.click_at(boxes[1].center());
+    ide.click("Replace with");
     ide.type_text("plus");
     ide.click("Words");
-    ide.key(Key::Enter);
-    ide.wait_for("search finished", |s| !s.ws.find.searching && !s.ws.find.searched_for.is_empty());
+    ide.wait_for("search finished", |s| !s.ws.find.has_pending_debounce() && !s.ws.find.searching);
     ide.settle();
     // `add` as a word: the import and the call in app.ts, the function in util.ts. docs/ is
     // outside the folder.
     assert_eq!(ide.state().ws.find.hit_count(), 3);
-    ide.assert_text("\"add\": 3 matches in 2 files in src");
+    ide.assert_text("3 matches in 2 files");
     ide.snapshot("replace_preview");
-    // Leave the import unchecked, then Replace All.
-    ide.click("Replace src/app.ts:1");
-    ide.settle();
-    assert_eq!(ide.state().ws.find.checked_count(), 2);
     ide.click("Replace All");
-    ide.wait_for("replaced", |s| !s.ws.find.replacing && !s.ws.find.searching && s.ws.tabs.editors().all(|e| !e.doc.is_dirty()));
+    ide.wait_for("counted", |s| s.ws.find.replace_confirm.as_ref().is_some_and(|c| c.counts().is_some()));
     ide.settle();
-    assert_eq!(repo.read("src/app.ts"), APP_TS.replace("add(1, 2)", "plus(1, 2)"));
+    ide.assert_text("Replace 3 occurrences in 2 files?");
+    ide.click("Confirm Replace All");
+    ide.wait_for("replaced", |s| !s.ws.find.replacing && s.jobs.in_flight() == 0 && s.ws.tabs.editors().all(|e| !e.doc.is_dirty()));
+    ide.settle();
+    assert!(!ide.state().ws.find.dialog_open);
+    assert_eq!(repo.read("src/app.ts"), APP_TS.replace("add", "plus"));
     assert!(repo.read("src/util.ts").starts_with("export function plus("));
     assert_eq!(repo.read("docs/add.md"), "add here\n");
     let util = ide.state().ws.tabs.editors().find(|e| e.path.ends_with("src/util.ts")).expect("util tab");
@@ -416,11 +414,12 @@ fn excluded_folder_is_dimmed_and_hidden_from_search() {
     // From a file at the root, Find in Files searches the whole project.
     ide.click("README.md");
     ide.cmd_shift(Key::F);
-    ide.type_text("add\n");
-    ide.wait_for("search finished", |s| !s.ws.find.searching && !s.ws.find.searched_for.is_empty());
+    ide.type_text("add");
+    ide.wait_for("search finished", |s| !s.ws.find.has_pending_debounce() && !s.ws.find.searching);
+    ide.settle();
     assert!(ide.state().ws.find.results.iter().all(|(p, _)| !p.starts_with(root.join("dist"))), "Find in Files skips it");
-    ide.assert_text("\"add\": 3 matches in 2 files");
-    ide.state_mut().ws.layout.show(harwex_ide::layout::ToolWindow::Project);
+    ide.assert_text("3 matches in 2 files");
+    ide.key(Key::Escape);
     ide.settle();
 
     ide.right_click("dist");

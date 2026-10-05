@@ -13,7 +13,7 @@ use crate::git::GitUi;
 use crate::jobs::{Jobs, Posted};
 use crate::lang::IdeConfig;
 use crate::layout::Layout;
-use crate::nav::{self, NavPoint, UsagesView};
+use crate::nav::{self, NavPoint};
 use crate::notifications::Notifications;
 use crate::search::FileIndex;
 use crate::tabs::{CustomTab, EditorTab, TabContent, TabId};
@@ -128,6 +128,8 @@ pub struct AppState {
     pub projects: crate::projects_popup::ProjectsUi,
     /// Terminal tabs per project (`terminal_store.rs`). `None`: tabs are not persisted.
     pub terminal_store: Option<crate::terminal_store::TerminalStore>,
+    /// Find in Files history (queries, masks, directories) per canonical root; app storage.
+    pub find_history: HashMap<PathBuf, crate::find::FindHistory>,
 }
 
 impl AppState {
@@ -161,6 +163,7 @@ impl AppState {
             confirm_close_ws: None,
             projects: Default::default(),
             terminal_store: None,
+            find_history: HashMap::new(),
         };
         state.ws.visible.store(true, std::sync::atomic::Ordering::Relaxed);
         state.enter_context();
@@ -412,6 +415,7 @@ impl AppState {
                 crate::diagnostics::schedule(s);
                 s.schedule_gutter();
                 crate::terminal::tick(s);
+                crate::find_window::tick(s);
                 if s.ws.close_when_saved && !s.ws.tabs.editors().any(|e| e.saving) {
                     s.ws.close_when_saved = false;
                     // A failed save keeps the file dirty; then the workspace stays open.
@@ -481,7 +485,7 @@ impl AppState {
         self.ws.index = FileIndex::default();
         self.ws.search.reset();
         self.ws.find.reset();
-        self.ws.usages = UsagesView::default();
+        self.ws.find_window.reset();
         self.ws.nav.reset();
         self.ws.diagnostics.reset();
         self.ws.opening.clear();

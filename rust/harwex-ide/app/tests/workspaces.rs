@@ -252,7 +252,7 @@ fn restart_restores_projects_and_active() {
     ide.settle();
     assert_eq!(ide.state().ws.project.as_ref().map(|p| p.root.clone()), Some(rb.clone()), "beta is active again");
     assert_eq!(ide.tab_titles(), vec!["README.md"]);
-    assert_eq!(ide.state().ws.layout.left, Some(ToolWindow::Find));
+    assert_eq!(ide.state().ws.layout.bottom, Some(ToolWindow::Find));
     let a_id = ide.state().workspaces()[0].id;
     activate(&mut ide, a_id);
     assert_eq!(ide.tab_titles(), vec!["util.ts", "app.ts"]);

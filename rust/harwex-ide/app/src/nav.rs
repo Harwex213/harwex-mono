@@ -13,7 +13,7 @@ use std::time::{Duration, Instant};
 use egui::{Context, Frame, Key, LayerId, Pos2, RichText, ScrollArea};
 use ide_editor::Position;
 
-use crate::lang::{HoverInfo, Location, Reference};
+use crate::lang::{HoverInfo, Location};
 use crate::state::AppState;
 use crate::tabs::TabId;
 use crate::theme;
@@ -88,19 +88,6 @@ pub struct Navigation {
     generation: u64,
     /// Last latency, for the status bar tooltip and the timings log.
     pub last_ms: Option<f64>,
-}
-
-pub struct UsageGroup {
-    pub path: PathBuf,
-    pub refs: Vec<Reference>,
-}
-
-#[derive(Default)]
-pub struct UsagesView {
-    pub title: String,
-    pub groups: Vec<UsageGroup>,
-    pub searching: bool,
-    pub took_ms: f64,
 }
 
 const HISTORY_LIMIT: usize = 200;
@@ -202,36 +189,72 @@ pub fn request(state: &mut AppState, kind: NavKind, tab: TabId, pos: Position, a
     let path = e.path.clone();
     let word = e.doc.word_at(pos).map(|r| e.doc.slice(e.doc.position_to_char(r.start)..e.doc.position_to_char(r.end))).unwrap_or_default();
     flush_lsp(state, tab);
-    state.ws.nav.generation += 1;
     state.ws.nav.popup = None;
+    if kind == NavKind::Usages {
+        usages_with(state, lang, path, pos, word, None);
+        return;
+    }
+    state.ws.nav.generation += 1;
     let generation = state.ws.nav.generation;
     let jobs = state.jobs.clone();
-    if kind == NavKind::Usages {
-        state.ws.usages.searching = true;
-        state.ws.usages.title = format!("Usages of {word}");
-        state.ws.layout.show(crate::layout::ToolWindow::Usages);
-    }
     let from = NavPoint { path: path.clone(), pos };
     state.ws.langs.bridge(lang).run(move |server| {
         let _busy = jobs.busy(format!("{}: {word}", kind.label()));
         let started = Instant::now();
-        let result = match kind {
-            NavKind::Usages => server.references(&path, pos.line, pos.column).map(NavResult::References),
-            _ => server.locations(kind, &path, pos.line, pos.column).map(NavResult::Locations),
-        };
+        let result = server.locations(kind, &path, pos.line, pos.column).map(|locs| NavResult::Targets(with_previews(dedup(locs))));
         let ms = started.elapsed().as_secs_f64() * 1000.0;
-        let result = result.map(|r| match r {
-            NavResult::Locations(locs) => NavResult::Targets(with_previews(dedup(locs))),
-            other => other,
-        });
         jobs.post(move |state| on_result(state, NavReply { kind, generation, from, word, anchor, ms, result }));
     });
 }
 
+/// Find Usages of the symbol at `pos` in `path`. The results fill Find window tab `into` (a
+/// rerun) or a new tab.
+pub fn usages(state: &mut AppState, path: PathBuf, pos: Position, word: String, into: Option<u64>) {
+    if state.ws.langs.is_off() {
+        return;
+    }
+    let tab = state.ws.tabs.editor_by_path(&path);
+    let lang = match (tab.and_then(|id| state.ws.tabs.editor_mut(id)).and_then(|e| e.lang), state.ws.langs.lang_for(&path)) {
+        (Some(lang), _) | (None, Ok(lang)) => lang,
+        (None, Err(why)) => {
+            state.notifications.warn(NavKind::Usages.label(), why);
+            return;
+        }
+    };
+    if let Some(id) = tab {
+        flush_lsp(state, id);
+    }
+    usages_with(state, lang, path, pos, word, into);
+}
+
+fn usages_with(state: &mut AppState, lang: crate::lang::LangId, path: PathBuf, pos: Position, word: String, into: Option<u64>) {
+    let origin = crate::find_window::UsageOrigin::Symbol { path: path.clone(), pos, word: word.clone() };
+    let (tab, generation) = crate::find_window::start_usages(state, origin, into);
+    let jobs = state.jobs.clone();
+    state.ws.langs.bridge(lang).run(move |server| {
+        let _busy = jobs.busy(format!("{}: {word}", NavKind::Usages.label()));
+        let started = Instant::now();
+        let result = server.references(&path, pos.line, pos.column);
+        let ms = started.elapsed().as_secs_f64() * 1000.0;
+        jobs.post(move |state| {
+            state.ws.nav.last_ms = Some(ms);
+            match &result {
+                Ok(r) => state.timings.log(format!("Find Usages `{word}`: {} reference(s) in {ms:.1} ms", r.len())),
+                Err(e) => state.timings.log(format!("Find Usages `{word}` failed after {ms:.1} ms: {e}")),
+            }
+            if state.test.is_some() {
+                crate::testhook::step_done(state);
+            }
+            if let Err(e) = &result {
+                state.notifications.error("Find Usages failed", e.clone());
+            }
+            crate::find_window::finish_usages(state, tab, generation, result);
+        });
+    });
+}
+
 enum NavResult {
-    Locations(Vec<Location>),
     Targets(Vec<NavTarget>),
-    References(Vec<Reference>),
 }
 
 struct NavReply {
@@ -270,44 +293,17 @@ fn on_result(state: &mut AppState, reply: NavReply) {
             let list: Vec<String> = t.iter().map(|t| format!("{}:{}:{}", t.location.path.display(), t.location.line + 1, t.location.column + 1)).collect();
             state.timings.log(format!("{} `{word}` at {}:{}: {} result(s) in {ms:.1} ms {list:?}", kind.label(), from.pos.line + 1, from.pos.column + 1, t.len()));
         }
-        Ok(NavResult::References(r)) => {
-            state.timings.log(format!("{} `{word}`: {} reference(s) in {ms:.1} ms", kind.label(), r.len()));
-        }
-        Ok(NavResult::Locations(_)) => {}
         Err(e) => state.timings.log(format!("{} `{word}` failed after {ms:.1} ms: {e}", kind.label())),
     }
     if test {
         crate::testhook::step_done(state);
     }
     if generation != state.ws.nav.generation {
-        // A newer request replaced this one. The Usages spinner must not wait for it.
-        if kind == NavKind::Usages && state.ws.usages.title == format!("Usages of {word}") {
-            state.ws.usages.searching = false;
-        }
+        // A newer request replaced this one.
         return;
     }
     match result {
-        Err(e) => {
-            if kind == NavKind::Usages {
-                state.ws.usages.searching = false;
-            }
-            state.notifications.error(format!("{} failed", kind.label()), e);
-        }
-        Ok(NavResult::References(refs)) => {
-            let mut groups: Vec<UsageGroup> = Vec::new();
-            for r in refs {
-                match groups.iter_mut().find(|g| g.path == r.location.path) {
-                    Some(g) => g.refs.push(r),
-                    None => groups.push(UsageGroup { path: r.location.path.clone(), refs: vec![r] }),
-                }
-            }
-            for g in &mut groups {
-                g.refs.sort_by_key(|r| (r.location.line, r.location.column));
-            }
-            groups.sort_by(|a, b| a.path.cmp(&b.path));
-            state.ws.usages = UsagesView { title: format!("Usages of {word}"), groups, searching: false, took_ms: ms };
-            state.ws.layout.show(crate::layout::ToolWindow::Usages);
-        }
+        Err(e) => state.notifications.error(format!("{} failed", kind.label()), e),
         Ok(NavResult::Targets(mut targets)) => match targets.len() {
             0 => state.notifications.info(
                 match kind {
@@ -326,7 +322,6 @@ fn on_result(state: &mut AppState, reply: NavReply) {
                 state.ws.nav.popup = Some(NavPopup { title: format!("Choose declaration of {word}"), anchor, items: targets, selected: 0, from, keys: Default::default() });
             }
         },
-        Ok(NavResult::Locations(_)) => {}
     }
 }
 
@@ -503,46 +498,6 @@ pub fn hover(state: &mut AppState, tab: TabId, hover: Option<Position>, layer: L
                 ui.label(RichText::new(format!("@{name} {text}")).weak());
             }
         });
-    }
-}
-
-/// The Find Usages tool window body.
-pub fn show_usages(state: &mut AppState, ui: &mut egui::Ui) {
-    let root = state.ws.project.as_ref().map(|p| p.root.clone()).unwrap_or_default();
-    let u = &state.ws.usages;
-    let took = if state.deterministic { String::new() } else { format!(" ({:.0} ms)", u.took_ms) };
-    ui.horizontal(|ui| {
-        if u.searching {
-            ui.spinner();
-            ui.label(format!("{}...", u.title));
-        } else if u.title.is_empty() {
-            ui.label(RichText::new("⌥F7 or the editor context menu: Find Usages").weak());
-        } else {
-            let n: usize = u.groups.iter().map(|g| g.refs.len()).sum();
-            ui.label(RichText::new(format!("{}: {n} usages in {} files{took}", u.title, u.groups.len())).strong());
-        }
-    });
-    ui.separator();
-    let mut open = None;
-    ScrollArea::both().auto_shrink([false, false]).id_salt("usages").show(ui, |ui| {
-        for g in &u.groups {
-            egui::CollapsingHeader::new(RichText::new(format!("{}  ({})", display_path(&root, &g.path), g.refs.len())).color(theme::T.text_bright))
-                .id_salt(&g.path)
-                .default_open(true)
-                .show(ui, |ui| {
-                    for r in &g.refs {
-                        let marker = if r.is_write { "w " } else { "  " };
-                        let label = format!("{marker}{:>5}  {}", r.location.line + 1, r.line_text.trim());
-                        let resp = ui.add(egui::Button::new(RichText::new(label).monospace()).frame(false).wrap_mode(egui::TextWrapMode::Truncate));
-                        if resp.clicked() {
-                            open = Some((r.location.path.clone(), Position::new(r.location.line, r.location.column)));
-                        }
-                    }
-                });
-        }
-    });
-    if let Some((p, pos)) = open {
-        state.open_location(&p, Some(pos), true);
     }
 }
 

@@ -45,6 +45,10 @@ pub enum Icon {
     Diff,
     ExpandAll,
     CollapseAll,
+    /// Previous Occurrence: an arrow up.
+    ArrowUp,
+    /// Next Occurrence: an arrow down.
+    ArrowDown,
     /// Select Opened File: a crosshair.
     Locate,
     /// Problems tool window: a ring with an exclamation mark.
@@ -192,6 +196,16 @@ pub fn paint(painter: &Painter, rect: Rect, icon: Icon, color: Color32) {
             line(p(8.0, 6.5), p(12.0, 2.5));
             line(p(4.0, 13.5), p(8.0, 9.5));
             line(p(8.0, 9.5), p(12.0, 13.5));
+        }
+        Icon::ArrowUp => {
+            line(p(8.0, 13.5), p(8.0, 2.5));
+            line(p(4.0, 6.5), p(8.0, 2.5));
+            line(p(12.0, 6.5), p(8.0, 2.5));
+        }
+        Icon::ArrowDown => {
+            line(p(8.0, 2.5), p(8.0, 13.5));
+            line(p(4.0, 9.5), p(8.0, 13.5));
+            line(p(12.0, 9.5), p(8.0, 13.5));
         }
         Icon::Locate => {
             ring(p(8.0, 8.0), 4.5);

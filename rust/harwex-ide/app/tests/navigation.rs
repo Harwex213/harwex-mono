@@ -146,21 +146,33 @@ fn find_usages_fills_the_tool_window() {
     ide.right_click_at(p);
     ide.settle();
     ide.click("Find Usages");
-    ide.wait_for("usages", |s| !s.ws.usages.searching && !s.ws.usages.groups.is_empty());
+    let done = |s: &harwex_ide::AppState| s.ws.find_window.active_tab().is_some_and(|t| !t.searching && !t.items.is_empty());
+    ide.wait_for("usages", done);
     ide.settle();
-    assert_eq!(ide.state().ws.layout.bottom, Some(harwex_ide::layout::ToolWindow::Usages));
-    let total: usize = ide.state().ws.usages.groups.iter().map(|g| g.refs.len()).sum();
-    let in_main = ide.state().ws.usages.groups.iter().find(|g| g.path.ends_with("src/main.ts")).map_or(0, |g| g.refs.len());
+    assert_eq!(ide.state().ws.layout.bottom, Some(harwex_ide::layout::ToolWindow::Find));
+    let tab = ide.state().ws.find_window.active_tab().expect("usages tab");
+    assert_eq!(tab.title, "greet in Project Files");
+    let in_main = tab.items.iter().filter(|i| i.path.ends_with("src/main.ts")).count();
     // The import, the call and the second call in main.ts, plus the declaration.
     assert_eq!(in_main, 3);
-    assert_eq!(total, 4);
-    ide.assert_text("Usages of greet: 4 usages in 2 files");
+    assert_eq!(tab.items.len(), 4);
+    for label in ["Imports group", "Writes group", "Reads group", "Find folder src in Reads"] {
+        assert!(ide.has(label), "{label}: {:?}", ide.labels());
+    }
     ide.snapshot("usages");
 
-    // A click on a usage row navigates to it.
-    ide.click_containing("console.log(message");
+    // ⟳ asks the server again into the same tab.
+    ide.click("Rerun");
+    ide.wait_for("rerun", done);
+    assert_eq!(ide.state().ws.find_window.tabs.len(), 1);
+    assert_eq!(ide.state().ws.find_window.active_tab().map(|t| t.items.len()), Some(4));
+
+    // Previous Occurrence wraps to the last usage and scrolls to it; a double click opens it.
+    ide.click("Previous Occurrence");
     ide.settle();
-    assert_eq!(ide.cursor().0, 8);
+    ide.double_click("src/main.ts:9:45");
+    ide.settle();
+    assert_eq!(ide.cursor(), (8, 44));
 }
 
 #[test]
