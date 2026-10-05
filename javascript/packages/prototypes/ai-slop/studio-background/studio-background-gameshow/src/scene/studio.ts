@@ -2,7 +2,6 @@ import * as THREE from "three";
 import { Reflector } from "three/examples/jsm/objects/Reflector.js";
 import { archFrameHalf, archFrameShape, archPath, faceCenter, floorArc, keystoneShape, named, planPrism, polar } from "./geometry";
 import type { Materials } from "./materials";
-import { PODIUM_Z } from "./wheel";
 
 const deg = THREE.MathUtils.degToRad;
 
@@ -16,30 +15,35 @@ const deg = THREE.MathUtils.degToRad;
 //
 // Heights, bottom to top:
 //   0.00  floor            0.65  lower step top      1.30  upper step top = arch sill = column foot
-//   13.1  capital top = architrave bottom            15.9  wall top = ceiling bottom
+//   13.65 arch crown       15.0  capital top = architrave bottom      17.8  wall top = ceiling bottom
 const LAYOUT = {
   // Radius of the joints between bays, at the wall front.
   wallRadius: 20,
-  arcFrom: deg(-100),
-  arcTo: deg(100),
-  segments: 12,
+  // 9 bays of 26 degrees. The middle bay stands straight behind the wheel.
+  // The middle 5 bays have arches; the plain bays beyond them hide behind the drapes.
+  // A bay is wide enough for the arch moulding plus a column plinth on each side with 12 cm to spare.
+  arcFrom: deg(-4.5 * 26),
+  arcTo: deg(4.5 * 26),
+  segments: 9,
+  archBays: 5,
   wallThickness: 0.4,
-  ceilingY: 15.9,
+  ceilingY: 17.8,
   ceilingThickness: 0.3,
-  archHalfWidth: 1.6,
+  // The opening: 6.4 m wide, 12.35 m from the sill to the crown.
+  archHalfWidth: 3.2,
   archSill: 1.3,
-  archSpring: 9.2,
+  archSpring: 10.45,
   // The arch frame: inner edge on the opening, outer edge, depth from the wall front.
-  frameOuter: 1.94,
+  frameOuter: 3.54,
   frameDepth: 0.24,
   // Thin outer moulding a step outside the frame.
-  mouldingInner: 2.04,
-  mouldingOuter: 2.12,
+  mouldingInner: 3.64,
+  mouldingOuter: 3.72,
   mouldingDepth: 0.1,
   // Steps along the wall: the upper one carries the columns and meets the arch sills.
   lowerStep: { depth: 2.6, top: 0.65 },
   upperStep: { depth: 1.6, top: 1.3 },
-  capitalTop: 13.1,
+  capitalTop: 15.0,
 };
 
 const STEP = (LAYOUT.arcTo - LAYOUT.arcFrom) / LAYOUT.segments;
@@ -50,11 +54,11 @@ const APOTHEM = LAYOUT.wallRadius * Math.cos(HALF_STEP);
 // Length of one bay's wall front, joint to joint.
 const BAY_LENGTH = 2 * LAYOUT.wallRadius * Math.sin(HALF_STEP);
 
-// Column parts, bottom to top, from the upper step top (1.3) to the capital top (13.1). Width runs along the wall, depth is the offset of the front face.
+// Column parts, bottom to top, from the upper step top (1.3) to the capital top (15.0). Width runs along the wall, depth is the offset of the front face.
 const COLUMN = [
   { name: "Plinth", width: 1.3, depth: 0.8, height: 0.55, material: "goldPolished" },
   { name: "Base Band", width: 1.15, depth: 0.7, height: 0.15, material: "gold" },
-  { name: "Shaft", width: 1.0, depth: 0.6, height: 10.5, material: "gold" },
+  { name: "Shaft", width: 1.0, depth: 0.6, height: 12.4, material: "gold" },
   { name: "Capital Band", width: 1.15, depth: 0.7, height: 0.15, material: "gold" },
   { name: "Capital", width: 1.3, depth: 0.8, height: 0.45, material: "goldPolished" },
 ] as const;
@@ -68,6 +72,13 @@ const ENTABLATURE = [
   { name: "Frieze", depth: 0.5, height: 1.3, material: "wall" },
   { name: "Cornice", depth: 1.0, height: 0.3, material: "goldPolished" },
 ] as const;
+
+// The bay straight behind the wheel.
+const CENTER_BAY = (LAYOUT.segments - 1) / 2;
+
+function isArchBay(index: number): boolean {
+  return Math.abs(index - CENTER_BAY) <= (LAYOUT.archBays - 1) / 2;
+}
 
 function segmentAngle(index: number): number {
   return LAYOUT.arcFrom + STEP * (index + 0.5);
@@ -110,7 +121,7 @@ function box(width: number, height: number, depth: number, material: THREE.Mater
 // The wall slab of one bay, in the bay frame: x along the wall, the front face at z = 0, the back at -thickness.
 // The slab is built flat and then each point is pushed along the radius from the studio center,
 // so both ends lie on the radial planes through the joints and meet the next slab without a gap.
-function wallSlabGeometry(): THREE.BufferGeometry {
+function wallSlabGeometry(withArch: boolean): THREE.BufferGeometry {
   const { wallThickness, ceilingY, archHalfWidth, archSill, archSpring } = LAYOUT;
   const shape = new THREE.Shape();
   shape.moveTo(-BAY_LENGTH / 2, 0);
@@ -118,9 +129,11 @@ function wallSlabGeometry(): THREE.BufferGeometry {
   shape.lineTo(BAY_LENGTH / 2, ceilingY);
   shape.lineTo(-BAY_LENGTH / 2, ceilingY);
   shape.closePath();
-  const hole = new THREE.Path();
-  archPath(hole, archHalfWidth, archSill, archSpring);
-  shape.holes.push(hole);
+  if (withArch) {
+    const hole = new THREE.Path();
+    archPath(hole, archHalfWidth, archSill, archSpring);
+    shape.holes.push(hole);
+  }
   const geometry = new THREE.ExtrudeGeometry(shape, { depth: wallThickness, bevelEnabled: false, curveSegments: 48 });
   geometry.translate(0, 0, -wallThickness);
   const position = geometry.getAttribute("position");
@@ -141,8 +154,15 @@ function extruded(shape: THREE.Shape, depth: number, material: THREE.Material, n
   return mesh;
 }
 
+// Panel line between the columns, halfway between the moulding crown and the architrave.
+function panelLine(materials: Materials): THREE.Mesh {
+  const lineLength = 2 * (BAY_LENGTH / 2 - 0.75);
+  const y = (LAYOUT.archSpring + LAYOUT.mouldingOuter + LAYOUT.capitalTop) / 2;
+  return named(box(lineLength, 0.04, 0.04, materials.goldDark, 0, y, 0.02), "Panel Line");
+}
+
 // One bay: the wall slab with the arch opening, the arch frame with its keystone, the moulding,
-// the sill in the opening and two panel lines. Everything stands on the upper step or on the wall front.
+// the sill in the opening and a panel line. Everything stands on the upper step or on the wall front.
 function createArchBay(materials: Materials, slab: THREE.BufferGeometry): THREE.Group {
   const { archHalfWidth, archSill, archSpring, frameOuter, frameDepth, mouldingInner, mouldingOuter, mouldingDepth, wallThickness } = LAYOUT;
   const bay = new THREE.Group();
@@ -152,7 +172,7 @@ function createArchBay(materials: Materials, slab: THREE.BufferGeometry): THREE.
   bay.add(wall);
 
   // The frame is cut at the crown, and the keystone fills the cut exactly.
-  const keyHalfAngle = 0.2 / archHalfWidth;
+  const keyHalfAngle = 0.3 / archHalfWidth;
   const left = Math.PI / 2 + keyHalfAngle;
   const right = Math.PI / 2 - keyHalfAngle;
   bay.add(extruded(archFrameHalf(-1, archHalfWidth, frameOuter, archSill, archSpring, left), frameDepth, materials.goldPolished, "Arch Frame Left"));
@@ -166,11 +186,7 @@ function createArchBay(materials: Materials, slab: THREE.BufferGeometry): THREE.
   const sill = named(box(archHalfWidth * 2, 0.08, wallThickness + sillFront, materials.goldPolished, 0, archSill + 0.04, (sillFront - wallThickness) / 2), "Sill");
   bay.add(sill);
 
-  // Panel lines between the columns, above the arch and under the architrave.
-  const lineLength = 2 * (BAY_LENGTH / 2 - 0.75);
-  for (const [index, y] of [archSpring + mouldingOuter + 0.4, LAYOUT.capitalTop - 0.4].entries()) {
-    bay.add(named(box(lineLength, 0.04, 0.04, materials.goldDark, 0, y, 0.02), `Panel Line ${index + 1}`));
-  }
+  bay.add(panelLine(materials));
   return bay;
 }
 
@@ -215,12 +231,35 @@ function createColumn(materials: Materials): THREE.Group {
   return column;
 }
 
+// A bay without an opening: the wall slab and the same panel line as an arch bay.
+function createPlainBay(materials: Materials, slab: THREE.BufferGeometry): THREE.Group {
+  const bay = new THREE.Group();
+  const wall = named(new THREE.Mesh(slab, materials.wall), "Wall");
+  wall.receiveShadow = true;
+  bay.add(wall);
+  bay.add(panelLine(materials));
+  return bay;
+}
+
+// Name of a bay: arch bays count 1..5 from the left, plain bays count outwards on each side.
+function bayName(index: number): string {
+  const firstArch = CENTER_BAY - (LAYOUT.archBays - 1) / 2;
+  if (isArchBay(index)) {
+    return `Arch Bay ${index - firstArch + 1}`;
+  }
+  if (index < firstArch) {
+    return `Wall Left ${firstArch - index}`;
+  }
+  return `Wall Right ${index - (firstArch + LAYOUT.archBays) + 1}`;
+}
+
 function createWalls(materials: Materials): THREE.Group {
   const walls = named(new THREE.Group(), "Walls", true);
-  const slab = wallSlabGeometry();
+  const archSlab = wallSlabGeometry(true);
+  const plainSlab = wallSlabGeometry(false);
   for (let i = 0; i < LAYOUT.segments; i++) {
     const angle = segmentAngle(i);
-    const bay = named(createArchBay(materials, slab), `Arch Bay ${i + 1}`);
+    const bay = named(isArchBay(i) ? createArchBay(materials, archSlab) : createPlainBay(materials, plainSlab), bayName(i));
     bay.position.copy(polar(angle, APOTHEM));
     faceCenter(bay, angle);
     walls.add(bay);
@@ -348,10 +387,13 @@ function createFloor(materials: Materials, width: number, height: number): { gro
   const rings = named(new THREE.Group(), "Inlays");
   rings.userData.auditIgnore = true;
   group.add(rings);
-  for (const radius of [5.3, 5.55, 7.3, 7.5, 9.9, 12.6, 12.8]) {
-    const ring = new THREE.Mesh(new THREE.RingGeometry(radius - 0.025, radius + 0.025, 160), inlay);
+  // The rings share the studio centre with the colonnade, the steps and the trusses.
+  // The podium covers the centre out to 8.6 m, so every ring runs outside it, in the free bands
+  // between the furniture: lamp table 3 ends at 9.9 m, the palm pots span 12.2..13.6 m,
+  // and the nearest drapes stand at 16 m.
+  for (const radius of [10.3, 10.55, 11.8, 14.4, 14.65]) {
+    const ring = new THREE.Mesh(new THREE.RingGeometry(radius - 0.025, radius + 0.025, 256), inlay);
     ring.rotation.x = -Math.PI / 2;
-    ring.position.set(0, 0, PODIUM_Z);
     rings.add(ring);
   }
   return { group, reflector };
@@ -385,4 +427,4 @@ function bayHalfLength(offset: number): number {
   return (BAY_LENGTH / 2) * ((APOTHEM - offset) / APOTHEM);
 }
 
-export { LAYOUT, SCONCE_HEIGHT, bayHalfLength, boundaryAngle, createStudio, inFrontOfBay, onColumnShaft, segmentAngle };
+export { CENTER_BAY, LAYOUT, SCONCE_HEIGHT, bayHalfLength, boundaryAngle, createStudio, inFrontOfBay, onColumnShaft, segmentAngle };

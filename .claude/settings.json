@@ -6,5 +6,11 @@
       "Bash",
       "Skill(claude-in-chrome)"
     ]
+  },
+  "autoMode": {
+    "allow": [
+      "$defaults",
+      "Bash commands that create, edit, move or delete files under rust/harwex-ide/docs/ (task files in docs/tasks/, docs/backlog.md and other docs there), including rm and sed -i. This is the coordinator's normal bookkeeping: a closed task loses its line and its file."
+    ]
   }
 }

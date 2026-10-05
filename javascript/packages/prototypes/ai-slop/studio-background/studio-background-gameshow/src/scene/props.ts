@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { named } from "./geometry";
 import type { Materials } from "./materials";
-import { bayHalfLength, inFrontOfBay, LAYOUT, onColumnShaft, SCONCE_HEIGHT } from "./studio";
+import { bayHalfLength, CENTER_BAY, inFrontOfBay, LAYOUT, onColumnShaft, SCONCE_HEIGHT } from "./studio";
 
 // Every prop is stacked from the floor up: each part starts exactly where the part under it ends.
 // Parts that sit on a curved surface (a globe on a neck, fronds in a trunk) are marked `seated`.
@@ -187,16 +187,30 @@ function createSconce(materials: Materials): THREE.Group {
 function createProps(materials: Materials) {
   const group = named(new THREE.Group(), "Props", true);
 
-  // Drapes hang from the ceiling to the floor in front of the steps of the near side bays, and frame the shot.
-  // A drape stays inside one bay, where the step edge in front of it runs straight.
-  const curtainOffset = 3.0;
-  const curtainWidth = 2.4;
-  const curtainAlong = bayHalfLength(curtainOffset) - curtainWidth / 2 - 0.05;
+  // Drapes hang from the ceiling to the floor in front of the steps and close the shot on both sides:
+  // the first panel covers the outer half of the outer arch, the next panels cover the plain bays beyond it.
+  // Each panel is flat inside one bay. Neighbouring panels stand at different depths (3.0 m and 3.6 m from
+  // the wall), so the deeper one can run 0.3 m past the joint and overlap its neighbour without touching it.
+  const near = 3.0;
+  const far = 3.6;
+  const overhang = 0.3;
+  // The first panel starts 1.2 m inside the middle of the outer arch, so the wide shot still shows
+  // the inner third of that arch, and runs to the joint.
+  const outerArchFrom = -1.2;
+  const outerArchTo = bayHalfLength(near + 0.2);
+  const panels = [
+    { bay: 2, offset: near, width: outerArchTo - outerArchFrom, along: (outerArchFrom + outerArchTo) / 2 },
+    { bay: 3, offset: far, width: 2 * bayHalfLength(far) + 2 * overhang, along: 0 },
+    { bay: 4, offset: near, width: 2 * bayHalfLength(near + 0.2), along: 0 },
+  ];
   for (const side of [-1, 1]) {
-    const curtain = named(createCurtain(materials, curtainWidth, LAYOUT.ceilingY), side < 0 ? "Curtain Left" : "Curtain Right");
-    // Bays 4 and 9 are the near side bays; the drape sits on their outer half.
-    inFrontOfBay(curtain, side < 0 ? 3 : 8, side * curtainAlong, curtainOffset);
-    group.add(curtain);
+    const drapes = named(new THREE.Group(), side < 0 ? "Curtains Left" : "Curtains Right");
+    for (const [index, panel] of panels.entries()) {
+      const curtain = named(createCurtain(materials, panel.width, LAYOUT.ceilingY), `Curtain ${index + 1}`);
+      inFrontOfBay(curtain, CENTER_BAY + side * panel.bay, side * panel.along, panel.offset);
+      drapes.add(curtain);
+    }
+    group.add(drapes);
   }
 
   const desk = named(createHostDesk(materials), "Host Desk");
@@ -227,15 +241,16 @@ function createProps(materials: Materials) {
     group.add(armchair);
   }
 
-  for (const [index, position] of [new THREE.Vector3(-10.5, 0, -10.0), new THREE.Vector3(10.7, 0, -10.3)].entries()) {
+  // The palms stand in front of the drapes, far enough that the fronds stay clear of them.
+  for (const [index, position] of [new THREE.Vector3(-9.3, 0, -8.8), new THREE.Vector3(9.4, 0, -9.0)].entries()) {
     const palm = named(createPalm(materials), `Palm ${index + 1}`);
     palm.position.copy(position);
     palm.scale.setScalar(1.5);
     group.add(palm);
   }
 
-  // Sconces on the shafts of the columns that flank the side arches, in the gap between the flutes.
-  for (const index of [1, 2, 3, 4, 8, 9, 10, 11]) {
+  // Sconces on the shafts of the columns between the arches, in the gap between the flutes.
+  for (const index of [CENTER_BAY - 1, CENTER_BAY, CENTER_BAY + 1, CENTER_BAY + 2]) {
     const sconce = named(createSconce(materials), `Sconce ${index + 1}`);
     sconce.scale.setScalar(1.4);
     onColumnShaft(sconce, index, SCONCE_HEIGHT);
