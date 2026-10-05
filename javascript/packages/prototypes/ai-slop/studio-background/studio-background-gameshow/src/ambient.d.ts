@@ -27,3 +27,9 @@ declare module "*.frag" {
   const source: string;
   export default source;
 }
+
+interface ImportMeta {
+  webpackHot?: {
+    accept: (dependency: string, callback: () => void) => void;
+  };
+}

@@ -1,0 +1,382 @@
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background: #191919;
+  color: #c8c8c8;
+  font: 12px/1.3 "Inter", "Segoe UI", system-ui, sans-serif;
+  user-select: none;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 34px;
+  padding: 0 8px;
+  background: #282828;
+  border-bottom: 1px solid #111111;
+}
+
+.toolGroup {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 220px;
+}
+
+.toolGroup:last-child {
+  justify-content: flex-end;
+}
+
+.toolButton {
+  height: 22px;
+  padding: 0 10px;
+  border: 1px solid #1a1a1a;
+  border-radius: 3px;
+  background: #3c3c3c;
+  color: #c8c8c8;
+  font: inherit;
+  cursor: pointer;
+}
+
+.toolButton:hover {
+  background: #464646;
+}
+
+.toolButtonActive {
+  background: #2c5d87;
+  color: #ffffff;
+}
+
+.toolButtonActive:hover {
+  background: #33689a;
+}
+
+.playButton {
+  width: 34px;
+  height: 22px;
+  border: 1px solid #1a1a1a;
+  border-radius: 3px;
+  background: #3c3c3c;
+  color: #d0d0d0;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.playButtonActive {
+  background: #2c5d87;
+  color: #ffffff;
+}
+
+.toolbarNote {
+  color: #8a8a8a;
+}
+
+.toolbarNoteAlert {
+  color: #e0b050;
+}
+
+.workspace {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  width: 260px;
+  min-width: 260px;
+  background: #383838;
+  border-right: 1px solid #191919;
+}
+
+.panel:last-child {
+  width: 300px;
+  min-width: 300px;
+  border-right: none;
+  border-left: 1px solid #191919;
+}
+
+.panelHeader {
+  display: flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 10px;
+  background: #282828;
+  border-bottom: 1px solid #191919;
+}
+
+.panelTitle {
+  font-weight: 600;
+  color: #dddddd;
+}
+
+.panelBody {
+  flex: 1;
+  overflow: auto;
+  padding: 4px 0;
+}
+
+.treeRow {
+  display: flex;
+  align-items: center;
+  height: 20px;
+  padding-right: 8px;
+  white-space: nowrap;
+  cursor: default;
+}
+
+.treeRow:hover {
+  background: #444444;
+}
+
+.treeRowSelected,
+.treeRowSelected:hover {
+  background: #2c5d87;
+  color: #ffffff;
+}
+
+.treeArrow {
+  display: inline-block;
+  width: 14px;
+  color: #9a9a9a;
+  text-align: center;
+  cursor: pointer;
+}
+
+.treeIcon {
+  width: 16px;
+  color: #8fb0d6;
+  font-size: 10px;
+  text-align: center;
+}
+
+.treeName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.center {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  background: #282828;
+}
+
+.tabStrip {
+  display: flex;
+  height: 24px;
+  background: #191919;
+}
+
+.tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding: 0 14px;
+  border: none;
+  border-top: 2px solid transparent;
+  background: #2a2a2a;
+  color: #a0a0a0;
+  font: inherit;
+  cursor: pointer;
+}
+
+.tab:hover {
+  color: #dddddd;
+}
+
+.tabActive {
+  background: #3c3c3c;
+  border-top-color: #4d90d6;
+  color: #eeeeee;
+}
+
+.tabIcon {
+  color: #8a8a8a;
+  font-size: 11px;
+}
+
+.viewPane {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.viewPane[hidden] {
+  display: none;
+}
+
+.viewBar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  padding: 0 6px;
+  background: #3c3c3c;
+  border-bottom: 1px solid #191919;
+}
+
+.viewBarItem {
+  padding: 1px 8px;
+  border: 1px solid #262626;
+  border-radius: 2px;
+  background: #474747;
+  color: #d0d0d0;
+}
+
+.viewBarButton {
+  padding: 1px 8px;
+  border: 1px solid #262626;
+  border-radius: 2px;
+  background: #474747;
+  color: #d0d0d0;
+  font: inherit;
+  cursor: pointer;
+}
+
+.viewBarButton:hover {
+  background: #525252;
+}
+
+.viewBarButtonActive,
+.viewBarButtonActive:hover {
+  background: #2c5d87;
+  color: #ffffff;
+}
+
+.toolButton:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.viewBarHint {
+  overflow: hidden;
+  margin-left: auto;
+  color: #8a8a8a;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.viewport {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.gameStage {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  min-height: 0;
+  background: #000000;
+  container-type: size;
+}
+
+.gameFrame {
+  width: min(100cqw, calc(100cqh * 16 / 9));
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+}
+
+.emptyHint {
+  padding: 10px;
+  color: #8a8a8a;
+}
+
+.objectHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px 8px;
+  border-bottom: 1px solid #2a2a2a;
+}
+
+.objectName {
+  font-weight: 600;
+  color: #eeeeee;
+}
+
+.component {
+  padding: 6px 10px 10px;
+  border-bottom: 1px solid #2a2a2a;
+}
+
+.componentTitle {
+  margin-bottom: 6px;
+  font-weight: 600;
+  color: #dddddd;
+}
+
+.vectorRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.rowTitle {
+  width: 62px;
+  color: #b0b0b0;
+}
+
+.vectorFields {
+  display: flex;
+  flex: 1;
+  gap: 4px;
+}
+
+.numberField {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+}
+
+.axisLabel {
+  width: 12px;
+  color: #9a9a9a;
+}
+
+.numberInput {
+  width: 100%;
+  min-width: 0;
+  height: 18px;
+  padding: 0 4px;
+  border: 1px solid #212121;
+  border-radius: 2px;
+  background: #2a2a2a;
+  color: #dddddd;
+  font: inherit;
+}
+
+.numberInput:focus {
+  outline: 1px solid #3a79bb;
+}
+
+.colorInput {
+  width: 60px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid #212121;
+  background: none;
+}
+
+.soloStage {
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background: #000000;
+}
+
+.componentNote {
+  margin-bottom: 6px;
+  color: #8a8a8a;
+}

@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { polar } from "./geometry";
+import { named, polar } from "./geometry";
 import beamFragment from "./shaders/beam.frag";
 import beamVertex from "./shaders/beam.vert";
 import { LAYOUT } from "./studio";
@@ -38,7 +38,11 @@ function beam(color: number, from: THREE.Vector3, to: THREE.Vector3, bottomRadiu
     side: THREE.DoubleSide,
   });
   const mesh = new THREE.Mesh(geometry, material);
+  // The cones cover half the frame: clicks in the Scene view pass through them to the set.
+  mesh.raycast = () => {};
   mesh.userData.length = length;
+  // A fake light: the editor lighting hides it.
+  mesh.userData.beam = true;
   aimBeam(mesh, from, to);
   mesh.renderOrder = 10;
   return mesh;
@@ -58,7 +62,6 @@ function aimBeam(mesh: THREE.Mesh, from: THREE.Vector3, to: THREE.Vector3): void
 type Mover = {
   light: THREE.SpotLight;
   beam: THREE.Mesh;
-  from: THREE.Vector3;
   base: THREE.Vector3;
   // Unit vectors on the floor: along the wall and towards the center.
   side: THREE.Vector3;
@@ -88,51 +91,64 @@ const SWEEP_PATHS: SweepPath[] = [
 ];
 
 function createLights() {
-  const group = new THREE.Group();
+  const group = named(new THREE.Group(), "Lights", true);
   const movers: Mover[] = [];
-  const add = (light: THREE.SpotLight) => {
-    group.add(light, light.target);
+  // Every spot sits in its own folder with its target, so the aim point can be moved in the editor.
+  const add = (name: string, light: THREE.SpotLight, parent: THREE.Object3D = group) => {
+    named(light, name);
+    named(light.target, `${name} Target`);
+    parent.add(light, light.target);
+  };
+  const folder = (name: string) => {
+    const result = named(new THREE.Group(), name, true);
+    group.add(result);
+    return result;
   };
 
-  group.add(new THREE.HemisphereLight(0x23356e, 0x050308, 0.25));
+  group.add(named(new THREE.HemisphereLight(0x23356e, 0x050308, 0.25), "Ambient"));
 
   // Warm key and fills on the wheel from the front ceiling truss.
-  add(spot(0xffd9a8, 260, deg(18), new THREE.Vector3(0, 14, 12), WHEEL_CENTER, true));
-  add(spot(0xffc58a, 120, deg(17), new THREE.Vector3(-9, 13.5, 7), WHEEL_CENTER));
-  add(spot(0xffc58a, 120, deg(17), new THREE.Vector3(9, 13.5, 7), WHEEL_CENTER));
+  add("Key Light", spot(0xffd9a8, 260, deg(18), new THREE.Vector3(0, 14, 12), WHEEL_CENTER, true));
+  add("Fill Left", spot(0xffc58a, 120, deg(17), new THREE.Vector3(-9, 13.5, 7), WHEEL_CENTER));
+  add("Fill Right", spot(0xffc58a, 120, deg(17), new THREE.Vector3(9, 13.5, 7), WHEEL_CENTER));
   // Top light that rims the housing and pools on the podium.
-  add(spot(0xffe7c4, 110, deg(26), new THREE.Vector3(0, LAYOUT.ceilingY - 0.6, WHEEL_CENTER.z - 3), new THREE.Vector3(0, 0, WHEEL_CENTER.z + 1)));
+  add("Top Light", spot(0xffe7c4, 110, deg(26), new THREE.Vector3(0, LAYOUT.ceilingY - 0.6, WHEEL_CENTER.z - 3), new THREE.Vector3(0, 0, WHEEL_CENTER.z + 1)));
 
   // Warm grazing light on the colonnade so the gold columns read.
-  for (const angle of [deg(-75), deg(-45), deg(-15), deg(15), deg(45), deg(75)]) {
+  const colonnade = folder("Colonnade Washes");
+  for (const [index, angle] of [deg(-75), deg(-45), deg(-15), deg(15), deg(45), deg(75)].entries()) {
     const from = polar(angle, LAYOUT.wallRadius * 0.5, LAYOUT.ceilingY - 0.8);
     const to = polar(angle, LAYOUT.wallRadius, 5);
-    add(spot(0xffb466, 480, deg(26), from, to));
+    add(`Colonnade Wash ${index + 1}`, spot(0xffb466, 480, deg(26), from, to), colonnade);
   }
 
   // Blue washes from the back fixtures, with visible beams like in the reference.
+  const blue = folder("Blue Washes");
   const blueAngles = [deg(-62), deg(-26), deg(26), deg(62)];
-  for (const angle of blueAngles) {
+  for (const [index, angle] of blueAngles.entries()) {
     const from = polar(angle, LAYOUT.wallRadius * 0.9, LAYOUT.ceilingY - 0.9);
     const to = polar(angle * 0.92, LAYOUT.wallRadius * 0.86, 0.5);
     const light = spot(0x3d66ff, 320, deg(13), from, to);
-    add(light);
-    const cone = beam(0x3d66ff, from, to, 2.0, 0.35);
-    group.add(cone);
+    add(`Blue Wash ${index + 1}`, light, blue);
+    const cone = named(beam(0x3d66ff, from, to, 2.0, 0.35), `Blue Beam ${index + 1}`);
+    blue.add(cone);
+    light.target.userData.animated = true;
+    cone.userData.animated = true;
     const inward = new THREE.Vector3(-to.x, 0, -to.z).normalize();
     const side = new THREE.Vector3(inward.z, 0, -inward.x);
     const path = SWEEP_PATHS[movers.length % SWEEP_PATHS.length] as SweepPath;
-    movers.push({ light, beam: cone, from, base: to.clone(), side, inward, path, clock: 0 });
+    movers.push({ light, beam: cone, base: to.clone(), side, inward, path, clock: 0 });
   }
   // Warm beams falling from the front fixture ring.
-  for (const angle of [deg(-45), deg(-15), deg(15), deg(45)]) {
+  const warm = folder("Warm Beams");
+  for (const [index, angle] of [deg(-45), deg(-15), deg(15), deg(45)].entries()) {
     const from = polar(angle, LAYOUT.wallRadius * 0.68, LAYOUT.ceilingY - 0.95);
     const to = polar(angle * 0.9, LAYOUT.wallRadius * 0.58, 0);
-    group.add(beam(0xffb870, from, to, 1.5, 0.05));
+    warm.add(named(beam(0xffb870, from, to, 1.5, 0.05), `Warm Beam ${index + 1}`));
   }
 
   // Glow of the wheel bulbs on the podium.
-  const bulbGlow = new THREE.PointLight(0xffcf8a, 5, 9, 2);
+  const bulbGlow = named(new THREE.PointLight(0xffcf8a, 5, 9, 2), "Bulb Glow");
   bulbGlow.position.set(WHEEL_CENTER.x, WHEEL_CENTER.y - 2.5, WHEEL_CENTER.z + 1.6);
   group.add(bulbGlow);
 
@@ -156,7 +172,8 @@ function createLights() {
       const depth = Math.sin(t * path.depthFrequency + path.phases[2]) * path.depthAmplitude;
       target.copy(mover.base).addScaledVector(mover.side, across).addScaledVector(mover.inward, depth);
       mover.light.target.position.copy(target);
-      aimBeam(mover.beam, mover.from, target);
+      // The cone starts at the light, so a light moved in the editor keeps its beam.
+      aimBeam(mover.beam, mover.light.position, target);
     }
   };
 

@@ -1,17 +1,47 @@
 import * as THREE from "three";
-import { faceCenter, polar } from "./geometry";
+import { named } from "./geometry";
 import type { Materials } from "./materials";
-import { boundaryAngle, LAYOUT } from "./studio";
+import { bayHalfLength, inFrontOfBay, LAYOUT, onColumnShaft, SCONCE_HEIGHT } from "./studio";
 
-function mesh(geometry: THREE.BufferGeometry, material: THREE.Material, x: number, y: number, z: number): THREE.Mesh {
-  const result = new THREE.Mesh(geometry, material);
+// Every prop is stacked from the floor up: each part starts exactly where the part under it ends.
+// Parts that sit on a curved surface (a globe on a neck, fronds in a trunk) are marked `seated`.
+
+function mesh(name: string, geometry: THREE.BufferGeometry, material: THREE.Material, x: number, y: number, z: number): THREE.Mesh {
+  const result = named(new THREE.Mesh(geometry, material), name);
   result.position.set(x, y, z);
   result.castShadow = true;
   result.receiveShadow = true;
   return result;
 }
 
-// Velvet drape: a tall plane with sine folds and a gold tassel.
+// Upright cylinder between two heights.
+function drum(name: string, radiusTop: number, radiusBottom: number, bottom: number, top: number, material: THREE.Material, segments = 64): THREE.Mesh {
+  return mesh(name, new THREE.CylinderGeometry(radiusTop, radiusBottom, top - bottom, segments), material, 0, (bottom + top) / 2, 0);
+}
+
+// Box between two heights, with its back face at `back` along z.
+function slab(name: string, width: number, bottom: number, top: number, back: number, front: number, material: THREE.Material, x = 0): THREE.Mesh {
+  return mesh(name, new THREE.BoxGeometry(width, top - bottom, front - back), material, x, (bottom + top) / 2, (back + front) / 2);
+}
+
+// Vertical strips standing on the side of a drum of `radius`, from `bottom` to `top`.
+// The strip back is a hair outside the drum, so no drum edge pokes through it.
+function flutes(name: string, count: number, radius: number, bottom: number, top: number, material: THREE.Material): THREE.Group {
+  const group = named(new THREE.Group(), name);
+  const geometry = new THREE.BoxGeometry(0.035, top - bottom, 0.03);
+  for (let i = 0; i < count; i++) {
+    const a = (i / count) * Math.PI * 2;
+    const r = radius + 0.0005 + 0.015;
+    const flute = new THREE.Mesh(geometry, material);
+    flute.position.set(Math.sin(a) * r, (bottom + top) / 2, Math.cos(a) * r);
+    flute.rotation.y = a;
+    flute.castShadow = true;
+    group.add(flute);
+  }
+  return group;
+}
+
+// Velvet drape hanging from the ceiling to the floor, with sine folds.
 function createCurtain(materials: Materials, width: number, height: number): THREE.Group {
   const group = new THREE.Group();
   const geometry = new THREE.PlaneGeometry(width, height, 80, 20);
@@ -24,125 +54,152 @@ function createCurtain(materials: Materials, width: number, height: number): THR
     position.setZ(i, Math.sin(x * 7.5) * 0.12 * gather + Math.sin(x * 2.3) * 0.08);
   }
   geometry.computeVertexNormals();
-  const drape = new THREE.Mesh(geometry, materials.velvet);
+  const drape = named(new THREE.Mesh(geometry, materials.velvet), "Drape");
   drape.position.y = height / 2;
   drape.castShadow = true;
   group.add(drape);
-  const tieback = mesh(new THREE.TorusGeometry(0.26, 0.07, 8, 24), materials.goldPolished, 0, 5.6, 0.3);
-  group.add(tieback);
-  const tassel = mesh(new THREE.ConeGeometry(0.17, 0.85, 12), materials.gold, 0, 5.0, 0.33);
-  group.add(tassel);
   return group;
 }
 
-// Host desk: fluted navy drum with gold rims and two tilted monitors.
+// Host desk: gold foot ring, fluted navy drum, gold rim, marble top and two monitors resting on it.
 function createHostDesk(materials: Materials): THREE.Group {
   const desk = new THREE.Group();
   const radius = 1.0;
-  const height = 1.75;
-  desk.add(mesh(new THREE.CylinderGeometry(radius + 0.12, radius + 0.15, 0.16, 64), materials.goldPolished, 0, 0.08, 0));
-  desk.add(mesh(new THREE.CylinderGeometry(radius, radius, height - 0.3, 64), materials.navy, 0, height / 2, 0));
-  const flute = new THREE.BoxGeometry(0.04, height - 0.45, 0.04);
-  for (let i = 0; i < 28; i++) {
-    const a = (i / 28) * Math.PI * 2;
-    desk.add(mesh(flute, materials.gold, Math.sin(a) * (radius + 0.01), height / 2, Math.cos(a) * (radius + 0.01)));
-  }
-  desk.add(mesh(new THREE.CylinderGeometry(radius + 0.14, radius + 0.1, 0.14, 64), materials.goldPolished, 0, height - 0.15, 0));
-  desk.add(mesh(new THREE.CylinderGeometry(radius + 0.1, radius + 0.1, 0.06, 64), materials.marble, 0, height - 0.05, 0));
+  const footTop = 0.16;
+  const drumTop = 1.53;
+  const rimTop = 1.67;
+  const deskTop = 1.73;
+  desk.add(drum("Foot", radius + 0.12, radius + 0.15, 0, footTop, materials.goldPolished));
+  desk.add(drum("Drum", radius, radius, footTop, drumTop, materials.navy));
+  desk.add(flutes("Flutes", 28, radius, footTop + 0.08, drumTop - 0.08, materials.gold));
+  desk.add(drum("Rim", radius + 0.14, radius + 0.1, drumTop, rimTop, materials.goldPolished));
+  desk.add(drum("Top", radius + 0.1, radius + 0.1, rimTop, deskTop, materials.marble));
+  // Each monitor leans back and rests on its lower edge. Screens face the host, who stands behind the desk.
+  const tilt = 0.35;
+  const halfHeight = 0.19;
+  const halfDepth = 0.02;
   for (const side of [-1, 1]) {
-    const monitor = new THREE.Group();
-    monitor.add(mesh(new THREE.BoxGeometry(0.62, 0.38, 0.04), materials.navy, 0, 0, 0));
-    monitor.add(mesh(new THREE.PlaneGeometry(0.56, 0.32), materials.screen, 0, 0, -0.025));
-    monitor.position.set(side * 0.38, height + 0.22, 0.1);
-    // Screens face the host, who stands behind the desk.
-    monitor.rotation.set(-0.35, side * 0.15, 0);
+    const monitor = named(new THREE.Group(), side < 0 ? "Monitor Left" : "Monitor Right");
+    monitor.add(mesh("Case", new THREE.BoxGeometry(0.62, halfHeight * 2, halfDepth * 2), materials.navy, 0, 0, 0));
+    // The screen is on the host side of the case (local +z, turned away from the camera by the yaw below).
+    // It floats 2.5 mm off the case: close enough to read as one part, far enough not to z-fight.
+    monitor.add(mesh("Screen", new THREE.PlaneGeometry(0.56, 0.32), materials.screen, 0, 0, halfDepth + 0.0025));
+    monitor.rotation.set(-tilt, side * 0.15, 0);
     monitor.rotation.y += Math.PI;
+    // The yaw lowers one corner a little, so the exact lowest point comes from the bounds.
+    monitor.updateMatrixWorld(true);
+    const lowest = new THREE.Box3().setFromObject(monitor, true).min.y;
+    monitor.position.set(side * 0.38, deskTop - lowest, 0.1);
     desk.add(monitor);
   }
   return desk;
 }
 
+// Lamp table: fluted navy drum, gold top, a neck and a frosted globe.
 function createLampTable(materials: Materials): { group: THREE.Group; light: THREE.PointLight } {
   const group = new THREE.Group();
-  group.add(mesh(new THREE.CylinderGeometry(0.5, 0.5, 0.06, 40), materials.goldPolished, 0, 0.82, 0));
-  group.add(mesh(new THREE.CylinderGeometry(0.42, 0.46, 0.8, 40), materials.navy, 0, 0.4, 0));
-  for (let i = 0; i < 16; i++) {
-    const a = (i / 16) * Math.PI * 2;
-    group.add(mesh(new THREE.BoxGeometry(0.03, 0.72, 0.03), materials.gold, Math.sin(a) * 0.44, 0.42, Math.cos(a) * 0.44));
-  }
-  group.add(mesh(new THREE.CylinderGeometry(0.08, 0.12, 0.12, 20), materials.gold, 0, 0.91, 0));
-  const globe = mesh(new THREE.SphereGeometry(0.24, 32, 20), materials.lampGlobe, 0, 1.18, 0);
+  const bodyTop = 0.8;
+  const tableTop = 0.86;
+  const neckTop = 0.98;
+  group.add(drum("Body", 0.44, 0.44, 0, bodyTop, materials.navy, 40));
+  group.add(flutes("Flutes", 16, 0.44, 0.06, bodyTop - 0.06, materials.gold));
+  group.add(drum("Table Top", 0.5, 0.5, bodyTop, tableTop, materials.goldPolished, 40));
+  group.add(drum("Neck", 0.08, 0.12, tableTop, neckTop, materials.gold, 20));
+  // The globe sits 3 cm deep on the neck, like on a lamp holder.
+  const globe = mesh("Globe", new THREE.SphereGeometry(0.24, 32, 20), materials.lampGlobe, 0, neckTop + 0.24 - 0.03, 0);
   globe.castShadow = false;
+  globe.userData.seated = true;
   group.add(globe);
-  const light = new THREE.PointLight(0xffd7a0, 2.5, 4, 2);
-  light.position.set(0, 1.2, 0);
+  const light = named(new THREE.PointLight(0xffd7a0, 2.5, 4, 2), "Lamp Light");
+  light.position.set(0, globe.position.y, 0);
   group.add(light);
   return { group, light };
 }
 
+// Armchair: gold base, a back across the full width, two arms in front of it and a seat between the arms.
 function createArmchair(materials: Materials): THREE.Group {
   const chair = new THREE.Group();
-  chair.add(mesh(new THREE.BoxGeometry(1.3, 0.45, 1.0), materials.velvet, 0, 0.35, 0));
-  chair.add(mesh(new THREE.BoxGeometry(1.3, 0.9, 0.28), materials.velvet, 0, 0.95, -0.42));
+  const baseTop = 0.1;
+  const width = 1.3;
+  const armWidth = 0.24;
+  const backFront = -0.5;
+  chair.add(slab("Base", width, 0, baseTop, -0.78, 0.5, materials.goldDark));
+  chair.add(slab("Back", width, baseTop, 1.3, -0.78, backFront, materials.velvet));
   for (const side of [-1, 1]) {
-    chair.add(mesh(new THREE.BoxGeometry(0.24, 0.55, 1.0), materials.velvet, side * 0.6, 0.6, 0));
+    chair.add(slab(side < 0 ? "Arm Left" : "Arm Right", armWidth, baseTop, 0.65, backFront, 0.5, materials.velvet, side * (width / 2 - armWidth / 2)));
   }
-  chair.add(mesh(new THREE.BoxGeometry(1.32, 0.1, 1.02), materials.goldDark, 0, 0.08, 0));
+  chair.add(slab("Seat", width - armWidth * 2, baseTop, 0.45, backFront, 0.5, materials.velvet));
   return chair;
 }
 
-// Potted palm: a gold pot, a short trunk and drooping fronds.
+// Potted palm: a gold pot, a trunk standing on the pot, drooping fronds growing out of the trunk top.
 function createPalm(materials: Materials): THREE.Group {
   const palm = new THREE.Group();
-  palm.add(mesh(new THREE.CylinderGeometry(0.42, 0.32, 0.8, 32), materials.goldPolished, 0, 0.4, 0));
-  palm.add(mesh(new THREE.CylinderGeometry(0.07, 0.1, 1.5, 10), materials.trunk, 0, 1.5, 0));
-  const frondGeometry = new THREE.PlaneGeometry(0.42, 1.9, 1, 10);
+  const potTop = 0.8;
+  const trunkTop = 2.3;
+  palm.add(drum("Pot", 0.42, 0.32, 0, potTop, materials.goldPolished, 32));
+  palm.add(drum("Trunk", 0.07, 0.1, potTop, trunkTop, materials.trunk, 10));
+  const length = 1.9;
+  const frondGeometry = new THREE.PlaneGeometry(0.42, length, 1, 10);
   const position = frondGeometry.getAttribute("position");
   for (let i = 0; i < position.count; i++) {
-    const y = position.getY(i) + 0.95;
+    const y = position.getY(i) + length / 2;
     const x = position.getX(i);
-    // Bend the frond downwards along its length and pinch it to a tip.
-    position.setX(i, x * (1 - (y / 1.9) * 0.8));
-    position.setZ(i, -Math.pow(y / 1.9, 2) * 0.9);
+    // Narrow at the root so it fits inside the trunk top, wide in the middle, pinched to a tip.
+    const width = (1 - (y / length) * 0.8) * Math.min(1, 0.3 + y / 0.4);
+    position.setX(i, x * width);
+    // Bend the frond downwards along its length.
+    position.setZ(i, -Math.pow(y / length, 2) * 0.9);
     position.setY(i, y);
   }
   frondGeometry.computeVertexNormals();
+  const fronds = named(new THREE.Group(), "Fronds");
   for (let i = 0; i < 11; i++) {
     const frond = new THREE.Mesh(frondGeometry, materials.leaf);
-    frond.position.y = 2.2;
+    frond.position.y = trunkTop - 0.02;
     frond.rotation.order = "YXZ";
     frond.rotation.y = (i / 11) * Math.PI * 2;
     frond.rotation.x = -0.9 + (i % 3) * 0.25;
     frond.castShadow = true;
-    palm.add(frond);
+    frond.userData.seated = true;
+    fronds.add(frond);
   }
+  palm.add(fronds);
   return palm;
 }
 
-// Wall sconce: a gold arm with a glowing globe on a column face.
+// Wall sconce on a column shaft: a back plate, an arm, a cup at the end of the arm and a globe in the cup.
+// In the sconce frame the shaft front is z = 0.
 function createSconce(materials: Materials): THREE.Group {
   const sconce = new THREE.Group();
-  sconce.add(mesh(new THREE.BoxGeometry(0.16, 0.4, 0.1), materials.goldPolished, 0, 0, 0));
-  sconce.add(mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.4, 8), materials.gold, 0, 0.05, 0.2));
-  const globe = new THREE.Mesh(new THREE.SphereGeometry(0.15, 24, 16), materials.lampGlobe);
-  globe.position.set(0, 0.25, 0.4);
+  const plateDepth = 0.05;
+  const armEnd = 0.36;
+  sconce.add(slab("Plate", 0.16, -0.2, 0.2, 0, plateDepth, materials.goldPolished));
+  sconce.add(slab("Arm", 0.05, -0.025, 0.025, plateDepth, armEnd, materials.gold));
+  sconce.add(slab("Cup", 0.14, -0.025, 0.035, armEnd, armEnd + 0.14, materials.gold));
+  const globe = mesh("Globe", new THREE.SphereGeometry(0.15, 24, 16), materials.lampGlobe, 0, 0.035 + 0.15 - 0.02, armEnd + 0.07);
+  globe.castShadow = false;
+  globe.userData.seated = true;
   sconce.add(globe);
   return sconce;
 }
 
 function createProps(materials: Materials) {
-  const group = new THREE.Group();
+  const group = named(new THREE.Group(), "Props", true);
 
-  // Drapes hang in the near side arches and frame the shot, like in the reference.
+  // Drapes hang from the ceiling to the floor in front of the steps of the near side bays, and frame the shot.
+  // A drape stays inside one bay, where the step edge in front of it runs straight.
+  const curtainOffset = 3.0;
+  const curtainWidth = 2.4;
+  const curtainAlong = bayHalfLength(curtainOffset) - curtainWidth / 2 - 0.05;
   for (const side of [-1, 1]) {
-    const angle = side * THREE.MathUtils.degToRad(47);
-    const curtain = createCurtain(materials, 3.6, LAYOUT.wallHeight + 1.5);
-    curtain.position.copy(polar(angle, LAYOUT.wallRadius - 1.6));
-    faceCenter(curtain, angle);
+    const curtain = named(createCurtain(materials, curtainWidth, LAYOUT.ceilingY), side < 0 ? "Curtain Left" : "Curtain Right");
+    // Bays 4 and 9 are the near side bays; the drape sits on their outer half.
+    inFrontOfBay(curtain, side < 0 ? 3 : 8, side * curtainAlong, curtainOffset);
     group.add(curtain);
   }
 
-  const desk = createHostDesk(materials);
+  const desk = named(createHostDesk(materials), "Host Desk");
   desk.position.set(3.7, 0, 1.0);
   desk.rotation.y = -0.4;
   group.add(desk);
@@ -152,8 +209,9 @@ function createProps(materials: Materials) {
     new THREE.Vector3(5.4, 0, 2.2),
     new THREE.Vector3(-8.5, 0, -4.0),
   ];
-  for (const position of tables) {
+  for (const [index, position] of tables.entries()) {
     const table = createLampTable(materials);
+    named(table.group, `Lamp Table ${index + 1}`);
     table.group.position.copy(position);
     group.add(table.group);
   }
@@ -162,27 +220,25 @@ function createProps(materials: Materials) {
     { position: new THREE.Vector3(-7.0, 0, -2.0), rotation: 1.0 },
     { position: new THREE.Vector3(7.2, 0, -1.5), rotation: -1.0 },
   ];
-  for (const chair of chairs) {
-    const armchair = createArmchair(materials);
+  for (const [index, chair] of chairs.entries()) {
+    const armchair = named(createArmchair(materials), `Armchair ${index + 1}`);
     armchair.position.copy(chair.position);
     armchair.rotation.y = chair.rotation;
     group.add(armchair);
   }
 
-  for (const position of [new THREE.Vector3(-10.5, 0, -10.0), new THREE.Vector3(10.7, 0, -10.3)]) {
-    const palm = createPalm(materials);
+  for (const [index, position] of [new THREE.Vector3(-10.5, 0, -10.0), new THREE.Vector3(10.7, 0, -10.3)].entries()) {
+    const palm = named(createPalm(materials), `Palm ${index + 1}`);
     palm.position.copy(position);
     palm.scale.setScalar(1.5);
     group.add(palm);
   }
 
-  // Sconces on the columns that flank the side arches.
+  // Sconces on the shafts of the columns that flank the side arches, in the gap between the flutes.
   for (const index of [1, 2, 3, 4, 8, 9, 10, 11]) {
-    const angle = boundaryAngle(index);
-    const sconce = createSconce(materials);
+    const sconce = named(createSconce(materials), `Sconce ${index + 1}`);
     sconce.scale.setScalar(1.4);
-    sconce.position.copy(polar(angle, LAYOUT.wallRadius - 0.85, 7.6));
-    faceCenter(sconce, angle);
+    onColumnShaft(sconce, index, SCONCE_HEIGHT);
     group.add(sconce);
   }
 

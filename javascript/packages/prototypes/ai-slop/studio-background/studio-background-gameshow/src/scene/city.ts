@@ -5,7 +5,7 @@ import skyMaskUrl from "../assets/background-city-sky-mask.png";
 import waterUrl from "../assets/background-water.jpg";
 import { WIDE_SHOT_POSITION } from "./cameraRig";
 import { createCityLights } from "./cityLights";
-import { cylinderArc } from "./geometry";
+import { cylinderArc, named } from "./geometry";
 import cityFragment from "./shaders/city.frag";
 import commonChunk from "./shaders/common.glsl";
 import cityVertex from "./shaders/city.vert";
@@ -100,7 +100,7 @@ function createCity() {
   });
 
   // City and sky: from the shoreline up. Drawn first, behind everything.
-  const city = band(CITY.radius, CITY.shore, CITY.elevationMax, material);
+  const city = named(band(CITY.radius, CITY.shore, CITY.elevationMax, material), "Skyline");
   city.renderOrder = -1;
 
   const waterTop = CITY.shore + CITY.overlapTexels * radiansPerPixel;
@@ -126,9 +126,10 @@ function createCity() {
     },
   });
   // Water: a band just in front of the city cylinder, from below the frame up to the overlap.
-  const water = band(CITY.radius - 1, CITY.elevationMin, waterTop, waterMaterial);
+  const water = named(band(CITY.radius - 1, CITY.elevationMin, waterTop, waterMaterial), "Water");
 
-  const group = new THREE.Group();
+  const group = named(new THREE.Group(), "City Backdrop", true);
+  group.userData.auditIgnore = true;
   group.add(city, water);
 
   const update = (renderer: THREE.WebGLRenderer, time: number) => {

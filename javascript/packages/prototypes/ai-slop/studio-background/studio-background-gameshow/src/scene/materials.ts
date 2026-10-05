@@ -6,7 +6,7 @@ function glow(hex: number, strength: number): THREE.Color {
 }
 
 function createMaterials() {
-  return {
+  const materials = {
     gold: new THREE.MeshStandardMaterial({ color: 0xd9a24c, metalness: 1, roughness: 0.27 }),
     goldPolished: new THREE.MeshStandardMaterial({ color: 0xf2c46a, metalness: 1, roughness: 0.16 }),
     goldDark: new THREE.MeshStandardMaterial({ color: 0x8c6226, metalness: 1, roughness: 0.38 }),
@@ -32,6 +32,11 @@ function createMaterials() {
     fixture: new THREE.MeshBasicMaterial({ color: glow(0xfff1d6, 2) }),
     fixtureBlue: new THREE.MeshBasicMaterial({ color: glow(0x6c93ff, 9) }),
   };
+  // The editor lists and saves shared materials by name.
+  for (const [name, material] of Object.entries(materials)) {
+    material.name = name;
+  }
+  return materials;
 }
 
 type Materials = ReturnType<typeof createMaterials>;

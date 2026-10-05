@@ -1,9 +1,19 @@
 import * as THREE from "three";
+import { named } from "./geometry";
 import { glow } from "./materials";
 import type { Materials } from "./materials";
 
-const FACE_RADIUS = 3.0;
+// Wheel body, front to back along z (the wheel center is z = 0):
+//   hub 0.02..0.22 on the face, face disc 0..0.02 on the shell, shell -0.36..0,
+//   legs -0.64..-0.36 against the shell back, base -1.2..-0.36 under the legs.
+// The housing ring is centred on z = 0 and sits half inside the shell rim.
+// The face stops 1 cm short of the housing tube, so the spinning face never touches the ring.
+const FACE_RADIUS = 2.97;
+const FACE_THICKNESS = 0.02;
 const HOUSING_RADIUS = 3.22;
+const HOUSING_TUBE = 0.24;
+const SHELL_RADIUS = 3.32;
+const SHELL_DEPTH = 0.36;
 const BULB_COUNT = 44;
 const PODIUM = [
   { radius: 4.6, height: 0.25 },
@@ -230,21 +240,23 @@ function createHubTexture(): THREE.CanvasTexture {
 }
 
 function createPodium(materials: Materials): THREE.Group {
-  const podium = new THREE.Group();
+  const podium = named(new THREE.Group(), "Podium");
   let y = 0;
-  for (const tier of PODIUM) {
+  for (const [index, tier] of PODIUM.entries()) {
     const geometry = new THREE.CylinderGeometry(tier.radius, tier.radius, tier.height, 128);
     // Cylinder material groups: side, top cap, bottom cap.
-    const mesh = new THREE.Mesh(geometry, [materials.goldPolished, materials.marble, materials.marble]);
+    const mesh = named(new THREE.Mesh(geometry, [materials.goldPolished, materials.marble, materials.marble]), `Tier ${index + 1}`);
     mesh.position.y = y + tier.height / 2;
     mesh.castShadow = true;
     mesh.receiveShadow = true;
     podium.add(mesh);
-    const lip = new THREE.Mesh(new THREE.TorusGeometry(tier.radius - 0.05, 0.03, 8, 160), materials.gold);
+    // A bead lies on the tread near its edge, an LED tube runs along the riser: both only touch the tier.
+    // The LED keeps 1.5 mm off the riser, more than the sag of its own segments, so no chord cuts into the tier.
+    const lip = named(new THREE.Mesh(new THREE.TorusGeometry(tier.radius - 0.05, 0.03, 8, 160), materials.gold), `Bead ${index + 1}`);
     lip.rotation.x = Math.PI / 2;
-    lip.position.y = y + tier.height;
+    lip.position.y = y + tier.height + 0.03;
     podium.add(lip);
-    const led = new THREE.Mesh(new THREE.TorusGeometry(tier.radius + 0.005, 0.012, 6, 160), materials.led);
+    const led = named(new THREE.Mesh(new THREE.TorusGeometry(tier.radius + 0.012 + 0.0015, 0.012, 8, 160), materials.led), `LED ${index + 1}`);
     led.rotation.x = Math.PI / 2;
     led.position.y = y + tier.height * 0.5;
     podium.add(led);
@@ -255,73 +267,91 @@ function createPodium(materials: Materials): THREE.Group {
 }
 
 function createWheel(materials: Materials) {
-  const group = new THREE.Group();
+  const group = named(new THREE.Group(), "Wheel");
   group.add(createPodium(materials));
 
-  const wheel = new THREE.Group();
+  const wheel = named(new THREE.Group(), "Wheel Body");
   wheel.position.copy(WHEEL_CENTER);
   group.add(wheel);
 
-  // Rear shell and the A-frame stand behind the wheel.
-  const shell = new THREE.Mesh(new THREE.CylinderGeometry(HOUSING_RADIUS + 0.1, HOUSING_RADIUS + 0.1, 0.36, 96), materials.navy);
+  // Rear shell, and the A-frame stand behind it: a base on the podium, two legs from the base to the shell back.
+  const shell = named(new THREE.Mesh(new THREE.CylinderGeometry(SHELL_RADIUS, SHELL_RADIUS, SHELL_DEPTH, 96), materials.navy), "Shell");
   shell.rotation.x = Math.PI / 2;
-  shell.position.z = -0.2;
+  shell.position.z = -SHELL_DEPTH / 2;
   shell.castShadow = true;
   wheel.add(shell);
+  const baseHeight = 0.3;
+  const baseTop = PODIUM_TOP + baseHeight - WHEEL_CENTER.y;
+  const base = named(new THREE.Mesh(new THREE.BoxGeometry(3.2, baseHeight, 1.2 - SHELL_DEPTH), materials.goldDark), "Base");
+  base.position.set(0, baseTop - baseHeight / 2, -SHELL_DEPTH - (1.2 - SHELL_DEPTH) / 2);
+  wheel.add(base);
+  // Each leg is a slanted prism with level ends: the foot stands flat on the base, the front face lies on the shell back.
+  const legWidth = 0.28;
+  const legTop = 0.2;
+  const legLean = (legTop - baseTop) * Math.tan(0.22);
   for (const side of [-1, 1]) {
-    const leg = new THREE.Mesh(new THREE.BoxGeometry(0.28, WHEEL_CENTER.y - PODIUM_TOP + 0.4, 0.28), materials.goldDark);
-    leg.position.set(side * 1.0, -(WHEEL_CENTER.y - PODIUM_TOP) / 2, -0.55);
-    leg.rotation.z = side * 0.22;
+    const foot = side * (1.0 + legLean / 2);
+    const head = side * (1.0 - legLean / 2);
+    const shape = new THREE.Shape();
+    shape.moveTo(foot - legWidth / 2, baseTop);
+    shape.lineTo(foot + legWidth / 2, baseTop);
+    shape.lineTo(head + legWidth / 2, legTop);
+    shape.lineTo(head - legWidth / 2, legTop);
+    shape.closePath();
+    const legGeometry = new THREE.ExtrudeGeometry(shape, { depth: legWidth, bevelEnabled: false });
+    legGeometry.translate(0, 0, -SHELL_DEPTH - legWidth);
+    const leg = named(new THREE.Mesh(legGeometry, materials.goldDark), side < 0 ? "Leg Left" : "Leg Right");
+    leg.castShadow = true;
     wheel.add(leg);
   }
-  const base = new THREE.Mesh(new THREE.BoxGeometry(3.2, 0.3, 1.2), materials.goldDark);
-  base.position.set(0, PODIUM_TOP + 0.15 - WHEEL_CENTER.y, -0.5);
-  wheel.add(base);
 
   // Spinning part: printed face and its sector pegs.
-  const rotor = new THREE.Group();
+  const rotor = named(new THREE.Group(), "Rotor");
+  rotor.userData.animated = true;
   wheel.add(rotor);
   const faceTexture = createFaceTexture();
-  const face = new THREE.Mesh(
-    new THREE.CircleGeometry(FACE_RADIUS, 128),
-    new THREE.MeshStandardMaterial({
-      map: faceTexture,
-      emissive: 0xffffff,
-      emissiveMap: faceTexture,
-      emissiveIntensity: 0.06,
-      roughness: 0.32,
-      metalness: 0.1,
-    }),
-  );
-  face.position.z = 0.02;
+  const faceMaterial = new THREE.MeshStandardMaterial({
+    map: faceTexture,
+    emissive: 0xffffff,
+    emissiveMap: faceTexture,
+    emissiveIntensity: 0.06,
+    roughness: 0.32,
+    metalness: 0.1,
+  });
+  // A thin disc on the shell front. The two rotations give its cap the same UVs as a CircleGeometry.
+  const faceGeometry = new THREE.CylinderGeometry(FACE_RADIUS, FACE_RADIUS, FACE_THICKNESS, 128);
+  faceGeometry.rotateX(Math.PI / 2);
+  faceGeometry.rotateZ(Math.PI / 2);
+  const face = named(new THREE.Mesh(faceGeometry, [materials.goldDark, faceMaterial, materials.goldDark]), "Face");
+  face.position.z = FACE_THICKNESS / 2;
   rotor.add(face);
   const pegGeometry = new THREE.CylinderGeometry(0.04, 0.04, 0.12, 10);
   pegGeometry.rotateX(Math.PI / 2);
-  const pegs = new THREE.InstancedMesh(pegGeometry, materials.goldPolished, SECTORS.length);
+  const pegs = named(new THREE.InstancedMesh(pegGeometry, materials.goldPolished, SECTORS.length), "Pegs");
   const matrix = new THREE.Matrix4();
   for (let i = 0; i < SECTORS.length; i++) {
     const a = Math.PI / 2 + ((i - 0.5) * Math.PI * 2) / SECTORS.length;
-    matrix.makeTranslation(Math.cos(a) * (FACE_RADIUS - 0.08), Math.sin(a) * (FACE_RADIUS - 0.08), 0.08);
+    matrix.makeTranslation(Math.cos(a) * (FACE_RADIUS - 0.08), Math.sin(a) * (FACE_RADIUS - 0.08), FACE_THICKNESS + 0.06);
     pegs.setMatrixAt(i, matrix);
   }
   rotor.add(pegs);
 
-  // Static housing ring with chasing bulbs.
-  const housing = new THREE.Mesh(new THREE.TorusGeometry(HOUSING_RADIUS, 0.24, 24, 160), materials.goldPolished);
+  // Static housing ring with chasing bulbs. The ring is mounted half into the shell rim,
+  // and every bulb sits half in the ring, like in a socket.
+  const housing = named(new THREE.Mesh(new THREE.TorusGeometry(HOUSING_RADIUS, HOUSING_TUBE, 24, 160), materials.goldPolished), "Housing");
+  housing.userData.seated = true;
   housing.castShadow = true;
   wheel.add(housing);
-  const innerLip = new THREE.Mesh(new THREE.TorusGeometry(FACE_RADIUS, 0.05, 12, 160), materials.gold);
-  innerLip.position.z = 0.04;
-  wheel.add(innerLip);
 
   const bulbMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff });
-  const bulbs = new THREE.InstancedMesh(new THREE.SphereGeometry(0.085, 16, 12), bulbMaterial, BULB_COUNT);
+  const bulbs = named(new THREE.InstancedMesh(new THREE.SphereGeometry(0.085, 16, 12), bulbMaterial, BULB_COUNT), "Bulbs");
   for (let i = 0; i < BULB_COUNT; i++) {
     const a = (i / BULB_COUNT) * Math.PI * 2;
     matrix.makeTranslation(Math.cos(a) * HOUSING_RADIUS, Math.sin(a) * HOUSING_RADIUS, 0.2);
     bulbs.setMatrixAt(i, matrix);
     bulbs.setColorAt(i, glow(0xffe2a8, 6));
   }
+  bulbs.userData.seated = true;
   wheel.add(bulbs);
 
   // Hub with the logo stays still while the face spins behind it.
@@ -337,25 +367,36 @@ function createWheel(materials: Materials) {
     emissiveIntensity: 0.12,
     roughness: 0.3,
   });
-  const hub = new THREE.Mesh(hubGeometry, [materials.goldPolished, hubFace, materials.goldDark]);
-  hub.position.z = 0.14;
+  // The hub stands on the face; the ring is a bead around its front edge.
+  const hub = named(new THREE.Mesh(hubGeometry, [materials.goldPolished, hubFace, materials.goldDark]), "Hub");
+  hub.position.z = FACE_THICKNESS + 0.1;
   wheel.add(hub);
-  const hubRing = new THREE.Mesh(new THREE.TorusGeometry(0.95, 0.07, 12, 96), materials.goldPolished);
-  hubRing.position.z = 0.24;
+  const hubRing = named(new THREE.Mesh(new THREE.TorusGeometry(0.95, 0.07, 12, 96), materials.goldPolished), "Hub Ring");
+  hubRing.position.z = FACE_THICKNESS + 0.2;
+  hubRing.userData.seated = true;
   wheel.add(hubRing);
 
-  // Pointer at the top: gold drop with a red gem.
-  const pointer = new THREE.Group();
-  const drop = new THREE.Mesh(new THREE.ConeGeometry(0.24, 0.62, 24), materials.goldPolished);
+  // Pointer at the top: a bracket lies on the housing top, the gold drop hangs from its front end
+  // just in front of the ring, and a cap with a red gem sits on the bracket above the drop.
+  const pointer = named(new THREE.Group(), "Pointer");
+  const ringTop = HOUSING_RADIUS + HOUSING_TUBE;
+  const bracketHeight = 0.12;
+  const dropZ = HOUSING_TUBE + 0.26;
+  const bracket = named(new THREE.Mesh(new THREE.BoxGeometry(0.24, bracketHeight, dropZ + 0.44), materials.goldPolished), "Bracket");
+  bracket.position.set(0, ringTop + bracketHeight / 2, (dropZ + 0.24 - 0.2) / 2);
+  pointer.add(bracket);
+  const drop = named(new THREE.Mesh(new THREE.ConeGeometry(0.24, 0.62, 24), materials.goldPolished), "Drop");
   drop.rotation.z = Math.PI;
+  drop.position.set(0, ringTop - 0.31, dropZ);
   pointer.add(drop);
-  const cap = new THREE.Mesh(new THREE.SphereGeometry(0.24, 24, 16), materials.goldPolished);
-  cap.position.y = 0.3;
+  const cap = named(new THREE.Mesh(new THREE.SphereGeometry(0.24, 24, 16), materials.goldPolished), "Cap");
+  cap.position.set(0, ringTop + bracketHeight + 0.2, dropZ);
+  cap.userData.seated = true;
   pointer.add(cap);
-  const gem = new THREE.Mesh(new THREE.SphereGeometry(0.12, 20, 14), new THREE.MeshBasicMaterial({ color: glow(0xff2a2a, 3) }));
-  gem.position.set(0, 0.3, 0.16);
+  const gem = named(new THREE.Mesh(new THREE.SphereGeometry(0.12, 20, 14), new THREE.MeshBasicMaterial({ color: glow(0xff2a2a, 3) })), "Gem");
+  gem.position.set(0, cap.position.y, dropZ + 0.18);
+  gem.userData.seated = true;
   pointer.add(gem);
-  pointer.position.set(0, FACE_RADIUS + 0.35, 0.36);
   wheel.add(pointer);
 
   // Spin cycle: an eased spin that lands on a sector, then a short rest.
