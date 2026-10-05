@@ -64,6 +64,11 @@ impl Notifications {
     }
 
     pub fn push(&mut self, level: Level, title: String, body: String) {
+        // A cancelled job already says "Cancelled: <label>"; its error goes to the log only.
+        if level != Level::Info && (crate::progress::is_cancel_text(&body) || crate::progress::is_cancel_text(&title)) {
+            self.log_only(level, title, body);
+            return;
+        }
         let note = Notification { level, title, body, time: Instant::now() };
         self.next_id += 1;
         self.toasts.push(Toast { id: self.next_id, note: note.clone(), shown: Instant::now(), expanded: false });

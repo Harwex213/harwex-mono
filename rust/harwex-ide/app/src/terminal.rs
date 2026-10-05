@@ -81,6 +81,9 @@ struct Rename {
     focus: bool,
     /// Enter (true) or Escape (false) arrived; the box ends after this frame's typing.
     done: Option<bool>,
+    /// A press away took the focus; the name is kept on the release. A press on the strip
+    /// button hides the window on its release, and `end_frame` drops the edit first.
+    keep_on_release: bool,
 }
 
 impl Rename {
@@ -106,6 +109,8 @@ pub struct Terminals {
     drag: Option<TabDrag>,
     /// The tab whose name is being edited.
     rename: Option<Rename>,
+    /// The header was drawn this frame (`end_frame` reads and clears it).
+    drawn: bool,
     /// The project's saved tabs are being read; the window starts no shell meanwhile.
     loading: bool,
     /// Tab changes are saved: a store is set, a project is open and its saved tabs were read.
@@ -200,12 +205,6 @@ impl Terminals {
         self.tabs.get(index).map(|t| t.id)
     }
 
-    /// True when the focused terminal runs a program on the alternate screen.
-    fn focused_is_alt_screen(&self, ctx: &Context) -> bool {
-        let Some(focused) = ctx.memory(|m| m.focused()) else { return false };
-        self.tabs.iter().any(|t| t.id == focused && t.term.as_ref().is_some_and(Terminal::is_alt_screen))
-    }
-
     /// Pids of the running shells, for the memory indicator, which leaves their subtrees out.
     pub fn shell_pids(&self) -> impl Iterator<Item = u32> + Clone + '_ {
         self.tabs.iter().filter_map(|t| t.term.as_ref().and_then(Terminal::process_id))
@@ -275,7 +274,7 @@ impl Terminals {
 
     fn start_rename(&mut self, index: usize) {
         if let Some(tab) = self.tabs.get(index) {
-            self.rename = Some(Rename { tab: tab.id, text: tab.title(), focus: true, done: None });
+            self.rename = Some(Rename { tab: tab.id, text: tab.title(), focus: true, done: None, keep_on_release: false });
         }
     }
 
@@ -453,8 +452,8 @@ pub(crate) fn save_closed(s: &AppState, ws: &Workspace) {
     }
 }
 
-/// Handles Alt+F12 and Escape. Returns true when a terminal has focus; the caller then skips
-/// its own global shortcuts.
+/// Handles Alt+F12, the tab rename box and the tab drag. Returns true when a terminal has
+/// focus; the caller then skips its own global shortcuts.
 pub fn shortcuts(s: &mut AppState, ctx: &Context) -> bool {
     // The inline rename box owns Enter and Escape; nothing else may act on them.
     if let Some(r) = s.ws.terminals.rename.as_mut() {
@@ -464,6 +463,11 @@ pub fn shortcuts(s: &mut AppState, ctx: &Context) -> bool {
             // letters first, and `header_tabs` ends the rename after it.
             if enter || escape {
                 r.done = Some(enter);
+            }
+            // Alt+F12 hides the window like from a focused terminal; `end_frame` drops the edit.
+            if ctx.input_mut(|i| i.consume_key(Modifiers::ALT, Key::F12)) {
+                s.ws.layout.bottom = None;
+                focus_editor(s, ctx);
             }
             return true;
         }
@@ -488,11 +492,20 @@ pub fn shortcuts(s: &mut AppState, ctx: &Context) -> bool {
         }
         return true;
     }
-    // vim, less and htop run on the alternate screen and need Escape themselves.
-    if focused && !s.ws.terminals.focused_is_alt_screen(ctx) && ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::Escape)) {
-        focus_editor(s, ctx);
-    }
+    // Escape in a focused terminal always goes to the program (vim, Claude Code, the shell's
+    // line editor), like IDEA. Shift+Esc or Alt+F12 leave the terminal.
     focused
+}
+
+/// Runs after every panel is drawn. A Terminal window that was not drawn this frame is hidden
+/// (Shift+Esc, Alt+F12, the strip button, another bottom window, another project). Its open
+/// rename ends like Escape: the edit is dropped and the old name stays.
+pub(crate) fn end_frame(s: &mut AppState) {
+    for ws in s.all_ws_mut() {
+        if !std::mem::take(&mut ws.terminals.drawn) {
+            ws.terminals.rename = None;
+        }
+    }
 }
 
 /// Moves keyboard focus to the active editor, or drops it when no editor is open.
@@ -508,6 +521,66 @@ pub(crate) fn focus_editor(s: &mut AppState, ctx: &Context) {
 
 /// The terminal tabs in the tool window header, like IDEA: one flat tab per shell with its
 /// close button, then "+". A tab drag moves the tab inside the strip.
+/// Is `c` a spinner frame that a program puts at the start of its title? Claude Code writes
+/// `◐ ` and `◑ ` (every 960 ms) while it works and `✳ ` when idle; other tools use Braille or
+/// quarter circles. Each has a glyph in the bundled symbols font (`theme::install_fonts`).
+fn is_status_glyph(c: char) -> bool {
+    matches!(c, '\u{25D0}'..='\u{25D3}' | '\u{25F4}'..='\u{25F7}' | '\u{2722}'..='\u{2727}' | '\u{2729}'..='\u{274B}' | '\u{2800}'..='\u{28FF}')
+}
+
+/// The leading status glyph and the rest of the title (with its leading space), if the title
+/// starts with a status glyph and a space.
+fn status_glyph(title: &str) -> Option<(char, &str)> {
+    let mut chars = title.chars();
+    let c = chars.next().filter(|&c| is_status_glyph(c))?;
+    let rest = chars.as_str();
+    rest.starts_with(' ').then_some((c, rest))
+}
+
+/// Width of the slot that holds a title's status glyph: the widest glyph of the whole set.
+/// A spinner frame then never changes the tab's width, so the tabs to its right stay put.
+fn status_slot_width(ui: &Ui) -> f32 {
+    let font = theme::T.small_font();
+    let ranges = ['\u{25D0}'..='\u{25D3}', '\u{25F4}'..='\u{25F7}', '\u{2722}'..='\u{274B}', '\u{2800}'..='\u{28FF}'];
+    ui.fonts(|f| ranges.into_iter().flatten().filter(|&c| is_status_glyph(c)).map(|c| f.glyph_width(&font, c)).fold(0.0, f32::max))
+}
+
+/// A terminal tab's title, laid out. A leading status glyph sits centered in a slot of fixed
+/// width, so only a real change of the text resizes the tab.
+struct TabLabel {
+    status: Option<(std::sync::Arc<egui::Galley>, f32)>,
+    text: std::sync::Arc<egui::Galley>,
+}
+
+impl TabLabel {
+    fn layout(ui: &Ui, title: &str, slot: f32, color: egui::Color32) -> Self {
+        let font = theme::T.small_font();
+        let painter = ui.painter();
+        match status_glyph(title) {
+            Some((c, rest)) => Self {
+                status: Some((painter.layout_no_wrap(c.to_string(), font.clone(), color), slot)),
+                text: painter.layout_no_wrap(rest.to_string(), font, color),
+            },
+            None => Self { status: None, text: painter.layout_no_wrap(title.to_string(), font, color) },
+        }
+    }
+
+    fn width(&self) -> f32 {
+        self.status.as_ref().map_or(0.0, |(_, slot)| *slot) + self.text.size().x
+    }
+
+    /// Paints the label with its left edge at `left.x`, centered on `left.y`.
+    fn paint(&self, painter: &egui::Painter, left: egui::Pos2, color: egui::Color32) {
+        let mut x = left.x;
+        if let Some((glyph, slot)) = &self.status {
+            let pos = egui::pos2(x + (slot - glyph.size().x) / 2.0, left.y - glyph.size().y / 2.0);
+            painter.galley(pos, glyph.clone(), color);
+            x += slot;
+        }
+        painter.galley(egui::pos2(x, left.y - self.text.size().y / 2.0), self.text.clone(), color);
+    }
+}
+
 pub fn header_tabs(s: &mut AppState, ui: &mut Ui) {
     let t = &theme::T;
     const GAP: f32 = 2.0;
@@ -515,11 +588,14 @@ pub fn header_tabs(s: &mut AppState, ui: &mut Ui) {
     ui.spacing_mut().item_spacing.x = GAP;
     let clicks = s.clicks;
     let terms = &mut s.ws.terminals;
+    terms.drawn = true;
     if terms.rename.as_ref().is_some_and(|r| !terms.tabs.iter().any(|tab| tab.id == r.tab)) {
         terms.rename = None;
     }
 
     // Measure every tab first: a drag needs the whole strip to place the others.
+    // The slot asks the font for ~300 glyphs, so only titles with a status glyph pay for it.
+    let status_slot = if terms.tabs.iter().any(|tab| status_glyph(&tab.title()).is_some()) { status_slot_width(ui) } else { 0.0 };
     let tabs: Vec<_> = terms
         .tabs
         .iter()
@@ -536,12 +612,12 @@ pub fn header_tabs(s: &mut AppState, ui: &mut Ui) {
                 (true, true) => t.text_bright,
                 (false, true) => t.text,
             };
-            let galley = ui.painter().layout_no_wrap(title.clone(), t.small_font(), color);
-            let mut width = 10.0 + galley.size().x + 4.0 + CLOSE_W + 6.0;
+            let label = TabLabel::layout(ui, &title, status_slot, color);
+            let mut width = 10.0 + label.width() + 4.0 + CLOSE_W + 6.0;
             if terms.rename.as_ref().is_some_and(|r| r.tab == term.id) {
                 width = width.max(RENAME_W);
             }
-            (term.id, title, alive, active, color, galley, width)
+            (term.id, title, alive, active, color, label, width)
         })
         .collect();
     let total = tabs.iter().map(|tab| tab.6).sum::<f32>() + GAP * tabs.len().saturating_sub(1) as f32;
@@ -592,7 +668,7 @@ pub fn header_tabs(s: &mut AppState, ui: &mut Ui) {
     let mut floating = None;
     let mut x = strip.min.x;
     for &i in &order {
-        let (id, title, alive, active, color, galley, width) = &tabs[i];
+        let (id, title, alive, active, color, label, width) = &tabs[i];
         let slot_rect = egui::Rect::from_min_size(egui::pos2(x, strip.min.y), egui::vec2(*width, strip.height()));
         x += width + GAP;
         let is_dragged = preview.is_some_and(|(d, ..)| d == i);
@@ -642,7 +718,7 @@ pub fn header_tabs(s: &mut AppState, ui: &mut Ui) {
                 painter.rect_filled(rect, t.radius.button, t.hover);
             }
             if !renaming {
-                painter.galley(egui::pos2(rect.min.x + 10.0, rect.center().y - galley.size().y / 2.0), galley.clone(), *color);
+                label.paint(painter, egui::pos2(rect.min.x + 10.0, rect.center().y), *color);
             }
             if close_hovered {
                 painter.rect_filled(close_rect, t.radius.small, t.button_hover);
@@ -685,6 +761,9 @@ pub fn header_tabs(s: &mut AppState, ui: &mut Ui) {
                 rename_done = Some(keep);
             } else if out.response.lost_focus() {
                 // A click elsewhere keeps the name.
+                r.keep_on_release = true;
+            }
+            if r.keep_on_release && !ui.input(|i| i.pointer.any_down()) {
                 rename_done = Some(true);
             }
         }
@@ -833,6 +912,18 @@ fn new_terminal(s: &mut AppState) {
     if let Err(e) = s.ws.terminals.spawn(cwd, s.ctx.clone()) {
         s.notifications.error("Could not start a terminal", e.to_string());
     }
+}
+
+/// Cmd+T: a new terminal tab in the project root, like the "+" button. It shows the Terminal
+/// window and focuses the new shell. While the saved tabs are still loading, the window only
+/// opens: the restored list must not get an extra shell before it arrives.
+pub fn open_new(s: &mut AppState) {
+    s.ws.layout.show(ToolWindow::Terminal);
+    if s.ws.terminals.loading {
+        s.ws.terminals.focus_pending = true;
+        return;
+    }
+    new_terminal(s);
 }
 
 /// Opens a new terminal tab in `cwd` and shows the Terminal window ("Open In > Terminal").

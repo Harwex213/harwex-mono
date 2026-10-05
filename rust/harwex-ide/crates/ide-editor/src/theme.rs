@@ -32,6 +32,9 @@ pub struct EditorTheme {
     pub find_scroll_mark: Color32,
     /// Scrollbar marks of the carets when there are several.
     pub caret_scroll_mark: Color32,
+    /// The thumb of the horizontal scrollbar, idle and hovered or dragged.
+    pub scrollbar_thumb: Color32,
+    pub scrollbar_thumb_active: Color32,
     /// Problem underlines and scrollbar marks: error, warning, weak warning, unused.
     pub problem_error: Color32,
     pub problem_warning: Color32,
@@ -108,6 +111,8 @@ impl EditorTheme {
             find_excluded: hex(0x868A91),
             find_scroll_mark: hex(0x6AAB73),
             caret_scroll_mark: hex(0xA1A3AB),
+            scrollbar_thumb: hex(0x46484D),
+            scrollbar_thumb_active: hex(0x6F737A),
             problem_error: hex(0xF75464),
             problem_warning: hex(0xE0A54B),
             problem_weak: hex(0x8C8F94),
@@ -168,6 +173,8 @@ impl EditorTheme {
             find_excluded: hex(0x868A91),
             find_scroll_mark: hex(0x6AAB73),
             caret_scroll_mark: hex(0xA1A3AB),
+            scrollbar_thumb: hex(0x46484D),
+            scrollbar_thumb_active: hex(0x6F737A),
             problem_error: hex(0xF75464),
             problem_warning: hex(0xE0A54B),
             problem_weak: hex(0x8C8F94),

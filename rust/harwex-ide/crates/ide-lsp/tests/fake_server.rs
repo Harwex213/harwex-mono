@@ -3,10 +3,11 @@
 //! timeouts, crash restart and shutdown.
 
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
-use ide_lsp::{ClientConfig, Error, LspClient, CONTENT_MODIFIED, METHOD_NOT_FOUND};
+use ide_lsp::{CancelScope, ClientConfig, Error, LspClient, CONTENT_MODIFIED, METHOD_NOT_FOUND};
 use serde_json::{json, Value};
 
 const T: Duration = Duration::from_secs(5);
@@ -168,6 +169,67 @@ fn timeout_cancels_and_the_next_request_works() {
     let cancelled = client.request("test/cancelled", json!({}), T).unwrap();
     assert_eq!(cancelled.as_array().map(Vec::len), Some(1), "the server got $/cancelRequest");
     assert_eq!(client.request("test/sleep", json!({"ms": 0}), T).unwrap(), json!({"slept": 0}));
+}
+
+#[test]
+fn cancel_flag_sends_cancel_request_and_drops_the_answer() {
+    let fx = fixture();
+    let client = Arc::new(LspClient::new(config(&fx.root)));
+    client.request("test/sleep", json!({"ms": 0}), T).unwrap();
+    let flag = Arc::new(AtomicBool::new(false));
+    let worker = {
+        let (client, flag) = (client.clone(), flag.clone());
+        std::thread::spawn(move || {
+            let _scope = CancelScope::enter(flag);
+            let started = Instant::now();
+            (client.request("test/sleep", json!({"ms": 800}), T), started.elapsed())
+        })
+    };
+    std::thread::sleep(Duration::from_millis(100));
+    flag.store(true, Ordering::SeqCst);
+    let (result, took) = worker.join().unwrap();
+    let err = result.unwrap_err();
+    assert!(matches!(&err, Error::Cancelled { method } if method == "test/sleep"), "{err:?}");
+    assert!(err.to_string().contains(ide_lsp::CANCELLED));
+    assert!(took < Duration::from_millis(600), "cancel waited for the answer: {took:?}");
+    let cancelled = client.request("test/cancelled", json!({}), T).unwrap();
+    // Ids: 1 is `initialize`, 2 the warm-up sleep, 3 the cancelled one.
+    assert_eq!(cancelled, json!([3]), "the server got $/cancelRequest for the sleeping request");
+    // The late answer arrives and is dropped; the next request gets its own answer.
+    std::thread::sleep(Duration::from_millis(900));
+    assert_eq!(client.request("test/sleep", json!({"ms": 1}), T).unwrap(), json!({"slept": 1}));
+    // A set flag sends nothing at all.
+    let _scope = CancelScope::enter(Arc::new(AtomicBool::new(true)));
+    assert!(matches!(client.request("test/sleep", json!({"ms": 0}), T), Err(Error::Cancelled { .. })));
+}
+
+fn alive(pid: u64) -> bool {
+    std::process::Command::new("kill").args(["-0", &pid.to_string()]).stderr(std::process::Stdio::null()).status().is_ok_and(|s| s.success())
+}
+
+fn assert_dies(pid: u64, what: &str) {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while alive(pid) {
+        if Instant::now() > deadline {
+            let _ = std::process::Command::new("kill").args(["-9", &pid.to_string()]).status();
+            panic!("{what} (pid {pid}) survived");
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
+#[test]
+fn kill_and_shutdown_take_the_server_children_along() {
+    let fx = fixture();
+    let client = LspClient::new(config(&fx.root));
+    let child = client.request("test/spawnChild", json!({}), T).unwrap()["pid"].as_u64().unwrap();
+    assert!(alive(child));
+    client.kill();
+    assert_dies(child, "child of a killed server");
+    // A server that exits on `shutdown` leaves its helper behind; the client kills it.
+    let child = client.request("test/spawnChild", json!({}), T).unwrap()["pid"].as_u64().unwrap();
+    client.shutdown();
+    assert_dies(child, "child of a shut down server");
 }
 
 #[test]

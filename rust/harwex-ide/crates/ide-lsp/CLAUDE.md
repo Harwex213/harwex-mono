@@ -16,6 +16,8 @@ A generic Language Server Protocol client. It exists so every language server (t
 - Lazy start on the first call. A dead server restarts on the next call and gets every open file back with its last text, unsaved edits included.
 - `open` / `change` / `close` send full text with increasing versions. `ensure_open` opens a never-opened file from disk and re-reads it when its mtime moves.
 - Each request has a timeout. A timeout sends `$/cancelRequest` and drops the late answer.
+- Cancel: a request watches the thread's `CancelScope` flag. Once it is set, the request sends `$/cancelRequest`, drops the answer and returns `Error::Cancelled` (its text holds `CANCELLED`).
+- A server runs in its own process group. `kill`, drop and `shutdown` SIGKILL the group, so its helpers (oxlint's tsgolint, proc-macro servers) die with it.
 - The reader thread answers server requests at once: `workspace/configuration` from the `configuration` handler (else `null` per item), `workspace/applyEdit` as not applied, everything else `null`. Never block the reader thread. A blocked reader stalls every request of that server.
 - `Error::is_retryable()` is true for content modified, server cancelled and request cancelled. Adapters retry those.
 - `framing` is also used by the tsserver reader in `ide-ts`. Lengths are UTF-8 bytes.
@@ -29,7 +31,7 @@ A generic Language Server Protocol client. It exists so every language server (t
 cargo test -p ide-lsp
 ```
 
-Integration tests run against `src/bin/fake_server.rs`, a scripted LSP server (`CARGO_BIN_EXE_ide-lsp-fake-server`). A new client feature gets a fake-server script and a test. Cover out-of-order answers, timeouts and crash restart when you touch routing or sync. Real servers are exercised by `cargo test -p ide-ts --test native_lsp` and `cargo test -p harwex-ide --test rust_nav`.
+Integration tests run against `src/bin/fake_server.rs`, a scripted LSP server (`CARGO_BIN_EXE_ide-lsp-fake-server`). A new client feature gets a fake-server script and a test. Cover out-of-order answers, timeouts and crash restart when you touch routing or sync. Real servers are exercised by `cargo test -p ide-ts --test ts native_lsp::` and `cargo test -p harwex-ide --test app rust_nav::`.
 
 ## Traps
 

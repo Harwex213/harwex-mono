@@ -174,9 +174,16 @@ pub struct ChangesPane {
     scroll_to: Option<usize>,
     view_offset: f32,
     view_height: f32,
+    /// The horizontal scroll offset as of the last frame.
+    scroll_x: f32,
 }
 
 impl ChangesPane {
+    /// The horizontal scroll offset as of the last frame (long paths scroll sideways).
+    pub fn scroll_x(&self) -> f32 {
+        self.scroll_x
+    }
+
     /// The files of the current selection, once loaded.
     pub fn files(&self) -> Option<&[ChangedFile]> {
         (self.requested.as_ref() == Some(&self.key) && self.error.is_none()).then_some(self.files.as_slice())
@@ -345,6 +352,24 @@ pub(super) fn show(state: &mut AppState, view: &mut LogView, ui: &mut Ui) {
     });
 }
 
+/// The dim text after a row's name: a folder's file count, a renamed file's old name.
+fn row_extra(row: &ChangeRow) -> Option<String> {
+    if row.is_dir {
+        Some(format!("{} file{}", row.count, if row.count == 1 { "" } else { "s" }))
+    } else {
+        // A rename in the same folder shows the old name, a move the old path.
+        row.old_path.as_ref().map(|o| if o.parent() == row.path.parent() { format!("← {}", o.file_name().unwrap_or_default().to_string_lossy()) } else { format!("← {}", o.display()) })
+    }
+}
+
+/// The width a row needs: indent, icon, name, the dim extra text and a margin.
+fn row_width(fonts: &egui::text::Fonts, row: &ChangeRow, name: &str) -> f32 {
+    let t = &theme::T;
+    let measure = |s: String| fonts.layout_no_wrap(s, t.ui_font(), t.text).size().x;
+    let extra = row_extra(row).map_or(0.0, |e| 8.0 + measure(e));
+    4.0 + row.depth as f32 * t.space.indent + 34.0 + measure(name.to_string()) + extra + 12.0
+}
+
 /// The focus id of a view's changes tree.
 fn focus_id(view_id: u64) -> Id {
     crate::workspace::wid(("git-changes-tree", view_id))
@@ -364,7 +389,8 @@ fn tree(state: &mut AppState, view_id: u64, pane: &mut ChangesPane, ui: &mut Ui)
     let root_name = state.ws.git.repo.as_ref().and_then(|r| r.workdir().file_name()).map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
     let (command, shift) = ui.input(|i| (i.modifiers.command, i.modifiers.shift));
     let row_h = t.space.row_h;
-    let mut area = ScrollArea::vertical().id_salt(("git-changes-rows", view_id)).auto_shrink([false, false]).drag_to_scroll(false);
+    // Long paths scroll sideways. Drag-to-scroll stays off: a press selects a row.
+    let mut area = ScrollArea::both().id_salt(("git-changes-rows", view_id)).auto_shrink([false, false]).drag_to_scroll(false);
     if let Some(i) = pane.scroll_to.take() {
         let top = i as f32 * row_h;
         if top < pane.view_offset {
@@ -378,11 +404,16 @@ fn tree(state: &mut AppState, view_id: u64, pane: &mut ChangesPane, ui: &mut Ui)
     let mut toggle: Option<PathBuf> = None;
     let mut menu: Option<FileAction> = None;
     ui.spacing_mut().item_spacing.y = 0.0;
+    let view = ui.available_rect_before_wrap();
+    let content_w = ui.fonts(|f| rows.iter().enumerate().map(|(i, r)| row_width(f, r, if i == 0 && r.name.is_empty() { &root_name } else { &r.name })).fold(0.0, f32::max));
     let out = area.show_rows(ui, row_h, rows.len(), |ui, range| {
         for i in range {
             let row = &rows[i];
-            let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), row_h), Sense::hover());
-            let resp = ui.interact(rect, crate::workspace::wid(("git-change-row", view_id, &row.path)), Sense::click());
+            // As wide as the widest row, so the content scrolls sideways; clicks and the
+            // highlight cover the visible part (`branch_tree::visible_part`).
+            let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width().max(content_w), row_h), Sense::hover());
+            let hit = super::branch_tree::visible_part(rect, view);
+            let resp = ui.interact(hit, crate::workspace::wid(("git-change-row", view_id, &row.path)), Sense::click());
             let selected = pane.selected.contains(&row.path);
             let name = if i == 0 && row.name.is_empty() { root_name.as_str() } else { row.name.as_str() };
             let label = match (i, row.is_dir) {
@@ -396,9 +427,9 @@ fn tree(state: &mut AppState, view_id: u64, pane: &mut ChangesPane, ui: &mut Ui)
             let chevron_cell = row.is_dir.then(|| Rect::from_min_max(pos2(x - 3.0, rect.min.y), pos2(x + 15.0, rect.max.y)));
             let painter = ui.painter();
             if selected {
-                painter.rect_filled(rect, t.radius.row, if focused { t.tree_selection } else { t.tree_selection_inactive });
+                painter.rect_filled(hit, t.radius.row, if focused { t.tree_selection } else { t.tree_selection_inactive });
             } else if resp.hovered() {
-                painter.rect_filled(rect, t.radius.row, t.tree_hover);
+                painter.rect_filled(hit, t.radius.row, t.tree_hover);
             }
             if row.is_dir {
                 icons::tree_chevron(painter, pos2(x + 6.0, cy), row.expanded, t.tree_chevron);
@@ -412,13 +443,7 @@ fn tree(state: &mut AppState, view_id: u64, pane: &mut ChangesPane, ui: &mut Ui)
             };
             let clip = painter.with_clip_rect(rect.intersect(painter.clip_rect()));
             let name_rect = clip.text(pos2(x + 34.0, cy), Align2::LEFT_CENTER, name, t.ui_font(), color);
-            let extra = if row.is_dir {
-                Some(format!("{} file{}", row.count, if row.count == 1 { "" } else { "s" }))
-            } else {
-                // A rename in the same folder shows the old name, a move the old path.
-                row.old_path.as_ref().map(|o| if o.parent() == row.path.parent() { format!("← {}", o.file_name().unwrap_or_default().to_string_lossy()) } else { format!("← {}", o.display()) })
-            };
-            if let Some(extra) = extra {
+            if let Some(extra) = row_extra(row) {
                 clip.text(pos2(name_rect.right() + 8.0, cy), Align2::LEFT_CENTER, extra, t.ui_font(), t.text_dim);
             }
             let on_chevron = chevron_cell.zip(resp.interact_pointer_pos()).is_some_and(|(c, p)| c.contains(p));
@@ -459,6 +484,7 @@ fn tree(state: &mut AppState, view_id: u64, pane: &mut ChangesPane, ui: &mut Ui)
         }
     });
     pane.view_offset = out.state.offset.y;
+    pane.scroll_x = out.state.offset.x;
     pane.view_height = out.inner_rect.height();
     if let Some(i) = pressed {
         pane.click_row(&rows, i, command, shift);

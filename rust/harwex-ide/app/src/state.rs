@@ -42,8 +42,8 @@ pub struct GitInfo {
     pub changes: Vec<FileChange>,
     /// Directories that contain a change, colored like a modified file.
     pub dirty_dirs: HashSet<PathBuf>,
-    pub refreshing: bool,
-    refresh_queued: bool,
+    /// Full and path-limited status runs (`git/refresh.rs`).
+    pub refresh: crate::git::refresh::RefreshState,
     pub status_ms: Option<f64>,
 }
 
@@ -212,6 +212,11 @@ impl AppState {
     /// Every open workspace: the one in context first, then the others.
     pub fn all_ws(&self) -> impl Iterator<Item = &Workspace> {
         std::iter::once(&self.ws).chain(self.others.iter())
+    }
+
+    /// Every open workspace, mutable: the one in context first, then the others.
+    pub fn all_ws_mut(&mut self) -> impl Iterator<Item = &mut Workspace> {
+        std::iter::once(&mut self.ws).chain(self.others.iter_mut())
     }
 
     /// The active (drawn) workspace's id.
@@ -536,7 +541,7 @@ impl AppState {
             return;
         }
         let generation = self.project_generation();
-        let files = saved.files;
+        let files = crate::tabs::restore_set(saved.files, saved.active_file.as_deref());
         let active = saved.active_file;
         self.jobs.spawn(
             "Reopening files",
@@ -671,6 +676,7 @@ impl AppState {
         self.ws.tabs.add(TabContent::Editor(Box::new(tab)));
         self.ws.search.touch(&path);
         self.ws.tree.selected = Some(path);
+        crate::tabs::enforce_limit(self);
     }
 
     /// Closes a tab. A dirty tab asks first unless `force`.
@@ -754,64 +760,13 @@ impl AppState {
         }
     }
 
-    /// Re-reads git status and the branch on a worker, and recomputes every gutter. Call after
-    /// any git write (commit, checkout, rollback).
+    /// Re-reads the whole git status and the branch on a worker, and recomputes every gutter.
+    /// A git write that knows its paths uses `git::refresh::write_done` instead.
     pub fn refresh_git(&mut self) {
-        self.refresh_git_inner(true);
+        crate::git::refresh::full(self);
     }
 
-    fn refresh_git_inner(&mut self, invalidate_marks: bool) {
-        if invalidate_marks {
-            for (_, e) in self.ws.tabs.editors_mut() {
-                e.invalidate_marks();
-            }
-        }
-        let Some(repo) = self.ws.git.repo.clone() else { return };
-        if self.ws.git.refreshing {
-            self.ws.git.refresh_queued = true;
-            return;
-        }
-        self.ws.git.refreshing = true;
-        let generation = self.project_generation();
-        let started = Instant::now();
-        self.jobs.spawn(
-            "Refreshing git status",
-            move || {
-                let status = repo.status();
-                let branches = repo.branches();
-                (status, branches, started.elapsed())
-            },
-            move |state, (status, branches, took)| {
-                if state.project_generation() != generation {
-                    return;
-                }
-                state.ws.git.refreshing = false;
-                let ms = took.as_secs_f64() * 1000.0;
-                if state.ws.git.status_ms.is_none() {
-                    state.timings.log(format!("git status + branch in {ms:.1} ms"));
-                }
-                state.ws.git.status_ms = Some(ms);
-                match status {
-                    Ok(changes) => state.apply_status(changes),
-                    Err(e) => state.notifications.log_only(crate::notifications::Level::Warning, "git status failed", e.to_string()),
-                }
-                if let Ok(b) = branches {
-                    state.ws.git.detached = b.detached;
-                    state.ws.git.branch = match (b.current, b.head) {
-                        (Some(name), _) if !b.detached => Some(name),
-                        (_, Some(oid)) => Some(oid.to_string()[..8].to_string()),
-                        (name, None) => name,
-                    };
-                }
-                crate::git::on_git_refreshed(state);
-                if std::mem::take(&mut state.ws.git.refresh_queued) {
-                    state.refresh_git_inner(false);
-                }
-            },
-        );
-    }
-
-    fn apply_status(&mut self, changes: Vec<FileChange>) {
+    pub(crate) fn apply_status(&mut self, changes: Vec<FileChange>) {
         let Some(workdir) = self.ws.git.repo.as_ref().map(|r| r.workdir().to_path_buf()) else { return };
         let mut status = HashMap::with_capacity(changes.len());
         let mut dirs = HashSet::new();
@@ -949,7 +904,11 @@ impl AppState {
         if batch.structure_changed {
             crate::search::rebuild_index(self);
         }
-        self.refresh_git_inner(batch.git_changed);
+        // A `.git` change is compared with the last stamp; file changes refresh only their paths.
+        if batch.git_changed {
+            crate::git::refresh::git_dir_changed(self);
+        }
+        crate::git::refresh::paths(self, batch.paths.into_iter().collect(), false);
     }
 
     pub fn run_commands(&mut self) {

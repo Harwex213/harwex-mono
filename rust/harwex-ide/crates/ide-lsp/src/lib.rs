@@ -8,6 +8,7 @@
 //!
 //! All calls block. Callers use worker threads; [`LspClient`] is `Send + Sync`.
 
+mod cancel;
 mod client;
 mod diagnostics;
 mod edits;
@@ -20,6 +21,7 @@ use std::fmt;
 use std::path::PathBuf;
 use std::time::Duration;
 
+pub use cancel::CancelScope;
 pub use client::{
     default_capabilities, keep_stderr_tail, lock, read_text, ClientConfig, ConfigurationHandler, LspClient, NotificationHandler, Progress,
 };
@@ -37,6 +39,10 @@ pub const REQUEST_CANCELLED: i64 = -32800;
 pub const CONTENT_MODIFIED: i64 = -32801;
 /// LSP 3.17: the server cancelled the request itself (often while it is still loading).
 pub const SERVER_CANCELLED: i64 = -32802;
+
+/// The text every cancelled request reports. The app recognises it and shows one
+/// "Cancelled" toast instead of an error.
+pub const CANCELLED: &str = "cancelled by the user";
 
 /// 0-based line, 0-based column in chars.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -64,6 +70,8 @@ pub enum Error {
     Spawn(std::io::Error),
     Io(PathBuf, std::io::Error),
     Timeout { method: String, after: Duration },
+    /// The caller's cancel flag was set (`CancelScope`); the server got `$/cancelRequest`.
+    Cancelled { method: String },
     /// The process exited. Carries the tail of its stderr. The next call restarts it.
     ServerDied(String),
     /// The server answered with an error object.
@@ -84,6 +92,7 @@ impl fmt::Display for Error {
             Error::Spawn(e) => write!(f, "failed to start the language server: {e}"),
             Error::Io(p, e) => write!(f, "{}: {e}", p.display()),
             Error::Timeout { method, after } => write!(f, "language server `{method}` timed out after {after:?}"),
+            Error::Cancelled { method } => write!(f, "language server `{method}` {CANCELLED}"),
             Error::ServerDied(stderr) if stderr.trim().is_empty() => write!(f, "language server exited"),
             Error::ServerDied(stderr) => write!(f, "language server exited: {}", stderr.trim()),
             Error::Server { code: METHOD_NOT_FOUND, message } => write!(f, "method not supported: {message}"),

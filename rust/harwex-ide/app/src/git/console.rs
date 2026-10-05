@@ -31,14 +31,27 @@ impl ConsoleUi {
         &self.entries
     }
 
-    fn store(&mut self, ev: CommandEvent) {
+    fn store(&mut self, mut ev: CommandEvent) {
+        // `git status -z` after every save and write: its NUL-separated output is for the
+        // parser, and a full status of a monorepo can be megabytes.
+        if ev.read_only && ev.stdout.contains('\0') {
+            let n = ev.stdout.split('\0').filter(|r| !r.is_empty()).count();
+            ev.stdout = format!("({n} records)");
+        }
         match self.entries.iter_mut().rev().find(|e| e.id == ev.id) {
             Some(slot) => *slot = ev,
             None => {
                 self.entries.push(ev);
                 if self.entries.len() > MAX_ENTRIES {
-                    let extra = self.entries.len() - MAX_ENTRIES;
-                    self.entries.drain(..extra);
+                    // Frequent reads must not push the user's commands out of the log.
+                    match self.entries.iter().position(|e| e.read_only && e.is_finished()) {
+                        Some(i) => {
+                            self.entries.remove(i);
+                        }
+                        None => {
+                            self.entries.remove(0);
+                        }
+                    }
                 }
             }
         }

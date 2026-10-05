@@ -243,6 +243,8 @@ impl eframe::App for IdeApp {
         confirm_close_workspace(s, ctx);
         git::show_windows(s, ctx);
         s.notifications.show_toasts(ctx, 48.0);
+        finish_tool_escape(s, ctx);
+        crate::terminal::end_frame(s);
         crate::util::close_orphaned_context_menu(ctx);
 
         s.tick_workspaces();
@@ -283,10 +285,25 @@ fn shortcuts(s: &mut AppState, ctx: &Context) {
     find::take_keys(s, ctx);
     crate::projects_popup::take_keys(s, ctx);
     breadcrumbs::take_keys(s, ctx);
+    track_tool_press(s, ctx);
+    // Before the terminal: a focused terminal or a text field would read Shift+Esc as Escape.
+    if ctx.input_mut(|i| i.consume_key(Modifiers::SHIFT, Key::Escape)) {
+        hide_active_tool_window(s, ctx);
+    }
+    // Before the terminal, like a browser's tab keys: the shell never sees them. ⇧⌘T first,
+    // because consume_key(COMMAND, T) ignores an extra Shift.
+    let (reopen_t, new_term_t) = ctx.input_mut(|i| (i.consume_key(Modifiers::COMMAND | Modifiers::SHIFT, Key::T), i.consume_key(Modifiers::COMMAND, Key::T)));
+    if reopen_t {
+        crate::tabs::reopen_closed(s);
+    }
+    if new_term_t {
+        crate::terminal::open_new(s);
+    }
     // A focused terminal gets every key except Alt+F12 and Escape.
     if crate::terminal::shortcuts(s, ctx) {
         return;
     }
+    arm_tool_escape(s, ctx);
     breadcrumbs::shortcut(s, ctx);
     let cmd_shift = Modifiers::COMMAND | Modifiers::SHIFT;
     // Most specific first: consume_key ignores extra Shift. ⇧⌘R (Replace in Files) is taken
@@ -308,7 +325,7 @@ fn shortcuts(s: &mut AppState, ctx: &Context) {
             i.consume_key(Modifiers::COMMAND | Modifiers::ALT, Key::ArrowRight),
         )
     });
-    let (push_k, update_t, recent_e) = ctx.input_mut(|i| (i.consume_key(cmd_shift, Key::K), i.consume_key(Modifiers::COMMAND, Key::T), i.consume_key(Modifiers::COMMAND, Key::E)));
+    let (push_k, recent_e) = ctx.input_mut(|i| (i.consume_key(cmd_shift, Key::K), i.consume_key(Modifiers::COMMAND, Key::E)));
     // IDEA's "Branches..." (Ctrl+Shift+`) and "Select In > Project View" (Alt+F1).
     let ctrl_shift = Modifiers::CTRL | Modifiers::SHIFT;
     let (branches, select_in) = ctx.input_mut(|i| (i.consume_key(ctrl_shift, Key::Backtick), i.consume_key(Modifiers::ALT, Key::F1)));
@@ -331,9 +348,6 @@ fn shortcuts(s: &mut AppState, ctx: &Context) {
         }
         if push_k {
             git::push_clicked(s);
-        }
-        if update_t {
-            git::update_project_clicked(s);
         }
     }
     let double_shift = s.ws.search.detect_double_shift(ctx);
@@ -373,13 +387,15 @@ fn shortcuts(s: &mut AppState, ctx: &Context) {
 
 /// The editor's find bar: Cmd+F, Cmd+R, Cmd+G, Shift+Cmd+G and Ctrl+Cmd+G (Select All
 /// Occurrences). They act on the active editor while it or its bar has the focus (or nothing
-/// has), never on another text field.
+/// has), never on another text field. From a tool window they focus the editor first.
 fn editor_find_keys(s: &mut AppState, ctx: &Context) {
     let ctrl_cmd = Modifiers::COMMAND | Modifiers::CTRL;
     let cmd_shift = Modifiers::COMMAND | Modifiers::SHIFT;
+    let Some(owns) = s.ws.tabs.active_editor().map(|e| ctx.memory(|m| m.focused()).is_none() || e.view.owns_focus(ctx)) else { return };
+    // From a tool window (not its text fields) these keys move to the editor and act there.
+    let from_tool = !owns && focused_tool_side(&s.ws, ctx).is_some() && !ctx.memory(|m| m.focused()).is_some_and(|id| egui::text_edit::TextEditState::load(ctx, id).is_some());
     let Some(e) = s.ws.tabs.active_editor_mut() else { return };
-    let free = ctx.memory(|m| m.focused()).is_none() || e.view.owns_focus(ctx);
-    if !free {
+    if !owns && !from_tool {
         return;
     }
     let (select_all, prev, next, replace, find) = ctx.input_mut(|i| {
@@ -391,6 +407,10 @@ fn editor_find_keys(s: &mut AppState, ctx: &Context) {
             i.consume_key(Modifiers::COMMAND, Key::F),
         )
     });
+    // The find bar focuses its own query field; the other keys leave the caret in the text.
+    if from_tool && (next || prev || select_all) {
+        e.view.request_focus();
+    }
     if find || replace {
         e.view.open_find(&e.doc, replace);
     }
@@ -679,7 +699,6 @@ fn status_bar(s: &mut AppState, ctx: &Context) {
 
 fn status_right(s: &mut AppState, ui: &mut egui::Ui) {
     let t = &theme::T;
-    let running = s.jobs.running();
     // A narrow window keeps its room for the breadcrumbs.
     let wide = ui.available_width() >= 800.0;
     let item = |ui: &mut egui::Ui, text: &str, color: egui::Color32| {
@@ -703,25 +722,13 @@ fn status_right(s: &mut AppState, ui: &mut egui::Ui) {
             TabContent::Custom(_) => {}
         }
     }
-    if !running.is_empty() {
-        let label = running
-            .iter()
-            .map(|j| match j.started.elapsed().as_secs() {
-                0 => j.label.clone(),
-                n => format!("{} ({n}s)", j.label),
-            })
-            .collect::<Vec<_>>()
-            .join(", ");
-        ui.spacing_mut().item_spacing.x = 6.0;
-        item(ui, &label, t.text_dim);
-        ui.add(egui::Spinner::new().size(theme::T.font.small));
-    }
+    crate::progress::status_widget(s, ui);
 }
 
 /// A tool window island: the header with the title and the hide button, then the body.
 fn tool_window(s: &mut AppState, ui: &mut egui::Ui, w: ToolWindow) {
     let t = &theme::T;
-    layout::island(0.0).inner_margin(Margin { left: t.space.island_pad as i8, right: t.space.island_pad as i8, top: 0, bottom: t.space.island_pad as i8 / 2 }).show(ui, |ui| {
+    let island = layout::island(0.0).inner_margin(Margin { left: t.space.island_pad as i8, right: t.space.island_pad as i8, top: 0, bottom: t.space.island_pad as i8 / 2 }).show(ui, |ui| {
         ui.set_min_size(ui.available_size());
         let mut locate = false;
         let can_locate = w == ToolWindow::Project && breadcrumbs::active_file(s).is_some();
@@ -758,6 +765,136 @@ fn tool_window(s: &mut AppState, ui: &mut egui::Ui, w: ToolWindow) {
         }
         tool_window_body(s, ui, w);
     });
+    note_tool_window_use(ui.ctx(), w, island.response.rect);
+}
+
+/// Which side's tool window Shift+Esc hides: the one used last (per project).
+fn last_tool_side_id() -> Id {
+    crate::workspace::wid("last-tool-window-side")
+}
+
+/// Stores the island rect of `w`'s side and marks the side as the last used one when the
+/// window has just been shown.
+fn note_tool_window_use(ctx: &Context, w: ToolWindow, rect: Rect) {
+    let side = w.side();
+    let shown_id = crate::workspace::wid(match side {
+        layout::Side::Left => "left-tool-window-shown",
+        layout::Side::Bottom => "bottom-tool-window-shown",
+    });
+    // The window and the pass it was drawn in: a gap of a pass means it was hidden meanwhile.
+    let pass = ctx.cumulative_pass_nr();
+    let fresh = ctx.data_mut(|d| {
+        let before = d.get_temp::<(ToolWindow, u64)>(shown_id);
+        d.insert_temp(shown_id, (w, pass));
+        before != Some((w, pass.wrapping_sub(1)))
+    });
+    ctx.data_mut(|d| {
+        d.insert_temp(island_rect_id(side), rect);
+        if fresh {
+            d.insert_temp(last_tool_side_id(), side);
+        }
+    });
+}
+
+fn island_rect_id(side: layout::Side) -> Id {
+    crate::workspace::wid(match side {
+        layout::Side::Left => "left-tool-window-rect",
+        layout::Side::Bottom => "bottom-tool-window-rect",
+    })
+}
+
+fn last_press_side_id() -> Id {
+    crate::workspace::wid("last-press-tool-window-side")
+}
+
+fn tool_side_open(ws: &crate::workspace::Workspace, side: layout::Side) -> bool {
+    match side {
+        layout::Side::Left => ws.layout.left.is_some(),
+        layout::Side::Bottom => ws.layout.bottom.is_some(),
+    }
+}
+
+/// The open tool window under `pos`, by last frame's island rects.
+fn tool_side_at(ws: &crate::workspace::Workspace, ctx: &Context, pos: egui::Pos2) -> Option<layout::Side> {
+    [layout::Side::Left, layout::Side::Bottom].into_iter().find(|&side| tool_side_open(ws, side) && ctx.data(|d| d.get_temp::<Rect>(island_rect_id(side))).is_some_and(|r| r.contains(pos)))
+}
+
+/// Remembers where each press lands: in a tool window (which becomes the last used one) or
+/// elsewhere. A tool window without focusable widgets is active only through this.
+fn track_tool_press(s: &AppState, ctx: &Context) {
+    let Some(origin) = ctx.input(|i| if i.pointer.any_pressed() { i.pointer.press_origin() } else { None }) else { return };
+    let side = tool_side_at(&s.ws, ctx, origin);
+    ctx.data_mut(|d| {
+        d.insert_temp(last_press_side_id(), side);
+        if let Some(side) = side {
+            d.insert_temp(last_tool_side_id(), side);
+        }
+    });
+}
+
+/// The tool window that has the keyboard: the focused widget lies on its island, or nothing
+/// has focus and the last press landed in it.
+fn focused_tool_side(ws: &crate::workspace::Workspace, ctx: &Context) -> Option<layout::Side> {
+    if ws.layout.bottom == Some(ToolWindow::Terminal) && ws.terminals.has_focus(ctx) {
+        return Some(layout::Side::Bottom);
+    }
+    if ws.layout.left == Some(ToolWindow::Project) && tree::has_focus(ctx) {
+        return Some(layout::Side::Left);
+    }
+    let Some(id) = ctx.memory(|m| m.focused()) else {
+        return ctx.data(|d| d.get_temp::<Option<layout::Side>>(last_press_side_id())).flatten().filter(|&side| tool_side_open(ws, side));
+    };
+    // `read_response` surrenders the focus of a widget that a press misses, so it is asked only
+    // on frames without a press.
+    if ctx.input(|i| i.pointer.any_pressed()) {
+        return None;
+    }
+    let r = ctx.read_response(id)?;
+    if r.layer_id.order != egui::Order::Background {
+        return None;
+    }
+    tool_side_at(ws, ctx, r.rect.center())
+}
+
+fn tool_escape_id() -> Id {
+    crate::workspace::wid("tool-window-escape")
+}
+
+/// Esc in a tool window gives the editor the keys, like IDEA; the window stays open. The
+/// decision uses the focus at the start of the frame, but `finish_tool_escape` acts only when
+/// no inner widget consumed the Esc meanwhile (a rename, a drag, a filter field). An open
+/// popup, context menu, modal or drag takes the Esc for itself.
+fn arm_tool_escape(s: &AppState, ctx: &Context) {
+    let armed = s.ws.tabs.active_editor().is_some()
+        && ctx.input(|i| i.modifiers.is_none() && i.key_pressed(Key::Escape))
+        && !ctx.is_context_menu_open()
+        && !ctx.memory(|m| m.any_popup_open() || m.top_modal_layer().is_some())
+        && ctx.dragged_id().is_none()
+        && focused_tool_side(&s.ws, ctx).is_some();
+    ctx.data_mut(|d| d.insert_temp(tool_escape_id(), armed));
+}
+
+fn finish_tool_escape(s: &mut AppState, ctx: &Context) {
+    let armed = ctx.data_mut(|d| d.remove_temp::<bool>(tool_escape_id())).unwrap_or(false);
+    if armed && ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::Escape)) {
+        crate::terminal::focus_editor(s, ctx);
+    }
+}
+
+/// Shift+Esc, like IDEA: hides the last used tool window and gives the editor the keys.
+/// Without an open tool window it does nothing.
+fn hide_active_tool_window(s: &mut AppState, ctx: &Context) {
+    let open = |side: layout::Side| tool_side_open(&s.ws, side);
+    // The window with the keyboard wins over the last used one (Alt+F12, Alt+F1 move the focus).
+    let last = focused_tool_side(&s.ws, ctx).or_else(|| ctx.data(|d| d.get_temp::<layout::Side>(last_tool_side_id())));
+    let Some(side) = last.filter(|&side| open(side)).or_else(|| [layout::Side::Bottom, layout::Side::Left].into_iter().find(|&side| open(side))) else {
+        return;
+    };
+    match side {
+        layout::Side::Left => s.ws.layout.left = None,
+        layout::Side::Bottom => s.ws.layout.bottom = None,
+    }
+    crate::terminal::focus_editor(s, ctx);
 }
 
 fn open_dropped_files(s: &mut AppState, ctx: &Context) {
@@ -791,6 +928,8 @@ fn editor_area(s: &mut AppState, ui: &mut egui::Ui) {
         welcome(s, ui);
         return;
     }
+    // Custom tabs (diffs, commits) open without `add_editor_tab`; they count toward the limit too.
+    crate::tabs::enforce_limit(s);
     if !s.ws.tabs.list.is_empty() {
         match s.ws.tabs.show_bar(ui) {
             Some(TabBarEvent::Activate(id)) => {

@@ -1,6 +1,6 @@
 # xtask
 
-Workspace tasks behind the cargo aliases in `.cargo/config.toml`: `cargo install-ide` builds `harwex-ide` in release and installs it for the current user, and `cargo uninstall-ide` removes everything the install created. `cargo xtask <install|uninstall> [options]` is the long form. `cargo xtask test-tools` and `cargo xtask clean-check` serve the tests (below).
+Workspace tasks behind the cargo aliases in `.cargo/config.toml`: `cargo install-ide` builds `harwex-ide` in release and installs it for the current user, and `cargo uninstall-ide` removes everything the install created. `cargo xtask <install|uninstall> [options]` is the long form. `cargo xtask test-tools`, `cargo xtask test` (alias `cargo test-all`), `cargo xtask nextest` and `cargo xtask clean-check` serve the tests (below).
 
 ## Boundaries
 
@@ -43,7 +43,9 @@ Every probe goes through the `Host` trait (commands, files, env, TTY, prompt, ou
 - oxlint is pinned with its native binding (`@oxlint/binding-<os>-<arch>`), `oxlint-tsgolint` and its platform binary, all in `oxlint/node_modules`. The app finds tsgolint beside the real oxlint dir and passes it as `OXLINT_TSGOLINT_PATH`.
 - ESLint is a whole npm tree, so it is pinned by `src/eslint.lock` (install dir, tarball URL, sha512 per package) instead of single packages. Regenerate the lock from the `package-lock.json` of an `npm install` of the pinned versions, and keep `ESLINT`, `ESLINT_JS` and `TYPESCRIPT_ESLINT` in step (a unit test checks them). The stamp holds a hash of the lock.
 - Trap: the rustup build of rust-analyzer needs `../lib/librustc_driver-*.dylib`, so `test-tools` also extracts that file from the `rustc` component.
-- `clean-check` copies the workspace without `target/` to `$TMPDIR/harwex-clean`, clears the env (empty HOME, TMPDIR and CARGO_TARGET_DIR, real CARGO_HOME/RUSTUP_HOME, PATH = wrappers for cargo/rustc/rustdoc/git/node plus the OS base dirs) and runs `test-tools` + `cargo test --workspace` under `sandbox-exec`. Details in `docs/testing.md`.
+- `clean-check` copies the workspace without `target/` to `$TMPDIR/harwex-clean`, clears the env (empty HOME, TMPDIR and CARGO_TARGET_DIR, real CARGO_HOME/RUSTUP_HOME, PATH = wrappers for cargo/rustc/rustdoc/git/node plus the OS base dirs) and runs `test-tools`, the pinned nextest (`--success-output immediate`, so `skipping` lines show) and `cargo test --doc` under `sandbox-exec`; without a pinned nextest for the platform, plain `cargo test`. Details in `docs/testing.md`.
+- cargo-nextest is a prebuilt release binary in `tools/nextest/`, pinned by `NEXTEST` and a sha256 per release target (macOS universal, Linux gnu); other platforms skip it. `cargo xtask nextest [args]` runs `cargo-nextest nextest run [args]` from the workspace root. Never install it into `~/.cargo`.
+- `src/full_test.rs`: `test`, a full `nextest` and `clean-check` take the `flock` on `<target>/full-test.lock` (owner info inside; `docs/testing.md`, "One full run at a time"). Never delete or truncate the lock file outside the holder: a waiter keeps it open, and a new file would give two holders. Suite-only detection is `is_full_run`; a new narrowing flag of nextest or cargo test goes into `NARROWING`.
 
 ## Rules for agents
 

@@ -14,6 +14,7 @@ use std::path::{Path, PathBuf};
 use egui::{pos2, vec2, Align2, Context, CursorIcon, Key, LayerId, Modal, Modifiers, Order, Rect, RichText, ScrollArea, Sense, Shape, Stroke, Ui};
 use ide_git::{ChangeKind, FileChange};
 
+use super::refresh::Refresh;
 use crate::icons::CheckState;
 use crate::state::AppState;
 use crate::theme;
@@ -21,6 +22,16 @@ use crate::tree::change_color;
 
 const ROW_H: f32 = 20.0;
 const MESSAGE_ID: &str = "commit-message";
+/// The message box never gets shorter than this many lines (IDEA keeps about 3 visible).
+const MESSAGE_MIN_LINES: f32 = 3.0;
+/// egui's default `TextEdit` margin; the box height is its lines plus this.
+const MESSAGE_MARGIN: egui::Margin = egui::Margin::symmetric(4, 2);
+const PANEL_MARGIN: egui::Margin = egui::Margin::symmetric(0, 6);
+const PANEL_MAX: f32 = 500.0;
+/// Space between the message box and the button row.
+const BUTTONS_GAP: f32 = 4.0;
+/// Tree rows that stay visible before the commit panel starts to shrink.
+const TREE_MIN_ROWS: f32 = 2.0;
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum Group {
@@ -125,6 +136,8 @@ pub struct ChangesUi {
     committing: bool,
     confirm: Option<Confirm>,
     focus_message: bool,
+    /// Row to scroll into view on the next frame (after an arrow key).
+    scroll_to: Option<usize>,
 }
 
 impl ChangesUi {
@@ -170,6 +183,25 @@ impl ChangesUi {
     }
 
     /// The item of `entry` in `group`. Items are in entry order, so this is a binary search.
+    /// The file row `delta` file rows away from the anchor (directory and group rows are
+    /// skipped). Without an anchor, the first file row.
+    fn next_file_row(&self, delta: isize) -> Option<usize> {
+        let is_file = |r: usize| matches!(self.rows.get(r).map(|r| &r.kind), Some(RowKind::File(_)));
+        let Some(start) = self.anchor.filter(|&a| a < self.rows.len()) else {
+            return (0..self.rows.len()).find(|&r| is_file(r));
+        };
+        let mut row = start;
+        loop {
+            row = row.checked_add_signed(delta.signum())?;
+            if row >= self.rows.len() {
+                return None;
+            }
+            if is_file(row) {
+                return Some(row);
+            }
+        }
+    }
+
     fn item_of(&self, entry: usize, group: Group) -> Option<usize> {
         let start = self.items.partition_point(|it| it.entry < entry);
         (start..self.items.len()).take_while(|&i| self.items[i].entry == entry).find(|&i| self.items[i].group == group)
@@ -461,6 +493,12 @@ enum Event {
     Refresh,
     DragStart(usize),
     Drop(Option<Group>),
+    /// ↑ / ↓: the next file row up or down.
+    Move(isize),
+    /// Enter: the diff of the selected file.
+    OpenSelected,
+    /// A plain press on a file row: its diff replaces the active worktree diff, if one is active.
+    Preview(PathBuf),
 }
 
 pub fn tool_window(state: &mut AppState, ui: &mut Ui) {
@@ -474,16 +512,70 @@ pub fn tool_window(state: &mut AppState, ui: &mut Ui) {
     let mut events = Vec::new();
     let mut commit: Option<bool> = None;
 
+    // Below this height the tool window cannot hold the toolbar, the shortest tree and the
+    // shortest commit panel. Then the body keeps its minimum height and scrolls, so the
+    // panel never gets squeezed over its own buttons.
+    let panel_min = message_panel_min_height(ui);
+    let reserve = tree_reserve(ui);
+    if ui.available_height() >= reserve + panel_min {
+        changes_body(state, ui, panel_min, reserve, &mut events, &mut commit);
+    } else {
+        ScrollArea::vertical().id_salt("commit-window-scroll").auto_shrink([false, false]).show(ui, |ui| {
+            let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), reserve + panel_min), Sense::hover());
+            ui.scope_builder(egui::UiBuilder::new().max_rect(rect), |ui| {
+                changes_body(state, ui, panel_min, reserve, &mut events, &mut commit);
+            });
+        });
+    }
+
+    for e in events {
+        handle(state, e);
+    }
+    if let Some(push) = commit {
+        start_commit(state, push);
+    }
+}
+
+/// The shortest commit panel: its margins, the Amend row, a message box of `MESSAGE_MIN_LINES`
+/// lines and the button row, with the spacing that `message_area` puts between them.
+fn message_panel_min_height(ui: &Ui) -> f32 {
+    let style = ui.style();
+    let sp = &style.spacing;
+    let body = ui.fonts(|f| f.row_height(&egui::TextStyle::Body.resolve(style)));
+    let mono = ui.fonts(|f| f.row_height(&egui::TextStyle::Monospace.resolve(style)));
+    let amend = sp.interact_size.y.max(body);
+    let buttons = sp.interact_size.y.max(body + 2.0 * sp.button_padding.y);
+    let message = MESSAGE_MIN_LINES * mono + MESSAGE_MARGIN.sum().y;
+    (PANEL_MARGIN.sum().y + amend + sp.item_spacing.y + message + BUTTONS_GAP + sp.item_spacing.y + buttons).ceil()
+}
+
+/// The height kept above the commit panel: the toolbar row and `TREE_MIN_ROWS` tree rows.
+fn tree_reserve(ui: &Ui) -> f32 {
+    let sp = &ui.style().spacing;
+    sp.interact_size.y + sp.item_spacing.y + TREE_MIN_ROWS * (ROW_H + sp.item_spacing.y)
+}
+
+/// The commit panel at the bottom, then the toolbar and the tree in the rest.
+fn changes_body(state: &mut AppState, ui: &mut Ui, panel_min: f32, reserve: f32, events: &mut Vec<Event>, commit: &mut Option<bool>) {
+    // The tree gives up height first (down to `reserve`), the panel only after it. A
+    // persisted or dragged height below `panel_min` is clamped by egui to this range.
+    let panel_max = (ui.available_height() - reserve).clamp(panel_min, PANEL_MAX);
+    // `show_inside` replaces the clip with the panel rect, so inside the short-window
+    // `ScrollArea` the panel would paint below the island. The content takes the outer clip
+    // back, and the panel has no fill of its own (the island behind it has the same color).
+    let outer_clip = ui.clip_rect();
     egui::TopBottomPanel::bottom(crate::workspace::wid("commit-message-panel"))
         .resizable(true)
         .default_height(170.0)
-        .height_range(110.0..=500.0)
-        .frame(egui::Frame::NONE.fill(theme::T.island_bg).inner_margin(egui::Margin::symmetric(0, 6)))
+        .height_range(panel_min..=panel_max)
+        .frame(egui::Frame::NONE.inner_margin(PANEL_MARGIN))
         .show_inside(ui, |ui| {
-            commit = message_area(state, ui);
+            ui.set_clip_rect(ui.clip_rect().intersect(outer_clip));
+            *commit = message_area(state, ui);
         });
 
     let clicks = state.clicks;
+    let scroll_to = state.ws.git_ui.changes.scroll_to.take();
     let c = &state.ws.git_ui.changes;
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 2.0;
@@ -515,22 +607,56 @@ pub fn tool_window(state: &mut AppState, ui: &mut Ui) {
         ui.add_space(20.0);
         ui.vertical_centered(|ui| ui.label(RichText::new("No changes").color(theme::T.text_dim)));
     } else {
-        draw_tree(c, clicks, ui, &mut events);
-    }
-
-    for e in events {
-        handle(state, e);
-    }
-    if let Some(push) = commit {
-        start_commit(state, push);
+        draw_tree(c, clicks, scroll_to, ui, events);
     }
 }
 
-fn draw_tree(c: &ChangesUi, clicks: crate::clicks::Clicks, ui: &mut Ui, events: &mut Vec<Event>) {
-    let (cmd, shift, pointer, released, down) = ui.input(|i| (i.modifiers.command, i.modifiers.shift, i.pointer.latest_pos(), i.pointer.primary_released(), i.pointer.primary_down()));
+/// The focus id of the Commit tree; ↑ / ↓ / Enter act while it has the focus.
+fn tree_focus_id() -> egui::Id {
+    crate::workspace::wid("changes-tree-focus")
+}
+
+fn draw_tree(c: &ChangesUi, clicks: crate::clicks::Clicks, scroll_to: Option<usize>, ui: &mut Ui, events: &mut Vec<Event>) {
+    let (cmd, shift, pointer, released, down, pressed) =
+        ui.input(|i| (i.modifiers.command, i.modifiers.shift, i.pointer.latest_pos(), i.pointer.primary_released(), i.pointer.primary_down(), i.pointer.primary_pressed()));
     let dragging = c.drag.is_some();
     let mut target: Option<Group> = None;
-    ScrollArea::both().auto_shrink([false, false]).drag_to_scroll(false).id_salt("changes-tree").show_rows(ui, ROW_H, c.rows.len(), |ui, range| {
+    let fid = tree_focus_id();
+    let focused = ui.memory(|m| m.has_focus(fid));
+    if focused {
+        ui.memory_mut(|m| m.set_focus_lock_filter(fid, egui::EventFilter { tab: false, horizontal_arrows: false, vertical_arrows: true, escape: false }));
+        if !ui.ctx().is_context_menu_open() {
+            ui.input_mut(|i| {
+                if i.consume_key(Modifiers::NONE, Key::ArrowUp) {
+                    events.push(Event::Move(-1));
+                }
+                if i.consume_key(Modifiers::NONE, Key::ArrowDown) {
+                    events.push(Event::Move(1));
+                }
+                if i.consume_key(Modifiers::NONE, Key::Enter) {
+                    events.push(Event::OpenSelected);
+                }
+            });
+        }
+    }
+    let pitch = ROW_H + ui.spacing().item_spacing.y;
+    let offset_id = crate::workspace::wid("changes-tree-offset");
+    // egui's default minimum viewport (64 pt) is taller than the tree's reserve (`tree_reserve`),
+    // so in a short window the tree would paint over the commit panel below it.
+    let mut area = ScrollArea::both().auto_shrink([false, false]).min_scrolled_height(0.0).drag_to_scroll(false).id_salt("changes-tree");
+    if let Some(i) = scroll_to {
+        let off = ui.ctx().data(|d| d.get_temp::<f32>(offset_id)).unwrap_or(0.0);
+        let (top, view) = (i as f32 * pitch, ui.available_height());
+        if top < off {
+            area = area.vertical_scroll_offset(top);
+        } else if top + pitch > off + view {
+            area = area.vertical_scroll_offset(top + pitch - view);
+        }
+    }
+    // Keeps the focus without a click sense (see app/CLAUDE.md).
+    ui.interact(ui.available_rect_before_wrap(), fid, Sense::focusable_noninteractive());
+    let mut press_on_row = false;
+    let out = area.show_rows(ui, ROW_H, c.rows.len(), |ui, range| {
         let width = ui.available_width().max(240.0);
         let clip = ui.clip_rect();
         // The drop target is the group of the row under the pointer, found before the rows
@@ -639,6 +765,21 @@ fn draw_tree(c: &ChangesUi, clicks: crate::clicks::Clicks, ui: &mut Ui, events: 
                 }),
                 _ => resp,
             };
+            let on_box = |p: egui::Pos2| (!empty && check.expand(2.0).contains(p)) || (has_arrow && arrow.expand(2.0).contains(p));
+            if pressed && resp.is_pointer_button_down_on() {
+                press_on_row = true;
+                // Press-based, like IDEA's preview diff: the file under the press shows in the
+                // active diff tab at once. The box and the arrow keep their own meaning.
+                if let (RowKind::File(i), Some(p)) = (&row.kind, resp.interact_pointer_pos()) {
+                    if !cmd && !shift && !on_box(p) {
+                        // A press inside a multi-selection keeps it, so the rows can be dragged.
+                        if !is_sel {
+                            events.push(Event::Select { row: idx, cmd, shift });
+                        }
+                        events.push(Event::Preview(c.entries[c.items[*i].entry].path.clone()));
+                    }
+                }
+            }
             if resp.clicked() {
                 let p = resp.interact_pointer_pos().unwrap_or_default();
                 if !empty && check.expand(2.0).contains(p) {
@@ -670,6 +811,11 @@ fn draw_tree(c: &ChangesUi, clicks: crate::clicks::Clicks, ui: &mut Ui, events: 
             r.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Other, true, format!("Drop target {}", g.title())));
         }
     });
+    ui.ctx().data_mut(|d| d.insert_temp(offset_id, out.state.offset.y));
+    // egui drops the focus on a press until the release; take it back on the press frame.
+    if press_on_row {
+        ui.memory_mut(|m| m.request_focus(fid));
+    }
     if let Some(drag) = &c.drag {
         if released || !down {
             events.push(Event::Drop(target));
@@ -772,13 +918,17 @@ fn message_area(state: &mut AppState, ui: &mut Ui) -> Option<bool> {
                 ui.add(egui::Spinner::new().size(theme::T.font.hint));
             }
         });
-        ui.add_space(4.0);
+        ui.add_space(BUTTONS_GAP);
         ui.allocate_ui_with_layout(ui.available_size(), egui::Layout::top_down(egui::Align::Min), |ui| {
-            let edit_h = ui.available_height().max(40.0);
+            // The box takes exactly the height left over and never more: a box taller than that
+            // grows down over the buttons. `TextEdit::multiline` asks for 4 rows by default, and
+            // `add_sized` only sets a minimum, so `desired_rows(1)` lets `edit_h` decide. The
+            // panel's minimum height (`message_panel_min_height`) keeps `edit_h` at 3 lines.
+            let edit_h = ui.available_height().max(0.0);
             ScrollArea::vertical().id_salt("commit-message-scroll").max_height(edit_h).auto_shrink([false, true]).show(ui, |ui| {
                 let r = ui.add_sized(
                     vec2(ui.available_width(), edit_h),
-                    egui::TextEdit::multiline(&mut c.message).id(id).hint_text("Commit Message").font(egui::TextStyle::Monospace).desired_width(f32::INFINITY),
+                    egui::TextEdit::multiline(&mut c.message).id(id).hint_text("Commit Message").font(egui::TextStyle::Monospace).margin(MESSAGE_MARGIN).desired_rows(1).desired_width(f32::INFINITY),
                 );
                 if std::mem::take(&mut c.focus_message) {
                     r.request_focus();
@@ -861,6 +1011,23 @@ fn handle(state: &mut AppState, e: Event) {
             }
         }
         Event::Diff(p) => super::diff::open_worktree_diff(state, &workdir.join(p)),
+        Event::Preview(p) => super::diff::show_in_active_worktree_diff(state, &workdir.join(p)),
+        Event::Move(delta) => {
+            let Some(row) = c.next_file_row(delta) else { return };
+            select(c, row, false, false);
+            c.scroll_to = Some(row);
+            if let RowKind::File(i) = c.rows[row].kind {
+                let p = workdir.join(&c.entries[c.items[i].entry].path);
+                super::diff::show_in_active_worktree_diff(state, &p);
+            }
+        }
+        Event::OpenSelected => {
+            let sel = c.selected_paths();
+            if let [one] = sel.as_slice() {
+                let p = workdir.join(one);
+                super::diff::open_worktree_diff(state, &p);
+            }
+        }
         Event::Jump(p) => state.open_location(&workdir.join(p), None, true),
         Event::Rollback(paths) if !paths.is_empty() => c.confirm = Some(Confirm::Rollback(paths)),
         Event::Delete(paths) if !paths.is_empty() => c.confirm = Some(Confirm::Delete(paths)),
@@ -913,7 +1080,7 @@ fn handle(state: &mut AppState, e: Event) {
     }
 }
 
-/// Stage or Unstage on a worker through `run_op`, which refreshes git state afterwards.
+/// Stage or Unstage on a worker through `run_op_with`. Only the moved paths are refreshed.
 fn stage_op(state: &mut AppState, op: DropOp, paths: Vec<PathBuf>) {
     if paths.is_empty() {
         return;
@@ -923,11 +1090,13 @@ fn stage_op(state: &mut AppState, op: DropOp, paths: Vec<PathBuf>) {
         DropOp::Stage => ("Stage", format!("{n} staged")),
         DropOp::Unstage => ("Unstage", format!("{n} unstaged")),
     };
-    super::remote::run_op(
+    let refresh = Refresh::Paths(paths.clone());
+    super::remote::run_op_with(
         state,
         title,
         body,
         false,
+        refresh,
         move |repo| {
             match op {
                 DropOp::Stage => repo.stage(&paths)?,
@@ -975,18 +1144,19 @@ fn select(c: &mut ChangesUi, row: usize, cmd: bool, shift: bool) {
     }
 }
 
-/// Runs a git write on a worker, toasts a failure with its stderr and refreshes status.
-fn git_write(state: &mut AppState, label: &str, work: impl FnOnce(&ide_git::Repo) -> ide_git::Result<()> + Send + 'static) {
+/// Runs a git write on a worker, toasts a failure with its stderr and refreshes `paths`.
+fn git_write(state: &mut AppState, label: &str, paths: Vec<PathBuf>, work: impl FnOnce(&ide_git::Repo) -> ide_git::Result<()> + Send + 'static) {
     let Some(repo) = state.ws.git.repo.clone() else { return };
     let title = format!("{label} failed");
+    super::refresh::write_started(state);
     state.jobs.spawn(
         label,
-        move || work(&repo),
+        move || std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| work(&repo))).unwrap_or_else(|_| Err(ide_git::Error::Other("the git task panicked".into()))),
         move |state, res| {
             if let Err(e) = res {
                 state.notifications.error(title, e.to_string());
             }
-            state.refresh_git();
+            super::refresh::write_done(state, Refresh::Paths(paths));
         },
     );
 }
@@ -1014,24 +1184,41 @@ fn start_commit(state: &mut AppState, push: bool) {
         }
     }
     let n = paths.len() + staged_only.len();
+    // A commit changes HEAD against the index for the committed paths only. Saved documents
+    // changed on disk too.
+    let mut touched: Vec<PathBuf> = paths.iter().chain(&staged_only).cloned().collect();
+    touched.extend(saves.iter().map(|s| s.1.clone()));
+    super::refresh::write_started(state);
     state.jobs.spawn(
         if amend { "Amending commit" } else { "Committing" },
         move || {
-            let mut saved = Vec::new();
-            for (id, path, text, token) in saves {
-                if std::fs::write(&path, text).is_ok() {
-                    saved.push((id, token));
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
+                let mut saved = Vec::new();
+                for (id, path, text, token) in saves {
+                    if std::fs::write(&path, text).is_ok() {
+                        saved.push((id, token));
+                    }
                 }
-            }
-            (saved, repo.commit_selection(&message, &paths, &staged_only, amend), message)
+                // Concluding a merge commits the whole index (`commit_selection`).
+                let whole_index = !matches!(repo.state(), Ok(ide_git::RepoState::Clean));
+                (saved, repo.commit_selection(&message, &paths, &staged_only, amend), message, whole_index)
+            }))
+            .ok()
         },
-        move |state, (saved, res, message)| {
+        move |state, out| {
+            let Some((saved, res, message, whole_index)) = out else {
+                state.ws.git_ui.changes.committing = false;
+                state.notifications.error("Commit failed", "The task panicked.");
+                super::refresh::write_done(state, Refresh::Full);
+                return;
+            };
             for (id, token) in saved {
                 if let Some(e) = state.ws.tabs.editor_mut(id) {
                     e.doc.mark_saved(token);
                 }
             }
             state.ws.git_ui.changes.committing = false;
+            let refresh = if whole_index { Refresh::Full } else { Refresh::Paths(touched) };
             let subject = message.lines().next().unwrap_or_default().to_string();
             match res {
                 Ok(outcome) if outcome.success() => {
@@ -1042,7 +1229,7 @@ fn start_commit(state: &mut AppState, push: bool) {
                     c.message.clear();
                     c.amend = false;
                     c.amend_restore = None;
-                    state.refresh_git();
+                    super::refresh::write_done(state, refresh);
                     if push {
                         super::remote::open_push_dialog(state);
                     }
@@ -1051,11 +1238,11 @@ fn start_commit(state: &mut AppState, push: bool) {
                     let o = &outcome.output;
                     let body = if o.stderr.trim().is_empty() { o.stdout.clone() } else { o.stderr.clone() };
                     state.notifications.error("Commit failed", body);
-                    state.refresh_git();
+                    super::refresh::write_done(state, refresh);
                 }
                 Err(e) => {
                     state.notifications.error("Commit failed", e.to_string());
-                    state.refresh_git();
+                    super::refresh::write_done(state, refresh);
                 }
             }
         },
@@ -1135,9 +1322,10 @@ fn confirm_dialog(state: &mut AppState, ctx: &Context) {
         return;
     }
     match confirm {
-        Confirm::Rollback(paths) => git_write(state, "Rolling back", move |repo| repo.rollback(&paths)),
+        Confirm::Rollback(paths) => git_write(state, "Rolling back", paths.clone(), move |repo| repo.rollback(&paths)),
         Confirm::Delete(paths) => {
             let Some(workdir) = state.ws.git.repo.as_ref().map(|r| r.workdir().to_path_buf()) else { return };
+            let refreshed = paths.clone();
             state.jobs.spawn(
                 "Deleting files",
                 move || {
@@ -1151,11 +1339,11 @@ fn confirm_dialog(state: &mut AppState, ctx: &Context) {
                     }
                     errors
                 },
-                |state, errors: Vec<String>| {
+                move |state, errors: Vec<String>| {
                     if !errors.is_empty() {
                         state.notifications.error("Delete failed", errors.join("\n"));
                     }
-                    state.refresh_git();
+                    super::refresh::paths(state, refreshed, false);
                 },
             );
         }
@@ -1171,6 +1359,7 @@ pub fn on_git_refreshed(state: &mut AppState) {
 
 // ---------------------------------------------------------------------------------------------
 // Test hooks (see testhook.rs): `--test-git-commit "<msg>" <comma-separated paths>`,
+// `--test-git-stage <comma-separated paths>`, `--test-git-unstage <comma-separated paths>`,
 // `--test-git-diff <path>`, `--test-git-changes`, `--test-git-annotate`, `--test-git-gutter <L>`,
 // `--test-git-rollback-lines <L>`, `--test-git-blame-click <L>`.
 
@@ -1194,6 +1383,11 @@ fn test_tick(state: &mut AppState) {
     if state.ws.project.is_none() || state.ws.git.repo.is_none() || state.ws.git.status_ms.is_none() {
         return;
     }
+    // A step starts after the previous step's git work: two index writers at once would race.
+    if !state.jobs.running().is_empty() {
+        state.ctx.request_repaint_after(std::time::Duration::from_millis(100));
+        return;
+    }
     let step = TEST.with(|t| {
         let mut t = t.borrow_mut();
         if let Some(at) = t.wait_until {
@@ -1215,7 +1409,7 @@ fn test_tick(state: &mut AppState) {
     let Some((flag, arg)) = step else { return };
     state.ctx.request_repaint_after(std::time::Duration::from_millis(1300));
     let workdir = state.ws.git.repo.as_ref().map(|r| r.workdir().to_path_buf()).unwrap_or_default();
-    eprintln!("[test] {flag} {arg}");
+    state.timings.log(format!("[test] {flag} {arg}"));
     let active = state.ws.tabs.active;
     match flag.as_str() {
         "--test-git-changes" => {
@@ -1223,8 +1417,16 @@ fn test_tick(state: &mut AppState) {
             let c = &state.ws.git_ui.changes;
             let checked = c.checked_files;
             eprintln!("[test] commit window: {} entries, {checked} checked, status {} changes", c.entries.len(), state.ws.git.changes.len());
+            for n in state.notifications.log() {
+                eprintln!("[test] notification {:?}: {} | {}", n.level, n.title, n.body.lines().next().unwrap_or_default());
+            }
         }
         "--test-git-diff" => super::diff::open_worktree_diff(state, &workdir.join(&arg)),
+        "--test-git-stage" | "--test-git-unstage" => {
+            state.ws.layout.show(crate::layout::ToolWindow::Commit);
+            let op = if flag == "--test-git-stage" { DropOp::Stage } else { DropOp::Unstage };
+            stage_op(state, op, arg.split(',').map(PathBuf::from).collect());
+        }
         "--test-git-diff-next" => super::diff::test_next(state, arg.trim().parse().unwrap_or(1)),
         "--test-git-commit" => {
             let (msg, paths) = arg.split_once('\u{1}').unwrap_or((arg.as_str(), ""));

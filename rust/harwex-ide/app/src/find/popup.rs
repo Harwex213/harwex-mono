@@ -360,7 +360,10 @@ fn search_field(state: &mut AppState, ui: &mut Ui, rect: Rect, fresh: bool) {
     let id = wid("find-query");
     let focused = ui.ctx().memory(|m| m.has_focus(id));
     field_frame(ui, rect, focused);
-    let mut refocus = fresh;
+    // egui takes the focus from a widget under a modal on every frame. Taking it back on every
+    // frame keeps the field drawn focused while the Replace All question is open; taking it
+    // back only on the next frame made the border blink, frame by frame.
+    let mut refocus = fresh || f.replace_confirm.is_some();
     ui.scope_builder(UiBuilder::new().max_rect(rect.shrink2(vec2(6.0, 0.0))).layout(Layout::left_to_right(Align::Center)), |ui| {
         ui.spacing_mut().item_spacing.x = 2.0;
         let (hist, _) = ui.allocate_exact_size(vec2(30.0, BTN), Sense::hover());

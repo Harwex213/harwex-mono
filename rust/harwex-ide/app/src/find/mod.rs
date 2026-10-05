@@ -787,8 +787,9 @@ pub fn open_in_find_window(state: &mut AppState) {
             let mask_text = mask_text.clone();
             move || {
                 let mask = mask_text.as_deref().map(Mask::parse);
-                // One past the cap tells the tab it was cut off.
-                let cancel = AtomicBool::new(false);
+                // One past the cap tells the tab it was cut off. The status bar's × stops the
+                // walk; the hits found so far still fill the tab.
+                let cancel = crate::jobs::current_cancel();
                 search_with(&targets, &source, &query, mask.as_ref(), &skip, &cancel, FIND_WINDOW_CAP + 1, &|_, _| {})
             }
         },
@@ -894,7 +895,7 @@ pub fn replace_selected(state: &mut AppState) {
                         Ok(0) => warn_changed(state, 1),
                         Ok(_) => {
                             let paths: HashSet<PathBuf> = std::iter::once(changed).collect();
-                            state.on_fs_batch(crate::watcher::FsBatch { paths, structure_changed: false, git_changed: true });
+                            state.on_fs_batch(crate::watcher::FsBatch { paths, structure_changed: false, git_changed: false });
                         }
                         Err(e) => state.notifications.error("Replace failed", e),
                     }
@@ -1023,7 +1024,7 @@ fn replace_counted(state: &mut AppState, query: Query, counted: Vec<(PathBuf, us
                 warn_changed(state, skipped);
             }
             let paths: HashSet<PathBuf> = counted.into_iter().map(|(p, _)| p).collect();
-            state.on_fs_batch(crate::watcher::FsBatch { paths, structure_changed: false, git_changed: true });
+            state.on_fs_batch(crate::watcher::FsBatch { paths, structure_changed: false, git_changed: false });
             if state.ws.find.dialog_open {
                 start(state);
             }

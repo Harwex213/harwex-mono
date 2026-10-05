@@ -170,6 +170,18 @@ fn main() {
                     reply(&out, &id, json!({"slept": ms}));
                 });
             }
+            // A helper child that ignores SIGTERM, like a stuck `tsgolint`. Answers its pid.
+            ("test/spawnChild", Some(id)) => {
+                let child = std::process::Command::new("sh")
+                    .args(["-c", "trap '' TERM; while :; do sleep 1; done"])
+                    .stdin(std::process::Stdio::null())
+                    .stdout(std::process::Stdio::null())
+                    .spawn();
+                match child {
+                    Ok(c) => reply(&out, &id, json!({"pid": c.id()})),
+                    Err(e) => reply_error(&out, &id, -32603, &e.to_string()),
+                }
+            }
             ("test/crash", Some(_)) => {
                 eprintln!("fake server crashed on purpose");
                 std::process::exit(3);

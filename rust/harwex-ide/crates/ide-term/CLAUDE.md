@@ -18,7 +18,7 @@ Integrated terminals: a PTY (`portable-pty`) feeds an `alacritty_terminal` emula
 ## Contract
 
 - `Terminal::spawn(cwd, ctx)` runs `$SHELL -l` (fallback `/bin/zsh`) with `TERM=xterm-256color`, `COLORTERM=truecolor` and `TERM_PROGRAM=harwex-ide`. `SpawnOptions` runs any command (the tests use `zsh -f`).
-- `kill()` sends SIGHUP and is idempotent. Dropping a `Terminal` kills its shell.
+- `kill()` sends SIGHUP and is idempotent. Dropping a `Terminal` kills its shell and reaps it on a thread, so a closed tab leaves no zombie (portable-pty's kill falls back to SIGKILL after 200 ms and never waits).
 - `open_path` line and column are 1-based, as printed. `ide-editor` and the language crates are 0-based, so the app subtracts 1.
 - A path is a link on plain hover. A URL is a link only while Cmd is held (`modifiers.command`). An OSC 8 hyperlink (`cell.hyperlink()`) wins over URL text, and a URL wins over a path at the same cell. The exception is a `file://` URL whose path exists: it stays a path link and opens in the editor.
 - `open_url` carries only `links::is_openable_url` schemes (http, https, file, mailto). The app checks again before it opens the URL.
@@ -35,7 +35,7 @@ cargo test -p ide-term
 cargo test -p ide-term --release -- --ignored --nocapture throughput   # throughput numbers
 ```
 
-Unit tests spawn real PTYs with short scripts. App behaviour (Alt+F12, focus, Escape routing, link clicks) is covered by `cargo test -p harwex-ide --test terminal`. Do not run `examples/term.rs`: it opens a foreground window. `HARWEX_TERM_CMD` and `HARWEX_TERM_STATS` exist only for that example.
+Unit tests spawn real PTYs with short scripts. App behaviour (Alt+F12, focus, Escape routing, link clicks) is covered by `cargo test -p harwex-ide --test app terminal::`. Do not run `examples/term.rs`: it opens a foreground window. `HARWEX_TERM_CMD` and `HARWEX_TERM_STATS` exist only for that example.
 
 ## Traps
 

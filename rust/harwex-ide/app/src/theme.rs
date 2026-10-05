@@ -27,6 +27,10 @@ pub static T: Theme = Theme::islands_dark();
 /// Font family of Inter SemiBold (badge initials, the project name).
 pub const SEMIBOLD: &str = "Inter SemiBold";
 
+/// Font data name of the Noto Sans Symbols 2 subset: spinner glyphs that programs put into
+/// terminal titles (◐ ◑ ◒ ◓ ◴ ◵ ◶ ◷, the dingbat stars U+2722–U+274B, Braille U+2800–U+28FF).
+const SYMBOLS: &str = "Noto Sans Symbols 2";
+
 pub struct Theme {
     // Surfaces.
     /// The window behind the islands, the title bar, the strips and the status bar.
@@ -406,13 +410,18 @@ pub fn install_fonts(ctx: &Context) {
     add(&mut fonts, "Inter", include_bytes!("../assets/fonts/Inter-Regular.ttf"));
     add(&mut fonts, SEMIBOLD, include_bytes!("../assets/fonts/Inter-SemiBold.ttf"));
     add(&mut fonts, "JetBrains Mono", include_bytes!("../assets/fonts/JetBrainsMono-Regular.ttf"));
+    add(&mut fonts, SYMBOLS, include_bytes!("../assets/fonts/NotoSansSymbols2-Subset.ttf"));
     let fallbacks = fonts.families.get(&FontFamily::Proportional).cloned().unwrap_or_default();
-    fonts.families.entry(FontFamily::Proportional).or_default().insert(0, "Inter".into());
+    // The symbols subset comes before egui's fonts: they draw ◐ as a box and ◑ from an icon font.
+    let proportional = fonts.families.entry(FontFamily::Proportional).or_default();
+    proportional.insert(0, "Inter".into());
+    proportional.insert(1, SYMBOLS.into());
     // Code falls back to Inter before egui's fonts: Inter covers more UI symbols.
     let mono = fonts.families.entry(FontFamily::Monospace).or_default();
     mono.insert(0, "JetBrains Mono".into());
     mono.insert(1, "Inter".into());
-    let mut semibold = vec![SEMIBOLD.to_string(), "Inter".to_string()];
+    mono.insert(2, SYMBOLS.into());
+    let mut semibold = vec![SEMIBOLD.to_string(), "Inter".to_string(), SYMBOLS.to_string()];
     semibold.extend(fallbacks);
     fonts.families.insert(FontFamily::Name(SEMIBOLD.into()), semibold);
     ctx.set_fonts(fonts);
@@ -491,7 +500,9 @@ mod tests {
         // The check can fail: a code point no bundled font has is reported missing.
         assert!(!ctx.fonts(|f| f.has_glyph(&T.ui_font(), '\u{10FFFD}')));
         for font in [T.ui_font(), T.small_font(), T.mono_font(), T.semibold(12.0)] {
-            for c in "⇧⌘⌥⌃⌄⏎⌫⎋→←↑↓›…•●✓×−·–".chars() {
+            // The second half: spinner glyphs that Claude Code and other programs put into a
+            // terminal title (`terminal::status_glyph`).
+            for c in "⇧⌘⌥⌃⌄⏎⌫⎋→←↑↓›…•●✓×−·–◐◑◒◓◴◵◶◷✢✳✶✻✽⠋⠙⠹⣿".chars() {
                 assert!(ctx.fonts(|f| f.has_glyph(&font, c)), "{c:?} is missing in {font:?}");
             }
         }

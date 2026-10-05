@@ -6,7 +6,7 @@ Read this file when a change touches a hot path and you need the budget or a ref
 
 | What | Budget | Test |
 |---|---|---|
-| keystroke (edit + highlight on the UI thread), avg of 1000 | < 4 ms | `cargo test -p ide-editor --release --test bench -- --nocapture` |
+| keystroke (edit + highlight on the UI thread), avg of 1000 | < 4 ms | `cargo test -p ide-editor --release --test editor bench:: -- --nocapture` |
 | editor steady frame | < 4 ms | same |
 | editor typing frame | < 8 ms | same |
 | editor jump-scroll frame (nothing cached) | < 12 ms | same |
@@ -18,13 +18,13 @@ Read this file when a change touches a hot path and you need the budget or a ref
 | 10k problem underlines: steady frame / jump-scroll frame | < 4 ms / < 12 ms | same (`bench_10k_problems`) |
 | soft wrap, 100k-line Markdown: steady / jump-scroll / wheel scroll / typing / sweep and resize frames | < 4 / 12 / 8 / 8 / 12 ms | same (`bench_wrapped_markdown`) |
 | soft wrap, one 2 MB line: steady / typing / Down frame | < 4 / 8 / 8 ms | same (`bench_wrapped_giant_line`) |
-| warm Go to Declaration in Rust | < 500 ms | `cargo test -p harwex-ide --test rust_nav` |
-| git status warm / log page of 200 / log at skip 1000, generated 4000-file repo | < 150 / 100 / 100 ms | `cargo test -p ide-git --test large_repo` |
-| TS cold / warm definition, source definition, references, generated 1240-file workspace | < 15 s / 50 ms, < 3 s, < 5 s | `cargo test -p ide-ts --test workspace` |
-| file rename preview (pre-filter + loading 30 importer projects + edits), generated 200-project workspace, warm server | pre-filter < 500 ms; native < 2 s, tsserver < 8 s | `cargo test -p ide-ts --test rename_budget -- --nocapture` |
-| UI frame while a rename preview loads 30 projects (tsserver, 60 projects) | < 250 ms worst frame (parallel suite) | `cargo test -p harwex-ide --test project_menu rename_preview_keeps_frames_fast` |
-| ESLint and oxlint, generated 200-package monorepo: warm per-file lint after an edit (median) / cold first diagnostics | < 300 ms without types, < 1 s type-aware / < 20 s | `cargo test -p harwex-ide --test lint_budget -- --nocapture` |
-| one memory indicator sample (thread CPU time, median of 30) | < 0.5 ms | `cargo test -p harwex-ide --test memory sampling_cost -- --nocapture` |
+| warm Go to Declaration in Rust | < 500 ms | `cargo test -p harwex-ide --test app rust_nav::` |
+| git status warm (fastest of 3, git CLI) / log page of 200 / log at skip 1000, generated 4000-file repo | < 300 / 100 / 100 ms | `cargo test -p ide-git --test git large_repo::` |
+| TS cold / warm definition, source definition, references, generated 1240-file workspace | < 15 s / 50 ms, < 3 s, < 5 s | `cargo test -p ide-ts --test ts workspace::` |
+| file rename preview (pre-filter + loading 30 importer projects + edits), generated 200-project workspace, warm server | pre-filter < 500 ms; native < 2 s, tsserver < 8 s | `cargo test -p ide-ts --test ts rename_budget:: -- --nocapture` |
+| UI frame while a rename preview loads 30 projects (tsserver, 60 projects) | < 250 ms worst frame (with the other tests of the `app` binary in parallel) | `cargo test -p harwex-ide --test app project_menu::rename_preview_keeps_frames_fast` |
+| ESLint and oxlint, generated 200-package monorepo: warm per-file lint after an edit (median) / cold first diagnostics | < 300 ms without types, < 1 s type-aware / < 20 s | `cargo test -p harwex-ide --test app lint_budget:: -- --nocapture` |
+| one memory indicator sample (thread CPU time, median of 30) | < 0.5 ms | `cargo test -p harwex-ide --test app memory::sampling_cost -- --nocapture` |
 
 The benchmark file has 200k lines (4.2 MB of TypeScript).
 
@@ -61,11 +61,13 @@ rust-analyzer on this workspace: the first cold request waits for the workspace 
 
 ide-git on harwex-mono: status 343 ms cold, 90-103 ms warm (`git status` itself takes 73 ms). First log page of 200: 8 ms. Log page at skip 1000: 3 ms. Graph of 152 rows: 13 µs.
 
-ide-git on the generated repo (`cargo test -p ide-git --test large_repo -- --nocapture`, debug, 4000 files, 1441 commits): status 22 ms cold, 18 ms warm. Log page of 200: 7 ms, at skip 1000: 8 ms. Graph of 200 rows: 0.1 ms.
+Git refresh on a `git clone --local` copy of mono (484,662 files, release build, task 067): full status + branch 14-17 s (the CLI; libgit2 took 19-23 s). Stage of 2 files to updated Commit window 0.52 s, Commit of 2 files 4.6 s (`git commit` itself 4.5 s), status of 1-2 paths 0.10-0.11 s. The `.git` events of our own writes and a stat-only index rewrite run no status; an outside `git add` runs one full status.
 
-TypeScript on the generated workspace (`cargo test -p ide-ts --test workspace -- --nocapture`, 1240 files): cold definition 72 ms native / 490 ms tsserver, warm under 0.4 ms, references with 2401 results 89 ms / 195 ms.
+ide-git on the generated repo (`cargo test -p ide-git --test git large_repo:: -- --nocapture`, debug, 4000 files, 1441 commits): status 55 ms cold, 48 ms warm through the git CLI (22 and 18 ms with libgit2 before task 067; the CLI pays one process start). Log page of 200: 7 ms, at skip 1000: 8 ms. Graph of 200 rows: 0.1 ms.
 
-File rename on the generated monorepo (`cargo test -p ide-ts --test rename_budget -- --nocapture`, debug, 1002 files in 201 projects, 30 importers): pre-filter 13 ms over 1002 code files (31 candidates), whole preview 59 ms native / 0.9 s tsserver, 31 projects loaded, 31 files changed. In the app (`project_menu`, tsserver, 60 projects): preview about 1 s, worst UI frame under 1 ms when the test runs alone.
+TypeScript on the generated workspace (`cargo test -p ide-ts --test ts workspace:: -- --nocapture`, 1240 files): cold definition 72 ms native / 490 ms tsserver, warm under 0.4 ms, references with 2401 results 89 ms / 195 ms.
+
+File rename on the generated monorepo (`cargo test -p ide-ts --test ts rename_budget:: -- --nocapture`, debug, 1002 files in 201 projects, 30 importers): pre-filter 13 ms over 1002 code files (31 candidates), whole preview 59 ms native / 0.9 s tsserver, 31 projects loaded, 31 files changed. In the app (`project_menu`, tsserver, 60 projects): preview about 1 s, worst UI frame under 1 ms when the test runs alone.
 
 10k problem underlines on the same file (every 20 lines, all four severities): steady frame 0.14 ms, jump-scroll frame 0.45 ms.
 
@@ -79,7 +81,7 @@ Diagnostics on the `mono` repository (read-only, three files in three packages, 
 | cold start | initialize 44 ms, first file 74 ms, all three 1.1 s | first file 6.1 s (loads the JS configs of 616 packages), all three 7.6 s | 0.17-1.5 s per run |
 | memory | 1.07 GB phys_footprint (the server navigation already uses) | 0.30 GB (node); tsgolint runs per request | up to 1.09 GB max RSS per run (tsgolint) |
 
-Linters on the generated monorepo (`cargo test -p harwex-ide --test lint_budget -- --nocapture`: 200 packages with 5 files each, a per-package `eslint.config.mjs` from a shared root module, `@eslint/js` recommended + typescript-eslint recommended, or `recommendedTypeChecked` with `projectService`; one root `.oxlintrc.json`). Memory is the phys_footprint of the linter's process tree.
+Linters on the generated monorepo (`cargo test -p harwex-ide --test app lint_budget:: -- --nocapture`: 200 packages with 5 files each, a per-package `eslint.config.mjs` from a shared root module, `@eslint/js` recommended + typescript-eslint recommended, or `recommendedTypeChecked` with `projectService`; one root `.oxlintrc.json`). Memory is the phys_footprint of the linter's process tree: every process below the test process, so the numbers hold only when the filter runs this suite alone.
 
 | | cold first file (process start included) | cold file in a 2nd package | warm per file after an edit | memory, 1 / 22 packages | memory after all files closed |
 |---|---|---|---|---|---|
@@ -95,3 +97,12 @@ Budgets: none asserted for the cold start on a real repository, because it depen
 Memory indicator: one sample of 9 processes costs 113 µs of CPU in release (137 µs in debug), with about 1140 processes on the machine. Each `proc_listchildpids` call scans every process, so the cost grows with the number of processes in the walked tree. Terminal subtrees are not walked.
 
 Terminal: about 110 MB/s through the PTY and the emulator, at 120 fps in a window. Measure with `yes | head -c 50000000 | cat`. Without `cat`, macOS `head` limits the run to about 5 MB/s.
+
+Test binaries (`cargo test --workspace`, debug, warm target dir, 16 cores; `docs/testing.md`, "Test binaries"):
+
+| | one binary per test file | merged (`tests/<name>/main.rs`) |
+|---|---|---|
+| test executables / integration binaries | 61 / 53 | 17 / 9 |
+| `cargo test --workspace --no-run` after a one-line change in `app/src` | 5.5-7.9 s | 1.9-3.0 s |
+| `cargo test --workspace` | 127 s (the binaries run one after another) | 59 s (the `app` binary 31 s, `editor` 14 s) |
+| `cargo xtask nextest --workspace` | 46 s | 43 s |

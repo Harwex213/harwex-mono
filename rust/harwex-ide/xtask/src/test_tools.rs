@@ -14,6 +14,8 @@
 //!   tarball and its integrity, so the whole tree is pinned, not only the top packages.
 //! - `rust-analyzer/rust-analyzer`: the binary from the `rust-analyzer-preview` component.
 //! - `rust-src/lib/rustlib/src/rust/library`: the standard library sources.
+//! - `nextest/cargo-nextest`: the cargo-nextest release binary, the test runner with per-test
+//!   time limits (`.config/nextest.toml`). `cargo xtask nextest` runs it.
 //!
 //! The downloads use the system `curl`, `shasum` and `tar` (all present on macOS), so xtask
 //! stays std-only. npm tarballs are checked against the registry's `dist.integrity` (sha512).
@@ -44,6 +46,15 @@ const ESLINT_LOCK: &str = include_str!("eslint.lock");
 pub const RUST: &str = "1.97.1";
 /// sha256 of `https://static.rust-lang.org/dist/channel-rust-<RUST>.toml`.
 pub const RUST_MANIFEST_SHA256: &str = "03569b1886ceb5c05276b50c8431ab111de944cd6140fe1fa7d821dd8e0f29cf";
+
+/// cargo-nextest, as a prebuilt release binary. The sha256 values are the `.sha256` files of
+/// the GitHub release, per release target.
+pub const NEXTEST: &str = "0.9.146";
+const NEXTEST_SHA256: &[(&str, &str)] = &[
+    ("universal-apple-darwin", "39785160b3c2f6ed9a765049cf4fa79f3b39aa02eb7598a5a0e2a1a0b9ffb9a8"),
+    ("x86_64-unknown-linux-gnu", "682c21b777c333e96fd532e114d3a5a894e0729ab88d94c0a9f20f8419695428"),
+    ("aarch64-unknown-linux-gnu", "b2e33d7c72de7ade0ff7b3a948ac37516b24f8a836b7a8870c1f634a94be9de9"),
+];
 
 const STAMP: &str = ".harwex-tools";
 const REGISTRY: &str = "https://registry.npmjs.org";
@@ -108,6 +119,14 @@ pub fn run(tools: &Path) -> Result<(), String> {
         move_into(&stage.join(&top).join("rust-src/lib"), &stage.join("lib"))?;
         remove(&stage.join(&top))
     })?;
+    match nextest_target(&triple) {
+        Some((target, sha256)) => provision(tools, "nextest", &[("cargo-nextest", NEXTEST), ("target", target)], |stage| {
+            let url = format!("https://github.com/nextest-rs/nextest/releases/download/cargo-nextest-{NEXTEST}/cargo-nextest-{NEXTEST}-{target}.tar.gz");
+            let file = fetch(stage, &url, Hash::Sha256(sha256))?;
+            unpack(&file, stage, &["cargo-nextest".to_string()])
+        })?,
+        None => println!("skip    nextest (no pinned build for {triple}; cargo test still works)"),
+    }
 
     println!();
     println!("test tools in {}:", tools.display());
@@ -117,7 +136,19 @@ pub fn run(tools: &Path) -> Result<(), String> {
     println!("  eslint {ESLINT:<12} eslint/node_modules/eslint         (override: HARWEX_TEST_ESLINT, typescript-eslint {TYPESCRIPT_ESLINT})");
     println!("  rust-analyzer {RUST:<5} rust-analyzer/bin/rust-analyzer   (override: HARWEX_RUST_ANALYZER)");
     println!("  rust-src {RUST:<10} rust-src/lib/rustlib/src/rust/library (override: RUST_SRC_PATH)");
+    println!("  cargo-nextest {NEXTEST} nextest/cargo-nextest             (run: cargo xtask nextest)");
     Ok(())
+}
+
+/// The nextest release target for a rustc host triple, with its pinned sha256.
+fn nextest_target(triple: &str) -> Option<(&'static str, &'static str)> {
+    let target = if triple.ends_with("-apple-darwin") { "universal-apple-darwin" } else { triple };
+    NEXTEST_SHA256.iter().find(|(t, _)| *t == target).copied()
+}
+
+/// `tools/nextest/cargo-nextest`.
+pub fn nextest_bin(tools: &Path) -> PathBuf {
+    tools.join("nextest").join(format!("cargo-nextest{}", env::consts::EXE_SUFFIX))
 }
 
 /// Builds `tools/<name>` with `fill` in a staging dir and swaps it in. A directory whose stamp
@@ -504,6 +535,15 @@ mod tests {
         assert!(parse_lock("node_modules/../x https://registry.npmjs.org/x.tgz sha512-AA==").is_err());
         assert!(parse_lock("node_modules/x https://evil.example/x.tgz sha512-AA==").is_err());
         assert!(parse_lock("node_modules/x https://registry.npmjs.org/x.tgz sha1-AA==").is_err());
+    }
+
+    #[test]
+    fn nextest_targets_cover_macos_and_linux() {
+        assert_eq!(nextest_target("aarch64-apple-darwin").map(|t| t.0), Some("universal-apple-darwin"));
+        assert_eq!(nextest_target("x86_64-apple-darwin").map(|t| t.0), Some("universal-apple-darwin"));
+        assert_eq!(nextest_target("x86_64-unknown-linux-gnu").map(|t| t.0), Some("x86_64-unknown-linux-gnu"));
+        assert_eq!(nextest_target("x86_64-pc-windows-msvc"), None);
+        assert!(NEXTEST_SHA256.iter().all(|(_, h)| h.len() == 64 && from_hex(h).is_ok()));
     }
 
     #[test]

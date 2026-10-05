@@ -164,7 +164,7 @@ impl Workspace {
 
     /// True when no git refresh, index build, language request or debounce is pending.
     pub fn is_idle(&self) -> bool {
-        self.langs.queued() == 0 && !self.git.refreshing && !self.index.building && !self.has_pending_debounce()
+        self.langs.queued() == 0 && !self.git.refresh.busy() && !self.index.building && !self.has_pending_debounce()
     }
 
     /// Work that waits for a quiet period before it starts: language server sync and gutter marks

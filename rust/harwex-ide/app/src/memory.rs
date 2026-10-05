@@ -10,6 +10,10 @@
 //! macOS reads the physical footprint (`proc_pid_rusage` → `ri_phys_footprint`, the number
 //! Activity Monitor shows) and walks the tree with `proc_listchildpids`. Linux reads RSS
 //! from `/proc`. `ProcessSource` hides the platform, so tests can feed a fake tree.
+//!
+//! Zombies (`<defunct>`, exited children that their parent never waited for) get no row. Each
+//! row counts the zombies directly below it (`ProcRow::defunct`), and the tooltip shows one
+//! "N defunct" line under that row. oxlint leaves one per type-aware lint (task 070).
 
 use std::collections::{HashMap, HashSet};
 use std::sync::mpsc::{channel, RecvTimeoutError, Sender};
@@ -36,6 +40,8 @@ pub struct ProcStat {
     pub memory: u64,
     /// User plus system CPU time since the process started, in nanoseconds.
     pub cpu_ns: u64,
+    /// An exited process its parent has not waited for. It holds a pid slot and no memory.
+    pub zombie: bool,
 }
 
 /// Where the sampler reads processes from. The real one asks the OS; tests use a fake tree.
@@ -93,6 +99,8 @@ pub struct ProcRow {
     pub memory: u64,
     /// Percent of one core since the previous sample. `None` for the first sample of a process.
     pub cpu: Option<f32>,
+    /// Zombie children of this process. They get no rows of their own.
+    pub defunct: u32,
 }
 
 #[derive(Clone, Debug)]
@@ -157,18 +165,26 @@ impl Sampler {
         let src = &*self.source;
         let now = src.now();
         let wall = self.prev_at.map(|p| now.saturating_duration_since(p).as_nanos() as f64).filter(|w| *w > 0.0);
-        let mut rows = Vec::new();
+        let mut rows: Vec<ProcRow> = Vec::new();
         let mut cpu_now = HashMap::new();
         let mut seen = HashSet::new();
         let mut kids = Vec::new();
         let me = src.self_pid();
-        // `None` marks a direct child: its name decides its kind, or that it is skipped.
-        let mut stack: Vec<(Pid, Option<Kind>)> = vec![(me, Some(Kind::Ide))];
-        while let Some((pid, kind)) = stack.pop() {
+        // `None` marks a direct child: its name decides its kind, or that it is skipped. The
+        // last field is the parent's row index, where a zombie child is counted.
+        let mut stack: Vec<(Pid, Option<Kind>, Option<usize>)> = vec![(me, Some(Kind::Ide), None)];
+        while let Some((pid, kind, parent)) = stack.pop() {
             if rows.len() >= MAX_PROCESSES || excluded.contains(&pid) || !seen.insert(pid) {
                 continue;
             }
             let Some(st) = src.stat(pid) else { continue };
+            if st.zombie {
+                // A zombie has no name and no memory: a row would read "? 0.0 MB".
+                if let Some(row) = parent.and_then(|i| rows.get_mut(i)) {
+                    row.defunct += 1;
+                }
+                continue;
+            }
             let kind = match kind {
                 // An owned pid may sit at any depth (a server started through a wrapper).
                 _ if others.contains(&pid) => Kind::OtherProjects,
@@ -178,13 +194,14 @@ impl Sampler {
             };
             src.children(pid, &mut kids);
             let child_kind = if pid == me { None } else { Some(kind) };
-            stack.extend(kids.drain(..).map(|c| (c, child_kind)));
+            let index = rows.len();
+            stack.extend(kids.drain(..).map(|c| (c, child_kind, Some(index))));
             let cpu = match (self.prev.get(&pid), wall) {
                 (Some(&before), Some(w)) => Some((st.cpu_ns.saturating_sub(before) as f64 / w * 100.0) as f32),
                 _ => None,
             };
             cpu_now.insert(pid, st.cpu_ns);
-            rows.push(ProcRow { pid, name: st.name, kind, memory: st.memory, cpu });
+            rows.push(ProcRow { pid, name: st.name, kind, memory: st.memory, cpu, defunct: 0 });
         }
         rows.sort_by(|a, b| a.kind.cmp(&b.kind).then(b.memory.cmp(&a.memory)).then(a.pid.cmp(&b.pid)));
         self.prev = cpu_now;
@@ -194,6 +211,29 @@ impl Sampler {
         let cost = thread_cpu_time().saturating_sub(cpu_start);
         Sample { rows, total, ram: src.physical_ram(), taken: now, cost, seq: self.seq }
     }
+}
+
+/// Zombies anywhere below `root`. `OxlintSource` restarts its server when they pile up. The
+/// walk stops after `MAX_PROCESSES` living processes, like a sample.
+pub fn defunct_in_tree(src: &dyn ProcessSource, root: Pid) -> usize {
+    let mut stack = vec![root];
+    let mut seen = HashSet::new();
+    let mut kids = Vec::new();
+    let mut zombies = 0;
+    while let Some(pid) = stack.pop() {
+        if seen.len() >= MAX_PROCESSES || !seen.insert(pid) {
+            continue;
+        }
+        src.children(pid, &mut kids);
+        for kid in kids.drain(..) {
+            match src.stat(kid) {
+                Some(st) if st.zombie => zombies += 1,
+                Some(_) => stack.push(kid),
+                None => {}
+            }
+        }
+    }
+    zombies
 }
 
 enum Msg {
@@ -457,6 +497,10 @@ fn tooltip(ui: &mut Ui, sample: &Sample, interval: Duration, deterministic: bool
                 let cpu = r.cpu.map_or_else(|| "–".to_string(), |c| format!("{c:.1}%"));
                 right(ui, 48.0, small(cpu).color(t.text_dim));
                 ui.end_row();
+                if r.defunct > 0 {
+                    ui.label(small(format!("    {} defunct", r.defunct)).color(t.text_dim));
+                    ui.end_row();
+                }
             }
         }
         // One line for all other projects: the rows above stay about the project in view.
@@ -596,11 +640,15 @@ impl ProcessSource for RealSource {
         let mut name = [0u8; 64];
         // SAFETY: proc_name writes at most `len` bytes and returns the length.
         let len = unsafe { libc::proc_name(pid as libc::c_int, name.as_mut_ptr().cast(), name.len() as u32) };
-        let name = if len > 0 { String::from_utf8_lossy(&name[..len as usize]).into_owned() } else { "?".to_string() };
         // The times are mach absolute time units, not nanoseconds, on Apple Silicon.
         let ticks = info.ri_user_time + info.ri_system_time;
         let cpu_ns = (ticks as u128 * self.timebase.0 as u128 / self.timebase.1 as u128) as u64;
-        Some(ProcStat { name, memory: info.ri_phys_footprint, cpu_ns })
+        // Only a zombie has no name, so a living process pays no extra call.
+        if len <= 0 && is_zombie(pid) {
+            return Some(ProcStat { name: String::new(), memory: 0, cpu_ns, zombie: true });
+        }
+        let name = if len > 0 { String::from_utf8_lossy(&name[..len as usize]).into_owned() } else { "?".to_string() };
+        Some(ProcStat { name, memory: info.ri_phys_footprint, cpu_ns, zombie: false })
     }
 
     fn physical_ram(&self) -> u64 {
@@ -614,6 +662,20 @@ impl ProcessSource for RealSource {
             0
         }
     }
+}
+
+/// A zombie keeps its rusage (its parent's `wait` reads it), but `proc_pidinfo` answers
+/// `ESRCH` for it. Call it only after `proc_pid_rusage` succeeded for `pid`.
+#[cfg(target_os = "macos")]
+fn is_zombie(pid: Pid) -> bool {
+    // SAFETY: proc_bsdshortinfo is plain data; proc_pidinfo fills at most `size` bytes of it.
+    let mut info: libc::proc_bsdshortinfo = unsafe { std::mem::zeroed() };
+    let size = std::mem::size_of::<libc::proc_bsdshortinfo>() as libc::c_int;
+    let n = unsafe { libc::proc_pidinfo(pid as libc::c_int, libc::PROC_PIDT_SHORTBSDINFO, 0, (&mut info as *mut libc::proc_bsdshortinfo).cast(), size) };
+    if n == size {
+        return info.pbsi_status == libc::SZOMB;
+    }
+    std::io::Error::last_os_error().raw_os_error() == Some(libc::ESRCH)
 }
 
 #[cfg(target_os = "linux")]
@@ -642,7 +704,8 @@ impl ProcessSource for RealSource {
         let fields: Vec<&str> = rest.split_whitespace().collect();
         let ticks: u64 = fields.get(11)?.parse::<u64>().ok()? + fields.get(12)?.parse::<u64>().ok()?;
         let name = std::fs::read_to_string(format!("/proc/{pid}/comm")).map(|n| n.trim().to_string()).unwrap_or_else(|_| "?".into());
-        Some(ProcStat { name, memory: resident * page, cpu_ns: ticks * 1_000_000_000 / tick })
+        let zombie = fields.first() == Some(&"Z");
+        Some(ProcStat { name, memory: resident * page, cpu_ns: ticks * 1_000_000_000 / tick, zombie })
     }
 
     fn physical_ram(&self) -> u64 {
@@ -678,7 +741,7 @@ mod tests {
         }
         fn stat(&self, pid: Pid) -> Option<ProcStat> {
             let name = ["", "harwex-ide", "node", "node", "rust-analyzer", "rust-analyzer-proc-macro-srv", "zsh", "claude", "git", "git-remote-https", "rustc"][pid as usize];
-            Some(ProcStat { name: name.into(), memory: pid as u64 * MB, cpu_ns: 0 })
+            Some(ProcStat { name: name.into(), memory: pid as u64 * MB, cpu_ns: 0, zombie: false })
         }
         fn physical_ram(&self) -> u64 {
             16 * 1024 * MB
@@ -721,7 +784,7 @@ mod tests {
                 14 => "cargo",
                 _ => return Fake.stat(pid),
             };
-            Some(ProcStat { name: name.into(), memory: pid as u64 * MB, cpu_ns: 0 })
+            Some(ProcStat { name: name.into(), memory: pid as u64 * MB, cpu_ns: 0, zombie: false })
         }
         fn physical_ram(&self) -> u64 {
             Fake.physical_ram()
@@ -757,6 +820,45 @@ mod tests {
         assert_eq!((kind(2), kind(3)), (Kind::LanguageServer, Kind::OtherProjects));
     }
 
+    /// `Fake` plus 25 zombies under node 2 (100..125) and 2 under the IDE itself (200, 201).
+    struct Zombies;
+
+    impl ProcessSource for Zombies {
+        fn self_pid(&self) -> Pid {
+            1
+        }
+        fn children(&self, pid: Pid, out: &mut Vec<Pid>) {
+            Fake.children(pid, out);
+            match pid {
+                1 => out.extend([200, 201]),
+                2 => out.extend(100..125),
+                _ => {}
+            }
+        }
+        fn stat(&self, pid: Pid) -> Option<ProcStat> {
+            if pid >= 100 {
+                return Some(ProcStat { name: String::new(), memory: 0, cpu_ns: 0, zombie: true });
+            }
+            Fake.stat(pid)
+        }
+        fn physical_ram(&self) -> u64 {
+            Fake.physical_ram()
+        }
+    }
+
+    #[test]
+    fn zombies_fold_into_their_parent_row() {
+        let mut sampler = Sampler::new(Arc::new(Zombies));
+        let s = sampler.sample(&[6]);
+        assert!(s.rows.iter().all(|r| r.pid < 100), "no row per zombie: {:?}", s.rows);
+        let defunct = |pid: Pid| s.rows.iter().find(|r| r.pid == pid).unwrap().defunct;
+        assert_eq!((defunct(2), defunct(1), defunct(3), defunct(4)), (25, 2, 0, 0));
+        assert_eq!(s.total, (1 + 2 + 3 + 4 + 5 + 10) * MB);
+        assert_eq!(defunct_in_tree(&Zombies, 2), 25);
+        assert_eq!(defunct_in_tree(&Zombies, 1), 27, "the walk goes through living children");
+        assert_eq!(defunct_in_tree(&Zombies, 4), 0);
+    }
+
     #[test]
     fn cpu_percent_between_samples() {
         struct Busy(std::sync::atomic::AtomicU64, Instant);
@@ -766,7 +868,7 @@ mod tests {
             }
             fn children(&self, _: Pid, _: &mut Vec<Pid>) {}
             fn stat(&self, _: Pid) -> Option<ProcStat> {
-                Some(ProcStat { name: "harwex-ide".into(), memory: MB, cpu_ns: self.0.load(std::sync::atomic::Ordering::SeqCst) })
+                Some(ProcStat { name: "harwex-ide".into(), memory: MB, cpu_ns: self.0.load(std::sync::atomic::Ordering::SeqCst), zombie: false })
             }
             fn physical_ram(&self) -> u64 {
                 MB

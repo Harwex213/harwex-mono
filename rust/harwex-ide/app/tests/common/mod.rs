@@ -7,6 +7,7 @@
 #![allow(dead_code)] // Each test binary uses a different subset.
 
 pub mod fixtures;
+pub mod watchdog;
 
 use std::path::{Path, PathBuf};
 use std::sync::Once;
@@ -25,7 +26,13 @@ pub const SIZE: Vec2 = Vec2::new(1280.0, 800.0);
 pub const STEP_DT: f32 = 0.05;
 /// Pixels that may differ before a snapshot fails (anti-aliasing noise between GPU runs).
 pub const MAX_DIFF_PIXELS: i32 = 64;
-const SETTLE_TIMEOUT: Duration = Duration::from_secs(40);
+/// Wall-clock budget of one wait (`settle`, `wait_for`, `wait_until`). The slowest real wait
+/// (rust-analyzer's first index in `rust_nav`) takes about 15 s on a loaded machine.
+/// `HARWEX_TEST_WAIT_SECS` changes it for a run; `Ide::set_wait_budget` for one test.
+pub const WAIT_BUDGET: Duration = Duration::from_secs(40);
+/// Frame budget of one wait. Every wait sleeps between frames, so the wall budget ends a real
+/// wait first; this catches a wait that steps frames in a busy loop.
+pub const WAIT_FRAMES: u64 = 100_000;
 
 pub const CMD: Modifiers = Modifiers { alt: false, ctrl: false, shift: false, mac_cmd: true, command: true };
 pub const CMD_SHIFT: Modifiers = Modifiers { alt: false, ctrl: false, shift: true, mac_cmd: true, command: true };
@@ -105,6 +112,10 @@ pub struct Ide {
     last_click: f64,
     /// Viewport commands the app sent since the last `take_viewport_commands`, from `step`.
     viewport_commands: Vec<egui::ViewportCommand>,
+    /// Wall-clock budget of each wait.
+    wait_budget: Duration,
+    /// Ends the process when one frame does not return (`watchdog.rs`).
+    watch: watchdog::Watchdog,
 }
 
 impl Ide {
@@ -123,7 +134,17 @@ impl Ide {
             .with_max_steps(100)
             .wgpu()
             .build_eframe(move |cc| IdeApp::create(&cc.egui_ctx, storage, options));
-        let mut ide = Ide { harness, suite, pointer: Pos2::new(-10.0, -10.0), size: SIZE, last_click: f64::NEG_INFINITY, viewport_commands: Vec::new() };
+        let wait_budget = watchdog::secs_from_env("HARWEX_TEST_WAIT_SECS").unwrap_or(WAIT_BUDGET);
+        let mut ide = Ide {
+            harness,
+            suite,
+            pointer: Pos2::new(-10.0, -10.0),
+            size: SIZE,
+            last_click: f64::NEG_INFINITY,
+            viewport_commands: Vec::new(),
+            wait_budget,
+            watch: watchdog::Watchdog::start(),
+        };
         if has_project {
             ide.wait_for("project loaded", |s| {
                 s.ws.project.as_ref().is_some_and(|p| s.ws.tree.is_loaded(&p.root)) && s.ws.index.build_ms.is_some() && (s.ws.git.repo.is_none() || s.ws.git.status_ms.is_some())
@@ -156,9 +177,38 @@ impl Ide {
         self.state().ws.project.as_ref().expect("a project is open").root.clone()
     }
 
+    /// Raises (or lowers) the wall-clock budget of every later wait of this test.
+    pub fn set_wait_budget(&mut self, budget: Duration) {
+        self.wait_budget = budget;
+    }
+
+    /// One `harness.step()` under the frame watchdog. Every frame of the driver goes through
+    /// here, so a frame that never returns ends the process with a message instead of a hang.
+    fn frame(&mut self) {
+        let jobs = self.state().jobs.running().into_iter().map(|j| j.label).collect();
+        let _frame = self.watch.begin("frame", jobs);
+        self.harness.step();
+    }
+
+    /// The panic message of a wait that ran out of budget: the test, what it waited for, the
+    /// labelled jobs and the notifications (a git stderr there often names the real cause).
+    fn budget_exceeded(&self, wait: &str, what: &str, frames: u64, start: Instant) -> String {
+        let s = self.state();
+        let jobs: Vec<String> = s.jobs.running().into_iter().map(|j| j.label).collect();
+        let notes: Vec<String> = s.notifications.log().iter().map(|n| format!("{}: {}", n.title, n.body)).collect();
+        format!(
+            "test `{}`: {wait} ran out of budget after {:.1} s and {frames} frames (budget {:.0} s, {WAIT_FRAMES} frames) waiting for: {what}; running jobs {jobs:?}, in flight {}, language queues {}, notifications {notes:?}",
+            watchdog::test_name(),
+            start.elapsed().as_secs_f64(),
+            self.wait_budget.as_secs_f64(),
+            s.jobs.in_flight(),
+            s.ws.langs.queued(),
+        )
+    }
+
     /// One frame.
     pub fn step(&mut self) {
-        self.harness.step();
+        self.frame();
         if let Some(v) = self.harness.output().viewport_output.get(&egui::ViewportId::ROOT) {
             self.viewport_commands.extend(v.commands.iter().cloned());
         }
@@ -171,7 +221,7 @@ impl Ide {
 
     pub fn steps(&mut self, n: usize) {
         for _ in 0..n {
-            self.harness.step();
+            self.frame();
         }
     }
 
@@ -180,11 +230,14 @@ impl Ide {
     }
 
     /// Steps frames until no background work is pending and egui wants no immediate repaint.
+    /// Panics with the pending jobs when the wait budget runs out.
     pub fn settle(&mut self) {
         let start = Instant::now();
         let mut quiet = 0;
+        let mut frames = 0u64;
         loop {
-            self.harness.step();
+            self.frame();
+            frames += 1;
             if self.state().is_idle() {
                 quiet += 1;
             } else {
@@ -195,15 +248,14 @@ impl Ide {
             if quiet >= 3 && (self.repaint_delay() > Duration::ZERO || quiet >= 30) {
                 return;
             }
-            if start.elapsed() > SETTLE_TIMEOUT {
-                let jobs: Vec<String> = self.state().jobs.running().into_iter().map(|j| j.label).collect();
-                panic!("settle timed out: in flight {}, language queues {}, running {jobs:?}", self.state().jobs.in_flight(), self.state().ws.langs.queued());
+            if start.elapsed() > self.wait_budget || frames >= WAIT_FRAMES {
+                panic!("{}", self.budget_exceeded("settle", "no pending work", frames, start));
             }
         }
     }
 
     /// Steps frames (sleeping a little in between, so worker threads and child processes make
-    /// progress) until `cond` holds. Panics with `what` after the timeout.
+    /// progress) until `cond` holds. Panics with `what` when the wait budget runs out.
     pub fn wait_for(&mut self, what: &str, cond: impl Fn(&AppState) -> bool) {
         self.wait_until(what, |ide| cond(ide.state()));
     }
@@ -211,15 +263,15 @@ impl Ide {
     /// Like `wait_for`, with access to the whole driver (accessibility tree, harness).
     pub fn wait_until(&mut self, what: &str, cond: impl Fn(&Ide) -> bool) {
         let start = Instant::now();
+        let mut frames = 0u64;
         loop {
-            self.harness.step();
+            self.frame();
+            frames += 1;
             if cond(self) {
                 return;
             }
-            if start.elapsed() > SETTLE_TIMEOUT {
-                // The bodies carry the error text (a git stderr), which names the real cause.
-                let notes: Vec<String> = self.state().notifications.log().iter().map(|n| format!("{}: {}", n.title, n.body)).collect();
-                panic!("timed out waiting for: {what} (notifications: {notes:?})");
+            if start.elapsed() > self.wait_budget || frames >= WAIT_FRAMES {
+                panic!("{}", self.budget_exceeded("wait_for", what, frames, start));
             }
             std::thread::sleep(Duration::from_millis(5));
         }
@@ -229,7 +281,7 @@ impl Ide {
     pub fn wait_real(&mut self, d: Duration) {
         let start = Instant::now();
         while start.elapsed() < d {
-            self.harness.step();
+            self.frame();
             std::thread::sleep(Duration::from_millis(10));
         }
     }
@@ -611,6 +663,14 @@ impl Ide {
         self.settle();
     }
 
+    /// Like `open_file`, while a job still runs (`settle` would wait for it).
+    pub fn open_file_running(&mut self, rel: &str) {
+        let path = std::fs::canonicalize(self.root().join(rel)).expect("file exists");
+        self.state_mut().open_location(&path, None, true);
+        self.wait_for(&format!("tab for {rel}"), |s| s.ws.tabs.active_editor().is_some_and(|e| e.path == path));
+        self.steps(5);
+    }
+
     /// Closes the toasts (they never time out in tests), e.g. before a snapshot of a dialog.
     pub fn dismiss_toasts(&mut self) {
         self.state_mut().notifications.dismiss_toasts();
@@ -654,11 +714,28 @@ impl Ide {
     /// Like `snapshot`, but keeps the pointer where it is (hover effects are part of the shot).
     pub fn snapshot_here(&mut self, name: &str) {
         self.settle();
+        self.compare_snapshot(name);
+    }
+
+    /// Like `snapshot`, while a job still runs (a hung git, for the progress widget): `settle`
+    /// would wait for the job forever.
+    pub fn snapshot_running(&mut self, name: &str) {
+        self.park_mouse();
+        self.steps(5);
+        self.compare_snapshot(name);
+    }
+
+    fn compare_snapshot(&mut self, name: &str) {
         self.steps(2);
         self.assert_layout_still(name);
         let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/snapshots").join(self.suite);
         let options = SnapshotOptions::new().output_path(&dir);
-        match self.harness.try_snapshot_options(name, &options) {
+        // A render that never returns ends the process like a stuck frame.
+        let result = {
+            let _frame = self.watch.begin(&format!("snapshot {name:?}"), Vec::new());
+            self.harness.try_snapshot_options(name, &options)
+        };
+        match result {
             Ok(()) => {}
             Err(SnapshotError::Diff { diff, .. }) if diff <= MAX_DIFF_PIXELS => {
                 // Within tolerance: the stored image stays, the noise is not worth a diff file.

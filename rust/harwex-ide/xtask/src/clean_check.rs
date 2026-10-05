@@ -1,5 +1,11 @@
-//! `cargo xtask clean-check`: runs `cargo xtask test-tools && cargo test --workspace` the way a
+//! `cargo xtask clean-check`: runs `cargo xtask test-tools` and the workspace tests the way a
 //! fresh machine would, on this machine.
+//!
+//! The tests run under the pinned cargo-nextest that `test-tools` puts into
+//! `$CARGO_TARGET_DIR/tools/nextest/`, so each test has the wall-clock limit of
+//! `.config/nextest.toml` and a hung test is killed and named. nextest runs no doc tests, so
+//! `cargo test --doc` follows. On a platform without a pinned nextest, plain `cargo test`
+//! runs; the helper budgets in the test code still apply.
 //!
 //! - The workspace (without `target/`) is copied to `<temp>/harwex-clean/src/harwex-ide`, so a
 //!   path baked relative to the real checkout breaks.
@@ -11,7 +17,8 @@
 //!   write under `~/Projects`, `~/Library/Application Support/harwex-ide` and the toolchains'
 //!   `lib/rustlib/src`. A test that still leans on another repository fails with EPERM.
 //!
-//! Pass: exit status 0 and no line containing `skipping`. The full log stays next to the copy.
+//! Pass: exit status 0, no failed test and no line containing `skipping`. The full log stays
+//! next to the copy.
 
 use std::env;
 use std::fs;
@@ -19,7 +26,16 @@ use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
-const TEST_COMMAND: &str = "exec 2>&1; cargo xtask test-tools && cargo test --workspace --no-fail-fast -- --nocapture";
+/// `--success-output immediate` prints the output of passing tests too: the `skipping ...`
+/// lines of a missing tool come from passing tests.
+const TEST_COMMAND: &str = "exec 2>&1; cargo xtask test-tools || exit 1; \
+nextest=\"$CARGO_TARGET_DIR/tools/nextest/cargo-nextest\"; \
+if [ -x \"$nextest\" ]; then \
+  \"$nextest\" nextest run --workspace --no-fail-fast --success-output immediate --failure-output immediate-final; s=$?; \
+  cargo test --workspace --doc --no-fail-fast || s=1; exit $s; \
+else \
+  cargo test --workspace --no-fail-fast -- --nocapture; \
+fi";
 
 pub fn run(root: &Path, base: Option<PathBuf>) -> Result<(), String> {
     let real_home = canonical(Path::new(&env::var_os("HOME").ok_or("$HOME is not set")?))?;
@@ -110,8 +126,13 @@ pub fn run(root: &Path, base: Option<PathBuf>) -> Result<(), String> {
         if line.contains("skipping") {
             skips.push(line.clone());
         }
-        if line.starts_with("test ") && line.ends_with("... FAILED") {
+        if (line.starts_with("test ") && line.ends_with("... FAILED")) || is_nextest_failure(&line) {
             failures.push(line.clone());
+        }
+        if let Some(rest) = nextest_summary(&line) {
+            passed += count_nextest(rest, "passed");
+            failed += count_nextest(rest, "failed") + count_nextest(rest, "timed out");
+            ignored += count_nextest(rest, "skipped");
         }
         if let Some(rest) = line.strip_prefix("test result: ") {
             passed += count(rest, "passed");
@@ -168,6 +189,31 @@ fn count(summary: &str, word: &str) -> u64 {
         .find_map(|part| part.trim().trim_start_matches("ok. ").trim_start_matches("FAILED. ").strip_suffix(word))
         .and_then(|n| n.trim().parse().ok())
         .unwrap_or(0)
+}
+
+/// The part after `tests run:` of nextest's summary line
+/// (`Summary [ 12.3s] 40 tests run: 38 passed (1 slow), 1 failed, 1 timed out, 2 skipped`).
+fn nextest_summary(line: &str) -> Option<&str> {
+    let rest = line.trim_start().strip_prefix("Summary [")?;
+    Some(rest.split_once("tests run:")?.1)
+}
+
+/// The number in front of `word` in a nextest summary (`38 passed (1 slow), 1 failed`).
+fn count_nextest(summary: &str, word: &str) -> u64 {
+    summary
+        .split(',')
+        .find_map(|part| {
+            let part = part.trim();
+            let (n, rest) = part.split_once(' ')?;
+            rest.starts_with(word).then(|| n.parse().ok()).flatten()
+        })
+        .unwrap_or(0)
+}
+
+/// A nextest status line of a failed test: `FAIL [ 1.2s] crate::bin test`, `TIMEOUT`, `SIGSEGV`...
+fn is_nextest_failure(line: &str) -> bool {
+    let line = line.trim_start();
+    ["FAIL [", "TIMEOUT [", "SIGSEGV [", "SIGABRT [", "SIGKILL [", "ABORT ["].iter().any(|p| line.starts_with(p))
 }
 
 fn write_wrapper(path: &Path, real: &Path) -> Result<(), String> {
@@ -228,6 +274,20 @@ mod tests {
         assert_eq!(count(line, "failed"), 0);
         assert_eq!(count(line, "ignored"), 3);
         assert_eq!(count("FAILED. 1 passed; 2 failed; 0 ignored", "failed"), 2);
+    }
+
+    #[test]
+    fn counts_come_from_the_nextest_summary() {
+        let line = "     Summary [  98.120s] 670 tests run: 665 passed (3 slow, 1 leaky), 2 failed, 3 timed out, 4 skipped";
+        let rest = nextest_summary(line).unwrap();
+        assert_eq!(count_nextest(rest, "passed"), 665);
+        assert_eq!(count_nextest(rest, "failed"), 2);
+        assert_eq!(count_nextest(rest, "timed out"), 3);
+        assert_eq!(count_nextest(rest, "skipped"), 4);
+        assert_eq!(nextest_summary("test result: ok. 1 passed"), None);
+        assert!(is_nextest_failure("        FAIL [   1.234s] harwex-ide::shell tabs"));
+        assert!(is_nextest_failure("     TIMEOUT [ 180.002s] harwex-ide::rust_nav jumps"));
+        assert!(!is_nextest_failure("        PASS [   1.234s] harwex-ide::shell tabs"));
     }
 
     #[test]

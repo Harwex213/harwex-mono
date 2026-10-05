@@ -1,0 +1,15 @@
+# Per-test wall-clock limits for `cargo xtask nextest` (the pinned cargo-nextest, see
+# docs/testing.md). The test helpers have their own budgets (wait 40 s, frame 30 s, fixture
+# lock 150 s); this limit also ends a test that hangs outside them.
+
+[profile.default]
+# A test is reported as slow after each period, and killed after `terminate-after` periods.
+slow-timeout = { period = "60s", terminate-after = 3 }
+fail-fast = false
+
+# Suites with real language servers: modules of the app's `app` test binary, and ide-ts. A cold
+# start (clean-check: a fresh target dir, rust-analyzer indexing std for the first time, many
+# tests at once) takes several times the warm 10-15 s.
+[[profile.default.overrides]]
+filter = '(binary(app) & test(/^(rust_nav|navigation|diagnostics|lint_budget|project_menu)::/)) | package(ide-ts)'
+slow-timeout = { period = "120s", terminate-after = 3 }

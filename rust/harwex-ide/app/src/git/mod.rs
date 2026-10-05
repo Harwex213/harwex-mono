@@ -2,7 +2,9 @@
 //! (and adds sibling modules under `app/src/git/`) without touching the shell.
 //!
 //! Data the shell already keeps fresh: `state.ws.git` (repo handle, branch, status map; refreshed
-//! after file changes and `.git` changes). Call `state.refresh_git()` after any git write.
+//! after file changes and `.git` changes, see `refresh.rs`). A git write goes through
+//! `remote::run_op` / `run_op_with`, or brackets its job with `refresh::write_started` and
+//! `refresh::write_done`.
 
 use egui::{Context, Ui};
 use ide_editor::EditorAction;
@@ -23,6 +25,8 @@ pub mod remote;
 pub mod branch_tree;
 pub mod commit_changes;
 pub mod console;
+// Full and path-limited status refresh (task 067).
+pub mod refresh;
 pub mod window;
 
 /// Git UI state. Each sub-module owns its own state struct.
@@ -51,11 +55,6 @@ impl GitUi {
 /// of the title bar's branch widget.
 pub fn open_branches_popup(state: &mut AppState, anchor: egui::Pos2) {
     branches::open_popup(state, anchor);
-}
-
-/// Cmd+T: Update Project (pull).
-pub fn update_project_clicked(state: &mut AppState) {
-    remote::open_update_dialog(state);
 }
 
 /// Cmd+Shift+K: Push.

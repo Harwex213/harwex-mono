@@ -2,8 +2,13 @@
 
 One line per task. Details live in `tasks/<id>-<slug>.md`. A closed task loses its line and its file. An `[idea]` line is a known gap that nobody works on. It gets an id and a task file when someone picks it up.
 
+Run at most 2–3 agents that build at once: on 2026-10-05 seven parallel cargo builds flooded macOS `syspolicyd` (Gatekeeper checks every new unsigned binary), every new process froze at `dyld_start`, and in the end WindowServer hung.
+
 
 ## Ideas
+
+Diagnostics:
+- [idea] oxlint LSP crashes: "panicked at crates/oxc_linter/src/fixer/disable_fix.rs:52:22: range end index 407 out of range for slice of length 0" (toast "oxlint language server exited (1x)", seen in mono on 2026-10-05). 1.77 panics there on every file with a `jsPlugins` diagnostic (`rulesdir/*` rules), with a JS or JSON config; no `fixKind` avoids it. The bug is in oxlint (the source text for JS-plugin messages is empty), not in our client. Our side: remember the files that crash the server, stop sending them, and restart the server for the rest, instead of staying dead after 3 crashes. Upstream reports are drafted in `oxlint-upstream.md` (not filed).
 
 Git window:
 - [idea] In a very narrow commit table the date column draws over the graph (`git_history/filter_bar_narrow.png`). Shrink or hide columns by priority.
@@ -18,6 +23,7 @@ Commit window:
 - [idea] Stage/Unstage (drop or menu) shows a success toast on every action, because it goes through `run_op`. IDEA is silent on success. Make stage/unstage success quiet; keep error toasts.
 
 Navigation and languages:
+- [idea] ide-lsp `kill_tree` can SIGKILL the group id of a server that `try_wait` already reaped; once the group is empty, that id could in theory belong to a new group. Skip the group kill after the leader is reaped (found in task 070).
 - [idea] Rust diagnostics: rust-analyzer runs with diagnostics off. Turn them on as a source in the diagnostics layer.
 - [idea] Incremental `textChanges` / `didChange` instead of full text on every edit, for 100k-line files.
 - [idea] Nav chooser previews and Find in Files columns read the unsaved buffer, not the disk. A BOM shifts Find in Files columns on line 1.
@@ -29,10 +35,12 @@ Project tree and shell:
 - [idea] Opening another folder with dirty tabs asks Save / Discard instead of refusing.
 
 Terminal:
+- [idea] Closing a terminal tab blocks the UI thread up to 200 ms: portable-pty's `kill` waits for the shell after SIGHUP (breaks rule 1). Move the kill to a worker (found in task 070).
 - [idea] Terminal: kitty keyboard protocol, OSC 8 hyperlinks, scrollback search, bell indicator, a real bold face.
 - [idea] Terminal color queries (OSC 4/10/11) answer the program's own OSC 4 overrides.
 
 Git:
+- [idea] Unstage takes 3.1 s on mono: libgit2 `rename_sources` + `reset_default` read the whole 108 MB index. `git reset -q -- <paths>` through the CLI is a candidate (found in task 067).
 - [idea] Diff tab: selection and copy, editing the right side, apply/revert hunk arrows, unified view, ignore whitespace, collapse unchanged runs.
 - [idea] Commit window: changelists, Group By options, keyboard navigation, partial commit per hunk.
 - [idea] Merge tab: syntax highlighting and word-level marks. Show line-ending-only changes, which `diff_texts` hides. Scroll the Result editor sideways to follow the caret.
@@ -45,4 +53,5 @@ Git:
 - [idea] A cached log walker. Paging re-walks from the tip, O(skip), which matters only past 100k commits.
 
 Tests:
+- [idea] Flaky: `git_window::push_non_current_branch_from_tree` failed 1 of 22 runs under load (seen in task 064). Not investigated.
 - [idea] Cover with tests: the file watcher and the reload of unmodified editors, Cmd+Alt+S, Find in Files "Match case", running Stage, Unstage and Delete from the commit context menu, Commit and Push, force push, Fetch, branch rename and delete, running Checkout Revision, Revert and Cherry-Pick from the log, rebase conflict labels, per-block `>>` / `<<` and hand edits in the merge tab, "Show more" in toasts, terminal selection, copy and mouse reporting, horizontal scrolling in the diff and merge tabs.

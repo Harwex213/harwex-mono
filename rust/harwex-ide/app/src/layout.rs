@@ -266,7 +266,7 @@ pub fn header_with_actions(ui: &mut Ui, title: &str, extra: impl FnOnce(&mut Ui)
     child.label(RichText::new(title).font(t.semibold(t.font.ui)).color(t.text));
     child.add_space(8.0);
     let mut right = child.new_child(UiBuilder::new().max_rect(rect).layout(egui::Layout::right_to_left(egui::Align::Center)));
-    if icon_button(&mut right, Icon::Minus, &format!("Hide {title}"), "Hide").clicked() {
+    if icon_button(&mut right, Icon::Minus, &format!("Hide {title}"), "Hide  ⇧⎋").clicked() {
         hide = true;
     }
     actions(&mut right);

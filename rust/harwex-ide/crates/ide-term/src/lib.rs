@@ -145,7 +145,8 @@ pub struct Terminal {
     pub(crate) events: Arc<EventState>,
     pub(crate) io: Arc<IoState>,
     master: Box<dyn MasterPty + Send>,
-    child: Mutex<Box<dyn Child + Send + Sync>>,
+    /// `None` only inside `drop`, which hands the child to a reaper thread.
+    child: Mutex<Option<Box<dyn Child + Send + Sync>>>,
     writer: Sender<Vec<u8>>,
     cwd: PathBuf,
     program_name: String,
@@ -260,7 +261,7 @@ impl Terminal {
             events,
             io,
             master: pair.master,
-            child: Mutex::new(child),
+            child: Mutex::new(Some(child)),
             writer: write_tx,
             cwd: options.cwd,
             program_name,
@@ -285,14 +286,19 @@ impl Terminal {
         if self.killed || !self.io.alive.load(Ordering::Acquire) {
             return false;
         }
-        matches!(self.child.lock().unwrap().try_wait(), Ok(None))
+        matches!(self.child.lock().unwrap().as_mut().map(|c| c.try_wait()), Some(Ok(None)))
     }
 
     /// Sends SIGHUP to the child, like closing a terminal window. Idempotent.
     pub fn kill(&mut self) {
         if !self.killed {
             self.killed = true;
-            let _ = self.child.lock().unwrap().kill();
+            // A reaped shell's pid may belong to another process by now: no SIGHUP for it.
+            if let Some(c) = self.child.lock().unwrap().as_mut() {
+                if !matches!(c.try_wait(), Ok(Some(_))) {
+                    let _ = c.kill();
+                }
+            }
         }
     }
 
@@ -304,7 +310,7 @@ impl Terminal {
     /// The pid of the shell this terminal started. The app's memory indicator leaves this
     /// process and its whole subtree out of its total.
     pub fn process_id(&self) -> Option<u32> {
-        self.child.lock().unwrap().process_id()
+        self.child.lock().unwrap().as_ref().and_then(|c| c.process_id())
     }
 
     /// The working directory of the foreground process (the shell after `cd`), when the OS
@@ -313,7 +319,7 @@ impl Terminal {
         let pid = self
             .master
             .process_group_leader()
-            .or_else(|| self.child.lock().unwrap().process_id().map(|p| p as i32))?;
+            .or_else(|| self.process_id().map(|p| p as i32))?;
         process_cwd(pid)
     }
 
@@ -438,6 +444,17 @@ impl Terminal {
 impl Drop for Terminal {
     fn drop(&mut self) {
         self.kill();
+        // portable-pty's kill waits 200 ms for the SIGHUP and then sends SIGKILL without a
+        // wait, and a dropped `std::process::Child` never waits. Only the parent can reap a
+        // zombie, so the shell would stay one until the IDE exits. The wait runs on a thread:
+        // a terminal drops on the UI thread.
+        let Some(mut child) = self.child.get_mut().ok().and_then(Option::take) else { return };
+        if matches!(child.try_wait(), Ok(Some(_))) {
+            return;
+        }
+        let _ = std::thread::Builder::new().name("ide-term-reaper".into()).spawn(move || {
+            let _ = child.wait();
+        });
     }
 }
 
@@ -593,6 +610,29 @@ mod tests {
         let mut options = SpawnOptions::new(&std::env::temp_dir());
         options.command = Some(vec!["/bin/sh".into(), "-c".into(), script.into()]);
         options
+    }
+
+    /// Whether `pid` still exists. A zombie still takes signal 0, so only a reaped process
+    /// answers `ESRCH`. (`ps` is not allowed in the clean-check sandbox.)
+    fn exists(pid: u32) -> bool {
+        // SAFETY: signal 0 only checks that the process exists.
+        unsafe { libc::kill(pid as libc::pid_t, 0) == 0 }
+    }
+
+    #[test]
+    fn dropped_terminal_leaves_no_zombie() {
+        // The second shell ignores SIGHUP, so the kill falls back to SIGKILL.
+        for script in ["echo ready; sleep 30", "trap '' HUP; echo ready; while :; do sleep 1; done"] {
+            let term = Terminal::spawn_with(sh(script), egui::Context::default()).unwrap();
+            wait_for(&term, |t| t.lines().any(|l| l == "ready"));
+            let pid = term.process_id().unwrap();
+            drop(term);
+            let start = Instant::now();
+            while exists(pid) {
+                assert!(start.elapsed() < Duration::from_secs(10), "{script:?}: pid {pid} was never reaped");
+                std::thread::sleep(Duration::from_millis(20));
+            }
+        }
     }
 
     #[test]

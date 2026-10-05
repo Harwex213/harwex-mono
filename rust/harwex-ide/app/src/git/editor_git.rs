@@ -34,6 +34,11 @@ struct Blame {
     /// Doc version the blame was computed for.
     version: u64,
     in_flight: bool,
+    /// The run whose answer this entry waits for. An older run's answer is dropped, so a
+    /// hung blame cannot block or overwrite a new one.
+    run: u64,
+    /// Stops the running `git blame` when the annotations are closed.
+    cancel: Option<crate::jobs::Cancel>,
 }
 
 #[derive(Default)]
@@ -42,6 +47,8 @@ pub struct EditorGitUi {
     commit: Option<CommitPopup>,
     /// Tabs with the annotation column on.
     blame: HashMap<TabId, Blame>,
+    /// Source of `Blame::run`.
+    blame_runs: u64,
 }
 
 impl EditorGitUi {
@@ -171,33 +178,40 @@ fn rollback(state: &mut AppState, tab: TabId, lines: Range<usize>) {
 }
 
 fn toggle_annotate(state: &mut AppState, tab: TabId) {
-    if state.ws.git_ui.editor.blame.remove(&tab).is_some() {
+    if let Some(old) = state.ws.git_ui.editor.blame.remove(&tab) {
+        if let Some(c) = old.cancel {
+            c.cancel_quietly();
+        }
         if let Some(e) = state.ws.tabs.editor_mut(tab) {
             e.annotations.clear();
         }
         return;
     }
-    state.ws.git_ui.editor.blame.insert(tab, Blame { lines: Vec::new(), version: u64::MAX, in_flight: false });
+    state.ws.git_ui.editor.blame.insert(tab, Blame { lines: Vec::new(), version: u64::MAX, in_flight: false, run: 0, cancel: None });
     run_blame(state, tab);
 }
 
 fn run_blame(state: &mut AppState, tab: TabId) {
     let Some(repo) = state.ws.git.repo.clone() else { return };
+    state.ws.git_ui.editor.blame_runs += 1;
+    let run = state.ws.git_ui.editor.blame_runs;
     let Some(b) = state.ws.git_ui.editor.blame.get_mut(&tab) else { return };
     if b.in_flight {
         return;
     }
     let Some(e) = state.ws.tabs.editor_mut(tab) else { return };
     b.in_flight = true;
+    b.run = run;
     let text = e.doc.text();
     let version = e.doc.version();
     let path = e.path.clone();
-    state.jobs.spawn(
+    let cancel = state.jobs.spawn_cancellable(
         "Annotating",
         move || repo.blame_text(&path, &text),
         move |state, res| {
-            let Some(b) = state.ws.git_ui.editor.blame.get_mut(&tab) else { return };
+            let Some(b) = state.ws.git_ui.editor.blame.get_mut(&tab).filter(|b| b.run == run) else { return };
             b.in_flight = false;
+            b.cancel = None;
             match res {
                 Ok(lines) => {
                     let annotations = format_blame(&lines);
@@ -217,6 +231,9 @@ fn run_blame(state: &mut AppState, tab: TabId) {
             }
         },
     );
+    if let Some(b) = state.ws.git_ui.editor.blame.get_mut(&tab).filter(|b| b.run == run) {
+        b.cancel = Some(cancel);
+    }
 }
 
 fn format_blame(lines: &[BlameLine]) -> Vec<String> {
@@ -263,7 +280,10 @@ fn refresh_blames(state: &mut AppState, force: bool) {
     let ids: Vec<TabId> = state.ws.git_ui.editor.blame.keys().copied().collect();
     for id in ids {
         let Some(e) = state.ws.tabs.editor_mut(id) else {
-            state.ws.git_ui.editor.blame.remove(&id);
+            // The tab closed: its running blame is no longer wanted.
+            if let Some(c) = state.ws.git_ui.editor.blame.remove(&id).and_then(|b| b.cancel) {
+                c.cancel_quietly();
+            }
             continue;
         };
         let (version, rest) = (e.doc.version(), e.last_edit.elapsed());

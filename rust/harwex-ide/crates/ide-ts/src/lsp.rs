@@ -133,6 +133,8 @@ fn map_err(e: ide_lsp::Error) -> Error {
         ide_lsp::Error::Io(p, e) => Error::Io(p, e),
         ide_lsp::Error::Timeout { method, after } => Error::Timeout { command: method, after },
         ide_lsp::Error::ServerDied(stderr) => Error::ServerDied(stderr),
+        // Keeps the cancel text, so the app shows one "Cancelled" toast, not an error.
+        e @ ide_lsp::Error::Cancelled { .. } => Error::Server(e.to_string()),
         ide_lsp::Error::Server { code: ide_lsp::METHOD_NOT_FOUND, message } => Error::Server(format!("method not supported: {message}")),
         ide_lsp::Error::Server { message, .. } => Error::Server(message),
     }

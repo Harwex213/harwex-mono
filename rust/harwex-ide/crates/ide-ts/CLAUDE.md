@@ -26,14 +26,14 @@ The client for TypeScript's own servers: `tsserver` (TypeScript 6 and older, run
 ```sh
 cargo xtask test-tools                                   # once: pinned TypeScript 5.9.3 and 7.0.2 in target/tools/
 cargo test -p ide-ts
-cargo test -p ide-ts --test workspace -- --nocapture     # navigation timings on a generated workspace
+cargo test -p ide-ts --test ts workspace:: -- --nocapture     # navigation timings on a generated workspace
 ```
 
 - The suites link TypeScript from `target/tools/` through `ts5()` / `ts7()` in `tests/common/mod.rs`. `HARWEX_TEST_TS5` and `HARWEX_TEST_TS7` override them (each a `typescript` package dir; TS 7 needs its platform package beside its real dir).
-- `tests/rename_budget.rs` generates 200 projects with 30 importers of one file and asserts the rename preview budget on both backends.
-- `tests/tsserver.rs` links TypeScript 5 into a temp project with a `node_modules/fake-lib` fixture. `tests/native_lsp.rs` links TypeScript 7, and TypeScript 5 as `@typescript/old`. `tests/workspace.rs` generates 40 linked `@ws/*` packages and a `.d.ts` + `.js` dependency, and asserts loose timing budgets for both backends.
+- The test files are modules of one binary, `tests/ts/main.rs` (`--test ts <module>::`). `tests/ts/rename_budget.rs` generates 200 projects with 30 importers of one file and asserts the rename preview budget on both backends.
+- `tests/ts/tsserver.rs` links TypeScript 5 into a temp project with a `node_modules/fake-lib` fixture. `tests/ts/native_lsp.rs` links TypeScript 7, and TypeScript 5 as `@typescript/old`. `tests/ts/workspace.rs` generates 40 linked `@ws/*` packages and a `.d.ts` + `.js` dependency, and asserts loose timing budgets for both backends.
 - A missing node or install prints `skipping: ...` with the hint to run `cargo xtask test-tools`, and the test passes. `cargo xtask clean-check` fails on such a line.
-- `HARWEX_NODE` overrides the node lookup. The app suite `cargo test -p harwex-ide --test navigation` covers the UI side.
+- `HARWEX_NODE` overrides the node lookup. The app suite `cargo test -p harwex-ide --test app navigation::` covers the UI side.
 
 ## Traps
 

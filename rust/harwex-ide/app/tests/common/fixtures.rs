@@ -23,13 +23,24 @@ pub struct Fixture {
     _lock: std::fs::File,
 }
 
+/// How long a fixture waits for another run that holds its lock. One test holds a fixture
+/// for under a minute (the slowest, `shell::tree_row_hit_zones`, about 30 s); a longer wait
+/// means the other run hangs. It stays below nextest's 180 s, so the message wins there.
+/// `HARWEX_TEST_LOCK_SECS` changes it for a run.
+pub const LOCK_BUDGET: std::time::Duration = std::time::Duration::from_secs(150);
+
 impl Fixture {
     pub fn new(suite: &str, name: &str) -> Fixture {
+        let budget = super::watchdog::secs_from_env("HARWEX_TEST_LOCK_SECS").unwrap_or(LOCK_BUDGET);
+        Fixture::new_within(suite, name, budget)
+    }
+
+    /// Like `new`, and panics when another run holds the fixture's lock longer than `budget`.
+    pub fn new_within(suite: &str, name: &str, budget: std::time::Duration) -> Fixture {
         super::init();
         let parent = Path::new(FIXTURE_ROOT).join(suite);
         std::fs::create_dir_all(&parent).expect("create fixture root");
-        let lock = std::fs::File::create(parent.join(format!("{name}.lock"))).expect("create fixture lock");
-        lock.lock().expect("lock fixture");
+        let lock = lock_fixture(&parent.join(format!("{name}.lock")), &format!("{suite}/{name}"), budget);
         let dir = parent.join(name);
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).expect("create fixture dir");
@@ -47,6 +58,39 @@ impl Drop for Fixture {
             let _ = std::fs::remove_dir_all(&self.dir);
         }
     }
+}
+
+/// Takes the lock file's `flock` within `budget`, then writes this process id into it, so a
+/// waiting run can name the holder.
+fn lock_fixture(path: &Path, fixture: &str, budget: std::time::Duration) -> std::fs::File {
+    use std::io::{Read, Seek, Write};
+    // No truncate on open: the file holds the current holder's pid.
+    let mut lock = std::fs::OpenOptions::new().read(true).write(true).create(true).truncate(false).open(path).expect("open fixture lock");
+    let start = std::time::Instant::now();
+    loop {
+        match lock.try_lock() {
+            Ok(()) => break,
+            Err(std::fs::TryLockError::WouldBlock) => {}
+            Err(std::fs::TryLockError::Error(e)) => panic!("lock fixture {fixture}: {e}"),
+        }
+        if start.elapsed() >= budget {
+            let mut holder = String::new();
+            let _ = lock.read_to_string(&mut holder);
+            let holder = holder.trim();
+            let holder = if holder.is_empty() { "an unknown process".to_string() } else { format!("pid {holder}") };
+            panic!(
+                "test `{}`: fixture {fixture} locked by another run for {} s (held by {holder}; lock file {})",
+                super::watchdog::test_name(),
+                start.elapsed().as_secs(),
+                path.display()
+            );
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    let _ = lock.set_len(0);
+    let _ = lock.rewind();
+    let _ = write!(lock, "{}", std::process::id());
+    lock
 }
 
 pub fn write(root: &Path, rel: &str, text: &str) {

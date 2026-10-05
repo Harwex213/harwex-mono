@@ -1,0 +1,646 @@
+//! Terminal tool window: Alt+F12, typing into the shell, tabs, Escape staying in the terminal,
+//! shortcut blocking, path and URL links and the exited-shell bar. Shells run `zsh -f` with a
+//! fixed prompt, so the user's rc files do not matter.
+
+use crate::common::*;
+use egui::{Key, Pos2};
+use harwex_ide::layout::ToolWindow;
+
+const SUITE: &str = "terminal";
+
+fn screen(ide: &Ide, index: usize) -> String {
+    ide.state().ws.terminals.terminal(index).map(|t| t.screen_text()).unwrap_or_default()
+}
+
+fn terminal_focused(ide: &Ide) -> bool {
+    ide.state().ws.terminals.has_focus(&ide.ctx())
+}
+
+/// Waits until the active terminal's screen contains `text` `times` times.
+fn wait_screen(ide: &mut Ide, text: &str, times: usize) {
+    let t = text.to_string();
+    ide.wait_until(&format!("{times}x {text:?} on the terminal"), move |ide| screen(ide, ide.state().ws.terminals.active_index()).matches(&t).count() >= times);
+}
+
+fn wait_prompt(ide: &mut Ide) {
+    ide.wait_until("shell prompt", |ide| screen(ide, ide.state().ws.terminals.active_index()).lines().any(|l| l.starts_with("$")));
+}
+
+/// Screen position of a cell of the active terminal.
+fn cell_pos(ide: &Ide, row: usize, col: usize) -> Pos2 {
+    let rect = ide.rect("Terminal output");
+    let font = egui::FontId::monospace(13.0);
+    let ctx = ide.ctx();
+    let (w, h) = ctx.fonts(|f| (f.glyph_width(&font, 'M'), f.row_height(&font)));
+    Pos2::new(rect.left() + (col as f32 + 0.5) * w, rect.top() + (row as f32 + 0.5) * h.round())
+}
+
+fn open_terminal(name: &str) -> (Fixture, Ide) {
+    let fx = Fixture::new(SUITE, name);
+    let repo = basic_repo(fx.path("repo"));
+    let mut ide = Ide::open(SUITE, &repo.dir);
+    ide.open_file("src/app.ts");
+    ide.key_mods(ALT, Key::F12);
+    ide.wait_for("terminal spawned", |s| !s.ws.terminals.is_empty());
+    wait_prompt(&mut ide);
+    (fx, ide)
+}
+
+#[test]
+fn alt_f12_runs_a_command() {
+    let (_fx, mut ide) = open_terminal("echo");
+    assert_eq!(ide.state().ws.layout.bottom, Some(ToolWindow::Terminal));
+    assert!(terminal_focused(&ide), "Alt+F12 focuses the new terminal");
+    ide.type_text("echo hello-from-test\n");
+    // Once in the typed command line, once as output.
+    wait_screen(&mut ide, "hello-from-test", 2);
+    wait_screen(&mut ide, "$", 2);
+    let s = screen(&ide, 0);
+    assert!(s.lines().any(|l| l == "hello-from-test"), "{s}");
+    assert_eq!(ide.state().ws.terminals.terminal(0).expect("terminal").title(), "zsh");
+    ide.snapshot("echo");
+
+    // Alt+F12 on a focused terminal hides the window and gives the editor the keys back.
+    ide.key_mods(ALT, Key::F12);
+    ide.settle();
+    assert_eq!(ide.state().ws.layout.bottom, None);
+    ide.type_text("Z");
+    assert!(ide.active_text().starts_with('Z'), "typing reaches the editor again");
+}
+
+#[test]
+fn plus_opens_a_second_tab() {
+    let (_fx, mut ide) = open_terminal("tabs");
+    ide.click("+");
+    ide.wait_for("second terminal", |s| s.ws.terminals.len() == 2);
+    wait_prompt(&mut ide);
+    assert_eq!(ide.state().ws.terminals.active_index(), 1);
+    ide.type_text("echo second\n");
+    wait_screen(&mut ide, "second", 2);
+    assert!(!screen(&ide, 0).contains("second"), "the first shell did not get the input");
+    ide.snapshot("two_tabs");
+
+    // Clicking the first tab label switches back; "x" closes a tab and kills its shell.
+    ide.click_nth("zsh", 0);
+    ide.settle();
+    assert_eq!(ide.state().ws.terminals.active_index(), 0);
+    let n = ide.rects("x").len();
+    ide.click_nth("x", n - 1);
+    ide.settle();
+    assert_eq!(ide.state().ws.terminals.len(), 1);
+}
+
+#[test]
+fn escape_at_the_prompt_stays_in_the_terminal() {
+    let (_fx, mut ide) = open_terminal("escape_prompt");
+    assert!(terminal_focused(&ide));
+    ide.key(Key::Escape);
+    ide.settle();
+    // Like IDEA: Escape goes to the program (the shell's line editor here), never to the IDE.
+    assert!(terminal_focused(&ide), "Escape stayed in the terminal");
+    assert!(!ide.node("Editor app.ts").is_focused());
+    assert_eq!(ide.state().ws.layout.bottom, Some(ToolWindow::Terminal), "the window stays open");
+}
+
+#[test]
+fn escape_goes_to_the_program_on_the_alternate_screen() {
+    let (fx, mut ide) = open_terminal("escape_less");
+    let lines: String = (1..=200).map(|i| format!("line {i}\n")).collect();
+    write(&fx.path("repo"), "lines.txt", &lines);
+    ide.type_text("less lines.txt\n");
+    ide.wait_until("less on the alternate screen", |ide| ide.state().ws.terminals.terminal(0).is_some_and(|t| t.is_alt_screen()));
+    wait_screen(&mut ide, "line 1", 1);
+    ide.key(Key::Escape);
+    ide.settle();
+    assert!(terminal_focused(&ide), "less got Escape; focus stayed in the terminal");
+    ide.snapshot("less");
+    // less reads Escape as the start of a two-key command; the first "q" completes it.
+    ide.type_text("qq");
+    ide.wait_until("less quit", |ide| ide.state().ws.terminals.terminal(0).is_some_and(|t| !t.is_alt_screen()));
+}
+
+#[test]
+fn terminal_focus_blocks_cmd_k() {
+    let (_fx, mut ide) = open_terminal("cmd_k");
+    ide.type_text("echo before-clear\n");
+    wait_screen(&mut ide, "before-clear", 2);
+    ide.cmd(Key::K);
+    ide.settle();
+    assert_eq!(ide.state().ws.layout.left, Some(ToolWindow::Project), "Cmd+K did not open the Commit window");
+    // The terminal used Cmd+K itself: the scrollback is cleared.
+    ide.wait_until("screen cleared", |ide| !screen(ide, 0).contains("before-clear"));
+    // Cmd+W does not close the editor tab while the terminal has focus.
+    ide.cmd(Key::W);
+    ide.settle();
+    assert_eq!(ide.tab_titles(), ["app.ts"]);
+}
+
+#[test]
+fn path_link_opens_the_file() {
+    let (_fx, mut ide) = open_terminal("link");
+    ide.type_text("echo src/util.ts:2:5\n");
+    wait_screen(&mut ide, "src/util.ts:2:5", 2);
+    let s = screen(&ide, 0);
+    let row = s.lines().position(|l| l == "src/util.ts:2:5").expect("output row");
+    let p = cell_pos(&ide, row, 3);
+    ide.move_to(p);
+    ide.steps(2);
+    assert_eq!(ide.cursor_icon(), egui::CursorIcon::PointingHand, "a path under the pointer is a link");
+    ide.snapshot_here("link_hover");
+    ide.click_at(p);
+    ide.wait_for("util.ts opened", |s| s.ws.tabs.active_editor().is_some_and(|e| e.path.ends_with("src/util.ts")));
+    ide.settle();
+    // `path:2:5` is 1-based; the editor is 0-based.
+    assert_eq!(ide.cursor(), (1, 4));
+}
+
+#[test]
+fn exited_shell_shows_a_bar() {
+    let (_fx, mut ide) = open_terminal("exited");
+    ide.type_text("exit\n");
+    ide.wait_until("shell exited", |ide| ide.state().ws.terminals.terminal(0).is_some_and(|t| !t.is_alive()));
+    ide.wait_until("exit bar", |ide| ide.shows_text("[process exited]"));
+    // `is_alive` turns false when the child is reaped; the reader thread writes the
+    // completion line a moment later.
+    wait_screen(&mut ide, "[Process completed]", 1);
+    ide.snapshot("exited");
+    ide.click("Close");
+    ide.settle();
+    assert!(ide.state().ws.terminals.is_empty());
+    assert_eq!(ide.state().ws.layout.bottom, None, "closing the last terminal hides the window");
+}
+
+#[test]
+fn shift_enter_does_not_run_the_line() {
+    let (_fx, mut ide) = open_terminal("shift_enter");
+    // EDITOR=vi in the environment would pick zsh's vi keymap, where ESC CR runs the line.
+    ide.type_text("bindkey -e\n");
+    wait_screen(&mut ide, "$", 2);
+    ide.type_text("echo first-$((40+2))");
+    ide.key_mods(SHIFT, Key::Enter);
+    ide.type_text("echo second-$((50+5))");
+    wait_screen(&mut ide, "second-$((50+5))", 1);
+    // Give a wrongly executed first line time to print.
+    std::thread::sleep(std::time::Duration::from_millis(300));
+    ide.settle();
+    let s = screen(&ide, 0);
+    assert!(!s.contains("first-42"), "Shift+Enter ran the line:\n{s}");
+    // The continuation sits on its own row: zsh inserted a newline into the buffer.
+    assert!(s.lines().any(|l| l.trim_start().starts_with("echo second-")), "{s}");
+    // Plain Enter runs both lines.
+    ide.type_text("\n");
+    wait_screen(&mut ide, "second-55", 1);
+    let s = screen(&ide, 0);
+    assert!(s.lines().any(|l| l == "first-42"), "{s}");
+}
+
+/// URLs the app handed to the (recording) platform opener. Tests never start a browser.
+fn opened_urls(ide: &Ide) -> Vec<String> {
+    ide.state().platform.calls().into_iter().filter_map(|c| c.strip_prefix("open-url ").map(str::to_string)).collect()
+}
+
+#[test]
+fn cmd_click_opens_a_url() {
+    let (_fx, mut ide) = open_terminal("url");
+    ide.type_text("echo 'docs: https://example.com/a_(b).'\n");
+    wait_screen(&mut ide, "docs: https://example.com/a_(b).", 2);
+    let s = screen(&ide, 0);
+    let row = s.lines().position(|l| l == "docs: https://example.com/a_(b).").expect("output row");
+    let p = cell_pos(&ide, row, 14);
+
+    // Without Cmd the URL is plain text, and a click opens nothing.
+    ide.move_to(p);
+    ide.steps(2);
+    assert_eq!(ide.cursor_icon(), egui::CursorIcon::Text, "a URL is a link only with Cmd held");
+    ide.click_at(p);
+    ide.settle();
+    assert!(opened_urls(&ide).is_empty());
+
+    // With Cmd held it is a link.
+    ide.harness.input_mut().modifiers = CMD;
+    ide.move_to(p);
+    ide.steps(2);
+    assert_eq!(ide.cursor_icon(), egui::CursorIcon::PointingHand);
+    ide.snapshot_here("url_hover");
+    ide.harness.input_mut().modifiers = egui::Modifiers::NONE;
+    ide.step();
+
+    ide.click_button_at(p, egui::PointerButton::Primary, CMD);
+    ide.wait_until("URL opened", |ide| !opened_urls(ide).is_empty());
+    // The balanced parens stay, the final "." does not.
+    assert_eq!(opened_urls(&ide), ["https://example.com/a_(b)"]);
+    assert_eq!(ide.tab_titles(), ["app.ts"], "a URL opens no editor tab");
+}
+
+#[test]
+fn cmd_click_opens_the_osc8_target() {
+    let (_fx, mut ide) = open_terminal("osc8");
+    // The text says one thing, the hyperlink points elsewhere; the hyperlink wins.
+    ide.type_text("printf '\\e]8;;https://real.example/x\\e\\\\https://shown.example\\e]8;;\\e\\\\ end\\n'\n");
+    wait_screen(&mut ide, "https://shown.example end", 1);
+    let s = screen(&ide, 0);
+    let row = s.lines().position(|l| l == "https://shown.example end").expect("output row");
+    ide.click_button_at(cell_pos(&ide, row, 10), egui::PointerButton::Primary, CMD);
+    ide.wait_until("URL opened", |ide| !opened_urls(ide).is_empty());
+    assert_eq!(opened_urls(&ide), ["https://real.example/x"]);
+}
+
+/// Opens a terminal and two more tabs; returns the shell pids in tab order.
+fn three_tabs(name: &str) -> (Fixture, Ide, Vec<u32>) {
+    let (fx, mut ide) = open_terminal(name);
+    for n in 2..=3 {
+        ide.click("+");
+        ide.wait_for("another terminal", move |s| s.ws.terminals.len() == n);
+        wait_prompt(&mut ide);
+    }
+    let before = pids(&ide);
+    (fx, ide, before)
+}
+
+fn pids(ide: &Ide) -> Vec<u32> {
+    let terms = &ide.state().ws.terminals;
+    (0..terms.len()).map(|i| terms.terminal(i).and_then(|t| t.process_id()).expect("shell pid")).collect()
+}
+
+/// The tab rects in the tool window header, left to right.
+fn tab_rects(ide: &Ide) -> Vec<egui::Rect> {
+    let mut rects: Vec<_> = ide.rects("zsh").into_iter().filter(|r| (r.height() - 24.0).abs() < 0.5).collect();
+    rects.sort_by(|a, b| a.min.x.total_cmp(&b.min.x));
+    rects
+}
+
+/// Presses at `from` and moves the pointer to `to` in steps, with the button held.
+fn press_and_move(ide: &mut Ide, from: Pos2, to: Pos2) {
+    ide.move_to(from);
+    ide.pointer_frame(1.0 / 60.0, &[(from, true)]);
+    for i in 1..=6 {
+        ide.move_to(from + (to - from) * (i as f32 / 6.0));
+    }
+}
+
+fn release(ide: &mut Ide, at: Pos2) {
+    ide.pointer_frame(1.0 / 60.0, &[(at, false)]);
+    ide.settle();
+}
+
+#[test]
+fn drag_moves_a_tab_after_the_third() {
+    let (_fx, mut ide, before) = three_tabs("drag_reorder");
+    assert_eq!(ide.state().ws.terminals.active_index(), 2);
+    let rects = tab_rects(&ide);
+    assert_eq!(rects.len(), 3);
+    // Grab the first tab by its title and drag it past the middle of the third.
+    let from = Pos2::new(rects[0].min.x + 12.0, rects[0].center().y);
+    let to = Pos2::new(rects[2].max.x - 4.0, rects[2].center().y + 3.0);
+    // Halfway: the tab floats over the gap between the second and the third tab.
+    let half = Pos2::new(from.x + (rects[1].min.x - rects[0].min.x) * 1.5, from.y);
+    press_and_move(&mut ide, from, half);
+    assert!(ide.state().ws.terminals.is_dragging_tab(), "the move past the threshold started a drag");
+    assert_eq!(pids(&ide), before, "nothing moves before the release");
+    ide.snapshot_here("tab_drag");
+    // The second tab made room: it moved into the first slot.
+    let during = tab_rects(&ide);
+    assert!((during[0].min.x - rects[0].min.x).abs() < 0.5, "{during:?}");
+    for i in 1..=6 {
+        ide.move_to(half + (to - half) * (i as f32 / 6.0));
+    }
+
+    release(&mut ide, to);
+    assert!(!ide.state().ws.terminals.is_dragging_tab());
+    assert_eq!(pids(&ide), [before[1], before[2], before[0]], "same shells, new order");
+    assert_eq!(ide.state().ws.terminals.active_index(), 2, "the dragged tab is active");
+    assert!(terminal_focused(&ide), "focus goes to the moved terminal");
+    let id = ide.state().ws.terminals.widget_id(2).expect("widget id");
+    assert_eq!(ide.ctx().memory(|m| m.focused()), Some(id));
+    // The moved shell still works.
+    ide.type_text("echo moved-$((6*7))\n");
+    wait_screen(&mut ide, "moved-42", 1);
+}
+
+#[test]
+fn click_without_movement_does_not_reorder() {
+    let (_fx, mut ide, before) = three_tabs("drag_click");
+    let rects = tab_rects(&ide);
+    // A tiny wobble stays under egui's drag threshold: a click, not a drag.
+    let p = Pos2::new(rects[0].min.x + 12.0, rects[0].center().y);
+    press_and_move(&mut ide, p, p + egui::vec2(2.0, 0.0));
+    assert!(!ide.state().ws.terminals.is_dragging_tab());
+    release(&mut ide, p + egui::vec2(2.0, 0.0));
+    assert_eq!(pids(&ide), before);
+    assert_eq!(ide.state().ws.terminals.active_index(), 0, "the click selected the first tab");
+}
+
+#[test]
+fn escape_or_a_far_release_cancels_the_drag() {
+    let (_fx, mut ide, before) = three_tabs("drag_cancel");
+    let rects = tab_rects(&ide);
+    let from = Pos2::new(rects[0].min.x + 12.0, rects[0].center().y);
+    let to = Pos2::new(rects[2].max.x - 4.0, rects[2].center().y);
+
+    // Escape puts the tab back; the release afterwards changes nothing.
+    press_and_move(&mut ide, from, to);
+    assert!(ide.state().ws.terminals.is_dragging_tab());
+    ide.key(Key::Escape);
+    assert!(!ide.state().ws.terminals.is_dragging_tab(), "Escape ended the drag");
+    release(&mut ide, to);
+    assert_eq!(pids(&ide), before, "Escape cancelled the move");
+    assert_eq!(ide.state().ws.terminals.active_index(), 2, "the cancelled drag did not select a tab");
+    assert_eq!(ide.state().ws.layout.bottom, Some(ToolWindow::Terminal));
+
+    // A release far below the strip (over the terminal output) cancels too.
+    let away = Pos2::new(to.x, to.y + 200.0);
+    press_and_move(&mut ide, from, to);
+    ide.move_to(away);
+    assert!(ide.state().ws.terminals.is_dragging_tab());
+    release(&mut ide, away);
+    assert!(!ide.state().ws.terminals.is_dragging_tab());
+    assert_eq!(pids(&ide), before, "a release away from the strip cancelled the move");
+}
+
+/// The header tab labelled `label` (the tab, not its close button or the rename box).
+fn tab_rect(ide: &Ide, label: &str) -> egui::Rect {
+    let rects: Vec<_> = ide.rects(label).into_iter().filter(|r| (r.height() - 24.0).abs() < 0.5).collect();
+    assert_eq!(rects.len(), 1, "one tab labelled {label:?}: {rects:?}");
+    rects[0]
+}
+
+fn names(ide: &Ide) -> Vec<Option<String>> {
+    let terms = &ide.state().ws.terminals;
+    (0..terms.len()).map(|i| terms.name(i).map(str::to_string)).collect()
+}
+
+#[test]
+fn double_click_renames_a_tab_inline() {
+    let (_fx, mut ide) = open_terminal("rename");
+    ide.click("+");
+    ide.wait_for("second terminal", |s| s.ws.terminals.len() == 2);
+    wait_prompt(&mut ide);
+
+    // A double click on the first tab opens the name editor with the title selected.
+    let first = tab_rects(&ide)[0];
+    ide.double_click_now(first.left_center() + egui::vec2(12.0, 0.0));
+    ide.settle();
+    assert!(ide.state().ws.terminals.is_renaming());
+    assert!(ide.is_focused("Tab name"), "the name box has the focus");
+    ide.type_text("build");
+    ide.snapshot("rename_inline");
+    // Enter keeps the name and gives the keys back to the terminal.
+    ide.key(Key::Enter);
+    ide.settle();
+    assert!(!ide.state().ws.terminals.is_renaming());
+    assert_eq!(names(&ide), [Some("build".to_string()), None]);
+    assert_eq!(ide.state().ws.terminals.title(0).as_deref(), Some("build"));
+    assert!(ide.has("build"), "the tab shows its name");
+    assert!(terminal_focused(&ide), "Enter returns the focus to the terminal");
+    assert_eq!(ide.state().ws.terminals.active_index(), 0);
+    assert!(!screen(&ide, 0).contains("build"), "the typed name never reached the shell");
+
+    // Escape cancels: the second tab keeps the shell's title.
+    let second = tab_rect(&ide, "zsh");
+    ide.double_click_at(second.left_center() + egui::vec2(12.0, 0.0));
+    ide.settle();
+    assert!(ide.state().ws.terminals.is_renaming());
+    ide.type_text("never");
+    ide.key(Key::Escape);
+    ide.settle();
+    assert!(!ide.state().ws.terminals.is_renaming());
+    assert_eq!(names(&ide), [Some("build".to_string()), None]);
+    assert_eq!(ide.state().ws.layout.bottom, Some(ToolWindow::Terminal), "Escape only closed the name box");
+
+    // The context menu renames too; an empty name goes back to the shell's title.
+    ide.right_click_at(tab_rect(&ide, "build").center());
+    ide.click("Rename Tab…");
+    ide.settle();
+    assert!(ide.is_focused("Tab name"));
+    ide.key(Key::Backspace);
+    ide.key(Key::Enter);
+    ide.settle();
+    assert_eq!(names(&ide), [None, None]);
+    assert_eq!(ide.state().ws.terminals.title(0).as_deref(), Some("zsh"));
+}
+
+/// Opens the name box on the only tab and types `text` into it.
+fn start_rename(ide: &mut Ide, text: &str) {
+    ide.double_click_at(tab_rect(ide, "zsh").left_center() + egui::vec2(12.0, 0.0));
+    ide.settle();
+    assert!(ide.is_focused("Tab name"), "the name box has the focus");
+    ide.type_text(text);
+}
+
+/// The window is open again with the tab under its old name and no name box.
+fn assert_reopened_unchanged(ide: &mut Ide, how: &str) {
+    assert_eq!(ide.state().ws.layout.bottom, Some(ToolWindow::Terminal), "{how}");
+    assert!(!ide.state().ws.terminals.is_renaming(), "{how}: no name box after reopening");
+    assert!(!ide.has("Tab name"), "{how}");
+    assert_eq!(names(ide), [None], "{how}: the edit was dropped");
+    assert!(ide.has("zsh"), "{how}: the tab shows its old name");
+}
+
+#[test]
+fn hiding_the_window_drops_an_open_rename() {
+    let (_fx, mut ide) = open_terminal("rename_hide");
+
+    // Shift+Esc in the name box hides the window; the box does not swallow it.
+    start_rename(&mut ide, "lost");
+    ide.key_mods(SHIFT, Key::Escape);
+    ide.settle();
+    assert_eq!(ide.state().ws.layout.bottom, None, "Shift+Esc hid the window");
+    assert!(!ide.state().ws.terminals.is_renaming());
+    ide.key_mods(ALT, Key::F12);
+    ide.settle();
+    assert_reopened_unchanged(&mut ide, "Shift+Esc");
+
+    // Alt+F12 in the name box hides the window too.
+    start_rename(&mut ide, "lost");
+    ide.key_mods(ALT, Key::F12);
+    ide.settle();
+    assert_eq!(ide.state().ws.layout.bottom, None, "Alt+F12 hid the window");
+    ide.key_mods(ALT, Key::F12);
+    ide.settle();
+    assert_reopened_unchanged(&mut ide, "Alt+F12");
+
+    // The tool window button.
+    start_rename(&mut ide, "lost");
+    ide.click("Terminal tool window");
+    ide.settle();
+    assert_eq!(ide.state().ws.layout.bottom, None, "the button hid the window");
+    ide.click("Terminal tool window");
+    ide.settle();
+    assert_reopened_unchanged(&mut ide, "the button");
+
+    // A click away that leaves the window open still keeps the name.
+    start_rename(&mut ide, "kept");
+    let output = ide.rect("Terminal output").center();
+    ide.click_at(output);
+    ide.settle();
+    assert!(!ide.state().ws.terminals.is_renaming());
+    assert_eq!(names(&ide), [Some("kept".to_string())]);
+}
+
+/// Options for project `root` with the terminal database `db`.
+fn persist_options(root: &std::path::Path, db: &std::path::Path) -> harwex_ide::AppOptions {
+    let mut options = test_options(Some(root));
+    options.terminal_db = Some(db.to_path_buf());
+    options
+}
+
+/// Quits like the window closing: eframe's exit hook saves the tabs, then the shells stop.
+fn quit(mut ide: Ide) {
+    eframe::App::on_exit(ide.harness.state_mut());
+}
+
+fn wait_tabs(ide: &mut Ide, n: usize) {
+    ide.wait_for(&format!("{n} terminal tabs"), move |s| !s.ws.terminals.is_loading() && s.ws.terminals.len() == n);
+}
+
+#[test]
+fn tabs_survive_a_restart_per_project() {
+    assert!(harwex_ide::AppOptions::default().terminal_db.is_none(), "without a path nothing is persisted");
+    let fx = Fixture::new(SUITE, "persist");
+    let a = basic_repo(fx.path("a")).dir;
+    let b = basic_repo(fx.path("b")).dir;
+    let db = fx.path("state/terminals.sqlite");
+
+    // Session 1: three tabs in A (the second renamed, the third in src/), one in B.
+    let mut ide = Ide::with_options(SUITE, persist_options(&a, &db), None);
+    ide.key_mods(ALT, Key::F12);
+    wait_tabs(&mut ide, 1);
+    wait_prompt(&mut ide);
+    for n in 2..=3 {
+        ide.click("+");
+        wait_tabs(&mut ide, n);
+        wait_prompt(&mut ide);
+    }
+    ide.right_click_at(tab_rects(&ide)[1].center());
+    ide.click("Rename Tab…");
+    ide.settle();
+    assert!(ide.is_focused("Tab name"), "the name box has the focus");
+    // The name and Enter arrive in one frame, like a fast typist's.
+    ide.type_text("server\n");
+    ide.settle();
+    // The third tab is the second one still titled "zsh".
+    ide.click_at(tab_rects(&ide)[1].center());
+    ide.settle();
+    ide.type_text("cd src\n");
+    wait_screen(&mut ide, "$", 2);
+    assert_eq!(names(&ide), [None, Some("server".to_string()), None]);
+    assert!(db.is_file(), "the database is the test's own file: {}", db.display());
+
+    ide.state_mut().open_workspace(b.clone());
+    ide.wait_for("B open", |s| s.ws.project.as_ref().is_some_and(|p| s.ws.tree.is_loaded(&p.root)));
+    ide.settle();
+    ide.key_mods(ALT, Key::F12);
+    wait_tabs(&mut ide, 1);
+    wait_prompt(&mut ide);
+    quit(ide);
+
+    // Session 2: A comes back with its tabs, and no shell runs until a tab is shown.
+    let mut ide = Ide::with_options(SUITE, persist_options(&a, &db), None);
+    wait_tabs(&mut ide, 3);
+    let terms = &ide.state().ws.terminals;
+    assert_eq!(names(&ide), [None, Some("server".to_string()), None]);
+    assert_eq!(terms.active_index(), 2);
+    assert!((0..3).all(|i| !terms.is_started(i)), "restored tabs start lazily");
+    assert_eq!(terms.shell_pids().count(), 0);
+    assert!(ide.state().ws.layout.bottom.is_none());
+
+    // Showing the window starts only the active tab, in the folder it was in.
+    ide.key_mods(ALT, Key::F12);
+    ide.wait_for("active shell", |s| s.ws.terminals.is_started(2));
+    wait_prompt(&mut ide);
+    let terms = &ide.state().ws.terminals;
+    assert!(!terms.is_started(0) && !terms.is_started(1));
+    assert_eq!(terms.terminal(2).expect("started").cwd(), a.join("src"));
+    assert!(ide.has("server"), "the renamed tab shows its name before its shell starts");
+    ide.click_at(tab_rect(&ide, "server").center());
+    ide.wait_for("second shell", |s| s.ws.terminals.is_started(1));
+    assert_eq!(ide.state().ws.terminals.terminal(1).expect("started").cwd(), a);
+    assert_eq!(ide.state().ws.terminals.title(1).as_deref(), Some("server"));
+
+    // B keeps its own list.
+    ide.state_mut().open_workspace(b.clone());
+    ide.wait_for("B open", |s| s.ws.project.as_ref().is_some_and(|p| s.ws.tree.is_loaded(&p.root)));
+    wait_tabs(&mut ide, 1);
+    assert!(!ide.state().ws.terminals.is_started(0));
+    quit(ide);
+}
+
+#[test]
+fn closing_the_last_tab_saves_an_empty_list() {
+    let fx = Fixture::new(SUITE, "persist_empty");
+    let a = basic_repo(fx.path("a")).dir;
+    let db = fx.path("state/terminals.sqlite");
+    let mut ide = Ide::with_options(SUITE, persist_options(&a, &db), None);
+    ide.key_mods(ALT, Key::F12);
+    wait_tabs(&mut ide, 1);
+    wait_prompt(&mut ide);
+    ide.click("x");
+    // `settle` waits out the debounced save.
+    ide.settle();
+    assert!(ide.state().ws.terminals.is_empty());
+    let conn = harwex_ide::terminal_store::open(&db).expect("open the test database");
+    let saved = harwex_ide::terminal_store::load(&conn, &a).expect("load").expect("a saved row");
+    assert!(saved.tabs.is_empty(), "{saved:?}");
+    quit(ide);
+
+    let mut ide = Ide::with_options(SUITE, persist_options(&a, &db), None);
+    wait_tabs(&mut ide, 0);
+    // The window opens with a fresh shell, as without a saved list.
+    ide.key_mods(ALT, Key::F12);
+    wait_tabs(&mut ide, 1);
+    wait_prompt(&mut ide);
+}
+
+/// Sets the active terminal's title through OSC 0 and clears its screen. The shell's `printf`
+/// gets octal escapes, so only ASCII is typed.
+fn set_title(ide: &mut Ide, title: &str) {
+    let octal: String = title.bytes().map(|b| if b.is_ascii_alphanumeric() || b == b' ' { (b as char).to_string() } else { format!("\\{b:03o}") }).collect();
+    ide.type_text(&format!("printf '\\e]0;{octal}\\a'; clear\n"));
+    let (index, want) = (ide.state().ws.terminals.active_index(), title.to_string());
+    ide.wait_until(&format!("title {title:?}"), move |ide| {
+        ide.state().ws.terminals.title(index).as_deref() == Some(want.as_str()) && screen(ide, index).trim() == "$"
+    });
+    ide.settle();
+}
+
+/// The header tab rects, left to right, found by the tabs' current titles.
+fn header_tab_rects(ide: &Ide) -> Vec<egui::Rect> {
+    let terms = &ide.state().ws.terminals;
+    let mut titles: Vec<String> = (0..terms.len()).filter_map(|i| terms.title(i)).collect();
+    titles.dedup();
+    let mut rects: Vec<_> = titles.iter().flat_map(|t| ide.rects(t)).filter(|r| (r.height() - 24.0).abs() < 0.5).collect();
+    rects.sort_by(|a, b| a.min.x.total_cmp(&b.min.x));
+    rects.dedup();
+    assert_eq!(rects.len(), terms.len(), "one rect per tab: {titles:?}");
+    rects
+}
+
+/// Claude Code puts `◐ `/`◑ ` (working, every 960 ms) or `✳ ` (idle) before its title. The
+/// glyphs draw from the bundled symbols font, and a spinner frame moves no tab.
+#[test]
+fn title_spinner_glyphs_draw_and_keep_the_tabs_still() {
+    let (_fx, mut ide, _) = three_tabs("title_glyphs");
+    ide.click("+");
+    ide.wait_for("fourth terminal", |s| s.ws.terminals.len() == 4);
+    wait_prompt(&mut ide);
+    // The other spinner sets of the symbols font sit after the first glyph of the last tab.
+    let titles = ["◐ Claude", "◑ Claude", "✳ Claude", "⠋ npm ✢✶✻✽◒◓◴⣿"];
+    for (i, title) in titles.iter().enumerate().rev() {
+        let tab = header_tab_rects(&ide)[i];
+        ide.click_at(Pos2::new(tab.min.x + 12.0, tab.center().y));
+        ide.wait_until("tab active", move |ide| ide.state().ws.terminals.active_index() == i);
+        set_title(&mut ide, title);
+    }
+    assert_eq!(ide.state().ws.terminals.active_index(), 0);
+    ide.snapshot("title_glyphs");
+
+    // Every spinner frame of the first tab leaves all four tabs where they were.
+    let still = header_tab_rects(&ide);
+    for glyph in ["◑", "✳", "✢", "✶", "✻", "✽", "⠋", "⣿", "◴", "◐"] {
+        set_title(&mut ide, &format!("{glyph} Claude"));
+        assert_eq!(header_tab_rects(&ide), still, "spinner frame {glyph:?} moved a tab");
+    }
+    // A new text still resizes the tab.
+    set_title(&mut ide, "◐ Claude Code");
+    assert!(header_tab_rects(&ide)[0].width() > still[0].width());
+}

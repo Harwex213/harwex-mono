@@ -213,7 +213,7 @@ fn save_hidden(state: &mut AppState, preview: &mut FilePreview) {
                 state.on_fs_batch(crate::watcher::FsBatch {
                     paths,
                     structure_changed: false,
-                    git_changed: true,
+                    git_changed: false,
                 });
             }
             Err(e) => state.notifications.error("Save failed", e),

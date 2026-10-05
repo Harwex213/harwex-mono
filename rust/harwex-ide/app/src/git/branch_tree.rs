@@ -30,6 +30,15 @@ pub struct TreeState {
     scroll_to_selected: bool,
     /// Re-request the focus on the next frame (see the arrow-key trap in app/CLAUDE.md).
     focus_next: bool,
+    /// The horizontal scroll offset as of the last frame.
+    scroll_x: f32,
+}
+
+impl TreeState {
+    /// The horizontal scroll offset as of the last frame (long names scroll sideways).
+    pub fn scroll_x(&self) -> f32 {
+        self.scroll_x
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -272,7 +281,8 @@ pub fn show(state: &mut AppState, tree: &mut TreeState, tab: u64, ui: &mut Ui) -
 
     let row_h = t.space.row_h;
     let clicks = state.clicks;
-    let mut area = ScrollArea::vertical().auto_shrink([false, false]).id_salt(("git-branch-rows", tab));
+    // Long branch names scroll sideways. Drag-to-scroll stays off: a press selects a row.
+    let mut area = ScrollArea::both().auto_shrink([false, false]).drag_to_scroll(false).id_salt(("git-branch-rows", tab));
     if std::mem::take(&mut tree.scroll_to_selected) {
         if let Some(i) = tree.selected.as_ref().and_then(|k| rows.iter().position(|r| &r.key == k)) {
             let off = ui.ctx().data(|d| d.get_temp::<f32>(crate::workspace::wid(("git-branch-offset", tab)))).unwrap_or(0.0);
@@ -285,6 +295,7 @@ pub fn show(state: &mut AppState, tree: &mut TreeState, tab: u64, ui: &mut Ui) -
         }
     }
     let total = ui.available_rect_before_wrap();
+    let content_w = ui.fonts(|f| rows.iter().map(|r| row_width(f, r)).fold(0.0, f32::max));
     // Keeps the focus without a click sense (see app/CLAUDE.md).
     let focus_resp = ui.interact(total, fid, Sense::focusable_noninteractive());
     let mut take_focus = false;
@@ -292,15 +303,18 @@ pub fn show(state: &mut AppState, tree: &mut TreeState, tab: u64, ui: &mut Ui) -
     let out = area.show_rows(ui, row_h, rows.len(), |ui, range| {
         ui.spacing_mut().item_spacing.y = 0.0;
         for row in &rows[range] {
-            let (_, rect) = ui.allocate_space(vec2(ui.available_width(), row_h));
-            let resp = ui.interact(rect, crate::workspace::wid(("git-branch-row", tab, &row.key)), Sense::click());
+            // The row is as wide as the widest row, so the content scrolls sideways; it takes
+            // clicks and shows its highlight on the visible part only.
+            let (_, rect) = ui.allocate_space(vec2(ui.available_width().max(content_w), row_h));
+            let hit = visible_part(rect, total);
+            let resp = ui.interact(hit, crate::workspace::wid(("git-branch-row", tab, &row.key)), Sense::click());
             let selected = tree.selected.as_deref() == Some(row.key.as_str());
             crate::util::label_selectable(&resp, row.label(), selected);
             let painter = ui.painter();
             if selected {
-                painter.rect_filled(rect, t.radius.row, if focused { t.tree_selection } else { t.tree_selection_inactive });
+                painter.rect_filled(hit, t.radius.row, if focused { t.tree_selection } else { t.tree_selection_inactive });
             } else if resp.hovered() {
-                painter.rect_filled(rect, t.radius.row, t.tree_hover);
+                painter.rect_filled(hit, t.radius.row, t.tree_hover);
             }
             let x = rect.min.x + 4.0 + row.depth as f32 * t.space.indent;
             let cy = rect.center().y;
@@ -379,12 +393,33 @@ pub fn show(state: &mut AppState, tree: &mut TreeState, tab: u64, ui: &mut Ui) -
         }
     });
     ui.ctx().data_mut(|d| d.insert_temp(crate::workspace::wid(("git-branch-offset", tab)), out.state.offset.y));
+    tree.scroll_x = out.state.offset.x;
     if take_focus {
         // Re-requested on the press frame, after the interact call (see `tree::show`).
         focus_resp.request_focus();
         tree.focus_next = true;
     }
     actions
+}
+
+/// The part of a row inside the scroll viewport `view` (the area's outer rect: its bars float).
+/// A row hit-tests and highlights only this part, so a press anywhere across the view lands on
+/// the row at any horizontal offset (the dead zone of app/CLAUDE.md's wide-row trap), and the
+/// a11y rect is where the row can be clicked.
+pub(crate) fn visible_part(row: Rect, view: Rect) -> Rect {
+    Rect::from_x_y_ranges(view.x_range(), row.y_range())
+}
+
+/// The width a row needs: indent, icon, name and the push/pull badges, plus a margin.
+fn row_width(fonts: &egui::text::Fonts, row: &Row) -> f32 {
+    let t = &theme::T;
+    let text_x = 4.0 + row.depth as f32 * t.space.indent + if matches!(row.kind, RowKind::Head | RowKind::Group) { 20.0 } else { 34.0 };
+    let text_w = fonts.layout_no_wrap(row.text.clone(), t.ui_font(), t.text).size().x;
+    let badges = match &row.kind {
+        RowKind::Branch(b) => [b.ahead, b.behind].iter().filter(|&&n| n > 0).map(|n| 8.0 + 18.0 + 7.0 * n.to_string().len() as f32).sum(),
+        _ => 0.0,
+    };
+    text_x + text_w + badges + 12.0
 }
 
 /// `↗ N` unpushed and `↙ N` to pull, drawn after the branch name.

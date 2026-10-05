@@ -756,7 +756,7 @@ fn relocate_all(state: &mut AppState, moves: Vec<Move>, edits: Vec<FileEdit>) {
                     }
                 }
             }
-            state.on_fs_batch(FsBatch { paths, structure_changed: true, git_changed: true });
+            state.on_fs_batch(FsBatch { paths, structure_changed: true, git_changed: false });
             for e in &errors {
                 state.notifications.error("Import update failed", e.clone());
             }
@@ -928,7 +928,7 @@ fn copy_all(state: &mut AppState, copies: Vec<Move>, dir: PathBuf) {
             // Some copies may exist even after an error.
             let mut paths: HashSet<PathBuf> = copies.iter().map(|c| c.dst.clone()).collect();
             paths.insert(dir);
-            state.on_fs_batch(FsBatch { paths, structure_changed: true, git_changed: true });
+            state.on_fs_batch(FsBatch { paths, structure_changed: true, git_changed: false });
             if let Some(root) = state.ws.project.as_ref().map(|p| p.root.clone()) {
                 let news: Vec<PathBuf> = copies.into_iter().map(|c| c.dst).collect();
                 state.ws.tree.reveal(&root, &news[0]);
@@ -1065,7 +1065,7 @@ fn delete(state: &mut AppState, targets: Vec<Target>) {
             if trashed.is_empty() {
                 return;
             }
-            state.on_fs_batch(FsBatch { paths: batch, structure_changed: true, git_changed: true });
+            state.on_fs_batch(FsBatch { paths: batch, structure_changed: true, git_changed: false });
             state.notifications.log_only(Level::Info, format!("Moved {} to the Trash", trashed.join(", ")), String::new());
         },
     );
@@ -1149,7 +1149,7 @@ fn create(state: &mut AppState) {
                         }
                         p = x.parent();
                     }
-                    state.on_fs_batch(FsBatch { paths, structure_changed: true, git_changed: true });
+                    state.on_fs_batch(FsBatch { paths, structure_changed: true, git_changed: false });
                     if let Some(root) = state.ws.project.as_ref().map(|p| p.root.clone()) {
                         state.ws.tree.reveal(&root, &path);
                     }
@@ -1363,15 +1363,18 @@ pub fn show_dialogs(state: &mut AppState, ctx: &Context) {
             state.ws.tree.focus_pending();
             let Some(repo) = state.ws.git.repo.clone() else { return };
             let f = files.clone();
+            crate::git::refresh::write_started(state);
             state.jobs.spawn(
                 "Rolling back",
-                move || repo.rollback(&f),
+                move || std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| repo.rollback(&f))).unwrap_or_else(|_| Err(ide_git::Error::Other("the git task panicked".into()))),
                 move |state, res| {
                     if let Err(e) = res {
                         state.notifications.error("Rollback failed", e.to_string());
                     }
+                    // The tree and open editors follow the disk; git status follows the write.
+                    crate::git::refresh::write_done(state, crate::git::refresh::Refresh::Paths(files.clone()));
                     let paths: HashSet<PathBuf> = files.into_iter().collect();
-                    state.on_fs_batch(FsBatch { paths, structure_changed: true, git_changed: true });
+                    state.on_fs_batch(FsBatch { paths, structure_changed: true, git_changed: false });
                 },
             );
         }

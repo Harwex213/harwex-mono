@@ -287,6 +287,16 @@ pub trait LintSource: Send + Sync + 'static {
     fn pids(&self) -> Vec<u32> {
         Vec::new()
     }
+    /// Warnings (title, body) a lint produced besides its result, e.g. a fallback it took.
+    /// The lint queue shows each as a toast.
+    fn take_notices(&self) -> Vec<(String, String)> {
+        Vec::new()
+    }
+    /// Upkeep on the lint queue's timer, only while no lint runs or waits. Returns one line
+    /// per restarted server for the timings log; each counts in `LintCounts::restarts`.
+    fn upkeep(&self) -> Vec<String> {
+        Vec::new()
+    }
 }
 
 type LintDone = Box<dyn FnOnce(Option<Result<Vec<Diagnostic>, String>>) + Send>;
@@ -316,6 +326,8 @@ pub struct LintQueue {
 pub struct LintCounts {
     pub runs: u64,
     pub skipped: u64,
+    /// Quiet restarts from `LintSource::upkeep` (oxlint's zombies).
+    pub restarts: u64,
 }
 
 impl LintQueue {
@@ -349,6 +361,14 @@ impl LintQueue {
                                     done(None);
                                 } else if let Some(s) = srcs.iter().find(|s| s.id() == target.source()) {
                                     done(Some(s.lint(&target, &path, &text)));
+                                    let notices = s.take_notices();
+                                    if let (Some(jobs), false) = (jobs.as_ref(), notices.is_empty()) {
+                                        jobs.post(move |state| {
+                                            for (title, body) in notices {
+                                                state.notifications.warn(title, body);
+                                            }
+                                        });
+                                    }
                                 } else {
                                     done(None);
                                 }
@@ -369,11 +389,23 @@ impl LintQueue {
                 if last_check.elapsed() >= tick {
                     last_check = Instant::now();
                     let stopped: Vec<String> = srcs.iter().flat_map(|s| s.stop_idle(idle)).collect();
-                    if let (Some(jobs), false) = (jobs.as_ref(), stopped.is_empty()) {
+                    let mut upkept = Vec::new();
+                    // Never while a lint waits in the queue: a restart then would cost it a cold start.
+                    if done_count.load(Ordering::SeqCst) == 0 {
+                        for s in srcs.iter() {
+                            let lines = s.upkeep();
+                            crate::lang::lock(&counted).entry(s.id()).or_default().restarts += lines.len() as u64;
+                            upkept.extend(lines);
+                        }
+                    }
+                    if let (Some(jobs), false) = (jobs.as_ref(), stopped.is_empty() && upkept.is_empty()) {
                         let secs = idle.as_secs_f64();
                         jobs.post(move |state| {
                             for name in stopped {
                                 state.timings.log(format!("stopped {name}: idle for {secs:.1} s with no open file"));
+                            }
+                            for line in upkept {
+                                state.timings.log(line);
                             }
                         });
                     }
@@ -791,7 +823,7 @@ mod tests {
         release_tx.send(()).unwrap();
         let got: Vec<(u64, bool)> = (0..4).map(|_| done_rx.recv_timeout(Duration::from_secs(5)).expect("answer")).collect();
         assert_eq!(got, [(1, true), (2, false), (3, false), (4, true)]);
-        assert_eq!(queue.counts(SourceId::Eslint), LintCounts { runs: 2, skipped: 2 });
+        assert_eq!(queue.counts(SourceId::Eslint), LintCounts { runs: 2, skipped: 2, restarts: 0 });
     }
 
     #[test]

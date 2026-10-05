@@ -24,7 +24,7 @@ Open work is in `docs/backlog.md`, one line per task.
 - `crates/ide-git`: git logic. No UI.
 - `crates/ide-ts`: the TypeScript server client. No UI. It uses `ide-lsp`.
 - `crates/ide-lsp`: the generic LSP client. No UI and no language knowledge.
-- `xtask`: `cargo install-ide` / `cargo uninstall-ide`, `cargo xtask test-tools` (pinned test tools) and `cargo xtask clean-check` (tests on a simulated clean machine).
+- `xtask`: `cargo install-ide` / `cargo uninstall-ide`, `cargo xtask test-tools` (pinned test tools), `cargo xtask test` (the full suite, one run at a time), `cargo xtask nextest` (tests with per-test time limits) and `cargo xtask clean-check` (tests on a simulated clean machine).
 
 `ide-git`, `ide-ts` and `ide-lsp` never depend on egui. Library crates never depend on `app`. egui and eframe come only from `[workspace.dependencies]` (`egui.workspace = true`). Never add a second egui version.
 
@@ -66,11 +66,15 @@ Open work is in `docs/backlog.md`, one line per task.
 Every change ends with these two commands green, run from `rust/harwex-ide`:
 
 ```sh
-cargo test --workspace
+cargo xtask test        # the full suite: cargo test --workspace, under the full-run lock
 cargo clippy --workspace --all-targets -- -D warnings
 ```
 
+All agents share one `target/`. During work, run only your own suites (`-p`, `--test app <suite>::`). Run the full suite once, at the end, through `cargo xtask test`: it waits while another full run is in progress, so two full runs never overlap. At most 2-3 agents build at the same time: macOS `syspolicyd` checks every new test binary, and more builds at once slow all of them down. A build error in a file you did not edit is another agent's work in progress: wait and run again, do not fix it (`docs/testing.md`, "One full run at a time").
+
 A change to tests, fixtures or the tool lookup also needs `cargo xtask clean-check` green (zero failures, zero skips; `docs/testing.md`).
+
+Every test has a time limit (`docs/testing.md`, "Time limits"): the driver's waits panic after 40 s, a frozen frame ends the test process after 30 s, and `cargo xtask nextest --workspace` (the pinned cargo-nextest from `cargo xtask test-tools`) kills a test after 180 s and names it. Wrap every test command in a wall-clock limit as well (`perl -e 'alarm 1800; exec @ARGV' cargo test ...`), and `sample <pid> 3` a run that seems stuck instead of waiting for it.
 
 A UI change also needs its snapshots checked by eye (`docs/testing.md`, "Verify a UI change visually").
 

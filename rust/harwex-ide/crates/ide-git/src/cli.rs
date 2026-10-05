@@ -2,8 +2,8 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::atomic::Ordering;
-use std::sync::OnceLock;
-use std::time::SystemTime;
+use std::sync::{mpsc, OnceLock};
+use std::time::{Duration, Instant, SystemTime};
 
 use crate::{Error, Repo, Result};
 
@@ -77,13 +77,22 @@ impl CommandEvent {
 }
 
 /// Git subcommands that never write. They are still logged, with `read_only` set.
-const READ_ONLY: &[&str] = &["blame", "diff", "diff-tree", "show", "log", "rev-parse", "ls-files", "cat-file"];
+const READ_ONLY: &[&str] = &["status", "blame", "diff", "diff-tree", "show", "log", "rev-parse", "ls-files", "cat-file"];
+
+/// Read-only commands: blame of a 76k-line file takes about 11 s on a healthy machine.
+const READ_TIMEOUT: Duration = Duration::from_secs(30);
+/// Local writes (`add` through `git-lfs filter-process` on thousands of files).
+const WRITE_TIMEOUT: Duration = Duration::from_secs(600);
+/// Time git gets after SIGTERM to remove `index.lock` and exit.
+const KILL_GRACE: Duration = Duration::from_secs(2);
 
 /// Arguments of one CLI run, so new options do not multiply the helper functions.
 #[derive(Default)]
 pub(crate) struct Run<'a> {
     pub stdin: Option<&'a [u8]>,
     pub env: &'a [(&'a str, &'a Path)],
+    /// Replaces the limit `timeout_for` picks from the subcommand.
+    pub timeout: Option<Duration>,
 }
 
 /// A GUI app on macOS starts with a minimal PATH, so `git` may not be found by name.
@@ -125,7 +134,7 @@ impl Repo {
     /// Like `git_with_stdin`, with extra environment variables (`GIT_INDEX_FILE` for a commit
     /// built in a temporary index).
     pub(crate) fn git_env(&self, args: &[&str], stdin: Option<&str>, env: &[(&str, &Path)]) -> Result<CommandOutcome> {
-        Ok(self.git_run(args, Run { stdin: stdin.map(str::as_bytes), env })?.0)
+        Ok(self.git_run(args, Run { stdin: stdin.map(str::as_bytes), env, timeout: None })?.0)
     }
 
     /// The one place that spawns git. Returns the outcome plus the raw stdout bytes, which a
@@ -164,7 +173,12 @@ impl Repo {
     }
 
     fn spawn_git(&self, args: &[&str], run: &Run<'_>) -> Result<(CommandOutcome, Vec<u8>)> {
-        let mut cmd = Command::new(git_binary());
+        let command = format!("git {}", args.join(" "));
+        let cancel = crate::cancel::current();
+        if crate::cancel::is_set(&cancel) {
+            return Err(Error::Cancelled { command });
+        }
+        let mut cmd = Command::new(self.git.as_deref().unwrap_or_else(|| git_binary()));
         cmd.envs(run.env.iter().map(|(k, v)| (*k, *v)));
         cmd.current_dir(&self.workdir)
             .args(args)
@@ -176,7 +190,11 @@ impl Repo {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .stdin(if run.stdin.is_some() { Stdio::piped() } else { Stdio::null() });
+        // Its own process group: a cancel then reaches git's children (hooks, sh, git-lfs).
+        #[cfg(unix)]
+        std::os::unix::process::CommandExt::process_group(&mut cmd, 0);
         let mut child = cmd.spawn()?;
+        let pid = child.id();
         if let Some(input) = run.stdin {
             // Written from a thread: a large input could otherwise deadlock against a full
             // stdout pipe. Dropping the handle closes the pipe so git sees EOF.
@@ -186,15 +204,43 @@ impl Repo {
                 let _ = pipe.write_all(&input);
             });
         }
-        let out = child.wait_with_output()?;
-        let outcome = CommandOutcome {
-            success: out.status.success(),
-            code: out.status.code(),
-            command: format!("git {}", args.join(" ")),
-            stdout: String::from_utf8_lossy(&out.stdout).into_owned(),
-            stderr: String::from_utf8_lossy(&out.stderr).into_owned(),
+        // The waiter owns the child and reads both pipes; this thread watches the clock and
+        // the cancel flag, so a hung git never blocks the caller for good.
+        let (tx, rx) = mpsc::channel();
+        std::thread::Builder::new().name("git-wait".into()).spawn(move || {
+            let _ = tx.send(child.wait_with_output());
+        })?;
+        let limit = self.timeout.or(run.timeout).or_else(|| timeout_for(args));
+        let started = Instant::now();
+        let stop = loop {
+            let tick = Duration::from_millis(20);
+            match rx.recv_timeout(tick) {
+                Ok(out) => {
+                    let out = out?;
+                    let outcome = CommandOutcome {
+                        success: out.status.success(),
+                        code: out.status.code(),
+                        command,
+                        stdout: String::from_utf8_lossy(&out.stdout).into_owned(),
+                        stderr: String::from_utf8_lossy(&out.stderr).into_owned(),
+                    };
+                    return Ok((outcome, out.stdout));
+                }
+                Err(mpsc::RecvTimeoutError::Disconnected) => return Err(Error::Other(format!("`{command}`: the waiter thread died"))),
+                Err(mpsc::RecvTimeoutError::Timeout) => {}
+            }
+            if crate::cancel::is_set(&cancel) {
+                break Error::Cancelled { command };
+            }
+            if let Some(after) = limit.filter(|l| started.elapsed() >= *l) {
+                break Error::Timeout { command, after };
+            }
         };
-        Ok((outcome, out.stdout))
+        // git removes its own `index.lock` on SIGTERM. A lock left after the SIGKILL is not
+        // removed here: the git that needed the SIGKILL was usually stuck before it took the
+        // lock, and the lock may then belong to another git process.
+        terminate(pid, &rx);
+        Err(stop)
     }
 
     /// Runs a command whose failure is an error for the caller (`Result<()>` APIs).
@@ -220,6 +266,38 @@ impl Repo {
         }
         Ok(())
     }
+}
+
+/// How long a command may run before it is killed. Reads are fast (blame of a 76k-line file
+/// takes about 11 s). Network commands and commands that run hooks or LFS downloads have no
+/// limit: only the user knows whether a slow push is stuck, and Cancel is always there.
+fn timeout_for(args: &[&str]) -> Option<Duration> {
+    let sub = args.first().copied().unwrap_or_default();
+    if READ_ONLY.contains(&sub) || matches!(sub, "for-each-ref" | "merge-base" | "rev-list" | "ls-tree") {
+        return Some(READ_TIMEOUT);
+    }
+    match sub {
+        "push" | "pull" | "fetch" | "clone" | "ls-remote" | "commit" | "merge" | "rebase" | "cherry-pick" | "revert" | "am" | "checkout" | "switch" => None,
+        _ => Some(WRITE_TIMEOUT),
+    }
+}
+
+/// Stops a git run: SIGTERM to its group, a grace period, then SIGKILL to whatever is left.
+fn terminate(pid: u32, rx: &mpsc::Receiver<std::io::Result<std::process::Output>>) {
+    #[cfg(unix)]
+    {
+        crate::cancel::signal_group(pid, crate::cancel::SIGTERM);
+        let graceful = rx.recv_timeout(KILL_GRACE).is_ok();
+        // The group may still hold children after git itself exited (a sleeping hook).
+        crate::cancel::signal_group(pid, crate::cancel::SIGKILL);
+        if !graceful {
+            // The pipes close once the group is dead; a detached grandchild could still hold
+            // them, so the wait is bounded.
+            let _ = rx.recv_timeout(KILL_GRACE);
+        }
+    }
+    #[cfg(not(unix))]
+    let _ = (pid, rx);
 }
 
 pub(crate) fn literal_pathspec(rel: &Path) -> String {

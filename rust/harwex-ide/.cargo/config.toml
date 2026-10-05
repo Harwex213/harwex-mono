@@ -3,3 +3,6 @@
 install-ide = "run -p xtask --release -- install"
 uninstall-ide = "run -p xtask --release -- uninstall"
 xtask = "run -p xtask --release --"
+# The full test suite, one full run at a time (`cargo xtask test`, docs/testing.md). Not `t`:
+# cargo's built-in `t` (= test) shadows a user alias of that name.
+test-all = "run -p xtask --release -- test"

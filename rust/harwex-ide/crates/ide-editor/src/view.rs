@@ -125,8 +125,12 @@ pub struct EditorState {
     /// after this frame's wheel input, so during a scroll `scroll` is already one step ahead of
     /// the pixels on screen. Hit tests and the gutter use this one.
     drawn_scroll: Vec2,
+    /// The horizontal scrollbar's track as drawn last frame.
+    hbar: Option<Rect>,
     viewport: Vec2,
     pending_reveal: Option<Position>,
+    /// A scroll position to restore on the next frame (`restore_view`).
+    pending_view: Option<ViewState>,
     pending_selection: Option<(Position, Position)>,
     pending_focus: bool,
     dragging: bool,
@@ -169,6 +173,20 @@ pub struct EditorState {
     /// Soft wrap: caret heads on a row boundary that sit at the end of the upper row (IDEA's
     /// affinity), with the doc version they were set for.
     lean: (Vec<usize>, u64),
+}
+
+/// Where an editor is scrolled, in text terms, so a reopened tab lands on the same text even at
+/// another width (`EditorState::view_state`, `restore_view`).
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct ViewState {
+    /// The logical line at the top of the viewport, 0-based.
+    pub line: usize,
+    /// The char column where the top visual row starts. 0 without soft wrap.
+    pub column: usize,
+    /// Points scrolled past the top of that row.
+    pub offset: f32,
+    /// Horizontal scroll in points. 0 with soft wrap.
+    pub x: f32,
 }
 
 /// The line at the top of the viewport: the line, the visual row inside it, the row it had in
@@ -350,8 +368,10 @@ impl EditorState {
             caret_marks: (0, Vec::new()),
             scroll: Vec2::ZERO,
             drawn_scroll: Vec2::ZERO,
+            hbar: None,
             viewport: Vec2::new(800.0, 600.0),
             pending_reveal: None,
+            pending_view: None,
             pending_selection: None,
             pending_focus: false,
             dragging: false,
@@ -664,8 +684,34 @@ impl EditorState {
         self.pending_focus = true;
     }
 
+    /// The horizontal scrollbar's track as drawn last frame; `None` while every line fits.
+    pub fn hbar_rect(&self) -> Option<Rect> {
+        self.hbar
+    }
+
     pub fn scroll_offset(&self) -> Vec2 {
         self.scroll
+    }
+
+    /// The scroll position as drawn last frame; `None` before the first frame. The app keeps
+    /// it for a closed tab. `doc` must be the text this view drew.
+    pub fn view_state(&self, doc: &Document) -> Option<ViewState> {
+        let a = self.anchor?;
+        let line = a.line.min(doc.line_count().saturating_sub(1));
+        let column = if self.drawn_wrap && a.k > 0 && self.wrap.cols() > 0 {
+            // Computed here, not per frame: closing a tab is rare, drawing is the hot path.
+            let rows = LineRows::new(&doc.line(line), self.wrap.cols());
+            rows.starts[a.k.min(rows.count() - 1)].char
+        } else {
+            0
+        };
+        Some(ViewState { line, column, offset: a.off, x: if self.drawn_wrap { 0.0 } else { self.drawn_scroll.x } })
+    }
+
+    /// Scrolls to `v` on the next frame, before anything is drawn, so the view never shows
+    /// another offset first. It wins over `reveal`'s scroll; the caret still moves.
+    pub fn restore_view(&mut self, v: ViewState) {
+        self.pending_view = Some(v);
     }
 
     /// Drops render caches, e.g. after changing fonts.
@@ -756,6 +802,29 @@ pub struct EditorView<'a> {
 }
 
 const MARK_W: f32 = 5.0;
+/// Height of the horizontal scrollbar at the bottom of the text area.
+const HBAR_H: f32 = 9.0;
+/// Room left for egui's floating vertical bar at the right end of the horizontal one.
+const VBAR_W: f32 = 10.0;
+const HBAR_MIN_THUMB: f32 = 24.0;
+
+#[derive(Clone, Copy)]
+struct HBar {
+    track: Rect,
+    thumb: Rect,
+}
+
+/// The horizontal scrollbar, or `None` when the text fits the view (or soft wrap is on, which
+/// passes `max_x == 0`).
+fn hbar_geometry(text_rect: Rect, view_w: f32, content_w: f32, sx: f32, max_x: f32) -> Option<HBar> {
+    if max_x <= 0.0 {
+        return None;
+    }
+    let track = Rect::from_min_max(Pos2::new(text_rect.left(), text_rect.bottom() - HBAR_H), Pos2::new(text_rect.right() - VBAR_W, text_rect.bottom()));
+    let thumb_w = (track.width() * view_w / content_w).clamp(HBAR_MIN_THUMB.min(track.width()), track.width());
+    let x = track.left() + (track.width() - thumb_w) * (sx / max_x).clamp(0.0, 1.0);
+    Some(HBar { track, thumb: Rect::from_min_size(Pos2::new(x, track.top()), Vec2::new(thumb_w, HBAR_H)) })
+}
 const TEXT_PAD: f32 = 6.0;
 /// Lines longer than this (in display columns) are laid out in windows around the visible part.
 const LONG_LINE: usize = 2000;
@@ -1269,6 +1338,36 @@ impl<'a> EditorView<'a> {
                 line_count as f32 * line_h + (view.y - 3.0 * line_h).max(0.0),
             )
         };
+        // Horizontal scroll is ours, not the ScrollArea's: the vertical ScrollArea keeps its
+        // floating bar, and the horizontal bar is drawn below so it shows whenever the text is
+        // wider than the view (IDEA), not only while the pointer hovers.
+        // The range keeps a few columns of slack past the longest line, but a file whose lines
+        // all fit gets no scroll and no bar.
+        let needs_x = !wrap_on && doc.max_line_chars() as f32 * char_w + TEXT_PAD * 2.0 > view.x;
+        let max_x = if needs_x { (content.x - view.x).max(0.0) } else { 0.0 };
+        let hbar = hbar_geometry(text_rect, view.x, content.x, state.scroll.x.min(max_x), max_x);
+        let hbar_resp = hbar.map(|bar| {
+            let r = ui.interact(bar.track, id.with("hbar"), Sense::click_and_drag());
+            r.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Other, true, format!("Horizontal scrollbar {name}")));
+            r
+        });
+        let mut sx = state.scroll.x;
+        if max_x > 0.0 && ui.rect_contains_pointer(rect) {
+            // egui turns Shift+wheel into a horizontal delta, so this also covers a plain mouse.
+            let dx = ui.input_mut(|i| std::mem::take(&mut i.smooth_scroll_delta.x));
+            sx -= dx;
+        }
+        if let (Some(bar), Some(r)) = (hbar, &hbar_resp) {
+            let travel = (bar.track.width() - bar.thumb.width()).max(1.0);
+            let pressed = r.is_pointer_button_down_on() && ui.input(|i| i.pointer.primary_pressed());
+            match r.interact_pointer_pos() {
+                // A press on the track centers the thumb under the pointer.
+                Some(p) if pressed && !bar.thumb.contains(p) => sx = (p.x - bar.track.left() - bar.thumb.width() / 2.0) / travel * max_x,
+                _ if r.dragged() => sx += r.drag_delta().x / travel * max_x,
+                _ => {}
+            }
+        }
+        state.scroll.x = sx.clamp(0.0, max_x);
         let mut new_scroll = None;
         if let Some(pos) = state.pending_reveal.take() {
             let idx = doc.position_to_char(pos);
@@ -1322,6 +1421,17 @@ impl<'a> EditorView<'a> {
                 new_scroll = Some(s);
             }
         }
+        if let Some(v) = state.pending_view.take() {
+            let row = if wrap_on {
+                let line = v.line.min(line_count.saturating_sub(1));
+                let col = v.column.min(doc.line_len(line));
+                moves.place(doc, doc.line_start(line) + col).1
+            } else {
+                v.line.min(line_count.saturating_sub(1))
+            };
+            let y = (row as f32 * line_h + v.offset.clamp(0.0, line_h)).clamp(0.0, (content.y - view.y).max(0.0));
+            new_scroll = Some(Vec2::new(v.x.clamp(0.0, max_x), y));
+        }
         if wrap_on {
             // Soft-wrapped rows never scroll sideways.
             if let Some(s) = &mut new_scroll {
@@ -1360,13 +1470,15 @@ impl<'a> EditorView<'a> {
         // Text area.
         let theme_fp = theme.fingerprint();
         let mut child = ui.new_child(UiBuilder::new().max_rect(text_rect).layout(Layout::top_down(Align::Min)));
-        let mut area = ScrollArea::both()
+        let mut area = ScrollArea::vertical()
             .id_salt(id.with("scroll"))
             .auto_shrink([false, false])
             .drag_to_scroll(false);
         if let Some(s) = new_scroll {
-            area = area.scroll_offset(s);
+            state.scroll.x = s.x.clamp(0.0, max_x);
+            area = area.vertical_scroll_offset(s.y);
         }
+        let sx = state.scroll.x;
         let hover_word = if modifiers.command && resp.hovered() {
             resp.hover_pos().map(|p| hit(doc, p)).and_then(|i| doc.word_at(doc.char_to_position(i)))
         } else {
@@ -1380,9 +1492,16 @@ impl<'a> EditorView<'a> {
         let find_in_selection = find.in_selection();
         let find_current = if find_in_selection { find.current() } else { None };
         let output = area.show_viewport(&mut child, |ui, viewport| {
-            ui.set_min_size(content);
-            let drawn_scroll = text_rect.min - ui.max_rect().min;
-            let origin = ui.max_rect().min + Vec2::new(TEXT_PAD, 0.0);
+            // The content is as wide as the view; rows are drawn shifted by `sx` and clipped.
+            ui.set_min_size(Vec2::new(view.x, content.y));
+            // A vertical ScrollArea does not clip sideways; rows shifted by `sx` must not paint
+            // over the gutter. The margin is the one egui's ScrollArea clips with.
+            let margin = ui.visuals().clip_rect_margin;
+            let clip = ui.clip_rect();
+            ui.set_clip_rect(Rect::from_x_y_ranges(text_rect.left() - margin..=text_rect.right() + margin, clip.y_range()).intersect(clip));
+            let viewport = viewport.translate(Vec2::new(sx, 0.0));
+            let drawn_scroll = text_rect.min - ui.max_rect().min + Vec2::new(sx, 0.0);
+            let origin = ui.max_rect().min + Vec2::new(TEXT_PAD - sx, 0.0);
             if wrap_on {
                 rows_buf.clear();
                 WrapPaint {
@@ -1598,7 +1717,15 @@ impl<'a> EditorView<'a> {
         });
         (state.drawn, state.drawn_scroll) = output.inner;
         state.drawn_rows = rows_buf;
-        state.scroll = output.state.offset;
+        state.scroll = Vec2::new(sx, output.state.offset.y);
+        let bar_now = hbar_geometry(text_rect, view.x, content.x, sx, max_x);
+        state.hbar = bar_now.map(|b| b.track);
+        if let Some(bar) = bar_now {
+            let active = hbar_resp.as_ref().is_some_and(|r| r.hovered() || r.dragged());
+            let color = if active { theme.scrollbar_thumb_active } else { theme.scrollbar_thumb };
+            let thumb = bar.thumb.shrink2(Vec2::new(0.0, 1.5));
+            ui.painter_at(text_rect).rect_filled(thumb, thumb.height() / 2.0, color);
+        }
         if wrap_on && wrap_map.borrow().sweeping() {
             ui.ctx().request_repaint();
         }

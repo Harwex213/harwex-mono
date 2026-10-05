@@ -11,6 +11,7 @@ use egui::{vec2, Align2, Context, Key, Modal, RichText, ScrollArea, Sense, TextE
 use ide_git::{CommandOutcome, CommitDetails, CommitInfo, Error, Oid, PushTarget, Repo, StashEntry};
 
 use super::log::{format_time, kind_color, short};
+use super::refresh::Refresh;
 use crate::state::AppState;
 use crate::theme;
 
@@ -629,9 +630,19 @@ fn unstash_window(state: &mut AppState, ctx: &Context) {
 pub(crate) type OpResult = ide_git::Result<Option<CommandOutcome>>;
 
 /// Runs a git write on a worker. Afterwards it shows a toast (the summary on success, the
-/// stderr on failure), refreshes git state, optionally looks for conflicts, and then calls
-/// `then` with the success flag.
+/// stderr on failure), refreshes the whole git status, optionally looks for conflicts, and then
+/// calls `then` with the success flag.
 pub(crate) fn run_op<W, T>(state: &mut AppState, title: impl Into<String>, ok_body: impl Into<String>, check_conflicts: bool, work: W, then: T)
+where
+    W: FnOnce(&Repo) -> OpResult + Send + 'static,
+    T: FnOnce(&mut AppState, bool) + Send + 'static,
+{
+    run_op_with(state, title, ok_body, check_conflicts, Refresh::Full, work, then);
+}
+
+/// `run_op` for a write that knows what it changed: `Refresh::Paths` refreshes only those
+/// paths (`git/refresh.rs`).
+pub(crate) fn run_op_with<W, T>(state: &mut AppState, title: impl Into<String>, ok_body: impl Into<String>, check_conflicts: bool, refresh: Refresh, work: W, then: T)
 where
     W: FnOnce(&Repo) -> OpResult + Send + 'static,
     T: FnOnce(&mut AppState, bool) + Send + 'static,
@@ -643,12 +654,14 @@ where
     let title = title.into();
     let ok_body = ok_body.into();
     let label = title.clone();
+    super::refresh::write_started(state);
     state.jobs.spawn(
         label,
-        move || work(&repo),
+        // A panic must still reach `write_done`, or `.git` events would wait for it forever.
+        move || std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| work(&repo))).unwrap_or_else(|_| Err(Error::Other("the git task panicked".into()))),
         move |state, res: OpResult| {
             let ok = report(state, &title, &ok_body, res);
-            state.refresh_git();
+            super::refresh::write_done(state, refresh);
             if check_conflicts {
                 super::conflicts::check_after_operation(state);
             }

@@ -8,6 +8,7 @@
 //! Every function blocks. The app calls them from a worker thread.
 
 mod branches;
+mod cancel;
 mod cli;
 mod diff;
 mod graph;
@@ -22,17 +23,19 @@ use std::path::{Component, Path, PathBuf};
 use std::sync::atomic::AtomicU64;
 use std::sync::mpsc::Sender;
 use std::sync::Arc;
+use std::time::Duration;
 
 pub use git2::Oid;
 
 pub use branches::{BranchInfo, Branches, TagInfo};
+pub use cancel::CancelScope;
 pub use cli::{CommandEvent, CommandOutcome};
 pub use diff::{DiffHunk, DiffSide, FileDiff, LineChange, LineChangeKind, LineKind, LinePair};
 pub use graph::{layout as graph_layout, ArrowDir, GraphArrow, GraphEdge, GraphRow, LONG_EDGE_ROWS};
 pub use log::{BlameLine, ChangedFile, CommitDetails, CommitInfo, LogFilter, RefKind, RefLabel};
 pub use selection::{BranchCompare, COMPARE_LIMIT};
 pub use ops::{ConflictChoice, ConflictSides, PushTarget, RepoState, ResetMode, StashEntry};
-pub use status::{ChangeKind, CommitOutcome, FileChange};
+pub use status::{ChangeKind, CommitOutcome, FileChange, GitStamp};
 pub use text_diff::{diff_texts, line_changes_between};
 
 #[derive(Debug)]
@@ -41,7 +44,21 @@ pub enum Error {
     Io(std::io::Error),
     /// A git CLI command exited with a non-zero status. The outcome holds stderr for the UI.
     Command(CommandOutcome),
+    /// The command was stopped because the caller's cancel flag was set (`CancelScope`).
+    Cancelled { command: String },
+    /// The command ran longer than its limit and was stopped.
+    Timeout { command: String, after: Duration },
     Other(String),
+}
+
+/// The text every cancelled command reports. The app recognises it and shows one
+/// "Cancelled" toast instead of an error.
+pub const CANCELLED: &str = "cancelled by the user";
+
+impl Error {
+    pub fn is_cancelled(&self) -> bool {
+        matches!(self, Error::Cancelled { .. })
+    }
 }
 
 impl fmt::Display for Error {
@@ -54,6 +71,12 @@ impl fmt::Display for Error {
                 let msg = if msg.is_empty() { o.stdout.trim() } else { msg };
                 write!(f, "`{}` failed: {}", o.command, msg)
             }
+            Error::Cancelled { command } => write!(f, "`{command}` {CANCELLED}"),
+            Error::Timeout { command, after } => write!(
+                f,
+                "`{command}` did not finish in {} s and was stopped. If git does not even start, macOS may be scanning new binaries (syspolicyd).",
+                after.as_secs()
+            ),
             Error::Other(s) => f.write_str(s),
         }
     }
@@ -85,6 +108,10 @@ pub struct Repo {
     workdir: PathBuf,
     /// Where CLI runs are reported. Clones share it, so ids stay unique across workers.
     sink: Option<Arc<CommandSink>>,
+    /// The git binary for this handle; `None` uses the global lookup (`HARWEX_GIT`, PATH).
+    git: Option<PathBuf>,
+    /// Replaces every per-command time limit (tests).
+    timeout: Option<Duration>,
 }
 
 #[derive(Debug)]
@@ -110,7 +137,7 @@ impl Repo {
         // Canonical form, so that absolute paths from the app (which may come through a
         // symlink such as /var -> /private/var on macOS) can be made relative reliably.
         let workdir = workdir.canonicalize().unwrap_or_else(|_| workdir.to_path_buf());
-        Ok(Repo { workdir, sink: None })
+        Ok(Repo { workdir, sink: None, git: None, timeout: None })
     }
 
     /// Reports every git CLI command of this handle and its clones (start and finish) to
@@ -123,6 +150,18 @@ impl Repo {
     /// Builder form of `set_command_sink`.
     pub fn with_command_sink(mut self, tx: Sender<CommandEvent>) -> Repo {
         self.set_command_sink(tx);
+        self
+    }
+
+    /// Runs `git` from `program` instead of the global lookup (tests use a fake git).
+    pub fn with_git_binary(mut self, program: impl Into<PathBuf>) -> Repo {
+        self.git = Some(program.into());
+        self
+    }
+
+    /// One time limit for every command of this handle, instead of the per-command defaults.
+    pub fn with_timeout(mut self, limit: Duration) -> Repo {
+        self.timeout = Some(limit);
         self
     }
 

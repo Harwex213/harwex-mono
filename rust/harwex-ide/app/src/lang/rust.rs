@@ -163,6 +163,11 @@ pub fn workspace_root(file: &Path) -> Option<PathBuf> {
     workspace.or(nearest)
 }
 
+/// rust-analyzer's answer when a request handler panicked (`-32603`, "request handler panicked: ...").
+fn is_handler_panic(e: &ide_lsp::Error) -> bool {
+    matches!(e, ide_lsp::Error::Server { message, .. } if message.starts_with("request handler panicked"))
+}
+
 /// A module that a `mod` item declares: a `.rs` file other than a crate root (`lib.rs`,
 /// `main.rs`, `build.rs`, `src/bin`, `examples`, `tests`, `benches`) and other than `mod.rs`,
 /// or a folder with a `mod.rs` or a sibling `<name>.rs`.
@@ -427,7 +432,9 @@ impl RustService {
     }
 
     /// Runs a request, retrying while the server loads: empty answers wait for the next status
-    /// change, "content modified" waits 100 ms. Gives up at the request timeout.
+    /// change, "content modified" waits 100 ms. A handler that panics during the load (rust-analyzer
+    /// asked about a file its VFS does not know yet: "Unable to get `FileSourceRootInput`") also
+    /// waits 100 ms. Gives up at the request timeout.
     fn retry<T>(&self, path: &Path, empty: impl Fn(&T) -> bool, f: impl Fn(&LspClient, Duration) -> ide_lsp::Result<T>) -> Result<T, String> {
         let server = self.server_for(path)?;
         let deadline = Instant::now() + self.timeout;
@@ -438,7 +445,7 @@ impl RustService {
                     server.wait_for_status((Instant::now() + Duration::from_millis(500)).min(deadline));
                 }
                 Ok(v) => return Ok(v),
-                Err(e) if e.is_retryable() && Instant::now() < deadline => std::thread::sleep(Duration::from_millis(100)),
+                Err(e) if (e.is_retryable() || (is_handler_panic(&e) && server.loading())) && Instant::now() < deadline => std::thread::sleep(Duration::from_millis(100)),
                 Err(e) => return Err(format!("rust-analyzer: {e}")),
             }
         }

@@ -22,6 +22,9 @@ use crate::position::LineBreaks;
 use crate::uri::path_to_uri;
 use crate::Error;
 
+/// How often a request with a cancel flag looks at it.
+const CANCEL_POLL: Duration = Duration::from_millis(25);
+
 /// How much of the server's stderr is kept for crash messages.
 const STDERR_TAIL: usize = 4096;
 
@@ -193,10 +196,19 @@ impl Process {
     }
 }
 
-impl Drop for Process {
-    fn drop(&mut self) {
+impl Process {
+    /// Kills the server and every process in its group, then reaps it. The group goes first,
+    /// while the unreaped server still holds its pid, so the group id cannot be reused.
+    fn kill_tree(&mut self) {
+        crate::cancel::kill_group(self.child.id());
         let _ = self.child.kill();
         let _ = self.child.wait();
+    }
+}
+
+impl Drop for Process {
+    fn drop(&mut self) {
+        self.kill_tree();
     }
 }
 
@@ -385,6 +397,10 @@ impl LspClient {
     /// is `Null` when the server has nothing at that position. A timeout cancels the request
     /// on the server (`$/cancelRequest`); a late response is dropped.
     pub fn request(&self, method: &str, params: Value, timeout: Duration) -> Result<Value, Error> {
+        let cancel = crate::cancel::current();
+        if crate::cancel::is_set(&cancel) {
+            return Err(Error::Cancelled { method: method.to_string() });
+        }
         let (rx, id, writer, pending, stderr_tail) = {
             let mut state = lock(&self.state);
             state.last_activity = Instant::now();
@@ -393,14 +409,28 @@ impl LspClient {
             let (id, rx) = p.start_request(method, Some(params))?;
             (rx, id, p.writer.clone(), p.pending.clone(), p.stderr_tail.clone())
         };
-        let response = match rx.recv_timeout(timeout) {
-            Ok(response) => response,
-            Err(RecvTimeoutError::Timeout) => {
-                lock(&pending).remove(&id);
-                let _ = write(&writer, &json!({"jsonrpc": "2.0", "method": "$/cancelRequest", "params": {"id": id}}));
-                return Err(Error::Timeout { method: method.to_string(), after: timeout });
+        let give_up = |error: Error| {
+            lock(&pending).remove(&id);
+            let _ = write(&writer, &json!({"jsonrpc": "2.0", "method": "$/cancelRequest", "params": {"id": id}}));
+            Err(error)
+        };
+        let deadline = Instant::now() + timeout;
+        let response = loop {
+            // Without a cancel flag nobody can cancel, so one wait is enough.
+            let tick = if cancel.is_some() { CANCEL_POLL } else { timeout };
+            let left = deadline.saturating_duration_since(Instant::now());
+            match rx.recv_timeout(tick.min(left)) {
+                Ok(response) => break response,
+                Err(RecvTimeoutError::Timeout) if Instant::now() >= deadline => {
+                    return give_up(Error::Timeout { method: method.to_string(), after: timeout });
+                }
+                Err(RecvTimeoutError::Timeout) => {
+                    if crate::cancel::is_set(&cancel) {
+                        return give_up(Error::Cancelled { method: method.to_string() });
+                    }
+                }
+                Err(RecvTimeoutError::Disconnected) => return Err(Error::ServerDied(lock(&stderr_tail).clone())),
             }
-            Err(RecvTimeoutError::Disconnected) => return Err(Error::ServerDied(lock(&stderr_tail).clone())),
         };
         lock(&self.state).last_activity = Instant::now();
         response_result(response)
@@ -426,11 +456,11 @@ impl LspClient {
         lock(&self.pushed).clear();
     }
 
-    /// Kills the process, as a crash would. The next call restarts it.
+    /// Kills the process and its children (its whole process group), as a crash would.
+    /// The next call restarts it.
     pub fn kill(&self) {
         if let Some(p) = lock(&self.state).process.as_mut() {
-            let _ = p.child.kill();
-            let _ = p.child.wait();
+            p.kill_tree();
         }
     }
 
@@ -498,6 +528,9 @@ impl LspClient {
     fn spawn(&self) -> Result<Process, Error> {
         let mut cmd = Command::new(&self.config.program);
         cmd.args(&self.config.args).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
+        // Its own process group, so `kill` reaches the helpers the server starts.
+        #[cfg(unix)]
+        std::os::unix::process::CommandExt::process_group(&mut cmd, 0);
         if let Some(cwd) = &self.config.cwd {
             cmd.current_dir(cwd);
         }

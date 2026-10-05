@@ -3,6 +3,8 @@
 //! - `cargo install-ide`: build `harwex-ide` in release and install it for the current user.
 //! - `cargo uninstall-ide`: remove everything `install-ide` created.
 //! - `cargo xtask test-tools`: download the pinned test tools into `target/tools/`.
+//! - `cargo xtask test [args]` (`cargo test-all`): the full suite, one full run at a time.
+//! - `cargo xtask nextest [args]`: run the tests with the pinned cargo-nextest.
 //! - `cargo xtask clean-check`: run the tests the way a fresh machine would.
 //!
 //! Only std is used, so the task builds fast. Only `test-tools` uses the network, through the
@@ -15,6 +17,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 
 mod clean_check;
+mod full_test;
 mod test_tools;
 mod tools;
 
@@ -27,7 +30,10 @@ const BLOCK_END: &str = "# <<< harwex-ide <<<";
 const USAGE: &str = "\
 usage: cargo xtask <install|uninstall> [options]
        cargo xtask test-tools               download the pinned test tools into target/tools/
-       cargo xtask clean-check [--dir <d>]  run test-tools + cargo test --workspace on a clean copy
+       cargo xtask test [--no-wait] [args]  the full suite (pinned nextest + doc tests) under the full-run lock;
+                                            -p/--test/filters run suite-only without the lock
+       cargo xtask nextest [--no-wait] [args]  cargo nextest run [args] with the pinned nextest (time limits)
+       cargo xtask clean-check [--no-wait] [--dir <d>]  run test-tools + the workspace tests on a clean copy
 
 options:
   --prefix <dir>  install root (default: ~/opt/harwex-ide); the binary goes to <dir>/bin
@@ -62,13 +68,24 @@ fn run() -> Result<(), String> {
     let command = args.next().ok_or_else(|| USAGE.to_string())?;
     match command.as_str() {
         "test-tools" => return test_tools::run(&target_dir(&workspace_root()).join("tools")),
+        "test" => {
+            let root = workspace_root();
+            return full_test::run(&root, &target_dir(&root), args.collect());
+        }
+        "nextest" => return nextest(args.collect()),
         "clean-check" => {
-            let dir = match (args.next().as_deref(), args.next()) {
-                (None, _) => None,
-                (Some("--dir"), Some(dir)) => Some(absolute(PathBuf::from(dir))?),
+            let (wait, args) = full_test::split_flags(args.collect());
+            let dir = match args.as_slice() {
+                [] => None,
+                [flag, dir] if flag == "--dir" => Some(absolute(PathBuf::from(dir))?),
                 _ => return Err(USAGE.to_string()),
             };
-            return clean_check::run(&workspace_root(), dir);
+            let root = workspace_root();
+            // Its own target dir, but the same CPU and syspolicyd: a full run like the others.
+            let mut out = |line: &str| println!("{line}");
+            let lock = target_dir(&root).join(full_test::LOCK_FILE);
+            let _lock = full_test::acquire(&lock, &full_test::Owner::current(), &full_test::Wait::new(wait), &mut out)?;
+            return clean_check::run(&root, dir);
         }
         _ => {}
     }
@@ -428,6 +445,25 @@ fn home_dir() -> Result<PathBuf, String> {
         Some(home) if !home.is_empty() => Ok(PathBuf::from(home)),
         _ => Err("$HOME is not set".to_string()),
     }
+}
+
+/// `cargo nextest run <args>` through the pinned binary in `target/tools/nextest/`. Nothing is
+/// installed into `~/.cargo`. A full run takes the full-run lock, like `cargo xtask test`.
+fn nextest(args: Vec<String>) -> Result<(), String> {
+    let root = workspace_root();
+    let bin = test_tools::nextest_bin(&target_dir(&root).join("tools"));
+    if !bin.is_file() {
+        return Err(format!("{} is missing; run `cargo xtask test-tools` first", bin.display()));
+    }
+    let (wait, args) = full_test::split_flags(args);
+    let _lock = full_test::lock_for(&args, &target_dir(&root).join(full_test::LOCK_FILE), wait)?;
+    let status = Command::new(&bin)
+        .args(["nextest", "run"])
+        .args(&args)
+        .current_dir(&root)
+        .status()
+        .map_err(|e| format!("cannot start {}: {e}", bin.display()))?;
+    if status.success() { Ok(()) } else { Err(format!("cargo nextest run: {status}")) }
 }
 
 fn workspace_root() -> PathBuf {

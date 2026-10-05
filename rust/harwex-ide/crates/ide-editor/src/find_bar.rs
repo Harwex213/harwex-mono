@@ -135,12 +135,13 @@ fn search_row(ui: &mut Ui, find: &mut FindState, ids: &BarIds, env: &BarEnv, fie
     }
     ui.add_space(2.0);
 
-    // Keys of the focused query field, taken before the TextEdit sees them.
+    // Keys of the focused query field, taken before the TextEdit sees them. Up and Down
+    // cycle the matches like Shift+Enter and Enter; a multiline query keeps them for its caret.
     let multiline = find.options().multiline;
     if ui.memory(|m| m.has_focus(ids.query)) {
         let (prev, next, close) = ui.input_mut(|i| {
-            let prev = i.consume_key(Modifiers::SHIFT, Key::Enter);
-            let next = !multiline && i.consume_key(Modifiers::NONE, Key::Enter);
+            let prev = i.consume_key(Modifiers::SHIFT, Key::Enter) | (!multiline && i.consume_key(Modifiers::NONE, Key::ArrowUp));
+            let next = !multiline && (i.consume_key(Modifiers::NONE, Key::Enter) | i.consume_key(Modifiers::NONE, Key::ArrowDown));
             (prev, next, i.consume_key(Modifiers::NONE, Key::Escape))
         });
         if prev {
@@ -210,10 +211,10 @@ fn search_row(ui: &mut Ui, find: &mut FindState, ids: &BarIds, env: &BarEnv, fie
     }
     ui.add_space(6.0);
     let any = count > 0;
-    if icon_button(ui, any, FindIcon::ArrowUp, "Previous Occurrence", "Previous Occurrence (⇧⏎)", theme).clicked() {
+    if icon_button(ui, any, FindIcon::ArrowUp, "Previous Occurrence", "Previous Occurrence (⇧⏎ or ↑)", theme).clicked() {
         cmds.push(BarCmd::Prev);
     }
-    if icon_button(ui, any, FindIcon::ArrowDown, "Next Occurrence", "Next Occurrence (⏎)", theme).clicked() {
+    if icon_button(ui, any, FindIcon::ArrowDown, "Next Occurrence", "Next Occurrence (⏎ or ↓)", theme).clicked() {
         cmds.push(BarCmd::Next);
     }
     ui.add_space(4.0);
@@ -237,11 +238,24 @@ fn replace_row(ui: &mut Ui, find: &mut FindState, ids: &BarIds, env: &BarEnv, fi
     ui.add_space(BTN + 2.0);
     let multiline = find.replace_multiline;
     if ui.memory(|m| m.has_focus(ids.replace)) {
-        let (replace, close) = ui.input_mut(|i| {
-            (!multiline && i.consume_key(Modifiers::NONE, Key::Enter), i.consume_key(Modifiers::NONE, Key::Escape))
+        // Up and Down cycle the matches as in the query field, unless a multiline
+        // replacement needs them to move the field's own caret.
+        let (replace, prev, next, close) = ui.input_mut(|i| {
+            (
+                !multiline && i.consume_key(Modifiers::NONE, Key::Enter),
+                !multiline && i.consume_key(Modifiers::NONE, Key::ArrowUp),
+                !multiline && i.consume_key(Modifiers::NONE, Key::ArrowDown),
+                i.consume_key(Modifiers::NONE, Key::Escape),
+            )
         });
         if replace {
             cmds.push(BarCmd::Replace);
+        }
+        if prev {
+            cmds.push(BarCmd::Prev);
+        }
+        if next {
+            cmds.push(BarCmd::Next);
         }
         if close {
             cmds.push(BarCmd::Close);
@@ -424,11 +438,10 @@ impl Field<'_> {
         });
         if resp.has_focus() {
             // Escape stays with the field (it closes the bar) instead of clearing egui's focus.
+            // Up and Down stay too: without the lock egui moves the focus to the next widget
+            // in that direction, while the bar uses them to cycle matches.
             ui.memory_mut(|m| {
-                m.set_focus_lock_filter(
-                    self.id,
-                    EventFilter { tab: false, horizontal_arrows: true, vertical_arrows: self.multiline, escape: true },
-                )
+                m.set_focus_lock_filter(self.id, EventFilter { tab: false, horizontal_arrows: true, vertical_arrows: true, escape: true })
             });
         }
     }

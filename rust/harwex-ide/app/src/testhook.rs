@@ -102,7 +102,7 @@ pub fn parse(args: &mut Vec<String>) -> Option<TestScript> {
                 crate::git::changes::test_queue(&a, format!("{msg}\u{1}{paths}"));
                 any = true;
             }
-            "--test-git-diff" | "--test-git-diff-next" | "--test-git-gutter" | "--test-git-rollback-lines" | "--test-git-blame-click" => {
+            "--test-git-diff" | "--test-git-diff-next" | "--test-git-gutter" | "--test-git-rollback-lines" | "--test-git-blame-click" | "--test-git-stage" | "--test-git-unstage" => {
                 crate::git::changes::test_queue(&a, it.next().unwrap_or_default());
                 any = true;
             }

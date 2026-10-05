@@ -11,13 +11,17 @@ use std::ops::Range;
 use std::path::{Path, PathBuf};
 
 use egui::text::{LayoutJob, TextFormat};
-use egui::{pos2, vec2, Align2, Color32, CursorIcon, FontId, Id, Key, Mesh, Rect, RichText, Sense, Shape, Stroke, Ui};
-use ide_editor::{Document, EditorTheme, HlKind, Language, Position, Span};
+use egui::{pos2, vec2, Align2, Color32, CursorIcon, Event, EventFilter, FontId, Id, Key, Mesh, Modifiers, PointerButton, Pos2, Rect, RichText, Sense, Shape, Stroke, Ui};
+use ide_editor::{ClickChain, Document, EditorTheme, HlKind, Language, Position, Span, CHAIN_DIST};
 use ide_git::{DiffHunk, DiffSide, FileDiff, LineKind, Oid, Repo};
 
 use crate::state::{AppCommand, AppState, TabEnv};
 use crate::tabs::CustomTab;
 use crate::theme;
+
+mod select;
+use select::{Move, PaneSel};
+pub use select::Side;
 
 const LINE_H: f32 = 18.0;
 const RIBBON_W: f32 = 36.0;
@@ -241,6 +245,30 @@ impl Model {
         start as f64 + frac * len as f64
     }
 
+    /// Virtual position of (fractional) line `line` on one side: the inverse of `map`.
+    fn unmap(&self, line: f64, old_side: bool) -> f64 {
+        if self.segments.is_empty() {
+            return line;
+        }
+        let start_of = |s: &Segment| if old_side { s.old0 } else { s.new0 } as f64;
+        let i = self.segments.partition_point(|s| start_of(s) <= line).saturating_sub(1);
+        let s = self.segments[i];
+        let (start, len) = if old_side { (s.old0, s.old_len) } else { (s.new0, s.new_len) };
+        let d = (line - start as f64).max(0.0);
+        match s.hunk {
+            None => s.v0 + d,
+            Some(_) if len == 0 => s.v0 + s.len,
+            Some(_) => s.v0 + d / len as f64 * s.len,
+        }
+    }
+
+    fn pane(&self, side: Side) -> &Pane {
+        match side {
+            Side::Old => &self.old,
+            Side::New => &self.new,
+        }
+    }
+
     fn hunk_v0(&self, hunk: usize) -> f64 {
         self.segments.iter().find(|s| s.hunk == Some(hunk)).map_or(0.0, |s| s.v0)
     }
@@ -269,6 +297,31 @@ pub struct DiffTab {
     reload_pending: bool,
     view_lines: f64,
     dragging_thumb: Option<f32>,
+    /// The caret and selection; on one side only, like IDEA.
+    sel: Option<PaneSel>,
+    /// The presses of the current multi-click (press-based, like the editor).
+    chain: ClickChain,
+    /// A primary press in a pane is held: moves extend the selection on its side.
+    drag: bool,
+    /// Where the last frame drew the panes, for tests that aim at a char.
+    geom: Option<Geom>,
+}
+
+/// One pane as drawn last frame.
+#[derive(Clone, Copy)]
+struct PaneGeom {
+    rect: Rect,
+    /// Line (fractional) at the pane's top edge.
+    top: f64,
+}
+
+#[derive(Clone, Copy)]
+struct Geom {
+    old: PaneGeom,
+    new: PaneGeom,
+    gutter_w: f32,
+    hscroll: f32,
+    char_w: f32,
 }
 
 impl DiffTab {
@@ -291,12 +344,16 @@ impl DiffTab {
                 (format!("diff:local:{rev}:{}", rel.display()), format!("{} ({short} vs Local)", name_of(rel)), format!("{}: {short} vs the working tree", rel.display()))
             }
         };
-        DiffTab { key, title, tooltip, source, load: Load::Loading, t: 0.0, hscroll: 0.0, current: None, goto_first: true, reloading: false, reload_pending: false, view_lines: 30.0, dragging_thumb: None }
+        DiffTab { key, title, tooltip, source, load: Load::Loading, t: 0.0, hscroll: 0.0, current: None, goto_first: true, reloading: false, reload_pending: false, view_lines: 30.0, dragging_thumb: None, sel: None, chain: ClickChain::default(), drag: false, geom: None }
     }
 
     fn set_model(&mut self, model: Model) {
         let keep = matches!(self.load, Load::Ready(_));
         self.load = Load::Ready(Box::new(model));
+        // A reload keeps the selection where it was; the text under it may have changed.
+        if let (Some(sel), Load::Ready(m)) = (&mut self.sel, &self.load) {
+            sel.clamp(m.pane(sel.side).doc.len_chars());
+        }
         if !keep {
             self.goto_first = true;
         }
@@ -364,6 +421,36 @@ impl DiffTab {
         self.model().and_then(|m| m.diff.hunks.get(i)).map(|h| h.new_lines.start)
     }
 
+    /// The side of the caret and its selected text (empty for a bare caret).
+    pub fn selection(&self) -> Option<(Side, String)> {
+        let (sel, m) = (self.sel.as_ref()?, self.model()?);
+        Some((sel.side, m.pane(sel.side).doc.slice(sel.range())))
+    }
+
+    /// The caret's side and position (0-based line and char column).
+    pub fn caret(&self) -> Option<(Side, Position)> {
+        let (sel, m) = (self.sel.as_ref()?, self.model()?);
+        Some((sel.side, m.pane(sel.side).doc.char_to_position(sel.head)))
+    }
+
+    /// The text of one side, as the diff shows it.
+    pub fn side_text(&self, side: Side) -> Option<String> {
+        self.model().map(|m| m.pane(side).doc.text())
+    }
+
+    /// Screen point in the middle of char `col` (no tabs before it) of `line` on `side`, as drawn
+    /// last frame. Tests aim pointer events with it.
+    pub fn char_center(&self, side: Side, line: usize, col: usize) -> Option<Pos2> {
+        let g = self.geom?;
+        let p = match side {
+            Side::Old => g.old,
+            Side::New => g.new,
+        };
+        let x = p.rect.min.x + g.gutter_w - g.hscroll + (col as f32 + 0.5) * g.char_w;
+        let y = p.rect.min.y + ((line as f64 - p.top) as f32) * LINE_H + LINE_H / 2.0;
+        Some(pos2(x, y))
+    }
+
     pub fn is_binary(&self) -> bool {
         self.model().is_some_and(|m| m.diff.binary)
     }
@@ -422,7 +509,13 @@ impl CustomTab for DiffTab {
             }
             Load::Ready(_) => {}
         }
-        body(self, ui, env.editor_theme, body_id);
+        if let Some(text) = body(self, ui, env.editor_theme, body_id) {
+            // The clipboard belongs to the platform; a tab reaches `AppState` only through a job.
+            env.jobs.post(move |state| {
+                let ctx = state.ctx.clone();
+                state.platform.copy_text(&ctx, &text);
+            });
+        }
     }
 }
 
@@ -483,7 +576,8 @@ struct Metrics {
     font: FontId,
 }
 
-fn body(tab: &mut DiffTab, ui: &mut Ui, theme_e: &EditorTheme, body_id: Id) {
+/// Draws the panes and handles their input. Returns the text that Copy put on the clipboard.
+fn body(tab: &mut DiffTab, ui: &mut Ui, theme_e: &EditorTheme, body_id: Id) -> Option<String> {
     let font = theme::T.mono_font();
     // The laid-out column step, like the editor (`ide_editor::column_advance`).
     let char_w = ui.fonts(|f| ide_editor::column_advance(f, &font));
@@ -497,7 +591,7 @@ fn body(tab: &mut DiffTab, ui: &mut Ui, theme_e: &EditorTheme, body_id: Id) {
     }
     ui.allocate_rect(full, Sense::hover());
 
-    let Load::Ready(model) = &mut tab.load else { return };
+    let Load::Ready(model) = &mut tab.load else { return None };
     tab.view_lines = (area.height() / LINE_H) as f64;
 
     // Input: wheel, keys, scrollbar.
@@ -506,30 +600,204 @@ fn body(tab: &mut DiffTab, ui: &mut Ui, theme_e: &EditorTheme, body_id: Id) {
     let ribbon = Rect::from_min_size(pos2(left.max.x, area.min.y), vec2(RIBBON_W, area.height()));
     let right = Rect::from_min_size(pos2(ribbon.max.x, area.min.y), vec2(pane_w, area.height()));
     let bar = Rect::from_min_max(pos2(right.max.x, area.min.y), area.max);
+    let gutter_w = |lines: usize| (lines.max(1).to_string().len().max(3) as f32) * char_w + 14.0;
+    let gw = gutter_w(model.old.lines.max(model.new.lines));
+    let text_w = pane_w - gw;
+
+    // Mouse selection, hit-tested against the layout the user saw: this frame's scroll input is
+    // applied below.
+    let pane_rect = |side: Side| if side == Side::Old { left } else { right };
+    let hit_at = |model: &Model, side: Side, t: f64, hscroll: f32, pos: Pos2| -> usize {
+        let pane = model.pane(side);
+        let top = model.map(t, side == Side::Old);
+        hit(ui, pane, pane_rect(side), top, gw, hscroll, pos, &metrics, theme_e)
+    };
+    // Read the options before `input`: its closure holds the context lock, and egui's lock is
+    // not re-entrant, so a ctx call inside it deadlocks the frame.
+    let delay = ui.ctx().options(|o| o.input_options.max_double_click_delay);
+    let (presses, time, pointer, primary_down, stable_dt) = ui.input(|i| {
+        let presses: Vec<(Pos2, PointerButton, Modifiers)> = i
+            .events
+            .iter()
+            .filter_map(|e| match e {
+                Event::PointerButton { pos, button, pressed: true, modifiers } => Some((*pos, *button, *modifiers)),
+                _ => None,
+            })
+            .collect();
+        (presses, i.time, i.pointer.latest_pos(), i.pointer.primary_down(), i.stable_dt)
+    });
+    let on_body = |pos: Pos2| ui.ctx().layer_id_at(pos) == Some(ui.layer_id()) && ui.clip_rect().contains(pos);
+    for (pos, button, mods) in presses {
+        let side = if left.contains(pos) {
+            Side::Old
+        } else if right.contains(pos) {
+            Side::New
+        } else {
+            continue;
+        };
+        if !on_body(pos) {
+            continue;
+        }
+        let at = hit_at(model, side, tab.t, tab.hscroll, pos);
+        let doc = &model.pane(side).doc;
+        match button {
+            PointerButton::Primary => {
+                if mods.shift {
+                    tab.chain.reset();
+                    match &mut tab.sel {
+                        Some(sel) if sel.side == side => {
+                            sel.unit = select::Unit::Char;
+                            sel.extend(doc, at);
+                        }
+                        _ => tab.sel = Some(PaneSel::caret(side, at)),
+                    }
+                } else if mods.alt || mods.command || mods.ctrl {
+                    tab.chain.reset();
+                    tab.sel = Some(PaneSel::caret(side, at));
+                } else {
+                    let count = tab.chain.press(time, pos, delay, CHAIN_DIST);
+                    tab.sel = Some(PaneSel::press(side, doc, at, count));
+                }
+                tab.drag = true;
+                resp.request_focus();
+            }
+            PointerButton::Secondary => {
+                tab.chain.reset();
+                // A right press inside the selection keeps it for the menu's Copy.
+                let inside = tab.sel.as_ref().is_some_and(|s| s.side == side && !s.is_empty() && s.range().contains(&at));
+                if !inside {
+                    tab.sel = Some(PaneSel::caret(side, at));
+                }
+                resp.request_focus();
+            }
+            _ => tab.chain.reset(),
+        }
+    }
+    let mut dt = 0.0f64;
+    if tab.drag && !primary_down {
+        tab.drag = false;
+    }
+    if let (true, Some(pos), Some(side)) = (tab.drag, pointer, tab.sel.as_ref().map(|s| s.side)) {
+        // Past an edge the view scrolls, faster the farther the pointer is; both sides follow.
+        let pr = pane_rect(side);
+        let speed = |d: f32| (12.0 + d / 2.0) as f64 * stable_dt as f64;
+        if pos.y < pr.min.y {
+            dt -= speed(pr.min.y - pos.y);
+        } else if pos.y > pr.max.y {
+            dt += speed(pos.y - pr.max.y);
+        }
+        let text_x = pr.min.x + gw;
+        if pos.x < text_x && tab.hscroll > 0.0 {
+            tab.hscroll -= (speed(text_x - pos.x) * char_w as f64) as f32;
+        } else if pos.x > pr.max.x {
+            tab.hscroll += (speed(pos.x - pr.max.x) * char_w as f64) as f32;
+        }
+        let inner = pos2(pos.x, pos.y.clamp(pr.min.y + 1.0, pr.max.y - 1.0));
+        let at = hit_at(model, side, tab.t, tab.hscroll, inner);
+        if let Some(sel) = &mut tab.sel {
+            sel.extend(&model.pane(side).doc, at);
+        }
+        if dt != 0.0 || pos.x < text_x || pos.x > pr.max.x {
+            ui.ctx().request_repaint();
+        }
+    }
 
     let hovered = ui.rect_contains_pointer(area);
-    let mut dt = 0.0f64;
     if hovered {
         let d = ui.input(|i| i.smooth_scroll_delta);
         dt -= (d.y / LINE_H) as f64;
         tab.hscroll -= d.x;
     }
+    let mut copied = None;
     if resp.has_focus() {
-        ui.input(|i| {
-            if i.key_pressed(Key::ArrowDown) {
-                dt += 1.0;
-            }
-            if i.key_pressed(Key::ArrowUp) {
-                dt -= 1.0;
-            }
-            if i.key_pressed(Key::PageDown) {
-                dt += tab.view_lines - 2.0;
-            }
-            if i.key_pressed(Key::PageUp) {
-                dt -= tab.view_lines - 2.0;
-            }
+        // The arrows move the caret; without the filter egui would move the focus instead.
+        ui.memory_mut(|m| m.set_focus_lock_filter(body_id, EventFilter { horizontal_arrows: true, vertical_arrows: true, tab: false, escape: false }));
+        let page = (tab.view_lines - 2.0).max(1.0) as usize;
+        let (select_all, copy, moves) = ui.input_mut(|i| {
+            let all = i.consume_key(Modifiers::COMMAND, Key::A);
+            let copy_key = i.consume_key(Modifiers::COMMAND, Key::C);
+            let copy = copy_key || i.events.iter().any(|e| matches!(e, Event::Copy));
+            let moves: Vec<(Move, bool)> = i.events.iter().filter_map(|e| key_move(e, page)).collect();
+            (all, copy, moves)
         });
+        if select_all {
+            let side = tab.sel.as_ref().map_or(Side::New, |s| s.side);
+            let len = model.pane(side).doc.len_chars();
+            tab.sel = Some(PaneSel { anchor: 0, head: len, ..PaneSel::caret(side, len) });
+        }
+        if let Some(sel) = &mut tab.sel {
+            for (mv, extend) in moves.iter().copied() {
+                select::apply_move(sel, &model.pane(sel.side).doc, mv, extend);
+                match mv {
+                    Move::Up(n) if n > 1 => dt -= n as f64,
+                    Move::Down(n) if n > 1 => dt += n as f64,
+                    _ => {}
+                }
+            }
+            if !moves.is_empty() {
+                tab.current = None;
+                // Keep the caret on screen: the page moves above already scrolled.
+                let side = sel.side;
+                let pos = model.pane(side).doc.char_to_position(sel.head);
+                let old_side = side == Side::Old;
+                let t = tab.t + dt;
+                let top = model.map(t, old_side);
+                let line = pos.line as f64;
+                let rows = tab.view_lines.floor().max(1.0);
+                if line < top {
+                    dt = model.unmap(line, old_side) - tab.t;
+                } else if line + 1.0 > top + rows {
+                    dt = model.unmap(line + 1.0 - rows, old_side) - tab.t;
+                }
+                let text = model.pane(side).doc.line(pos.line);
+                let x = display_col(&text, pos.column) as f32 * char_w;
+                if x < tab.hscroll {
+                    tab.hscroll = x;
+                } else if x > tab.hscroll + text_w - 2.0 * char_w {
+                    tab.hscroll = x - text_w + 2.0 * char_w;
+                }
+            }
+            if copy && !sel.is_empty() {
+                copied = Some(model.pane(sel.side).doc.slice(sel.range()));
+            }
+        } else {
+            // No caret yet: the keys scroll the view.
+            for (mv, _) in moves {
+                match mv {
+                    Move::Up(n) => dt -= n as f64,
+                    Move::Down(n) => dt += n as f64,
+                    _ => {}
+                }
+            }
+        }
     }
+    let has_sel = tab.sel.as_ref().is_some_and(|s| !s.is_empty());
+    let mut menu_copy = false;
+    let mut menu_all = false;
+    resp.context_menu(|ui| {
+        ui.set_min_width(180.0);
+        if ui.add_enabled(has_sel, egui::Button::new("Copy").shortcut_text("⌘C")).clicked() {
+            menu_copy = true;
+            ui.close_menu();
+        }
+        if ui.add(egui::Button::new("Select All").shortcut_text("⌘A")).clicked() {
+            menu_all = true;
+            ui.close_menu();
+        }
+    });
+    if menu_copy || menu_all {
+        // The press on the menu took the focus away.
+        resp.request_focus();
+    }
+    if menu_all {
+        let side = tab.sel.as_ref().map_or(Side::New, |s| s.side);
+        let len = model.pane(side).doc.len_chars();
+        tab.sel = Some(PaneSel { anchor: 0, head: len, ..PaneSel::caret(side, len) });
+    }
+    if let (true, Some(sel)) = (menu_copy, &tab.sel) {
+        copied = Some(model.pane(sel.side).doc.slice(sel.range()));
+    }
+
     let total = model.total.max(1.0);
     let max_t = (model.total - tab.view_lines + 3.0).max(0.0);
     // Scrollbar: click jumps, drag moves the thumb.
@@ -553,6 +821,8 @@ fn body(tab: &mut DiffTab, ui: &mut Ui, theme_e: &EditorTheme, body_id: Id) {
     }
     if bar_resp.hovered() {
         ui.ctx().set_cursor_icon(CursorIcon::Default);
+    } else if hovered && (left.contains(ui.input(|i| i.pointer.hover_pos()).unwrap_or_default()) || right.contains(ui.input(|i| i.pointer.hover_pos()).unwrap_or_default())) {
+        ui.ctx().set_cursor_icon(CursorIcon::Text);
     }
     if dt != 0.0 {
         tab.t += dt;
@@ -569,8 +839,6 @@ fn body(tab: &mut DiffTab, ui: &mut Ui, theme_e: &EditorTheme, body_id: Id) {
     }
     tab.t = tab.t.clamp(0.0, max_t);
     let max_cols = model.old.max_cols.max(model.new.max_cols) as f32;
-    let gutter_w = |lines: usize| (lines.max(1).to_string().len().max(3) as f32) * char_w + 14.0;
-    let text_w = pane_w - gutter_w(model.old.lines.max(model.new.lines));
     tab.hscroll = tab.hscroll.clamp(0.0, (max_cols * char_w - text_w + 3.0 * char_w).max(0.0));
 
     let painter = ui.painter_at(full);
@@ -590,16 +858,78 @@ fn body(tab: &mut DiffTab, ui: &mut Ui, theme_e: &EditorTheme, body_id: Id) {
     let t = tab.t;
     let top_old = model.map(t, true);
     let top_new = model.map(t, false);
-    let gw = gutter_w(model.old.lines.max(model.new.lines));
-    draw_pane(&ui.painter_at(left), left, &mut model.old, &model.diff.hunks, top_old, tab.hscroll, gw, &metrics, theme_e, true);
-    draw_pane(&ui.painter_at(right), right, &mut model.new, &model.diff.hunks, top_new, tab.hscroll, gw, &metrics, theme_e, false);
+    let focused = resp.has_focus();
+    let marks = |side: Side| -> Marks {
+        match &tab.sel {
+            Some(s) if s.side == side => Marks { sel: s.range(), caret: focused.then_some(s.head) },
+            _ => Marks { sel: 0..0, caret: None },
+        }
+    };
+    let (marks_old, marks_new) = (marks(Side::Old), marks(Side::New));
+    draw_pane(&ui.painter_at(left), left, &mut model.old, &model.diff.hunks, top_old, tab.hscroll, gw, &metrics, theme_e, true, &marks_old);
+    draw_pane(&ui.painter_at(right), right, &mut model.new, &model.diff.hunks, top_new, tab.hscroll, gw, &metrics, theme_e, false, &marks_new);
     draw_ribbons(&ui.painter_at(ribbon), ribbon, model, top_old, top_new);
     draw_scrollbar(&painter, bar, model, tab.t, max_t, thumb_h, thumb_range, bar_resp.hovered() || tab.dragging_thumb.is_some());
+    tab.geom = Some(Geom { old: PaneGeom { rect: left, top: top_old }, new: PaneGeom { rect: right, top: top_new }, gutter_w: gw, hscroll: tab.hscroll, char_w });
 
     // A pane may still be parsing in the background; poll until its colors arrive.
     if !model.old.doc.syntax_ready() || !model.new.doc.syntax_ready() {
         ui.ctx().request_repaint_after(std::time::Duration::from_millis(50));
     }
+    copied
+}
+
+/// The caret move a key event asks for, with Shift held or not. macOS keys: Alt moves by
+/// words, Cmd to the line or text edges.
+fn key_move(e: &Event, page: usize) -> Option<(Move, bool)> {
+    let Event::Key { key, pressed: true, modifiers: m, .. } = e else { return None };
+    let mv = match key {
+        Key::ArrowLeft if m.command => Move::LineStart,
+        Key::ArrowLeft if m.alt => Move::WordLeft,
+        Key::ArrowLeft => Move::Left,
+        Key::ArrowRight if m.command => Move::LineEnd,
+        Key::ArrowRight if m.alt => Move::WordRight,
+        Key::ArrowRight => Move::Right,
+        Key::ArrowUp if m.command => Move::DocStart,
+        Key::ArrowUp => Move::Up(1),
+        Key::ArrowDown if m.command => Move::DocEnd,
+        Key::ArrowDown => Move::Down(1),
+        Key::Home if m.command => Move::DocStart,
+        Key::Home => Move::LineStart,
+        Key::End if m.command => Move::DocEnd,
+        Key::End => Move::LineEnd,
+        Key::PageUp => Move::Up(page),
+        Key::PageDown => Move::Down(page),
+        _ => return None,
+    };
+    Some((mv, m.shift))
+}
+
+/// The char index under `pos` in one pane. A press left of the text is column 0; one below the
+/// last line is the end of that line.
+#[allow(clippy::too_many_arguments)]
+fn hit(ui: &Ui, pane: &Pane, rect: Rect, top: f64, gutter_w: f32, hscroll: f32, pos: Pos2, m: &Metrics, th: &EditorTheme) -> usize {
+    if pane.lines == 0 {
+        return 0;
+    }
+    let line_f = top + ((pos.y - rect.min.y) / LINE_H) as f64;
+    if line_f < 0.0 {
+        return 0;
+    }
+    let line = line_f.floor() as usize;
+    if line >= pane.lines {
+        return pane.doc.line_end(pane.lines - 1);
+    }
+    let text = pane.doc.line(line);
+    let x = pos.x.max(rect.min.x + gutter_w) - (rect.min.x + gutter_w - hscroll);
+    let display = if x <= 0.0 {
+        0
+    } else {
+        // The same galley the pane draws (cached by egui), so a hit matches the glyphs.
+        let galley = ui.fonts(|f| f.layout_job(line_job(&text, &[], m, th)));
+        galley.cursor_from_pos(vec2(x, LINE_H / 2.0)).ccursor.index
+    };
+    pane.doc.line_start(line) + select::char_col(&text, display).min(pane.doc.line_len(line))
 }
 
 fn side_titles(source: &Source, d: &FileDiff) -> (String, String) {
@@ -620,8 +950,14 @@ fn side_titles(source: &Source, d: &FileDiff) -> (String, String) {
     }
 }
 
+/// The selection (char range, may be empty) and the drawn caret of one pane.
+struct Marks {
+    sel: Range<usize>,
+    caret: Option<usize>,
+}
+
 #[allow(clippy::too_many_arguments)]
-fn draw_pane(painter: &egui::Painter, rect: Rect, pane: &mut Pane, hunks: &[DiffHunk], top: f64, hscroll: f32, gutter_w: f32, m: &Metrics, th: &EditorTheme, old_side: bool) {
+fn draw_pane(painter: &egui::Painter, rect: Rect, pane: &mut Pane, hunks: &[DiffHunk], top: f64, hscroll: f32, gutter_w: f32, m: &Metrics, th: &EditorTheme, old_side: bool, marks: &Marks) {
     let first = top.floor().max(0.0) as usize;
     let count = (rect.height() / LINE_H).ceil() as usize + 2;
     let last = (first + count).min(pane.lines);
@@ -673,13 +1009,13 @@ fn draw_pane(painter: &egui::Painter, rect: Rect, pane: &mut Pane, hunks: &[Diff
         let spans = pane.spans[line].as_deref().unwrap_or(&[]);
         let job = line_job(&text, spans, m, th);
         let galley = text_painter.layout_job(job);
+        // X from the galley itself: glyph advances are rounded to pixels, so a constant char
+        // width drifts by a column over a long line.
+        let x_at = |col: usize| -> f32 {
+            let c = display_col(&text, col);
+            galley.pos_from_ccursor(egui::text::CCursor::new(c)).min.x
+        };
         if let (Some(k), Some(ranges)) = (kind, pane.inline.get(&line)) {
-            // X from the galley itself: glyph advances are rounded to pixels, so a constant
-            // char width drifts by a column over a long line.
-            let x_at = |col: usize| -> f32 {
-                let c = display_col(&text, col);
-                galley.pos_from_ccursor(egui::text::CCursor::new(c)).min.x
-            };
             for r in ranges {
                 let a = x_at(r.start);
                 let b = x_at(r.end).max(a + m.char_w * 0.5);
@@ -687,7 +1023,23 @@ fn draw_pane(painter: &egui::Painter, rect: Rect, pane: &mut Pane, hunks: &[Diff
                 text_painter.rect_filled(wr, 2.0, k.word());
             }
         }
+        let ls = pane.doc.line_start(line);
+        let le = ls + pane.doc.line_len(line);
+        let sel = &marks.sel;
+        if !sel.is_empty() && sel.start <= le && sel.end > ls {
+            let a = x_at(sel.start.max(ls) - ls);
+            let mut b = x_at(sel.end.min(le) - ls);
+            if sel.end > le {
+                // The line break is selected too: show it as a half-column, like the editor.
+                b += m.char_w * 0.5;
+            }
+            text_painter.rect_filled(Rect::from_min_max(pos2(x0 + a, y), pos2(x0 + b, y + LINE_H)), 0.0, th.selection);
+        }
+        let caret_x = marks.caret.filter(|c| (ls..=le).contains(c)).map(|c| x0 + x_at(c - ls));
         text_painter.galley(pos2(x0, y + (LINE_H - galley.size().y) / 2.0), galley, th.foreground);
+        if let Some(x) = caret_x {
+            text_painter.vline(x, y..=y + LINE_H, Stroke::new(2.0_f32, th.caret));
+        }
     }
 }
 
@@ -802,6 +1154,37 @@ pub fn open_worktree_diff(state: &mut AppState, path: &Path) {
     let Some(repo) = state.ws.git.repo.clone() else { return };
     let (rel, abs) = rel_and_abs(&repo, path);
     open(state, Source::Worktree { abs, rel });
+}
+
+/// True when the active tab is a HEAD vs working tree diff, the kind the Commit window opens.
+pub fn active_is_worktree_diff(state: &mut AppState) -> bool {
+    let Some(id) = state.ws.tabs.active else { return false };
+    match state.ws.tabs.get_mut(id).map(|t| &mut t.content) {
+        Some(crate::tabs::TabContent::Custom(c)) => c.as_any_mut().downcast_ref::<DiffTab>().is_some_and(|d| matches!(d.source, Source::Worktree { .. })),
+        _ => false,
+    }
+}
+
+/// Shows the working tree diff of `path` in the active worktree diff tab, like IDEA's preview
+/// diff: the tab keeps its place in the strip and no new tab opens. A diff of `path` that is
+/// already open elsewhere is activated instead, so one file never has two tabs.
+pub fn show_in_active_worktree_diff(state: &mut AppState, path: &Path) {
+    let Some(repo) = state.ws.git.repo.clone() else { return };
+    if !active_is_worktree_diff(state) {
+        return;
+    }
+    let Some(id) = state.ws.tabs.active else { return };
+    let (rel, abs) = rel_and_abs(&repo, path);
+    let tab = DiffTab::new(Source::Worktree { abs, rel });
+    let key = tab.key.clone();
+    if let Some(open) = state.ws.tabs.custom_by_key(&key) {
+        state.ws.tabs.activate(open);
+        return;
+    }
+    if let Some(t) = state.ws.tabs.get_mut(id) {
+        t.content = crate::tabs::TabContent::Custom(Box::new(tab));
+    }
+    reload(state, &key);
 }
 
 /// Opens (or focuses) a diff tab for `path` as changed by commit `oid` (parent vs commit).
