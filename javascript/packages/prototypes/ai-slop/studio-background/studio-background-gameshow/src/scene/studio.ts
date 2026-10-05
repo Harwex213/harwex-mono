@@ -384,14 +384,16 @@ function createFloor(materials: Materials, width: number, height: number): { gro
   inlay.polygonOffset = true;
   inlay.polygonOffsetFactor = -1;
   inlay.polygonOffsetUnits = -4;
+  // A warm glow, like lit brass in the scene reference.
+  inlay.emissive.set(0xffa040);
+  inlay.emissiveIntensity = 0.55;
   const rings = named(new THREE.Group(), "Inlays");
   rings.userData.auditIgnore = true;
   group.add(rings);
   // The rings share the studio centre with the colonnade, the steps and the trusses.
-  // The podium covers the centre out to 8.6 m, so every ring runs outside it, in the free bands
-  // between the furniture: lamp table 3 ends at 9.9 m, the palm pots span 12.2..13.6 m,
-  // and the nearest drapes stand at 16 m.
-  for (const radius of [10.3, 10.55, 11.8, 14.4, 14.65]) {
+  // The podium covers the centre out to 8.6 m, so every ring runs outside it, in the free bands:
+  // the furniture stays inside 10.3 m, the palm pots span 11.6..13.2 m, and the nearest drapes stand at 16 m.
+  for (const radius of [10.3, 10.55, 14.85, 15.1]) {
     const ring = new THREE.Mesh(new THREE.RingGeometry(radius - 0.025, radius + 0.025, 256), inlay);
     ring.rotation.x = -Math.PI / 2;
     rings.add(ring);
@@ -427,4 +429,4 @@ function bayHalfLength(offset: number): number {
   return (BAY_LENGTH / 2) * ((APOTHEM - offset) / APOTHEM);
 }
 
-export { CENTER_BAY, LAYOUT, SCONCE_HEIGHT, bayHalfLength, boundaryAngle, createStudio, inFrontOfBay, onColumnShaft, segmentAngle };
+export { CENTER_BAY, LAYOUT, SCONCE_HEIGHT, bayHalfLength, boundaryAngle, createStudio, inFrontOfBay, jointRadius, onColumnShaft, segmentAngle };

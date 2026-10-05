@@ -180,4 +180,4 @@ function createLights() {
   return { group, update };
 }
 
-export { createLights };
+export { beam, createLights };

@@ -9,13 +9,18 @@ import { createCity } from "../scene/city";
 import { named } from "../scene/geometry";
 import { createLights } from "../scene/lights";
 import { createEnvironment, createMaterials } from "../scene/materials";
+import { createBuffet } from "../scene/buffet";
+import { createDressing } from "../scene/dressing";
+import { createGameProps } from "../scene/gameProps";
 import { createProps } from "../scene/props";
+import { createSofas } from "../scene/sofas";
 import { createStudio } from "../scene/studio";
 import { createWheel } from "../scene/wheel";
 import { activeTab, dolly, fps, isPlaying, params, renderMode, spin, swing } from "../state";
 import type { ViewTab } from "../state";
 import { Editor } from "./editor";
 import { EditorLighting } from "./editorLighting";
+import { recenterPivots } from "./pivots";
 import { SceneDocument } from "./sceneDocument";
 
 const GAME_ASPECT = 16 / 9;
@@ -71,13 +76,15 @@ class StudioEngine {
     this.wheel = createWheel(materials);
     this.city = createCity();
     this.lights = createLights();
-    this.root.add(this.camera, studio.group, this.wheel.group, createProps(materials), this.lights.group, this.city.group);
+    this.root.add(this.camera, studio.group, this.wheel.group, createProps(materials), createDressing(materials), createSofas(materials), createBuffet(materials), createGameProps(), this.lights.group, this.city.group);
     this.scene.add(this.root);
 
     // Place everything at time 0 before the snapshot of code defaults.
     this.wheel.update(0, 0, true);
     this.rig.update(0, true, true);
     this.lights.update(0);
+    // Every selectable object gets its origin on itself, so the gizmo appears where the object is.
+    recenterPivots(this.root);
     this.document = new SceneDocument(this.root);
     const floor = studio.group.getObjectByName("Marble") as THREE.Mesh;
     this.lighting = new EditorLighting(this.renderer, this.scene, this.root, this.reflector, floor);
