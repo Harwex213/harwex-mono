@@ -4,13 +4,12 @@ import slotScreenUrl from "../assets/game-slot-screen.jpg";
 import { named, polar } from "./geometry";
 import { glow } from "./materials";
 
-// Three secondary game objects on the right side of the floor, each smaller than the hero wheel.
-// The jester wheel and the slot stand in the ring band right of the sofa, the tower on the front floor
-// inside the inner ring, between the host desk and the lamp table.
-// the jester money wheel, the "Bonus Deluxe" slot cabinet and "The Tower" acrylic plinko column.
+// Secondary game objects, each smaller than the hero wheel: the jester money wheel and "The Tower"
+// acrylic plinko column stand on the amphitheatre floor. The "Bonus Deluxe" slot cabinet is built here too,
+// but it stands in the Slot station of the casino hall (stations.ts).
 // Every part is stacked from the floor up; only true curved mounts (bosses in the rim, bulbs on the arc) are seated.
 
-// The wide shot camera stands here; the wheel and the slot turn their faces towards it.
+// The wide shot camera stands here; the jester wheel turns its face towards it.
 const CAMERA = new THREE.Vector2(0, 10);
 
 function loadTexture(url: string): THREE.Texture {
@@ -330,19 +329,13 @@ function createTower(materials: GameMaterials): THREE.Group {
   return tower;
 }
 
-function createGameProps() {
-  const materials = createGameMaterials();
+function createGameProps(materials: GameMaterials) {
   const group = named(new THREE.Group(), "Game Props", true);
 
   const jester = named(createJesterWheel(materials), "Jester Wheel");
   jester.position.copy(polar(THREE.MathUtils.degToRad(53), 12.2));
   faceCamera(jester);
   group.add(jester);
-
-  const slot = named(createSlotCabinet(materials), "Slot Cabinet");
-  slot.position.copy(polar(THREE.MathUtils.degToRad(72), 12.6));
-  faceCamera(slot);
-  group.add(slot);
 
   const tower = named(createTower(materials), "The Tower");
   tower.position.set(8.8, 0, 1.6);
@@ -353,4 +346,5 @@ function createGameProps() {
   return group;
 }
 
-export { createGameProps };
+export { createGameMaterials, createGameProps, createSlotCabinet };
+export type { GameMaterials };

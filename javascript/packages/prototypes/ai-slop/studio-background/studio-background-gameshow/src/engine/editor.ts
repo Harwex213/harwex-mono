@@ -111,7 +111,9 @@ class Editor {
       this.gizmo.enabled = this.enabled;
     });
     this.navigation = new SceneNavigation(this.camera, canvas);
-    this.navigation.lookAt(new THREE.Vector3(26, 17, 30), new THREE.Vector3(0, 4, -4));
+    // The start view stands in the casino hall, under the chandeliers, and looks across the hall
+    // at the Game Show station and the portal to the photo backdrop.
+    this.navigation.lookAt(new THREE.Vector3(-27, 6.5, 19), new THREE.Vector3(0, 2.5, 34));
 
     const grid = new THREE.GridHelper(50, 50, 0x5b6170, 0x2c3038);
     grid.name = "Editor Grid";

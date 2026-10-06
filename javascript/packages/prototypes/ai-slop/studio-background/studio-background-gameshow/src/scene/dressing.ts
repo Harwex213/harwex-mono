@@ -318,8 +318,8 @@ function createDressing(materials: Materials) {
   }
   group.add(lounges);
 
-  // Small plants beside the palms, on the side of the middle arches.
-  const plants = named(new THREE.Group(), "Plants");
+  // Small plants beside the palms, on the side of the middle arches. A folder: the two plants stand far apart.
+  const plants = named(new THREE.Group(), "Plants", true);
   for (const [index, side] of [-1, 1].entries()) {
     const plant = named(createSmallPlant(materials), `Small Plant ${index + 1}`);
     const point = polar(THREE.MathUtils.degToRad(side * 32), 15.6);

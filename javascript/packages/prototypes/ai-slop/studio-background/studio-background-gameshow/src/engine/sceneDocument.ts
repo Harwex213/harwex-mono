@@ -200,7 +200,7 @@ class SceneDocument {
     for (const [name, material] of collectMaterials(root)) {
       this.materialBaseline.set(name, readMaterial(material));
     }
-    this.apply(savedOverrides as SceneOverrides);
+    this.apply(savedOverrides as unknown as SceneOverrides);
 
     // Any edit marks the document dirty. The first call is the subscription itself.
     let first = true;

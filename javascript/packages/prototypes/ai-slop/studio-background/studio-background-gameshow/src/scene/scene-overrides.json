@@ -154,16 +154,16 @@
     },
     "Set Dressing/Plants/Small Plant 1": {
       "position": [
-        0.82743,
+        -6.67931,
         0,
-        1.41907
+        -11.71048
       ]
     },
     "Set Dressing/Plants/Small Plant 2": {
       "position": [
-        14.01309,
+        6.50635,
         0,
-        2.75185
+        -10.3777
       ],
       "rotation": [
         0,
@@ -212,18 +212,6 @@
         -180,
         2.56118,
         -180
-      ]
-    },
-    "Game Props/Slot Cabinet": {
-      "position": [
-        -6.03626,
-        0,
-        -1.03892
-      ],
-      "rotation": [
-        0,
-        44.98452,
-        0
       ]
     },
     "Game Props/The Tower": {

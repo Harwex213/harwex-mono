@@ -10,16 +10,19 @@ import { named } from "../scene/geometry";
 import { createLights } from "../scene/lights";
 import { createEnvironment, createMaterials } from "../scene/materials";
 import { createBuffet } from "../scene/buffet";
+import { createCasino, createCasinoMaterials } from "../scene/casino";
 import { createDressing } from "../scene/dressing";
-import { createGameProps } from "../scene/gameProps";
+import { createGameMaterials, createGameProps } from "../scene/gameProps";
 import { createProps } from "../scene/props";
 import { createSofas } from "../scene/sofas";
+import { createStations } from "../scene/stations";
 import { createStudio } from "../scene/studio";
 import { createWheel } from "../scene/wheel";
-import { activeTab, dolly, fps, isPlaying, params, renderMode, spin, swing } from "../state";
+import { activeTab, dolly, fps, isPlaying, params, renderMode, shot, spin, swing } from "../state";
 import type { ViewTab } from "../state";
 import { Editor } from "./editor";
 import { EditorLighting } from "./editorLighting";
+import { LightZones } from "./lightZones";
 import { recenterPivots } from "./pivots";
 import { SceneDocument } from "./sceneDocument";
 
@@ -38,8 +41,10 @@ class StudioEngine {
   private readonly wheel: ReturnType<typeof createWheel>;
   private readonly lights: ReturnType<typeof createLights>;
   private readonly city: ReturnType<typeof createCity>;
+  private readonly casino: ReturnType<typeof createCasino>;
   private readonly reflector: Reflector;
   private readonly lighting: EditorLighting;
+  private readonly zones: LightZones;
   private readonly bloom: UnrealBloomPass | null = null;
   private readonly composer: EffectComposer;
   private readonly renderPass: RenderPass;
@@ -65,29 +70,34 @@ class StudioEngine {
     this.scene.environment = createEnvironment(this.renderer);
     this.scene.environmentIntensity = 0.8;
 
-    this.rig = createCameraRig(this.camera);
+    this.rig = createCameraRig(this.camera, shot.value);
     // The camera is animated by the rig, so its transform is not saved.
     this.camera.userData.animated = true;
 
     const materials = createMaterials();
+    const casinoMaterials = createCasinoMaterials();
+    const gameMaterials = createGameMaterials();
     // The real size comes with the first layout; the reflector target is resized then.
     const studio = createStudio(materials, 1280, 720);
     this.reflector = studio.reflector;
     this.wheel = createWheel(materials);
     this.city = createCity();
     this.lights = createLights();
-    this.root.add(this.camera, studio.group, this.wheel.group, createProps(materials), createDressing(materials), createSofas(materials), createBuffet(materials), createGameProps(), this.lights.group, this.city.group);
+    this.casino = createCasino(materials, casinoMaterials);
+    this.root.add(this.camera, studio.group, this.wheel.group, createProps(materials), createDressing(materials), createSofas(materials), createBuffet(materials), createGameProps(gameMaterials), this.casino.group, createStations(materials, casinoMaterials, gameMaterials), this.lights.group, this.city.group);
     this.scene.add(this.root);
 
     // Place everything at time 0 before the snapshot of code defaults.
     this.wheel.update(0, 0, true);
     this.rig.update(0, true, true);
     this.lights.update(0);
+    this.casino.update(0);
     // Every selectable object gets its origin on itself, so the gizmo appears where the object is.
     recenterPivots(this.root);
     this.document = new SceneDocument(this.root);
     const floor = studio.group.getObjectByName("Marble") as THREE.Mesh;
     this.lighting = new EditorLighting(this.renderer, this.scene, this.root, this.reflector, floor);
+    this.zones = new LightZones(this.root);
 
     this.editor = new Editor({
       scene: this.scene,
@@ -119,9 +129,16 @@ class StudioEngine {
       this.composer.addPass(this.bloom);
     }
     this.composer.addPass(new OutputPass());
+    this.scene.updateMatrixWorld();
+    this.zones.warmUp(this.renderer, this.scene, this.camera, target);
 
     this.resizeObserver = new ResizeObserver(() => {
       this.sizeDirty = true;
+    });
+
+    // A new shot makes the camera travel to it; the first call (the current shot) changes nothing.
+    shot.subscribe((value) => {
+      this.rig.travelTo(value);
     });
 
     activeTab.subscribe((tab) => {
@@ -167,6 +184,7 @@ class StudioEngine {
     this.rig.seek(params.get("still") === "1" ? 0 : seconds);
     this.rig.update(0, true, true);
     this.lights.update(this.time);
+    this.casino.update(this.time);
     this.render(0);
   }
 
@@ -204,10 +222,12 @@ class StudioEngine {
     this.time += dt;
     this.wheel.update(dt, this.time, spin.value);
     // A paused rig leaves the camera alone, so a camera moved in the editor stays where it is.
-    if (swing.value || dolly.value) {
+    // A move to another shot runs to its end anyway.
+    if (swing.value || dolly.value || this.rig.isTraveling()) {
       this.rig.update(dt, swing.value, dolly.value);
     }
     this.lights.update(this.time);
+    this.casino.update(this.time);
   }
 
   private render(dt: number): void {
@@ -219,6 +239,8 @@ class StudioEngine {
     this.city.update(this.renderer, this.time);
     this.renderPass.camera = this.view === "game" ? this.camera : this.editor.camera;
     const editorLit = this.view === "scene" && renderMode.value === "editor";
+    // The lights of a room out of view are left out of this frame.
+    this.zones.update(this.renderPass.camera, editorLit);
     if (this.bloom) {
       this.bloom.enabled = !editorLit;
     }
@@ -235,6 +257,9 @@ class StudioEngine {
     this.last = now;
     if (isPlaying.value) {
       this.advance(dt);
+    } else if (this.rig.isTraveling()) {
+      // A shot picked while paused still gets its camera move.
+      this.rig.update(dt, false, false);
     }
     this.render(dt);
 

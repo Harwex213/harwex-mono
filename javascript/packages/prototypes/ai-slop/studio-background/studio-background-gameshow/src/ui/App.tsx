@@ -2,8 +2,8 @@ import { useSignals } from "@preact/signals-react/runtime";
 import { useEffect, useRef } from "react";
 import { getEngine } from "../engine/engine";
 import type { Signal } from "@preact/signals-react";
-import { activeTab, dolly, fps, isPlaying, isSolo, redoCount, renderMode, saveStatus, spin, swing, transformMode, undoCount } from "../state";
-import type { RenderMode, SaveStatus, TransformMode, ViewTab } from "../state";
+import { activeTab, dolly, fps, isPlaying, isSolo, redoCount, renderMode, saveStatus, shot, spin, swing, transformMode, undoCount } from "../state";
+import type { RenderMode, SaveStatus, Shot, TransformMode, ViewTab } from "../state";
 import styles from "./Editor.module.css";
 import { Hierarchy } from "./Hierarchy";
 import { Inspector } from "./Inspector";
@@ -23,6 +23,14 @@ const CHANNELS: { label: string; title: string; state: Signal<boolean> }[] = [
   { label: "Swing", title: "Slow crane drift of the camera", state: swing },
   { label: "Dolly", title: "Wide -> close -> wide camera move", state: dolly },
   { label: "Spin", title: "Wheel spin cycle", state: spin },
+];
+
+// Camera shots: a click makes the Main Camera travel to the shot.
+const SHOT_BUTTONS: { shot: Shot; label: string; title: string }[] = [
+  { shot: "wheel", label: "Wheel", title: "Hero wheel in the amphitheatre (?shot=wheel)" },
+  { shot: "slot", label: "Slot", title: "Bonus Deluxe slot station (?shot=slot)" },
+  { shot: "dice", label: "Dice", title: "Dice bonus station (?shot=dice)" },
+  { shot: "gameshow", label: "Game Show", title: "Game Show station with the casino backdrop (?shot=gameshow)" },
 ];
 
 const RENDER_MODES: { mode: RenderMode; label: string; title: string }[] = [
@@ -79,6 +87,21 @@ function Toolbar() {
             }}
           >
             {channel.label}
+          </button>
+        ))}
+      </div>
+      <div className={styles.toolGroup}>
+        {SHOT_BUTTONS.map((item) => (
+          <button
+            key={item.shot}
+            type="button"
+            title={item.title}
+            className={[styles.toolButton, shot.value === item.shot ? styles.toolButtonActive : ""].join(" ")}
+            onClick={() => {
+              shot.value = item.shot;
+            }}
+          >
+            {item.label}
           </button>
         ))}
       </div>

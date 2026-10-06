@@ -284,4 +284,4 @@ function createProps(materials: Materials) {
   return group;
 }
 
-export { createLampTable, createProps, drum, flutes, mesh, SCALE, slab };
+export { createCurtain, createLampTable, createProps, drum, flutes, mesh, SCALE, slab };
