@@ -303,11 +303,13 @@ fn search_everywhere_ranking_with_cmd_shift_o() {
     ide.wait_for("second hit opened", |s| s.ws.tabs.active_editor().is_some_and(|e| e.path.ends_with(&second)));
 }
 
-/// A row whose path is cut with `…` shows the full path in a tooltip on hover. A row that fits
-/// shows no tooltip.
+/// A row whose path is cut with `…` expands in place on hover (IDEA's expandable item): in the
+/// same frame an overlay at the row's position shows the whole row on one line, past the
+/// popup's right edge. A row that fits shows none. In a narrow window the overlay moves left
+/// to stay on screen.
 #[test]
-fn search_everywhere_full_path_tooltip() {
-    let fx = Fixture::new(SUITE, "search_tooltip");
+fn search_everywhere_expands_cut_row() {
+    let fx = Fixture::new(SUITE, "search_expand");
     let repo = basic_repo(fx.path("repo"));
     let deep = "packages/frontend-application-shell/src/features/authentication/components/forms/inputs/validated_password_field_utils.ts";
     repo.write(deep, "x\n");
@@ -319,15 +321,32 @@ fn search_everywhere_full_path_tooltip() {
     ide.type_text("util");
     ide.wait_for("results", |s| s.ws.search.results().iter().any(|h| h.path == deep) && s.ws.search.results().iter().any(|h| h.path == "src/util_short.ts"));
     ide.settle();
+    let expanded = |ide: &Ide| harwex_ide::util::expanded_row(&ide.ctx());
 
     let (dir, name) = deep.rsplit_once('/').unwrap();
-    ide.hover(&format!("{name}  {dir}"));
-    ide.wait_until("full path tooltip", |ide| ide.shows_text(deep));
-    ide.snapshot_here("search_path_tooltip");
+    let label = format!("{name}  {dir}");
+    let row = ide.rect(&label);
+    ide.move_to(row.center());
+    let (rect, text) = expanded(&ide).expect("the overlay shows in the frame the pointer arrives");
+    assert_eq!(text, label, "the overlay holds the whole row");
+    assert_eq!((rect.min, rect.height()), (row.min, row.height()), "the overlay sits on the row");
+    assert!(rect.max.x > row.max.x + 20.0, "the overlay runs past the popup: {rect:?} vs {row:?}");
+    assert!(rect.max.x <= 1280.0);
+    assert!(!ide.shows_text(deep), "no tooltip");
+    ide.snapshot_here("search_expanded_row");
 
     ide.hover("util_short.ts  src");
-    ide.steps(60);
-    assert!(!ide.shows_text("src/util_short.ts"), "a path that fits shows no tooltip");
+    assert!(expanded(&ide).is_none(), "a row that fits does not expand");
+    ide.steps(30);
+    assert!(expanded(&ide).is_none());
+
+    // Narrow window: the overlay ends at the screen edge and moves left; it never wraps.
+    ide.resize(egui::vec2(800.0, 800.0));
+    let row = ide.rect(&label);
+    ide.move_to(row.center());
+    let (rect, _) = expanded(&ide).expect("overlay in a narrow window");
+    assert!((rect.max.x - 800.0).abs() < 0.5 && rect.min.x < row.min.x && rect.min.x >= 0.0, "{rect:?} vs {row:?}");
+    assert_eq!(rect.height(), row.height(), "one line");
 }
 
 /// The status bar holds the breadcrumbs on the left, the language and the memory indicator on

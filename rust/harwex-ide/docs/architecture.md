@@ -28,7 +28,7 @@ A change that breaks a rule needs a written reason under "Recorded exceptions" a
 7. The watcher (`app/src/watcher.rs`) batches events until 200 ms of quiet, or at most 1 s after the first event. `AppState` then reloads only the directories, editors and git state that the batch touches, and re-reads `.harwex/ide.toml` when it changed. rust-analyzer watches the files itself.
 8. There are no plugins.
 9. Asserted budgets: the `ide-editor` release benchmark and the warm Go to Declaration in `rust_nav` (< 500 ms). There is no cold-start budget for language servers, because the cold time depends on the workspace. See `docs/timings.md`.
-10. `app/src/lang/config.rs` parses `.harwex/ide.toml`: `languages`, `idle_timeout_secs`, `[rust]` (`server`, `idle_timeout_secs`, `check_on_save`, `build_scripts`, `proc_macros`), `[rust.init]`, `[ts] idle_timeout_secs` and `[diagnostics]` (`ts`, `[diagnostics.oxlint] enabled, type_aware, type_check`, `[diagnostics.eslint] enabled`). Problems become warning toasts and fall back to defaults.
+10. `app/src/lang/config.rs` parses `.harwex/ide.toml`: `languages`, `idle_timeout_secs`, `[rust]` (`server`, `idle_timeout_secs`, `check_on_save`, `build_scripts`, `proc_macros`), `[rust.init]`, `[ts] idle_timeout_secs` and `[diagnostics]` (`ts`, `[diagnostics.oxlint] enabled, type_aware, type_check`, `[diagnostics.eslint] enabled`) and `[format.oxfmt]` (`on_save`, `extensions`, `timeout_secs`; the Settings dialog writes it). Problems become warning toasts and fall back to defaults.
 
 ## Diagnostics: sources and why no extra type checker
 

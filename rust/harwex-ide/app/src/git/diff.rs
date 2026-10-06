@@ -420,6 +420,8 @@ pub struct DiffTab {
     /// Bumped by every new model, so a relayout of an older model is dropped.
     model_gen: u64,
     live: Live,
+    /// The file exists on disk now (checked by each reload); `None` until the first one lands.
+    on_disk: Option<bool>,
 }
 
 /// One pane as drawn last frame.
@@ -459,7 +461,7 @@ impl DiffTab {
                 (format!("diff:local:{rev}:{}", rel.display()), format!("{} ({short} vs Local)", name_of(rel)), format!("{}: {short} vs the working tree", rel.display()))
             }
         };
-        DiffTab { key, title, tooltip, source, load: Load::Loading, t: 0.0, hscroll: 0.0, current: None, goto_first: true, reloading: false, reload_pending: false, view_lines: 30.0, dragging_thumb: None, sel: None, chain: ClickChain::default(), drag: false, geom: None, model_gen: 0, live: Live::default() }
+        DiffTab { key, title, tooltip, source, load: Load::Loading, t: 0.0, hscroll: 0.0, current: None, goto_first: true, reloading: false, reload_pending: false, view_lines: 30.0, dragging_thumb: None, sel: None, chain: ClickChain::default(), drag: false, geom: None, model_gen: 0, live: Live::default(), on_disk: None }
     }
 
     fn set_model(&mut self, model: Model) {
@@ -582,6 +584,11 @@ impl DiffTab {
         !self.live.relayout_running && !self.reloading
     }
 
+    /// Jump to Source can act: the diff is loaded, holds text, and its file exists on disk now.
+    pub fn can_jump(&self) -> bool {
+        self.on_disk == Some(true) && self.model().is_some_and(|m| !m.diff.binary)
+    }
+
     /// The right side is the working-tree file and can be edited.
     fn editable_source(&self) -> bool {
         matches!(self.source, Source::Worktree { .. } | Source::RevLocal { .. }) && !self.is_binary()
@@ -648,7 +655,7 @@ impl CustomTab for DiffTab {
     }
     fn ui(&mut self, ui: &mut Ui, env: &mut TabEnv) {
         let body_id = crate::workspace::wid(("diff-body", &self.key));
-        toolbar(self, ui, env, body_id);
+        let jump = toolbar(self, ui, body_id);
         match &self.load {
             Load::Loading => {
                 ui.add_space(20.0);
@@ -693,6 +700,13 @@ impl CustomTab for DiffTab {
             None => hidden.as_mut(),
         };
         let out = body(self, ui, env.editor_theme, body_id, live_doc);
+        if (jump || out.jump) && self.can_jump() {
+            let live_doc = match editor.as_ref() {
+                Some((_, e)) => Some(&e.doc),
+                None => hidden.as_ref(),
+            };
+            jump_to_source(self, live_doc, env);
+        }
         let live_doc = match editor.as_mut() {
             Some((_, e)) => Some(&mut e.doc),
             None => hidden.as_mut(),
@@ -728,7 +742,9 @@ impl CustomTab for DiffTab {
     }
 }
 
-fn toolbar(tab: &mut DiffTab, ui: &mut Ui, env: &mut TabEnv, body_id: Id) {
+/// Draws the toolbar and runs Prev / Next. Returns true when F4 or the Jump to Source button
+/// asked for a jump; the caller jumps after the body drew, when the live document is at hand.
+fn toolbar(tab: &mut DiffTab, ui: &mut Ui, body_id: Id) -> bool {
     let focused = ui.ctx().memory(|m| m.focused());
     let keys_ok = focused.is_none() || focused == Some(body_id);
     let (f7, shift_f7, f4) = if keys_ok {
@@ -742,17 +758,20 @@ fn toolbar(tab: &mut DiffTab, ui: &mut Ui, env: &mut TabEnv, body_id: Id) {
         (false, false, false)
     };
     let (hunks, identical) = tab.model().map_or((0, false), |m| (m.diff.hunks.len(), m.diff.hunks.is_empty() && !m.diff.binary));
-    let mut jump = f4;
+    let can_jump = tab.can_jump();
+    let mut jump = f4 && can_jump;
     egui::Frame::NONE.fill(theme::T.island_bg).inner_margin(egui::Margin::symmetric(8, 3)).show(ui, |ui| {
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 4.0;
             if ui.add_enabled(hunks > 0, egui::Button::new("Prev").small()).on_hover_text("Previous Difference (⇧F7)").clicked() || shift_f7 {
                 tab.step(false);
             }
-            if ui.add_enabled(hunks > 0, egui::Button::new("Next").small()).on_hover_text("Next Difference (F7)").clicked() || f7 {
+            let next = ui.add_enabled(hunks > 0, egui::Button::new("Next").small()).on_hover_text("Next Difference (F7)");
+            if next.clicked() || f7 {
                 tab.step(true);
             }
-            if matches!(tab.source, Source::Worktree { .. }) && ui.add(egui::Button::new("Jump to Source").small()).on_hover_text("F4").clicked() {
+            let disabled_tip = if tab.on_disk == Some(false) { "File no longer exists" } else { "Jump to Source (F4)" };
+            if jump_button(ui, can_jump, next.rect.height(), disabled_tip).clicked() {
                 jump = true;
             }
             ui.add_space(8.0);
@@ -769,15 +788,110 @@ fn toolbar(tab: &mut DiffTab, ui: &mut Ui, env: &mut TabEnv, body_id: Id) {
             }
         });
     });
-    if jump {
-        if let (Source::Worktree { abs, .. }, Some(m)) = (&tab.source, tab.model()) {
-            let line = match tab.current {
-                Some(h) => m.diff.hunks.get(h).map_or(0, |h| h.new_lines.start),
-                None => m.map(tab.t + (tab.view_lines / 3.0).floor(), false) as usize,
+    jump
+}
+
+/// The Jump to Source icon button, as tall as the small text buttons beside it.
+fn jump_button(ui: &mut Ui, enabled: bool, h: f32, disabled_tip: &str) -> egui::Response {
+    let resp = ui
+        .add_enabled_ui(enabled, |ui| {
+            let (rect, resp) = ui.allocate_exact_size(vec2(h + 4.0, h), Sense::click());
+            crate::util::label_widget(&resp, egui::WidgetType::Button, "Jump to Source");
+            let down = resp.is_pointer_button_down_on();
+            if resp.hovered() || down {
+                ui.painter().rect_filled(rect, theme::T.radius.button, if down { theme::T.button_hover } else { theme::T.hover });
+            }
+            let color = match (resp.enabled(), resp.hovered()) {
+                (false, _) => theme::T.text_dim,
+                (true, true) => theme::T.icon_active,
+                (true, false) => theme::T.icon,
             };
-            env.commands.push(AppCommand::OpenLocation { path: abs.clone(), pos: Some(Position::new(line.min(m.new.lines.saturating_sub(1)), 0)) });
-        }
+            let size = theme::T.space.icon.min(h - 2.0);
+            crate::icons::paint(ui.painter(), Rect::from_center_size(rect.center(), vec2(size, size)), crate::icons::Icon::Edit, color);
+            resp
+        })
+        .inner;
+    resp.on_hover_text("Jump to Source (F4)").on_disabled_hover_text(disabled_tip)
+}
+
+/// Jump to Source: opens the file in an editor tab at the line the diff points at. A working-tree
+/// right side opens as it is; a revision's line is mapped to the file as it is now on a worker.
+fn jump_to_source(tab: &DiffTab, live: Option<&Document>, env: &mut TabEnv) {
+    let Some(m) = tab.model() else { return };
+    let (side, line, col) = jump_origin(tab, m, live);
+    let (line, keep_col) = match side {
+        Side::Old => map_old_line(&m.diff.hunks, line),
+        Side::New => (line, true),
+    };
+    let col = if keep_col { col } else { 0 };
+    let abs = tab.abs().to_path_buf();
+    if tab.editable_source() {
+        let doc = doc_for(m, live, Side::New);
+        let line = line.min(doc.line_count().saturating_sub(1));
+        let pos = Position::new(line, col.min(doc.line_len(line)));
+        env.commands.push(AppCommand::OpenLocation { path: abs, pos: Some(pos) });
+        return;
     }
+    let revision = m.new_text.clone();
+    env.jobs.post(move |state| jump_from_revision(state, abs, revision, line, col));
+}
+
+/// Where Jump to Source starts: the change F7 last moved to (its right side), else the caret,
+/// else the line a third down the view on the right side.
+fn jump_origin(tab: &DiffTab, m: &Model, live: Option<&Document>) -> (Side, usize, usize) {
+    if let Some(h) = tab.current.and_then(|c| m.diff.hunks.get(c)) {
+        return (Side::New, h.new_lines.start, 0);
+    }
+    if let Some(sel) = &tab.sel {
+        let doc = doc_for(m, live, sel.side);
+        let pos = doc.char_to_position(sel.head.min(doc.len_chars()));
+        return (sel.side, pos.line, pos.column);
+    }
+    (Side::New, m.map(tab.t + (tab.view_lines / 3.0).floor(), false) as usize, 0)
+}
+
+/// Maps `line` of the old text through `hunks` to the new text. An unchanged line shifts by the
+/// blocks above it; a changed line goes to its paired line; a deleted line goes to the nearest
+/// following line. The flag says whether the column still points at the same text.
+fn map_old_line(hunks: &[DiffHunk], line: usize) -> (usize, bool) {
+    let mut delta = 0isize;
+    for h in hunks {
+        if line < h.old_lines.start {
+            break;
+        }
+        if h.old_lines.contains(&line) {
+            return match h.pairs.iter().find(|p| p.old == Some(line)).and_then(|p| p.new) {
+                Some(n) => (n, true),
+                None => (h.new_lines.end, false),
+            };
+        }
+        delta = h.new_lines.end as isize - h.old_lines.end as isize;
+    }
+    ((line as isize + delta).max(0) as usize, true)
+}
+
+/// The second step of a jump from a revision: maps the revision's `line` to the file as the user
+/// has it now (the editor tab's buffer, else the disk) and opens it there.
+fn jump_from_revision(state: &mut AppState, abs: PathBuf, revision: String, line: usize, col: usize) {
+    let buffer = state.ws.tabs.editor_by_path(&abs).and_then(|id| state.ws.tabs.editor_mut(id)).map(|e| e.doc.text_snapshot());
+    let path = abs.clone();
+    state.jobs.spawn_quiet(
+        move || {
+            let now = match buffer {
+                Some(snap) => snap.file_text(),
+                None => String::from_utf8_lossy(&std::fs::read(&path).ok()?).into_owned(),
+            };
+            let (line, keep_col) = map_old_line(&ide_git::diff_texts(&revision, &now), line);
+            let lines: Vec<&str> = now.split('\n').collect();
+            let line = line.min(lines.len().saturating_sub(1));
+            let col = if keep_col { col.min(lines.get(line).map_or(0, |l| l.trim_end_matches('\r').chars().count())) } else { 0 };
+            Some(Position::new(line, col))
+        },
+        move |state, pos| match pos {
+            Some(pos) => state.open_location(&abs, Some(pos), true),
+            None => state.notifications.warn("Jump to Source", format!("File no longer exists: {}", abs.display())),
+        },
+    );
 }
 
 struct Metrics {
@@ -792,6 +906,8 @@ struct BodyOut {
     /// The live document changed.
     edited: bool,
     has_focus: bool,
+    /// The context menu's Jump to Source was chosen.
+    jump: bool,
 }
 
 /// One keyboard or clipboard request, in the order the frame got them.
@@ -811,7 +927,8 @@ fn doc_for<'a>(model: &'a Model, live: Option<&'a Document>, side: Side) -> &'a 
 /// Draws the panes and handles their input. `live` is the working-tree document when the new
 /// side is editable.
 fn body(tab: &mut DiffTab, ui: &mut Ui, theme_e: &EditorTheme, body_id: Id, mut live: Option<&mut Document>) -> BodyOut {
-    let mut out = BodyOut { copied: None, edited: false, has_focus: false };
+    let mut out = BodyOut { copied: None, edited: false, has_focus: false, jump: false };
+    let can_jump = tab.can_jump();
     let font = theme::T.mono_font();
     // The laid-out column step, like the editor (`ide_editor::column_advance`).
     let char_w = ui.fonts(|f| ide_editor::column_advance(f, &font));
@@ -890,6 +1007,8 @@ fn body(tab: &mut DiffTab, ui: &mut Ui, theme_e: &EditorTheme, body_id: Id, mut 
         }
         let doc = doc_for(model, live.as_deref(), side);
         let at = hit_at(model, doc, side, tab.t, tab.hscroll, pos);
+        // The caret now says where the user looks; Jump to Source follows it, not the last F7.
+        tab.current = None;
         match button {
             PointerButton::Primary => {
                 if mods.shift {
@@ -1068,6 +1187,12 @@ fn body(tab: &mut DiffTab, ui: &mut Ui, theme_e: &EditorTheme, body_id: Id, mut 
     let (mut menu_cut, mut menu_copy, mut menu_paste, mut menu_all) = (false, false, false, false);
     resp.context_menu(|ui| {
         ui.set_min_width(180.0);
+        let jump = ui.add_enabled(can_jump, egui::Button::new("Jump to Source").shortcut_text("F4"));
+        if jump.on_disabled_hover_text("File no longer exists").clicked() {
+            out.jump = true;
+            ui.close_menu();
+        }
+        ui.separator();
         if editable && ui.add(egui::Button::new("Cut").shortcut_text("⌘X")).clicked() {
             menu_cut = true;
             ui.close_menu();
@@ -1585,6 +1710,8 @@ fn live_snapshot(state: &mut AppState, key: &str) -> Option<(DocRef, u64, TextSn
 
 /// The file's bytes for a clean hidden document: (hidden generation, doc version, bytes).
 type DiskRead = (u64, u64, Vec<u8>);
+/// A reload's answer: the new model (`None` when nothing changed) and the disk read.
+type ReloadResult = Result<(Option<Model>, Option<DiskRead>), String>;
 
 fn reload(state: &mut AppState, key: &str) {
     let Some(repo) = state.ws.git.repo.clone() else { return };
@@ -1595,6 +1722,7 @@ fn reload(state: &mut AppState, key: &str) {
     }
     tab.reloading = true;
     let source = tab.source.clone();
+    let source_abs = tab.abs().to_path_buf();
     let prev_texts = tab.model().map(|m| (m.diff.old_text.clone(), m.new_text.clone()));
     // A clean hidden document follows the disk like an editor tab (the watcher's reload).
     let reread = tab.live.hidden.as_ref().filter(|h| !h.is_dirty()).map(|h| (tab.live.hidden_gen, h.version(), tab.abs().to_path_buf()));
@@ -1613,6 +1741,7 @@ fn reload(state: &mut AppState, key: &str) {
                 Source::Commits { oids, rel, .. } => repo.diff_commits_file(oids, rel),
                 Source::RevLocal { rev, rel, .. } => repo.diff_with_working_tree_file(rev, rel),
             };
+            let on_disk = source_abs.exists();
             let disk = reread.and_then(|(gen, version, path)| std::fs::read(path).ok().map(|b| (gen, version, b)));
             match diff {
                 Ok(d) => {
@@ -1620,16 +1749,17 @@ fn reload(state: &mut AppState, key: &str) {
                     let buffer = live.map(|(_, _, snap)| snap.file_text());
                     let new_text = buffer.as_ref().unwrap_or(&d.new_text);
                     if prev_texts.as_ref().is_some_and(|(o, n)| *o == d.old_text && n == new_text) {
-                        return Ok((None, disk));
+                        return (Ok((None, disk)), on_disk);
                     }
-                    Ok((Some(Model::build(d, buffer)), disk))
+                    (Ok((Some(Model::build(d, buffer)), disk)), on_disk)
                 }
-                Err(e) => Err(e.to_string()),
+                Err(e) => (Err(e.to_string()), on_disk),
             }
         },
-        move |state, res: Result<(Option<Model>, Option<DiskRead>), String>| {
+        move |state, (res, on_disk): (ReloadResult, bool)| {
             let Some(tab) = state.ws.tabs.custom_mut::<DiffTab>(&key) else { return };
             tab.reloading = false;
+            tab.on_disk = Some(on_disk);
             match res {
                 Ok((model, disk)) => {
                     if let Some(m) = model {
@@ -1858,5 +1988,24 @@ pub fn test_next(state: &mut AppState, n: usize) {
     }
     if let Some(m) = tab.model() {
         eprintln!("[test] diff {}: {} hunks, {} / {} lines, current {:?}, t {:.1}, view {:.1}, hunk starts {:?}", tab.rel().display(), m.diff.hunks.len(), m.old.lines, m.new.lines, tab.current, tab.t, tab.view_lines, (0..m.diff.hunks.len()).map(|h| m.hunk_v0(h)).collect::<Vec<_>>());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::map_old_line;
+
+    #[test]
+    fn old_lines_map_through_the_blocks() {
+        let old = "a\nb\nc\nd\ne\n";
+        // b changed, c deleted, a line inserted after d.
+        let new = "a\nB\nd\nx\ne\n";
+        let hunks = ide_git::diff_texts(old, new);
+        assert_eq!(map_old_line(&hunks, 0), (0, true), "above every block");
+        assert_eq!(map_old_line(&hunks, 1).0, 1, "a changed line goes to its partner");
+        assert_eq!(map_old_line(&hunks, 3), (2, true), "below a deletion it moves up");
+        assert_eq!(map_old_line(&hunks, 4), (4, true), "below an insertion it moves down");
+        let deleted = ide_git::diff_texts("a\nb\nc\n", "a\nc\n");
+        assert_eq!(map_old_line(&deleted, 1), (1, false), "a deleted line goes to the next line");
     }
 }

@@ -185,10 +185,22 @@ pub struct Tabs {
     /// Strip indexes and scroll positions for files that Cmd+Shift+T is opening; `add` puts
     /// the tab back there.
     reopen_at: HashMap<PathBuf, (usize, Option<ViewState>)>,
+    /// The tab being dragged to a new place in the strip.
+    drag: Option<TabDrag>,
+}
+
+/// An editor tab drag in progress (`Tabs::show_bar`). The tab is found by its id, so the drag
+/// survives tabs that open or close meanwhile.
+struct TabDrag {
+    id: TabId,
+    /// Pointer minus the tab's top left corner at the press, so the tab does not jump.
+    grab: Vec2,
 }
 
 pub enum TabBarEvent {
     Activate(TabId),
+    /// A dragged tab was dropped: it moves to this strip index.
+    Move(TabId, usize),
     Close(TabId),
     /// A close action of the tab menu, or Alt+click on a tab's close button (Close Others).
     CloseMany(TabId, CloseScope),
@@ -266,6 +278,32 @@ impl Tabs {
             self.mru.retain(|&t| t != id);
             self.mru.insert(0, id);
         }
+    }
+
+    /// Moves tab `id` to strip index `to` (clamped to the strip) and makes it active, like a
+    /// drop in IDEA.
+    pub fn move_tab(&mut self, id: TabId, to: usize) {
+        let Some(from) = self.index(id) else { return };
+        let tab = self.list.remove(from);
+        self.list.insert(to.min(self.list.len()), tab);
+        self.activate(id);
+    }
+
+    /// The tab being dragged in the strip, if any.
+    pub fn dragging(&self) -> Option<TabId> {
+        self.drag.as_ref().map(|d| d.id)
+    }
+
+    /// Escape during a tab drag puts the tab back. Runs in `app::shortcuts`, before the editor
+    /// and the terminal could take the key. Returns true when it took the Escape.
+    pub fn take_escape(&mut self, ctx: &egui::Context) -> bool {
+        if self.drag.is_none() || !ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape)) {
+            return false;
+        }
+        self.drag = None;
+        // egui must forget the drag too, or the release would still drop the tab.
+        ctx.stop_dragging();
+        true
     }
 
     pub fn index(&self, id: TabId) -> Option<usize> {
@@ -391,8 +429,12 @@ impl Tabs {
     /// The tab strip. Tabs wrap onto as many rows as the width needs, in strip order, so a
     /// click never moves a tab to another row. Middle-click closes, like IDEA. Flat tabs; the
     /// active one is a lighter rounded fill, with no underline.
-    /// `modified` tells the menu which tabs Close Unmodified keeps.
-    pub fn show_bar(&self, ui: &mut Ui, modified: &dyn Fn(&Tab) -> bool) -> Option<TabBarEvent> {
+    /// `any_unmodified` tells the menu whether Close Unmodified would close anything.
+    ///
+    /// A drag moves a tab, like IDEA: the other tabs stay in place, the dragged tab follows the
+    /// pointer over them, and a marker shows where the drop inserts it. The press that starts
+    /// a drag has already activated the tab.
+    pub fn show_bar(&mut self, ui: &mut Ui, any_unmodified: bool) -> Option<TabBarEvent> {
         let t = &theme::T;
         let row_h = t.space.tab_h;
         let width = ui.available_width();
@@ -402,14 +444,66 @@ impl Tabs {
         let widths: Vec<f32> = galleys.iter().map(|g| tab_width(g.size().x).min(max_w)).collect();
         let (slots, rows) = flow(&widths, width, row_h);
         let (bar, _) = ui.allocate_exact_size(Vec2::new(width, rows as f32 * row_h), Sense::hover());
-        let any_unmodified = self.list.iter().any(|t| !modified(t));
+        let slots: Vec<Rect> = slots.into_iter().map(|s| s.translate(bar.min.to_vec2())).collect();
+
+        let dragged = self.drag.as_ref().and_then(|d| self.index(d.id).map(|i| (i, d.grab)));
+        if dragged.is_none() {
+            self.drag = None;
+        }
+        let pointer = ui.ctx().pointer_latest_pos();
+        // Where the dragged tab floats, and the drop (strip index, marker line). Away from the
+        // strip there is no drop: a release there cancels.
+        let float = dragged.map(|(d, grab)| {
+            let size = slots[d].size();
+            let Some(p) = pointer.filter(|p| drop_zone(bar).contains(*p)) else { return (d, slots[d], None) };
+            let min = (p - grab).clamp(bar.min + Vec2::new(0.0, 4.0), (bar.max - size - Vec2::new(0.0, 4.0)).max(bar.min));
+            let rect = Rect::from_min_size(min, size);
+            (d, rect, drop_slot(&slots, d, rect.center(), bar.min.y, row_h))
+        });
+
         let mut event = None;
-        for (i, ((tab, galley), slot)) in self.list.iter().zip(galleys).zip(slots).enumerate() {
-            let rect = slot.translate(bar.min.to_vec2());
-            let menu = MenuState { index: i, count: self.list.len(), any_unmodified };
-            if let Some(e) = tab_button(ui, tab, self.active == Some(tab.id), rect, galley, menu) {
-                event = Some(e);
+        let mut floating = None;
+        let count = self.list.len();
+        for (i, (tab, galley)) in self.list.iter().zip(galleys).enumerate() {
+            let menu = MenuState { index: i, count, any_unmodified };
+            let active = self.active == Some(tab.id);
+            let (rect, mode) = match float {
+                Some((d, rect, _)) if d == i => {
+                    // The tab's old place stays as a dim hole, so the strip does not re-flow.
+                    ui.painter().rect_filled(slots[i], t.radius.button, t.hover);
+                    floating = Some((tab, galley, rect));
+                    continue;
+                }
+                Some(_) => (slots[i], DragMode::Other),
+                None => (slots[i], DragMode::None),
+            };
+            let (e, resp) = tab_button(ui, tab, active, rect, galley, menu, mode);
+            if e.is_some() {
+                event = e;
             }
+            if resp.drag_started_by(egui::PointerButton::Primary) && self.drag.is_none() {
+                let press = ui.input(|inp| inp.pointer.press_origin()).or(pointer).unwrap_or(rect.min);
+                self.drag = Some(TabDrag { id: tab.id, grab: press - rect.min });
+            }
+        }
+        // Drawn last, so it slides over the other tabs.
+        if let Some((tab, galley, rect)) = floating {
+            let drop = float.and_then(|f| f.2);
+            let menu = MenuState { index: 0, count, any_unmodified };
+            let (_, resp) = tab_button(ui, tab, self.active == Some(tab.id), rect, galley, menu, DragMode::Dragged);
+            // Over the floating tab, and taller than it, so the tab never hides the marker.
+            if let Some((_, marker)) = drop {
+                ui.painter().rect_filled(marker, 1.0, t.drop_target_border);
+            }
+            if resp.drag_stopped() {
+                self.drag = None;
+                if let Some((to, _)) = drop {
+                    event = Some(TabBarEvent::Move(tab.id, to));
+                }
+            } else if !ui.ctx().is_being_dragged(resp.id) {
+                self.drag = None;
+            }
+            ui.ctx().set_cursor_icon(CursorIcon::Grabbing);
         }
         event
     }
@@ -531,15 +625,56 @@ fn tab_menu(ui: &mut Ui, id: TabId, m: MenuState) -> Option<TabBarEvent> {
     picked
 }
 
-fn tab_button(ui: &mut Ui, tab: &Tab, active: bool, rect: Rect, galley: std::sync::Arc<egui::Galley>, menu: MenuState) -> Option<TabBarEvent> {
+/// A tab's part in a drag of the strip.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum DragMode {
+    None,
+    /// This tab floats under the pointer.
+    Dragged,
+    /// Another tab is dragged: no hover, no clicks.
+    Other,
+}
+
+/// Where a dragged tab may be released to land in the strip: the strip plus a margin, so a
+/// slightly low release still counts. Further away, the release cancels the drag.
+fn drop_zone(bar: Rect) -> Rect {
+    bar.expand2(Vec2::new(24.0, 12.0))
+}
+
+/// The drop of tab `d` whose floating copy is centered at `center`: the strip index it moves
+/// to, and the marker rect in the gap where it lands. The row comes from the center's y; in
+/// that row the tab lands before the first tab whose middle lies right of the center.
+/// `None` when the drop would leave the tab where it is.
+fn drop_slot(slots: &[Rect], d: usize, center: egui::Pos2, top: f32, row_h: f32) -> Option<(usize, Rect)> {
+    let row_of = |r: &Rect| ((r.center().y - top) / row_h).floor().max(0.0) as usize;
+    let last_row = slots.iter().map(row_of).max()?;
+    let row = (((center.y - top) / row_h).floor().max(0.0) as usize).min(last_row);
+    let in_row: Vec<usize> = (0..slots.len()).filter(|&i| row_of(&slots[i]) == row).collect();
+    let (&first, &last) = (in_row.first()?, in_row.last()?);
+    let gap = in_row.iter().copied().find(|&i| slots[i].center().x > center.x).unwrap_or(last + 1);
+    let to = if gap > d { gap - 1 } else { gap };
+    if to == d {
+        return None;
+    }
+    let x = if gap <= last { slots[gap].min.x - TAB_GAP / 2.0 } else { slots[last].max.x + TAB_GAP / 2.0 };
+    let y = slots[first].y_range();
+    Some((to, Rect::from_x_y_ranges(x - 1.0..=x + 1.0, y.min - 3.0..=y.max + 3.0)))
+}
+
+fn tab_button(ui: &mut Ui, tab: &Tab, active: bool, rect: Rect, galley: std::sync::Arc<egui::Galley>, menu: MenuState, mode: DragMode) -> (Option<TabBarEvent>, egui::Response) {
     let t = &theme::T;
     let color = if active { t.text_bright } else { t.text };
-    let resp = ui.interact(rect, crate::workspace::wid(("editor-tab", tab.id)), Sense::click());
+    // The id follows the tab, not the slot, so egui keeps the drag while the tab moves.
+    let resp = ui.interact(rect, crate::workspace::wid(("editor-tab", tab.id)), Sense::click_and_drag());
     crate::util::label_selectable(&resp, format!("Tab {}", tab.title()), active);
     let painter = ui.painter();
-    if active {
+    let hovered = resp.hovered() && mode == DragMode::None;
+    if mode == DragMode::Dragged {
         painter.rect_filled(rect, t.radius.button, t.tab_active_bg);
-    } else if resp.hovered() {
+        painter.rect_stroke(rect, t.radius.button, egui::Stroke::new(1.0_f32, t.drop_target_border), egui::StrokeKind::Inside);
+    } else if active {
+        painter.rect_filled(rect, t.radius.button, t.tab_active_bg);
+    } else if hovered {
         painter.rect_filled(rect, t.radius.button, t.hover);
     }
     let icon_c = egui::pos2(rect.min.x + TAB_PAD + 7.0, rect.center().y);
@@ -555,44 +690,53 @@ fn tab_button(ui: &mut Ui, tab: &Tab, active: bool, rect: Rect, galley: std::syn
     painter.galley(text_pos, galley, color);
 
     let close_rect = Rect::from_center_size(egui::pos2(rect.max.x - 6.0 - TAB_CLOSE_W / 2.0, rect.center().y), Vec2::splat(TAB_CLOSE_W));
-    let close_hovered = ui.rect_contains_pointer(close_rect);
+    let close_hovered = mode == DragMode::None && ui.rect_contains_pointer(close_rect);
     if tab.is_dirty() && !close_hovered {
         // IDEA marks a modified tab with a dot where the close button sits.
         painter.circle_filled(close_rect.center(), 3.5, t.text);
-    } else if resp.hovered() || active {
+    } else if hovered || active || mode == DragMode::Dragged {
         let c = if close_hovered { t.icon_active } else { t.text_dim };
         if close_hovered {
             painter.rect_filled(close_rect, t.radius.small, t.button_hover);
         }
         icons::paint(painter, close_rect.shrink(3.0), Icon::Close, c);
     }
-    let resp = resp.on_hover_text(match &tab.content {
-        TabContent::Editor(e) if e.read_only => format!("{} (read-only)", e.path.display()),
-        TabContent::Editor(e) => e.path.display().to_string(),
-        TabContent::Custom(c) => c.tooltip(),
-    });
+    // No path tooltip while a tab is dragged: it would cover the drop marker.
+    let resp = if mode != DragMode::None {
+        resp
+    } else {
+        resp.on_hover_text(match &tab.content {
+            TabContent::Editor(e) if e.read_only => format!("{} (read-only)", e.path.display()),
+            TabContent::Editor(e) => e.path.display().to_string(),
+            TabContent::Custom(c) => c.tooltip(),
+        })
+    };
     if close_hovered {
         ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
     }
     let mut picked = None;
     resp.context_menu(|ui| picked = tab_menu(ui, tab.id, menu));
     if picked.is_some() {
-        return picked;
+        return (picked, resp);
+    }
+    if mode != DragMode::None {
+        return (None, resp);
     }
     // Act on the press: a close re-flows the rows, and the release must not land on the tab
-    // that moved under the pointer.
+    // that moved under the pointer. A drag starts only after the press moved, so the press
+    // still activates the tab it then drags.
     let pressed = crate::clicks::pressed(&resp);
-    if pressed && close_hovered && ui.input(|i| i.modifiers.alt) {
+    let event = if pressed && close_hovered && ui.input(|i| i.modifiers.alt) {
         // IDEA: Alt+click on the close button closes the other tabs.
-        return Some(TabBarEvent::CloseMany(tab.id, CloseScope::Others));
-    }
-    if resp.middle_clicked() || (pressed && close_hovered) {
-        return Some(TabBarEvent::Close(tab.id));
-    }
-    if pressed {
-        return Some(TabBarEvent::Activate(tab.id));
-    }
-    None
+        Some(TabBarEvent::CloseMany(tab.id, CloseScope::Others))
+    } else if resp.middle_clicked() || (pressed && close_hovered) {
+        Some(TabBarEvent::Close(tab.id))
+    } else if pressed {
+        Some(TabBarEvent::Activate(tab.id))
+    } else {
+        None
+    };
+    (event, resp)
 }
 
 #[cfg(test)]

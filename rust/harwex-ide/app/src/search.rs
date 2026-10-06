@@ -318,7 +318,7 @@ pub fn show(state: &mut AppState, ctx: &egui::Context) -> Option<PathBuf> {
                 for (i, hit) in s.results.iter().enumerate() {
                     let job = hit_job(hit);
                     let min_size = egui::vec2(ui.available_width(), row_h);
-                    let resp = crate::util::truncated_row(ui, job, i == s.selected, min_size, || hit.path.clone());
+                    let resp = crate::util::expandable_row(ui, job, i == s.selected, min_size);
                     if i == s.selected && (up || down) {
                         resp.scroll_to_me(None);
                     }

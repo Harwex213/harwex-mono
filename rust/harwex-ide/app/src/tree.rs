@@ -386,13 +386,23 @@ pub fn has_focus(ctx: &egui::Context) -> bool {
 /// "Select Opened File" (the header button, Alt+F1): expands the tree down to the active tab's
 /// file, selects its row, scrolls it into view and gives the tree the focus.
 pub fn select_opened_file(state: &mut AppState) {
+    if let Some(file) = crate::breadcrumbs::active_file(state) {
+        select_path(state, &file);
+    }
+}
+
+/// Select In > Project View for any file or folder of the project: opens the Project window,
+/// expands the parents, selects and scrolls to the row, and gives the tree the focus. The root
+/// itself has no row; it only opens the window.
+pub fn select_path(state: &mut AppState, path: &Path) {
     let Some(root) = state.ws.project.as_ref().map(|p| p.root.clone()) else { return };
-    let Some(file) = crate::breadcrumbs::active_file(state) else { return };
-    if !file.starts_with(&root) {
+    if !path.starts_with(&root) {
         return;
     }
     state.ws.layout.show(crate::layout::ToolWindow::Project);
-    state.ws.tree.reveal(&root, &file);
+    if path != root {
+        state.ws.tree.reveal(&root, path);
+    }
     state.ws.tree.focus_pending = true;
 }
 
@@ -408,12 +418,12 @@ struct KeyOutcome {
     command: Option<TreeCommand>,
 }
 
-/// The file operation keys while the tree has focus. macOS turns ⌘X, ⌘C and ⌘V into Cut,
+/// The file operation keys while the tree (or a breadcrumb, `breadcrumbs::take_keys`) has focus. macOS turns ⌘X, ⌘C and ⌘V into Cut,
 /// Copy and Paste events with no key event (⌘V only when the clipboard holds text), so both
 /// forms count. ⇧⌘C arrives as a Copy event with Shift held.
-fn command_keys(ui: &Ui, cut_pending: bool) -> Option<TreeCommand> {
+pub fn command_keys(ctx: &egui::Context, cut_pending: bool) -> Option<TreeCommand> {
     use egui::Modifiers as M;
-    ui.input_mut(|i| {
+    ctx.input_mut(|i| {
         let shift = i.modifiers.shift;
         let mut from_event = None;
         i.events.retain(|e| match e {
@@ -465,7 +475,7 @@ fn command_keys(ui: &Ui, cut_pending: bool) -> Option<TreeCommand> {
 /// Arrow keys, Enter and Escape while the tree has focus, like IDEA: Up and Down move the
 /// selection, Right expands (or steps into the folder), Left collapses (or goes to the parent).
 fn keyboard(ui: &Ui, rows: &[Row], selected: Option<&Path>, anchor: Option<&Path>, cut_pending: bool) -> KeyOutcome {
-    let mut out = KeyOutcome { command: command_keys(ui, cut_pending), ..Default::default() };
+    let mut out = KeyOutcome { command: command_keys(ui.ctx(), cut_pending), ..Default::default() };
     let none = egui::Modifiers::NONE;
     // Before the plain arrows: consume_key ignores an extra Shift.
     let (shift_up, shift_down, all) = ui.input_mut(|i| (i.consume_key(egui::Modifiers::SHIFT, Key::ArrowUp), i.consume_key(egui::Modifiers::SHIFT, Key::ArrowDown), i.consume_key(egui::Modifiers::COMMAND, Key::A)));

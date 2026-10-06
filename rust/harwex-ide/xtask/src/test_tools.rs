@@ -9,6 +9,8 @@
 //! - `oxlint/node_modules/oxlint`, `@oxlint/binding-<os>-<arch>`, `oxlint-tsgolint` and
 //!   `@oxlint-tsgolint/<os>-<arch>`: oxlint with its native binding and the type-aware
 //!   backend (tsgolint), side by side as npm installs them.
+//! - `oxfmt/node_modules/oxfmt`, `@oxfmt/binding-<os>-<arch>` and `tinypool`: the oxc
+//!   formatter with its native binding and its one dependency, side by side as npm installs them.
 //! - `eslint/node_modules/...`: ESLint, `@eslint/js`, typescript-eslint and TypeScript 5 with
 //!   every dependency, laid out as in `eslint.lock` (an npm install tree). The lock names each
 //!   tarball and its integrity, so the whole tree is pinned, not only the top packages.
@@ -35,6 +37,9 @@ pub const TYPESCRIPT_7: &str = "7.0.2";
 /// of their main package.
 pub const OXLINT: &str = "1.77.0";
 pub const OXLINT_TSGOLINT: &str = "7.0.2002";
+/// oxfmt, the oxc formatter. The binding shares its version; `tinypool` is its only dependency.
+pub const OXFMT: &str = "0.72.0";
+pub const OXFMT_TINYPOOL: &str = "2.2.0";
 /// ESLint and typescript-eslint. `eslint.lock` pins them with every dependency; a test checks
 /// that the lock holds these versions. Regenerate the lock from an `npm install` when bumping.
 pub const ESLINT: &str = "10.12.0";
@@ -73,6 +78,9 @@ pub fn run(tools: &Path) -> Result<(), String> {
         (tsgolint.as_str(), OXLINT_TSGOLINT),
     ];
     provision(tools, "oxlint", &oxlint, |stage| npm_group(stage, &oxlint))?;
+    let oxfmt_binding = oxfmt_platform_package();
+    let oxfmt = [("oxfmt", OXFMT), (oxfmt_binding.as_str(), OXFMT), ("tinypool", OXFMT_TINYPOOL)];
+    provision(tools, "oxfmt", &oxfmt, |stage| npm_group(stage, &oxfmt))?;
     let lock_hash = format!("{:016x}", fnv1a(ESLINT_LOCK.as_bytes()));
     let eslint = [
         ("eslint", ESLINT),
@@ -133,6 +141,7 @@ pub fn run(tools: &Path) -> Result<(), String> {
     println!("  typescript {TYPESCRIPT_5:<8} ts5/node_modules/typescript       (override: HARWEX_TEST_TS5)");
     println!("  typescript {TYPESCRIPT_7:<8} ts7/node_modules/typescript       (override: HARWEX_TEST_TS7)");
     println!("  oxlint {OXLINT:<12} oxlint/node_modules/oxlint         (override: HARWEX_TEST_OXLINT)");
+    println!("  oxfmt {OXFMT:<13} oxfmt/node_modules/oxfmt           (override: HARWEX_TEST_OXFMT)");
     println!("  eslint {ESLINT:<12} eslint/node_modules/eslint         (override: HARWEX_TEST_ESLINT, typescript-eslint {TYPESCRIPT_ESLINT})");
     println!("  rust-analyzer {RUST:<5} rust-analyzer/bin/rust-analyzer   (override: HARWEX_RUST_ANALYZER)");
     println!("  rust-src {RUST:<10} rust-src/lib/rustlib/src/rust/library (override: RUST_SRC_PATH)");
@@ -458,6 +467,13 @@ fn oxlint_platform_packages() -> (String, String) {
     let (os, arch) = npm_os_arch();
     let libc = if os == "linux" { "-gnu" } else { "" };
     (format!("@oxlint/binding-{os}-{arch}{libc}"), format!("@oxlint-tsgolint/{os}-{arch}"))
+}
+
+/// `@oxfmt/binding-<os>-<arch>[-gnu]`.
+fn oxfmt_platform_package() -> String {
+    let (os, arch) = npm_os_arch();
+    let libc = if os == "linux" { "-gnu" } else { "" };
+    format!("@oxfmt/binding-{os}-{arch}{libc}")
 }
 
 /// `process.platform` and `process.arch` of node for this machine.

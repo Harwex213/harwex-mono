@@ -236,6 +236,7 @@ impl eframe::App for IdeApp {
         }
         find::show_dialog(s, ctx);
         crate::tree_menu::show_dialogs(s, ctx);
+        crate::settings::show(s, ctx);
         nav::show_popup(s, ctx);
         breadcrumbs::show_popup(s, ctx);
         crate::projects_popup::show(s, ctx);
@@ -299,6 +300,8 @@ fn shortcuts(s: &mut AppState, ctx: &Context) {
     if new_term_t {
         crate::terminal::open_new(s);
     }
+    // An editor tab drag takes Escape before the terminal and the editor do.
+    s.ws.tabs.take_escape(ctx);
     // A focused terminal gets every key except Alt+F12 and Escape.
     if crate::terminal::shortcuts(s, ctx) {
         return;
@@ -326,6 +329,8 @@ fn shortcuts(s: &mut AppState, ctx: &Context) {
         )
     });
     let (push_k, recent_e) = ctx.input_mut(|i| (i.consume_key(cmd_shift, Key::K), i.consume_key(Modifiers::COMMAND, Key::E)));
+    // IDEA's Reformat Code (⌥⌘L) and Settings (⌘,).
+    let (reformat, settings) = ctx.input_mut(|i| (i.consume_key(Modifiers::COMMAND | Modifiers::ALT, Key::L), i.consume_key(Modifiers::COMMAND, Key::Comma)));
     // IDEA's "Branches..." (Ctrl+Shift+`) and "Select In > Project View" (Alt+F1).
     let ctrl_shift = Modifiers::CTRL | Modifiers::SHIFT;
     let (branches, select_in) = ctx.input_mut(|i| (i.consume_key(ctrl_shift, Key::Backtick), i.consume_key(Modifiers::ALT, Key::F1)));
@@ -369,8 +374,14 @@ fn shortcuts(s: &mut AppState, ctx: &Context) {
         s.save_all();
     } else if save && !git::diff::save_active(s) {
         if let Some(id) = s.ws.tabs.active {
-            s.save_tab(id, false);
+            crate::format::save(s, id, false);
         }
+    }
+    if reformat {
+        crate::format::reformat_active(s);
+    }
+    if settings && s.ws.project.is_some() {
+        crate::settings::open(s);
     }
     if close {
         if let Some(id) = s.ws.tabs.active {
@@ -652,6 +663,10 @@ fn settings_menu(s: &mut AppState, ui: &egui::Ui, button: &egui::Response) {
             close(ui);
             s.pick_folder();
         }
+        if ui.add_enabled(s.ws.project.is_some(), egui::Button::new("Settings...").shortcut_text("⌘,")).clicked() {
+            close(ui);
+            crate::settings::open(s);
+        }
         let config = s.ws.project.as_ref().map(|p| p.root.join(".harwex/ide.toml"));
         if ui.add_enabled(config.is_some(), egui::Button::new("Project Settings (.harwex/ide.toml)")).clicked() {
             close(ui);
@@ -931,11 +946,17 @@ fn editor_area(s: &mut AppState, ui: &mut egui::Ui) {
     // Custom tabs (diffs, commits) open without `add_editor_tab`; they count toward the limit too.
     crate::tabs::enforce_limit(s);
     if !s.ws.tabs.list.is_empty() {
-        let modified = |t: &crate::tabs::Tab| s.tab_modified(t);
-        let event = s.ws.tabs.show_bar(ui, &modified);
+        let any_unmodified = s.ws.tabs.list.iter().any(|t| !s.tab_modified(t));
+        let event = s.ws.tabs.show_bar(ui, any_unmodified);
         match event {
             Some(TabBarEvent::Activate(id)) => {
                 s.ws.tabs.activate(id);
+                if let Some(e) = s.ws.tabs.editor_mut(id) {
+                    e.view.request_focus();
+                }
+            }
+            Some(TabBarEvent::Move(id, to)) => {
+                s.ws.tabs.move_tab(id, to);
                 if let Some(e) = s.ws.tabs.editor_mut(id) {
                     e.view.request_focus();
                 }
@@ -1091,7 +1112,7 @@ fn confirm_close(s: &mut AppState, ctx: &Context) {
     match choice {
         Some(0) => {
             s.ws.confirm_close = None;
-            s.save_tab(id, true);
+            crate::format::save(s, id, true);
         }
         Some(1) => {
             s.ws.confirm_close = None;

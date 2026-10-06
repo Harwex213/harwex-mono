@@ -495,6 +495,16 @@ pub fn apply(ctx: &Context) {
     });
 }
 
+/// egui's own context-menu look (flat rows, no strokes), for a menu that the app draws in its
+/// own `Area` because egui opens a context menu only on a right-click.
+pub fn menu_style(style: &mut egui::Style) {
+    style.spacing.button_padding = egui::vec2(2.0, 0.0);
+    style.visuals.widgets.active.bg_stroke = Stroke::NONE;
+    style.visuals.widgets.hovered.bg_stroke = Stroke::NONE;
+    style.visuals.widgets.inactive.weak_bg_fill = Color32::TRANSPARENT;
+    style.visuals.widgets.inactive.bg_stroke = Stroke::NONE;
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

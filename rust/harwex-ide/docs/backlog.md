@@ -7,7 +7,8 @@ Run at most 2–3 agents that build at once: on 2026-10-05 seven parallel cargo 
 ## Ideas
 
 Diagnostics:
-- [idea] oxlint LSP crashes: "panicked at crates/oxc_linter/src/fixer/disable_fix.rs:52:22: range end index 407 out of range for slice of length 0" (toast "oxlint language server exited (1x)", seen in mono on 2026-10-05). 1.77 panics there on every file with a `jsPlugins` diagnostic (`rulesdir/*` rules), with a JS or JSON config; no `fixKind` avoids it. The bug is in oxlint (the source text for JS-plugin messages is empty), not in our client. Our side: remember the files that crash the server, stop sending them, and restart the server for the rest, instead of staying dead after 3 crashes. Upstream reports are drafted in `oxlint-upstream.md` (not filed).
+- [idea] Cmd+S in an editable diff tab (task 071) saves without oxfmt: `git/diff.rs` saves through its own path, not `format::save` (found in task 081).
+- [idea] oxlint 1.77 panics in `disable_fix.rs:52` on every file with a `jsPlugins` diagnostic, and its LSP waits for tsgolint with no timeout. We work around both (quarantine, restart, type-aware fallback). File the upstream reports drafted in `oxlint-upstream.md` when the user decides.
 
 Git window:
 - [idea] In a very narrow commit table the date column draws over the graph (`git_history/filter_bar_narrow.png`). Shrink or hide columns by priority.
@@ -33,6 +34,7 @@ Navigation and languages:
 - [idea] Search Everywhere for symbols and actions, not only files.
 
 Project tree and shell:
+- [idea] The editor has no file context menu (its right-click menu holds only code actions). IDEA puts file actions (Copy Path, Reveal, Rename File, Git → Annotate/History…) into the editor tab menu; reuse `tree_menu::file_menu` there (found in task 082).
 - [idea] Show ignored files (like `node_modules`) in olive in the tree, like IDEA, instead of hiding them.
 - [idea] Opening another folder with dirty tabs asks Save / Discard instead of refusing.
 

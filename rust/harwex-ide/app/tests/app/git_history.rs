@@ -748,6 +748,86 @@ fn merge_conflict_resolved_in_merge_tab() {
     assert!(repo.status_short().is_empty());
 }
 
+const LONG_CONFLICT: &str = "packages/frontend-application-shell/src/features/authentication/components/forms/inputs/validated_password_field_utils.ts";
+
+/// A merge that conflicts in three files, one of them deep in folders.
+fn three_conflicts(name: &str) -> (Fixture, Repo, Ide) {
+    let fx = Fixture::new(SUITE, name);
+    let repo = basic_repo(fx.path("repo"));
+    let files = ["a.txt", "b.txt", LONG_CONFLICT];
+    for f in files {
+        repo.write(f, "line one\nshared line\nline three\n");
+    }
+    repo.commit_all("Add files");
+    for (branch, side) in [("conflict-a", "ours"), ("conflict-b", "theirs")] {
+        repo.git(&["checkout", "-q", "-b", branch, "main"]);
+        for f in files {
+            repo.write(f, &format!("line one\n{side} version\nline three\n"));
+        }
+        repo.commit_all(&format!("{side} change"));
+    }
+    repo.git(&["checkout", "-q", "conflict-a"]);
+    let mut ide = Ide::open(SUITE, &repo.dir);
+    open_branches(&mut ide);
+    branch_menu(&mut ide, "Local branch conflict-b");
+    ide.click("Merge 'conflict-b' into 'conflict-a'");
+    ide.wait_for("conflicts dialog", |s| s.ws.git_ui.conflicts.dialog_open() && s.ws.git_ui.conflicts.files().len() == 3 && s.is_idle());
+    ide.settle();
+    ide.dismiss_toasts();
+    (fx, repo, ide)
+}
+
+/// The Conflicts dialog lists every conflicted file. A long path is cut before the button
+/// column and expands in place on hover. Accept resolves every selected file at once.
+#[test]
+fn conflicts_dialog_lists_all_files() {
+    let (_fx, repo, mut ide) = three_conflicts("three_files");
+    for f in ["a.txt", "b.txt", LONG_CONFLICT] {
+        ide.assert_text(&format!("Conflict {f}"));
+    }
+    ide.assert_text("3 file(s) have conflicts.");
+    let long = ide.rect(&format!("Conflict {LONG_CONFLICT}"));
+    let buttons = ide.rect("Accept Yours");
+    assert!(long.max.x < buttons.min.x, "the row stops before the buttons: {long:?} vs {buttons:?}");
+    for b in ["Accept Theirs", "Merge..."] {
+        assert_eq!(ide.rect(b).min.x, buttons.min.x, "the buttons form one column");
+    }
+    ide.snapshot("conflicts_three_files");
+
+    ide.move_to(long.center());
+    let (rect, text) = harwex_ide::util::expanded_row(&ide.ctx()).expect("the cut row expands at once");
+    let (dir, name) = LONG_CONFLICT.rsplit_once('/').unwrap();
+    assert_eq!(text, format!("{name}  {dir}"));
+    assert_eq!(rect.min, long.min);
+    assert!(rect.max.x > buttons.max.x, "the overlay runs past the dialog: {rect:?}");
+    ide.snapshot_here("conflicts_long_name_expanded");
+    ide.move_to(ide.rect("Conflict a.txt").center());
+    assert!(harwex_ide::util::expanded_row(&ide.ctx()).is_none(), "a short row does not expand");
+
+    // Select a.txt, Cmd+click b.txt, Accept Yours: both resolve, the long one stays.
+    ide.click("Conflict a.txt");
+    let b = ide.rect("Conflict b.txt").center();
+    ide.click_button_at(b, egui::PointerButton::Primary, egui::Modifiers::COMMAND);
+    assert!(ide.is_selected("Conflict a.txt") && ide.is_selected("Conflict b.txt") && !ide.is_selected(&format!("Conflict {LONG_CONFLICT}")));
+    ide.click("Accept Yours");
+    ide.wait_for("two resolved", |s| s.ws.git_ui.conflicts.files() == [std::path::PathBuf::from(LONG_CONFLICT)] && s.is_idle());
+    ide.settle();
+    assert_eq!(repo.read("a.txt"), "line one\nours version\nline three\n");
+    assert_eq!(repo.read("b.txt"), "line one\nours version\nline three\n");
+    ide.assert_text("1 file(s) have conflicts.");
+    assert!(ide.is_selected(&format!("Conflict {LONG_CONFLICT}")), "the remaining file is selected");
+
+    // The last one: the dialog says all are resolved and offers to continue the merge.
+    ide.click("Accept Theirs");
+    ide.wait_for("all resolved", |s| s.ws.git_ui.conflicts.files().is_empty() && s.is_idle());
+    ide.settle();
+    ide.assert_text("All conflicts are resolved.");
+    ide.click("Continue merge");
+    ide.wait_for("merge committed", |s| s.ws.git_ui.conflicts.op() == RepoState::Clean && s.is_idle());
+    assert_eq!(repo.read(LONG_CONFLICT), "line one\ntheirs version\nline three\n");
+    assert!(repo.status_short().is_empty());
+}
+
 #[test]
 fn abort_from_the_banner() {
     let (_fx, repo, mut ide) = start_conflict("abort");

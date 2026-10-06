@@ -28,6 +28,11 @@
 //! [diagnostics.eslint]                # default: on where a package has an ESLint config
 //! enabled = true
 //!
+//! [format.oxfmt]                    # Settings > Tools > oxfmt
+//! on_save = false                     # format with the project's oxfmt on Cmd+S / Save All
+//! extensions = ["ts", "tsx", "js"]    # file types it formats (default: JS/TS, JSON, CSS, md)
+//! timeout_secs = 10                   # past it the file is saved unformatted
+//!
 //! [memory]
 //! interval_secs = 15                  # how often the status bar's memory indicator samples
 //!
@@ -83,6 +88,34 @@ pub struct OxlintConfig {
     pub type_check: Option<bool>,
 }
 
+/// `[format.oxfmt]`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct OxfmtConfig {
+    pub on_save: bool,
+    /// Lowercase extensions without the dot.
+    pub extensions: Vec<String>,
+    pub timeout: Duration,
+}
+
+/// The file types oxfmt formats on save unless the project says otherwise. oxfmt 0.72 also
+/// formats SCSS, Less, HTML, Vue, YAML, TOML and GraphQL; a project adds them by hand.
+pub const OXFMT_DEFAULT_EXTENSIONS: [&str; 12] = ["js", "jsx", "ts", "tsx", "mjs", "cjs", "mts", "cts", "json", "jsonc", "css", "md"];
+pub const OXFMT_DEFAULT_TIMEOUT: Duration = Duration::from_secs(10);
+
+impl Default for OxfmtConfig {
+    fn default() -> Self {
+        OxfmtConfig { on_save: false, extensions: OXFMT_DEFAULT_EXTENSIONS.iter().map(|e| e.to_string()).collect(), timeout: OXFMT_DEFAULT_TIMEOUT }
+    }
+}
+
+impl OxfmtConfig {
+    /// Whether on-save formatting covers `path` (by its extension, any case).
+    pub fn covers(&self, path: &Path) -> bool {
+        let Some(ext) = path.extension().and_then(|e| e.to_str()) else { return false };
+        self.extensions.iter().any(|e| e.eq_ignore_ascii_case(ext))
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct IdeConfig {
     /// Languages whose servers may start. `None` means all.
@@ -92,6 +125,8 @@ pub struct IdeConfig {
     pub rust_idle_timeout: Option<Duration>,
     pub rust: RustConfig,
     pub diagnostics: DiagnosticsConfig,
+    /// `[format.oxfmt]`.
+    pub oxfmt: OxfmtConfig,
     /// How often the memory indicator samples. At least one second.
     pub memory_interval: Duration,
     /// `[project] excluded`: folders relative to the root, `/`-separated, no trailing slash.
@@ -111,6 +146,7 @@ impl Default for IdeConfig {
             rust_idle_timeout: None,
             rust: RustConfig::default(),
             diagnostics: DiagnosticsConfig::default(),
+            oxfmt: OxfmtConfig::default(),
             memory_interval: crate::memory::DEFAULT_INTERVAL,
             excluded: Vec::new(),
             warnings: Vec::new(),
@@ -172,6 +208,7 @@ impl IdeConfig {
                     }
                 }
                 "diagnostics" => parse_diagnostics(value, &mut config),
+                "format" => parse_format(value, &mut config),
                 "memory" => {
                     for (k, v) in value.as_table().into_iter().flatten() {
                         match k.as_str() {
@@ -306,6 +343,44 @@ fn parse_diagnostics(value: &toml::Value, config: &mut IdeConfig) {
     }
 }
 
+fn parse_format(value: &toml::Value, config: &mut IdeConfig) {
+    let Some(table) = value.as_table() else {
+        config.warnings.push(format!("{CONFIG_PATH}: [format] must be a table"));
+        return;
+    };
+    for (k, v) in table {
+        if k != "oxfmt" {
+            config.warnings.push(format!("{CONFIG_PATH}: unknown key format.{k}"));
+            continue;
+        }
+        let Some(ox) = v.as_table() else {
+            config.warnings.push(format!("{CONFIG_PATH}: [format.oxfmt] must be a table"));
+            continue;
+        };
+        for (k, v) in ox {
+            match (k.as_str(), v) {
+                ("on_save", toml::Value::Boolean(b)) => config.oxfmt.on_save = *b,
+                ("on_save", _) => config.warnings.push(format!("{CONFIG_PATH}: format.oxfmt.on_save must be true or false")),
+                ("extensions", toml::Value::Array(items)) if items.iter().all(|i| i.is_str()) => {
+                    config.oxfmt.extensions = items.iter().filter_map(|i| i.as_str()).map(normalize_extension).filter(|e| !e.is_empty()).collect();
+                }
+                ("extensions", _) => config.warnings.push(format!("{CONFIG_PATH}: format.oxfmt.extensions must be a list like [\"ts\", \"js\"]")),
+                ("timeout_secs", v) => {
+                    if let Some(d) = secs(v, "format.oxfmt.timeout_secs", &mut config.warnings) {
+                        config.oxfmt.timeout = d;
+                    }
+                }
+                (other, _) => config.warnings.push(format!("{CONFIG_PATH}: unknown key format.oxfmt.{other}")),
+            }
+        }
+    }
+}
+
+/// `".TS"` and `"ts"` name the same file type.
+pub fn normalize_extension(e: &str) -> String {
+    e.trim().trim_start_matches('.').to_ascii_lowercase()
+}
+
 /// Seconds as a `Duration`. Fractions are allowed, so tests can use a short timeout.
 fn secs(value: &toml::Value, key: &str, warnings: &mut Vec<String>) -> Option<Duration> {
     let n = value.as_float().or_else(|| value.as_integer().map(|i| i as f64));
@@ -388,6 +463,19 @@ mod tests {
         let bad = IdeConfig::parse("[diagnostics]\nts = 1\ncolour = true\n[diagnostics.oxlint]\nfast = true\n[diagnostics.eslint]\nfix = true\n");
         assert_eq!(bad.warnings.len(), 4, "{:?}", bad.warnings);
         assert_eq!(bad.diagnostics, DiagnosticsConfig::default());
+    }
+
+    #[test]
+    fn format_section() {
+        let c = IdeConfig::default();
+        assert!(!c.oxfmt.on_save, "oxfmt on save is off by default");
+        assert!(c.oxfmt.covers(Path::new("/p/a.tsx")) && c.oxfmt.covers(Path::new("/p/README.MD")) && !c.oxfmt.covers(Path::new("/p/a.rs")));
+        let c = IdeConfig::parse("[format.oxfmt]\non_save = true\nextensions = [\".TS\", \"vue\"]\ntimeout_secs = 0.5\n");
+        assert!(c.warnings.is_empty(), "{:?}", c.warnings);
+        assert_eq!(c.oxfmt, OxfmtConfig { on_save: true, extensions: vec!["ts".into(), "vue".into()], timeout: Duration::from_millis(500) });
+        let bad = IdeConfig::parse("[format.oxfmt]\non_save = 1\nextensions = \"ts\"\nwidth = 2\n[format.prettier]\n");
+        assert_eq!(bad.warnings.len(), 4, "{:?}", bad.warnings);
+        assert_eq!(bad.oxfmt, OxfmtConfig::default());
     }
 
     #[test]

@@ -65,6 +65,8 @@ pub enum TreeCommand {
     Exclude,
     CancelExclusion,
     CancelCut,
+    /// Reveals the item in the Project tree. Only menus outside the tree offer it.
+    SelectInProject,
 }
 
 impl TreeCommand {
@@ -273,6 +275,25 @@ pub fn menu(ui: &mut Ui, target: &Target, info: &MenuInfo) -> Option<TreeCommand
     picked
 }
 
+/// The file menu outside the tree (a breadcrumb): Select in Project, then the tree's own items,
+/// so both menus list the same file commands.
+pub fn file_menu(ui: &mut Ui, target: &Target, info: &MenuInfo) -> Option<TreeCommand> {
+    let mut picked = None;
+    if ui.add(egui::Button::new("Select in Project").shortcut_text("⌥F1")).clicked() {
+        picked = Some(TreeCommand::SelectInProject);
+        ui.close_menu();
+    }
+    ui.separator();
+    menu(ui, target, info).or(picked)
+}
+
+/// The menu state of one item that is not a tree row (a breadcrumb).
+pub fn menu_info(state: &AppState, target: &Target) -> MenuInfo {
+    let git = &state.ws.git;
+    let has_changes = if target.is_dir { git.dirty_dirs.contains(&target.path) } else { git.status.get(&target.path).is_some_and(|k| *k != ide_git::ChangeKind::Untracked) };
+    MenuInfo { can_paste: state.ws.tree_ops.clip.is_some(), excluded: state.ws.tree.excluded.contains(&target.path), has_changes, has_repo: git.repo.is_some(), count: 1 }
+}
+
 /// Runs a menu command or a tree key on `targets` (the selection, at least one item). A
 /// command that needs one item does nothing for several.
 pub fn run(state: &mut AppState, cmd: TreeCommand, targets: Vec<Target>) {
@@ -351,6 +372,7 @@ pub fn run(state: &mut AppState, cmd: TreeCommand, targets: Vec<Target>) {
             }
         }
         TreeCommand::GitHistory => crate::git::log::show_file_history(state, &target.path),
+        TreeCommand::SelectInProject => crate::tree::select_path(state, &target.path),
         TreeCommand::ReloadFromDisk => reload_from_disk(state, &targets),
         TreeCommand::Exclude | TreeCommand::CancelExclusion => {
             let rel = fileops::relative(&root, &target.path);

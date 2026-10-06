@@ -424,6 +424,55 @@ pub fn oxlint() -> Result<PathBuf, String> {
     }
 }
 
+/// oxfmt (an `oxfmt` package dir; its native binding and `tinypool` sit beside its real dir,
+/// as npm installs them): `HARWEX_TEST_OXFMT`, else `<target>/tools/oxfmt/node_modules/oxfmt`.
+pub fn oxfmt() -> Result<PathBuf, String> {
+    let (dir, source) = match std::env::var_os("HARWEX_TEST_OXFMT") {
+        Some(dir) => (PathBuf::from(dir), "HARWEX_TEST_OXFMT"),
+        None => (tools_dir().join("oxfmt/node_modules/oxfmt"), HINT),
+    };
+    if ide_ts::find_node().is_none() {
+        return Err("node was not found".into());
+    }
+    if dir.join("bin/oxfmt").is_file() {
+        Ok(dir)
+    } else {
+        Err(format!("{} is missing ({source})", dir.join("bin/oxfmt").display()))
+    }
+}
+
+/// Returns `true` (and prints why) when the oxfmt tests must be skipped.
+pub fn skip_without_oxfmt(test: &str) -> bool {
+    match oxfmt() {
+        Ok(_) => false,
+        Err(why) => {
+            eprintln!("skipping {test}: {why}");
+            true
+        }
+    }
+}
+
+/// A project for the formatter tests: oxfmt linked into `node_modules`, an `.oxfmtrc.json`
+/// with single quotes, `src/app.ts` (`UNFORMATTED_TS`) and, with `on_save`,
+/// `[format.oxfmt] on_save = true` in `.harwex/ide.toml`.
+pub fn oxfmt_project(dir: PathBuf, on_save: bool) -> Repo {
+    let r = Repo::init(dir);
+    r.write(".gitignore", "node_modules/\n");
+    r.write("package.json", "{ \"name\": \"fmt\", \"private\": true }\n");
+    r.write(".oxfmtrc.json", "{ \"singleQuote\": true }\n");
+    r.write("src/app.ts", UNFORMATTED_TS);
+    if on_save {
+        r.write(".harwex/ide.toml", "[format.oxfmt]\non_save = true\n");
+    }
+    std::fs::create_dir_all(r.dir.join("node_modules")).expect("node_modules");
+    std::os::unix::fs::symlink(oxfmt().expect("oxfmt"), r.dir.join("node_modules/oxfmt")).expect("oxfmt link");
+    r.commit_all("Formatter project");
+    r
+}
+
+/// Three lines; oxfmt (with single quotes) rewrites the first two and keeps the third.
+pub const UNFORMATTED_TS: &str = "const a = {b:1, c:\"x\"}\nfunction f( x ){return x}\nexport const keep = 1;\n";
+
 /// Returns `true` (and prints why) when the oxlint tests must be skipped. They also need
 /// tsserver for the TypeScript errors.
 pub fn skip_without_oxlint(test: &str) -> bool {

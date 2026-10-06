@@ -8,12 +8,12 @@
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant, SystemTime};
 
-use ide_lsp::{ClientConfig, Diagnostic, LspClient};
+use ide_lsp::{ClientConfig, Diagnostic, LspClient, Severity};
 use serde_json::{json, Value};
 
-use super::strategy::OxlintPlan;
+use super::strategy::{OxlintPlan, OXLINT_CONFIGS};
 use super::{LintSource, LintTarget, SourceId};
 use crate::lang::lock;
 use crate::memory::{defunct_in_tree, ProcessSource, RealSource};
@@ -25,8 +25,14 @@ const TIMEOUT: Duration = Duration::from_secs(30);
 fn timeout() -> Duration {
     std::env::var("HARWEX_LINT_TIMEOUT_MS").ok().and_then(|v| v.parse().ok()).map_or(TIMEOUT, Duration::from_millis)
 }
-/// Crashes in a row before the server is left stopped until the settings change.
+/// Crashes in a row that no file caused (the server dies while it starts) before the server
+/// is left stopped until the settings change.
 const MAX_CRASHES: u32 = 3;
+/// Different files that crash the server in a row within `FILE_CRASH_WINDOW`, with no
+/// successful lint between them, before the server counts as broken: then no single file is
+/// to blame.
+const MAX_FILE_CRASHES: usize = 3;
+const FILE_CRASH_WINDOW: Duration = Duration::from_secs(20);
 
 /// Zombies a server may hold before `upkeep` restarts it. oxlint's napi binding never waits
 /// for the `tsgolint` it starts, so every type-aware lint leaves one zombie, and only the
@@ -39,9 +45,57 @@ type Key = (PathBuf, PathBuf, bool);
 
 struct Server {
     client: LspClient,
+    /// Crashes in a row while the server started.
     crashes: u32,
-    /// The last crash message once `MAX_CRASHES` was reached.
+    /// Files that crashed the server since the last successful lint, with the crash time.
+    file_crashes: Vec<(Instant, PathBuf)>,
+    /// The last crash message once the server counts as broken.
     broken: Option<String>,
+}
+
+/// A file that crashed its server. It is not sent again while its `Stamp` stays the same.
+struct Quarantine {
+    stamp: Stamp,
+    row: Diagnostic,
+}
+
+/// The file's mtime and size, and the mtimes of the oxlint configs from its folder up to the
+/// workspace root. A change in any of them gives the file another try.
+type Stamp = Vec<Option<(SystemTime, u64)>>;
+
+fn stamp(path: &Path, root: &Path) -> Stamp {
+    let meta = |p: &Path| std::fs::metadata(p).ok().map(|m| (m.modified().unwrap_or(SystemTime::UNIX_EPOCH), m.len()));
+    let mut out = vec![meta(path)];
+    for dir in path.ancestors().skip(1) {
+        out.extend(OXLINT_CONFIGS.iter().map(|name| meta(&dir.join(name))));
+        if dir == root || !dir.starts_with(root) {
+            break;
+        }
+    }
+    out
+}
+
+/// The one quiet row a quarantined file shows instead of its problems.
+fn crash_row(stderr: &str) -> Diagnostic {
+    // oxlint's panic: "thread '<unnamed>' panicked at <file>:<line>:<col>:" and the message.
+    let mut lines = stderr.lines().skip_while(|l| !l.contains("panicked at"));
+    let detail = match (lines.next(), lines.next()) {
+        (Some(at), Some(msg)) => format!(": {}: {}", at.split_once("panicked at ").map_or(at, |(_, a)| a).trim_end_matches(':'), msg.trim()),
+        _ => String::new(),
+    };
+    Diagnostic {
+        line: 0,
+        column: 0,
+        end_line: 0,
+        end_column: 0,
+        severity: Severity::Information,
+        code: Some("crash".into()),
+        source: Some("oxlint".into()),
+        message: format!(
+            "oxlint crashed on this file (an oxlint bug, see docs/oxlint-upstream.md){detail}. The file is not linted until it or its oxlint config changes on disk, or the project reopens."
+        ),
+        unnecessary: false,
+    }
 }
 
 pub struct OxlintSource {
@@ -53,6 +107,8 @@ pub struct OxlintSource {
     /// Workspace roots whose type-aware lint timed out. They lint without type-aware rules
     /// until the settings change (`shutdown`) or the project reopens.
     type_aware_off: Mutex<HashSet<PathBuf>>,
+    /// Files that crashed a server, per server key. See `Quarantine`.
+    quarantine: Mutex<HashMap<(Key, PathBuf), Quarantine>>,
     /// Warnings for the user, taken by the lint queue after each lint.
     notices: Mutex<Vec<(String, String)>>,
     /// Counts the servers' zombies; the memory indicator reads the same source.
@@ -66,6 +122,7 @@ impl Default for OxlintSource {
             pids: Mutex::default(),
             files: Mutex::default(),
             type_aware_off: Mutex::default(),
+            quarantine: Mutex::default(),
             notices: Mutex::default(),
             procs: RealSource::new().map(|s| Arc::new(s) as Arc<dyn ProcessSource>),
         }
@@ -97,7 +154,7 @@ impl OxlintSource {
         config.configuration = Some(Arc::new(move |_item: &Value| answer.clone()));
         let client = LspClient::new(config);
         lock(&self.pids).push(client.pid_cell());
-        let server = Arc::new(Mutex::new(Server { client, crashes: 0, broken: None }));
+        let server = Arc::new(Mutex::new(Server { client, crashes: 0, file_crashes: Vec::new(), broken: None }));
         lock(&self.servers).insert(key.clone(), server.clone());
         Ok((key, server))
     }
@@ -140,15 +197,42 @@ impl LintSource for OxlintSource {
         let plan = &plan;
         let (key, server) = self.server(plan)?;
         lock(&self.files).insert(path.to_path_buf(), key.clone());
+        let quarantine_key = (key.clone(), path.to_path_buf());
+        if let Some(q) = lock(&self.quarantine).get(&quarantine_key) {
+            if q.stamp == stamp(path, &plan.install.root) {
+                return Ok(vec![q.row.clone()]);
+            }
+        }
+        lock(&self.quarantine).remove(&quarantine_key);
         let mut s = lock(&server);
         if let Some(why) = &s.broken {
             return Err(why.clone());
         }
         let timeout = timeout();
+        // Start the server before this file goes in, so a death while it starts is not blamed
+        // on the file. Such deaths are retried here: one lint, at most one toast.
+        loop {
+            match s.client.capabilities(timeout) {
+                Ok(_) => break,
+                Err(e @ ide_lsp::Error::ServerDied(_)) => {
+                    s.crashes += 1;
+                    if s.crashes >= MAX_CRASHES {
+                        let why = format!(
+                            "oxlint language server exited {} times in a row while it started: {e}. It stays off until .harwex/ide.toml changes or the project reopens.",
+                            s.crashes
+                        );
+                        s.broken = Some(why.clone());
+                        return Err(why);
+                    }
+                }
+                Err(e) => return Err(e.to_string()),
+            }
+        }
+        s.crashes = 0;
         s.client.change(path, text, timeout);
         match s.client.diagnostics(path, timeout) {
             Ok(d) => {
-                s.crashes = 0;
+                s.file_crashes.clear();
                 Ok(d)
             }
             // oxlint waits for `tsgolint` with no limit of its own, and serves no other request
@@ -172,14 +256,26 @@ impl LintSource for OxlintSource {
                 retry.type_aware = false;
                 self.lint(&LintTarget::Oxlint(retry), path, text)
             }
-            Err(e @ ide_lsp::Error::ServerDied(_)) => {
-                s.crashes += 1;
-                let msg = format!("oxlint language server exited ({}x): {e}", s.crashes);
-                if s.crashes >= MAX_CRASHES {
-                    s.broken = Some(format!("{msg}. It stays off until .harwex/ide.toml changes or the project reopens."));
-                    return Err(s.broken.clone().unwrap_or_default());
+            // The server died while it linted this file (oxlint 1.77 panics on every file with
+            // a JS-plugin problem). Quarantine the file: forget it in the client, so the restart
+            // on the next lint does not reopen it, and show one quiet row instead of a toast.
+            Err(ide_lsp::Error::ServerDied(stderr)) => {
+                s.client.close(path);
+                let now = Instant::now();
+                s.file_crashes.retain(|(at, p)| now.duration_since(*at) < FILE_CRASH_WINDOW && p != path);
+                s.file_crashes.push((now, path.to_path_buf()));
+                if s.file_crashes.len() >= MAX_FILE_CRASHES {
+                    let e = ide_lsp::Error::ServerDied(stderr);
+                    let why = format!(
+                        "oxlint language server crashed on {} different files in a row: {e}. It stays off until .harwex/ide.toml changes or the project reopens.",
+                        s.file_crashes.len()
+                    );
+                    s.broken = Some(why.clone());
+                    return Err(why);
                 }
-                Err(msg)
+                let row = crash_row(&stderr);
+                lock(&self.quarantine).insert(quarantine_key, Quarantine { stamp: stamp(path, &plan.install.root), row: row.clone() });
+                Ok(vec![row])
             }
             Err(e) => Err(e.to_string()),
         }
@@ -250,11 +346,42 @@ impl LintSource for OxlintSource {
     fn shutdown(&self) {
         // The settings changed or the project closes: type-aware gets another chance.
         lock(&self.type_aware_off).clear();
+        // Quarantined files too: the oxlint version or the settings may have changed.
+        lock(&self.quarantine).clear();
         lock(&self.pids).clear();
         let servers: Vec<Arc<Mutex<Server>>> = lock(&self.servers).drain().map(|(_, s)| s).collect();
         for s in servers {
             lock(&s).client.shutdown();
         }
         lock(&self.files).clear();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn crash_row_names_the_panic() {
+        let row = crash_row("some log\nthread '<unnamed>' panicked at crates/oxc_linter/src/fixer/disable_fix.rs:52:22:\nrange end index 1378 out of range for slice of length 0\nnote: run with RUST_BACKTRACE=1\n");
+        assert!(row.message.contains(": crates/oxc_linter/src/fixer/disable_fix.rs:52:22: range end index 1378 out of range"), "{}", row.message);
+        assert_eq!((row.severity, row.code.as_deref()), (Severity::Information, Some("crash")));
+        assert!(crash_row("").message.starts_with("oxlint crashed on this file (an oxlint bug, see docs/oxlint-upstream.md). "));
+    }
+
+    #[test]
+    fn stamp_follows_the_file_and_its_configs() {
+        let dir = std::env::temp_dir().join(format!("harwex-oxlint-stamp-{}", std::process::id()));
+        let file = dir.join("pkg/src/a.ts");
+        std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+        std::fs::write(&file, "a").unwrap();
+        let first = stamp(&file, &dir);
+        assert_eq!(first, stamp(&file, &dir));
+        std::fs::write(dir.join("pkg/.oxlintrc.json"), "{}").unwrap();
+        let with_config = stamp(&file, &dir);
+        assert_ne!(first, with_config, "a new config");
+        std::fs::write(&file, "ab").unwrap();
+        assert_ne!(with_config, stamp(&file, &dir), "a changed file");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

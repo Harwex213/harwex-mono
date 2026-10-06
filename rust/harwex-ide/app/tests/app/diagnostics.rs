@@ -432,3 +432,197 @@ fn oxlint_with_many_zombies_restarts_once_quietly_when_idle() {
     assert!(has(&ide, "oxlint(no-debugger)"));
     assert!(ide.state().notifications.toast_titles().is_empty(), "a zombie restart is no crash: {:?}", ide.state().notifications.toast_titles());
 }
+
+// -----------------------------------------------------------------------------------------
+// oxlint crashes (task 080)
+
+/// A fake `oxlint --lsp` that dies like oxlint 1.77 in `disable_fix.rs`: a file whose text
+/// contains `CRASH` makes it print a panic and exit when the file is opened or changed. While
+/// `die-on-init` exists in the root, it exits during `initialize`. A file with `debugger` gets
+/// one `no-debugger` problem. It logs to `fake-oxlint.log`.
+const CRASHING_OXLINT: &str = r#"const fs = require("fs");
+const log = (line) => fs.appendFileSync("fake-oxlint.log", line + "\n");
+const texts = new Map();
+let buf = Buffer.alloc(0);
+function send(msg) {
+  const body = Buffer.from(JSON.stringify(msg));
+  process.stdout.write("Content-Length: " + body.length + "\r\n\r\n");
+  process.stdout.write(body);
+}
+process.stdin.on("data", (chunk) => {
+  buf = Buffer.concat([buf, chunk]);
+  for (;;) {
+    const end = buf.indexOf("\r\n\r\n");
+    if (end < 0) return;
+    const len = Number(/Content-Length: (\d+)/i.exec(buf.slice(0, end).toString())[1]);
+    if (buf.length < end + 4 + len) return;
+    const msg = JSON.parse(buf.slice(end + 4, end + 4 + len).toString());
+    buf = buf.slice(end + 4 + len);
+    handle(msg);
+  }
+});
+const name = (uri) => uri.split("/").pop();
+function got(uri, text) {
+  texts.set(uri, text);
+  log("got " + name(uri));
+  if (text.includes("CRASH")) {
+    log("crash on " + name(uri));
+    process.stderr.write("thread '<unnamed>' panicked at crates/oxc_linter/src/fixer/disable_fix.rs:52:22:\nrange end index 13 out of range for slice of length 0\n");
+    process.exit(1);
+  }
+}
+function handle(msg) {
+  if (msg.method === "initialize") {
+    if (fs.existsSync("die-on-init")) {
+      log("died on initialize");
+      process.exit(1);
+    }
+    log("start " + process.pid);
+    send({ jsonrpc: "2.0", id: msg.id, result: { capabilities: { textDocumentSync: 1, diagnosticProvider: { interFileDependencies: false, workspaceDiagnostics: false } } } });
+  } else if (msg.method === "textDocument/didOpen") {
+    got(msg.params.textDocument.uri, msg.params.textDocument.text);
+  } else if (msg.method === "textDocument/didChange") {
+    got(msg.params.textDocument.uri, msg.params.contentChanges[0].text);
+  } else if (msg.method === "textDocument/didClose") {
+    texts.delete(msg.params.textDocument.uri);
+  } else if (msg.method === "textDocument/diagnostic") {
+    const uri = msg.params.textDocument.uri;
+    log("lint " + name(uri));
+    const items = (texts.get(uri) || "").includes("debugger")
+      ? [{ range: { start: { line: 0, character: 0 }, end: { line: 0, character: 9 } }, severity: 1, code: "eslint(no-debugger)", source: "oxc", message: "`debugger` statement is not allowed" }]
+      : [];
+    send({ jsonrpc: "2.0", id: msg.id, result: { kind: "full", items } });
+  } else if (msg.method === "exit") {
+    process.exit(0);
+  } else if (msg.id !== undefined && msg.method) {
+    send({ jsonrpc: "2.0", id: msg.id, result: null });
+  }
+}
+"#;
+
+fn crash_project(name: &str, files: &[(&str, &str)]) -> Option<(Fixture, Repo)> {
+    if ide_ts::find_node().is_none() {
+        eprintln!("skipping {name}: node was not found");
+        return None;
+    }
+    let fx = Fixture::new(SUITE, name);
+    let repo = Repo::init(fx.path("repo"));
+    repo.write(".oxlintrc.json", "{}\n");
+    repo.write(".harwex/ide.toml", "[diagnostics]\nts = false\n");
+    repo.write(".gitignore", "node_modules/\nfake-oxlint.log\ndie-on-init\n");
+    repo.write("node_modules/oxlint/package.json", "{\"name\": \"oxlint\", \"version\": \"1.77.0\"}\n");
+    repo.write("node_modules/oxlint/bin/oxlint", CRASHING_OXLINT);
+    for (path, text) in files {
+        repo.write(path, text);
+    }
+    repo.commit_all("init");
+    Some((fx, repo))
+}
+
+fn fake_count(ide: &Ide, line: &str) -> usize {
+    fake_log(ide).lines().filter(|l| *l == line).count()
+}
+
+fn starts(ide: &Ide) -> usize {
+    fake_log(ide).lines().filter(|l| l.starts_with("start")).count()
+}
+
+fn diagnostics_failed(ide: &Ide) -> Vec<String> {
+    ide.state().notifications.log().iter().filter(|n| n.title == "Diagnostics failed").map(|n| n.body.clone()).collect()
+}
+
+#[test]
+fn oxlint_crash_quarantines_the_file_and_others_keep_linting() {
+    let files = [("src/good.ts", "debugger;\n"), ("src/bad.ts", "CRASH;\ndebugger;\n"), ("src/other.ts", "debugger;\n")];
+    let Some((_fx, repo)) = crash_project("oxlint_crash_quarantine", &files) else { return };
+    let mut ide = Ide::open(SUITE, &repo.dir);
+    ide.open_file("src/good.ts");
+    ide.wait_until("oxlint problems", |ide| has(ide, "oxlint(no-debugger)"));
+
+    // The crash quarantines bad.ts: one quiet info row, no toast.
+    ide.open_file("src/bad.ts");
+    ide.wait_until("the crash row", |ide| has(ide, "oxlint(crash)"));
+    ide.settle();
+    let p = problems(&ide);
+    assert_eq!(p, vec![(0, 0, ProblemSeverity::Weak, "oxlint(crash)".to_string())], "{}", fake_log(&ide));
+    let message = ide.state().ws.tabs.active_editor().map(|e| e.problems.current[0].message.clone()).unwrap_or_default();
+    assert!(message.contains("oxlint crashed on this file") && message.contains("disable_fix.rs:52:22"), "{message}");
+    assert!(ide.state().notifications.toast_titles().is_empty(), "{:?}", ide.state().notifications.toast_titles());
+    let crashes = fake_count(&ide, "crash on bad.ts");
+
+    // Edits of the quarantined file are not sent again.
+    ide.click_at(ide.caret_pos(1, 9));
+    ide.type_text("\n");
+    ide.settle();
+    ide.type_text("x");
+    ide.settle();
+    assert!(has(&ide, "oxlint(crash)"));
+    assert_eq!(fake_count(&ide, "crash on bad.ts"), crashes, "{}", fake_log(&ide));
+
+    // Other files get diagnostics from a restarted server.
+    ide.open_file("src/other.ts");
+    ide.wait_until("other.ts problems", |ide| has(ide, "oxlint(no-debugger)"));
+    assert_eq!(starts(&ide), 2, "one restart, started by the next lint: {}", fake_log(&ide));
+    ide.open_file("src/good.ts");
+    ide.click_at(ide.caret_pos(1, 0));
+    ide.type_text("\n");
+    ide.settle();
+    assert!(has(&ide, "oxlint(no-debugger)"));
+    assert_eq!(fake_count(&ide, "crash on bad.ts"), crashes, "the restart does not reopen bad.ts: {}", fake_log(&ide));
+    assert!(diagnostics_failed(&ide).is_empty() && ide.state().notifications.toast_titles().is_empty(), "{:?}", diagnostics_failed(&ide));
+
+    // Once bad.ts changes on disk, it is linted again.
+    ide.open_file("src/bad.ts");
+    ide.cmd(Key::A);
+    ide.type_text("debugger;\n");
+    ide.settle();
+    assert!(has(&ide, "oxlint(crash)"), "an unsaved edit does not lift the quarantine");
+    ide.cmd(Key::S);
+    ide.wait_for("saved", |s| !s.ws.tabs.active_tab().unwrap().is_dirty());
+    ide.type_text("\n");
+    ide.wait_until("bad.ts linted again", |ide| has(ide, "oxlint(no-debugger)"));
+    ide.settle();
+    assert!(!has(&ide, "oxlint(crash)"), "{:?}", problems(&ide));
+    assert!(fake_count(&ide, "lint bad.ts") >= 1, "{}", fake_log(&ide));
+    assert!(ide.state().notifications.toast_titles().is_empty(), "{:?}", ide.state().notifications.toast_titles());
+}
+
+#[test]
+fn oxlint_crashing_on_three_files_in_a_row_stops_with_one_toast() {
+    let files = [("src/a.ts", "CRASH;\n"), ("src/b.ts", "CRASH;\n"), ("src/c.ts", "CRASH;\n"), ("src/d.ts", "debugger;\n")];
+    let Some((_fx, repo)) = crash_project("oxlint_crash_three_files", &files) else { return };
+    let mut ide = Ide::open(SUITE, &repo.dir);
+    for f in ["src/a.ts", "src/b.ts"] {
+        ide.open_file(f);
+        ide.wait_until("the crash row", |ide| has(ide, "oxlint(crash)"));
+    }
+    assert!(diagnostics_failed(&ide).is_empty(), "{:?}", diagnostics_failed(&ide));
+    ide.open_file("src/c.ts");
+    ide.wait_until("the stop toast", |ide| !diagnostics_failed(ide).is_empty());
+    ide.open_file("src/d.ts");
+    ide.settle();
+    let failed = diagnostics_failed(&ide);
+    assert_eq!(failed.len(), 1, "{failed:?}");
+    assert!(failed[0].contains("crashed on 3 different files"), "{failed:?}");
+    assert_eq!(starts(&ide), 3, "no server after the stop: {}", fake_log(&ide));
+    assert!(!has(&ide, "oxlint(no-debugger)"));
+}
+
+#[test]
+fn oxlint_dying_on_initialize_stops_after_three_tries_with_one_toast() {
+    let Some((_fx, repo)) = crash_project("oxlint_dies_on_initialize", &[("src/app.ts", "debugger;\n")]) else { return };
+    std::fs::write(repo.dir.join("die-on-init"), "").expect("marker");
+    let mut ide = Ide::open(SUITE, &repo.dir);
+    ide.open_file("src/app.ts");
+    ide.wait_until("the stop toast", |ide| !diagnostics_failed(ide).is_empty());
+    ide.click_at(ide.caret_pos(1, 0));
+    ide.type_text("x");
+    ide.settle();
+    ide.type_text("y");
+    ide.settle();
+    let failed = diagnostics_failed(&ide);
+    assert_eq!(failed.len(), 1, "{failed:?}");
+    assert!(failed[0].contains("exited 3 times in a row while it started"), "{failed:?}");
+    assert_eq!(fake_count(&ide, "died on initialize"), 3, "{}", fake_log(&ide));
+    assert_eq!(ide.state().notifications.toast_titles(), vec!["Diagnostics failed".to_string()]);
+}

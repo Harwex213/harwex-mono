@@ -2,7 +2,7 @@
 //! `TAB_LIMIT` tabs (the least recently used clean tab closes, Cmd+Shift+T brings it back).
 
 use crate::common::*;
-use egui::{Key, Rect, Vec2};
+use egui::{Key, Pos2, Rect, Vec2};
 use harwex_ide::tabs::TAB_LIMIT;
 use ide_editor::Position;
 
@@ -311,4 +311,167 @@ fn menu_close_asks_about_each_dirty_tab_like_cmd_w() {
     assert_eq!(ide.tab_titles(), [titles[3].clone()]);
     assert_eq!(ide.active_title().as_deref(), Some(titles[3].as_str()));
     assert_eq!(repo.read(&file_rel(2)), "file 2\n");
+}
+
+// ---------------------------------------------------------------------------------------------
+// Reorder by drag (task 077)
+
+/// Presses the primary button at `from` and moves to `to` in six frames, past egui's drag
+/// threshold. The button stays down.
+fn press_and_move(ide: &mut Ide, from: Pos2, to: Pos2) {
+    ide.move_to(from);
+    ide.pointer_frame(1.0 / 60.0, &[(from, true)]);
+    for i in 1..=6 {
+        ide.move_to(from + (to - from) * (i as f32 / 6.0));
+    }
+}
+
+fn release(ide: &mut Ide, at: Pos2) {
+    ide.pointer_frame(1.0 / 60.0, &[(at, false)]);
+    ide.settle();
+}
+
+/// Where the tab's grab point (12 pt from its left edge) must go so that the floating tab's
+/// middle sits at `center` (`tabs::drop_slot` reads the middle).
+fn pointer_for(tab: Rect, center: Pos2) -> Pos2 {
+    center + Vec2::new(12.0 - tab.width() / 2.0, 0.0)
+}
+
+fn grab(tab: Rect) -> Pos2 {
+    Pos2::new(tab.min.x + 12.0, tab.center().y)
+}
+
+fn dragging(ide: &Ide) -> bool {
+    ide.state().ws.tabs.dragging().is_some()
+}
+
+#[test]
+fn drag_moves_a_tab_after_the_third() {
+    let fx = Fixture::new(SUITE, "drag_reorder");
+    let repo = many_files_repo(&fx, 4);
+    let mut ide = Ide::open(SUITE, &repo.dir);
+    let t = open_files(&mut ide, 4);
+    let rects: Vec<Rect> = tab_rects(&ide).into_iter().map(|(_, r)| r).collect();
+    assert!(rects.iter().all(|r| (r.center().y - rects[0].center().y).abs() < 0.5), "one row: {rects:?}");
+
+    // The floating tab's middle between the middles of the third and the fourth tab.
+    let mid = Pos2::new((rects[2].center().x + rects[3].center().x) / 2.0, rects[0].center().y);
+    let to = pointer_for(rects[0], mid);
+    press_and_move(&mut ide, grab(rects[0]), to);
+    assert!(dragging(&ide), "the move past the threshold started a drag");
+    assert_eq!(ide.tab_titles(), t, "nothing moves before the release");
+    assert_eq!(ide.active_title().as_deref(), Some(t[0].as_str()), "the press activated the dragged tab");
+    ide.snapshot_here("tab_drag_marker");
+
+    release(&mut ide, to);
+    assert!(!dragging(&ide));
+    assert_eq!(ide.tab_titles(), [t[1].as_str(), t[2].as_str(), t[0].as_str(), t[3].as_str()]);
+    assert_eq!(ide.active_title().as_deref(), Some(t[0].as_str()), "the dragged tab stays active");
+
+    // Close Tabs to the Right and Cmd+Shift+T follow the new order.
+    menu_close(&mut ide, &t[0], "Close Tabs to the Right");
+    assert_eq!(ide.tab_titles(), [t[1].as_str(), t[2].as_str(), t[0].as_str()]);
+    reopen_in_order(&mut ide, &[&t[3]]);
+    assert_eq!(ide.tab_titles(), [t[1].as_str(), t[2].as_str(), t[0].as_str(), t[3].as_str()]);
+}
+
+#[test]
+fn drag_moves_a_tab_into_another_row() {
+    let fx = Fixture::new(SUITE, "drag_rows");
+    let repo = many_files_repo(&fx, 30);
+    let mut ide = Ide::open(SUITE, &repo.dir);
+    ide.resize(Vec2::new(900.0, 600.0));
+    let t = open_files(&mut ide, 30);
+    let rects: Vec<Rect> = tab_rects(&ide).into_iter().map(|(_, r)| r).collect();
+    // The second tab of the third row.
+    let row_tops: std::collections::BTreeSet<i32> = rects.iter().map(|r| r.min.y.round() as i32).collect();
+    let third = *row_tops.iter().nth(2).expect("three rows");
+    let k = rects.iter().position(|r| r.min.y.round() as i32 == third).expect("third row") + 1;
+    assert_eq!(rects[k].min.y.round() as i32, third, "the third row holds two tabs");
+
+    // The middle lands at the left edge of tab k: the tab goes between k - 1 and k.
+    let to = pointer_for(rects[0], Pos2::new(rects[k].min.x, rects[k].center().y));
+    press_and_move(&mut ide, grab(rects[0]), to);
+    assert!(dragging(&ide));
+    release(&mut ide, to);
+    let mut want: Vec<String> = t[1..k].to_vec();
+    want.push(t[0].clone());
+    want.extend_from_slice(&t[k..]);
+    assert_eq!(ide.tab_titles(), want);
+    assert_eq!(ide.active_title().as_deref(), Some(t[0].as_str()));
+}
+
+#[test]
+fn escape_or_a_far_release_cancels_the_drag() {
+    let fx = Fixture::new(SUITE, "drag_cancel");
+    let repo = many_files_repo(&fx, 3);
+    let mut ide = Ide::open(SUITE, &repo.dir);
+    let t = open_files(&mut ide, 3);
+    let rects: Vec<Rect> = tab_rects(&ide).into_iter().map(|(_, r)| r).collect();
+    let to = pointer_for(rects[0], Pos2::new(rects[2].max.x, rects[2].center().y));
+
+    // Escape puts the tab back; the release afterwards changes nothing.
+    press_and_move(&mut ide, grab(rects[0]), to);
+    assert!(dragging(&ide));
+    ide.key(Key::Escape);
+    assert!(!dragging(&ide), "Escape ended the drag");
+    release(&mut ide, to);
+    assert_eq!(ide.tab_titles(), t, "Escape cancelled the move");
+
+    // A release far below the strip (over the text) cancels too.
+    let away = Pos2::new(to.x, to.y + 200.0);
+    press_and_move(&mut ide, grab(rects[0]), to);
+    ide.move_to(away);
+    assert!(dragging(&ide));
+    release(&mut ide, away);
+    assert!(!dragging(&ide));
+    assert_eq!(ide.tab_titles(), t, "a release away from the strip cancelled the move");
+}
+
+#[test]
+fn a_click_without_movement_only_activates() {
+    let fx = Fixture::new(SUITE, "drag_click");
+    let repo = many_files_repo(&fx, 3);
+    let mut ide = Ide::open(SUITE, &repo.dir);
+    let t = open_files(&mut ide, 3);
+    let r = ide.rect(&format!("Tab {}", t[0]));
+    // A tiny wobble stays under egui's drag threshold: a click, not a drag.
+    let p = grab(r);
+    press_and_move(&mut ide, p, p + Vec2::new(2.0, 0.0));
+    assert!(!dragging(&ide));
+    release(&mut ide, p + Vec2::new(2.0, 0.0));
+    assert_eq!(ide.tab_titles(), t);
+    assert_eq!(ide.active_title().as_deref(), Some(t[0].as_str()), "the click activated the first tab");
+    // The close button still closes on a press, and middle-click still closes.
+    ide.click_at(Pos2::new(r.max.x - 6.0 - 8.0, r.center().y));
+    ide.settle();
+    assert_eq!(ide.tab_titles(), &t[1..]);
+    let r = ide.rect(&format!("Tab {}", t[1]));
+    ide.click_button_at(r.center(), egui::PointerButton::Middle, egui::Modifiers::NONE);
+    ide.settle();
+    assert_eq!(ide.tab_titles(), &t[2..]);
+}
+
+#[test]
+fn the_new_order_survives_a_restart() {
+    let fx = Fixture::new(SUITE, "drag_restore");
+    let repo = many_files_repo(&fx, 3);
+    let mut storage = MemoryStorage::default();
+    let t = {
+        let mut ide = Ide::open(SUITE, &repo.dir);
+        let t = open_files(&mut ide, 3);
+        let rects: Vec<Rect> = tab_rects(&ide).into_iter().map(|(_, r)| r).collect();
+        let to = pointer_for(rects[2], rects[0].center() - Vec2::new(4.0, 0.0));
+        press_and_move(&mut ide, grab(rects[2]), to);
+        assert!(dragging(&ide));
+        release(&mut ide, to);
+        assert_eq!(ide.tab_titles(), [t[2].as_str(), t[0].as_str(), t[1].as_str()]);
+        eframe::App::save(ide.harness.state_mut(), &mut storage);
+        t
+    };
+    let mut ide = Ide::with_options(SUITE, test_options(Some(&repo.dir)), Some(&storage));
+    let want = vec![t[2].clone(), t[0].clone(), t[1].clone()];
+    let w = want.clone();
+    ide.wait_until("tabs restored", move |ide| ide.tab_titles() == w);
+    assert_eq!(ide.active_title().as_deref(), Some(t[2].as_str()));
 }

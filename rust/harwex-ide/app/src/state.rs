@@ -792,10 +792,12 @@ impl AppState {
         );
     }
 
+    /// An explicit Save All (⌥⌘S, the close-project prompt): oxfmt formats first when the
+    /// project turned it on (`format::save`).
     pub fn save_all(&mut self) {
         let ids: Vec<TabId> = self.ws.tabs.editors_mut().filter(|(_, e)| e.doc.is_dirty() && !e.read_only).map(|(id, _)| id).collect();
         for id in ids {
-            self.save_tab(id, false);
+            crate::format::save(self, id, false);
         }
         crate::git::diff::save_hidden_all(self);
     }

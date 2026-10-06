@@ -45,6 +45,8 @@ pub enum Icon {
     Rollback,
     /// Show Diff: two panes with a change between them.
     Diff,
+    /// Jump to Source (Edit Source): a pencil.
+    Edit,
     ExpandAll,
     CollapseAll,
     /// Previous Occurrence: an arrow up.
@@ -194,6 +196,14 @@ pub fn paint(painter: &Painter, rect: Rect, icon: Icon, color: Color32) {
             frame(p(1.5, 2.5), p(6.5, 13.5), 1.0);
             frame(p(9.5, 2.5), p(14.5, 13.5), 1.0);
             line(p(6.5, 6.0), p(9.5, 9.0));
+        }
+        Icon::Edit => {
+            line(p(3.5, 10.5), p(11.0, 3.0));
+            line(p(5.5, 12.5), p(13.0, 5.0));
+            line(p(11.0, 3.0), p(13.0, 5.0));
+            line(p(9.5, 4.5), p(11.5, 6.5));
+            line(p(3.5, 10.5), p(2.5, 13.5));
+            line(p(5.5, 12.5), p(2.5, 13.5));
         }
         Icon::ExpandAll => {
             line(p(4.0, 6.5), p(8.0, 2.5));

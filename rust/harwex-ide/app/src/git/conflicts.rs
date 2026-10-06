@@ -2,9 +2,11 @@
 
 mod merge;
 
+use std::collections::BTreeSet;
 use std::path::PathBuf;
 
-use egui::{vec2, Align2, Context, Frame, Modal, RichText, ScrollArea, Sense};
+use egui::text::{LayoutJob, TextFormat};
+use egui::{vec2, Align2, Context, Frame, Modal, RichText, ScrollArea};
 use ide_git::{ConflictChoice, RepoState};
 
 use super::remote::run_op;
@@ -15,7 +17,10 @@ pub struct ConflictsUi {
     pub(crate) op: RepoState,
     files: Vec<PathBuf>,
     dialog_open: bool,
-    selected: Option<usize>,
+    /// Selected rows by path, so a refresh that removes resolved files keeps the rest.
+    selected: BTreeSet<PathBuf>,
+    /// The row of the last plain or Cmd click: Shift+click selects from it, Merge... opens it.
+    lead: Option<PathBuf>,
     checking: bool,
     /// A check was requested while one ran; it runs again when the first returns.
     check_again: Option<bool>,
@@ -25,7 +30,7 @@ pub struct ConflictsUi {
 
 impl Default for ConflictsUi {
     fn default() -> Self {
-        ConflictsUi { op: RepoState::Clean, files: Vec::new(), dialog_open: false, selected: None, checking: false, check_again: None, confirm_abort: false, busy: false }
+        ConflictsUi { op: RepoState::Clean, files: Vec::new(), dialog_open: false, selected: BTreeSet::new(), lead: None, checking: false, check_again: None, confirm_abort: false, busy: false }
     }
 }
 
@@ -45,6 +50,54 @@ impl ConflictsUi {
 
     pub fn is_busy(&self) -> bool {
         self.busy || self.checking
+    }
+
+    /// Selected conflicted paths, in list order.
+    pub fn selected(&self) -> Vec<PathBuf> {
+        self.files.iter().filter(|f| self.selected.contains(*f)).cloned().collect()
+    }
+
+    /// Drops selected paths that are no longer conflicted. An empty selection falls back to the
+    /// first row, so the buttons always have a target while files remain.
+    fn keep_selection(&mut self) {
+        let files = &self.files;
+        self.selected.retain(|p| files.contains(p));
+        if self.lead.as_ref().is_some_and(|l| !files.contains(l)) {
+            self.lead = None;
+        }
+        if self.selected.is_empty() {
+            if let Some(first) = files.first() {
+                self.selected.insert(first.clone());
+                self.lead = Some(first.clone());
+            }
+        }
+        if self.lead.is_none() {
+            self.lead = files.iter().find(|f| self.selected.contains(*f)).cloned();
+        }
+    }
+
+    /// A press on row `i`: plain selects only it, Cmd toggles it, Shift selects the range from
+    /// the lead row.
+    fn press_row(&mut self, i: usize, mods: egui::Modifiers) {
+        let Some(path) = self.files.get(i).cloned() else { return };
+        if mods.shift {
+            let from = self.lead.as_ref().and_then(|l| self.files.iter().position(|f| f == l)).unwrap_or(i);
+            let (a, b) = if from <= i { (from, i) } else { (i, from) };
+            if !mods.command {
+                self.selected.clear();
+            }
+            self.selected.extend(self.files[a..=b].iter().cloned());
+            return;
+        }
+        if mods.command {
+            if !self.selected.remove(&path) {
+                self.selected.insert(path.clone());
+            }
+        } else {
+            self.selected.clear();
+            self.selected.insert(path.clone());
+        }
+        self.lead = Some(path);
     }
 }
 
@@ -88,10 +141,8 @@ fn check(state: &mut AppState, open: bool) {
             if (open || appeared) && !files.is_empty() {
                 c.dialog_open = true;
             }
-            if c.selected.is_none_or(|i| i >= files.len()) {
-                c.selected = (!files.is_empty()).then_some(0);
-            }
             c.files = files;
+            c.keep_selection();
             c.op = op;
             if op == RepoState::Clean && c.files.is_empty() {
                 c.dialog_open = false;
@@ -232,10 +283,12 @@ fn dialog(state: &mut AppState, ctx: &Context) {
         return;
     }
     let mut open = true;
-    let mut accept: Option<(PathBuf, ConflictChoice)> = None;
+    let mut accept: Option<(Vec<PathBuf>, ConflictChoice)> = None;
     let mut merge: Option<PathBuf> = None;
     let mut cont = false;
+    let mut pressed: Option<usize> = None;
     let clicks = state.clicks;
+    let mods = ctx.input(|i| i.modifiers);
     let c = &mut state.ws.git_ui.conflicts;
     let (yours, theirs) = side_labels(c.op);
     let title = if c.op == RepoState::Clean { "Conflicts".to_string() } else { format!("Conflicts ({})", op_name(c.op)) };
@@ -246,7 +299,7 @@ fn dialog(state: &mut AppState, ctx: &Context) {
         .resizable(false)
         .anchor(Align2::CENTER_CENTER, vec2(0.0, 0.0))
         .show(ctx, |ui| {
-            ui.set_width(620.0);
+            ui.set_width(DIALOG_W);
             if c.files.is_empty() {
                 ui.label(RichText::new("All conflicts are resolved.").color(theme::T.text_bright));
                 if c.op != RepoState::Clean {
@@ -259,45 +312,55 @@ fn dialog(state: &mut AppState, ctx: &Context) {
             }
             ui.label(RichText::new(format!("{} file(s) have conflicts. Pick a side, or merge them by hand.", c.files.len())).color(theme::T.text_dim));
             ui.add_space(4.0);
+            let labels = [format!("Accept {yours}"), format!("Accept {theirs}"), "Merge...".to_string()];
+            // The button column is as wide as its longest label, so a label never wraps and the
+            // list never runs under the buttons.
+            let pad = ui.spacing().button_padding.x;
+            let font = egui::TextStyle::Button.resolve(ui.style());
+            let label_w = labels.iter().map(|l| ui.fonts(|f| f.layout_no_wrap(l.clone(), font.clone(), theme::T.text).size().x)).fold(0.0_f32, f32::max);
+            let col_w = (label_w + 2.0 * pad + 4.0).max(150.0);
+            let gap = ui.spacing().item_spacing.x;
+            let list_w = (ui.available_width() - col_w - gap).max(100.0);
             ui.horizontal_top(|ui| {
-                let list_w = ui.available_width() - 160.0;
-                let h = 240.0;
-                ui.allocate_ui(vec2(list_w, h), |ui| {
-                    ui.set_min_size(vec2(list_w, h));
-                    ui.spacing_mut().item_spacing.y = 0.0;
-                    ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
-                        for (i, f) in c.files.iter().enumerate() {
-                            let (rect, resp) = ui.allocate_exact_size(vec2(ui.available_width(), 22.0), Sense::click());
-                            let sel = c.selected == Some(i);
-                            crate::util::label_selectable(&resp, format!("Conflict {}", f.display()), sel);
-                            if sel {
-                                ui.painter().rect_filled(rect, 0.0, theme::T.selection);
-                            } else if resp.hovered() {
-                                ui.painter().rect_filled(rect, 0.0, theme::T.hover);
+                // Top-down: the ScrollArea's rows take this layout, and `horizontal_top` would
+                // put them side by side.
+                ui.allocate_ui_with_layout(vec2(list_w, LIST_H), egui::Layout::top_down(egui::Align::Min), |ui| {
+                    ui.set_min_size(vec2(list_w, LIST_H));
+                    ui.set_max_width(list_w);
+                    Frame::NONE.stroke(ui.visuals().widgets.noninteractive.bg_stroke).show(ui, |ui| {
+                        ui.spacing_mut().item_spacing.y = 0.0;
+                        // Rows look like list items, not buttons, until hovered or selected.
+                        ui.visuals_mut().widgets.inactive.weak_bg_fill = theme::T.clear;
+                        ui.visuals_mut().widgets.inactive.bg_stroke = egui::Stroke::NONE;
+                        ScrollArea::vertical().auto_shrink([false, false]).min_scrolled_height(0.0).max_height(LIST_H - 2.0).show(ui, |ui| {
+                            for (i, f) in c.files.iter().enumerate() {
+                                let sel = c.selected.contains(f);
+                                let min_size = vec2(ui.available_width(), theme::T.space.row_h + 2.0);
+                                let resp = crate::util::expandable_row(ui, row_job(f), sel, min_size);
+                                crate::util::label_selectable(&resp, format!("Conflict {}", f.display()), sel);
+                                if crate::clicks::pressed(&resp) {
+                                    pressed = Some(i);
+                                }
+                                if clicks.double(&resp) {
+                                    merge = Some(f.clone());
+                                }
                             }
-                            ui.painter().text(rect.left_center() + vec2(6.0, 0.0), Align2::LEFT_CENTER, f.display().to_string(), theme::T.ui_font(), theme::T.git_conflict);
-                            if resp.clicked() {
-                                c.selected = Some(i);
-                            }
-                            if clicks.double(&resp) {
-                                merge = Some(f.clone());
-                            }
-                        }
+                        });
                     });
                 });
                 ui.vertical(|ui| {
-                    ui.set_width(150.0);
-                    let sel = c.selected.and_then(|i| c.files.get(i)).cloned();
-                    ui.add_enabled_ui(sel.is_some() && !c.busy, |ui| {
-                        let full = egui::vec2(150.0, 24.0);
-                        if ui.add_sized(full, egui::Button::new(format!("Accept {yours}"))).clicked() {
-                            accept = sel.clone().map(|p| (p, ConflictChoice::Ours));
+                    ui.set_width(col_w);
+                    let sel = c.selected();
+                    ui.add_enabled_ui(!sel.is_empty() && !c.busy, |ui| {
+                        let size = vec2(col_w, 24.0);
+                        if ui.add_sized(size, egui::Button::new(&labels[0])).clicked() {
+                            accept = Some((sel.clone(), ConflictChoice::Ours));
                         }
-                        if ui.add_sized(full, egui::Button::new(format!("Accept {theirs}"))).clicked() {
-                            accept = sel.clone().map(|p| (p, ConflictChoice::Theirs));
+                        if ui.add_sized(size, egui::Button::new(&labels[1])).clicked() {
+                            accept = Some((sel.clone(), ConflictChoice::Theirs));
                         }
-                        if ui.add_sized(full, egui::Button::new("Merge...")).clicked() {
-                            merge = sel.clone();
+                        if ui.add_sized(size, egui::Button::new(&labels[2])).clicked() {
+                            merge = c.lead.clone().filter(|l| sel.contains(l)).or_else(|| sel.first().cloned());
                         }
                     });
                     if c.busy {
@@ -306,6 +369,9 @@ fn dialog(state: &mut AppState, ctx: &Context) {
                 });
             });
         });
+    if let Some(i) = pressed {
+        state.ws.git_ui.conflicts.press_row(i, mods);
+    }
     if !open {
         state.ws.git_ui.conflicts.dialog_open = false;
     }
@@ -313,21 +379,51 @@ fn dialog(state: &mut AppState, ctx: &Context) {
         state.ws.git_ui.conflicts.dialog_open = false;
         continue_operation(state);
     }
-    if let Some((path, choice)) = accept {
+    if let Some((paths, choice)) = accept {
         state.ws.git_ui.conflicts.busy = true;
         let side = match choice {
             ConflictChoice::Ours => yours,
             ConflictChoice::Theirs => theirs,
         };
-        let body = format!("{} resolved with {side}", path.display());
-        run_op(state, "Resolve Conflict", body, false, move |r| r.resolve_with(&path, choice).map(|_| None), |state, _| {
-            state.ws.git_ui.conflicts.busy = false;
-            check(state, false);
-        });
+        let body = match paths.as_slice() {
+            [one] => format!("{} resolved with {side}", one.display()),
+            many => format!("{} files resolved with {side}", many.len()),
+        };
+        run_op(
+            state,
+            "Resolve Conflict",
+            body,
+            false,
+            move |r| {
+                for p in &paths {
+                    r.resolve_with(p, choice)?;
+                }
+                Ok(None)
+            },
+            |state, _| {
+                state.ws.git_ui.conflicts.busy = false;
+                check(state, false);
+            },
+        );
     }
     if let Some(path) = merge {
         open_merge(state, path);
     }
+}
+
+const DIALOG_W: f32 = 640.0;
+const LIST_H: f32 = 240.0;
+
+/// A conflict row: the file name in the conflict colour, then its folder dimmed (as in Search
+/// Everywhere).
+fn row_job(path: &std::path::Path) -> LayoutJob {
+    let mut job = LayoutJob::default();
+    let name = path.file_name().map_or_else(|| path.display().to_string(), |n| n.to_string_lossy().into_owned());
+    job.append(&name, 0.0, TextFormat { font_id: theme::T.ui_font(), color: theme::T.git_conflict, ..Default::default() });
+    if let Some(dir) = path.parent().filter(|d| !d.as_os_str().is_empty()) {
+        job.append(&format!("  {}", dir.display()), 0.0, TextFormat { font_id: theme::T.small_font(), color: theme::T.text_dim, ..Default::default() });
+    }
+    job
 }
 
 /// Opens the three-pane merge tab for a conflicted file (path relative to the workdir).

@@ -389,8 +389,7 @@ pub fn show_popup(state: &mut AppState, ctx: &Context) {
                 for (i, t) in popup.items.iter().enumerate() {
                     let rel = display_path(&root, &t.location.path);
                     let text = format!("{}:{}   {}", rel, t.location.line + 1, t.preview);
-                    let full = || format!("{}:{}", t.location.path.strip_prefix(&root).unwrap_or(&t.location.path).display(), t.location.line + 1);
-                    let r = crate::util::truncated_row(ui, RichText::new(text).monospace(), i == popup.selected, egui::Vec2::ZERO, full);
+                    let r = crate::util::expandable_row(ui, RichText::new(text).monospace(), i == popup.selected, egui::Vec2::ZERO);
                     if r.clicked() {
                         chosen = Some(i);
                     }

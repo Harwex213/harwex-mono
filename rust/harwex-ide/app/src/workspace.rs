@@ -78,6 +78,10 @@ pub struct Workspace {
     pub tree_ops: crate::tree_menu::TreeOps,
     /// "Save" in the close-project prompt: the workspace closes once its last save landed.
     pub(crate) close_when_saved: bool,
+    /// Formats in flight (oxfmt on save, ⌥⌘L).
+    pub format: crate::format::FormatState,
+    /// The open Settings dialog.
+    pub settings: Option<crate::settings::SettingsDialog>,
     /// The saved layout and open files were applied (`AppState::restore_saved`).
     pub(crate) restored: bool,
     /// True while this workspace is the active one. Server progress of a background workspace
@@ -128,6 +132,8 @@ impl Workspace {
             opening: HashMap::new(),
             tree_ops: Default::default(),
             close_when_saved: false,
+            format: Default::default(),
+            settings: None,
             restored: false,
             visible,
         }

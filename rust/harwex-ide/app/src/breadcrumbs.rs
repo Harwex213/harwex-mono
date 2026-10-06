@@ -7,6 +7,12 @@
 //! Left/Right at the first level hop to the neighbouring segment's popup. While the bar or a
 //! popup has the keyboard, `take_keys` consumes the arrows before any widget sees them.
 //!
+//! A crumb of the project is also a file or folder like a Project tree row: a click on the file
+//! crumb, or a right-click on any project crumb, opens the file menu (`tree_menu::file_menu`, the
+//! tree's items plus Select in Project), and a double click on a folder crumb selects it in the
+//! Project tree. While the bar has the keyboard, the tree's file keys (`tree::command_keys`) and
+//! Alt+F1 act on the selected crumb.
+//!
 //! Listings run on a worker through `tree::list_dir`, so `.gitignore` applies like in the
 //! project tree. Icons come from `icons`.
 
@@ -19,6 +25,7 @@ use crate::icons::{self, Icon};
 use crate::state::AppState;
 use crate::theme;
 use crate::tree::{self, Entry};
+use crate::tree_menu::{self, Target};
 
 const ICON_W: f32 = 18.0;
 const PAD: f32 = 4.0;
@@ -207,6 +214,17 @@ pub struct Popup {
     pub anchor: Pos2,
 }
 
+/// The file menu of one crumb (a click on the file, a right-click on any project crumb).
+pub struct FileMenu {
+    /// The slot in `Breadcrumbs::slots` that opened the menu.
+    pub slot: usize,
+    pub target: Target,
+    /// The file the bar showed when the menu opened. Another active file closes it.
+    file: PathBuf,
+    /// Left edge of the slot; the menu rests on the status bar there.
+    anchor_x: f32,
+}
+
 #[derive(Default, Clone, Copy)]
 struct Keys {
     escape: bool,
@@ -228,6 +246,10 @@ pub struct Breadcrumbs {
     listings: HashMap<PathBuf, Vec<Entry>>,
     loading: HashSet<PathBuf>,
     pub popup: Option<Popup>,
+    /// The open file menu. It never shows together with `popup`.
+    pub menu: Option<FileMenu>,
+    /// The file menu's rect in the last frame, for tests.
+    pub menu_rect: Option<Rect>,
     keys: Keys,
     /// The bar's rect in the last drawn frame. A press there is not a click outside the popup.
     bar_rect: Option<Rect>,
@@ -276,6 +298,22 @@ pub fn active_file(state: &AppState) -> Option<PathBuf> {
     state.ws.tabs.active_tab().and_then(|t| t.file_path())
 }
 
+/// The file or folder a crumb stands for, when it lies in the project. Library crumbs and files
+/// outside the project have no file menu and no file keys.
+fn crumb_target(root: Option<&Path>, seg: &Segment) -> Option<Target> {
+    if seg.kind == SegmentKind::Library || !root.is_some_and(|r| seg.path.starts_with(r)) {
+        return None;
+    }
+    Some(Target { path: seg.path.clone(), is_dir: seg.kind != SegmentKind::File })
+}
+
+/// The target of slot `index` of the last drawn bar.
+fn slot_target(state: &AppState, index: usize) -> Option<Target> {
+    let Slot::Segment(i) = state.ws.breadcrumbs.slots.get(index)? else { return None };
+    let segs = active_segments(state)?;
+    crumb_target(state.ws.project.as_ref().map(|p| p.root.as_path()), segs.get(*i)?)
+}
+
 fn active_segments(state: &AppState) -> Option<Vec<Segment>> {
     let file = active_file(state)?;
     let project = state.ws.project.as_ref();
@@ -318,6 +356,7 @@ fn open_slot(state: &mut AppState, index: usize) {
 /// Gives the bar the keyboard with slot `index` selected and no popup open.
 fn focus_bar(state: &mut AppState, ctx: &Context, index: usize) {
     state.ws.breadcrumbs.popup = None;
+    state.ws.breadcrumbs.menu = None;
     state.ws.breadcrumbs.selected_slot = Some(index);
     state.ws.breadcrumbs.refocus = !ctx.memory(|m| m.has_focus(focus_id()));
     ctx.memory_mut(|m| m.request_focus(focus_id()));
@@ -326,6 +365,7 @@ fn focus_bar(state: &mut AppState, ctx: &Context, index: usize) {
 /// Leaves the breadcrumbs and gives the keyboard back to the editor.
 fn leave(state: &mut AppState, ctx: &Context) {
     state.ws.breadcrumbs.popup = None;
+    state.ws.breadcrumbs.menu = None;
     state.ws.breadcrumbs.selected_slot = None;
     crate::terminal::focus_editor(state, ctx);
 }
@@ -362,6 +402,7 @@ fn open_popup(state: &mut AppState, opener: Opener, segs: &[Segment], anchor: Po
     if let Some(d) = level.dir_path() {
         request(state, d.to_path_buf());
     }
+    state.ws.breadcrumbs.menu = None;
     state.ws.breadcrumbs.popup = Some(Popup { levels: vec![level], focus: 0, opener, file, anchor });
 }
 
@@ -375,6 +416,13 @@ pub fn take_keys(state: &mut AppState, ctx: &Context) {
     // A click elsewhere took the focus: the bar no longer has the keyboard.
     if crumbs.popup.is_none() && crumbs.selected_slot.is_some() && !ctx.memory(|m| m.has_focus(focus_id())) {
         crumbs.selected_slot = None;
+    }
+    // Esc closes the file menu first; the bar keeps the keyboard.
+    if crumbs.menu.is_some() {
+        if ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, Key::Escape)) {
+            crumbs.menu = None;
+        }
+        return;
     }
     if crumbs.popup.is_none() && crumbs.selected_slot.is_none() {
         return;
@@ -407,6 +455,19 @@ pub fn take_keys(state: &mut AppState, ctx: &Context) {
         state.ws.breadcrumbs.selected_slot = Some(sel.saturating_sub(1));
     } else if keys.right {
         state.ws.breadcrumbs.selected_slot = Some((sel + 1).min(len - 1));
+    } else {
+        file_keys(state, ctx, sel);
+    }
+}
+
+/// The file keys on the selected crumb, as on a Project tree row: Alt+F1 (Select in Project),
+/// ⇧⌘C, ⌥C, ⇧F6, ⌥F7, ⌘X/⌘C/⌘V, Delete. Editing keys never reach the editor meanwhile,
+/// because the bar holds the egui focus.
+fn file_keys(state: &mut AppState, ctx: &Context, slot: usize) {
+    let Some(target) = slot_target(state, slot) else { return };
+    let cmd = if ctx.input_mut(|i| i.consume_key(egui::Modifiers::ALT, Key::F1)) { Some(tree_menu::TreeCommand::SelectInProject) } else { tree::command_keys(ctx, false) };
+    if let Some(cmd) = cmd {
+        tree_menu::run(state, cmd, vec![target]);
     }
 }
 
@@ -429,6 +490,7 @@ fn segment_width(ui: &Ui, seg: &Segment) -> f32 {
 pub fn bar(state: &mut AppState, ui: &mut Ui) {
     let Some(segs) = active_segments(state) else {
         state.ws.breadcrumbs.popup = None;
+        state.ws.breadcrumbs.menu = None;
         state.ws.breadcrumbs.slots.clear();
         state.ws.breadcrumbs.bar_rect = None;
         return;
@@ -437,6 +499,9 @@ pub fn bar(state: &mut AppState, ui: &mut Ui) {
     if state.ws.breadcrumbs.popup.as_ref().is_some_and(|p| p.file != file) {
         state.ws.breadcrumbs.popup = None;
     }
+    if state.ws.breadcrumbs.menu.as_ref().is_some_and(|m| m.file != file) {
+        state.ws.breadcrumbs.menu = None;
+    }
     // Slots touch; the separators carry the gaps, so `fit` sees the real widths.
     ui.spacing_mut().item_spacing.x = 0.0;
     let widths: Vec<f32> = segs.iter().map(|s| segment_width(ui, s)).collect();
@@ -444,7 +509,12 @@ pub fn bar(state: &mut AppState, ui: &mut Ui) {
     let height = ui.available_height();
     let start = ui.cursor().min;
     let mut clicked: Option<(Opener, Pos2)> = None;
+    // A click on the file crumb or a right-click on a project crumb: the slot and its target.
+    let mut menu_click: Option<(usize, Target, f32)> = None;
+    let mut reveal: Option<PathBuf> = None;
+    let root = state.ws.project.as_ref().map(|p| p.root.clone());
     let open = state.ws.breadcrumbs.popup.as_ref().map(|p| p.opener);
+    let menu_slot = state.ws.breadcrumbs.menu.as_ref().map(|m| m.slot);
     let bar_focused = state.ws.breadcrumbs.bar_focused(ui.ctx());
     let keyboard = if bar_focused { state.ws.breadcrumbs.selected_slot.map(|s| s.min(slots.len().saturating_sub(1))) } else { None };
     let mut slot_rects = Vec::with_capacity(slots.len());
@@ -465,16 +535,19 @@ pub fn bar(state: &mut AppState, ui: &mut Ui) {
         };
         slot_rects.push(rect);
         let chosen = keyboard == Some(n);
-        crate::util::label_selectable(&resp, label, open == Some(opener) || chosen);
+        let highlighted = open == Some(opener) || menu_slot == Some(n);
+        crate::util::label_selectable(&resp, label, highlighted || chosen);
         let painter = ui.painter();
         if chosen {
             // The keyboard selection: a filled slot with a focus ring.
             let r = rect.shrink2(vec2(0.0, 1.0));
             painter.rect_filled(r, theme::T.radius.row, theme::T.tab_active_bg);
             painter.rect_stroke(r.shrink(0.5), theme::T.radius.row, Stroke::new(1.0_f32, theme::T.accent), egui::StrokeKind::Inside);
-        } else if open == Some(opener) {
+        } else if highlighted {
             painter.rect_filled(rect.shrink2(vec2(0.0, 1.0)), theme::T.radius.row, theme::T.tab_active_bg);
-            anchor = Some(rect.left_top());
+            if open == Some(opener) {
+                anchor = Some(rect.left_top());
+            }
         } else if resp.hovered() {
             painter.rect_filled(rect.shrink2(vec2(0.0, 1.0)), theme::T.radius.row, theme::T.hover_on_window);
         }
@@ -497,28 +570,50 @@ pub fn bar(state: &mut AppState, ui: &mut Ui) {
             }
             Slot::Hidden(_) => dots(painter, rect.center(), theme::T.text),
         }
-        if resp.clicked() {
-            clicked = Some((opener, rect.left_top()));
+        let target = match slot {
+            Slot::Segment(i) => crumb_target(root.as_deref(), &segs[*i]),
+            Slot::Hidden(_) => None,
+        };
+        match target {
+            // The click of the second press also toggles the folder's popup; the reveal wins.
+            Some(t) if t.is_dir && state.clicks.double(&resp) => reveal = Some(t.path),
+            Some(t) if resp.secondary_clicked() || (resp.clicked() && !t.is_dir) => menu_click = Some((n, t, rect.min.x)),
+            _ if resp.clicked() => clicked = Some((opener, rect.left_top())),
+            _ => {}
         }
     }
     state.ws.breadcrumbs.bar_rect = Some(Rect::from_min_max(start, pos2(ui.cursor().min.x, start.y + height)));
-    if state.ws.breadcrumbs.selected_slot.is_some() {
-        // The focus target must exist every frame, or egui drops its focus. It has no size, so
-        // any press, even on a segment, takes the keyboard away from the bar.
-        ui.interact(Rect::from_min_size(start, egui::Vec2::ZERO), focus_id(), Sense::focusable_noninteractive());
-        ui.memory_mut(|m| m.set_focus_lock_filter(focus_id(), egui::EventFilter { tab: true, horizontal_arrows: true, vertical_arrows: true, escape: true }));
-    }
     state.ws.breadcrumbs.slots = slots;
     state.ws.breadcrumbs.slot_rects = slot_rects;
     if let (Some(p), Some(a)) = (state.ws.breadcrumbs.popup.as_mut(), anchor) {
         p.anchor = a;
     }
-    if let Some((opener, at)) = clicked {
+    if let Some(path) = reveal {
+        state.ws.breadcrumbs.popup = None;
+        state.ws.breadcrumbs.menu = None;
+        state.ws.breadcrumbs.selected_slot = None;
+        tree::select_path(state, &path);
+    } else if let Some((n, target, anchor_x)) = menu_click {
+        if menu_slot == Some(n) {
+            state.ws.breadcrumbs.menu = None;
+        } else {
+            // The bar takes the keyboard too, so the file keys act on the crumb after the menu.
+            focus_bar(state, ui.ctx(), n);
+            state.ws.breadcrumbs.menu = Some(FileMenu { slot: n, target, file, anchor_x });
+        }
+    } else if let Some((opener, at)) = clicked {
         if open == Some(opener) {
             state.ws.breadcrumbs.popup = None;
         } else {
             open_popup(state, opener, &segs, at);
         }
+    }
+    // After the clicks: a click on the file crumb gives the bar the keyboard in this frame.
+    if state.ws.breadcrumbs.selected_slot.is_some() {
+        // The focus target must exist every frame, or egui drops its focus. It has no size, so
+        // any press, even on a segment, takes the keyboard away from the bar.
+        ui.interact(Rect::from_min_size(start, egui::Vec2::ZERO), focus_id(), Sense::focusable_noninteractive());
+        ui.memory_mut(|m| m.set_focus_lock_filter(focus_id(), egui::EventFilter { tab: true, horizontal_arrows: true, vertical_arrows: true, escape: true }));
     }
 }
 
@@ -531,6 +626,7 @@ enum Action {
 
 /// Draws the open popup levels and applies keys, hover and clicks. Call after the panels.
 pub fn show_popup(state: &mut AppState, ctx: &Context) {
+    show_menu(state, ctx);
     let keys = std::mem::take(&mut state.ws.breadcrumbs.keys);
     let Some(popup) = state.ws.breadcrumbs.popup.as_mut() else {
         state.ws.breadcrumbs.popup_rects.clear();
@@ -649,7 +745,11 @@ pub fn show_popup(state: &mut AppState, ctx: &Context) {
         let pos = pos2(xs[li], baseline - size.y - margin.y);
         let focused = li == popup.focus;
         let key = level_dirs[li].clone().unwrap_or_default();
-        let resp = egui::Area::new(crate::workspace::wid(("breadcrumb-popup", li, &key))).order(egui::Order::Foreground).fixed_pos(pos).constrain(false).show(ctx, |ui| {
+        // The known size also bounds the invisible sizing pass of a new level. egui's default
+        // there (600x400) covers the bar, and the second press of a double click on a folder
+        // crumb would land on the level instead of the crumb.
+        let area = egui::Area::new(crate::workspace::wid(("breadcrumb-popup", li, &key))).order(egui::Order::Foreground).fixed_pos(pos).constrain(false).default_size(size + margin);
+        let resp = area.show(ctx, |ui| {
             frame.show(ui, |ui| {
                 // An explicit size: an Area otherwise offers its content last frame's size.
                 ui.set_width(size.x);
@@ -774,6 +874,35 @@ pub fn show_popup(state: &mut AppState, ctx: &Context) {
         if target < state.ws.breadcrumbs.slots.len() {
             open_slot(state, target);
         }
+    }
+}
+
+/// Draws the open file menu above its crumb, resting on the status bar like the popups. A pick
+/// runs through `tree_menu::run`, the same path as the Project tree's menu.
+fn show_menu(state: &mut AppState, ctx: &Context) {
+    let Some(menu) = state.ws.breadcrumbs.menu.as_ref() else {
+        state.ws.breadcrumbs.menu_rect = None;
+        return;
+    };
+    let target = menu.target.clone();
+    let screen = ctx.screen_rect();
+    let baseline = state.ws.breadcrumbs.baseline.unwrap_or(screen.max.y).min(screen.max.y);
+    let pos = pos2(menu.anchor_x, baseline);
+    let info = tree_menu::menu_info(state, &target);
+    let resp = egui::Area::new(crate::workspace::wid("breadcrumb-file-menu")).order(egui::Order::Foreground).pivot(Align2::LEFT_BOTTOM).fixed_pos(pos).sense(Sense::hover()).show(ctx, |ui| {
+        theme::menu_style(ui.style_mut());
+        egui::Frame::menu(ui.style()).show(ui, |ui| ui.with_layout(egui::Layout::top_down_justified(egui::Align::LEFT), |ui| tree_menu::file_menu(ui, &target, &info)).inner).inner
+    });
+    let rect = resp.response.rect;
+    state.ws.breadcrumbs.menu_rect = Some(rect);
+    let bar = state.ws.breadcrumbs.bar_rect;
+    // A press on the bar is the bar's own: it toggles the menu or opens another crumb.
+    let pressed_outside = ctx.input(|i| i.pointer.any_pressed() && i.pointer.interact_pos().is_some_and(|p| !rect.contains(p) && !bar.is_some_and(|r| r.contains(p))));
+    if let Some(cmd) = resp.inner {
+        state.ws.breadcrumbs.menu = None;
+        tree_menu::run(state, cmd, vec![target]);
+    } else if pressed_outside {
+        state.ws.breadcrumbs.menu = None;
     }
 }
 

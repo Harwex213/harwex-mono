@@ -125,8 +125,13 @@ fn popup_lists_children_and_opens_nested_popups() {
     ide.click_at(editor);
     assert!(ide.state().ws.breadcrumbs.popup.is_none());
 
-    // The file segment lists its siblings with the file selected.
+    // A click on the file segment opens its file menu; Esc closes it and leaves the bar the
+    // keyboard, and Down lists the file's siblings with the file selected.
     ide.click("Breadcrumb fresh.ts");
+    assert!(ide.state().ws.breadcrumbs.menu.is_some() && ide.state().ws.breadcrumbs.popup.is_none());
+    ide.key(Key::Escape);
+    assert!(ide.state().ws.breadcrumbs.menu.is_none() && bar_focused(&ide));
+    ide.key(Key::ArrowDown);
     ide.wait_until("siblings", |ide| ide.has("Breadcrumb item src/core/deep"));
     ide.settle();
     assert_eq!(levels(ide.state()), ["src/core"]);
@@ -786,7 +791,8 @@ fn long_directory_shows_18_rows_and_follows_the_selection() {
     let repo = mono_repo(&fx);
     let mut ide = Ide::open(SUITE, &repo.dir);
     ide.open_file(DEEP_FILE);
-    ide.click("Breadcrumb index.js");
+    alt_home(&mut ide);
+    ide.key(Key::ArrowDown);
     ide.wait_until("siblings", |ide| selected(ide.state(), 0).as_deref() == Some(DEEP_FILE));
     ide.settle();
     ide.park_mouse();
@@ -854,4 +860,151 @@ fn chain_moves_left_at_the_right_edge() {
     }
     assert!(rects[0].min.x < anchor - 20.0, "the chain moved left of its segment");
     ide.snapshot("layout_right_edge");
+}
+
+// ---------------------------------------------------------------------------------------------
+// Crumbs as files: Select in Project, the file menu and the file keys.
+
+fn calls(ide: &Ide) -> Vec<String> {
+    ide.state().platform.calls()
+}
+
+/// The labels in `after` that `before` does not have, in order, counted per occurrence.
+fn new_labels(before: &[String], after: &[String]) -> Vec<String> {
+    let mut left = before.to_vec();
+    after
+        .iter()
+        .filter(|l| match left.iter().position(|b| b == *l) {
+            Some(i) => {
+                left.remove(i);
+                false
+            }
+            None => true,
+        })
+        .cloned()
+        .collect()
+}
+
+#[test]
+fn double_click_on_a_folder_selects_it_in_project() {
+    let fx = Fixture::new(SUITE, "select_in_project");
+    let repo = crumbs_repo(&fx);
+    let mut ide = Ide::open(SUITE, &repo.dir);
+    ide.open_file("src/core/deep/nested.ts");
+    ide.state_mut().ws.layout.left = None;
+    ide.settle();
+    assert!(!ide.has("src/core/deep"), "the Project window is hidden");
+
+    ide.double_click("Breadcrumb deep");
+    ide.settle();
+    let root = ide.root();
+    assert_eq!(ide.state().ws.layout.left, Some(harwex_ide::layout::ToolWindow::Project));
+    assert_eq!(ide.state().ws.tree.selected.as_deref(), Some(root.join("src/core/deep").as_path()));
+    assert!(ide.has("src/core/deep"), "the row is drawn: {:?}", ide.labels());
+    assert!(harwex_ide::tree::has_focus(&ide.ctx()), "the tree has the keyboard");
+    assert!(ide.state().ws.breadcrumbs.popup.is_none(), "the first click's popup is closed again");
+    ide.snapshot("select_in_project");
+}
+
+#[test]
+fn file_crumb_menu_lists_the_tree_file_menu() {
+    let fx = Fixture::new(SUITE, "file_menu");
+    let repo = crumbs_repo(&fx);
+    let mut ide = Ide::open(SUITE, &repo.dir);
+    ide.open_file("src/util.ts");
+    let root = ide.root();
+    let file = root.join("src/util.ts");
+    ide.state_mut().ws.tree.reveal(&root, &file);
+    ide.settle();
+
+    // The Project tree's menu of the same file.
+    let before = ide.labels();
+    ide.right_click("src/util.ts");
+    ide.settle();
+    let tree_items = new_labels(&before, &ide.labels());
+    assert!(tree_items.iter().any(|l| l == "Copy Absolute Path"), "tree menu: {tree_items:?}");
+    ide.key(Key::Escape);
+    ide.settle();
+
+    // The file crumb's menu: Select in Project, then the same items in the same order.
+    let before = ide.labels();
+    ide.click("Breadcrumb util.ts");
+    ide.settle();
+    let crumb_items = new_labels(&before, &ide.labels());
+    assert_eq!(crumb_items.first().map(String::as_str), Some("Select in Project"));
+    assert_eq!(crumb_items[1..], tree_items[..]);
+    let menu = ide.state().ws.breadcrumbs.menu_rect.expect("menu drawn");
+    assert!((menu.max.y - baseline(&ide)).abs() < 1.0, "the menu rests on the status bar");
+    ide.snapshot("file_menu");
+
+    // A second click on the crumb closes the menu; a right-click opens it again.
+    ide.click("Breadcrumb util.ts");
+    assert!(ide.state().ws.breadcrumbs.menu.is_none());
+    ide.right_click("Breadcrumb util.ts");
+    ide.settle();
+    assert!(ide.has("Select in Project"));
+
+    // An item acts on the crumb's file.
+    ide.click("Copy Absolute Path");
+    ide.settle();
+    assert_eq!(calls(&ide).last().cloned(), Some(format!("copy {}", file.display())));
+    assert!(ide.state().ws.breadcrumbs.menu.is_none());
+
+    // A right-click on a folder crumb opens the folder's menu; a click outside closes it.
+    ide.right_click("Breadcrumb src");
+    ide.settle();
+    assert_eq!(ide.state().ws.breadcrumbs.menu.as_ref().map(|m| m.target.path.clone()), Some(root.join("src")));
+    assert!(ide.has("Mark Directory as Excluded"), "folder items");
+    let editor = ide.rect("Editor util.ts").center();
+    ide.click_at(editor);
+    assert!(ide.state().ws.breadcrumbs.menu.is_none());
+}
+
+#[test]
+fn file_keys_act_on_the_focused_crumb() {
+    let fx = Fixture::new(SUITE, "file_keys");
+    let repo = crumbs_repo(&fx);
+    let mut ide = Ide::open(SUITE, &repo.dir);
+    ide.open_file("src/core/deep/nested.ts");
+    let root = ide.root();
+    let text = ide.active_text();
+
+    // Alt+Home selects the file crumb: ⇧⌘C copies its absolute path, ⌥C its project path.
+    alt_home(&mut ide);
+    assert!(bar_focused(&ide));
+    ide.cmd_shift(Key::C);
+    assert_eq!(calls(&ide).last().cloned(), Some(format!("copy {}", root.join("src/core/deep/nested.ts").display())));
+    ide.key(Key::ArrowLeft);
+    ide.key_mods(Modifiers::ALT, Key::C);
+    assert_eq!(calls(&ide).last().map(String::as_str), Some("copy src/core/deep"), "the folder crumb");
+    assert!(bar_focused(&ide));
+    assert_eq!(ide.active_text(), text, "the editor got no key");
+
+    // Esc gives the keyboard back to the editor.
+    ide.key(Key::Escape);
+    assert!(!bar_focused(&ide));
+    assert_editor_has_keyboard(&mut ide);
+
+    // After a click on the file crumb the bar keeps the keyboard once the menu closes.
+    ide.click("Breadcrumb nested.ts");
+    ide.key(Key::Escape);
+    assert!(ide.state().ws.breadcrumbs.menu.is_none() && bar_focused(&ide));
+    ide.key_mods(Modifiers::ALT, Key::C);
+    assert_eq!(calls(&ide).last().map(String::as_str), Some("copy src/core/deep/nested.ts"));
+
+    // ⇧F6 renames the crumb's file through the tree's dialog.
+    ide.key_mods(Modifiers::SHIFT, Key::F6);
+    ide.settle();
+    assert!(ide.state().ws.tree_ops.dialog.is_some(), "rename dialog");
+    ide.key(Key::Escape);
+    ide.settle();
+
+    // Alt+F1 on a folder crumb selects the folder in the Project tree.
+    alt_home(&mut ide);
+    ide.key(Key::ArrowLeft);
+    ide.key(Key::ArrowLeft);
+    ide.key_mods(Modifiers::ALT, Key::F1);
+    ide.settle();
+    assert_eq!(ide.state().ws.tree.selected.as_deref(), Some(root.join("src/core").as_path()));
+    assert!(harwex_ide::tree::has_focus(&ide.ctx()));
 }
