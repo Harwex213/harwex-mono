@@ -1,1 +1,243 @@
-{}
+{
+  "objects": {
+    "Props/Host Desk": {
+      "position": [
+        10.9036,
+        0,
+        1.03195
+      ],
+      "rotation": [
+        0,
+        -44.52073,
+        0
+      ]
+    },
+    "Props/Lamp Table 1": {
+      "position": [
+        12.02186,
+        0,
+        -8.92923
+      ]
+    },
+    "Props/Lamp Table 2": {
+      "position": [
+        -4.15719,
+        0,
+        11.74044
+      ]
+    },
+    "Props/Lamp Table 3": {
+      "position": [
+        -12.04734,
+        0,
+        -8.71224
+      ]
+    },
+    "Props/Palm 1": {
+      "position": [
+        -10.61724,
+        0,
+        -10.10825
+      ]
+    },
+    "Props/Palm 2": {
+      "position": [
+        10.40771,
+        0,
+        -9.69915
+      ],
+      "rotation": [
+        -180,
+        -35.5693,
+        -180
+      ]
+    },
+    "Set Dressing/Lounges/Lounge Left": {
+      "position": [
+        -12.42373,
+        0,
+        7.70574
+      ]
+    },
+    "Set Dressing/Lounges/Lounge Right": {
+      "position": [
+        6.88721,
+        0,
+        9.82111
+      ]
+    },
+    "Set Dressing/Lounges/Lounge Front Left": {
+      "position": [
+        -6.63505,
+        0,
+        13.4201
+      ],
+      "rotation": [
+        -180,
+        9.49513,
+        -180
+      ]
+    },
+    "Set Dressing/Lounges/Lounge Front Right": {
+      "position": [
+        6.97598,
+        0,
+        15.1423
+      ],
+      "rotation": [
+        0,
+        4.31241,
+        0
+      ]
+    },
+    "Set Dressing/Lounges/Lounge Side Left": {
+      "position": [
+        -6.17523,
+        0,
+        7.39369
+      ],
+      "rotation": [
+        0,
+        -72.38936,
+        0
+      ]
+    },
+    "Set Dressing/Lounges/Lounge Side Right": {
+      "position": [
+        11.99279,
+        0,
+        8.61867
+      ]
+    },
+    "Set Dressing/Lounges/Lamp Table 4": {
+      "position": [
+        -14.70403,
+        0,
+        3.55917
+      ],
+      "rotation": [
+        0,
+        -2.10506,
+        0
+      ]
+    },
+    "Set Dressing/Lounges/Tub Chair 14": {
+      "position": [
+        -12.57107,
+        0,
+        -5.55648
+      ],
+      "rotation": [
+        0,
+        72.6969,
+        0
+      ]
+    },
+    "Set Dressing/Lounges/Tub Chair 15": {
+      "position": [
+        -9.62161,
+        0,
+        -7.89894
+      ],
+      "rotation": [
+        0,
+        18.17814,
+        0
+      ]
+    },
+    "Set Dressing/Lounges/Tub Chair 16": {
+      "position": [
+        10.49294,
+        0,
+        -7.08871
+      ]
+    },
+    "Set Dressing/Plants/Small Plant 1": {
+      "position": [
+        0.82743,
+        0,
+        1.41907
+      ]
+    },
+    "Set Dressing/Plants/Small Plant 2": {
+      "position": [
+        14.01309,
+        0,
+        2.75185
+      ],
+      "rotation": [
+        0,
+        -67.63658,
+        0
+      ]
+    },
+    "Sofas/Sofa Left": {
+      "position": [
+        -3.50634,
+        0,
+        -11.7967
+      ],
+      "rotation": [
+        180,
+        -17.99619,
+        180
+      ]
+    },
+    "Sofas/Sofa Right": {
+      "position": [
+        3.41047,
+        0,
+        -11.28461
+      ],
+      "rotation": [
+        -180,
+        23.93121,
+        -180
+      ]
+    },
+    "Buffet": {
+      "position": [
+        -13.85284,
+        0,
+        -0.47506
+      ]
+    },
+    "Game Props/Jester Wheel": {
+      "position": [
+        0.0732,
+        0,
+        18.36208
+      ],
+      "rotation": [
+        -180,
+        2.56118,
+        -180
+      ]
+    },
+    "Game Props/Slot Cabinet": {
+      "position": [
+        -6.03626,
+        0,
+        -1.03892
+      ],
+      "rotation": [
+        0,
+        44.98452,
+        0
+      ]
+    },
+    "Game Props/The Tower": {
+      "position": [
+        7.07107,
+        0,
+        -1.0166
+      ],
+      "rotation": [
+        0,
+        -27.10383,
+        0
+      ]
+    }
+  },
+  "materials": {}
+}
