@@ -94,6 +94,16 @@ pub trait CustomTab: Any {
     fn file_path(&self) -> Option<PathBuf> {
         None
     }
+    /// The file whose editor `Document` the tab edits in place (the diff's working-tree side).
+    /// While the tab draws, the app lends that file's editor tab through `TabEnv::editor`, so
+    /// both share one buffer and one undo history.
+    fn shared_editor(&self) -> Option<PathBuf> {
+        None
+    }
+    /// Work that waits for a quiet period (a debounced save). Part of `is_idle()`.
+    fn has_pending_work(&self) -> bool {
+        false
+    }
     /// Called once when the tab closes.
     fn on_close(&mut self, _env: &mut TabEnv) {}
     #[allow(dead_code)] // Extension surface for the Git UI phase.
@@ -180,6 +190,27 @@ pub struct Tabs {
 pub enum TabBarEvent {
     Activate(TabId),
     Close(TabId),
+    /// A close action of the tab menu, or Alt+click on a tab's close button (Close Others).
+    CloseMany(TabId, CloseScope),
+}
+
+/// Tabs that a menu close action still has to close, in strip order (`AppState::close_tabs`).
+/// A dirty tab asks like Cmd+W, and the rest wait for the answer.
+pub struct CloseBatch {
+    pub queue: std::collections::VecDeque<TabId>,
+    /// Close Others makes the clicked tab active once the batch is done.
+    pub then_activate: Option<TabId>,
+}
+
+/// The tab menu's close actions besides Close, in IDEA's order.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CloseScope {
+    Others,
+    All,
+    Left,
+    Right,
+    /// Every tab without unsaved edits and without git changes, like IDEA.
+    Unmodified,
 }
 
 impl Tabs {
@@ -247,6 +278,23 @@ impl Tabs {
 
     pub fn get_mut(&mut self, id: TabId) -> Option<&mut Tab> {
         self.list.iter_mut().find(|t| t.id == id)
+    }
+
+    /// Tab `id` together with the editor tab `editor` (another tab), both mutable: a custom tab
+    /// that edits the editor's document while it draws.
+    pub fn get_with_editor(&mut self, id: TabId, editor: Option<TabId>) -> (Option<&mut Tab>, Option<(TabId, &mut EditorTab)>) {
+        let (mut main, mut ed) = (None, None);
+        for t in self.list.iter_mut() {
+            if t.id == id {
+                main = Some(t);
+            } else if Some(t.id) == editor {
+                let tid = t.id;
+                if let TabContent::Editor(e) = &mut t.content {
+                    ed = Some((tid, &mut **e));
+                }
+            }
+        }
+        (main, ed)
     }
 
     pub fn remove(&mut self, id: TabId) -> Option<Tab> {
@@ -326,10 +374,25 @@ impl Tabs {
         self.mru.iter().rev().copied().filter(|&id| self.active != Some(id) && self.get(id).is_some_and(|t| t.editor().is_some() && !t.is_dirty())).take(excess).collect()
     }
 
+    /// The tabs that `scope` closes from tab `id`'s menu, in strip order. `modified` tells
+    /// which tabs Close Unmodified keeps.
+    pub fn close_targets(&self, id: TabId, scope: CloseScope, modified: impl Fn(&Tab) -> bool) -> Vec<TabId> {
+        let Some(i) = self.index(id) else { return Vec::new() };
+        let tabs: Vec<&Tab> = match scope {
+            CloseScope::Others => self.list.iter().filter(|t| t.id != id).collect(),
+            CloseScope::All => self.list.iter().collect(),
+            CloseScope::Left => self.list[..i].iter().collect(),
+            CloseScope::Right => self.list[i + 1..].iter().collect(),
+            CloseScope::Unmodified => self.list.iter().filter(|t| !modified(t)).collect(),
+        };
+        tabs.into_iter().map(|t| t.id).collect()
+    }
+
     /// The tab strip. Tabs wrap onto as many rows as the width needs, in strip order, so a
     /// click never moves a tab to another row. Middle-click closes, like IDEA. Flat tabs; the
     /// active one is a lighter rounded fill, with no underline.
-    pub fn show_bar(&self, ui: &mut Ui) -> Option<TabBarEvent> {
+    /// `modified` tells the menu which tabs Close Unmodified keeps.
+    pub fn show_bar(&self, ui: &mut Ui, modified: &dyn Fn(&Tab) -> bool) -> Option<TabBarEvent> {
         let t = &theme::T;
         let row_h = t.space.tab_h;
         let width = ui.available_width();
@@ -339,10 +402,12 @@ impl Tabs {
         let widths: Vec<f32> = galleys.iter().map(|g| tab_width(g.size().x).min(max_w)).collect();
         let (slots, rows) = flow(&widths, width, row_h);
         let (bar, _) = ui.allocate_exact_size(Vec2::new(width, rows as f32 * row_h), Sense::hover());
+        let any_unmodified = self.list.iter().any(|t| !modified(t));
         let mut event = None;
-        for ((tab, galley), slot) in self.list.iter().zip(galleys).zip(slots) {
+        for (i, ((tab, galley), slot)) in self.list.iter().zip(galleys).zip(slots).enumerate() {
             let rect = slot.translate(bar.min.to_vec2());
-            if let Some(e) = tab_button(ui, tab, self.active == Some(tab.id), rect, galley) {
+            let menu = MenuState { index: i, count: self.list.len(), any_unmodified };
+            if let Some(e) = tab_button(ui, tab, self.active == Some(tab.id), rect, galley, menu) {
                 event = Some(e);
             }
         }
@@ -437,7 +502,36 @@ pub fn reopen_closed(state: &mut crate::state::AppState) {
     );
 }
 
-fn tab_button(ui: &mut Ui, tab: &Tab, active: bool, rect: Rect, galley: std::sync::Arc<egui::Galley>) -> Option<TabBarEvent> {
+/// What the tab menu needs to know to disable the items that would close nothing.
+#[derive(Clone, Copy)]
+struct MenuState {
+    index: usize,
+    count: usize,
+    any_unmodified: bool,
+}
+
+/// The tab's context menu, in IDEA's order and wording. Returns the picked action.
+fn tab_menu(ui: &mut Ui, id: TabId, m: MenuState) -> Option<TabBarEvent> {
+    ui.set_min_width(220.0);
+    let mut picked = None;
+    let mut item = |ui: &mut Ui, label: &str, shortcut: &str, enabled: bool, event: TabBarEvent| {
+        if ui.add_enabled(enabled, egui::Button::new(label).shortcut_text(shortcut)).clicked() {
+            picked = Some(event);
+            ui.close_menu();
+        }
+    };
+    item(ui, "Close", "⌘W", true, TabBarEvent::Close(id));
+    item(ui, "Close Others", "", m.count > 1, TabBarEvent::CloseMany(id, CloseScope::Others));
+    item(ui, "Close All", "", true, TabBarEvent::CloseMany(id, CloseScope::All));
+    ui.separator();
+    item(ui, "Close Tabs to the Left", "", m.index > 0, TabBarEvent::CloseMany(id, CloseScope::Left));
+    item(ui, "Close Tabs to the Right", "", m.index + 1 < m.count, TabBarEvent::CloseMany(id, CloseScope::Right));
+    ui.separator();
+    item(ui, "Close Unmodified", "", m.any_unmodified, TabBarEvent::CloseMany(id, CloseScope::Unmodified));
+    picked
+}
+
+fn tab_button(ui: &mut Ui, tab: &Tab, active: bool, rect: Rect, galley: std::sync::Arc<egui::Galley>, menu: MenuState) -> Option<TabBarEvent> {
     let t = &theme::T;
     let color = if active { t.text_bright } else { t.text };
     let resp = ui.interact(rect, crate::workspace::wid(("editor-tab", tab.id)), Sense::click());
@@ -480,9 +574,18 @@ fn tab_button(ui: &mut Ui, tab: &Tab, active: bool, rect: Rect, galley: std::syn
     if close_hovered {
         ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
     }
+    let mut picked = None;
+    resp.context_menu(|ui| picked = tab_menu(ui, tab.id, menu));
+    if picked.is_some() {
+        return picked;
+    }
     // Act on the press: a close re-flows the rows, and the release must not land on the tab
     // that moved under the pointer.
     let pressed = crate::clicks::pressed(&resp);
+    if pressed && close_hovered && ui.input(|i| i.modifiers.alt) {
+        // IDEA: Alt+click on the close button closes the other tabs.
+        return Some(TabBarEvent::CloseMany(tab.id, CloseScope::Others));
+    }
     if resp.middle_clicked() || (pressed && close_hovered) {
         return Some(TabBarEvent::Close(tab.id));
     }

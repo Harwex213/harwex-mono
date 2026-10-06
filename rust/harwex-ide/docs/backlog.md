@@ -4,7 +4,6 @@ One line per task. Details live in `tasks/<id>-<slug>.md`. A closed task loses i
 
 Run at most 2–3 agents that build at once: on 2026-10-05 seven parallel cargo builds flooded macOS `syspolicyd` (Gatekeeper checks every new unsigned binary), every new process froze at `dyld_start`, and in the end WindowServer hung.
 
-
 ## Ideas
 
 Diagnostics:
@@ -23,6 +22,9 @@ Commit window:
 - [idea] Stage/Unstage (drop or menu) shows a success toast on every action, because it goes through `run_op`. IDEA is silent on success. Make stage/unstage success quiet; keep error toasts.
 
 Navigation and languages:
+- [idea] Language servers for C/C++ (clangd), C# and Unity (Roslyn LSP), Unreal (clangd + UBT compile database), Java (JDT LS), Kotlin (kotlin-lsp, weak). Needs read-only virtual documents for `jdt://` and decompiled C# metadata. Discussed on 2026-10-05; highlighting only for now.
+- [idea] Unreal headers: `class MYGAME_API AFoo : public AActor` parses as a function in tree-sitter-cpp, so `TArray<…>`, the base class and members stay uncolored inside such a class. A query tweak or a pre-pass that hides `*_API` would fix it.
+- [idea] Grammars added 15.7 MB to the binary (Kotlin 5.8, C# 5.3, C++ 3.4). `tree-sitter-kotlin-ng` with our own highlight query would save ~2 MB.
 - [idea] ide-lsp `kill_tree` can SIGKILL the group id of a server that `try_wait` already reaped; once the group is empty, that id could in theory belong to a new group. Skip the group kill after the leader is reaped (found in task 070).
 - [idea] Rust diagnostics: rust-analyzer runs with diagnostics off. Turn them on as a source in the diagnostics layer.
 - [idea] Incremental `textChanges` / `didChange` instead of full text on every edit, for 100k-line files.
@@ -41,7 +43,8 @@ Terminal:
 
 Git:
 - [idea] Unstage takes 3.1 s on mono: libgit2 `rename_sources` + `reset_default` read the whole 108 MB index. `git reset -q -- <paths>` through the CLI is a candidate (found in task 067).
-- [idea] Diff tab: selection and copy, editing the right side, apply/revert hunk arrows, unified view, ignore whitespace, collapse unchanged runs.
+- [idea] Diff tab: apply/revert hunk arrows, unified view, ignore whitespace, collapse unchanged runs.
+- [idea] Editable diff without an open tab: edits younger than the 500 ms autosave are lost on an immediate quit, and the diff tab shows no dirty mark (found in task 071).
 - [idea] Commit window: changelists, Group By options, keyboard navigation, partial commit per hunk.
 - [idea] Merge tab: syntax highlighting and word-level marks. Show line-ending-only changes, which `diff_texts` hides. Scroll the Result editor sideways to follow the caret.
 - [idea] Git log: column resizing, date and user filter popups, multi-select, Show Diff with Working Tree.

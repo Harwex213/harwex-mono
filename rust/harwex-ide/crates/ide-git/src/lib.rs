@@ -34,7 +34,7 @@ pub use diff::{DiffHunk, DiffSide, FileDiff, LineChange, LineChangeKind, LineKin
 pub use graph::{layout as graph_layout, ArrowDir, GraphArrow, GraphEdge, GraphRow, LONG_EDGE_ROWS};
 pub use log::{BlameLine, ChangedFile, CommitDetails, CommitInfo, LogFilter, RefKind, RefLabel};
 pub use selection::{BranchCompare, COMPARE_LIMIT};
-pub use ops::{ConflictChoice, ConflictSides, PushTarget, RepoState, ResetMode, StashEntry};
+pub use ops::{BranchUpdate, ConflictChoice, ConflictSides, PushTarget, RepoState, ResetMode, StashEntry};
 pub use status::{ChangeKind, CommitOutcome, FileChange, GitStamp};
 pub use text_diff::{diff_texts, line_changes_between};
 

@@ -415,7 +415,9 @@ fn apply(state: &mut AppState, a: TreeAction) {
         TreeAction::Rebase(n) => branches::run_action(state, Action::Rebase(n)),
         TreeAction::Rename(n) => branches::run_action(state, Action::Rename(n)),
         TreeAction::Delete { name, remote, upstream } => branches::open_delete_dialog(state, name, remote, upstream),
-        TreeAction::Update => super::remote::open_update_dialog(state),
+        TreeAction::Update(n) => super::remote::update_branch(state, n),
+        TreeAction::UpdateProject => super::remote::open_update_dialog(state),
+        TreeAction::Fetch(remote) => super::remote::fetch(state, remote),
         TreeAction::Push(n) => super::remote::open_push_dialog_for(state, n),
         TreeAction::DeleteTag(n) => {
             let body = format!("Deleted tag {n}");

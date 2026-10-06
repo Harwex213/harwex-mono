@@ -305,6 +305,85 @@ fn bench_10k_problems() {
     }
 }
 
+/// A 200k-line C++ file (Unreal-style macros included): open, parse, keystroke, steady,
+/// jump-scroll and typing frames stay in the same budgets as TypeScript.
+fn generate_cpp() -> String {
+    let mut s = String::with_capacity(LINES * 40);
+    for i in 0..LINES / 20 {
+        s.push_str(&format!(
+            "/// Docs for item {i}.\nUCLASS(Blueprintable)\nclass GAME_API AItem{i} : public AActor\n{{\n\tGENERATED_BODY()\npublic:\n\tUPROPERTY(EditAnywhere, Category = \"Stats\")\n\tfloat Health = {i}.0f;\n\tvoid Heal(float Amount);\n}};\n\nvoid AItem{i}::Heal(float Amount)\n{{\n\tif (Amount > 0.0f && Health < 100.0f) {{\n\t\tHealth += Amount; // clamp later\n\t}}\n\tstd::vector<int> v{{1, 2, 3}};\n\tUE_LOG(LogTemp, Log, TEXT(\"healed %f\"), Amount);\n}}\n\n"
+        ));
+    }
+    s
+}
+
+#[test]
+fn bench_200k_lines_cpp() {
+    let text = generate_cpp();
+    // The first document of a language also compiles its highlight query, once per process.
+    let (first, open_first) = time(|| Document::from_text(&text, Language::Cpp));
+    drop(first);
+    let (mut doc, open) = time(|| Document::from_text(&text, Language::Cpp));
+    assert_eq!(doc.line_count(), LINES + 1);
+    let (_, parse) = time(|| doc.wait_syntax());
+    let mid = LINES / 2;
+    let (spans, hl) = time(|| doc.highlight(mid..mid + 60));
+    assert!(spans.iter().any(|l| !l.is_empty()));
+
+    let at = doc.position_to_char(Position::new(mid + 13, 2));
+    let mut sel = Selection::caret(at);
+    let mut edit_times = Vec::new();
+    for i in 0..1000 {
+        let c = if i % 7 == 6 { " " } else { "a" };
+        let (_, d) = time(|| {
+            let after = Selection::caret(sel.head + 1);
+            doc.edit(sel.head..sel.head, c, sel, after, EditKind::Insert);
+            sel = after;
+            doc.highlight(mid..mid + 60)
+        });
+        edit_times.push(d);
+    }
+    let (_, reparse) = time(|| doc.wait_syntax());
+    let avg = |v: &[Duration]| v.iter().sum::<Duration>() / v.len() as u32;
+    let max = |v: &[Duration]| v.iter().max().copied().unwrap_or_default();
+
+    let ctx = egui::Context::default();
+    let mut state = EditorState::new();
+    state.request_focus();
+    frame(&ctx, &mut doc, &mut state, vec![]);
+    let steady: Vec<Duration> = (0..50).map(|_| frame(&ctx, &mut doc, &mut state, vec![])).collect();
+    let mut jumps = Vec::new();
+    for i in 0..50 {
+        state.reveal(Position::new((i * 3_919) % LINES, 0));
+        jumps.push(frame(&ctx, &mut doc, &mut state, vec![]));
+    }
+    state.reveal(Position::new(mid, 4));
+    frame(&ctx, &mut doc, &mut state, vec![]);
+    let mut typing = Vec::new();
+    for i in 0..100 {
+        let t = if i % 5 == 4 { " " } else { "x" };
+        typing.push(frame(&ctx, &mut doc, &mut state, vec![Event::Text(t.into())]));
+    }
+    assert!(doc.is_dirty(), "typing frames must reach the document");
+
+    eprintln!("ide-editor C++ benchmark, {} lines, {:.1} MB", LINES, text.len() as f64 / 1e6);
+    eprintln!("  first open (+ query compile)   {:8.2} ms", ms(open_first));
+    eprintln!("  open (rope + indent scan)      {:8.2} ms", ms(open));
+    eprintln!("  full tree-sitter parse         {:8.2} ms", ms(parse));
+    eprintln!("  highlight 60 lines (cold)      {:8.2} ms", ms(hl));
+    eprintln!("  keystroke edit+reparse+hl avg  {:8.3} ms (max {:.2} ms, 1000 edits)", ms(avg(&edit_times)), ms(max(&edit_times)));
+    eprintln!("  background reparse after edits {:8.2} ms (off the UI thread)", ms(reparse));
+    eprintln!("  widget steady frame avg        {:8.3} ms (max {:.2} ms)", ms(avg(&steady)), ms(max(&steady)));
+    eprintln!("  widget jump-scroll frame avg   {:8.3} ms (max {:.2} ms)", ms(avg(&jumps)), ms(max(&jumps)));
+    eprintln!("  widget typing frame avg        {:8.3} ms (max {:.2} ms)", ms(avg(&typing)), ms(max(&typing)));
+    if !cfg!(debug_assertions) {
+        assert!(avg(&edit_times) < Duration::from_millis(4), "keystroke too slow");
+        assert!(avg(&steady) < Duration::from_millis(4), "steady frame too slow");
+        assert!(avg(&typing) < Duration::from_millis(8), "typing frame too slow");
+        assert!(avg(&jumps) < Duration::from_millis(12), "jump frame too slow");
+    }
+}
+
 /// A 100k-line Markdown file with soft wrap: long paragraphs, list items, headings.
 fn generate_markdown(lines: usize) -> String {
     let para = "Soft wrap breaks this paragraph into visual rows at the width of the editor, at word boundaries when it can, \

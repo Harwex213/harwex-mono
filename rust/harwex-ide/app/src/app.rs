@@ -367,7 +367,7 @@ fn shortcuts(s: &mut AppState, ctx: &Context) {
     }
     if save_all {
         s.save_all();
-    } else if save {
+    } else if save && !git::diff::save_active(s) {
         if let Some(id) = s.ws.tabs.active {
             s.save_tab(id, false);
         }
@@ -931,7 +931,9 @@ fn editor_area(s: &mut AppState, ui: &mut egui::Ui) {
     // Custom tabs (diffs, commits) open without `add_editor_tab`; they count toward the limit too.
     crate::tabs::enforce_limit(s);
     if !s.ws.tabs.list.is_empty() {
-        match s.ws.tabs.show_bar(ui) {
+        let modified = |t: &crate::tabs::Tab| s.tab_modified(t);
+        let event = s.ws.tabs.show_bar(ui, &modified);
+        match event {
             Some(TabBarEvent::Activate(id)) => {
                 s.ws.tabs.activate(id);
                 if let Some(e) = s.ws.tabs.editor_mut(id) {
@@ -939,6 +941,7 @@ fn editor_area(s: &mut AppState, ui: &mut egui::Ui) {
                 }
             }
             Some(TabBarEvent::Close(id)) => s.close_tab(id, false),
+            Some(TabBarEvent::CloseMany(id, scope)) => s.close_tabs(id, scope),
             None => {}
         }
     }
@@ -949,7 +952,12 @@ fn editor_area(s: &mut AppState, ui: &mut egui::Ui) {
 
     let AppState { ws, jobs, notifications, editor_theme, .. } = &mut *s;
     let crate::workspace::Workspace { tabs, project, git: git_info, commands, .. } = ws;
-    let Some(tab) = tabs.get_mut(active) else { return };
+    // A custom tab that edits a file's document in place borrows that file's editor tab.
+    let shared = match tabs.get(active).map(|t| &t.content) {
+        Some(TabContent::Custom(c)) => c.shared_editor().and_then(|p| tabs.editor_by_path(&p)),
+        _ => None,
+    };
+    let (Some(tab), editor) = tabs.get_with_editor(active, shared) else { return };
     let out = match &mut tab.content {
         TabContent::Editor(e) => {
             e.problems.refresh(&e.doc);
@@ -977,6 +985,7 @@ fn editor_area(s: &mut AppState, ui: &mut egui::Ui) {
                 commands,
                 tab_id: active,
                 editor_theme,
+                editor,
             };
             c.ui(ui, &mut env);
             None
@@ -1053,6 +1062,7 @@ fn welcome(s: &mut AppState, ui: &mut egui::Ui) {
 }
 
 fn confirm_close(s: &mut AppState, ctx: &Context) {
+    s.advance_close_batch();
     let Some(id) = s.ws.confirm_close else { return };
     let Some(title) = s.ws.tabs.get(id).map(|t| t.title()) else {
         s.ws.confirm_close = None;
@@ -1087,8 +1097,16 @@ fn confirm_close(s: &mut AppState, ctx: &Context) {
             s.ws.confirm_close = None;
             s.close_tab(id, true);
         }
-        Some(_) => s.ws.confirm_close = None,
+        Some(_) => {
+            // Cancel stops a tab menu close action too.
+            s.ws.confirm_close = None;
+            s.ws.close_batch = None;
+        }
         None => {}
+    }
+    if choice.is_some() && s.ws.close_batch.is_some() {
+        s.advance_close_batch();
+        ctx.request_repaint();
     }
 }
 

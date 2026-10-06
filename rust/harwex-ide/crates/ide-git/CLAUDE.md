@@ -32,6 +32,7 @@ Git logic for the IDE's IDEA-style Git UI: status, commit of a file subset, diff
 - `LogFilter` lists (`branches`, `authors`, `paths`) match when any entry matches. Empty `branches` walks HEAD plus all branches.
 - A commit selection (`changes_of`, `diff_commits_file`, `patch`): a first-parent chain is one tree diff from the oldest commit's parent; anything else is merged per path in history order. `patch` is `git diff --binary --full-index -M`; `cherry_pick_paths` pipes it to `git apply --3way --index`.
 - Push takes a local branch: `push_branch(name, force_with_lease, set_upstream)`, `outgoing_of(name)` and `push_target(name)` (the branch's upstream, else the default remote under the same name). They never check out. `push` and `outgoing` are the current-branch shortcuts.
+- `update_branch(name)` updates a branch that is not checked out: `git fetch <remote> <merge>:refs/heads/<name>` fast-forwards it (git refuses a non-fast-forward and a branch checked out in any worktree) and moves the remote-tracking ref too. It returns `BranchUpdate::{UpToDate, FastForwarded, NotFastForward}`. The current branch is an error: use `pull`.
 - Graph lines longer than `LONG_EDGE_ROWS` (30) rows are cut into two one-row stubs with `GraphRow.arrows`; between them the line holds no lane.
 - Diffs (`similar`, patience) have a 1.5 s line-diff deadline. Word ranges are computed only for blocks of at most 400 lines.
 
@@ -51,6 +52,7 @@ Tests build throwaway repositories in a temp dir (`tests/common`). The test file
 - `push_branch` sends `refs/heads/<name>:refs/heads/<upstream>` explicitly, so a user's `push.default` cannot make it fail and a branch that is not checked out pushes too.
 - A branch that tracks a local branch (`branch.<name>.remote = .`) has no push upstream; pushing to `.` would move that local branch. `push_target` treats it as untracked.
 - `pull` passes `--autostash`, so a dirty tree does not block a rebase update.
+- git also refuses a fetch into a branch that is only ahead of its upstream (a rewind). git's messages are translated, so `update_branch` classifies a refused fetch by the commit graph against the remote-tracking ref, never by stderr.
 - Worktree renames are not detected (deleted + unversioned, like IDEA). Detecting them means reading every untracked file.
 - Diffs read the raw blob. For LFS-tracked text files the HEAD side shows the pointer text.
 - Diffs compare lines without terminators, so CRLF and a missing final newline do not show as changes. A line-ending-only change is therefore invisible.

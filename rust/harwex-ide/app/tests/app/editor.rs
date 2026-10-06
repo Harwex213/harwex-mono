@@ -356,3 +356,41 @@ fn gutter_marks_for_changed_lines() {
     assert!(marks.iter().any(|(_, m)| *m == GutterMark::Deleted), "{marks:?}");
     ide.snapshot("gutter_marks");
 }
+
+const LANG_C: &str = "#include <stdio.h>\n#define MAX_LEN 64\n\n/* Adds two numbers. */\nstatic int add(int a, int b) {\n    char c = '\\n';\n    return a + b; // sum\n}\n\nint main(void) {\n    printf(\"%d\\n\", add(1, 2));\n    return 0;\n}\n";
+
+const LANG_UNREAL: &str = "// Copyright Epic Games, Inc. All Rights Reserved.\n#pragma once\n\n#include \"CoreMinimal.h\"\n#include \"GameFramework/Actor.h\"\n#include \"MyActor.generated.h\"\n\nUCLASS(Blueprintable)\nclass MYGAME_API AMyActor : public AActor\n{\n\tGENERATED_BODY()\n\npublic:\n\tAMyActor();\n\n\tUPROPERTY(EditAnywhere, Category = \"Stats\")\n\tfloat Health = 100.f;\n\n\tUFUNCTION(BlueprintCallable)\n\tvoid Heal(float Amount);\n\nprotected:\n\tvirtual void BeginPlay() override;\n};\n\ntemplate <typename T>\ninline T Twice(T X) { return X * 2; } // after the class\n";
+
+const LANG_CSHARP: &str = "using UnityEngine;\n\n#region Movement\nnamespace Game.Player\n{\n    /// <summary>Moves the player.</summary>\n    [RequireComponent(typeof(Rigidbody))]\n    public class PlayerController : MonoBehaviour\n    {\n        [SerializeField] private float speed = 5.0f;\n\n        void Update()\n        {\n            var input = Input.GetAxis(\"Horizontal\"); // read input\n            Move(input * speed);\n        }\n\n        private void Move(float delta) { transform.Translate(delta, 0, 0); }\n    }\n}\n#endregion\n";
+
+const LANG_JAVA: &str = "package com.example;\n\nimport java.util.List;\n\n/** A greeter. */\npublic class Greeter implements Runnable {\n    private static final int MAX = 10;\n\n    @Override\n    public void run() {\n        String name = \"world\"; // a name\n        System.out.println(greet(name));\n    }\n\n    static String greet(String who) { return \"Hello, \" + who; }\n}\n";
+
+const LANG_KOTLIN: &str = "package com.example\n\nimport kotlin.math.max\n\n/* A greeter. */\ndata class Greeter(val name: String) {\n    @JvmStatic\n    fun greet(times: Int): String {\n        val n = max(times, 1) // at least once\n        return \"Hello, $name\".repeat(n)\n    }\n}\n\nfun main() {\n    println(Greeter(\"world\").greet(2))\n}\n";
+
+/// C, C++ (an Unreal header), C#, Java and Kotlin open with tree-sitter colors, their language
+/// name in the status bar and a colored file icon. Snapshots, checked by eye.
+#[test]
+fn c_family_java_kotlin_highlight() {
+    let fx = Fixture::new(SUITE, "languages");
+    let repo = basic_repo(fx.path("repo"));
+    let files = [
+        ("native/main.c", LANG_C, ide_editor::Language::C, "lang_c"),
+        ("native/MyActor.h", LANG_UNREAL, ide_editor::Language::Cpp, "lang_cpp_unreal"),
+        ("unity/PlayerController.cs", LANG_CSHARP, ide_editor::Language::CSharp, "lang_csharp"),
+        ("jvm/Greeter.java", LANG_JAVA, ide_editor::Language::Java, "lang_java"),
+        ("jvm/Greeter.kt", LANG_KOTLIN, ide_editor::Language::Kotlin, "lang_kotlin"),
+    ];
+    for (rel, text, _, _) in files {
+        repo.write(rel, text);
+    }
+    repo.commit_all("Sources in other languages");
+    let mut ide = Ide::open(SUITE, &repo.dir);
+    for (rel, text, language, snapshot) in files {
+        ide.open_file(rel);
+        let editor = ide.state().ws.tabs.active_editor().expect("editor");
+        assert_eq!(editor.doc.language(), language, "{rel}");
+        assert_eq!(ide.active_text(), text);
+        ide.assert_text(language.name());
+        ide.snapshot(snapshot);
+    }
+}

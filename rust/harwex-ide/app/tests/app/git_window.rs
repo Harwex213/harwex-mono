@@ -1,6 +1,6 @@
 //! Git window shell: header tabs (+, close, overflow list, Console reopening), the branch tree
 //! (folders by prefix, search, click and keys filter the log, ahead/behind badges, favourites,
-//! context menu operations) and the Console tab.
+//! context menu operations, Fetch and Update) and the Console tab.
 
 use crate::common::*;
 use egui::{Key, Pos2};
@@ -342,4 +342,145 @@ fn click_last(ide: &mut Ide, label: &str) {
     let n = ide.rects(label).len();
     assert!(n > 0, "no widget labelled {label:?}; {:?}", ide.labels());
     ide.click_nth(label, n - 1);
+}
+
+fn console_args(ide: &Ide, cmd: &str) -> Vec<Vec<String>> {
+    ide.state().ws.git_ui.window.console.entries().iter().filter(|e| e.args.first().map(String::as_str) == Some(cmd) && e.is_finished()).map(|e| e.args.clone()).collect()
+}
+
+fn notes(ide: &Ide) -> Vec<(String, String)> {
+    ide.state().notifications.log().iter().map(|n| (n.title.clone(), n.body.clone())).collect()
+}
+
+/// The Log toolbar's Fetch button fetches every remote: the tree shows the new remote branch and
+/// the incoming count, with no success toast. The Remote group and a remote's folder fetch too.
+#[test]
+fn fetch_from_toolbar_and_tree() {
+    let fx = Fixture::new(SUITE, "fetch");
+    let (repo, bare) = repo_with_remote(&fx);
+    push_from_other_clone(&fx, &bare, "README.md", "# changed elsewhere\n", "Remote work");
+    let other = fx.path("other");
+    let git_other = |args: &[&str]| {
+        let out = std::process::Command::new("git").args(args).current_dir(&other).output().expect("git");
+        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    };
+    git_other(&["push", "-q", "origin", "HEAD:refs/heads/remote-feature"]);
+    let mut ide = Ide::open(SUITE, &repo.dir);
+    open_git(&mut ide);
+    assert!(!ide.has("main: 1 to pull"));
+    ide.dismiss_toasts();
+    ide.snapshot("log_toolbar");
+
+    ide.click("Fetch All Remotes");
+    ide.wait_for("fetched", |s| s.ws.git_ui.window.refs.as_ref().is_some_and(|r| r.branches.remote.iter().any(|b| b.name == "origin/remote-feature")));
+    ide.settle();
+    assert_eq!(console_args(&ide, "fetch"), [["fetch", "--all", "--prune"]]);
+    assert!(ide.has("main: 1 to pull"), "{:?}", ide.labels());
+    assert!(ide.state().notifications.toast_titles().is_empty(), "a fetch succeeds quietly: {:?}", notes(&ide));
+    let r = ide.rect("Tree group Remote");
+    ide.click_at(Pos2::new(r.min.x + 10.0, r.center().y));
+    ide.settle();
+    assert!(ide.has("Tree remote branch origin/remote-feature"));
+
+    // The Remote group fetches every remote, a remote's folder only that remote.
+    git_other(&["push", "-q", "origin", "HEAD:refs/heads/second"]);
+    menu(&mut ide, "Tree group Remote", "Fetch");
+    ide.wait_until("second", |ide| ide.has("Tree remote branch origin/second"));
+    git_other(&["push", "-q", "origin", "HEAD:refs/heads/third"]);
+    ide.right_click("Tree folder origin");
+    ide.wait_until("context menu", |ide| ide.has("Fetch"));
+    ide.snapshot_here("remote_menu");
+    ide.click("Fetch");
+    ide.wait_until("third", |ide| ide.has("Tree remote branch origin/third"));
+    assert_eq!(console_args(&ide, "fetch")[2], ["fetch", "--prune", "origin"]);
+    // A branch folder under a remote has no Fetch.
+    ide.right_click("Tree remote branch origin/third");
+    ide.wait_until("branch menu", |ide| ide.has("Checkout"));
+    assert!(!ide.has("Fetch"));
+    ide.key(Key::Escape);
+    ide.settle();
+    assert!(ide.state().notifications.toast_titles().is_empty(), "{:?}", notes(&ide));
+}
+
+/// Update on a branch that is not checked out fetches its upstream and fast-forwards it; HEAD,
+/// the index and the worktree stay. A diverged branch is refused with a message. Update on the
+/// current branch runs Update Project (pull).
+#[test]
+fn update_branches_from_tree() {
+    let fx = Fixture::new(SUITE, "update");
+    let (repo, bare) = repo_with_remote(&fx);
+    repo.git(&["branch", "-q", "--track", "synced", "origin/main"]);
+    repo.git(&["checkout", "-q", "-b", "diverged", "--track", "origin/main"]);
+    repo.write("diverged.txt", "mine\n");
+    repo.commit_all("Diverged work");
+    repo.git(&["checkout", "-q", "main"]);
+    repo.write("dirty.txt", "untracked\n");
+    push_from_other_clone(&fx, &bare, "README.md", "# changed elsewhere\n", "Remote work");
+    let rev = |r: &str| repo.git(&["rev-parse", r]).trim().to_string();
+    let remote_main = std::process::Command::new("git").args(["--git-dir", bare.to_str().expect("utf8"), "rev-parse", "main"]).output().expect("rev-parse");
+    let remote_main = String::from_utf8_lossy(&remote_main.stdout).trim().to_string();
+    let head = rev("HEAD");
+    let readme = repo.read("README.md");
+    let mut ide = Ide::open(SUITE, &repo.dir);
+    open_git(&mut ide);
+
+    // A branch without an upstream has no Update.
+    repo.git(&["branch", "-q", "--no-track", "loose", "main"]);
+    ide.state_mut().refresh_git();
+    ide.wait_until("loose", |ide| ide.has("Tree branch loose"));
+    ide.right_click("Tree branch loose");
+    ide.wait_until("menu", |ide| ide.has("Checkout"));
+    assert!(!ide.has("Update"));
+    ide.key(Key::Escape);
+    ide.settle();
+
+    ide.right_click("Tree branch synced");
+    ide.wait_until("menu", |ide| ide.has("Update"));
+    ide.snapshot_here("branch_menu_update");
+    ide.dismiss_toasts();
+    ide.click("Update");
+    ide.wait_until("synced updated", |_| rev("synced") == remote_main);
+    ide.settle();
+    assert_eq!(rev("HEAD"), head);
+    assert_eq!(repo.branch(), "main");
+    assert_eq!(repo.read("README.md"), readme);
+    assert_eq!(repo.read("dirty.txt"), "untracked\n");
+    assert_eq!(rev("origin/main"), remote_main);
+    let fetch = console_args(&ide, "fetch");
+    assert_eq!(fetch.last().map(|a| a.last().cloned()), Some(Some("refs/heads/main:refs/heads/synced".to_string())), "{fetch:?}");
+    assert!(notes(&ide).iter().any(|(t, b)| t == "Update synced" && b.contains("fast-forwarded")), "{:?}", notes(&ide));
+    assert!(!ide.has("synced: 1 to pull"));
+    assert!(ide.has("main: 1 to pull"), "the fetch moved origin/main: {:?}", ide.labels());
+
+    // The branches popup offers the same Update for a tracked branch; synced is up to date now.
+    ide.dismiss_toasts();
+    ide.key_mods(CTRL_SHIFT, Key::Backtick);
+    ide.wait_until("branches popup", |ide| ide.has("Local branch synced"));
+    ide.hover("Local branch synced");
+    ide.wait_until("submenu", |ide| ide.has("New Branch from 'synced'..."));
+    ide.click("Update");
+    ide.wait_until("up to date", |ide| ide.state().notifications.log().iter().any(|n| n.title == "Update synced" && n.body == "synced is up to date"));
+    ide.settle();
+    assert_eq!(rev("synced"), remote_main);
+
+    // A diverged branch is refused and stays where it was.
+    let diverged = rev("diverged");
+    ide.dismiss_toasts();
+    menu(&mut ide, "Tree branch diverged", "Update");
+    ide.wait_until("refused", |ide| ide.state().notifications.toast_titles().iter().any(|t| t == "Update diverged failed"));
+    ide.settle();
+    assert_eq!(rev("diverged"), diverged);
+    let refused = notes(&ide).into_iter().find(|(t, _)| t == "Update diverged failed").expect("toast").1;
+    assert!(refused.contains("diverged cannot be fast-forwarded to origin/main") && refused.contains("Check out diverged to merge or rebase"), "{refused}");
+    ide.snapshot("update_refused");
+
+    // The current branch runs the pull flow (merge, the default), not a ref update.
+    ide.dismiss_toasts();
+    menu(&mut ide, "Tree branch main", "Update");
+    ide.wait_until("merged", |_| repo.subjects("HEAD").iter().any(|s| s == "Remote work"));
+    ide.settle();
+    assert_eq!(repo.branch(), "main");
+    assert!(repo.subjects("HEAD").iter().any(|s| s == "Local work to push"));
+    assert_eq!(repo.read("README.md"), "# changed elsewhere\n");
+    assert_eq!(console_args(&ide, "pull").last().expect("pull logged"), &["pull", "--autostash", "--no-rebase"]);
 }

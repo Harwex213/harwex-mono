@@ -66,6 +66,8 @@ pub struct TabEnv<'a> {
     pub commands: &'a mut Vec<AppCommand>,
     pub tab_id: TabId,
     pub editor_theme: &'a EditorTheme,
+    /// The editor tab of `CustomTab::shared_editor`'s file, lent while the tab draws.
+    pub editor: Option<(TabId, &'a mut crate::tabs::EditorTab)>,
 }
 
 /// Timing lines go to stderr and to the Notifications log, so a run can be measured.
@@ -421,6 +423,7 @@ impl AppState {
                 s.schedule_gutter();
                 crate::terminal::tick(s);
                 crate::find_window::tick(s);
+                crate::git::diff::tick(s);
                 if s.ws.close_when_saved && !s.ws.tabs.editors().any(|e| e.saving) {
                     s.ws.close_when_saved = false;
                     // A failed save keeps the file dirty; then the workspace stays open.
@@ -662,6 +665,8 @@ impl AppState {
     }
 
     fn add_editor_tab(&mut self, path: PathBuf, doc: Document, pos: Option<Position>) {
+        // A diff that edits this file without a tab hands over its unsaved document: one buffer.
+        let doc = crate::git::diff::adopt_hidden(self, &path).unwrap_or(doc);
         let mut tab = EditorTab::new(path.clone(), doc);
         if let Ok(lang) = self.ws.langs.lang_for(&path) {
             // The first open file of a language starts its server (rule 5).
@@ -707,6 +712,7 @@ impl AppState {
                     commands: &mut commands,
                     tab_id: id,
                     editor_theme: &self.editor_theme,
+                    editor: None,
                 };
                 c.on_close(&mut env);
                 self.ws.commands.extend(commands);
@@ -714,6 +720,39 @@ impl AppState {
         }
         if let Some(e) = self.ws.tabs.active_editor_mut() {
             e.view.request_focus();
+        }
+    }
+
+    /// A tab that Close Unmodified keeps: unsaved edits, or a file with git changes (IDEA).
+    pub fn tab_modified(&self, tab: &crate::tabs::Tab) -> bool {
+        tab.is_dirty() || tab.editor().is_some_and(|e| self.ws.git.status.contains_key(&e.path))
+    }
+
+    /// A close action of the tab menu on tab `id`. Each tab closes through `close_tab`, in
+    /// strip order, so a dirty tab asks like Cmd+W and the closed tabs go to Cmd+Shift+T.
+    pub fn close_tabs(&mut self, id: TabId, scope: crate::tabs::CloseScope) {
+        let ids = self.ws.tabs.close_targets(id, scope, |t| self.tab_modified(t));
+        let then_activate = (scope == crate::tabs::CloseScope::Others).then_some(id);
+        self.ws.close_batch = Some(crate::tabs::CloseBatch { queue: ids.into(), then_activate });
+        self.advance_close_batch();
+    }
+
+    /// Closes the batch's next tabs until one asks "Save changes?" or the batch is done.
+    pub fn advance_close_batch(&mut self) {
+        while self.ws.confirm_close.is_none() {
+            let Some(batch) = self.ws.close_batch.as_mut() else { return };
+            if let Some(id) = batch.queue.pop_front() {
+                self.close_tab(id, false);
+                continue;
+            }
+            let keep = batch.then_activate;
+            self.ws.close_batch = None;
+            if let Some(id) = keep {
+                self.ws.tabs.activate(id);
+                if let Some(e) = self.ws.tabs.editor_mut(id) {
+                    e.view.request_focus();
+                }
+            }
         }
     }
 
@@ -758,6 +797,7 @@ impl AppState {
         for id in ids {
             self.save_tab(id, false);
         }
+        crate::git::diff::save_hidden_all(self);
     }
 
     /// Re-reads the whole git status and the branch on a worker, and recomputes every gutter.

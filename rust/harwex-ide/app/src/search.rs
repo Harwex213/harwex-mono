@@ -317,7 +317,8 @@ pub fn show(state: &mut AppState, ctx: &egui::Context) -> Option<PathBuf> {
                 ui.visuals_mut().widgets.inactive.bg_stroke = egui::Stroke::NONE;
                 for (i, hit) in s.results.iter().enumerate() {
                     let job = hit_job(hit);
-                    let resp = ui.add(egui::Button::new(job).selected(i == s.selected).wrap_mode(egui::TextWrapMode::Truncate).min_size(egui::vec2(ui.available_width(), row_h)));
+                    let min_size = egui::vec2(ui.available_width(), row_h);
+                    let resp = crate::util::truncated_row(ui, job, i == s.selected, min_size, || hit.path.clone());
                     if i == s.selected && (up || down) {
                         resp.scroll_to_me(None);
                     }

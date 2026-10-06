@@ -21,6 +21,17 @@ pub struct PushTarget {
     pub tracked: bool,
 }
 
+/// What `update_branch` did to a local branch that is not checked out.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BranchUpdate {
+    /// The upstream has nothing the branch lacks (equal, or the branch is only ahead).
+    UpToDate,
+    /// The branch ref moved forward to the upstream tip.
+    FastForwarded { from: Oid, to: Oid, commits: usize },
+    /// The branch and its upstream diverged. Nothing changed; a merge or rebase needs a checkout.
+    NotFastForward { upstream: String },
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StashEntry {
     /// Position in `stash@{n}`.
@@ -73,6 +84,53 @@ impl Repo {
 
     pub fn fetch(&self) -> Result<CommandOutcome> {
         self.git(&["fetch", "--all", "--prune"])
+    }
+
+    /// Fetches one remote (the branch tree's menu on a remote).
+    pub fn fetch_remote(&self, remote: &str) -> Result<CommandOutcome> {
+        self.git(&["fetch", "--prune", remote])
+    }
+
+    /// IDEA's "Update" on a branch that is not checked out: fetches the branch's upstream and
+    /// fast-forwards the local ref, without a checkout. `git fetch <remote> <src>:<dst>` does
+    /// both in one command: it refuses a non-fast-forward and a branch checked out in any
+    /// worktree, and it also moves the remote-tracking ref. A refused fast-forward is told
+    /// apart from other failures by the commit graph, never by git's (translated) message.
+    pub fn update_branch(&self, name: &str) -> Result<BranchUpdate> {
+        let repo = self.open()?;
+        if self.current_branch(&repo).ok().as_deref() == Some(name) {
+            return Err(Error::Other(format!("{name} is checked out; use Update Project")));
+        }
+        let from = self.local_tip(&repo, name)?;
+        let config = repo.config()?;
+        let (Ok(remote), Ok(merge)) = (config.get_string(&format!("branch.{name}.remote")), config.get_string(&format!("branch.{name}.merge"))) else {
+            return Err(Error::Other(format!("{name} has no upstream branch")));
+        };
+        let short = merge.trim_start_matches("refs/heads/").to_string();
+        let upstream = if remote == "." { short } else { format!("{remote}/{short}") };
+        let refspec = format!("{merge}:refs/heads/{name}");
+        let out = self.git(&["fetch", "--no-write-fetch-head", &remote, &refspec])?;
+        let repo = self.open()?;
+        let to = self.local_tip(&repo, name)?;
+        if out.success {
+            if to == from {
+                return Ok(BranchUpdate::UpToDate);
+            }
+            let (commits, _) = repo.graph_ahead_behind(to, from)?;
+            return Ok(BranchUpdate::FastForwarded { from, to, commits });
+        }
+        // git refuses every update that is not a fast-forward, also a rewind of a branch that
+        // is only ahead. The fetch still moved the remote-tracking ref, so the graph tells why.
+        let tracking = if remote == "." { merge.clone() } else { format!("refs/remotes/{upstream}") };
+        if let Ok(theirs) = repo.refname_to_id(&tracking) {
+            if theirs == from || repo.graph_descendant_of(from, theirs)? {
+                return Ok(BranchUpdate::UpToDate);
+            }
+            if !repo.graph_descendant_of(theirs, from)? {
+                return Ok(BranchUpdate::NotFastForward { upstream });
+            }
+        }
+        Err(Error::Command(out))
     }
 
     /// IDEA "Update Project". `--autostash` keeps local changes out of the way like IDEA's

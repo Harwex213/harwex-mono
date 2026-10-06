@@ -17,7 +17,7 @@ mod view;
 pub mod wrap;
 
 pub use carets::Carets;
-pub use document::{Document, EditKind, Indent, Position, Selection, TextChange};
+pub use document::{Document, EditKind, Indent, Position, Selection, TextChange, TextSnapshot};
 pub use find::{FindState, Match, MAX_MATCHES};
 pub use search::{preserve_case, FindOptions, Matcher, SearchFilter, Template};
 pub use highlight::{HlKind, Span};

@@ -3,26 +3,45 @@
 //! Both panes scroll through one "virtual" coordinate: unchanged runs count once, and a hunk
 //! counts as many lines as its taller side. Each pane maps that coordinate to its own line, so
 //! the two sides stay aligned at every hunk, like IDEA. Only visible lines are laid out, and
-//! highlight spans are cached per line, so a 10k-line diff costs the same per frame as a short one.
+//! highlight spans are cached for the visible window, so a 10k-line diff costs the same per
+//! frame as a short one.
+//!
+//! The working-tree side (HEAD vs working tree, a revision vs local) is editable, like IDEA:
+//! - The file is open in an editor tab: the app lends that tab while the diff draws
+//!   (`CustomTab::shared_editor`, `TabEnv::editor`), and the right pane edits its `Document`.
+//!   One buffer, one undo history; the tab shows the dirty mark, and Cmd+S saves it.
+//! - The file is not open: the diff loads a hidden `Document` on a worker and edits it. It saves
+//!   `SAVE_DEBOUNCE` after the last edit, on focus loss and on close (IDEA auto-saves). An editor
+//!   tab that opens for the file takes the unsaved document over (`adopt_hidden`).
+//! - After every edit the hunks are recomputed on a worker from a rope snapshot (`Relayout`);
+//!   the UI thread only compares doc versions.
 
 use std::any::Any;
 use std::collections::HashMap;
 use std::ops::Range;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use egui::text::{LayoutJob, TextFormat};
-use egui::{pos2, vec2, Align2, Color32, CursorIcon, Event, EventFilter, FontId, Id, Key, Mesh, Modifiers, PointerButton, Pos2, Rect, RichText, Sense, Shape, Stroke, Ui};
-use ide_editor::{ClickChain, Document, EditorTheme, HlKind, Language, Position, Span, CHAIN_DIST};
+use egui::{pos2, vec2, Align2, Color32, CursorIcon, Event, EventFilter, FontId, Id, Key, Mesh, Modifiers, PointerButton, Pos2, Rect, RichText, Sense, Shape, Stroke, Ui, ViewportCommand};
+use ide_editor::{ClickChain, Document, EditorTheme, HlKind, Language, Position, Selection, Span, TextSnapshot, CHAIN_DIST};
 use ide_git::{DiffHunk, DiffSide, FileDiff, LineKind, Oid, Repo};
 
+use crate::jobs::Jobs;
 use crate::state::{AppCommand, AppState, TabEnv};
-use crate::tabs::CustomTab;
+use crate::tabs::{CustomTab, TabContent, TabId};
 use crate::theme;
 
+mod edit;
 mod select;
+use edit::Edit;
 use select::{Move, PaneSel};
 pub use select::Side;
 
+/// How long the hidden document waits after its last edit before it saves (as the Find
+/// preview, `preview::SAVE_DEBOUNCE`).
+pub const SAVE_DEBOUNCE: Duration = Duration::from_millis(500);
 const LINE_H: f32 = 18.0;
 const RIBBON_W: f32 = 36.0;
 const SCROLLBAR_W: f32 = 12.0;
@@ -85,13 +104,12 @@ enum Source {
 struct Pane {
     doc: Document,
     lines: usize,
-    /// Hunk index per line, `u32::MAX` outside hunks.
+    /// Hunk index per line, `u32::MAX` outside hunks. After an edit on the live side it may be
+    /// a line short or long until the worker's relayout lands; readers use `get`.
     hunk_of: Vec<u32>,
     /// Changed char-column ranges per line (word-level highlight).
     inline: HashMap<usize, Vec<Range<usize>>>,
-    /// Highlight spans per line, filled lazily for visible lines.
-    spans: Vec<Option<Vec<Span>>>,
-    spans_version: (u64, u64),
+    spans: SpanCache,
     max_cols: usize,
     exists: bool,
 }
@@ -101,41 +119,55 @@ impl Pane {
         let mut doc = Document::from_text(text, language);
         // Parse on the worker that builds the model, so the first frame does not stall.
         doc.wait_syntax();
-        let lines = if text.is_empty() {
-            0
-        } else if text.ends_with('\n') {
-            doc.line_count() - 1
-        } else {
-            doc.line_count()
-        };
-        let mut max_cols = 0;
-        for l in text.split('\n') {
-            let n = l.chars().map(|c| if c == '\t' { 4 } else { 1 }).sum::<usize>();
-            max_cols = max_cols.max(n.min(MAX_COLS));
-        }
-        let spans_version = doc.highlight_version();
-        Pane { doc, lines, hunk_of: vec![u32::MAX; lines], inline: HashMap::new(), spans: vec![None; lines], spans_version, max_cols, exists }
+        let lines = doc_lines(&doc);
+        let max_cols = text_max_cols(text);
+        Pane { doc, lines, hunk_of: Vec::new(), inline: HashMap::new(), spans: SpanCache::default(), max_cols, exists }
     }
+}
 
-    /// Fills the span cache for `range` (plus a margin) in one highlight call.
-    fn ensure_spans(&mut self, range: Range<usize>) {
-        let v = self.doc.highlight_version();
-        if v != self.spans_version {
-            self.spans_version = v;
-            self.spans.iter_mut().for_each(|s| *s = None);
-        }
-        let range = range.start.min(self.lines)..range.end.min(self.lines);
-        if range.clone().all(|l| self.spans[l].is_some()) {
+/// Lines the diff shows for a document: a final line break ends the last line instead of
+/// starting an empty one.
+fn doc_lines(doc: &Document) -> usize {
+    let n = doc.line_count();
+    if doc.len_chars() == 0 {
+        0
+    } else if doc.line_len(n - 1) == 0 {
+        n - 1
+    } else {
+        n
+    }
+}
+
+/// The widest line in display columns (tabs as 4), capped at `MAX_COLS`.
+fn text_max_cols(text: &str) -> usize {
+    text.split('\n').map(|l| l.chars().map(|c| if c == '\t' { 4 } else { 1 }).sum::<usize>().min(MAX_COLS)).max().unwrap_or(0)
+}
+
+/// Highlight spans of the lines around the view, rebuilt when the document or its tree changes.
+#[derive(Default)]
+struct SpanCache {
+    key: Option<(u64, u64)>,
+    start: usize,
+    lines: Vec<Vec<Span>>,
+}
+
+impl SpanCache {
+    /// Fills the cache for `range` (plus a margin) in one highlight call.
+    fn ensure(&mut self, doc: &mut Document, total: usize, range: Range<usize>) {
+        let key = doc.highlight_version();
+        let range = range.start.min(total)..range.end.min(total);
+        if self.key == Some(key) && range.start >= self.start && range.end <= self.start + self.lines.len() {
             return;
         }
         let from = range.start.saturating_sub(40);
-        let to = (range.end + 40).min(self.lines);
-        let hl = self.doc.highlight(from..to);
-        for (i, s) in hl.into_iter().enumerate() {
-            if let Some(slot) = self.spans.get_mut(from + i) {
-                *slot = Some(s);
-            }
-        }
+        let to = (range.end + 40).min(total);
+        self.key = Some(key);
+        self.start = from;
+        self.lines = doc.highlight(from..to);
+    }
+
+    fn get(&self, line: usize) -> &[Span] {
+        line.checked_sub(self.start).and_then(|i| self.lines.get(i)).map_or(&[], Vec::as_slice)
     }
 }
 
@@ -151,6 +183,74 @@ struct Segment {
     hunk: Option<usize>,
 }
 
+/// Where the hunks fall on each side: per-line marks and the shared scroll coordinate.
+struct Layout {
+    old_hunk_of: Vec<u32>,
+    old_inline: HashMap<usize, Vec<Range<usize>>>,
+    new_hunk_of: Vec<u32>,
+    new_inline: HashMap<usize, Vec<Range<usize>>>,
+    segments: Vec<Segment>,
+    total: f64,
+}
+
+fn layout(hunks: &[DiffHunk], old_lines: usize, new_lines: usize) -> Layout {
+    let mut old_hunk_of = vec![u32::MAX; old_lines];
+    let mut new_hunk_of = vec![u32::MAX; new_lines];
+    let (mut old_inline, mut new_inline) = (HashMap::new(), HashMap::new());
+    for (hi, h) in hunks.iter().enumerate() {
+        for l in h.old_lines.clone() {
+            if let Some(s) = old_hunk_of.get_mut(l) {
+                *s = hi as u32;
+            }
+        }
+        for l in h.new_lines.clone() {
+            if let Some(s) = new_hunk_of.get_mut(l) {
+                *s = hi as u32;
+            }
+        }
+        for p in &h.pairs {
+            if p.kind != LineKind::Changed {
+                continue;
+            }
+            if let (Some(o), false) = (p.old, p.old_inline.is_empty()) {
+                old_inline.insert(o, p.old_inline.clone());
+            }
+            if let (Some(n), false) = (p.new, p.new_inline.is_empty()) {
+                new_inline.insert(n, p.new_inline.clone());
+            }
+        }
+    }
+    let mut segments = Vec::with_capacity(hunks.len() * 2 + 1);
+    let (mut o, mut n, mut v) = (0usize, 0usize, 0f64);
+    let push_equal = |segments: &mut Vec<Segment>, o: &mut usize, n: &mut usize, v: &mut f64, upto_old: usize| {
+        let len = upto_old.saturating_sub(*o);
+        if len > 0 {
+            segments.push(Segment { v0: *v, len: len as f64, old0: *o, old_len: len, new0: *n, new_len: len, hunk: None });
+            *o += len;
+            *n += len;
+            *v += len as f64;
+        }
+    };
+    for (hi, h) in hunks.iter().enumerate() {
+        push_equal(&mut segments, &mut o, &mut n, &mut v, h.old_lines.start);
+        // Re-sync in case the hunk list skipped lines on one side.
+        o = h.old_lines.start;
+        n = h.new_lines.start;
+        let (ol, nl) = (h.old_lines.len(), h.new_lines.len());
+        let len = ol.max(nl).max(1) as f64;
+        segments.push(Segment { v0: v, len, old0: o, old_len: ol, new0: n, new_len: nl, hunk: Some(hi) });
+        o += ol;
+        n += nl;
+        v += len;
+    }
+    let rest = old_lines.saturating_sub(o).max(new_lines.saturating_sub(n));
+    if rest > 0 {
+        segments.push(Segment { v0: v, len: rest as f64, old0: o, old_len: rest, new0: n, new_len: rest, hunk: None });
+        v += rest as f64;
+    }
+    Layout { old_hunk_of, old_inline, new_hunk_of, new_inline, segments, total: v }
+}
+
 struct Model {
     diff: FileDiff,
     old: Pane,
@@ -159,6 +259,8 @@ struct Model {
     total: f64,
     /// Text the new side was built from, for "did anything change" checks on reload.
     new_text: String,
+    /// The old text, shared with relayout workers without a copy per keystroke.
+    old_shared: Arc<str>,
 }
 
 impl Model {
@@ -174,59 +276,24 @@ impl Model {
         let language = Language::from_path(&diff.path);
         let mut old = Pane::new(&diff.old_text, language, diff.old_exists);
         let mut new = Pane::new(&diff.new_text, language, diff.new_exists);
-        for (hi, h) in diff.hunks.iter().enumerate() {
-            for l in h.old_lines.clone() {
-                if let Some(s) = old.hunk_of.get_mut(l) {
-                    *s = hi as u32;
-                }
-            }
-            for l in h.new_lines.clone() {
-                if let Some(s) = new.hunk_of.get_mut(l) {
-                    *s = hi as u32;
-                }
-            }
-            for p in &h.pairs {
-                if p.kind != LineKind::Changed {
-                    continue;
-                }
-                if let (Some(o), false) = (p.old, p.old_inline.is_empty()) {
-                    old.inline.insert(o, p.old_inline.clone());
-                }
-                if let (Some(n), false) = (p.new, p.new_inline.is_empty()) {
-                    new.inline.insert(n, p.new_inline.clone());
-                }
-            }
-        }
-        let mut segments = Vec::with_capacity(diff.hunks.len() * 2 + 1);
-        let (mut o, mut n, mut v) = (0usize, 0usize, 0f64);
-        let push_equal = |segments: &mut Vec<Segment>, o: &mut usize, n: &mut usize, v: &mut f64, upto_old: usize| {
-            let len = upto_old.saturating_sub(*o);
-            if len > 0 {
-                segments.push(Segment { v0: *v, len: len as f64, old0: *o, old_len: len, new0: *n, new_len: len, hunk: None });
-                *o += len;
-                *n += len;
-                *v += len as f64;
-            }
-        };
-        for (hi, h) in diff.hunks.iter().enumerate() {
-            push_equal(&mut segments, &mut o, &mut n, &mut v, h.old_lines.start);
-            // Re-sync in case the hunk list skipped lines on one side.
-            o = h.old_lines.start;
-            n = h.new_lines.start;
-            let (ol, nl) = (h.old_lines.len(), h.new_lines.len());
-            let len = ol.max(nl).max(1) as f64;
-            segments.push(Segment { v0: v, len, old0: o, old_len: ol, new0: n, new_len: nl, hunk: Some(hi) });
-            o += ol;
-            n += nl;
-            v += len;
-        }
-        let rest = old.lines.saturating_sub(o).max(new.lines.saturating_sub(n));
-        if rest > 0 {
-            segments.push(Segment { v0: v, len: rest as f64, old0: o, old_len: rest, new0: n, new_len: rest, hunk: None });
-            v += rest as f64;
-        }
+        let l = layout(&diff.hunks, old.lines, new.lines);
+        (old.hunk_of, old.inline, new.hunk_of, new.inline) = (l.old_hunk_of, l.old_inline, l.new_hunk_of, l.new_inline);
         let new_text = diff.new_text.clone();
-        Model { diff, old, new, segments, total: v, new_text }
+        let old_shared = Arc::from(diff.old_text.as_str());
+        Model { diff, old, new, segments: l.segments, total: l.total, new_text, old_shared }
+    }
+
+    /// Takes the hunks a worker computed for the edited working-tree text.
+    fn apply(&mut self, r: Relayout) {
+        let l = r.layout;
+        (self.old.hunk_of, self.old.inline, self.new.hunk_of, self.new.inline) = (l.old_hunk_of, l.old_inline, l.new_hunk_of, l.new_inline);
+        self.segments = l.segments;
+        self.total = l.total;
+        self.diff.hunks = r.hunks;
+        self.diff.new_exists = true;
+        self.new.lines = r.new_lines;
+        self.new.max_cols = r.new_max_cols;
+        self.new_text = r.new_text;
     }
 
     /// Line (fractional) shown at virtual position `t` on one side.
@@ -274,6 +341,51 @@ impl Model {
     }
 }
 
+/// The hunks of the edited working-tree text, computed on a worker.
+struct Relayout {
+    hunks: Vec<DiffHunk>,
+    layout: Layout,
+    new_lines: usize,
+    new_max_cols: usize,
+    new_text: String,
+}
+
+impl Relayout {
+    fn compute(old: &str, new: TextSnapshot, old_lines: usize, new_lines: usize) -> Relayout {
+        let new_text = new.file_text();
+        let hunks = ide_git::diff_texts(old, &new_text);
+        let layout = layout(&hunks, old_lines, new_lines);
+        Relayout { new_max_cols: text_max_cols(&new_text), hunks, layout, new_lines, new_text }
+    }
+}
+
+/// Which document the live side shows: an editor tab's, or the hidden one (by generation).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum DocRef {
+    Tab(TabId),
+    Hidden(u64),
+}
+
+/// The editable working-tree side.
+#[derive(Default)]
+struct Live {
+    /// The file's document while no editor tab holds it.
+    hidden: Option<Document>,
+    /// Bumped whenever `hidden` changes, so a late save result never marks another document.
+    hidden_gen: u64,
+    loading: bool,
+    load_failed: bool,
+    /// The document and version the drawn hunks were computed from.
+    computed: Option<(DocRef, u64)>,
+    relayout_running: bool,
+    /// An unsaved edit of the hidden document; it saves `SAVE_DEBOUNCE` later.
+    edited_at: Option<Instant>,
+    saving: bool,
+    had_focus: bool,
+    /// Highlight spans of the live document (the model's new pane caches its own copy's).
+    spans: SpanCache,
+}
+
 enum Load {
     Loading,
     Failed(String),
@@ -305,6 +417,9 @@ pub struct DiffTab {
     drag: bool,
     /// Where the last frame drew the panes, for tests that aim at a char.
     geom: Option<Geom>,
+    /// Bumped by every new model, so a relayout of an older model is dropped.
+    model_gen: u64,
+    live: Live,
 }
 
 /// One pane as drawn last frame.
@@ -344,15 +459,21 @@ impl DiffTab {
                 (format!("diff:local:{rev}:{}", rel.display()), format!("{} ({short} vs Local)", name_of(rel)), format!("{}: {short} vs the working tree", rel.display()))
             }
         };
-        DiffTab { key, title, tooltip, source, load: Load::Loading, t: 0.0, hscroll: 0.0, current: None, goto_first: true, reloading: false, reload_pending: false, view_lines: 30.0, dragging_thumb: None, sel: None, chain: ClickChain::default(), drag: false, geom: None }
+        DiffTab { key, title, tooltip, source, load: Load::Loading, t: 0.0, hscroll: 0.0, current: None, goto_first: true, reloading: false, reload_pending: false, view_lines: 30.0, dragging_thumb: None, sel: None, chain: ClickChain::default(), drag: false, geom: None, model_gen: 0, live: Live::default() }
     }
 
     fn set_model(&mut self, model: Model) {
         let keep = matches!(self.load, Load::Ready(_));
         self.load = Load::Ready(Box::new(model));
-        // A reload keeps the selection where it was; the text under it may have changed.
+        self.model_gen += 1;
+        self.live.load_failed = false;
+        // A reload keeps the selection where it was; the text under it may have changed. The
+        // live side clamps to its document while it draws.
+        let live = self.editable_source();
         if let (Some(sel), Load::Ready(m)) = (&mut self.sel, &self.load) {
-            sel.clamp(m.pane(sel.side).doc.len_chars());
+            if sel.side == Side::Old || !live {
+                sel.clamp(m.pane(sel.side).doc.len_chars());
+            }
         }
         if !keep {
             self.goto_first = true;
@@ -421,21 +542,55 @@ impl DiffTab {
         self.model().and_then(|m| m.diff.hunks.get(i)).map(|h| h.new_lines.start)
     }
 
+    /// The document a side shows outside a frame: the hidden document on the live side, else
+    /// the model's copy. While an editor tab holds the file, read its document instead.
+    fn side_doc(&self, side: Side) -> Option<&Document> {
+        match (side, &self.live.hidden) {
+            (Side::New, Some(h)) => Some(h),
+            _ => self.model().map(|m| &m.pane(side).doc),
+        }
+    }
+
     /// The side of the caret and its selected text (empty for a bare caret).
     pub fn selection(&self) -> Option<(Side, String)> {
-        let (sel, m) = (self.sel.as_ref()?, self.model()?);
-        Some((sel.side, m.pane(sel.side).doc.slice(sel.range())))
+        let sel = self.sel.as_ref()?;
+        let doc = self.side_doc(sel.side)?;
+        let len = doc.len_chars();
+        let r = sel.range();
+        Some((sel.side, doc.slice(r.start.min(len)..r.end.min(len))))
     }
 
     /// The caret's side and position (0-based line and char column).
     pub fn caret(&self) -> Option<(Side, Position)> {
-        let (sel, m) = (self.sel.as_ref()?, self.model()?);
-        Some((sel.side, m.pane(sel.side).doc.char_to_position(sel.head)))
+        let sel = self.sel.as_ref()?;
+        let doc = self.side_doc(sel.side)?;
+        Some((sel.side, doc.char_to_position(sel.head.min(doc.len_chars()))))
     }
 
-    /// The text of one side, as the diff shows it.
+    /// The text of one side, as the diff shows it (see `side_doc`).
     pub fn side_text(&self, side: Side) -> Option<String> {
-        self.model().map(|m| m.pane(side).doc.text())
+        self.side_doc(side).map(Document::text)
+    }
+
+    /// The working-tree file's document while no editor tab holds it.
+    pub fn hidden_doc(&self) -> Option<&Document> {
+        self.live.hidden.as_ref()
+    }
+
+    /// The hunks follow the current text of the live side: no relayout is due or running.
+    pub fn hunks_current(&self) -> bool {
+        !self.live.relayout_running && !self.reloading
+    }
+
+    /// The right side is the working-tree file and can be edited.
+    fn editable_source(&self) -> bool {
+        matches!(self.source, Source::Worktree { .. } | Source::RevLocal { .. }) && !self.is_binary()
+    }
+
+    fn abs(&self) -> &Path {
+        match &self.source {
+            Source::Worktree { abs, .. } | Source::Commit { abs, .. } | Source::Commits { abs, .. } | Source::RevLocal { abs, .. } => abs,
+        }
     }
 
     /// Screen point in the middle of char `col` (no tabs before it) of `line` on `side`, as drawn
@@ -477,9 +632,16 @@ impl CustomTab for DiffTab {
         self.tooltip.clone()
     }
     fn file_path(&self) -> Option<PathBuf> {
-        match &self.source {
-            Source::Worktree { abs, .. } | Source::Commit { abs, .. } | Source::Commits { abs, .. } | Source::RevLocal { abs, .. } => Some(abs.clone()),
-        }
+        Some(self.abs().to_path_buf())
+    }
+    fn shared_editor(&self) -> Option<PathBuf> {
+        self.editable_source().then(|| self.abs().to_path_buf())
+    }
+    fn has_pending_work(&self) -> bool {
+        self.live.edited_at.is_some()
+    }
+    fn on_close(&mut self, env: &mut TabEnv) {
+        save_hidden(env.jobs, self, true);
     }
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
@@ -509,7 +671,54 @@ impl CustomTab for DiffTab {
             }
             Load::Ready(_) => {}
         }
-        if let Some(text) = body(self, ui, env.editor_theme, body_id) {
+        let editable = self.editable_source();
+        let mut editor = env.editor.take().filter(|(_, e)| editable && !e.read_only);
+        if editor.is_some() && self.live.hidden.is_some() {
+            // An editor tab holds the file now (`adopt_hidden` took unsaved edits over).
+            save_hidden(env.jobs, self, true);
+            self.live.hidden = None;
+            self.live.hidden_gen += 1;
+        }
+        let new_exists = self.model().is_some_and(|m| m.diff.new_exists);
+        if editable && editor.is_none() && self.live.hidden.is_none() && new_exists && !self.live.loading && !self.live.load_failed {
+            load_hidden(env.jobs, self);
+        }
+        let mut hidden = self.live.hidden.take();
+        let doc_ref = match &editor {
+            Some((id, _)) => Some(DocRef::Tab(*id)),
+            None => hidden.as_ref().map(|_| DocRef::Hidden(self.live.hidden_gen)),
+        };
+        let live_doc = match editor.as_mut() {
+            Some((_, e)) => Some(&mut e.doc),
+            None => hidden.as_mut(),
+        };
+        let out = body(self, ui, env.editor_theme, body_id, live_doc);
+        let live_doc = match editor.as_mut() {
+            Some((_, e)) => Some(&mut e.doc),
+            None => hidden.as_mut(),
+        };
+        if let (Some(r), Some(doc)) = (doc_ref, live_doc) {
+            relayout_if_changed(self, env.jobs, r, doc);
+        }
+        self.live.hidden = hidden;
+        if out.edited {
+            match editor.as_mut() {
+                Some((_, e)) => {
+                    // The tab's language server sync and gutter marks wait for a quiet period.
+                    e.last_edit = Instant::now();
+                    e.problems.refresh(&e.doc);
+                }
+                None => {
+                    self.live.edited_at = Some(Instant::now());
+                    ui.ctx().request_repaint_after(SAVE_DEBOUNCE);
+                }
+            }
+        }
+        if self.live.had_focus && !out.has_focus && self.live.edited_at.is_some() {
+            save_hidden(env.jobs, self, false);
+        }
+        self.live.had_focus = out.has_focus;
+        if let Some(text) = out.copied {
             // The clipboard belongs to the platform; a tab reaches `AppState` only through a job.
             env.jobs.post(move |state| {
                 let ctx = state.ctx.clone();
@@ -576,8 +785,33 @@ struct Metrics {
     font: FontId,
 }
 
-/// Draws the panes and handles their input. Returns the text that Copy put on the clipboard.
-fn body(tab: &mut DiffTab, ui: &mut Ui, theme_e: &EditorTheme, body_id: Id) -> Option<String> {
+/// What a frame of the body did.
+struct BodyOut {
+    /// Text that Copy or Cut put on the clipboard.
+    copied: Option<String>,
+    /// The live document changed.
+    edited: bool,
+    has_focus: bool,
+}
+
+/// One keyboard or clipboard request, in the order the frame got them.
+enum Input {
+    Move(Move, bool),
+    Edit(Edit),
+}
+
+/// The document a side shows this frame: the live one on the new side, else the model's copy.
+fn doc_for<'a>(model: &'a Model, live: Option<&'a Document>, side: Side) -> &'a Document {
+    match (side, live) {
+        (Side::New, Some(d)) => d,
+        _ => &model.pane(side).doc,
+    }
+}
+
+/// Draws the panes and handles their input. `live` is the working-tree document when the new
+/// side is editable.
+fn body(tab: &mut DiffTab, ui: &mut Ui, theme_e: &EditorTheme, body_id: Id, mut live: Option<&mut Document>) -> BodyOut {
+    let mut out = BodyOut { copied: None, edited: false, has_focus: false };
     let font = theme::T.mono_font();
     // The laid-out column step, like the editor (`ide_editor::column_advance`).
     let char_w = ui.fonts(|f| ide_editor::column_advance(f, &font));
@@ -591,8 +825,25 @@ fn body(tab: &mut DiffTab, ui: &mut Ui, theme_e: &EditorTheme, body_id: Id) -> O
     }
     ui.allocate_rect(full, Sense::hover());
 
-    let Load::Ready(model) = &mut tab.load else { return None };
+    let Load::Ready(model) = &mut tab.load else { return out };
     tab.view_lines = (area.height() / LINE_H) as f64;
+    // The live text may have changed under the caret (typing in the editor tab, a reload).
+    if let (Some(doc), Some(sel)) = (live.as_deref(), tab.sel.as_mut()) {
+        if sel.side == Side::New {
+            sel.clamp(doc.len_chars());
+        }
+    }
+    let old_lines = model.old.lines;
+    let new_lines = match live.as_deref() {
+        Some(doc) => {
+            // The empty line after a final line break shows while the caret is on it.
+            let base = doc_lines(doc);
+            let on_last = tab.sel.as_ref().is_some_and(|s| s.side == Side::New && doc.char_to_position(s.head).line >= base);
+            if on_last { doc.line_count() } else { base }
+        }
+        None => model.new.lines,
+    };
+    let side_lines = |side: Side| if side == Side::Old { old_lines } else { new_lines };
 
     // Input: wheel, keys, scrollbar.
     let pane_w = ((area.width() - RIBBON_W - SCROLLBAR_W) / 2.0).max(50.0);
@@ -601,16 +852,15 @@ fn body(tab: &mut DiffTab, ui: &mut Ui, theme_e: &EditorTheme, body_id: Id) -> O
     let right = Rect::from_min_size(pos2(ribbon.max.x, area.min.y), vec2(pane_w, area.height()));
     let bar = Rect::from_min_max(pos2(right.max.x, area.min.y), area.max);
     let gutter_w = |lines: usize| (lines.max(1).to_string().len().max(3) as f32) * char_w + 14.0;
-    let gw = gutter_w(model.old.lines.max(model.new.lines));
+    let gw = gutter_w(old_lines.max(new_lines));
     let text_w = pane_w - gw;
 
     // Mouse selection, hit-tested against the layout the user saw: this frame's scroll input is
     // applied below.
     let pane_rect = |side: Side| if side == Side::Old { left } else { right };
-    let hit_at = |model: &Model, side: Side, t: f64, hscroll: f32, pos: Pos2| -> usize {
-        let pane = model.pane(side);
+    let hit_at = |model: &Model, doc: &Document, side: Side, t: f64, hscroll: f32, pos: Pos2| -> usize {
         let top = model.map(t, side == Side::Old);
-        hit(ui, pane, pane_rect(side), top, gw, hscroll, pos, &metrics, theme_e)
+        hit(ui, doc, side_lines(side), pane_rect(side), top, gw, hscroll, pos, &metrics, theme_e)
     };
     // Read the options before `input`: its closure holds the context lock, and egui's lock is
     // not re-entrant, so a ctx call inside it deadlocks the frame.
@@ -638,8 +888,8 @@ fn body(tab: &mut DiffTab, ui: &mut Ui, theme_e: &EditorTheme, body_id: Id) -> O
         if !on_body(pos) {
             continue;
         }
-        let at = hit_at(model, side, tab.t, tab.hscroll, pos);
-        let doc = &model.pane(side).doc;
+        let doc = doc_for(model, live.as_deref(), side);
+        let at = hit_at(model, doc, side, tab.t, tab.hscroll, pos);
         match button {
             PointerButton::Primary => {
                 if mods.shift {
@@ -672,6 +922,12 @@ fn body(tab: &mut DiffTab, ui: &mut Ui, theme_e: &EditorTheme, body_id: Id) -> O
             }
             _ => tab.chain.reset(),
         }
+        if side == Side::New {
+            // A caret moved by the mouse ends the typing undo step, like the editor.
+            if let Some(d) = live.as_deref_mut() {
+                d.seal_undo_group();
+            }
+        }
     }
     let mut dt = 0.0f64;
     if tab.drag && !primary_down {
@@ -693,9 +949,10 @@ fn body(tab: &mut DiffTab, ui: &mut Ui, theme_e: &EditorTheme, body_id: Id) -> O
             tab.hscroll += (speed(pos.x - pr.max.x) * char_w as f64) as f32;
         }
         let inner = pos2(pos.x, pos.y.clamp(pr.min.y + 1.0, pr.max.y - 1.0));
-        let at = hit_at(model, side, tab.t, tab.hscroll, inner);
+        let doc = doc_for(model, live.as_deref(), side);
+        let at = hit_at(model, doc, side, tab.t, tab.hscroll, inner);
         if let Some(sel) = &mut tab.sel {
-            sel.extend(&model.pane(side).doc, at);
+            sel.extend(doc, at);
         }
         if dt != 0.0 || pos.x < text_x || pos.x > pr.max.x {
             ui.ctx().request_repaint();
@@ -708,37 +965,72 @@ fn body(tab: &mut DiffTab, ui: &mut Ui, theme_e: &EditorTheme, body_id: Id) -> O
         dt -= (d.y / LINE_H) as f64;
         tab.hscroll -= d.x;
     }
-    let mut copied = None;
-    if resp.has_focus() {
-        // The arrows move the caret; without the filter egui would move the focus instead.
-        ui.memory_mut(|m| m.set_focus_lock_filter(body_id, EventFilter { horizontal_arrows: true, vertical_arrows: true, tab: false, escape: false }));
+    // Only the working-tree side takes edits; the other side and commit diffs stay read-only.
+    let editable = live.is_some() && tab.sel.as_ref().is_some_and(|s| s.side == Side::New);
+    out.has_focus = resp.has_focus();
+    if out.has_focus {
+        // The arrows (and Tab on the editable side) act on the caret; without the filter egui
+        // would move the focus instead.
+        ui.memory_mut(|m| m.set_focus_lock_filter(body_id, EventFilter { horizontal_arrows: true, vertical_arrows: true, tab: editable, escape: false }));
         let page = (tab.view_lines - 2.0).max(1.0) as usize;
-        let (select_all, copy, moves) = ui.input_mut(|i| {
+        let (select_all, copy, inputs) = ui.input_mut(|i| {
             let all = i.consume_key(Modifiers::COMMAND, Key::A);
             let copy_key = i.consume_key(Modifiers::COMMAND, Key::C);
-            let copy = copy_key || i.events.iter().any(|e| matches!(e, Event::Copy));
-            let moves: Vec<(Move, bool)> = i.events.iter().filter_map(|e| key_move(e, page)).collect();
-            (all, copy, moves)
+            // A read-only side treats Cut as Copy, like a read-only editor.
+            let copy = copy_key || i.events.iter().any(|e| matches!(e, Event::Copy) || (!editable && matches!(e, Event::Cut)));
+            let mods = i.modifiers;
+            let inputs: Vec<Input> = i
+                .events
+                .iter()
+                .filter_map(|e| match key_move(e, page) {
+                    Some((mv, extend)) => Some(Input::Move(mv, extend)),
+                    None if editable => edit::edit_of(e, mods).map(Input::Edit),
+                    None => None,
+                })
+                .collect();
+            (all, copy, inputs)
         });
         if select_all {
             let side = tab.sel.as_ref().map_or(Side::New, |s| s.side);
-            let len = model.pane(side).doc.len_chars();
+            let len = doc_for(model, live.as_deref(), side).len_chars();
             tab.sel = Some(PaneSel { anchor: 0, head: len, ..PaneSel::caret(side, len) });
         }
         if let Some(sel) = &mut tab.sel {
-            for (mv, extend) in moves.iter().copied() {
-                select::apply_move(sel, &model.pane(sel.side).doc, mv, extend);
-                match mv {
-                    Move::Up(n) if n > 1 => dt -= n as f64,
-                    Move::Down(n) if n > 1 => dt += n as f64,
-                    _ => {}
+            let mut moved = false;
+            for input in inputs {
+                match input {
+                    Input::Move(mv, extend) => {
+                        select::apply_move(sel, doc_for(model, live.as_deref(), sel.side), mv, extend);
+                        match mv {
+                            Move::Up(n) if n > 1 => dt -= n as f64,
+                            Move::Down(n) if n > 1 => dt += n as f64,
+                            _ => {}
+                        }
+                        if sel.side == Side::New {
+                            if let Some(d) = live.as_deref_mut() {
+                                d.seal_undo_group();
+                            }
+                        }
+                        moved = true;
+                    }
+                    Input::Edit(e) => {
+                        let Some(doc) = live.as_deref_mut() else { continue };
+                        let (s, cut) = edit::apply(doc, Selection::new(sel.anchor, sel.head), &e);
+                        *sel = PaneSel { anchor: s.anchor, ..PaneSel::caret(Side::New, s.head) };
+                        if cut.is_some() {
+                            out.copied = cut;
+                        }
+                        out.edited = true;
+                        moved = true;
+                    }
                 }
             }
-            if !moves.is_empty() {
+            if moved {
                 tab.current = None;
                 // Keep the caret on screen: the page moves above already scrolled.
                 let side = sel.side;
-                let pos = model.pane(side).doc.char_to_position(sel.head);
+                let doc = doc_for(model, live.as_deref(), side);
+                let pos = doc.char_to_position(sel.head);
                 let old_side = side == Side::Old;
                 let t = tab.t + dt;
                 let top = model.map(t, old_side);
@@ -749,7 +1041,7 @@ fn body(tab: &mut DiffTab, ui: &mut Ui, theme_e: &EditorTheme, body_id: Id) -> O
                 } else if line + 1.0 > top + rows {
                     dt = model.unmap(line + 1.0 - rows, old_side) - tab.t;
                 }
-                let text = model.pane(side).doc.line(pos.line);
+                let text = doc.line(pos.line);
                 let x = display_col(&text, pos.column) as f32 * char_w;
                 if x < tab.hscroll {
                     tab.hscroll = x;
@@ -758,26 +1050,34 @@ fn body(tab: &mut DiffTab, ui: &mut Ui, theme_e: &EditorTheme, body_id: Id) -> O
                 }
             }
             if copy && !sel.is_empty() {
-                copied = Some(model.pane(sel.side).doc.slice(sel.range()));
+                out.copied = Some(doc_for(model, live.as_deref(), sel.side).slice(sel.range()));
             }
         } else {
             // No caret yet: the keys scroll the view.
-            for (mv, _) in moves {
-                match mv {
-                    Move::Up(n) => dt -= n as f64,
-                    Move::Down(n) => dt += n as f64,
+            for input in inputs {
+                match input {
+                    Input::Move(Move::Up(n), _) => dt -= n as f64,
+                    Input::Move(Move::Down(n), _) => dt += n as f64,
                     _ => {}
                 }
             }
         }
     }
+    let editable = live.is_some() && tab.sel.as_ref().is_some_and(|s| s.side == Side::New);
     let has_sel = tab.sel.as_ref().is_some_and(|s| !s.is_empty());
-    let mut menu_copy = false;
-    let mut menu_all = false;
+    let (mut menu_cut, mut menu_copy, mut menu_paste, mut menu_all) = (false, false, false, false);
     resp.context_menu(|ui| {
         ui.set_min_width(180.0);
+        if editable && ui.add(egui::Button::new("Cut").shortcut_text("⌘X")).clicked() {
+            menu_cut = true;
+            ui.close_menu();
+        }
         if ui.add_enabled(has_sel, egui::Button::new("Copy").shortcut_text("⌘C")).clicked() {
             menu_copy = true;
+            ui.close_menu();
+        }
+        if editable && ui.add(egui::Button::new("Paste").shortcut_text("⌘V")).clicked() {
+            menu_paste = true;
             ui.close_menu();
         }
         if ui.add(egui::Button::new("Select All").shortcut_text("⌘A")).clicked() {
@@ -785,17 +1085,27 @@ fn body(tab: &mut DiffTab, ui: &mut Ui, theme_e: &EditorTheme, body_id: Id) -> O
             ui.close_menu();
         }
     });
-    if menu_copy || menu_all {
+    if menu_cut || menu_copy || menu_paste || menu_all {
         // The press on the menu took the focus away.
         resp.request_focus();
     }
+    if menu_paste {
+        // The text arrives as `Event::Paste` next frame, like the editor's menu Paste.
+        ui.ctx().send_viewport_cmd(ViewportCommand::RequestPaste);
+    }
     if menu_all {
         let side = tab.sel.as_ref().map_or(Side::New, |s| s.side);
-        let len = model.pane(side).doc.len_chars();
+        let len = doc_for(model, live.as_deref(), side).len_chars();
         tab.sel = Some(PaneSel { anchor: 0, head: len, ..PaneSel::caret(side, len) });
     }
     if let (true, Some(sel)) = (menu_copy, &tab.sel) {
-        copied = Some(model.pane(sel.side).doc.slice(sel.range()));
+        out.copied = Some(doc_for(model, live.as_deref(), sel.side).slice(sel.range()));
+    }
+    if let (true, Some(sel), Some(doc)) = (menu_cut, tab.sel.as_mut(), live.as_deref_mut()) {
+        let (s, cut) = edit::apply(doc, Selection::new(sel.anchor, sel.head), &Edit::Cut);
+        *sel = PaneSel { anchor: s.anchor, ..PaneSel::caret(Side::New, s.head) };
+        out.copied = cut;
+        out.edited = true;
     }
 
     let total = model.total.max(1.0);
@@ -838,19 +1148,25 @@ fn body(tab: &mut DiffTab, ui: &mut Ui, theme_e: &EditorTheme, body_id: Id) -> O
         }
     }
     tab.t = tab.t.clamp(0.0, max_t);
-    let max_cols = model.old.max_cols.max(model.new.max_cols) as f32;
+    let new_cols = live.as_deref().map_or(model.new.max_cols, |d| d.max_line_chars().min(MAX_COLS));
+    let max_cols = model.old.max_cols.max(new_cols) as f32;
     tab.hscroll = tab.hscroll.clamp(0.0, (max_cols * char_w - text_w + 3.0 * char_w).max(0.0));
 
     let painter = ui.painter_at(full);
     painter.rect_filled(full, 0.0, theme_e.background);
 
-    // Titles above each pane.
+    // Titles above each pane. A read-only side shows a lock, like IDEA.
     let (old_title, new_title) = side_titles(&tab.source, &model.diff);
     let title_l = Rect::from_min_size(full.min, vec2(pane_w, title_h));
     let title_r = Rect::from_min_size(pos2(right.min.x, full.min.y), vec2(pane_w + SCROLLBAR_W, title_h));
-    for (r, text) in [(title_l, old_title), (title_r, new_title)] {
+    for (r, text, read_only) in [(title_l, old_title, true), (title_r, new_title, live.is_none())] {
         painter.rect_filled(r, 0.0, theme::T.tab_bar_bg);
-        painter.text(pos2(r.min.x + 8.0, r.center().y), Align2::LEFT_CENTER, text, theme::T.small_font(), theme::T.text);
+        let mut x = r.min.x + 8.0;
+        if read_only {
+            crate::icons::paint(&painter, Rect::from_center_size(pos2(x + 5.0, r.center().y), vec2(10.0, 10.0)), crate::icons::Icon::Lock, theme::T.text_dim);
+            x += 16.0;
+        }
+        painter.text(pos2(x, r.center().y), Align2::LEFT_CENTER, text, theme::T.small_font(), theme::T.text);
     }
     painter.rect_filled(Rect::from_min_size(pos2(left.max.x, full.min.y), vec2(RIBBON_W, title_h)), 0.0, theme::T.tab_bar_bg);
     painter.hline(full.x_range(), area.min.y - 0.5, Stroke::new(1.0_f32, theme::T.border));
@@ -866,17 +1182,29 @@ fn body(tab: &mut DiffTab, ui: &mut Ui, theme_e: &EditorTheme, body_id: Id) -> O
         }
     };
     let (marks_old, marks_new) = (marks(Side::Old), marks(Side::New));
-    draw_pane(&ui.painter_at(left), left, &mut model.old, &model.diff.hunks, top_old, tab.hscroll, gw, &metrics, theme_e, true, &marks_old);
-    draw_pane(&ui.painter_at(right), right, &mut model.new, &model.diff.hunks, top_new, tab.hscroll, gw, &metrics, theme_e, false, &marks_new);
+    let hunks = &model.diff.hunks;
+    let old = &mut model.old;
+    let old_view = PaneView { doc: &mut old.doc, lines: old.lines, hunk_of: &old.hunk_of, inline: &old.inline, spans: &mut old.spans, exists: old.exists };
+    draw_pane(&ui.painter_at(left), left, old_view, hunks, top_old, tab.hscroll, gw, &metrics, theme_e, true, &marks_old);
+    let new = &mut model.new;
+    let new_view = match live.as_deref_mut() {
+        Some(doc) => PaneView { doc, lines: new_lines, hunk_of: &new.hunk_of, inline: &new.inline, spans: &mut tab.live.spans, exists: true },
+        None => PaneView { doc: &mut new.doc, lines: new.lines, hunk_of: &new.hunk_of, inline: &new.inline, spans: &mut new.spans, exists: new.exists },
+    };
+    draw_pane(&ui.painter_at(right), right, new_view, hunks, top_new, tab.hscroll, gw, &metrics, theme_e, false, &marks_new);
     draw_ribbons(&ui.painter_at(ribbon), ribbon, model, top_old, top_new);
     draw_scrollbar(&painter, bar, model, tab.t, max_t, thumb_h, thumb_range, bar_resp.hovered() || tab.dragging_thumb.is_some());
     tab.geom = Some(Geom { old: PaneGeom { rect: left, top: top_old }, new: PaneGeom { rect: right, top: top_new }, gutter_w: gw, hscroll: tab.hscroll, char_w });
 
     // A pane may still be parsing in the background; poll until its colors arrive.
-    if !model.old.doc.syntax_ready() || !model.new.doc.syntax_ready() {
+    let new_ready = match live {
+        Some(d) => d.syntax_ready(),
+        None => model.new.doc.syntax_ready(),
+    };
+    if !model.old.doc.syntax_ready() || !new_ready {
         ui.ctx().request_repaint_after(std::time::Duration::from_millis(50));
     }
-    copied
+    out
 }
 
 /// The caret move a key event asks for, with Shift held or not. macOS keys: Alt moves by
@@ -908,8 +1236,8 @@ fn key_move(e: &Event, page: usize) -> Option<(Move, bool)> {
 /// The char index under `pos` in one pane. A press left of the text is column 0; one below the
 /// last line is the end of that line.
 #[allow(clippy::too_many_arguments)]
-fn hit(ui: &Ui, pane: &Pane, rect: Rect, top: f64, gutter_w: f32, hscroll: f32, pos: Pos2, m: &Metrics, th: &EditorTheme) -> usize {
-    if pane.lines == 0 {
+fn hit(ui: &Ui, doc: &Document, lines: usize, rect: Rect, top: f64, gutter_w: f32, hscroll: f32, pos: Pos2, m: &Metrics, th: &EditorTheme) -> usize {
+    if lines == 0 {
         return 0;
     }
     let line_f = top + ((pos.y - rect.min.y) / LINE_H) as f64;
@@ -917,10 +1245,10 @@ fn hit(ui: &Ui, pane: &Pane, rect: Rect, top: f64, gutter_w: f32, hscroll: f32, 
         return 0;
     }
     let line = line_f.floor() as usize;
-    if line >= pane.lines {
-        return pane.doc.line_end(pane.lines - 1);
+    if line >= lines {
+        return doc.line_end(lines - 1);
     }
-    let text = pane.doc.line(line);
+    let text = doc.line(line);
     let x = pos.x.max(rect.min.x + gutter_w) - (rect.min.x + gutter_w - hscroll);
     let display = if x <= 0.0 {
         0
@@ -929,7 +1257,7 @@ fn hit(ui: &Ui, pane: &Pane, rect: Rect, top: f64, gutter_w: f32, hscroll: f32, 
         let galley = ui.fonts(|f| f.layout_job(line_job(&text, &[], m, th)));
         galley.cursor_from_pos(vec2(x, LINE_H / 2.0)).ccursor.index
     };
-    pane.doc.line_start(line) + select::char_col(&text, display).min(pane.doc.line_len(line))
+    doc.line_start(line) + select::char_col(&text, display).min(doc.line_len(line))
 }
 
 fn side_titles(source: &Source, d: &FileDiff) -> (String, String) {
@@ -956,8 +1284,18 @@ struct Marks {
     caret: Option<usize>,
 }
 
+/// What one pane draws: the model's copy of a side, or the live document with the model's marks.
+struct PaneView<'a> {
+    doc: &'a mut Document,
+    lines: usize,
+    hunk_of: &'a [u32],
+    inline: &'a HashMap<usize, Vec<Range<usize>>>,
+    spans: &'a mut SpanCache,
+    exists: bool,
+}
+
 #[allow(clippy::too_many_arguments)]
-fn draw_pane(painter: &egui::Painter, rect: Rect, pane: &mut Pane, hunks: &[DiffHunk], top: f64, hscroll: f32, gutter_w: f32, m: &Metrics, th: &EditorTheme, old_side: bool, marks: &Marks) {
+fn draw_pane(painter: &egui::Painter, rect: Rect, pane: PaneView, hunks: &[DiffHunk], top: f64, hscroll: f32, gutter_w: f32, m: &Metrics, th: &EditorTheme, old_side: bool, marks: &Marks) {
     let first = top.floor().max(0.0) as usize;
     let count = (rect.height() / LINE_H).ceil() as usize + 2;
     let last = (first + count).min(pane.lines);
@@ -982,18 +1320,18 @@ fn draw_pane(painter: &egui::Painter, rect: Rect, pane: &mut Pane, hunks: &[Diff
     if first >= last {
         return;
     }
-    pane.ensure_spans(first..last);
+    pane.spans.ensure(pane.doc, pane.lines, first..last);
     let text_clip = Rect::from_min_max(pos2(text_x, rect.min.y), rect.max);
     let text_painter = painter.with_clip_rect(text_clip.intersect(painter.clip_rect()));
     for line in first..last {
         let y = y_of(line as f64);
         let row = Rect::from_min_size(pos2(rect.min.x, y), vec2(rect.width(), LINE_H));
-        let hunk = pane.hunk_of[line];
-        let kind = (hunk != u32::MAX).then(|| HunkKind::of(&hunks[hunk as usize]));
-        if let Some(k) = kind {
+        // The live side may be a line ahead of its marks until the relayout lands.
+        let h = pane.hunk_of.get(line).and_then(|&i| hunks.get(i as usize));
+        let kind = h.map(HunkKind::of);
+        if let (Some(k), Some(h)) = (kind, h) {
             painter.rect_filled(row, 0.0, k.bg());
             // Edges at the hunk boundaries, like IDEA's thin outline.
-            let h = &hunks[hunk as usize];
             let range = if old_side { &h.old_lines } else { &h.new_lines };
             if line == range.start {
                 painter.hline(rect.x_range(), y, Stroke::new(1.0_f32, k.edge()));
@@ -1006,7 +1344,7 @@ fn draw_pane(painter: &egui::Painter, rect: Rect, pane: &mut Pane, hunks: &[Diff
 
         let text = pane.doc.line(line);
         let x0 = text_x - hscroll;
-        let spans = pane.spans[line].as_deref().unwrap_or(&[]);
+        let spans = pane.spans.get(line);
         let job = line_job(&text, spans, m, th);
         let galley = text_painter.layout_job(job);
         // X from the galley itself: glyph advances are rounded to pixels, so a constant char
@@ -1181,8 +1519,15 @@ pub fn show_in_active_worktree_diff(state: &mut AppState, path: &Path) {
         state.ws.tabs.activate(open);
         return;
     }
-    if let Some(t) = state.ws.tabs.get_mut(id) {
-        t.content = crate::tabs::TabContent::Custom(Box::new(tab));
+    let AppState { ws, jobs, .. } = state;
+    if let Some(t) = ws.tabs.get_mut(id) {
+        // The replaced diff's unsaved edits go to disk first.
+        if let TabContent::Custom(c) = &mut t.content {
+            if let Some(old) = c.as_any_mut().downcast_mut::<DiffTab>() {
+                save_hidden(jobs, old, true);
+            }
+        }
+        t.content = TabContent::Custom(Box::new(tab));
     }
     reload(state, &key);
 }
@@ -1224,11 +1569,22 @@ fn open(state: &mut AppState, source: Source) {
     reload(state, &key);
 }
 
-/// The unsaved editor buffer for a worktree diff, so the diff shows what the user sees.
-fn buffer_text(state: &AppState, source: &Source) -> Option<String> {
-    let Source::Worktree { abs, .. } = source else { return None };
-    state.ws.tabs.editors().find(|e| &e.path == abs && e.doc.is_dirty()).map(|e| e.doc.text())
+/// The live document of an editable diff: the file's editor tab, else the diff's hidden one.
+fn live_snapshot(state: &mut AppState, key: &str) -> Option<(DocRef, u64, TextSnapshot)> {
+    let tab = state.ws.tabs.custom_mut::<DiffTab>(key)?;
+    if !tab.editable_source() {
+        return None;
+    }
+    let abs = tab.abs().to_path_buf();
+    let hidden = tab.live.hidden.as_ref().map(|h| (DocRef::Hidden(tab.live.hidden_gen), h.version(), h.text_snapshot()));
+    match state.ws.tabs.editor_by_path(&abs).and_then(|id| state.ws.tabs.editor_mut(id).map(|e| (id, e))) {
+        Some((id, e)) if !e.read_only => Some((DocRef::Tab(id), e.doc.version(), e.doc.text_snapshot())),
+        _ => hidden,
+    }
 }
+
+/// The file's bytes for a clean hidden document: (hidden generation, doc version, bytes).
+type DiskRead = (u64, u64, Vec<u8>);
 
 fn reload(state: &mut AppState, key: &str) {
     let Some(repo) = state.ws.git.repo.clone() else { return };
@@ -1240,7 +1596,10 @@ fn reload(state: &mut AppState, key: &str) {
     tab.reloading = true;
     let source = tab.source.clone();
     let prev_texts = tab.model().map(|m| (m.diff.old_text.clone(), m.new_text.clone()));
-    let buffer = buffer_text(state, &source);
+    // A clean hidden document follows the disk like an editor tab (the watcher's reload).
+    let reread = tab.live.hidden.as_ref().filter(|h| !h.is_dirty()).map(|h| (tab.live.hidden_gen, h.version(), tab.abs().to_path_buf()));
+    let live = live_snapshot(state, key);
+    let live_ref = live.as_ref().map(|(r, v, _)| (*r, *v));
     let key = key.to_string();
     let label = format!("Loading diff of {}", name_of(match &source {
         Source::Worktree { rel, .. } | Source::Commit { rel, .. } | Source::Commits { rel, .. } | Source::RevLocal { rel, .. } => rel,
@@ -1254,23 +1613,37 @@ fn reload(state: &mut AppState, key: &str) {
                 Source::Commits { oids, rel, .. } => repo.diff_commits_file(oids, rel),
                 Source::RevLocal { rev, rel, .. } => repo.diff_with_working_tree_file(rev, rel),
             };
+            let disk = reread.and_then(|(gen, version, path)| std::fs::read(path).ok().map(|b| (gen, version, b)));
             match diff {
                 Ok(d) => {
+                    // The working-tree side shows the document the user edits, as the file holds it.
+                    let buffer = live.map(|(_, _, snap)| snap.file_text());
                     let new_text = buffer.as_ref().unwrap_or(&d.new_text);
                     if prev_texts.as_ref().is_some_and(|(o, n)| *o == d.old_text && n == new_text) {
-                        return Ok(None);
+                        return Ok((None, disk));
                     }
-                    Ok(Some(Model::build(d, buffer)))
+                    Ok((Some(Model::build(d, buffer)), disk))
                 }
                 Err(e) => Err(e.to_string()),
             }
         },
-        move |state, res: Result<Option<Model>, String>| {
+        move |state, res: Result<(Option<Model>, Option<DiskRead>), String>| {
             let Some(tab) = state.ws.tabs.custom_mut::<DiffTab>(&key) else { return };
             tab.reloading = false;
             match res {
-                Ok(Some(m)) => tab.set_model(m),
-                Ok(None) => {}
+                Ok((model, disk)) => {
+                    if let Some(m) = model {
+                        tab.set_model(m);
+                    }
+                    if live_ref.is_some() {
+                        tab.live.computed = live_ref;
+                    }
+                    if let Some((gen, version, bytes)) = disk {
+                        if let Some(h) = tab.live.hidden.as_mut().filter(|h| tab.live.hidden_gen == gen && h.version() == version && !h.is_dirty()) {
+                            h.reload_from_bytes(&bytes);
+                        }
+                    }
+                }
                 Err(e) => {
                     if !matches!(tab.load, Load::Ready(_)) {
                         tab.load = Load::Failed(e);
@@ -1284,6 +1657,176 @@ fn reload(state: &mut AppState, key: &str) {
     );
 }
 
+/// Recomputes the hunks on a worker when the live document is not the one they came from.
+/// At most one relayout runs; the next frame starts another if the text moved on meanwhile.
+fn relayout_if_changed(tab: &mut DiffTab, jobs: &Jobs, doc_ref: DocRef, doc: &Document) {
+    let now = (doc_ref, doc.version());
+    if tab.live.computed == Some(now) || tab.live.relayout_running || tab.reloading {
+        return;
+    }
+    let Some(m) = tab.model() else { return };
+    let (old, old_lines, new_lines) = (m.old_shared.clone(), m.old.lines, doc_lines(doc));
+    let snap = doc.text_snapshot();
+    tab.live.computed = Some(now);
+    tab.live.relayout_running = true;
+    let (key, gen) = (tab.key.clone(), tab.model_gen);
+    jobs.spawn_quiet(
+        move || Relayout::compute(&old, snap, old_lines, new_lines),
+        move |state, r| {
+            let Some(tab) = state.ws.tabs.custom_mut::<DiffTab>(&key) else { return };
+            tab.live.relayout_running = false;
+            // A reload replaced the model meanwhile (a commit may have changed the old side).
+            if tab.model_gen != gen {
+                tab.live.computed = None;
+                return;
+            }
+            if let Load::Ready(m) = &mut tab.load {
+                m.apply(r);
+                if tab.current.is_some_and(|c| c >= m.diff.hunks.len()) {
+                    tab.current = None;
+                }
+            }
+        },
+    );
+}
+
+/// Loads the working-tree file into a hidden document, for a diff whose file has no editor tab.
+fn load_hidden(jobs: &Jobs, tab: &mut DiffTab) {
+    tab.live.loading = true;
+    let (path, key) = (tab.abs().to_path_buf(), tab.key.clone());
+    jobs.spawn_quiet(
+        {
+            let path = path.clone();
+            move || Document::open(&path).map_err(|e| e.to_string())
+        },
+        move |state, res| {
+            let has_tab = state.ws.tabs.editor_by_path(&path).is_some();
+            let Some(tab) = state.ws.tabs.custom_mut::<DiffTab>(&key) else { return };
+            tab.live.loading = false;
+            match res {
+                Ok(doc) if !has_tab && tab.live.hidden.is_none() => {
+                    tab.live.hidden = Some(doc);
+                    tab.live.hidden_gen += 1;
+                }
+                Ok(_) => {}
+                Err(_) => tab.live.load_failed = true,
+            }
+        },
+    );
+}
+
+/// Writes the hidden document's unsaved edits on a worker. A write that is already running
+/// makes this one wait for the next tick, unless `now` (the diff closes).
+fn save_hidden(jobs: &Jobs, tab: &mut DiffTab, now: bool) {
+    tab.live.edited_at = None;
+    let Some(h) = tab.live.hidden.as_mut() else { return };
+    if !h.is_dirty() {
+        return;
+    }
+    if tab.live.saving && !now {
+        tab.live.edited_at = Some(Instant::now());
+        return;
+    }
+    tab.live.saving = true;
+    let (text, token) = h.save_snapshot();
+    let (path, key, gen) = (tab.abs().to_path_buf(), tab.key.clone(), tab.live.hidden_gen);
+    jobs.spawn_quiet(
+        move || std::fs::write(&path, text).map(|()| path.clone()).map_err(|e| format!("{}: {e}", path.display())),
+        move |state, res| {
+            if let Some(tab) = state.ws.tabs.custom_mut::<DiffTab>(&key) {
+                tab.live.saving = false;
+                if let (Ok(_), Some(h), true) = (&res, tab.live.hidden.as_mut(), tab.live.hidden_gen == gen) {
+                    h.mark_saved(token);
+                }
+            }
+            match res {
+                // No watcher in tests, and the watcher is slow: refresh status and gutters now.
+                Ok(path) => state.on_fs_batch(crate::watcher::FsBatch { paths: std::iter::once(path).collect(), structure_changed: false, git_changed: false }),
+                Err(e) => state.notifications.error("Save failed", e),
+            }
+        },
+    );
+}
+
+/// Saves the hidden documents whose last edit rested `SAVE_DEBOUNCE`. Runs every frame, so a
+/// pending save lands while the diff is not drawn.
+pub fn tick(state: &mut AppState) {
+    let AppState { ws, jobs, ctx, .. } = state;
+    let mut wake: Option<Duration> = None;
+    for t in ws.tabs.list.iter_mut() {
+        let TabContent::Custom(c) = &mut t.content else { continue };
+        let Some(d) = c.as_any_mut().downcast_mut::<DiffTab>() else { continue };
+        let Some(at) = d.live.edited_at else { continue };
+        let rest = at.elapsed();
+        if rest >= SAVE_DEBOUNCE {
+            save_hidden(jobs, d, false);
+        } else {
+            let left = SAVE_DEBOUNCE - rest;
+            wake = Some(wake.map_or(left, |w| w.min(left)));
+        }
+    }
+    if let Some(w) = wake {
+        ctx.request_repaint_after(w);
+    }
+}
+
+/// Save All: writes every diff's unsaved hidden document now.
+pub fn save_hidden_all(state: &mut AppState) {
+    let AppState { ws, jobs, .. } = state;
+    for t in ws.tabs.list.iter_mut() {
+        if let TabContent::Custom(c) = &mut t.content {
+            if let Some(d) = c.as_any_mut().downcast_mut::<DiffTab>() {
+                save_hidden(jobs, d, false);
+            }
+        }
+    }
+}
+
+/// An editor tab opens for `path`: it takes over a diff's unsaved hidden document, so the
+/// edits and their undo history stay one buffer. A clean hidden document is dropped; the tab's
+/// fresh read wins.
+pub fn adopt_hidden(state: &mut AppState, path: &Path) -> Option<Document> {
+    let mut found = None;
+    for t in state.ws.tabs.list.iter_mut() {
+        let TabContent::Custom(c) = &mut t.content else { continue };
+        let Some(d) = c.as_any_mut().downcast_mut::<DiffTab>() else { continue };
+        if !d.editable_source() || d.abs() != path {
+            continue;
+        }
+        let Some(h) = d.live.hidden.take() else { continue };
+        d.live.hidden_gen += 1;
+        d.live.edited_at = None;
+        if h.is_dirty() && found.is_none() {
+            found = Some(h);
+        }
+    }
+    found
+}
+
+/// Cmd+S in an editable diff: saves the file's editor tab, or the hidden document. Returns
+/// false when the active tab is no such diff.
+pub fn save_active(state: &mut AppState) -> bool {
+    let Some(id) = state.ws.tabs.active else { return false };
+    let abs = match state.ws.tabs.get_mut(id).map(|t| &mut t.content) {
+        Some(TabContent::Custom(c)) => match c.as_any_mut().downcast_mut::<DiffTab>() {
+            Some(d) if d.editable_source() => d.abs().to_path_buf(),
+            _ => return false,
+        },
+        _ => return false,
+    };
+    if let Some(editor) = state.ws.tabs.editor_by_path(&abs) {
+        state.save_tab(editor, false);
+        return true;
+    }
+    let AppState { ws, jobs, .. } = state;
+    if let Some(TabContent::Custom(c)) = ws.tabs.get_mut(id).map(|t| &mut t.content) {
+        if let Some(d) = c.as_any_mut().downcast_mut::<DiffTab>() {
+            save_hidden(jobs, d, false);
+        }
+    }
+    true
+}
+
 /// Worktree diffs follow the file: every status refresh (after saves and external edits)
 /// re-reads them. Unchanged texts are detected on the worker and cost no UI work.
 pub fn on_git_refreshed(state: &mut AppState) {
@@ -1292,7 +1835,7 @@ pub fn on_git_refreshed(state: &mut AppState) {
         .list
         .iter_mut()
         .filter_map(|t| match &mut t.content {
-            crate::tabs::TabContent::Custom(c) => c.as_any_mut().downcast_mut::<DiffTab>().filter(|d| matches!(d.source, Source::Worktree { .. } | Source::RevLocal { .. })).map(|d| d.key.clone()),
+            TabContent::Custom(c) => c.as_any_mut().downcast_mut::<DiffTab>().filter(|d| matches!(d.source, Source::Worktree { .. } | Source::RevLocal { .. })).map(|d| d.key.clone()),
             _ => None,
         })
         .collect();
@@ -1304,7 +1847,7 @@ pub fn on_git_refreshed(state: &mut AppState) {
 /// Test hook: presses F7 `n` times on the active diff tab and logs where it landed.
 pub fn test_next(state: &mut AppState, n: usize) {
     let Some(id) = state.ws.tabs.active else { return };
-    let Some(crate::tabs::TabContent::Custom(c)) = state.ws.tabs.get_mut(id).map(|t| &mut t.content) else { return };
+    let Some(TabContent::Custom(c)) = state.ws.tabs.get_mut(id).map(|t| &mut t.content) else { return };
     let Some(tab) = c.as_any_mut().downcast_mut::<DiffTab>() else { return };
     for _ in 0..n {
         tab.step(true);

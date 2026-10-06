@@ -103,6 +103,10 @@ pub struct Theme {
     pub file_json: Color32,
     pub file_css: Color32,
     pub file_md: Color32,
+    pub file_c: Color32,
+    pub file_cs: Color32,
+    pub file_java: Color32,
+    pub file_kt: Color32,
     /// The folded corner and the lines on a file icon.
     pub file_fold: Color32,
 
@@ -280,6 +284,10 @@ impl Theme {
             file_json: hex(0xC2A04E),
             file_css: hex(0x9D7BE0),
             file_md: hex(0x5FB0C9),
+            file_c: hex(0x6C8EBF),
+            file_cs: hex(0x5FA35A),
+            file_java: hex(0xE0605A),
+            file_kt: hex(0xB57EDC),
             file_fold: hexa(0x000000, 90),
 
             badges: [hex(0x3574F0), hex(0xB4572C), hex(0x4C9A5F), hex(0x8C55C9), hex(0x2F8F9D), hex(0xB8443F)],

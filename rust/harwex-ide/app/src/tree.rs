@@ -40,6 +40,15 @@ pub struct ProjectTree {
     scroll_to: Option<ScrollMode>,
     /// The vertical scroll offset drawn last frame.
     view_offset: f32,
+    /// The horizontal scroll offset drawn last frame.
+    scroll_x: f32,
+    /// The scroll content width: the widest row drawn since the row count last changed. It
+    /// grows as wider rows scroll into view, so no frame measures every row of a big tree.
+    content_w: f32,
+    /// The row count `content_w` belongs to. An expand, a collapse or a reload starts it over.
+    content_rows: usize,
+    /// The content was wider than the viewport last frame (a horizontal scrollbar shows).
+    h_overflow: bool,
     /// Give the tree keyboard focus the next time it is drawn.
     focus_pending: bool,
     /// Excluded folders (`[project] excluded`), absolute. Drawn dimmed with their content.
@@ -146,6 +155,16 @@ impl ProjectTree {
     /// The vertical scroll offset drawn last frame.
     pub fn view_offset(&self) -> f32 {
         self.view_offset
+    }
+
+    /// The horizontal scroll offset drawn last frame.
+    pub fn scroll_x(&self) -> f32 {
+        self.scroll_x
+    }
+
+    /// Whether a row was wider than the viewport last frame, so the tree scrolls sideways.
+    pub fn overflows(&self) -> bool {
+        self.h_overflow
     }
 
     pub fn set_expanded(&mut self, dir: &Path, expanded: bool) {
@@ -583,13 +602,23 @@ pub fn show(state: &mut AppState, ui: &mut Ui) -> Option<TreeEvent> {
     let key_lead = keys.select.as_deref().or(keys.many.as_ref().map(|m| m.1.as_path()));
     let scroll_mode = key_lead.map(|_| ScrollMode::Nearest).or(state.ws.tree.scroll_to);
     let target_path = key_lead.or(state.ws.tree.selected.as_deref());
-    // Rows are exactly the viewport wide, so there is nothing to scroll sideways. A mouse drag
-    // belongs to drag and drop, not to scrolling; the wheel and the trackpad still scroll.
-    let mut area = ScrollArea::vertical().auto_shrink([false, false]).drag_to_scroll(false).id_salt("project-tree");
+    // Deep or long rows scroll sideways. A mouse drag belongs to drag and drop, not to
+    // scrolling; the wheel and the trackpad still scroll.
+    let mut area = ScrollArea::both().auto_shrink([false, false]).drag_to_scroll(false).id_salt("project-tree");
+    // The viewport: rows take clicks and paint their highlight across its width only.
+    let viewport = ui.available_rect_before_wrap();
     let mut scroll_done = false;
     if let Some(mode) = scroll_mode {
         match target_path.and_then(|s| rows.iter().position(|r| r.entry.path == s)) {
             Some(i) => {
+                // Sideways, like IDEA: the start of the name comes into view, not its far end.
+                // The row is drawn this frame, so the content is at least as wide as the row.
+                let icon_x = icon_left(&rows[i]);
+                let (off_x, view_w) = (state.ws.tree.scroll_x, viewport.width());
+                if icon_x < off_x || icon_x + REVEAL_NAME_W > off_x + view_w {
+                    let row_w = ui.fonts(|f| row_width(f, &rows[i]));
+                    area = area.horizontal_scroll_offset((icon_x - t.space.indent).min(row_w - view_w).max(0.0));
+                }
                 let (top, view, off) = (i as f32 * pitch, ui.available_height(), state.ws.tree.view_offset);
                 let visible = top >= off && top + pitch <= off + view;
                 let new = match mode {
@@ -629,7 +658,14 @@ pub fn show(state: &mut AppState, ui: &mut Ui) -> Option<TreeEvent> {
     let recording = state.input_log.is_some() && ui.input(|i| i.pointer.any_pressed() || i.pointer.any_released());
     let mut record: Option<String> = None;
     let mut hit_rows = Vec::new();
+    let mut content_w = if rows.len() == tree.content_rows { tree.content_w } else { 0.0 };
     let out = area.show_rows(ui, pitch, rows.len(), |ui, range| {
+        // egui's clip margin would show the scrolled content in the island padding.
+        let clip = ui.clip_rect();
+        ui.set_clip_rect(Rect::from_x_y_ranges(clip.x_range().intersection(viewport.x_range()), clip.y_range()));
+        // Only the drawn rows are measured; the width keeps the widest row seen so far.
+        content_w = ui.fonts(|f| rows[range.clone()].iter().map(|r| row_width(f, r)).fold(content_w, f32::max));
+        let row_w = ui.available_width().max(content_w);
         // During a drag the row under the pointer decides the target before any row paints,
         // so the target folder row can show the outline wherever it is drawn.
         let target_dir = &mut drop_target;
@@ -661,7 +697,10 @@ pub fn show(state: &mut AppState, ui: &mut Ui) -> Option<TreeEvent> {
             // The row id follows the path, not the row's position: an open context menu belongs
             // to its row and closes when that row is no longer drawn (`util::close_orphaned_context_menu`),
             // instead of moving to whatever row takes the position after a scroll or a reload.
-            let (_, hit) = ui.allocate_space(vec2(ui.available_width(), pitch));
+            // The row is as wide as the content, so it scrolls sideways; it takes clicks and
+            // paints its highlight on the visible part only (`hit`, exactly the viewport wide).
+            let (_, full) = ui.allocate_space(vec2(row_w, pitch));
+            let hit = crate::git::branch_tree::visible_part(full, viewport);
             let resp = ui.interact(hit, crate::workspace::wid(("tree-row", &row.entry.path)), Sense::click_and_drag());
             let rect = Rect::from_min_size(hit.min, vec2(hit.width(), row_h));
             if probe {
@@ -673,8 +712,9 @@ pub fn show(state: &mut AppState, ui: &mut Ui) -> Option<TreeEvent> {
                 None => tree.is_selected(&row.entry.path),
             };
             crate::util::label_selectable(&resp, rel.display().to_string(), is_selected);
-            // Children sit one indent right of the root's chevron.
-            let x = rect.min.x + 4.0 + (row.depth + 1) as f32 * t.space.indent;
+            // Children sit one indent right of the root's chevron. The indent, the icon and the
+            // name scroll with the content; the highlight stays on the visible part.
+            let x = full.min.x + 4.0 + (row.depth + 1) as f32 * t.space.indent;
             let cy = rect.center().y;
             let chevron_c = pos2(x + 6.0, cy);
             // The chevron cell: one indent wide, the full row height, ending before the icon.
@@ -786,7 +826,12 @@ pub fn show(state: &mut AppState, ui: &mut Ui) -> Option<TreeEvent> {
             });
         }
     });
+    let row_count = rows.len();
     state.ws.tree.view_offset = out.state.offset.y;
+    state.ws.tree.scroll_x = out.state.offset.x;
+    state.ws.tree.content_w = content_w;
+    state.ws.tree.content_rows = row_count;
+    state.ws.tree.h_overflow = out.content_size.x > out.inner_rect.width() + 0.5;
     if let Some(log) = state.input_log.as_mut() {
         if recording {
             let hit = ui.ctx().viewport(|v| v.hits.click.map(|w| w.id));
@@ -922,6 +967,21 @@ pub fn show(state: &mut AppState, ui: &mut Ui) -> Option<TreeEvent> {
         }
     }
     event
+}
+
+/// Revealing a row scrolls sideways unless at least this much of its name shows.
+const REVEAL_NAME_W: f32 = 48.0;
+
+/// The x of a row's icon, from the left edge of the scroll content.
+fn icon_left(row: &Row) -> f32 {
+    4.0 + (row.depth + 1) as f32 * theme::T.space.indent + 14.0
+}
+
+/// The width a row needs in the scroll content: indent, chevron, icon, name and a margin.
+fn row_width(fonts: &egui::text::Fonts, row: &Row) -> f32 {
+    let t = &theme::T;
+    let name_w = fonts.layout_no_wrap(row.entry.name.clone(), t.ui_font(), t.text).size().x;
+    4.0 + (row.depth + 1) as f32 * t.space.indent + 34.0 + name_w + 8.0
 }
 
 /// The item name ("N items" for several) that follows the pointer during a drag.

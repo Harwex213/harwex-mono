@@ -10,4 +10,5 @@ mod click;
 mod document;
 mod find;
 mod hscroll;
+mod languages;
 mod wrap;

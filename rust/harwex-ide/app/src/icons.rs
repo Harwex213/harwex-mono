@@ -31,6 +31,8 @@ pub enum Icon {
     Check,
     /// Push…: an arrow up from a line.
     Push,
+    /// Fetch All Remotes: an arrow down out of a cloud.
+    Fetch,
     Close,
     Minus,
     Plus,
@@ -137,6 +139,14 @@ pub fn paint(painter: &Painter, rect: Rect, icon: Icon, color: Color32) {
             line(p(4.5, 6.0), p(8.0, 2.5));
             line(p(11.5, 6.0), p(8.0, 2.5));
             line(p(2.5, 14.0), p(13.5, 14.0));
+        }
+        Icon::Fetch => {
+            curve(p(4.5, 10.5), p(1.0, 10.5), p(0.8, 5.0), p(4.6, 5.2));
+            curve(p(4.6, 5.2), p(5.2, 1.0), p(11.6, 1.2), p(11.8, 5.4));
+            curve(p(11.8, 5.4), p(15.4, 5.6), p(15.2, 10.5), p(11.5, 10.5));
+            line(p(8.0, 6.5), p(8.0, 14.5));
+            line(p(5.5, 12.0), p(8.0, 14.5));
+            line(p(10.5, 12.0), p(8.0, 14.5));
         }
         Icon::Check => {
             line(p(2.5, 8.5), p(6.3, 12.3));
@@ -372,6 +382,12 @@ pub fn file_color(name: &str) -> Color32 {
         "json" | "toml" | "yaml" | "yml" => T.file_json,
         "css" | "scss" => T.file_css,
         "md" => T.file_md,
+        "c" | "h" | "cc" | "cpp" | "cxx" | "c++" | "hh" | "hpp" | "hxx" | "h++" | "inl" | "ipp" | "tpp" => {
+            T.file_c
+        }
+        "cs" | "csx" => T.file_cs,
+        "java" => T.file_java,
+        "kt" | "kts" => T.file_kt,
         _ => T.file_default,
     }
 }

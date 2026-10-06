@@ -1,5 +1,5 @@
-//! Horizontal scroll (task 049): the editor (code files, no soft wrap), the Git branch tree and
-//! the commit changes tree. A swipe or Shift+wheel scrolls sideways, the editor shows its own
+//! Horizontal scroll (tasks 049, 074): the editor (code files, no soft wrap), the Git branch
+//! tree, the commit changes tree and the Project tree. A swipe or Shift+wheel scrolls sideways, the editor shows its own
 //! horizontal scrollbar only when a line is wider than the view, and tree rows take clicks and
 //! context menus across the whole visible width at any horizontal offset.
 
@@ -169,4 +169,151 @@ fn commit_changes_tree_scrolls_sideways_and_rows_take_clicks_at_the_right_edge()
     ide.key(Key::Escape);
     ide.settle();
     assert!(!ide.has("Show Diff"));
+}
+
+// -----------------------------------------------------------------------------------------
+// Project tree (task 074)
+
+const DEEP_DIR: &str = "packages/some-workspace-package/src/components/deeply/nested/folder";
+const DEEP_FILE: &str = "a_component_file_with_a_long_name.ts";
+
+fn project_scroll(ide: &Ide) -> f32 {
+    ide.state().ws.tree.scroll_x()
+}
+
+/// Sets the width of the left tool window, as a drag of its edge would. The panel id is per
+/// workspace; the test thread runs the frames, so it holds the active workspace's salt.
+fn set_left_width(ide: &mut Ide, w: f32) {
+    let id = harwex_ide::workspace::wid("left-tool-window");
+    ide.ctx().data_mut(|d| {
+        let min = d.get_persisted::<egui::containers::panel::PanelState>(id).map_or(egui::pos2(0.0, 0.0), |s| s.rect.min);
+        d.insert_persisted(id, egui::containers::panel::PanelState { rect: egui::Rect::from_min_size(min, egui::vec2(w, 600.0)) });
+    });
+    ide.settle();
+}
+
+/// The screen x where the icon of a tree row at `depth` starts (`tree::icon_left`).
+fn icon_x(ide: &Ide, row: egui::Rect, depth: usize) -> f32 {
+    let indent = harwex_ide::theme::T.space.indent;
+    row.left() + 4.0 + (depth + 1) as f32 * indent + 14.0 - project_scroll(ide)
+}
+
+/// The screen x where the name of a tree row at `depth` ends.
+fn name_end(ide: &Ide, row: egui::Rect, depth: usize, name: &str) -> f32 {
+    let t = &harwex_ide::theme::T;
+    let w = ide.ctx().fonts(|f| f.layout_no_wrap(name.to_string(), t.ui_font(), t.text).size().x);
+    icon_x(ide, row, depth) + 20.0 + w
+}
+
+/// Presses on `from` and moves to `to` in small steps, holding `mods`, then releases.
+fn drag_drop(ide: &mut Ide, from: Pos2, to: Pos2, mods: Modifiers) {
+    ide.harness.input_mut().modifiers = mods;
+    ide.move_to(from);
+    ide.harness.input_mut().events.push(Event::PointerButton { pos: from, button: egui::PointerButton::Primary, pressed: true, modifiers: mods });
+    ide.step();
+    for i in 1..=8 {
+        ide.move_to(from + (to - from) * (i as f32 / 8.0));
+    }
+    ide.harness.input_mut().events.push(Event::PointerButton { pos: to, button: egui::PointerButton::Primary, pressed: false, modifiers: mods });
+    ide.step();
+    ide.harness.input_mut().modifiers = Modifiers::NONE;
+    ide.step();
+}
+
+/// Short rows: nothing to scroll sideways, and a swipe does nothing.
+#[test]
+fn project_tree_without_overflow_does_not_scroll() {
+    let fx = Fixture::new(SUITE, "project_short");
+    let repo = basic_repo(fx.path("repo"));
+    let mut ide = Ide::open(SUITE, &repo.dir);
+    let src = ide.rect("src");
+    assert!(!ide.state().ws.tree.overflows(), "no horizontal scrollbar");
+    wheel(&mut ide, src.center(), Vec2::new(-200.0, 0.0), Modifiers::NONE);
+    assert_eq!(project_scroll(&ide), 0.0);
+    assert!(!ide.state().ws.tree.overflows());
+}
+
+/// A deep file in a narrow Project panel: Select Opened File brings its name into view, the
+/// view scrolls sideways to the end of the row, and rows take clicks, the context menu, keys
+/// and drops across the visible width at any horizontal offset.
+#[test]
+fn project_tree_scrolls_sideways_and_rows_take_clicks_at_the_right_edge() {
+    let fx = Fixture::new(SUITE, "project_tree");
+    let repo = basic_repo(fx.path("repo"));
+    let deep = format!("{DEEP_DIR}/{DEEP_FILE}");
+    repo.write(&deep, "export const a = 1;\n");
+    repo.commit_all("Deep file");
+    let mut ide = Ide::open(SUITE, &repo.dir);
+    set_left_width(&mut ide, 220.0);
+    assert!(!ide.state().ws.tree.overflows(), "the top-level rows fit");
+    let src0 = ide.rect("src");
+
+    // Select Opened File: the deep row is revealed with the start of its name in view.
+    ide.open_file(&deep);
+    ide.click("Select Opened File");
+    ide.wait_until("row revealed", |ide| ide.has(&deep));
+    ide.settle();
+    assert!(ide.state().ws.tree.overflows(), "the deep row is wider than the panel");
+    let row = ide.rect(&deep);
+    assert_eq!(row.x_range(), ide.rect("packages").x_range(), "every row is exactly the visible width");
+    assert!(row.width() < 220.0, "a narrow panel: {row:?}");
+    let revealed = project_scroll(&ide);
+    assert!(revealed > 0.0, "the reveal scrolled sideways");
+    let start = icon_x(&ide, row, 7);
+    assert!(start >= row.left() && start + 48.0 <= row.right(), "the name starts in view: {start} in {row:?}");
+    assert!(ide.is_selected(&deep));
+    ide.snapshot("project_tree_revealed");
+
+    // A swipe scrolls to the end of the row, and no further.
+    wheel(&mut ide, row.center(), Vec2::new(-2000.0, 0.0), Modifiers::NONE);
+    let end = name_end(&ide, ide.rect(&deep), 7, DEEP_FILE);
+    assert!(end <= row.right() && end > row.right() - 20.0, "the row end is visible at the right edge: {end} vs {row:?}");
+    let scrolled = project_scroll(&ide);
+    assert!(scrolled > revealed);
+    ide.snapshot("project_tree_scrolled");
+
+    // Scrolled, a press on the right part of a row selects that row and keeps the view.
+    let packages = ide.rect("packages");
+    assert_eq!(packages.x_range(), row.x_range());
+    ide.click_at(Pos2::new(packages.right() - 3.0, packages.center().y));
+    assert!(ide.is_selected("packages") && !ide.is_selected(&deep));
+    assert_eq!(project_scroll(&ide), scrolled, "a click does not move the view");
+
+    // The context menu of a scrolled row, opened at its right edge.
+    let r = ide.rect(&deep);
+    ide.right_click_at(Pos2::new(r.right() - 3.0, r.center().y));
+    ide.wait_until("tree menu", |ide| ide.has("Rename..."));
+    assert!(ide.is_selected(&deep));
+    ide.key(Key::Escape);
+    ide.settle();
+    assert!(!ide.has("Rename..."));
+
+    // The keyboard: Up to a shallow row brings its name back into view.
+    ide.click_at(Pos2::new(r.right() - 3.0, r.center().y));
+    for _ in 0..7 {
+        ide.key(Key::ArrowUp);
+    }
+    ide.settle();
+    assert!(ide.is_selected("packages"));
+    let packages = ide.rect("packages");
+    let start = icon_x(&ide, packages, 0);
+    assert!(project_scroll(&ide) < scrolled && start >= packages.left(), "the shallow row's name is in view: {start} in {packages:?}");
+
+    // A drop from a scrolled view: Alt+drag README.md onto the right part of the deep folder.
+    wheel(&mut ide, row.center(), Vec2::new(-2000.0, 0.0), Modifiers::NONE);
+    assert!(project_scroll(&ide) > 0.0);
+    let readme = ide.rect("README.md");
+    let folder = ide.rect(DEEP_DIR);
+    drag_drop(&mut ide, Pos2::new(readme.right() - 3.0, readme.center().y), Pos2::new(folder.right() - 3.0, folder.center().y), Modifiers::ALT);
+    let root = ide.root();
+    ide.wait_for("copied", |_| root.join(DEEP_DIR).join("README.md").is_file());
+    ide.settle();
+    assert!(root.join("README.md").is_file(), "a copy keeps the original");
+
+    // Collapsing the deep folders leaves short rows: the content shrinks back.
+    ide.state_mut().ws.tree.set_expanded(&root.join("packages"), false);
+    ide.settle();
+    assert!(!ide.state().ws.tree.overflows());
+    assert_eq!(project_scroll(&ide), 0.0);
+    assert_eq!(ide.rect("src").x_range(), src0.x_range());
 }

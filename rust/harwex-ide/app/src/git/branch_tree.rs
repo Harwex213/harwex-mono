@@ -99,6 +99,16 @@ impl Row {
     }
 }
 
+/// What Fetch on a row fetches: the Remote group fetches every remote (`Some(None)`), a remote's
+/// folder (`f:remote/origin`) only that remote. Other rows have no Fetch.
+fn fetch_target(row: &Row) -> Option<Option<String>> {
+    if row.key == "g:remote" {
+        return Some(None);
+    }
+    let name = row.key.strip_prefix("f:remote/")?;
+    (!name.contains('/')).then(|| Some(name.to_string()))
+}
+
 /// `f:local/agent/sub` -> `agent/sub`, `f:remote/origin/agent` -> `origin/agent`.
 fn folder_path(key: &str) -> &str {
     let rest = key.strip_prefix("f:").unwrap_or(key);
@@ -231,7 +241,12 @@ pub enum TreeAction {
     DiffWithWorkingTree(String),
     Merge(String),
     Rebase(String),
-    Update,
+    /// IDEA's "Update" on a local branch with an upstream, checked out or not.
+    Update(String),
+    /// "Pull into Current" on the remote branch the current branch tracks: the Update Project dialog.
+    UpdateProject,
+    /// Fetch one remote, or every remote with `None`.
+    Fetch(Option<String>),
     /// Opens the push dialog for this local branch; it need not be checked out.
     Push(String),
     Rename(String),
@@ -376,6 +391,16 @@ pub fn show(state: &mut AppState, tree: &mut TreeState, tab: u64, ui: &mut Ui) -
                 RowKind::Branch(b) => {
                     resp.context_menu(|ui| branch_menu(ui, b, current_upstream.as_deref(), &mut actions));
                 }
+                RowKind::Group | RowKind::Folder => {
+                    if let Some(remote) = fetch_target(row) {
+                        resp.context_menu(|ui| {
+                            if ui.button("Fetch").clicked() {
+                                actions.push(TreeAction::Fetch(remote));
+                                ui.close_menu();
+                            }
+                        });
+                    }
+                }
                 RowKind::Tag(name) => {
                     resp.context_menu(|ui| {
                         if ui.button("Checkout").clicked() {
@@ -470,10 +495,16 @@ fn branch_menu(ui: &mut Ui, b: &BranchRow, current_upstream: Option<&str>, actio
         item(ui, true, &format!("Merge '{n}' into Current"), TreeAction::Merge(n.clone()));
         item(ui, true, &format!("Rebase Current onto '{n}'"), TreeAction::Rebase(n.clone()));
     }
-    let tracked = b.remote && current_upstream == Some(n.as_str());
-    if b.current || tracked {
+    let pull = b.remote && current_upstream == Some(n.as_str());
+    let update = !b.remote && b.upstream.is_some();
+    if pull || update {
         ui.separator();
-        item(ui, true, if b.current { "Update" } else { "Pull into Current" }, TreeAction::Update);
+    }
+    if update {
+        item(ui, true, "Update", TreeAction::Update(n.clone()));
+    }
+    if pull {
+        item(ui, true, "Pull into Current", TreeAction::UpdateProject);
     }
     if !b.remote {
         // A tracked branch with no commits ahead has nothing to push.

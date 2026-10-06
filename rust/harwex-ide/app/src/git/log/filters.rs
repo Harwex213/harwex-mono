@@ -1,5 +1,5 @@
 //! The filter bar of a Log tab: Text or hash (with regex and case toggles), Branch, User and
-//! Paths popups, then the No Merges and Refresh actions. The bar spans only the commit table.
+//! Paths popups, then the No Merges, Refresh, Fetch and Update Project actions. The bar spans only the commit table.
 
 use std::path::Path;
 use std::sync::Arc;
@@ -60,8 +60,17 @@ pub(super) fn bar(state: &mut AppState, view: &mut LogView, ui: &mut Ui) {
     if crate::layout::icon_button(&mut row, Icon::Refresh, "Refresh log", "Refresh").clicked() {
         ch.refresh = true;
     }
+    // IDEA's Fetch All Remotes and Update Project, one click away.
+    let fetch = crate::layout::icon_button(&mut row, Icon::Fetch, "Fetch All Remotes", "Fetch All Remotes").clicked();
+    let update = crate::layout::icon_button(&mut row, Icon::Update, "Update Project", "Update Project...").clicked();
     ui.painter().hline(rect.x_range(), rect.bottom() - 0.5, Stroke::new(1.0_f32, t.border));
 
+    if fetch {
+        crate::git::remote::fetch(state, None);
+    }
+    if update {
+        crate::git::remote::open_update_dialog(state);
+    }
     if ch.now {
         view.filter_changed(state);
     } else if ch.text {

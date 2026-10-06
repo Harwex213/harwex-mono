@@ -265,6 +265,72 @@ fn push_non_current_branch() {
     assert_eq!(t.git(&["rev-parse", "HEAD"]), head);
 }
 
+/// Update of a branch that is not checked out: a fast-forward moves only the ref; a diverged
+/// branch is refused and left alone; HEAD, the index and the worktree never move.
+#[test]
+fn update_non_current_branch() {
+    let (_remote, seed, t) = with_remote();
+    let rev = |r: &str| t.git(&["rev-parse", r]).trim().to_string();
+    t.git(&["branch", "--track", "feat", "origin/main"]);
+    t.git(&["branch", "--no-track", "loose", "main"]);
+    t.write("dirty.txt", "untracked\n");
+    let head = rev("HEAD");
+
+    seed.write("f.txt", "2\n");
+    let upstream = seed.commit_all("upstream change");
+    seed.git(&["push", "-q"]);
+
+    let res = t.repo.update_branch("feat").unwrap();
+    let ide_git::BranchUpdate::FastForwarded { to, commits, .. } = res else { panic!("{res:?}") };
+    assert_eq!((to.to_string(), commits), (upstream.clone(), 1));
+    assert_eq!(rev("feat"), upstream);
+    assert_eq!(rev("origin/main"), upstream, "the remote-tracking ref moves too");
+    assert_eq!(rev("HEAD"), head);
+    assert_eq!(t.read("f.txt"), "1\n", "the worktree stays");
+    assert_eq!(t.read("dirty.txt"), "untracked\n");
+    assert_eq!(t.repo.update_branch("feat").unwrap(), ide_git::BranchUpdate::UpToDate);
+
+    // A branch with its own commits and new upstream commits cannot be fast-forwarded.
+    t.git(&["checkout", "-q", "feat"]);
+    t.write("feat.txt", "local\n");
+    let local = t.commit_all("feat local");
+    t.git(&["checkout", "-q", "main"]);
+    seed.write("f.txt", "3\n");
+    let newer = seed.commit_all("newer upstream change");
+    seed.git(&["push", "-q"]);
+    let res = t.repo.update_branch("feat").unwrap();
+    assert_eq!(res, ide_git::BranchUpdate::NotFastForward { upstream: "origin/main".into() });
+    assert_eq!(rev("feat"), local, "a refused update leaves the branch");
+    assert_eq!(rev("origin/main"), newer);
+
+    // A branch that is only ahead has nothing to take: git refuses the rewind, we report it as up
+    // to date, and the branch keeps its commit.
+    t.git(&["checkout", "-q", "--track", "-b", "ahead", "origin/main"]);
+    t.write("a.txt", "ahead\n");
+    let ahead = t.commit_all("ahead only");
+    t.git(&["checkout", "-q", "main"]);
+    assert_eq!(t.repo.update_branch("ahead").unwrap(), ide_git::BranchUpdate::UpToDate);
+    assert_eq!(rev("ahead"), ahead);
+
+    // A branch that tracks a local branch follows it.
+    t.git(&["branch", "--track", "follower", "feat"]);
+    t.git(&["checkout", "-q", "feat"]);
+    t.write("feat.txt", "more\n");
+    let more = t.commit_all("feat more");
+    t.git(&["checkout", "-q", "main"]);
+    let res = t.repo.update_branch("follower").unwrap();
+    assert!(matches!(res, ide_git::BranchUpdate::FastForwarded { .. }), "{res:?}");
+    assert_eq!(rev("follower"), more);
+
+    // The current branch goes through pull; a branch without an upstream has nothing to fetch.
+    assert!(t.repo.update_branch("main").is_err());
+    assert!(t.repo.update_branch("loose").is_err());
+    assert!(t.repo.update_branch("missing").is_err());
+    assert_eq!(rev("HEAD"), head);
+
+    assert!(t.repo.fetch_remote("origin").unwrap().success);
+}
+
 #[test]
 fn branch_management_and_log_actions() {
     let t = TestRepo::new();

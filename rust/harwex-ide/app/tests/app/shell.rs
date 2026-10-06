@@ -303,6 +303,33 @@ fn search_everywhere_ranking_with_cmd_shift_o() {
     ide.wait_for("second hit opened", |s| s.ws.tabs.active_editor().is_some_and(|e| e.path.ends_with(&second)));
 }
 
+/// A row whose path is cut with `…` shows the full path in a tooltip on hover. A row that fits
+/// shows no tooltip.
+#[test]
+fn search_everywhere_full_path_tooltip() {
+    let fx = Fixture::new(SUITE, "search_tooltip");
+    let repo = basic_repo(fx.path("repo"));
+    let deep = "packages/frontend-application-shell/src/features/authentication/components/forms/inputs/validated_password_field_utils.ts";
+    repo.write(deep, "x\n");
+    repo.write("src/util_short.ts", "x\n");
+    repo.commit_all("Deep");
+    let mut ide = Ide::open(SUITE, &repo.dir);
+    ide.double_shift();
+    ide.settle();
+    ide.type_text("util");
+    ide.wait_for("results", |s| s.ws.search.results().iter().any(|h| h.path == deep) && s.ws.search.results().iter().any(|h| h.path == "src/util_short.ts"));
+    ide.settle();
+
+    let (dir, name) = deep.rsplit_once('/').unwrap();
+    ide.hover(&format!("{name}  {dir}"));
+    ide.wait_until("full path tooltip", |ide| ide.shows_text(deep));
+    ide.snapshot_here("search_path_tooltip");
+
+    ide.hover("util_short.ts  src");
+    ide.steps(60);
+    assert!(!ide.shows_text("src/util_short.ts"), "a path that fits shows no tooltip");
+}
+
 /// The status bar holds the breadcrumbs on the left, the language and the memory indicator on
 /// the right. It shows no caret position and no branch; the branch lives in the title bar.
 #[test]

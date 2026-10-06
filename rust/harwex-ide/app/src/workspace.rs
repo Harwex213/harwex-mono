@@ -70,6 +70,8 @@ pub struct Workspace {
     pub commands: Vec<AppCommand>,
     /// A dirty tab waiting for "Save / Don't Save / Cancel".
     pub confirm_close: Option<TabId>,
+    /// The rest of a tab menu close action while `confirm_close` asks about one of its tabs.
+    pub close_batch: Option<crate::tabs::CloseBatch>,
     /// Paths being loaded on a worker, with the position to reveal once the tab exists.
     pub(crate) opening: HashMap<PathBuf, Option<Position>>,
     /// The Project tree's Cut/Copy mark and file operation dialogs.
@@ -122,6 +124,7 @@ impl Workspace {
             watcher: None,
             commands: Vec::new(),
             confirm_close: None,
+            close_batch: None,
             opening: HashMap::new(),
             tree_ops: Default::default(),
             close_when_saved: false,
@@ -177,7 +180,8 @@ impl Workspace {
             let marks = workdir.as_ref().is_some_and(|w| e.path.starts_with(w)) && (e.marks_in_flight || e.marks_for != Some(version));
             ts || marks || e.problems.pending(version)
         });
-        editors || self.git_ui.has_pending_debounce(&self.tabs) || self.nav.hover.is_waiting() || self.terminals.save_pending() || self.find.has_pending_debounce() || self.find_window.is_pending()
+        let custom = self.tabs.list.iter().any(|t| matches!(&t.content, crate::tabs::TabContent::Custom(c) if c.has_pending_work()));
+        editors || custom || self.git_ui.has_pending_debounce(&self.tabs) || self.nav.hover.is_waiting() || self.terminals.save_pending() || self.find.has_pending_debounce() || self.find_window.is_pending()
     }
 
     /// Stops what this workspace runs: terminal shells and language servers (on a worker, so

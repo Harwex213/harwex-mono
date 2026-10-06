@@ -46,6 +46,23 @@ pub fn close_orphaned_context_menu(ctx: &egui::Context) {
     }
 }
 
+/// A list-row button whose text is cut with `…` at the row width. When the text is cut, hovering
+/// the row shows `full()` as a tooltip.
+///
+/// `egui::Button` lays out its text privately and never says whether it cut it, so the row lays
+/// the galley out here with the button's own wrap width and hands the galley to the button.
+pub fn truncated_row(ui: &mut egui::Ui, text: impl Into<egui::WidgetText>, selected: bool, min_size: egui::Vec2, full: impl FnOnce() -> String) -> egui::Response {
+    let wrap_width = ui.available_width() - 2.0 * ui.spacing().button_padding.x;
+    let galley = text.into().into_galley(ui, Some(egui::TextWrapMode::Truncate), wrap_width, egui::TextStyle::Button);
+    let elided = galley.elided;
+    let resp = ui.add(egui::Button::new(galley).selected(selected).min_size(min_size));
+    if elided {
+        resp.on_hover_text(full())
+    } else {
+        resp
+    }
+}
+
 /// Gives a hand-painted widget an accessibility role and name. Screen readers and the UI tests
 /// (`egui_kittest` queries by label) find the widget by it.
 pub fn label_widget(resp: &egui::Response, typ: egui::WidgetType, label: impl Into<String>) {

@@ -45,6 +45,8 @@ pub(crate) enum Action {
     Rename(String),
     Delete(String, bool),
     Update,
+    /// IDEA's "Update" on one local branch (`remote::update_branch`).
+    UpdateBranch(String),
     Push,
     Fetch,
     Stash,
@@ -214,14 +216,15 @@ pub fn show_windows(state: &mut AppState, ctx: &Context) {
                             action = Some(Action::Rebase(name.clone()));
                         }
                     }
-                    if is_current {
+                    let tracked = !remote && info.upstream.is_some();
+                    if is_current || tracked {
                         ui.separator();
-                        if action_row(ui, "Update").clicked() {
-                            action = Some(Action::Update);
-                        }
-                        if action_row(ui, "Push...").clicked() {
-                            action = Some(Action::Push);
-                        }
+                    }
+                    if tracked && action_row(ui, "Update").clicked() {
+                        action = Some(Action::UpdateBranch(name.clone()));
+                    }
+                    if is_current && action_row(ui, "Push...").clicked() {
+                        action = Some(Action::Push);
                     }
                     ui.separator();
                     if !remote && action_row(ui, "Rename...").clicked() {
@@ -325,8 +328,9 @@ pub(crate) fn run_action(state: &mut AppState, a: Action) {
             state.ws.git_ui.branches.dialog = Some(BranchDialog::Delete { name, remote, force: false, upstream, delete_upstream: false });
         }
         Action::Update => super::remote::open_update_dialog(state),
+        Action::UpdateBranch(name) => super::remote::update_branch(state, name),
         Action::Push => super::remote::open_push_dialog(state),
-        Action::Fetch => run_op(state, "Fetch", "Fetched all remotes", false, |r| r.fetch().map(Some), |_, _| {}),
+        Action::Fetch => super::remote::fetch(state, None),
         Action::Stash => super::remote::open_stash_dialog(state),
         Action::Unstash => super::remote::open_unstash_dialog(state),
     }

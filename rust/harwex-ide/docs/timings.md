@@ -18,6 +18,7 @@ Read this file when a change touches a hot path and you need the budget or a ref
 | 10k problem underlines: steady frame / jump-scroll frame | < 4 ms / < 12 ms | same (`bench_10k_problems`) |
 | soft wrap, 100k-line Markdown: steady / jump-scroll / wheel scroll / typing / sweep and resize frames | < 4 / 12 / 8 / 8 / 12 ms | same (`bench_wrapped_markdown`) |
 | soft wrap, one 2 MB line: steady / typing / Down frame | < 4 / 8 / 8 ms | same (`bench_wrapped_giant_line`) |
+| 200k-line C++ file (Unreal-style macros): keystroke / steady / typing / jump-scroll frame | < 4 / 4 / 8 / 12 ms | same (`bench_200k_lines_cpp`) |
 | warm Go to Declaration in Rust | < 500 ms | `cargo test -p harwex-ide --test app rust_nav::` |
 | git status warm (fastest of 3, git CLI) / log page of 200 / log at skip 1000, generated 4000-file repo | < 300 / 100 / 100 ms | `cargo test -p ide-git --test git large_repo::` |
 | TS cold / warm definition, source definition, references, generated 1240-file workspace | < 15 s / 50 ms, < 3 s, < 5 s | `cargo test -p ide-ts --test ts workspace::` |
@@ -70,6 +71,8 @@ TypeScript on the generated workspace (`cargo test -p ide-ts --test ts workspace
 File rename on the generated monorepo (`cargo test -p ide-ts --test ts rename_budget:: -- --nocapture`, debug, 1002 files in 201 projects, 30 importers): pre-filter 13 ms over 1002 code files (31 candidates), whole preview 59 ms native / 0.9 s tsserver, 31 projects loaded, 31 files changed. In the app (`project_menu`, tsserver, 60 projects): preview about 1 s, worst UI frame under 1 ms when the test runs alone.
 
 10k problem underlines on the same file (every 20 lines, all four severities): steady frame 0.14 ms, jump-scroll frame 0.45 ms.
+
+C++ benchmark (`bench_200k_lines_cpp`, 200k lines, 4.1 MB, an Unreal class every 20 lines): first open 36 ms (about 30 ms of it compiles the C++ highlight query, once per process; the app opens files on a worker), open 6 ms, full parse 0.7-1.1 s and reparse after edits 1.3 s (both on a worker), keystroke 0.07 ms avg (max 0.27 ms), steady frame 0.02 ms, jump-scroll frame 0.29 ms avg (max 0.40 ms), typing frame 0.29-0.34 ms avg (max 3.2 ms).
 
 Soft wrap on a generated 100k-line Markdown file (9.6 MB, 160 columns): first frame 3.4-4.1 ms, then 9 sweep frames of 2.3 ms that count every line's rows, steady frame 0.03 ms, jump-scroll frame 0.30 ms avg (max 0.40 ms), wheel scroll frame 0.10 ms, typing frame 0.20 ms avg (max 0.30 ms), resize frame 2.5 ms avg (max 2.8 ms) followed by 9 sweep frames. One 2 MB line (about 13k rows): steady frame 0.06 ms, typing frame 3.9 ms avg (max 8 ms, a full re-wrap of the line per keystroke), Down 0.21 ms. The same line without wrap: steady 2.9 ms, typing 5.0 ms.
 

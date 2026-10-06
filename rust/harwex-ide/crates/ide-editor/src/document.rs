@@ -261,6 +261,32 @@ impl Indent {
     }
 }
 
+/// A cheap copy of a document's text (a rope clone) that a worker turns into the file's bytes.
+#[derive(Clone)]
+pub struct TextSnapshot {
+    rope: Rope,
+    crlf: bool,
+    bom: bool,
+}
+
+impl TextSnapshot {
+    /// The text as the file holds it: the BOM and CRLF line breaks restored.
+    pub fn file_text(&self) -> String {
+        let mut out = String::with_capacity(self.rope.len_bytes() + 16);
+        if self.bom {
+            out.push('\u{feff}');
+        }
+        for chunk in self.rope.chunks() {
+            if self.crlf {
+                out.push_str(&chunk.replace('\n', "\r\n"));
+            } else {
+                out.push_str(chunk);
+            }
+        }
+        out
+    }
+}
+
 impl Document {
     pub fn open(path: &Path) -> std::io::Result<Document> {
         let bytes = std::fs::read(path)?;
@@ -464,8 +490,15 @@ impl Document {
         self.rope.len_chars()
     }
 
-    pub(crate) fn max_line_chars(&self) -> usize {
+    /// Chars of the longest line (an upper bound after edits that shorten it).
+    pub fn max_line_chars(&self) -> usize {
         self.max_line_chars
+    }
+
+    /// The text as `save_snapshot` writes it (BOM, CRLF), taken in O(1) without touching the
+    /// undo history. Build the `String` on a worker with `TextSnapshot::file_text`.
+    pub fn text_snapshot(&self) -> TextSnapshot {
+        TextSnapshot { rope: self.rope.clone(), crlf: self.line_ending == LineEnding::CrLf, bom: self.bom }
     }
 
     /// Line length in chars, without the trailing newline.

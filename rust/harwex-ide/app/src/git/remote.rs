@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use std::time::Instant;
 
 use egui::{vec2, Align2, Context, Key, Modal, RichText, ScrollArea, Sense, TextEdit, Ui};
-use ide_git::{CommandOutcome, CommitDetails, CommitInfo, Error, Oid, PushTarget, Repo, StashEntry};
+use ide_git::{BranchUpdate, CommandOutcome, CommitDetails, CommitInfo, Error, Oid, PushTarget, Repo, StashEntry};
 
 use super::log::{format_time, kind_color, short};
 use super::refresh::Refresh;
@@ -647,12 +647,28 @@ where
     W: FnOnce(&Repo) -> OpResult + Send + 'static,
     T: FnOnce(&mut AppState, bool) + Send + 'static,
 {
+    spawn_op(state, title.into(), Some(ok_body.into()), check_conflicts, refresh, work, then);
+}
+
+/// `run_op` with no toast on success (Fetch): the status bar showed the progress, and the
+/// branch tree and the log show the result. A failure still toasts.
+pub(crate) fn run_op_quiet<W, T>(state: &mut AppState, title: impl Into<String>, work: W, then: T)
+where
+    W: FnOnce(&Repo) -> OpResult + Send + 'static,
+    T: FnOnce(&mut AppState, bool) + Send + 'static,
+{
+    spawn_op(state, title.into(), None, false, Refresh::Full, work, then);
+}
+
+fn spawn_op<W, T>(state: &mut AppState, title: String, ok_body: Option<String>, check_conflicts: bool, refresh: Refresh, work: W, then: T)
+where
+    W: FnOnce(&Repo) -> OpResult + Send + 'static,
+    T: FnOnce(&mut AppState, bool) + Send + 'static,
+{
     let Some(repo) = state.ws.git.repo.clone() else {
         state.notifications.warn("No git repository", "The project is not inside a git repository.");
         return;
     };
-    let title = title.into();
-    let ok_body = ok_body.into();
     let label = title.clone();
     super::refresh::write_started(state);
     state.jobs.spawn(
@@ -660,7 +676,11 @@ where
         // A panic must still reach `write_done`, or `.git` events would wait for it forever.
         move || std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| work(&repo))).unwrap_or_else(|_| Err(Error::Other("the git task panicked".into()))),
         move |state, res: OpResult| {
-            let ok = report(state, &title, &ok_body, res);
+            let ok = match ok_body {
+                Some(body) => report(state, &title, &body, res),
+                None if succeeded(&res) => true,
+                None => report(state, &title, "", res),
+            };
             super::refresh::write_done(state, refresh);
             if check_conflicts {
                 super::conflicts::check_after_operation(state);
@@ -668,6 +688,49 @@ where
             then(state, ok);
         },
     );
+}
+
+fn succeeded(res: &OpResult) -> bool {
+    match res {
+        Ok(Some(out)) => out.success,
+        Ok(None) => true,
+        Err(_) => false,
+    }
+}
+
+/// Fetch: every remote, or the one named (the branch tree's menu on a remote).
+pub fn fetch(state: &mut AppState, remote: Option<String>) {
+    let title = match &remote {
+        Some(r) => format!("Fetch {r}"),
+        None => "Fetch".to_string(),
+    };
+    run_op_quiet(state, title, move |r| remote.as_deref().map_or_else(|| r.fetch(), |name| r.fetch_remote(name)).map(Some), |_, _| {});
+}
+
+/// IDEA's "Update" on a local branch. The current branch runs Update Project with the last
+/// chosen merge or rebase; any other branch is fetched and fast-forwarded without a checkout,
+/// and a branch that diverged from its upstream is left alone.
+pub fn update_branch(state: &mut AppState, name: String) {
+    if state.ws.git.branch.as_deref() == Some(name.as_str()) && !state.ws.git.detached {
+        let rebase = state.ws.git_ui.remote.update_rebase;
+        update_project(state, rebase);
+        return;
+    }
+    let title = format!("Update {name}");
+    let ok_body = format!("{name} is up to date");
+    run_op(state, title.clone(), ok_body, false, move |r| {
+        let message = match r.update_branch(&name)? {
+            BranchUpdate::UpToDate => return Ok(None),
+            BranchUpdate::FastForwarded { from, to, commits } => {
+                let s = if commits == 1 { "" } else { "s" };
+                format!("{name}: fast-forwarded {}..{} ({commits} commit{s})", &from.to_string()[..8], &to.to_string()[..8])
+            }
+            BranchUpdate::NotFastForward { upstream } => {
+                return Err(Error::Other(format!("{name} cannot be fast-forwarded to {upstream}: they diverged. Check out {name} to merge or rebase.")));
+            }
+        };
+        Ok(Some(CommandOutcome { success: true, code: Some(0), command: title, stdout: message, stderr: String::new() }))
+    }, |_, _| {});
 }
 
 /// Turns an operation result into a toast. Returns whether it succeeded.

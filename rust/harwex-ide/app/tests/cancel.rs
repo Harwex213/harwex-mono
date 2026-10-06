@@ -6,7 +6,8 @@
 //! once per process, and `HARWEX_LINT_TIMEOUT_MS` for the whole process.
 //!
 //! Git runs through a fake `git` (`HARWEX_GIT`): it passes every command to the real git,
-//! except `blame` while the repository holds `.git/hang-blame`. The oxlint test uses a fake
+//! except `blame` while the repository holds `.git/hang-blame` and `fetch` while it holds
+//! `.git/hang-fetch`. The oxlint test uses a fake
 //! `oxlint --lsp` written in JS and a fake `tsgolint` that never answers.
 
 mod common;
@@ -43,10 +44,10 @@ fn use_fake_git() {
         let body = format!(
             "#!/bin/sh\n\
              top=$(pwd -P)\n\
-             if [ \"$1\" = blame ] && [ -e \"$top/.git/hang-blame\" ]; then\n\
-             \x20 sh -c 'trap \"\" TERM; echo $$ > \"$0/.git/blame-child.pid\"; while :; do sleep 1; done' \"$top\" &\n\
+             if [ \"$1\" = blame ] || [ \"$1\" = fetch ]; then if [ -e \"$top/.git/hang-$1\" ]; then\n\
+             \x20 sh -c 'trap \"\" TERM; echo $$ > \"$0/.git/$1-child.pid\"; while :; do sleep 1; done' \"$top\" \"$1\" &\n\
              \x20 wait\n\
-             fi\n\
+             fi; fi\n\
              exec '{}' \"$@\"\n",
             real_git().display()
         );
@@ -162,6 +163,37 @@ fn closing_annotations_stops_the_hung_blame_quietly() {
     ide.settle();
     assert_dies(child, "child of the hung git blame");
     assert!(toasts(&ide).is_empty(), "no toast for a blame nobody waits for: {:?}", toasts(&ide));
+}
+
+/// Fetch is cancelled from the status bar like any labelled job: the hung fetch dies with its
+/// process group, one "Cancelled" toast and no error, and the next Fetch works.
+#[test]
+fn hung_fetch_is_cancelled_from_the_status_bar() {
+    use_fake_git();
+    let fx = Fixture::new(SUITE, "fetch");
+    let (repo, bare) = repo_with_remote(&fx);
+    push_from_other_clone(&fx, &bare, "README.md", "# changed elsewhere\n", "Remote work");
+    let mut ide = Ide::open(SUITE, &repo.dir);
+    ide.click("Git tool window");
+    ide.wait_until("log toolbar", |ide| ide.has("Fetch All Remotes"));
+    std::fs::write(repo.dir.join(".git/hang-fetch"), "").expect("marker");
+    ide.click("Fetch All Remotes");
+    ide.wait_until("the running job in the status bar", |ide| ide.has("Running: Fetch"));
+    let child = wait_pid_file(&repo.dir.join(".git/fetch-child.pid"));
+    ide.click("Cancel Fetch");
+    ide.wait_for("the job ends", |s| s.jobs.running().is_empty());
+    ide.settle();
+    assert_dies(child, "child of the hung git fetch");
+    let titles = toasts(&ide);
+    assert_eq!(titles, ["Cancelled: Fetch"], "a cancel is no error");
+    assert!(repo.git(&["rev-parse", "-q", "--verify", "origin/main"]).trim() != repo.git(&["--git-dir", bare.to_str().expect("utf8"), "rev-parse", "main"]).trim());
+
+    std::fs::remove_file(repo.dir.join(".git/hang-fetch")).expect("marker");
+    ide.dismiss_toasts();
+    ide.click("Fetch All Remotes");
+    ide.wait_until("fetched", |_| repo.git(&["rev-parse", "origin/main"]) == repo.git(&["--git-dir", bare.to_str().expect("utf8"), "rev-parse", "main"]));
+    ide.settle();
+    assert!(toasts(&ide).is_empty(), "{:?}", toasts(&ide));
 }
 
 /// A fake `oxlint --lsp`: with type-aware on, a diagnostic request starts `tsgolint` and is

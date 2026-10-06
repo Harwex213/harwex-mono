@@ -16,6 +16,7 @@ mod common;
 mod badges;
 mod breadcrumbs;
 mod diagnostics;
+mod diff_edit;
 mod diff_selection;
 mod editor;
 mod editor_tabs;
