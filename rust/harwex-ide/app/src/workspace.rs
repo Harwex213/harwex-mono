@@ -87,6 +87,8 @@ pub struct Workspace {
     /// True while this workspace is the active one. Server progress of a background workspace
     /// asks for no repaint (`Languages`' repaint hook reads it).
     pub(crate) visible: Arc<AtomicBool>,
+    /// The Unreal project and its compile-database action (`unreal.rs`).
+    pub unreal: crate::unreal::UnrealState,
 }
 
 impl Workspace {
@@ -136,6 +138,7 @@ impl Workspace {
             settings: None,
             restored: false,
             visible,
+            unreal: Default::default(),
         }
     }
 

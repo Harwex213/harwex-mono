@@ -14,8 +14,30 @@
 //! [rust.init]                         # merged into rust-analyzer's initializationOptions
 //! cargo.features = "all"
 //!
+//! [csharp]
+//! server = "/path/to/Microsoft.CodeAnalysis.LanguageServer.dll"  # or its folder; default: the
+//!                                     # VS Code C# extension, the roslyn-language-server tool
+//! dotnet = "/usr/local/share/dotnet/dotnet"  # default: DOTNET_ROOT, PATH, ~/.dotnet
+//! idle_timeout_secs = 600
+//!
 //! [ts]
 //! idle_timeout_secs = 600
+//!
+//! [cpp]
+//! clangd = "/path/to/clangd"          # default: PATH, `xcrun --find clangd`, Homebrew LLVM
+//! background_index = true             # clangd's index in <compile db dir>/.cache/clangd
+//! args = ["--clang-tidy"]             # extra clangd arguments
+//! idle_timeout_secs = 600
+//!
+//! [unreal]                            # projects with a *.uproject (tasks 085, 086)
+//! engine = "/path/to/UE_5.4"          # default: EngineAssociation via the Epic launcher
+//! target = "MyGameEditor"             # default: <Name>Editor from Source/*.Target.cs
+//! index_engine = false                # clangd's database keeps only the project's files
+//! uproject = "Game.uproject"          # a folder with several: default the one named like
+//!                                     # the folder, else the first by name
+//!
+//! [unreal.projects."Sub/Game2"]       # one project (its folder, relative to this one);
+//! engine = "/path/to/UE_5.8"          # any key above; the rest come from [unreal]
 //!
 //! [diagnostics]
 //! ts = true                           # TypeScript errors from the TS server (default on)
@@ -66,6 +88,78 @@ impl Default for RustConfig {
     fn default() -> Self {
         RustConfig { server: None, check_on_save: false, build_scripts: true, proc_macros: true, init: None }
     }
+}
+
+/// `[cpp]`: clangd.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CppConfig {
+    pub clangd: Option<PathBuf>,
+    pub background_index: bool,
+    /// Extra clangd command line arguments, after ours.
+    pub args: Vec<String>,
+}
+
+impl Default for CppConfig {
+    fn default() -> Self {
+        CppConfig { clangd: None, background_index: true, args: Vec::new() }
+    }
+}
+
+/// `[unreal]`: Unreal Engine projects (`lang/unreal.rs`).
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct UnrealConfig {
+    /// The engine root (the folder with `Engine/`) or its `Engine` folder.
+    pub engine: Option<PathBuf>,
+    /// The UBT target for the compile database.
+    pub target: Option<String>,
+    /// Keep the engine's files in clangd's database, so the background index covers them.
+    pub index_engine: bool,
+    /// The `.uproject` file name to use in a folder that has several.
+    pub uproject: Option<String>,
+    /// `[unreal.projects."<folder>"]`: overrides per project folder, relative to the opened
+    /// folder with `/` ("" is the opened folder itself).
+    pub projects: std::collections::BTreeMap<String, UnrealOverride>,
+}
+
+/// One `[unreal.projects."<folder>"]` table. A key left out comes from `[unreal]`.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct UnrealOverride {
+    pub engine: Option<PathBuf>,
+    pub target: Option<String>,
+    pub index_engine: Option<bool>,
+    pub uproject: Option<String>,
+}
+
+impl UnrealConfig {
+    /// The settings of the project in `rel` (relative to the opened folder, `/`-separated).
+    pub fn for_project(&self, rel: &str) -> UnrealConfig {
+        let mut c = UnrealConfig { projects: Default::default(), ..self.clone() };
+        if let Some(o) = self.projects.get(&project_key(rel)) {
+            c.engine = o.engine.clone().or(c.engine);
+            c.target = o.target.clone().or(c.target);
+            c.index_engine = o.index_engine.unwrap_or(c.index_engine);
+            c.uproject = o.uproject.clone().or(c.uproject);
+        }
+        c
+    }
+}
+
+/// `./Sub/Game2/` and `Sub/Game2` are the same key; `.` and "" are the opened folder.
+pub fn project_key(rel: &str) -> String {
+    let k = rel.replace('\\', "/");
+    let k = k.trim_start_matches("./").trim_matches('/');
+    if k == "." {
+        String::new()
+    } else {
+        k.to_string()
+    }
+}
+
+/// `[csharp]`: the Roslyn language server and the `dotnet` that runs it.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct CSharpConfig {
+    pub server: Option<PathBuf>,
+    pub dotnet: Option<PathBuf>,
 }
 
 /// `[diagnostics]`. `None` means "decide from what the package has installed".
@@ -124,6 +218,11 @@ pub struct IdeConfig {
     pub ts_idle_timeout: Option<Duration>,
     pub rust_idle_timeout: Option<Duration>,
     pub rust: RustConfig,
+    pub cpp: CppConfig,
+    pub cpp_idle_timeout: Option<Duration>,
+    pub unreal: UnrealConfig,
+    pub csharp: CSharpConfig,
+    pub csharp_idle_timeout: Option<Duration>,
     pub diagnostics: DiagnosticsConfig,
     /// `[format.oxfmt]`.
     pub oxfmt: OxfmtConfig,
@@ -145,6 +244,11 @@ impl Default for IdeConfig {
             ts_idle_timeout: None,
             rust_idle_timeout: None,
             rust: RustConfig::default(),
+            cpp: CppConfig::default(),
+            cpp_idle_timeout: None,
+            unreal: UnrealConfig::default(),
+            csharp: CSharpConfig::default(),
+            csharp_idle_timeout: None,
             diagnostics: DiagnosticsConfig::default(),
             oxfmt: OxfmtConfig::default(),
             memory_interval: crate::memory::DEFAULT_INTERVAL,
@@ -186,7 +290,10 @@ impl IdeConfig {
                         for item in items {
                             match item.as_str().and_then(LangId::parse) {
                                 Some(l) => langs.push(l),
-                                None => config.warnings.push(format!("{CONFIG_PATH}: unknown language {item} (known: ts, rust)")),
+                                None => {
+                                    let known: Vec<&str> = LangId::ALL.iter().map(|l| l.key()).collect();
+                                    config.warnings.push(format!("{CONFIG_PATH}: unknown language {item} (known: {})", known.join(", ")))
+                                }
                             }
                         }
                         config.languages = Some(langs);
@@ -199,6 +306,9 @@ impl IdeConfig {
                     }
                 }
                 "rust" => parse_rust(value, &mut config),
+                "cpp" => parse_cpp(value, &mut config),
+                "unreal" => parse_unreal(value, &mut config),
+                "csharp" => parse_csharp(value, &mut config),
                 "ts" => {
                     for (k, v) in value.as_table().into_iter().flatten() {
                         match k.as_str() {
@@ -256,6 +366,8 @@ impl IdeConfig {
         let own = match lang {
             LangId::TypeScript => self.ts_idle_timeout,
             LangId::Rust => self.rust_idle_timeout,
+            LangId::Cpp => self.cpp_idle_timeout,
+            LangId::CSharp => self.csharp_idle_timeout,
         };
         own.unwrap_or(self.idle_timeout)
     }
@@ -288,6 +400,95 @@ fn parse_rust(value: &toml::Value, config: &mut IdeConfig) {
                 _ => config.warnings.push(format!("{CONFIG_PATH}: [rust.init] must be a table")),
             },
             other => config.warnings.push(format!("{CONFIG_PATH}: unknown key rust.{other}")),
+        }
+    }
+}
+
+fn parse_csharp(value: &toml::Value, config: &mut IdeConfig) {
+    let Some(table) = value.as_table() else {
+        config.warnings.push(format!("{CONFIG_PATH}: [csharp] must be a table"));
+        return;
+    };
+    for (k, v) in table {
+        let path = |warnings: &mut Vec<String>| match v.as_str() {
+            Some(s) => Some(expand_home(s)),
+            None => {
+                warnings.push(format!("{CONFIG_PATH}: csharp.{k} must be a path"));
+                None
+            }
+        };
+        match k.as_str() {
+            "server" => config.csharp.server = path(&mut config.warnings),
+            "dotnet" => config.csharp.dotnet = path(&mut config.warnings),
+            "idle_timeout_secs" => config.csharp_idle_timeout = secs(v, "csharp.idle_timeout_secs", &mut config.warnings),
+            other => config.warnings.push(format!("{CONFIG_PATH}: unknown key csharp.{other}")),
+        }
+    }
+}
+
+fn parse_cpp(value: &toml::Value, config: &mut IdeConfig) {
+    let Some(table) = value.as_table() else {
+        config.warnings.push(format!("{CONFIG_PATH}: [cpp] must be a table"));
+        return;
+    };
+    for (k, v) in table {
+        match k.as_str() {
+            "clangd" => match v.as_str() {
+                Some(s) => config.cpp.clangd = Some(expand_home(s)),
+                None => config.warnings.push(format!("{CONFIG_PATH}: cpp.clangd must be a path")),
+            },
+            "background_index" => match v.as_bool() {
+                Some(b) => config.cpp.background_index = b,
+                None => config.warnings.push(format!("{CONFIG_PATH}: cpp.background_index must be true or false")),
+            },
+            "args" => match v.as_array().map(|a| a.iter().map(|x| x.as_str().map(str::to_string)).collect::<Option<Vec<String>>>()) {
+                Some(Some(args)) => config.cpp.args = args,
+                _ => config.warnings.push(format!("{CONFIG_PATH}: cpp.args must be a list of strings")),
+            },
+            "idle_timeout_secs" => config.cpp_idle_timeout = secs(v, "cpp.idle_timeout_secs", &mut config.warnings),
+            other => config.warnings.push(format!("{CONFIG_PATH}: unknown key cpp.{other}")),
+        }
+    }
+}
+
+fn parse_unreal(value: &toml::Value, config: &mut IdeConfig) {
+    let Some(table) = value.as_table() else {
+        config.warnings.push(format!("{CONFIG_PATH}: [unreal] must be a table"));
+        return;
+    };
+    for (k, v) in table {
+        match (k.as_str(), v) {
+            ("engine", toml::Value::String(s)) => config.unreal.engine = Some(expand_home(s)),
+            ("target", toml::Value::String(s)) => config.unreal.target = Some(s.clone()),
+            ("index_engine", toml::Value::Boolean(b)) => config.unreal.index_engine = *b,
+            ("uproject", toml::Value::String(s)) => config.unreal.uproject = Some(s.clone()),
+            ("projects", toml::Value::Table(projects)) => {
+                for (folder, t) in projects {
+                    let Some(t) = t.as_table() else {
+                        config.warnings.push(format!("{CONFIG_PATH}: unreal.projects.\"{folder}\" must be a table"));
+                        continue;
+                    };
+                    let mut o = UnrealOverride::default();
+                    for (k, v) in t {
+                        let at = format!("unreal.projects.\"{folder}\".{k}");
+                        match (k.as_str(), v) {
+                            ("engine", toml::Value::String(s)) => o.engine = Some(expand_home(s)),
+                            ("target", toml::Value::String(s)) => o.target = Some(s.clone()),
+                            ("index_engine", toml::Value::Boolean(b)) => o.index_engine = Some(*b),
+                            ("uproject", toml::Value::String(s)) => o.uproject = Some(s.clone()),
+                            ("engine" | "target" | "index_engine" | "uproject", _) => config.warnings.push(format!("{CONFIG_PATH}: {at} has the wrong type")),
+                            _ => config.warnings.push(format!("{CONFIG_PATH}: unknown key {at}")),
+                        }
+                    }
+                    config.unreal.projects.insert(project_key(folder), o);
+                }
+            }
+            ("engine", _) => config.warnings.push(format!("{CONFIG_PATH}: unreal.engine must be a path")),
+            ("target", _) => config.warnings.push(format!("{CONFIG_PATH}: unreal.target must be a target name")),
+            ("index_engine", _) => config.warnings.push(format!("{CONFIG_PATH}: unreal.index_engine must be true or false")),
+            ("uproject", _) => config.warnings.push(format!("{CONFIG_PATH}: unreal.uproject must be a file name")),
+            ("projects", _) => config.warnings.push(format!("{CONFIG_PATH}: unreal.projects must be a table of project folders")),
+            (other, _) => config.warnings.push(format!("{CONFIG_PATH}: unknown key unreal.{other}")),
         }
     }
 }
@@ -430,6 +631,45 @@ mod tests {
     }
 
     #[test]
+    fn cpp_section() {
+        let c = IdeConfig::default();
+        assert!(c.cpp.background_index && c.cpp.clangd.is_none());
+        let c = IdeConfig::parse("languages = [\"cpp\"]\n[cpp]\nclangd = \"/opt/llvm/bin/clangd\"\nbackground_index = false\nargs = [\"--clang-tidy\"]\nidle_timeout_secs = 5\n");
+        assert!(c.warnings.is_empty(), "{:?}", c.warnings);
+        assert!(c.enabled(LangId::Cpp) && !c.enabled(LangId::Rust));
+        assert_eq!(c.cpp.clangd.as_deref(), Some(Path::new("/opt/llvm/bin/clangd")));
+        assert!(!c.cpp.background_index);
+        assert_eq!(c.cpp.args, ["--clang-tidy"]);
+        assert_eq!(c.idle_timeout(LangId::Cpp), Duration::from_secs(5));
+        let bad = IdeConfig::parse("[cpp]\nargs = \"-x\"\nbackground_index = 1\nflags = 2\n");
+        assert_eq!(bad.warnings.len(), 3, "{:?}", bad.warnings);
+    }
+
+    #[test]
+    fn unreal_section() {
+        assert_eq!(IdeConfig::default().unreal, UnrealConfig::default());
+        let c = IdeConfig::parse("[unreal]\nengine = \"/E/UE_5.4\"\ntarget = \"GameEditor\"\nindex_engine = true\n");
+        assert!(c.warnings.is_empty(), "{:?}", c.warnings);
+        assert_eq!(c.unreal, UnrealConfig { engine: Some(PathBuf::from("/E/UE_5.4")), target: Some("GameEditor".into()), index_engine: true, ..Default::default() });
+        let bad = IdeConfig::parse("[unreal]\nengine = 1\nindex_engine = \"yes\"\nversion = 5\n");
+        assert_eq!(bad.warnings.len(), 3, "{:?}", bad.warnings);
+        // Per-project tables override the top-level keys; the rest stay defaults.
+        let c = IdeConfig::parse(
+            "[unreal]\nengine = \"/E/UE_5.4\"\nuproject = \"A.uproject\"\n[unreal.projects.\"./Sub/Game2/\"]\nengine = \"/E/UE_5.8\"\ntarget = \"G2\"\n[unreal.projects.\".\"]\nindex_engine = true\n",
+        );
+        assert!(c.warnings.is_empty(), "{:?}", c.warnings);
+        let g2 = c.unreal.for_project("Sub/Game2");
+        assert_eq!((g2.engine.as_deref(), g2.target.as_deref(), g2.uproject.as_deref()), (Some(Path::new("/E/UE_5.8")), Some("G2"), Some("A.uproject")));
+        let g1 = c.unreal.for_project("Sub/Game1");
+        assert_eq!((g1.engine.as_deref(), g1.target.as_deref(), g1.index_engine), (Some(Path::new("/E/UE_5.4")), None, false));
+        assert!(c.unreal.for_project("").index_engine && g1.projects.is_empty());
+        let bad = IdeConfig::parse("[unreal]\nprojects = 1\n[unreal.x]\n");
+        assert_eq!(bad.warnings.len(), 2, "{:?}", bad.warnings);
+        let bad = IdeConfig::parse("[unreal.projects]\nA = 1\n[unreal.projects.B]\nengine = 2\nversion = 5\n");
+        assert_eq!(bad.warnings.len(), 3, "{:?}", bad.warnings);
+    }
+
+    #[test]
     fn problems_become_warnings_not_errors() {
         let c = IdeConfig::parse("languages = [\"ts\", \"cobol\"]\ncolour = 1\n[rust]\ncheck_on_save = \"yes\"\n");
         assert_eq!(c.languages, Some(vec![LangId::TypeScript]));
@@ -476,6 +716,18 @@ mod tests {
         let bad = IdeConfig::parse("[format.oxfmt]\non_save = 1\nextensions = \"ts\"\nwidth = 2\n[format.prettier]\n");
         assert_eq!(bad.warnings.len(), 4, "{:?}", bad.warnings);
         assert_eq!(bad.oxfmt, OxfmtConfig::default());
+    }
+
+    #[test]
+    fn csharp_section() {
+        let c = IdeConfig::parse("languages = [\"csharp\", \"c#\"]\n[csharp]\nserver = \"/r/roslyn\"\ndotnet = \"/d/dotnet\"\nidle_timeout_secs = 5\n");
+        assert!(c.warnings.is_empty(), "{:?}", c.warnings);
+        assert_eq!(c.languages, Some(vec![LangId::CSharp, LangId::CSharp]));
+        assert_eq!(c.csharp, CSharpConfig { server: Some(PathBuf::from("/r/roslyn")), dotnet: Some(PathBuf::from("/d/dotnet")) });
+        assert_eq!(c.idle_timeout(LangId::CSharp), Duration::from_secs(5));
+        let bad = IdeConfig::parse("[csharp]\nserver = 1\nmono = \"x\"\n");
+        assert_eq!(bad.warnings.len(), 2, "{:?}", bad.warnings);
+        assert_eq!(bad.csharp, CSharpConfig::default());
     }
 
     #[test]

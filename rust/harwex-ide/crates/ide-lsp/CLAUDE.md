@@ -22,7 +22,10 @@ A generic Language Server Protocol client. It exists so every language server (t
 - `Error::is_retryable()` is true for content modified, server cancelled and request cancelled. Adapters retry those.
 - `framing` is also used by the tsserver reader in `ide-ts`. Lengths are UTF-8 bytes.
 - Diagnostics: `diagnostics(path)` pulls `textDocument/diagnostic` when the server has `diagnosticProvider`, else returns the last `publishDiagnostics` for the file (kept raw by the reader, dropped on `close`). Positions convert with the text the server has. `default_capabilities` declares pull and push with `tagSupport` (unused code arrives as tag 1 only then). Server `*/refresh` requests also reach `on_notification`.
+- `startup_notifications` go out right after `initialized`, before open files are sent again (Roslyn's `solution/open`).
+- Virtual documents (`virtual_docs.rs`): a non-file URI in a definition or references result is fetched through `ClientConfig::virtual_text` (URI to request; the answer is a string or `{text}`) and written to `<temp>/harwex-ide-virtual/<kind>/<hash>/<name>`. A process-wide table maps that path back, so `path_to_uri` sends the server's URI again. Without a handler such a location is dropped.
 - `LocationLink` results use `targetSelectionRange` (the declared name), like tsserver.
+- `rename` (`textDocument/rename`) returns `FileEdit`s parsed like `willRenameFiles`; a refusal is a server error with its reason. `open_version` is the version of a file's last `didOpen`/`didChange`, for servers that push versioned diagnostics.
 - File operations: `will_rename_files` (before the move) returns `FileEdit`s keyed by the old paths; `did_rename_files` (after) closes files under the old path and notifies only a running server. `file_usages` asks `willRenameFiles` for a probe name (`PROBE_PREFIX`) and turns the edits into `Reference`s. `WorkspaceEdit` parsing reads `documentChanges` or `changes` and skips create/rename/delete operations. `default_capabilities` declares `fileOperations` and `workspaceEdit.documentChanges`.
 
 ## Test

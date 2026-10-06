@@ -14,6 +14,8 @@
 mod common;
 
 mod badges;
+mod cpp_nav;
+mod csharp_nav;
 mod breadcrumbs;
 mod diagnostics;
 mod diff_edit;
@@ -48,6 +50,7 @@ mod time_limits;
 mod tool_window_esc;
 mod tool_window_hide;
 mod tree_multi;
+mod unreal_nav;
 mod workspaces;
 
 /// Runs `common::init` before `main`, while the process has one thread. Every test then sees

@@ -1,5 +1,5 @@
 //! Problems in open files: TypeScript errors from the TS server, lint errors from oxlint and
-//! ESLint.
+//! ESLint, C/C++ errors from clangd.
 //!
 //! - Which sources check a file is decided per package (`strategy`): the TS server already
 //!   runs for navigation, so no extra type checker starts. oxlint runs where a package has
@@ -42,14 +42,28 @@ pub enum SourceId {
     TypeScript,
     Oxlint,
     Eslint,
+    Clangd,
+    CSharp,
 }
 
 impl SourceId {
+    /// The source of a language server's own diagnostics (`Plan::server`).
+    pub fn of_server(lang: LangId) -> SourceId {
+        match lang {
+            LangId::Cpp => SourceId::Clangd,
+            LangId::CSharp => SourceId::CSharp,
+            // Servers without a source of their own yet report as the TypeScript server did.
+            _ => SourceId::TypeScript,
+        }
+    }
+
     pub fn name(self) -> &'static str {
         match self {
             SourceId::TypeScript => "ts",
             SourceId::Oxlint => "oxlint",
             SourceId::Eslint => "eslint",
+            SourceId::Clangd => "clangd",
+            SourceId::CSharp => "csharp",
         }
     }
 }
@@ -78,6 +92,10 @@ impl Problem {
             }
             // ESLint codes are the rule ids: "no-debugger", "@typescript-eslint/no-floating-promises".
             (SourceId::Eslint, Some(rule)) => format!("eslint({rule})"),
+            // clangd codes: `undeclared_var_use`, `-Wunused-variable`, clang-tidy check names.
+            (SourceId::Clangd, Some(code)) => format!("clangd({code})"),
+            // Roslyn codes: `CS0029`, `IDE0059`, analyzer ids like `UNT0001`.
+            (SourceId::CSharp, Some(code)) => format!("csharp({code})"),
             (s, None) => s.name().to_string(),
         }
     }
@@ -499,10 +517,21 @@ pub fn schedule(state: &mut AppState) {
     let mut detect = Vec::new();
     let mut due = Vec::new();
     for (id, e) in state.ws.tabs.editors_mut() {
-        if LangId::for_path(&e.path) != Some(LangId::TypeScript) || e.read_only {
+        let lang = LangId::for_path(&e.path);
+        if !matches!(lang, Some(LangId::TypeScript | LangId::Cpp | LangId::CSharp)) || e.read_only {
             continue;
         }
         let p = &mut e.problems;
+        // C/C++ problems come from clangd alone: no package detection, and only while the
+        // language is on (`e.lang`).
+        if let Some(server @ (LangId::Cpp | LangId::CSharp)) = lang {
+            if e.lang != Some(server) {
+                continue;
+            }
+            if p.plan.is_none() {
+                p.plan = Some(Plan { server: Some(server), ..Plan::default() });
+            }
+        }
         if p.plan.is_none() {
             if !p.detecting {
                 detect.push((id, e.path.clone()));
@@ -586,6 +615,8 @@ pub fn request(state: &mut AppState, id: TabId) {
         SourceId::TypeScript => plan.ts,
         SourceId::Oxlint => plan.oxlint.is_some(),
         SourceId::Eslint => plan.eslint.is_some(),
+        SourceId::Clangd => plan.server == Some(LangId::Cpp),
+        SourceId::CSharp => plan.server == Some(LangId::CSharp),
     });
     e.problems.results_gen += 1;
     if plan.is_empty() {
@@ -603,6 +634,18 @@ pub fn request(state: &mut AppState, id: TabId) {
             }
             let result = server.diagnostics(&path).map(|d| d.map(|d| to_problems(&text, SourceId::TypeScript, &d)));
             jobs.post(move |state| deliver(state, id, generation, version, SourceId::TypeScript, result));
+        });
+    }
+    if let Some(lang) = plan.server {
+        crate::nav::flush_lsp(state, id);
+        let source = SourceId::of_server(lang);
+        let (jobs, path, text, latest) = (state.jobs.clone(), path.clone(), text.clone(), latest.clone());
+        state.ws.langs.bridge(lang).run(move |server| {
+            if latest.load(Ordering::SeqCst) != generation {
+                return;
+            }
+            let result = server.diagnostics(&path).map(|d| d.map(|d| to_problems(&text, source, &d)));
+            jobs.post(move |state| deliver(state, id, generation, version, source, result));
         });
     }
     let targets = plan.oxlint.map(LintTarget::Oxlint).into_iter().chain(plan.eslint.map(LintTarget::Eslint));
@@ -645,7 +688,7 @@ fn deliver(state: &mut AppState, id: TabId, generation: u64, version: u64, sourc
                 match source {
                     // Navigation already tells about a missing or broken TS server; a second
                     // notice for the same cause is noise.
-                    SourceId::TypeScript => state.timings.log(format!("diagnostics failed: {note}")),
+                    SourceId::TypeScript | SourceId::Clangd | SourceId::CSharp => state.timings.log(format!("diagnostics failed: {note}")),
                     _ => state.notifications.warn("Diagnostics failed", note),
                 }
             }
@@ -705,6 +748,8 @@ pub fn file_rows(e: &crate::tabs::EditorTab) -> Vec<(Position, &Problem)> {
 pub fn running(state: &AppState, source: SourceId) -> usize {
     match source {
         SourceId::TypeScript => state.ws.langs.running(LangId::TypeScript),
+        SourceId::Clangd => state.ws.langs.running(LangId::Cpp),
+        SourceId::CSharp => state.ws.langs.running(LangId::CSharp),
         other => state.ws.langs.lint.running(other),
     }
 }

@@ -50,6 +50,8 @@ impl Language {
                 let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
                 match name {
                     ".babelrc" | ".eslintrc" | ".prettierrc" => Language::Json,
+                    // The C++ standard library headers have no extension (`c++/v1/vector`).
+                    _ if ext.is_empty() && path.components().any(|c| c.as_os_str() == "c++") => Language::Cpp,
                     _ => Language::Plain,
                 }
             }
@@ -325,5 +327,12 @@ mod tests {
                 panic!("{lang:?}: {err}");
             }
         }
+    }
+
+    #[test]
+    fn std_headers_without_extension_are_cpp() {
+        assert_eq!(Language::from_path(Path::new("/sdk/usr/include/c++/v1/vector")), Language::Cpp);
+        assert_eq!(Language::from_path(Path::new("/p/include/vector")), Language::Plain);
+        assert_eq!(Language::from_path(Path::new("/p/c++/README.md")), Language::Markdown);
     }
 }

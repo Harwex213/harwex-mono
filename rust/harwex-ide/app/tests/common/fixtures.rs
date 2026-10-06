@@ -626,6 +626,30 @@ pub fn use_test_rust_tools() {
     }
 }
 
+/// Points the app's `HARWEX_CLANGD` at the pinned clangd, so a test that opens a C or C++ file
+/// never starts a clangd from PATH or Xcode. When it is missing, the app reports clangd as not
+/// found. Called once from `init()`, before any thread starts.
+pub fn use_test_clangd() {
+    if std::env::var_os("HARWEX_CLANGD").is_none() {
+        let exe = clangd().unwrap_or_else(|_| tools_dir().join("clangd/bin/clangd"));
+        std::env::set_var("HARWEX_CLANGD", exe);
+    }
+}
+
+/// clangd: `HARWEX_TEST_CLANGD`, else `<target>/tools/clangd/bin/clangd`. Never PATH or Xcode:
+/// the C/C++ tests pass it to the app as `[cpp] clangd` in `.harwex/ide.toml`.
+pub fn clangd() -> Result<PathBuf, String> {
+    let (exe, source) = match std::env::var_os("HARWEX_TEST_CLANGD") {
+        Some(p) => (PathBuf::from(p), "HARWEX_TEST_CLANGD"),
+        None => (tools_dir().join("clangd/bin/clangd"), HINT),
+    };
+    if exe.is_file() {
+        Ok(exe)
+    } else {
+        Err(format!("{} is missing ({source})", exe.display()))
+    }
+}
+
 /// Returns `true` (and prints why) when rust-analyzer cannot be found.
 pub fn skip_without_rust_analyzer(test: &str) -> bool {
     super::init();
@@ -677,3 +701,192 @@ pub fn cargo_project(dir: PathBuf) -> Repo {
 pub const APP_RS: &str = "use util::add;\n\nfn main() {\n    let total = add(1, 2);\n    let words: Vec<String> = Vec::new();\n    let p = util::Point { x: total };\n    println!(\"{} {} {}\", total, words.len(), p.x);\n    let again = add(3, 4);\n    println!(\"{again}\");\n}\n";
 
 pub const UTIL_RS: &str = "/// Adds two numbers.\npub fn add(a: i32, b: i32) -> i32 {\n    a + b\n}\n\n/// A point on a line.\npub struct Point {\n    pub x: i32,\n}\n";
+
+// -----------------------------------------------------------------------------------------
+// C# and Unity (Roslyn language server)
+
+/// The pinned .NET SDK's `dotnet`: `HARWEX_TEST_DOTNET`, else `<target>/tools/dotnet/dotnet`.
+/// Never PATH or `~/.dotnet`: the C# tests pass it to the app as `[csharp] dotnet`.
+pub fn dotnet() -> Result<PathBuf, String> {
+    let (exe, source) = match std::env::var_os("HARWEX_TEST_DOTNET") {
+        Some(p) => (PathBuf::from(p), "HARWEX_TEST_DOTNET"),
+        None => (tools_dir().join("dotnet/dotnet"), HINT),
+    };
+    if exe.is_file() {
+        Ok(exe)
+    } else {
+        Err(format!("{} is missing ({source})", exe.display()))
+    }
+}
+
+/// The pinned Roslyn language server (its folder, or the dll): `HARWEX_TEST_ROSLYN`, else
+/// `<target>/tools/roslyn`.
+pub fn roslyn() -> Result<PathBuf, String> {
+    let (dir, source) = match std::env::var_os("HARWEX_TEST_ROSLYN") {
+        Some(p) => (PathBuf::from(p), "HARWEX_TEST_ROSLYN"),
+        None => (tools_dir().join("roslyn"), HINT),
+    };
+    let dll = if dir.is_dir() { dir.join("Microsoft.CodeAnalysis.LanguageServer.dll") } else { dir.clone() };
+    if dll.is_file() {
+        Ok(dir)
+    } else {
+        Err(format!("{} is missing ({source})", dll.display()))
+    }
+}
+
+/// Returns `true` (and prints why) when the C# tests must be skipped.
+pub fn skip_without_roslyn(test: &str) -> bool {
+    super::init();
+    match dotnet().and_then(|_| roslyn()) {
+        Ok(_) => false,
+        Err(why) => {
+            eprintln!("skipping {test}: {why}");
+            true
+        }
+    }
+}
+
+/// Keeps every write of the pinned `dotnet` (first-run files, NuGet caches) inside
+/// `<target>/tools/dotnet-home`, never in `~/.dotnet` or `~/.nuget`. The Roslyn server and the
+/// restores it runs inherit it. Called once from `init()`, before any thread starts.
+pub fn use_test_dotnet_env() {
+    // Any test that opens a `.cs` file gets the pinned tools, never a server or SDK of this
+    // machine; `csharp_nav` also names them in `[csharp]`.
+    if let Ok(dotnet) = dotnet() {
+        std::env::set_var("HARWEX_DOTNET", dotnet);
+    }
+    if let Ok(roslyn) = roslyn() {
+        std::env::set_var("HARWEX_ROSLYN", roslyn);
+    }
+    let home = tools_dir().join("dotnet-home");
+    for (k, v) in [
+        ("DOTNET_CLI_HOME", home.clone()),
+        ("NUGET_PACKAGES", home.join("nuget/packages")),
+        ("NUGET_HTTP_CACHE_PATH", home.join("nuget/http-cache")),
+        ("NUGET_PLUGINS_CACHE_PATH", home.join("nuget/plugins-cache")),
+    ] {
+        std::env::set_var(k, v);
+    }
+    std::env::set_var("DOTNET_CLI_TELEMETRY_OPTOUT", "1");
+    std::env::set_var("DOTNET_NOLOGO", "1");
+    std::env::set_var("DOTNET_GENERATE_ASPNET_CERTIFICATE", "false");
+}
+
+/// `.harwex/ide.toml` that points the C# adapter at the pinned tools.
+pub fn csharp_ide_toml() -> String {
+    let dotnet = dotnet().expect("pinned dotnet");
+    let roslyn = roslyn().expect("pinned Roslyn");
+    format!("[csharp]\nserver = \"{}\"\ndotnet = \"{}\"\n", roslyn.display(), dotnet.display())
+}
+
+/// No package source at all, so a restore never asks a feed (and never needs the network).
+pub const NUGET_CONFIG: &str = "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<configuration>\n  <packageSources>\n    <clear />\n  </packageSources>\n</configuration>\n";
+
+fn sln(projects: &[(&str, &str, &str)]) -> String {
+    let mut s = String::from("\nMicrosoft Visual Studio Solution File, Format Version 12.00\n# Visual Studio Version 17\n");
+    for (name, path, guid) in projects {
+        s.push_str(&format!("Project(\"{{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}}\") = \"{name}\", \"{path}\", \"{{{guid}}}\"\nEndProject\n"));
+    }
+    s.push_str("Global\n\tGlobalSection(SolutionConfigurationPlatforms) = preSolution\n\t\tDebug|Any CPU = Debug|Any CPU\n\tEndGlobalSection\n\tGlobalSection(ProjectConfigurationPlatforms) = postSolution\n");
+    for (_, _, guid) in projects {
+        s.push_str(&format!("\t\t{{{guid}}}.Debug|Any CPU.ActiveCfg = Debug|Any CPU\n\t\t{{{guid}}}.Debug|Any CPU.Build.0 = Debug|Any CPU\n"));
+    }
+    s.push_str("\tEndGlobalSection\nEndGlobal\n");
+    s
+}
+
+/// A solution with two projects: `App` (an exe) references `Lib`. Pointed at the pinned tools.
+pub fn csharp_solution(dir: PathBuf) -> Repo {
+    let r = Repo::init(dir);
+    r.write(".gitignore", "bin/\nobj/\n");
+    r.write("NuGet.Config", NUGET_CONFIG);
+    r.write(".harwex/ide.toml", &csharp_ide_toml());
+    r.write("Shop.sln", &sln(&[("Lib", "Lib\\Lib.csproj", "11111111-1111-1111-1111-111111111111"), ("App", "App\\App.csproj", "22222222-2222-2222-2222-222222222222")]));
+    r.write("Lib/Lib.csproj", "<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>net10.0</TargetFramework>\n    <Nullable>enable</Nullable>\n  </PropertyGroup>\n</Project>\n");
+    r.write("Lib/Greeter.cs", GREETER_CS);
+    r.write("Lib/Shapes.cs", SHAPES_CS);
+    r.write(
+        "App/App.csproj",
+        "<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <OutputType>Exe</OutputType>\n    <TargetFramework>net10.0</TargetFramework>\n    <Nullable>enable</Nullable>\n  </PropertyGroup>\n  <ItemGroup>\n    <ProjectReference Include=\"..\\Lib\\Lib.csproj\" />\n  </ItemGroup>\n</Project>\n",
+    );
+    r.write("App/Program.cs", PROGRAM_CS);
+    r.commit_all("C# solution");
+    r
+}
+
+pub const GREETER_CS: &str = "namespace Lib;\n\n/// <summary>Builds greetings.</summary>\npublic class Greeter\n{\n    /// <summary>Says hello to someone.</summary>\n    public string Hello(string name) => \"Hello, \" + name;\n}\n";
+
+pub const SHAPES_CS: &str = "namespace Lib;\n\npublic interface IShape\n{\n    double Area();\n}\n\npublic class Circle : IShape\n{\n    public double Area() => 3.14;\n}\n\npublic class Square : IShape\n{\n    public double Area() => 4.0;\n}\n";
+
+/// Lines (0-based) the C# tests aim at: 9 `Greeter`, 10 `List`, 11 `Hello`, 12 `IShape`,
+/// 13 `Area` and the second `Hello`.
+pub const PROGRAM_CS: &str = "using System.Collections.Generic;\nusing Lib;\n\nnamespace App;\n\npublic static class Program\n{\n    public static void Main()\n    {\n        var greeter = new Greeter();\n        var words = new List<string>();\n        words.Add(greeter.Hello(\"world\"));\n        IShape shape = new Circle();\n        System.Console.WriteLine(shape.Area() + greeter.Hello(\"again\").Length);\n    }\n}\n";
+
+/// The stand-in for Unity's `UnityEngine.dll`: the few types the fixture scripts use.
+pub const UNITY_ENGINE_CS: &str = "namespace UnityEngine\n{\n    public class Object { }\n\n    public class Component : Object\n    {\n        public Transform transform => null;\n    }\n\n    public class Behaviour : Component { }\n\n    /// <summary>The base class every Unity script derives from.</summary>\n    public class MonoBehaviour : Behaviour { }\n\n    public class Transform : Component\n    {\n        public void Translate(Vector3 translation) { }\n    }\n\n    public struct Vector3\n    {\n        public float x, y, z;\n        public static Vector3 forward => default;\n        public static Vector3 operator *(Vector3 a, float d) => a;\n    }\n}\n";
+
+/// Lines (0-based): 2 `MonoBehaviour`, 8 `Translate`/`Vector3`, 9 `Spawner`.
+pub const PLAYER_CS: &str = "using UnityEngine;\n\npublic class Player : MonoBehaviour\n{\n    public float speed = 2f;\n\n    void Update()\n    {\n        transform.Translate(Vector3.forward * speed);\n        Spawner.Count++;\n    }\n}\n";
+
+pub const SPAWNER_CS: &str = "using UnityEngine;\n\npublic class Spawner : MonoBehaviour\n{\n    public static int Count;\n}\n";
+
+/// The reference assemblies of the pinned SDK (`packs/Microsoft.NETCore.App.Ref/<v>/ref/<tfm>`),
+/// standing in for the .NET Standard references a Unity install ships.
+fn dotnet_ref_dir(dotnet: &Path) -> PathBuf {
+    let packs = dotnet.parent().expect("dotnet dir").join("packs/Microsoft.NETCore.App.Ref");
+    let version = std::fs::read_dir(&packs).expect("Microsoft.NETCore.App.Ref").flatten().map(|e| e.path()).max().expect("a ref pack version");
+    std::fs::read_dir(version.join("ref")).expect("ref").flatten().map(|e| e.path()).max().expect("a ref tfm")
+}
+
+/// Compiles `source` into `out` with the pinned SDK's `csc`, against the SDK's references.
+fn csc(dotnet: &Path, source: &Path, out: &Path) {
+    let sdk = std::fs::read_dir(dotnet.parent().expect("dotnet dir").join("sdk")).expect("sdk dir").flatten().map(|e| e.path()).max().expect("an SDK");
+    let refs = dotnet_ref_dir(dotnet);
+    let status = Command::new(dotnet)
+        .arg(sdk.join("Roslyn/bincore/csc.dll"))
+        .args(["-nologo", "-noconfig", "-nostdlib", "-target:library"])
+        .arg(format!("-out:{}", out.display()))
+        .arg(format!("-r:{}", refs.join("System.Runtime.dll").display()))
+        .arg(source)
+        .stdin(std::process::Stdio::null())
+        .status()
+        .expect("run csc");
+    assert!(status.success(), "csc failed on {}", source.display());
+}
+
+/// A Unity-shaped project in `<dir>/repo`: `Assets/`, `ProjectSettings/`, and the `.sln` and
+/// SDK-style `Assembly-CSharp.csproj` that Unity's Visual Studio Editor package generates. The
+/// project references a stub `UnityEngine.dll`, compiled into `<dir>/Unity/Editor/Data/Managed`
+/// (outside the project, like a Unity install). `with_solution: false` leaves the generated
+/// files out.
+pub fn unity_project(dir: &Path, with_solution: bool) -> Repo {
+    let dotnet = dotnet().expect("pinned dotnet");
+    let managed = dir.join("Unity/Editor/Data/Managed");
+    std::fs::create_dir_all(&managed).expect("managed dir");
+    std::fs::write(managed.join("UnityEngine.cs"), UNITY_ENGINE_CS).expect("stub source");
+    let engine = managed.join("UnityEngine.dll");
+    csc(&dotnet, &managed.join("UnityEngine.cs"), &engine);
+    std::fs::remove_file(managed.join("UnityEngine.cs")).expect("remove stub source");
+
+    let r = Repo::init(dir.join("repo"));
+    r.write(".gitignore", "Library/\nTemp/\nobj/\n*.csproj\n*.sln\n");
+    r.write("NuGet.Config", NUGET_CONFIG);
+    r.write(".harwex/ide.toml", &csharp_ide_toml());
+    r.write("ProjectSettings/ProjectVersion.txt", "m_EditorVersion: 6000.0.30f1\n");
+    r.write("Assets/Scripts/Player.cs", PLAYER_CS);
+    r.write("Assets/Scripts/Spawner.cs", SPAWNER_CS);
+    if with_solution {
+        let refs = dotnet_ref_dir(&dotnet);
+        r.write("repo.sln", &sln(&[("Assembly-CSharp", "Assembly-CSharp.csproj", "33333333-3333-3333-3333-333333333333")]));
+        r.write(
+            "Assembly-CSharp.csproj",
+            &format!(
+                "<Project ToolsVersion=\"Current\">\n  <!-- Generated file, do not modify, your changes will be overwritten (use AssetPostprocessor.OnGeneratedCSProject) -->\n  <PropertyGroup>\n    <BaseIntermediateOutputPath>Temp\\obj\\$(Configuration)\\$(MSBuildProjectName)</BaseIntermediateOutputPath>\n    <IntermediateOutputPath>$(BaseIntermediateOutputPath)</IntermediateOutputPath>\n  </PropertyGroup>\n  <Import Project=\"Sdk.props\" Sdk=\"Microsoft.NET.Sdk\" />\n  <PropertyGroup>\n    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>\n    <EnableDefaultItems>false</EnableDefaultItems>\n    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>\n    <LangVersion>9.0</LangVersion>\n    <Configuration Condition=\" '$(Configuration)' == '' \">Debug</Configuration>\n    <Platform Condition=\" '$(Platform)' == '' \">AnyCPU</Platform>\n    <OutputType>Library</OutputType>\n    <AssemblyName>Assembly-CSharp</AssemblyName>\n    <TargetFramework>netstandard2.1</TargetFramework>\n    <BaseDirectory>.</BaseDirectory>\n  </PropertyGroup>\n  <PropertyGroup>\n    <NoStandardLibraries>true</NoStandardLibraries>\n    <NoStdLib>true</NoStdLib>\n    <NoConfig>true</NoConfig>\n    <DisableImplicitFrameworkReferences>true</DisableImplicitFrameworkReferences>\n    <MSBuildWarningsAsMessages>MSB3277</MSBuildWarningsAsMessages>\n  </PropertyGroup>\n  <ItemGroup>\n    <Compile Include=\"Assets\\Scripts\\Player.cs\" />\n    <Compile Include=\"Assets\\Scripts\\Spawner.cs\" />\n  </ItemGroup>\n  <ItemGroup>\n    <Reference Include=\"UnityEngine\">\n      <HintPath>{}</HintPath>\n      <Private>False</Private>\n    </Reference>\n    <Reference Include=\"{}/*.dll\" />\n  </ItemGroup>\n  <Import Project=\"Sdk.targets\" Sdk=\"Microsoft.NET.Sdk\" />\n</Project>\n",
+                engine.display(),
+                refs.display()
+            ),
+        );
+    }
+    r.commit_all("Unity project");
+    r
+}

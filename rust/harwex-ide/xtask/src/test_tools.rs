@@ -16,8 +16,15 @@
 //!   tarball and its integrity, so the whole tree is pinned, not only the top packages.
 //! - `rust-analyzer/rust-analyzer`: the binary from the `rust-analyzer-preview` component.
 //! - `rust-src/lib/rustlib/src/rust/library`: the standard library sources.
+//! - `clangd/bin/clangd` and `clangd/lib/clang/<major>/include`: the clangd release build from
+//!   github.com/clangd/clangd (macOS universal, Linux x64), checked against a pinned sha256.
 //! - `nextest/cargo-nextest`: the cargo-nextest release binary, the test runner with per-test
 //!   time limits (`.config/nextest.toml`). `cargo xtask nextest` runs it.
+//! - `dotnet/`: the .NET SDK archive as published (`dotnet`, `sdk/`, `shared/`, `packs/`), and
+//!   `roslyn/`: the `tools/net10.0/<rid>` dir of the `roslyn-language-server.<rid>` NuGet
+//!   package (`Microsoft.CodeAnalysis.LanguageServer.dll`, run as `dotnet <dll>`). Both are
+//!   checked against pinned sha512 values. The C# suite keeps the SDK's own writes (first-run
+//!   files, NuGet caches) in `dotnet-home/`, which this task never touches.
 //!
 //! The downloads use the system `curl`, `shasum` and `tar` (all present on macOS), so xtask
 //! stays std-only. npm tarballs are checked against the registry's `dist.integrity` (sha512).
@@ -59,6 +66,31 @@ const NEXTEST_SHA256: &[(&str, &str)] = &[
     ("universal-apple-darwin", "39785160b3c2f6ed9a765049cf4fa79f3b39aa02eb7598a5a0e2a1a0b9ffb9a8"),
     ("x86_64-unknown-linux-gnu", "682c21b777c333e96fd532e114d3a5a894e0729ab88d94c0a9f20f8419695428"),
     ("aarch64-unknown-linux-gnu", "b2e33d7c72de7ade0ff7b3a948ac37516b24f8a836b7a8870c1f634a94be9de9"),
+];
+
+/// clangd, the C/C++ language server, as the release zip of github.com/clangd/clangd. The
+/// sha256 values are the GitHub release asset digests, per zip name.
+pub const CLANGD: &str = "22.1.6";
+const CLANGD_SHA256: &[(&str, &str)] = &[
+    ("mac", "631aef462556cbd74e0ebaae1778a38d1997d0ba3371652ca54f82652a179e7d"),
+    ("linux", "a9c77443af2e447ed467e84771848d3a6ac1c56f84bcfcde717e66318de77cfa"),
+];
+
+/// The .NET SDK and the Roslyn language server for the C# suite (`csharp_nav`). The SDK is
+/// the official archive (sha512 from the release metadata at
+/// `builds.dotnet.microsoft.com/dotnet/release-metadata/10.0/releases.json`); Roslyn LS is
+/// the `roslyn-language-server.<rid>` dotnet tool package from nuget.org (MIT; sha512 from the
+/// package's catalog entry). The server is framework-dependent and needs the SDK's runtime and
+/// MSBuild. Both are big: about 230 MB + 70 MB to download, 700 MB + 180 MB unpacked.
+pub const DOTNET_SDK: &str = "10.0.401";
+const DOTNET_SDK_SHA512: &[(&str, &str)] = &[
+    ("osx-arm64", "69f64eb00dc045398755c440b152225d544301a345a146a16e86a56a0c52b7c94b2c331520e976dbb821f18d31930aafbd25bb85961e3517e0665414ce0cbcff"),
+    ("linux-x64", "51c8b999af9e8dd9998c9edc5944e19a90788862068acd38694e098889054ce8c23d4f0c5cccfa16bf187d044562359e5ee69a9f8ad0bbe913ba90311fbce25b"),
+];
+pub const ROSLYN: &str = "5.12.0-1.26475.2";
+const ROSLYN_SHA512: &[(&str, &str)] = &[
+    ("osx-arm64", "347f756e08a5818ab698c7da80a0a7eae06c4d656448eeec2c3f8fa26226d05a7eb3b1ea012299662638b84f72685279027244260b9977b89981285540c0d9a9"),
+    ("linux-x64", "2a25c7a8e388b730f9583f0028b51ea32d8d0f4a395f94ad98d98c078dbc21e1483c0ea02143646d1156716e37d95064925aa07e6084a2702229f27ea52f9bbe"),
 ];
 
 const STAMP: &str = ".harwex-tools";
@@ -127,6 +159,19 @@ pub fn run(tools: &Path) -> Result<(), String> {
         move_into(&stage.join(&top).join("rust-src/lib"), &stage.join("lib"))?;
         remove(&stage.join(&top))
     })?;
+    match clangd_asset(&triple) {
+        Some((os, sha256)) => provision(tools, "clangd", &[("clangd", CLANGD), ("os", os)], |stage| {
+            let url = format!("https://github.com/clangd/clangd/releases/download/{CLANGD}/clangd-{os}-{CLANGD}.zip");
+            let file = fetch(stage, &url, Hash::Sha256(sha256))?;
+            unzip(&file, stage)?;
+            // The zip holds `clangd_<version>/{bin,lib}`.
+            let top = stage.join(format!("clangd_{CLANGD}"));
+            move_into(&top.join("bin"), &stage.join("bin"))?;
+            move_into(&top.join("lib"), &stage.join("lib"))?;
+            remove(&top)
+        })?,
+        None => println!("skip    clangd (no pinned build for {triple})"),
+    }
     match nextest_target(&triple) {
         Some((target, sha256)) => provision(tools, "nextest", &[("cargo-nextest", NEXTEST), ("target", target)], |stage| {
             let url = format!("https://github.com/nextest-rs/nextest/releases/download/cargo-nextest-{NEXTEST}/cargo-nextest-{NEXTEST}-{target}.tar.gz");
@@ -135,6 +180,7 @@ pub fn run(tools: &Path) -> Result<(), String> {
         })?,
         None => println!("skip    nextest (no pinned build for {triple}; cargo test still works)"),
     }
+    provision_dotnet(tools, &triple)?;
 
     println!();
     println!("test tools in {}:", tools.display());
@@ -145,14 +191,87 @@ pub fn run(tools: &Path) -> Result<(), String> {
     println!("  eslint {ESLINT:<12} eslint/node_modules/eslint         (override: HARWEX_TEST_ESLINT, typescript-eslint {TYPESCRIPT_ESLINT})");
     println!("  rust-analyzer {RUST:<5} rust-analyzer/bin/rust-analyzer   (override: HARWEX_RUST_ANALYZER)");
     println!("  rust-src {RUST:<10} rust-src/lib/rustlib/src/rust/library (override: RUST_SRC_PATH)");
+    println!("  clangd {CLANGD:<12} clangd/bin/clangd                  (override: HARWEX_TEST_CLANGD)");
     println!("  cargo-nextest {NEXTEST} nextest/cargo-nextest             (run: cargo xtask nextest)");
+    println!("  dotnet sdk {DOTNET_SDK:<8} dotnet/dotnet                     (override: HARWEX_TEST_DOTNET)");
+    println!("  roslyn {ROSLYN} roslyn/roslyn-language-server (override: HARWEX_TEST_ROSLYN)");
     Ok(())
+}
+
+/// The .NET runtime identifier of a rustc host triple, for the platforms with pinned hashes.
+fn dotnet_rid(triple: &str) -> Option<&'static str> {
+    match triple {
+        "aarch64-apple-darwin" => Some("osx-arm64"),
+        "x86_64-unknown-linux-gnu" => Some("linux-x64"),
+        _ => None,
+    }
+}
+
+/// `tools/dotnet` (the SDK archive as is: `dotnet`, `sdk/`, `shared/`, `packs/`) and
+/// `tools/roslyn` (the server's `tools/net10.0/<rid>/` dir of the NuGet package).
+fn provision_dotnet(tools: &Path, triple: &str) -> Result<(), String> {
+    let Some(rid) = dotnet_rid(triple) else {
+        println!("skip    dotnet and roslyn (no pinned build for {triple}; the C# suite skips)");
+        return Ok(());
+    };
+    let pick = |table: &[(&str, &'static str)]| table.iter().find(|(r, _)| *r == rid).map(|(_, h)| *h).ok_or_else(|| format!("no pinned hash for {rid}"));
+    let sdk_hash = pick(DOTNET_SDK_SHA512)?;
+    provision(tools, "dotnet", &[("dotnet-sdk", DOTNET_SDK), ("rid", rid)], |stage| {
+        let url = format!("https://builds.dotnet.microsoft.com/dotnet/Sdk/{DOTNET_SDK}/dotnet-sdk-{DOTNET_SDK}-{rid}.tar.gz");
+        let file = fetch(stage, &url, Hash::Sha512(sdk_hash))?;
+        unpack(&file, stage, &[])
+    })?;
+    let roslyn_hash = pick(ROSLYN_SHA512)?;
+    provision(tools, "roslyn", &[("roslyn-language-server", ROSLYN), ("rid", rid)], |stage| {
+        let id = format!("roslyn-language-server.{rid}");
+        let url = format!("https://api.nuget.org/v3-flatcontainer/{id}/{ROSLYN}/{id}.{ROSLYN}.nupkg");
+        let file = fetch(stage, &url, Hash::Sha512(roslyn_hash))?;
+        let inner = format!("tools/net10.0/{rid}");
+        let unpacked = stage.join(".unpacked");
+        fs::create_dir_all(&unpacked).map_err(|e| e.to_string())?;
+        let status = Command::new("unzip")
+            .arg("-q")
+            .arg(&file)
+            .arg(format!("{inner}/*"))
+            .arg("-d")
+            .arg(&unpacked)
+            .stdin(Stdio::null())
+            .status()
+            .map_err(|e| format!("cannot start unzip: {e}"))?;
+        let _ = fs::remove_file(&file);
+        if !status.success() {
+            return Err(format!("unzip failed on {id}.{ROSLYN}.nupkg ({status})"));
+        }
+        for entry in fs::read_dir(unpacked.join(&inner)).map_err(|e| e.to_string())?.flatten() {
+            move_into(&entry.path(), &stage.join(entry.file_name()))?;
+        }
+        remove(&unpacked)?;
+        // A zip keeps no exec bit; the tool's entry point is a native apphost.
+        let exe = stage.join("roslyn-language-server");
+        let status = Command::new("chmod").arg("+x").arg(&exe).status().map_err(|e| format!("cannot start chmod: {e}"))?;
+        if !status.success() {
+            return Err(format!("chmod +x {} failed", exe.display()));
+        }
+        Ok(())
+    })
 }
 
 /// The nextest release target for a rustc host triple, with its pinned sha256.
 fn nextest_target(triple: &str) -> Option<(&'static str, &'static str)> {
     let target = if triple.ends_with("-apple-darwin") { "universal-apple-darwin" } else { triple };
     NEXTEST_SHA256.iter().find(|(t, _)| *t == target).copied()
+}
+
+/// The clangd release zip for a rustc host triple (`mac` is universal), with its pinned sha256.
+fn clangd_asset(triple: &str) -> Option<(&'static str, &'static str)> {
+    let os = if triple.ends_with("-apple-darwin") {
+        "mac"
+    } else if triple == "x86_64-unknown-linux-gnu" {
+        "linux"
+    } else {
+        return None;
+    };
+    CLANGD_SHA256.iter().find(|(o, _)| *o == os).copied()
 }
 
 /// `tools/nextest/cargo-nextest`.
@@ -323,6 +442,7 @@ enum Hash<'a> {
     Sha256(&'a str),
     /// The base64 digest from npm's `sha512-<base64>` integrity string.
     Sha512Base64(&'a str),
+    Sha512(&'a str),
 }
 
 /// Downloads `url` into `stage/.download` and checks its digest.
@@ -332,6 +452,7 @@ fn fetch(stage: &Path, url: &str, expected: Hash) -> Result<PathBuf, String> {
     let (got, want) = match expected {
         Hash::Sha256(hex) => (sha_hex(&file, 256)?, hex.to_string()),
         Hash::Sha512Base64(b64) => (base64(&from_hex(&sha_hex(&file, 512)?)?), b64.to_string()),
+        Hash::Sha512(hex) => (sha_hex(&file, 512)?, hex.to_string()),
     };
     if got != want {
         let _ = fs::remove_file(&file);
@@ -354,6 +475,25 @@ fn unpack(file: &Path, out: &Path, members: &[String]) -> Result<(), String> {
     let _ = fs::remove_file(file);
     if !status.success() {
         return Err(format!("tar failed on {} ({status})", file.display()));
+    }
+    Ok(())
+}
+
+/// Unpacks a zip into `out` and deletes it: bsdtar reads zips on macOS, `unzip` elsewhere.
+fn unzip(file: &Path, out: &Path) -> Result<(), String> {
+    let mut cmd = if cfg!(target_os = "macos") {
+        let mut c = Command::new("tar");
+        c.arg("-xf").arg(file).arg("-C").arg(out);
+        c
+    } else {
+        let mut c = Command::new("unzip");
+        c.arg("-q").arg(file).arg("-d").arg(out);
+        c
+    };
+    let status = cmd.stdin(Stdio::null()).status().map_err(|e| format!("cannot unpack {}: {e}", file.display()))?;
+    let _ = fs::remove_file(file);
+    if !status.success() {
+        return Err(format!("unpacking {} failed ({status})", file.display()));
     }
     Ok(())
 }
@@ -560,6 +700,26 @@ mod tests {
         assert_eq!(nextest_target("x86_64-unknown-linux-gnu").map(|t| t.0), Some("x86_64-unknown-linux-gnu"));
         assert_eq!(nextest_target("x86_64-pc-windows-msvc"), None);
         assert!(NEXTEST_SHA256.iter().all(|(_, h)| h.len() == 64 && from_hex(h).is_ok()));
+    }
+
+    #[test]
+    fn clangd_assets_cover_macos_and_linux() {
+        assert_eq!(clangd_asset("aarch64-apple-darwin").map(|t| t.0), Some("mac"));
+        assert_eq!(clangd_asset("x86_64-unknown-linux-gnu").map(|t| t.0), Some("linux"));
+        assert_eq!(clangd_asset("aarch64-unknown-linux-gnu"), None);
+        assert!(CLANGD_SHA256.iter().all(|(_, h)| h.len() == 64 && from_hex(h).is_ok()));
+    }
+
+    #[test]
+    fn dotnet_pins_cover_every_rid() {
+        for triple in ["aarch64-apple-darwin", "x86_64-unknown-linux-gnu"] {
+            let rid = dotnet_rid(triple).unwrap();
+            for table in [DOTNET_SDK_SHA512, ROSLYN_SHA512] {
+                let (_, h) = table.iter().find(|(r, _)| *r == rid).unwrap_or_else(|| panic!("no hash for {rid}"));
+                assert!(h.len() == 128 && from_hex(h).is_ok(), "{rid}: {h}");
+            }
+        }
+        assert_eq!(dotnet_rid("x86_64-pc-windows-msvc"), None);
     }
 
     #[test]

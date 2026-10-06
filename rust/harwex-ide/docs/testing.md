@@ -20,7 +20,7 @@ cargo xtask nextest --workspace                  # everything, with a time limit
 cargo xtask nextest -p harwex-ide -E 'test(/^git_history::/)'   # one suite under nextest
 ```
 
-Suites are the modules in `app/tests/app/` (`shell`, `editor`, `navigation` with tsserver, `rust_nav` with rust-analyzer, `terminal`, `git_changes`, `git_history`, ...); `ls app/tests/app` lists them. A test is named `<suite>::<test>`.
+Suites are the modules in `app/tests/app/` (`shell`, `editor`, `navigation` with tsserver, `rust_nav` with rust-analyzer, `cpp_nav` with clangd, `unreal_nav` with clangd and a fake engine tree, `csharp_nav` with the Roslyn C# server, `terminal`, `git_changes`, `git_history`, ...); `ls app/tests/app` lists them. A test is named `<suite>::<test>`.
 
 ## One full run at a time
 
@@ -63,7 +63,7 @@ The language-server suites run against pinned tools, never against another repos
 cargo xtask test-tools
 ```
 
-It downloads into `target/tools/` (or `$CARGO_TARGET_DIR/tools/`) and verifies every file: cargo-nextest 0.9.146 (`nextest/cargo-nextest`, the release binary checked against the release's sha256), TypeScript 5.9.3 (`ts5/`), TypeScript 7.0.2 with its platform package (`ts7/`), oxlint 1.77.0 with its native binding, `oxlint-tsgolint` 7.0.2002 and its platform binary (`oxlint/`), oxfmt 0.72.0 with its native binding and `tinypool` (`oxfmt/`), ESLint 10.12.0 with `@eslint/js`, typescript-eslint 8.71.0 and TypeScript 5.9.3 as a full npm tree pinned by `xtask/src/eslint.lock` (`eslint/`), rust-analyzer (`rust-analyzer/bin`, plus the `librustc_driver` it links) and rust-src (`rust-src/lib/rustlib/src/rust/library`). The pins are at the top of `xtask/src/test_tools.rs`. A second run needs no network. `cargo clean` deletes the tools.
+It downloads into `target/tools/` (or `$CARGO_TARGET_DIR/tools/`) and verifies every file: cargo-nextest 0.9.146 (`nextest/cargo-nextest`, the release binary checked against the release's sha256), TypeScript 5.9.3 (`ts5/`), TypeScript 7.0.2 with its platform package (`ts7/`), oxlint 1.77.0 with its native binding, `oxlint-tsgolint` 7.0.2002 and its platform binary (`oxlint/`), oxfmt 0.72.0 with its native binding and `tinypool` (`oxfmt/`), ESLint 10.12.0 with `@eslint/js`, typescript-eslint 8.71.0 and TypeScript 5.9.3 as a full npm tree pinned by `xtask/src/eslint.lock` (`eslint/`), rust-analyzer (`rust-analyzer/bin`, plus the `librustc_driver` it links) rust-src (`rust-src/lib/rustlib/src/rust/library`) and clangd 22.1.6 (`clangd/bin/clangd` with its `lib/clang` headers, the release zip of github.com/clangd/clangd checked against a pinned sha256; macOS universal and Linux x64), the .NET SDK 10.0.401 (`dotnet/`, the official archive checked against the sha512 of Microsoft's release metadata) and the Roslyn language server 5.12.0-1.26475.2 (`roslyn/`, the `roslyn-language-server.<rid>` package from nuget.org checked against the sha512 of its catalog entry; macOS arm64 and Linux x64). The pins are at the top of `xtask/src/test_tools.rs`. A second run needs no network. `cargo clean` deletes the tools.
 
 Each test helper looks up a tool in one order: the env override, then `target/tools/`, then it prints a `skipping ...` line that says to run `cargo xtask test-tools`, and the test passes.
 
@@ -76,8 +76,11 @@ Each test helper looks up a tool in one order: the env override, then `target/to
 | ESLint (a `node_modules` dir with `eslint`, `@eslint/js`, `typescript-eslint`, `typescript`) | `HARWEX_TEST_ESLINT` | `app/tests/common/fixtures.rs` `eslint_modules()` |
 | rust-analyzer | `HARWEX_RUST_ANALYZER` | `app/tests/common/fixtures.rs` `use_test_rust_tools()` |
 | rust-src `library` dir | `RUST_SRC_PATH` | same |
+| .NET SDK (`dotnet`) | `HARWEX_TEST_DOTNET` | `app/tests/common/fixtures.rs` `dotnet()`; `use_test_dotnet_env()` points the app's `HARWEX_DOTNET` at it |
+| Roslyn language server (its folder) | `HARWEX_TEST_ROSLYN` | `app/tests/common/fixtures.rs` `roslyn()`; `use_test_dotnet_env()` points the app's `HARWEX_ROSLYN` at it |
+| clangd | `HARWEX_TEST_CLANGD` | `app/tests/common/fixtures.rs` `clangd()`; `use_test_clangd()` points the app's `HARWEX_CLANGD` at it |
 
-A rust-analyzer on PATH or a rust-src in rustup is not used, so a run never passes by luck. Never install either into `~/.rustup` for the tests.
+A rust-analyzer on PATH or a rust-src in rustup is not used, so a run never passes by luck. A clangd on PATH or in Xcode is not used either: every test that opens a C or C++ file gets the pinned clangd through `HARWEX_CLANGD`, and `cpp_nav` also names it in `[cpp] clangd`. `cpp_nav` still reads the macOS SDK headers for `<vector>`; clangd finds the SDK the way the system compiler does. A `dotnet` on PATH or in `~/.dotnet` and a C# server of VS Code are not used either: every test gets the pinned SDK and server through `HARWEX_DOTNET` and `HARWEX_ROSLYN`, and `csharp_nav` also names them in `[csharp]`. `use_test_dotnet_env()` sets `DOTNET_CLI_HOME`, `NUGET_PACKAGES` and the NuGet cache paths to `<target>/tools/dotnet-home`, so the restores the server runs never write to `~/.dotnet` or `~/.nuget`, and the fixtures carry a `NuGet.Config` without package sources, so a restore never needs the network. The two downloads are big: about 230 MB + 70 MB, 650 MB + 180 MB unpacked, so a clean-check downloads 300 MB more. Never install either into `~/.rustup` for the tests, and never install .NET tools globally (`dotnet tool install -g`) for them.
 
 The timing checks that used to read other repositories now run on generated trees: `crates/ide-git/tests/git/large_repo.rs` (4000 files, about 1400 commits with merges, a dirty worktree), `crates/ide-ts/tests/ts/workspace.rs` (40 linked workspace packages and a `.d.ts` + `.js` dependency) and `app/tests/app/lint_budget.rs` (ESLint and oxlint on 200 packages, without and with type-aware rules). Their budgets are in `docs/timings.md`.
 

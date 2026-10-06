@@ -201,3 +201,21 @@ fn missing_server_says_how_to_install() {
     assert_eq!(ide.state().ws.langs.status(LangId::Rust, &path).as_deref(), Some("no rust-analyzer"));
     ide.snapshot("missing_server");
 }
+
+#[test]
+fn rename_symbol_edits_both_crates() {
+    let Some((fx, mut ide)) = open_main("rename", None) else { return };
+    let p = ide.caret_pos(3, 17);
+    ide.click_at(p);
+    ide.key_mods(egui::Modifiers::SHIFT, Key::F6);
+    ide.settle();
+    ide.type_text("plus");
+    ide.key(Key::Enter);
+    ide.wait_until("rename preview", |ide| ide.shows_text("Rename `add` to `plus`: 4 occurrences in 2 files"));
+    ide.key(Key::Enter);
+    let lib = fx.path("repo").join("util/src/lib.rs");
+    ide.wait_until("util renamed", move |_| std::fs::read_to_string(&lib).is_ok_and(|t| t.contains("pub fn plus(a: i32")));
+    ide.settle();
+    assert!(ide.active_text().contains("use util::plus;") && ide.active_text().contains("let again = plus(3, 4);"));
+    finish(ide);
+}

@@ -91,13 +91,15 @@ pub struct Plan {
     pub ts: bool,
     pub oxlint: Option<OxlintPlan>,
     pub eslint: Option<EslintPlan>,
+    /// Ask this language's own server (clangd for C/C++); no package detection.
+    pub server: Option<crate::lang::LangId>,
     /// Why a configured source is not used; shown once in the log.
     pub notes: Vec<String>,
 }
 
 impl Plan {
     pub fn is_empty(&self) -> bool {
-        !self.ts && self.oxlint.is_none() && self.eslint.is_none()
+        !self.ts && self.oxlint.is_none() && self.eslint.is_none() && self.server.is_none()
     }
 }
 
@@ -153,7 +155,7 @@ pub fn plan(ts_server: bool, markers: &Markers, config: &DiagnosticsConfig) -> P
     };
     let ts = ts_server && config.ts != Some(false) && !oxlint.as_ref().is_some_and(|o| o.type_check);
     let eslint = eslint_plan(markers, config, &mut notes);
-    Plan { ts, oxlint, eslint, notes }
+    Plan { ts, oxlint, eslint, server: None, notes }
 }
 
 fn eslint_plan(markers: &Markers, config: &DiagnosticsConfig, notes: &mut Vec<String>) -> Option<EslintPlan> {
@@ -332,7 +334,7 @@ mod tests {
     #[test]
     fn no_linter_means_ts_server_only() {
         let p = plan(true, &Markers::default(), &DiagnosticsConfig::default());
-        assert_eq!(p, Plan { ts: true, oxlint: None, eslint: None, notes: vec![] });
+        assert_eq!(p, Plan { ts: true, oxlint: None, eslint: None, server: None, notes: vec![] });
         assert!(plan(false, &Markers::default(), &DiagnosticsConfig::default()).is_empty());
     }
 

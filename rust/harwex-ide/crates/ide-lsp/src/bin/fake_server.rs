@@ -38,6 +38,10 @@ fn main() {
     let mut waiting_config: Option<Value> = None;
     let mut cancelled: Vec<Value> = Vec::new();
     let mut renamed: Vec<Value> = Vec::new();
+    // Every notification method in arrival order (`test/notified`).
+    let mut notified: Vec<String> = Vec::new();
+    // `test/virtualDefinitions`: definitions point at a `fake-virtual://` document.
+    let mut virtual_defs = false;
 
     while let Ok(Some(msg)) = read_message(&mut reader) {
         let method = msg["method"].as_str().unwrap_or_default().to_string();
@@ -54,6 +58,9 @@ fn main() {
         }
         let uri = params["textDocument"]["uri"].as_str().unwrap_or_default().to_string();
         let position = params["position"].clone();
+        if id.is_none() {
+            notified.push(method.clone());
+        }
         match (method.as_str(), id) {
             ("initialize", Some(id)) => {
                 init_params = params;
@@ -92,6 +99,19 @@ fn main() {
                 docs.remove(&uri);
             }
             ("$/cancelRequest", None) => cancelled.push(params["id"].clone()),
+            ("textDocument/definition", Some(id)) if virtual_defs => {
+                let range = json!({"start": {"line": 1, "character": 6}, "end": {"line": 1, "character": 11}});
+                reply(&out, &id, json!([{"uri": "fake-virtual://lib/Thing.cs?x=1", "range": range}]));
+            }
+            ("fake/virtualText", Some(id)) => {
+                let text = format!("// {uri}\nclass Thing {{}}\n");
+                reply(&out, &id, json!({"text": text}));
+            }
+            ("test/virtualDefinitions", Some(id)) => {
+                virtual_defs = true;
+                reply(&out, &id, Value::Null);
+            }
+            ("test/notified", Some(id)) => reply(&out, &id, json!(notified)),
             ("textDocument/definition" | "textDocument/typeDefinition", Some(id)) => {
                 if content_modified_left > 0 {
                     content_modified_left -= 1;
@@ -159,6 +179,22 @@ fn main() {
                         "edits": [{"range": {"start": {"line": 0, "character": 0}, "end": {"line": 0, "character": 0}}, "newText": text}]}))
                     .collect();
                 reply(&out, &id, json!({"documentChanges": changes}));
+            }
+            // Renames the word at the position in its document only, with `changes`.
+            ("textDocument/rename", Some(id)) => {
+                let text = docs.get(&uri).map(|(_, t)| t.clone()).unwrap_or_default();
+                let line_no = position["line"].as_u64().unwrap_or(0) as usize;
+                let col = position["character"].as_u64().unwrap_or(0) as usize;
+                let line: Vec<u16> = text.lines().nth(line_no).unwrap_or_default().encode_utf16().collect();
+                let word = |c: u16| char::from_u32(u32::from(c)).is_some_and(|c| c.is_alphanumeric() || c == '_');
+                let start = (0..col.min(line.len())).rev().take_while(|&i| word(line[i])).last().unwrap_or(col);
+                let end = (col..line.len()).take_while(|&i| word(line[i])).last().map_or(col, |i| i + 1);
+                if start == end {
+                    reply_error(&out, &id, -32602, "no symbol here");
+                    continue;
+                }
+                let range = json!({"start": {"line": line_no, "character": start}, "end": {"line": line_no, "character": end}});
+                reply(&out, &id, json!({"changes": {uri: [{"range": range, "newText": params["newName"]}]}}));
             }
             ("workspace/didRenameFiles", None) => renamed.extend(params["files"].as_array().cloned().unwrap_or_default()),
             ("test/renamed", Some(id)) => reply(&out, &id, json!(renamed)),

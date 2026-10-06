@@ -45,6 +45,7 @@ impl LspClient {
     pub fn locations(&self, method: &str, path: &Path, line: usize, column: usize, timeout: Duration) -> Result<Vec<Location>, Error> {
         let (params, _) = self.position_params(path, line, column, timeout)?;
         let result = self.request(method, params, timeout)?;
+        self.fetch_virtual_documents(&result);
         Ok(parse_locations(&mut self.file_texts(), &result))
     }
 
@@ -56,6 +57,7 @@ impl LspClient {
         let position = params.clone();
         params["context"] = json!({"includeDeclaration": true});
         let result = self.request("textDocument/references", params, timeout)?;
+        self.fetch_virtual_documents(&result);
         let mut files = self.file_texts();
         let definitions: HashSet<Location> = self
             .request("textDocument/definition", position.clone(), timeout)
@@ -231,7 +233,10 @@ impl<F: Fn(&Path) -> Option<Arc<str>>> FileTexts<F> {
     /// The canonical path of a result URI, so a result names a file the same way the editor
     /// does (real path, on-disk case).
     pub(crate) fn path(&mut self, uri: &str) -> Option<PathBuf> {
-        self.uris.entry(uri.to_string()).or_insert_with(|| uri_to_path(uri).map(|p| canonical(&p))).clone()
+        self.uris
+            .entry(uri.to_string())
+            .or_insert_with(|| uri_to_path(uri).map(|p| canonical(&p)).or_else(|| crate::virtual_docs::path_for_uri(uri)))
+            .clone()
     }
 }
 

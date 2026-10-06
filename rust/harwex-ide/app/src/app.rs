@@ -182,6 +182,8 @@ impl eframe::App for IdeApp {
         title_bar(s, ctx);
         // Right under the title bar while a merge/rebase/cherry-pick/revert is in progress.
         git::conflicts::banner(s, ctx);
+        // Above the editor while an Unreal project has no compile database (task 085).
+        crate::unreal::banner(s, ctx);
         status_bar(s, ctx);
         let t = &theme::T;
         let unread = s.notifications.unread;
@@ -238,6 +240,8 @@ impl eframe::App for IdeApp {
         crate::tree_menu::show_dialogs(s, ctx);
         crate::settings::show(s, ctx);
         nav::show_popup(s, ctx);
+        crate::rename_symbol::show(s, ctx);
+        crate::unreal::show(s, ctx);
         breadcrumbs::show_popup(s, ctx);
         crate::projects_popup::show(s, ctx);
         confirm_close(s, ctx);
@@ -727,7 +731,13 @@ fn status_right(s: &mut AppState, ui: &mut egui::Ui) {
         match &tab.content {
             TabContent::Editor(e) => {
                 item(ui, e.doc.language().name(), t.text);
-                if let Some(backend) = e.lang.and_then(|l| s.ws.langs.status(l, &e.path)).filter(|_| wide) {
+                let backend = e.lang.and_then(|l| s.ws.langs.status(l, &e.path));
+                // The Unreal project and engine of a C/C++ file: "clangd 22.1 · Game2 · UE 5.8".
+                let backend = match (backend, crate::unreal::status_label(s)) {
+                    (Some(b), Some(u)) => Some(format!("{b} · {u}")),
+                    (b, u) => b.or(u),
+                };
+                if let Some(backend) = backend.filter(|_| wide) {
                     item(ui, &backend, t.text_dim);
                 }
                 if e.read_only {
@@ -1024,6 +1034,8 @@ fn editor_area(s: &mut AppState, ui: &mut egui::Ui) {
             EditorAction::GoToSourceDefinition(p) => nav::request(s, NavKind::SourceDefinition, active, p, anchor),
             EditorAction::GoToTypeDefinition(p) => nav::request(s, NavKind::TypeDefinition, active, p, anchor),
             EditorAction::FindUsages(p) => nav::request(s, NavKind::Usages, active, p, anchor),
+            EditorAction::GoToImplementation(p) => nav::request(s, NavKind::Implementation, active, p, anchor),
+            EditorAction::RenameSymbol(p) => crate::rename_symbol::start(s, active, p),
             other @ (EditorAction::GitAnnotate | EditorAction::GitShowHistory | EditorAction::GitRollbackLines) => {
                 git::on_editor_action(s, active, &other)
             }

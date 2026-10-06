@@ -24,6 +24,8 @@ pub enum NavKind {
     SourceDefinition,
     TypeDefinition,
     Usages,
+    /// Go to Implementation (Cmd+Alt+B): overrides, subclasses, definitions behind a declaration.
+    Implementation,
 }
 
 impl NavKind {
@@ -33,6 +35,7 @@ impl NavKind {
             NavKind::SourceDefinition => "Go to Source Definition",
             NavKind::TypeDefinition => "Go to Type Definition",
             NavKind::Usages => "Find Usages",
+            NavKind::Implementation => "Go to Implementation",
         }
     }
 
@@ -42,6 +45,7 @@ impl NavKind {
             "source" | "source-definition" => NavKind::SourceDefinition,
             "type" | "type-definition" => NavKind::TypeDefinition,
             "usages" | "references" => NavKind::Usages,
+            "implementation" | "implementations" => NavKind::Implementation,
             _ => return None,
         })
     }
@@ -85,6 +89,8 @@ pub struct Navigation {
     pub forward: Vec<NavPoint>,
     pub popup: Option<NavPopup>,
     pub hover: HoverState,
+    /// The Rename Symbol dialog (Shift+F6), while open.
+    pub rename: Option<crate::rename_symbol::RenameSymbol>,
     generation: u64,
     /// Last latency, for the status bar tooltip and the timings log.
     pub last_ms: Option<f64>,
@@ -311,6 +317,7 @@ fn on_result(state: &mut AppState, reply: NavReply) {
                     NavKind::SourceDefinition => "Cannot find source definition",
                     NavKind::TypeDefinition => "Cannot find type definition",
                     NavKind::Usages => "No usages found",
+                    NavKind::Implementation => "No implementations found",
                 },
                 word,
             ),
@@ -319,7 +326,7 @@ fn on_result(state: &mut AppState, reply: NavReply) {
                 jump_from(state, from, &t);
             }
             _ => {
-                state.ws.nav.popup = Some(NavPopup { title: format!("Choose declaration of {word}"), anchor, items: targets, selected: 0, from, keys: Default::default() });
+                state.ws.nav.popup = Some(NavPopup { title: format!("{} of {word}", if kind == NavKind::Implementation { "Choose implementation" } else { "Choose declaration" }), anchor, items: targets, selected: 0, from, keys: Default::default() });
             }
         },
     }
@@ -414,6 +421,10 @@ pub fn show_popup(state: &mut AppState, ctx: &Context) {
 pub fn display_path(root: &Path, path: &Path) -> String {
     if let Ok(rel) = path.strip_prefix(root) {
         return rel.display().to_string();
+    }
+    // A server-generated document lives in a temp dir; its path means nothing to the user.
+    if let Some(kind) = crate::lang::virtual_kind(path) {
+        return format!("[{kind}] {}", path.file_name().map(|n| n.to_string_lossy()).unwrap_or_default());
     }
     let s = path.display().to_string();
     if let Some(i) = s.find("node_modules/") {

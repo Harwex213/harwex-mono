@@ -328,6 +328,82 @@ Cmd+Shift+R открывает то же окно с полем замены. У
 - Первый запуск на большом проекте занимает секунды. Пока сервер грузит проект, статус-бар показывает `rust-analyzer: indexing…`. Запрос в это время ждёт загрузки и не отвечает «не найдено» сразу.
 - Когда загрузка закончена, статус-бар показывает `rust-analyzer`.
 - `rust-analyzer` складывает свою сборку в `target/rust-analyzer`. Поэтому он не блокирует ваш `cargo build`.
+- Cmd+Alt+B — Go to Implementation: реализации трейта и его методов.
+- Shift+F6 или правый клик → Rename Symbol… переименовывает символ во всём workspace. Сначала окно показывает, сколько мест и в каких файлах изменится. Кнопка Rename применяет правку. Открытые файлы сохраняются, правку в них можно отменить через Cmd+Z.
+
+## Переход по коду (C/C++)
+
+Работает в `.c`, `.h`, `.cpp`, `.cc`, `.cxx`, `.hpp` и других заголовках C++. Файл `.h` считается C++.
+
+| Действие | Как |
+|---|---|
+| Go to Declaration | Cmd+B, Cmd+клик. На объявлении Cmd+B ведёт к определению и обратно, как в IDEA |
+| Go to Implementation | Cmd+Alt+B: переопределения виртуального метода, наследники класса |
+| Go to Type Definition | Cmd+Shift+B |
+| Find Usages | Alt+F7 |
+| Rename Symbol | Shift+F6, потом окно с предпросмотром |
+| Подсказка с типом | задержать мышь на имени 0.5 с |
+
+- Код обслуживает `clangd`. IDE не скачивает его. IDE ищет `clangd` так: `clangd` из `[cpp]` в `.harwex/ide.toml`, потом PATH, потом `xcrun --find clangd` (Xcode или Command Line Tools), потом Homebrew LLVM (`/opt/homebrew/opt/llvm/bin/clangd`).
+- Если в `[cpp]` задан `clangd`, IDE берёт только его. Неверный путь даёт подсказку.
+- Если `clangd` не найден, справа внизу появится подсказка: `xcode-select --install` или `brew install llvm`.
+- Статус-бар показывает версию: `clangd 22.1.6`. Пока clangd строит индекс, там видно `clangd 22.1.6: indexing…`.
+- Флаги компиляции clangd берёт из `compile_commands.json`. Корень проекта для clangd — ближайшая папка вверх, где есть `compile_commands.json`, `compile_flags.txt`, `build/compile_commands.json`, `cmake-build-*/compile_commands.json` (как в CLion) или `.clangd`. Для папки сборки IDE передаёт `--compile-commands-dir`.
+- Получить `compile_commands.json`: для CMake — `cmake -B build -DCMAKE_EXPORT_COMPILE_COMMANDS=ON`, для make — `bear -- make`.
+- Без базы clangd всё равно работает, но угадывает флаги. Тогда include и макросы могут найтись неверно. IDE один раз показывает подсказку `No compile_commands.json`.
+- Несколько корней в одном проекте — несколько `clangd`. Каждый запускается, когда вы открываете первый файл его корня.
+- Переход открывает и системные заголовки, и STL (`<vector>` из SDK). Такие файлы открываются только для чтения.
+- Ошибки и предупреждения clangd видны в редакторе и в окне Problems.
+- clangd хранит фоновый индекс в `.cache/clangd` рядом с `compile_commands.json`, то есть внутри проекта. Если git не игнорирует эту папку, IDE один раз подскажет добавить `.cache/` в `.gitignore`. `background_index = false` выключает индекс. Тогда Find Usages и переход к определению находят только то, что clangd видит в открытых файлах.
+
+### Unreal Engine
+
+- Проект Unreal — это папка с файлом `*.uproject`. Открытая папка может содержать несколько проектов, например `Sub/Game1` и `Sub/Game2`. Проект файла C/C++ — ближайшая папка над ним с `*.uproject`, но не выше открытой папки. IDE ищет проект только для открытого файла и запоминает ответ для его папки. Всё дерево IDE заранее не сканирует.
+- У каждого проекта свой движок (свой `EngineAssociation`), своя цель, своя база `<проект>/.harwex/unreal/compile_commands.json` и свой clangd.
+- Если в одной папке лежат два `.uproject`, IDE берёт файл из `uproject` в `[unreal]` (или в `[unreal.projects."<папка>"]`). Без этой строки IDE берёт файл с именем папки, иначе первый по имени. Один раз IDE показывает подсказку `Several .uproject files`: какой файл выбран, почему, и как выбрать другой.
+- IDE заново определяет проекты после изменения `.harwex/ide.toml`, а также когда меняется `.uproject`, `Build.version` движка или список установленных движков (`Install.ini`, `LauncherInstalled.dat`).
+- IDE находит движок так: `engine` из `[unreal.projects."<папка>"]` или `[unreal]` в `.harwex/ide.toml`, потом `EngineAssociation` из `.uproject` по списку установок Epic launcher (`LauncherInstalled.dat`), потом список сборок из исходников (`Install.ini`), потом движок вокруг проекта. Эти файлы IDE только читает.
+- У Unreal нет `compile_commands.json`, пока его не напишет UnrealBuildTool. Пока базы нет, над редактором файла C/C++ проекта видна полоса с кнопкой `Generate compile_commands.json (UnrealBuildTool)`. Полоса относится к проекту активного файла и называет его: `Game2: no compile database for clangd yet (Unreal Engine 5.8.0).` `Not now` прячет полосу этого проекта до следующего открытия папки.
+- Статус-бар для файла C/C++ проекта показывает имя проекта и версию движка: `clangd 22.1.6 · Game2 · UE 5.8`.
+- Кнопка сначала показывает диалог: команду и все места, куда она пишет. Сама IDE никогда не запускает UnrealBuildTool. Команда: `<Engine>/Build/BatchFiles/Mac/Build.sh -mode=GenerateClangDatabase -project=<.uproject> -game -engine -OutputDir=<проект>/.harwex/unreal/ubt <Target> Mac Development` (на Linux `Linux/Build.sh` и `Linux`). Target — `<Имя>Editor` из `Source/*.Target.cs`, или `target` в `[unreal]`.
+- UnrealBuildTool пишет полную базу в `.harwex/unreal/ubt` внутри проекта, не в папку движка. IDE оставляет в `.harwex/unreal/compile_commands.json` только файлы проекта и его плагинов. Эту базу читает clangd. Так фоновый индекс охватывает только проект, а файлы движка clangd индексирует, когда вы их открываете. `index_engine = true` оставляет в базе и движок. В `.harwex/unreal` IDE кладёт `.gitignore`, поэтому git эту папку не видит.
+- UnrealBuildTool также пишет состояние сборки в `Intermediate/` проекта. Для движка, собранного из исходников, он пишет сгенерированные файлы ещё и в `Engine/Intermediate`. Диалог говорит об этом.
+- Пока UnrealBuildTool работает, полоса показывает его последнюю строку вывода, а статус-бар — задачу со временем и `×`. `Stop` в полосе или `×` останавливает UnrealBuildTool вместе с дочерними процессами. После успеха перезапускается только clangd этого проекта, и он читает новую базу. Остальные проекты базу и clangd сохраняют.
+- UnrealBuildTool блокирует движок. Поэтому для одного движка одновременно идёт только одна генерация. Вторую IDE не запускает и показывает сообщение `UnrealBuildTool is busy` с именем проекта, который сейчас генерирует. Проекты на разных движках можно генерировать одновременно.
+- Для проекта Unreal clangd запускается с ограничениями для больших кодовых баз: не больше 4 потоков (`-j`), `--header-insertion=never`, `--limit-results=50`, фоновый индекс с низким приоритетом и PCH на диске. Такой же флаг в `[cpp] args` заменяет значение IDE.
+- Заголовки движка (`Engine/Source`, `Engine/Plugins`) открываются только для чтения. Переход в них остаётся на clangd проекта.
+- `UCLASS()`, `GENERATED_BODY()` и `UPROPERTY()` работают только после того, как Unreal Header Tool создал файлы `*.generated.h` в `Intermediate/`. Если такого файла нет, IDE один раз показывает подсказку `Build the project once so Unreal Header Tool generates the headers`.
+
+## Переход по коду (C# и Unity)
+
+Работает в `.cs`.
+
+| Действие | Как |
+|---|---|
+| Go to Declaration | Cmd+B, Cmd+клик |
+| Go to Implementation | Cmd+Alt+B: реализации интерфейса и переопределения метода |
+| Go to Type Definition | Cmd+Shift+B |
+| Find Usages | Alt+F7 |
+| Rename Symbol | Shift+F6, потом окно с предпросмотром |
+| Подсказка с типом | задержать мышь на имени 0.5 с |
+
+- Код обслуживает языковой сервер Roslyn (`Microsoft.CodeAnalysis.LanguageServer`). Это тот же сервер, что работает в расширении C# для VS Code и в C# Dev Kit. Лицензия MIT.
+- IDE не скачивает сервер. IDE ищет его так: `server` из `[csharp]` в `.harwex/ide.toml`, потом сервер из расширения C# для VS Code (`~/.vscode/extensions/ms-dotnettools.csharp-*`, также Cursor и Windsurf), потом dotnet-инструмент `roslyn-language-server`. Если в `[csharp]` задан `server`, IDE берёт только его.
+- Серверу нужен .NET SDK (версия 10 или новее). IDE ищет `dotnet` так: `dotnet` из `[csharp]`, потом `DOTNET_ROOT`, потом PATH, потом `/usr/local/share/dotnet`, потом `~/.dotnet`.
+- Если сервер или SDK не найдены, справа внизу появится подсказка. Установка: .NET SDK с https://dot.net, потом `dotnet tool install --global roslyn-language-server --prerelease`.
+- Один сервер обслуживает одно решение. Корень — ближайшая папка вверх, где есть `.sln` или `.slnx`. Если решений в папке несколько, IDE берёт решение с именем папки, иначе первое по алфавиту. Если решения нет, корень — ближайшая папка с `.csproj`. Тогда сервер открывает все проекты этой папки.
+- Пока сервер грузит решение, статус-бар показывает `Roslyn: loading solution…`. Пока сервер восстанавливает пакеты NuGet, там видно `Roslyn: restoring packages…`. Запрос в это время ждёт загрузки. Потом статус-бар показывает `Roslyn`.
+- Переход в библиотеку (`List<T>`, `UnityEngine.dll`) открывает декомпилированный код. Вкладка называется `[decompiled] List.cs`. Такой файл открывается только для чтения. Из него тоже работают Cmd+B, Alt+F7 и подсказка.
+- Декомпилированные файлы сервер пишет во временную папку (`$TMPDIR/harwex-ide-roslyn`), не в проект. Папка удаляется, когда сервер останавливается.
+- Ошибки и предупреждения компилятора и анализаторов видны в редакторе и в окне Problems, например `csharp(CS0029)`. Скрытые подсказки сервера (`IDE0028` и похожие) IDE не показывает.
+
+### Unity
+
+- IDE узнаёт проект Unity по папкам `Assets/` и `ProjectSettings/`. Статус-бар тогда показывает `Roslyn (Unity)`.
+- Файлы `.sln` и `.csproj` создаёт сам Unity. Если их нет, IDE покажет подсказку: в Unity откройте Edit › Preferences › External Tools, выберите Visual Studio или Visual Studio Code как External Script Editor и нажмите Regenerate project files.
+- Переход в `MonoBehaviour` и другие типы Unity открывает декомпилированный `UnityEngine.dll`.
+- Если проекты подключают анализаторы Unity (`Microsoft.Unity.Analyzers`), их предупреждения тоже видны.
+- Файлы `.meta` IDE не трогает.
 
 ## Языковые серверы
 
@@ -356,6 +432,27 @@ cargo.features = "all"
 [ts]
 idle_timeout_secs = 600
 
+[csharp]
+server = "/path/to/Microsoft.CodeAnalysis.LanguageServer.dll"   # или его папка; без строки IDE ищет сама
+dotnet = "/usr/local/share/dotnet/dotnet"                        # свой dotnet; без строки IDE ищет сама
+idle_timeout_secs = 600
+
+[cpp]
+clangd = "/path/to/clangd"          # свой clangd; без строки IDE ищет сама
+background_index = true             # фоновый индекс clangd; по умолчанию включён
+args = ["--clang-tidy"]             # дополнительные аргументы clangd
+idle_timeout_secs = 600
+
+[unreal]                            # проекты с *.uproject
+engine = "/path/to/UE_5.4"          # папка движка; без строки IDE ищет через Epic launcher
+target = "MyGameEditor"             # цель UnrealBuildTool; по умолчанию <Имя>Editor
+index_engine = false                # оставить движок в базе clangd (индекс станет огромным)
+uproject = "Game.uproject"          # какой .uproject взять, если в папке их несколько
+
+[unreal.projects."Sub/Game2"]       # один проект: его папка относительно открытой
+engine = "/path/to/UE_5.8"          # любые ключи из [unreal]; остальные берутся из [unreal]
+target = "Game2Editor"
+
 [diagnostics]
 ts = true                           # ошибки TypeScript от TS-сервера
 
@@ -379,6 +476,7 @@ interval_secs = 15                  # как часто обновлять па�
 excluded = ["dist", "build/out"]    # папки, которые не ищут Search Everywhere и Find in Files
 ```
 
+- В `languages` есть `ts`, `rust`, `cpp` (C и C++) и `csharp` (C# и Unity).
 - `languages = ["ts"]` выключает Rust. Тогда `.rs` открывается как обычный текст. Cmd+B в нём показывает подсказку.
 - Если задан `server`, IDE берёт только его. Неверный путь даёт подсказку. Другой `rust-analyzer` IDE тогда не ищет.
 - Ошибка в файле не ломает IDE. IDE покажет предупреждение и возьмёт настройки по умолчанию.
@@ -386,7 +484,7 @@ excluded = ["dist", "build/out"]    # папки, которые не ищут S
 
 ## Ошибки и предупреждения
 
-IDE подчёркивает проблемы в открытых файлах `.ts`, `.tsx`, `.js` и `.jsx`.
+IDE подчёркивает проблемы в открытых файлах `.ts`, `.tsx`, `.js` и `.jsx`. В файлах C и C++ проблемы приходят от `clangd` (раздел «Переход по коду (C/C++)»). В файлах C# проблемы приходят от сервера Roslyn (раздел «Переход по коду (C# и Unity)»).
 
 - Красная волна — ошибка. Оранжевая волна — предупреждение. Серая волна — слабое предупреждение. Серые точки — неиспользуемый код.
 - Ошибки TypeScript приходят от TS-сервера. Это тот же сервер, что работает для перехода по коду. Отдельный процесс проверки типов не запускается.

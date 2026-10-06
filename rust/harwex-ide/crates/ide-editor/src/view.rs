@@ -68,6 +68,10 @@ pub enum EditorAction {
     GoToTypeDefinition(Position),
     /// Context menu, Alt+F7.
     FindUsages(Position),
+    /// Context menu, Cmd+Alt+B.
+    GoToImplementation(Position),
+    /// Context menu "Rename Symbol…", Shift+F6. Never sent from a read-only editor.
+    RenameSymbol(Position),
     /// Context menu "Git > Annotate with Git Blame".
     GitAnnotate,
     /// Context menu "Git > Show History".
@@ -1253,7 +1257,9 @@ impl<'a> EditorView<'a> {
             item(ui, "Go to Declaration", "⌘B", true, MenuCmd::Action(EditorAction::GoToDeclaration(menu_pos)));
             item(ui, "Go to Source Definition", "", true, MenuCmd::Action(EditorAction::GoToSourceDefinition(menu_pos)));
             item(ui, "Go to Type Definition", "⇧⌘B", true, MenuCmd::Action(EditorAction::GoToTypeDefinition(menu_pos)));
+            item(ui, "Go to Implementation", "⌥⌘B", true, MenuCmd::Action(EditorAction::GoToImplementation(menu_pos)));
             item(ui, "Find Usages", "⌥F7", true, MenuCmd::Action(EditorAction::FindUsages(menu_pos)));
+            item(ui, "Rename Symbol…", "⇧F6", !read_only, MenuCmd::Action(EditorAction::RenameSymbol(menu_pos)));
             ui.separator();
             item(ui, "Cut", "⌘X", !read_only, MenuCmd::Cut);
             item(ui, "Copy", "⌘C", true, MenuCmd::Copy);
@@ -2386,6 +2392,8 @@ fn is_edit_key(key: Key, m: Modifiers) -> bool {
         Key::Backspace | Key::Delete | Key::Enter | Key::Tab => true,
         Key::Z | Key::D | Key::Slash => m.command,
         Key::Y => m.ctrl && !m.mac_cmd,
+        // Rename Symbol edits files.
+        Key::F6 => m.shift,
         _ => false,
     }
 }
@@ -2534,8 +2542,15 @@ fn on_key(doc: &mut Document, state: &mut EditorState, key: Key, m: Modifiers, p
         }
         Key::B if m.command => {
             let p = doc.char_to_position(head);
-            action = Some(if shift { EditorAction::GoToTypeDefinition(p) } else { EditorAction::GoToDeclaration(p) });
+            action = Some(if m.alt {
+                EditorAction::GoToImplementation(p)
+            } else if shift {
+                EditorAction::GoToTypeDefinition(p)
+            } else {
+                EditorAction::GoToDeclaration(p)
+            });
         }
+        Key::F6 if shift && !m.command && !m.alt => action = Some(EditorAction::RenameSymbol(doc.char_to_position(head))),
         Key::F7 if m.alt => action = Some(EditorAction::FindUsages(doc.char_to_position(head))),
         _ => {}
     }

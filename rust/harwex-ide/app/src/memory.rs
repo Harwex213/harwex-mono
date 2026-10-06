@@ -125,7 +125,8 @@ impl Sample {
 /// The direct child that roots a language server subtree. Its descendants (proc-macro servers,
 /// `cargo check`, typings installers) count with it.
 fn classify(name: &str) -> Kind {
-    let lang = name.contains("rust-analyzer") || name.contains("tsserver") || matches!(name, "node" | "tsc" | "tsgo");
+    // `dotnet` runs the Roslyn C# server (and its MSBuild build hosts below it).
+    let lang = name.contains("rust-analyzer") || name.contains("tsserver") || matches!(name, "node" | "tsc" | "tsgo" | "dotnet");
     if lang {
         Kind::LanguageServer
     } else {

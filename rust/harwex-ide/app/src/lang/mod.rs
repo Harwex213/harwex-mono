@@ -13,9 +13,12 @@
 //! the UI thread (rule 1).
 
 pub mod config;
+pub mod cpp;
+pub mod csharp;
 pub mod restart;
 pub mod rust;
 pub mod ts;
+pub mod unreal;
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -34,16 +37,20 @@ use crate::nav::NavKind;
 pub enum LangId {
     TypeScript,
     Rust,
+    Cpp,
+    CSharp,
 }
 
 impl LangId {
-    pub const ALL: [LangId; 2] = [LangId::TypeScript, LangId::Rust];
+    pub const ALL: [LangId; 4] = [LangId::TypeScript, LangId::Rust, LangId::Cpp, LangId::CSharp];
 
     /// The name used in `.harwex/ide.toml`.
     pub fn key(self) -> &'static str {
         match self {
             LangId::TypeScript => "ts",
             LangId::Rust => "rust",
+            LangId::Cpp => "cpp",
+            LangId::CSharp => "csharp",
         }
     }
 
@@ -51,6 +58,8 @@ impl LangId {
         match s.to_ascii_lowercase().as_str() {
             "ts" | "typescript" | "js" | "javascript" => Some(LangId::TypeScript),
             "rust" | "rs" => Some(LangId::Rust),
+            "cpp" | "c++" | "c" | "cxx" | "clangd" => Some(LangId::Cpp),
+            "csharp" | "cs" | "c#" | "unity" => Some(LangId::CSharp),
             _ => None,
         }
     }
@@ -59,11 +68,16 @@ impl LangId {
         match self {
             LangId::TypeScript => &TS_SPEC,
             LangId::Rust => &RUST_SPEC,
+            LangId::Cpp => &CPP_SPEC,
+            LangId::CSharp => &CSHARP_SPEC,
         }
     }
 
     /// The language of a file by its extension.
     pub fn for_path(path: &Path) -> Option<LangId> {
+        if cpp::is_extensionless_std_header(path) {
+            return Some(LangId::Cpp);
+        }
         let ext = path.extension()?.to_str()?.to_ascii_lowercase();
         LangId::ALL.into_iter().find(|l| l.spec().extensions.contains(&ext.as_str()))
     }
@@ -99,6 +113,25 @@ pub static RUST_SPEC: LanguageSpec = LanguageSpec {
     extensions: &["rs"],
     root_markers: &["Cargo.toml"],
     server: "rust-analyzer from PATH, ~/.cargo/bin or `rustup which rust-analyzer`",
+    concurrent_requests: true,
+};
+
+pub static CPP_SPEC: LanguageSpec = LanguageSpec {
+    id: LangId::Cpp,
+    name: "C and C++",
+    // `.h` is C++ like in the editor (task 073); clangd parses it as C++ without a database.
+    extensions: &["c", "h", "cc", "cpp", "cxx", "c++", "hh", "hpp", "hxx", "h++", "inl", "ipp", "tpp"],
+    root_markers: &["compile_commands.json", "compile_flags.txt", ".clangd", "build/compile_commands.json", "cmake-build-*/compile_commands.json"],
+    server: "clangd from [cpp] clangd in .harwex/ide.toml, PATH, `xcrun --find clangd` or Homebrew LLVM",
+    concurrent_requests: true,
+};
+
+pub static CSHARP_SPEC: LanguageSpec = LanguageSpec {
+    id: LangId::CSharp,
+    name: "C#",
+    extensions: &["cs"],
+    root_markers: &["*.sln", "*.slnx", "*.csproj"],
+    server: "the Roslyn language server from [csharp] server in .harwex/ide.toml, the VS Code C# extension or the roslyn-language-server dotnet tool, run with dotnet",
     concurrent_requests: true,
 };
 
@@ -142,6 +175,11 @@ pub trait LanguageServer: Send + Sync + 'static {
     fn file_references(&self, _path: &Path, _candidates: &[PathBuf]) -> Result<Vec<Reference>, String> {
         Ok(Vec::new())
     }
+    /// Rename Symbol: the edits that rename the symbol at a position to `new_name`. `Err`
+    /// carries the reason a server refuses (or that the language has no rename).
+    fn rename_symbol(&self, _path: &Path, _line: usize, _column: usize, _new_name: &str) -> Result<Vec<FileEdit>, String> {
+        Err("Rename Symbol is not supported for this language yet.".into())
+    }
     /// After a move on disk: forget files under `old`, tell the server about the new names.
     fn files_renamed(&self, _old: &Path, _new: &Path) {}
     /// After a delete: forget files under `path`.
@@ -166,6 +204,15 @@ pub trait LanguageServer: Send + Sync + 'static {
     /// so a server installed since then is found. The next call starts a fresh process.
     fn restart(&self) {
         self.shutdown();
+    }
+    /// Stops the servers of the folder `dir` only and forgets what it cached about the folder;
+    /// the open files among `docs` that they served open again on fresh ones. A language
+    /// without per-folder servers restarts everything.
+    fn restart_root(&self, _dir: &Path, docs: &[(PathBuf, String)]) {
+        self.restart();
+        for (path, text) in docs {
+            self.open(path, text);
+        }
     }
     /// Process ids of the running servers. Must not wait on a busy server.
     fn pids(&self) -> Vec<u32> {
@@ -222,6 +269,8 @@ enum Cmd {
     Run(Run),
     Configure(Box<IdeConfig>),
     Restart(Restart),
+    /// `Bridge::restart_root`: the folder and the open files of this language.
+    RestartRoot(PathBuf, Vec<(PathBuf, String)>),
 }
 
 /// The queue's part of a restart (`Bridge::restart`).
@@ -269,6 +318,8 @@ impl Bridge {
                             // The editor text goes out again with the next start.
                             Cmd::Open(..) | Cmd::Change(..) | Cmd::Close(..) if stopped => {}
                             Cmd::Run(f) if stopped => f(&OffServer),
+                            Cmd::RestartRoot(..) if stopped => {}
+                            Cmd::RestartRoot(dir, docs) => srv.restart_root(&dir, &docs),
                             Cmd::Open(p, t) => srv.open(&p, &t),
                             Cmd::Change(p, t) => srv.change(&p, &t),
                             Cmd::Close(p) => srv.close(&p),
@@ -386,6 +437,12 @@ impl Bridge {
         }
         self.send(Cmd::Restart(Restart { early, docs, done: Box::new(done) }));
     }
+
+    /// Restarts only the servers of the folder `dir` (one Unreal project), in queue order.
+    /// `docs` are every open file of this language; the server reopens those it dropped.
+    pub fn restart_root(&self, dir: &Path, docs: Vec<(PathBuf, String)>) {
+        self.send(Cmd::RestartRoot(dir.to_path_buf(), docs));
+    }
 }
 
 /// Every language the app knows, with its bridge and the project's settings.
@@ -408,7 +465,9 @@ impl Languages {
         let off = lint.off_flag();
         let mut bridges = HashMap::new();
         bridges.insert(LangId::TypeScript, Bridge::new(LangId::TypeScript, Arc::new(ts::TsServer::new()), Some(jobs.clone()), off.clone()));
-        bridges.insert(LangId::Rust, Bridge::new(LangId::Rust, Arc::new(rust::RustService::new(repaint)), Some(jobs.clone()), off.clone()));
+        bridges.insert(LangId::Rust, Bridge::new(LangId::Rust, Arc::new(rust::RustService::new(repaint.clone())), Some(jobs.clone()), off.clone()));
+        bridges.insert(LangId::Cpp, Bridge::new(LangId::Cpp, Arc::new(cpp::CppService::new(repaint.clone())), Some(jobs.clone()), off.clone()));
+        bridges.insert(LangId::CSharp, Bridge::new(LangId::CSharp, Arc::new(csharp::CSharpService::new(repaint)), Some(jobs.clone()), off.clone()));
         Languages { bridges, lint, config: IdeConfig::default(), jobs: Some(jobs), off }
     }
 
@@ -487,7 +546,7 @@ impl Languages {
         match LangId::for_path(path) {
             Some(lang) if self.config.enabled(lang) => Ok(lang),
             Some(lang) => Err(format!("{} support is turned off in {} (languages = [...]).", lang.spec().name, config::CONFIG_PATH)),
-            None => Err("Navigation works in TypeScript, JavaScript and Rust files.".to_string()),
+            None => Err("Navigation works in TypeScript, JavaScript, Rust, C, C++ and C# files.".to_string()),
         }
     }
 
@@ -554,7 +613,22 @@ pub fn is_library_path(path: &Path) -> bool {
     if parts.windows(4).any(|w| w[0] == "lib" && w[1] == "rustlib" && w[2] == "src" && w[3] == "rust") {
         return true;
     }
+    if cpp::is_system_header(path) || unreal::is_engine_path(path) {
+        return true;
+    }
+    if virtual_kind(path).is_some() {
+        return true;
+    }
     library_roots().iter().any(|root| path.starts_with(root))
+}
+
+/// A read-only document a server generated: `decompiled` (C# library code), `generated`
+/// (source generator output) and the like. Its tab reads `[<kind>] <name>`.
+pub fn virtual_kind(path: &Path) -> Option<String> {
+    if let Some(kind) = csharp::metadata_kind(path) {
+        return Some(kind.to_string());
+    }
+    ide_lsp::virtual_document(path).map(|d| d.kind)
 }
 
 /// `$CARGO_HOME/registry`, `$CARGO_HOME/git` and `$RUST_SRC_PATH`, canonical, computed once.

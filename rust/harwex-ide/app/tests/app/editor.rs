@@ -385,6 +385,8 @@ fn c_family_java_kotlin_highlight() {
     }
     repo.commit_all("Sources in other languages");
     let mut ide = Ide::open(SUITE, &repo.dir);
+    // Highlighting only: no language server starts, so no server hint covers the code.
+    ide.state_mut().apply_ide_config(harwex_ide::lang::IdeConfig::parse("languages = [\"ts\"]"));
     for (rel, text, language, snapshot) in files {
         ide.open_file(rel);
         let editor = ide.state().ws.tabs.active_editor().expect("editor");

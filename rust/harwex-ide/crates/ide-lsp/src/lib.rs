@@ -16,6 +16,7 @@ mod features;
 pub mod framing;
 mod position;
 mod uri;
+mod virtual_docs;
 
 use std::fmt;
 use std::path::PathBuf;
@@ -30,6 +31,7 @@ pub use edits::{FileEdit, TextEdit, PROBE_PREFIX};
 pub use features::{canonical, hover_markdown, split_hover_markdown, Hover};
 pub use position::{LineBreaks, LineIndex};
 pub use uri::{path_to_uri, uri_to_path};
+pub use virtual_docs::{path_for_uri, virtual_document, virtual_root, VirtualDocument, VirtualRequest, VirtualTextHandler};
 
 /// JSON-RPC: the method does not exist on the server.
 pub const METHOD_NOT_FOUND: i64 = -32601;

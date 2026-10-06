@@ -16,6 +16,8 @@ Git window:
 - [idea] Ref labels cut the HEAD commit message without an ellipsis (`Afte`). Truncate the message with `…` and collapse labels to `+N` earlier.
 
 Tooling:
+- [idea] Two `cargo xtask test-tools` runs at once corrupt each other's downloads (shared `tools/.<name>.partial`). Take a lock or use a per-process partial name (found in task 083).
+- [idea] Flaky: `xtask full_test::second_run_waits_until_the_first_ends` failed once under load (task 083).
 - [idea] The workspace is not rustfmt-clean. Run `cargo fmt --all` once and add `cargo fmt --all --check` to "Done means" and to `cargo xtask clean-check`.
 
 Commit window:
@@ -23,7 +25,8 @@ Commit window:
 - [idea] Stage/Unstage (drop or menu) shows a success toast on every action, because it goes through `run_op`. IDEA is silent on success. Make stage/unstage success quiet; keep error toasts.
 
 Navigation and languages:
-- [idea] Language servers for C/C++ (clangd), C# and Unity (Roslyn LSP), Unreal (clangd + UBT compile database), Java (JDT LS), Kotlin (kotlin-lsp, weak). Needs read-only virtual documents for `jdt://` and decompiled C# metadata. Discussed on 2026-10-05; highlighting only for now.
+- [idea] Opening an Unreal engine source tree itself as the project makes its `Engine/Source` files read-only: the engine-path check looks only at the path (found in task 085).
+- [idea] Language servers for Java (JDT LS) and Kotlin (kotlin-lsp, weak). Java reuses the read-only virtual documents of task 084 for `jdt://` URIs. Discussed on 2026-10-05; highlighting only for now.
 - [idea] Unreal headers: `class MYGAME_API AFoo : public AActor` parses as a function in tree-sitter-cpp, so `TArray<…>`, the base class and members stay uncolored inside such a class. A query tweak or a pre-pass that hides `*_API` would fix it.
 - [idea] Grammars added 15.7 MB to the binary (Kotlin 5.8, C# 5.3, C++ 3.4). `tree-sitter-kotlin-ng` with our own highlight query would save ~2 MB.
 - [idea] ide-lsp `kill_tree` can SIGKILL the group id of a server that `try_wait` already reaped; once the group is empty, that id could in theory belong to a new group. Skip the group kill after the leader is reaped (found in task 070).

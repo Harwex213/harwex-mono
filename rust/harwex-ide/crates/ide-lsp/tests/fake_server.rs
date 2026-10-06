@@ -401,3 +401,65 @@ fn pushed_diagnostics_are_kept_per_file() {
     client.close(&fx.file);
     assert!(client.pushed(&fx.file).is_none(), "closing forgets the file's diagnostics");
 }
+
+#[test]
+fn rename_returns_the_edits_and_errors_carry_the_reason() {
+    let fx = fixture();
+    let client = LspClient::new(config(&fx.root));
+    client.open(&fx.file, "let 😀 = old_name;\n", T);
+    assert_eq!(client.open_version(&fx.file), Some(1));
+    let init = client.request("test/initializeParams", json!({}), T).unwrap();
+    assert!(init["capabilities"]["textDocument"]["rename"].is_object());
+    // Char column 10 is inside `old_name`; the server answers UTF-16 columns.
+    let edits = client.rename(&fx.file, 0, 10, "fresh", T).unwrap();
+    assert_eq!(edits.len(), 1);
+    assert_eq!(edits[0].path, fx.file);
+    let e = &edits[0].edits[0];
+    assert_eq!((e.start_line, e.start_column, e.end_column, e.new_text.as_str()), (0, 8, 16, "fresh"));
+    let err = client.rename(&fx.file, 0, 6, "fresh", T).unwrap_err();
+    assert!(err.to_string().contains("no symbol here"), "{err}");
+    client.change(&fx.file, "x\n", T);
+    assert_eq!(client.open_version(&fx.file), Some(2));
+}
+
+#[test]
+fn startup_notifications_go_out_before_the_files() {
+    let fx = fixture();
+    let mut c = config(&fx.root);
+    c.startup_notifications = vec![("fake/openProject".to_string(), json!({"project": "p"}))];
+    let client = LspClient::new(c);
+    client.open(&fx.file, "fn main() {}\n", T);
+    let notified = client.request("test/notified", json!({}), T).unwrap();
+    assert_eq!(notified, json!(["initialized", "fake/openProject", "textDocument/didOpen"]));
+}
+
+#[test]
+fn non_file_results_become_virtual_documents() {
+    let fx = fixture();
+    let mut c = config(&fx.root);
+    c.virtual_text = Some(Arc::new(|uri: &str| {
+        uri.starts_with("fake-virtual:").then(|| ide_lsp::VirtualRequest {
+            kind: "generated",
+            method: "fake/virtualText".into(),
+            params: json!({"textDocument": {"uri": uri}}),
+            name: None,
+        })
+    }));
+    let client = LspClient::new(c);
+    client.open(&fx.file, "fn main() {}\n", T);
+    client.request("test/virtualDefinitions", json!({}), T).unwrap();
+    let locs = client.locations("textDocument/definition", &fx.file, 0, 3, T).unwrap();
+    assert_eq!(locs.len(), 1, "{locs:?}");
+    let path = &locs[0].path;
+    assert_eq!((locs[0].line, locs[0].column), (1, 6));
+    assert!(path.starts_with(ide_lsp::canonical(&ide_lsp::virtual_root()).join("generated")), "{}", path.display());
+    assert_eq!(path.file_name().unwrap(), "Thing.cs");
+    let text = std::fs::read_to_string(path).unwrap();
+    assert_eq!(text, "// fake-virtual://lib/Thing.cs?x=1\nclass Thing {}\n");
+    let doc = ide_lsp::virtual_document(path).unwrap();
+    assert_eq!((doc.uri.as_str(), doc.kind.as_str()), ("fake-virtual://lib/Thing.cs?x=1", "generated"));
+    // A request from inside the document names the server's URI, not the file.
+    client.ensure_open(path, T).unwrap();
+    let opened = client.request("test/opened", json!({}), T).unwrap();
+    assert!(opened.as_array().unwrap().iter().any(|u| u == "fake-virtual://lib/Thing.cs?x=1"), "{opened}");
+}

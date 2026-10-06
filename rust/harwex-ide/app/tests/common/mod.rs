@@ -60,6 +60,8 @@ pub fn init() {
             std::env::set_var(k, v);
         }
         fixtures::use_test_rust_tools();
+        fixtures::use_test_clangd();
+        fixtures::use_test_dotnet_env();
     });
 }
 

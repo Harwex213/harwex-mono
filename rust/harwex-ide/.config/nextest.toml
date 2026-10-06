@@ -11,5 +11,5 @@ fail-fast = false
 # start (clean-check: a fresh target dir, rust-analyzer indexing std for the first time, many
 # tests at once) takes several times the warm 10-15 s.
 [[profile.default.overrides]]
-filter = '(binary(app) & test(/^(rust_nav|navigation|diagnostics|lint_budget|project_menu)::/)) | package(ide-ts)'
+filter = '(binary(app) & test(/^(rust_nav|csharp_nav|navigation|diagnostics|lint_budget|project_menu)::/)) | package(ide-ts)'
 slow-timeout = { period = "120s", terminate-after = 3 }

@@ -30,6 +30,9 @@ pub struct EditorTab {
     /// The file is a dependency source (`node_modules`, the Cargo registry, `rust-src`). The
     /// editor ignores edits and the tab shows a lock.
     pub read_only: bool,
+    /// A document a language server generated (`decompiled`, `generated`): the tab reads
+    /// `[<kind>] <name>`. Always read-only.
+    pub virtual_kind: Option<String>,
     /// Doc version the gutter marks were last requested for. `None` forces a recompute.
     pub(crate) marks_for: Option<u64>,
     pub(crate) marks_in_flight: bool,
@@ -46,6 +49,7 @@ pub struct EditorTab {
 impl EditorTab {
     pub fn new(path: PathBuf, doc: Document) -> EditorTab {
         let read_only = crate::lang::is_library_path(&path);
+        let virtual_kind = crate::lang::virtual_kind(&path);
         let mut view = EditorState::new();
         view.set_soft_wrap(ide_editor::wrap::default_for(&path, doc.language()));
         EditorTab {
@@ -55,6 +59,7 @@ impl EditorTab {
             marks: Vec::new(),
             annotations: Vec::new(),
             read_only,
+            virtual_kind,
             marks_for: None,
             marks_in_flight: false,
             lang: None,
@@ -72,6 +77,14 @@ impl EditorTab {
 
     pub fn file_name(&self) -> String {
         self.path.file_name().map_or_else(|| self.path.display().to_string(), |n| n.to_string_lossy().into_owned())
+    }
+
+    /// The tab title: the file name, marked for a server-generated document.
+    pub fn title(&self) -> String {
+        match &self.virtual_kind {
+            Some(kind) => format!("[{kind}] {}", self.file_name()),
+            None => self.file_name(),
+        }
     }
 }
 
@@ -123,7 +136,7 @@ pub struct Tab {
 impl Tab {
     pub fn title(&self) -> String {
         match &self.content {
-            TabContent::Editor(e) => e.file_name(),
+            TabContent::Editor(e) => e.title(),
             TabContent::Custom(c) => c.title(),
         }
     }

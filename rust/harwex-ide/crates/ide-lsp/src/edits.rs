@@ -42,6 +42,16 @@ impl LspClient {
         Ok(parse_workspace_edit(&mut self.file_texts(), &result))
     }
 
+    /// `textDocument/rename`: the edits that rename the symbol at a position to `new_name`
+    /// everywhere the server knows of. A server that refuses (not a symbol, a name from a
+    /// system header) answers an error with its reason.
+    pub fn rename(&self, path: &Path, line: usize, column: usize, new_name: &str, timeout: Duration) -> Result<Vec<FileEdit>, Error> {
+        let (mut params, _) = self.position_params(path, line, column, timeout)?;
+        params["newName"] = json!(new_name);
+        let result = self.request("textDocument/rename", params, timeout)?;
+        Ok(parse_workspace_edit(&mut self.file_texts(), &result))
+    }
+
     /// `workspace/didRenameFiles`, after the move. Files under the old paths are closed first,
     /// so the server forgets their old names.
     pub fn did_rename_files(&self, renames: &[(PathBuf, PathBuf)], timeout: Duration) -> Result<(), Error> {

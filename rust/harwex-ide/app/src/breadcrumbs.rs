@@ -67,6 +67,7 @@ const EXTERNAL_SEGMENTS: usize = 3;
 /// - rust-src (`…/rust/library/<crate>/src/…`): `<crate>`, rooted at the crate's `src`.
 /// - a Cargo registry (`…/registry/src/<index>/<crate>-<version>/…`): `<crate> <version>`.
 /// - a package under `node_modules`: `<package>` or `@scope/<package>`.
+/// - a server-generated document (`lang::virtual_kind`): `[<kind>]`, rooted at its folder.
 /// - anything else: `External`, rooted so that at most `EXTERNAL_SEGMENTS` segments follow.
 pub fn external_root(file: &Path) -> ExternalRoot {
     let comps: Vec<_> = file.components().collect();
@@ -82,6 +83,9 @@ pub fn external_root(file: &Path) -> ExternalRoot {
         let folder = name(i + 3);
         let label = split_crate_version(&folder).map_or_else(|| folder.to_string(), |(c, v)| format!("{c} {v}"));
         return ExternalRoot { dir: dir(i + 3), label };
+    }
+    if let Some(kind) = crate::lang::virtual_kind(file).filter(|_| n > 1) {
+        return ExternalRoot { dir: dir(n - 2), label: format!("[{kind}]") };
     }
     if let Some(i) = (0..n).rev().find(|&i| name(i) == "node_modules" && below(i + 1)) {
         let package = name(i + 1);

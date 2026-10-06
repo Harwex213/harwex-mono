@@ -503,6 +503,7 @@ impl AppState {
         self.ws.git = GitInfo { repo, ..Default::default() };
         // Stop Language Servers survives a restart; set before any file of the project opens.
         self.ws.langs.set_off(self.saved.get(&root).is_some_and(|s| s.langs_off));
+        self.ws.unreal = Default::default();
         self.apply_ide_config(config);
         // Dialogs and filters of another repository must not act on this one. Favourite
         // branches are app storage for every repository, not state of this one.
@@ -597,6 +598,7 @@ impl AppState {
             }
         }
         self.ws.langs.configure(config);
+        crate::unreal::refresh(self, false);
     }
 
     /// The active editor's file and caret, for navigation history.
@@ -943,6 +945,7 @@ impl AppState {
                 );
             }
         }
+        crate::unreal::on_fs_batch(self, &batch.paths);
         if batch.structure_changed {
             crate::search::rebuild_index(self);
         }

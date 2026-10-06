@@ -789,7 +789,7 @@ fn relocate_all(state: &mut AppState, moves: Vec<Move>, edits: Vec<FileEdit>) {
 }
 
 /// Applies edits to closed files on all cores. Returns one message per failed file.
-fn apply_closed(files: &[FileEdit]) -> Vec<String> {
+pub(crate) fn apply_closed(files: &[FileEdit]) -> Vec<String> {
     if files.is_empty() {
         return Vec::new();
     }
@@ -813,7 +813,7 @@ fn apply_closed(files: &[FileEdit]) -> Vec<String> {
 
 /// One undoable step per document. Ranges are taken from the current text and applied last
 /// first, so each stays valid.
-fn apply_to_tab(state: &mut AppState, id: TabId, edits: &[Edit]) {
+pub(crate) fn apply_to_tab(state: &mut AppState, id: TabId, edits: &[Edit]) {
     let Some(e) = state.ws.tabs.editor_mut(id) else { return };
     let mut sorted: Vec<&Edit> = edits.iter().collect();
     sorted.sort_by_key(|t| std::cmp::Reverse((t.start_line, t.start_column)));

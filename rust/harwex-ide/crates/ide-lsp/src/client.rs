@@ -62,6 +62,12 @@ pub struct ClientConfig {
     /// Spawning and `initialize` can take longer than a tiny request timeout, so the
     /// handshake waits at least this long.
     pub min_initialize_timeout: Duration,
+    /// Notifications sent right after `initialized`, before the open files go out again:
+    /// what a server needs to load its projects (Roslyn's `solution/open`).
+    pub startup_notifications: Vec<(String, Value)>,
+    /// How to fetch the text behind a non-file result URI (`virtual_docs`). Without it such
+    /// results are dropped.
+    pub virtual_text: Option<crate::virtual_docs::VirtualTextHandler>,
 }
 
 impl ClientConfig {
@@ -80,6 +86,8 @@ impl ClientConfig {
             configuration: None,
             on_notification: None,
             min_initialize_timeout: Duration::from_secs(10),
+            startup_notifications: Vec::new(),
+            virtual_text: None,
         }
     }
 }
@@ -97,6 +105,7 @@ pub fn default_capabilities() -> Value {
             "implementation": {"linkSupport": true},
             "references": {},
             "documentHighlight": {},
+            "rename": {},
             "hover": {"contentFormat": ["markdown", "plaintext"]},
             "diagnostic": {"dynamicRegistration": false, "tagSupport": {"valueSet": [1, 2]}},
             "publishDiagnostics": {"tagSupport": {"valueSet": [1, 2]}},
@@ -342,6 +351,12 @@ impl LspClient {
         lock(&self.state).open.get(path).map(|f| f.text.clone())
     }
 
+    /// The version of an open file's last `didOpen`/`didChange`. A server that pushes
+    /// versioned diagnostics (`publishDiagnostics.versionSupport`) answers for this version.
+    pub fn open_version(&self, path: &Path) -> Option<i64> {
+        lock(&self.state).open.get(path).map(|f| f.version)
+    }
+
     /// Every open file, editor-opened or opened from disk by a request.
     pub fn open_paths(&self) -> Vec<PathBuf> {
         lock(&self.state).open.keys().cloned().collect()
@@ -495,6 +510,9 @@ impl LspClient {
         };
         p.capabilities = result["capabilities"].clone();
         p.notify("initialized", json!({}))?;
+        for (method, params) in &self.config.startup_notifications {
+            p.notify(method, params.clone())?;
+        }
         for (path, file) in &state.open {
             p.notify("textDocument/didOpen", self.open_params(path, file.version, &file.text))?;
         }

@@ -506,6 +506,7 @@ impl LanguageServer for RustService {
     fn locations(&self, kind: NavKind, path: &Path, line: usize, column: usize) -> Result<Vec<Location>, String> {
         let method = match kind {
             NavKind::TypeDefinition => "textDocument/typeDefinition",
+            NavKind::Implementation => "textDocument/implementation",
             // Go to Source Definition is a TypeScript idea (`.js` behind `.d.ts`); Rust sources
             // are the definition already.
             NavKind::Declaration | NavKind::SourceDefinition | NavKind::Usages => "textDocument/definition",
@@ -523,6 +524,16 @@ impl LanguageServer for RustService {
             let (display, documentation) = ide_lsp::split_hover_markdown(&h.markdown);
             HoverInfo { display, documentation, tags: Vec::new() }
         }))
+    }
+
+    fn rename_symbol(&self, path: &Path, line: usize, column: usize, new_name: &str) -> Result<Vec<ide_lsp::FileEdit>, String> {
+        // While the workspace loads, rust-analyzer refuses with "No references found".
+        let server = self.server_for(path)?;
+        let deadline = Instant::now() + self.timeout;
+        while server.loading() && Instant::now() < deadline {
+            server.wait_for_status((Instant::now() + Duration::from_millis(500)).min(deadline));
+        }
+        self.retry(path, Vec::is_empty, |c, t| c.rename(path, line, column, new_name, t))
     }
 
     // rust-analyzer loads the whole Cargo workspace, so candidates add nothing.

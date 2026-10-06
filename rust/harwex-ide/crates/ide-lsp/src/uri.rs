@@ -1,10 +1,15 @@
-//! `file://` URIs.
+//! `file://` URIs, plus the files that stand for a server's non-file URIs
+//! (`virtual_docs`).
 
 use std::path::{Path, PathBuf};
 
 /// `file://` URI of an absolute path. Everything outside the unreserved set and `/` is
-/// percent-encoded, like VS Code does (`@` becomes `%40`).
+/// percent-encoded, like VS Code does (`@` becomes `%40`). A file written for a virtual
+/// document gets its server URI back.
 pub fn path_to_uri(path: &Path) -> String {
+    if let Some(doc) = crate::virtual_docs::virtual_document(path) {
+        return doc.uri;
+    }
     let s = path.to_string_lossy();
     let mut out = String::from("file://");
     if !s.starts_with('/') {
@@ -25,6 +30,17 @@ pub fn uri_to_path(uri: &str) -> Option<PathBuf> {
     let rest = uri.strip_prefix("file://")?;
     // `file://host/path` is not used by servers; skip a host part if one shows up.
     let rest = if rest.starts_with('/') { rest } else { &rest[rest.find('/')?..] };
+    let s = percent_decode(rest)?;
+    // Windows: `/C:/x` is `C:/x`.
+    let s = match s.as_bytes() {
+        [b'/', d, b':', ..] if d.is_ascii_alphabetic() => s[1..].to_string(),
+        _ => s,
+    };
+    Some(PathBuf::from(s))
+}
+
+/// `%XX` escapes to bytes; `None` when the result is not UTF-8. A lone `%` stays as is.
+pub(crate) fn percent_decode(rest: &str) -> Option<String> {
     let bytes = rest.as_bytes();
     let mut out = Vec::with_capacity(bytes.len());
     let mut i = 0;
@@ -40,13 +56,7 @@ pub fn uri_to_path(uri: &str) -> Option<PathBuf> {
         out.push(bytes[i]);
         i += 1;
     }
-    let s = String::from_utf8(out).ok()?;
-    // Windows: `/C:/x` is `C:/x`.
-    let s = match s.as_bytes() {
-        [b'/', d, b':', ..] if d.is_ascii_alphabetic() => s[1..].to_string(),
-        _ => s,
-    };
-    Some(PathBuf::from(s))
+    String::from_utf8(out).ok()
 }
 
 #[cfg(test)]

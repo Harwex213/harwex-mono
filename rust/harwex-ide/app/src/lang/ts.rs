@@ -65,6 +65,8 @@ impl LanguageServer for TsServer {
             NavKind::SourceDefinition => self.service.source_definition(path, line, column),
             NavKind::TypeDefinition => self.service.type_definition(path, line, column),
             NavKind::Declaration | NavKind::Usages => self.service.definition(path, line, column),
+            // ide-ts has no implementation request yet.
+            NavKind::Implementation => Ok(Vec::new()),
         };
         r.map_err(|e| e.to_string())
     }
