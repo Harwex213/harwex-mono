@@ -1,0 +1,176 @@
+{
+  "_comment": "Written by scripts/build-casino-backdrop.py; edit the script, not this file.",
+  "width": 1536,
+  "height": 1024,
+  "focal": 1200.0,
+  "centerU": 768.0,
+  "horizonV": 630.0,
+  "eye": 1.8,
+  "ceiling": 22.5,
+  "halfWidth": 17.0,
+  "back": 80.0,
+  "cards": [
+    {
+      "name": "Chandelier Right 4",
+      "box": [
+        875,
+        228,
+        920,
+        506
+      ],
+      "depth": 63.636,
+      "channel": 1,
+      "hangU": 900
+    },
+    {
+      "name": "Chandelier Left 4",
+      "box": [
+        615,
+        228,
+        661,
+        506
+      ],
+      "depth": 62.687,
+      "channel": 1,
+      "hangU": 634
+    },
+    {
+      "name": "Chandelier Right 3",
+      "box": [
+        892,
+        148,
+        956,
+        466
+      ],
+      "depth": 52.174,
+      "channel": 0,
+      "hangU": 929
+    },
+    {
+      "name": "Chandelier Left 3",
+      "box": [
+        578,
+        143,
+        642,
+        467
+      ],
+      "depth": 51.534,
+      "channel": 0,
+      "hangU": 605
+    },
+    {
+      "name": "Chandelier Left 2",
+      "box": [
+        522,
+        48,
+        613,
+        400
+      ],
+      "depth": 42.211,
+      "channel": 1,
+      "hangU": 569
+    },
+    {
+      "name": "Chandelier Right 2",
+      "box": [
+        922,
+        78,
+        1013,
+        400
+      ],
+      "depth": 42.211,
+      "channel": 1,
+      "hangU": 967
+    },
+    {
+      "name": "Chandelier Right 1",
+      "box": [
+        971,
+        0,
+        1104,
+        285
+      ],
+      "depth": 31.461,
+      "channel": 0,
+      "hangU": 1035
+    },
+    {
+      "name": "Chandelier Left 1",
+      "box": [
+        430,
+        0,
+        565,
+        285
+      ],
+      "depth": 31.343,
+      "channel": 0,
+      "hangU": 500
+    },
+    {
+      "name": "Tables Far Left",
+      "box": [
+        195,
+        658,
+        698,
+        732
+      ],
+      "depth": 22.979,
+      "channel": 2
+    },
+    {
+      "name": "Tables Far Right",
+      "box": [
+        833,
+        657,
+        1353,
+        732
+      ],
+      "depth": 22.979,
+      "channel": 2
+    },
+    {
+      "name": "Tables Mid Left",
+      "box": [
+        306,
+        690,
+        542,
+        789
+      ],
+      "depth": 14.694,
+      "channel": 1
+    },
+    {
+      "name": "Tables Mid Right",
+      "box": [
+        994,
+        688,
+        1233,
+        789
+      ],
+      "depth": 14.595,
+      "channel": 1
+    },
+    {
+      "name": "Tables Near Right",
+      "box": [
+        1167,
+        710,
+        1536,
+        936
+      ],
+      "depth": 7.912,
+      "channel": 0
+    },
+    {
+      "name": "Tables Near Left",
+      "box": [
+        0,
+        704,
+        366,
+        937
+      ],
+      "depth": 7.855,
+      "channel": 0
+    }
+  ]
+}

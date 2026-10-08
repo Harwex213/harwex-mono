@@ -3,7 +3,7 @@
 //! code never needs locks around app state.
 
 use std::panic::{catch_unwind, AssertUnwindSafe};
-use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicUsize, Ordering};
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -44,6 +44,31 @@ pub struct RunningJob {
     pub label: String,
     pub started: Instant,
     pub cancel: Cancel,
+    /// How far the job is, when it reports it (`report_progress`).
+    pub progress: JobProgress,
+    /// False for a job that cannot stop early: the status bar offers no `×` for it.
+    pub cancellable: bool,
+}
+
+/// The share of a job that is done, set from the job's thread and read by the status bar.
+#[derive(Clone, Default)]
+pub struct JobProgress(Arc<AtomicU32>);
+
+impl JobProgress {
+    /// Stored as millionths plus one, so the default 0 means "unknown".
+    const SCALE: f32 = 1_000_000.0;
+
+    pub fn set(&self, fraction: f32) {
+        self.0.store((fraction.clamp(0.0, 1.0) * Self::SCALE) as u32 + 1, Ordering::Relaxed);
+    }
+
+    /// The done share in 0..=1, or `None` while the job reports nothing (a spinner then).
+    pub fn fraction(&self) -> Option<f32> {
+        match self.0.load(Ordering::Relaxed) {
+            0 => None,
+            v => Some((v - 1) as f32 / Self::SCALE),
+        }
+    }
 }
 
 /// The cancel switch of one job. Git commands and language-server requests made on the job's
@@ -72,15 +97,28 @@ impl Cancel {
         self.flag.load(Ordering::SeqCst)
     }
 
-    /// Installs the flag for git and language-server calls on the current thread.
-    fn enter(&self) -> Scopes {
+    /// Installs the flag for git and language-server calls on the current thread, and the
+    /// job's progress for `report_progress`.
+    fn enter(&self, progress: JobProgress) -> Scopes {
         let prev = CURRENT.with(|c| c.replace(Some(self.flag.clone())));
-        Scopes { _git: ide_git::CancelScope::enter(self.flag.clone()), _lsp: ide_lsp::CancelScope::enter(self.flag.clone()), prev, thread: std::thread::current().id() }
+        let prev_progress = CURRENT_PROGRESS.with(|c| c.replace(Some(progress)));
+        Scopes { _git: ide_git::CancelScope::enter(self.flag.clone()), _lsp: ide_lsp::CancelScope::enter(self.flag.clone()), prev, prev_progress, thread: std::thread::current().id() }
     }
 }
 
 thread_local! {
     static CURRENT: std::cell::RefCell<Option<Arc<AtomicBool>>> = const { std::cell::RefCell::new(None) };
+    static CURRENT_PROGRESS: std::cell::RefCell<Option<JobProgress>> = const { std::cell::RefCell::new(None) };
+}
+
+/// Reports how far the labelled job running on this thread is (0..=1). The tasks popup then
+/// draws a bar instead of a spinner. Does nothing on a thread without a job.
+pub fn report_progress(fraction: f32) {
+    CURRENT_PROGRESS.with(|c| {
+        if let Some(p) = c.borrow().as_ref() {
+            p.set(fraction);
+        }
+    });
 }
 
 /// The cancel flag of the labelled job running on this thread, for work that checks a flag
@@ -94,6 +132,7 @@ struct Scopes {
     _git: ide_git::CancelScope,
     _lsp: ide_lsp::CancelScope,
     prev: Option<Arc<AtomicBool>>,
+    prev_progress: Option<JobProgress>,
     thread: std::thread::ThreadId,
 }
 
@@ -102,6 +141,8 @@ impl Drop for Scopes {
         if std::thread::current().id() == self.thread {
             let prev = self.prev.take();
             CURRENT.with(|c| *c.borrow_mut() = prev);
+            let prev = self.prev_progress.take();
+            CURRENT_PROGRESS.with(|c| *c.borrow_mut() = prev);
         }
     }
 }
@@ -111,6 +152,7 @@ struct RunningGuard {
     id: u64,
     label: String,
     cancel: Cancel,
+    progress: JobProgress,
     jobs: Jobs,
     /// The flag installed on the worker thread; dropped after the guard's own `drop`.
     scope: Option<Scopes>,
@@ -209,14 +251,14 @@ impl Jobs {
         D: FnOnce(&mut AppState, R) + Send + 'static,
     {
         // Tracked on the UI thread, so the job shows in the status bar at once.
-        let mut guard = label.as_ref().map(|label| self.track(label.clone()));
+        let mut guard = label.as_ref().map(|label| self.track(label.clone(), true));
         let cancel = guard.as_ref().map(|g| g.cancel.clone());
         let jobs = self.clone();
         let name = label.clone().unwrap_or_else(|| "background task".into());
         self.in_flight.fetch_add(1, Ordering::SeqCst);
         let spawned = std::thread::Builder::new().name(format!("job: {name}")).spawn(move || {
             if let Some(g) = guard.as_mut() {
-                g.scope = Some(g.cancel.enter());
+                g.scope = Some(g.cancel.enter(g.progress.clone()));
             }
             let result = catch_unwind(AssertUnwindSafe(work));
             drop(guard);
@@ -238,29 +280,40 @@ impl Jobs {
 
     /// Adds an entry to the spinner list until the returned guard drops. Long-lived workers
     /// (tsserver queue, watcher) use this for the duration of one request.
-    fn track(&self, label: String) -> RunningGuard {
+    fn track(&self, label: String, cancellable: bool) -> RunningGuard {
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
         let cancel = Cancel::default();
+        let progress = JobProgress::default();
         if let Ok(mut list) = self.running.lock() {
-            list.push(RunningJob { id, label: label.clone(), started: Instant::now(), cancel: cancel.clone() });
+            list.push(RunningJob { id, label: label.clone(), started: Instant::now(), cancel: cancel.clone(), progress: progress.clone(), cancellable });
         }
         self.in_flight.fetch_add(1, Ordering::SeqCst);
         self.ctx.request_repaint();
-        RunningGuard { id, label, cancel, jobs: self.clone(), scope: None }
+        RunningGuard { id, label, cancel, progress, jobs: self.clone(), scope: None }
     }
 
     /// Like `track`, but the caller only gets an opaque guard to drop when done. Call it on
     /// the worker thread: the job's cancel flag is installed for that thread until the guard
     /// drops, so git and language-server calls made meanwhile can be cancelled.
     pub fn busy(&self, label: impl Into<String>) -> impl Drop + Send {
-        let mut guard = self.track(label.into());
-        guard.scope = Some(guard.cancel.enter());
+        self.busy_with(label.into(), true)
+    }
+
+    /// Like `busy`, for work that cannot stop early (it waits on other threads): the status
+    /// bar shows it with no `×`.
+    pub fn busy_uncancellable(&self, label: impl Into<String>) -> impl Drop + Send {
+        self.busy_with(label.into(), false)
+    }
+
+    fn busy_with(&self, label: String, cancellable: bool) -> RunningGuard {
+        let mut guard = self.track(label, cancellable);
+        guard.scope = Some(guard.cancel.enter(guard.progress.clone()));
         guard
     }
 
     /// The user pressed × on job `id`.
     pub fn cancel(&self, id: u64) {
-        if let Some(job) = self.running().into_iter().find(|j| j.id == id) {
+        if let Some(job) = self.running().into_iter().find(|j| j.id == id && j.cancellable) {
             job.cancel.cancel();
         }
         self.ctx.request_repaint();
@@ -328,5 +381,24 @@ mod tests {
         // The flag lives only as long as the guard.
         assert!(matches!(lsp.request("textDocument/references", serde_json::json!({}), timeout), Err(ide_lsp::Error::Spawn(_))));
         assert!(jobs.running().is_empty());
+    }
+
+    #[test]
+    fn progress_reaches_the_job_of_this_thread_only() {
+        let (jobs, _rx) = Jobs::new(egui::Context::default());
+        report_progress(0.5);
+        let guard = jobs.busy_uncancellable("Indexing");
+        let job = jobs.running()[0].clone();
+        assert!(!job.cancellable && job.progress.fraction().is_none());
+        report_progress(0.25);
+        assert_eq!(job.progress.fraction(), Some(0.25));
+        report_progress(2.0);
+        assert_eq!(job.progress.fraction(), Some(1.0));
+        // The × is not offered, and a cancel by id does nothing.
+        jobs.cancel(job.id);
+        assert!(!job.cancel.is_cancelled());
+        drop(guard);
+        report_progress(0.75);
+        assert_eq!(job.progress.fraction(), Some(1.0), "no job on this thread any more");
     }
 }

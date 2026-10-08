@@ -934,6 +934,22 @@ pub fn open_at(s: &mut AppState, cwd: PathBuf) {
     }
 }
 
+/// Cmd+3 outside a focused terminal: a new terminal tab in the folder of the active tab's file.
+/// The Project tree and a focused breadcrumb take Cmd+3 themselves (`tree::command_keys`), so
+/// there the selected item decides. The key is consumed here, before the editor draws.
+pub fn open_here(s: &mut AppState, ctx: &Context) {
+    if crate::tree::has_focus(ctx) {
+        return;
+    }
+    if !ctx.input_mut(|i| i.consume_key(Modifiers::COMMAND, Key::Num3)) {
+        return;
+    }
+    let dir = s.ws.tabs.active_tab().and_then(|t| t.file_path()).and_then(|p| p.parent().map(Path::to_path_buf));
+    if let Some(dir) = dir {
+        open_at(s, dir);
+    }
+}
+
 /// Test hook: opens the Terminal window and types `command` followed by Enter.
 pub fn test_run(s: &mut AppState, command: String) {
     s.ws.layout.show(ToolWindow::Terminal);

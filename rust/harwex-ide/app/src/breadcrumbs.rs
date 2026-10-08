@@ -30,7 +30,6 @@ use crate::tree_menu::{self, Target};
 const ICON_W: f32 = 18.0;
 const PAD: f32 = 4.0;
 const SEP_W: f32 = 16.0;
-const ELLIPSIS_W: f32 = 22.0;
 const ROW_H: f32 = 20.0;
 /// A popup level shows at most this many rows; longer lists scroll.
 pub const MAX_ROWS: usize = 18;
@@ -133,52 +132,21 @@ pub fn segments(root: Option<&Path>, root_name: &str, file: &Path) -> Vec<Segmen
     out
 }
 
-/// One slot of the drawn bar: a segment, or `…` standing for a range of hidden segments.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Slot {
-    Segment(usize),
-    Hidden(std::ops::Range<usize>),
+/// The scroll offset that shows `[left, right)` of the content in a viewport `view` wide, moving
+/// `offset` as little as possible.
+pub fn reveal_offset(offset: f32, view: f32, left: f32, right: f32) -> f32 {
+    if right - left >= view || left < offset {
+        left
+    } else if right > offset + view {
+        right - view
+    } else {
+        offset
+    }
 }
 
-/// Chooses the slots that fit in `available` points. `widths` are the segment widths; one
-/// separator of `sep` sits between two slots, and `…` is `ellipsis` wide.
-///
-/// The first and the last segment stay. Middle segments are hidden from the left, so the
-/// parents nearest to the file stay visible. When even `root … file` is too wide, the root
-/// goes into the `…` too.
-pub fn fit(widths: &[f32], sep: f32, ellipsis: f32, available: f32) -> Vec<Slot> {
-    let n = widths.len();
-    if n == 0 {
-        return Vec::new();
-    }
-    let total: f32 = widths.iter().sum::<f32>() + sep * (n - 1) as f32;
-    if total <= available || n == 1 {
-        return (0..n).map(Slot::Segment).collect();
-    }
-    // Hide 1..k, for k growing: root, …, segments k..n.
-    for k in 2..n {
-        let shown = widths[0] + widths[k..].iter().sum::<f32>();
-        let slots = 2 + (n - k);
-        if shown + ellipsis + sep * (slots - 1) as f32 <= available {
-            let mut out = vec![Slot::Segment(0), Slot::Hidden(1..k)];
-            out.extend((k..n).map(Slot::Segment));
-            return out;
-        }
-    }
-    vec![Slot::Hidden(0..n - 1), Slot::Segment(n - 1)]
-}
-
-/// What a popup level lists.
-#[derive(Clone, Debug)]
-pub enum LevelSource {
-    /// The children of a directory (loaded on a worker).
-    Dir(PathBuf),
-    /// The segments hidden behind `…`.
-    Hidden(Vec<Entry>),
-}
-
+/// One popup level: the children of a directory, loaded on a worker.
 pub struct Level {
-    pub source: LevelSource,
+    pub dir: PathBuf,
     /// Highlighted row. `None` until the listing arrives.
     pub selected: Option<usize>,
     /// The child that lies on the active file's path.
@@ -189,21 +157,8 @@ pub struct Level {
 impl Level {
     fn dir(dir: PathBuf, file: &Path) -> Level {
         let current = file.strip_prefix(&dir).ok().and_then(|rest| rest.components().next()).map(|c| dir.join(c));
-        Level { source: LevelSource::Dir(dir), selected: None, current, scroll_to_selected: true }
+        Level { dir, selected: None, current, scroll_to_selected: true }
     }
-
-    pub fn dir_path(&self) -> Option<&Path> {
-        match &self.source {
-            LevelSource::Dir(d) => Some(d),
-            LevelSource::Hidden(_) => None,
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Opener {
-    Segment(usize),
-    Hidden,
 }
 
 pub struct Popup {
@@ -211,7 +166,8 @@ pub struct Popup {
     pub levels: Vec<Level>,
     /// The level the keyboard acts on.
     pub focus: usize,
-    pub opener: Opener,
+    /// The segment that opened the popup.
+    pub slot: usize,
     /// The file the bar showed when the popup opened. Another active file closes it.
     file: PathBuf,
     /// Top-left corner of the opening slot; level 0 starts at its x and grows upward.
@@ -255,14 +211,22 @@ pub struct Breadcrumbs {
     /// The file menu's rect in the last frame, for tests.
     pub menu_rect: Option<Rect>,
     keys: Keys,
-    /// The bar's rect in the last drawn frame. A press there is not a click outside the popup.
-    bar_rect: Option<Rect>,
-    /// Slots drawn in the last frame, for tests and the popup anchor.
-    pub slots: Vec<Slot>,
-    /// Rects of `slots` in the last frame, to anchor a popup opened by the keyboard.
-    slot_rects: Vec<Rect>,
+    /// The bar's visible rect (the scroll viewport) in the last drawn frame. A press there is
+    /// not a click outside the popup.
+    pub bar_rect: Option<Rect>,
+    /// Screen rects of the crumbs drawn in the last frame, one per segment, at their scrolled
+    /// position. They anchor the popups and the file menu.
+    pub slots: Vec<Rect>,
     /// The slot selected by the keyboard. `Some` while the bar or its popup has the keyboard.
     pub selected_slot: Option<usize>,
+    /// The file whose crumbs the scroll offset belongs to. Another file scrolls to the end.
+    scroll_file: Option<PathBuf>,
+    /// The row stays scrolled to its end (the file crumb) until the user scrolls away.
+    stick_end: bool,
+    /// The keyboard slot that was last scrolled into view.
+    revealed_slot: Option<usize>,
+    /// The horizontal scroll offset drawn last frame, for tests.
+    pub scroll_x: f32,
     /// Request the bar's focus again at the start of the next frame. An arrow pressed while no
     /// widget had focus makes egui move a newly requested focus at the end of that frame.
     refocus: bool,
@@ -284,16 +248,12 @@ impl Breadcrumbs {
 
     /// The index in `slots` of the slot that opened the popup.
     fn popup_slot(&self) -> Option<usize> {
-        let opener = self.popup.as_ref()?.opener;
-        self.slots.iter().position(|s| slot_opener(s) == opener)
+        self.popup.as_ref().map(|p| p.slot).filter(|&s| s < self.slots.len())
     }
 
     /// The entries a level lists, or `None` while its directory loads.
-    pub fn items<'a>(&'a self, level: &'a Level) -> Option<&'a [Entry]> {
-        match &level.source {
-            LevelSource::Dir(d) => self.listings.get(d).map(Vec::as_slice),
-            LevelSource::Hidden(v) => Some(v),
-        }
+    pub fn items(&self, level: &Level) -> Option<&[Entry]> {
+        self.listings.get(&level.dir).map(Vec::as_slice)
     }
 }
 
@@ -313,9 +273,8 @@ fn crumb_target(root: Option<&Path>, seg: &Segment) -> Option<Target> {
 
 /// The target of slot `index` of the last drawn bar.
 fn slot_target(state: &AppState, index: usize) -> Option<Target> {
-    let Slot::Segment(i) = state.ws.breadcrumbs.slots.get(index)? else { return None };
     let segs = active_segments(state)?;
-    crumb_target(state.ws.project.as_ref().map(|p| p.root.as_path()), segs.get(*i)?)
+    crumb_target(state.ws.project.as_ref().map(|p| p.root.as_path()), segs.get(index)?)
 }
 
 fn active_segments(state: &AppState) -> Option<Vec<Segment>> {
@@ -342,19 +301,19 @@ fn request(state: &mut AppState, dir: PathBuf) {
     );
 }
 
-fn slot_opener(slot: &Slot) -> Opener {
-    match slot {
-        Slot::Segment(i) => Opener::Segment(*i),
-        Slot::Hidden(_) => Opener::Hidden,
-    }
-}
-
 /// Opens the popup of slot `index` of the last drawn bar, as the keyboard does.
 fn open_slot(state: &mut AppState, index: usize) {
     let Some(segs) = active_segments(state) else { return };
-    let (Some(slot), Some(rect)) = (state.ws.breadcrumbs.slots.get(index).cloned(), state.ws.breadcrumbs.slot_rects.get(index).copied()) else { return };
-    open_popup(state, slot_opener(&slot), &segs, rect.left_top());
+    let Some(rect) = state.ws.breadcrumbs.slots.get(index).copied() else { return };
+    let anchor = popup_anchor(state.ws.breadcrumbs.bar_rect, rect);
+    open_popup(state, index, &segs, anchor);
     state.ws.breadcrumbs.selected_slot = Some(index);
+}
+
+/// Where a popup of the crumb at `rect` starts: under the crumb, but never left of the visible
+/// bar when the crumb is scrolled partly out of view.
+fn popup_anchor(bar: Option<Rect>, rect: Rect) -> Pos2 {
+    pos2(bar.map_or(rect.min.x, |b| rect.min.x.max(b.min.x)), rect.min.y)
 }
 
 /// Gives the bar the keyboard with slot `index` selected and no popup open.
@@ -385,29 +344,15 @@ pub fn shortcut(state: &mut AppState, ctx: &Context) {
     }
 }
 
-fn open_popup(state: &mut AppState, opener: Opener, segs: &[Segment], anchor: Pos2) {
+fn open_popup(state: &mut AppState, slot: usize, segs: &[Segment], anchor: Pos2) {
     let Some(file) = segs.last().map(|s| s.path.clone()) else { return };
-    let level = match opener {
-        Opener::Segment(i) => {
-            // The file segment lists its siblings, with the file highlighted.
-            let dir_index = if segs[i].kind == SegmentKind::File { i.saturating_sub(1) } else { i };
-            Level::dir(segs[dir_index].path.clone(), &file)
-        }
-        Opener::Hidden => {
-            let hidden = state.ws.breadcrumbs.slots.iter().find_map(|s| match s {
-                Slot::Hidden(r) => Some(r.clone()),
-                Slot::Segment(_) => None,
-            });
-            let entries = hidden.map_or_else(Vec::new, |r| segs[r].iter().map(|s| Entry { path: s.path.clone(), name: s.name.clone(), is_dir: true }).collect());
-            let selected = entries.len().checked_sub(1);
-            Level { source: LevelSource::Hidden(entries), selected, current: None, scroll_to_selected: true }
-        }
-    };
-    if let Some(d) = level.dir_path() {
-        request(state, d.to_path_buf());
-    }
+    let Some(seg) = segs.get(slot) else { return };
+    // The file segment lists its siblings, with the file highlighted.
+    let dir_index = if seg.kind == SegmentKind::File { slot.saturating_sub(1) } else { slot };
+    let level = Level::dir(segs[dir_index].path.clone(), &file);
+    request(state, level.dir.clone());
     state.ws.breadcrumbs.menu = None;
-    state.ws.breadcrumbs.popup = Some(Popup { levels: vec![level], focus: 0, opener, file, anchor });
+    state.ws.breadcrumbs.popup = Some(Popup { levels: vec![level], focus: 0, slot, file, anchor });
 }
 
 /// Consumes the keys of the focused bar or the open popup before the editor sees them, and
@@ -491,125 +436,170 @@ fn segment_width(ui: &Ui, seg: &Segment) -> f32 {
 }
 
 /// Draws the breadcrumbs into `ui` (the left part of the status bar).
+///
+/// Every segment is drawn. A path wider than the bar scrolls sideways (the wheel, Shift+wheel or
+/// a swipe);
+/// a new file starts scrolled to its end, so the file crumb is visible, and the row keeps to the
+/// end until the user scrolls away from it.
 pub fn bar(state: &mut AppState, ui: &mut Ui) {
     let Some(segs) = active_segments(state) else {
-        state.ws.breadcrumbs.popup = None;
-        state.ws.breadcrumbs.menu = None;
-        state.ws.breadcrumbs.slots.clear();
-        state.ws.breadcrumbs.bar_rect = None;
+        let crumbs = &mut state.ws.breadcrumbs;
+        crumbs.popup = None;
+        crumbs.menu = None;
+        crumbs.slots.clear();
+        crumbs.bar_rect = None;
+        crumbs.scroll_file = None;
         return;
     };
     let file = segs.last().map(|s| s.path.clone()).unwrap_or_default();
-    if state.ws.breadcrumbs.popup.as_ref().is_some_and(|p| p.file != file) {
-        state.ws.breadcrumbs.popup = None;
+    let crumbs = &mut state.ws.breadcrumbs;
+    if crumbs.popup.as_ref().is_some_and(|p| p.file != file) {
+        crumbs.popup = None;
     }
-    if state.ws.breadcrumbs.menu.as_ref().is_some_and(|m| m.file != file) {
-        state.ws.breadcrumbs.menu = None;
+    if crumbs.menu.as_ref().is_some_and(|m| m.file != file) {
+        crumbs.menu = None;
     }
-    // Slots touch; the separators carry the gaps, so `fit` sees the real widths.
+    if crumbs.scroll_file.as_ref() != Some(&file) {
+        crumbs.scroll_file = Some(file.clone());
+        crumbs.stick_end = true;
+        crumbs.revealed_slot = None;
+    }
+    // Slots touch; the separators carry the gaps, so the content width is exact.
     ui.spacing_mut().item_spacing.x = 0.0;
     let widths: Vec<f32> = segs.iter().map(|s| segment_width(ui, s)).collect();
-    let slots = fit(&widths, SEP_W, ELLIPSIS_W, ui.available_width());
+    let lefts: Vec<f32> = widths.iter().enumerate().scan(0.0, |x, (i, w)| {
+        let left = *x + if i > 0 { SEP_W } else { 0.0 };
+        *x = left + w;
+        Some(left)
+    }).collect();
+    let content_w = lefts.last().zip(widths.last()).map_or(0.0, |(l, w)| l + w);
+    let view_w = ui.available_width().min(content_w);
+    let end = (content_w - view_w).max(0.0);
     let height = ui.available_height();
     let start = ui.cursor().min;
-    let mut clicked: Option<(Opener, Pos2)> = None;
-    // A click on the file crumb or a right-click on a project crumb: the slot and its target.
-    let mut menu_click: Option<(usize, Target, f32)> = None;
-    let mut reveal: Option<PathBuf> = None;
-    let root = state.ws.project.as_ref().map(|p| p.root.clone());
-    let open = state.ws.breadcrumbs.popup.as_ref().map(|p| p.opener);
+    let open = state.ws.breadcrumbs.popup.as_ref().map(|p| p.slot);
     let menu_slot = state.ws.breadcrumbs.menu.as_ref().map(|m| m.slot);
     let bar_focused = state.ws.breadcrumbs.bar_focused(ui.ctx());
-    let keyboard = if bar_focused { state.ws.breadcrumbs.selected_slot.map(|s| s.min(slots.len().saturating_sub(1))) } else { None };
-    let mut slot_rects = Vec::with_capacity(slots.len());
-    let mut anchor = None;
-    for (n, slot) in slots.iter().enumerate() {
-        if n > 0 {
-            let (r, _) = ui.allocate_exact_size(vec2(SEP_W, height), Sense::hover());
-            chevron(ui.painter(), r.center(), theme::T.text_dim);
-        }
-        let (opener, width) = match slot {
-            Slot::Segment(i) => (Opener::Segment(*i), widths[*i]),
-            Slot::Hidden(_) => (Opener::Hidden, ELLIPSIS_W),
-        };
-        let (rect, resp) = ui.allocate_exact_size(vec2(width, height), Sense::click());
-        let label = match slot {
-            Slot::Segment(i) => format!("Breadcrumb {}", segs[*i].name),
-            Slot::Hidden(_) => "Breadcrumb …".to_string(),
-        };
-        slot_rects.push(rect);
-        let chosen = keyboard == Some(n);
-        let highlighted = open == Some(opener) || menu_slot == Some(n);
-        crate::util::label_selectable(&resp, label, highlighted || chosen);
-        let painter = ui.painter();
-        if chosen {
-            // The keyboard selection: a filled slot with a focus ring.
-            let r = rect.shrink2(vec2(0.0, 1.0));
-            painter.rect_filled(r, theme::T.radius.row, theme::T.tab_active_bg);
-            painter.rect_stroke(r.shrink(0.5), theme::T.radius.row, Stroke::new(1.0_f32, theme::T.accent), egui::StrokeKind::Inside);
-        } else if highlighted {
-            painter.rect_filled(rect.shrink2(vec2(0.0, 1.0)), theme::T.radius.row, theme::T.tab_active_bg);
-            if open == Some(opener) {
-                anchor = Some(rect.left_top());
-            }
-        } else if resp.hovered() {
-            painter.rect_filled(rect.shrink2(vec2(0.0, 1.0)), theme::T.radius.row, theme::T.hover_on_window);
-        }
-        let cy = rect.center().y;
-        match slot {
-            Slot::Segment(i) => {
-                let seg = &segs[*i];
-                let mut x = rect.min.x + PAD;
-                match seg.kind {
-                    SegmentKind::Root | SegmentKind::Dir => folder_icon(painter, pos2(x + 7.0, cy)),
-                    SegmentKind::Library => icons::library(painter, pos2(x + 7.0, cy), 14.0),
-                    SegmentKind::File => file_icon(painter, pos2(x + 7.0, cy), &seg.name),
-                }
-                x += ICON_W;
-                let color = match seg.kind {
-                    SegmentKind::File => tree::name_color(&state.ws.git, &seg.path, false),
-                    _ => theme::T.text,
-                };
-                painter.text(pos2(x, cy), Align2::LEFT_CENTER, &seg.name, font(), color);
-            }
-            Slot::Hidden(_) => dots(painter, rect.center(), theme::T.text),
-        }
-        let target = match slot {
-            Slot::Segment(i) => crumb_target(root.as_deref(), &segs[*i]),
-            Slot::Hidden(_) => None,
-        };
-        match target {
-            // The click of the second press also toggles the folder's popup; the reveal wins.
-            Some(t) if t.is_dir && state.clicks.double(&resp) => reveal = Some(t.path),
-            Some(t) if resp.secondary_clicked() || (resp.clicked() && !t.is_dir) => menu_click = Some((n, t, rect.min.x)),
-            _ if resp.clicked() => clicked = Some((opener, rect.left_top())),
-            _ => {}
+    let last = segs.len() - 1;
+    let keyboard = if bar_focused { state.ws.breadcrumbs.selected_slot.map(|s| s.min(last)) } else { None };
+
+    // The offset this frame: the end while the row sticks to it, else last frame's offset. A
+    // slot the keyboard selects scrolls into view.
+    // The same id as the ScrollArea below: egui hashes the salt into an `Id` first.
+    let scroll_id = ui.make_persistent_id(Id::new("breadcrumbs-scroll"));
+    let crumbs = &mut state.ws.breadcrumbs;
+    let mut offset = if crumbs.stick_end { end } else { egui::scroll_area::State::load(ui.ctx(), scroll_id).map_or(end, |s| s.offset.x).min(end) };
+    let reveal_slot = crumbs.selected_slot.map(|s| s.min(last));
+    if reveal_slot != crumbs.revealed_slot {
+        crumbs.revealed_slot = reveal_slot;
+        if let Some(s) = reveal_slot {
+            offset = reveal_offset(offset, view_w, lefts[s], lefts[s] + widths[s]);
+            crumbs.stick_end = offset >= end - 0.5;
         }
     }
-    state.ws.breadcrumbs.bar_rect = Some(Rect::from_min_max(start, pos2(ui.cursor().min.x, start.y + height)));
-    state.ws.breadcrumbs.slots = slots;
-    state.ws.breadcrumbs.slot_rects = slot_rects;
-    if let (Some(p), Some(a)) = (state.ws.breadcrumbs.popup.as_mut(), anchor) {
-        p.anchor = a;
+
+    let mut clicked: Option<usize> = None;
+    // A click on the file crumb or a right-click on a project crumb: the slot and its target.
+    let mut menu_click: Option<(usize, Target)> = None;
+    let mut reveal: Option<PathBuf> = None;
+    let root = state.ws.project.as_ref().map(|p| p.root.clone());
+    let git = &state.ws.git;
+    let mut slot_rects = Vec::with_capacity(segs.len());
+    // A plain mouse wheel scrolls the row too, not only a sideways swipe or Shift+wheel.
+    ui.style_mut().always_scroll_the_only_direction = true;
+    let out = ScrollArea::horizontal()
+        .id_salt("breadcrumbs-scroll")
+        .horizontal_scroll_offset(offset)
+        .auto_shrink([true, false])
+        .drag_to_scroll(false)
+        .show(ui, |ui| {
+            // The parent is a left-to-right row; keep the crumbs in one row whatever it is.
+            ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                ui.spacing_mut().item_spacing.x = 0.0;
+                for (n, seg) in segs.iter().enumerate() {
+                    if n > 0 {
+                        let (r, _) = ui.allocate_exact_size(vec2(SEP_W, height), Sense::hover());
+                        chevron(ui.painter(), r.center(), theme::T.text_dim);
+                    }
+                    let (rect, resp) = ui.allocate_exact_size(vec2(widths[n], height), Sense::click());
+                    slot_rects.push(rect);
+                    let chosen = keyboard == Some(n);
+                    let highlighted = open == Some(n) || menu_slot == Some(n);
+                    crate::util::label_selectable(&resp, format!("Breadcrumb {}", seg.name), highlighted || chosen);
+                    let painter = ui.painter();
+                    if chosen {
+                        // The keyboard selection: a filled slot with a focus ring.
+                        let r = rect.shrink2(vec2(0.0, 1.0));
+                        painter.rect_filled(r, theme::T.radius.row, theme::T.tab_active_bg);
+                        painter.rect_stroke(r.shrink(0.5), theme::T.radius.row, Stroke::new(1.0_f32, theme::T.accent), egui::StrokeKind::Inside);
+                    } else if highlighted {
+                        painter.rect_filled(rect.shrink2(vec2(0.0, 1.0)), theme::T.radius.row, theme::T.tab_active_bg);
+                    } else if resp.hovered() {
+                        painter.rect_filled(rect.shrink2(vec2(0.0, 1.0)), theme::T.radius.row, theme::T.hover_on_window);
+                    }
+                    let cy = rect.center().y;
+                    let mut x = rect.min.x + PAD;
+                    match seg.kind {
+                        SegmentKind::Root | SegmentKind::Dir => folder_icon(painter, pos2(x + 7.0, cy)),
+                        SegmentKind::Library => icons::library(painter, pos2(x + 7.0, cy), 14.0),
+                        SegmentKind::File => file_icon(painter, pos2(x + 7.0, cy), &seg.name),
+                    }
+                    x += ICON_W;
+                    let color = match seg.kind {
+                        SegmentKind::File => tree::name_color(git, &seg.path, false),
+                        _ => theme::T.text,
+                    };
+                    painter.text(pos2(x, cy), Align2::LEFT_CENTER, &seg.name, font(), color);
+                    match crumb_target(root.as_deref(), seg) {
+                        // The click of the second press also toggles the folder's popup; the reveal wins.
+                        Some(t) if t.is_dir && state.clicks.double(&resp) => reveal = Some(t.path),
+                        Some(t) if resp.secondary_clicked() || (resp.clicked() && !t.is_dir) => menu_click = Some((n, t)),
+                        _ if resp.clicked() => clicked = Some(n),
+                        _ => {}
+                    }
+                }
+            });
+        });
+    let bar = out.inner_rect;
+    let crumbs = &mut state.ws.breadcrumbs;
+    // The wheel moved the row this frame: it sticks to the end only while it stays there.
+    crumbs.scroll_x = out.state.offset.x;
+    crumbs.stick_end = out.state.offset.x >= end - 0.5;
+    crumbs.bar_rect = Some(bar);
+    crumbs.slots = slot_rects;
+    // Popups and the file menu follow their crumb when the row scrolls.
+    if let Some(p) = crumbs.popup.as_mut() {
+        if let Some(r) = crumbs.slots.get(p.slot) {
+            p.anchor = popup_anchor(Some(bar), *r);
+        }
+    }
+    if let Some(m) = crumbs.menu.as_mut() {
+        if let Some(r) = crumbs.slots.get(m.slot) {
+            m.anchor_x = popup_anchor(Some(bar), *r).x;
+        }
     }
     if let Some(path) = reveal {
-        state.ws.breadcrumbs.popup = None;
-        state.ws.breadcrumbs.menu = None;
-        state.ws.breadcrumbs.selected_slot = None;
+        crumbs.popup = None;
+        crumbs.menu = None;
+        crumbs.selected_slot = None;
         tree::select_path(state, &path);
-    } else if let Some((n, target, anchor_x)) = menu_click {
+        // Reveal shows the folder's contents too, like IDEA's Select in Project on a folder.
+        state.ws.tree.set_expanded(&path, true);
+    } else if let Some((n, target)) = menu_click {
         if menu_slot == Some(n) {
-            state.ws.breadcrumbs.menu = None;
+            crumbs.menu = None;
         } else {
             // The bar takes the keyboard too, so the file keys act on the crumb after the menu.
             focus_bar(state, ui.ctx(), n);
+            let anchor_x = popup_anchor(Some(bar), state.ws.breadcrumbs.slots[n]).x;
             state.ws.breadcrumbs.menu = Some(FileMenu { slot: n, target, file, anchor_x });
         }
-    } else if let Some((opener, at)) = clicked {
-        if open == Some(opener) {
-            state.ws.breadcrumbs.popup = None;
+    } else if let Some(n) = clicked {
+        if open == Some(n) {
+            crumbs.popup = None;
         } else {
-            open_popup(state, opener, &segs, at);
+            let at = popup_anchor(Some(bar), crumbs.slots[n]);
+            open_popup(state, n, &segs, at);
         }
     }
     // After the clicks: a click on the file crumb gives the bar the keyboard in this frame.
@@ -637,12 +627,7 @@ pub fn show_popup(state: &mut AppState, ctx: &Context) {
         return;
     };
     let listings = &state.ws.breadcrumbs.listings;
-    let items_of = |level: &Level| -> Option<Vec<Entry>> {
-        match &level.source {
-            LevelSource::Dir(d) => listings.get(d).cloned(),
-            LevelSource::Hidden(v) => Some(v.clone()),
-        }
-    };
+    let items_of = |level: &Level| -> Option<Vec<Entry>> { listings.get(&level.dir).cloned() };
     // A level whose listing just arrived starts on the current child.
     for level in &mut popup.levels {
         if level.selected.is_none() {
@@ -710,7 +695,7 @@ pub fn show_popup(state: &mut AppState, ctx: &Context) {
     let git = &state.ws.git;
     let mut popup_rects = Vec::new();
     // The directory each level shows, to know whether a row's nested popup is already open.
-    let level_dirs: Vec<Option<PathBuf>> = popup.levels.iter().map(|l| l.dir_path().map(Path::to_path_buf)).collect();
+    let level_dirs: Vec<PathBuf> = popup.levels.iter().map(|l| l.dir.clone()).collect();
 
     // Layout, like IDEA: every level rests on the status bar and grows upward. Nested levels sit
     // right of their parent, touching it. Heights are whole rows, at most `MAX_ROWS`.
@@ -748,7 +733,7 @@ pub fn show_popup(state: &mut AppState, ctx: &Context) {
         let size = sizes[li];
         let pos = pos2(xs[li], baseline - size.y - margin.y);
         let focused = li == popup.focus;
-        let key = level_dirs[li].clone().unwrap_or_default();
+        let key = level_dirs[li].clone();
         // The known size also bounds the invisible sizing pass of a new level. egui's default
         // there (600x400) covers the bar, and the second press of a double click on a folder
         // crumb would land on the level instead of the crumb.
@@ -814,7 +799,7 @@ pub fn show_popup(state: &mut AppState, ctx: &Context) {
                                 actions.push(Action::Open(e.path.clone()));
                             }
                         } else if r.hovered() && pointer_moved {
-                            let nested_open = level_dirs.get(li + 1).is_some_and(|d| d.as_ref() == Some(&e.path));
+                            let nested_open = level_dirs.get(li + 1) == Some(&e.path);
                             let deeper = level_dirs.len() > li + 1;
                             let stale = !selected || !focused || if e.is_dir { !nested_open } else { deeper };
                             if stale {
@@ -914,10 +899,6 @@ fn chevron(painter: &Painter, c: Pos2, color: Color32) {
     icons::paint(painter, Rect::from_center_size(c, vec2(10.0, 10.0)), Icon::ChevronRight, color);
 }
 
-fn dots(painter: &Painter, c: Pos2, color: Color32) {
-    icons::paint(painter, Rect::from_center_size(c, vec2(14.0, 14.0)), Icon::More, color);
-}
-
 pub fn folder_icon(painter: &Painter, c: Pos2) {
     icons::folder(painter, c, 14.0);
 }
@@ -993,27 +974,11 @@ mod tests {
     }
 
     #[test]
-    fn fit_keeps_everything_when_wide() {
-        assert_eq!(fit(&[50.0, 30.0, 40.0], 10.0, 20.0, 140.0), vec![Slot::Segment(0), Slot::Segment(1), Slot::Segment(2)]);
-    }
-
-    #[test]
-    fn fit_hides_middle_from_the_left() {
-        // root 50, a 30, b 30, c 30, file 40; separators 10, ellipsis 20.
-        let w = [50.0, 30.0, 30.0, 30.0, 40.0];
-        // root … c file = 50 + 20 + 30 + 40 + 3*10 = 170.
-        assert_eq!(fit(&w, 10.0, 20.0, 175.0), vec![Slot::Segment(0), Slot::Hidden(1..3), Slot::Segment(3), Slot::Segment(4)]);
-        // root … b c file = 50 + 20 + 60 + 40 + 40 = 210.
-        assert_eq!(fit(&w, 10.0, 20.0, 210.0), vec![Slot::Segment(0), Slot::Hidden(1..2), Slot::Segment(2), Slot::Segment(3), Slot::Segment(4)]);
-        // root … file = 50 + 20 + 40 + 20 = 130.
-        assert_eq!(fit(&w, 10.0, 20.0, 130.0), vec![Slot::Segment(0), Slot::Hidden(1..4), Slot::Segment(4)]);
-    }
-
-    #[test]
-    fn fit_hides_root_last() {
-        let w = [50.0, 30.0, 40.0];
-        assert_eq!(fit(&w, 10.0, 20.0, 80.0), vec![Slot::Hidden(0..2), Slot::Segment(2)]);
-        assert_eq!(fit(&[50.0, 40.0], 10.0, 20.0, 60.0), vec![Slot::Hidden(0..1), Slot::Segment(1)]);
-        assert_eq!(fit(&[50.0], 10.0, 20.0, 10.0), vec![Slot::Segment(0)]);
+    fn reveal_offset_moves_as_little_as_possible() {
+        // A viewport 100 wide at offset 50 shows [50, 150).
+        assert_eq!(reveal_offset(50.0, 100.0, 60.0, 90.0), 50.0, "already visible");
+        assert_eq!(reveal_offset(50.0, 100.0, 20.0, 60.0), 20.0, "left edge into view");
+        assert_eq!(reveal_offset(50.0, 100.0, 140.0, 180.0), 80.0, "right edge into view");
+        assert_eq!(reveal_offset(50.0, 100.0, 10.0, 200.0), 10.0, "too wide: its start");
     }
 }

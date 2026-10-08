@@ -462,6 +462,8 @@ pub fn command_keys(ctx: &egui::Context, cut_pending: bool) -> Option<TreeComman
             Some(TreeCommand::Rename)
         } else if i.consume_key(M::ALT, Key::F7) {
             Some(TreeCommand::FindUsages)
+        } else if i.consume_key(M::COMMAND, Key::Num3) {
+            Some(TreeCommand::OpenInTerminal)
         } else if i.consume_key(M::COMMAND, Key::Backspace) || i.consume_key(M::NONE, Key::Backspace) || i.consume_key(M::NONE, Key::Delete) {
             Some(TreeCommand::Delete)
         } else if cut_pending && i.consume_key(M::NONE, Key::Escape) {

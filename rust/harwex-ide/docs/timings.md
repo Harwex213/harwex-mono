@@ -16,6 +16,7 @@ Read this file when a change touches a hot path and you need the budget or a ref
 | 10k carets: steady frame | < 4 ms | same (`bench_10k_carets`) |
 | 10k carets: typing frame / Backspace frame, avg | < 8 ms / < 8 ms | same |
 | 10k problem underlines: steady frame / jump-scroll frame | < 4 ms / < 12 ms | same (`bench_10k_problems`) |
+| identifier under the caret (2000 occurrences shown): steady / caret move / typing frame | < 4 / 8 / 8 ms | same (`bench_occurrences`) |
 | soft wrap, 100k-line Markdown: steady / jump-scroll / wheel scroll / typing / sweep and resize frames | < 4 / 12 / 8 / 8 / 12 ms | same (`bench_wrapped_markdown`) |
 | soft wrap, one 2 MB line: steady / typing / Down frame | < 4 / 8 / 8 ms | same (`bench_wrapped_giant_line`) |
 | 200k-line C++ file (Unreal-style macros): keystroke / steady / typing / jump-scroll frame | < 4 / 4 / 8 / 12 ms | same (`bench_200k_lines_cpp`) |
@@ -34,6 +35,8 @@ The benchmark file has 200k lines (4.2 MB of TypeScript).
 Editor benchmark: keystroke 0.11 ms avg (max 3.5 ms), steady frame 0.02 ms, jump-scroll frame 0.40 ms avg (max 4.8 ms), typing frame 0.28 ms avg (max 1.8 ms), open 17 ms, full tree-sitter parse 238 ms (on a worker), reparse after edits 18 ms (on a worker).
 
 Find bar on the same file: query typing frame 0.10 ms avg (max 0.13 ms), search for an 11-match query 1.8 ms (worker, until the result is shown), capped search of a one-letter query 3.0 ms (100k matches, worker), steady frame with 100k matches 0.19 ms, typing frame in the text with 100k matches 0.51 ms avg (max 1.8 ms).
+
+Identifier under the caret on the same file (`label`, 40k hits, capped at 2000): the worker answers within the first frames, steady frame 0.07 ms, caret move frame 0.09 ms, typing frame in the identifier 0.25 ms (a new worker search per keystroke).
 
 10k carets on the same file (one every 20 lines): steady frame 0.11 ms, typing frame 4.6 ms avg (max 6.8 ms), Backspace frame 6.7 ms avg (max 26 ms when a finished parse made the rope shared), undo of 21 steps in one frame 130 ms, full reparse after the edits 250-700 ms (worker). Select All Occurrences of a word with 40k hits 2.2 ms, then one typing frame at 40k carets 37 ms.
 

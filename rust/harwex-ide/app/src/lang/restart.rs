@@ -93,7 +93,8 @@ fn project(s: &mut AppState, action: Action, tally: Arc<Mutex<Tally>>) {
         Action::Stop => "Stopping language servers",
         Action::Start => "Starting language servers",
     };
-    let busy = jobs.busy(label.to_string());
+    // The servers restart on their own queue threads; the job cannot stop them early.
+    let busy = jobs.busy_uncancellable(label.to_string());
     let done = move || {
         drop(busy);
         jobs.post(move |state| finished(state, &tally, action, files));

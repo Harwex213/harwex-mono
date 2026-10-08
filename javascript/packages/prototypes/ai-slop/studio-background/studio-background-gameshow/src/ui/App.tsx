@@ -28,9 +28,7 @@ const CHANNELS: { label: string; title: string; state: Signal<boolean> }[] = [
 // Camera shots: a click makes the Main Camera travel to the shot.
 const SHOT_BUTTONS: { shot: Shot; label: string; title: string }[] = [
   { shot: "wheel", label: "Wheel", title: "Hero wheel in the amphitheatre (?shot=wheel)" },
-  { shot: "slot", label: "Slot", title: "Bonus Deluxe slot station (?shot=slot)" },
-  { shot: "dice", label: "Dice", title: "Dice bonus station (?shot=dice)" },
-  { shot: "gameshow", label: "Game Show", title: "Game Show station with the casino backdrop (?shot=gameshow)" },
+  { shot: "gameshow", label: "Game Show", title: "Bonus Show in the Game Show room, the casino backdrop behind it (?shot=gameshow)" },
 ];
 
 const RENDER_MODES: { mode: RenderMode; label: string; title: string }[] = [

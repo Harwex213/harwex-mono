@@ -9,13 +9,13 @@ import { createCity } from "../scene/city";
 import { named } from "../scene/geometry";
 import { createLights } from "../scene/lights";
 import { createEnvironment, createMaterials } from "../scene/materials";
+import { annexFloorPlan, createAnnex } from "../scene/annex";
 import { createBuffet } from "../scene/buffet";
-import { createCasino, createCasinoMaterials } from "../scene/casino";
+import { createCasinoBackdrop } from "../scene/casinoBackdrop";
 import { createDressing } from "../scene/dressing";
 import { createGameMaterials, createGameProps } from "../scene/gameProps";
 import { createProps } from "../scene/props";
 import { createSofas } from "../scene/sofas";
-import { createStations } from "../scene/stations";
 import { createStudio } from "../scene/studio";
 import { createWheel } from "../scene/wheel";
 import { activeTab, dolly, fps, isPlaying, params, renderMode, shot, spin, swing } from "../state";
@@ -41,7 +41,7 @@ class StudioEngine {
   private readonly wheel: ReturnType<typeof createWheel>;
   private readonly lights: ReturnType<typeof createLights>;
   private readonly city: ReturnType<typeof createCity>;
-  private readonly casino: ReturnType<typeof createCasino>;
+  private readonly annex: ReturnType<typeof createAnnex>;
   private readonly reflector: Reflector;
   private readonly lighting: EditorLighting;
   private readonly zones: LightZones;
@@ -75,27 +75,32 @@ class StudioEngine {
     this.camera.userData.animated = true;
 
     const materials = createMaterials();
-    const casinoMaterials = createCasinoMaterials();
     const gameMaterials = createGameMaterials();
     // The real size comes with the first layout; the reflector target is resized then.
-    const studio = createStudio(materials, 1280, 720);
+    const studio = createStudio(materials, 1280, 720, annexFloorPlan());
     this.reflector = studio.reflector;
     this.wheel = createWheel(materials);
     this.city = createCity();
     this.lights = createLights();
-    this.casino = createCasino(materials, casinoMaterials);
-    this.root.add(this.camera, studio.group, this.wheel.group, createProps(materials), createDressing(materials), createSofas(materials), createBuffet(materials), createGameProps(gameMaterials), this.casino.group, createStations(materials, casinoMaterials, gameMaterials), this.lights.group, this.city.group);
+    // The casino backdrop behind the partition opening (annex.ts places it); `annex.update` drives its animation.
+    this.annex = createAnnex(materials, createCasinoBackdrop());
+    this.root.add(this.camera, studio.group, this.wheel.group, createProps(materials), createDressing(materials), createSofas(materials), createBuffet(materials), createGameProps(gameMaterials), this.annex.group, this.lights.group, this.city.group);
     this.scene.add(this.root);
 
     // Place everything at time 0 before the snapshot of code defaults.
     this.wheel.update(0, 0, true);
     this.rig.update(0, true, true);
     this.lights.update(0);
-    this.casino.update(0);
+    this.annex.update(0);
     // Every selectable object gets its origin on itself, so the gizmo appears where the object is.
     recenterPivots(this.root);
     this.document = new SceneDocument(this.root);
     const floor = studio.group.getObjectByName("Marble") as THREE.Mesh;
+    // The annex part of the floor gets the environment as its own map: only an own map obeys `envMapIntensity` (studio.ts).
+    const annexMarble = (floor.material as THREE.MeshStandardMaterial[])[1];
+    if (annexMarble) {
+      annexMarble.envMap = this.scene.environment;
+    }
     this.lighting = new EditorLighting(this.renderer, this.scene, this.root, this.reflector, floor);
     this.zones = new LightZones(this.root);
 
@@ -184,7 +189,7 @@ class StudioEngine {
     this.rig.seek(params.get("still") === "1" ? 0 : seconds);
     this.rig.update(0, true, true);
     this.lights.update(this.time);
-    this.casino.update(this.time);
+    this.annex.update(this.time);
     this.render(0);
   }
 
@@ -227,7 +232,7 @@ class StudioEngine {
       this.rig.update(dt, swing.value, dolly.value);
     }
     this.lights.update(this.time);
-    this.casino.update(this.time);
+    this.annex.update(this.time);
   }
 
   private render(dt: number): void {

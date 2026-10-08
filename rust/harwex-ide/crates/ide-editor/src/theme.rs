@@ -32,6 +32,10 @@ pub struct EditorTheme {
     pub find_scroll_mark: Color32,
     /// Scrollbar marks of the carets when there are several.
     pub caret_scroll_mark: Color32,
+    /// The other occurrences of the identifier at the caret or in the selection, and their
+    /// scrollbar marks.
+    pub occurrence: Color32,
+    pub occurrence_scroll_mark: Color32,
     /// The thumb of the horizontal scrollbar, idle and hovered or dragged.
     pub scrollbar_thumb: Color32,
     pub scrollbar_thumb_active: Color32,
@@ -111,6 +115,8 @@ impl EditorTheme {
             find_excluded: hex(0x868A91),
             find_scroll_mark: hex(0x6AAB73),
             caret_scroll_mark: hex(0xA1A3AB),
+            occurrence: hex(0x373B41),
+            occurrence_scroll_mark: hex(0x7A7E85),
             scrollbar_thumb: hex(0x46484D),
             scrollbar_thumb_active: hex(0x6F737A),
             problem_error: hex(0xF75464),
@@ -173,6 +179,8 @@ impl EditorTheme {
             find_excluded: hex(0x868A91),
             find_scroll_mark: hex(0x6AAB73),
             caret_scroll_mark: hex(0xA1A3AB),
+            occurrence: hex(0x373B41),
+            occurrence_scroll_mark: hex(0x7A7E85),
             scrollbar_thumb: hex(0x46484D),
             scrollbar_thumb_active: hex(0x6F737A),
             problem_error: hex(0xF75464),

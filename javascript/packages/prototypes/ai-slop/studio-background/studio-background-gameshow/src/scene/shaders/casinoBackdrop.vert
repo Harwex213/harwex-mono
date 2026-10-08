@@ -1,9 +1,9 @@
 // Casino backdrop: projective texturing from a fixed virtual projector (see casinoBackdrop.ts).
-// The photo coordinate of a surface point comes from its rest position, so the photo stays glued
-// to the proxy geometry. A swaying chandelier card moves only its drawn position: the chandelier
-// swings and its picture goes with it.
+// The picture coordinate of a surface point comes from its rest position, so the picture stays
+// glued to the proxy geometry. A swaying chandelier card moves only its drawn position: the
+// chandelier swings and its picture goes with it.
 
-// World space -> projector clip space.
+// World space -> (u * w, v * w, -, w) of the picture, w = depth from the projector.
 uniform mat4 uWorldToProjector;
 #ifdef SWAY
 // World position of the ceiling point the chandelier hangs from.

@@ -10,5 +10,7 @@ mod click;
 mod document;
 mod find;
 mod hscroll;
+mod ime;
 mod languages;
+mod occurrences;
 mod wrap;

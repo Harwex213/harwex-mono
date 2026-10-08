@@ -305,6 +305,49 @@ fn bench_10k_problems() {
     }
 }
 
+/// Identifier under the caret on the 200k-line file (task 091): the search runs on a worker,
+/// so caret moves and typing in an identifier keep the frame budgets, and the steady frame with
+/// 2000 painted occurrences and scrollbar marks stays under 4 ms.
+#[test]
+fn bench_occurrences() {
+    let text = generate();
+    let mut doc = Document::from_text(&text, Language::TypeScript);
+    doc.wait_syntax();
+    let mut state = EditorState::new();
+    let ctx = egui::Context::default();
+    let mid = LINES / 2;
+    // `label` in `const label = ...`: two per block, 40k in the file, capped at 2000.
+    state.reveal(Position::new(mid + 6, 9));
+    state.request_focus();
+    for _ in 0..3 {
+        frame(&ctx, &mut doc, &mut state, vec![]);
+    }
+    let (_, found) = time(|| {
+        while state.occurrences().is_empty() {
+            std::thread::sleep(Duration::from_micros(200));
+            frame(&ctx, &mut doc, &mut state, vec![]);
+        }
+    });
+    assert_eq!(state.occurrences().len(), ide_editor::MAX_OCCURRENCES);
+    let steady: Vec<Duration> = (0..20).map(|_| frame(&ctx, &mut doc, &mut state, vec![])).collect();
+    // Each move lands on another identifier or between two: a new target every frame.
+    let moves: Vec<Duration> = (0..40).map(|_| frame(&ctx, &mut doc, &mut state, vec![key(egui::Key::ArrowRight, egui::Modifiers::NONE)])).collect();
+    let typing: Vec<Duration> = (0..40).map(|_| frame(&ctx, &mut doc, &mut state, vec![Event::Text("q".into())])).collect();
+    let avg = |v: &[Duration]| v.iter().sum::<Duration>() / v.len() as u32;
+    println!(
+        "occurrences: worker answer {:.2} ms, steady {:.2} ms, caret move {:.2} ms, typing {:.2} ms",
+        ms(found),
+        ms(avg(&steady)),
+        ms(avg(&moves)),
+        ms(avg(&typing))
+    );
+    if !cfg!(debug_assertions) {
+        assert!(avg(&steady) < Duration::from_millis(4), "steady frame with occurrences too slow");
+        assert!(avg(&moves) < Duration::from_millis(8), "caret move frame too slow");
+        assert!(avg(&typing) < Duration::from_millis(8), "typing frame in an identifier too slow");
+    }
+}
+
 /// A 200k-line C++ file (Unreal-style macros included): open, parse, keystroke, steady,
 /// jump-scroll and typing frames stay in the same budgets as TypeScript.
 fn generate_cpp() -> String {

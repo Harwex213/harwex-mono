@@ -1,52 +1,59 @@
 import * as THREE from "three";
-import { HALL } from "../scene/casino";
+import { ANNEX } from "../scene/annex";
 import { LAYOUT } from "../scene/studio";
 
-// Light zones: the amphitheatre and the casino hall are two rooms, and the lights of one room do not reach
+// Light zones: the amphitheatre and the annex are two rooms, and the lights of one room do not reach
 // the other room. three.js shades every lit fragment with every light of the scene, and the cost grows
 // faster than the light count: with all 32 lights the wheel shot took 43 ms per frame, with the 21 lights
 // of the amphitheatre alone it took 12 ms.
 // So each frame the lights of a room that the camera does not see are left out of the render.
-// - A light belongs to the hall when it stands inside the hall box. Every other light belongs to the amphitheatre.
+// - A light belongs to the annex when it sits under an object with `userData.lightZone = "annex"` (the `Annex` group).
+//   Every other light belongs to the amphitheatre, even when it hangs over the annex floor (the wheel key light).
 // - A hemisphere light lights both rooms and is never left out.
 // - Under the editor lighting every game light is left out: the editor lighting dims them all to 0 anyway.
 // - A light is left out through its layers, not through `visible`: the scene document saves `visible`.
 // - A material keeps a compiled program for every light set it has met, so a change of the set costs a compile
 //   only the first time. `warmUp` prepares the sets at startup.
 
-const HALL_BOX = new THREE.Box3(
-  new THREE.Vector3(-HALL.halfWidth, 0, HALL.backZ),
-  new THREE.Vector3(HALL.halfWidth, HALL.height + HALL.ceilingThickness, HALL.frontZ),
-);
-
 // The space of each room, for the frustum test.
-// The wide wheel shot stands just inside the hall (z ~10) and looks away from it, so the hall space starts
-// 0.6 m in front of the back wall. The amphitheatre space ends at the back wall of the hall.
-const HALL_VIEW = new THREE.Box3(
-  new THREE.Vector3(-HALL.halfWidth, 0, HALL.backZ + 0.6),
-  new THREE.Vector3(HALL.halfWidth, HALL.height + HALL.ceilingThickness, HALL.frontZ),
+// The wheel shot stands inside the annex box (z ~10) and looks away from it, so the annex space starts
+// 0.6 m in front of that camera. The Game Show shot looks along +x past the back wall of the annex, so the
+// amphitheatre space ends just in front of the colonnade end (z 9.1) and right of the colonnade (x 20.6).
+const ANNEX_VIEW = new THREE.Box3(
+  new THREE.Vector3(ANNEX.left, 0, 10.6),
+  new THREE.Vector3(ANNEX.right, ANNEX.height + LAYOUT.ceilingThickness, ANNEX.front),
 );
 const STUDIO_VIEW = new THREE.Box3(
   new THREE.Vector3(-LAYOUT.wallRadius - 3, -1, -LAYOUT.wallRadius - 3),
-  new THREE.Vector3(LAYOUT.wallRadius + 3, LAYOUT.ceilingY + 0.5, HALL.backZ),
+  new THREE.Vector3(LAYOUT.wallRadius + 0.6, LAYOUT.ceilingY + 0.5, 9.1),
 );
 
 const NONE = 0b00;
 const ALL = 0b11;
 const STUDIO = 0b01;
-const HALL_ONLY = 0b10;
+const ANNEX_ONLY = 0b10;
+
+function zoneOf(light: THREE.Light): number {
+  let current: THREE.Object3D | null = light;
+  while (current) {
+    if (current.userData.lightZone === "annex") {
+      return ANNEX_ONLY;
+    }
+    current = current.parent;
+  }
+  return STUDIO;
+}
 
 class LightZones {
-  private readonly lights: THREE.Light[] = [];
+  private readonly lights: { light: THREE.Light; zone: number }[] = [];
   private readonly frustum = new THREE.Frustum();
   private readonly matrix = new THREE.Matrix4();
-  private readonly point = new THREE.Vector3();
 
   constructor(root: THREE.Object3D) {
     root.traverse((object) => {
       const light = object as THREE.Light;
       if (light.isLight && !(light as THREE.HemisphereLight).isHemisphereLight) {
-        this.lights.push(light);
+        this.lights.push({ light, zone: zoneOf(light) });
       }
     });
   }
@@ -65,8 +72,8 @@ class LightZones {
     if (this.frustum.intersectsBox(STUDIO_VIEW)) {
       seen |= STUDIO;
     }
-    if (this.frustum.intersectsBox(HALL_VIEW)) {
-      seen |= HALL_ONLY;
+    if (this.frustum.intersectsBox(ANNEX_VIEW)) {
+      seen |= ANNEX_ONLY;
     }
     this.apply(seen);
   }
@@ -83,7 +90,7 @@ class LightZones {
     if (!renderer.extensions.has("KHR_parallel_shader_compile")) {
       return;
     }
-    const sets = [STUDIO, HALL_ONLY, ALL, NONE];
+    const sets = [STUDIO, ANNEX_ONLY, ALL, NONE];
     const previous = renderer.getRenderTarget();
     renderer.setRenderTarget(target);
     const compiles = sets.map((seen) => {
@@ -118,10 +125,7 @@ class LightZones {
   }
 
   private apply(seen: number): void {
-    for (const light of this.lights) {
-      // The world matrix is the one of the last frame; a light moved in the editor changes room a frame late.
-      this.point.setFromMatrixPosition(light.matrixWorld);
-      const zone = HALL_BOX.containsPoint(this.point) ? HALL_ONLY : STUDIO;
+    for (const { light, zone } of this.lights) {
       if ((seen & zone) !== 0) {
         light.layers.set(0);
       } else {

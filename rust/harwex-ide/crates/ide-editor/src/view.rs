@@ -8,7 +8,7 @@ use std::time::Duration;
 
 use egui::text::{LayoutJob, LayoutSection};
 use egui::{
-    Align, Align2, Button, CursorIcon, Event, EventFilter, FontId, Galley, Id, Key,
+    Align, Align2, Button, CursorIcon, Event, EventFilter, FontId, Galley, Id, ImeEvent, Key,
     Layout, Modifiers, Pos2, Rect, ScrollArea, Sense, Stroke, TextFormat, Ui, UiBuilder, Vec2,
     ViewportCommand,
 };
@@ -21,6 +21,7 @@ use crate::find_bar::{self, BarCmd, BarEnv, BarIds, HISTORY_LEN};
 use crate::search::{FindOptions, Matcher};
 use crate::highlight::{HlKind, Span};
 use crate::layout::{CaretMoves, LineMoves, NoWrap, RowLayout};
+use crate::occurrences::Occurrences;
 use crate::theme::EditorTheme;
 use crate::wrap::{DrawnRow, LineRows, RowMoves, SoftWrap, WrapMap};
 
@@ -177,6 +178,16 @@ pub struct EditorState {
     /// Soft wrap: caret heads on a row boundary that sit at the end of the upper row (IDEA's
     /// affinity), with the doc version they were set for.
     lean: (Vec<usize>, u64),
+    /// The primary caret as drawn last frame, in screen points. `None` when it was off screen.
+    caret_rect: Option<Rect>,
+    /// The rect last frame handed to the OS for the input-source indicator and IME windows.
+    ime_rect: Option<Rect>,
+    /// The IME's uncommitted text (a dead key, a CJK composition), drawn at the caret.
+    preedit: String,
+    /// The other occurrences of the identifier at the caret (IDEA's identifier under caret).
+    usages: Occurrences,
+    /// Scrollbar marks of the occurrences: the key they were built for and their y fractions.
+    occurrence_marks: (u64, Vec<f32>),
 }
 
 /// Where an editor is scrolled, in text terms, so a reopened tab lands on the same text even at
@@ -400,6 +411,11 @@ impl EditorState {
             anchor: None,
             drawn_wrap: false,
             lean: (Vec::new(), 0),
+            caret_rect: None,
+            ime_rect: None,
+            preedit: String::new(),
+            usages: Occurrences::default(),
+            occurrence_marks: (0, Vec::new()),
         }
     }
 
@@ -689,6 +705,44 @@ impl EditorState {
     }
 
     /// The horizontal scrollbar's track as drawn last frame; `None` while every line fits.
+    /// The primary caret as drawn last frame, in screen points; `None` when it was off screen.
+    pub fn caret_rect(&self) -> Option<Rect> {
+        self.caret_rect
+    }
+
+    /// The rect last frame passed to `PlatformOutput::ime` (the caret, or the nearest text-area
+    /// edge while the caret is scrolled away); `None` while the editor had no focus.
+    pub fn ime_rect(&self) -> Option<Rect> {
+        self.ime_rect
+    }
+
+    /// The occurrences of the identifier at the caret or in the selection, sorted char ranges,
+    /// as of the last frame. Empty when nothing is highlighted (no identifier, or it occurs
+    /// only once). The identifier's own range is in the list but is not painted.
+    pub fn occurrences(&self) -> &[Range<usize>] {
+        self.usages.shown()
+    }
+
+    /// The occurrence search stopped at `MAX_OCCURRENCES`.
+    pub fn occurrences_capped(&self) -> bool {
+        self.usages.is_capped()
+    }
+
+    /// The scrollbar marks of the occurrences drawn last frame, as y offsets from the top of
+    /// the text area.
+    pub fn occurrence_marks(&self) -> &[f32] {
+        if self.usages.shown().is_empty() {
+            &[]
+        } else {
+            &self.occurrence_marks.1
+        }
+    }
+
+    /// The IME's uncommitted text, drawn at the caret until the IME commits or drops it.
+    pub fn preedit(&self) -> &str {
+        &self.preedit
+    }
+
     pub fn hbar_rect(&self) -> Option<Rect> {
         self.hbar
     }
@@ -1199,6 +1253,30 @@ impl<'a> EditorView<'a> {
                         state.preferred_cols.clear();
                         caret_moved = true;
                     }
+                    // macOS sends a dead key or a CJK composition as preedit text and the result
+                    // as one commit; plain typing still arrives as `Event::Text`.
+                    Event::Ime(ImeEvent::Preedit(t)) if !read_only => {
+                        state.preedit = t;
+                    }
+                    Event::Ime(ImeEvent::Commit(t)) => {
+                        state.preedit.clear();
+                        if read_only || t.is_empty() || t == "\n" || t == "\r" {
+                            continue;
+                        }
+                        row_moves.lean_in.borrow_mut().clear();
+                        // A dead key's one char types like a key; a composition is one step.
+                        let single = t.chars().count() == 1;
+                        carets::edit_each(doc, &mut state.carets, |doc, sel, _| {
+                            if single {
+                                editing::type_char(doc, sel, &t);
+                            } else {
+                                insert_other(doc, sel, &t);
+                            }
+                        });
+                        state.preferred_cols.clear();
+                        caret_moved = true;
+                    }
+                    Event::Ime(ImeEvent::Disabled) => state.preedit.clear(),
                     Event::Copy => {
                         ui.ctx().copy_text(carets::copy_text(doc, &state.carets));
                     }
@@ -1472,6 +1550,11 @@ impl<'a> EditorView<'a> {
         }
         let caret_pos = doc.char_to_position(state.shown_head(inner, &state.carets.primary()));
         state.cursor_pos = caret_pos;
+        state.usages.update(doc, &state.carets);
+        if state.usages.is_searching() {
+            // The worker answers without an input event, so poll until it lands.
+            ui.ctx().request_repaint_after(Duration::from_millis(16));
+        }
 
         // Text area.
         let theme_fp = theme.fingerprint();
@@ -1497,6 +1580,9 @@ impl<'a> EditorView<'a> {
         let find_matches = if find.is_open() { find.matches() } else { &[] };
         let find_in_selection = find.in_selection();
         let find_current = if find_in_selection { find.current() } else { None };
+        let primary_head = state.shown_head(inner, &state.carets.primary());
+        let occurrences = state.usages.shown();
+        let occurrence_current = state.usages.current();
         let output = area.show_viewport(&mut child, |ui, viewport| {
             // The content is as wide as the view; rows are drawn shifted by `sx` and clipped.
             ui.set_min_size(Vec2::new(view.x, content.y));
@@ -1510,7 +1596,7 @@ impl<'a> EditorView<'a> {
             let origin = ui.max_rect().min + Vec2::new(TEXT_PAD - sx, 0.0);
             if wrap_on {
                 rows_buf.clear();
-                WrapPaint {
+                let caret = WrapPaint {
                     doc: &mut *doc,
                     map: &mut wrap_map.borrow_mut(),
                     highlight: &mut state.highlight,
@@ -1526,9 +1612,12 @@ impl<'a> EditorView<'a> {
                     hover_word: hover_word.clone(),
                     style: RowStyle { theme, font: &font, font_size, theme_fp, line_h, row_h, char_w, ppp, has_focus },
                     drawn: &mut rows_buf,
+                    primary: primary_head,
+                    occurrences,
+                    occurrence_current: occurrence_current.clone(),
                 }
                 .paint(ui, viewport, origin);
-                return (Vec::new(), drawn_scroll);
+                return (Vec::new(), drawn_scroll, caret);
             }
             let first = ((viewport.min.y / line_h).floor().max(0.0) as usize).min(line_count);
             let last = ((viewport.max.y / line_h).ceil().max(0.0) as usize + 1).min(line_count);
@@ -1568,6 +1657,7 @@ impl<'a> EditorView<'a> {
 
             let mut drawn_now = std::mem::take(&mut drawn_buf);
             drawn_now.clear();
+            let mut caret = None;
             for line in visible {
                 let y = row_top(origin.y, line_h, ppp, line as isize);
                 let y_end = row_top(origin.y, line_h, ppp, line as isize + 1);
@@ -1633,6 +1723,21 @@ impl<'a> EditorView<'a> {
                         0.0,
                         theme.current_line,
                     );
+                }
+
+                // Under the selection and the find matches.
+                let mut i = occurrences.partition_point(|r| r.end <= ls);
+                while let Some(r) = occurrences.get(i) {
+                    i += 1;
+                    if r.start > le {
+                        break;
+                    }
+                    if occurrence_current.as_ref() == Some(r) || here.iter().any(|s| !s.is_empty() && s.start() <= r.start && r.end <= s.end()) {
+                        continue;
+                    }
+                    let x0 = col_x(display_col(&text, r.start.max(ls) - ls));
+                    let x1 = col_x(display_col(&text, r.end.min(le) - ls));
+                    painter.rect_filled(Rect::from_min_max(Pos2::new(x0, y), Pos2::new(x1, y_end)), 0.0, theme.occurrence);
                 }
 
                 for sel in here.iter().filter(|s| !s.is_empty()) {
@@ -1713,15 +1818,22 @@ impl<'a> EditorView<'a> {
                 for head in here.iter().map(shown).filter(|&h| h >= ls && h <= le) {
                     let x = round(col_x(display_col(&text, head - ls)));
                     let color = if has_focus { theme.caret } else { theme.caret_unfocused() };
-                    painter.rect_filled(Rect::from_min_max(Pos2::new(x - 1.0, y), Pos2::new(x + 1.0, y_end)), 0.0, color);
+                    let r = Rect::from_min_max(Pos2::new(x - 1.0, y), Pos2::new(x + 1.0, y_end));
+                    painter.rect_filled(r, 0.0, color);
+                    if head == primary_head {
+                        caret = Some(r);
+                    }
                 }
                 if let Some(galley) = galley {
                     drawn_now.push(DrawnLine { line, window_start: window.start, galley });
                 }
             }
-            (drawn_now, drawn_scroll)
+            (drawn_now, drawn_scroll, caret)
         });
-        (state.drawn, state.drawn_scroll) = output.inner;
+        let drawn_caret;
+        (state.drawn, state.drawn_scroll, drawn_caret) = output.inner;
+        // Only the visible part counts: a caret under the find bar or past the edge is not shown.
+        state.caret_rect = drawn_caret.filter(|r| text_rect.contains(r.center()));
         state.drawn_rows = rows_buf;
         state.scroll = Vec2::new(sx, output.state.offset.y);
         let bar_now = hbar_geometry(text_rect, view.x, content.x, sx, max_x);
@@ -1736,6 +1848,28 @@ impl<'a> EditorView<'a> {
             ui.ctx().request_repaint();
         }
 
+        // Occurrence marks go first: carets, find matches and problems draw over them.
+        if !state.usages.shown().is_empty() {
+            let key = {
+                let mut h = DefaultHasher::new();
+                (state.usages.gen, line_count, text_rect.height().to_bits(), line_h.to_bits(), wrap_gen).hash(&mut h);
+                h.finish()
+            };
+            if state.occurrence_marks.0 != key {
+                let occ = state.usages.shown();
+                let marks = if wrap_on {
+                    wrap_scroll_marks(doc, &wrap_map.borrow(), occ, |r| r.start, text_rect.height(), content.y, line_h)
+                } else {
+                    scroll_marks(doc, occ, |r| r.start, text_rect.height(), content.y, line_h)
+                };
+                state.occurrence_marks = (key, marks);
+            }
+            let painter = ui.painter_at(text_rect);
+            for &y in &state.occurrence_marks.1 {
+                let r = Rect::from_min_size(Pos2::new(text_rect.right() - 7.0, text_rect.top() + y), Vec2::new(6.0, 2.0));
+                painter.rect_filled(r, 0.0, theme.occurrence_scroll_mark);
+            }
+        }
         if state.carets.is_multi() {
             let key = {
                 let mut h = DefaultHasher::new();
@@ -1802,6 +1936,40 @@ impl<'a> EditorView<'a> {
                 let r = Rect::from_min_size(Pos2::new(text_rect.right() - 7.0, text_rect.top() + y), Vec2::new(6.0, 2.0));
                 painter.rect_filled(r, 0.0, theme.problem(sev));
             }
+        }
+
+        // macOS places the input-source indicator and the IME windows at this rect. Without it
+        // winit keeps the last rect any text field set, and IME input stays off.
+        let focused = ui.ctx().memory(|m| m.has_focus(id));
+        state.ime_rect = None;
+        if focused {
+            let r = state.caret_rect.unwrap_or_else(|| {
+                // The caret is scrolled away: the nearest point of the text area.
+                let (col, row) = moves.place(doc, state.caret_char(doc));
+                let x = text_rect.left() + TEXT_PAD + col as f32 * char_w - state.scroll.x;
+                let y = text_rect.top() + row as f32 * line_h - state.scroll.y;
+                let x = x.clamp(text_rect.left(), (text_rect.right() - 2.0).max(text_rect.left()));
+                let y = y.clamp(text_rect.top(), (text_rect.bottom() - line_h).max(text_rect.top()));
+                Rect::from_min_size(Pos2::new(x - 1.0, y), Vec2::new(2.0, line_h))
+            });
+            state.ime_rect = Some(r);
+            if !state.preedit.is_empty() {
+                // Drawn over the text at the caret, underlined, like a native text view.
+                let g = ui.fonts(|f| f.layout_no_wrap(state.preedit.clone(), font.clone(), theme.foreground));
+                let text_y = ((line_h - row_h) / 2.0).round();
+                let pos = Pos2::new(r.center().x, r.top());
+                let bg = Rect::from_min_size(pos, Vec2::new(g.size().x, line_h));
+                let painter = ui.painter_at(text_rect);
+                painter.rect_filled(bg, 0.0, theme.background);
+                painter.galley(Pos2::new(pos.x, pos.y + text_y), g, theme.foreground);
+                let uy = pos.y + text_y + row_h;
+                painter.line_segment([Pos2::new(bg.left(), uy), Pos2::new(bg.right(), uy)], Stroke::new(1.0_f32, theme.foreground));
+            }
+            let to_global = ui.ctx().layer_transform_to_global(ui.layer_id()).unwrap_or_default();
+            let r = to_global * r;
+            ui.ctx().output_mut(|o| o.ime = Some(egui::output::IMEOutput { rect: r, cursor_rect: r }));
+        } else {
+            state.preedit.clear();
         }
 
         // Evict galleys not drawn recently, but only once the cache is clearly larger than a
@@ -2081,11 +2249,17 @@ struct WrapPaint<'a> {
     hover_word: Option<Range<Position>>,
     style: RowStyle<'a>,
     drawn: &'a mut Vec<DrawnRow>,
+    /// The primary caret's shown head; `paint` returns where it drew it.
+    primary: usize,
+    occurrences: &'a [Range<usize>],
+    /// The identifier's own range, never painted.
+    occurrence_current: Option<Range<usize>>,
 }
 
 impl WrapPaint<'_> {
-    fn paint(self, ui: &mut Ui, viewport: Rect, origin: Pos2) {
-        let WrapPaint { doc, map, highlight, galleys, frame, carets, lean, inner, find_matches, find_in_selection, find_current, problems, hover_word, style, drawn } = self;
+    fn paint(self, ui: &mut Ui, viewport: Rect, origin: Pos2) -> Option<Rect> {
+        let WrapPaint { doc, map, highlight, galleys, frame, carets, lean, inner, find_matches, find_in_selection, find_current, problems, hover_word, style, drawn, primary, occurrences, occurrence_current } = self;
+        let mut caret = None;
         let RowStyle { theme, font, font_size, theme_fp, line_h, row_h, char_w, ppp, has_focus } = style;
         let line_count = doc.line_count();
         let cols = map.cols();
@@ -2195,6 +2369,22 @@ impl WrapPaint<'_> {
                     painter.rect_filled(Rect::from_min_max(Pos2::new(full_left, y), Pos2::new(full_right, y_end)), 0.0, theme.current_line);
                 }
 
+                // Under the selection and the find matches.
+                let mut i = occurrences.partition_point(|r| r.end <= rs);
+                while let Some(r) = occurrences.get(i) {
+                    i += 1;
+                    if r.start > re || (!last && r.start == re) {
+                        break;
+                    }
+                    if occurrence_current.as_ref() == Some(r) || here.iter().any(|s| !s.is_empty() && s.start() <= r.start && r.end <= s.end()) {
+                        continue;
+                    }
+                    let (a, b) = (r.start.max(rs), r.end.min(re));
+                    if a < b {
+                        painter.rect_filled(Rect::from_min_max(Pos2::new(x_of(a), y), Pos2::new(x_of(b), y_end)), 0.0, theme.occurrence);
+                    }
+                }
+
                 for sel in here.iter().filter(|s| !s.is_empty()) {
                     let sr = sel.range();
                     let a = sr.start.max(rs);
@@ -2268,7 +2458,11 @@ impl WrapPaint<'_> {
 
                 for head in here.iter().map(shown).filter(|&h| caret_in(h)) {
                     let x = round(x_of(head));
-                    painter.rect_filled(Rect::from_min_max(Pos2::new(x - 1.0, y), Pos2::new(x + 1.0, y_end)), 0.0, caret_color);
+                    let r = Rect::from_min_max(Pos2::new(x - 1.0, y), Pos2::new(x + 1.0, y_end));
+                    painter.rect_filled(r, 0.0, caret_color);
+                    if head == primary {
+                        caret = Some(r);
+                    }
                 }
                 if let Some(galley) = galley {
                     drawn.push(DrawnRow { line, row: k, x: galley_x - origin.x, galley });
@@ -2281,6 +2475,7 @@ impl WrapPaint<'_> {
             map.set(line, n);
         }
         map.fix();
+        caret
     }
 }
 

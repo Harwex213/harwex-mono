@@ -16,6 +16,7 @@ Git window:
 - [idea] Ref labels cut the HEAD commit message without an ellipsis (`Afte`). Truncate the message with `…` and collapse labels to `+N` earlier.
 
 Tooling:
+- [idea] Release bench `bench_10k_carets` misses its 8 ms Backspace budget now and then under load (8.5–10.9 ms with the occurrence update, 7.4–8.1 ms without). Rerun on a quiet machine (found in task 091).
 - [idea] Two `cargo xtask test-tools` runs at once corrupt each other's downloads (shared `tools/.<name>.partial`). Take a lock or use a per-process partial name (found in task 083).
 - [idea] Flaky: `xtask full_test::second_run_waits_until_the_first_ends` failed once under load (task 083).
 - [idea] The workspace is not rustfmt-clean. Run `cargo fmt --all` once and add `cargo fmt --all --check` to "Done means" and to `cargo xtask clean-check`.
@@ -25,6 +26,7 @@ Commit window:
 - [idea] Stage/Unstage (drop or menu) shows a success toast on every action, because it goes through `run_op`. IDEA is silent on success. Make stage/unstage success quiet; keep error toasts.
 
 Navigation and languages:
+- [idea] The terminal never sets `PlatformOutput::ime`, so IME (dead keys, CJK) is off there and the input-source bubble sits at a stale rect (found in task 090).
 - [idea] Opening an Unreal engine source tree itself as the project makes its `Engine/Source` files read-only: the engine-path check looks only at the path (found in task 085).
 - [idea] Language servers for Java (JDT LS) and Kotlin (kotlin-lsp, weak). Java reuses the read-only virtual documents of task 084 for `jdt://` URIs. Discussed on 2026-10-05; highlighting only for now.
 - [idea] Unreal headers: `class MYGAME_API AFoo : public AActor` parses as a function in tree-sitter-cpp, so `TArray<…>`, the base class and members stay uncolored inside such a class. A query tweak or a pre-pass that hides `*_API` would fix it.
@@ -37,6 +39,7 @@ Navigation and languages:
 - [idea] Search Everywhere for symbols and actions, not only files.
 
 Project tree and shell:
+- [idea] `jobs::report_progress` exists but no real job calls it, so every job shows a moving bar, not a share. Wire it into indexing, git fetch/update and UBT (found in task 088).
 - [idea] The editor has no file context menu (its right-click menu holds only code actions). IDEA puts file actions (Copy Path, Reveal, Rename File, Git → Annotate/History…) into the editor tab menu; reuse `tree_menu::file_menu` there (found in task 082).
 - [idea] Show ignored files (like `node_modules`) in olive in the tree, like IDEA, instead of hiding them.
 - [idea] Opening another folder with dirty tabs asks Save / Discard instead of refusing.

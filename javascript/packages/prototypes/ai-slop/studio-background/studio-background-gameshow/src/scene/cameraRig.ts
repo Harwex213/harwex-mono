@@ -1,8 +1,6 @@
 import * as THREE from "three";
 import type { Shot } from "../state";
-import { BACKDROP_EYE } from "./casino";
-import { stationPoint } from "./stations";
-import type { StationId } from "./stations";
+import { GAMESHOW_SHOT } from "./annex";
 import { WHEEL_CENTER } from "./wheel";
 
 const BASE_FOV = 40;
@@ -21,20 +19,13 @@ const NEAR = {
   target: WHEEL_CENTER.clone(),
 };
 
-// The station shots, in the frame of each station (stations.ts): local +z points from the station to its camera.
-const STATION_SHOTS: Record<StationId, { position: THREE.Vector3; target: THREE.Vector3 }> = {
-  slot: { position: stationPoint("slot", 0.7, 2.7, 9.6), target: stationPoint("slot", 0, 3.0, 0) },
-  dice: { position: stationPoint("dice", -0.6, 3.1, 9.0), target: stationPoint("dice", 0, 2.6, -0.5) },
-  // The Game Show camera stays in front of the jester wheel (z = 18.4), so a move from the hero wheel clears it.
-  // Its height is the projector height of the photo backdrop behind the portal (casino.ts).
-  gameshow: { position: stationPoint("gameshow", 0, BACKDROP_EYE, 9.0), target: stationPoint("gameshow", 0, 2.0, 0) },
-};
-// A station shot pushes in by this share of the distance to its target and back, once per period.
-const STATION_PERIOD = 36;
-const STATION_PUSH = 0.12;
+// The Game Show shot (annex.ts) pushes in by this share of the distance to its target and back, once per period.
+const GAMESHOW_PERIOD = 36;
+const GAMESHOW_PUSH = 0.12;
 
-// A move between shots: the camera cranes up to this height on the way, over every prop of the set
-// and under the chandeliers of the casino hall (their lowest point is 7.5 m).
+// A move between shots: the camera cranes up to this height on the way, over every prop of the set.
+// The move from the wheel shot to the Game Show shot runs in a straight line on the plan: from the front of the
+// amphitheatre to the right, into the Game Show room, and the view turns right from -z to +x.
 const TRAVEL_APEX = 7;
 const TRAVEL_BASE = 2.4;
 const TRAVEL_PER_METRE = 0.015;
@@ -100,11 +91,11 @@ function wheelPose(swingTime: number, dollyTime: number, pose: Pose): void {
 
 const side = new THREE.Vector3();
 
-// A station shot: a slow push in and out, and a sideways drift across the line of sight.
-function stationPose(id: StationId, swingTime: number, dollyTime: number, pose: Pose): void {
-  const base = STATION_SHOTS[id];
-  const k = dollyCurve((dollyTime / STATION_PERIOD) % 1);
-  pose.position.lerpVectors(base.position, base.target, k * STATION_PUSH);
+// The Game Show shot: a slow push in and out, and a sideways drift across the line of sight.
+function gameShowPose(swingTime: number, dollyTime: number, pose: Pose): void {
+  const base = GAMESHOW_SHOT;
+  const k = dollyCurve((dollyTime / GAMESHOW_PERIOD) % 1);
+  pose.position.lerpVectors(base.position, base.target, k * GAMESHOW_PUSH);
   pose.target.copy(base.target);
   side.subVectors(base.target, base.position).setY(0).normalize();
   side.set(-side.z, 0, side.x);
@@ -128,7 +119,7 @@ function createCameraRig(camera: THREE.PerspectiveCamera, initialShot: Shot) {
     if (shot === "wheel") {
       wheelPose(swingTime, dollyTime, pose);
     } else {
-      stationPose(shot, swingTime, dollyTime, pose);
+      gameShowPose(swingTime, dollyTime, pose);
     }
   };
 

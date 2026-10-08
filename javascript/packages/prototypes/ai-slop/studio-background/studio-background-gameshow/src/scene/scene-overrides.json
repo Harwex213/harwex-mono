@@ -2,13 +2,13 @@
   "objects": {
     "Props/Host Desk": {
       "position": [
-        10.9036,
+        12.58769,
         0,
-        1.03195
+        0.57768
       ],
       "rotation": [
         0,
-        -44.52073,
+        -63.47778,
         0
       ]
     },
@@ -202,27 +202,39 @@
         -0.47506
       ]
     },
-    "Game Props/Jester Wheel": {
+    "Game Props/Bonus Show": {
       "position": [
-        0.0732,
+        18.28363,
         0,
-        18.36208
+        20.38362
       ],
       "rotation": [
         -180,
-        2.56118,
+        -86.31327,
         -180
       ]
     },
-    "Game Props/The Tower": {
+    "Game Props/Bonus Dice": {
       "position": [
-        7.07107,
+        7.7893,
         0,
-        -1.0166
+        -0.36177
       ],
       "rotation": [
         0,
         -27.10383,
+        0
+      ]
+    },
+    "Game Props/Bonus Luck": {
+      "position": [
+        -6.18786,
+        0,
+        -0.18426
+      ],
+      "rotation": [
+        0,
+        45.90274,
         0
       ]
     }

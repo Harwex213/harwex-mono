@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { Reflector } from "three/examples/jsm/objects/Reflector.js";
+import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { archFrameHalf, archFrameShape, archPath, faceCenter, floorArc, keystoneShape, named, planPrism, polar } from "./geometry";
 import type { Materials } from "./materials";
 
@@ -45,6 +46,9 @@ const LAYOUT = {
   upperStep: { depth: 1.6, top: 1.3 },
   capitalTop: 15.0,
 };
+
+// The round marble floor of the amphitheatre (a CircleGeometry), and the mirror under it.
+const FLOOR = { radius: LAYOUT.wallRadius + 2, segments: 96 };
 
 const STEP = (LAYOUT.arcTo - LAYOUT.arcFrom) / LAYOUT.segments;
 // Half of the angle between neighbouring bays.
@@ -355,9 +359,24 @@ function createBackSteps(materials: Materials): THREE.Group {
 
 // Mirror floor under a semi-transparent black marble layer with gold ring inlays.
 // The marble top is the floor plane y = 0; the mirror lies just under it.
-function createFloor(materials: Materials, width: number, height: number): { group: THREE.Group; reflector: Reflector } {
+// `extraPlan` is a polygon of (x, z) points outside the round floor (the annex floor): the marble and the mirror
+// cover it too, so the two floors are one surface.
+function createFloor(materials: Materials, width: number, height: number, extraPlan: THREE.Vector2[]): { group: THREE.Group; reflector: Reflector } {
   const group = named(new THREE.Group(), "Floor");
-  const reflector = named(new Reflector(new THREE.CircleGeometry(LAYOUT.wallRadius + 2, 96), {
+  // Both meshes lie in their local xy plane and turn flat by -90 degrees around x: plan (x, z) is local (x, -z).
+  // The merged geometry keeps one group per part: group 0 is the round floor, group 1 the extra polygon.
+  const surface = () => {
+    const parts: THREE.BufferGeometry[] = [new THREE.CircleGeometry(FLOOR.radius, FLOOR.segments)];
+    if (extraPlan.length > 2) {
+      parts.push(new THREE.ShapeGeometry(new THREE.Shape(extraPlan.map((point) => new THREE.Vector2(point.x, -point.y)))));
+    }
+    const geometry = mergeGeometries(parts, true);
+    if (!geometry) {
+      throw new Error("cannot merge the floor");
+    }
+    return geometry;
+  };
+  const reflector = named(new Reflector(surface(), {
     textureWidth: width * 0.5,
     textureHeight: height * 0.5,
     color: 0x8a8a8a,
@@ -372,7 +391,13 @@ function createFloor(materials: Materials, width: number, height: number): { gro
   marble.transparent = true;
   marble.opacity = 0.72;
   marble.name = "marbleFloor";
-  const floor = named(new THREE.Mesh(new THREE.CircleGeometry(LAYOUT.wallRadius + 2, 96), marble), "Marble");
+  // The annex floor reflects less of the environment map: its blue side panels showed as a bright blue patch
+  // on the floor in front of the partition, in a room without blue lights. `envMapIntensity` acts only on an own
+  // `envMap`, so the engine gives this material the scene environment as its map.
+  const annexMarble = marble.clone();
+  annexMarble.name = "marbleFloorAnnex";
+  annexMarble.envMapIntensity = 0.12;
+  const floor = named(new THREE.Mesh(surface(), [marble, annexMarble]), "Marble");
   floor.rotation.x = -Math.PI / 2;
   floor.receiveShadow = true;
   group.add(floor);
@@ -401,9 +426,9 @@ function createFloor(materials: Materials, width: number, height: number): { gro
   return { group, reflector };
 }
 
-function createStudio(materials: Materials, width: number, height: number) {
+function createStudio(materials: Materials, width: number, height: number, extraFloor: THREE.Vector2[] = []) {
   const group = named(new THREE.Group(), "Studio", true);
-  const floor = createFloor(materials, width, height);
+  const floor = createFloor(materials, width, height, extraFloor);
   group.add(floor.group, createWalls(materials), createEntablature(materials), createCeiling(materials), createBackSteps(materials));
   return { group, reflector: floor.reflector };
 }
@@ -429,4 +454,4 @@ function bayHalfLength(offset: number): number {
   return (BAY_LENGTH / 2) * ((APOTHEM - offset) / APOTHEM);
 }
 
-export { CENTER_BAY, LAYOUT, SCONCE_HEIGHT, bayHalfLength, boundaryAngle, createStudio, inFrontOfBay, jointRadius, onColumnShaft, segmentAngle };
+export { CENTER_BAY, FLOOR, LAYOUT, SCONCE_HEIGHT, bayHalfLength, boundaryAngle, createStudio, inFrontOfBay, jointRadius, onColumnShaft, segmentAngle };

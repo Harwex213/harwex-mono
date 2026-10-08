@@ -4,10 +4,10 @@ type ViewTab = "scene" | "game";
 type TransformMode = "translate" | "rotate" | "scale";
 type RenderMode = "game" | "editor";
 type SaveStatus = "saved" | "dirty" | "saving" | "failed";
-// Camera shots: the hero wheel in the amphitheatre and the three bonus game stations in the casino hall.
-type Shot = "wheel" | "slot" | "dice" | "gameshow";
+// Camera shots: the hero wheel in the amphitheatre (shot I) and Bonus Show in the Game Show room of the annex (shot II).
+type Shot = "wheel" | "gameshow";
 
-const SHOTS: Shot[] = ["wheel", "slot", "dice", "gameshow"];
+const SHOTS: Shot[] = ["wheel", "gameshow"];
 
 const params = new URLSearchParams(window.location.search);
 // `?solo` shows only the Game view over the whole window (for presenting and for 1:1 captures).
@@ -18,7 +18,7 @@ const isPlaying = signal(true);
 const swing = signal(true);
 const dolly = signal(true);
 const spin = signal(true);
-// The shot the Main Camera holds. `?shot=dice` starts on that shot; a change makes the camera travel to it.
+// The shot the Main Camera holds. `?shot=gameshow` starts on that shot; a change makes the camera travel to it.
 const shotParam = params.get("shot");
 const shot = signal<Shot>(SHOTS.find((item) => item === shotParam) ?? "wheel");
 const selectedUuid = signal<string | null>(null);

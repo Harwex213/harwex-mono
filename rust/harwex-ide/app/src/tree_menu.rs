@@ -259,7 +259,7 @@ pub fn menu(ui: &mut Ui, target: &Target, info: &MenuInfo) -> Option<TreeCommand
     item(ui, "Delete...", "⌫", true, TreeCommand::Delete);
     ui.separator();
     item(ui, "Open In Finder", "", true, TreeCommand::OpenInFinder);
-    item(ui, "Open In Terminal", "", true, TreeCommand::OpenInTerminal);
+    item(ui, "Open In Terminal", "⌘3", true, TreeCommand::OpenInTerminal);
     ui.separator();
     item(ui, "Git Rollback...", "", info.has_repo && info.has_changes, TreeCommand::GitRollback);
     item(ui, "Git Show History", "", info.has_repo, TreeCommand::GitHistory);

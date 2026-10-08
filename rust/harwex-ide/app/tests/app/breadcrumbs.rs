@@ -1,9 +1,9 @@
 //! Status bar breadcrumbs: segments, the directory popup, nested popups, opening a file, the
-//! keyboard, the navigation-bar keyboard (Alt+Home), collapse in a narrow window, and diff tabs.
+//! keyboard, the navigation-bar keyboard (Alt+Home), the horizontal scroll in a narrow window, and
+//! diff tabs.
 
 use crate::common::*;
 use egui::{Key, Modifiers};
-use harwex_ide::breadcrumbs::{LevelSource, Slot};
 use harwex_ide::AppState;
 
 const SUITE: &str = "breadcrumbs";
@@ -18,16 +18,13 @@ fn crumbs_repo(fx: &Fixture) -> Repo {
     repo
 }
 
-/// Directories of the open popup levels, relative to the root ("…" for the hidden-segment list).
+/// Directories of the open popup levels, relative to the root.
 fn levels(s: &AppState) -> Vec<String> {
     let root = s.ws.project.as_ref().map(|p| p.root.clone()).unwrap_or_default();
     s.ws.breadcrumbs.popup.as_ref().map_or_else(Vec::new, |p| {
         p.levels
             .iter()
-            .map(|l| match &l.source {
-                LevelSource::Dir(d) => d.strip_prefix(&root).map_or_else(|_| d.display().to_string(), |r| r.display().to_string()),
-                LevelSource::Hidden(_) => "…".to_string(),
-            })
+            .map(|l| l.dir.strip_prefix(&root).map_or_else(|_| l.dir.display().to_string(), |r| r.display().to_string()))
             .collect()
     })
 }
@@ -63,7 +60,6 @@ fn bar_shows_the_active_file() {
         assert!(ide.has(label), "missing {label}");
     }
     assert_eq!(ide.state().ws.breadcrumbs.slots.len(), 5);
-    assert!(!ide.state().ws.breadcrumbs.slots.iter().any(|s| matches!(s, Slot::Hidden(_))));
     ide.snapshot("bar");
 
     // The bar follows the active tab; a modified file is drawn in the git color.
@@ -195,48 +191,80 @@ fn keyboard_moves_enters_and_opens() {
     assert_eq!(active_rel(&ide), "src/core/fresh.ts");
 }
 
+/// A wheel step at `at`; egui spreads it over a few frames.
+fn wheel(ide: &mut Ide, at: egui::Pos2, delta: egui::Vec2) {
+    ide.move_to(at);
+    ide.harness.input_mut().events.push(egui::Event::MouseWheel { unit: egui::MouseWheelUnit::Point, delta, modifiers: Modifiers::NONE });
+    ide.steps(10);
+    ide.settle();
+}
+
+fn bar_rect(ide: &Ide) -> egui::Rect {
+    ide.state().ws.breadcrumbs.bar_rect.expect("the bar is drawn")
+}
+
+/// The crumb is drawn whole inside the bar's viewport.
+fn crumb_visible(ide: &Ide, label: &str) -> bool {
+    let (bar, r) = (bar_rect(ide), ide.rect(label));
+    r.min.x >= bar.min.x - 0.5 && r.max.x <= bar.max.x + 0.5
+}
+
+const DEEP: &str = "src/core/deep/level_one/level_two/level_three/target_file_name.ts";
+
 #[test]
-fn narrow_window_collapses_the_middle() {
+fn narrow_window_scrolls_to_the_file() {
     let fx = Fixture::new(SUITE, "narrow");
     let repo = crumbs_repo(&fx);
     let mut ide = Ide::open(SUITE, &repo.dir);
-    let deep = "src/core/deep/level_one/level_two/level_three/target_file_name.ts";
-    ide.open_file(deep);
-    assert!(!ide.state().ws.breadcrumbs.slots.iter().any(|s| matches!(s, Slot::Hidden(_))), "1280 px fits the whole path");
+    ide.open_file(DEEP);
+    assert_eq!(ide.state().ws.breadcrumbs.slots.len(), 8);
+    assert_eq!(ide.state().ws.breadcrumbs.scroll_x, 0.0, "1280 px fits the whole path");
     ide.snapshot("wide_deep_path");
 
+    // Every segment stays; the row starts scrolled to its end, so the file crumb is visible
+    // and the root is cut on the left.
     ide.resize(egui::vec2(640.0, 800.0));
-    let slots = ide.state().ws.breadcrumbs.slots.clone();
-    let hidden = slots.iter().find_map(|s| match s {
-        Slot::Hidden(r) => Some(r.clone()),
-        Slot::Segment(_) => None,
-    });
-    let hidden = hidden.expect("a narrow window hides segments");
-    assert_eq!(slots.first(), Some(&Slot::Segment(0)), "the root stays");
-    assert_eq!(slots.last(), Some(&Slot::Segment(7)), "the file stays");
-    assert_eq!(hidden.start, 1, "the hidden range starts after the root");
-    assert!(ide.has("Breadcrumb repo") && ide.has("Breadcrumb target_file_name.ts") && ide.has("Breadcrumb …"));
-    assert!(!ide.has("Breadcrumb src"));
+    ide.settle();
+    assert_eq!(ide.state().ws.breadcrumbs.slots.len(), 8, "no segment is hidden");
+    assert!(ide.state().ws.breadcrumbs.scroll_x > 0.0);
+    assert!(crumb_visible(&ide, "Breadcrumb target_file_name.ts"));
+    assert!((ide.rect("Breadcrumb target_file_name.ts").max.x - bar_rect(&ide).max.x).abs() < 0.5, "scrolled to the end");
+    assert!(ide.rect("Breadcrumb repo").max.x < bar_rect(&ide).min.x, "the root is scrolled out");
+    ide.park_mouse();
     ide.snapshot("narrow");
 
-    // `…` lists the hidden segments; the one nearest to the file is selected.
-    ide.click("Breadcrumb …");
-    ide.wait_until("hidden popup", |ide| ide.has("Breadcrumb item src"));
+    // A plain wheel scrolls the row back to the start, and the row stays there.
+    let at = bar_rect(&ide).center();
+    wheel(&mut ide, at, egui::vec2(0.0, 2000.0));
+    assert_eq!(ide.state().ws.breadcrumbs.scroll_x, 0.0);
+    assert!(crumb_visible(&ide, "Breadcrumb repo") && !crumb_visible(&ide, "Breadcrumb target_file_name.ts"));
+    ide.steps(5);
     ide.settle();
-    assert_eq!(levels(ide.state()), ["…"]);
-    let hidden_names = names(ide.state(), 0);
-    assert_eq!(hidden_names.first().map(String::as_str), Some("src"));
-    assert_eq!(hidden_names.len(), hidden.len());
-    ide.hover("Breadcrumb item src/core");
+    assert_eq!(ide.state().ws.breadcrumbs.scroll_x, 0.0, "a manual scroll stays");
+
+    // A popup opens under its crumb at the scrolled position.
+    ide.click("Breadcrumb core");
     ide.wait_until("core popup", |ide| ide.has("Breadcrumb item src/core/fresh.ts"));
     ide.settle();
-    assert_eq!(levels(ide.state()), ["…", "src/core"]);
-    ide.snapshot_here("narrow_hidden_popup");
+    let core = ide.rect("Breadcrumb core");
+    let popup = ide.state().ws.breadcrumbs.popup_rects[0];
+    assert!((popup.min.x - core.min.x).abs() < 0.5, "the popup starts at the crumb: {} vs {}", popup.min.x, core.min.x);
+    ide.snapshot_here("narrow_scrolled_popup");
+    ide.key(Key::Escape);
 
-    ide.click("Breadcrumb item src/core/fresh.ts");
-    ide.wait_for("fresh.ts open", |s| s.ws.tabs.active_tab().is_some_and(|t| t.title() == "fresh.ts"));
+    // Another file scrolls to its end again; so does the deep file when it comes back.
+    repo.write("src/core/deep/level_one/level_two/level_three/other_file_with_a_long_name.ts", "export const other = 1;\n");
+    ide.open_file("src/core/deep/level_one/level_two/level_three/other_file_with_a_long_name.ts");
+    assert!(crumb_visible(&ide, "Breadcrumb other_file_with_a_long_name.ts"));
+    assert!(ide.state().ws.breadcrumbs.scroll_x > 0.0);
+    ide.open_file(DEEP);
+    assert!(crumb_visible(&ide, "Breadcrumb target_file_name.ts"));
+
+    // A wider window keeps the row at its end until the whole path fits.
+    ide.resize(egui::vec2(900.0, 800.0));
     ide.settle();
-    assert!(ide.state().ws.breadcrumbs.popup.is_none());
+    assert!(crumb_visible(&ide, "Breadcrumb target_file_name.ts"));
+    assert!((ide.rect("Breadcrumb target_file_name.ts").max.x - bar_rect(&ide).max.x).abs() < 0.5 || ide.state().ws.breadcrumbs.scroll_x == 0.0);
 }
 
 #[test]
@@ -277,7 +305,7 @@ fn open_external(ide: &mut Ide, path: &std::path::Path) {
 
 /// The directory of popup level `level`, absolute.
 fn level_dir(ide: &Ide, level: usize) -> Option<std::path::PathBuf> {
-    ide.state().ws.breadcrumbs.popup.as_ref()?.levels.get(level)?.dir_path().map(|d| d.to_path_buf())
+    ide.state().ws.breadcrumbs.popup.as_ref()?.levels.get(level).map(|l| l.dir.clone())
 }
 
 #[test]
@@ -570,61 +598,46 @@ fn popup_keys_wrap_enter_back_out_and_hop_between_segments() {
 }
 
 #[test]
-fn keyboard_moves_over_the_ellipsis_segment() {
-    let fx = Fixture::new(SUITE, "nav_ellipsis");
+fn keyboard_scrolls_the_selected_crumb_into_view() {
+    let fx = Fixture::new(SUITE, "nav_scroll");
     let repo = crumbs_repo(&fx);
     let mut ide = Ide::open(SUITE, &repo.dir);
-    ide.open_file("src/core/deep/level_one/level_two/level_three/target_file_name.ts");
+    ide.open_file(DEEP);
     ide.resize(egui::vec2(640.0, 800.0));
+    ide.settle();
     ide.park_mouse();
     let text = ide.active_text();
-    let slots = ide.state().ws.breadcrumbs.slots.clone();
-    assert!(matches!(slots[1], Slot::Hidden(_)), "the second slot is the ellipsis");
-    let last = slots.len() - 1;
+    let last = ide.state().ws.breadcrumbs.slots.len() - 1;
+    assert_eq!(last, 7);
 
     alt_home(&mut ide);
     assert_eq!(selected_slot(&ide), Some(last));
-    for _ in 1..last {
+    assert!(crumb_visible(&ide, "Breadcrumb target_file_name.ts"));
+    // Left walks to the root; each selected crumb scrolls into view.
+    for _ in 0..last {
         ide.key(Key::ArrowLeft);
+        ide.settle();
     }
-    assert_eq!(selected_slot(&ide), Some(1));
-    assert!(ide.is_selected("Breadcrumb …"));
-    ide.snapshot("nav_ellipsis_selected");
-
-    // Down lists the hidden segments with the one nearest to the file selected.
-    let hidden = ide.state().ws.breadcrumbs.slots.iter().find_map(|s| match s {
-        Slot::Hidden(r) => Some(r.clone()),
-        Slot::Segment(_) => None,
-    });
-    let nearest = ["", "src", "src/core", "src/core/deep", "src/core/deep/level_one", "src/core/deep/level_one/level_two"][hidden.expect("hidden").end - 1];
-    key_then(&mut ide, Key::ArrowDown, 0, nearest);
-    assert_eq!(levels(ide.state())[0], "…");
-    ide.snapshot("nav_ellipsis_popup");
-
-    // Right enters a hidden directory; Left backs out; Left again hops to the root.
-    ide.key(Key::ArrowRight);
-    ide.wait_until("nested", |ide| focus_level(ide) == Some(1) && selected(ide.state(), 1).is_some());
-    ide.key(Key::ArrowLeft);
-    assert_eq!(levels(ide.state()), ["…"]);
-    key_then(&mut ide, Key::ArrowLeft, 0, "src");
     assert_eq!(selected_slot(&ide), Some(0));
+    assert!(ide.is_selected("Breadcrumb repo"));
+    assert!(crumb_visible(&ide, "Breadcrumb repo"), "the root scrolled into view");
+    ide.snapshot("nav_scrolled_root");
 
-    // Right on a file of the root popup hops back to `…`.
+    // Down opens the root's popup under the crumb.
+    key_then(&mut ide, Key::ArrowDown, 0, "src");
+    let root_x = ide.rect("Breadcrumb repo").min.x;
+    assert!((ide.state().ws.breadcrumbs.popup_rects[0].min.x - root_x).abs() < 0.5);
+    // Right on a file row hops to the next crumb, `src`, which stays in view.
     ide.key(Key::ArrowDown);
     assert_eq!(selected(ide.state(), 0).as_deref(), Some(".gitignore"));
-    key_then(&mut ide, Key::ArrowRight, 0, nearest);
-    assert_eq!(levels(ide.state())[0], "…");
+    key_then(&mut ide, Key::ArrowRight, 0, "src/core");
     assert_eq!(selected_slot(&ide), Some(1));
+    assert!(crumb_visible(&ide, "Breadcrumb src"));
 
-    // Up on the first row goes back to the bar with `…` selected.
-    let rows = names(ide.state(), 0).len();
-    for _ in 1..rows {
-        ide.key(Key::ArrowUp);
-    }
-    assert_eq!(selected(ide.state(), 0).as_deref(), Some("src"));
-    ide.key(Key::ArrowUp);
-    assert!(ide.state().ws.breadcrumbs.popup.is_none() && bar_focused(&ide));
-    assert!(ide.is_selected("Breadcrumb …"));
+    // Alt+Home selects the file crumb again and scrolls it back into view.
+    ide.key(Key::Escape);
+    alt_home(&mut ide);
+    assert!(crumb_visible(&ide, "Breadcrumb target_file_name.ts"));
     ide.key(Key::Escape);
     assert_eq!(ide.cursor(), (0, 0));
     assert_eq!(ide.active_text(), text);
@@ -824,6 +837,14 @@ fn chain_moves_left_at_the_right_edge() {
     let repo = mono_repo(&fx);
     let mut ide = Ide::open(SUITE, &repo.dir);
     ide.open_file(DEEP_FILE);
+    // A narrow window scrolls the crumbs to their end, and a smaller window would move the
+    // crumbs left with it. Scrolled back to the start by hand, the row stays put.
+    ide.resize(egui::vec2(640.0, 800.0));
+    ide.settle();
+    assert!(ide.state().ws.breadcrumbs.scroll_x > 0.0, "the path scrolls at 640 pt");
+    let at = bar_rect(&ide).center();
+    wheel(&mut ide, at, egui::vec2(0.0, 2000.0));
+    assert_eq!(ide.state().ws.breadcrumbs.scroll_x, 0.0);
     // A chain from `infrastructure`: infrastructure, di, src.
     ide.click("Breadcrumb infrastructure");
     ide.wait_until("infrastructure popup", |ide| selected(ide.state(), 0).as_deref() == Some("javascript/packages/infrastructure/di"));
@@ -834,22 +855,16 @@ fn chain_moves_left_at_the_right_edge() {
     let wide = popup_rects(&ide);
     assert_eq!(wide.len(), 3);
     let chain = wide[2].max.x - wide[0].min.x;
+    let anchor = ide.state().ws.breadcrumbs.popup.as_ref().expect("popup").anchor.x;
 
-    // A window where the chain fits, but not from its segment. A narrower window can collapse
-    // the bar and move the segment, so the width follows the segment until it stays put.
-    let mut anchor = wide[0].min.x;
-    let mut width = 0.0;
-    for _ in 0..5 {
-        width = (anchor + chain - 30.0).round();
-        assert!(width >= chain, "the test window fits the chain");
-        ide.resize(egui::vec2(width, 800.0));
-        ide.settle();
-        let moved = ide.state().ws.breadcrumbs.popup.as_ref().expect("a resize keeps the popup").anchor.x;
-        if (moved - anchor).abs() <= 0.5 {
-            break;
-        }
-        anchor = moved;
-    }
+    // A window where the chain fits, but not from its segment.
+    let width = (anchor + chain - 30.0).round();
+    assert!(width >= chain, "the test window fits the chain");
+    ide.resize(egui::vec2(width, 800.0));
+    ide.settle();
+    assert_eq!(ide.state().ws.breadcrumbs.scroll_x, 0.0, "a manual scroll survives a resize");
+    let moved = ide.state().ws.breadcrumbs.popup.as_ref().expect("a resize keeps the popup").anchor.x;
+    assert!((moved - anchor).abs() < 0.5, "the segment stays put");
     assert!(ide.state().ws.breadcrumbs.popup.is_some(), "a resize keeps the popup");
     assert_rests_on_status_bar(&ide);
     let rects = popup_rects(&ide);
@@ -886,7 +901,7 @@ fn new_labels(before: &[String], after: &[String]) -> Vec<String> {
 }
 
 #[test]
-fn double_click_on_a_folder_selects_it_in_project() {
+fn double_click_on_a_folder_selects_and_expands_it_in_project() {
     let fx = Fixture::new(SUITE, "select_in_project");
     let repo = crumbs_repo(&fx);
     let mut ide = Ide::open(SUITE, &repo.dir);
@@ -894,10 +909,14 @@ fn double_click_on_a_folder_selects_it_in_project() {
     ide.state_mut().ws.layout.left = None;
     ide.settle();
     assert!(!ide.has("src/core/deep"), "the Project window is hidden");
+    let root = ide.root();
+    assert!(!ide.state().ws.tree.is_expanded(&root.join("src/core/deep")), "the folder starts collapsed");
 
     ide.double_click("Breadcrumb deep");
+    ide.wait_until("deep expanded", |ide| ide.has("src/core/deep/nested.ts"));
     ide.settle();
-    let root = ide.root();
+    // The folder is expanded, so its files show under it.
+    assert!(ide.state().ws.tree.is_expanded(&root.join("src/core/deep")));
     assert_eq!(ide.state().ws.layout.left, Some(harwex_ide::layout::ToolWindow::Project));
     assert_eq!(ide.state().ws.tree.selected.as_deref(), Some(root.join("src/core/deep").as_path()));
     assert!(ide.has("src/core/deep"), "the row is drawn: {:?}", ide.labels());

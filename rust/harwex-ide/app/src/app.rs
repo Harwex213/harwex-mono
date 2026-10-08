@@ -312,6 +312,7 @@ fn shortcuts(s: &mut AppState, ctx: &Context) {
     }
     arm_tool_escape(s, ctx);
     breadcrumbs::shortcut(s, ctx);
+    crate::terminal::open_here(s, ctx);
     let cmd_shift = Modifiers::COMMAND | Modifiers::SHIFT;
     // Most specific first: consume_key ignores extra Shift. ⇧⌘R (Replace in Files) is taken
     // here, before the editor's ⌘R.
@@ -747,7 +748,8 @@ fn status_right(s: &mut AppState, ui: &mut egui::Ui) {
             TabContent::Custom(_) => {}
         }
     }
-    crate::progress::status_widget(s, ui);
+    // A fixed-width slot, so a job that starts or ends never moves the breadcrumbs.
+    crate::progress::status_widget(s, ui, if wide { crate::progress::SLOT_W } else { crate::progress::SLOT_W_NARROW });
 }
 
 /// A tool window island: the header with the title and the hide button, then the body.

@@ -4,9 +4,10 @@ import slotScreenUrl from "../assets/game-slot-screen.jpg";
 import { named, polar } from "./geometry";
 import { glow } from "./materials";
 
-// Secondary game objects, each smaller than the hero wheel: the jester money wheel and "The Tower"
-// acrylic plinko column stand on the amphitheatre floor. The "Bonus Deluxe" slot cabinet is built here too,
-// but it stands in the Slot station of the casino hall (stations.ts).
+// The three bonus games, each smaller than the hero wheel:
+// - "Bonus Show", the jester money wheel: it stands in the Game Show room of the annex (annex.ts);
+// - "Bonus Dice", the acrylic plinko tower, and "Bonus Luck", the slot cabinet: they stand in the amphitheatre.
+// The user placed all three in the editor (scene-overrides.json); the code defaults below are only a start.
 // Every part is stacked from the floor up; only true curved mounts (bosses in the rim, bulbs on the arc) are seated.
 
 // The wide shot camera stands here; the jester wheel turns its face towards it.
@@ -72,7 +73,7 @@ function faceCamera(object: THREE.Object3D): void {
   object.rotation.y = Math.atan2(CAMERA.x - object.position.x, CAMERA.y - object.position.z);
 }
 
-// Jester money wheel: a printed disc in a brass rim, held at its sides by a C-shaped arc with bulbs,
+// Jester money wheel (Bonus Show): a printed disc in a brass rim, held at its sides by a C-shaped arc with bulbs,
 // on a post, a brass collar and a two-tier wooden base. Three coloured pointers stand on the rim top.
 function createJesterWheel(materials: GameMaterials): THREE.Group {
   const wheel = new THREE.Group();
@@ -152,7 +153,7 @@ function createJesterWheel(materials: GameMaterials): THREE.Group {
   return wheel;
 }
 
-// Slot cabinet: a black plinth with a gold band, a tall black body with the printed screen on its front, a gold cap.
+// Slot cabinet (Bonus Luck): a black plinth with a gold band, a tall black body with the printed screen on its front, a gold cap.
 function createSlotCabinet(materials: GameMaterials): THREE.Group {
   const cabinet = new THREE.Group();
   const screen = loadTexture(slotScreenUrl);
@@ -214,7 +215,7 @@ function pentagonShape(radius: number, stroke: number): THREE.Shape {
   return shape;
 }
 
-// The Tower: a black plinth with a plaque, and on it a clear acrylic case of two chambers built from plates.
+// The Tower (Bonus Dice): a black plinth with a plaque, and on it a clear acrylic case of two chambers built from plates.
 // Pegs, chevrons and pentagons span the case from the inner face of the back plate to the inner face of the front one.
 // Two chutes stand on the top plate. The case edges glow.
 function createTower(materials: GameMaterials): THREE.Group {
@@ -332,19 +333,25 @@ function createTower(materials: GameMaterials): THREE.Group {
 function createGameProps(materials: GameMaterials) {
   const group = named(new THREE.Group(), "Game Props", true);
 
-  const jester = named(createJesterWheel(materials), "Jester Wheel");
-  jester.position.copy(polar(THREE.MathUtils.degToRad(53), 12.2));
-  faceCamera(jester);
-  group.add(jester);
+  const show = named(createJesterWheel(materials), "Bonus Show");
+  show.position.copy(polar(THREE.MathUtils.degToRad(53), 12.2));
+  faceCamera(show);
+  group.add(show);
 
-  const tower = named(createTower(materials), "The Tower");
-  tower.position.set(8.8, 0, 1.6);
+  const dice = named(createTower(materials), "Bonus Dice");
+  dice.position.set(8.8, 0, 1.6);
   // The tower turns its front to the studio centre.
-  tower.rotation.y = Math.atan2(-tower.position.x, -tower.position.z);
-  group.add(tower);
+  dice.rotation.y = Math.atan2(-dice.position.x, -dice.position.z);
+  group.add(dice);
+
+  // On the left of the wheel, mirroring Bonus Dice.
+  const luck = named(createSlotCabinet(materials), "Bonus Luck");
+  luck.position.set(-6.2, 0, -0.2);
+  luck.rotation.y = Math.atan2(-luck.position.x, -luck.position.z);
+  group.add(luck);
 
   return group;
 }
 
-export { createGameMaterials, createGameProps, createSlotCabinet };
+export { createGameMaterials, createGameProps };
 export type { GameMaterials };
