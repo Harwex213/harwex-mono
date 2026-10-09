@@ -396,3 +396,39 @@ fn c_family_java_kotlin_highlight() {
         ide.snapshot(snapshot);
     }
 }
+
+const LANG_GLSL: &str = "#version 450\n#extension GL_ARB_separate_shader_objects : enable\n\nlayout(location = 0) in vec3 inPos;\nlayout(binding = 1) uniform sampler2D tex;\nout vec4 fragColor;\nuniform highp float time; // seconds\n\n/* A soft pulse. */\nfloat pulse(in float t) {\n    return 0.5 + 0.5 * sin(t * 3.0);\n}\n\nvoid main() {\n    vec4 c = texture(tex, inPos.xy);\n    fragColor = c * pulse(time);\n    gl_Position = vec4(inPos, 1.0);\n}\n";
+
+const LANG_JSON: &str = "{\n  // tsconfig allows comments\n  \"compilerOptions\": {\n    \"target\": \"ES2022\",\n    \"strict\": true,\n    \"baseUrl\": null,\n    \"maxNodeModuleJsDepth\": 2,\n    \"paths\": { \"@app/*\": [\"src/*\"] }\n  },\n  \"include\": [\"src\", \"tests\\\\fixtures\"]\n}\n";
+
+const LANG_MARKDOWN: &str = "# Build with `cargo`\n\nRun `cargo test --workspace` before a commit, and ``a ` b`` keeps its inner tick.\nAn escaped \\`tick` is plain text.\n\n- Option `--release` makes it fast\n- A lone ` backtick stays plain\n\n```sh\ncargo `not inline`\n```\n\n| Flag | Meaning |\n|------|---------|\n| `-p` | package |\n";
+
+const LANG_TXT: &str = "Notes\n\nCall `make install` once, then `make test`.\nA lone ` backtick stays plain.\n";
+
+/// GLSL colors, JSON keys apart from string values, and `code spans` with a background in
+/// Markdown and plain text. Snapshots, checked by eye.
+#[test]
+fn glsl_json_inline_code_highlight() {
+    let fx = Fixture::new(SUITE, "languages_094");
+    let repo = basic_repo(fx.path("repo"));
+    let files = [
+        ("shaders/pulse.frag", LANG_GLSL, ide_editor::Language::Glsl, "lang_glsl"),
+        ("tsconfig.json", LANG_JSON, ide_editor::Language::Json, "lang_json"),
+        ("docs/notes.md", LANG_MARKDOWN, ide_editor::Language::Markdown, "lang_markdown_inline_code"),
+        ("docs/notes.txt", LANG_TXT, ide_editor::Language::Plain, "lang_txt_inline_code"),
+    ];
+    for (rel, text, _, _) in files {
+        repo.write(rel, text);
+    }
+    repo.commit_all("GLSL, JSON and notes");
+    let mut ide = Ide::open(SUITE, &repo.dir);
+    ide.state_mut().apply_ide_config(harwex_ide::lang::IdeConfig::parse("languages = [\"ts\"]"));
+    for (rel, text, language, snapshot) in files {
+        ide.open_file(rel);
+        let editor = ide.state().ws.tabs.active_editor().expect("editor");
+        assert_eq!(editor.doc.language(), language, "{rel}");
+        assert_eq!(ide.active_text(), text);
+        ide.assert_text(language.name());
+        ide.snapshot(snapshot);
+    }
+}

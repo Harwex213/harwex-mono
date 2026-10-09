@@ -141,6 +141,95 @@ fn stamp_ignores_a_stat_refresh_and_sees_index_and_head_changes() {
     assert_ne!(t.repo.stamp(Some(&committed)).unwrap(), committed, "another branch");
 }
 
+/// What the app does after a HEAD or index change: `status_of` over `changed_paths` plus the
+/// paths of the rows it shows, merged into those rows. It must equal a full status when only
+/// git (not a plain file edit, which the watcher reports) changed the worktree.
+fn assert_incremental_equals_full(t: &TestRepo, since: Option<ide_git::Oid>, old_rows: &[FileChange], what: &str) {
+    let mut set = t.repo.changed_paths(since, 1000).unwrap().unwrap_or_else(|| panic!("{what}: no incremental answer"));
+    for c in old_rows {
+        set.push(c.path.clone());
+        set.extend(c.old_path.clone());
+    }
+    let rows = t.repo.status_of(&set).unwrap();
+    let mut merged: Vec<FileChange> = old_rows.iter().filter(|c| !set.contains(&c.path) && !c.old_path.as_ref().is_some_and(|o| set.contains(o))).cloned().collect();
+    merged.extend(rows);
+    merged.sort_by(|a, b| a.path.cmp(&b.path));
+    merged.dedup_by(|a, b| a.path == b.path);
+    assert_eq!(merged, t.repo.status().unwrap(), "{what}");
+}
+
+fn head(t: &TestRepo) -> Option<ide_git::Oid> {
+    t.repo.stamp(None).unwrap().head_oid()
+}
+
+#[test]
+fn changed_paths_cover_commits_resets_checkouts_and_conflicts() {
+    let t = renamed_repo();
+    t.write("keep.txt", "changed\n");
+    t.write("fresh.txt", "fresh\n");
+    t.git(&["add", "keep.txt"]);
+
+    // A commit in a terminal: the committed rows disappear.
+    let (since, rows) = (head(&t), t.repo.status().unwrap());
+    t.git(&["add", "fresh.txt"]);
+    t.git(&["commit", "-q", "-m", "outside"]);
+    assert_incremental_equals_full(&t, since, &rows, "after an outside commit");
+
+    // `reset --mixed HEAD~1`: fresh.txt becomes untracked again, keep.txt modified.
+    let (since, rows) = (head(&t), t.repo.status().unwrap());
+    t.git(&["reset", "-q", "HEAD~1"]);
+    assert_incremental_equals_full(&t, since, &rows, "after reset --mixed");
+
+    // `reset --soft`, then a checkout of a branch with other files.
+    t.git(&["add", "-A"]);
+    t.git(&["commit", "-q", "-m", "again"]);
+    let (since, rows) = (head(&t), t.repo.status().unwrap());
+    t.git(&["reset", "-q", "--soft", "HEAD~1"]);
+    assert_incremental_equals_full(&t, since, &rows, "after reset --soft");
+    t.git(&["commit", "-q", "-m", "again"]);
+    t.git(&["checkout", "-q", "-b", "side", "HEAD~1"]);
+    t.write("side.txt", "side\n");
+    t.write("keep.txt", "side keep\n");
+    t.git(&["add", "-A"]);
+    t.git(&["commit", "-q", "-m", "side"]);
+    let (since, rows) = (head(&t), t.repo.status().unwrap());
+    t.git(&["checkout", "-q", "main"]);
+    assert_incremental_equals_full(&t, since, &rows, "after a checkout");
+
+    // A merge that stops on a conflict: HEAD stays, the index holds the conflict.
+    let (since, rows) = (head(&t), t.repo.status().unwrap());
+    let out = std::process::Command::new("git").args(["merge", "-q", "side"]).current_dir(t.path()).output().unwrap();
+    assert!(!out.status.success());
+    assert_incremental_equals_full(&t, since, &rows, "after a conflicting merge");
+    assert!(t.repo.status().unwrap().iter().any(|c| c.staged == Some(ChangeKind::Conflicted)));
+
+    // An outside `git add` of an untracked file.
+    t.git(&["merge", "--abort"]);
+    t.write("later.txt", "later\n");
+    let (since, rows) = (head(&t), t.repo.status().unwrap());
+    t.git(&["add", "later.txt"]);
+    assert_incremental_equals_full(&t, since, &rows, "after an outside git add");
+}
+
+#[test]
+fn changed_paths_give_up_above_the_limit_and_on_an_unborn_head() {
+    let t = TestRepo::new();
+    t.write("a.txt", "a\n");
+    t.git(&["add", "a.txt"]);
+    assert_eq!(t.repo.changed_paths(head(&t), 10).unwrap(), None, "unborn HEAD");
+    t.git(&["commit", "-q", "-m", "a"]);
+    let since = head(&t);
+    for i in 0..5 {
+        t.write(&format!("f{i}.txt"), "x\n");
+    }
+    t.git(&["add", "-A"]);
+    t.git(&["commit", "-q", "-m", "five"]);
+    assert_eq!(t.repo.changed_paths(since, 4).unwrap(), None, "five paths over a limit of four");
+    assert_eq!(t.repo.changed_paths(since, 5).unwrap().map(|v| v.len()), Some(5));
+    assert_eq!(t.repo.changed_paths(None, 5).unwrap(), None, "no HEAD then");
+    assert_eq!(t.repo.changed_paths(head(&t), 5).unwrap(), Some(vec![]), "nothing changed");
+}
+
 /// A fake git that hangs, so a status can only end through its cancel flag.
 fn hanging_git(dir: &std::path::Path) -> PathBuf {
     use std::os::unix::fs::PermissionsExt;

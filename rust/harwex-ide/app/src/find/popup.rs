@@ -309,13 +309,21 @@ fn body(state: &mut AppState, ui: &mut Ui, rect: Rect, root: &Path, fresh: bool,
 
 fn header_row(state: &mut AppState, ui: &mut Ui, rect: Rect) {
     let t = &theme::T;
+    let deterministic = state.deterministic;
     let f = &mut state.ws.find;
     ui.scope_builder(UiBuilder::new().max_rect(rect).layout(Layout::left_to_right(Align::Center)), |ui| {
         ui.spacing_mut().item_spacing.x = 10.0;
         let title = if f.replace_mode { "Replace in Files" } else { "Find in Files" };
         ui.label(egui::RichText::new(title).font(t.semibold(t.font.ui)).color(t.text_bright));
-        if let Some(text) = count_text(f) {
-            ui.label(egui::RichText::new(text).color(t.text_dim));
+        if let Some(text) = status_text(f) {
+            ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing.x = 6.0;
+                // A spinner's angle follows the clock, so snapshots leave it out.
+                if f.searching && !deterministic {
+                    ui.add(egui::Spinner::new().size(t.font.small));
+                }
+                ui.label(egui::RichText::new(text).color(t.text_dim));
+            });
         }
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
             ui.spacing_mut().item_spacing.x = 4.0;
@@ -336,15 +344,31 @@ fn header_row(state: &mut AppState, ui: &mut Ui, rect: Rect) {
     });
 }
 
-/// `N matches in M files`, with `+` once the cap cut the list off.
-fn count_text(f: &super::FindInFiles) -> Option<String> {
-    if f.query.is_empty() || f.error.is_some() || f.results.is_empty() {
+/// Whether the search runs and what it found: `Searching… N matches in M files` while it runs,
+/// then `N matches in M files` or `No matches`, and `limit reached` once the cap cut the list off.
+pub(super) fn status_text(f: &super::FindInFiles) -> Option<String> {
+    if f.query.is_empty() || f.error.is_some() {
         return None;
     }
+    let counts = (!f.results.is_empty()).then(|| count_text(f));
+    if f.searching {
+        return Some(counts.map_or("Searching…".to_string(), |c| format!("Searching… {c}")));
+    }
+    match counts {
+        // Before the first search of a new query starts, the old answer says nothing.
+        None if f.debounce_at.is_some() => None,
+        None => Some("No matches".to_string()),
+        Some(c) if f.truncated => Some(format!("{c} · limit reached")),
+        Some(c) => Some(c),
+    }
+}
+
+/// `N matches in M files`, with `+` once the cap cut the list off.
+fn count_text(f: &super::FindInFiles) -> String {
     let plus = if f.truncated { "+" } else { "" };
     let (n, files) = (f.hit_count(), f.results.len());
     let s = |k: usize, one: &str, many: &str| if k == 1 && plus.is_empty() { one.to_string() } else { many.to_string() };
-    Some(format!("{n}{plus} {} in {files}{plus} {}", s(n, "match", "matches"), s(files, "file", "files")))
+    format!("{n}{plus} {} in {files}{plus} {}", s(n, "match", "matches"), s(files, "file", "files"))
 }
 
 fn toggle_menu(f: &mut super::FindInFiles, menu: Menu, anchor: Rect) {
@@ -478,14 +502,9 @@ fn results_list(state: &mut AppState, ui: &mut Ui, rect: Rect, root: &Path, acti
     let clicks = state.clicks;
     let excluded = state.ws.tree.excluded.clone();
     let f = &mut state.ws.find;
-    let message = if let Some(e) = &f.error {
-        Some((format!("Invalid pattern: {e}"), t.error))
-    } else if !f.query.is_empty() && !f.searching && f.debounce_at.is_none() && f.results.is_empty() {
-        Some(("Nothing found".to_string(), t.text_dim))
-    } else {
-        None
-    };
-    if let Some((text, color)) = message {
+    // "No matches" is the header's status; the empty list says nothing more.
+    if let Some(e) = &f.error {
+        let (text, color) = (format!("Invalid pattern: {e}"), t.error);
         ui.scope_builder(UiBuilder::new().max_rect(rect).layout(Layout::centered_and_justified(egui::Direction::TopDown)), |ui| {
             ui.label(egui::RichText::new(text).color(color));
         });

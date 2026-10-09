@@ -5,7 +5,7 @@ import { named, polar } from "./geometry";
 import { glow } from "./materials";
 
 // The three bonus games, each smaller than the hero wheel:
-// - "Bonus Show", the jester money wheel: it stands in the Game Show room of the annex (annex.ts);
+// - "Bonus Show", the jester money wheel: it stands on the Game Show platform of the annex (annex.ts), before the casino panorama;
 // - "Bonus Dice", the acrylic plinko tower, and "Bonus Luck", the slot cabinet: they stand in the amphitheatre.
 // The user placed all three in the editor (scene-overrides.json); the code defaults below are only a start.
 // Every part is stacked from the floor up; only true curved mounts (bosses in the rim, bulbs on the arc) are seated.

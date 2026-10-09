@@ -11,17 +11,18 @@ import { createLights } from "../scene/lights";
 import { createEnvironment, createMaterials } from "../scene/materials";
 import { annexFloorPlan, createAnnex } from "../scene/annex";
 import { createBuffet } from "../scene/buffet";
-import { createCasinoBackdrop } from "../scene/casinoBackdrop";
 import { createDressing } from "../scene/dressing";
 import { createGameMaterials, createGameProps } from "../scene/gameProps";
 import { createProps } from "../scene/props";
 import { createSofas } from "../scene/sofas";
 import { createStudio } from "../scene/studio";
 import { createWheel } from "../scene/wheel";
-import { activeTab, dolly, fps, isPlaying, params, renderMode, shot, spin, swing } from "../state";
+import { activeTab, dolly, fps, isPlaying, params, renderMode, selectedUuid, shot, spin, swing } from "../state";
 import type { ViewTab } from "../state";
 import { Editor } from "./editor";
 import { EditorLighting } from "./editorLighting";
+import type { AddKind } from "./primitives";
+import { isLightKind } from "./primitives";
 import { LightZones } from "./lightZones";
 import { recenterPivots } from "./pivots";
 import { SceneDocument } from "./sceneDocument";
@@ -70,21 +71,31 @@ class StudioEngine {
     this.scene.environment = createEnvironment(this.renderer);
     this.scene.environmentIntensity = 0.8;
 
-    this.rig = createCameraRig(this.camera, shot.value);
+    const materials = createMaterials();
+    const gameMaterials = createGameMaterials();
+    const gameProps = createGameProps(gameMaterials);
+    const station = (name: string) => {
+      const object = gameProps.getObjectByName(name);
+      if (!object) {
+        throw new Error(`${name} is missing`);
+      }
+      return object;
+    };
+    // Each bonus game shot is set relative to its game, so it follows the game when the user moves it.
+    this.rig = createCameraRig(this.camera, shot.value, { dice: station("Bonus Dice"), show: station("Bonus Show"), luck: station("Bonus Luck") });
     // The camera is animated by the rig, so its transform is not saved.
     this.camera.userData.animated = true;
 
-    const materials = createMaterials();
-    const gameMaterials = createGameMaterials();
     // The real size comes with the first layout; the reflector target is resized then.
     const studio = createStudio(materials, 1280, 720, annexFloorPlan());
     this.reflector = studio.reflector;
     this.wheel = createWheel(materials);
     this.city = createCity();
     this.lights = createLights();
-    // The casino backdrop behind the partition opening (annex.ts places it); `annex.update` drives its animation.
-    this.annex = createAnnex(materials, createCasinoBackdrop());
-    this.root.add(this.camera, studio.group, this.wheel.group, createProps(materials), createDressing(materials), createSofas(materials), createBuffet(materials), createGameProps(gameMaterials), this.annex.group, this.lights.group, this.city.group);
+    // The Game Show platform with the casino panorama (annex.ts). `annex.update` drives the casino animation;
+    // `annex.follow` keeps the Bonus Show lights on the wheel.
+    this.annex = createAnnex(materials, station("Bonus Show"));
+    this.root.add(this.camera, studio.group, this.wheel.group, createProps(materials), createDressing(materials), createSofas(materials), createBuffet(materials), gameProps, this.annex.group, this.lights.group, this.city.group);
     this.scene.add(this.root);
 
     // Place everything at time 0 before the snapshot of code defaults.
@@ -92,10 +103,12 @@ class StudioEngine {
     this.rig.update(0, true, true);
     this.lights.update(0);
     this.annex.update(0);
+    this.annex.follow();
     // Every selectable object gets its origin on itself, so the gizmo appears where the object is.
     recenterPivots(this.root);
-    this.document = new SceneDocument(this.root);
+    // Taken before the saved overrides apply: a deleted or renamed floor must still be found.
     const floor = studio.group.getObjectByName("Marble") as THREE.Mesh;
+    this.document = new SceneDocument(this.root);
     // The annex part of the floor gets the environment as its own map: only an own map obeys `envMapIntensity` (studio.ts).
     const annexMarble = (floor.material as THREE.MeshStandardMaterial[])[1];
     if (annexMarble) {
@@ -120,6 +133,13 @@ class StudioEngine {
       },
       redo: () => {
         this.document.redo();
+      },
+      remove: () => {
+        const uuid = selectedUuid.value;
+        const object = uuid ? this.root.getObjectByProperty("uuid", uuid) : undefined;
+        if (object) {
+          this.document.remove(object);
+        }
       },
     });
 
@@ -158,6 +178,16 @@ class StudioEngine {
       isPlaying.value = false;
     }
     this.renderer.setAnimationLoop(this.frame);
+  }
+
+  // Adds an object of `kind` under `parent`, at the point of the set in the middle of the Scene view.
+  // A light goes 3 m above that point.
+  add(kind: AddKind, parent: THREE.Object3D): THREE.Object3D | null {
+    const at = this.editor.spawnPoint();
+    if (isLightKind(kind)) {
+      at.y += 3;
+    }
+    return this.document.add(kind, parent, at);
   }
 
   attach(tab: ViewTab, element: HTMLElement): void {
@@ -242,6 +272,8 @@ class StudioEngine {
     this.editor.update(dt);
     // The city photo arrives after the first frames, so its lights are redrawn even while paused.
     this.city.update(this.renderer, this.time);
+    // The Bonus Show lights follow the wheel, also while paused: a wheel moved in the editor is lit at once.
+    this.annex.follow();
     this.renderPass.camera = this.view === "game" ? this.camera : this.editor.camera;
     const editorLit = this.view === "scene" && renderMode.value === "editor";
     // The lights of a room out of view are left out of this frame.

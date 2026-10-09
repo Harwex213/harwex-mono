@@ -484,3 +484,76 @@ fn update_branches_from_tree() {
     assert_eq!(repo.read("README.md"), "# changed elsewhere\n");
     assert_eq!(console_args(&ide, "pull").last().expect("pull logged"), &["pull", "--autostash", "--no-rebase"]);
 }
+
+/// A stack main <- lower <- upper (checked out), and main moves on.
+fn stacked_repo(fx: &Fixture) -> Repo {
+    let r = basic_repo(fx.path("repo"));
+    r.git(&["checkout", "-q", "-b", "lower"]);
+    r.write("lower.txt", "lower\n");
+    r.commit_all("Lower work");
+    r.git(&["checkout", "-q", "-b", "upper"]);
+    r.write("upper.txt", "upper\n");
+    r.commit_all("Upper work");
+    r.git(&["checkout", "-q", "main"]);
+    r.write("main.txt", "main\n");
+    r.commit_all("Main moves on");
+    r.git(&["checkout", "-q", "upper"]);
+    r
+}
+
+/// "Rebase ... (Update Refs)" sits next to Rebase in the branch tree menu and in the branches
+/// popup. It runs `git rebase --update-refs`, so lower moves with upper; a conflict goes
+/// through the usual dialog, and git moves lower when Continue finishes the rebase.
+#[test]
+fn rebase_update_refs_moves_the_stack() {
+    let fx = Fixture::new(SUITE, "update_refs");
+    let repo = stacked_repo(&fx);
+    let rev = |r: &str| repo.git(&["rev-parse", r]).trim().to_string();
+    let mut ide = Ide::open(SUITE, &repo.dir);
+    open_git(&mut ide);
+    ide.right_click("Tree branch main");
+    ide.wait_until("context menu", |ide| ide.has("Rebase Current onto 'main' (Update Refs)"));
+    assert!(ide.has("Rebase Current onto 'main'"));
+    ide.snapshot("rebase_update_refs_menu");
+    ide.click("Rebase Current onto 'main' (Update Refs)");
+    ide.wait_for("rebased", |s| s.is_idle() && s.ws.git.refresh.changed_runs > 0);
+    ide.settle();
+    assert_eq!(rev("lower~1"), rev("main"), "lower moved onto main");
+    assert_eq!(rev("upper~1"), rev("lower"));
+    assert_eq!(repo.branch(), "upper");
+    let args = console_args(&ide, "rebase");
+    assert_eq!(args.last().map(|a| a.join(" ")).as_deref(), Some("rebase --update-refs main"), "{args:?}");
+    assert!(notes(&ide).iter().any(|(t, b)| t == "Rebase upper onto main (update refs)" && b.contains("Updated the following refs with --update-refs:\n\trefs/heads/lower")), "{:?}", notes(&ide));
+
+    // main moves again and edits lower.txt: replaying "Lower work" conflicts.
+    repo.git(&["checkout", "-q", "main"]);
+    repo.write("lower.txt", "main side\n");
+    repo.commit_all("Main edits lower.txt");
+    repo.git(&["checkout", "-q", "upper"]);
+    let old_lower = rev("lower");
+    ide.dismiss_toasts();
+    ide.key_mods(CTRL_SHIFT, Key::Backtick);
+    ide.wait_until("branches popup", |ide| ide.has("Local branch main"));
+    ide.hover("Local branch main");
+    ide.wait_until("submenu", |ide| ide.has("Rebase 'upper' onto 'main' (Update Refs)"));
+    ide.settle();
+    ide.snapshot("rebase_update_refs_popup");
+    ide.click("Rebase 'upper' onto 'main' (Update Refs)");
+    ide.wait_for("conflicts dialog", |s| s.ws.git_ui.conflicts.dialog_open() && s.ws.git_ui.conflicts.files().len() == 1 && s.is_idle());
+    ide.settle();
+    assert_eq!(ide.state().ws.git_ui.conflicts.op(), ide_git::RepoState::Rebase);
+    assert_eq!(rev("lower"), old_lower, "git moves lower only when the rebase ends");
+    ide.dismiss_toasts();
+    ide.click("Accept Your commit (theirs)");
+    ide.wait_for("resolved", |s| s.ws.git_ui.conflicts.files().is_empty() && s.is_idle());
+    ide.settle();
+    ide.dismiss_toasts();
+    ide.click("Continue");
+    ide.wait_for("rebase finished", |s| s.ws.git_ui.conflicts.op() == ide_git::RepoState::Clean && s.is_idle());
+    ide.settle();
+    assert_eq!(rev("lower~1"), rev("main"));
+    assert_eq!(rev("upper~1"), rev("lower"));
+    assert_eq!(repo.read("lower.txt"), "lower\n");
+    let full = ide_git::Repo::discover(&repo.dir).expect("repo").status().expect("status");
+    assert_eq!(ide.state().ws.git.changes, full, "the incremental status equals a full one");
+}

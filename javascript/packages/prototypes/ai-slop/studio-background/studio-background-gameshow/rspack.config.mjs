@@ -1,8 +1,11 @@
 import { writeFile } from "node:fs/promises";
+import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { rspack } from "@rspack/core";
 
-const OVERRIDES_FILE = fileURLToPath(new URL("./src/scene/scene-overrides.json", import.meta.url));
+const DEFAULT_OVERRIDES = fileURLToPath(new URL("./src/scene/scene-overrides.json", import.meta.url));
+// `SCENE_OVERRIDES=/path/to/copy.json yarn dev` loads and saves a copy instead, so a test run never touches the real file.
+const OVERRIDES_FILE = process.env.SCENE_OVERRIDES ? resolve(process.env.SCENE_OVERRIDES) : DEFAULT_OVERRIDES;
 
 // Dev-only endpoint: the editor's Save button posts the scene overrides here.
 function saveOverrides(request, response, next) {
@@ -40,6 +43,7 @@ export default {
   },
   resolve: {
     extensions: ["...", ".ts", ".tsx"],
+    alias: OVERRIDES_FILE === DEFAULT_OVERRIDES ? {} : { [DEFAULT_OVERRIDES]: OVERRIDES_FILE },
   },
   module: {
     generator: {

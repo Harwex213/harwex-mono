@@ -1047,16 +1047,18 @@ fn start_delete_search(state: &mut AppState) {
     }));
 }
 
-/// Moves the items to the Trash (through `state.platform`), one worker for all of them.
+/// Moves the items to the Trash (through `state.platform`), or deletes them for good when
+/// Settings › System › Files says so, one worker for all of them.
 fn delete(state: &mut AppState, targets: Vec<Target>) {
     let platform = state.platform.clone();
+    let trash = state.settings.global.files.trash;
     let paths: Vec<PathBuf> = targets.into_iter().map(|t| t.path).collect();
     let todo = paths.clone();
     let generation = state.project_generation();
     let label = if paths.len() == 1 { format!("Deleting {}", fileops::file_name(&paths[0])) } else { format!("Deleting {} items", paths.len()) };
     state.jobs.spawn(
         label,
-        move || todo.iter().map(|p| platform.trash(p)).collect::<Vec<Result<(), String>>>(),
+        move || todo.iter().map(|p| if trash { platform.trash(p) } else { crate::settings::files::delete_permanently(p) }).collect::<Vec<Result<(), String>>>(),
         move |state, results| {
             if state.project_generation() != generation {
                 return;
@@ -1065,7 +1067,8 @@ fn delete(state: &mut AppState, targets: Vec<Target>) {
             let mut trashed = Vec::new();
             for (path, res) in paths.into_iter().zip(results) {
                 if let Err(e) = res {
-                    state.notifications.error(format!("Cannot move {} to the Trash", fileops::file_name(&path)), e);
+                    let title = if trash { format!("Cannot move {} to the Trash", fileops::file_name(&path)) } else { format!("Cannot delete {}", fileops::file_name(&path)) };
+                    state.notifications.error(title, e);
                     continue;
                 }
                 let ids: Vec<TabId> = state.ws.tabs.editors_mut().filter(|(_, e)| e.path.starts_with(&path)).map(|(id, _)| id).collect();
@@ -1088,7 +1091,8 @@ fn delete(state: &mut AppState, targets: Vec<Target>) {
                 return;
             }
             state.on_fs_batch(FsBatch { paths: batch, structure_changed: true, git_changed: false });
-            state.notifications.log_only(Level::Info, format!("Moved {} to the Trash", trashed.join(", ")), String::new());
+            let done = if trash { format!("Moved {} to the Trash", trashed.join(", ")) } else { format!("Deleted {}", trashed.join(", ")) };
+            state.notifications.log_only(Level::Info, done, String::new());
         },
     );
 }
@@ -1222,6 +1226,8 @@ pub fn show_dialogs(state: &mut AppState, ctx: &Context) {
         }
     }
     let root = state.ws.project.as_ref().map(|p| p.root.clone()).unwrap_or_default();
+    // Settings › System › Files: Delete moves to the Trash, or deletes for good.
+    let trash = state.settings.global.files.trash;
     let enter = ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, Key::Enter));
     let t = &theme::T;
     let mut action: Option<Action> = None;
@@ -1252,12 +1258,14 @@ pub fn show_dialogs(state: &mut AppState, ctx: &Context) {
                     [one] => {
                         let kind = if one.is_dir { "directory" } else { "file" };
                         ui.label(RichText::new(if one.is_dir { "Delete Directory" } else { "Delete File" }).strong());
-                        ui.label(format!("Move the {kind} \"{}\" to the Trash?", fileops::file_name(&one.path)));
+                        let name = fileops::file_name(&one.path);
+                        ui.label(if trash { format!("Move the {kind} \"{name}\" to the Trash?") } else { format!("Delete the {kind} \"{name}\" permanently?") });
                     }
                     many => {
                         ui.label(RichText::new(format!("Delete {} Items", many.len())).strong());
                         let names: Vec<String> = many.iter().map(|t| fileops::file_name(&t.path)).collect();
-                        ui.label(format!("Move {} items to the Trash: {}?", many.len(), names.join(", ")));
+                        let names = names.join(", ");
+                        ui.label(if trash { format!("Move {} items to the Trash: {names}?", many.len()) } else { format!("Delete {} items permanently: {names}?", many.len()) });
                     }
                 }
                 let before = d.safe;

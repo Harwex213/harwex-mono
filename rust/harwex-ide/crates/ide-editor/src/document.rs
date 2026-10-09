@@ -1019,6 +1019,7 @@ impl Document {
                 out.resize(n, Vec::new());
                 out
             }
+            _ if self.language == Language::Plain => highlight::plain_code_spans(&self.rope, lines),
             _ => vec![Vec::new(); lines.len()],
         }
     }

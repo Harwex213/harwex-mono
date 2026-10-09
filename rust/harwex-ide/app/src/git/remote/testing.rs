@@ -3,7 +3,7 @@
 //! pause so the previous step's result is drawn (and can be screenshotted).
 //!
 //! Steps: `log`, `select <row>`, `filter <text>`, `filehistory <path>`, `branches`,
-//! `branch-menu <name>`, `checkout <branch>`, `merge <branch>`, `rebase <branch>`, `push [branch]`,
+//! `branch-menu <name>`, `checkout <branch>`, `merge <branch>`, `rebase <branch>`, `rebase-update-refs <branch>`, `push [branch]`,
 //! `update`, `stash`, `unstash`, `conflicts`, `mergetool <path>`, `take <ours|theirs>`, `save`, `dump`, `logaction <copy|checkout|newbranch|reset|revert|cherry-pick>`, `wait <ms>`.
 
 use std::path::PathBuf;
@@ -42,7 +42,7 @@ pub(super) fn tick(state: &mut AppState) {
         }
         "branches" => super::super::branches::open_popup(state, egui::pos2(120.0, 34.0)),
         "branch-menu" => super::super::branches::test_expand(state, &arg_s),
-        "checkout" | "merge" | "rebase" => super::super::branches::test_action(state, &name, &arg_s),
+        "checkout" | "merge" | "rebase" | "rebase-update-refs" => super::super::branches::test_action(state, &name, &arg_s),
         "push" if arg_s.is_empty() => super::open_push_dialog(state),
         "push" => super::open_push_dialog_for(state, arg_s.clone()),
         "update" => super::open_update_dialog(state),
@@ -74,7 +74,7 @@ pub(super) fn tick(state: &mut AppState) {
             state.ws.git_ui.remote.stash = None;
             super::run_op(state, "Stash Changes", "Changes stashed", false, move |r| r.stash_save(&arg_s, true).map(|_| None), |_, _| {});
         }
-        "unstash-pop" => super::run_op(state, "Unstash (pop)", "Applied", true, |r| r.stash_apply_with(0, true, false).map(Some), |state, ok| {
+        "unstash-pop" => super::run_op_with(state, "Unstash (pop)", "Applied", true, super::Refresh::Full, |r| r.stash_apply_with(0, true, false).map(Some), |state, ok| {
             if ok {
                 state.ws.git_ui.remote.unstash = None;
             }

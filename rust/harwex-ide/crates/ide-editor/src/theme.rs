@@ -60,6 +60,9 @@ pub struct EditorTheme {
     pub find_hover: Color32,
     pub find_toggle_on: Color32,
     pub find_error: Color32,
+    /// The fill behind a `code span` (`HlKind::InlineCode`). It is translucent, so a selection,
+    /// a find match or the current line under it still shows.
+    pub inline_code_background: Color32,
     /// Indexed by `HlKind as usize`.
     pub kinds: [Color32; HlKind::COUNT],
 }
@@ -95,6 +98,7 @@ impl EditorTheme {
         kinds[HlKind::Attribute as usize] = hex(0xBABABA);
         kinds[HlKind::Title as usize] = hex(0xCF8E6D);
         kinds[HlKind::Link as usize] = hex(0x548AF7);
+        kinds[HlKind::InlineCode as usize] = hex(0x6AAB73);
         EditorTheme {
             background: hex(0x1E1F22),
             foreground: fg,
@@ -135,6 +139,7 @@ impl EditorTheme {
             find_hover: hex(0x393B40),
             find_toggle_on: hex(0x2E436E),
             find_error: hex(0xF0524F),
+            inline_code_background: Color32::from_rgba_premultiplied(18, 18, 18, 18),
             kinds,
         }
     }
@@ -159,6 +164,7 @@ impl EditorTheme {
         kinds[HlKind::Attribute as usize] = hex(0xBABABA);
         kinds[HlKind::Title as usize] = hex(0xFFC66D);
         kinds[HlKind::Link as usize] = hex(0x287BDE);
+        kinds[HlKind::InlineCode as usize] = hex(0x6A8759);
         EditorTheme {
             background: hex(0x2B2B2B),
             foreground: fg,
@@ -199,12 +205,21 @@ impl EditorTheme {
             find_hover: hex(0x393B40),
             find_toggle_on: hex(0x2E436E),
             find_error: hex(0xF0524F),
+            inline_code_background: Color32::from_rgba_premultiplied(18, 18, 18, 18),
             kinds,
         }
     }
 
     pub fn color(&self, kind: HlKind) -> Color32 {
         self.kinds[kind as usize]
+    }
+
+    /// The text background of a kind: only code spans have one.
+    pub fn background(&self, kind: HlKind) -> Color32 {
+        match kind {
+            HlKind::InlineCode => self.inline_code_background,
+            _ => Color32::TRANSPARENT,
+        }
     }
 
     pub fn problem(&self, severity: crate::ProblemSeverity) -> Color32 {
@@ -225,6 +240,7 @@ impl EditorTheme {
         let mut h = DefaultHasher::new();
         self.foreground.hash(&mut h);
         self.kinds.hash(&mut h);
+        self.inline_code_background.hash(&mut h);
         h.finish()
     }
 }

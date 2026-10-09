@@ -591,7 +591,7 @@ fn unstash_window(state: &mut AppState, ctx: &Context) {
                                 d.busy = true;
                                 deferred = Some(Box::new(move |state| {
                                     let title = if pop { "Unstash (pop)" } else { "Unstash (apply)" };
-                                    run_op(state, title, format!("Applied stash@{{{sel}}}"), true, move |r| r.stash_apply_with(stash_index(r, sel, Some(sel_oid))?, pop, reinstate).map(Some), |state, ok| {
+                                    run_op_with(state, title, format!("Applied stash@{{{sel}}}"), true, Refresh::Full, move |r| r.stash_apply_with(stash_index(r, sel, Some(sel_oid))?, pop, reinstate).map(Some), |state, ok| {
                                         if ok {
                                             state.ws.git_ui.remote.unstash = None;
                                         } else if let Some(d) = state.ws.git_ui.remote.unstash.as_mut() {
@@ -630,14 +630,16 @@ fn unstash_window(state: &mut AppState, ctx: &Context) {
 pub(crate) type OpResult = ide_git::Result<Option<CommandOutcome>>;
 
 /// Runs a git write on a worker. Afterwards it shows a toast (the summary on success, the
-/// stderr on failure), refreshes the whole git status, optionally looks for conflicts, and then
-/// calls `then` with the success flag.
+/// stderr on failure), refreshes the git status (`Refresh::Changed`: what HEAD and the index
+/// changed plus the shown rows), optionally looks for conflicts, and then calls `then` with the
+/// success flag. A write that also edits the worktree on its own (Unstash) passes
+/// `Refresh::Full` to `run_op_with`.
 pub(crate) fn run_op<W, T>(state: &mut AppState, title: impl Into<String>, ok_body: impl Into<String>, check_conflicts: bool, work: W, then: T)
 where
     W: FnOnce(&Repo) -> OpResult + Send + 'static,
     T: FnOnce(&mut AppState, bool) + Send + 'static,
 {
-    run_op_with(state, title, ok_body, check_conflicts, Refresh::Full, work, then);
+    run_op_with(state, title, ok_body, check_conflicts, Refresh::Changed, work, then);
 }
 
 /// `run_op` for a write that knows what it changed: `Refresh::Paths` refreshes only those
@@ -657,7 +659,7 @@ where
     W: FnOnce(&Repo) -> OpResult + Send + 'static,
     T: FnOnce(&mut AppState, bool) + Send + 'static,
 {
-    spawn_op(state, title.into(), None, false, Refresh::Full, work, then);
+    spawn_op(state, title.into(), None, false, Refresh::Changed, work, then);
 }
 
 fn spawn_op<W, T>(state: &mut AppState, title: String, ok_body: Option<String>, check_conflicts: bool, refresh: Refresh, work: W, then: T)

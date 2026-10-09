@@ -15,6 +15,7 @@
 pub mod config;
 pub mod cpp;
 pub mod csharp;
+pub mod npm;
 pub mod restart;
 pub mod rust;
 pub mod ts;

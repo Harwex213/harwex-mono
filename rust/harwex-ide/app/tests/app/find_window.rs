@@ -375,7 +375,12 @@ fn text_tab_reruns() {
     ide.snapshot("text_results");
 
     // ⟳ searches again with the same query and scope.
+    // The tests run no watcher: tell the app about the new file as the watcher would, so the
+    // file index (which the project search reads) picks it up.
     repo.write("src/more.ts", "export const b = add(1, 1);\n");
+    let batch = harwex_ide::watcher::FsBatch { paths: std::iter::once(root.join("src/more.ts")).collect(), structure_changed: true, git_changed: false };
+    ide.state_mut().on_fs_batch(batch);
+    ide.settle();
     ide.click("Rerun");
     ide.wait_for("rerun", |s| {
         s.ws.find_window

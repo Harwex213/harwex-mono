@@ -261,11 +261,23 @@ struct Model {
     new_text: String,
     /// The old text, shared with relayout workers without a copy per keystroke.
     old_shared: Arc<str>,
+    /// Both pictures of a binary image diff (`viewer::image`), decoded by the reload worker.
+    images: Option<Box<crate::viewer::image::DiffImages>>,
+    /// A hash of a binary diff's bytes, so a reload of the same pictures decodes nothing.
+    bytes_hash: u64,
 }
 
 impl Model {
     fn build(diff: FileDiff, new_override: Option<String>) -> Model {
         let mut diff = diff;
+        let bytes_hash = binary_hash(&diff);
+        let images = (diff.binary && crate::viewer::is_raster(&diff.path)).then(|| {
+            let side = |exists: bool, b: &[u8]| exists.then_some(b).map(<[u8]>::to_vec);
+            let (old, new) = (side(diff.old_exists, &diff.old_bytes), side(diff.new_exists, &diff.new_bytes));
+            Box::new(crate::viewer::image::DiffImages::decode(old.as_deref(), new.as_deref()))
+        });
+        // The pixels are decoded; the raw bytes would only hold memory while the tab is open.
+        (diff.old_bytes, diff.new_bytes) = (Vec::new(), Vec::new());
         if let Some(buf) = new_override {
             if !diff.binary && buf != diff.new_text {
                 diff.hunks = ide_git::diff_texts(&diff.old_text, &buf);
@@ -280,7 +292,7 @@ impl Model {
         (old.hunk_of, old.inline, new.hunk_of, new.inline) = (l.old_hunk_of, l.old_inline, l.new_hunk_of, l.new_inline);
         let new_text = diff.new_text.clone();
         let old_shared = Arc::from(diff.old_text.as_str());
-        Model { diff, old, new, segments: l.segments, total: l.total, new_text, old_shared }
+        Model { diff, old, new, segments: l.segments, total: l.total, new_text, old_shared, images, bytes_hash }
     }
 
     /// Takes the hunks a worker computed for the edited working-tree text.
@@ -464,8 +476,14 @@ impl DiffTab {
         DiffTab { key, title, tooltip, source, load: Load::Loading, t: 0.0, hscroll: 0.0, current: None, goto_first: true, reloading: false, reload_pending: false, view_lines: 30.0, dragging_thumb: None, sel: None, chain: ClickChain::default(), drag: false, geom: None, model_gen: 0, live: Live::default(), on_disk: None }
     }
 
-    fn set_model(&mut self, model: Model) {
+    fn set_model(&mut self, mut model: Model) {
         let keep = matches!(self.load, Load::Ready(_));
+        // New pictures keep the zoom the user chose.
+        if let (Load::Ready(old), Some(new)) = (&self.load, model.images.as_mut()) {
+            if let Some(v) = old.images.as_ref().map(|i| i.view()) {
+                new.set_view(v);
+            }
+        }
         self.load = Load::Ready(Box::new(model));
         self.model_gen += 1;
         self.live.load_failed = false;
@@ -624,6 +642,17 @@ impl DiffTab {
     }
 }
 
+/// A hash of a binary diff's two sides (0 for a text diff).
+fn binary_hash(d: &FileDiff) -> u64 {
+    use std::hash::{Hash, Hasher};
+    if !d.binary {
+        return 0;
+    }
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    (&d.old_bytes, &d.new_bytes, d.old_exists, d.new_exists).hash(&mut h);
+    h.finish()
+}
+
 fn name_of(p: &Path) -> String {
     p.file_name().map_or_else(|| p.display().to_string(), |n| n.to_string_lossy().into_owned())
 }
@@ -669,6 +698,15 @@ impl CustomTab for DiffTab {
             Load::Failed(e) => {
                 ui.add_space(20.0);
                 ui.label(RichText::new(format!("Cannot load the diff: {e}")).color(theme::T.error));
+                return;
+            }
+            Load::Ready(m) if m.diff.binary && m.images.is_some() => {
+                let titles = side_titles(&self.source, &m.diff);
+                if let Load::Ready(m) = &mut self.load {
+                    if let Some(images) = m.images.as_mut() {
+                        images.ui(ui, &self.key, titles);
+                    }
+                }
                 return;
             }
             Load::Ready(m) if m.diff.binary => {
@@ -775,7 +813,7 @@ fn toolbar(tab: &mut DiffTab, ui: &mut Ui, body_id: Id) -> bool {
                 jump = true;
             }
             ui.add_space(8.0);
-            let label = if tab.model().is_none() {
+            let label = if tab.model().is_none() || tab.is_binary() {
                 String::new()
             } else if identical {
                 "Contents are identical".to_string()
@@ -1723,7 +1761,7 @@ fn reload(state: &mut AppState, key: &str) {
     tab.reloading = true;
     let source = tab.source.clone();
     let source_abs = tab.abs().to_path_buf();
-    let prev_texts = tab.model().map(|m| (m.diff.old_text.clone(), m.new_text.clone()));
+    let prev_texts = tab.model().map(|m| (m.diff.old_text.clone(), m.new_text.clone(), m.bytes_hash));
     // A clean hidden document follows the disk like an editor tab (the watcher's reload).
     let reread = tab.live.hidden.as_ref().filter(|h| !h.is_dirty()).map(|h| (tab.live.hidden_gen, h.version(), tab.abs().to_path_buf()));
     let live = live_snapshot(state, key);
@@ -1748,7 +1786,7 @@ fn reload(state: &mut AppState, key: &str) {
                     // The working-tree side shows the document the user edits, as the file holds it.
                     let buffer = live.map(|(_, _, snap)| snap.file_text());
                     let new_text = buffer.as_ref().unwrap_or(&d.new_text);
-                    if prev_texts.as_ref().is_some_and(|(o, n)| *o == d.old_text && n == new_text) {
+                    if prev_texts.as_ref().is_some_and(|(o, n, h)| *o == d.old_text && n == new_text && *h == binary_hash(&d)) {
                         return (Ok((None, disk)), on_disk);
                     }
                     (Ok((Some(Model::build(d, buffer)), disk)), on_disk)

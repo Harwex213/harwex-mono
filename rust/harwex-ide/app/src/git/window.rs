@@ -413,6 +413,7 @@ fn apply(state: &mut AppState, a: TreeAction) {
         TreeAction::NewBranchFrom(n) => branches::run_action(state, Action::NewFrom(Some(n))),
         TreeAction::Merge(n) => branches::run_action(state, Action::Merge(n)),
         TreeAction::Rebase(n) => branches::run_action(state, Action::Rebase(n)),
+        TreeAction::RebaseUpdateRefs(n) => branches::run_action(state, Action::RebaseUpdateRefs(n)),
         TreeAction::Rename(n) => branches::run_action(state, Action::Rename(n)),
         TreeAction::Delete { name, remote, upstream } => branches::open_delete_dialog(state, name, remote, upstream),
         TreeAction::Update(n) => super::remote::update_branch(state, n),

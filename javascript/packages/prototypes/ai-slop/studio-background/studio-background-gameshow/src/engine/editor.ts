@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { TransformControls } from "three/examples/jsm/controls/TransformControls.js";
-import { inspectorRevision, selectedUuid, transformMode } from "../state";
+import { inspectorRevision, renamingUuid, selectedUuid, transformMode } from "../state";
 import { SceneNavigation } from "./sceneNavigation";
 
 // Everything that only exists in the Scene view lives on this layer.
@@ -17,6 +17,8 @@ interface EditorOptions {
   checkpoint: () => void;
   undo: () => void;
   redo: () => void;
+  // Deletes the selected object (Delete or Backspace).
+  remove: () => void;
 }
 
 function onEditorLayer(object: THREE.Object3D): void {
@@ -72,6 +74,9 @@ function lightHelper(object: THREE.Object3D): THREE.Object3D | null {
   if ((object as THREE.HemisphereLight).isHemisphereLight) {
     return new THREE.HemisphereLightHelper(object as THREE.HemisphereLight, 1);
   }
+  if ((object as THREE.DirectionalLight).isDirectionalLight) {
+    return new THREE.DirectionalLightHelper(object as THREE.DirectionalLight, 1, 0xffd27a);
+  }
   return null;
 }
 
@@ -112,7 +117,7 @@ class Editor {
     });
     this.navigation = new SceneNavigation(this.camera, canvas);
     // The start view stands high in the amphitheatre, left of the wheel, and looks through the open front
-    // into the annex: the Game Show room with Bonus Show and the partition opening to the casino.
+    // onto the annex: the Game Show platform with Bonus Show and the casino panorama behind it.
     this.navigation.lookAt(new THREE.Vector3(-7, 9, -3), new THREE.Vector3(18, 2.5, 20));
 
     const grid = new THREE.GridHelper(50, 50, 0x5b6170, 0x2c3038);
@@ -204,6 +209,22 @@ class Editor {
     this.navigation.frame(center, radius);
   }
 
+  // Where a new object goes: the point of the set in the middle of the Scene view, like Unity's scene pivot.
+  // Without a hit within 40 m it goes 8 m in front of the editor camera.
+  spawnPoint(): THREE.Vector3 {
+    this.raycaster.setFromCamera(new THREE.Vector2(0, 0), this.camera);
+    for (const hit of this.raycaster.intersectObject(this.options.root, true)) {
+      if (hit.distance > 40) {
+        break;
+      }
+      if (isShown(hit.object)) {
+        return hit.point.clone();
+      }
+    }
+    const direction = this.camera.getWorldDirection(new THREE.Vector3());
+    return this.camera.position.clone().addScaledVector(direction, 8);
+  }
+
   private applySelection(uuid: string | null): void {
     const object = uuid ? this.options.root.getObjectByProperty("uuid", uuid) : undefined;
     if (this.light) {
@@ -266,7 +287,11 @@ class Editor {
       return;
     }
     // A text field keeps its own undo.
-    const typing = event.target instanceof HTMLInputElement && event.target.type !== "checkbox" && event.target.type !== "color";
+    const target = event.target;
+    const typing =
+      (target instanceof HTMLInputElement && target.type !== "checkbox" && target.type !== "color") ||
+      target instanceof HTMLTextAreaElement ||
+      target instanceof HTMLSelectElement;
     if (command && !typing && (event.code === "KeyZ" || event.code === "KeyY")) {
       event.preventDefault();
       if (event.code === "KeyY" || event.shiftKey) {
@@ -275,6 +300,19 @@ class Editor {
         this.options.undo();
       }
       return;
+    }
+    // Delete and rename work in both views, since the Hierarchy is always there. Not while flying with RMB.
+    if (!typing && !command && !event.altKey && !this.navigation.flying) {
+      if (event.code === "Delete" || event.code === "Backspace") {
+        event.preventDefault();
+        this.options.remove();
+        return;
+      }
+      if (event.code === "F2") {
+        event.preventDefault();
+        renamingUuid.value = selectedUuid.value;
+        return;
+      }
     }
     // While RMB is held, WASDQE fly the camera instead of switching tools.
     if (!this.enabled || typing || command || event.altKey || this.navigation.flying) {

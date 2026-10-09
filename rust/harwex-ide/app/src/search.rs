@@ -316,9 +316,7 @@ pub fn show(state: &mut AppState, ctx: &egui::Context) -> Option<PathBuf> {
                 ui.visuals_mut().widgets.inactive.weak_bg_fill = theme::T.clear;
                 ui.visuals_mut().widgets.inactive.bg_stroke = egui::Stroke::NONE;
                 for (i, hit) in s.results.iter().enumerate() {
-                    let job = hit_job(hit);
-                    let min_size = egui::vec2(ui.available_width(), row_h);
-                    let resp = crate::util::expandable_row(ui, job, i == s.selected, min_size);
+                    let resp = hit_row(ui, hit, i == s.selected, row_h);
                     if i == s.selected && (up || down) {
                         resp.scroll_to_me(None);
                     }
@@ -337,22 +335,165 @@ pub fn show(state: &mut AppState, ctx: &egui::Context) -> Option<PathBuf> {
     chosen
 }
 
-fn hit_job(hit: &SearchHit) -> LayoutJob {
+/// One result row: the file name, then its folder in a smaller dim font. A row that does not
+/// fit cuts the folder first; a name that alone does not fit loses its middle (`middle_cut`).
+/// While the pointer is over a cut row, an overlay on the tooltip layer repeats the row with
+/// more text. The overlay keeps the row's right edge and grows to the left, at most to the
+/// screen's left edge (unlike `util::expandable_row`, which grows right).
+fn hit_row(ui: &mut egui::Ui, hit: &SearchHit, selected: bool, row_h: f32) -> egui::Response {
+    let pad = ui.spacing().button_padding;
+    let width = ui.available_width();
+    let (galley, cut) = fit_galley(ui, hit, width - 2.0 * pad.x);
+    let resp = ui.add(egui::Button::new(galley.clone()).selected(selected).min_size(egui::vec2(width, row_h)));
+    // The a11y name is the whole row, also when the drawn text is cut.
+    let enabled = resp.enabled();
+    resp.widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::Button, enabled, selected, row_text(hit)));
+    if cut && resp.hovered() {
+        paint_overlay(ui, &resp, hit, selected, galley.size());
+    }
+    resp
+}
+
+/// The whole row as one line of text, as the a11y name and the overlay of an uncut row show it.
+fn row_text(hit: &SearchHit) -> String {
+    match hit.path.rsplit_once('/') {
+        Some((dir, name)) => format!("{name}  {dir}"),
+        None => hit.path.clone(),
+    }
+}
+
+/// Lays the row out to fit `width`. Returns the galley and whether its text is cut.
+fn fit_galley(ui: &egui::Ui, hit: &SearchHit, width: f32) -> (std::sync::Arc<egui::Galley>, bool) {
+    let name_start = hit.path.rfind('/').map_or(0, |i| i + 1);
+    let name = &hit.path[name_start..];
+    let name_chars = name.chars().count();
+    ui.fonts(|f| {
+        let full = f.layout_job(hit_job(hit, None, f32::INFINITY));
+        if full.size().x <= width {
+            return (full, false);
+        }
+        let name_w = f.layout_job(hit_job(hit, Some((name_chars, 0)), f32::INFINITY)).size().x;
+        if name_w <= width {
+            // The name fits: the folder is cut at its end with `…`.
+            return (f.layout_job(hit_job(hit, None, width)), true);
+        }
+        let (head, tail) = middle_cut(name, |head, tail| f.layout_job(hit_job(hit, Some((head, tail)), f32::INFINITY)).size().x <= width);
+        (f.layout_job(hit_job(hit, Some((head, tail)), f32::INFINITY)), true)
+    })
+}
+
+/// Splits a name that is too long into the first `head` and the last `tail` chars, with `…`
+/// between them. Picks the most chars for which `fits(head, tail)` holds. The tail gets the
+/// bigger half and always keeps the extension, so the file type stays visible.
+fn middle_cut(name: &str, mut fits: impl FnMut(usize, usize) -> bool) -> (usize, usize) {
+    let chars: Vec<char> = name.chars().collect();
+    let n = chars.len();
+    let ext = chars.iter().rposition(|&c| c == '.').filter(|&i| i > 0).map_or(0, |i| n - i);
+    let split = |k: usize| {
+        let tail = k.div_ceil(2).max(ext.min(k));
+        (k - tail, tail)
+    };
+    // The widest `k` (kept chars) that fits; the width grows with `k`.
+    let (mut lo, mut hi) = (0, n.saturating_sub(1));
+    while lo < hi {
+        let mid = (lo + hi).div_ceil(2);
+        let (h, t) = split(mid);
+        if fits(h, t) {
+            lo = mid;
+        } else {
+            hi = mid - 1;
+        }
+    }
+    split(lo)
+}
+
+/// Paints the hover overlay of a cut row: right-aligned to the row, as wide as the whole text
+/// needs, and never past the screen's left edge. Text that still does not fit is cut the same
+/// way as the row.
+fn paint_overlay(ui: &egui::Ui, resp: &egui::Response, hit: &SearchHit, selected: bool, cut_size: egui::Vec2) {
+    let pad = ui.spacing().button_padding;
+    let rect = resp.rect;
+    // The same frame the button drew (`egui::Button`'s paint code), as `util::expandable_row`.
+    let visuals = ui.style().interact(resp);
+    let (expansion, radius, fill, stroke) = if selected {
+        let s = ui.visuals().selection;
+        (egui::Vec2::ZERO, egui::CornerRadius::ZERO, s.bg_fill, s.stroke)
+    } else {
+        (egui::Vec2::splat(visuals.expansion), visuals.corner_radius, visuals.weak_bg_fill, visuals.bg_stroke)
+    };
+    let screen = ui.ctx().screen_rect();
+    let full_w = ui.fonts(|f| f.layout_job(hit_job(hit, None, f32::INFINITY)).size().x);
+    let max_w = rect.max.x - screen.min.x;
+    let width = (full_w + 2.0 * pad.x).max(rect.width()).min(max_w);
+    let overlay = egui::Rect::from_min_max(egui::pos2(rect.max.x - width, rect.min.y), rect.max);
+    let (galley, _) = fit_galley(ui, hit, width - 2.0 * pad.x);
+    // The text sits at the same height as the row's own text.
+    let text_y = ui.layout().align_size_within_rect(cut_size, rect.shrink2(pad)).min.y;
+    let layer = egui::LayerId::new(egui::Order::Tooltip, resp.id.with("search-expanded"));
+    let painter = ui.ctx().layer_painter(layer);
+    // A see-through row fill would let the text under the overlay show through it.
+    if fill.a() < 255 {
+        painter.rect_filled(overlay.expand2(expansion), radius, ui.visuals().window_fill);
+    }
+    painter.rect(overlay.expand2(expansion), radius, fill, stroke, egui::StrokeKind::Inside);
+    // `Galley::text` is the whole job text, also when the galley is elided; the glyphs are what shows.
+    let text: String = galley.rows.iter().flat_map(|r| r.glyphs.iter().map(|g| g.chr)).collect();
+    painter.galley(egui::pos2(overlay.min.x + pad.x, text_y), galley, visuals.text_color());
+    let pass = ui.ctx().cumulative_pass_nr();
+    ui.ctx().data_mut(|d| d.insert_temp(expanded_id(), Expanded { pass, rect: overlay, text }));
+}
+
+/// The last hover overlay: its rect and its drawn text, for the pass that painted it.
+#[derive(Clone)]
+struct Expanded {
+    pass: u64,
+    rect: egui::Rect,
+    text: String,
+}
+
+fn expanded_id() -> egui::Id {
+    egui::Id::new("harwex-search-expanded-row")
+}
+
+/// The Search Everywhere hover overlay painted in the last frame: its rect and its drawn text
+/// (cut text holds `…`). Tests read it; the overlay is paint only and has no a11y node.
+pub fn expanded_row(ctx: &egui::Context) -> Option<(egui::Rect, String)> {
+    let row = ctx.data(|d| d.get_temp::<Expanded>(expanded_id()))?;
+    (row.pass + 1 == ctx.cumulative_pass_nr()).then_some((row.rect, row.text))
+}
+
+/// The row's text. `name_cut` keeps only the first `head` and last `tail` chars of the name,
+/// with `…` between them, and drops the folder. A finite `width` cuts the end with `…`.
+fn hit_job(hit: &SearchHit, name_cut: Option<(usize, usize)>, width: f32) -> LayoutJob {
     let name_start = hit.path.rfind('/').map_or(0, |i| i + 1);
     let mut job = LayoutJob::default();
     let name_char_start = hit.path[..name_start].chars().count() as u32;
     let name = &hit.path[name_start..];
+    let n = name.chars().count();
+    let name_fmt = |color| TextFormat { font_id: theme::T.ui_font(), color, ..Default::default() };
     for (idx, c) in name.chars().enumerate() {
+        if let Some((head, tail)) = name_cut {
+            if idx == head && head + tail < n {
+                job.append("…", 0.0, name_fmt(theme::T.text_bright));
+            }
+            if idx >= head && idx < n - tail {
+                continue;
+            }
+        }
         let matched = hit.indices.binary_search(&(name_char_start + idx as u32)).is_ok();
         let color = if matched { theme::T.match_text } else { theme::T.text_bright };
-        job.append(&c.to_string(), 0.0, TextFormat { font_id: theme::T.ui_font(), color, ..Default::default() });
+        let mut buf = [0u8; 4];
+        job.append(c.encode_utf8(&mut buf), 0.0, name_fmt(color));
     }
-    if name_start > 0 {
+    if name_start > 0 && name_cut.is_none() {
         job.append(&format!("  {}", &hit.path[..name_start - 1]), 0.0, TextFormat {
             font_id: theme::T.small_font(),
             color: theme::T.text_dim,
             ..Default::default()
         });
+    }
+    if width.is_finite() {
+        job.wrap = egui::text::TextWrapping { max_width: width, max_rows: 1, break_anywhere: true, overflow_character: Some('…') };
     }
     job
 }
@@ -377,5 +518,25 @@ mod tests {
         assert_eq!(paths[0], files[0]);
         let hits = match_files(&files, "store");
         assert_eq!(hits[0].path, files[3]);
+    }
+
+    /// One unit of width per char, `…` included: `h + t + 1 <= width`.
+    fn cut(name: &str, width: usize) -> String {
+        let (head, tail) = middle_cut(name, |h, t| h + t < width);
+        let chars: Vec<char> = name.chars().collect();
+        format!("{}…{}", chars[..head].iter().collect::<String>(), chars[chars.len() - tail..].iter().collect::<String>())
+    }
+
+    #[test]
+    fn middle_cut_keeps_both_ends_and_the_extension() {
+        assert_eq!(cut("abcdefghijklmnop.ts", 11), "abcde…op.ts");
+        assert_eq!(cut("abcdefghijklmnop.ts", 6), "ab….ts");
+        // Too narrow for both ends: the extension wins.
+        assert_eq!(cut("abcdefghijklmnop.ts", 4), "….ts");
+        assert_eq!(cut("abcdefghijklmnop.ts", 1), "…");
+        // No extension: the tail gets the bigger half.
+        assert_eq!(cut("abcdefghij", 6), "ab…hij");
+        // A leading dot is not an extension.
+        assert_eq!(cut(".abcdefghij", 6), ".a…hij");
     }
 }

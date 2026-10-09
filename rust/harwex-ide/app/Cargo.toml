@@ -25,6 +25,13 @@ serde_json = "1"
 toml = "1"
 # Edits `.harwex/ide.toml` (Mark Directory as Excluded) without losing comments.
 toml_edit = { version = "0.25", default-features = false, features = ["parse", "display"] }
+# The image viewer and the image diff (`viewer/`): decoders only for the formats the viewer
+# opens. eframe already links image 0.25 with png.
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp", "bmp", "ico"] }
+# SVG files in the viewer. No text (fonts) and no embedded raster images, to stay small.
+resvg = { version = "0.48", default-features = false }
+# The Markdown preview (`viewer/markdown.rs`): the parser only, no HTML writer.
+pulldown-cmark = { version = "0.13", default-features = false }
 
 # Same major version as eframe's winit, so the macOS event-loop extension trait applies to
 # eframe's builder (background mode in main.rs).

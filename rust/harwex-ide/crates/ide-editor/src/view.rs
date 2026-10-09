@@ -2913,7 +2913,12 @@ fn section(range: Range<usize>, kind: HlKind, font: &FontId, theme: &EditorTheme
     LayoutSection {
         leading_space: 0.0,
         byte_range: range,
-        format: TextFormat { font_id: font.clone(), color: theme.color(kind), ..Default::default() },
+        format: TextFormat {
+            font_id: font.clone(),
+            color: theme.color(kind),
+            background: theme.background(kind),
+            ..Default::default()
+        },
     }
 }
 

@@ -1,8 +1,12 @@
 //! Git status refresh, IDEA's model (`docs/tasks/066-rca-slow-git-status-mono.md`).
 //!
-//! - A full status (`ide_git::Repo::status`) runs at startup, on Refresh, after operations that
-//!   may change many paths (checkout, pull, merge, rebase, stash, reset), and when the index or
-//!   HEAD changed outside the IDE. On a 480k-file monorepo it takes 15 s.
+//! - A full status (`ide_git::Repo::status`) runs at startup, on Refresh and after Unstash. On
+//!   a 480k-file monorepo it takes 12-15 s, almost all of it the untracked walk.
+//! - Operations that move HEAD or the index (checkout, pull, merge, rebase, stash, reset,
+//!   fetch) and HEAD or index changes outside the IDE run the incremental status (`changed`):
+//!   `status_of` over the paths that differ between the old and the new HEAD, the staged and
+//!   conflicted paths, and the rows shown now (about 0.5 s there). Plain file edits are the
+//!   watcher's part. Above `MAX_CHANGED` paths it walks the whole tree instead.
 //! - Our own writes (stage, unstage, commit, rollback, delete) and watcher batches refresh only
 //!   their paths (`status_of`, about 0.1 s there) and merge the rows into the current status.
 //! - A `.git` change that the watcher reports is compared with the `GitStamp` taken after our
@@ -23,11 +27,21 @@ use crate::state::AppState;
 /// Above this many dirty paths, paths are cut back to their parent directories.
 const MAX_PATHS: usize = 500;
 
+/// Above this many paths the incremental status walks the whole tree instead. `git status`
+/// with file pathspecs costs about 4 ms per path on a 500k-entry index (each index entry is
+/// matched against every pathspec), so 400 paths stay near 1.5 s against 12 s for a walk.
+const MAX_CHANGED: usize = 400;
+
 /// What a git write refreshes when it is done.
 #[derive(Debug, Clone)]
 pub enum Refresh {
-    /// The whole status: the write may have changed any path.
+    /// The whole status: the write may have changed any path, also outside HEAD and the
+    /// index (Unstash writes stashed edits into the worktree).
     Full,
+    /// The paths that differ between the old and the new HEAD, the staged and conflicted
+    /// paths, and the rows shown now (`changed`). For writes that change the worktree only
+    /// through HEAD and the index: checkout, merge, rebase, pull, reset, stash, fetch.
+    Changed,
     /// Only these paths (absolute or workdir-relative) plus HEAD and the branch.
     Paths(Vec<PathBuf>),
 }
@@ -37,8 +51,11 @@ pub enum Refresh {
 pub struct RefreshState {
     /// Bumped by every full status start. A result with an older number is dropped.
     full_seq: u64,
-    /// The running full status, to cancel when a newer one starts.
+    /// The running full or incremental status, to cancel when a newer one starts.
     full: Option<Cancel>,
+    /// The running one walks the whole tree. Its stamp is recorded before the walk ends, so
+    /// an incremental status must not start from that stamp.
+    walking: bool,
     /// The running full status has not reported its stamp yet.
     full_stamp_pending: bool,
     /// Paths refreshed or changed while a full status ran. The full status may have read them
@@ -57,8 +74,10 @@ pub struct RefreshState {
     checking: bool,
     /// The index and HEAD that the current status reflects.
     stamp: Option<GitStamp>,
-    /// Started runs, for tests and the timings log.
+    /// Started runs, for tests and the timings log. `full_runs` counts whole-tree walks, also
+    /// an incremental status that had too many paths (counted when it ends).
     pub full_runs: u64,
+    pub changed_runs: u64,
     pub path_runs: u64,
     pub light_runs: u64,
 }
@@ -89,6 +108,7 @@ pub fn full(state: &mut AppState) {
     r.full_seq += 1;
     r.full_runs += 1;
     r.full_stamp_pending = true;
+    r.walking = true;
     let seq = r.full_seq;
     let prev = r.stamp.clone();
     let generation = state.project_generation();
@@ -120,10 +140,114 @@ pub fn full(state: &mut AppState) {
             }
             let r = &mut state.ws.git.refresh;
             r.full = None;
+            r.walking = false;
             r.full_stamp_pending = false;
             let ms = took.as_secs_f64() * 1000.0;
             state.timings.log(format!("git status + branch in {ms:.1} ms"));
             state.ws.git.status_ms = Some(ms);
+            match status {
+                Ok(changes) => state.apply_status(changes),
+                // The stamp was recorded before the walk, but the rows are older: an
+                // incremental status must not start from it.
+                Err(e) if e.is_cancelled() => state.ws.git.refresh.stamp = None,
+                Err(e) => state.notifications.log_only(crate::notifications::Level::Warning, "git status failed", e.to_string()),
+            }
+            if let Ok(b) = branches {
+                apply_branches(state, &b);
+            }
+            crate::git::on_git_refreshed(state);
+            let again: Vec<PathBuf> = state.ws.git.refresh.dirty_since_full.drain().collect();
+            if !again.is_empty() {
+                paths(state, again, false);
+            }
+            maybe_check(state);
+        },
+    );
+    state.ws.git.refresh.full = Some(cancel);
+}
+
+/// What an incremental status read.
+enum Walk {
+    /// `status_of` over these paths.
+    Paths(Vec<PathBuf>, ide_git::Result<Vec<FileChange>>),
+    /// Too many paths: the whole status.
+    Full(ide_git::Result<Vec<FileChange>>),
+}
+
+/// The incremental status after a HEAD or index change. Cancels a running one. While a full
+/// status walks, or before any status landed, it runs a full status instead.
+pub fn changed(state: &mut AppState) {
+    changed_with(state, None);
+}
+
+/// `changed` with the stamp the caller just took, so a big index is not read twice.
+fn changed_with(state: &mut AppState, fresh: Option<GitStamp>) {
+    let r = &state.ws.git.refresh;
+    let Some(prev) = r.stamp.clone().filter(|_| !r.walking) else {
+        full(state);
+        return;
+    };
+    for (_, e) in state.ws.tabs.editors_mut() {
+        e.invalidate_marks();
+    }
+    let Some(repo) = repo_of(state) else { return };
+    let mut known: Vec<PathBuf> = Vec::new();
+    for c in &state.ws.git.changes {
+        known.push(c.path.clone());
+        known.extend(c.old_path.clone());
+    }
+    let r = &mut state.ws.git.refresh;
+    if let Some(old) = r.full.take() {
+        old.cancel_quietly();
+    }
+    r.dirty_since_full.extend(r.pending.drain());
+    r.full_seq += 1;
+    r.changed_runs += 1;
+    // The stamp is recorded only with the rows: a newer run that cancels this one must start
+    // from the HEAD that the shown rows reflect.
+    r.full_stamp_pending = true;
+    let seq = r.full_seq;
+    let generation = state.project_generation();
+    let started = Instant::now();
+    let cancel = state.jobs.spawn_cancellable(
+        "Refreshing git status",
+        move || {
+            // Reading a big index for the stamp (0.7 s on a 112 MB index) runs beside the git
+            // calls. Only this thread sees the job's cancel flag, and the stamp needs none.
+            let since = prev.head_oid();
+            std::thread::scope(|scope| {
+                let stamp = scope.spawn(|| fresh.or_else(|| repo.stamp(Some(&prev)).ok()));
+                let walk = changed_walk(&repo, since, known);
+                let branches = repo.branches();
+                (stamp.join().ok().flatten(), walk, branches, started.elapsed())
+            })
+        },
+        move |state, (stamp, walk, branches, took)| {
+            if state.project_generation() != generation || state.ws.git.refresh.full_seq != seq {
+                return;
+            }
+            let r = &mut state.ws.git.refresh;
+            r.full = None;
+            r.full_stamp_pending = false;
+            if stamp.is_some() {
+                r.stamp = stamp;
+            }
+            let ms = took.as_secs_f64() * 1000.0;
+            state.ws.git.status_ms = Some(ms);
+            let status = match walk {
+                Walk::Paths(set, rows) => {
+                    state.timings.log(format!("git status of {} changed paths + branch in {ms:.1} ms", set.len()));
+                    rows.map(|rows| {
+                        let specs: HashSet<PathBuf> = set.into_iter().collect();
+                        merge(&state.ws.git.changes, &specs, rows)
+                    })
+                }
+                Walk::Full(rows) => {
+                    state.ws.git.refresh.full_runs += 1;
+                    state.timings.log(format!("git status + branch in {ms:.1} ms (too many changed paths)"));
+                    rows
+                }
+            };
             match status {
                 Ok(changes) => state.apply_status(changes),
                 Err(e) if e.is_cancelled() => {}
@@ -141,6 +265,28 @@ pub fn full(state: &mut AppState) {
         },
     );
     state.ws.git.refresh.full = Some(cancel);
+}
+
+/// `status_of` over the paths that HEAD and the index changed since `since` plus `known`, or
+/// the whole status when there are too many.
+fn changed_walk(repo: &Repo, since: Option<ide_git::Oid>, known: Vec<PathBuf>) -> Walk {
+    match repo.changed_paths(since, MAX_CHANGED) {
+        Ok(Some(mut set)) => {
+            set.extend(known);
+            set.sort();
+            set.dedup();
+            if set.len() > MAX_CHANGED {
+                Walk::Full(repo.status())
+            } else if set.is_empty() {
+                Walk::Paths(set, Ok(Vec::new()))
+            } else {
+                let rows = repo.status_of(&set);
+                Walk::Paths(set, rows)
+            }
+        }
+        Err(e) if e.is_cancelled() => Walk::Full(Err(e)),
+        Ok(None) | Err(_) => Walk::Full(repo.status()),
+    }
 }
 
 /// Refreshes `changed` (absolute or workdir-relative paths) and merges the rows into the
@@ -312,6 +458,7 @@ pub fn write_done(state: &mut AppState, refresh: Refresh) {
     r.own_writes = r.own_writes.saturating_sub(1);
     match refresh {
         Refresh::Full => full(state),
+        Refresh::Changed => changed(state),
         Refresh::Paths(p) => paths(state, p, true),
     }
     maybe_check(state);
@@ -327,8 +474,9 @@ pub fn git_dir_changed(state: &mut AppState) {
 }
 
 /// Compares the stamp with the one the status reflects, once our writes and their refreshes
-/// are done (their stamp is the reference). A different stamp runs one full status; an equal
-/// one only re-reads the branches (a fetch or a new branch in the terminal).
+/// are done (their stamp is the reference). A different stamp runs one incremental status
+/// (`changed`); an equal one only re-reads the branches (a fetch or a new branch in the
+/// terminal).
 fn maybe_check(state: &mut AppState) {
     let r = &state.ws.git.refresh;
     if !r.check_pending || r.checking || r.own_writes > 0 || r.paths_running_own || r.pending_own || r.full_stamp_pending {
@@ -354,7 +502,7 @@ fn maybe_check(state: &mut AppState) {
                 r.stamp = stamp;
                 light(state);
             } else {
-                full(state);
+                changed_with(state, stamp);
             }
             maybe_check(state);
         },

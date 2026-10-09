@@ -1,8 +1,9 @@
 import * as THREE from "three";
-import { ANNEX } from "../scene/annex";
+import { ANNEX_VIEW } from "../scene/annex";
 import { LAYOUT } from "../scene/studio";
+import { structureRevision } from "../state";
 
-// Light zones: the amphitheatre and the annex are two rooms, and the lights of one room do not reach
+// Light zones: the amphitheatre and the annex (the casino) are two rooms, and the lights of one room do not reach
 // the other room. three.js shades every lit fragment with every light of the scene, and the cost grows
 // faster than the light count: with all 32 lights the wheel shot took 43 ms per frame, with the 21 lights
 // of the amphitheatre alone it took 12 ms.
@@ -12,17 +13,15 @@ import { LAYOUT } from "../scene/studio";
 // - A hemisphere light lights both rooms and is never left out.
 // - Under the editor lighting every game light is left out: the editor lighting dims them all to 0 anyway.
 // - A light is left out through its layers, not through `visible`: the scene document saves `visible`.
+// - The list of lights is read again after every change to the tree (`structureRevision`): a light added,
+//   deleted or moved into another room in the editor gets its zone on the next frame.
 // - A material keeps a compiled program for every light set it has met, so a change of the set costs a compile
 //   only the first time. `warmUp` prepares the sets at startup.
 
-// The space of each room, for the frustum test.
-// The wheel shot stands inside the annex box (z ~10) and looks away from it, so the annex space starts
-// 0.6 m in front of that camera. The Game Show shot looks along +x past the back wall of the annex, so the
-// amphitheatre space ends just in front of the colonnade end (z 9.1) and right of the colonnade (x 20.6).
-const ANNEX_VIEW = new THREE.Box3(
-  new THREE.Vector3(ANNEX.left, 0, 10.6),
-  new THREE.Vector3(ANNEX.right, ANNEX.height + LAYOUT.ceilingThickness, ANNEX.front),
-);
+// The space of each room, for the frustum test. The annex space is the Game Show platform (annex.ts).
+// The wheel shot stands at z ~10 and looks away from the platform, so the annex space starts 0.6 m in front of that camera.
+// The Bonus Show shot looks along +x past the amphitheatre, so the amphitheatre space ends just in
+// front of the colonnade end (z 9.1) and right of the colonnade (x 20.6).
 const STUDIO_VIEW = new THREE.Box3(
   new THREE.Vector3(-LAYOUT.wallRadius - 3, -1, -LAYOUT.wallRadius - 3),
   new THREE.Vector3(LAYOUT.wallRadius + 0.6, LAYOUT.ceilingY + 0.5, 9.1),
@@ -45,12 +44,25 @@ function zoneOf(light: THREE.Light): number {
 }
 
 class LightZones {
+  private readonly root: THREE.Object3D;
   private readonly lights: { light: THREE.Light; zone: number }[] = [];
   private readonly frustum = new THREE.Frustum();
   private readonly matrix = new THREE.Matrix4();
+  private revision = -1;
 
   constructor(root: THREE.Object3D) {
-    root.traverse((object) => {
+    this.root = root;
+    this.scan();
+  }
+
+  private scan(): void {
+    this.revision = structureRevision.peek();
+    for (const { light } of this.lights) {
+      // A deleted light keeps no stale layer mask: undo brings it back lit.
+      light.layers.set(0);
+    }
+    this.lights.length = 0;
+    this.root.traverse((object) => {
       const light = object as THREE.Light;
       if (light.isLight && !(light as THREE.HemisphereLight).isHemisphereLight) {
         this.lights.push({ light, zone: zoneOf(light) });
@@ -61,6 +73,9 @@ class LightZones {
   // Leaves out the lights of the rooms that `camera` does not see.
   // `editorLit`: the editor lighting dims every game light to 0, so all of them are left out.
   update(camera: THREE.Camera, editorLit: boolean): void {
+    if (this.revision !== structureRevision.peek()) {
+      this.scan();
+    }
     if (editorLit) {
       this.apply(NONE);
       return;

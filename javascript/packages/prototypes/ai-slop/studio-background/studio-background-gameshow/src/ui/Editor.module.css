@@ -120,6 +120,7 @@
 }
 
 .treeRow {
+  position: relative;
   display: flex;
   align-items: center;
   height: 20px;
@@ -154,8 +155,236 @@
 }
 
 .treeName {
+  flex: 1;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* The object itself is hidden: strong dim, italic name, the eye-off icon stays on. */
+.treeRowHidden .treeName,
+.treeRowHidden .treeIcon {
+  font-style: italic;
+  opacity: 0.4;
+}
+
+/* A parent is hidden: a lighter dim, the name stays upright. */
+.treeRowHiddenByParent .treeName,
+.treeRowHiddenByParent .treeIcon {
+  opacity: 0.6;
+}
+
+.treeEye {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  margin-left: 4px;
+  color: #b8b8b8;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.treeRow:hover .treeEye {
+  opacity: 0.8;
+}
+
+.treeEye:hover {
+  color: #ffffff;
+}
+
+.treeEyeOff,
+.treeRow:hover .treeEyeOff {
+  color: #e0b050;
+  opacity: 1;
+}
+
+.treeEyeInherited {
+  opacity: 0.35;
+}
+
+.treeRowDragged {
+  opacity: 0.45;
+}
+
+.treeRowDropInside {
+  outline: 1px solid #4d90d6;
+  outline-offset: -1px;
+  background: #34506c;
+}
+
+.treeRowDropBefore::before,
+.treeRowDropAfter::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: #4d90d6;
+  pointer-events: none;
+}
+
+.treeRowDropBefore::before {
+  top: -1px;
+}
+
+.treeRowDropAfter::after {
+  bottom: -1px;
+}
+
+.renameInput {
+  flex: 1;
+  min-width: 0;
+  height: 16px;
+  padding: 0 3px;
+  border: 1px solid #3a79bb;
+  border-radius: 2px;
+  background: #1f1f1f;
+  color: #ffffff;
+  font: inherit;
+  user-select: text;
+}
+
+.headerButton {
+  height: 18px;
+  margin-left: auto;
+  padding: 0 8px;
+  border: 1px solid #1a1a1a;
+  border-radius: 3px;
+  background: #3c3c3c;
+  color: #c8c8c8;
+  font: inherit;
+  cursor: pointer;
+}
+
+.headerButton:hover {
+  background: #464646;
+}
+
+.panelFooter {
+  padding: 4px 8px;
+  border-top: 1px solid #2a2a2a;
+  color: #8a8a8a;
+  font-size: 11px;
+}
+
+.hint {
+  padding: 6px 8px;
+  background: #4a3a1a;
+  border-top: 1px solid #6a5420;
+  color: #f0d090;
+}
+
+.menuOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+}
+
+.menu {
+  position: fixed;
+  min-width: 200px;
+  padding: 4px 0;
+  border: 1px solid #1a1a1a;
+  border-radius: 4px;
+  background: #2f2f2f;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5);
+}
+
+.menuCaption {
+  padding: 2px 10px 4px;
+  color: #8a8a8a;
+  font-size: 11px;
+}
+
+.menuSection {
+  padding: 2px 0;
+  border-top: 1px solid #262626;
+}
+
+.menuTitle {
+  padding: 3px 10px 2px;
+  color: #9ab8d8;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.menuNote {
+  color: #b0904a;
+  font-weight: 400;
+}
+
+.menuItem {
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+  padding: 3px 10px 3px 18px;
+  border: none;
+  background: none;
+  color: #d8d8d8;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.menuItem:hover {
+  background: #2c5d87;
+  color: #ffffff;
+}
+
+.menuItem:disabled,
+.menuItem:disabled:hover {
+  background: none;
+  color: #6a6a6a;
+  cursor: default;
+}
+
+.menuShortcut {
+  color: #8a8a8a;
+}
+
+.menuLock {
+  max-width: 220px;
+  padding: 2px 10px 4px 18px;
+  color: #b0904a;
+  font-size: 11px;
+}
+
+.nameInput {
+  flex: 1;
+  min-width: 0;
+  height: 20px;
+  padding: 0 4px;
+  border: 1px solid #212121;
+  border-radius: 2px;
+  background: #2a2a2a;
+  color: #eeeeee;
+  font: inherit;
+  font-weight: 600;
+  user-select: text;
+}
+
+.nameInput:focus {
+  outline: 1px solid #3a79bb;
+}
+
+.selectInput {
+  flex: 1;
+  min-width: 0;
+  height: 20px;
+  border: 1px solid #212121;
+  border-radius: 2px;
+  background: #2a2a2a;
+  color: #dddddd;
+  font: inherit;
+}
+
+.lockNote {
+  padding: 4px 10px 6px;
+  border-bottom: 1px solid #2a2a2a;
+  color: #b0904a;
+  font-size: 11px;
 }
 
 .center {
@@ -379,4 +608,60 @@
 .componentNote {
   margin-bottom: 6px;
   color: #8a8a8a;
+}
+
+.searchBar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  padding: 4px 6px;
+  border-bottom: 1px solid #2a2a2a;
+}
+
+.searchInput {
+  flex: 1;
+  min-width: 0;
+  height: 20px;
+  padding: 0 20px 0 6px;
+  border: 1px solid #212121;
+  border-radius: 10px;
+  background: #2a2a2a;
+  color: #dddddd;
+  font: inherit;
+  user-select: text;
+}
+
+.searchInput:focus {
+  outline: 1px solid #3a79bb;
+}
+
+.searchClear {
+  position: absolute;
+  right: 10px;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: none;
+  border-radius: 8px;
+  background: #4a4a4a;
+  color: #dddddd;
+  font: inherit;
+  line-height: 16px;
+  cursor: pointer;
+}
+
+.searchClear:hover {
+  background: #5a5a5a;
+}
+
+/* An ancestor shown only to place a search match: dimmed. */
+.treeRowContext .treeName,
+.treeRowContext .treeIcon {
+  opacity: 0.45;
+}
+
+.searchHit {
+  border-radius: 2px;
+  background: #b8862a;
+  color: #ffffff;
 }

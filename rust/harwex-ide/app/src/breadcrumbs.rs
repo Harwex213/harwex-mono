@@ -22,6 +22,7 @@ use std::path::{Path, PathBuf};
 use egui::{pos2, vec2, Align2, Vec2, Color32, Context, FontId, Id, Key, Painter, Pos2, Rect, ScrollArea, Sense, Stroke, Ui};
 
 use crate::icons::{self, Icon};
+use crate::speed_search;
 use crate::state::AppState;
 use crate::theme;
 use crate::tree::{self, Entry};
@@ -33,6 +34,8 @@ const SEP_W: f32 = 16.0;
 const ROW_H: f32 = 20.0;
 /// A popup level shows at most this many rows; longer lists scroll.
 pub const MAX_ROWS: usize = 18;
+/// The speed search field on top of a filtered level, with the gap under it.
+const FIELD_H: f32 = ROW_H + 4.0;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SegmentKind {
@@ -151,13 +154,15 @@ pub struct Level {
     pub selected: Option<usize>,
     /// The child that lies on the active file's path.
     pub current: Option<PathBuf>,
+    /// The speed search text typed into this level. Rows that do not match it are hidden.
+    pub filter: String,
     scroll_to_selected: bool,
 }
 
 impl Level {
     fn dir(dir: PathBuf, file: &Path) -> Level {
         let current = file.strip_prefix(&dir).ok().and_then(|rest| rest.components().next()).map(|c| dir.join(c));
-        Level { dir, selected: None, current, scroll_to_selected: true }
+        Level { dir, selected: None, current, filter: String::new(), scroll_to_selected: true }
     }
 }
 
@@ -185,8 +190,11 @@ pub struct FileMenu {
     anchor_x: f32,
 }
 
-#[derive(Default, Clone, Copy)]
+#[derive(Default)]
 struct Keys {
+    /// Text typed while a popup is open: the speed search of its focused level.
+    text: String,
+    backspace: bool,
     escape: bool,
     up: bool,
     down: bool,
@@ -377,15 +385,27 @@ pub fn take_keys(state: &mut AppState, ctx: &Context) {
         return;
     }
     let none = egui::Modifiers::NONE;
-    let keys = ctx.input_mut(|i| Keys {
+    let mut keys = ctx.input_mut(|i| Keys {
         escape: i.consume_key(none, Key::Escape),
         up: i.consume_key(none, Key::ArrowUp),
         down: i.consume_key(none, Key::ArrowDown),
         left: i.consume_key(none, Key::ArrowLeft),
         right: i.consume_key(none, Key::ArrowRight),
         enter: i.consume_key(none, Key::Enter),
+        ..Keys::default()
     });
     if state.ws.breadcrumbs.popup.is_some() {
+        // Typing filters the focused level (speed search). The text never reaches the editor.
+        ctx.input_mut(|i| {
+            keys.backspace = i.consume_key(none, Key::Backspace);
+            i.events.retain(|e| match e {
+                egui::Event::Text(t) => {
+                    keys.text.extend(t.chars().filter(|c| !c.is_control()));
+                    false
+                }
+                _ => true,
+            });
+        });
         state.ws.breadcrumbs.keys = keys;
         return;
     }
@@ -428,6 +448,15 @@ fn font() -> FontId {
 fn level_width(ctx: &Context, items: &[Entry]) -> f32 {
     let text_w = ctx.fonts(|f| items.iter().take(500).map(|e| f.layout_no_wrap(e.name.clone(), font(), theme::T.text).size().x).fold(0.0_f32, f32::max));
     (text_w + ICON_W + 34.0).clamp(160.0, 420.0)
+}
+
+/// The height of the bar's horizontal scrollbar, hovered or not.
+pub const SCROLLBAR_H: f32 = 2.0;
+
+/// egui's floating bar grows to `bar_width` (10 pt) under the pointer and then covers the
+/// crumbs' text in the 24 pt bar. This bar stays `SCROLLBAR_H` thin at the bottom edge.
+fn scroll_style() -> egui::style::ScrollStyle {
+    egui::style::ScrollStyle { bar_width: SCROLLBAR_H, floating_width: SCROLLBAR_H, bar_outer_margin: 0.0, ..egui::style::ScrollStyle::floating() }
 }
 
 fn segment_width(ui: &Ui, seg: &Segment) -> f32 {
@@ -507,6 +536,7 @@ pub fn bar(state: &mut AppState, ui: &mut Ui) {
     let mut slot_rects = Vec::with_capacity(segs.len());
     // A plain mouse wheel scrolls the row too, not only a sideways swipe or Shift+wheel.
     ui.style_mut().always_scroll_the_only_direction = true;
+    ui.spacing_mut().scroll = scroll_style();
     let out = ScrollArea::horizontal()
         .id_salt("breadcrumbs-scroll")
         .horizontal_scroll_offset(offset)
@@ -641,30 +671,75 @@ pub fn show_popup(state: &mut AppState, ctx: &Context) {
     }
 
     let mut actions: Vec<Action> = Vec::new();
-    let escape = keys.escape;
-    // Up at the first row of the first level goes back to the bar.
-    let mut to_bar = false;
     // Left/Right at the first level hop to the previous (`false`) or next (`true`) segment.
     let mut hop: Option<bool> = None;
     let focus = popup.focus.min(popup.levels.len().saturating_sub(1));
-    let (len, sel, selected_entry) = match popup.levels.get(focus) {
+
+    // Speed search on the focused level: typing and Backspace edit its filter, and Escape clears
+    // a filter before it closes the popup.
+    let mut escape = keys.escape;
+    let mut close_nested = false;
+    if let Some(level) = popup.levels.get_mut(focus) {
+        let before = level.filter.len();
+        if escape && !level.filter.is_empty() {
+            level.filter.clear();
+            escape = false;
+        }
+        if keys.backspace {
+            level.filter.pop();
+        }
+        level.filter.push_str(&keys.text);
+        if level.filter.len() != before || !keys.text.is_empty() {
+            level.scroll_to_selected = true;
+            let items = items_of(level).unwrap_or_default();
+            let shown = visible(&items, &level.filter);
+            match level.selected {
+                // The selected row still matches: it stays, and so does its nested level.
+                Some(s) if shown.iter().any(|(i, _)| *i == s) => {}
+                // Another row is selected: the first match, like IDEA.
+                _ if !shown.is_empty() => actions.push(Action::Select { level: focus, row: shown[0].0, enter: false }),
+                // Nothing matches: the nested level of the hidden selection closes.
+                _ => close_nested = true,
+            }
+        }
+    }
+    if close_nested {
+        popup.levels.truncate(focus + 1);
+    }
+
+    // The keys move between the rows that match the filter (all rows without one).
+    let (shown, filtered, sel, selected_entry) = match popup.levels.get(focus) {
         Some(level) => {
             let items = items_of(level).unwrap_or_default();
-            let entry = level.selected.and_then(|s| items.get(s).cloned());
-            (items.len(), level.selected, entry)
+            let shown: Vec<usize> = visible(&items, &level.filter).into_iter().map(|(i, _)| i).collect();
+            // A queued Select (a new filter) wins over the old selection.
+            let sel = actions.iter().rev().find_map(|a| match a {
+                Action::Select { level, row, .. } if *level == focus => Some(*row),
+                _ => None,
+            });
+            let sel = sel.or(level.selected).filter(|s| shown.contains(s));
+            let entry = sel.and_then(|s| items.get(s).cloned());
+            (shown, !level.filter.is_empty(), sel, entry)
         }
-        None => (0, None, None),
+        None => (Vec::new(), false, None, None),
     };
+    let len = shown.len();
+    // The position of the selection among the shown rows.
+    let pos = sel.and_then(|s| shown.iter().position(|&i| i == s));
     let s = sel.unwrap_or(0);
+    // Up at the first row of the first level goes back to the bar; with a filter it wraps.
+    let mut to_bar = false;
     if keys.up {
-        if focus == 0 && s == 0 {
+        if focus == 0 && pos.unwrap_or(0) == 0 && !filtered {
             to_bar = true;
         } else if len > 0 {
-            actions.push(Action::Select { level: focus, row: (s + len - 1) % len, enter: false });
+            let p = pos.map_or(len - 1, |p| (p + len - 1) % len);
+            actions.push(Action::Select { level: focus, row: shown[p], enter: false });
         }
     }
     if keys.down && len > 0 {
-        actions.push(Action::Select { level: focus, row: (s + 1) % len, enter: false });
+        let p = pos.map_or(0, |p| (p + 1) % len);
+        actions.push(Action::Select { level: focus, row: shown[p], enter: false });
     }
     if keys.left {
         if focus > 0 {
@@ -705,32 +780,40 @@ pub fn show_popup(state: &mut AppState, ctx: &Context) {
     let margin = frame.total_margin().sum();
     let screen = ctx.screen_rect();
     let baseline = state.ws.breadcrumbs.baseline.unwrap_or(screen.max.y).min(screen.max.y);
-    let fit_rows = ((baseline - screen.min.y - margin.y) / ROW_H).floor().max(1.0) as usize;
-    let max_rows = MAX_ROWS.min(fit_rows);
     let level_items: Vec<Option<Vec<Entry>>> = popup.levels.iter().map(&items_of).collect();
-    let sizes: Vec<Vec2> = level_items
+    // The rows each level shows (the matches of its filter) with the matched chars.
+    let level_shown: Vec<Vec<(usize, Vec<usize>)>> = popup.levels.iter().zip(&level_items).map(|(l, items)| visible(items.as_deref().unwrap_or_default(), &l.filter)).collect();
+    // Per level: the outer content size and the list height. A filter adds its field on top.
+    let sizes: Vec<(Vec2, f32)> = popup
+        .levels
         .iter()
-        .map(|items| {
-            let rows = items.as_ref().map_or(1, |v| v.len().clamp(1, max_rows));
-            vec2(level_width(ctx, items.as_deref().unwrap_or_default()), rows as f32 * ROW_H)
+        .enumerate()
+        .map(|(li, level)| {
+            let field = if level.filter.is_empty() { 0.0 } else { FIELD_H };
+            let fit_rows = ((baseline - screen.min.y - margin.y - field) / ROW_H).floor().max(1.0) as usize;
+            let rows = if level_items[li].is_some() { level_shown[li].len().clamp(1, MAX_ROWS.min(fit_rows)) } else { 1 };
+            let list_h = rows as f32 * ROW_H;
+            // The width follows all items, so it stays put while the filter changes.
+            (vec2(level_width(ctx, level_items[li].as_deref().unwrap_or_default()), field + list_h), list_h)
         })
         .collect();
     let mut xs = Vec::with_capacity(sizes.len());
     let mut x = popup.anchor.x;
-    for size in &sizes {
+    for (size, _) in &sizes {
         xs.push(x);
         x += size.x + margin.x;
     }
     // A chain that leaves the window on the right moves left as a whole, but not past the left
     // edge. A level that still does not fit moves left on its own.
     let shift = (x - screen.max.x).min(popup.anchor.x - screen.min.x).max(0.0);
-    for (xi, size) in xs.iter_mut().zip(&sizes) {
+    for (xi, (size, _)) in xs.iter_mut().zip(&sizes) {
         *xi = (*xi - shift).min(screen.max.x - size.x - margin.x).max(screen.min.x);
     }
 
     for (li, level) in popup.levels.iter_mut().enumerate() {
         let items = &level_items[li];
-        let size = sizes[li];
+        let shown = &level_shown[li];
+        let (size, list_h) = sizes[li];
         let pos = pos2(xs[li], baseline - size.y - margin.y);
         let focused = li == popup.focus;
         let key = level_dirs[li].clone();
@@ -752,15 +835,23 @@ pub fn show_popup(state: &mut AppState, ctx: &Context) {
                     return;
                 }
                 let width = size.x;
+                if !level.filter.is_empty() {
+                    filter_field(ui, width, &level.filter, !shown.is_empty());
+                }
+                if shown.is_empty() {
+                    ui.add_sized(vec2(width, ROW_H), egui::Label::new(egui::RichText::new("No matches").size(theme::T.font.small).color(theme::T.text_dim)));
+                    return;
+                }
                 // The sizing pass of a new Area is invisible; scroll on the first real frame.
                 let scroll = !ui.is_sizing_pass() && std::mem::take(&mut level.scroll_to_selected);
                 // The default clip margin would show 3 px of the row above the viewport and offset
                 // `scroll_to_rect` by as much.
                 ui.visuals_mut().clip_rect_margin = 0.0;
-                ScrollArea::vertical().id_salt(("breadcrumb-scroll", li, &key)).max_height(size.y).min_scrolled_height(size.y).auto_shrink([false, false]).show(ui, |ui| {
+                ScrollArea::vertical().id_salt(("breadcrumb-scroll", li, &key)).max_height(list_h).min_scrolled_height(list_h).auto_shrink([false, false]).show(ui, |ui| {
                     ui.set_width(width);
                     ui.spacing_mut().item_spacing.y = 0.0;
-                    for (ri, e) in items.iter().enumerate() {
+                    for (ri, hits) in shown {
+                        let (ri, e) = (*ri, &items[*ri]);
                         let (rect, r) = ui.allocate_exact_size(vec2(width, ROW_H), Sense::click());
                         let selected = level.selected == Some(ri);
                         let rel = root.as_ref().and_then(|root| e.path.strip_prefix(root).ok()).map_or_else(|| e.path.display().to_string(), |p| p.display().to_string());
@@ -784,7 +875,8 @@ pub fn show_popup(state: &mut AppState, ctx: &Context) {
                             color = theme::T.text_bright;
                         }
                         let font = if is_current { FontId::proportional(theme::T.font.small + 0.5) } else { font() };
-                        painter.text(pos2(rect.min.x + 6.0 + ICON_W + 4.0, cy), Align2::LEFT_CENTER, &e.name, font, color);
+                        let galley = painter.layout_job(speed_search::name_job(&e.name, hits, font, color));
+                        painter.galley(pos2(rect.min.x + 6.0 + ICON_W + 4.0, cy - galley.size().y / 2.0), galley, color);
                         if e.is_dir {
                             chevron(painter, pos2(rect.max.x - 8.0, cy), theme::T.text_dim);
                         }
@@ -893,6 +985,19 @@ fn show_menu(state: &mut AppState, ctx: &Context) {
     } else if pressed_outside {
         state.ws.breadcrumbs.menu = None;
     }
+}
+
+/// The rows of `items` that match `filter`, in order: each item's index and its matched chars.
+fn visible(items: &[Entry], filter: &str) -> Vec<(usize, Vec<usize>)> {
+    items.iter().enumerate().filter_map(|(i, e)| speed_search::matches(&e.name, filter).map(|hits| (i, hits))).collect()
+}
+
+/// The speed search field on top of a filtered level: the typed text and a caret, drawn red
+/// when nothing matches. A11y: `Speed search <text>`.
+fn filter_field(ui: &mut Ui, width: f32, text: &str, found: bool) {
+    let (rect, resp) = ui.allocate_exact_size(vec2(width, FIELD_H), Sense::hover());
+    crate::util::label_widget(&resp, egui::WidgetType::TextEdit, format!("Speed search {text}"));
+    speed_search::paint_field(ui.painter(), Rect::from_min_size(rect.min, vec2(width, ROW_H)), text, found, font());
 }
 
 fn chevron(painter: &Painter, c: Pos2, color: Color32) {

@@ -110,7 +110,7 @@ impl MergeTab {
             move |state, res| {
                 let title = "Merge conflict resolved";
                 let ok = crate::git::remote::report(state, title, &format!("{} saved and staged", key.trim_start_matches("merge:")), res);
-                state.refresh_git();
+                crate::git::refresh::changed(state);
                 if ok {
                     if let Some(id) = state.ws.tabs.custom_by_key(&key) {
                         state.close_tab(id, true);

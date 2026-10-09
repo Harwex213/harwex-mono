@@ -236,4 +236,12 @@ impl Repo {
     pub fn rebase(&self, onto: &str) -> Result<CommandOutcome> {
         self.git(&["rebase", onto])
     }
+
+    /// `git rebase --update-refs <onto>` (git 2.38+): local branches that point at commits
+    /// being rebased (a stack of branches under the current one) move to the rewritten
+    /// commits. Conflicts stop it like a plain rebase; `continue_operation` and
+    /// `abort_operation` finish it, and git moves the other branches only when it completes.
+    pub fn rebase_update_refs(&self, onto: &str) -> Result<CommandOutcome> {
+        self.git(&["rebase", "--update-refs", onto])
+    }
 }

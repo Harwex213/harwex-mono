@@ -111,6 +111,20 @@ impl Layout {
             Side::Bottom => self.bottom = Some(w),
         }
     }
+
+    /// IDEA's Hide All Tool Windows (⇧⌘F12): with a window open, hides every side and puts the
+    /// open ones into `saved`. With nothing open, brings back `saved`. Returns true when it hid.
+    pub fn toggle_all(&mut self, saved: &mut Option<Layout>) -> bool {
+        if self.left.is_some() || self.bottom.is_some() {
+            *saved = Some(*self);
+            *self = Layout { left: None, bottom: None };
+            return true;
+        }
+        if let Some(back) = saved.take() {
+            *self = back;
+        }
+        false
+    }
 }
 
 impl ToolWindow {
@@ -126,12 +140,28 @@ impl ToolWindow {
         }
     }
 
-    /// The shortcut shown in the strip button's tooltip.
-    fn shortcut(self) -> &'static str {
+    /// The shortcut shown in the strip button's tooltip: IDEA's tool window numbers. Find has
+    /// none, because ⌘3 opens a terminal in the folder.
+    pub fn shortcut(self) -> &'static str {
         match self {
-            ToolWindow::Commit => "⌘K",
+            ToolWindow::Project => "⌘1",
+            ToolWindow::Commit => "⌘0",
+            ToolWindow::Git => "⌘9",
+            ToolWindow::Problems => "⌘6",
             ToolWindow::Terminal => "⌥F12",
-            _ => "",
+            ToolWindow::Find | ToolWindow::Notifications => "",
+        }
+    }
+
+    /// The window that IDEA's ⌘<digit> activates (Alt+F12 for the Terminal lives in
+    /// `terminal::shortcuts`).
+    pub fn for_digit(key: egui::Key) -> Option<ToolWindow> {
+        match key {
+            egui::Key::Num1 => Some(ToolWindow::Project),
+            egui::Key::Num0 => Some(ToolWindow::Commit),
+            egui::Key::Num9 => Some(ToolWindow::Git),
+            egui::Key::Num6 => Some(ToolWindow::Problems),
+            _ => None,
         }
     }
 }
@@ -293,6 +323,27 @@ mod tests {
         let wrong = Layout::from_storage("left=Git;bottom=Project").unwrap();
         assert_eq!((wrong.left, wrong.bottom), (None, None));
         assert!(Layout::from_storage("garbage").is_none());
+    }
+
+    #[test]
+    fn hide_all_and_restore() {
+        let mut l = Layout { left: Some(ToolWindow::Commit), bottom: Some(ToolWindow::Git) };
+        let mut saved = None;
+        assert!(l.toggle_all(&mut saved));
+        assert_eq!((l.left, l.bottom), (None, None));
+        assert!(!l.toggle_all(&mut saved));
+        assert_eq!((l.left, l.bottom), (Some(ToolWindow::Commit), Some(ToolWindow::Git)));
+        assert!(saved.is_none());
+        // A window opened after Hide All is what the next press hides and restores.
+        let mut saved = Some(Layout::default());
+        l = Layout { left: None, bottom: Some(ToolWindow::Terminal) };
+        assert!(l.toggle_all(&mut saved));
+        assert!(!l.toggle_all(&mut saved));
+        assert_eq!((l.left, l.bottom), (None, Some(ToolWindow::Terminal)));
+        // Nothing open and nothing saved: nothing happens.
+        l = Layout { left: None, bottom: None };
+        assert!(!l.toggle_all(&mut None));
+        assert_eq!((l.left, l.bottom), (None, None));
     }
 
     #[test]

@@ -1,5 +1,6 @@
-//! Highlighting of C, C++, C#, Java and Kotlin: one sample per language with the expected color
-//! class of a keyword, a type, a function, a string, a comment and a directive or annotation.
+//! Highlighting of C, C++, C#, Java, Kotlin and GLSL: one sample per language with the expected
+//! color class of a keyword, a type, a function, a string, a comment and a directive or annotation.
+//! Also JSON keys and the `code spans` of Markdown and plain text.
 
 use std::path::Path;
 
@@ -412,4 +413,142 @@ fn kotlin_kinds() {
             (13, "main", Function),
         ],
     );
+}
+
+const GLSL_SAMPLE: &str = r#"#version 450
+#extension GL_ARB_separate_shader_objects : enable
+
+layout(location = 0) in vec3 inPos;
+layout(binding = 1) uniform sampler2D tex;
+out vec4 fragColor;
+uniform highp float time; // seconds
+
+float pulse(in float t) {
+    return 0.5 + 0.5 * sin(t * 3.0);
+}
+
+void main() {
+    vec4 c = texture(tex, inPos.xy);
+    fragColor = c * pulse(time);
+    gl_Position = vec4(inPos, 1.0);
+}
+"#;
+
+#[test]
+fn glsl_extensions_and_kinds() {
+    for ext in ["glsl", "vert", "frag", "geom", "comp", "tesc", "tese", "FRAG"] {
+        assert_eq!(Language::from_path(Path::new(&format!("a.{ext}"))), Language::Glsl, "{ext}");
+    }
+    assert_eq!(Language::Glsl.name(), "GLSL");
+    assert_eq!(Language::Glsl.comment_tokens(), Some(("//", "")));
+    use HlKind::*;
+    expect(
+        Language::Glsl,
+        GLSL_SAMPLE,
+        &[
+            (0, "#version", Keyword),
+            (1, "#extension", Keyword),
+            (1, "enable", Keyword),
+            (3, "layout", Keyword),
+            (3, "location", Attribute),
+            (3, "0", Number),
+            (3, "in", Keyword),
+            (3, "vec3", Type),
+            (4, "uniform", Keyword),
+            (4, "sampler2D", Type),
+            (5, "out", Keyword),
+            (6, "highp", Keyword),
+            (6, "float", Type),
+            (6, "// seconds", Comment),
+            (8, "pulse", Function),
+            (9, "return", Keyword),
+            (9, "sin", Function),
+            (13, "texture", Function),
+            (15, "gl_Position", Builtin),
+        ],
+    );
+}
+
+const JSON_SAMPLE: &str = r#"{
+  "name": "demo",
+  "version": 2,
+  "private": true,
+  "main": null,
+  "nested": { "key\tx": [1.5, false] }
+}
+"#;
+
+/// Keys get the property color and values keep theirs, as in IDEA. `tsconfig.json` with
+/// comments goes through the same grammar.
+#[test]
+fn json_keys_differ_from_string_values() {
+    use HlKind::*;
+    for text in [JSON_SAMPLE.to_string(), JSON_SAMPLE.replacen("{\n", "{\n  // a comment\n", 1)] {
+        let shift = usize::from(text.contains("//"));
+        let mut cases = vec![
+            (1 + shift, "\"name\"", Property),
+            (1 + shift, "\"demo\"", String),
+            (2 + shift, "\"version\"", Property),
+            (2 + shift, "2", Number),
+            (3 + shift, "true", Builtin),
+            (4 + shift, "null", Builtin),
+            (5 + shift, "\"key", Property),
+            (5 + shift, "\\t", Escape),
+            (5 + shift, "1.5", Number),
+            (5 + shift, "false", Builtin),
+        ];
+        if shift == 1 {
+            cases.push((1, "// a comment", Comment));
+        }
+        expect(Language::Json, &text, &cases);
+    }
+    assert_eq!(Language::from_path(Path::new("tsconfig.json")), Language::Json);
+    assert_eq!(Language::from_path(Path::new("a.jsonc")), Language::Json);
+}
+
+const MARKDOWN_SAMPLE: &str = r#"# Use `cargo` here
+
+Run `cargo test` and ``a ` b`` then \`no` code.
+- item with `x`
+
+```rust
+let `y` = 1;
+```
+
+| col `a` | b |
+|---------|---|
+"#;
+
+/// Markdown and plain text paint backtick code spans as `InlineCode`, backticks included. A
+/// fenced block is not scanned.
+#[test]
+fn inline_code_in_markdown_and_plain_text() {
+    use HlKind::*;
+    let md = MARKDOWN_SAMPLE;
+    expect(
+        Language::Markdown,
+        md,
+        &[
+            (0, "`cargo`", InlineCode),
+            (2, "`cargo test`", InlineCode),
+            (2, "``a ` b``", InlineCode),
+            (3, "`x`", InlineCode),
+            (9, "`a`", InlineCode),
+        ],
+    );
+    let mut doc = Document::from_text(md, Language::Markdown);
+    doc.wait_syntax();
+    let line2 = kinds_on_line(&mut doc, 2);
+    assert!(!line2.iter().any(|(t, _)| t.contains("no")), "an escaped backtick opens nothing: {line2:?}");
+    // The fenced line's String span runs into the line break, so read the kinds only.
+    let fenced = doc.highlight(6..7).remove(0);
+    assert!(!fenced.iter().any(|s| s.kind == InlineCode), "{fenced:?}");
+
+    let txt = "Call `make install` first.\nNo span ` here.\n";
+    expect(Language::Plain, txt, &[(0, "`make install`", InlineCode)]);
+    let mut doc = Document::from_text(txt, Language::Plain);
+    assert_eq!(kinds_on_line(&mut doc, 1), vec![]);
+    // Runs of different lengths never pair.
+    let mut doc = Document::from_text("``make install` x\n", Language::Plain);
+    assert_eq!(kinds_on_line(&mut doc, 0), vec![]);
 }

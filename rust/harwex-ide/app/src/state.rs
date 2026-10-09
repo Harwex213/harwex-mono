@@ -132,6 +132,8 @@ pub struct AppState {
     pub terminal_store: Option<crate::terminal_store::TerminalStore>,
     /// Find in Files history (queries, masks, directories) per canonical root; app storage.
     pub find_history: HashMap<PathBuf, crate::find::FindHistory>,
+    /// Global settings, autosave and sync (`settings.rs`).
+    pub settings: crate::settings::AppSettings,
 }
 
 impl AppState {
@@ -166,6 +168,7 @@ impl AppState {
             projects: Default::default(),
             terminal_store: None,
             find_history: HashMap::new(),
+            settings: Default::default(),
         };
         state.ws.visible.store(true, std::sync::atomic::Ordering::Relaxed);
         state.enter_context();
@@ -607,8 +610,21 @@ impl AppState {
     }
 
     /// Opens a file (on a worker) and reveals `pos`. `record` pushes the current place onto the
-    /// back stack, which is what jumps do and what Back/Forward must not do.
+    /// back stack, which is what jumps do and what Back/Forward must not do. An image without a
+    /// position opens in the image viewer (`viewer::image`), unless a text tab already holds it.
     pub fn open_location(&mut self, path: &Path, pos: Option<Position>, record: bool) {
+        if pos.is_none() && crate::viewer::is_image(path) && self.ws.tabs.editor_by_path(path).is_none() {
+            if let Some(cur) = self.current_point().filter(|_| record) {
+                self.ws.nav.push_back(cur);
+            }
+            crate::viewer::image::open(self, path);
+            return;
+        }
+        self.open_text_location(path, pos, record);
+    }
+
+    /// `open_location` that always opens the text editor (an SVG's "Open as Text").
+    pub fn open_text_location(&mut self, path: &Path, pos: Option<Position>, record: bool) {
         if record {
             if let Some(cur) = self.current_point() {
                 if cur.path != path || Some(cur.pos) != pos {
@@ -774,8 +790,10 @@ impl AppState {
         e.saving = true;
         let (text, token) = e.doc.save_snapshot();
         let path = e.path.clone();
+        // System › Files › "Back up files before saving".
+        let backups = self.settings.backup_target();
         self.jobs.spawn_quiet(
-            move || std::fs::write(&path, text).map_err(|err| format!("{}: {err}", path.display())),
+            move || crate::settings::files::write_file(&path, &text, backups.as_deref()),
             move |state, res| {
                 let Some(e) = state.ws.tabs.editor_mut(id) else { return };
                 e.saving = false;
@@ -931,6 +949,11 @@ impl AppState {
                     }
                 },
             );
+        }
+        // Image tabs follow the disk too.
+        let images: Vec<PathBuf> = batch.paths.iter().filter(|p| crate::viewer::is_image(p) && self.ws.tabs.custom_by_key(&crate::viewer::image::key_for(p)).is_some()).cloned().collect();
+        for p in images {
+            crate::viewer::image::reload(self, &p);
         }
         if let Some(root) = self.ws.project.as_ref().map(|p| p.root.clone()) {
             if batch.paths.contains(&root.join(crate::lang::config::CONFIG_PATH)) {

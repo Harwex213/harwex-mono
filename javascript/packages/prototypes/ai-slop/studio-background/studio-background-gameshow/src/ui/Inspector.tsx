@@ -2,6 +2,8 @@ import { useSignals } from "@preact/signals-react/runtime";
 import { useEffect, useState } from "react";
 import * as THREE from "three";
 import { getEngine } from "../engine/engine";
+import { isLightKind, labelOf } from "../engine/primitives";
+import type { AddKind } from "../engine/primitives";
 import { editableMaterials } from "../engine/sceneDocument";
 import { inspectorRevision, selectedUuid } from "../state";
 import styles from "./Editor.module.css";
@@ -183,6 +185,76 @@ function bump(): void {
   inspectorRevision.value += 1;
 }
 
+// The name of the object. Enter or leaving the field renames it, Esc gives the old name back.
+function NameField(props: { object: THREE.Object3D }) {
+  const { object } = props;
+  const [text, setText] = useState(object.name);
+  const [focused, setFocused] = useState(false);
+
+  useEffect(() => {
+    if (!focused) {
+      setText(object.name);
+    }
+  }, [object, object.name, focused]);
+
+  return (
+    <input
+      className={styles.nameInput}
+      value={text}
+      disabled={object === getEngine().root}
+      onFocus={() => {
+        setFocused(true);
+      }}
+      onBlur={() => {
+        setFocused(false);
+        getEngine().document.rename(object, text);
+      }}
+      onChange={(event) => {
+        setText(event.target.value);
+      }}
+      onKeyDown={(event) => {
+        if (event.key === "Enter") {
+          (event.target as HTMLInputElement).blur();
+        } else if (event.key === "Escape") {
+          setText(object.name);
+          setFocused(false);
+          // The blur then renames to the old name, which is no edit.
+          window.setTimeout(() => {
+            (event.target as HTMLInputElement).blur();
+          }, 0);
+        }
+      }}
+    />
+  );
+}
+
+// The material picker of a mesh added in the editor: its own material or one of the shared materials.
+function MaterialPicker(props: { object: THREE.Object3D }) {
+  const { object } = props;
+  const sceneDocument = getEngine().document;
+  const own = object.userData.ownMaterial as THREE.MeshStandardMaterial;
+  const current = (object as THREE.Mesh).material as THREE.MeshStandardMaterial;
+  return (
+    <div className={styles.vectorRow}>
+      <span className={styles.rowTitle}>Material</span>
+      <select
+        className={styles.selectInput}
+        value={current === own ? "" : current.name}
+        onChange={(event) => {
+          sceneDocument.setMaterial(object, event.target.value === "" ? null : event.target.value);
+        }}
+      >
+        <option value="">Own material</option>
+        {sceneDocument.materialNames().map((name) => (
+          <option key={name} value={name}>
+            {name} (shared)
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
 function typeLabel(object: THREE.Object3D): string {
   if ((object as THREE.Light).isLight) {
     return object.type;
@@ -220,6 +292,9 @@ function Inspector(props: InspectorProps) {
   ];
   const scale: [number, number, number] = [object.scale.x, object.scale.y, object.scale.z];
   const light = (object as THREE.Light).isLight ? (object as THREE.Light) : null;
+  const sceneDocument = getEngine().document;
+  const lock = sceneDocument.lockReason(object);
+  const addedKind = object.userData.added as AddKind | undefined;
 
   return (
     <section className={styles.panel}>
@@ -230,15 +305,26 @@ function Inspector(props: InspectorProps) {
         <div className={styles.objectHeader}>
           <input
             type="checkbox"
+            title="Visible"
             checked={object.visible}
             onChange={(event) => {
-              checkpoint();
-              object.visible = event.target.checked;
-              bump();
+              sceneDocument.setVisible(object, event.target.checked);
             }}
           />
-          <span className={styles.objectName}>{object.name}</span>
+          <NameField key={object.uuid} object={object} />
+          <button
+            type="button"
+            className={styles.toolButton}
+            disabled={lock !== null}
+            title={lock ? `Cannot delete: ${lock}` : "Delete the object and its children (Del)"}
+            onClick={() => {
+              sceneDocument.remove(object);
+            }}
+          >
+            Delete
+          </button>
         </div>
+        {lock && object !== root ? <div className={styles.lockNote}>Locked in place: {lock}. Rename and hide still work.</div> : null}
         <div className={styles.component}>
           <div className={styles.componentTitle}>Transform</div>
           {object.userData.animated ? (
@@ -279,6 +365,9 @@ function Inspector(props: InspectorProps) {
         {light ? (
           <div className={styles.component}>
             <div className={styles.componentTitle}>{typeLabel(object)}</div>
+            {addedKind && isLightKind(addedKind) ? (
+              <div className={styles.componentNote}>Each light costs frame time in every shot of its room. Under Annex it lights the annex only.</div>
+            ) : null}
             <div className={styles.vectorRow}>
               <span className={styles.rowTitle}>Color</span>
               <input
@@ -308,8 +397,12 @@ function Inspector(props: InspectorProps) {
           </div>
         ) : (
           <div className={styles.component}>
-            <div className={styles.componentTitle}>{typeLabel(object)}</div>
+            <div className={styles.componentTitle}>
+              {typeLabel(object)}
+              {addedKind ? ` · ${labelOf(addedKind)}` : ""}
+            </div>
             <div className={styles.componentNote}>{object.children.length} child objects</div>
+            {addedKind && object.userData.ownMaterial ? <MaterialPicker object={object} /> : null}
           </div>
         )}
         {editableMaterials(object).map((material) => (

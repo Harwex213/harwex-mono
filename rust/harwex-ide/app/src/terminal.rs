@@ -772,6 +772,9 @@ pub fn header_tabs(s: &mut AppState, ui: &mut Ui) {
         }
         if close_resp.on_hover_text(if *alive { "Close (kills the shell)" } else { "Close" }).clicked() {
             close = Some(i);
+        } else if resp.middle_clicked() {
+            // Like editor tabs and IDEA: a middle click closes the tab under the pointer.
+            close = Some(i);
         } else if resp.clicked() {
             activate = Some(i);
             if clicks.double(&resp) {

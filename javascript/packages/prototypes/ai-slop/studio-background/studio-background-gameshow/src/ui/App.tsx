@@ -27,8 +27,10 @@ const CHANNELS: { label: string; title: string; state: Signal<boolean> }[] = [
 
 // Camera shots: a click makes the Main Camera travel to the shot.
 const SHOT_BUTTONS: { shot: Shot; label: string; title: string }[] = [
-  { shot: "wheel", label: "Wheel", title: "Hero wheel in the amphitheatre (?shot=wheel)" },
-  { shot: "gameshow", label: "Game Show", title: "Bonus Show in the Game Show room, the casino backdrop behind it (?shot=gameshow)" },
+  { shot: "wheel", label: "Main Wheel", title: "Hero wheel in the amphitheatre (?shot=wheel)" },
+  { shot: "dice", label: "Bonus Dice", title: "The acrylic tower (?shot=dice)" },
+  { shot: "show", label: "Bonus Show", title: "The jester wheel in the Game Show room (?shot=show)" },
+  { shot: "luck", label: "Bonus LuckDeluxe", title: "The slot cabinet Bonus Luck (?shot=luck)" },
 ];
 
 const RENDER_MODES: { mode: RenderMode; label: string; title: string }[] = [
@@ -204,7 +206,7 @@ function SceneView() {
           </button>
         ))}
         <span className={styles.viewBarHint}>
-          RMB look + WASD fly, Q/E down/up, Shift fast · Alt+LMB orbit · MMB pan · wheel zoom · click to select · W/E/R tools · F focus
+          RMB look + WASD fly, Q/E down/up, Shift fast · Alt+LMB orbit · MMB pan · wheel zoom · click to select · W/E/R tools · F focus · Del delete · F2 rename
         </span>
       </div>
       <div ref={ref} className={styles.viewport} />

@@ -31,8 +31,8 @@ fn list_open_id() -> Id {
 }
 
 /// The slot's width in a window of at least 800 pt for the status bar, and in a narrower one.
-pub const SLOT_W: f32 = 240.0;
-pub const SLOT_W_NARROW: f32 = 160.0;
+pub const SLOT_W: f32 = 204.0;
+pub const SLOT_W_NARROW: f32 = 136.0;
 const SPINNER_W: f32 = 14.0;
 const STOP_W: f32 = 16.0;
 const GAP: f32 = 6.0;

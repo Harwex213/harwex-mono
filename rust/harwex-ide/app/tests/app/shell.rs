@@ -304,34 +304,42 @@ fn search_everywhere_ranking_with_cmd_shift_o() {
 }
 
 /// A row whose path is cut with `…` expands in place on hover (IDEA's expandable item): in the
-/// same frame an overlay at the row's position shows the whole row on one line, past the
-/// popup's right edge. A row that fits shows none. In a narrow window the overlay moves left
-/// to stay on screen.
+/// same frame an overlay on the row shows the whole row on one line. The overlay keeps the
+/// row's right edge and grows to the left, at most to the screen's left edge; text that still
+/// does not fit cuts the folder first. A row that fits shows none. A file name that alone does
+/// not fit loses its middle, in the row and in the overlay, and keeps its extension.
 #[test]
 fn search_everywhere_expands_cut_row() {
     let fx = Fixture::new(SUITE, "search_expand");
     let repo = basic_repo(fx.path("repo"));
     let deep = "packages/frontend-application-shell/src/features/authentication/components/forms/inputs/validated_password_field_utils.ts";
+    let long = format!("src/generated_{}_util_{}_tail.ts", "very_long_segment".repeat(5), "and_more".repeat(6));
     repo.write(deep, "x\n");
+    repo.write(&long, "x\n");
     repo.write("src/util_short.ts", "x\n");
     repo.commit_all("Deep");
     let mut ide = Ide::open(SUITE, &repo.dir);
     ide.double_shift();
     ide.settle();
     ide.type_text("util");
-    ide.wait_for("results", |s| s.ws.search.results().iter().any(|h| h.path == deep) && s.ws.search.results().iter().any(|h| h.path == "src/util_short.ts"));
+    ide.wait_for("results", |s| {
+        let r = s.ws.search.results();
+        r.iter().any(|h| h.path == deep) && r.iter().any(|h| h.path == long) && r.iter().any(|h| h.path == "src/util_short.ts")
+    });
     ide.settle();
-    let expanded = |ide: &Ide| harwex_ide::util::expanded_row(&ide.ctx());
+    let expanded = |ide: &Ide| harwex_ide::search::expanded_row(&ide.ctx());
+    let label_of = |p: &str| {
+        let (dir, name) = p.rsplit_once('/').unwrap();
+        format!("{name}  {dir}")
+    };
 
-    let (dir, name) = deep.rsplit_once('/').unwrap();
-    let label = format!("{name}  {dir}");
+    let label = label_of(deep);
     let row = ide.rect(&label);
     ide.move_to(row.center());
     let (rect, text) = expanded(&ide).expect("the overlay shows in the frame the pointer arrives");
     assert_eq!(text, label, "the overlay holds the whole row");
-    assert_eq!((rect.min, rect.height()), (row.min, row.height()), "the overlay sits on the row");
-    assert!(rect.max.x > row.max.x + 20.0, "the overlay runs past the popup: {rect:?} vs {row:?}");
-    assert!(rect.max.x <= 1280.0);
+    assert_eq!((rect.max, rect.height()), (row.max, row.height()), "the overlay keeps the row's right edge");
+    assert!(rect.min.x < row.min.x - 20.0 && rect.min.x >= 0.0, "the overlay grows left: {rect:?} vs {row:?}");
     assert!(!ide.shows_text(deep), "no tooltip");
     ide.snapshot_here("search_expanded_row");
 
@@ -340,13 +348,25 @@ fn search_everywhere_expands_cut_row() {
     ide.steps(30);
     assert!(expanded(&ide).is_none());
 
-    // Narrow window: the overlay ends at the screen edge and moves left; it never wraps.
+    // A name too long for the row: the row and the overlay cut its middle and keep `.ts`.
+    let long_label = label_of(&long);
+    let row = ide.rect(&long_label);
+    ide.move_to(row.center());
+    let (rect, text) = expanded(&ide).expect("overlay of the long name");
+    assert_eq!(rect.max, row.max);
+    assert!(rect.min.x.abs() < 0.5, "the overlay stops at the screen's left edge: {rect:?}");
+    assert!(text.starts_with("generated_very_long") && text.ends_with("_tail.ts") && text.contains('…'), "{text}");
+    assert!(!text.contains("  src"), "the folder goes first: {text}");
+    ide.snapshot_here("search_long_name");
+
+    // Narrow window: the overlay stops at the screen edge and cuts the folder; it never wraps.
     ide.resize(egui::vec2(800.0, 800.0));
     let row = ide.rect(&label);
     ide.move_to(row.center());
-    let (rect, _) = expanded(&ide).expect("overlay in a narrow window");
-    assert!((rect.max.x - 800.0).abs() < 0.5 && rect.min.x < row.min.x && rect.min.x >= 0.0, "{rect:?} vs {row:?}");
+    let (rect, text) = expanded(&ide).expect("overlay in a narrow window");
+    assert!(rect.max == row.max && rect.min.x.abs() < 0.5, "{rect:?} vs {row:?}");
     assert_eq!(rect.height(), row.height(), "one line");
+    assert!(text.starts_with("validated_password_field_utils.ts  packages/") && text.ends_with('…'), "the folder is cut: {text}");
 }
 
 /// The status bar holds the breadcrumbs on the left, the language and the memory indicator on
@@ -493,10 +513,10 @@ fn title_bar_widgets() {
     ide.settle();
     assert!(!ide.state().ws.git_ui.branches.is_open());
 
-    // Settings opens a menu.
+    // Settings opens the Settings dialog.
     ide.click("Settings");
     ide.settle();
-    ide.assert_text("Open Folder...");
+    assert!(ide.state().ws.settings.is_some());
     ide.key(Key::Escape);
     ide.settle();
 
@@ -538,11 +558,9 @@ fn title_bar_group_centered() {
     assert!(open.min.y > project.max.y && (open.min.x - project.min.x).abs() < 40.0, "the projects popup hangs under the widget: {open:?} vs {project:?}");
     ide.key(Key::Escape);
     ide.settle();
-    let settings = ide.rect("Settings");
     ide.click("Settings");
     ide.settle();
-    let item = ide.node_containing("Open Folder...").raw_bounds().map(|r| egui::Rect::from_min_max(egui::pos2(r.x0 as f32, r.y0 as f32), egui::pos2(r.x1 as f32, r.y1 as f32))).expect("the settings menu has bounds");
-    assert!(item.min.y > settings.max.y && (item.min.x - settings.min.x).abs() < 40.0, "the settings menu hangs under the gear: {item:?} vs {settings:?}");
+    assert!(ide.state().ws.settings.is_some(), "the gear opens the Settings dialog");
     ide.key(Key::Escape);
     ide.settle();
     let branch = ide.rect("Branch main");
@@ -919,7 +937,7 @@ fn tool_strips() {
     assert!(!ide.is_selected("Commit tool window"));
     ide.hover("Commit tool window");
     ide.wait_real(std::time::Duration::from_millis(400));
-    ide.assert_text("Commit  ⌘K");
+    ide.assert_text("Commit  ⌘0");
     ide.snapshot_here("tool_strips");
     ide.hover("Notifications tool window");
     ide.wait_real(std::time::Duration::from_millis(400));

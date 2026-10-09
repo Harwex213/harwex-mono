@@ -42,6 +42,8 @@ pub(crate) enum Action {
     NewFrom(Option<String>),
     Merge(String),
     Rebase(String),
+    /// `git rebase --update-refs`: the branches stacked under the current one move too.
+    RebaseUpdateRefs(String),
     Rename(String),
     Delete(String, bool),
     Update,
@@ -188,7 +190,10 @@ pub fn show_windows(state: &mut AppState, ctx: &Context) {
             // Rows take the available width, so the submenu gets a definite width: the widest
             // row text, at least 240.
             let cur = current.clone().unwrap_or_else(|| "HEAD".into());
-            let texts = [format!("New Branch from '{name}'..."), format!("Merge '{name}' into '{cur}'"), format!("Rebase '{cur}' onto '{name}'")];
+            let mut texts = vec![format!("New Branch from '{name}'...")];
+            if !info.is_current {
+                texts.extend([format!("Merge '{name}' into '{cur}'"), format!("Rebase '{cur}' onto '{name}' (Update Refs)")]);
+            }
             let text_w = ctx.fonts(|f| texts.iter().map(|t| f.layout_no_wrap(t.clone(), theme::T.ui_font(), theme::T.text).size().x).fold(0.0_f32, f32::max));
             let inner_w = (text_w + 16.0).max(240.0);
             let width = inner_w + Frame::popup(&ctx.style()).total_margin().sum().x;
@@ -214,6 +219,9 @@ pub fn show_windows(state: &mut AppState, ctx: &Context) {
                         }
                         if action_row(ui, &format!("Rebase '{cur}' onto '{name}'")).clicked() {
                             action = Some(Action::Rebase(name.clone()));
+                        }
+                        if action_row(ui, &format!("Rebase '{cur}' onto '{name}' (Update Refs)")).clicked() {
+                            action = Some(Action::RebaseUpdateRefs(name.clone()));
                         }
                     }
                     let tracked = !remote && info.upstream.is_some();
@@ -321,6 +329,10 @@ pub(crate) fn run_action(state: &mut AppState, a: Action) {
         Action::Rebase(name) => {
             let title = format!("Rebase {current} onto {name}");
             run_op(state, title, "Rebased", true, move |r| r.rebase(&name).map(Some), |_, _| {});
+        }
+        Action::RebaseUpdateRefs(name) => {
+            let title = format!("Rebase {current} onto {name} (update refs)");
+            run_op(state, title, "Rebased", true, move |r| r.rebase_update_refs(&name).map(Some), |_, _| {});
         }
         Action::Rename(old) => state.ws.git_ui.branches.dialog = Some(BranchDialog::Rename { name: old.clone(), old }),
         Action::Delete(name, remote) => {
@@ -479,6 +491,7 @@ pub(crate) fn test_action(state: &mut AppState, what: &str, name: &str) {
     let a = match what {
         "checkout" => Action::Checkout(n),
         "merge" => Action::Merge(n),
+        "rebase-update-refs" => Action::RebaseUpdateRefs(n),
         _ => Action::Rebase(n),
     };
     run_action(state, a);

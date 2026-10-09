@@ -93,8 +93,12 @@ fn the_popup_stops_counting_at_100() {
     find(&mut ide, "needle");
     assert!(ide.state().ws.find.truncated);
     assert_eq!(ide.state().ws.find.hit_count(), 100);
-    ide.assert_text("100+ matches in 100+ files");
-    // No snapshot: which 100 of the 150 files the parallel walk finds first differs per run.
+    ide.assert_text("100+ matches in 100+ files · limit reached");
+    assert!(matches!(harwex_ide::find::targets(ide.state(), &harwex_ide::find::SearchScope::Project), Some(harwex_ide::find::Targets::Index { .. })), "the project search reads the file index, not the disk tree");
+    // The index is read in path order, chunk by chunk; 150 files are one chunk, so the first 100
+    // files are the same in every run.
+    assert_eq!(hit_list(&ide).last().map(String::as_str), Some("many/f099.txt:1"));
+    ide.snapshot("capped");
 
     // Cmd+Enter: the Find window gets every hit, not only the first 100.
     ide.cmd(Key::Enter);
@@ -125,7 +129,7 @@ fn toggles_change_the_search() {
     ide.type_text(r"a.d\(");
     settle_search(&mut ide);
     assert_eq!(ide.state().ws.find.hit_count(), 0, "literal text");
-    ide.assert_text("Nothing found");
+    ide.assert_text("No matches");
     ide.click("Regex");
     settle_search(&mut ide);
     assert_eq!(hit_list(&ide), ["src/app.ts:4", "src/util.ts:1"]);

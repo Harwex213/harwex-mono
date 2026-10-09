@@ -89,6 +89,8 @@ pub struct Workspace {
     pub(crate) visible: Arc<AtomicBool>,
     /// The Unreal project and its compile-database action (`unreal.rs`).
     pub unreal: crate::unreal::UnrealState,
+    /// Completion in `package.json` (`lang/npm.rs`).
+    pub npm: crate::lang::npm::NpmState,
 }
 
 impl Workspace {
@@ -139,6 +141,7 @@ impl Workspace {
             restored: false,
             visible,
             unreal: Default::default(),
+            npm: Default::default(),
         }
     }
 

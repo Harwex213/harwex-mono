@@ -18,6 +18,7 @@ pub enum Language {
     CSharp,
     Java,
     Kotlin,
+    Glsl,
     Plain,
 }
 
@@ -45,6 +46,7 @@ impl Language {
             "cs" | "csx" => Language::CSharp,
             "java" => Language::Java,
             "kt" | "kts" => Language::Kotlin,
+            "glsl" | "vert" | "frag" | "geom" | "comp" | "tesc" | "tese" => Language::Glsl,
             _ => {
                 // Dotfiles like `.eslintrc` or `tsconfig` variants without an extension.
                 let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
@@ -73,6 +75,7 @@ impl Language {
             Language::CSharp => "C#",
             Language::Java => "Java",
             Language::Kotlin => "Kotlin",
+            Language::Glsl => "GLSL",
             Language::Plain => "Plain text",
         }
     }
@@ -90,7 +93,8 @@ impl Language {
             | Language::Cpp
             | Language::CSharp
             | Language::Java
-            | Language::Kotlin => Some(("//", "")),
+            | Language::Kotlin
+            | Language::Glsl => Some(("//", "")),
             Language::Css => Some(("/*", "*/")),
             Language::Markdown | Language::Plain => None,
         }
@@ -105,7 +109,8 @@ impl Language {
             | Language::Cpp
             | Language::CSharp
             | Language::Java
-            | Language::Kotlin => 4,
+            | Language::Kotlin
+            | Language::Glsl => 4,
             _ => 2,
         }
     }
@@ -135,6 +140,7 @@ impl Language {
             Language::CSharp => cached!(),
             Language::Java => cached!(),
             Language::Kotlin => cached!(),
+            Language::Glsl => cached!(),
             Language::Plain => None,
         }
     }
@@ -159,7 +165,7 @@ impl Language {
             }
             Language::Json => (
                 tree_sitter_json::LANGUAGE.into(),
-                &[tree_sitter_json::HIGHLIGHTS_QUERY],
+                &[tree_sitter_json::HIGHLIGHTS_QUERY, JSON_EXTRA],
             ),
             Language::Rust => (
                 tree_sitter_rust::LANGUAGE.into(),
@@ -173,7 +179,7 @@ impl Language {
             // injected ranges, which is not worth it for README-style files.
             Language::Markdown => (
                 tree_sitter_md::LANGUAGE.into(),
-                &[tree_sitter_md::HIGHLIGHT_QUERY_BLOCK],
+                &[tree_sitter_md::HIGHLIGHT_QUERY_BLOCK, MARKDOWN_EXTRA],
             ),
             Language::C => (tree_sitter_c::LANGUAGE.into(), &[C, C_EXTRA]),
             Language::Cpp => (
@@ -192,6 +198,9 @@ impl Language {
                 tree_sitter_kotlin_sg::LANGUAGE.into(),
                 &[tree_sitter_kotlin_sg::HIGHLIGHTS_QUERY, KOTLIN_EXTRA],
             ),
+            // The grammar crate's own query is written for Neovim (`#lua-match?`, which tree-sitter
+            // here ignores, so every identifier would match it), so only the C query plus ours.
+            Language::Glsl => (tree_sitter_glsl::LANGUAGE_GLSL.into(), &[C, C_EXTRA, GLSL_EXTRA]),
             Language::Plain => return None,
         };
         Some(grammar)
@@ -264,6 +273,36 @@ const KOTLIN_EXTRA: &str = r##"
 (function_declaration (simple_identifier) @function)
 "##;
 
+/// GLSL on top of the C query: storage and precision qualifiers, `layout`, the extension
+/// directive, and the `gl_` built-in variables. Vector, matrix and sampler types are type names
+/// to the grammar, so they already get the type color.
+const GLSL_EXTRA: &str = r##"
+[
+ "in" "out" "inout" "uniform" "shared" "layout" "attribute" "varying" "buffer" "coherent"
+ "readonly" "writeonly" "precision" "highp" "mediump" "lowp" "centroid" "sample" "patch"
+ "smooth" "flat" "noperspective" "invariant" "precise" "subroutine"
+] @keyword
+(extension_storage_class) @keyword
+(extension_behavior) @keyword
+(preproc_extension directive: (preproc_directive) @keyword)
+(qualifier . (identifier) @attribute)
+((identifier) @variable.builtin (#match? @variable.builtin "^gl_"))
+"##;
+
+/// JSON keys in the property color, as in IDEA. The grammar's query marks a key as
+/// `string.special.key` first and then every `(string)` as a string, and the later pattern wins
+/// on the same node, so the key needs a rule after both.
+const JSON_EXTRA: &str = r##"
+(pair key: (string) @property)
+"##;
+
+/// Markdown: the nodes whose text may hold `inline code`. The block grammar has no code spans,
+/// so `highlight_lines` finds them inside these nodes itself (`highlight::CODE_SCOPE`).
+const MARKDOWN_EXTRA: &str = r##"
+(inline) @_code_scope
+(pipe_table_cell) @_code_scope
+"##;
+
 /// Maps a query capture name like `function.method` to a color class.
 pub(crate) fn kind_for_capture(name: &str) -> Option<HlKind> {
     let kind = match name {
@@ -321,6 +360,9 @@ mod tests {
             Language::CSharp,
             Language::Java,
             Language::Kotlin,
+            Language::Glsl,
+            Language::Json,
+            Language::Markdown,
         ] {
             let (language, queries) = lang.grammar().expect("has a grammar");
             if let Err(err) = tree_sitter::Query::new(&language, &queries.join("\n")) {

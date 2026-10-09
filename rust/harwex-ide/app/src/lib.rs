@@ -30,6 +30,7 @@ pub mod rename_symbol;
 pub mod search;
 pub mod unreal;
 pub mod settings;
+pub mod speed_search;
 pub mod state;
 pub mod tabs;
 pub mod terminal;
@@ -39,6 +40,7 @@ pub mod theme;
 pub mod tree;
 pub mod tree_menu;
 pub mod util;
+pub mod viewer;
 pub mod watcher;
 pub mod workspace;
 

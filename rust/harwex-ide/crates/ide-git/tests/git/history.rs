@@ -478,6 +478,67 @@ fn rebase_conflict_abort() {
     assert_eq!(t.read("f.txt"), "ours\n");
 }
 
+/// A stack: main <- lower <- upper (checked out), and main moves on. A rebase of upper onto
+/// main with `--update-refs` moves lower too; a plain rebase leaves it behind.
+fn stacked(t: &TestRepo) -> String {
+    t.write("base.txt", "base\n");
+    t.commit_all("base");
+    t.git(&["checkout", "-q", "-b", "lower"]);
+    t.write("lower.txt", "lower\n");
+    t.commit_all("lower work");
+    t.git(&["checkout", "-q", "-b", "upper"]);
+    t.write("upper.txt", "upper\n");
+    t.commit_all("upper work");
+    t.git(&["checkout", "-q", "main"]);
+    t.write("main.txt", "main\n");
+    let main = t.commit_all("main moves on");
+    t.git(&["checkout", "-q", "upper"]);
+    main
+}
+
+#[test]
+fn rebase_update_refs_moves_the_stacked_branches() {
+    let t = TestRepo::new();
+    let main = stacked(&t);
+    let out = t.repo.rebase_update_refs("main").unwrap();
+    assert!(out.success, "{out:?}");
+    assert_eq!(t.git(&["rev-parse", "lower~1"]).trim(), main, "lower sits on main now");
+    assert_eq!(t.git(&["rev-parse", "upper~1"]).trim(), t.git(&["rev-parse", "lower"]).trim(), "upper sits on the new lower");
+    assert_eq!(t.git(&["branch", "--show-current"]).trim(), "upper");
+
+    let plain = TestRepo::new();
+    let main = stacked(&plain);
+    let old_lower = plain.git(&["rev-parse", "lower"]);
+    assert!(plain.repo.rebase("main").unwrap().success);
+    assert_eq!(plain.git(&["rev-parse", "lower"]), old_lower, "a plain rebase leaves lower behind");
+    assert_eq!(plain.git(&["rev-parse", "upper~2"]).trim(), main);
+}
+
+#[test]
+fn rebase_update_refs_conflict_continues_and_moves_the_stack() {
+    let t = TestRepo::new();
+    stacked(&t);
+    // main also touches lower.txt: replaying "lower work" conflicts.
+    t.git(&["checkout", "-q", "main"]);
+    t.write("lower.txt", "main side\n");
+    let main = t.commit_all("main edits lower.txt");
+    t.git(&["checkout", "-q", "upper"]);
+    let old_lower = t.git(&["rev-parse", "lower"]);
+    let out = t.repo.rebase_update_refs("main").unwrap();
+    assert!(!out.success);
+    assert_eq!(t.repo.state().unwrap(), RepoState::Rebase);
+    assert_eq!(t.repo.conflicts().unwrap(), vec![p("lower.txt")]);
+    assert_eq!(t.git(&["rev-parse", "lower"]), old_lower, "git moves the refs only at the end");
+
+    t.repo.resolve(&p("lower.txt"), "resolved\n").unwrap();
+    let out = t.repo.continue_operation().unwrap();
+    assert!(out.success, "{out:?}");
+    assert_eq!(t.repo.state().unwrap(), RepoState::Clean);
+    assert_eq!(t.git(&["rev-parse", "lower~1"]).trim(), main);
+    assert_eq!(t.git(&["rev-parse", "upper~1"]).trim(), t.git(&["rev-parse", "lower"]).trim());
+    assert_eq!(t.read("lower.txt"), "resolved\n");
+}
+
 #[test]
 fn empty_repo_is_not_an_error() {
     let t = TestRepo::new();

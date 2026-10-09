@@ -166,6 +166,7 @@ fn settings_page_turns_on_save_on() {
     let mut ide = Ide::open("format", &repo.dir);
     ide.open_file("src/app.ts");
     ide.key_mods(Modifiers::COMMAND, Key::Comma);
+    ide.click("Settings page Editor");
     ide.wait_until("oxfmt detected", |ide| ide.shows_text("oxfmt 0.72.0 in node_modules/oxfmt"));
     ide.snapshot("settings_oxfmt");
     ide.click("Run oxfmt on save");
@@ -185,6 +186,7 @@ fn settings_page_says_when_oxfmt_is_missing() {
     let repo = basic_repo(fx.path("repo"));
     let mut ide = Ide::open("format", &repo.dir);
     ide.key_mods(Modifiers::COMMAND, Key::Comma);
+    ide.click("Settings page Editor");
     ide.wait_until("detection done", |ide| ide.shows_text("oxfmt: not found (no node_modules/oxfmt from the project root up)"));
     ide.key(Key::Escape);
     assert!(ide.state().ws.settings.is_none());

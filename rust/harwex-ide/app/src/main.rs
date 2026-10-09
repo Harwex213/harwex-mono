@@ -72,7 +72,9 @@ fn main() -> eframe::Result {
     }
     // Background runs keep their terminal tabs in the temp dir, like their eframe storage above.
     let terminal_db = harwex_ide::terminal_store::default_db_path(background);
-    let options = AppOptions { project: cli_folder, test, start, instance: server, terminal_db, ..AppOptions::default() };
+    // Backups follow the same split: the app data folder, or the temp dir in background mode.
+    let backup_dir = harwex_ide::settings::files::default_backup_dir(background);
+    let options = AppOptions { project: cli_folder, test, start, instance: server, terminal_db, backup_dir, ..AppOptions::default() };
     eframe::run_native("harwex-ide", native, Box::new(move |cc| Ok(Box::new(IdeApp::create(&cc.egui_ctx, cc.storage, options)))))
 }
 

@@ -31,10 +31,13 @@ pub enum HlKind {
     Attribute,
     Title,
     Link,
+    /// A `code span` in Markdown or plain text. It also gets a background
+    /// (`EditorTheme::inline_code_background`).
+    InlineCode,
 }
 
 impl HlKind {
-    pub const COUNT: usize = 21;
+    pub const COUNT: usize = 22;
 
     fn from_u8(v: u8) -> HlKind {
         // Only values written by `paint` reach here, and those come from real variants.
@@ -60,6 +63,7 @@ impl HlKind {
             HlKind::Attribute,
             HlKind::Title,
             HlKind::Link,
+            HlKind::InlineCode,
         ];
         ALL.get(v as usize).copied().unwrap_or(HlKind::None)
     }
@@ -78,7 +82,12 @@ pub struct HighlightConfig {
     pub(crate) query: Query,
     /// Capture index -> color class, resolved once so the hot loop never touches strings.
     kinds: Vec<Option<HlKind>>,
+    /// The capture that marks text where backtick code spans count (`CODE_SCOPE`).
+    code_scope: Option<u32>,
 }
+
+/// Capture name for nodes whose text is scanned for `code spans` (Markdown's `inline`).
+pub(crate) const CODE_SCOPE: &str = "_code_scope";
 
 impl HighlightConfig {
     /// Builds the query from several sources. Grammar crates are versioned independently, so a
@@ -94,7 +103,8 @@ impl HighlightConfig {
                         .iter()
                         .map(|n| kind_for_capture(n))
                         .collect();
-                    return Some(HighlightConfig { language, query, kinds });
+                    let code_scope = query.capture_index_for_name(CODE_SCOPE);
+                    return Some(HighlightConfig { language, query, kinds, code_scope });
                 }
                 Err(err) => {
                     let range = top_level_pattern_at(&source, err.offset)?;
@@ -207,11 +217,20 @@ pub(crate) fn highlight_lines(
     }
 
     let mut captured: Vec<(usize, usize, HlKind, usize)> = Vec::new();
+    let mut scopes: Vec<Range<usize>> = Vec::new();
     let mut cursor = QueryCursor::new();
     cursor.set_byte_range(start_byte..end_byte);
     let mut matches = cursor.matches(&config.query, tree.root_node(), RopeProvider(rope));
     while let Some(m) = matches.next() {
         for cap in m.captures() {
+            if Some(cap.index) == config.code_scope {
+                let s = cap.node.start_byte().max(start_byte);
+                let e = cap.node.end_byte().min(end_byte);
+                if s < e {
+                    scopes.push(s..e);
+                }
+                continue;
+            }
             let Some(Some(kind)) = config.kinds.get(cap.index as usize) else {
                 continue;
             };
@@ -223,7 +242,10 @@ pub(crate) fn highlight_lines(
         }
     }
 
-    let paint = paint(&captured, start_byte, end_byte);
+    let mut paint = paint(&captured, start_byte, end_byte);
+    if !scopes.is_empty() {
+        paint_code_spans(rope, &scopes, start_byte, &mut paint);
+    }
 
     for (i, line) in lines.clone().enumerate() {
         let ls = rope.line_to_byte(line);
@@ -259,6 +281,96 @@ pub(crate) fn highlight_lines(
     out
 }
 
+/// Paints the code spans inside `scopes` over `paint`. Each line of a scope is scanned on its
+/// own: a span that continues on the next line stays plain, so the colors of a line never depend
+/// on where the viewport starts.
+fn paint_code_spans(rope: &Rope, scopes: &[Range<usize>], start: usize, paint: &mut [u8]) {
+    let mut buf = Vec::new();
+    for scope in scopes {
+        let mut line = rope.byte_to_line(scope.start);
+        loop {
+            let ls = rope.line_to_byte(line).max(scope.start);
+            let le = rope.line_to_byte(line + 1).min(scope.end);
+            if ls >= le {
+                break;
+            }
+            buf.clear();
+            buf.extend(rope.byte_slice(ls..le).bytes());
+            code_spans(&buf, |r| paint[ls - start + r.start..ls - start + r.end].fill(HlKind::InlineCode as u8));
+            if le >= scope.end {
+                break;
+            }
+            line += 1;
+        }
+    }
+}
+
+/// Plain text has no tree: its only colors are the code spans of each line in `lines`.
+pub(crate) fn plain_code_spans(rope: &Rope, lines: Range<usize>) -> Vec<Vec<Span>> {
+    let mut buf = Vec::new();
+    lines
+        .map(|line| {
+            let mut spans = Vec::new();
+            if line >= rope.len_lines() {
+                return spans;
+            }
+            let slice = rope.line(line);
+            if slice.len_bytes() > MAX_CODE_SPAN_LINE {
+                return spans;
+            }
+            buf.clear();
+            buf.extend(slice.bytes());
+            code_spans(&buf, |r| spans.push(Span { start: r.start as u32, end: r.end as u32, kind: HlKind::InlineCode }));
+            spans
+        })
+        .collect()
+}
+
+/// Lines longer than this are not scanned for code spans: a minified or log line would cost its
+/// length on every repaint of its highlight.
+pub(crate) const MAX_CODE_SPAN_LINE: usize = 64 << 10;
+
+/// Calls `f` with the byte range of every backtick code span in one line, backticks included.
+/// CommonMark's rule: a run of N backticks opens a span that the next run of exactly N closes;
+/// a run without a closer is plain text, and a backslash escapes the next char.
+pub(crate) fn code_spans(line: &[u8], mut f: impl FnMut(Range<usize>)) {
+    if line.len() > MAX_CODE_SPAN_LINE {
+        return;
+    }
+    let run = |at: usize| line[at..].iter().take_while(|&&b| b == b'`').count();
+    let mut i = 0;
+    while i < line.len() {
+        match line[i] {
+            b'\\' => i += 2,
+            b'`' => {
+                let n = run(i);
+                let mut k = i + n;
+                let mut close = None;
+                while k < line.len() {
+                    if line[k] == b'`' {
+                        let m = run(k);
+                        if m == n {
+                            close = Some(k + m);
+                            break;
+                        }
+                        k += m;
+                    } else {
+                        k += 1;
+                    }
+                }
+                match close {
+                    Some(end) => {
+                        f(i..end);
+                        i = end;
+                    }
+                    None => i += n,
+                }
+            }
+            _ => i += 1,
+        }
+    }
+}
+
 /// Resolves overlapping captures into one kind per byte. Wider nodes are painted first so nested
 /// nodes (an identifier inside a call) show through. For the same node, the later pattern wins:
 /// the bundled queries list generic rules like `(identifier) @variable` first.
@@ -286,5 +398,25 @@ mod tests {
         let src = "; comment (x)\n(identifier) @variable\n(no_such_node) @keyword\n[\"const\" \"let\"] @keyword\n";
         let cfg = HighlightConfig::new(tree_sitter_javascript::LANGUAGE.into(), &[src]).expect("compiles");
         assert_eq!(cfg.query.pattern_count(), 2);
+    }
+
+    fn spans(line: &str) -> Vec<&str> {
+        let mut out = Vec::new();
+        code_spans(line.as_bytes(), |r| out.push(&line[r]));
+        out
+    }
+
+    #[test]
+    fn code_spans_follow_commonmark_runs() {
+        assert_eq!(spans("use `a` and `b`"), ["`a`", "`b`"]);
+        assert_eq!(spans("``a ` b`` then `c`"), ["``a ` b``", "`c`"]);
+        // An unclosed run is plain text, and the scan goes on after it.
+        assert_eq!(spans("``x `y`"), ["`y`"]);
+        assert_eq!(spans("no close `here"), Vec::<&str>::new());
+        // A backslash escapes the backtick.
+        assert_eq!(spans("\\`a` `b`"), ["` `"]);
+        assert_eq!(spans("é `ü` ok"), ["`ü`"]);
+        let long = format!("`a` {}", "x".repeat(MAX_CODE_SPAN_LINE));
+        assert!(spans(&long).is_empty());
     }
 }

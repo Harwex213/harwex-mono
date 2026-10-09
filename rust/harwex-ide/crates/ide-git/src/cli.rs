@@ -77,7 +77,7 @@ impl CommandEvent {
 }
 
 /// Git subcommands that never write. They are still logged, with `read_only` set.
-const READ_ONLY: &[&str] = &["status", "blame", "diff", "diff-tree", "show", "log", "rev-parse", "ls-files", "cat-file"];
+const READ_ONLY: &[&str] = &["status", "blame", "diff", "diff-tree", "diff-index", "show", "log", "rev-parse", "ls-files", "cat-file"];
 
 /// Read-only commands: blame of a 76k-line file takes about 11 s on a healthy machine.
 const READ_TIMEOUT: Duration = Duration::from_secs(30);

@@ -52,6 +52,9 @@ pub struct AppOptions {
     /// The SQLite file that keeps terminal tabs per project (`terminal_store.rs`). `None` (the
     /// default) keeps no tabs; tests that need it point it into their fixture folder.
     pub terminal_db: Option<PathBuf>,
+    /// Where "Back up files before saving" keeps old versions (`settings::files`). `None` (the
+    /// default, and every test that does not set it) makes no backups.
+    pub backup_dir: Option<PathBuf>,
 }
 
 impl Default for AppOptions {
@@ -69,6 +72,7 @@ impl Default for AppOptions {
             start: Instant::now(),
             instance: None,
             terminal_db: None,
+            backup_dir: None,
         }
     }
 }
@@ -100,6 +104,7 @@ impl IdeApp {
         state.terminal_command = options.terminal.clone();
         state.ws.terminals.command = options.terminal;
         state.terminal_store = options.terminal_db.map(crate::terminal_store::TerminalStore::new);
+        crate::settings::start(&mut state, options.backup_dir, options.deterministic);
         state.platform = match options.platform {
             Some(p) => p,
             None if options.deterministic => std::sync::Arc::new(crate::fileops::RecordingPlatform::new(std::env::temp_dir().join("harwex-ide-test-trash"))),
@@ -134,6 +139,7 @@ impl IdeApp {
         }
         let mut restore = crate::persist::Restore::default();
         if let Some(storage) = storage {
+            crate::settings::load_storage(&mut state, storage);
             git::load_storage(&mut state, storage);
             find::load_storage(&mut state, storage);
             restore = crate::persist::load(&mut state, storage);
@@ -240,6 +246,7 @@ impl eframe::App for IdeApp {
         crate::tree_menu::show_dialogs(s, ctx);
         crate::settings::show(s, ctx);
         nav::show_popup(s, ctx);
+        crate::lang::npm::show_popup(s, ctx);
         crate::rename_symbol::show(s, ctx);
         crate::unreal::show(s, ctx);
         breadcrumbs::show_popup(s, ctx);
@@ -253,6 +260,7 @@ impl eframe::App for IdeApp {
         crate::util::close_orphaned_context_menu(ctx);
 
         s.tick_workspaces();
+        crate::settings::files::tick(s, ctx);
         testhook::tick(s);
         if !s.jobs.running().is_empty() {
             // Keeps the spinner turning; ~10 fps is enough and costs nothing measurable.
@@ -274,6 +282,7 @@ impl eframe::App for IdeApp {
         crate::persist::save(&mut self.state, storage);
         git::save_storage(&self.state, storage);
         find::save_storage(&self.state, storage);
+        crate::settings::save_storage(&self.state, storage);
         // Terminal tabs live in their own database; this refreshes the shells' directories.
         crate::terminal::save_all(&mut self.state);
     }
@@ -287,6 +296,7 @@ impl eframe::App for IdeApp {
 
 fn shortcuts(s: &mut AppState, ctx: &Context) {
     nav::take_popup_keys(s, ctx);
+    crate::lang::npm::take_keys(s, ctx);
     find::take_keys(s, ctx);
     crate::projects_popup::take_keys(s, ctx);
     breadcrumbs::take_keys(s, ctx);
@@ -304,6 +314,10 @@ fn shortcuts(s: &mut AppState, ctx: &Context) {
     if new_term_t {
         crate::terminal::open_new(s);
     }
+    // Before the terminal, like IDEA: the shell never gets Cmd keys, and the terminal reports
+    // only mouse buttons 1-3 to its program.
+    nav::mouse_buttons(s, ctx);
+    tool_window_keys(s, ctx);
     // An editor tab drag takes Escape before the terminal and the editor do.
     s.ws.tabs.take_escape(ctx);
     // A focused terminal gets every key except Alt+F12 and Escape.
@@ -498,7 +512,9 @@ fn title_bar(s: &mut AppState, ctx: &Context) {
         crate::projects_popup::on_widget(s, &row, &project);
         row.add_space(TITLE_GAP);
         let settings = layout::icon_button(&mut row, Icon::Settings, "Settings", "Settings");
-        settings_menu(s, &row, &settings);
+        if settings.clicked() {
+            crate::settings::open(s);
+        }
         // The branch is display-only. The branches popup opens with Ctrl+Shift+` and drops
         // down from here.
         if let Some(label) = branch_label {
@@ -656,37 +672,6 @@ fn branch_widget(ui: &mut egui::Ui, branch: &str, text_w: f32) -> egui::Response
     resp
 }
 
-fn settings_menu(s: &mut AppState, ui: &egui::Ui, button: &egui::Response) {
-    let popup_id = Id::new("settings-menu");
-    if button.clicked() {
-        ui.memory_mut(|m| m.toggle_popup(popup_id));
-    }
-    egui::popup_below_widget(ui, popup_id, button, egui::PopupCloseBehavior::CloseOnClickOutside, |ui| {
-        ui.set_min_width(220.0);
-        let close = |ui: &egui::Ui| ui.memory_mut(|m| m.close_popup());
-        if ui.add(egui::Button::new("Open Folder...")).clicked() {
-            close(ui);
-            s.pick_folder();
-        }
-        if ui.add_enabled(s.ws.project.is_some(), egui::Button::new("Settings...").shortcut_text("⌘,")).clicked() {
-            close(ui);
-            crate::settings::open(s);
-        }
-        let config = s.ws.project.as_ref().map(|p| p.root.join(".harwex/ide.toml"));
-        if ui.add_enabled(config.is_some(), egui::Button::new("Project Settings (.harwex/ide.toml)")).clicked() {
-            close(ui);
-            if let Some(path) = config {
-                s.open_location(&path, None, true);
-            }
-        }
-        ui.separator();
-        if ui.add(egui::Button::new("Notifications")).clicked() {
-            close(ui);
-            s.ws.layout.show(ToolWindow::Notifications);
-        }
-    });
-}
-
 fn status_bar(s: &mut AppState, ctx: &Context) {
     let t = &theme::T;
     let panel = egui::TopBottomPanel::bottom("status-bar").exact_height(t.space.status_h).show_separator_line(false).frame(Frame::NONE.fill(t.window_bg).inner_margin(Margin::symmetric(10, 2))).show(ctx, |ui| {
@@ -793,6 +778,7 @@ fn tool_window(s: &mut AppState, ui: &mut egui::Ui, w: ToolWindow) {
         tool_window_body(s, ui, w);
     });
     note_tool_window_use(ui.ctx(), w, island.response.rect);
+    focus_activated(ui.ctx(), w, island.response.rect);
 }
 
 /// Which side's tool window Shift+Esc hides: the one used last (per project).
@@ -924,6 +910,126 @@ fn hide_active_tool_window(s: &mut AppState, ctx: &Context) {
     crate::terminal::focus_editor(s, ctx);
 }
 
+fn hidden_tool_windows_id() -> Id {
+    crate::workspace::wid("hidden-tool-windows")
+}
+
+fn activated_tool_window_id() -> Id {
+    crate::workspace::wid("activated-tool-window")
+}
+
+/// IDEA's tool window keys: ⌘1 Project, ⌘0 Commit, ⌘9 Git, ⌘6 Problems (Alt+F12 Terminal is
+/// in `terminal::shortcuts`), and ⇧⌘F12 Hide All Tool Windows, which restores them when
+/// pressed again.
+fn tool_window_keys(s: &mut AppState, ctx: &Context) {
+    let hide_all = ctx.input_mut(|i| i.consume_key(Modifiers::COMMAND | Modifiers::SHIFT, Key::F12));
+    if hide_all {
+        let id = hidden_tool_windows_id();
+        let mut saved = ctx.data(|d| d.get_temp::<layout::Layout>(id));
+        let hid = s.ws.layout.toggle_all(&mut saved);
+        ctx.data_mut(|d| match saved {
+            Some(l) => d.insert_temp(id, l),
+            None => d.remove::<layout::Layout>(id),
+        });
+        if hid {
+            crate::terminal::focus_editor(s, ctx);
+        }
+        return;
+    }
+    // Exact modifiers: consume_key ignores an extra Shift, and ⇧⌘<digit> is not ours.
+    let digit = ctx.input_mut(|i| {
+        if !i.modifiers.command_only() {
+            return None;
+        }
+        [Key::Num1, Key::Num0, Key::Num9, Key::Num6].into_iter().find(|&k| i.consume_key(Modifiers::COMMAND, k))
+    });
+    if let Some(w) = digit.and_then(ToolWindow::for_digit) {
+        activate_tool_window(s, ctx, w);
+    }
+}
+
+/// IDEA's Activate Tool Window: shows `w` and gives it the keys; when `w` already has them,
+/// hides it and gives the editor the keys.
+fn activate_tool_window(s: &mut AppState, ctx: &Context, w: ToolWindow) {
+    let side = w.side();
+    let shown = s.ws.layout.left == Some(w) || s.ws.layout.bottom == Some(w);
+    if shown && focused_tool_side(&s.ws, ctx) == Some(side) {
+        match side {
+            layout::Side::Left => s.ws.layout.left = None,
+            layout::Side::Bottom => s.ws.layout.bottom = None,
+        }
+        crate::terminal::focus_editor(s, ctx);
+        return;
+    }
+    s.ws.layout.show(w);
+    // Until the window's list takes the focus (`focus_activated`), the window counts as used
+    // by a press, so Esc, Shift+Esc and a second press see it as the active one. A window
+    // without a focusable list (Problems, Notifications) stays so.
+    if let Some(id) = ctx.memory(|m| m.focused()) {
+        ctx.memory_mut(|m| m.surrender_focus(id));
+    }
+    ctx.data_mut(|d| {
+        d.insert_temp(last_press_side_id(), Some(side));
+        d.insert_temp(last_tool_side_id(), side);
+    });
+    if w == ToolWindow::Project {
+        s.ws.tree.focus_pending();
+    } else {
+        let pending = Activated { window: w, since: ctx.input(|i| i.time), pass: ctx.cumulative_pass_nr() };
+        ctx.data_mut(|d| d.insert_temp(activated_tool_window_id(), pending));
+    }
+}
+
+/// A ⌘<digit> activation that waits for the window's list to take the focus.
+#[derive(Clone, Copy)]
+struct Activated {
+    window: ToolWindow,
+    /// egui time of the key press.
+    since: f64,
+    /// The last pass that drew the window.
+    pass: u64,
+}
+
+/// After `w`'s body is drawn: if ⌘<digit> activated it, the biggest keyboard-only widget on its
+/// island (the Commit tree, the Git log table, the Find results tree) takes the focus. A list
+/// that loads later (the Git log) still gets it, until the user presses a key or a button, the
+/// window misses a pass, or `ACTIVATE_WAIT_S` passes.
+fn focus_activated(ctx: &Context, w: ToolWindow, rect: Rect) {
+    const ACTIVATE_WAIT_S: f64 = 5.0;
+    let id = activated_tool_window_id();
+    let Some(mut pending) = ctx.data(|d| d.get_temp::<Activated>(id)) else { return };
+    if pending.window.side() != w.side() {
+        return;
+    }
+    let now = ctx.cumulative_pass_nr();
+    let (time, input) = ctx.input(|i| (i.time, i.pointer.any_pressed() || i.events.iter().any(|e| matches!(e, egui::Event::Key { pressed: true, .. }))));
+    let stale = pending.window != w || now > pending.pass + 1 || time > pending.since + ACTIVATE_WAIT_S || (input && time > pending.since);
+    if stale {
+        ctx.data_mut(|d| d.remove::<Activated>(id));
+        return;
+    }
+    let target = ctx.viewport(|v| {
+        v.this_pass
+            .widgets
+            .layers()
+            .filter(|(layer, _)| layer.order == egui::Order::Background)
+            .flat_map(|(_, widgets)| widgets.iter())
+            .filter(|r| r.sense == Sense::focusable_noninteractive() && rect.contains(r.rect.center()))
+            .max_by(|a, b| a.rect.area().total_cmp(&b.rect.area()))
+            .map(|r| r.id)
+    });
+    match target {
+        Some(target) => {
+            ctx.memory_mut(|m| m.request_focus(target));
+            ctx.data_mut(|d| d.remove::<Activated>(id));
+        }
+        None => {
+            pending.pass = now;
+            ctx.data_mut(|d| d.insert_temp(id, pending));
+        }
+    }
+}
+
 fn open_dropped_files(s: &mut AppState, ctx: &Context) {
     let dropped: Vec<PathBuf> = ctx.input(|i| i.raw.dropped_files.iter().filter_map(|f| f.path.clone()).collect());
     if s.ws.project.is_none() {
@@ -983,6 +1089,7 @@ fn editor_area(s: &mut AppState, ui: &mut egui::Ui) {
         return;
     };
 
+    let font_size = s.settings.global.editor.font_size;
     let AppState { ws, jobs, notifications, editor_theme, .. } = &mut *s;
     let crate::workspace::Workspace { tabs, project, git: git_info, commands, .. } = ws;
     // A custom tab that edits a file's document in place borrows that file's editor tab.
@@ -993,21 +1100,34 @@ fn editor_area(s: &mut AppState, ui: &mut egui::Ui) {
     let (Some(tab), editor) = tabs.get_with_editor(active, shared) else { return };
     let out = match &mut tab.content {
         TabContent::Editor(e) => {
-            e.problems.refresh(&e.doc);
-            let r = EditorView::new(&mut e.doc, &mut e.view)
-                .problems(&e.problems.marks)
-                .gutter_marks(&e.marks)
-                .annotations(&e.annotations)
-                .theme(editor_theme)
-                .read_only(e.read_only)
-                .show(ui);
-            if r.changed {
-                e.last_edit = Instant::now();
+            let draw = |ui: &mut egui::Ui, e: &mut crate::tabs::EditorTab| {
                 e.problems.refresh(&e.doc);
+                let r = EditorView::new(&mut e.doc, &mut e.view)
+                    .problems(&e.problems.marks)
+                    .gutter_marks(&e.marks)
+                    .annotations(&e.annotations)
+                    .theme(editor_theme)
+                    .font_size(font_size)
+                    .read_only(e.read_only)
+                    .show(ui);
+                if r.changed {
+                    e.last_edit = Instant::now();
+                    e.problems.refresh(&e.doc);
+                }
+                let next_problem = crate::diagnostics::problems::counts_widget(ui, e.view.geometry().map_or(r.response.rect, |g| g.text_rect), e);
+                let hover_problems = r.hover.map(|p| crate::diagnostics::hover_lines(e, p)).unwrap_or_default();
+                (r, next_problem, hover_problems)
+            };
+            // A Markdown tab splits into editor and preview (`viewer::markdown`).
+            match e.markdown.as_deref().map(|p| crate::viewer::markdown::panes(ui, p)) {
+                None => Some(draw(ui, e)),
+                Some(panes) => {
+                    let out = panes.editor.map(|r| draw(&mut ui.new_child(egui::UiBuilder::new().max_rect(r)), e));
+                    let env = crate::viewer::markdown::Env { jobs, root: project.as_ref().map(|p| p.root.as_path()) };
+                    crate::viewer::markdown::finish(ui, e, panes, &env);
+                    out
+                }
             }
-            let next_problem = crate::diagnostics::problems::counts_widget(ui, e.view.geometry().map_or(r.response.rect, |g| g.text_rect), e);
-            let hover_problems = r.hover.map(|p| crate::diagnostics::hover_lines(e, p)).unwrap_or_default();
-            Some((r, next_problem, hover_problems))
         }
         TabContent::Custom(c) => {
             let mut env = TabEnv {
@@ -1025,6 +1145,7 @@ fn editor_area(s: &mut AppState, ui: &mut egui::Ui) {
         }
     };
     let Some((r, next_problem, hover_problems)) = out else { return };
+    crate::lang::npm::after_editor(s, active, r.changed, r.has_focus);
     if next_problem {
         crate::diagnostics::goto_next(s, true);
     }

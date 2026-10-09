@@ -59,6 +59,10 @@ pub struct FileDiff {
     /// Binary content has no texts and no hunks.
     pub binary: bool,
     pub hunks: Vec<DiffHunk>,
+    /// The raw sides of a binary diff (the app's image diff decodes them); empty for text and
+    /// for a side that does not exist.
+    pub old_bytes: Vec<u8>,
+    pub new_bytes: Vec<u8>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -95,12 +99,14 @@ pub(crate) fn build(path: PathBuf, old_path: Option<PathBuf>, old: Option<Vec<u8
             new_exists,
             binary,
             hunks: Vec::new(),
+            old_bytes: old.unwrap_or_default(),
+            new_bytes: new.unwrap_or_default(),
         };
     }
     let old_text = old.map(|b| bytes_to_text(&b)).unwrap_or_default();
     let new_text = new.map(|b| bytes_to_text(&b)).unwrap_or_default();
     let hunks = diff_texts(&old_text, &new_text);
-    FileDiff { path, old_path, old_text, new_text, old_exists, new_exists, binary, hunks }
+    FileDiff { path, old_path, old_text, new_text, old_exists, new_exists, binary, hunks, old_bytes: Vec::new(), new_bytes: Vec::new() }
 }
 
 pub(crate) fn tree_blob(repo: &git2::Repository, tree: &git2::Tree, path: &Path) -> Result<Option<Vec<u8>>> {

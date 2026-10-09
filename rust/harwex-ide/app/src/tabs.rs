@@ -44,6 +44,9 @@ pub struct EditorTab {
     pub(crate) saving: bool,
     /// Errors and warnings from the TS server and the linters.
     pub problems: crate::diagnostics::FileProblems,
+    /// The preview of a Markdown file and its Editor / Split / Preview mode. `None` for other
+    /// files.
+    pub markdown: Option<Box<crate::viewer::markdown::Preview>>,
 }
 
 impl EditorTab {
@@ -52,6 +55,7 @@ impl EditorTab {
         let virtual_kind = crate::lang::virtual_kind(&path);
         let mut view = EditorState::new();
         view.set_soft_wrap(ide_editor::wrap::default_for(&path, doc.language()));
+        let markdown = crate::viewer::markdown::is_markdown(&path).then(Box::default);
         EditorTab {
             path,
             doc,
@@ -67,6 +71,7 @@ impl EditorTab {
             last_edit: Instant::now(),
             saving: false,
             problems: Default::default(),
+            markdown,
         }
     }
 
@@ -112,6 +117,11 @@ pub trait CustomTab: Any {
     /// both share one buffer and one undo history.
     fn shared_editor(&self) -> Option<PathBuf> {
         None
+    }
+    /// The strip draws the file icon of `file_path` instead of the generic one (the image
+    /// viewer, which shows a file rather than a git view of it).
+    fn file_icon(&self) -> bool {
+        false
     }
     /// Work that waits for a quiet period (a debounced save). Part of `is_idle()`.
     fn has_pending_work(&self) -> bool {
@@ -694,7 +704,10 @@ fn tab_button(ui: &mut Ui, tab: &Tab, active: bool, rect: Rect, galley: std::syn
     let read_only = tab.editor().is_some_and(|e| e.read_only);
     match &tab.content {
         TabContent::Editor(e) => icons::file(painter, icon_c, 14.0, &e.path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()),
-        TabContent::Custom(_) => icons::paint(painter, Rect::from_center_size(icon_c, Vec2::splat(14.0)), Icon::Branch, t.icon),
+        TabContent::Custom(c) => match c.file_path().filter(|_| c.file_icon()) {
+            Some(p) => icons::file(painter, icon_c, 14.0, &p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()),
+            None => icons::paint(painter, Rect::from_center_size(icon_c, Vec2::splat(14.0)), Icon::Branch, t.icon),
+        },
     }
     if read_only {
         icons::paint(painter, Rect::from_center_size(icon_c + Vec2::new(5.0, 4.0), Vec2::splat(9.0)), Icon::Lock, t.text_dim);

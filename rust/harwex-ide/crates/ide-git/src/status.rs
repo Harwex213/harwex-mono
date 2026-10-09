@@ -110,6 +110,13 @@ impl PartialEq for GitStamp {
 
 impl Eq for GitStamp {}
 
+impl GitStamp {
+    /// HEAD's commit when the stamp was taken; `None` on an unborn branch.
+    pub fn head_oid(&self) -> Option<Oid> {
+        self.head_oid
+    }
+}
+
 fn staged_code(c: u8) -> Option<ChangeKind> {
     match c {
         b'A' | b'C' => Some(ChangeKind::Added),
@@ -201,6 +208,49 @@ impl Repo {
         // A path that sits in two chunks (a file and its directory) is reported twice.
         out.dedup_by(|a, b| a.path == b.path);
         Ok(out)
+    }
+
+    /// The paths whose status can differ from a status taken while HEAD was `since_head`,
+    /// apart from plain worktree edits: the files that differ between that commit and HEAD,
+    /// plus every staged or conflicted path now. `None` when there are more than `limit`
+    /// paths, or HEAD is unborn then or now; a full status is the cheaper answer there.
+    ///
+    /// The caller adds the paths of the rows it shows, and its file watcher reports worktree
+    /// edits. A `status_of` over the union then equals a full status, at a fraction of its
+    /// cost on a big repository (one tree diff and one index-vs-HEAD diff that uses the
+    /// index's cache tree).
+    pub fn changed_paths(&self, since_head: Option<Oid>, limit: usize) -> Result<Option<Vec<PathBuf>>> {
+        let repo = self.open()?;
+        let (Some(old), Ok(new)) = (since_head, repo.refname_to_id("HEAD")) else {
+            return Ok(None);
+        };
+        let mut set: HashSet<PathBuf> = HashSet::new();
+        let mut add = |stdout: &[u8]| {
+            set.extend(stdout.split(|&b| b == 0).filter(|p| !p.is_empty()).map(bytes_path));
+            set.len() <= limit
+        };
+        // Both through the CLI: on a 500k-file repository libgit2's tree diff took 3-4 s where
+        // `git diff-tree` takes 0.06 s, and `diff-index --cached` compares the index with HEAD
+        // through the index's cache tree without a stat of the worktree.
+        let env = [("GIT_OPTIONAL_LOCKS", Path::new("0"))];
+        if old != new {
+            let (old, new) = (old.to_string(), new.to_string());
+            let args = ["diff-tree", "-r", "--name-only", "-z", "--no-renames", "--no-ext-diff", "--no-textconv", &old, &new, "--"];
+            let (outcome, stdout) = self.git_run(&args, Run { env: &env, ..Run::default() })?;
+            outcome.into_result()?;
+            if !add(&stdout) {
+                return Ok(None);
+            }
+        }
+        let args = ["diff-index", "--cached", "--name-only", "-z", "--no-renames", "--ignore-submodules=all", "HEAD", "--"];
+        let (outcome, stdout) = self.git_run(&args, Run { env: &env, ..Run::default() })?;
+        outcome.into_result()?;
+        if !add(&stdout) {
+            return Ok(None);
+        }
+        let mut out: Vec<PathBuf> = set.into_iter().collect();
+        out.sort();
+        Ok(Some(out))
     }
 
     fn status_run(&self, args: &[&str], timeout: Option<Duration>) -> Result<Vec<FileChange>> {

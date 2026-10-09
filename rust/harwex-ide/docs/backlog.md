@@ -26,6 +26,9 @@ Commit window:
 - [idea] Stage/Unstage (drop or menu) shows a success toast on every action, because it goes through `run_op`. IDEA is silent on success. Make stage/unstage success quiet; keep error toasts.
 
 Navigation and languages:
+- [idea] Find in Files on mono: a no-match search still reads all 500k files (16 s with 4 threads; rg 25.8 s). Only an index makes it instant: IDEA keeps a trigram index of file contents. Build one on a worker (persisted, updated from watcher batches), filter candidate files by the query's trigrams, then grep only those (found in task 099).
+- [idea] The Find window shows only a spinner while it fills; stream results into it like the popup. Editing a `.gitignore` does not rebuild the file index (found in task 099).
+- [idea] Inline-code background applies to every `Language::Plain` file, so backticks in shell scripts and Dockerfiles get it too; `Language` does not know the extension. Limit it to `.txt`/no extension. Code spans broken by a newline are not marked (found in task 094).
 - [idea] The terminal never sets `PlatformOutput::ime`, so IME (dead keys, CJK) is off there and the input-source bubble sits at a stale rect (found in task 090).
 - [idea] Opening an Unreal engine source tree itself as the project makes its `Engine/Source` files read-only: the engine-path check looks only at the path (found in task 085).
 - [idea] Language servers for Java (JDT LS) and Kotlin (kotlin-lsp, weak). Java reuses the read-only virtual documents of task 084 for `jdt://` URIs. Discussed on 2026-10-05; highlighting only for now.
@@ -39,6 +42,8 @@ Navigation and languages:
 - [idea] Search Everywhere for symbols and actions, not only files.
 
 Project tree and shell:
+- [idea] Settings (task 101) gaps: backups cover only `save_tab` (not diff/Find-preview/commit writes); font size skips diff and preview views; no global soft-wrap default; removing a key from `ide.toml` also drops the comment above it.
+- [idea] Viewers (task 095) gaps: image tabs are not restored after restart or by Cmd+Shift+T; preview mode is not persisted; animated GIF shows frame 1; SVG text not drawn; preview text not selectable; Markdown preview images do not reload on change. A binary `FileDiff` keeps both sides' raw bytes, check the memory on big binaries (cap by size).
 - [idea] `jobs::report_progress` exists but no real job calls it, so every job shows a moving bar, not a share. Wire it into indexing, git fetch/update and UBT (found in task 088).
 - [idea] The editor has no file context menu (its right-click menu holds only code actions). IDEA puts file actions (Copy Path, Reveal, Rename File, Git → Annotate/History…) into the editor tab menu; reuse `tree_menu::file_menu` there (found in task 082).
 - [idea] Show ignored files (like `node_modules`) in olive in the tree, like IDEA, instead of hiding them.
@@ -50,6 +55,7 @@ Terminal:
 - [idea] Terminal color queries (OSC 4/10/11) answer the program's own OSC 4 overrides.
 
 Git:
+- [idea] The full status on mono stays 12 s (startup, Refresh, Unstash): 9.8 s untracked walk + 2.1 s lstat. Only fsmonitor plus the untracked cache gets it near 1 s, and both need a written index (a private copy through `GIT_INDEX_FILE` in our cache, refreshed when the real index entries change) and, for fsmonitor, a daemon that writes into the user's `.git` (`-c core.fsmonitor=true`) or our own watcher as an fsmonitor hook (found in task 100).
 - [idea] Unstage takes 3.1 s on mono: libgit2 `rename_sources` + `reset_default` read the whole 108 MB index. `git reset -q -- <paths>` through the CLI is a candidate (found in task 067).
 - [idea] Diff tab: apply/revert hunk arrows, unified view, ignore whitespace, collapse unchanged runs.
 - [idea] Editable diff without an open tab: edits younger than the 500 ms autosave are lost on an immediate quit, and the diff tab shows no dirty mark (found in task 071).

@@ -1,6 +1,5 @@
 import * as THREE from "three";
 import type { Shot } from "../state";
-import { GAMESHOW_SHOT } from "./annex";
 import { WHEEL_CENTER } from "./wheel";
 
 const BASE_FOV = 40;
@@ -19,17 +18,37 @@ const NEAR = {
   target: WHEEL_CENTER.clone(),
 };
 
-// The Game Show shot (annex.ts) pushes in by this share of the distance to its target and back, once per period.
-const GAMESHOW_PERIOD = 36;
-const GAMESHOW_PUSH = 0.12;
+// The station shots: one per bonus game. A station shot is set in the frame of its game object: the origin is
+// the pivot of the object (the bottom centre), local +z is the front of the object, local +x its own x axis.
+// The frame is read from the live object every frame, so the shot follows the game when the user moves it in the editor.
+// - `camera`, `target`: the rest pose of the camera in that frame.
+// - The idle motion pushes in by `push` of the distance to the target and back, once per `period` seconds,
+//   and drifts sideways across the line of sight.
+type Station = Exclude<Shot, "wheel">;
+
+interface StationShot {
+  camera: THREE.Vector3;
+  target: THREE.Vector3;
+  push: number;
+  period: number;
+}
+
+const STATION_SHOTS: Record<Station, StationShot> = {
+  // Bonus Dice, the acrylic tower: a 3/4 view from its right front, the camera a little under the top of the case.
+  dice: { camera: new THREE.Vector3(3.0, 3.0, 7.4), target: new THREE.Vector3(0.2, 2.1, 0), push: 0.1, period: 34 },
+  // Bonus Show, the jester wheel (the user's screenshot of the Game Show shot): the camera stands 11 m from the wheel
+  // and 30 degrees off its face axis, at 3.7 m, and looks almost level. The wheel sits in the middle of the frame.
+  show: { camera: new THREE.Vector3(-5.6, 3.7, 9.7), target: new THREE.Vector3(0, 3.0, 0), push: 0.12, period: 36 },
+  // Bonus Luck, the slot cabinet: the mirror of the Bonus Dice shot, from its left front.
+  luck: { camera: new THREE.Vector3(-2.8, 2.6, 6.6), target: new THREE.Vector3(-0.1, 1.8, 0), push: 0.1, period: 32 },
+};
 
 // A move between shots: the camera cranes up to this height on the way, over every prop of the set.
-// The move from the wheel shot to the Game Show shot runs in a straight line on the plan: from the front of the
-// amphitheatre to the right, into the Game Show room, and the view turns right from -z to +x.
+// The move runs in a straight line on the plan, and the view turns by the short way round.
 const TRAVEL_APEX = 7;
-const TRAVEL_BASE = 2.4;
-const TRAVEL_PER_METRE = 0.015;
-const TRAVEL_MAX = 3.2;
+const TRAVEL_BASE = 2.6;
+const TRAVEL_PER_METRE = 0.03;
+const TRAVEL_MAX = 3.4;
 
 interface Pose {
   position: THREE.Vector3;
@@ -90,14 +109,32 @@ function wheelPose(swingTime: number, dollyTime: number, pose: Pose): void {
 }
 
 const side = new THREE.Vector3();
+const anchorPosition = new THREE.Vector3();
+const anchorQuaternion = new THREE.Quaternion();
+const anchorFront = new THREE.Vector3();
+const anchorScale = new THREE.Vector3();
 
-// The Game Show shot: a slow push in and out, and a sideways drift across the line of sight.
-function gameShowPose(swingTime: number, dollyTime: number, pose: Pose): void {
-  const base = GAMESHOW_SHOT;
-  const k = dollyCurve((dollyTime / GAMESHOW_PERIOD) % 1);
-  pose.position.lerpVectors(base.position, base.target, k * GAMESHOW_PUSH);
-  pose.target.copy(base.target);
-  side.subVectors(base.target, base.position).setY(0).normalize();
+const UP = new THREE.Vector3(0, 1, 0);
+
+// Moves a point of the station frame into world space. The frame is `anchorPosition` turned about y towards `anchorFront`.
+function fromStation(local: THREE.Vector3, out: THREE.Vector3): THREE.Vector3 {
+  const yaw = Math.atan2(anchorFront.x, anchorFront.z);
+  return out.copy(local).applyAxisAngle(UP, yaw).add(anchorPosition);
+}
+
+// A station shot: a slow push in and out, and a sideways drift across the line of sight.
+function stationPose(anchor: THREE.Object3D, base: StationShot, swingTime: number, dollyTime: number, pose: Pose): void {
+  anchor.updateWorldMatrix(true, false);
+  anchor.matrixWorld.decompose(anchorPosition, anchorQuaternion, anchorScale);
+  anchorFront.set(0, 0, 1).applyQuaternion(anchorQuaternion).setY(0);
+  if (anchorFront.lengthSq() < 1e-6) {
+    anchorFront.set(0, 0, 1);
+  }
+  fromStation(base.target, pose.target);
+  fromStation(base.camera, pose.position);
+  const k = dollyCurve((dollyTime / base.period) % 1);
+  pose.position.lerp(pose.target, k * base.push);
+  side.subVectors(pose.target, pose.position).setY(0).normalize();
   side.set(-side.z, 0, side.x);
   const t = swingTime;
   pose.position.addScaledVector(side, Math.sin(t * 0.11) * 0.3 + Math.sin(t * 0.067 + 1.3) * 0.12);
@@ -106,7 +143,8 @@ function gameShowPose(swingTime: number, dollyTime: number, pose: Pose): void {
   pose.roll = Math.sin(t * 0.059) * 0.003;
 }
 
-function createCameraRig(camera: THREE.PerspectiveCamera, initialShot: Shot) {
+// `stations`: the game object of each station shot.
+function createCameraRig(camera: THREE.PerspectiveCamera, initialShot: Shot, stations: Record<Station, THREE.Object3D>) {
   let swingTime = 0;
   let dollyTime = 0;
   let shot = initialShot;
@@ -119,7 +157,7 @@ function createCameraRig(camera: THREE.PerspectiveCamera, initialShot: Shot) {
     if (shot === "wheel") {
       wheelPose(swingTime, dollyTime, pose);
     } else {
-      gameShowPose(swingTime, dollyTime, pose);
+      stationPose(stations[shot], STATION_SHOTS[shot], swingTime, dollyTime, pose);
     }
   };
 
@@ -209,3 +247,4 @@ function createCameraRig(camera: THREE.PerspectiveCamera, initialShot: Shot) {
 const WIDE_SHOT_POSITION = FAR.position;
 
 export { createCameraRig, WIDE_SHOT_POSITION };
+export type { Station };

@@ -1,8 +1,8 @@
 //! Git status refresh in IDEA's model (`app/src/git/refresh.rs`): our own writes and file
 //! changes refresh only their paths, a `.git` change from our own write runs nothing, an
-//! outside index change runs exactly one full status, and a burst of `.git` events during a
-//! running full status queues no second one. Every step checks that the UI equals what a full
-//! status reports.
+//! outside index or HEAD change runs exactly one incremental status (a full walk only above
+//! `MAX_CHANGED` paths), and a burst of `.git` events during a running full status queues no
+//! second one. Every step checks that the UI equals what a full status reports.
 
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -18,6 +18,10 @@ const SUITE: &str = "git_refresh";
 fn runs(ide: &Ide) -> (u64, u64, u64) {
     let r = &ide.state().ws.git.refresh;
     (r.full_runs, r.path_runs, r.light_runs)
+}
+
+fn changed_runs(ide: &Ide) -> u64 {
+    ide.state().ws.git.refresh.changed_runs
 }
 
 /// The UI's status must equal a full status read now.
@@ -122,7 +126,7 @@ fn a_rename_refreshes_both_sides() {
 }
 
 #[test]
-fn an_outside_index_change_runs_one_full_status() {
+fn an_outside_index_change_runs_one_incremental_status() {
     let fx = Fixture::new(SUITE, "outside");
     let repo = changed_repo(fx.path("repo"));
     let mut ide = Ide::open(SUITE, &repo.dir);
@@ -133,7 +137,8 @@ fn an_outside_index_change_runs_one_full_status() {
     fs_batch(&mut ide, &[], true);
     fs_batch(&mut ide, &[], true);
     ide.settle();
-    assert_eq!(runs(&ide).0, full + 1, "exactly one full status");
+    assert_eq!(changed_runs(&ide), 1, "exactly one incremental status");
+    assert_eq!(runs(&ide).0, full, "no full walk");
     assert_matches_full_status(&ide, &repo.dir, "after the outside git add");
 
     // A shell prompt's `git status` rewrites the index with new stat data only.
@@ -142,7 +147,73 @@ fn an_outside_index_change_runs_one_full_status() {
     repo.git(&["status", "--porcelain"]);
     fs_batch(&mut ide, &[], true);
     ide.settle();
-    assert_eq!(runs(&ide).0, full + 1, "a stat-only index rewrite runs no full status");
+    assert_eq!((runs(&ide).0, changed_runs(&ide)), (full, 1), "a stat-only index rewrite runs no status");
+
+    // A terminal commit, `reset --mixed HEAD~1` and a checkout of another branch: HEAD moves,
+    // and the worktree changes only through git.
+    repo.git(&["commit", "-q", "-m", "outside commit"]);
+    fs_batch(&mut ide, &[], true);
+    ide.settle();
+    assert_matches_full_status(&ide, &repo.dir, "after the outside commit");
+    repo.git(&["reset", "-q", "HEAD~1"]);
+    fs_batch(&mut ide, &[], true);
+    ide.settle();
+    assert_matches_full_status(&ide, &repo.dir, "after reset --mixed");
+    repo.git(&["stash", "-q", "-u"]);
+    repo.git(&["checkout", "-q", "-b", "side"]);
+    repo.write("side.txt", "side\n");
+    repo.write("README.md", "side readme\n");
+    repo.commit_all("Side work");
+    repo.git(&["checkout", "-q", "main"]);
+    repo.git(&["stash", "pop", "-q"]);
+    fs_batch(&mut ide, &[], true);
+    ide.settle();
+    // The stash pop wrote files that neither HEAD nor the index explain; the watcher reports them.
+    fs_batch(&mut ide, &[repo.dir.join("src/app.ts"), repo.dir.join("src/added.ts"), repo.dir.join("scratch.txt")], false);
+    ide.settle();
+    assert_matches_full_status(&ide, &repo.dir, "after the stash round trip");
+    repo.git(&["checkout", "-q", "side"]);
+    fs_batch(&mut ide, &[], true);
+    ide.settle();
+    assert_matches_full_status(&ide, &repo.dir, "after an outside checkout");
+    assert_eq!(runs(&ide).0, full, "every step ran without a full walk");
+    // The stash round trip may leave the index as it was: then only the branches are re-read.
+    assert!(changed_runs(&ide) >= 4, "{}", changed_runs(&ide));
+}
+
+/// A checkout that changes more than `MAX_CHANGED` (400) paths walks the whole tree.
+#[test]
+fn a_big_checkout_walks_the_whole_tree() {
+    let fx = Fixture::new(SUITE, "big_checkout");
+    let repo = changed_repo(fx.path("repo"));
+    repo.git(&["stash", "-q", "-u"]);
+    repo.git(&["checkout", "-q", "-b", "big"]);
+    for i in 0..450 {
+        repo.write(&format!("many/f{i}.txt"), "x\n");
+    }
+    repo.commit_all("Many files");
+    repo.git(&["checkout", "-q", "main"]);
+    repo.git(&["stash", "pop", "-q"]);
+    let mut ide = Ide::open(SUITE, &repo.dir);
+    let full = runs(&ide).0;
+    // A checkout from the Git window (`run_op`) refreshes through the incremental status.
+    menu_checkout(&mut ide, "big");
+    assert_eq!(changed_runs(&ide), 1);
+    assert_eq!(runs(&ide).0, full + 1, "450 changed paths: a full walk");
+    assert_matches_full_status(&ide, &repo.dir, "after the big checkout");
+}
+
+fn menu_checkout(ide: &mut Ide, branch: &str) {
+    ide.key_mods(CTRL_SHIFT, egui::Key::Backtick);
+    let row = format!("Local branch {branch}");
+    let r2 = row.clone();
+    ide.wait_until("branches popup", move |ide| ide.has(&r2));
+    ide.hover(&row);
+    ide.wait_until("submenu", |ide| ide.has("Checkout"));
+    ide.click("Checkout");
+    let b = branch.to_string();
+    ide.wait_for("checked out", move |s| s.ws.git.branch.as_deref() == Some(b.as_str()) && s.is_idle());
+    ide.settle();
 }
 
 #[test]

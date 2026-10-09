@@ -50,7 +50,7 @@
 //! [diagnostics.eslint]                # default: on where a package has an ESLint config
 //! enabled = true
 //!
-//! [format.oxfmt]                    # Settings > Tools > oxfmt
+//! [format.oxfmt]                    # Settings > Editor > oxfmt
 //! on_save = false                     # format with the project's oxfmt on Cmd+S / Save All
 //! extensions = ["ts", "tsx", "js"]    # file types it formats (default: JS/TS, JSON, CSS, md)
 //! timeout_secs = 10                   # past it the file is saved unformatted

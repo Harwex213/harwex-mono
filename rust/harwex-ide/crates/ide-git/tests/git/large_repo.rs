@@ -132,10 +132,26 @@ fn status_and_log_budgets_on_generated_large_repo() {
     let (by_path, by_path_time) = timed(|| git.log(&filter, 0, 50).unwrap());
     assert!(!by_path.is_empty());
 
+    // The refresh after a HEAD change (the app's incremental status): the paths that changed
+    // between HEAD~20 and HEAD plus the 160 rows, through `status_of`.
+    let since = git.stamp(None).unwrap().head_oid();
+    let back = Command::new("git").args(["rev-parse", "HEAD~20"]).current_dir(repo.path()).output().unwrap();
+    let back = ide_git::Oid::from_str(String::from_utf8_lossy(&back.stdout).trim()).unwrap();
+    assert!(since.is_some());
+    let ((changed, incremental), incremental_time) = timed(|| {
+        let mut set = git.changed_paths(Some(back), 400).unwrap().expect("under the limit");
+        let changed = set.len();
+        set.extend(status.iter().map(|c| c.path.clone()));
+        (changed, git.status_of(&set).unwrap())
+    });
+    assert!(changed > 0);
+    assert_eq!(incremental.len(), 160, "{incremental:?}");
+
     eprintln!(
         "{} files, {commits} commits: generate {generated:?}, status cold {cold_status:?}, warm min {warm_status:?}, \
          log 200 {first_page:?}, graph {graph_time:?} (width {width}), log at skip 1000 {deep_page:?}, \
-         branches {branches_time:?}, log by path ({}) {by_path_time:?}",
+         branches {branches_time:?}, log by path ({}) {by_path_time:?}, incremental status \
+         ({changed} changed paths + 160 rows) {incremental_time:?}",
         DIRS * FILES_PER_DIR,
         by_path.len()
     );
@@ -144,4 +160,38 @@ fn status_and_log_budgets_on_generated_large_repo() {
     assert!(deep_page < Duration::from_millis(100), "log page at skip 1000 took {deep_page:?}");
     assert!(graph_time < Duration::from_millis(50), "graph took {graph_time:?}");
     assert!(branches_time < Duration::from_millis(200), "branches took {branches_time:?}");
+    assert!(incremental_time < Duration::from_millis(500), "incremental status took {incremental_time:?}");
+}
+
+/// The refresh pieces on a real repository, read-only (`GIT_OPTIONAL_LOCKS=0` reads and
+/// libgit2): `HARWEX_GIT_BENCH_REPO=<repo> cargo test --release -p ide-git --test git
+/// large_repo::bench_external_repo -- --ignored --nocapture`. `HARWEX_GIT_BENCH_BACK` sets
+/// how many commits back the "old HEAD" is (default 1).
+#[test]
+#[ignore]
+fn bench_external_repo() {
+    let Some(dir) = std::env::var_os("HARWEX_GIT_BENCH_REPO") else {
+        eprintln!("HARWEX_GIT_BENCH_REPO is not set: nothing to measure");
+        return;
+    };
+    let back: usize = std::env::var("HARWEX_GIT_BENCH_BACK").ok().and_then(|v| v.parse().ok()).unwrap_or(1);
+    let git = ide_git::Repo::discover(std::path::Path::new(&dir)).unwrap();
+    let (stamp, stamp_cold) = timed(|| git.stamp(None).unwrap());
+    let (_, stamp_warm) = timed(|| git.stamp(Some(&stamp)).unwrap());
+    let out = Command::new("git").args(["rev-parse", &format!("HEAD~{back}")]).env("GIT_OPTIONAL_LOCKS", "0").current_dir(git.workdir()).output().unwrap();
+    let old = ide_git::Oid::from_str(String::from_utf8_lossy(&out.stdout).trim()).unwrap();
+    let (rows, full) = timed(|| git.status().unwrap());
+    let (changed, changed_time) = timed(|| git.changed_paths(Some(old), 400).unwrap());
+    let Some(mut set) = changed else {
+        eprintln!("stamp cold {stamp_cold:?}, warm {stamp_warm:?}; full status {full:?} ({} rows); over 400 changed paths since HEAD~{back}", rows.len());
+        return;
+    };
+    let n = set.len();
+    set.extend(rows.iter().map(|c| c.path.clone()));
+    let (_, status_of) = timed(|| git.status_of(&set).unwrap());
+    eprintln!(
+        "stamp cold {stamp_cold:?}, warm {stamp_warm:?}; full status {full:?} ({} rows); changed_paths since HEAD~{back} {changed_time:?} ({n} paths); \
+         status_of those + rows {status_of:?}",
+        rows.len()
+    );
 }

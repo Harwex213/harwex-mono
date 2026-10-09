@@ -39,11 +39,14 @@ mod lint_budget;
 mod memory;
 mod multi_caret;
 mod navigation;
+mod npm_completion;
 mod occurrences;
 mod project_menu;
+mod previews;
 mod projects;
 mod restart;
 mod rust_nav;
+mod settings;
 mod shell;
 mod soft_wrap;
 mod status_jobs;
@@ -54,7 +57,9 @@ mod time_limits;
 mod tool_window_esc;
 mod tool_window_hide;
 mod tree_multi;
+mod tree_search;
 mod unreal_nav;
+mod window_keys;
 mod workspaces;
 
 /// Runs `common::init` before `main`, while the process has one thread. Every test then sees

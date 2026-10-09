@@ -241,6 +241,8 @@ pub enum TreeAction {
     DiffWithWorkingTree(String),
     Merge(String),
     Rebase(String),
+    /// `git rebase --update-refs`: the branches stacked under the current one move too.
+    RebaseUpdateRefs(String),
     /// IDEA's "Update" on a local branch with an upstream, checked out or not.
     Update(String),
     /// "Pull into Current" on the remote branch the current branch tracks: the Update Project dialog.
@@ -494,6 +496,7 @@ fn branch_menu(ui: &mut Ui, b: &BranchRow, current_upstream: Option<&str>, actio
         ui.separator();
         item(ui, true, &format!("Merge '{n}' into Current"), TreeAction::Merge(n.clone()));
         item(ui, true, &format!("Rebase Current onto '{n}'"), TreeAction::Rebase(n.clone()));
+        item(ui, true, &format!("Rebase Current onto '{n}' (Update Refs)"), TreeAction::RebaseUpdateRefs(n.clone()));
     }
     let pull = b.remote && current_upstream == Some(n.as_str());
     let update = !b.remote && b.upstream.is_some();

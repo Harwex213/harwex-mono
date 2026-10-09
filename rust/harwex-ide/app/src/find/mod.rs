@@ -14,6 +14,8 @@
 mod history;
 mod popup;
 mod source;
+#[cfg(test)]
+mod bench;
 
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -368,7 +370,7 @@ impl Engine {
                 if *case_sensitive {
                     finder.find_iter(bytes).count()
                 } else {
-                    finder.find_iter(&bytes.to_ascii_lowercase()).count()
+                    with_lowered(bytes, |hay| finder.find_iter(hay).count())
                 }
             }
             Engine::Regex(re) => re.find_iter(bytes).filter(|m| !m.is_empty()).count(),
@@ -380,20 +382,20 @@ impl Engine {
         let mut out = Vec::new();
         match self {
             Engine::Literal { finder, case_sensitive } => {
-                let lowered;
-                let hay = if *case_sensitive {
-                    bytes
-                } else {
-                    lowered = bytes.to_ascii_lowercase();
-                    &lowered
-                };
                 let len = finder.needle().len();
-                for at in finder.find_iter(hay) {
-                    // A multiline query matches across lines; the list shows its first line.
-                    out.push((at, at + len, replacement.map(str::to_string)));
-                    if out.len() >= limit {
-                        break;
+                let mut collect = |hay: &[u8]| {
+                    for at in finder.find_iter(hay) {
+                        // A multiline query matches across lines; the list shows its first line.
+                        out.push((at, at + len, replacement.map(str::to_string)));
+                        if out.len() >= limit {
+                            break;
+                        }
                     }
+                };
+                if *case_sensitive {
+                    collect(bytes);
+                } else {
+                    with_lowered(bytes, collect);
                 }
             }
             Engine::Regex(re) => {
@@ -417,6 +419,27 @@ impl Engine {
         }
         out
     }
+}
+
+thread_local! {
+    /// The lowered copy of the file being searched, kept per thread so that a case-insensitive
+    /// search does not allocate per file.
+    static LOWERED: std::cell::RefCell<Vec<u8>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// Runs `f` on an ASCII-lowercased copy of `bytes`.
+fn with_lowered<R>(bytes: &[u8], f: impl FnOnce(&[u8]) -> R) -> R {
+    LOWERED.with_borrow_mut(|buf| {
+        buf.clear();
+        buf.extend_from_slice(bytes);
+        buf.make_ascii_lowercase();
+        let r = f(buf);
+        // A huge file must not pin its copy for the life of the thread.
+        if buf.capacity() > 1 << 20 {
+            *buf = Vec::new();
+        }
+        r
+    })
 }
 
 /// A file mask: comma-separated globs (`*` and `?`); a leading `!` excludes. A pattern with a
@@ -479,13 +502,26 @@ pub enum Targets {
     Walk { root: PathBuf, max_depth: Option<usize> },
     /// Exactly these files (Open Files, Changed Files), ignore rules or not.
     Files(Vec<PathBuf>),
+    /// The project's file index (`search::FileIndex`: sorted `/`-separated paths relative to
+    /// `root`), only the files under `dir`. It holds the same files as a walk of `dir`, and
+    /// skips the directory reads, a third of a search's time on a big tree.
+    Index { root: PathBuf, files: Arc<Vec<String>>, dir: PathBuf },
 }
 
 /// The files of `scope`. Built on the UI thread from state it already holds.
 pub fn targets(state: &AppState, scope: &SearchScope) -> Option<Targets> {
     let root = state.ws.project.as_ref()?.root.clone();
+    // A rebuilding index may miss new files or still hold excluded ones: walk instead.
+    let index = &state.ws.index;
+    let indexed = (!index.building && !index.files.is_empty()).then(|| index.files.clone());
     Some(match scope {
-        SearchScope::Project => Targets::Walk { root, max_depth: None },
+        SearchScope::Project => match indexed {
+            Some(files) => Targets::Index { dir: root.clone(), root, files },
+            None => Targets::Walk { root, max_depth: None },
+        },
+        SearchScope::Directory { path, recursive: true } if path.starts_with(&root) && indexed.is_some() => {
+            Targets::Index { root, files: indexed.unwrap_or_default(), dir: path.clone() }
+        }
         SearchScope::Directory { path, recursive } => Targets::Walk { root: path.clone(), max_depth: (!recursive).then_some(1) },
         SearchScope::OpenFiles => Targets::Files(state.ws.tabs.editors().map(|e| e.path.clone()).collect()),
         SearchScope::ChangedFiles => {
@@ -581,6 +617,20 @@ pub fn count_with(
     Ok(v)
 }
 
+/// Set by the benchmark to pin the pool size; 0 means the default.
+#[cfg(test)]
+pub(crate) static THREADS_OVERRIDE: AtomicUsize = AtomicUsize::new(0);
+
+/// How many threads one search uses: half the cores, so the UI and the user's other programs
+/// keep the rest.
+pub fn search_threads() -> usize {
+    #[cfg(test)]
+    if let n @ 1.. = THREADS_OVERRIDE.load(Ordering::Relaxed) {
+        return n;
+    }
+    std::thread::available_parallelism().map_or(2, |n| n.get() / 2).clamp(1, 8)
+}
+
 /// Calls `visit` for every file of `targets` until `stop` says so; a walk runs on all cores.
 fn walk(targets: &Targets, skip: &[PathBuf], stop: &(dyn Fn() -> bool + Sync), visit: &(dyn Fn(&Path) + Sync)) {
     match targets {
@@ -597,10 +647,12 @@ fn walk(targets: &Targets, skip: &[PathBuf], stop: &(dyn Fn() -> bool + Sync), v
             let walker = ignore::WalkBuilder::new(root)
                 .hidden(false)
                 .max_depth(*max_depth)
+                .threads(search_threads())
                 .filter_entry(move |e| e.file_name() != ".git" && !skip.iter().any(|s| e.path() == s))
                 .build_parallel();
             walker.run(|| {
                 Box::new(move |entry| {
+                    lower_priority();
                     if stop() {
                         return ignore::WalkState::Quit;
                     }
@@ -612,12 +664,76 @@ fn walk(targets: &Targets, skip: &[PathBuf], stop: &(dyn Fn() -> bool + Sync), v
                 })
             });
         }
+        Targets::Index { root, files, dir } => {
+            let files = index_range(files, root, dir);
+            // Threads take chunks in path order, so the first hits come from the first files.
+            // Small chunks put every thread into the same folder, and lookups in one APFS folder
+            // queue behind each other: 16 files per chunk read mono slower than the walk.
+            const CHUNK: usize = 512;
+            let next = AtomicUsize::new(0);
+            std::thread::scope(|scope| {
+                for _ in 0..search_threads() {
+                    scope.spawn(|| {
+                        lower_priority();
+                        loop {
+                            let at = next.fetch_add(CHUNK, Ordering::Relaxed);
+                            if at >= files.len() || stop() {
+                                return;
+                            }
+                            for rel in &files[at..(at + CHUNK).min(files.len())] {
+                                if stop() {
+                                    return;
+                                }
+                                let path = root.join(rel);
+                                if !skip.iter().any(|s| path.starts_with(s)) {
+                                    visit(&path);
+                                }
+                            }
+                        }
+                    });
+                }
+            });
+        }
+    }
+}
+
+/// The index entries under `dir` (all of them for the root). They are sorted, so the entries
+/// of a folder are one run that starts with `<rel>/`.
+fn index_range<'a>(files: &'a [String], root: &Path, dir: &Path) -> &'a [String] {
+    let Ok(rel) = dir.strip_prefix(root) else { return &[] };
+    if rel.as_os_str().is_empty() {
+        return files;
+    }
+    let prefix = format!("{}/", rel.to_string_lossy().replace('\\', "/"));
+    let lo = files.partition_point(|f| f.as_str() < prefix.as_str());
+    let hi = lo + files[lo..].partition_point(|f| f.starts_with(&prefix));
+    &files[lo..hi]
+}
+
+thread_local! {
+    static LOWERED_PRIORITY: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Puts a search thread below the UI and the user's other programs: QoS utility on macOS, nice
+/// 10 on Linux. Called on threads the search spawns, once per thread.
+fn lower_priority() {
+    if LOWERED_PRIORITY.replace(true) {
+        return;
+    }
+    // SAFETY: both calls change only the calling thread's scheduling and take no pointers.
+    #[cfg(target_os = "macos")]
+    unsafe {
+        libc::pthread_set_qos_class_self_np(libc::qos_class_t::QOS_CLASS_UTILITY, 0);
+    }
+    #[cfg(target_os = "linux")]
+    unsafe {
+        libc::setpriority(libc::PRIO_PROCESS, libc::gettid() as libc::id_t, 10);
     }
 }
 
 /// A NUL byte near the start marks a binary file; the search skips it.
 fn is_binary(bytes: &[u8]) -> bool {
-    memchr::memchr(0, &bytes[..bytes.len().min(8000)]).is_some()
+    memchr::memchr(0, &bytes[..bytes.len().min(source::PROBE)]).is_some()
 }
 
 /// The first `limit` hits of one file, or `None` when it has none or is binary.
@@ -1228,6 +1344,65 @@ mod tests {
         assert!(count_with(&all, &Disk, &q, None, &[], &AtomicBool::new(true)).unwrap().is_empty(), "a cancelled count stops");
         assert_eq!(replace_all_in_file(&path, &Engine::new(&q).unwrap(), &q).unwrap(), 6000);
         assert_eq!(std::fs::read_to_string(&path).unwrap(), "x x\r\n".repeat(3000));
+    }
+
+    #[test]
+    fn the_index_finds_what_the_walk_finds() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().canonicalize().unwrap();
+        for rel in ["src/a.ts", "src/sub/b.ts", "src-b/c.ts", "srcx.ts", "dist/d.js", "img.dat"] {
+            let p = root.join(rel);
+            std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+            std::fs::write(p, if rel.ends_with(".dat") { "needle\0".to_string() } else { format!("x needle {rel}\n") }).unwrap();
+        }
+        let mut files: Vec<String> = ["src/a.ts", "src/sub/b.ts", "src-b/c.ts", "srcx.ts", "dist/d.js", "img.dat"].map(String::from).to_vec();
+        files.sort();
+        let files = Arc::new(files);
+        let q = Query { text: "NEEDLE".into(), ..Default::default() };
+        let no = AtomicBool::new(false);
+        let found = |t: &Targets, skip: &[PathBuf]| {
+            let (r, _) = search_with(t, &Disk, &q, None, skip, &no, 100, &|_, _| {}).unwrap();
+            r.into_iter().map(|(p, h)| (p.strip_prefix(&root).unwrap().display().to_string(), h[0].column)).collect::<Vec<_>>()
+        };
+        let index = |dir: &str| Targets::Index { root: root.clone(), files: files.clone(), dir: root.join(dir) };
+        let walk = |dir: &str| Targets::Walk { root: root.join(dir), max_depth: None };
+        assert_eq!(found(&index(""), &[]), found(&walk(""), &[]));
+        assert_eq!(found(&index(""), &[]).len(), 5, "the binary file is skipped");
+        assert_eq!(found(&index("src"), &[]), [("src/a.ts".to_string(), 2), ("src/sub/b.ts".to_string(), 2)], "a folder, not its name as a prefix");
+        assert_eq!(found(&index("src"), &[]), found(&walk("src"), &[]));
+        assert_eq!(found(&index(""), &[root.join("src")]).len(), 3, "excluded folders");
+        assert!(found(&index("nowhere"), &[]).is_empty());
+        let cancelled = search_with(&index(""), &Disk, &q, None, &[], &AtomicBool::new(true), 100, &|_, _| {}).unwrap();
+        assert!(cancelled.0.is_empty(), "a cancelled search reads nothing");
+    }
+
+    #[test]
+    fn the_pool_leaves_half_the_cores() {
+        let cores = std::thread::available_parallelism().unwrap().get();
+        if THREADS_OVERRIDE.load(Ordering::Relaxed) == 0 {
+            assert_eq!(search_threads(), (cores / 2).clamp(1, 8));
+        }
+    }
+
+    #[test]
+    fn the_status_says_running_done_or_capped() {
+        let hit = |p: &str| FindHit { path: p.into(), line: 0, column: 0, end_column: 1, line_text: String::new(), matched: String::new(), replacement: None, include: true };
+        let mut f = FindInFiles { query: "x".into(), searching: true, ..Default::default() };
+        assert_eq!(popup::status_text(&f).as_deref(), Some("Searching…"));
+        f.results = vec![("a".into(), vec![hit("a"), hit("a")]), ("b".into(), vec![hit("b")])];
+        assert_eq!(popup::status_text(&f).as_deref(), Some("Searching… 3 matches in 2 files"));
+        f.searching = false;
+        assert_eq!(popup::status_text(&f).as_deref(), Some("3 matches in 2 files"));
+        f.truncated = true;
+        assert_eq!(popup::status_text(&f).as_deref(), Some("3+ matches in 2+ files · limit reached"));
+        f.results.clear();
+        f.truncated = false;
+        assert_eq!(popup::status_text(&f).as_deref(), Some("No matches"));
+        f.debounce_at = Some(1.0);
+        assert_eq!(popup::status_text(&f), None, "a new query has not searched yet");
+        f.error = Some("bad".into());
+        f.debounce_at = None;
+        assert_eq!(popup::status_text(&f), None, "the error shows instead");
     }
 
     #[test]

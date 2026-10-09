@@ -157,6 +157,13 @@ pub struct Theme {
     /// The memory indicator: the bar's track and the share of RAM in use.
     pub memory_track: Color32,
     pub memory_fill: Color32,
+    /// The checkerboard behind transparent image pixels (`viewer::image`).
+    pub checker_light: Color32,
+    pub checker_dark: Color32,
+    /// The tint an image texture is drawn with: none.
+    pub image_tint: Color32,
+    /// Block quote text and bar in the Markdown preview.
+    pub preview_quote: Color32,
 
     pub radius: Radii,
     pub space: Spacing,
@@ -224,6 +231,9 @@ pub struct FontSizes {
     pub welcome: f32,
     pub badge: f32,
     pub count_badge: f32,
+    /// Markdown preview body text and its headings, `#` to `######`.
+    pub preview: f32,
+    pub preview_headings: [f32; 6],
 }
 
 impl Theme {
@@ -336,6 +346,10 @@ impl Theme {
             drop_target_border: hex(0x3574F0),
             memory_track: hex(0x1E1F22),
             memory_fill: hex(0x2E436E),
+            checker_light: hex(0x3C3F44),
+            checker_dark: hex(0x2B2D31),
+            image_tint: hex(0xFFFFFF),
+            preview_quote: hex(0x9DA0A8),
 
             radius: Radii { island: 10.0, popup: 8.0, button: 6.0, row: 4.0, small: 3.0, badge: 5.0 },
             space: Spacing {
@@ -362,7 +376,7 @@ impl Theme {
                 count_badge_ring: 1.5,
                 count_badge_text_dy: 0.0,
             },
-            font: FontSizes { ui: 13.0, small: 12.0, tiny: 11.0, mono: 13.0, mono_small: 12.0, hint: 13.0, big: 15.0, welcome: 24.0, badge: 10.5, count_badge: 9.0 },
+            font: FontSizes { ui: 13.0, small: 12.0, tiny: 11.0, mono: 13.0, mono_small: 12.0, hint: 13.0, big: 15.0, welcome: 24.0, badge: 10.5, count_badge: 9.0, preview: 14.0, preview_headings: [26.0, 21.0, 17.0, 15.0, 14.0, 13.0] },
 
             editor: EditorTheme::islands_dark(),
             terminal: TerminalTheme::islands_dark(),

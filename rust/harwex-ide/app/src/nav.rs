@@ -348,6 +348,29 @@ pub fn go_forward(state: &mut AppState) {
     state.open_location(&p.path, Some(p.pos), false);
 }
 
+/// Mouse buttons 4 and 5 (Back and Forward on a mouse's side) are Navigate Back and Forward,
+/// from anywhere in the window. The terminal reports only buttons 1-3 to its program, so a
+/// focused terminal does not lose them. Each press counts, also two in one late frame.
+pub fn mouse_buttons(state: &mut AppState, ctx: &egui::Context) {
+    let presses: Vec<bool> = ctx.input(|i| {
+        i.events
+            .iter()
+            .filter_map(|e| match e {
+                egui::Event::PointerButton { button: egui::PointerButton::Extra1, pressed: true, .. } => Some(false),
+                egui::Event::PointerButton { button: egui::PointerButton::Extra2, pressed: true, .. } => Some(true),
+                _ => None,
+            })
+            .collect()
+    });
+    for forward in presses {
+        if forward {
+            go_forward(state);
+        } else {
+            go_back(state);
+        }
+    }
+}
+
 /// Records the place a jump left (the request's origin, not wherever the user is when the
 /// reply lands) and opens the target.
 fn jump_from(state: &mut AppState, from: NavPoint, t: &NavTarget) {

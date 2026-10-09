@@ -1218,7 +1218,7 @@ fn start_commit(state: &mut AppState, push: bool) {
                 }
             }
             state.ws.git_ui.changes.committing = false;
-            let refresh = if whole_index { Refresh::Full } else { Refresh::Paths(touched) };
+            let refresh = if whole_index { Refresh::Changed } else { Refresh::Paths(touched) };
             let subject = message.lines().next().unwrap_or_default().to_string();
             match res {
                 Ok(outcome) if outcome.success() => {

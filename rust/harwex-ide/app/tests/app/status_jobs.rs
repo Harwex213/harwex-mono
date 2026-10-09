@@ -116,3 +116,31 @@ fn tasks_popup_lists_every_job_and_cancels_one() {
     assert!(!harwex_ide::progress::list_open(&ide.ctx()));
     assert!(!ide.labels().iter().any(|l| l.starts_with("Task ")));
 }
+
+/// The slot's width: from its left end (the job text) to its right end (the `×`).
+fn slot_width(ide: &Ide) -> f32 {
+    ide.rect(&format!("Cancel {LONG}")).max.x - ide.rect(&format!("Running: {LONG}")).min.x
+}
+
+#[test]
+fn slot_is_204_wide_and_136_in_a_narrow_window() {
+    use harwex_ide::progress::{SLOT_W, SLOT_W_NARROW};
+    assert_eq!((SLOT_W, SLOT_W_NARROW), (204.0, 136.0), "15% under the first 240 and 160");
+    let fx = Fixture::new(SUITE, "slot_width");
+    let repo = deep_repo(&fx);
+    let mut ide = Ide::open(SUITE, &repo.dir);
+    ide.open_file("src/util.ts");
+    // The narrow window first: `resize` settles, and settling waits for running jobs.
+    ide.resize(egui::vec2(640.0, 800.0));
+    let job = ide.state().jobs.busy(LONG);
+    ide.steps(5);
+    assert!((slot_width(&ide) - SLOT_W_NARROW).abs() < 0.5, "narrow slot: {}", slot_width(&ide));
+    ide.snapshot_running("narrow_slot");
+    drop(job);
+    ide.resize(egui::vec2(1280.0, 800.0));
+    let job = ide.state().jobs.busy(LONG);
+    ide.steps(5);
+    assert!((slot_width(&ide) - SLOT_W).abs() < 0.5, "wide slot: {}", slot_width(&ide));
+    drop(job);
+    ide.settle();
+}

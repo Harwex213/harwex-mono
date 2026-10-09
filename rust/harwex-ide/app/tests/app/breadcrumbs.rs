@@ -1027,3 +1027,127 @@ fn file_keys_act_on_the_focused_crumb() {
     assert_eq!(ide.state().ws.tree.selected.as_deref(), Some(root.join("src/core").as_path()));
     assert!(harwex_ide::tree::has_focus(&ide.ctx()));
 }
+
+// ---------------------------------------------------------------------------------------------
+// The thin scrollbar and the speed search in popups.
+
+/// Every rect and text shape painted inside `area` this frame, nested shapes included.
+fn shapes_in(ide: &Ide, area: egui::Rect) -> (Vec<egui::Rect>, Vec<egui::Rect>) {
+    fn walk(shape: &egui::Shape, area: egui::Rect, rects: &mut Vec<egui::Rect>, texts: &mut Vec<egui::Rect>) {
+        match shape {
+            egui::Shape::Vec(v) => v.iter().for_each(|s| walk(s, area, rects, texts)),
+            egui::Shape::Rect(r) if area.contains_rect(r.rect) && r.fill.a() > 0 => rects.push(r.rect),
+            egui::Shape::Text(t) if area.contains_rect(t.visual_bounding_rect()) && !t.galley.is_empty() => texts.push(t.visual_bounding_rect()),
+            _ => {}
+        }
+    }
+    let (mut rects, mut texts) = (Vec::new(), Vec::new());
+    for c in &ide.harness.output().shapes {
+        walk(&c.shape, area, &mut rects, &mut texts);
+    }
+    (rects, texts)
+}
+
+#[test]
+fn hovered_scrollbar_stays_thin_under_the_text() {
+    let fx = Fixture::new(SUITE, "scrollbar");
+    let repo = crumbs_repo(&fx);
+    let mut ide = Ide::open(SUITE, &repo.dir);
+    ide.open_file(DEEP);
+    ide.resize(egui::vec2(640.0, 800.0));
+    ide.settle();
+    assert!(ide.state().ws.breadcrumbs.scroll_x > 0.0, "the path scrolls, so the bar has a scrollbar");
+    let bar = bar_rect(&ide);
+    // The pointer right on the scrollbar: egui's default bar grows to 10 pt there.
+    ide.move_to(egui::pos2(bar.center().x, bar.max.y - 1.0));
+    ide.steps(20);
+    let (rects, texts) = shapes_in(&ide, bar.expand(1.0));
+    // The scrollbar lies on the bar's bottom edge; the crumb icons are centered.
+    let thumbs: Vec<_> = rects.iter().filter(|r| r.max.y > bar.max.y - 1.0 && r.height() < bar.height() / 2.0).collect();
+    assert!(!thumbs.is_empty(), "the hovered scrollbar is drawn: {rects:?}");
+    for r in &thumbs {
+        assert!(r.height() <= harwex_ide::breadcrumbs::SCROLLBAR_H + 0.01, "the hovered scrollbar stays thin: {r:?}");
+        assert!((r.max.y - bar.max.y).abs() < 0.5, "it sits on the bar's bottom edge: {r:?} in {bar:?}");
+    }
+    assert!(!texts.is_empty());
+    let bar_top = thumbs.iter().map(|r| r.min.y).fold(f32::MAX, f32::min);
+    for t in &texts {
+        assert!(t.max.y <= bar_top, "crumb text {t:?} reaches under the scrollbar at {bar_top}");
+    }
+    ide.snapshot_here("scrollbar_hovered");
+}
+
+/// The popup rows drawn in every level, left level first, relative to the root.
+fn drawn_rows(ide: &Ide) -> Vec<String> {
+    ide.labels().into_iter().filter_map(|l| l.strip_prefix("Breadcrumb item ").map(str::to_string)).collect()
+}
+
+#[test]
+fn typing_filters_a_popup_like_speed_search() {
+    let fx = Fixture::new(SUITE, "filter");
+    let repo = crumbs_repo(&fx);
+    let mut ide = Ide::open(SUITE, &repo.dir);
+    ide.open_file("src/core/deep/nested.ts");
+    let text = ide.active_text();
+    ide.click("Breadcrumb src");
+    ide.wait_until("src popup", |ide| selected(ide.state(), 0).as_deref() == Some("src/core"));
+    ide.settle();
+    ide.park_mouse();
+    assert_eq!(drawn_rows(&ide), ["src/core", "src/app.ts", "src/util.ts"]);
+
+    // Typing hides the rows that do not match and selects the first match.
+    ide.type_text("ts");
+    ide.settle();
+    assert!(ide.has("Speed search ts"), "{:?}", ide.labels());
+    assert_eq!(drawn_rows(&ide), ["src/app.ts", "src/util.ts"]);
+    assert_eq!(selected(ide.state(), 0).as_deref(), Some("src/app.ts"));
+    ide.snapshot("filter_typed");
+
+    // Up and Down move within the matches and wrap.
+    ide.key(Key::ArrowDown);
+    assert_eq!(selected(ide.state(), 0).as_deref(), Some("src/util.ts"));
+    ide.key(Key::ArrowDown);
+    assert_eq!(selected(ide.state(), 0).as_deref(), Some("src/app.ts"), "Down wraps within the matches");
+    ide.key(Key::ArrowUp);
+    assert_eq!(selected(ide.state(), 0).as_deref(), Some("src/util.ts"), "Up wraps, it does not leave for the bar");
+    assert!(ide.state().ws.breadcrumbs.popup.is_some());
+
+    // A filter that matches nothing shows so; Backspace edits the filter.
+    ide.type_text("x");
+    ide.settle();
+    assert!(ide.has("Speed search tsx") && drawn_rows(&ide).is_empty());
+    ide.snapshot("filter_no_matches");
+    ide.key(Key::Backspace);
+    ide.settle();
+    assert!(ide.has("Speed search ts"));
+    assert_eq!(drawn_rows(&ide), ["src/app.ts", "src/util.ts"]);
+    assert_eq!(selected(ide.state(), 0).as_deref(), Some("src/util.ts"), "a selection that still matches stays");
+
+    // The first Escape clears the filter, the second closes the popup.
+    ide.key(Key::Escape);
+    ide.settle();
+    assert!(ide.state().ws.breadcrumbs.popup.is_some(), "the first Escape keeps the popup");
+    assert!(!ide.labels().iter().any(|l| l.starts_with("Speed search")));
+    assert_eq!(drawn_rows(&ide), ["src/core", "src/app.ts", "src/util.ts"]);
+    ide.key(Key::Escape);
+    assert!(ide.state().ws.breadcrumbs.popup.is_none());
+    assert_eq!(ide.active_text(), text, "no typed key reached the editor");
+
+    // A nested level has its own filter; Enter opens the match.
+    ide.click("Breadcrumb src");
+    ide.wait_until("src popup", |ide| selected(ide.state(), 0).as_deref() == Some("src/core"));
+    ide.settle();
+    ide.park_mouse();
+    key_then(&mut ide, Key::ArrowRight, 1, "src/core/deep");
+    ide.type_text("fr");
+    ide.settle();
+    assert_eq!(levels(ide.state()), ["src", "src/core"]);
+    assert_eq!(selected(ide.state(), 1).as_deref(), Some("src/core/fresh.ts"));
+    assert_eq!(drawn_rows(&ide), ["src/core", "src/app.ts", "src/util.ts", "src/core/fresh.ts"], "the first level keeps its rows");
+    ide.snapshot("filter_nested");
+    ide.key(Key::Enter);
+    ide.wait_for("fresh.ts open", |s| s.ws.tabs.active_tab().is_some_and(|t| t.title() == "fresh.ts"));
+    ide.settle();
+    assert!(ide.state().ws.breadcrumbs.popup.is_none());
+    assert_eq!(ide.active_text(), "export const fresh = 1;\n");
+}
