@@ -391,12 +391,10 @@ function createFloor(materials: Materials, width: number, height: number, extraP
   marble.transparent = true;
   marble.opacity = 0.72;
   marble.name = "marbleFloor";
-  // The annex floor reflects less of the environment map: its blue side panels showed as a bright blue patch
-  // on the floor in front of the partition, in a room without blue lights. `envMapIntensity` acts only on an own
-  // `envMap`, so the engine gives this material the scene environment as its map.
+  // The annex floor has its own material: the engine styles it as the warm veined marble of the balcony
+  // (`styleAnnexFloor` in annex.ts) and gives it the casino environment as its own map.
   const annexMarble = marble.clone();
   annexMarble.name = "marbleFloorAnnex";
-  annexMarble.envMapIntensity = 0.12;
   const floor = named(new THREE.Mesh(surface(), [marble, annexMarble]), "Marble");
   floor.rotation.x = -Math.PI / 2;
   floor.receiveShadow = true;

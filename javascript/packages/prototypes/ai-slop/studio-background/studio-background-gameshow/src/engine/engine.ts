@@ -5,11 +5,12 @@ import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
 import type { Reflector } from "three/examples/jsm/objects/Reflector.js";
 import { createCameraRig } from "../scene/cameraRig";
+import { createCasino } from "../scene/casino";
 import { createCity } from "../scene/city";
 import { named } from "../scene/geometry";
 import { createLights } from "../scene/lights";
-import { createEnvironment, createMaterials } from "../scene/materials";
-import { annexFloorPlan, createAnnex } from "../scene/annex";
+import { createCasinoEnvironment, createEnvironment, createMaterials } from "../scene/materials";
+import { annexFloorPlan, createAnnex, styleAnnexFloor } from "../scene/annex";
 import { createBuffet } from "../scene/buffet";
 import { createDressing } from "../scene/dressing";
 import { createGameMaterials, createGameProps } from "../scene/gameProps";
@@ -43,6 +44,7 @@ class StudioEngine {
   private readonly lights: ReturnType<typeof createLights>;
   private readonly city: ReturnType<typeof createCity>;
   private readonly annex: ReturnType<typeof createAnnex>;
+  private readonly casino: ReturnType<typeof createCasino>;
   private readonly reflector: Reflector;
   private readonly lighting: EditorLighting;
   private readonly zones: LightZones;
@@ -92,10 +94,11 @@ class StudioEngine {
     this.wheel = createWheel(materials);
     this.city = createCity();
     this.lights = createLights();
-    // The Game Show platform with the casino panorama (annex.ts). `annex.update` drives the casino animation;
-    // `annex.follow` keeps the Bonus Show lights on the wheel.
-    this.annex = createAnnex(materials, station("Bonus Show"));
-    this.root.add(this.camera, studio.group, this.wheel.group, createProps(materials), createDressing(materials), createSofas(materials), createBuffet(materials), gameProps, this.annex.group, this.lights.group, this.city.group);
+    // The Game Show platform (annex.ts). `annex.follow` keeps the Bonus Show lights on the wheel.
+    this.annex = createAnnex(station("Bonus Show"));
+    // The casino hall round the platform (casino.ts). `casino.update` drives its animation.
+    this.casino = createCasino();
+    this.root.add(this.camera, studio.group, this.wheel.group, createProps(materials), createDressing(materials), createSofas(materials), createBuffet(materials), gameProps, this.annex.group, this.casino.group, this.lights.group, this.city.group);
     this.scene.add(this.root);
 
     // Place everything at time 0 before the snapshot of code defaults.
@@ -103,17 +106,25 @@ class StudioEngine {
     this.rig.update(0, true, true);
     this.lights.update(0);
     this.annex.update(0);
+    this.casino.update(0);
     this.annex.follow();
     // Every selectable object gets its origin on itself, so the gizmo appears where the object is.
     recenterPivots(this.root);
     // Taken before the saved overrides apply: a deleted or renamed floor must still be found.
     const floor = studio.group.getObjectByName("Marble") as THREE.Mesh;
-    this.document = new SceneDocument(this.root);
-    // The annex part of the floor gets the environment as its own map: only an own map obeys `envMapIntensity` (studio.ts).
+    // The balcony (the annex part of the floor and the balustrade) reflects the casino, not the studio:
+    // it gets the casino environment as its own map. Only an own map obeys `envMapIntensity`.
+    // The floor is styled before the document takes the code defaults.
+    const casinoEnvironment = createCasinoEnvironment(this.renderer);
     const annexMarble = (floor.material as THREE.MeshStandardMaterial[])[1];
     if (annexMarble) {
-      annexMarble.envMap = this.scene.environment;
+      styleAnnexFloor(annexMarble);
+      annexMarble.envMap = casinoEnvironment;
     }
+    for (const material of [...this.annex.materials, ...this.casino.materials]) {
+      material.envMap = casinoEnvironment;
+    }
+    this.document = new SceneDocument(this.root);
     this.lighting = new EditorLighting(this.renderer, this.scene, this.root, this.reflector, floor);
     this.zones = new LightZones(this.root);
 
@@ -220,6 +231,7 @@ class StudioEngine {
     this.rig.update(0, true, true);
     this.lights.update(this.time);
     this.annex.update(this.time);
+    this.casino.update(this.time);
     this.render(0);
   }
 
@@ -263,6 +275,7 @@ class StudioEngine {
     }
     this.lights.update(this.time);
     this.annex.update(this.time);
+    this.casino.update(this.time);
   }
 
   private render(dt: number): void {

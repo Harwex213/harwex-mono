@@ -1,0 +1,12 @@
+{
+  "name": "@hw/deploy",
+  "description": "Finds the deployable sites in the monorepo, bundles them, and ships them to the VPS behind one nginx",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "scan": "node src/scan.js",
+    "bundle": "node src/bundle.js",
+    "deploy": "./deploy.sh"
+  }
+}

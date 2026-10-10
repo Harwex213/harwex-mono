@@ -1,0 +1,7 @@
+# Only `out/html/`, `nginx.conf` and the Dockerfile belong in the build context.
+src
+node_modules
+*.md
+package.json
+deploy.sh
+compose.yaml

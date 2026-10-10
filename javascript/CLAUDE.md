@@ -42,3 +42,13 @@ yarn :static
 ```
 
 Use case: to run local dev server for frontend project which don't rely on built-in bundler dev server.
+
+#### Deploying a site
+
+A frontend package goes to the VPS when its `package.json` has `"hwDeploy": { "route": "/some-site" }`. The site is then served under that path, so its bundle must load files by relative paths (rspack's default `publicPath: "auto"` does). `@hw/deploy` (`packages/infrastructure/deploy`) finds such packages, builds them with their workspace dependencies, and ships all of them in one nginx image:
+
+```bash
+yarn workspace @hw/deploy scan     # list the sites and their routes
+yarn workspace @hw/deploy bundle   # build them into out/html/
+DEPLOY_HOST=user@host yarn workspace @hw/deploy deploy
+```

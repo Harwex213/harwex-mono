@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 #
-# Builds the bundle, packs it into an nginx image, streams the image straight to
+# Builds every site that has an `hwDeploy` field (see src/scan.js), packs them
+# into one nginx image, streams the image straight to
 # the droplet over ssh, and restarts the container. No registry is involved.
 #
 # The whole image crosses the wire every time, about 22 MB. A registry would send
@@ -9,10 +10,10 @@
 # buys 0.1 MB of the 22 MB and costs CPU on both ends.
 #
 # Required:
-#   DEPLOY_HOST   ssh target, e.g. deploy@faenwald.example
+#   DEPLOY_HOST   ssh target, e.g. deploy@harwex.example
 #
 # Optional:
-#   REMOTE_DIR    dir on the droplet    (default: /opt/faenwald-battle-prototype)
+#   REMOTE_DIR    dir on the droplet    (default: /opt/hw-sites)
 #   CF_ZONE_ID    Cloudflare zone id    — set both to purge the CDN cache
 #   CF_API_TOKEN  Cloudflare API token    after a deploy
 #
@@ -20,16 +21,21 @@
 #   curl -fsSL https://get.docker.com | sh
 #   usermod -aG docker <the ssh user>          # so docker runs without sudo
 #   mkdir -p /etc/ssl/origin                   # then place cert.pem and key.pem
+#
+# Migrating from the per-site setup: the old Faenwald container still holds
+# ports 80 and 443. Stop it once before the first deploy:
+#   cd /opt/faenwald-battle-prototype && docker compose down
 set -euo pipefail
 
-HOST="${DEPLOY_HOST:?set DEPLOY_HOST, e.g. deploy@faenwald.example}"
-REMOTE_DIR="${REMOTE_DIR:-/opt/faenwald-battle-prototype}"
-IMAGE=faenwald-battle
+HOST="${DEPLOY_HOST:?set DEPLOY_HOST, e.g. deploy@harwex.example}"
+REMOTE_DIR="${REMOTE_DIR:-/opt/hw-sites}"
+IMAGE=hw-sites
 
 cd "$(dirname "$0")"
 
 TAG=$(git rev-parse --short HEAD)
-if [[ -n "$(git status --porcelain -- .)" ]]; then
+# The whole monorepo, not this directory: the sites live elsewhere in it.
+if [[ -n "$(git status --porcelain -- "$(git rev-parse --show-toplevel)")" ]]; then
   # The tag is a label for rollback, and it would lie about which sources went
   # into the image if uncommitted changes were left unmarked.
   TAG="$TAG-dirty"
@@ -46,8 +52,8 @@ ssh "$HOST" "docker version > /dev/null \
     exit 1
   }
 
-echo "==> building bundle"
-yarn build
+echo "==> building sites"
+node src/bundle.js
 
 # The Mac is arm64 and the droplet is amd64. Without --platform the container
 # exits with "exec format error" on the droplet.

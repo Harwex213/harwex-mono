@@ -36,9 +36,11 @@ interface StationShot {
 const STATION_SHOTS: Record<Station, StationShot> = {
   // Bonus Dice, the acrylic tower: a 3/4 view from its right front, the camera a little under the top of the case.
   dice: { camera: new THREE.Vector3(3.0, 3.0, 7.4), target: new THREE.Vector3(0.2, 2.1, 0), push: 0.1, period: 34 },
-  // Bonus Show, the jester wheel (the user's screenshot of the Game Show shot): the camera stands 11 m from the wheel
-  // and 30 degrees off its face axis, at 3.7 m, and looks almost level. The wheel sits in the middle of the frame.
-  show: { camera: new THREE.Vector3(-5.6, 3.7, 9.7), target: new THREE.Vector3(0, 3.0, 0), push: 0.12, period: 36 },
+  // Bonus Show, the jester wheel: the camera stands 11 m from the wheel and 12 degrees off its face axis, at 3.7 m,
+  // and looks almost level. The wheel sits in the middle of the frame, with the tip of the balcony behind it.
+  // The wheel faces back along the bisector of the balcony tip (annex.ts), so the camera looks out at the centre
+  // of the casino hall (casino.ts), straight down its nave.
+  show: { camera: new THREE.Vector3(2.3, 3.7, 10.96), target: new THREE.Vector3(0, 3.0, 0), push: 0.12, period: 36 },
   // Bonus Luck, the slot cabinet: the mirror of the Bonus Dice shot, from its left front.
   luck: { camera: new THREE.Vector3(-2.8, 2.6, 6.6), target: new THREE.Vector3(-0.1, 1.8, 0), push: 0.1, period: 32 },
 };

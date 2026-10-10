@@ -7,6 +7,7 @@ import * as THREE from "three";
 // The game environment is a dark room with a few bright panels, so one face of a column reflects
 // a panel and turns gold, while the next face reflects the dark and turns black.
 // Here the environment is a soft even sky, so metals read evenly from every side.
+// A material with its own environment map (`userData.ownEnvironment`, the balcony in annex.ts) gets the sky as that map.
 //
 // The swap only lasts for one frame: `begin` runs right before the render and `end` right after it,
 // so the inspector and saves never see the changed values.
@@ -60,6 +61,7 @@ class EditorLighting {
   private readonly matteFloor = new THREE.MeshStandardMaterial({ color: 0x2a2f3a, roughness: 1, metalness: 0 });
   private readonly stash: Stash[] = [];
   private readonly beams: THREE.Object3D[] = [];
+  private readonly ownMaps: { material: THREE.MeshStandardMaterial; map: THREE.Texture | null }[] = [];
   private floorMaterial: THREE.Material | THREE.Material[] | null = null;
   private mirrorVisible = true;
   private readonly environment: THREE.Texture;
@@ -91,6 +93,7 @@ class EditorLighting {
     this.active = true;
     this.stash.length = 0;
     this.beams.length = 0;
+    this.ownMaps.length = 0;
     this.root.traverse((object) => {
       const light = object as THREE.Light;
       if (light.isLight) {
@@ -100,6 +103,16 @@ class EditorLighting {
       if (object.userData.beam && object.visible) {
         this.beams.push(object);
         object.visible = false;
+      }
+      const mesh = object as THREE.Mesh;
+      if (mesh.isMesh) {
+        for (const material of Array.isArray(mesh.material) ? mesh.material : [mesh.material]) {
+          const standard = material as THREE.MeshStandardMaterial;
+          if (standard.userData.ownEnvironment && !this.ownMaps.some((item) => item.material === standard)) {
+            this.ownMaps.push({ material: standard, map: standard.envMap });
+            standard.envMap = this.environment;
+          }
+        }
       }
     });
     for (const { light, intensity } of EDITOR_LIGHTS) {
@@ -128,6 +141,9 @@ class EditorLighting {
     }
     for (const beam of this.beams) {
       beam.visible = true;
+    }
+    for (const { material, map } of this.ownMaps) {
+      material.envMap = map;
     }
     this.mirror.visible = this.mirrorVisible;
     if (this.floorMaterial) {

@@ -41,38 +41,66 @@ function createMaterials() {
 
 type Materials = ReturnType<typeof createMaterials>;
 
-// A small dark room with warm and blue light panels: metals need it to read as gold instead of black.
-function createEnvironment(renderer: THREE.WebGLRenderer): THREE.Texture {
-  const room = new THREE.Scene();
-  room.background = new THREE.Color(0x020309);
+// A flat glowing panel in a light room for an environment map, turned to face the room centre.
+function addPanel(room: THREE.Scene, color: THREE.Color, width: number, height: number, position: THREE.Vector3): void {
+  const panel = new THREE.Mesh(
+    new THREE.PlaneGeometry(width, height),
+    new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide }),
+  );
+  panel.position.copy(position);
+  panel.lookAt(0, 0, 0);
+  room.add(panel);
+}
 
-  const addPanel = (color: THREE.Color, width: number, height: number, position: THREE.Vector3) => {
-    const panel = new THREE.Mesh(
-      new THREE.PlaneGeometry(width, height),
-      new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide }),
-    );
-    panel.position.copy(position);
-    panel.lookAt(0, 0, 0);
-    room.add(panel);
-  };
-
-  // Warm ceiling ring, like the rows of stage fixtures.
-  for (let i = 0; i < 10; i++) {
-    const angle = (i / 10) * Math.PI * 2;
-    addPanel(glow(0xffc27a, 3.5), 1.6, 0.5, new THREE.Vector3(Math.cos(angle) * 6, 5, Math.sin(angle) * 6));
-  }
-  // Blue side washes.
-  addPanel(glow(0x2f5bff, 2.2), 3, 6, new THREE.Vector3(-8, 1, -2));
-  addPanel(glow(0x2f5bff, 2.2), 3, 6, new THREE.Vector3(8, 1, -2));
-  // Warm floor bounce from the LED strips.
-  addPanel(glow(0xff9a40, 1.2), 12, 1, new THREE.Vector3(0, -4, -6));
-  addPanel(glow(0xfff2dd, 1.5), 4, 2, new THREE.Vector3(0, 2, 9));
-
+function bake(renderer: THREE.WebGLRenderer, room: THREE.Scene): THREE.Texture {
   const pmrem = new THREE.PMREMGenerator(renderer);
   const texture = pmrem.fromScene(room, 0.03).texture;
   pmrem.dispose();
   return texture;
 }
 
-export { glow, createMaterials, createEnvironment };
+// A small dark room with warm and blue light panels: metals need it to read as gold instead of black.
+function createEnvironment(renderer: THREE.WebGLRenderer): THREE.Texture {
+  const room = new THREE.Scene();
+  room.background = new THREE.Color(0x020309);
+
+  // Warm ceiling ring, like the rows of stage fixtures.
+  for (let i = 0; i < 10; i++) {
+    const angle = (i / 10) * Math.PI * 2;
+    addPanel(room, glow(0xffc27a, 3.5), 1.6, 0.5, new THREE.Vector3(Math.cos(angle) * 6, 5, Math.sin(angle) * 6));
+  }
+  // Blue side washes.
+  addPanel(room, glow(0x2f5bff, 2.2), 3, 6, new THREE.Vector3(-8, 1, -2));
+  addPanel(room, glow(0x2f5bff, 2.2), 3, 6, new THREE.Vector3(8, 1, -2));
+  // Warm floor bounce from the LED strips.
+  addPanel(room, glow(0xff9a40, 1.2), 12, 1, new THREE.Vector3(0, -4, -6));
+  addPanel(room, glow(0xfff2dd, 1.5), 4, 2, new THREE.Vector3(0, 2, 9));
+  return bake(renderer, room);
+}
+
+// The environment of the Game Show balcony (annex.ts): the casino hall of the photo round it.
+// It has no blue: warm white chandeliers overhead, bronze walls with burgundy drapes, and a warm glow from the
+// gaming floor below. The panels are only a little warm: a saturated orange room turns gold into red copper.
+// The balcony materials reflect it, so their gold and black match the photo.
+function createCasinoEnvironment(renderer: THREE.WebGLRenderer): THREE.Texture {
+  const room = new THREE.Scene();
+  room.background = new THREE.Color(0x070403);
+
+  // Chandeliers: a ring of bright amber panels overhead.
+  for (let i = 0; i < 8; i++) {
+    const angle = (i / 8) * Math.PI * 2;
+    addPanel(room, glow(0xffe2b8, 3.2), 1.4, 1.0, new THREE.Vector3(Math.cos(angle) * 5, 6, Math.sin(angle) * 5));
+  }
+  // Walls: bronze columns lit by sconces, and burgundy drapes between them.
+  for (let i = 0; i < 6; i++) {
+    const angle = (i / 6) * Math.PI * 2;
+    const wall = i % 2 === 0 ? glow(0xd8b080, 0.8) : glow(0x5a2418, 0.5);
+    addPanel(room, wall, 4, 5, new THREE.Vector3(Math.cos(angle) * 9, 1.5, Math.sin(angle) * 9));
+  }
+  // The gaming floor below the balustrade: a warm glow with the light of the lamps.
+  addPanel(room, glow(0xb08a58, 0.6), 16, 16, new THREE.Vector3(0, -6, 0));
+  return bake(renderer, room);
+}
+
+export { glow, createMaterials, createCasinoEnvironment, createEnvironment };
 export type { Materials };

@@ -20,8 +20,8 @@ import { structureRevision } from "../state";
 
 // The space of each room, for the frustum test. The annex space is the Game Show platform (annex.ts).
 // The wheel shot stands at z ~10 and looks away from the platform, so the annex space starts 0.6 m in front of that camera.
-// The Bonus Show shot looks along +x past the amphitheatre, so the amphitheatre space ends just in
-// front of the colonnade end (z 9.1) and right of the colonnade (x 20.6).
+// The Bonus Show shot stands over the front of the round floor and looks out at the tip of the balcony, away from
+// the amphitheatre. The amphitheatre space ends just in front of the colonnade end (z 9.1) and right of the colonnade (x 20.6).
 const STUDIO_VIEW = new THREE.Box3(
   new THREE.Vector3(-LAYOUT.wallRadius - 3, -1, -LAYOUT.wallRadius - 3),
   new THREE.Vector3(LAYOUT.wallRadius + 0.6, LAYOUT.ceilingY + 0.5, 9.1),
