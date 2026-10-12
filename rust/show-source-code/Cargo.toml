@@ -1,0 +1,29 @@
+[workspace]
+resolver = "2"
+members = ["app", "crates/scs-workspace", "crates/scs-layout", "crates/scs-ts"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+# One egui version for the whole workspace: the app paints with egui and hosts it with eframe,
+# and the kittest harness must link the same copy.
+[workspace.dependencies]
+egui = "0.31"
+eframe = { version = "0.31", default-features = false, features = ["default_fonts", "wgpu", "persistence"] }
+serde_json = "1"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+
+# egui, wgpu and the font rasterizer are unusably slow unoptimized; our own crates stay debuggable.
+[profile.dev.package."*"]
+opt-level = 2
+
+# The layout runs over hundreds of thousands of nodes on a big repo; unoptimized it takes a
+# minute in tests.
+[profile.dev.package.scs-layout]
+opt-level = 3

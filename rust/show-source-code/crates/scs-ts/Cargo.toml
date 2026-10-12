@@ -1,0 +1,12 @@
+[package]
+name = "scs-ts"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+serde_json.workspace = true
+
+[dev-dependencies]
+tempfile = "3"
+scs-workspace = { path = "../scs-workspace" }
