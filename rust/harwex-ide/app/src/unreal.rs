@@ -15,6 +15,12 @@
 //! place it writes. Each run is a labelled, cancellable job of one project; a second run with
 //! the same engine is refused, because UBT locks the engine. On success only that project's
 //! clangd restarts.
+//!
+//! A database can also be out of date (task 102): a build input is newer than it, or the
+//! active file's module has no entry in it. `check_db` runs `lang::unreal::check_db` on a
+//! worker after each detection, after a UBT run, on a `*.Build.cs`/`*.Target.cs`/database
+//! change and when the active file enters another module; the JSON is parsed once per mtime.
+//! The banner then names the reason and offers the same Generate button.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -24,7 +30,7 @@ use std::sync::{Arc, Mutex};
 use egui::{Context, Frame, Modal, RichText};
 
 use crate::jobs::{Cancel, Jobs};
-use crate::lang::unreal::{self, UnrealProject};
+use crate::lang::unreal::{self, DbCheck, Module, Stale, UnrealProject};
 use crate::lang::LangId;
 use crate::state::AppState;
 use crate::theme;
@@ -70,6 +76,18 @@ pub struct UnrealState {
     watched_engines: Option<Vec<PathBuf>>,
     /// Lookups and refreshes run so far, for tests.
     pub lookups: usize,
+    /// A file's folder -> its module, for folders inside a project. Filled per file.
+    modules: HashMap<PathBuf, Option<Module>>,
+    /// Folders whose module lookup runs now.
+    modules_pending: HashSet<PathBuf>,
+    /// The last database check per project folder.
+    dbs: HashMap<PathBuf, DbCheck>,
+    /// The generation of each project's newest check; older answers are dropped.
+    db_gen: HashMap<PathBuf, u64>,
+    /// The module folder of the active file at the last frame, to recheck on a module change.
+    active_module: Option<PathBuf>,
+    /// Database checks started so far, for tests.
+    pub db_checks: usize,
 }
 
 impl UnrealState {
@@ -87,6 +105,15 @@ impl UnrealState {
     pub fn is_running(&self, project: &Path) -> bool {
         self.runs.contains_key(project)
     }
+
+    /// Why the database of the file's project is out of date for this file, once its checks
+    /// finished. `None` without a database: the "no database" banner covers that.
+    pub fn stale_for(&self, file: &Path) -> Option<Stale> {
+        let p = self.project_of(file)?;
+        let check = self.dbs.get(&p.root)?;
+        let module = self.modules.get(file.parent()?).and_then(Option::as_ref);
+        unreal::stale(check, module)
+    }
 }
 
 /// The active editor's C/C++ file, when it may belong to an Unreal project.
@@ -99,6 +126,11 @@ fn active_cpp_file(state: &AppState) -> Option<PathBuf> {
 /// The project of the active C/C++ file, once its lookup finished.
 pub fn active_project(state: &AppState) -> Option<&UnrealProject> {
     state.ws.unreal.project_of(&active_cpp_file(state)?)
+}
+
+/// Why the active file's database is out of date, if it is.
+pub fn active_stale(state: &AppState) -> Option<Stale> {
+    state.ws.unreal.stale_for(&active_cpp_file(state)?)
 }
 
 /// The status bar part for the active file: "Game2 · UE 5.8".
@@ -116,7 +148,27 @@ fn tick(state: &mut AppState) {
     let Some(file) = active_cpp_file(state) else { return };
     let Some(dir) = file.parent().map(Path::to_path_buf) else { return };
     let u = &state.ws.unreal;
-    if u.dirs.contains_key(&dir) || u.pending.contains(&dir) {
+    if let Some(project) = u.dirs.get(&dir) {
+        let Some(project) = project else { return };
+        match u.modules.get(&dir) {
+            Some(module) => {
+                let module_dir = module.as_ref().map(|m| &m.dir);
+                if module_dir != u.active_module.as_ref() {
+                    // The active file entered another module: the database may lack it.
+                    let (project, module_dir) = (project.clone(), module_dir.cloned());
+                    state.ws.unreal.active_module = module_dir;
+                    check_db(state, &project);
+                }
+            }
+            None if !u.modules_pending.contains(&dir) => {
+                let project = project.clone();
+                look_up_module(state, file, dir, project);
+            }
+            None => {}
+        }
+        return;
+    }
+    if u.pending.contains(&dir) {
         return;
     }
     let Some(top) = top(state) else { return };
@@ -129,18 +181,64 @@ fn tick(state: &mut AppState) {
         move || {
             let project = unreal::project_dir(&file, &top);
             let found = project.as_ref().filter(|p| !known.contains(*p)).and_then(|p| unreal::detect(p, &cfg.for_project(&unreal::rel_key(p, &top))));
-            (project, found)
+            let module = project.as_ref().and_then(|p| unreal::module_of(&file, p));
+            (project, found, module)
         },
-        move |state, (project, found)| {
+        move |state, (project, found, module)| {
             if state.ws.unreal.detect_gen != gen {
                 return;
             }
             state.ws.unreal.pending.remove(&dir);
+            if project.is_some() {
+                state.ws.unreal.modules.insert(dir.clone(), module);
+            }
             state.ws.unreal.dirs.insert(dir, project);
             if let Some(p) = found {
+                let root = p.root.clone();
                 detected(state, p);
+                check_db(state, &root);
             }
             watch_engines(state);
+        },
+    );
+}
+
+/// Looks up the module of a folder whose project is known (after a `*.Build.cs` change).
+fn look_up_module(state: &mut AppState, file: PathBuf, dir: PathBuf, project: PathBuf) {
+    state.ws.unreal.modules_pending.insert(dir.clone());
+    let gen = state.ws.unreal.detect_gen;
+    state.jobs.spawn_quiet(
+        move || unreal::module_of(&file, &project),
+        move |state, module| {
+            state.ws.unreal.modules_pending.remove(&dir);
+            if state.ws.unreal.detect_gen == gen {
+                state.ws.unreal.modules.insert(dir, module);
+            }
+        },
+    );
+}
+
+/// Checks a project's database on a worker. The parsed database is reused while its mtime
+/// stays the same.
+fn check_db(state: &mut AppState, root: &Path) {
+    let u = &mut state.ws.unreal;
+    let Some(p) = u.projects.get(root).cloned() else { return };
+    let prev = u.dbs.get(root).and_then(|c| c.index.clone());
+    let gen = u.db_gen.entry(root.to_path_buf()).or_default();
+    *gen += 1;
+    let gen = *gen;
+    u.db_checks += 1;
+    let root = root.to_path_buf();
+    state.jobs.spawn_quiet(
+        move || unreal::check_db(&p, prev),
+        move |state, check| {
+            if state.ws.unreal.db_gen.get(&root) != Some(&gen) {
+                return;
+            }
+            if let Some(why) = unreal::stale(&check, None) {
+                state.timings.log(format!("Unreal database of {} is out of date: {}", root.display(), why.reason()));
+            }
+            state.ws.unreal.dbs.insert(root, check);
         },
     );
 }
@@ -169,6 +267,7 @@ pub fn refresh(state: &mut AppState, files_moved: bool) {
     u.pending.clear();
     if files_moved {
         u.dirs.clear();
+        u.modules.clear();
     }
     let mut known: Vec<PathBuf> = u.projects.keys().cloned().collect();
     known.extend(u.dirs.values().flatten().cloned());
@@ -193,18 +292,41 @@ pub fn refresh(state: &mut AppState, files_moved: bool) {
                     Some(p) => detected(state, p),
                     None => {
                         state.ws.unreal.projects.remove(&dir);
+                        state.ws.unreal.dbs.remove(&dir);
                     }
                 }
+            }
+            // The database may have been written or its inputs changed meanwhile.
+            let roots: Vec<PathBuf> = state.ws.unreal.projects.keys().cloned().collect();
+            for root in roots {
+                check_db(state, &root);
             }
             watch_engines(state);
         },
     );
 }
 
-/// Detects the projects again when one of their inputs changed in the opened folder.
+/// Detects the projects again when one of their inputs changed in the opened folder, and
+/// checks a database again when its build inputs or the database itself changed.
 pub fn on_fs_batch(state: &mut AppState, paths: &HashSet<PathBuf>) {
     if paths.iter().any(|p| unreal::is_detection_input(p)) {
+        // `refresh` checks every database too.
         refresh(state, paths.iter().any(|p| p.extension().is_some_and(|e| e.eq_ignore_ascii_case("uproject"))));
+        return;
+    }
+    let database = |p: &Path| p.file_name().is_some_and(|n| n == "compile_commands.json") && p.parent().is_some_and(|d| d.ends_with(unreal::DB_DIR));
+    let changed: Vec<&PathBuf> = paths.iter().filter(|p| unreal::is_build_input(p) || database(p)).collect();
+    if changed.is_empty() {
+        return;
+    }
+    // A new or moved `*.Build.cs` moves module borders: look the modules up again.
+    if changed.iter().any(|p| p.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.ends_with(".Build.cs"))) {
+        state.ws.unreal.modules.clear();
+        state.ws.unreal.active_module = None;
+    }
+    let roots: Vec<PathBuf> = state.ws.unreal.projects.keys().filter(|r| changed.iter().any(|p| p.starts_with(r))).cloned().collect();
+    for root in roots {
+        check_db(state, &root);
     }
 }
 
@@ -268,18 +390,19 @@ fn engine_busy<'a>(state: &'a AppState, engine: &Path) -> Option<&'a Path> {
     state.ws.unreal.runs.iter().find(|(_, r)| r.engine == engine).map(|(dir, _)| dir.as_path())
 }
 
-/// Whether the banner shows now, and for which project.
-fn banner_project(state: &AppState) -> Option<&UnrealProject> {
+/// Whether the banner shows now, for which project, and why its database is out of date.
+fn banner_project(state: &AppState) -> Option<(&UnrealProject, Option<Stale>)> {
     let p = active_project(state)?;
     let u = &state.ws.unreal;
-    (u.is_running(&p.root) || !p.has_db && !u.dismissed.contains(&p.root)).then_some(p)
+    let stale = if p.has_db { active_stale(state) } else { None };
+    (u.is_running(&p.root) || (!p.has_db || stale.is_some()) && !u.dismissed.contains(&p.root)).then_some((p, stale))
 }
 
 /// The bar above the editor. A panel, like the git operation banner, so it pushes the editor
 /// down instead of covering it.
 pub fn banner(state: &mut AppState, ctx: &Context) {
     tick(state);
-    let Some(p) = banner_project(state) else { return };
+    let Some((p, stale)) = banner_project(state) else { return };
     let dir = p.root.clone();
     let run = state.ws.unreal.runs.get(&dir);
     let running = run.is_some();
@@ -290,6 +413,7 @@ pub fn banner(state: &mut AppState, ctx: &Context) {
             None => format!("{}: UnrealBuildTool is writing compile_commands.json…", p.name),
         },
         None => match &ready {
+            Ok(_) if p.has_db => format!("{}: compile database is out of date ({}).", p.name, stale.as_ref().map(Stale::reason).unwrap_or_default()),
             Ok(_) => match p.engine.as_ref().ok().and_then(|e| e.version.clone()) {
                 Some(v) => format!("{}: no compile database for clangd yet (Unreal Engine {v}).", p.name),
                 None => format!("{}: no compile database for clangd yet.", p.name),

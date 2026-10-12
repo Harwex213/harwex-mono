@@ -4,20 +4,12 @@ import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
 import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
 import type { Reflector } from "three/examples/jsm/objects/Reflector.js";
-import { createCameraRig } from "../scene/cameraRig";
-import { createCasino } from "../scene/casino";
-import { createCity } from "../scene/city";
+import { BODIES, COMPONENTS } from "../scene/components";
+import type { RigBehaviour } from "../scene/components";
+import type { CameraRig } from "../scene/cameraRig";
 import { named } from "../scene/geometry";
-import { createLights } from "../scene/lights";
-import { createCasinoEnvironment, createEnvironment, createMaterials } from "../scene/materials";
-import { annexFloorPlan, createAnnex, styleAnnexFloor } from "../scene/annex";
-import { createBuffet } from "../scene/buffet";
-import { createDressing } from "../scene/dressing";
-import { createGameMaterials, createGameProps } from "../scene/gameProps";
-import { createProps } from "../scene/props";
-import { createSofas } from "../scene/sofas";
-import { createStudio } from "../scene/studio";
-import { createWheel } from "../scene/wheel";
+import { MaterialLibrary } from "../scene/materialLibrary";
+import { createEnvironment } from "../scene/materials";
 import { activeTab, dolly, fps, isPlaying, params, renderMode, selectedUuid, shot, spin, swing } from "../state";
 import type { ViewTab } from "../state";
 import { Editor } from "./editor";
@@ -25,30 +17,54 @@ import { EditorLighting } from "./editorLighting";
 import type { AddKind } from "./primitives";
 import { isLightKind } from "./primitives";
 import { LightZones } from "./lightZones";
-import { recenterPivots } from "./pivots";
 import { SceneDocument } from "./sceneDocument";
+import type { ExternalChange } from "./sceneDocument";
+import { decodeColor } from "./sceneFormat";
+import type { SceneSettings } from "./sceneFormat";
+import type { Behaviour } from "./sceneLoader";
+import { SceneSync } from "./sceneSync";
+import type { OpenedScene } from "./sceneSync";
 
 const GAME_ASPECT = 16 / 9;
+
+// The names of the render settings in the scene file.
+const TONE_MAPPINGS: Record<string, THREE.ToneMapping> = {
+  None: THREE.NoToneMapping,
+  Linear: THREE.LinearToneMapping,
+  Reinhard: THREE.ReinhardToneMapping,
+  Cineon: THREE.CineonToneMapping,
+  ACESFilmic: THREE.ACESFilmicToneMapping,
+  AgX: THREE.AgXToneMapping,
+  Neutral: THREE.NeutralToneMapping,
+};
+
+const SHADOW_MAPS: Record<string, THREE.ShadowMapType> = {
+  Basic: THREE.BasicShadowMap,
+  PCF: THREE.PCFShadowMap,
+  PCFSoft: THREE.PCFSoftShadowMap,
+  VSM: THREE.VSMShadowMap,
+};
 
 // One renderer and one scene serve both tabs, like Unity's Scene and Game views.
 // The canvas moves into the container of the active tab.
 class StudioEngine {
   readonly renderer: THREE.WebGLRenderer;
   readonly scene = new THREE.Scene();
+  // The scene root. Everything under it comes from the open version of the scene file (src/scene/versions/).
   readonly root = named(new THREE.Group(), "Game Show Studio", true);
-  readonly camera = named(new THREE.PerspectiveCamera(40, GAME_ASPECT, 0.1, 1000), "Main Camera");
+  readonly camera: THREE.PerspectiveCamera;
   readonly editor: Editor;
   readonly document: SceneDocument;
-  private readonly rig: ReturnType<typeof createCameraRig>;
-  private readonly wheel: ReturnType<typeof createWheel>;
-  private readonly lights: ReturnType<typeof createLights>;
-  private readonly city: ReturnType<typeof createCity>;
-  private readonly annex: ReturnType<typeof createAnnex>;
-  private readonly casino: ReturnType<typeof createCasino>;
-  private readonly reflector: Reflector;
+  readonly sync: SceneSync;
+  readonly library: MaterialLibrary;
+  private rig: CameraRig;
+  // The live list of the document: an external change starts and stops behaviours in it.
+  private readonly behaviours: Behaviour[];
+  private readonly reflectors: Reflector[] = [];
   private readonly lighting: EditorLighting;
   private readonly zones: LightZones;
-  private readonly bloom: UnrealBloomPass | null = null;
+  private bloom: UnrealBloomPass | null = null;
+  private studioEnvironment: THREE.Texture | null = null;
   private readonly composer: EffectComposer;
   private readonly renderPass: RenderPass;
   private readonly containers = new Map<ViewTab, HTMLElement>();
@@ -60,72 +76,44 @@ class StudioEngine {
   private frameCount = 0;
   private fpsWindowStart = performance.now();
 
-  constructor() {
+  constructor(opened: OpenedScene) {
     this.renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: "high-performance" });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.0;
-    this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.PCFShadowMap;
     this.renderer.domElement.style.display = "block";
 
-    this.scene.background = new THREE.Color(0x010209);
-    this.scene.environment = createEnvironment(this.renderer);
-    this.scene.environmentIntensity = 0.8;
-
-    const materials = createMaterials();
-    const gameMaterials = createGameMaterials();
-    const gameProps = createGameProps(gameMaterials);
-    const station = (name: string) => {
-      const object = gameProps.getObjectByName(name);
-      if (!object) {
-        throw new Error(`${name} is missing`);
-      }
-      return object;
-    };
-    // Each bonus game shot is set relative to its game, so it follows the game when the user moves it.
-    this.rig = createCameraRig(this.camera, shot.value, { dice: station("Bonus Dice"), show: station("Bonus Show"), luck: station("Bonus Luck") });
-    // The camera is animated by the rig, so its transform is not saved.
-    this.camera.userData.animated = true;
-
-    // The real size comes with the first layout; the reflector target is resized then.
-    const studio = createStudio(materials, 1280, 720, annexFloorPlan());
-    this.reflector = studio.reflector;
-    this.wheel = createWheel(materials);
-    this.city = createCity();
-    this.lights = createLights();
-    // The Game Show platform (annex.ts). `annex.follow` keeps the Bonus Show lights on the wheel.
-    this.annex = createAnnex(station("Bonus Show"));
-    // The casino hall round the platform (casino.ts). `casino.update` drives its animation.
-    this.casino = createCasino();
-    this.root.add(this.camera, studio.group, this.wheel.group, createProps(materials), createDressing(materials), createSofas(materials), createBuffet(materials), gameProps, this.annex.group, this.casino.group, this.lights.group, this.city.group);
+    this.library = new MaterialLibrary(this.renderer);
+    this.document = new SceneDocument(this.root, this.library, COMPONENTS, BODIES, opened.file);
+    this.sync = new SceneSync(this.document, opened);
+    // The render settings of the scene file.
+    const settings = this.document.settings;
+    this.applySettings(settings);
     this.scene.add(this.root);
+    this.behaviours = this.document.behaviours;
+    this.rig = this.findRig();
+    let camera: THREE.PerspectiveCamera | null = null;
+    let floor: THREE.Mesh | null = null;
+    this.root.traverse((object) => {
+      if ((object as THREE.PerspectiveCamera).isPerspectiveCamera && !camera) {
+        camera = object as THREE.PerspectiveCamera;
+      }
+      if ((object as Reflector).isReflector) {
+        this.reflectors.push(object as Reflector);
+      }
+      if (object.userData.editorMatte && (object as THREE.Mesh).isMesh && !floor) {
+        floor = object as THREE.Mesh;
+      }
+    });
+    if (!camera || !floor) {
+      throw new Error("[scene] the scene file needs a camera and a floor with the editorMatte flag");
+    }
+    this.camera = camera;
 
-    // Place everything at time 0 before the snapshot of code defaults.
-    this.wheel.update(0, 0, true);
+    // Place everything at time 0.
+    this.stepAll(0, 0, true);
     this.rig.update(0, true, true);
-    this.lights.update(0);
-    this.annex.update(0);
-    this.casino.update(0);
-    this.annex.follow();
-    // Every selectable object gets its origin on itself, so the gizmo appears where the object is.
-    recenterPivots(this.root);
-    // Taken before the saved overrides apply: a deleted or renamed floor must still be found.
-    const floor = studio.group.getObjectByName("Marble") as THREE.Mesh;
-    // The balcony (the annex part of the floor and the balustrade) reflects the casino, not the studio:
-    // it gets the casino environment as its own map. Only an own map obeys `envMapIntensity`.
-    // The floor is styled before the document takes the code defaults.
-    const casinoEnvironment = createCasinoEnvironment(this.renderer);
-    const annexMarble = (floor.material as THREE.MeshStandardMaterial[])[1];
-    if (annexMarble) {
-      styleAnnexFloor(annexMarble);
-      annexMarble.envMap = casinoEnvironment;
-    }
-    for (const material of [...this.annex.materials, ...this.casino.materials]) {
-      material.envMap = casinoEnvironment;
-    }
-    this.document = new SceneDocument(this.root);
-    this.lighting = new EditorLighting(this.renderer, this.scene, this.root, this.reflector, floor);
+    this.updateAll(0);
+    this.beforeRender(0);
+    this.lighting = new EditorLighting(this.renderer, this.scene, this.root, this.reflectors, floor);
     this.zones = new LightZones(this.root);
 
     this.editor = new Editor({
@@ -134,7 +122,7 @@ class StudioEngine {
       canvas: this.renderer.domElement,
       mainCamera: this.camera,
       save: () => {
-        void this.document.save();
+        void this.sync.save();
       },
       checkpoint: () => {
         this.document.checkpoint();
@@ -155,18 +143,21 @@ class StudioEngine {
     });
 
     // The composer target carries MSAA because the render pass draws into it, not the canvas.
-    const target = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: 4 });
+    const target = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: settings.samples });
     this.composer = new EffectComposer(this.renderer, target);
     this.renderPass = new RenderPass(this.scene, this.camera);
     this.composer.addPass(this.renderPass);
     // `?bloom=0` drops the bloom pass: handy to spot a single broken pixel before bloom smears it.
-    if (params.get("bloom") !== "0") {
-      this.bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.25, 0.2, 1.2);
+    if (settings.bloom && params.get("bloom") !== "0") {
+      this.bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), settings.bloom.strength, settings.bloom.radius, settings.bloom.threshold);
       this.composer.addPass(this.bloom);
     }
     this.composer.addPass(new OutputPass());
     this.scene.updateMatrixWorld();
     this.zones.warmUp(this.renderer, this.scene, this.camera, target);
+    this.document.onExternalChange = (change) => {
+      this.followChange(change);
+    };
 
     this.resizeObserver = new ResizeObserver(() => {
       this.sizeDirty = true;
@@ -189,6 +180,87 @@ class StudioEngine {
       isPlaying.value = false;
     }
     this.renderer.setAnimationLoop(this.frame);
+  }
+
+  private findRig(): CameraRig {
+    const rig = this.behaviours.find((behaviour): behaviour is RigBehaviour => "rig" in behaviour);
+    if (!rig) {
+      throw new Error("[scene] no object has a cameraRig component");
+    }
+    return rig.rig;
+  }
+
+  // The render settings of the scene file. A change of the shadow map type compiles the materials again.
+  private applySettings(settings: SceneSettings): void {
+    const renderer = this.renderer;
+    renderer.toneMapping = TONE_MAPPINGS[settings.toneMapping] ?? THREE.NoToneMapping;
+    renderer.toneMappingExposure = settings.toneMappingExposure;
+    const shadows = settings.shadowMap !== "None";
+    const shadowType = SHADOW_MAPS[settings.shadowMap] ?? THREE.PCFShadowMap;
+    if (renderer.shadowMap.enabled !== shadows || renderer.shadowMap.type !== shadowType) {
+      renderer.shadowMap.enabled = shadows;
+      renderer.shadowMap.type = shadowType;
+      renderer.shadowMap.needsUpdate = true;
+      this.scene.traverse((object) => {
+        const material = (object as THREE.Mesh).material;
+        for (const item of Array.isArray(material) ? material : material ? [material] : []) {
+          item.needsUpdate = true;
+        }
+      });
+    }
+    this.scene.background = decodeColor(settings.background, new THREE.Color());
+    if (settings.environment === "casino") {
+      this.scene.environment = this.library.casinoEnvironment;
+    } else {
+      this.studioEnvironment ??= createEnvironment(renderer);
+      this.scene.environment = this.studioEnvironment;
+    }
+    this.scene.environmentIntensity = settings.environmentIntensity;
+  }
+
+  // Follows a change of the scene file on disk (SceneDocument.applyFile): render settings, post-processing,
+  // a camera rig or mirror that started again.
+  private followChange(change: ExternalChange): void {
+    if (change.settings) {
+      const settings = this.document.settings;
+      this.applySettings(settings);
+      for (const target of [this.composer.renderTarget1, this.composer.renderTarget2]) {
+        if (target.samples !== settings.samples) {
+          target.samples = settings.samples;
+          target.dispose();
+        }
+      }
+      const wantsBloom = settings.bloom !== null && params.get("bloom") !== "0";
+      if (wantsBloom && settings.bloom) {
+        if (!this.bloom) {
+          this.bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), settings.bloom.strength, settings.bloom.radius, settings.bloom.threshold);
+          this.composer.insertPass(this.bloom, 1);
+        }
+        this.bloom.strength = settings.bloom.strength;
+        this.bloom.radius = settings.bloom.radius;
+        this.bloom.threshold = settings.bloom.threshold;
+      } else if (this.bloom) {
+        this.composer.removePass(this.bloom);
+        this.bloom.dispose();
+        this.bloom = null;
+      }
+    }
+    if (change.behaviours) {
+      const rig = this.findRig();
+      if (rig !== this.rig) {
+        this.rig = rig;
+        this.rig.seek(this.time);
+        this.rig.update(0, true, true);
+      }
+      this.updateAll(this.time);
+    }
+    this.reflectors.length = 0;
+    this.root.traverse((object) => {
+      if ((object as Reflector).isReflector) {
+        this.reflectors.push(object as Reflector);
+      }
+    });
+    this.sizeDirty = true;
   }
 
   // Adds an object of `kind` under `parent`, at the point of the set in the middle of the Scene view.
@@ -220,19 +292,35 @@ class StudioEngine {
   seek(seconds: number): void {
     this.time = 0;
     this.rig.seek(0);
-    this.wheel.update(0, 0, true);
-    // Run the wheel in small steps so its spin cycle state stays consistent.
+    this.stepAll(0, 0, true);
+    // Step in small steps so the state of a stepped component (the wheel spin cycle) stays consistent.
     const steps = Math.ceil(seconds / 0.05);
     for (let i = 0; i < steps; i++) {
       this.time += seconds / steps;
-      this.wheel.update(seconds / steps, this.time, true);
+      this.stepAll(seconds / steps, this.time, true);
     }
     this.rig.seek(params.get("still") === "1" ? 0 : seconds);
     this.rig.update(0, true, true);
-    this.lights.update(this.time);
-    this.annex.update(this.time);
-    this.casino.update(this.time);
+    this.updateAll(this.time);
     this.render(0);
+  }
+
+  private stepAll(dt: number, time: number, spinning: boolean): void {
+    for (const behaviour of this.behaviours) {
+      behaviour.step?.(dt, time, spinning);
+    }
+  }
+
+  private updateAll(time: number): void {
+    for (const behaviour of this.behaviours) {
+      behaviour.update?.(time);
+    }
+  }
+
+  private beforeRender(time: number): void {
+    for (const behaviour of this.behaviours) {
+      behaviour.beforeRender?.(this.renderer, time);
+    }
   }
 
   private mountCanvas(): void {
@@ -258,7 +346,10 @@ class StudioEngine {
     this.renderer.setSize(width, height);
     this.composer.setPixelRatio(ratio);
     this.composer.setSize(width, height);
-    this.reflector.getRenderTarget().setSize(width * 0.5 * ratio, height * 0.5 * ratio);
+    for (const reflector of this.reflectors) {
+      const scale = (reflector.userData.textureScale as number | undefined) ?? 0.5;
+      reflector.getRenderTarget().setSize(width * scale * ratio, height * scale * ratio);
+    }
     this.editor.resize(width, height);
     // In the Scene view the main camera keeps the game aspect, so the camera gizmo shows the real frame.
     this.rig.resize(this.view === "game" ? width / height : GAME_ASPECT);
@@ -267,15 +358,13 @@ class StudioEngine {
 
   private advance(dt: number): void {
     this.time += dt;
-    this.wheel.update(dt, this.time, spin.value);
+    this.stepAll(dt, this.time, spin.value);
     // A paused rig leaves the camera alone, so a camera moved in the editor stays where it is.
     // A move to another shot runs to its end anyway.
     if (swing.value || dolly.value || this.rig.isTraveling()) {
       this.rig.update(dt, swing.value, dolly.value);
     }
-    this.lights.update(this.time);
-    this.annex.update(this.time);
-    this.casino.update(this.time);
+    this.updateAll(this.time);
   }
 
   private render(dt: number): void {
@@ -283,10 +372,9 @@ class StudioEngine {
       this.applySize();
     }
     this.editor.update(dt);
-    // The city photo arrives after the first frames, so its lights are redrawn even while paused.
-    this.city.update(this.renderer, this.time);
-    // The Bonus Show lights follow the wheel, also while paused: a wheel moved in the editor is lit at once.
-    this.annex.follow();
+    // Components that run on every render, also while paused: the city lights (the photo arrives after the first
+    // frames) and the lights that follow Bonus Show (a wheel moved in the editor is lit at once).
+    this.beforeRender(this.time);
     this.renderPass.camera = this.view === "game" ? this.camera : this.editor.camera;
     const editorLit = this.view === "scene" && renderMode.value === "editor";
     // The lights of a room out of view are left out of this frame.
@@ -324,11 +412,21 @@ class StudioEngine {
 
 let instance: StudioEngine | null = null;
 
-function getEngine(): StudioEngine {
-  if (!instance) {
-    instance = new StudioEngine();
+// Creates the engine for the opened version (main.tsx, once).
+function createEngine(opened: OpenedScene): StudioEngine {
+  instance = new StudioEngine(opened);
+  // Only `yarn dev` has the scene endpoints; a build opens the version read-only.
+  if (import.meta.webpackHot) {
+    instance.sync.connect();
   }
   return instance;
 }
 
-export { StudioEngine, getEngine };
+function getEngine(): StudioEngine {
+  if (!instance) {
+    throw new Error("[scene] the engine starts after the scene file loads (main.tsx)");
+  }
+  return instance;
+}
+
+export { StudioEngine, createEngine, getEngine };

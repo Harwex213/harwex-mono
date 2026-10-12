@@ -1,12 +1,11 @@
-import * as THREE from "three";
-import { named } from "../scene/geometry";
+import type { Recipe } from "./geometryRecipes";
+import type { ComponentData } from "./sceneFormat";
 
 // Objects that the user adds in the editor: an empty group, mesh primitives and lights.
-// The scene document stores an added object as data (its kind, name, parent, transform and material)
-// and builds it again with `createPrimitive` on load.
+// An added object is an ordinary object of the scene file: `primitiveComponents` gives its components.
 //
 // Pivot rule: the geometry of every mesh primitive already has its origin at the bottom centre of its bounds,
-// so `__studio.pivots()` stays empty without `recenterPivots` (that one runs only at startup).
+// so `__studio.pivots()` stays empty.
 // The box and the plane get 2 segments across: the pivot check samples vertices, and a vertex in the middle
 // of the bottom face shows that the pivot lies on the geometry.
 
@@ -32,7 +31,20 @@ const ADD_ENTRIES: AddEntry[] = [
   { kind: "directional", label: "Directional Light", section: "Light" },
 ];
 
-const DEFAULT_COLOR = 0xb4b4b4;
+const HALF_PI = Math.PI / 2;
+
+// Geometry with its origin at the bottom centre of its bounds.
+const GEOMETRY: Record<string, Recipe> = {
+  cube: { type: "box", widthSegments: 2, depthSegments: 2, ops: [["translate", 0, 0.5, 0]] },
+  sphere: { type: "sphere", radius: 0.5, ops: [["translate", 0, 0.5, 0]] },
+  cylinder: { type: "cylinder", radiusTop: 0.5, radiusBottom: 0.5, ops: [["translate", 0, 0.5, 0]] },
+  // Lies on the ground, facing up.
+  plane: { type: "plane", width: 2, height: 2, widthSegments: 2, heightSegments: 2, ops: [["rotateX", -HALF_PI]] },
+  cone: { type: "cone", radius: 0.5, ops: [["translate", 0, 0.5, 0]] },
+  // Lies flat, so the ring surrounds its own centre and the pivot is the bottom centre of the hole.
+  torus: { type: "torus", radius: 0.5, tube: 0.15, radialSegments: 16, tubularSegments: 48, ops: [["rotateX", -HALF_PI], ["translate", 0, 0.15, 0]] },
+  capsule: { type: "capsule", radius: 0.3, height: 0.8, capSegments: 8, radialSegments: 24, ops: [["translate", 0, 0.7, 0]] },
+};
 
 function isAddKind(value: unknown): value is AddKind {
   return ADD_ENTRIES.some((entry) => entry.kind === value);
@@ -46,74 +58,30 @@ function isLightKind(kind: AddKind): boolean {
   return kind === "point" || kind === "spot" || kind === "directional";
 }
 
-function isMeshKind(kind: AddKind): boolean {
-  return kind !== "group" && !isLightKind(kind);
-}
-
-// Geometry with its origin at the bottom centre of its bounds.
-function primitiveGeometry(kind: AddKind): THREE.BufferGeometry {
-  if (kind === "cube") {
-    return new THREE.BoxGeometry(1, 1, 1, 2, 1, 2).translate(0, 0.5, 0);
-  }
-  if (kind === "sphere") {
-    return new THREE.SphereGeometry(0.5, 32, 16).translate(0, 0.5, 0);
-  }
-  if (kind === "cylinder") {
-    return new THREE.CylinderGeometry(0.5, 0.5, 1, 32).translate(0, 0.5, 0);
-  }
-  if (kind === "plane") {
-    // Lies on the ground, facing up.
-    return new THREE.PlaneGeometry(2, 2, 2, 2).rotateX(-Math.PI / 2);
-  }
-  if (kind === "cone") {
-    return new THREE.ConeGeometry(0.5, 1, 32).translate(0, 0.5, 0);
-  }
-  if (kind === "torus") {
-    // Lies flat, so the ring surrounds its own centre and the pivot is the bottom centre of the hole.
-    return new THREE.TorusGeometry(0.5, 0.15, 16, 48).rotateX(-Math.PI / 2).translate(0, 0.15, 0);
-  }
-  return new THREE.CapsuleGeometry(0.3, 0.8, 8, 24).translate(0, 0.7, 0);
-}
-
-function createOwnMaterial(): THREE.MeshStandardMaterial {
-  const material = new THREE.MeshStandardMaterial({ color: DEFAULT_COLOR, roughness: 0.5, metalness: 0 });
-  // The Inspector lists only named materials. `own` keeps it out of the list of shared materials.
-  material.name = "Own Material";
-  material.userData.own = true;
-  return material;
-}
-
-// A light aims at a target that hangs 1 m below it in its own frame: rotating the light turns the beam, like in Unity.
-function aimDown(light: THREE.SpotLight | THREE.DirectionalLight): void {
-  light.target.position.set(0, -1, 0);
-  light.add(light.target);
-}
-
-function createPrimitive(kind: AddKind, name: string): THREE.Object3D {
+// The components of a new object of `kind`. A spot or directional light aims at `targetId`:
+// a child 1 m below it in its own frame, so rotating the light turns the beam, like in Unity.
+function primitiveComponents(kind: AddKind, targetId: string): Record<string, ComponentData> | undefined {
   if (kind === "group") {
-    // A pure grouping node, like the folders of the code: a click in the Scene view selects its children.
-    return named(new THREE.Group(), name, true);
+    return undefined;
   }
   if (kind === "point") {
-    return named(new THREE.PointLight(0xfff0dd, 20, 12, 2), name);
+    return { light: { type: "point", color: "#fff0dd", intensity: 20, distance: 12, decay: 2 } };
   }
   if (kind === "spot") {
-    const light = new THREE.SpotLight(0xfff0dd, 150, 0, THREE.MathUtils.degToRad(25), 0.5, 2);
-    aimDown(light);
-    return named(light, name);
+    return { light: { type: "spot", color: "#fff0dd", intensity: 150, distance: 0, decay: 2, angle: 25, penumbra: 0.5, target: targetId } };
   }
   if (kind === "directional") {
-    const light = new THREE.DirectionalLight(0xffffff, 1.5);
-    aimDown(light);
-    return named(light, name);
+    return { light: { type: "directional", color: "#ffffff", intensity: 1.5, target: targetId } };
   }
-  const material = createOwnMaterial();
-  const mesh = new THREE.Mesh(primitiveGeometry(kind), material);
-  mesh.castShadow = true;
-  mesh.receiveShadow = true;
-  mesh.userData.ownMaterial = material;
-  return named(mesh, name);
+  return {
+    meshRenderer: {
+      geometry: GEOMETRY[kind],
+      material: { color: "#b4b4b4", emissive: "#000000", emissiveIntensity: 1, roughness: 0.5, metalness: 0 },
+      castShadow: true,
+      receiveShadow: true,
+    },
+  };
 }
 
-export { ADD_ENTRIES, createOwnMaterial, createPrimitive, isAddKind, isLightKind, isMeshKind, labelOf };
+export { ADD_ENTRIES, isAddKind, isLightKind, labelOf, primitiveComponents };
 export type { AddEntry, AddKind };

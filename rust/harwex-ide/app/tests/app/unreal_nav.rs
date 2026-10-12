@@ -4,7 +4,8 @@
 //! `-mode=GenerateClangDatabase`. No real Unreal or Epic tool runs. Covered: detection and the
 //! banner, the confirmation, the generate action (a worker, Stop kills the fake UBT, then clangd
 //! restarts with the database), Cmd+B from a game class into an engine header (read-only) and
-//! the missing `.generated.h` hint. Tests that start clangd skip without the pinned one.
+//! the missing `.generated.h` hint, and the out-of-date database banner (task 102). Tests that
+//! start clangd skip without the pinned one.
 
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -15,7 +16,7 @@ use egui::Key;
 use harwex_ide::lang::{HoverInfo, LangId, LanguageServer, Location, Reference};
 use harwex_ide::nav::NavKind;
 use harwex_ide::lang::unreal::UnrealProject;
-use harwex_ide::unreal::{active_project, status_label, ACTION, BUSY_TITLE, CHOICE_TITLE};
+use harwex_ide::unreal::{active_project, active_stale, status_label, ACTION, BUSY_TITLE, CHOICE_TITLE};
 
 const SUITE: &str = "unreal_nav";
 
@@ -176,6 +177,78 @@ fn detects_the_project_and_asks_before_generating() {
     assert!(ide.state().ws.unreal.confirm.is_none() && ide.state().ws.unreal.runs.is_empty());
     assert!(!u.pids.exists(), "nothing runs without the confirmation");
     ide.click("Not now");
+    ide.settle();
+    ide.assert_no_text(ACTION);
+}
+
+/// Sets a file's mtime to `secs` seconds before now (negative: after).
+fn age(path: &Path, secs: i64) {
+    let now = std::time::SystemTime::now();
+    let t = if secs >= 0 { now - Duration::from_secs(secs as u64) } else { now + Duration::from_secs(secs.unsigned_abs()) };
+    std::fs::File::options().write(true).open(path).expect("open").set_modified(t).expect("set mtime");
+}
+
+/// Task 102: a database older than a `*.Build.cs`, or without the active file's module.
+#[test]
+fn stale_database_shows_the_banner_with_its_reason() {
+    let u = unreal_project("stale", "", true);
+    u.repo.write(".harwex/ide.toml", &format!("languages = [\"ts\"]\n[unreal]\nengine = \"{}\"\n", u.engine.display()));
+    u.repo.write("Source/Game/Game.Build.cs", "// ModuleRules\n");
+    // A module added after the database was generated, with an old mtime: only its missing
+    // entries tell.
+    u.repo.write("Source/GameTests/GameTests.Build.cs", "// ModuleRules\n");
+    u.repo.write("Source/GameTests/Public/GameTests.h", "#pragma once\n");
+    let db = u.repo.dir.join(".harwex/unreal/compile_commands.json");
+    u.repo.write(".harwex/unreal/.gitignore", "*\n");
+    u.repo.write(".harwex/unreal/compile_commands.json", &format!("[{{\"file\": \"{}\", \"command\": \"c++ -c MyActor.cpp\", \"directory\": \"{}\"}}]\n", u.repo.dir.join("Source/Game/MyActor.cpp").display(), u.engine.join("Engine/Source").display()));
+    u.repo.commit_all("Tests module");
+    for rel in ["Game.uproject", "Source/Game.Target.cs", "Source/GameEditor.Target.cs", "Source/Game/Game.Build.cs", "Source/GameTests/GameTests.Build.cs"] {
+        age(&u.repo.dir.join(rel), 3600);
+    }
+    age(&db, 60);
+    let mut ide = Ide::open(SUITE, &u.repo.dir);
+
+    // A fresh database for the module of the file: no banner.
+    ide.open_file("Source/Game/MyActor.cpp");
+    assert!(detected(&mut ide, "Game").has_db);
+    ide.settle();
+    assert_eq!(active_stale(ide.state()), None);
+    ide.assert_no_text(ACTION);
+
+    // A header of the module without entries.
+    ide.open_file("Source/GameTests/Public/GameTests.h");
+    ide.wait_for("module checked", |s| active_stale(s).is_some());
+    ide.settle();
+    ide.assert_text("Game: compile database is out of date (module GameTests has no entries).");
+    ide.assert_text(ACTION);
+    ide.snapshot("stale");
+    // No check per frame: only detection and module changes start one.
+    let checks = ide.state().ws.unreal.db_checks;
+    ide.steps(10);
+    assert_eq!(ide.state().ws.unreal.db_checks, checks);
+
+    // Back in the covered module, then its Build.cs changes (the watcher's batch).
+    ide.open_file("Source/Game/MyActor.cpp");
+    ide.settle();
+    ide.assert_no_text(ACTION);
+    age(&u.repo.dir.join("Source/Game/Game.Build.cs"), -5);
+    let batch = harwex_ide::watcher::FsBatch { paths: [u.repo.dir.join("Source/Game/Game.Build.cs")].into_iter().collect(), structure_changed: false, git_changed: false };
+    ide.state_mut().on_fs_batch(batch);
+    ide.wait_for("Build.cs checked", |s| active_stale(s).is_some());
+    ide.settle();
+    ide.assert_text("Game: compile database is out of date (Game.Build.cs changed after it was generated).");
+    // The same confirmation as for a missing database.
+    ide.click(ACTION);
+    ide.settle();
+    ide.assert_text(&format!("{ACTION}?"));
+    ide.click("Cancel");
+    ide.settle();
+    assert!(!u.pids.exists(), "nothing runs without the confirmation");
+    // "Not now" hides it for the project, also for the other module.
+    ide.click("Not now");
+    ide.settle();
+    ide.assert_no_text(ACTION);
+    ide.open_file("Source/GameTests/Public/GameTests.h");
     ide.settle();
     ide.assert_no_text(ACTION);
 }

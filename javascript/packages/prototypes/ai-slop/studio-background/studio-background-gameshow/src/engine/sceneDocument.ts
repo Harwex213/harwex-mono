@@ -1,106 +1,48 @@
 import * as THREE from "three";
-import savedOverrides from "../scene/scene-overrides.json";
+import type { MaterialLibrary } from "../scene/materialLibrary";
 import { editorHint, inspectorRevision, redoCount, renamingUuid, saveStatus, selectedUuid, structureRevision, undoCount } from "../state";
-import { createPrimitive, isAddKind, labelOf } from "./primitives";
+import { labelOf, primitiveComponents } from "./primitives";
 import type { AddKind } from "./primitives";
+import { FORMAT, ROOT_ID, VERSION } from "./sceneFormat";
+import type { ComponentData, MaterialValues, ObjectRecord, SceneFile, SceneSettings } from "./sceneFormat";
+import { SceneLoader, applyRecord, loadScene, namedStandardMaterials, startComponents, writeMaterialValues } from "./sceneLoader";
+import type { Behaviour, BehaviourEntry, BodyBuilder, ComponentType, StartContext } from "./sceneLoader";
+import { diffScene, same } from "./sceneMerge";
+import { readMaterialValues, serializeObject } from "./sceneSerializer";
 
-// Edits made in the editor are stored as overrides on top of the scene that the code builds.
-// Only values that differ from the code defaults go into src/scene/scene-overrides.json.
+// The scene document: one version of the scene file (src/scene/versions/, format in docs/scene-format.md) loaded
+// into three.js, and the editor operations on it. SceneSync (sceneSync.ts) loads and saves the file.
 //
-// Identity: at startup every named object of the code gets a stable id in `userData.docId`: its path of names
-// from the root, like "Props/Host Desk" (a second object with the same path gets "#2" and so on).
-// The id never changes afterwards, so a rename or a move in the editor keeps the overrides of the object.
-// An object added in the editor gets an id like "added:k3f9x2".
+// Every object of the file has a stable id in `userData.docId`. A rename or a move keeps the id.
+// An object without an id (the merged mesh of a static batch) is not part of the file: Save skips it.
 //
-// The file holds the state, not a history of edits:
-// - `objects`: per code object, the fields that differ from the code. `name` is a rename. `parent` (the id of the
-//   new parent, "" for the root) and `index` (the place among the named children) are a move; they always come together.
-// - `added`: the objects added in the editor, with all their fields and their material.
-// - `deleted`: the ids of the deleted code objects. Their children go with them.
-// - `materials`: the shared materials by name.
-// Load applies the structure first (adds, deletes, moves, renames) and the per-object fields after it.
-// A file without `version` (the format before structural edits) has the same keys and loads as is.
-
-type Vector = [number, number, number];
+// Undo works on snapshots of the editable state of every object (name, parent, order, transform, visibility,
+// light colour and intensity, the material of an own-material mesh) and of the shared material values.
+// A deleted or undone object stays in the document, out of the tree, so redo brings back the same object.
+//
+// `applyFile` brings the document to another file: a change on disk merged with the edits of this tab.
+// Such an external change is not an edit of this tab: it goes into every undo step too, so undo and redo
+// never take it back. Undo only steps through the edits made in this tab.
 
 interface ObjectState {
-  name?: string;
-  // Id of the parent object; "" is the root.
-  parent?: string;
-  // The place among the named children of the parent.
-  index?: number;
-  position?: Vector;
-  // Degrees, XYZ order.
-  rotation?: Vector;
-  scale?: Vector;
-  visible?: boolean;
-  color?: string;
-  intensity?: number;
-}
-
-interface MaterialState {
-  color?: string;
-  emissive?: string;
-  emissiveIntensity?: number;
-  roughness?: number;
-  metalness?: number;
-}
-
-interface AddedState extends ObjectState {
-  kind: AddKind;
-  // The name of a shared material, or the values of the own material of the object.
-  material?: string | MaterialState;
-}
-
-interface SceneOverrides {
-  version?: number;
-  objects?: Record<string, ObjectState>;
-  materials?: Record<string, MaterialState>;
-  added?: Record<string, AddedState>;
-  deleted?: string[];
-}
-
-interface Insert {
-  object: THREE.Object3D;
+  name: string;
   parent: string;
-  index: number;
-  // A code object goes back to this parent when its new parent is missing.
-  fallback: THREE.Object3D | null;
+  order: number;
+  position: number[];
+  rotation: [number, number, number, string];
+  scale: number[];
+  visible: boolean;
+  light?: [number, number, number, number];
+  material?: unknown;
 }
 
-const VERSION = 2;
-const ROOT_ID = "";
-const SAVE_URL = "/__scene/overrides";
-const EPSILON = 1e-5;
+interface Snapshot {
+  objects: Map<string, string>;
+  materials: string;
+}
+
 const HISTORY_LIMIT = 200;
 const HINT_SECONDS = 4;
-
-function round(value: number): number {
-  return Math.round(value * 1e5) / 1e5;
-}
-
-function same(a: unknown, b: unknown): boolean {
-  if (typeof a === "number" && typeof b === "number") {
-    return Math.abs(a - b) < EPSILON;
-  }
-  if (Array.isArray(a) && Array.isArray(b)) {
-    return a.length === b.length && a.every((value, index) => same(value, b[index]));
-  }
-  return a === b;
-}
-
-function objectPath(object: THREE.Object3D, root: THREE.Object3D): string | null {
-  const names: string[] = [];
-  let current: THREE.Object3D | null = object;
-  while (current && current !== root) {
-    if (current.name === "") {
-      return null;
-    }
-    names.unshift(current.name);
-    current = current.parent;
-  }
-  return current === root ? names.join("/") : null;
-}
 
 // The Hierarchy lists only named children.
 function namedChildren(parent: THREE.Object3D): THREE.Object3D[] {
@@ -130,7 +72,7 @@ function isInside(object: THREE.Object3D, ancestor: THREE.Object3D): boolean {
   return false;
 }
 
-// Shared lit materials, by name. The editor can tune them; unlit glow colors stay in code.
+// Shared lit materials, by name. The editor can tune them; unlit glow colours stay in code.
 // The own material of an added mesh is listed too, but it is not a shared material.
 function editableMaterials(object: THREE.Object3D): THREE.MeshStandardMaterial[] {
   const mesh = object as THREE.Mesh;
@@ -148,158 +90,146 @@ function editableMaterials(object: THREE.Object3D): THREE.MeshStandardMaterial[]
   return result;
 }
 
-function collectMaterials(root: THREE.Object3D): Map<string, THREE.MeshStandardMaterial> {
-  const materials = new Map<string, THREE.MeshStandardMaterial>();
-  root.traverse((object) => {
-    for (const material of editableMaterials(object)) {
-      if (!material.userData.own && !materials.has(material.name)) {
-        materials.set(material.name, material);
+function sortedById<T>(entries: Iterable<[string, T]>): [string, T][] {
+  return [...entries].sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
+}
+
+// What an external change touched, for the engine.
+interface ExternalChange {
+  settings: boolean;
+  behaviours: boolean;
+  objects: number;
+}
+
+// The components of a record split into the body (what the object is) and the others (behaviours, data).
+function splitComponents(record: ObjectRecord, loader: SceneLoader): { body: Record<string, ComponentData>; others: Record<string, ComponentData> } {
+  const body: Record<string, ComponentData> = {};
+  const others: Record<string, ComponentData> = {};
+  for (const [name, data] of Object.entries(record.components ?? {})) {
+    if (loader.isBody(name)) {
+      body[name] = data;
+    } else {
+      others[name] = data;
+    }
+  }
+  return { body, others };
+}
+
+// Gives `object` the body of `fresh` (a new object of the same record) without a new object, so every reference to
+// the object stays valid. False when the kind of object differs: the caller then puts `fresh` in its place.
+function updateBody(object: THREE.Object3D, fresh: THREE.Object3D): boolean {
+  if (object.constructor !== fresh.constructor || (object as { isReflector?: boolean }).isReflector || object.userData.beam || fresh.userData.beam) {
+    return false;
+  }
+  const mesh = object as THREE.Mesh;
+  const source = fresh as THREE.Mesh;
+  if (mesh.isMesh || (object as THREE.LineSegments).isLineSegments) {
+    const instanced = mesh as THREE.InstancedMesh;
+    const sourceInstanced = source as THREE.InstancedMesh;
+    if (instanced.isInstancedMesh) {
+      if (instanced.count !== sourceInstanced.count) {
+        return false;
+      }
+      instanced.instanceMatrix.copy(sourceInstanced.instanceMatrix);
+      instanced.instanceMatrix.needsUpdate = true;
+      instanced.instanceColor = sourceInstanced.instanceColor;
+      instanced.boundingBox = null;
+      instanced.boundingSphere = null;
+    }
+    mesh.geometry = source.geometry;
+    mesh.material = source.material;
+    mesh.castShadow = source.castShadow;
+    mesh.receiveShadow = source.receiveShadow;
+    mesh.renderOrder = source.renderOrder;
+    mesh.frustumCulled = source.frustumCulled;
+    for (const key of ["body", "ownMaterial", "startInstanceColors"]) {
+      if (fresh.userData[key] === undefined) {
+        delete object.userData[key];
+      } else {
+        object.userData[key] = fresh.userData[key];
       }
     }
-  });
-  return materials;
-}
-
-function readObject(object: THREE.Object3D): ObjectState {
-  const state: ObjectState = { name: object.name };
-  // An animated object gets its transform from the animation every frame; saving it means nothing.
-  if (!object.userData.animated) {
-    state.position = object.position.toArray().map(round) as Vector;
-    state.rotation = [object.rotation.x, object.rotation.y, object.rotation.z].map((value) => round(THREE.MathUtils.radToDeg(value))) as Vector;
-    state.scale = object.scale.toArray().map(round) as Vector;
-  }
-  state.visible = object.visible;
-  const light = object as THREE.Light;
-  if (light.isLight) {
-    state.color = `#${light.color.getHexString()}`;
-    state.intensity = round(light.intensity);
-  }
-  return state;
-}
-
-function writeObject(object: THREE.Object3D, state: ObjectState): void {
-  if (state.name !== undefined && state.name !== "") {
-    object.name = state.name;
-  }
-  if (state.position && !object.userData.animated) {
-    object.position.fromArray(state.position);
-  }
-  if (state.rotation && !object.userData.animated) {
-    const [x, y, z] = state.rotation.map((value) => THREE.MathUtils.degToRad(value));
-    object.rotation.set(x ?? 0, y ?? 0, z ?? 0);
-  }
-  if (state.scale && !object.userData.animated) {
-    object.scale.fromArray(state.scale);
-  }
-  if (state.visible !== undefined) {
-    object.visible = state.visible;
+    return true;
   }
   const light = object as THREE.Light;
   if (light.isLight) {
-    if (state.color !== undefined) {
-      light.color.set(state.color);
+    const from = fresh as THREE.SpotLight;
+    const to = object as THREE.SpotLight;
+    to.color.copy(from.color);
+    to.intensity = from.intensity;
+    for (const key of ["distance", "decay", "angle", "penumbra"] as const) {
+      if (key in from) {
+        to[key] = from[key];
+      }
     }
-    if (state.intensity !== undefined) {
-      light.intensity = state.intensity;
+    const hemisphere = object as THREE.HemisphereLight;
+    if (hemisphere.isHemisphereLight) {
+      hemisphere.groundColor.copy((fresh as THREE.HemisphereLight).groundColor);
     }
-  }
-}
-
-function readMaterial(material: THREE.MeshStandardMaterial): MaterialState {
-  return {
-    color: `#${material.color.getHexString()}`,
-    emissive: `#${material.emissive.getHexString()}`,
-    emissiveIntensity: round(material.emissiveIntensity),
-    roughness: round(material.roughness),
-    metalness: round(material.metalness),
-  };
-}
-
-function writeMaterial(material: THREE.MeshStandardMaterial, state: MaterialState): void {
-  if (state.color !== undefined) {
-    material.color.set(state.color);
-  }
-  if (state.emissive !== undefined) {
-    material.emissive.set(state.emissive);
-  }
-  if (state.emissiveIntensity !== undefined) {
-    material.emissiveIntensity = state.emissiveIntensity;
-  }
-  if (state.roughness !== undefined) {
-    material.roughness = state.roughness;
-  }
-  if (state.metalness !== undefined) {
-    material.metalness = state.metalness;
-  }
-}
-
-// Keeps the fields of `state` that differ from `baseline`. Returns null when nothing differs.
-function difference<T extends object>(state: T, baseline: T): Partial<T> | null {
-  const result: Partial<T> = {};
-  let changed = false;
-  for (const key of Object.keys(state) as (keyof T)[]) {
-    if (!same(state[key], baseline[key])) {
-      result[key] = state[key];
-      changed = true;
+    to.castShadow = from.castShadow;
+    if (to.shadow && from.shadow) {
+      if (!to.shadow.mapSize.equals(from.shadow.mapSize)) {
+        to.shadow.map?.dispose();
+        to.shadow.map = null;
+      }
+      to.shadow.mapSize.copy(from.shadow.mapSize);
+      to.shadow.bias = from.shadow.bias;
+      to.shadow.normalBias = from.shadow.normalBias;
+      to.shadow.radius = from.shadow.radius;
+      to.shadow.camera.near = from.shadow.camera.near;
+      to.shadow.camera.far = from.shadow.camera.far;
+      to.shadow.camera.updateProjectionMatrix();
     }
+    return true;
   }
-  return changed ? result : null;
-}
-
-// The own material of an added mesh (primitives.ts), or null for any other object.
-function ownMaterial(object: THREE.Object3D): THREE.MeshStandardMaterial | null {
-  return (object.userData.ownMaterial as THREE.MeshStandardMaterial | undefined) ?? null;
+  const camera = object as THREE.PerspectiveCamera;
+  if (camera.isPerspectiveCamera) {
+    const from = fresh as THREE.PerspectiveCamera;
+    camera.fov = from.fov;
+    camera.near = from.near;
+    camera.far = from.far;
+    camera.updateProjectionMatrix();
+    return true;
+  }
+  // A plain group has no body.
+  return true;
 }
 
 class SceneDocument {
+  // The running behaviours. The engine steps this array; an external change starts and stops entries in place.
+  readonly behaviours: Behaviour[] = [];
+  // The render settings of the file. The editor does not change them; Save writes them back.
+  settings: SceneSettings;
+  // Called after an external change, so the engine can follow it (render settings, a new camera rig).
+  onExternalChange: ((change: ExternalChange) => void) | null = null;
   private readonly root: THREE.Object3D;
-  // Every named object of the code, by id. A deleted object stays here, out of the tree, for undo.
-  private readonly codeObjects = new Map<string, THREE.Object3D>();
-  // Every object added in this session, by id. A deleted or undone one stays here, so redo brings back the same object.
-  private readonly addedObjects = new Map<string, THREE.Object3D>();
-  private readonly objectBaseline = new Map<string, ObjectState>();
-  private readonly baselineParent = new Map<THREE.Object3D, THREE.Object3D>();
-  // All children (named or not) of the root and of every code object, as the code built them.
-  private readonly baselineChildren = new Map<THREE.Object3D, THREE.Object3D[]>();
-  // The named code children of each parent, in code order.
-  private readonly baselineOrder = new Map<THREE.Object3D, THREE.Object3D[]>();
+  private readonly loader: SceneLoader;
+  private readonly library: MaterialLibrary;
+  private readonly components: Record<string, ComponentType>;
+  // Every object of the document by id, also the deleted ones (out of the tree).
+  private readonly objects: Map<string, THREE.Object3D>;
+  private readonly entries: BehaviourEntry[];
   private readonly sharedMaterials: Map<string, THREE.MeshStandardMaterial>;
-  private readonly materialBaseline = new Map<string, MaterialState>();
-  // Undo history: each entry is the JSON of `diff()` at that moment, so an entry stays small.
-  private readonly undoStack: string[] = [];
-  private readonly redoStack: string[] = [];
+  private baseline: Snapshot;
+  private readonly undoStack: Snapshot[] = [];
+  private readonly redoStack: Snapshot[] = [];
   private hintTimer = 0;
 
-  constructor(root: THREE.Object3D) {
+  constructor(root: THREE.Object3D, library: MaterialLibrary, components: Record<string, ComponentType>, bodies: Record<string, BodyBuilder>, file: SceneFile) {
     this.root = root;
-    root.userData.docId = ROOT_ID;
-    root.traverse((object) => {
-      const path = object === root ? null : objectPath(object, root);
-      if (path === null) {
-        return;
-      }
-      let id = path;
-      for (let n = 2; this.codeObjects.has(id); n++) {
-        id = `${path}#${n}`;
-      }
-      object.userData.docId = id;
-      this.codeObjects.set(id, object);
-    });
-    for (const parent of [root, ...this.codeObjects.values()]) {
-      this.baselineChildren.set(parent, [...parent.children]);
-      this.baselineOrder.set(parent, parent.children.filter((child) => child.userData.docId !== undefined && child.name !== ""));
+    this.library = library;
+    this.components = components;
+    this.loader = new SceneLoader(library, bodies);
+    if (file.format !== FORMAT || file.version !== VERSION) {
+      throw new Error(`[scene] the scene file has format ${file.format} ${file.version}, the code reads ${FORMAT} ${VERSION}`);
     }
-    for (const [id, object] of this.codeObjects) {
-      this.objectBaseline.set(id, readObject(object));
-      if (object.parent) {
-        this.baselineParent.set(object, object.parent);
-      }
-    }
-    this.sharedMaterials = collectMaterials(root);
-    for (const [name, material] of this.sharedMaterials) {
-      this.materialBaseline.set(name, readMaterial(material));
-    }
-    this.apply(savedOverrides as unknown as SceneOverrides);
+    this.settings = file.settings;
+    const loaded = loadScene(file, root, this.loader, components, library);
+    this.objects = loaded.objects;
+    this.entries = loaded.behaviours;
+    this.behaviours.push(...this.entries.map((entry) => entry.behaviour));
+    this.sharedMaterials = namedStandardMaterials(root);
+    this.baseline = this.snapshot();
 
     // Any edit marks the document dirty. The first call is the subscription itself.
     let first = true;
@@ -322,7 +252,7 @@ class SceneDocument {
     if (id === ROOT_ID) {
       return this.root;
     }
-    return this.codeObjects.get(id) ?? this.addedObjects.get(id);
+    return this.objects.get(id);
   }
 
   // True when the object hangs in the scene tree, false when it is deleted (or under a deleted parent).
@@ -332,11 +262,10 @@ class SceneDocument {
 
   // Shared materials by name, for the material picker of an added mesh.
   materialNames(): string[] {
-    return [...this.sharedMaterials.keys()].sort();
+    return [...this.sharedMaterials.keys()].filter((name) => this.library.get(name) !== undefined).sort();
   }
 
   // Why the object cannot be deleted or moved, or null when it can.
-  // Code holds these objects and writes them every frame, so they stay where the code put them.
   lockReason(object: THREE.Object3D): string | null {
     if (object === this.root) {
       return "the root holds the whole scene";
@@ -345,29 +274,38 @@ class SceneDocument {
       return "the Game view renders through the Main Camera";
     }
     if (object.userData.animated) {
-      return "the animation writes its transform every frame";
+      return "a component writes its transform every frame";
     }
     if (this.idOf(object) === undefined) {
-      return "it is not part of the scene document";
+      return "it is not part of the scene file";
     }
     return null;
   }
 
   // Adds a new object of `kind` under `parent`, with its origin at the world point `at`.
   add(kind: AddKind, parent: THREE.Object3D, at: THREE.Vector3): THREE.Object3D | null {
-    if (this.idOf(parent) === undefined || !this.isAttached(parent)) {
+    const parentId = this.idOf(parent);
+    if (parentId === undefined || !this.isAttached(parent)) {
       this.hint("Pick a parent in the scene to add an object under it.");
       return null;
     }
     this.checkpoint();
-    let id = "";
-    do {
-      id = `added:${Math.random().toString(36).slice(2, 8)}`;
-    } while (this.addedObjects.has(id));
-    const object = this.ensureAdded(id, kind, this.uniqueName(parent, labelOf(kind)));
+    const name = this.uniqueName(parent, labelOf(kind));
+    const id = this.uniqueId(`${parentId === ROOT_ID ? "" : `${parentId}/`}${name}`);
+    const targetId = `${id}/#1`;
+    const record: ObjectRecord = { name, parent: parentId, order: this.nextOrder(parent), flags: kind === "group" ? { folder: true } : undefined, components: primitiveComponents(kind, targetId) };
+    const object = this.loader.create(record);
+    object.userData.docId = id;
+    object.userData.added = kind;
+    this.objects.set(id, object);
+    if (kind === "spot" || kind === "directional") {
+      const target = this.loader.create({ name: "", parent: id, order: 0, position: [0, -1, 0] });
+      target.userData.docId = targetId;
+      this.objects.set(targetId, target);
+      object.add(target);
+      (object as THREE.SpotLight).target = target;
+    }
     object.position.copy(at);
-    object.quaternion.identity();
-    object.scale.setScalar(1);
     parent.updateWorldMatrix(true, false);
     parent.attach(object);
     this.structureChanged();
@@ -411,6 +349,7 @@ class SceneDocument {
     parent.updateWorldMatrix(true, false);
     parent.attach(object);
     placeAt(parent, object, place);
+    this.reorder(parent, object);
     this.structureChanged();
     return true;
   }
@@ -435,173 +374,53 @@ class SceneDocument {
     inspectorRevision.value += 1;
   }
 
-  // Gives an added mesh a shared material by name, or its own material back (null).
+  // Gives a mesh with an own material a shared material by name, or its own material back (null).
   setMaterial(object: THREE.Object3D, name: string | null): void {
-    const own = ownMaterial(object);
+    const own = object.userData.ownMaterial as THREE.MeshStandardMaterial | undefined;
     if (!own) {
       return;
     }
     this.checkpoint();
-    this.writeAddedMaterial(object, name ?? readMaterial(own));
+    this.loader.setMaterial(object, name ?? readMaterialValues(own));
     inspectorRevision.value += 1;
   }
 
-  apply(overrides: SceneOverrides): void {
-    const inserts: Insert[] = [];
-    // Added objects first: a move may name one of them as its new parent.
-    const added = Object.entries(overrides.added ?? {});
-    for (const [id, state] of added) {
-      if (!isAddKind(state.kind)) {
-        console.warn(`[scene] added object of an unknown kind: ${id} (${String(state.kind)})`);
-        continue;
-      }
-      const object = this.ensureAdded(id, state.kind, state.name ?? labelOf(state.kind));
-      object.removeFromParent();
-      inserts.push({ object, parent: state.parent ?? ROOT_ID, index: state.index ?? Infinity, fallback: null });
-    }
-    for (const id of overrides.deleted ?? []) {
-      const object = this.codeObjects.get(id);
-      if (object) {
-        object.removeFromParent();
-      } else {
-        console.warn(`[scene] delete of a missing object: ${id}`);
-      }
-    }
-    // Every moved object leaves its parent before any of them goes in, then they go in by ascending index:
-    // each one then lands on its own place among the objects that stayed.
-    for (const [id, state] of Object.entries(overrides.objects ?? {})) {
-      const object = this.codeObjects.get(id);
-      if (!object || (state.parent === undefined && state.index === undefined)) {
-        continue;
-      }
-      const fallback = this.baselineParent.get(object) ?? null;
-      inserts.push({ object, parent: state.parent ?? (fallback ? (this.idOf(fallback) ?? ROOT_ID) : ROOT_ID), index: state.index ?? Infinity, fallback });
-      object.removeFromParent();
-    }
-    inserts.sort((a, b) => a.index - b.index);
-    for (const insert of inserts) {
-      let parent = this.objectById(insert.parent);
-      if (!parent || isInside(parent, insert.object)) {
-        console.warn(`[scene] move to a missing parent: ${this.idOf(insert.object) ?? insert.object.name} -> ${insert.parent}`);
-        parent = insert.fallback ?? undefined;
-      }
-      if (!parent) {
-        continue;
-      }
-      parent.add(insert.object);
-      placeAt(parent, insert.object, insert.index);
-    }
-
-    for (const [id, state] of Object.entries(overrides.objects ?? {})) {
-      const object = this.codeObjects.get(id);
-      if (object) {
-        writeObject(object, state);
-      } else {
-        console.warn(`[scene] override for a missing object: ${id}`);
-      }
-    }
-    for (const [id, state] of added) {
-      const object = this.addedObjects.get(id);
-      if (object) {
-        writeObject(object, state);
-        this.writeAddedMaterial(object, state.material);
-      }
-    }
-    for (const [name, state] of Object.entries(overrides.materials ?? {})) {
-      const material = this.sharedMaterials.get(name);
-      if (material) {
-        writeMaterial(material, state);
-      }
-    }
-    this.structureChanged();
-  }
-
-  diff(): SceneOverrides {
-    const objects: Record<string, ObjectState> = {};
-    const deleted: string[] = [];
-    for (const [id, object] of this.codeObjects) {
-      const baseline = this.objectBaseline.get(id);
-      if (!baseline) {
-        continue;
-      }
-      const baselineParent = this.baselineParent.get(object);
-      if (!this.isAttached(object)) {
-        // Only the top of a deleted branch is listed: its children go with it.
-        if (object.parent === null || object.parent !== baselineParent) {
-          deleted.push(id);
+  // The scene as a file: every object in the tree, and the values of the shared materials.
+  toFile(): SceneFile {
+    const objects: Record<string, ObjectRecord> = {};
+    const context = {
+      materialRef: (material: THREE.Material): string | MaterialValues => {
+        if (material.userData.own) {
+          return readMaterialValues(material as THREE.MeshStandardMaterial);
         }
-        continue;
+        const key = this.library.keyOf(material);
+        if (key === undefined) {
+          throw new Error(`[scene] material ${material.name || material.type} is not in the material library`);
+        }
+        return key;
+      },
+    };
+    const idOf = (object: THREE.Object3D) => (object === this.root ? ROOT_ID : this.idOf(object));
+    this.root.traverse((object) => {
+      const id = this.idOf(object);
+      if (object === this.root || id === undefined) {
+        return;
       }
-      const changed: ObjectState = difference(readObject(object), baseline) ?? {};
-      const parent = object.parent;
-      const index = namedIndex(object);
-      if (parent && (parent !== baselineParent || index !== this.baselineIndex(object))) {
-        const { name, ...rest } = changed;
-        objects[id] = { ...(name === undefined ? {} : { name }), parent: this.idOf(parent) ?? ROOT_ID, index, ...rest };
-      } else if (Object.keys(changed).length > 0) {
-        objects[id] = changed;
-      }
-    }
-    const added: Record<string, AddedState> = {};
-    for (const [id, object] of this.addedObjects) {
-      if (!this.isAttached(object) || !object.parent) {
-        continue;
-      }
-      const { name, ...rest } = readObject(object);
-      const state: AddedState = {
-        kind: object.userData.added as AddKind,
-        name: name ?? object.name,
-        parent: this.idOf(object.parent) ?? ROOT_ID,
-        index: namedIndex(object),
-        ...rest,
-      };
-      const material = this.readAddedMaterial(object);
-      if (material !== undefined) {
-        state.material = material;
-      }
-      added[id] = state;
-    }
-    const materials: Record<string, MaterialState> = {};
+      objects[id] = serializeObject(object, context, idOf);
+    });
+    const materials: Record<string, MaterialValues> = {};
     for (const [name, material] of this.sharedMaterials) {
-      const baseline = this.materialBaseline.get(name);
-      const changed = baseline ? difference(readMaterial(material), baseline) : null;
-      if (changed) {
-        materials[name] = changed;
-      }
+      materials[name] = readMaterialValues(material);
     }
-    const result: SceneOverrides = { version: VERSION, objects, materials };
-    if (Object.keys(added).length > 0) {
-      result.added = added;
-    }
-    if (deleted.length > 0) {
-      result.deleted = deleted;
-    }
-    return result;
-  }
-
-  async save(): Promise<void> {
-    saveStatus.value = "saving";
-    try {
-      const response = await fetch(SAVE_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: `${JSON.stringify(this.diff(), null, 2)}\n`,
-      });
-      if (!response.ok) {
-        throw new Error(`${response.status} ${response.statusText}`);
-      }
-      saveStatus.value = "saved";
-    } catch (error) {
-      console.error("[scene] save failed: the save endpoint exists only in `yarn dev`", error);
-      saveStatus.value = "failed";
-    }
+    return { format: FORMAT, version: VERSION, settings: this.settings, materials, objects };
   }
 
   // Remembers the current state. Call it right before an edit; undo then returns to this state.
   checkpoint(): void {
     const current = this.snapshot();
     // A checkpoint with no edit since the last one would make an empty undo step.
-    if (this.undoStack.at(-1) === current) {
+    const last = this.undoStack.at(-1);
+    if (last && sameSnapshot(last, current)) {
       return;
     }
     this.undoStack.push(current);
@@ -620,121 +439,400 @@ class SceneDocument {
     this.step(this.redoStack, this.undoStack);
   }
 
-  // Puts every object and material back to the values from code. Undo brings the edits back.
+  // Puts every object and material back to the scene file as it was loaded. Undo brings the edits back.
   revert(): void {
     this.checkpoint();
-    this.restoreBaseline();
+    this.restore(this.baseline);
     this.structureChanged();
   }
 
-  private snapshot(): string {
-    return JSON.stringify(this.diff());
+  // Brings the document to `target`: the file on disk merged with the edits of this tab (SceneSync).
+  // Only the objects, materials and settings that differ from the scene now change. An object whose body changed
+  // gets the new body in place when it can (a new geometry, material, light colour), or a new object in its place.
+  // A behaviour whose data changed starts again. `current` is `toFile()` when the caller has it already.
+  applyFile(target: SceneFile, current: SceneFile = this.toFile()): ExternalChange {
+    const changes = diffScene(current, target);
+    const result: ExternalChange = { settings: false, behaviours: false, objects: 0 };
+    if (changes.length === 0) {
+      return result;
+    }
+    const before = new Map<string, ObjectState | null>();
+    const beforeMaterials = this.materialValues();
+    const touched = new Set<THREE.Object3D>();
+    const placed = new Set<string>();
+    const restart = new Set<string>();
+    const replaced = new Set<string>();
+    const selected = selectedUuid.peek();
+    for (const change of changes) {
+      if (change.kind === "settings") {
+        this.settings = target.settings;
+        result.settings = true;
+        continue;
+      }
+      if (change.kind === "material") {
+        continue;
+      }
+      result.objects += 1;
+      const id = change.key;
+      const record = change.ours as ObjectRecord | null;
+      const old = change.base as ObjectRecord | null;
+      const object = this.objects.get(id);
+      before.set(id, object && this.isAttached(object) ? this.readState(object) : null);
+      if (!record) {
+        if (object) {
+          this.stopBehaviours(id);
+          if (object.parent) {
+            touched.add(object.parent);
+          }
+          object.removeFromParent();
+          this.objects.delete(id);
+          result.behaviours = true;
+        }
+        continue;
+      }
+      if (!object || !old || !this.isAttached(object)) {
+        // New on disk, or back on disk after a delete: a fresh object. Its children follow in their own changes.
+        const created = this.loader.create(record);
+        created.userData.docId = id;
+        if (object) {
+          this.stopBehaviours(id);
+          for (const child of [...object.children]) {
+            created.add(child);
+          }
+          object.removeFromParent();
+          replaced.add(id);
+        }
+        this.objects.set(id, created);
+        placed.add(id);
+        restart.add(id);
+        continue;
+      }
+      const oldParts = splitComponents(old, this.loader);
+      const newParts = splitComponents(record, this.loader);
+      if (!same(oldParts.body, newParts.body)) {
+        const fresh = this.loader.create(record);
+        if (!updateBody(object, fresh)) {
+          fresh.userData.docId = id;
+          for (const child of [...object.children]) {
+            fresh.add(child);
+          }
+          const parent = object.parent;
+          object.removeFromParent();
+          parent?.add(fresh);
+          this.objects.set(id, fresh);
+          this.stopBehaviours(id);
+          restart.add(id);
+          replaced.add(id);
+          if (selected === object.uuid) {
+            selectedUuid.value = fresh.uuid;
+          }
+        }
+      }
+      const live = this.objects.get(id)!;
+      if (!same(oldParts.others, newParts.others)) {
+        live.userData.components = newParts.others;
+        restart.add(id);
+      }
+      applyRecord(live, record);
+      placed.add(id);
+    }
+    // Parents and the order of the children.
+    for (const id of placed) {
+      const object = this.objects.get(id)!;
+      const record = target.objects[id]!;
+      const parent = this.objectById(record.parent);
+      if (!parent) {
+        console.warn(`[scene] object under a missing parent is left out: ${id} (parent ${record.parent})`);
+        object.removeFromParent();
+        continue;
+      }
+      if (object.parent !== parent) {
+        if (object.parent) {
+          touched.add(object.parent);
+        }
+        parent.add(object);
+      }
+      touched.add(parent);
+    }
+    for (const parent of touched) {
+      this.sortChildren(parent);
+    }
+    // Links by id: the targets of the lights that changed, and of the lights that aim at a replaced object.
+    const objectById = (id: string) => this.objectById(id);
+    for (const [id, record] of Object.entries(target.objects)) {
+      const aim = record.components?.light?.target;
+      if (placed.has(id) || (typeof aim === "string" && replaced.has(aim))) {
+        const object = this.objects.get(id);
+        if (object) {
+          this.loader.link(object, record, objectById);
+        }
+      }
+    }
+    // A behaviour that points at a replaced object starts again with the new object.
+    for (const id of replaced) {
+      const quoted = JSON.stringify(id);
+      for (const entry of this.entries) {
+        const data = (this.objects.get(entry.id)?.userData.components as Record<string, ComponentData> | undefined)?.[entry.component];
+        if (data && JSON.stringify(data).includes(quoted)) {
+          restart.add(entry.id);
+        }
+      }
+    }
+    this.root.updateMatrixWorld(true);
+    const context = this.startContext();
+    for (const id of restart) {
+      this.stopBehaviours(id);
+      const object = this.objects.get(id);
+      if (object && this.isAttached(object)) {
+        const started = startComponents(id, object, this.components, context);
+        this.entries.push(...started);
+        this.behaviours.push(...started.map((entry) => entry.behaviour));
+      }
+      result.behaviours = true;
+    }
+    // Shared materials: new objects may bring materials that no object used before.
+    for (const [name, material] of namedStandardMaterials(this.root)) {
+      if (!this.sharedMaterials.has(name)) {
+        this.sharedMaterials.set(name, material);
+      }
+    }
+    const changedMaterials: string[] = [];
+    for (const change of changes) {
+      if (change.kind === "material" && change.ours) {
+        const material = this.sharedMaterials.get(change.key);
+        if (material) {
+          writeMaterialValues(material, change.ours as MaterialValues);
+          changedMaterials.push(change.key);
+        }
+      }
+    }
+    this.rebaseHistory(before, beforeMaterials, changedMaterials);
+    this.structureChanged();
+    this.onExternalChange?.(result);
+    return result;
+  }
+
+  // Writes an external change into every undo and redo step and into the baseline (Revert), field by field,
+  // so that no step takes the change back. A field the external change did not touch keeps its history.
+  private rebaseHistory(before: Map<string, ObjectState | null>, beforeMaterials: Record<string, MaterialValues>, materials: string[]): void {
+    const after = new Map<string, ObjectState | null>();
+    for (const id of before.keys()) {
+      const object = this.objects.get(id);
+      after.set(id, object && this.isAttached(object) ? this.readState(object) : null);
+    }
+    const afterMaterials = this.materialValues();
+    const patch = (snapshot: Snapshot) => {
+      for (const [id, pre] of before) {
+        const post = after.get(id) ?? null;
+        if (!post) {
+          snapshot.objects.delete(id);
+          continue;
+        }
+        const entry = snapshot.objects.get(id);
+        if (!pre || !entry) {
+          snapshot.objects.set(id, JSON.stringify(post));
+          continue;
+        }
+        const state = JSON.parse(entry) as Record<string, unknown>;
+        for (const key of Object.keys(post) as (keyof ObjectState)[]) {
+          if (JSON.stringify(pre[key]) !== JSON.stringify(post[key])) {
+            state[key] = post[key];
+          }
+        }
+        snapshot.objects.set(id, JSON.stringify(state));
+      }
+      if (materials.length > 0) {
+        const values = JSON.parse(snapshot.materials) as Record<string, Record<string, unknown>>;
+        for (const name of materials) {
+          const pre = (beforeMaterials[name] ?? {}) as Record<string, unknown>;
+          const post = (afterMaterials[name] ?? {}) as Record<string, unknown>;
+          const entry = values[name] ?? {};
+          for (const key of Object.keys(post)) {
+            if (JSON.stringify(pre[key]) !== JSON.stringify(post[key])) {
+              entry[key] = post[key];
+            }
+          }
+          values[name] = entry;
+        }
+        snapshot.materials = JSON.stringify(values);
+      }
+    };
+    for (const snapshot of [...this.undoStack, ...this.redoStack, this.baseline]) {
+      patch(snapshot);
+    }
+  }
+
+  private materialValues(): Record<string, MaterialValues> {
+    const materials: Record<string, MaterialValues> = {};
+    for (const [name, material] of this.sharedMaterials) {
+      materials[name] = readMaterialValues(material);
+    }
+    return materials;
+  }
+
+  private startContext(): StartContext {
+    return { library: this.library, objectById: (id: string) => this.objectById(id) };
+  }
+
+  private stopBehaviours(id: string): void {
+    for (let i = this.entries.length - 1; i >= 0; i--) {
+      const entry = this.entries[i]!;
+      if (entry.id !== id) {
+        continue;
+      }
+      entry.behaviour.dispose?.();
+      this.entries.splice(i, 1);
+      const index = this.behaviours.indexOf(entry.behaviour);
+      if (index >= 0) {
+        this.behaviours.splice(index, 1);
+      }
+    }
+  }
+
+  private readState(object: THREE.Object3D): ObjectState {
+    const parent = object.parent ? (this.idOf(object.parent) ?? ROOT_ID) : ROOT_ID;
+    const state: ObjectState = {
+      name: object.name,
+      parent,
+      order: (object.userData.order as number | undefined) ?? 0,
+      position: object.position.toArray(),
+      rotation: [object.rotation.x, object.rotation.y, object.rotation.z, object.rotation.order],
+      scale: object.scale.toArray(),
+      visible: object.visible,
+    };
+    const light = object as THREE.Light;
+    if (light.isLight) {
+      state.light = [light.color.r, light.color.g, light.color.b, light.intensity];
+    }
+    const own = object.userData.ownMaterial as THREE.MeshStandardMaterial | undefined;
+    if (own) {
+      const material = (object as THREE.Mesh).material as THREE.Material;
+      state.material = material === own ? readMaterialValues(own) : this.library.keyOf(material);
+    }
+    return state;
+  }
+
+  private snapshot(): Snapshot {
+    const objects = new Map<string, string>();
+    this.root.traverse((object) => {
+      const id = this.idOf(object);
+      if (object !== this.root && id !== undefined) {
+        objects.set(id, JSON.stringify(this.readState(object)));
+      }
+    });
+    const materials: Record<string, MaterialValues> = {};
+    for (const [name, material] of this.sharedMaterials) {
+      materials[name] = readMaterialValues(material);
+    }
+    return { objects, materials: JSON.stringify(materials) };
+  }
+
+  // Puts the document into the state of `snapshot`.
+  private restore(snapshot: Snapshot): void {
+    for (const [id, object] of this.objects) {
+      if (!snapshot.objects.has(id)) {
+        object.removeFromParent();
+      }
+    }
+    const touched = new Set<THREE.Object3D>();
+    for (const [id, text] of snapshot.objects) {
+      const object = this.objects.get(id);
+      if (!object) {
+        continue;
+      }
+      const state = JSON.parse(text) as ObjectState;
+      object.name = state.name;
+      object.userData.order = state.order;
+      object.position.fromArray(state.position);
+      object.rotation.set(state.rotation[0], state.rotation[1], state.rotation[2], state.rotation[3] as THREE.EulerOrder);
+      object.scale.fromArray(state.scale);
+      object.visible = state.visible;
+      const light = object as THREE.Light;
+      if (light.isLight && state.light) {
+        light.color.setRGB(state.light[0], state.light[1], state.light[2], THREE.LinearSRGBColorSpace);
+        light.intensity = state.light[3];
+      }
+      if (state.material !== undefined) {
+        this.loader.setMaterial(object, state.material);
+      }
+      const parent = this.objectById(state.parent);
+      if (parent && object.parent !== parent) {
+        parent.add(object);
+      }
+      if (object.parent) {
+        touched.add(object.parent);
+      }
+    }
+    for (const parent of touched) {
+      this.sortChildren(parent);
+    }
+    const materials = JSON.parse(snapshot.materials) as Record<string, MaterialValues>;
+    for (const [name, values] of Object.entries(materials)) {
+      const material = this.sharedMaterials.get(name);
+      if (material) {
+        writeMaterialValues(material, values);
+      }
+    }
   }
 
   // Moves one step from `from` to `to`. Entries equal to the current state are skipped:
   // a checkpoint without a following edit leaves such an entry.
-  private step(from: string[], to: string[]): void {
+  private step(from: Snapshot[], to: Snapshot[]): void {
     const current = this.snapshot();
     let target = from.pop();
-    while (target === current) {
+    while (target && sameSnapshot(target, current)) {
       target = from.pop();
     }
-    if (target !== undefined) {
+    if (target) {
       to.push(current);
-      this.restoreBaseline();
-      this.apply(JSON.parse(target) as SceneOverrides);
+      this.restore(target);
+      this.structureChanged();
     }
     this.publishHistory();
   }
 
-  // Puts the tree back as the code built it: added objects out, code objects back under their parents
-  // in code order, with the names, transforms and materials from code.
-  private restoreBaseline(): void {
-    const added = [...this.addedObjects.values()];
-    for (const object of added) {
-      object.removeFromParent();
-    }
-    for (const object of added) {
-      object.children = object.children.filter((child) => child.userData.docId === undefined);
-    }
-    for (const [parent, baseline] of this.baselineChildren) {
-      const known = new Set(baseline);
-      // Children that code added after startup are not ours: they stay.
-      const extra = parent.children.filter((child) => child.userData.docId === undefined && !known.has(child));
-      parent.children = [...baseline, ...extra];
-      for (const child of parent.children) {
-        child.parent = parent;
-      }
-    }
-    for (const [id, state] of this.objectBaseline) {
-      const object = this.codeObjects.get(id);
-      if (object) {
-        writeObject(object, state);
-      }
-    }
-    for (const [name, state] of this.materialBaseline) {
-      const material = this.sharedMaterials.get(name);
-      if (material) {
-        writeMaterial(material, state);
-      }
-    }
-  }
-
-  // The place of a code object among the named children of its code parent, counting only the siblings
-  // that are still there. A deleted or moved-out sibling then does not shift the objects after it.
-  private baselineIndex(object: THREE.Object3D): number {
-    const parent = this.baselineParent.get(object);
-    let count = 0;
-    for (const sibling of (parent ? this.baselineOrder.get(parent) : undefined) ?? []) {
-      if (sibling === object) {
-        break;
-      }
-      if (sibling.parent === parent) {
-        count += 1;
-      }
-    }
-    return count;
-  }
-
-  private ensureAdded(id: string, kind: AddKind, name: string): THREE.Object3D {
-    let object = this.addedObjects.get(id);
-    if (!object) {
-      object = createPrimitive(kind, name);
-      object.userData.docId = id;
-      object.userData.added = kind;
-      this.addedObjects.set(id, object);
-    }
-    object.name = name;
-    return object;
-  }
-
-  private readAddedMaterial(object: THREE.Object3D): string | MaterialState | undefined {
-    const own = ownMaterial(object);
-    if (!own) {
-      return undefined;
-    }
-    const material = (object as THREE.Mesh).material as THREE.MeshStandardMaterial;
-    return material === own ? readMaterial(own) : material.name;
-  }
-
-  private writeAddedMaterial(object: THREE.Object3D, value: string | MaterialState | undefined): void {
-    const own = ownMaterial(object);
-    if (!own) {
-      return;
-    }
-    const mesh = object as THREE.Mesh;
-    if (typeof value === "string") {
-      const shared = this.sharedMaterials.get(value);
-      if (shared) {
-        mesh.material = shared;
+  // Gives `object` an order between its new neighbours among the file objects of `parent`.
+  // Only the moved object changes, so a move is a one-object change in the file. Equal neighbours get renumbered.
+  private reorder(parent: THREE.Object3D, object: THREE.Object3D): void {
+    const siblings = parent.children.filter((child) => this.idOf(child) !== undefined);
+    const index = siblings.indexOf(object);
+    const before = siblings[index - 1]?.userData.order as number | undefined;
+    const after = siblings[index + 1]?.userData.order as number | undefined;
+    if (before !== undefined && after !== undefined) {
+      if (after - before > 1e-6) {
+        object.userData.order = (before + after) / 2;
         return;
       }
-      console.warn(`[scene] missing shared material: ${value}`);
+      siblings.forEach((child, place) => {
+        child.userData.order = place;
+      });
+      return;
     }
-    mesh.material = own;
-    if (value !== undefined && typeof value !== "string") {
-      writeMaterial(own, value);
+    if (before !== undefined) {
+      object.userData.order = Math.floor(before) + 1;
+    } else if (after !== undefined) {
+      object.userData.order = Math.ceil(after) - 1;
+    } else {
+      object.userData.order = 0;
     }
+  }
+
+  private nextOrder(parent: THREE.Object3D): number {
+    let last = -1;
+    for (const child of parent.children) {
+      if (this.idOf(child) !== undefined) {
+        last = Math.max(last, (child.userData.order as number | undefined) ?? 0);
+      }
+    }
+    return Math.floor(last) + 1;
+  }
+
+  private uniqueId(base: string): string {
+    let id = base;
+    for (let n = 2; this.objects.has(id); n++) {
+      id = `${base}#${n}`;
+    }
+    return id;
   }
 
   private uniqueName(parent: THREE.Object3D, base: string): string {
@@ -744,6 +842,14 @@ class SceneDocument {
       name = `${base} ${n}`;
     }
     return name;
+  }
+
+  // Children in file order: the file objects by order and id, then the objects without an id (merged batch meshes).
+  private sortChildren(parent: THREE.Object3D): void {
+    const other = parent.children.filter((child) => this.idOf(child) === undefined);
+    const own = sortedById(parent.children.filter((child) => this.idOf(child) !== undefined).map((child) => [this.idOf(child)!, child] as [string, THREE.Object3D]));
+    own.sort((a, b) => ((a[1].userData.order as number) ?? 0) - ((b[1].userData.order as number) ?? 0));
+    parent.children = [...own.map(([, child]) => child), ...other];
   }
 
   private structureChanged(): void {
@@ -774,11 +880,17 @@ class SceneDocument {
   }
 }
 
-// Saving rewrites the JSON file. The scene already holds those values, so the update is swallowed
-// here instead of reloading the page.
-if (import.meta.webpackHot) {
-  import.meta.webpackHot.accept("../scene/scene-overrides.json", () => {});
+function sameSnapshot(a: Snapshot, b: Snapshot): boolean {
+  if (a.materials !== b.materials || a.objects.size !== b.objects.size) {
+    return false;
+  }
+  for (const [id, text] of a.objects) {
+    if (b.objects.get(id) !== text) {
+      return false;
+    }
+  }
+  return true;
 }
 
-export { SAVE_URL, SceneDocument, editableMaterials, namedChildren, objectPath };
-export type { SceneOverrides };
+export { SceneDocument, editableMaterials, namedChildren };
+export type { ExternalChange };

@@ -1,0 +1,18 @@
+[package]
+name = "lightning"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+wgpu = "24"
+winit = "0.30"
+pollster = "0.4"
+bytemuck = { version = "1", features = ["derive"] }
+image = { version = "0.25", default-features = false, features = ["png"] }
+rand = "0.9"
+ab_glyph = "0.2"
+tiny-skia = "0.12"
+
+[dev-dependencies]
+naga = { version = "24", features = ["wgsl-in"] }

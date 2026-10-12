@@ -78,7 +78,7 @@ function createEnvironment(renderer: THREE.WebGLRenderer): THREE.Texture {
   return bake(renderer, room);
 }
 
-// The environment of the Game Show balcony (annex.ts): the casino hall of the photo round it.
+// The environment of the Game Show balcony (`Annex` in the scene file): the casino hall of the photo round it.
 // It has no blue: warm white chandeliers overhead, bronze walls with burgundy drapes, and a warm glow from the
 // gaming floor below. The panels are only a little warm: a saturated orange room turns gold into red copper.
 // The balcony materials reflect it, so their gold and black match the photo.

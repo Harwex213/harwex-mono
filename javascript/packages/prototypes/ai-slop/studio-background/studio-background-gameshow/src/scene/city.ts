@@ -3,9 +3,7 @@ import skylineUrl from "../assets/background-city-skyline.jpg";
 import windowsUrl from "../assets/background-city-windows.png";
 import skyMaskUrl from "../assets/background-city-sky-mask.png";
 import waterUrl from "../assets/background-water.jpg";
-import { WIDE_SHOT_POSITION } from "./cameraRig";
 import { createCityLights } from "./cityLights";
-import { cylinderArc, named } from "./geometry";
 import cityFragment from "./shaders/city.frag";
 import commonChunk from "./shaders/common.glsl";
 import cityVertex from "./shaders/city.vert";
@@ -13,23 +11,28 @@ import waterFragment from "./shaders/water.frag";
 
 const deg = THREE.MathUtils.degToRad;
 
+// The city backdrop: two open cylinder bands round the studio in the scene file (`City Backdrop/Skyline` and
+// `City Backdrop/Water`). This module keeps their shader materials and the `cityBackdrop` component, which
+// animates them: the lights of the skyline are redrawn into a texture every frame.
+
+// Where the wide shot stands: the water waves are anchored relative to it.
+const WIDE_SHOT_POSITION = new THREE.Vector3(0, 3.9, 10);
+
 // City with its sky (scripts/build-skyline.py): the lit waterfront at the bottom edge.
 const SKYLINE_SIZE = new THREE.Vector2(2688, 978);
 // Water plate (scripts/build-water.py), same pixel scale; its width is shorter by the seam cross-fade.
 const WATER_SIZE = new THREE.Vector2(2473, 524);
 
+// The bands in the scene file: the skyline cylinder has radius 400 (a 7 m dolly changes the city size by under 2%),
+// spans +-80 degrees and rises from the shoreline to 30 degrees; the water band, 1 m nearer, runs from -15 degrees
+// up to the shoreline plus the overlap below. A change to these numbers changes the band geometry in the file too.
 const CITY = {
-  // Far enough that a 7 m dolly changes the city size by under 2%.
-  radius: 400,
   // Eye height of the camera, so the horizon matches the studio perspective.
   center: new THREE.Vector3(0, 3.9, 8),
   // One photo tile per 30 degrees. Seams fall at 0 (behind the wheel) and at +-30 degrees.
   period: deg(30),
   // The shoreline sits just under the camera horizon.
   shore: deg(-0.4),
-  arcHalf: deg(80),
-  elevationMin: deg(-15),
-  elevationMax: deg(30),
   // The water band reaches this many texels above the shoreline, over the waterfront's bottom rows.
   overlapTexels: 3,
 };
@@ -38,21 +41,7 @@ function withCommon(source: string): string {
   return source.replace("// @common", commonChunk);
 }
 
-// Open cylinder band around the city center between two elevations.
-function band(radius: number, from: number, to: number, material: THREE.Material): THREE.Mesh {
-  const top = radius * Math.tan(to);
-  const bottom = radius * Math.tan(from);
-  const { thetaStart, thetaLength } = cylinderArc(-CITY.arcHalf, CITY.arcHalf);
-  const mesh = new THREE.Mesh(
-    new THREE.CylinderGeometry(radius, radius, top - bottom, 128, 1, true, thetaStart, thetaLength),
-    material,
-  );
-  mesh.position.set(CITY.center.x, CITY.center.y + (top + bottom) / 2, CITY.center.z);
-  mesh.frustumCulled = false;
-  return mesh;
-}
-
-function createCity() {
+function createCityMaterials() {
   const texture = new THREE.TextureLoader().load(skylineUrl);
   texture.colorSpace = THREE.SRGBColorSpace;
   texture.wrapS = THREE.RepeatWrapping;
@@ -99,10 +88,6 @@ function createCity() {
     },
   });
 
-  // City and sky: from the shoreline up. Drawn first, behind everything.
-  const city = named(band(CITY.radius, CITY.shore, CITY.elevationMax, material), "Skyline");
-  city.renderOrder = -1;
-
   const waterTop = CITY.shore + CITY.overlapTexels * radiansPerPixel;
   const waterMaterial = new THREE.ShaderMaterial({
     vertexShader: cityVertex,
@@ -125,13 +110,6 @@ function createCity() {
       uHazeColor: { value: new THREE.Color(0x060c1e) },
     },
   });
-  // Water: a band just in front of the city cylinder, from below the frame up to the overlap.
-  const water = named(band(CITY.radius - 1, CITY.elevationMin, waterTop, waterMaterial), "Water");
-
-  const group = named(new THREE.Group(), "City Backdrop", true);
-  group.userData.auditIgnore = true;
-  group.add(city, water);
-
   const update = (renderer: THREE.WebGLRenderer, time: number) => {
     lights.render(renderer, time);
     for (const uniforms of [material.uniforms, waterMaterial.uniforms]) {
@@ -142,7 +120,7 @@ function createCity() {
     }
   };
 
-  return { group, update };
+  return { citySkyline: material, cityWater: waterMaterial, update };
 }
 
-export { createCity };
+export { createCityMaterials };

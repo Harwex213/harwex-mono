@@ -1,30 +1,23 @@
 import * as THREE from "three";
 import type { Shot } from "../state";
-import { WHEEL_CENTER } from "./wheel";
 
-const BASE_FOV = 40;
 const DESIGN_ASPECT = 16 / 9;
-// A full wide -> close -> wide cycle; slow moves with long holds read as a broadcast crane.
-const DOLLY_PERIOD = 44;
 
-// The wide shot stands inside the colonnade, so the near side arches loom large at the frame edges.
-// It aims a little under the wheel center, which puts the wheel slightly above the middle of the frame.
-const FAR = {
-  position: new THREE.Vector3(0, 3.9, WHEEL_CENTER.z + 14),
-  target: new THREE.Vector3(0, WHEEL_CENTER.y - 0.75, WHEEL_CENTER.z),
-};
-const NEAR = {
-  position: new THREE.Vector3(0, 4.4, WHEEL_CENTER.z + 10.5),
-  target: WHEEL_CENTER.clone(),
-};
-
-// The station shots: one per bonus game. A station shot is set in the frame of its game object: the origin is
-// the pivot of the object (the bottom centre), local +z is the front of the object, local +x its own x axis.
-// The frame is read from the live object every frame, so the shot follows the game when the user moves it in the editor.
-// - `camera`, `target`: the rest pose of the camera in that frame.
-// - The idle motion pushes in by `push` of the distance to the target and back, once per `period` seconds,
-//   and drifts sideways across the line of sight.
+// The `cameraRig` component of the Main Camera. Its data in the scene file:
+// - `wide`, `close`: the two ends of the hero wheel shot (position and target in world space). The dolly runs
+//   between them once per `dollyPeriod` seconds, with long holds at both ends, like a broadcast crane.
+// - `stations`: one shot per bonus game. A station shot is set in the frame of its game object (`object`, an id):
+//   the origin is the pivot of the object (the bottom centre), local +z is its front, local +x its own x axis.
+//   The frame is read from the live object every frame, so the shot follows the game when the user moves it.
+//   `camera`, `target` are the rest pose in that frame; the idle motion pushes in by `push` of the distance
+//   to the target and back, once per `period` seconds, and drifts sideways across the line of sight.
+// The base field of view is the `fov` of the camera component.
 type Station = Exclude<Shot, "wheel">;
+
+interface Pose3 {
+  position: THREE.Vector3;
+  target: THREE.Vector3;
+}
 
 interface StationShot {
   camera: THREE.Vector3;
@@ -33,17 +26,19 @@ interface StationShot {
   period: number;
 }
 
-const STATION_SHOTS: Record<Station, StationShot> = {
-  // Bonus Dice, the acrylic tower: a 3/4 view from its right front, the camera a little under the top of the case.
-  dice: { camera: new THREE.Vector3(3.0, 3.0, 7.4), target: new THREE.Vector3(0.2, 2.1, 0), push: 0.1, period: 34 },
-  // Bonus Show, the jester wheel: the camera stands 11 m from the wheel and 12 degrees off its face axis, at 3.7 m,
-  // and looks almost level. The wheel sits in the middle of the frame, with the tip of the balcony behind it.
-  // The wheel faces back along the bisector of the balcony tip (annex.ts), so the camera looks out at the centre
-  // of the casino hall (casino.ts), straight down its nave.
-  show: { camera: new THREE.Vector3(2.3, 3.7, 10.96), target: new THREE.Vector3(0, 3.0, 0), push: 0.12, period: 36 },
-  // Bonus Luck, the slot cabinet: the mirror of the Bonus Dice shot, from its left front.
-  luck: { camera: new THREE.Vector3(-2.8, 2.6, 6.6), target: new THREE.Vector3(-0.1, 1.8, 0), push: 0.1, period: 32 },
-};
+interface RigConfig {
+  wide: Pose3;
+  close: Pose3;
+  dollyPeriod: number;
+  stations: Record<Station, StationShot & { object: THREE.Object3D }>;
+}
+
+interface RigData {
+  wide: { position: number[]; target: number[] };
+  close: { position: number[]; target: number[] };
+  dollyPeriod: number;
+  stations: Record<Station, { object: string; camera: number[]; target: number[]; push: number; period: number }>;
+}
 
 // A move between shots: the camera cranes up to this height on the way, over every prop of the set.
 // The move runs in a straight line on the plan, and the view turns by the short way round.
@@ -94,10 +89,10 @@ function pitchOf(direction: THREE.Vector3): number {
 }
 
 // The hero wheel shot: a dolly between the wide and the close position, with a slow drift.
-function wheelPose(swingTime: number, dollyTime: number, pose: Pose): void {
-  const k = dollyCurve((dollyTime / DOLLY_PERIOD) % 1);
-  pose.position.lerpVectors(FAR.position, NEAR.position, k);
-  pose.target.lerpVectors(FAR.target, NEAR.target, k);
+function wheelPose(config: RigConfig, swingTime: number, dollyTime: number, pose: Pose): void {
+  const k = dollyCurve((dollyTime / config.dollyPeriod) % 1);
+  pose.position.lerpVectors(config.wide.position, config.close.position, k);
+  pose.target.lerpVectors(config.wide.target, config.close.target, k);
 
   // Slow drift, like a crane operator holding the shot: a few incommensurate sines with
   // periods of 30-90 s and small amplitudes, gentler when the camera is close.
@@ -145,8 +140,8 @@ function stationPose(anchor: THREE.Object3D, base: StationShot, swingTime: numbe
   pose.roll = Math.sin(t * 0.059) * 0.003;
 }
 
-// `stations`: the game object of each station shot.
-function createCameraRig(camera: THREE.PerspectiveCamera, initialShot: Shot, stations: Record<Station, THREE.Object3D>) {
+function createCameraRig(camera: THREE.PerspectiveCamera, initialShot: Shot, config: RigConfig) {
+  const baseFov = camera.fov;
   let swingTime = 0;
   let dollyTime = 0;
   let shot = initialShot;
@@ -157,9 +152,10 @@ function createCameraRig(camera: THREE.PerspectiveCamera, initialShot: Shot, sta
 
   const evaluate = () => {
     if (shot === "wheel") {
-      wheelPose(swingTime, dollyTime, pose);
+      wheelPose(config, swingTime, dollyTime, pose);
     } else {
-      stationPose(stations[shot], STATION_SHOTS[shot], swingTime, dollyTime, pose);
+      const station = config.stations[shot];
+      stationPose(station.object, station, swingTime, dollyTime, pose);
     }
   };
 
@@ -167,10 +163,10 @@ function createCameraRig(camera: THREE.PerspectiveCamera, initialShot: Shot, sta
   const resize = (aspect: number) => {
     camera.aspect = aspect;
     if (aspect < DESIGN_ASPECT) {
-      const halfTan = Math.tan(THREE.MathUtils.degToRad(BASE_FOV / 2)) * (DESIGN_ASPECT / aspect);
+      const halfTan = Math.tan(THREE.MathUtils.degToRad(baseFov / 2)) * (DESIGN_ASPECT / aspect);
       camera.fov = Math.min(THREE.MathUtils.radToDeg(Math.atan(halfTan) * 2), 80);
     } else {
-      camera.fov = BASE_FOV;
+      camera.fov = baseFov;
     }
     camera.updateProjectionMatrix();
   };
@@ -245,8 +241,7 @@ function createCameraRig(camera: THREE.PerspectiveCamera, initialShot: Shot, sta
   return { resize, update, seek, travelTo, isTraveling };
 }
 
-// Where the wide shot stands: the water waves are anchored relative to it.
-const WIDE_SHOT_POSITION = FAR.position;
+type CameraRig = ReturnType<typeof createCameraRig>;
 
-export { createCameraRig, WIDE_SHOT_POSITION };
-export type { Station };
+export { createCameraRig };
+export type { CameraRig, RigConfig, RigData, Station };

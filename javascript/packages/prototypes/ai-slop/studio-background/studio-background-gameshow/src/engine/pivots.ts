@@ -5,9 +5,8 @@ import * as THREE from "three";
 // An object that does not surround its own bounds centre (a horseshoe of steps, an arc of truss)
 // gets the point of its geometry nearest to that centre instead, at the same bottom height.
 //
-// The scene code builds props in whatever frame is convenient; `recenterPivots` then moves each
-// origin without moving anything in the world: the children and the geometry shift back by the
-// same amount. It runs once, before the editor takes its snapshot of code defaults.
+// The objects of the scene file have their pivots there: the file stores the shifted geometry
+// (a "translate" op in the recipe) and the shifted transform. `checkPivots` checks every selectable object.
 //
 // Left alone: folders, lights, cameras, the mirror, fake beams, animated objects (their code writes
 // their transform every frame) and everything that is not part of the set (`auditIgnore`).
@@ -80,7 +79,8 @@ function measureAll(root: THREE.Object3D): Map<THREE.Mesh, MeshData> {
   const data = new Map<THREE.Mesh, MeshData>();
   root.traverse((object) => {
     const mesh = object as THREE.Mesh;
-    if (mesh.isMesh && !mesh.userData.beam) {
+    // The merged mesh of a static batch repeats its sources.
+    if (mesh.isMesh && !mesh.userData.beam && !mesh.userData.batchOutput) {
       data.set(mesh, measureMesh(mesh));
     }
   });
@@ -125,48 +125,6 @@ function nearestSample(samples: THREE.Vector2[], center: THREE.Vector2): THREE.V
   return best;
 }
 
-// The world point where the object's pivot belongs, or null for an object without geometry.
-function pivotPoint(measured: MeshData): THREE.Vector3 {
-  const center = measured.box.getCenter(new THREE.Vector3());
-  const center2 = new THREE.Vector2(center.x, center.z);
-  const ground = surrounds(measured.samples, center2) ? center2 : nearestSample(measured.samples, center2);
-  return new THREE.Vector3(ground.x, measured.box.min.y, ground.y);
-}
-
-// Moves the origin of `object` by `offset` (in its own local space) and keeps everything in place.
-function shiftOrigin(object: THREE.Object3D, offset: THREE.Vector3, geometryUsers: Map<THREE.BufferGeometry, number>): void {
-  for (const child of object.children) {
-    child.position.sub(offset);
-  }
-  const mesh = object as THREE.Mesh;
-  if (mesh.isMesh) {
-    const instanced = mesh as THREE.InstancedMesh;
-    if (instanced.isInstancedMesh) {
-      const back = new THREE.Matrix4().makeTranslation(-offset.x, -offset.y, -offset.z);
-      const matrix = new THREE.Matrix4();
-      for (let i = 0; i < instanced.count; i++) {
-        instanced.getMatrixAt(i, matrix);
-        instanced.setMatrixAt(i, matrix.premultiply(back));
-      }
-      instanced.instanceMatrix.needsUpdate = true;
-      instanced.boundingBox = null;
-      instanced.boundingSphere = null;
-    } else {
-      // A geometry shared with other meshes gets its own copy, so they stay where they are.
-      const users = geometryUsers.get(mesh.geometry) ?? 1;
-      if (users > 1) {
-        geometryUsers.set(mesh.geometry, users - 1);
-        mesh.geometry = mesh.geometry.clone();
-        geometryUsers.set(mesh.geometry, 1);
-      }
-      mesh.geometry.translate(-offset.x, -offset.y, -offset.z);
-    }
-  }
-  object.updateMatrix();
-  object.position.copy(offset.clone().applyMatrix4(object.matrix));
-  object.updateMatrixWorld(true);
-}
-
 function pivotTargets(root: THREE.Object3D): THREE.Object3D[] {
   const targets: THREE.Object3D[] = [];
   // Post-order: children first, so a parent measures what its children already settled.
@@ -180,30 +138,6 @@ function pivotTargets(root: THREE.Object3D): THREE.Object3D[] {
   };
   visit(root);
   return targets;
-}
-
-function recenterPivots(root: THREE.Object3D): number {
-  const data = measureAll(root);
-  const geometryUsers = new Map<THREE.BufferGeometry, number>();
-  root.traverse((object) => {
-    const mesh = object as THREE.Mesh;
-    if (mesh.isMesh) {
-      geometryUsers.set(mesh.geometry, (geometryUsers.get(mesh.geometry) ?? 0) + 1);
-    }
-  });
-  let moved = 0;
-  for (const object of pivotTargets(root)) {
-    const measured = gather(object, data);
-    if (!measured) {
-      continue;
-    }
-    const offset = object.worldToLocal(pivotPoint(measured));
-    if (offset.lengthSq() > 1e-12) {
-      shiftOrigin(object, offset, geometryUsers);
-      moved += 1;
-    }
-  }
-  return moved;
 }
 
 interface PivotProblem {
@@ -249,5 +183,5 @@ function checkPivots(root: THREE.Object3D): PivotProblem[] {
   return problems;
 }
 
-export { checkPivots, recenterPivots };
+export { checkPivots };
 export type { PivotProblem };

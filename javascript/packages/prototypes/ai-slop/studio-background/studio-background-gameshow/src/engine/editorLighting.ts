@@ -2,12 +2,12 @@ import * as THREE from "three";
 
 // Flat static light for the Scene view, so the set reads well while editing:
 // the game lights go dark, a sky/ground fill and two fixed sun lights take over,
-// the beam cones hide, the mirror floor is swapped for a matte one, and bloom is off.
+// the beam cones hide, the mirror is hidden and the floor with the `editorMatte` flag gets a matte material, and bloom is off.
 // Metals (all the gold) take almost no light from lamps: their color is the reflected environment.
 // The game environment is a dark room with a few bright panels, so one face of a column reflects
 // a panel and turns gold, while the next face reflects the dark and turns black.
 // Here the environment is a soft even sky, so metals read evenly from every side.
-// A material with its own environment map (`userData.ownEnvironment`, the balcony in annex.ts) gets the sky as that map.
+// A material with its own environment map (`userData.ownEnvironment`, the balcony and casino materials) gets the sky as that map.
 //
 // The swap only lasts for one frame: `begin` runs right before the render and `end` right after it,
 // so the inspector and saves never see the changed values.
@@ -56,24 +56,24 @@ const EDITOR_LIGHTS: { light: THREE.Light; intensity: number }[] = [
 class EditorLighting {
   private readonly root: THREE.Object3D;
   private readonly scene: THREE.Scene;
-  private readonly mirror: THREE.Object3D;
+  private readonly mirrors: THREE.Object3D[];
   private readonly floor: THREE.Mesh;
   private readonly matteFloor = new THREE.MeshStandardMaterial({ color: 0x2a2f3a, roughness: 1, metalness: 0 });
   private readonly stash: Stash[] = [];
   private readonly beams: THREE.Object3D[] = [];
   private readonly ownMaps: { material: THREE.MeshStandardMaterial; map: THREE.Texture | null }[] = [];
   private floorMaterial: THREE.Material | THREE.Material[] | null = null;
-  private mirrorVisible = true;
+  private mirrorVisible: boolean[] = [];
   private readonly environment: THREE.Texture;
   private gameEnvironment: THREE.Texture | null = null;
   private environmentIntensity = 1;
   private active = false;
 
-  constructor(renderer: THREE.WebGLRenderer, scene: THREE.Scene, root: THREE.Object3D, mirror: THREE.Object3D, floor: THREE.Mesh) {
+  constructor(renderer: THREE.WebGLRenderer, scene: THREE.Scene, root: THREE.Object3D, mirrors: THREE.Object3D[], floor: THREE.Mesh) {
     this.environment = createEditorEnvironment(renderer);
     this.scene = scene;
     this.root = root;
-    this.mirror = mirror;
+    this.mirrors = mirrors;
     this.floor = floor;
     const [, key, fill] = EDITOR_LIGHTS;
     // Fixed suns: the key shines from the front right, the fill from the back left.
@@ -118,8 +118,10 @@ class EditorLighting {
     for (const { light, intensity } of EDITOR_LIGHTS) {
       light.intensity = intensity;
     }
-    this.mirrorVisible = this.mirror.visible;
-    this.mirror.visible = false;
+    this.mirrorVisible = this.mirrors.map((mirror) => mirror.visible);
+    for (const mirror of this.mirrors) {
+      mirror.visible = false;
+    }
     this.floorMaterial = this.floor.material;
     this.floor.material = this.matteFloor;
     this.gameEnvironment = this.scene.environment;
@@ -145,7 +147,9 @@ class EditorLighting {
     for (const { material, map } of this.ownMaps) {
       material.envMap = map;
     }
-    this.mirror.visible = this.mirrorVisible;
+    this.mirrors.forEach((mirror, index) => {
+      mirror.visible = this.mirrorVisible[index] ?? true;
+    });
     if (this.floorMaterial) {
       this.floor.material = this.floorMaterial;
     }

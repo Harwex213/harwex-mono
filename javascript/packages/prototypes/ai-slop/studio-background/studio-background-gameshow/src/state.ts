@@ -1,4 +1,5 @@
 import { signal } from "@preact/signals-react";
+import type { Conflict } from "./engine/sceneMerge";
 
 type ViewTab = "scene" | "game";
 type TransformMode = "translate" | "rotate" | "scale";
@@ -7,6 +8,13 @@ type SaveStatus = "saved" | "dirty" | "saving" | "failed";
 // Camera shots: the hero wheel in the amphitheatre (Main Wheel) and one shot per bonus game: Bonus Dice,
 // Bonus Show on the Game Show platform of the annex, and Bonus Luck (the slot cabinet).
 type Shot = "wheel" | "dice" | "show" | "luck";
+// One entry of src/scene/versions/index.json.
+interface VersionInfo {
+  id: number;
+  label?: string;
+  created?: string;
+  from?: number;
+}
 
 const SHOTS: Shot[] = ["wheel", "dice", "show", "luck"];
 
@@ -38,27 +46,46 @@ const renderMode = signal<RenderMode>("editor");
 const undoCount = signal(0);
 const redoCount = signal(0);
 const fps = signal(0);
+// Scene versions (sceneSync.ts): the version open in this tab, the list on disk and the latest one.
+const openVersion = signal(0);
+const versions = signal<VersionInfo[]>([]);
+const latestVersion = signal(0);
+// True while the dev server sends the changes on disk. False in a build: the tab is read-only.
+const sceneLive = signal(false);
+// The open version left the list (the 11th version removed it): Save is off.
+const versionRemoved = signal(false);
+// The units that this tab and the disk both changed in the same field. Save is off until each one has a side.
+const conflicts = signal<Conflict[]>([]);
+// A short note about the last change that came from disk. Empty when there is none.
+const syncNote = signal("");
 
 export {
   activeTab,
+  conflicts,
   dolly,
   editorHint,
   fps,
   inspectorRevision,
   isPlaying,
   isSolo,
+  latestVersion,
+  openVersion,
   params,
   redoCount,
   renamingUuid,
   renderMode,
   saveStatus,
+  sceneLive,
   selectedUuid,
   shot,
   SHOTS,
   spin,
   structureRevision,
   swing,
+  syncNote,
   transformMode,
   undoCount,
+  versionRemoved,
+  versions,
 };
-export type { RenderMode, SaveStatus, Shot, TransformMode, ViewTab };
+export type { RenderMode, SaveStatus, Shot, TransformMode, VersionInfo, ViewTab };

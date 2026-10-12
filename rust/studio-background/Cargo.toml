@@ -1,0 +1,17 @@
+# One member per studio background variant. Each variant is a standalone binary crate; the
+# workspace only shares the build cache and the profiles.
+[workspace]
+resolver = "2"
+members = ["lightning"]
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+
+# PNG decoding, the plate masks and the bolt atlas run on the CPU at start-up; unoptimized
+# they take seconds.
+[profile.dev.package."*"]
+opt-level = 2
+[profile.dev.package.lightning]
+opt-level = 3

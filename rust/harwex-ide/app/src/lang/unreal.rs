@@ -23,6 +23,9 @@
 //! - UHT: `UCLASS()` and `GENERATED_BODY()` resolve only after Unreal Header Tool has written
 //!   `*.generated.h` under `Intermediate/`. `missing_generated_header` finds a file whose
 //!   generated header is missing, and the clangd adapter shows one hint per project.
+//! - Staleness (task 102): a database is out of date when a build input (`.uproject`,
+//!   `*.Build.cs`, `*.Target.cs` under `Source` or `Plugins/**/Source`) is newer than it, or
+//!   when a file's module (`module_of`) has no entry in it (`check_db`, `stale`).
 
 use std::io::{BufRead, BufReader, Read};
 use std::path::{Path, PathBuf};
@@ -595,6 +598,145 @@ fn find_file(dir: &Path, name: &std::ffi::OsStr, depth: usize) -> bool {
     std::fs::read_dir(dir).into_iter().flatten().flatten().any(|e| e.file_type().is_ok_and(|t| t.is_dir()) && find_file(&e.path(), name, depth - 1))
 }
 
+/// A module of a project: the nearest folder above a file with a `<Module>.Build.cs`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Module {
+    pub name: String,
+    pub dir: PathBuf,
+}
+
+/// The module of `file`, not above `project`. `None` for a file outside every module.
+pub fn module_of(file: &Path, project: &Path) -> Option<Module> {
+    file.ancestors().skip(1).take_while(|d| d.starts_with(project)).find_map(|d| {
+        let name = std::fs::read_dir(d).ok()?.flatten().find_map(|e| e.file_name().to_str().and_then(|n| n.strip_suffix(".Build.cs")).map(str::to_string))?;
+        Some(Module { name, dir: d.to_path_buf() })
+    })
+}
+
+/// What the compile database covers: read once per database mtime.
+#[derive(Debug, PartialEq, Eq)]
+pub struct DbIndex {
+    pub mtime: std::time::SystemTime,
+    /// The folders of the entries' files.
+    dirs: std::collections::BTreeSet<PathBuf>,
+    /// Module names from UBT's generated files: `Intermediate/.../<Module>/Module.<Module>.gen.cpp`.
+    modules: std::collections::HashSet<String>,
+}
+
+impl DbIndex {
+    /// Parses `compile_commands.json` text. A broken file gives an empty index.
+    pub fn parse(text: &str, mtime: std::time::SystemTime) -> DbIndex {
+        let mut index = DbIndex { mtime, dirs: Default::default(), modules: Default::default() };
+        let entries: Vec<Value> = serde_json::from_str(text).unwrap_or_default();
+        for e in entries {
+            let Some(file) = e["file"].as_str() else { continue };
+            let file = Path::new(file);
+            let file = if file.is_absolute() { file.to_path_buf() } else { Path::new(e["directory"].as_str().unwrap_or_default()).join(file) };
+            let Some(dir) = file.parent() else { continue };
+            // Unity builds compile a module through generated files under `Intermediate`.
+            if dir.components().any(|c| c.as_os_str() == "Intermediate") {
+                if let Some(name) = dir.file_name() {
+                    index.modules.insert(name.to_string_lossy().into_owned());
+                }
+            }
+            index.dirs.insert(dir.to_path_buf());
+        }
+        index
+    }
+
+    /// The database has at least one entry of the module.
+    pub fn covers(&self, m: &Module) -> bool {
+        self.modules.contains(&m.name) || self.dirs.range(m.dir.clone()..).next().is_some_and(|d| d.starts_with(&m.dir))
+    }
+}
+
+/// Why a project's database is out of date.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Stale {
+    /// This build input (a file name) changed after the database was written.
+    Changed(String),
+    /// This module has no entry in the database.
+    NoModule(String),
+}
+
+impl Stale {
+    /// The short reason for the banner.
+    pub fn reason(&self) -> String {
+        match self {
+            Stale::Changed(name) => format!("{name} changed after it was generated"),
+            Stale::NoModule(name) => format!("module {name} has no entries"),
+        }
+    }
+}
+
+/// A file whose change can make the database stale: a `.uproject`, a `*.Build.cs` or a
+/// `*.Target.cs`.
+pub fn is_build_input(path: &Path) -> bool {
+    path.extension().is_some_and(|e| e.eq_ignore_ascii_case("uproject")) || path.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.ends_with(".Build.cs") || n.ends_with(".Target.cs"))
+}
+
+/// The build inputs of a project: the `.uproject`, and every `*.Build.cs` and `*.Target.cs`
+/// under `Source` and `Plugins/**/Source`.
+pub fn build_inputs(project: &Path, uproject: &Path) -> Vec<PathBuf> {
+    fn walk(dir: &Path, in_source: bool, out: &mut Vec<PathBuf>) {
+        for e in std::fs::read_dir(dir).into_iter().flatten().flatten() {
+            let Ok(t) = e.file_type() else { continue };
+            let name = e.file_name();
+            let name = name.to_string_lossy();
+            if t.is_dir() {
+                // A plugin's content, binaries and build output never hold build scripts.
+                if !name.starts_with('.') && !["Content", "Binaries", "Intermediate", "Saved", "Resources", "Config"].contains(&name.as_ref()) {
+                    walk(&e.path(), in_source || name == "Source", out);
+                }
+            } else if in_source && is_build_input(&e.path()) {
+                out.push(e.path());
+            }
+        }
+    }
+    let mut out = vec![uproject.to_path_buf()];
+    walk(&project.join("Source"), true, &mut out);
+    walk(&project.join("Plugins"), false, &mut out);
+    out
+}
+
+/// The newest build input written after `db_mtime`, as `Stale::Changed`.
+pub fn changed_input(project: &Path, uproject: &Path, db_mtime: std::time::SystemTime) -> Option<Stale> {
+    build_inputs(project, uproject)
+        .into_iter()
+        .filter_map(|p| Some((std::fs::metadata(&p).and_then(|m| m.modified()).ok()?, p)))
+        .filter(|(t, _)| *t > db_mtime)
+        .max_by(|a, b| a.0.cmp(&b.0).then_with(|| b.1.cmp(&a.1)))
+        .map(|(_, p)| Stale::Changed(p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()))
+}
+
+/// The database of a project as a check sees it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DbCheck {
+    /// `None`: there is no database.
+    pub index: Option<std::sync::Arc<DbIndex>>,
+    /// A build input newer than the database.
+    pub changed: Option<Stale>,
+}
+
+/// Checks a project's database. `prev` is reused when the database's mtime is unchanged, so
+/// the JSON is parsed once per mtime. Blocking: run it on a worker.
+pub fn check_db(p: &UnrealProject, prev: Option<std::sync::Arc<DbIndex>>) -> DbCheck {
+    let db = p.database();
+    let Some(mtime) = std::fs::metadata(&db).and_then(|m| m.modified()).ok() else { return DbCheck { index: None, changed: None } };
+    let index = match prev.filter(|i| i.mtime == mtime) {
+        Some(i) => i,
+        None => std::sync::Arc::new(DbIndex::parse(&std::fs::read_to_string(&db).unwrap_or_default(), mtime)),
+    };
+    DbCheck { changed: changed_input(&p.root, &p.uproject, mtime), index: Some(index) }
+}
+
+/// Why the database is stale for a file of `module`: a module without entries first (it
+/// explains the file's errors), else a changed build input.
+pub fn stale(check: &DbCheck, module: Option<&Module>) -> Option<Stale> {
+    let index = check.index.as_ref()?;
+    module.filter(|m| !index.covers(m)).map(|m| Stale::NoModule(m.name.clone())).or_else(|| check.changed.clone())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -779,5 +921,136 @@ mod tests {
         assert!(hint.contains("uses Pair.uproject: it is named like the folder") && hint.contains("`uproject = "), "{hint}");
         assert_eq!(detect(&top.join("Sub/Game1"), &UnrealConfig::default()).unwrap().choice_hint(), None);
         assert!(is_detection_input(Path::new("/x/A.uproject")) && is_detection_input(Path::new("/E/Engine/Build/Build.version")) && !is_detection_input(Path::new("/x/A.cpp")));
+    }
+
+    /// Sets a file's mtime to `secs` after the epoch.
+    fn touch(path: &Path, secs: u64) {
+        let f = std::fs::File::options().write(true).open(path).unwrap();
+        f.set_modified(std::time::UNIX_EPOCH + Duration::from_secs(secs)).unwrap();
+    }
+
+    /// `Game` with the module `Game` and a database that lists only `Game`'s files, all files
+    /// at mtime 1000 and the database at 2000.
+    fn stale_fixture() -> (tempfile::TempDir, UnrealProject) {
+        let tmp = tempfile::tempdir().unwrap();
+        let game = tmp.path().join("Game");
+        let files = [
+            "Game.uproject",
+            "Source/Game.Target.cs",
+            "Source/GameEditor.Target.cs",
+            "Source/Game/Game.Build.cs",
+            "Source/Game/Private/A.cpp",
+            "Source/Game/Public/A.h",
+            "Plugins/Tools/Tools.uplugin",
+            "Plugins/Tools/Source/Tools/Tools.Build.cs",
+            "Plugins/Tools/Source/Tools/Private/T.cpp",
+            "Plugins/Tools/Content/Big.Build.cs",
+        ];
+        for f in files {
+            write(&game.join(f), "{}");
+            touch(&game.join(f), 1000);
+        }
+        let db = format!(
+            r#"[{{"file": "{0}/Source/Game/Private/A.cpp", "directory": "/E/Engine/Source"}},
+                {{"file": "Private/T.cpp", "directory": "{0}/Plugins/Tools/Source/Tools"}}]"#,
+            game.display()
+        );
+        write(&game.join(".harwex/unreal/compile_commands.json"), &db);
+        touch(&game.join(".harwex/unreal/compile_commands.json"), 2000);
+        let p = detect(&game, &UnrealConfig::default()).unwrap();
+        (tmp, p)
+    }
+
+    #[test]
+    fn a_fresh_database_is_not_stale() {
+        let (_tmp, p) = stale_fixture();
+        let check = check_db(&p, None);
+        assert_eq!(check.changed, None);
+        for f in ["Source/Game/Public/A.h", "Source/Game/Private/A.cpp", "Plugins/Tools/Source/Tools/Private/T.cpp"] {
+            let m = module_of(&p.root.join(f), &p.root);
+            assert!(m.is_some(), "{f}");
+            assert_eq!(stale(&check, m.as_ref()), None, "{f}");
+        }
+        // A file outside every module, and a plugin's Content (never a build input).
+        assert_eq!(module_of(&p.root.join("Config/X.h"), &p.root), None);
+        touch(&p.root.join("Plugins/Tools/Content/Big.Build.cs"), 3000);
+        assert_eq!(check_db(&p, None).changed, None);
+        // No database: nothing to call stale (the "no database" banner covers it).
+        std::fs::remove_file(p.database()).unwrap();
+        assert_eq!(check_db(&p, None), DbCheck { index: None, changed: None });
+    }
+
+    #[test]
+    fn a_newer_build_cs_or_uproject_makes_it_stale() {
+        let (_tmp, p) = stale_fixture();
+        touch(&p.root.join("Plugins/Tools/Source/Tools/Tools.Build.cs"), 3000);
+        let check = check_db(&p, None);
+        assert_eq!(check.changed, Some(Stale::Changed("Tools.Build.cs".into())));
+        assert_eq!(stale(&check, None).unwrap().reason(), "Tools.Build.cs changed after it was generated");
+        // The newest input is named.
+        touch(&p.root.join("Game.uproject"), 4000);
+        assert_eq!(check_db(&p, None).changed, Some(Stale::Changed("Game.uproject".into())));
+        touch(&p.root.join("Source/GameEditor.Target.cs"), 5000);
+        assert_eq!(check_db(&p, None).changed, Some(Stale::Changed("GameEditor.Target.cs".into())));
+    }
+
+    #[test]
+    fn a_module_without_entries_makes_it_stale() {
+        let (_tmp, p) = stale_fixture();
+        // A new module, older than the database: only the missing entries tell.
+        for f in ["Source/GameTests/GameTests.Build.cs", "Source/GameTests/Public/T.h"] {
+            write(&p.root.join(f), "");
+            touch(&p.root.join(f), 1000);
+        }
+        let check = check_db(&p, None);
+        assert_eq!(check.changed, None);
+        let m = module_of(&p.root.join("Source/GameTests/Public/T.h"), &p.root).unwrap();
+        assert_eq!(m, Module { name: "GameTests".into(), dir: p.root.join("Source/GameTests") });
+        assert_eq!(stale(&check, Some(&m)).unwrap().reason(), "module GameTests has no entries");
+        // `Source/Game` is a prefix of `Source/GameTests` by text, not by path.
+        let game = module_of(&p.root.join("Source/Game/Public/A.h"), &p.root).unwrap();
+        assert_eq!(stale(&check, Some(&game)), None);
+        // A changed input too: the module reason comes first.
+        touch(&p.root.join("Source/GameTests/GameTests.Build.cs"), 3000);
+        assert_eq!(stale(&check_db(&p, None), Some(&m)), Some(Stale::NoModule("GameTests".into())));
+        // A unity build lists the module's generated file under Intermediate.
+        let unity = format!(r#"[{{"file": "{}/Intermediate/Build/Mac/arm64/UnrealEditor/Development/GameTests/Module.GameTests.cpp"}}]"#, p.root.display());
+        let index = DbIndex::parse(&unity, std::time::UNIX_EPOCH);
+        assert!(index.covers(&m) && !index.covers(&game));
+    }
+
+    #[test]
+    fn the_database_is_parsed_once_per_mtime() {
+        let (_tmp, p) = stale_fixture();
+        let first = check_db(&p, None).index.unwrap();
+        let again = check_db(&p, Some(first.clone())).index.unwrap();
+        assert!(std::sync::Arc::ptr_eq(&first, &again));
+        touch(&p.database(), 2500);
+        let newer = check_db(&p, Some(first.clone())).index.unwrap();
+        assert!(!std::sync::Arc::ptr_eq(&first, &newer));
+        assert!(is_build_input(Path::new("/p/Source/G/G.Build.cs")) && is_build_input(Path::new("/p/Source/G.Target.cs")) && is_build_input(Path::new("/p/G.uproject")));
+        assert!(!is_build_input(Path::new("/p/Source/G/G.cpp")));
+    }
+
+    /// The real check of task 102, read-only: `HARWEX_UE_STALE_PROJECT=<project folder>
+    /// HARWEX_UE_STALE_FILE=<file in it> cargo test -p harwex-ide --lib
+    /// lang::unreal::tests::real_project_is_stale -- --ignored --nocapture`.
+    #[test]
+    #[ignore]
+    fn real_project_is_stale() {
+        let (Some(dir), Some(file)) = (std::env::var_os("HARWEX_UE_STALE_PROJECT"), std::env::var_os("HARWEX_UE_STALE_FILE")) else {
+            eprintln!("HARWEX_UE_STALE_PROJECT or HARWEX_UE_STALE_FILE is not set: nothing to check");
+            return;
+        };
+        let dir = PathBuf::from(dir);
+        let file = PathBuf::from(file);
+        let file = if file.is_absolute() { file } else { dir.join(file) };
+        let p = detect(&dir, &UnrealConfig::default()).expect("an Unreal project");
+        assert!(p.has_db, "no database in {}", dir.display());
+        let check = check_db(&p, None);
+        let module = module_of(&file, &dir);
+        let why = stale(&check, module.as_ref());
+        eprintln!("project {}, module {module:?}, changed input {:?}, stale: {:?}", p.name, check.changed, why.as_ref().map(Stale::reason));
+        assert!(why.is_some(), "{} is not detected as stale", dir.display());
     }
 }

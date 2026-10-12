@@ -1,12 +1,14 @@
 import { useSignals } from "@preact/signals-react/runtime";
 import { useEffect, useRef } from "react";
 import { getEngine } from "../engine/engine";
+import { downloadGlb } from "../engine/glbExport";
 import type { Signal } from "@preact/signals-react";
-import { activeTab, dolly, fps, isPlaying, isSolo, redoCount, renderMode, saveStatus, shot, spin, swing, transformMode, undoCount } from "../state";
+import { activeTab, dolly, fps, isPlaying, isSolo, openVersion, redoCount, renderMode, saveStatus, shot, spin, swing, transformMode, undoCount } from "../state";
 import type { RenderMode, SaveStatus, Shot, TransformMode, ViewTab } from "../state";
 import styles from "./Editor.module.css";
 import { Hierarchy } from "./Hierarchy";
 import { Inspector } from "./Inspector";
+import { ConflictPanel, VersionBar } from "./VersionBar";
 
 const TABS: { id: ViewTab; label: string; icon: string }[] = [
   { id: "scene", label: "Scene", icon: "#" },
@@ -133,7 +135,7 @@ function Toolbar() {
         </span>
         <button
           type="button"
-          title="Put every object back to the values from code"
+          title="Put every object back to the scene file as it was loaded or last pulled from disk"
           className={styles.toolButton}
           onClick={() => {
             engine.document.revert();
@@ -143,13 +145,23 @@ function Toolbar() {
         </button>
         <button
           type="button"
-          title="Write the edits to src/scene/scene-overrides.json (Ctrl+S)"
+          title="Merge the edits of this tab into the open version on disk (Ctrl+S)"
           className={styles.toolButton}
           onClick={() => {
-            void engine.document.save();
+            void engine.sync.save();
           }}
         >
           Save
+        </button>
+        <button
+          type="button"
+          title="Download the visible scene as a GLB file (as `yarn export-glb` writes it)"
+          className={styles.toolButton}
+          onClick={() => {
+            void downloadGlb(engine.root, openVersion.value);
+          }}
+        >
+          Export GLB
         </button>
       </div>
     </header>
@@ -264,6 +276,8 @@ function App() {
   return (
     <div className={styles.app}>
       <Toolbar />
+      <VersionBar />
+      <ConflictPanel />
       <div className={styles.workspace}>
         <Hierarchy root={engine.root} />
         <main className={styles.center}>

@@ -1,36 +1,29 @@
 import * as THREE from "three";
-import { named, polar } from "./geometry";
+import { decodeColor } from "../engine/sceneFormat";
+import type { ColorValue } from "../engine/sceneFormat";
 import beamFragment from "./shaders/beam.frag";
 import beamVertex from "./shaders/beam.vert";
-import { LAYOUT } from "./studio";
-import { WHEEL_CENTER } from "./wheel";
 
-const deg = THREE.MathUtils.degToRad;
+// The lights live in the scene file. This module keeps two component types:
+// - `beam`: an additive cone that fakes the visible beam of a stage light;
+// - `spotSweep`: a spot that sweeps the floor slowly and drags its beam cone along.
 
-function spot(color: number, intensity: number, angle: number, from: THREE.Vector3, to: THREE.Vector3, shadow = false): THREE.SpotLight {
-  const light = new THREE.SpotLight(color, intensity, 0, angle, 0.6, 2);
-  light.position.copy(from);
-  light.target.position.copy(to);
-  if (shadow) {
-    light.castShadow = true;
-    light.shadow.mapSize.set(2048, 2048);
-    light.shadow.bias = -0.0004;
-    light.shadow.camera.near = 2;
-    light.shadow.camera.far = 30;
-  }
-  return light;
+interface BeamData {
+  color: ColorValue;
+  intensity: number;
+  bottomRadius: number;
+  // The cone length at scale 1. A cone between two other points is scaled along y.
+  length: number;
 }
 
-// Additive cone that fakes the visible beam of a stage light.
-function beam(color: number, from: THREE.Vector3, to: THREE.Vector3, bottomRadius: number, intensity: number): THREE.Mesh {
-  const length = from.distanceTo(to);
-  const geometry = new THREE.CylinderGeometry(0.1, bottomRadius, length, 32, 1, true);
+function createBeam(data: BeamData): THREE.Mesh {
+  const geometry = new THREE.CylinderGeometry(0.1, data.bottomRadius, data.length, 32, 1, true);
   const material = new THREE.ShaderMaterial({
     vertexShader: beamVertex,
     fragmentShader: beamFragment,
     uniforms: {
-      uColor: { value: new THREE.Color(color) },
-      uIntensity: { value: intensity },
+      uColor: { value: decodeColor(data.color, new THREE.Color()) },
+      uIntensity: { value: data.intensity },
     },
     transparent: true,
     depthWrite: false,
@@ -40,10 +33,9 @@ function beam(color: number, from: THREE.Vector3, to: THREE.Vector3, bottomRadiu
   const mesh = new THREE.Mesh(geometry, material);
   // The cones cover half the frame: clicks in the Scene view pass through them to the set.
   mesh.raycast = () => {};
-  mesh.userData.length = length;
+  mesh.userData.length = data.length;
   // A fake light: the editor lighting hides it.
   mesh.userData.beam = true;
-  aimBeam(mesh, from, to);
   mesh.renderOrder = 10;
   return mesh;
 }
@@ -52,28 +44,15 @@ const UP = new THREE.Vector3(0, 1, 0);
 const beamDirection = new THREE.Vector3();
 
 // Places a beam cone between the fixture and the spot on the floor.
-function aimBeam(mesh: THREE.Mesh, from: THREE.Vector3, to: THREE.Vector3): void {
+function aimBeam(mesh: THREE.Object3D, from: THREE.Vector3, to: THREE.Vector3): void {
   mesh.position.copy(from).add(to).multiplyScalar(0.5);
   beamDirection.copy(from).sub(to);
-  mesh.scale.y = beamDirection.length() / mesh.userData.length;
+  mesh.scale.y = beamDirection.length() / (mesh.userData.length as number);
   mesh.quaternion.setFromUnitVectors(UP, beamDirection.normalize());
 }
 
-type Mover = {
-  light: THREE.SpotLight;
-  beam: THREE.Mesh;
-  base: THREE.Vector3;
-  // Unit vectors on the floor: along the wall and towards the center.
-  side: THREE.Vector3;
-  inward: THREE.Vector3;
-  path: SweepPath;
-  // Own clock: runs faster or slower, so the spots drift in and out of step.
-  clock: number;
-};
-
-// Each spot gets its own path, so no two move alike.
-// Frequencies (rad/s) are picked to never line up; amplitudes are in meters.
-type SweepPath = {
+// The path of one spot. Frequencies (rad/s) are picked to never line up; amplitudes are in metres.
+interface SweepPath {
   acrossFrequencies: [number, number];
   acrossAmplitudes: [number, number];
   depthFrequency: number;
@@ -81,103 +60,58 @@ type SweepPath = {
   phases: [number, number, number];
   // How fast the operator's attention wanders: sets when the spot slows down and holds.
   holdFrequency: number;
-};
-
-const SWEEP_PATHS: SweepPath[] = [
-  { acrossFrequencies: [0.31, 0.83], acrossAmplitudes: [2.4, 0.6], depthFrequency: 0.19, depthAmplitude: 1.6, phases: [0.0, 1.9, 4.1], holdFrequency: 0.071 },
-  { acrossFrequencies: [0.47, 0.13], acrossAmplitudes: [1.6, 1.4], depthFrequency: 0.37, depthAmplitude: 1.1, phases: [2.6, 0.4, 1.3], holdFrequency: 0.053 },
-  { acrossFrequencies: [0.23, 0.61], acrossAmplitudes: [2.8, 0.5], depthFrequency: 0.29, depthAmplitude: 1.8, phases: [5.1, 3.3, 0.2], holdFrequency: 0.089 },
-  { acrossFrequencies: [0.39, 0.17], acrossAmplitudes: [1.9, 1.2], depthFrequency: 0.43, depthAmplitude: 0.9, phases: [1.2, 5.7, 2.8], holdFrequency: 0.061 },
-];
-
-function createLights() {
-  const group = named(new THREE.Group(), "Lights", true);
-  const movers: Mover[] = [];
-  // Every spot sits in its own folder with its target, so the aim point can be moved in the editor.
-  const add = (name: string, light: THREE.SpotLight, parent: THREE.Object3D = group) => {
-    named(light, name);
-    named(light.target, `${name} Target`);
-    parent.add(light, light.target);
-  };
-  const folder = (name: string) => {
-    const result = named(new THREE.Group(), name, true);
-    group.add(result);
-    return result;
-  };
-
-  group.add(named(new THREE.HemisphereLight(0x23356e, 0x050308, 0.25), "Ambient"));
-
-  // Warm key and fills on the wheel from the front ceiling truss.
-  add("Key Light", spot(0xffd9a8, 260, deg(18), new THREE.Vector3(0, 14, 12), WHEEL_CENTER, true));
-  add("Fill Left", spot(0xffc58a, 120, deg(17), new THREE.Vector3(-9, 13.5, 7), WHEEL_CENTER));
-  add("Fill Right", spot(0xffc58a, 120, deg(17), new THREE.Vector3(9, 13.5, 7), WHEEL_CENTER));
-  // Top light that rims the housing and pools on the podium.
-  add("Top Light", spot(0xffe7c4, 110, deg(26), new THREE.Vector3(0, LAYOUT.ceilingY - 0.6, WHEEL_CENTER.z - 3), new THREE.Vector3(0, 0, WHEEL_CENTER.z + 1)));
-
-  // Warm grazing light on the colonnade so the gold columns read.
-  const colonnade = folder("Colonnade Washes");
-  for (const [index, angle] of [deg(-75), deg(-45), deg(-15), deg(15), deg(45), deg(75)].entries()) {
-    const from = polar(angle, LAYOUT.wallRadius * 0.5, LAYOUT.ceilingY - 0.8);
-    const to = polar(angle, LAYOUT.wallRadius, 5);
-    add(`Colonnade Wash ${index + 1}`, spot(0xffb466, 480, deg(26), from, to), colonnade);
-  }
-
-  // Blue washes from the back fixtures, with visible beams like in the reference.
-  const blue = folder("Blue Washes");
-  const blueAngles = [deg(-62), deg(-26), deg(26), deg(62)];
-  for (const [index, angle] of blueAngles.entries()) {
-    const from = polar(angle, LAYOUT.wallRadius * 0.9, LAYOUT.ceilingY - 0.9);
-    const to = polar(angle * 0.92, LAYOUT.wallRadius * 0.86, 0.5);
-    const light = spot(0x3d66ff, 320, deg(13), from, to);
-    add(`Blue Wash ${index + 1}`, light, blue);
-    const cone = named(beam(0x3d66ff, from, to, 2.0, 0.35), `Blue Beam ${index + 1}`);
-    blue.add(cone);
-    light.target.userData.animated = true;
-    cone.userData.animated = true;
-    const inward = new THREE.Vector3(-to.x, 0, -to.z).normalize();
-    const side = new THREE.Vector3(inward.z, 0, -inward.x);
-    const path = SWEEP_PATHS[movers.length % SWEEP_PATHS.length] as SweepPath;
-    movers.push({ light, beam: cone, base: to.clone(), side, inward, path, clock: 0 });
-  }
-  // Warm beams falling from the front fixture ring.
-  const warm = folder("Warm Beams");
-  for (const [index, angle] of [deg(-45), deg(-15), deg(15), deg(45)].entries()) {
-    const from = polar(angle, LAYOUT.wallRadius * 0.68, LAYOUT.ceilingY - 0.95);
-    const to = polar(angle * 0.9, LAYOUT.wallRadius * 0.58, 0);
-    warm.add(named(beam(0xffb870, from, to, 1.5, 0.05), `Warm Beam ${index + 1}`));
-  }
-
-  // Glow of the wheel bulbs on the podium.
-  const bulbGlow = named(new THREE.PointLight(0xffcf8a, 5, 9, 2), "Bulb Glow");
-  bulbGlow.position.set(WHEEL_CENTER.x, WHEEL_CENTER.y - 2.5, WHEEL_CENTER.z + 1.6);
-  group.add(bulbGlow);
-
-  // The blue spots sweep the floor slowly, each on its own path and its own clock.
-  // A spot's clock now and then slows almost to a stop, so it holds a moment while others move.
-  const target = new THREE.Vector3();
-  let lastTime = 0;
-  const update = (time: number) => {
-    const dt = time - lastTime;
-    lastTime = time;
-    for (const mover of movers) {
-      const path = mover.path;
-      const hold = Math.sin(time * path.holdFrequency + path.phases[2] * 2.0);
-      const pace = 0.15 + 0.85 * THREE.MathUtils.smoothstep(hold, -0.6, 0.2);
-      // A jump in time (a seek) restarts the clock from the time itself.
-      mover.clock = dt < 0 || dt > 0.5 ? time * 0.7 : mover.clock + dt * pace;
-      const t = mover.clock;
-      const across =
-        Math.sin(t * path.acrossFrequencies[0] + path.phases[0]) * path.acrossAmplitudes[0] +
-        Math.sin(t * path.acrossFrequencies[1] + path.phases[1]) * path.acrossAmplitudes[1];
-      const depth = Math.sin(t * path.depthFrequency + path.phases[2]) * path.depthAmplitude;
-      target.copy(mover.base).addScaledVector(mover.side, across).addScaledVector(mover.inward, depth);
-      mover.light.target.position.copy(target);
-      // The cone starts at the light, so a light moved in the editor keeps its beam.
-      aimBeam(mover.beam, mover.light.position, target);
-    }
-  };
-
-  return { group, update };
 }
 
-export { beam, createLights };
+interface SpotSweepData {
+  // The id of the beam cone that follows the spot.
+  beam: string;
+  // The rest point of the spot on the floor, in the frame of the light's parent.
+  base: [number, number, number];
+  path: SweepPath;
+}
+
+// The `spotSweep` component: the spot runs its own path on its own clock. The clock now and then slows almost
+// to a stop, so the spot holds a moment while the others move.
+class SpotSweep {
+  private readonly light: THREE.SpotLight;
+  private readonly beam: THREE.Object3D;
+  private readonly path: SweepPath;
+  private readonly base: THREE.Vector3;
+  // Unit vectors on the floor: along the wall and towards the centre.
+  private readonly side: THREE.Vector3;
+  private readonly inward: THREE.Vector3;
+  private readonly target = new THREE.Vector3();
+  private clock = 0;
+  private lastTime = 0;
+
+  constructor(light: THREE.SpotLight, beam: THREE.Object3D, data: SpotSweepData) {
+    this.light = light;
+    this.beam = beam;
+    this.path = data.path;
+    this.base = new THREE.Vector3().fromArray(data.base);
+    this.inward = new THREE.Vector3(-this.base.x, 0, -this.base.z).normalize();
+    this.side = new THREE.Vector3(this.inward.z, 0, -this.inward.x);
+  }
+
+  update(time: number): void {
+    const dt = time - this.lastTime;
+    this.lastTime = time;
+    const path = this.path;
+    const hold = Math.sin(time * path.holdFrequency + path.phases[2] * 2.0);
+    const pace = 0.15 + 0.85 * THREE.MathUtils.smoothstep(hold, -0.6, 0.2);
+    // A jump in time (a seek) restarts the clock from the time itself.
+    this.clock = dt < 0 || dt > 0.5 ? time * 0.7 : this.clock + dt * pace;
+    const t = this.clock;
+    const across =
+      Math.sin(t * path.acrossFrequencies[0] + path.phases[0]) * path.acrossAmplitudes[0] +
+      Math.sin(t * path.acrossFrequencies[1] + path.phases[1]) * path.acrossAmplitudes[1];
+    const depth = Math.sin(t * path.depthFrequency + path.phases[2]) * path.depthAmplitude;
+    this.target.copy(this.base).addScaledVector(this.side, across).addScaledVector(this.inward, depth);
+    this.light.target.position.copy(this.target);
+    // The cone starts at the light, so a light moved in the editor keeps its beam.
+    aimBeam(this.beam, this.light.position, this.target);
+  }
+}
+
+export { SpotSweep, createBeam };
+export type { BeamData, SpotSweepData };

@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { TransformControls } from "three/examples/jsm/controls/TransformControls.js";
 import { inspectorRevision, renamingUuid, selectedUuid, transformMode } from "../state";
 import { SceneNavigation } from "./sceneNavigation";
+import { BATCHED_LAYER } from "./staticBatch";
 
 // Everything that only exists in the Scene view lives on this layer.
 // The main camera renders layer 0 only, so the Game view never shows editor helpers.
@@ -129,6 +130,9 @@ class Editor {
     gridMaterial.depthWrite = false;
     onEditorLayer(grid);
     scene.add(grid);
+
+    // Clicks hit the source meshes of a static batch: no camera renders their layer, but they stay pickable.
+    this.raycaster.layers.enable(BATCHED_LAYER);
 
     this.cameraHelper = new THREE.CameraHelper(mainCamera);
     this.cameraHelper.name = "Main Camera Gizmo";
