@@ -1,6 +1,7 @@
 //! File watching. `notify` events are collected on a thread and delivered to the UI as one batch
 //! after 200 ms of quiet (or at most 1 s after the first event, so a long build cannot starve
-//! the refresh).
+//! the refresh). Changes inside dependency and build folders skip the batch: they only reach the
+//! Project tree, as the set of folders whose content changed (`AppState::on_ignored_dirs`).
 
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -47,7 +48,8 @@ pub fn start(root: &Path, jobs: Jobs, generation: u64) -> notify::Result<Watcher
             // Block until the first event; the loop ends when the watcher (sender) drops.
             let Ok(first) = rx.recv() else { return };
             let mut batch = FsBatch::default();
-            add(&root, &mut batch, first);
+            let mut ignored_dirs = HashSet::new();
+            add(&root, &mut batch, &mut ignored_dirs, first);
             let started = Instant::now();
             loop {
                 let left = MAX_DELAY.saturating_sub(started.elapsed());
@@ -55,10 +57,17 @@ pub fn start(root: &Path, jobs: Jobs, generation: u64) -> notify::Result<Watcher
                     break;
                 }
                 match rx.recv_timeout(QUIET.min(left)) {
-                    Ok(ev) => add(&root, &mut batch, ev),
+                    Ok(ev) => add(&root, &mut batch, &mut ignored_dirs, ev),
                     Err(RecvTimeoutError::Timeout) => break,
                     Err(RecvTimeoutError::Disconnected) => return,
                 }
+            }
+            if !ignored_dirs.is_empty() {
+                jobs.post(move |state: &mut AppState| {
+                    if state.project_generation() == generation {
+                        state.on_ignored_dirs(ignored_dirs);
+                    }
+                });
             }
             if batch.paths.is_empty() && !batch.git_changed {
                 continue;
@@ -73,7 +82,7 @@ pub fn start(root: &Path, jobs: Jobs, generation: u64) -> notify::Result<Watcher
     Ok(Watcher { _inner: inner })
 }
 
-fn add(root: &Path, batch: &mut FsBatch, ev: notify::Event) {
+fn add(root: &Path, batch: &mut FsBatch, ignored_dirs: &mut HashSet<PathBuf>, ev: notify::Event) {
     if matches!(ev.kind, EventKind::Access(_)) {
         return;
     }
@@ -91,17 +100,46 @@ fn add(root: &Path, batch: &mut FsBatch, ev: notify::Event) {
             continue;
         }
         // Dependency and build trees change in bulk and are gitignored anyway. Any component
-        // named like this is skipped, which is cheaper than asking the gitignore matcher.
-        let noisy = rel.components().any(|c| {
-            let s = c.as_os_str();
-            s == "node_modules" || s == "target" || s == ".git" || s == ".yarn" || s == "dist"
-        });
-        if noisy {
+        // named like this is skipped, which is cheaper than asking the gitignore matcher. The
+        // tree still hears which folder changed, for a listing it shows (a nested `.git` never).
+        let in_git = rel.components().any(|c| c.as_os_str() == ".git");
+        let noisy = rel.components().any(|c| matches!(c.as_os_str().to_str(), Some("node_modules" | "target" | ".yarn" | "dist")));
+        if in_git || noisy {
+            if !in_git && structural {
+                if let Some(parent) = path.parent() {
+                    ignored_dirs.insert(parent.to_path_buf());
+                }
+            }
             continue;
         }
         if structural {
             batch.structure_changed = true;
         }
         batch.paths.insert(path);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn event(kind: EventKind, path: &str) -> notify::Event {
+        notify::Event::new(kind).add_path(PathBuf::from(path))
+    }
+
+    #[test]
+    fn dependency_folders_reach_only_the_tree() {
+        let root = Path::new("/r");
+        let mut batch = FsBatch::default();
+        let mut dirs = HashSet::new();
+        let create = EventKind::Create(notify::event::CreateKind::File);
+        let modify = EventKind::Modify(notify::event::ModifyKind::Data(notify::event::DataChange::Content));
+        add(root, &mut batch, &mut dirs, event(create, "/r/node_modules/pkg/new.js"));
+        add(root, &mut batch, &mut dirs, event(modify, "/r/target/debug/out.o"));
+        add(root, &mut batch, &mut dirs, event(create, "/r/sub/.git/node_modules/x"));
+        add(root, &mut batch, &mut dirs, event(create, "/r/src/a.ts"));
+        assert_eq!(dirs, HashSet::from([PathBuf::from("/r/node_modules/pkg")]), "only structural changes, never inside .git");
+        assert_eq!(batch.paths, HashSet::from([PathBuf::from("/r/src/a.ts")]));
+        assert!(batch.structure_changed);
     }
 }

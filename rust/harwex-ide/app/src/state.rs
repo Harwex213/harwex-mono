@@ -902,6 +902,42 @@ impl AppState {
         }
     }
 
+    /// Lists a loaded tree folder again on a worker (after a watcher event).
+    fn relist_dir(&mut self, dir: PathBuf) {
+        let generation = self.project_generation();
+        let show = self.settings.global.files.show_ignored;
+        let dir_ignored = self.ws.tree.is_ignored(&dir);
+        let list_gen = self.ws.tree.list_gen();
+        let d = dir.clone();
+        self.jobs.spawn_quiet(
+            move || if d.is_dir() { Some(crate::tree::list_dir(&d, show, dir_ignored)) } else { None },
+            move |state, entries| {
+                if state.project_generation() == generation {
+                    if let Some(entries) = entries {
+                        state.ws.tree.set_dir_at(list_gen, dir, entries);
+                    }
+                }
+            },
+        );
+    }
+
+    /// Structure changes inside dependency and build folders (`watcher::FsBatch` leaves them
+    /// out): only the tree cares, and only for folders it shows. An expanded folder is listed
+    /// again; a collapsed one forgets its listing, so the next expand reads it fresh.
+    pub fn on_ignored_dirs(&mut self, dirs: HashSet<PathBuf>) {
+        for dir in dirs {
+            if !self.ws.tree.is_loaded(&dir) {
+                continue;
+            }
+            let is_root = self.ws.project.as_ref().is_some_and(|p| p.root == dir);
+            if is_root || self.ws.tree.is_expanded(&dir) {
+                self.relist_dir(dir);
+            } else {
+                self.ws.tree.forget(&dir);
+            }
+        }
+    }
+
     pub fn on_fs_batch(&mut self, batch: FsBatch) {
         if std::env::var_os("HARWEX_DEBUG_FS").is_some() {
             let sample: Vec<_> = batch.paths.iter().take(3).collect();
@@ -920,18 +956,7 @@ impl AppState {
             }
         }
         for dir in reload {
-            let generation = self.project_generation();
-            let d = dir.clone();
-            self.jobs.spawn_quiet(
-                move || if d.is_dir() { Some(crate::tree::list_dir(&d)) } else { None },
-                move |state, entries| {
-                    if state.project_generation() == generation {
-                        if let Some(entries) = entries {
-                            state.ws.tree.set_dir(dir, entries);
-                        }
-                    }
-                },
-            );
+            self.relist_dir(dir);
         }
         // Open, unmodified editors follow the disk, like IDEA.
         let changed: Vec<(TabId, PathBuf)> = self

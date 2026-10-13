@@ -59,6 +59,7 @@ mod terminal_here;
 mod time_limits;
 mod tool_window_esc;
 mod tool_window_hide;
+mod tree_ignored;
 mod tree_multi;
 mod tree_search;
 mod unreal_nav;

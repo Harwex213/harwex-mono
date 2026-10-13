@@ -4,8 +4,6 @@ One line per task. Details live in `tasks/<id>-<slug>.md`. A closed task loses i
 
 Run at most 2–3 agents that build at once: on 2026-10-05 seven parallel cargo builds flooded macOS `syspolicyd` (Gatekeeper checks every new unsigned binary), every new process froze at `dyld_start`, and in the end WindowServer hung.
 
-- [110] Show git-ignored files in the Project tree, dimmed (tasks/110-show-ignored-in-project.md).
-
 ## Ideas
 
 Diagnostics:
@@ -32,6 +30,7 @@ Commit window:
 - [idea] Stage/Unstage (drop or menu) shows a success toast on every action, because it goes through `run_op`. IDEA is silent on success. Make stage/unstage success quiet; keep error toasts.
 
 Navigation and languages:
+- [idea] Breadcrumb popups still hide git-ignored entries (the Project tree shows them dimmed since task 110).
 - [idea] Find in Files: a case-insensitive non-ASCII query now goes to the regex path; its speed on mono is not measured. An all-ASCII query still misses Unicode folds like the Kelvin sign (found in task 103).
 - [idea] Problems has single selection only; IDEA copies several selected rows (found in task 103).
 - [idea] Find in Files on mono: a no-match search still reads all 500k files (16 s with 4 threads; rg 25.8 s). Only an index makes it instant: IDEA keeps a trigram index of file contents. Build one on a worker (persisted, updated from watcher batches), filter candidate files by the query's trigrams, then grep only those (found in task 099).

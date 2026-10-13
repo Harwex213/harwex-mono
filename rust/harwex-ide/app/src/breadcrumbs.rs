@@ -13,8 +13,8 @@
 //! Project tree. While the bar has the keyboard, the tree's file keys (`tree::command_keys`) and
 //! Alt+F1 act on the selected crumb.
 //!
-//! Listings run on a worker through `tree::list_dir`, so `.gitignore` applies like in the
-//! project tree. Icons come from `icons`.
+//! Listings run on a worker through `tree::list_dir` without ignored entries (the Project tree
+//! may show them dimmed; the popups never do). Icons come from `icons`.
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -299,7 +299,7 @@ fn request(state: &mut AppState, dir: PathBuf) {
     let generation = state.project_generation();
     let d = dir.clone();
     state.jobs.spawn_quiet(
-        move || tree::list_dir(&d),
+        move || tree::list_dir(&d, false, false),
         move |state, entries| {
             state.ws.breadcrumbs.loading.remove(&dir);
             if state.project_generation() == generation {

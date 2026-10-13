@@ -60,6 +60,8 @@ pub struct Theme {
     pub tree_chevron: Color32,
     /// Names of excluded folders and their content, IDEA's dimmed orange.
     pub tree_excluded: Color32,
+    /// Names of git-ignored files and folders and their content, IDEA's dimmed olive.
+    pub tree_ignored: Color32,
     /// The name of a Cut item waiting for Paste.
     pub tree_cut: Color32,
     pub input_bg: Color32,
@@ -269,6 +271,7 @@ impl Theme {
             tree_hover: hex(0x26282B),
             tree_chevron: hex(0x8C8F96),
             tree_excluded: hex(0xA2794F),
+            tree_ignored: hex(0x8F8D5E),
             tree_cut: hex(0x6F737A),
             input_bg: hex(0x191A1C),
             input_border: hex(0x43454A),

@@ -1,5 +1,7 @@
-//! Project tree. Directories load lazily on a worker when first expanded. Ignored files are
-//! hidden through the `ignore` crate, which reads `.gitignore` files of parent directories too.
+//! Project tree. Directories load lazily on a worker when first expanded. Ignored files (the
+//! `ignore` crate reads `.gitignore` files of parent directories too) are listed dimmed while
+//! Settings › System › Project view › Show ignored files is on, like IDEA, and hidden otherwise.
+//! An ignored folder is listed only when it is expanded; nothing else walks it.
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -19,10 +21,15 @@ pub struct Entry {
     pub path: PathBuf,
     pub name: String,
     pub is_dir: bool,
+    /// Matched by `.gitignore` (or inside an ignored folder). Listed only with `show_ignored`.
+    pub ignored: bool,
 }
 
 #[derive(Default)]
 pub struct ProjectTree {
+    /// Bumped when every listing must be read again (the Show ignored files setting changed);
+    /// a listing started before the bump is dropped.
+    list_gen: u64,
     dirs: HashMap<PathBuf, Vec<Entry>>,
     loading: HashSet<PathBuf>,
     expanded: HashSet<PathBuf>,
@@ -115,28 +122,62 @@ enum ScrollMode {
     Nearest,
 }
 
-/// Lists one directory: dirs first, then files, case-insensitive, like IDEA.
-pub fn list_dir(dir: &Path) -> Vec<Entry> {
-    let walker = ignore::WalkBuilder::new(dir)
-        .max_depth(Some(1))
-        .hidden(false)
-        .git_global(true)
-        .git_ignore(true)
-        .git_exclude(true)
-        .parents(true)
-        .filter_entry(|e| e.file_name() != ".git")
-        .build();
-    let mut out: Vec<Entry> = walker
-        .filter_map(Result::ok)
-        .filter(|e| e.depth() == 1)
-        .map(|e| {
-            let is_dir = e.file_type().is_some_and(|t| t.is_dir())
-                || (e.path_is_symlink() && e.path().is_dir());
-            Entry { name: e.file_name().to_string_lossy().into_owned(), path: e.into_path(), is_dir }
-        })
-        .collect();
+/// Lists one directory: dirs first, then files, case-insensitive, like IDEA. Without
+/// `show_ignored` the ignored entries are left out. `dir_ignored` says that `dir` itself is
+/// ignored, so all of its entries are, and no ignore matcher runs.
+pub fn list_dir(dir: &Path, show_ignored: bool, dir_ignored: bool) -> Vec<Entry> {
+    let mut out: Vec<Entry> = if dir_ignored {
+        if !show_ignored {
+            return Vec::new();
+        }
+        read_all(dir, |_| true)
+    } else {
+        let walker = ignore::WalkBuilder::new(dir)
+            .max_depth(Some(1))
+            .hidden(false)
+            .git_global(true)
+            .git_ignore(true)
+            .git_exclude(true)
+            .parents(true)
+            .filter_entry(|e| e.file_name() != ".git")
+            .build();
+        let kept: Vec<Entry> = walker
+            .filter_map(Result::ok)
+            .filter(|e| e.depth() == 1)
+            .map(|e| {
+                let is_dir = e.file_type().is_some_and(|t| t.is_dir()) || (e.path_is_symlink() && e.path().is_dir());
+                Entry { name: e.file_name().to_string_lossy().into_owned(), path: e.into_path(), is_dir, ignored: false }
+            })
+            .collect();
+        if show_ignored {
+            // Everything on disk that the walker left out is ignored.
+            let names: HashSet<&str> = kept.iter().map(|e| e.name.as_str()).collect();
+            let rest = read_all(dir, |name| !names.contains(name));
+            let mut kept = kept;
+            kept.extend(rest);
+            kept
+        } else {
+            kept
+        }
+    };
     out.sort_by(|a, b| b.is_dir.cmp(&a.is_dir).then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase())));
     out
+}
+
+/// The entries of `dir` that `keep` accepts, as ignored entries; `.git` never shows.
+fn read_all(dir: &Path, keep: impl Fn(&str) -> bool) -> Vec<Entry> {
+    let Ok(rd) = std::fs::read_dir(dir) else { return Vec::new() };
+    rd.filter_map(Result::ok)
+        .filter_map(|e| {
+            let name = e.file_name().to_string_lossy().into_owned();
+            if name == ".git" || !keep(&name) {
+                return None;
+            }
+            let path = e.path();
+            let is_dir = e.file_type().is_ok_and(|t| t.is_dir() || (t.is_symlink() && path.is_dir()));
+            Some(Entry { name, path, is_dir, ignored: true })
+        })
+        .collect()
 }
 
 impl ProjectTree {
@@ -146,6 +187,37 @@ impl ProjectTree {
 
     pub fn is_loaded(&self, dir: &Path) -> bool {
         self.dirs.contains_key(dir)
+    }
+
+    /// Whether a listed entry is ignored (`false` for the root and for paths not listed).
+    pub fn is_ignored(&self, path: &Path) -> bool {
+        path.parent().and_then(|p| self.dirs.get(p)).and_then(|entries| entries.iter().find(|e| e.path == path)).is_some_and(|e| e.ignored)
+    }
+
+    /// Drops every listing, so the drawn folders are listed again (with the new Show ignored
+    /// files value). Expanded folders, the selection and the scroll stay.
+    pub fn relist(&mut self) {
+        self.dirs.clear();
+        self.loading.clear();
+        self.list_gen += 1;
+    }
+
+    /// The generation a listing must carry to be stored (`relist` bumps it).
+    pub fn list_gen(&self) -> u64 {
+        self.list_gen
+    }
+
+    /// Stores a listing made at generation `list_gen`; an older one is dropped.
+    pub fn set_dir_at(&mut self, list_gen: u64, dir: PathBuf, entries: Vec<Entry>) {
+        if list_gen == self.list_gen {
+            self.set_dir(dir, entries);
+        }
+    }
+
+    /// Forgets the listing of `dir` and of every folder inside it, so the next expand lists
+    /// them again. Used for ignored folders that changed while collapsed (no watcher reload).
+    pub fn forget(&mut self, dir: &Path) {
+        self.dirs.retain(|d, _| !d.starts_with(dir));
     }
 
     pub fn set_dir(&mut self, dir: PathBuf, entries: Vec<Entry>) {
@@ -336,9 +408,12 @@ pub fn load_dir(state: &mut AppState, dir: PathBuf) {
     let generation = state.project_generation();
     let started = Instant::now();
     let d = dir.clone();
+    let show = state.settings.global.files.show_ignored;
+    let dir_ignored = state.ws.tree.is_ignored(&dir);
+    let list_gen = state.ws.tree.list_gen;
     state.jobs.spawn_quiet(
         move || {
-            let entries = list_dir(&d);
+            let entries = list_dir(&d, show, dir_ignored);
             (entries, started.elapsed())
         },
         move |state, (entries, took)| {
@@ -350,7 +425,7 @@ pub fn load_dir(state: &mut AppState, dir: PathBuf) {
                 state.ws.tree.root_load_ms = Some(ms);
                 state.timings.log(format!("project tree root listed in {ms:.1} ms ({} entries)", entries.len()));
             }
-            state.ws.tree.set_dir(dir, entries);
+            state.ws.tree.set_dir_at(list_gen, dir, entries);
         },
     );
 }
@@ -799,6 +874,8 @@ pub fn show(state: &mut AppState, ui: &mut Ui) -> Option<TreeEvent> {
                 t.tree_cut
             } else if tree.is_excluded(&row.entry.path) {
                 t.tree_excluded
+            } else if row.entry.ignored {
+                t.tree_ignored
             } else {
                 name_color(git, &row.entry.path, row.entry.is_dir)
             };

@@ -126,7 +126,13 @@ pub fn default_file(background: bool) -> Option<PathBuf> {
 /// except `skip` (its own write applies it).
 pub fn set_global(state: &mut AppState, new: GlobalSettings, skip: Option<crate::workspace::WorkspaceId>) {
     let layer_changed = new.layer != state.settings.global.layer;
+    let relist = new.files.show_ignored != state.settings.global.files.show_ignored;
     state.settings.global = new;
+    if relist {
+        for ws in state.all_ws_mut() {
+            ws.tree.relist();
+        }
+    }
     if !layer_changed {
         return;
     }

@@ -194,6 +194,8 @@ pub fn system(ui: &mut Ui, g: &mut GlobalSettings) {
     ui.checkbox(&mut f.sync_on_activate, "When switching to the IDE window or opening an editor tab");
     ui.checkbox(&mut f.sync_periodically, "Periodically when the IDE is inactive (experimental)");
     hint(ui, "Open files without unsaved edits take the text on disk. The file watcher also follows changes while the IDE runs.");
+    section(ui, "Project view", Scope::Global);
+    ui.checkbox(&mut f.show_ignored, "Show ignored files in Project");
 }
 
 pub fn editor(ui: &mut Ui, d: &mut SettingsDialog) {

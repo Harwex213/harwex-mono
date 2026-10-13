@@ -37,11 +37,14 @@ pub struct FilesSettings {
     pub sync_on_activate: bool,
     /// Re-read open files every `files::PERIODIC_SYNC` while the window has no focus.
     pub sync_periodically: bool,
+    /// System › Project view: git-ignored files show in the Project tree, dimmed (IDEA's
+    /// default). Off: they are hidden. Search and the file index skip them either way.
+    pub show_ignored: bool,
 }
 
 impl Default for FilesSettings {
     fn default() -> Self {
-        FilesSettings { trash: true, save_on_idle: true, idle_secs: DEFAULT_IDLE_SECS, save_on_deactivate: true, backup: true, sync_on_activate: true, sync_periodically: false }
+        FilesSettings { trash: true, save_on_idle: true, idle_secs: DEFAULT_IDLE_SECS, save_on_deactivate: true, backup: true, sync_on_activate: true, sync_periodically: false, show_ignored: true }
     }
 }
 
@@ -86,6 +89,7 @@ impl GlobalSettings {
         flag("files", "backup", &mut f.backup);
         flag("files", "sync_on_activate", &mut f.sync_on_activate);
         flag("files", "sync_periodically", &mut f.sync_periodically);
+        flag("files", "show_ignored", &mut f.show_ignored);
         if let Some(v) = table.get("files").and_then(|t| t.get("idle_secs")).and_then(toml::Value::as_integer) {
             f.idle_secs = (v.clamp(MIN_IDLE_SECS as i64, MAX_IDLE_SECS as i64)) as u32;
         }
@@ -106,8 +110,8 @@ impl GlobalSettings {
         }
         // The layer's top-level values must come before any table, so the own sections go last.
         text.push_str(&format!(
-            "[files]\ntrash = {}\nsave_on_idle = {}\nidle_secs = {}\nsave_on_deactivate = {}\nbackup = {}\nsync_on_activate = {}\nsync_periodically = {}\n\n[editor]\nfont_size = {:.1}\n",
-            f.trash, f.save_on_idle, f.idle_secs, f.save_on_deactivate, f.backup, f.sync_on_activate, f.sync_periodically, self.editor.font_size
+            "[files]\ntrash = {}\nsave_on_idle = {}\nidle_secs = {}\nsave_on_deactivate = {}\nbackup = {}\nsync_on_activate = {}\nsync_periodically = {}\nshow_ignored = {}\n\n[editor]\nfont_size = {:.1}\n",
+            f.trash, f.save_on_idle, f.idle_secs, f.save_on_deactivate, f.backup, f.sync_on_activate, f.sync_periodically, f.show_ignored, self.editor.font_size
         ));
         text
     }
@@ -124,6 +128,7 @@ impl GlobalSettings {
             ("backup", n.backup, o.backup),
             ("sync_on_activate", n.sync_on_activate, o.sync_on_activate),
             ("sync_periodically", n.sync_periodically, o.sync_periodically),
+            ("show_ignored", n.show_ignored, o.show_ignored),
         ];
         for (key, new, old) in flags {
             if new != old {
@@ -163,10 +168,12 @@ mod tests {
         let mut s = GlobalSettings::default();
         assert!(s.files.trash && s.files.save_on_idle && s.files.save_on_deactivate && s.files.backup && s.files.sync_on_activate);
         assert!(!s.files.sync_periodically);
+        assert!(s.files.show_ignored);
         assert_eq!(s.files.idle_secs, 15);
         s.files.trash = false;
         s.files.idle_secs = 42;
         s.files.sync_periodically = true;
+        s.files.show_ignored = false;
         s.editor.font_size = 15.0;
         assert_eq!(GlobalSettings::parse(&s.to_text()), s);
         // Project defaults keep their place before the own sections.
