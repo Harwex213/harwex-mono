@@ -1,0 +1,114 @@
+[
+  {
+    "center": [
+      0.0,
+      7.0,
+      2.5
+    ],
+    "face_size": 512,
+    "file": "probes/probe_00.rgba16f",
+    "size": [
+      32.0,
+      14.0,
+      27.0
+    ]
+  },
+  {
+    "center": [
+      0.0,
+      7.0,
+      -24.5
+    ],
+    "face_size": 512,
+    "file": "probes/probe_01.rgba16f",
+    "size": [
+      32.0,
+      14.0,
+      27.0
+    ]
+  },
+  {
+    "center": [
+      0.0,
+      7.0,
+      -51.5
+    ],
+    "face_size": 512,
+    "file": "probes/probe_02.rgba16f",
+    "size": [
+      32.0,
+      14.0,
+      27.0
+    ]
+  },
+  {
+    "center": [
+      0.0,
+      7.0,
+      -79.0
+    ],
+    "face_size": 512,
+    "file": "probes/probe_03.rgba16f",
+    "size": [
+      32.0,
+      14.0,
+      28.0
+    ]
+  },
+  {
+    "center": [
+      0.0,
+      28.0,
+      2.5
+    ],
+    "face_size": 512,
+    "file": "probes/probe_04.rgba16f",
+    "size": [
+      54.0,
+      28.0,
+      27.0
+    ]
+  },
+  {
+    "center": [
+      0.0,
+      28.0,
+      -24.5
+    ],
+    "face_size": 512,
+    "file": "probes/probe_05.rgba16f",
+    "size": [
+      54.0,
+      28.0,
+      27.0
+    ]
+  },
+  {
+    "center": [
+      0.0,
+      28.0,
+      -51.5
+    ],
+    "face_size": 512,
+    "file": "probes/probe_06.rgba16f",
+    "size": [
+      54.0,
+      28.0,
+      27.0
+    ]
+  },
+  {
+    "center": [
+      0.0,
+      28.0,
+      -79.0
+    ],
+    "face_size": 512,
+    "file": "probes/probe_07.rgba16f",
+    "size": [
+      54.0,
+      28.0,
+      28.0
+    ]
+  }
+]

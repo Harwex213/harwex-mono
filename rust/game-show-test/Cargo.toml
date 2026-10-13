@@ -1,0 +1,29 @@
+[package]
+name = "game-show-test"
+version = "0.1.0"
+edition = "2024"
+publish = false
+default-run = "game-show-test"
+
+[dependencies]
+bevy = { version = "0.20", features = ["free_camera"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+image_crate = { package = "image", version = "0.25", default-features = false, features = ["png"] }
+bytemuck = { version = "1", features = ["derive", "extern_crate_alloc"] }
+# The baker (src/bin/bake.rs) drives wgpu directly, without a Bevy app.
+wgpu = "30.0.1"
+futures-lite = "2"
+gltf = { version = "1.4", default-features = false, features = ["utils"] }
+half = "2"
+xatlas-rs-v2 = "0.1.4"
+
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 3
+
+[profile.release]
+codegen-units = 1
+lto = "thin"
