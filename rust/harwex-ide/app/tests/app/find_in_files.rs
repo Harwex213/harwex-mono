@@ -149,6 +149,43 @@ fn toggles_change_the_search() {
     assert_eq!(hit_list(&ide), ["src/t.ts:1"]);
 }
 
+/// Match Case off folds case for ASCII and for Cyrillic, in the popup and in the Find window
+/// (Open in Find Window and its Rerun search again). Task 103: "цели" found no "Цели", because
+/// the plain-text fast path lowered ASCII bytes only.
+#[test]
+fn case_insensitive_ascii_and_cyrillic() {
+    let fx = Fixture::new(SUITE, "case_fold");
+    let repo = basic_repo(fx.path("repo"));
+    repo.write("src/goals.ts", "export const goals = { title: \"Цели\" };\n// ЦЕЛИ: ADD more\n");
+    let mut ide = Ide::open(SUITE, &repo.dir);
+    find(&mut ide, "ADD");
+    assert_eq!(hit_list(&ide), ["src/app.ts:1", "src/app.ts:4", "src/goals.ts:2", "src/util.ts:1"], "ASCII upper case finds lower case");
+    ide.click("Clear search");
+    ide.type_text("цели");
+    settle_search(&mut ide);
+    assert_eq!(hit_list(&ide), ["src/goals.ts:1", "src/goals.ts:2"], "Cyrillic lower case finds every case");
+    let first = ide.state().ws.find.hits().next().map(|h| (h.column, h.end_column, h.matched.clone()));
+    assert_eq!(first, Some((31, 35, "Цели".to_string())), "the hit covers the found text");
+    ide.snapshot("case_fold_cyrillic");
+    ide.click("Match Case");
+    settle_search(&mut ide);
+    assert!(hit_list(&ide).is_empty(), "Match Case keeps the case: {:?}", hit_list(&ide));
+    ide.click("Clear search");
+    ide.type_text("Цели");
+    settle_search(&mut ide);
+    assert_eq!(hit_list(&ide), ["src/goals.ts:1"]);
+    ide.click("Match Case");
+    settle_search(&mut ide);
+    assert_eq!(hit_list(&ide), ["src/goals.ts:1", "src/goals.ts:2"]);
+
+    // The Find window runs its own search with the same query.
+    ide.cmd(Key::Enter);
+    ide.wait_for("find tab", |s| s.jobs.in_flight() == 0 && s.ws.find_window.active_tab().is_some_and(|t| !t.searching && t.items.len() == 2));
+    ide.settle();
+    ide.click("Rerun");
+    ide.wait_for("rerun", |s| s.ws.find_window.active_tab().is_some_and(|t| !t.searching && t.items.len() == 2));
+}
+
 #[test]
 fn file_mask_includes_and_excludes() {
     let fx = Fixture::new(SUITE, "mask");

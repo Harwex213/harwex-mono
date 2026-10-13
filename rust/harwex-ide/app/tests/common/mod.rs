@@ -727,6 +727,12 @@ impl Ide {
         self.compare_snapshot(name);
     }
 
+    /// `snapshot_running` that keeps the pointer where it is (a hover over the jobs slot).
+    pub fn snapshot_running_here(&mut self, name: &str) {
+        self.steps(5);
+        self.compare_snapshot(name);
+    }
+
     fn compare_snapshot(&mut self, name: &str) {
         self.steps(2);
         self.assert_layout_still(name);

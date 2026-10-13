@@ -20,6 +20,9 @@ pub trait Platform: Send + Sync {
     fn reveal(&self, path: &Path) -> Result<(), String>;
     /// Puts text on the clipboard. Called on the UI thread.
     fn copy_text(&self, ctx: &egui::Context, text: &str);
+    /// Puts an image on the clipboard (PNG and TIFF on macOS, plus `text` when set). Blocking:
+    /// call it on a worker.
+    fn copy_image(&self, image: &ClipImage) -> Result<(), String>;
     /// Opens a URL in the default browser or mail app (`open`). Blocking: call it on a worker.
     fn open_url(&self, url: &str) -> Result<(), String>;
     /// Starts the native folder picker. Called on the UI thread (rfd creates the dialog there);
@@ -29,6 +32,21 @@ pub trait Platform: Send + Sync {
     fn calls(&self) -> Vec<String> {
         Vec::new()
     }
+    /// The images a recording platform got from `copy_image`, oldest first. Empty for the real one.
+    fn copied_images(&self) -> Vec<ClipImage> {
+        Vec::new()
+    }
+}
+
+/// An image for the clipboard, encoded on a worker (`viewer::clip`).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ClipImage {
+    /// The image as PNG.
+    pub png: Vec<u8>,
+    pub width: u32,
+    pub height: u32,
+    /// Text that goes along as plain text (an SVG's source).
+    pub text: Option<String>,
 }
 
 /// The folder picker's pending answer, awaited on a worker with `util::block_on`.
@@ -62,6 +80,10 @@ impl Platform for SystemPlatform {
 
     fn copy_text(&self, ctx: &egui::Context, text: &str) {
         ctx.copy_text(text.to_string());
+    }
+
+    fn copy_image(&self, image: &ClipImage) -> Result<(), String> {
+        system_copy_image(image)
     }
 
     fn open_url(&self, url: &str) -> Result<(), String> {
@@ -100,6 +122,36 @@ fn system_trash(path: &Path) -> Result<(), String> {
     }
 }
 
+/// Writes PNG and TIFF (many macOS apps read only TIFF) to the general pasteboard. AppKit's
+/// pasteboard and bitmap reps work off the main thread.
+#[cfg(target_os = "macos")]
+fn system_copy_image(image: &ClipImage) -> Result<(), String> {
+    use objc2_app_kit::{NSBitmapImageRep, NSPasteboard, NSPasteboardTypePNG, NSPasteboardTypeString, NSPasteboardTypeTIFF};
+    use objc2_foundation::{NSData, NSString};
+    let png = NSData::with_bytes(&image.png);
+    // SAFETY: the data objects live for the whole block, and the type constants are AppKit's
+    // static strings.
+    unsafe {
+        let tiff = NSBitmapImageRep::imageRepWithData(&png).and_then(|rep| rep.TIFFRepresentation()).ok_or("AppKit cannot read the PNG")?;
+        let board = NSPasteboard::generalPasteboard();
+        board.clearContents();
+        let mut ok = board.setData_forType(Some(&png), NSPasteboardTypePNG) && board.setData_forType(Some(&tiff), NSPasteboardTypeTIFF);
+        if let Some(text) = &image.text {
+            ok &= board.setString_forType(&NSString::from_str(text), NSPasteboardTypeString);
+        }
+        if ok {
+            Ok(())
+        } else {
+            Err("The pasteboard refused the image.".into())
+        }
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn system_copy_image(_image: &ClipImage) -> Result<(), String> {
+    Err("Copying an image is only supported on macOS.".into())
+}
+
 #[cfg(not(target_os = "macos"))]
 fn system_trash(path: &Path) -> Result<(), String> {
     Err(format!("Moving {} to the Trash is only supported on macOS.", path.display()))
@@ -113,11 +165,12 @@ pub struct RecordingPlatform {
     next: AtomicU64,
     /// What the next folder pick answers (`set_picked_folder`); `None` acts as Cancel.
     picked: Mutex<Option<PathBuf>>,
+    images: Mutex<Vec<ClipImage>>,
 }
 
 impl RecordingPlatform {
     pub fn new(trash_dir: PathBuf) -> RecordingPlatform {
-        RecordingPlatform { trash_dir, calls: Mutex::default(), next: AtomicU64::new(1), picked: Mutex::default() }
+        RecordingPlatform { trash_dir, calls: Mutex::default(), next: AtomicU64::new(1), picked: Mutex::default(), images: Mutex::default() }
     }
 
     /// The folder the next `pick_folder` returns, as if the user chose it.
@@ -149,6 +202,12 @@ impl Platform for RecordingPlatform {
         self.record(format!("copy {text}"));
     }
 
+    fn copy_image(&self, image: &ClipImage) -> Result<(), String> {
+        self.record(format!("copy-image {}x{}", image.width, image.height));
+        crate::lang::lock(&self.images).push(image.clone());
+        Ok(())
+    }
+
     fn open_url(&self, url: &str) -> Result<(), String> {
         self.record(format!("open-url {url}"));
         Ok(())
@@ -162,6 +221,10 @@ impl Platform for RecordingPlatform {
 
     fn calls(&self) -> Vec<String> {
         crate::lang::lock(&self.calls).clone()
+    }
+
+    fn copied_images(&self) -> Vec<ClipImage> {
+        crate::lang::lock(&self.images).clone()
     }
 }
 

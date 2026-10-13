@@ -561,76 +561,9 @@ fn keyboard(ui: &Ui, rows: &[Row], selected: Option<&Path>, anchor: Option<&Path
     out
 }
 
-/// What the speed search keys asked for this frame.
-#[derive(Default)]
-struct SearchKeys {
-    /// The text changed: move to the best match.
-    changed: bool,
-    up: bool,
-    down: bool,
-    /// Enter acts on the selected row (in `keyboard`) and ends the search.
-    enter: bool,
-}
-
-/// The speed search keys while the tree has focus, like IDEA. Typed text starts or extends the
-/// search. While it runs, Backspace edits it, Escape clears it and Up/Down move between the
-/// matches. Call before `keyboard`: it reads Backspace as Delete and Escape as "to the editor".
-fn search_keys(ui: &Ui, search: &mut String) -> SearchKeys {
-    let none = egui::Modifiers::NONE;
-    ui.input_mut(|i| {
-        let mut out = SearchKeys::default();
-        // Text typed with Cmd, Ctrl or Alt belongs to a shortcut (Alt+C types "ç" on macOS).
-        if !(i.modifiers.command || i.modifiers.ctrl || i.modifiers.alt) {
-            i.events.retain(|e| match e {
-                egui::Event::Text(t) => {
-                    for c in t.chars().filter(|c| !c.is_control()) {
-                        // A search never starts with a space.
-                        if !(search.is_empty() && c.is_whitespace()) {
-                            search.push(c);
-                            out.changed = true;
-                        }
-                    }
-                    false
-                }
-                _ => true,
-            });
-        }
-        if search.is_empty() {
-            return out;
-        }
-        if i.consume_key(none, Key::Escape) {
-            search.clear();
-            return out;
-        }
-        if i.consume_key(none, Key::Backspace) {
-            search.pop();
-            out.changed = true;
-        }
-        // consume_key ignores an extra Shift; Shift+arrows still extend the selection.
-        if !i.modifiers.shift {
-            out.up = i.consume_key(none, Key::ArrowUp);
-            out.down = i.consume_key(none, Key::ArrowDown);
-        }
-        out.enter = i.key_pressed(Key::Enter);
-        out
-    })
-}
-
-/// Where the speed search moves the selection, and whether any row matches `query`. After a
-/// text change the selected row stays while it matches, else the first match is selected.
-/// Up/Down go to the previous/next match and wrap around.
-fn search_move(rows: &[Row], selected: Option<&Path>, query: &str, keys: &SearchKeys) -> (Option<PathBuf>, bool) {
-    let hits: Vec<usize> = rows.iter().enumerate().filter(|(_, r)| speed_search::matches(&r.entry.name, query).is_some()).map(|(i, _)| i).collect();
-    let (Some(&first), Some(&last)) = (hits.first(), hits.last()) else { return (None, false) };
-    let cur = selected.and_then(|s| rows.iter().position(|r| r.entry.path == s));
-    let to = if keys.up {
-        cur.and_then(|c| hits.iter().rev().find(|&&i| i < c).copied()).unwrap_or(last)
-    } else if keys.down {
-        cur.and_then(|c| hits.iter().find(|&&i| i > c).copied()).unwrap_or(first)
-    } else {
-        cur.filter(|c| hits.contains(c)).unwrap_or(first)
-    };
-    (Some(rows[to].entry.path.clone()), true)
+/// The rows that `query` matches, in display order.
+fn search_hits(rows: &[Row], query: &str) -> Vec<usize> {
+    rows.iter().enumerate().filter(|(_, r)| speed_search::matches(&r.entry.name, query).is_some()).map(|(i, _)| i).collect()
 }
 
 /// The Project tool window body.
@@ -670,7 +603,7 @@ pub fn show(state: &mut AppState, ui: &mut Ui) -> Option<TreeEvent> {
     // An open context menu needs Escape and the arrows itself.
     let menu_open = ui.ctx().is_context_menu_open();
     // The speed search lives only while the tree has the focus.
-    let search_keys = if focused && !menu_open && state.ws.tree.drag.is_none() { search_keys(ui, &mut state.ws.tree.search) } else { SearchKeys::default() };
+    let search_keys = if focused && !menu_open && state.ws.tree.drag.is_none() { speed_search::take_keys(ui, &mut state.ws.tree.search) } else { speed_search::Keys::default() };
     if !focused {
         state.ws.tree.search.clear();
     }
@@ -686,13 +619,14 @@ pub fn show(state: &mut AppState, ui: &mut Ui) -> Option<TreeEvent> {
     flatten(&state.ws.tree, &root, 0, &mut rows, &mut missing);
     let mut keys = if focused && !menu_open { keyboard(ui, &rows, state.ws.tree.selected.as_deref(), state.ws.tree.anchor.as_deref(), state.ws.tree_ops.has_cut()) } else { KeyOutcome::default() };
     let mut search_found = state.ws.tree.search_found;
-    if search_keys.changed || search_keys.up || search_keys.down {
-        let (to, found) = search_move(&rows, state.ws.tree.selected.as_deref(), &state.ws.tree.search, &search_keys);
+    if search_keys.moves() {
+        let hits = search_hits(&rows, &state.ws.tree.search);
+        let cur = state.ws.tree.selected.as_deref().and_then(|s| rows.iter().position(|r| r.entry.path == s));
         if search_keys.changed {
-            search_found = found;
+            search_found = !hits.is_empty();
         }
-        if to.is_some() {
-            keys.select = to;
+        if let Some(to) = speed_search::step(&hits, cur, &search_keys) {
+            keys.select = Some(rows[to].entry.path.clone());
         }
     }
     // A key command acts on the selected rows; the root when no visible row is selected.
@@ -1024,14 +958,7 @@ pub fn show(state: &mut AppState, ui: &mut Ui) -> Option<TreeEvent> {
     state.ws.tree.search_found = search_found;
     // The speed search field takes the root row's place, so it never covers a row.
     if !state.ws.tree.search.is_empty() {
-        ui.painter().rect_filled(root_row, 0.0, t.island_bg);
-        let text = state.ws.tree.search.clone();
-        let font = t.ui_font();
-        let w = speed_search::field_width(ui.painter(), &text, font.clone()).max(SEARCH_FIELD_MIN_W).min(root_row.width() - 8.0);
-        let field = Rect::from_min_size(pos2(root_row.min.x + 4.0, root_row.min.y + 1.0), vec2(w, root_row.height() - 2.0));
-        speed_search::paint_field(ui.painter(), field, &text, search_found, font);
-        let node = ui.interact(field, crate::workspace::wid("tree-speed-search"), Sense::hover());
-        crate::util::label_widget(&node, egui::WidgetType::TextEdit, format!("Speed search {text}"));
+        speed_search::tree_field(ui, root_row, &state.ws.tree.search, search_found, crate::workspace::wid("tree-speed-search"));
     }
     if scroll_done {
         state.ws.tree.scroll_to = None;
@@ -1102,7 +1029,7 @@ pub fn show(state: &mut AppState, ui: &mut Ui) -> Option<TreeEvent> {
         // back; a dialog keeps it for its text box.
         let stays = matches!(
             cmd,
-            TreeCommand::Cut | TreeCommand::Copy | TreeCommand::CancelCut | TreeCommand::Paste | TreeCommand::CopyAbsPath | TreeCommand::CopyProjectPath | TreeCommand::OpenInFinder | TreeCommand::ReloadFromDisk | TreeCommand::Exclude | TreeCommand::CancelExclusion | TreeCommand::GitHistory
+            TreeCommand::Cut | TreeCommand::Copy | TreeCommand::CancelCut | TreeCommand::Paste | TreeCommand::CopyAbsPath | TreeCommand::CopyProjectPath | TreeCommand::CopyImage | TreeCommand::OpenInFinder | TreeCommand::ReloadFromDisk | TreeCommand::Exclude | TreeCommand::CancelExclusion | TreeCommand::GitHistory
         );
         if stays && state.ws.tree_ops.dialog.is_none() {
             state.ws.tree.focus_pending = true;
@@ -1110,9 +1037,6 @@ pub fn show(state: &mut AppState, ui: &mut Ui) -> Option<TreeEvent> {
     }
     event
 }
-
-/// The speed search field is at least this wide, so a short text does not look lost.
-const SEARCH_FIELD_MIN_W: f32 = 120.0;
 
 /// Revealing a row scrolls sideways unless at least this much of its name shows.
 const REVEAL_NAME_W: f32 = 48.0;

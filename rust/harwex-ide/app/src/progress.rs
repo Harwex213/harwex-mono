@@ -72,9 +72,7 @@ pub fn status_widget(s: &mut AppState, ui: &mut Ui, width: f32) {
     // Left to right: spinner, text, +N, ×. The × sits at the right end of the slot.
     let mut cancel = None;
     let stop = Rect::from_center_size(pos2(slot.max.x - STOP_W / 2.0, cy), vec2(STOP_W, STOP_W));
-    if first.cancellable && !first.cancel.is_cancelled() && stop_button(ui, stop, &first) {
-        cancel = Some(first.id);
-    }
+    let has_stop = first.cancellable && !first.cancel.is_cancelled();
     let (text, color) = slot_text(&first, deterministic, hint_after);
     let more = (running.len() > 1).then(|| format!("+{}", running.len() - 1));
     let more_galley = more.as_ref().map(|m| painter.layout_no_wrap(m.clone(), t.small_font(), t.text));
@@ -92,8 +90,16 @@ pub fn status_widget(s: &mut AppState, ui: &mut Ui, width: f32) {
     let target = Rect::from_min_max(slot.min, pos2(text_x + text_w + more_w, slot.max.y));
     let resp = ui.interact(target, Id::new("progress-slot"), Sense::click());
     resp.widget_info(|| egui::WidgetInfo { current_text_value: Some(full.clone()), ..egui::WidgetInfo::labeled(egui::WidgetType::Button, true, format!("Running: {}", first.label)) });
-    if resp.hovered() {
-        painter.rect_filled(target.shrink2(vec2(0.0, 2.0)), t.radius.button, t.hover_on_window);
+    // One rounded background behind the text and the `×`, shown while the pointer is over
+    // either of them, so the two read as one control.
+    let pill = Rect::from_min_max(slot.min, pos2(if has_stop { stop.max.x } else { target.max.x }, slot.max.y)).shrink2(vec2(0.0, 2.0));
+    if ui.rect_contains_pointer(pill) {
+        painter.rect_filled(pill, t.radius.button, t.hover_on_window);
+        let pass = ctx.cumulative_pass_nr();
+        ctx.data_mut(|d| d.insert_temp(pill_id(), (pass, pill)));
+    }
+    if has_stop && stop_button(ui, stop, &first) {
+        cancel = Some(first.id);
     }
     // A spinner's angle follows the clock, so snapshots leave it out; its room stays.
     if !deterministic {
@@ -130,14 +136,12 @@ pub fn status_widget(s: &mut AppState, ui: &mut Ui, width: f32) {
     }
 }
 
-/// The small `×` for `job` at `rect`. Acts on the press.
+/// The small `×` for `job` at `rect`. Acts on the press. It has no background of its own: the
+/// slot's pill is behind it.
 fn stop_button(ui: &mut Ui, rect: Rect, job: &RunningJob) -> bool {
     let t = &theme::T;
     let resp = ui.interact(rect, Id::new(("progress-stop", job.id)), Sense::click());
     crate::util::label_widget(&resp, egui::WidgetType::Button, format!("Cancel {}", job.label));
-    if resp.hovered() {
-        ui.painter().rect_filled(rect, t.radius.button, t.hover);
-    }
     let color = if resp.hovered() { t.icon_active } else { t.icon };
     icons::paint(ui.painter(), rect.shrink(2.0), Icon::Close, color);
     let pressed = crate::clicks::pressed(&resp);
@@ -242,6 +246,16 @@ fn list(ctx: &egui::Context, slot: Rect, running: &[RunningJob], deterministic: 
         ctx.request_repaint();
     }
     chosen
+}
+
+fn pill_id() -> Id {
+    Id::new("progress-slot-pill")
+}
+
+/// The slot's hover background painted in the last frame, for tests.
+pub fn hover_pill(ctx: &egui::Context) -> Option<Rect> {
+    let (pass, rect) = ctx.data(|d| d.get_temp::<(u64, Rect)>(pill_id()))?;
+    (pass + 1 == ctx.cumulative_pass_nr()).then_some(rect)
 }
 
 /// Whether the tasks popup is open, for tests.

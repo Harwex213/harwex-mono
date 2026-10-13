@@ -1,5 +1,5 @@
-//! Writes the project pages' changes into `.harwex/ide.toml`. Only the keys the user changed
-//! are written; the rest of the file keeps its text and comments.
+//! Writes the Settings dialog's changes into `.harwex/ide.toml` and the global `settings.toml`.
+//! Only the keys the user changed are written; the rest of the file keeps its text and comments.
 
 use std::path::Path;
 
@@ -39,9 +39,14 @@ impl Edit {
     }
 }
 
-/// Applies `edits` to the TOML text.
+/// Applies `edits` to the text of `.harwex/ide.toml`.
 pub fn apply(text: &str, edits: &[Edit]) -> Result<String, String> {
-    let mut doc: toml_edit::DocumentMut = text.parse().map_err(|e| format!("{CONFIG_PATH} is not valid TOML: {e}"))?;
+    apply_to(CONFIG_PATH, text, edits)
+}
+
+/// Applies `edits` to the TOML text of the file `name` (for the messages).
+pub fn apply_to(name: &str, text: &str, edits: &[Edit]) -> Result<String, String> {
+    let mut doc: toml_edit::DocumentMut = text.parse().map_err(|e| format!("{name} is not valid TOML: {e}"))?;
     for edit in edits {
         let Some((key, tables)) = edit.path.split_last() else { continue };
         let mut table: &mut dyn toml_edit::TableLike = doc.as_table_mut();
@@ -61,7 +66,7 @@ pub fn apply(text: &str, edits: &[Edit]) -> Result<String, String> {
                 t.set_implicit(!last);
                 toml_edit::Item::Table(t)
             });
-            table = item.as_table_like_mut().ok_or_else(|| format!("{CONFIG_PATH}: `{}` must be a table", walked.join(".")))?;
+            table = item.as_table_like_mut().ok_or_else(|| format!("{name}: `{}` must be a table", walked.join(".")))?;
         }
         if missing {
             continue;
@@ -72,25 +77,42 @@ pub fn apply(text: &str, edits: &[Edit]) -> Result<String, String> {
             }
             None => {
                 table.remove(key);
+                prune(doc.as_table_mut(), tables);
             }
         }
     }
     Ok(doc.to_string())
 }
 
+/// Drops the tables along `path` that a removal left empty, innermost first, so a reset leaves
+/// no bare `[rust]` behind.
+fn prune(table: &mut dyn toml_edit::TableLike, path: &[String]) {
+    let Some((name, rest)) = path.split_first() else { return };
+    let Some(child) = table.get_mut(name).and_then(|i| i.as_table_like_mut()) else { return };
+    prune(child, rest);
+    if child.is_empty() {
+        table.remove(name);
+    }
+}
+
 /// Reads, edits and writes `<root>/.harwex/ide.toml`. Blocking: call it on a worker.
 pub fn write(root: &Path, edits: &[Edit]) -> Result<(), String> {
-    let path = root.join(CONFIG_PATH);
-    let text = match std::fs::read_to_string(&path) {
+    write_file(&root.join(CONFIG_PATH), CONFIG_PATH, edits)
+}
+
+/// Reads, edits and writes the TOML file `path` (`name` in messages); a missing file starts
+/// empty. Blocking: call it on a worker.
+pub fn write_file(path: &Path, name: &str, edits: &[Edit]) -> Result<(), String> {
+    let text = match std::fs::read_to_string(path) {
         Ok(t) => t,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
         Err(e) => return Err(format!("{}: {e}", path.display())),
     };
-    let out = apply(&text, edits)?;
+    let out = apply_to(name, &text, edits)?;
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
     }
-    std::fs::write(&path, out).map_err(|e| format!("{}: {e}", path.display()))
+    std::fs::write(path, out).map_err(|e| format!("{}: {e}", path.display()))
 }
 
 #[cfg(test)]
@@ -111,7 +133,9 @@ mod tests {
             ],
         )
         .unwrap();
-        assert_eq!(out, "# mine\nidle_timeout_secs = 5\n\n[rust]\n\n[format.oxfmt]\non_save = true\n\n[unreal.projects.\"Sub/Game\"]\nengine = \"/e\"\n");
+        assert_eq!(out, "# mine\nidle_timeout_secs = 5\n\n[format.oxfmt]\non_save = true\n\n[unreal.projects.\"Sub/Game\"]\nengine = \"/e\"\n");
+        // A table keeps its other keys.
+        assert_eq!(apply("[rust]\nserver = \"/r\"\ncheck_on_save = true\n", &[Edit::remove(&["rust", "server"])]).unwrap(), "[rust]\ncheck_on_save = true\n");
         assert_eq!(apply("", &[Edit::set(&["format", "oxfmt", "on_save"], true)]).unwrap(), "[format.oxfmt]\non_save = true\n");
         assert!(apply("format = 1\n", &[Edit::set(&["format", "oxfmt", "on_save"], true)]).is_err());
         assert!(apply("[x\n", &[]).is_err());

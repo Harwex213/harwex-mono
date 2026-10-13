@@ -4,6 +4,8 @@ One line per task. Details live in `tasks/<id>-<slug>.md`. A closed task loses i
 
 Run at most 2–3 agents that build at once: on 2026-10-05 seven parallel cargo builds flooded macOS `syspolicyd` (Gatekeeper checks every new unsigned binary), every new process froze at `dyld_start`, and in the end WindowServer hung.
 
+- [110] Show git-ignored files in the Project tree, dimmed (tasks/110-show-ignored-in-project.md).
+
 ## Ideas
 
 Diagnostics:
@@ -11,11 +13,15 @@ Diagnostics:
 - [idea] oxlint 1.77 panics in `disable_fix.rs:52` on every file with a `jsPlugins` diagnostic, and its LSP waits for tsgolint with no timeout. We work around both (quarantine, restart, type-aware fallback). File the upstream reports drafted in `oxlint-upstream.md` when the user decides.
 
 Git window:
+- [idea] Merge window: the file also shows as a normal tab beside the merge tab; the Result pane has no hover text or Go to Declaration; no IDEA × "ignore change"; panes ignore the Settings font size; Cancel write-back after an idle save has no test (found in task 106).
 - [idea] In a very narrow commit table the date column draws over the graph (`git_history/filter_bar_narrow.png`). Shrink or hide columns by priority.
 - [idea] Create Patch asks for a path in a text box. Use a native save dialog through `state.platform`.
 - [idea] Ref labels cut the HEAD commit message without an ellipsis (`Afte`). Truncate the message with `…` and collapse labels to `+N` earlier.
 
 Tooling:
+- [idea] Flaky: `cpp_nav::find_usages_across_files` and `cpp_nav::rename_symbol_shows_a_preview_then_edits_every_file` fail in full `cargo xtask test` runs (clangd under load) but pass alone 9/9; seen in tasks 101 and 109.
+- [idea] Flaky: `cancel::hung_annotate_is_cancelled_from_the_status_bar_and_runs_again` fails now and then under load ("Annotate failed" instead of a second "Cancelled"); seen in tasks 103 and 105.
+- [idea] Settings: a server lookup error still names `.harwex/ide.toml` when the path came from the global `settings.toml`; a project cannot force Auto over a global value (TOML has no null) (found in task 104).
 - [idea] Release bench `bench_10k_carets` misses its 8 ms Backspace budget now and then under load (8.5–10.9 ms with the occurrence update, 7.4–8.1 ms without). Rerun on a quiet machine (found in task 091).
 - [idea] Two `cargo xtask test-tools` runs at once corrupt each other's downloads (shared `tools/.<name>.partial`). Take a lock or use a per-process partial name (found in task 083).
 - [idea] Flaky: `xtask full_test::second_run_waits_until_the_first_ends` failed once under load (task 083).
@@ -26,6 +32,8 @@ Commit window:
 - [idea] Stage/Unstage (drop or menu) shows a success toast on every action, because it goes through `run_op`. IDEA is silent on success. Make stage/unstage success quiet; keep error toasts.
 
 Navigation and languages:
+- [idea] Find in Files: a case-insensitive non-ASCII query now goes to the regex path; its speed on mono is not measured. An all-ASCII query still misses Unicode folds like the Kelvin sign (found in task 103).
+- [idea] Problems has single selection only; IDEA copies several selected rows (found in task 103).
 - [idea] Find in Files on mono: a no-match search still reads all 500k files (16 s with 4 threads; rg 25.8 s). Only an index makes it instant: IDEA keeps a trigram index of file contents. Build one on a worker (persisted, updated from watcher batches), filter candidate files by the query's trigrams, then grep only those (found in task 099).
 - [idea] The Find window shows only a spinner while it fills; stream results into it like the popup. Editing a `.gitignore` does not rebuild the file index (found in task 099).
 - [idea] Inline-code background applies to every `Language::Plain` file, so backticks in shell scripts and Dockerfiles get it too; `Language` does not know the extension. Limit it to `.txt`/no extension. Code spans broken by a newline are not marked (found in task 094).

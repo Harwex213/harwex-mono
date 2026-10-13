@@ -272,11 +272,11 @@ impl Model {
         let mut diff = diff;
         let bytes_hash = binary_hash(&diff);
         let images = (diff.binary && crate::viewer::is_raster(&diff.path)).then(|| {
-            let side = |exists: bool, b: &[u8]| exists.then_some(b).map(<[u8]>::to_vec);
-            let (old, new) = (side(diff.old_exists, &diff.old_bytes), side(diff.new_exists, &diff.new_bytes));
-            Box::new(crate::viewer::image::DiffImages::decode(old.as_deref(), new.as_deref()))
+            let side = |exists: bool, b: &mut Vec<u8>| exists.then(|| std::mem::take(b));
+            let (old, new) = (side(diff.old_exists, &mut diff.old_bytes), side(diff.new_exists, &mut diff.new_bytes));
+            Box::new(crate::viewer::image::DiffImages::decode(old, new))
         });
-        // The pixels are decoded; the raw bytes would only hold memory while the tab is open.
+        // `DiffImages` keeps the image bytes it needs for Copy Image; the rest would only hold memory.
         (diff.old_bytes, diff.new_bytes) = (Vec::new(), Vec::new());
         if let Some(buf) = new_override {
             if !diff.binary && buf != diff.new_text {
@@ -704,7 +704,10 @@ impl CustomTab for DiffTab {
                 let titles = side_titles(&self.source, &m.diff);
                 if let Load::Ready(m) = &mut self.load {
                     if let Some(images) = m.images.as_mut() {
-                        images.ui(ui, &self.key, titles);
+                        if let Some(bytes) = images.ui(ui, &self.key, titles) {
+                            let name = m.diff.path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+                            env.jobs.post(move |state| crate::viewer::clip::copy_bytes(state, name, bytes));
+                        }
                     }
                 }
                 return;

@@ -233,6 +233,14 @@ impl FileProblems {
         self.current_for = Some(key);
     }
 
+    /// Sets one source's answer at doc `version`, for tests that need problems without a
+    /// language server or linter.
+    #[doc(hidden)]
+    pub fn set_answer(&mut self, source: SourceId, version: u64, problems: Vec<Problem>) {
+        self.results.insert(source, SourceResult { version, problems });
+        self.results_gen += 1;
+    }
+
     /// Whether any source answered for this file (the widget shows nothing before).
     pub fn checked(&self) -> bool {
         !self.results.is_empty()

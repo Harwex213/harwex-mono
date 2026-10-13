@@ -353,37 +353,46 @@ fn push_window(state: &mut AppState, ctx: &Context) {
             });
             ui.separator();
             let untracked = d.target.as_ref().is_some_and(|t| !t.tracked);
-            if d.confirm_force {
-                ui.label(RichText::new("Force push overwrites the remote branch if nobody else pushed to it since your last fetch (--force-with-lease). Continue?").color(theme::T.warning));
-                ui.horizontal(|ui| {
-                    if ui.button("Force Push").clicked() {
-                        d.confirm_force = false;
-                        deferred = d.branch.clone().map(|b| push_job(b, true, d.set_upstream && untracked));
-                        d.pushing = true;
-                    }
-                    if ui.button("Cancel").clicked() {
-                        d.confirm_force = false;
-                    }
-                });
-                return;
+            // Unticking Force or Esc leaves the confirm state. The Esc is consumed, so it never
+            // reaches the tool window behind the dialog.
+            if !d.force {
+                d.confirm_force = false;
+            }
+            if d.confirm_force && ui.input_mut(|i| i.consume_key(egui::Modifiers::NONE, Key::Escape)) {
+                d.confirm_force = false;
             }
             ui.horizontal(|ui| {
-                ui.checkbox(&mut d.force, "Force push (with lease)");
                 if untracked {
                     ui.checkbox(&mut d.set_upstream, "Set upstream");
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     let can = !d.pushing && d.branch.is_some() && d.target.is_some() && (untracked || !d.commits.is_empty() || d.force);
-                    if d.pushing {
-                        ui.spinner();
+                    // Every state of the button has the width of the widest label, so the button
+                    // and the checkbox left of it never move.
+                    let (label, fill) = push_button_label(d.force, d.confirm_force);
+                    let text = if fill { RichText::new(label).color(theme::T.on_accent) } else { RichText::new(label) };
+                    let mut button = egui::Button::new(text).min_size(vec2(push_button_width(ui), 0.0));
+                    if fill {
+                        button = button.fill(theme::T.error);
                     }
-                    if ui.add_enabled(can, egui::Button::new(if d.force { "Force Push" } else { "Push" })).clicked() {
-                        if d.force {
+                    let resp = ui.add_enabled(can, button);
+                    let resp = if d.confirm_force { resp.on_hover_text(FORCE_WARNING) } else { resp };
+                    if resp.clicked() {
+                        if d.force && !d.confirm_force {
                             d.confirm_force = true;
                         } else {
-                            deferred = d.branch.clone().map(|b| push_job(b, false, d.set_upstream && untracked));
+                            let force = d.force;
+                            d.confirm_force = false;
+                            deferred = d.branch.clone().map(|b| push_job(b, force, d.set_upstream && untracked));
                             d.pushing = true;
                         }
+                    }
+                    if ui.checkbox(&mut d.force, "Force push (with lease)").changed() && !d.force {
+                        d.confirm_force = false;
+                    }
+                    // In the free space left of the checkbox, so it moves nothing.
+                    if d.pushing {
+                        ui.spinner();
                     }
                 });
             });
@@ -402,6 +411,24 @@ fn push_window(state: &mut AppState, ctx: &Context) {
     if let Some(f) = deferred {
         f(state);
     }
+}
+
+const FORCE_WARNING: &str = "Force push overwrites the remote branch if nobody else pushed to it since your last fetch (--force-with-lease).";
+
+/// The push button's label, and whether it takes the danger fill (the confirm state).
+fn push_button_label(force: bool, confirm: bool) -> (&'static str, bool) {
+    match (force, confirm) {
+        (true, true) => ("Confirm force push", true),
+        (true, false) => ("Force Push", false),
+        _ => ("Push", false),
+    }
+}
+
+/// The width of the push button: its widest label plus the button padding.
+fn push_button_width(ui: &Ui) -> f32 {
+    let font = egui::TextStyle::Button.resolve(ui.style());
+    let widest = ["Push", "Force Push", "Confirm force push"].into_iter().map(|l| ui.fonts(|f| f.layout_no_wrap(l.to_owned(), font.clone(), theme::T.text).size().x)).fold(0.0, f32::max);
+    widest + 2.0 * ui.spacing().button_padding.x
 }
 
 fn push_job(branch: String, force: bool, set_upstream: bool) -> Box<dyn FnOnce(&mut AppState)> {

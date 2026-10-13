@@ -1,5 +1,5 @@
 use crate::common::{configure, git_in, p, TestRepo};
-use ide_git::{ChangeKind, ConflictChoice, LogFilter, Oid, RefKind, Repo, RepoState, ResetMode};
+use ide_git::{ChangeKind, ConflictChoice, LogFilter, Oid, RebaseProgress, RefKind, Repo, RepoState, ResetMode};
 
 /// main: A - B - D - M, feature: A - C, M merges feature.
 fn merged_history(t: &TestRepo) -> [String; 5] {
@@ -537,6 +537,37 @@ fn rebase_update_refs_conflict_continues_and_moves_the_stack() {
     assert_eq!(t.git(&["rev-parse", "lower~1"]).trim(), main);
     assert_eq!(t.git(&["rev-parse", "upper~1"]).trim(), t.git(&["rev-parse", "lower"]).trim());
     assert_eq!(t.read("lower.txt"), "resolved\n");
+}
+
+/// Task 107: the step of a rebase that stops on two conflicting commits. `update-ref` lines
+/// do not count as steps.
+#[test]
+fn rebase_progress_counts_replayed_commits() {
+    let t = TestRepo::new();
+    t.write("f.txt", "a\nb\nc\n");
+    t.commit_all("base");
+    t.git(&["checkout", "-q", "-b", "feature"]);
+    t.write("f.txt", "a1\nb\nc\n");
+    t.commit_all("first");
+    t.git(&["branch", "lower"]);
+    t.write("f.txt", "a1\nb\nc2\n");
+    t.commit_all("second");
+    t.git(&["checkout", "-q", "main"]);
+    t.write("f.txt", "A\nb\nC\n");
+    t.commit_all("main edits both ends");
+    t.git(&["checkout", "-q", "feature"]);
+    assert_eq!(t.repo.rebase_progress().unwrap(), None);
+
+    assert!(!t.repo.rebase_update_refs("main").unwrap().success);
+    assert_eq!(t.repo.rebase_progress().unwrap(), Some(RebaseProgress { step: 1, total: 2 }));
+    t.repo.resolve(&p("f.txt"), "a1\nb\nC\n").unwrap();
+    assert!(!t.repo.continue_operation().unwrap().success, "the second commit conflicts too");
+    assert_eq!(t.repo.rebase_progress().unwrap(), Some(RebaseProgress { step: 2, total: 2 }));
+    t.repo.resolve(&p("f.txt"), "a1\nb\nc2\n").unwrap();
+    assert!(t.repo.continue_operation().unwrap().success);
+    assert_eq!(t.repo.state().unwrap(), RepoState::Clean);
+    assert_eq!(t.repo.rebase_progress().unwrap(), None);
+    assert_eq!(t.git(&["rev-parse", "feature~1"]), t.git(&["rev-parse", "lower"]), "update-refs moved lower");
 }
 
 #[test]

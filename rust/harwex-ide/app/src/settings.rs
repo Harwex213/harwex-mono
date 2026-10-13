@@ -1,12 +1,15 @@
 //! The Settings dialog (⌘, or the gear in the title bar), IDEA's layout: pages on the left
 //! (System, Keymap, Editor, Languages, Frameworks), the page on the right, OK and Cancel.
 //!
-//! Two kinds of values, and each section says which it holds:
-//! - Global settings (`global.rs`) belong to the IDE and live in eframe storage (the app config).
-//!   OK applies them at once.
-//! - Project settings live in the project's `.harwex/ide.toml` (architecture rule 10). OK
-//!   writes only the changed keys on a worker (`project.rs`) and applies the file like a
+//! Each section has a scope badge (task 104, IDEA's IDE vs project settings):
+//! - Global sections (System, Keymap, the editor font) live in the global `settings.toml`
+//!   (`global.rs`). OK applies them at once and writes the changed keys on a worker.
+//! - Project sections (Unreal) live in the project's `.harwex/ide.toml` (architecture rule 10).
+//!   OK writes only the changed keys on a worker (`project.rs`) and applies the file like a
 //!   watcher reload.
+//! - Shared sections (`Shared`: oxfmt, language servers, linters) have a global value that a
+//!   project can override. The badge switches the scope: Project writes the whole section into
+//!   `.harwex/ide.toml`, Global removes the section's keys there, so the global values apply.
 //!
 //! `files.rs` makes System › Files work: autosave, backups, permanent delete and the sync of
 //! open files with the disk.
@@ -36,6 +39,8 @@ use project::Edit;
 pub struct AppSettings {
     /// The values in force.
     pub global: GlobalSettings,
+    /// The global settings file (`AppOptions::settings_file`). `None`: eframe storage only.
+    pub file: Option<PathBuf>,
     /// Autosave and sync at work.
     pub sync: files::FileSync,
     /// Where backups go (`AppOptions::backup_dir`). `None`: no backups, whatever the setting.
@@ -51,13 +56,108 @@ impl AppSettings {
     }
 }
 
-/// Reads the global settings from eframe storage.
-pub fn load_storage(state: &mut AppState, storage: &dyn eframe::Storage) {
-    state.settings.global = GlobalSettings::load(storage);
+/// Reads the global settings: from `file` when there is one, else from eframe storage. A
+/// missing file takes the values task 101 kept in storage and writes them into the file on a
+/// worker. Runs once in `IdeApp::create`, before the first frame (a recorded exception to
+/// rule 1, like eframe's own storage read).
+pub fn load(state: &mut AppState, storage: Option<&dyn eframe::Storage>, file: Option<PathBuf>) {
+    let stored = storage.and_then(|s| s.get_string(global::STORAGE_KEY));
+    let Some(file) = file else {
+        if let Some(text) = stored {
+            state.settings.global = GlobalSettings::parse(&text);
+        }
+        warn_layer(state);
+        return;
+    };
+    // Tabs are keyed by canonical path; a save of this file must find it (`saved`).
+    let file = match (file.parent().and_then(|d| std::fs::canonicalize(d).ok()), file.file_name()) {
+        (Some(dir), Some(name)) => dir.join(name),
+        _ => file,
+    };
+    match std::fs::read_to_string(&file) {
+        Ok(text) => state.settings.global = GlobalSettings::parse(&text),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            if let Some(text) = stored {
+                state.settings.global = GlobalSettings::parse(&text);
+                let (path, text) = (file.clone(), state.settings.global.to_text());
+                state.jobs.window().spawn_quiet(move || write_whole(&path, &text), |state, res| {
+                    if let Err(e) = res {
+                        state.notifications.error("Cannot write the global settings", e);
+                    }
+                });
+            }
+        }
+        Err(e) => state.notifications.error("Cannot read the global settings", format!("{}: {e}", file.display())),
+    }
+    state.settings.file = Some(file);
+    warn_layer(state);
 }
 
+fn warn_layer(state: &mut AppState) {
+    for w in state.settings.global.layer_warnings() {
+        state.notifications.warn("Global settings", w);
+    }
+}
+
+fn write_whole(path: &std::path::Path, text: &str) -> Result<(), String> {
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+    }
+    std::fs::write(path, text).map_err(|e| format!("{}: {e}", path.display()))
+}
+
+/// Keeps the global settings in eframe storage when there is no file.
 pub fn save_storage(state: &AppState, storage: &mut dyn eframe::Storage) {
-    state.settings.global.save(storage);
+    if state.settings.file.is_none() {
+        state.settings.global.save(storage);
+    }
+}
+
+/// The default global settings file: `settings.toml` in the app data folder, or in the temp
+/// dir in background mode (like the background eframe storage).
+pub fn default_file(background: bool) -> Option<PathBuf> {
+    if background {
+        return Some(std::env::temp_dir().join("harwex-ide-background-settings.toml"));
+    }
+    eframe::storage_dir("harwex-ide").map(|d| d.join(global::FILE_NAME))
+}
+
+/// Puts `new` in force. A change of the project defaults re-applies every project's config,
+/// except `skip` (its own write applies it).
+pub fn set_global(state: &mut AppState, new: GlobalSettings, skip: Option<crate::workspace::WorkspaceId>) {
+    let layer_changed = new.layer != state.settings.global.layer;
+    state.settings.global = new;
+    if !layer_changed {
+        return;
+    }
+    let ids: Vec<_> = state.all_ws().filter(|w| w.project.is_some() && Some(w.id) != skip).map(|w| w.id).collect();
+    for id in ids {
+        state.with_ws(id, |s| {
+            let mut config = s.ws.langs.config.clone();
+            // Its warnings were shown when the project file was read.
+            config.warnings.clear();
+            s.apply_ide_config(config);
+        });
+    }
+}
+
+/// A save of `path` finished. The global settings file is read again and put in force.
+pub fn saved(state: &mut AppState, path: &std::path::Path) {
+    if state.settings.file.as_deref() != Some(path) {
+        return;
+    }
+    let path = path.to_path_buf();
+    state.jobs.window().spawn_quiet(
+        move || std::fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display())),
+        |state, res| match res {
+            Ok(text) => {
+                let new = GlobalSettings::parse(&text);
+                set_global(state, new, None);
+                warn_layer(state);
+            }
+            Err(e) => state.notifications.error("Cannot read the global settings", e),
+        },
+    );
 }
 
 /// Startup: the backup folder, the idle timer (off in deterministic mode) and the removal of
@@ -119,9 +219,161 @@ pub struct UnrealRow {
     pub detected: Result<String, String>,
 }
 
-/// The values of the project pages, as the fields show them.
+/// Where a section's values live.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Scope {
+    Global,
+    Project,
+}
+
+/// The sections that have a global value and a per-project override.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Shared {
+    /// Editor › Formatting: oxfmt.
+    Formatting,
+    /// Languages › Language servers.
+    Servers,
+    /// Languages › Linters and checks.
+    Linters,
+}
+
+impl Shared {
+    pub const ALL: [Shared; 3] = [Shared::Formatting, Shared::Servers, Shared::Linters];
+
+    pub fn title(self) -> &'static str {
+        match self {
+            Shared::Formatting => "Formatting: oxfmt",
+            Shared::Servers => "Language servers",
+            Shared::Linters => "Linters and checks",
+        }
+    }
+
+    pub fn index(self) -> usize {
+        self as usize
+    }
+
+    /// The `ide.toml` keys of the section.
+    pub fn keys(self) -> &'static [&'static [&'static str]] {
+        match self {
+            Shared::Formatting => &[&["format", "oxfmt", "on_save"], &["format", "oxfmt", "extensions"]],
+            Shared::Servers => &[&["languages"], &["rust", "server"], &["cpp", "clangd"], &["csharp", "server"], &["csharp", "dotnet"]],
+            Shared::Linters => &[&["diagnostics", "ts"], &["diagnostics", "oxlint", "enabled"], &["diagnostics", "oxlint", "type_aware"], &["diagnostics", "eslint", "enabled"]],
+        }
+    }
+
+    /// Project when the project file sets any key of the section.
+    pub fn scope_in(self, own: &toml::Table) -> Scope {
+        let set = |path: &[&str]| {
+            let (key, tables) = path.split_last().expect("a key");
+            let mut t = own;
+            for name in tables {
+                match t.get(*name).and_then(toml::Value::as_table) {
+                    Some(inner) => t = inner,
+                    None => return false,
+                }
+            }
+            t.contains_key(*key)
+        };
+        if self.keys().iter().any(|k| set(k)) {
+            Scope::Project
+        } else {
+            Scope::Global
+        }
+    }
+
+    /// Copies the section's fields.
+    pub fn copy(self, from: &LayerValues, to: &mut LayerValues) {
+        match self {
+            Shared::Formatting => {
+                to.on_save = from.on_save;
+                to.extensions = from.extensions.clone();
+            }
+            Shared::Servers => {
+                to.languages = from.languages;
+                to.rust_server = from.rust_server.clone();
+                to.clangd = from.clangd.clone();
+                to.csharp_server = from.csharp_server.clone();
+                to.dotnet = from.dotnet.clone();
+            }
+            Shared::Linters => {
+                to.ts_diagnostics = from.ts_diagnostics;
+                to.oxlint = from.oxlint;
+                to.oxlint_type_aware = from.oxlint_type_aware;
+                to.eslint = from.eslint;
+            }
+        }
+    }
+
+    /// The edits from `old` to `new` for this section; `None` writes every key. `explicit` (a
+    /// project override) writes values equal to the defaults too, since a missing project key
+    /// means "the global value". An empty path or Auto always removes the key.
+    pub fn edits(self, new: &LayerValues, old: Option<&LayerValues>, explicit: bool) -> Vec<Edit> {
+        use crate::lang::config::OXFMT_DEFAULT_EXTENSIONS;
+        let mut out = Vec::new();
+        match self {
+            Shared::Formatting => {
+                if old.is_none_or(|o| o.on_save != new.on_save) {
+                    out.push(if new.on_save || explicit { Edit::set(&["format", "oxfmt", "on_save"], new.on_save) } else { Edit::remove(&["format", "oxfmt", "on_save"]) });
+                }
+                let ext = parse_extensions(&new.extensions);
+                if old.is_none_or(|o| parse_extensions(&o.extensions) != ext) {
+                    let default = ext.iter().map(String::as_str).eq(OXFMT_DEFAULT_EXTENSIONS);
+                    if ext.is_empty() || (default && !explicit) {
+                        out.push(Edit::remove(&["format", "oxfmt", "extensions"]));
+                    } else {
+                        out.push(Edit::set(&["format", "oxfmt", "extensions"], ext.iter().map(String::as_str).collect::<toml_edit::Array>()));
+                    }
+                }
+            }
+            Shared::Servers => {
+                if old.is_none_or(|o| o.languages != new.languages) {
+                    if new.languages.iter().all(|on| *on) && !explicit {
+                        out.push(Edit::remove(&["languages"]));
+                    } else {
+                        let keys: toml_edit::Array = LangId::ALL.iter().zip(new.languages).filter(|(_, on)| *on).map(|(l, _)| l.key()).collect();
+                        out.push(Edit::set(&["languages"], keys));
+                    }
+                }
+                let paths: [(&String, Option<&String>, &[&str]); 4] = [
+                    (&new.rust_server, old.map(|o| &o.rust_server), &["rust", "server"]),
+                    (&new.clangd, old.map(|o| &o.clangd), &["cpp", "clangd"]),
+                    (&new.csharp_server, old.map(|o| &o.csharp_server), &["csharp", "server"]),
+                    (&new.dotnet, old.map(|o| &o.dotnet), &["csharp", "dotnet"]),
+                ];
+                for (new, old, key) in paths {
+                    if old.is_none_or(|o| o.trim() != new.trim()) {
+                        out.push(Edit::path_or_remove(key, new));
+                    }
+                }
+            }
+            Shared::Linters => {
+                type Flag = fn(&LayerValues) -> Option<bool>;
+                let flags: [(Flag, &[&str]); 4] = [
+                    (|v| v.ts_diagnostics, &["diagnostics", "ts"]),
+                    (|v| v.oxlint, &["diagnostics", "oxlint", "enabled"]),
+                    (|v| v.oxlint_type_aware, &["diagnostics", "oxlint", "type_aware"]),
+                    (|v| v.eslint, &["diagnostics", "eslint", "enabled"]),
+                ];
+                for (get, key) in flags {
+                    if old.map(get) != Some(get(new)) {
+                        out.push(Edit::flag_or_remove(key, get(new)));
+                    }
+                }
+            }
+        }
+        out
+    }
+
+    /// Removes the section's keys: the global values apply again.
+    pub fn reset(self) -> Vec<Edit> {
+        self.keys().iter().map(|k| Edit::remove(k)).collect()
+    }
+}
+
+/// The values of the pages that write `ide.toml` keys, as the fields show them: the global
+/// layer's or a project's.
 #[derive(Clone, Debug, PartialEq)]
-pub struct ProjectValues {
+pub struct LayerValues {
     pub on_save: bool,
     /// The file types as the user types them: comma-separated extensions.
     pub extensions: String,
@@ -144,10 +396,10 @@ fn path_text(p: &Option<PathBuf>) -> String {
     p.as_ref().map(|p| p.display().to_string()).unwrap_or_default()
 }
 
-impl ProjectValues {
-    pub fn of(config: &IdeConfig, unreal: Vec<UnrealRow>) -> ProjectValues {
+impl LayerValues {
+    pub fn of(config: &IdeConfig, unreal: Vec<UnrealRow>) -> LayerValues {
         let languages = LangId::ALL.map(|l| config.languages.as_ref().is_none_or(|ls| ls.contains(&l)));
-        ProjectValues {
+        LayerValues {
             on_save: config.oxfmt.on_save,
             extensions: config.oxfmt.extensions.join(", "),
             languages,
@@ -165,51 +417,11 @@ impl ProjectValues {
         }
     }
 
-    /// The `.harwex/ide.toml` changes from `old` to `self`; only keys whose value changed.
-    pub fn edits(&self, old: &ProjectValues) -> Vec<Edit> {
-        use crate::lang::config::OXFMT_DEFAULT_EXTENSIONS;
+    /// The edits of the project-only fields (Unreal), only keys whose value changed.
+    pub fn project_edits(&self, old: &LayerValues) -> Vec<Edit> {
         let mut out = Vec::new();
-        if self.on_save != old.on_save {
-            out.push(Edit::set(&["format", "oxfmt", "on_save"], self.on_save));
-        }
-        let ext = parse_extensions(&self.extensions);
-        if ext != parse_extensions(&old.extensions) {
-            if ext.iter().map(String::as_str).eq(OXFMT_DEFAULT_EXTENSIONS) {
-                out.push(Edit::remove(&["format", "oxfmt", "extensions"]));
-            } else {
-                out.push(Edit::set(&["format", "oxfmt", "extensions"], ext.iter().map(String::as_str).collect::<toml_edit::Array>()));
-            }
-        }
-        if self.languages != old.languages {
-            if self.languages.iter().all(|on| *on) {
-                out.push(Edit::remove(&["languages"]));
-            } else {
-                let keys: toml_edit::Array = LangId::ALL.iter().zip(self.languages).filter(|(_, on)| *on).map(|(l, _)| l.key()).collect();
-                out.push(Edit::set(&["languages"], keys));
-            }
-        }
-        let paths: [(&String, &String, &[&str]); 5] = [
-            (&self.rust_server, &old.rust_server, &["rust", "server"]),
-            (&self.clangd, &old.clangd, &["cpp", "clangd"]),
-            (&self.csharp_server, &old.csharp_server, &["csharp", "server"]),
-            (&self.dotnet, &old.dotnet, &["csharp", "dotnet"]),
-            (&self.unreal_engine, &old.unreal_engine, &["unreal", "engine"]),
-        ];
-        for (new, old, key) in paths {
-            if new.trim() != old.trim() {
-                out.push(Edit::path_or_remove(key, new));
-            }
-        }
-        let flags: [(Option<bool>, Option<bool>, &[&str]); 4] = [
-            (self.ts_diagnostics, old.ts_diagnostics, &["diagnostics", "ts"]),
-            (self.oxlint, old.oxlint, &["diagnostics", "oxlint", "enabled"]),
-            (self.oxlint_type_aware, old.oxlint_type_aware, &["diagnostics", "oxlint", "type_aware"]),
-            (self.eslint, old.eslint, &["diagnostics", "eslint", "enabled"]),
-        ];
-        for (new, old, key) in flags {
-            if new != old {
-                out.push(Edit::flag_or_remove(key, new));
-            }
+        if self.unreal_engine.trim() != old.unreal_engine.trim() {
+            out.push(Edit::path_or_remove(&["unreal", "engine"], &self.unreal_engine));
         }
         if self.unreal_index_engine != old.unreal_index_engine {
             out.push(if self.unreal_index_engine { Edit::set(&["unreal", "index_engine"], true) } else { Edit::remove(&["unreal", "index_engine"]) });
@@ -228,8 +440,49 @@ impl ProjectValues {
 /// The project part of the dialog. `None` without an open project.
 pub struct ProjectDraft {
     pub root: PathBuf,
-    pub initial: ProjectValues,
-    pub values: ProjectValues,
+    /// The values in force (the project file over the global layer).
+    pub initial: LayerValues,
+    pub values: LayerValues,
+    /// Per `Shared`: the scope when the dialog opened, and the one chosen.
+    pub initial_scope: [Scope; 3],
+    pub scope: [Scope; 3],
+}
+
+impl ProjectDraft {
+    /// The `.harwex/ide.toml` edits of the dialog.
+    pub fn edits(&self) -> Vec<Edit> {
+        let mut out = self.values.project_edits(&self.initial);
+        for s in Shared::ALL {
+            let i = s.index();
+            out.extend(match (self.initial_scope[i], self.scope[i]) {
+                (Scope::Project, Scope::Project) => s.edits(&self.values, Some(&self.initial), true),
+                (Scope::Global, Scope::Project) => s.edits(&self.values, None, true),
+                (Scope::Project, Scope::Global) => s.reset(),
+                (Scope::Global, Scope::Global) => Vec::new(),
+            });
+        }
+        out
+    }
+}
+
+/// Which values a shared section shows and edits.
+pub fn scope_of(project: &Option<ProjectDraft>, s: Shared) -> Scope {
+    project.as_ref().map_or(Scope::Global, |p| p.scope[s.index()])
+}
+
+/// The scope a page's footer button opens: Project when a section of the page is.
+pub fn page_scope(page: Page, project: &Option<ProjectDraft>) -> Scope {
+    let shared: &[Shared] = match page {
+        Page::System | Page::Keymap => return Scope::Global,
+        Page::Frameworks => return if project.is_some() { Scope::Project } else { Scope::Global },
+        Page::Editor => &[Shared::Formatting],
+        Page::Languages => &[Shared::Servers, Shared::Linters],
+    };
+    if shared.iter().any(|s| scope_of(project, *s) == Scope::Project) {
+        Scope::Project
+    } else {
+        Scope::Global
+    }
 }
 
 /// The servers the Languages page looks up, in its order.
@@ -243,10 +496,13 @@ pub enum Server {
 
 pub struct SettingsDialog {
     pub page: Page,
-    /// The global values being edited.
+    /// The global values being edited (`[files]`, `[editor]`; `layer` stays as it was).
     pub global: GlobalSettings,
+    /// The global layer's values of the shared sections, as opened and as edited.
+    pub global_initial: LayerValues,
+    pub global_values: LayerValues,
     pub project: Option<ProjectDraft>,
-    pub keymap_filter: String,
+    pub keymap: keymap::KeymapView,
     /// What the oxfmt section found for the active file's folder.
     pub oxfmt: Detected<OxfmtInstall>,
     /// The folder the oxfmt lookup started from.
@@ -277,16 +533,21 @@ pub fn open_page(state: &mut AppState, page: Page) {
     let generation = state.ws.settings.as_ref().map_or(0, |d| d.generation) + 1;
     let root = state.ws.project.as_ref().map(|p| p.root.clone());
     let project = root.as_ref().map(|root| {
-        let values = ProjectValues::of(&state.ws.langs.config, unreal_rows(state, root));
-        ProjectDraft { root: root.clone(), initial: values.clone(), values }
+        let config = &state.ws.langs.config;
+        let values = LayerValues::of(config, unreal_rows(state, root));
+        let scope = Shared::ALL.map(|s| s.scope_in(&config.own));
+        ProjectDraft { root: root.clone(), initial: values.clone(), values, initial_scope: scope, scope }
     });
+    let global_values = LayerValues::of(&IdeConfig::parse_table(&state.settings.global.layer), Vec::new());
     let probe = root.as_ref().map(|r| crate::format::probe_dir(state).unwrap_or_else(|| r.clone()));
     let looking = || Detected::Looking;
     state.ws.settings = Some(SettingsDialog {
         page,
         global: state.settings.global.clone(),
+        global_initial: global_values.clone(),
+        global_values,
         project,
-        keymap_filter: String::new(),
+        keymap: Default::default(),
         oxfmt: if probe.is_some() { Detected::Looking } else { Detected::Missing(String::new()) },
         probe: probe.clone(),
         servers: [looking(), looking(), looking(), looking()],
@@ -324,15 +585,15 @@ fn unreal_rows(state: &AppState, root: &std::path::Path) -> Vec<UnrealRow> {
         .collect()
 }
 
-/// Looks up the servers the Languages page shows, with the project's configured paths.
+/// Looks up the servers the Languages page shows, with the paths in force.
 fn ask_servers(state: &mut AppState) {
     let Some(d) = state.ws.settings.as_mut() else { return };
-    if d.servers_asked || d.project.is_none() {
+    if d.servers_asked {
         return;
     }
     d.servers_asked = true;
     let generation = d.generation;
-    let config = state.ws.langs.config.clone();
+    let config = state.ws.langs.config.layered(&state.settings.global.layer);
     state.jobs.spawn_quiet(
         move || {
             let show = |r: Result<PathBuf, String>| match r {
@@ -366,6 +627,7 @@ pub fn show(state: &mut AppState, ctx: &Context) {
     }
     let running: [usize; 4] = LangId::ALL.map(|l| state.ws.langs.running(l));
     let langs_off = state.ws.langs.is_off();
+    let has_file = state.settings.file.is_some();
     let Some(dialog) = state.ws.settings.as_mut() else { return };
     let t = &theme::T;
     let mut ok = false;
@@ -402,7 +664,7 @@ pub fn show(state: &mut AppState, ctx: &Context) {
                 ui.label(RichText::new(dialog.page.title()).strong().size(t.font.big));
                 ui.add_space(6.0);
                 if dialog.page == Page::Keymap {
-                    keymap::page(ui, &mut dialog.keymap_filter);
+                    keymap::page(ui, &mut dialog.keymap);
                     return;
                 }
                 egui::ScrollArea::vertical().id_salt(("settings-page", dialog.page.title())).auto_shrink([false, false]).min_scrolled_height(0.0).show(ui, |ui| {
@@ -419,8 +681,11 @@ pub fn show(state: &mut AppState, ctx: &Context) {
         });
         ui.add_space(10.0);
         ui.horizontal(|ui| {
-            let config = ui.add_enabled(dialog.project.is_some(), egui::Button::new(format!("Open {}", crate::lang::config::CONFIG_PATH)));
-            open_file = config.clicked();
+            let (text, enabled) = match page_scope(dialog.page, &dialog.project) {
+                Scope::Global => ("Open global settings".to_string(), has_file),
+                Scope::Project => (format!("Open {}", crate::lang::config::CONFIG_PATH), dialog.project.is_some()),
+            };
+            open_file = ui.add_enabled(enabled, egui::Button::new(text)).clicked();
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 cancel = ui.button("Cancel").clicked();
                 ok = ui.button("OK").clicked();
@@ -430,9 +695,14 @@ pub fn show(state: &mut AppState, ctx: &Context) {
     let page = dialog.page;
     state.settings.last_page = page;
     if open_file {
-        let path = state.ws.settings.take().and_then(|d| d.project).map(|p| p.root.join(crate::lang::config::CONFIG_PATH));
-        if let Some(path) = path {
-            state.open_location(&path, None, true);
+        let Some(d) = state.ws.settings.take() else { return };
+        match page_scope(d.page, &d.project) {
+            Scope::Project => {
+                if let Some(p) = d.project {
+                    state.open_location(&p.root.join(crate::lang::config::CONFIG_PATH), None, true);
+                }
+            }
+            Scope::Global => open_global_file(state),
         }
         return;
     }
@@ -444,17 +714,62 @@ pub fn show(state: &mut AppState, ctx: &Context) {
         return;
     }
     let Some(dialog) = state.ws.settings.take() else { return };
-    state.settings.global = dialog.global;
+    apply_ok(state, dialog);
+}
+
+/// Opens the global settings file in an editor tab; a missing file is written first.
+fn open_global_file(state: &mut AppState) {
+    let Some(path) = state.settings.file.clone() else { return };
+    let text = state.settings.global.to_text();
+    state.jobs.spawn_quiet(
+        move || if path.exists() { Ok(path) } else { write_whole(&path, &text).map(|_| path) },
+        |state, res| match res {
+            Ok(path) => state.open_location(&path, None, true),
+            Err(e) => state.notifications.error("Cannot write the global settings", e),
+        },
+    );
+}
+
+/// OK: the global values go in force at once and into the global file; the project's changes
+/// go into `.harwex/ide.toml` on a worker, then apply.
+fn apply_ok(state: &mut AppState, dialog: SettingsDialog) {
+    let old = state.settings.global.clone();
+    let mut global_edits = dialog.global.own_edits(&old);
+    let layer_edits: Vec<Edit> = Shared::ALL.iter().flat_map(|s| s.edits(&dialog.global_values, Some(&dialog.global_initial), false)).collect();
+    // The layer may have been read again from the file while the dialog was open.
+    let mut new = GlobalSettings { layer: old.layer.clone(), ..dialog.global };
+    if !layer_edits.is_empty() {
+        let text = toml::to_string(&old.layer).unwrap_or_default();
+        match project::apply_to(global::FILE_NAME, &text, &layer_edits).map(|t| t.parse::<toml::Table>()) {
+            Ok(Ok(layer)) => new.layer = layer,
+            Ok(Err(e)) => state.notifications.error("Cannot change the global settings", e.to_string()),
+            Err(e) => state.notifications.error("Cannot change the global settings", e),
+        }
+        global_edits.extend(layer_edits);
+    }
+    let project_edits = dialog.project.as_ref().map(ProjectDraft::edits).unwrap_or_default();
+    let skip = (!project_edits.is_empty()).then_some(state.ws.id);
+    set_global(state, new, skip);
+    if let Some(file) = state.settings.file.clone().filter(|_| !global_edits.is_empty()) {
+        state.jobs.window().spawn(
+            "Saving settings",
+            move || project::write_file(&file, global::FILE_NAME, &global_edits),
+            |state, res| {
+                if let Err(e) = res {
+                    state.notifications.error("Cannot change the global settings", e);
+                }
+            },
+        );
+    }
     let Some(project) = dialog.project else { return };
-    let edits = project.values.edits(&project.initial);
-    if edits.is_empty() {
+    if project_edits.is_empty() {
         return;
     }
     let root = project.root;
     let generation = state.project_generation();
     state.jobs.spawn(
         "Saving settings",
-        move || project::write(&root, &edits).map(|_| IdeConfig::load(&root)),
+        move || project::write(&root, &project_edits).map(|_| IdeConfig::load(&root)),
         move |state, res| match res {
             Ok(config) if state.project_generation() == generation => state.apply_ide_config(config),
             Ok(_) => {}
@@ -473,29 +788,81 @@ mod tests {
         assert!(parse_extensions(" , ").is_empty());
     }
 
-    #[test]
-    fn only_changed_keys_are_written() {
-        let config = IdeConfig::parse("[rust]\nserver = \"/ra\"\n");
-        let old = ProjectValues::of(&config, vec![UnrealRow { rel: "Sub/Game".into(), name: "Game".into(), engine: String::new(), detected: Err("none".into()) }]);
-        assert!(old.edits(&old).is_empty());
-        let mut new = old.clone();
-        new.on_save = true;
-        new.languages[1] = false;
-        new.rust_server = "  ".into();
-        new.oxlint = Some(false);
-        new.unreal_projects[0].engine = "/ue".into();
-        let text = project::apply("", &new.edits(&old)).unwrap();
+    fn row() -> UnrealRow {
+        UnrealRow { rel: "Sub/Game".into(), name: "Game".into(), engine: String::new(), detected: Err("none".into()) }
+    }
+
+    fn draft(global: &str, project: &str) -> (IdeConfig, ProjectDraft) {
+        let global: toml::Table = global.parse().unwrap();
+        let config = IdeConfig::parse(project).layered(&global);
+        let values = LayerValues::of(&config, vec![row()]);
+        let scope = Shared::ALL.map(|s| s.scope_in(&config.own));
+        (config, ProjectDraft { root: PathBuf::from("/p"), initial: values.clone(), values, initial_scope: scope, scope })
+    }
+
+    fn written(edits: &[Edit]) -> IdeConfig {
+        let text = project::apply("", edits).unwrap();
         let back = IdeConfig::parse(&text);
         assert!(back.warnings.is_empty(), "{:?}", back.warnings);
-        assert!(back.oxfmt.on_save);
+        back
+    }
+
+    #[test]
+    fn only_changed_keys_are_written() {
+        let (_, mut d) = draft("", "[rust]\nserver = \"/ra\"\n");
+        assert_eq!(d.scope, [Scope::Global, Scope::Project, Scope::Global]);
+        assert!(d.edits().is_empty());
+        d.values.languages[1] = false;
+        d.values.rust_server = "  ".into();
+        d.values.unreal_projects[0].engine = "/ue".into();
+        let back = written(&d.edits());
         assert_eq!(back.languages, Some(vec![LangId::TypeScript, LangId::Cpp, LangId::CSharp]));
         assert_eq!(back.rust.server, None);
-        assert_eq!(back.diagnostics.oxlint.enabled, Some(false));
         assert_eq!(back.unreal.for_project("Sub/Game").engine, Some(PathBuf::from("/ue")));
-        // Every language on again removes the list.
-        let mut all = new.clone();
+        // A project override keeps "every language" explicit: a missing key means the global list.
+        let mut all = d.values.clone();
         all.languages = [true; 4];
-        let edits = all.edits(&new);
+        let edits = Shared::Servers.edits(&all, Some(&d.values), true);
+        assert_eq!(written(&edits).languages, Some(LangId::ALL.to_vec()));
+        // In the global file the default removes the key.
+        let edits = Shared::Servers.edits(&all, Some(&d.values), false);
         assert!(edits.len() == 1 && edits[0].path == ["languages"] && edits[0].value.is_none(), "{edits:?}");
+    }
+
+    #[test]
+    fn scope_resolution() {
+        // Global only: the project gets the global values.
+        let (config, d) = draft("languages = [\"ts\"]\n[rust]\nserver = \"/g/ra\"\n[format.oxfmt]\non_save = true\n", "");
+        assert_eq!(config.languages, Some(vec![LangId::TypeScript]));
+        assert_eq!(config.rust.server, Some(PathBuf::from("/g/ra")));
+        assert!(config.oxfmt.on_save);
+        assert_eq!(d.scope, [Scope::Global; 3]);
+
+        // A project key wins, a table merges key by key, and the other sections stay global.
+        let (config, d) = draft("languages = [\"ts\"]\n[rust]\nserver = \"/g/ra\"\ncheck_on_save = true\n", "[rust]\nserver = \"/p/ra\"\n");
+        assert_eq!(config.languages, Some(vec![LangId::TypeScript]));
+        assert_eq!(config.rust.server, Some(PathBuf::from("/p/ra")));
+        assert!(config.rust.check_on_save);
+        assert_eq!(d.scope, [Scope::Global, Scope::Project, Scope::Global]);
+        assert_eq!(config.own, "[rust]\nserver = \"/p/ra\"\n".parse::<toml::Table>().unwrap());
+
+        // Layering again starts from the project's own keys.
+        let back = config.layered(&toml::Table::new());
+        assert_eq!(back.languages, None);
+        assert!(!back.rust.check_on_save);
+        assert_eq!(back.rust.server, Some(PathBuf::from("/p/ra")));
+
+        // Global -> Project writes the whole section, explicitly.
+        let (_, mut d) = draft("[format.oxfmt]\non_save = false\n", "");
+        d.scope[Shared::Formatting.index()] = Scope::Project;
+        let back = written(&d.edits());
+        assert!(back.own.get("format").is_some_and(|f| f.get("oxfmt").is_some_and(|o| o.get("on_save").is_some() && o.get("extensions").is_some())), "{:?}", back.own);
+        assert_eq!(Shared::Formatting.scope_in(&back.own), Scope::Project);
+
+        // Reset to global removes the section's keys and nothing else.
+        let (_, mut d) = draft("", "languages = [\"rust\"]\n[cpp]\nclangd = \"/c\"\nbackground_index = false\n[diagnostics]\nts = false\n");
+        d.scope[Shared::Servers.index()] = Scope::Global;
+        let text = project::apply("languages = [\"rust\"]\n[cpp]\nclangd = \"/c\"\nbackground_index = false\n[diagnostics]\nts = false\n", &d.edits()).unwrap();
+        assert_eq!(text, "[cpp]\nbackground_index = false\n[diagnostics]\nts = false\n");
     }
 }

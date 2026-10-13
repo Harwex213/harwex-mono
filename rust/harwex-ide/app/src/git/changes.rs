@@ -16,6 +16,7 @@ use ide_git::{ChangeKind, FileChange};
 
 use super::refresh::Refresh;
 use crate::icons::CheckState;
+use crate::speed_search;
 use crate::state::AppState;
 use crate::theme;
 use crate::tree::change_color;
@@ -69,6 +70,13 @@ impl Group {
 
 /// A file row's identity: the same path can sit in Staged and in Unstaged.
 type ItemKey = (PathBuf, Group);
+
+/// A row's identity across rebuilds: a folder or group by its collapse key, a file by its item.
+#[derive(Clone, PartialEq, Eq, Debug)]
+enum RowId {
+    Dir(String),
+    File(ItemKey),
+}
 
 /// One file in one group.
 #[derive(Clone, Copy)]
@@ -138,6 +146,21 @@ pub struct ChangesUi {
     focus_message: bool,
     /// Row to scroll into view on the next frame (after an arrow key).
     scroll_to: Option<usize>,
+    /// The speed search text typed into the focused tree; empty while no search runs.
+    search: String,
+    /// Whether a row matched `search` when it last changed (the field turns red if not).
+    search_found: bool,
+    /// The folder row the speed search selected (by its collapse key). Only files go into
+    /// `selected`, so a folder match is held here; any other selection clears it.
+    dir_selected: Option<String>,
+}
+
+/// Rows and display order while they are built. `collapsed` is `None` for the speed search's
+/// view, where every folder is open.
+struct Flat<'a> {
+    rows: Vec<Row>,
+    order: Vec<usize>,
+    collapsed: Option<&'a HashSet<String>>,
 }
 
 impl ChangesUi {
@@ -234,8 +257,15 @@ impl ChangesUi {
 
     fn rebuild(&mut self) {
         self.rows_dirty = false;
-        self.rows.clear();
-        self.order.clear();
+        let (rows, order) = self.flatten(Some(&self.collapsed));
+        self.rows = rows;
+        self.order = order;
+        self.recount();
+    }
+
+    /// The rows and the item display order. With `collapsed` = `None` every folder is open.
+    fn flatten(&self, collapsed: Option<&HashSet<String>>) -> (Vec<Row>, Vec<usize>) {
+        let mut f = Flat { rows: Vec::new(), order: Vec::new(), collapsed };
         for group in Group::ALL {
             let files: Vec<usize> = (0..self.items.len()).filter(|&i| self.items[i].group == group).collect();
             // Staged and Unstaged stay visible while empty: each is a drop target.
@@ -254,19 +284,19 @@ impl ChangesUi {
                 node.files.push(i);
             }
             let key = group.title().to_string();
-            let collapsed = self.collapsed.contains(&key);
-            let row = self.rows.len();
-            let start = self.order.len();
-            self.rows.push(Row { kind: RowKind::Group, group, depth: 0, key: key.clone(), span: 0..0, collapsed });
-            self.emit(&root, group, &key, 1, collapsed);
-            self.rows[row].span = start..self.order.len();
+            let collapsed = f.collapsed.is_some_and(|c| c.contains(&key));
+            let row = f.rows.len();
+            let start = f.order.len();
+            f.rows.push(Row { kind: RowKind::Group, group, depth: 0, key: key.clone(), span: 0..0, collapsed });
+            self.emit(&mut f, &root, group, &key, 1, collapsed);
+            f.rows[row].span = start..f.order.len();
         }
-        self.recount();
+        (f.rows, f.order)
     }
 
     /// Appends rows for `node`'s children. When `hidden`, files still go into `order` (so the
     /// collapsed parent's span and tri-state stay right) but no rows are added.
-    fn emit(&mut self, node: &DirNode, group: Group, key: &str, depth: u16, hidden: bool) {
+    fn emit(&self, f: &mut Flat, node: &DirNode, group: Group, key: &str, depth: u16, hidden: bool) {
         for (name, child) in &node.dirs {
             // Compress chains of single-directory parents into "a/b/c", like IDEA.
             let mut label = name.clone();
@@ -278,26 +308,26 @@ impl ChangesUi {
                 child = c;
             }
             let child_key = format!("{key}/{label}");
-            let collapsed = self.collapsed.contains(&child_key);
-            let start = self.order.len();
+            let collapsed = f.collapsed.is_some_and(|c| c.contains(&child_key));
+            let start = f.order.len();
             let row = if hidden {
                 None
             } else {
-                self.rows.push(Row { kind: RowKind::Dir(label), group, depth, key: child_key.clone(), span: 0..0, collapsed });
-                Some(self.rows.len() - 1)
+                f.rows.push(Row { kind: RowKind::Dir(label), group, depth, key: child_key.clone(), span: 0..0, collapsed });
+                Some(f.rows.len() - 1)
             };
-            self.emit(child, group, &child_key, depth + 1, hidden || collapsed);
+            self.emit(f, child, group, &child_key, depth + 1, hidden || collapsed);
             if let Some(r) = row {
-                self.rows[r].span = start..self.order.len();
+                f.rows[r].span = start..f.order.len();
             }
         }
         let mut files = node.files.clone();
         files.sort_by_cached_key(|&i| file_name(&self.entries[self.items[i].entry].path));
         for i in files {
-            let at = self.order.len();
-            self.order.push(i);
+            let at = f.order.len();
+            f.order.push(i);
             if !hidden {
-                self.rows.push(Row { kind: RowKind::File(i), group, depth, key: String::new(), span: at..at + 1, collapsed: false });
+                f.rows.push(Row { kind: RowKind::File(i), group, depth, key: String::new(), span: at..at + 1, collapsed: false });
             }
         }
     }
@@ -421,6 +451,85 @@ impl ChangesUi {
                 } else {
                     e.path.display().to_string()
                 }
+            }
+        }
+    }
+
+    fn row_id(&self, row: &Row) -> RowId {
+        match row.kind {
+            RowKind::File(i) => RowId::File(self.key(i)),
+            _ => RowId::Dir(row.key.clone()),
+        }
+    }
+
+    /// The name the speed search matches: a folder's label (a compressed `a/b` chain too) or a
+    /// file's name. Group rows are not searched.
+    fn search_name(&self, row: &Row) -> Option<String> {
+        match &row.kind {
+            RowKind::Group => None,
+            RowKind::Dir(label) => Some(label.clone()),
+            RowKind::File(i) => Some(self.entries[self.items[*i].entry].path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()),
+        }
+    }
+
+    /// The selected row the speed search starts from: the anchor row while it is selected.
+    fn current_row(&self) -> Option<RowId> {
+        let row = self.rows.get(self.anchor?)?;
+        let id = self.row_id(row);
+        let selected = match &id {
+            RowId::File(k) => self.selected.contains(k),
+            RowId::Dir(k) => self.dir_selected.as_ref() == Some(k),
+        };
+        selected.then_some(id)
+    }
+
+    /// The speed search text; empty while no search runs.
+    pub fn search(&self) -> &str {
+        &self.search
+    }
+
+    /// The folder row the speed search selected, as its a11y label.
+    pub fn selected_dir(&self) -> Option<String> {
+        let key = self.dir_selected.as_ref()?;
+        self.rows.iter().find(|r| &r.key == key && matches!(r.kind, RowKind::Dir(_))).map(|r| self.row_label(r))
+    }
+
+    /// Moves the selection to a speed search match. The search runs over every row as if all
+    /// folders were open, and the folders above the match expand, like IDEA. Returns the file
+    /// path of a file match, for the preview diff.
+    fn search_move(&mut self, keys: &speed_search::Keys) -> Option<PathBuf> {
+        let (all, _) = self.flatten(None);
+        let hits: Vec<usize> = all.iter().enumerate().filter(|(_, r)| self.search_name(r).is_some_and(|n| speed_search::matches(&n, &self.search).is_some())).map(|(i, _)| i).collect();
+        if keys.changed {
+            self.search_found = !hits.is_empty();
+        }
+        let cur = self.current_row().and_then(|id| all.iter().position(|r| self.row_id(r) == id));
+        let to = speed_search::step(&hits, cur, keys)?;
+        // The rows above the match with a smaller depth are its folders and its group.
+        let mut depth = all[to].depth;
+        for r in all[..to].iter().rev() {
+            if depth == 0 {
+                break;
+            }
+            if r.depth < depth {
+                self.collapsed.remove(&r.key);
+                depth = r.depth;
+            }
+        }
+        let id = self.row_id(&all[to]);
+        self.rebuild();
+        let row = self.rows.iter().position(|r| self.row_id(r) == id)?;
+        self.scroll_to = Some(row);
+        match id {
+            RowId::File((path, _)) => {
+                select(self, row, false, false);
+                Some(path)
+            }
+            RowId::Dir(key) => {
+                self.selected.clear();
+                self.dir_selected = Some(key);
+                self.anchor = Some(row);
+                None
             }
         }
     }
@@ -575,9 +684,10 @@ fn changes_body(state: &mut AppState, ui: &mut Ui, panel_min: f32, reserve: f32,
         });
 
     let clicks = state.clicks;
+    let search_keys = search_keys(&mut state.ws.git_ui.changes, ui, events);
     let scroll_to = state.ws.git_ui.changes.scroll_to.take();
     let c = &state.ws.git_ui.changes;
-    ui.horizontal(|ui| {
+    let toolbar = ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 2.0;
         use crate::icons::Icon;
         use crate::layout::{icon_button, icon_button_enabled};
@@ -602,13 +712,45 @@ fn changes_body(state: &mut AppState, ui: &mut Ui, panel_min: f32, reserve: f32,
         ui.add_space(6.0);
         ui.label(RichText::new(format!("{} of {} selected", c.checked_files, c.entries.len())).size(theme::T.font.tiny).color(theme::T.text_dim));
     });
+    // The speed search field covers the toolbar, like IDEA's popup over the tree's top edge,
+    // so it never hides a row.
+    if !c.search.is_empty() {
+        let r = toolbar.response.rect;
+        let row = Rect::from_min_max(r.min, pos2(ui.max_rect().right(), r.max.y));
+        speed_search::tree_field(ui, row, &c.search, c.search_found, crate::workspace::wid("changes-speed-search"));
+    }
 
-    if c.entries.is_empty() {
+    let pressed = if c.entries.is_empty() {
         ui.add_space(20.0);
         ui.vertical_centered(|ui| ui.label(RichText::new("No changes").color(theme::T.text_dim)));
+        false
     } else {
-        draw_tree(c, clicks, scroll_to, ui, events);
+        draw_tree(c, clicks, scroll_to, ui, events)
+    };
+    // A press on a row or Enter ends the speed search, like IDEA.
+    if pressed || search_keys.enter {
+        state.ws.git_ui.changes.search.clear();
     }
+}
+
+/// The speed search keys of the Commit tree, read before the tree's own arrows and Enter. The
+/// search lives only while the tree has the focus.
+fn search_keys(c: &mut ChangesUi, ui: &Ui, events: &mut Vec<Event>) -> speed_search::Keys {
+    let focused = ui.memory(|m| m.has_focus(tree_focus_id()));
+    if !focused {
+        c.search.clear();
+        return speed_search::Keys::default();
+    }
+    if ui.ctx().is_context_menu_open() || c.drag.is_some() || c.rows.is_empty() {
+        return speed_search::Keys::default();
+    }
+    let keys = speed_search::take_keys(ui, &mut c.search);
+    if keys.moves() {
+        if let Some(path) = c.search_move(&keys) {
+            events.push(Event::Preview(path));
+        }
+    }
+    keys
 }
 
 /// The focus id of the Commit tree; ↑ / ↓ / Enter act while it has the focus.
@@ -616,7 +758,8 @@ fn tree_focus_id() -> egui::Id {
     crate::workspace::wid("changes-tree-focus")
 }
 
-fn draw_tree(c: &ChangesUi, clicks: crate::clicks::Clicks, scroll_to: Option<usize>, ui: &mut Ui, events: &mut Vec<Event>) {
+/// Draws the tree; returns whether a press landed on a row.
+fn draw_tree(c: &ChangesUi, clicks: crate::clicks::Clicks, scroll_to: Option<usize>, ui: &mut Ui, events: &mut Vec<Event>) -> bool {
     let (cmd, shift, pointer, released, down, pressed) =
         ui.input(|i| (i.modifiers.command, i.modifiers.shift, i.pointer.latest_pos(), i.pointer.primary_released(), i.pointer.primary_down(), i.pointer.primary_pressed()));
     let dragging = c.drag.is_some();
@@ -624,7 +767,9 @@ fn draw_tree(c: &ChangesUi, clicks: crate::clicks::Clicks, scroll_to: Option<usi
     let fid = tree_focus_id();
     let focused = ui.memory(|m| m.has_focus(fid));
     if focused {
-        ui.memory_mut(|m| m.set_focus_lock_filter(fid, egui::EventFilter { tab: false, horizontal_arrows: false, vertical_arrows: true, escape: false }));
+        // While a speed search runs, Escape clears it; otherwise egui's Escape drops the focus.
+        let escape = !c.search.is_empty();
+        ui.memory_mut(|m| m.set_focus_lock_filter(fid, egui::EventFilter { tab: false, horizontal_arrows: false, vertical_arrows: true, escape }));
         if !ui.ctx().is_context_menu_open() {
             ui.input_mut(|i| {
                 if i.consume_key(Modifiers::NONE, Key::ArrowUp) {
@@ -676,7 +821,12 @@ fn draw_tree(c: &ChangesUi, clicks: crate::clicks::Clicks, scroll_to: Option<usi
             let row = &c.rows[idx];
             let (rect, resp) = ui.allocate_exact_size(vec2(width, ROW_H), Sense::click_and_drag());
             let painter = ui.painter();
-            let is_sel = matches!(row.kind, RowKind::File(i) if c.selected.contains(&c.key(i)));
+            let is_sel = match row.kind {
+                RowKind::File(i) => c.selected.contains(&c.key(i)),
+                RowKind::Dir(_) => c.dir_selected.as_ref() == Some(&row.key),
+                RowKind::Group => false,
+            };
+            let hits = if c.search.is_empty() { None } else { c.search_name(row).and_then(|n| speed_search::matches(&n, &c.search)) };
             if target == Some(row.group) {
                 target_rect = target_rect.union(rect);
             } else if is_sel {
@@ -727,7 +877,10 @@ fn draw_tree(c: &ChangesUi, clicks: crate::clicks::Clicks, scroll_to: Option<usi
                 RowKind::Dir(name) => {
                     crate::icons::folder(painter, pos2(x + 7.0, cy), 14.0);
                     x += 18.0;
-                    let galley = painter.layout_no_wrap(name.clone(), font.clone(), theme::T.text);
+                    let galley = match &hits {
+                        Some(h) => painter.layout_job(speed_search::name_job(name, h, font.clone(), theme::T.text)),
+                        None => painter.layout_no_wrap(name.clone(), font.clone(), theme::T.text),
+                    };
                     let w = galley.size().x;
                     painter.galley(pos2(x, cy - galley.size().y / 2.0), galley, theme::T.text);
                     painter.text(pos2(x + w + 8.0, cy), Align2::LEFT_CENTER, count_label(row.span.len()), theme::T.tiny_font(), theme::T.text_dim);
@@ -742,7 +895,10 @@ fn draw_tree(c: &ChangesUi, clicks: crate::clicks::Clicks, scroll_to: Option<usi
                     };
                     let color = change_color(kind);
                     let name = e.path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-                    let galley = painter.layout_no_wrap(name, font.clone(), color);
+                    let galley = match &hits {
+                        Some(h) => painter.layout_job(speed_search::name_job(&name, h, font.clone(), color)),
+                        None => painter.layout_no_wrap(name, font.clone(), color),
+                    };
                     let w = galley.size().x;
                     painter.galley(pos2(x, cy - galley.size().y / 2.0), galley, color);
                     let extra = match (&e.old_path, kind) {
@@ -826,6 +982,7 @@ fn draw_tree(c: &ChangesUi, clicks: crate::clicks::Clicks, scroll_to: Option<usi
             }
         }
     }
+    press_on_row
 }
 
 /// The count label that follows the pointer during a drag ("3 files").
@@ -1005,6 +1162,7 @@ fn handle(state: &mut AppState, e: Event) {
                 let k = c.key(*i);
                 if !c.selected.contains(&k) {
                     c.selected.clear();
+                    c.dir_selected = None;
                     c.selected.insert(k);
                     c.anchor = Some(row);
                 }
@@ -1019,6 +1177,15 @@ fn handle(state: &mut AppState, e: Event) {
             if let RowKind::File(i) = c.rows[row].kind {
                 let p = workdir.join(&c.entries[c.items[i].entry].path);
                 super::diff::show_in_active_worktree_diff(state, &p);
+            }
+        }
+        // On a folder the speed search selected, Enter toggles it, like a double click.
+        Event::OpenSelected if c.selected.is_empty() && c.dir_selected.is_some() => {
+            if let Some(key) = c.dir_selected.clone() {
+                if !c.collapsed.remove(&key) {
+                    c.collapsed.insert(key);
+                }
+                c.rows_dirty = true;
             }
         }
         Event::OpenSelected => {
@@ -1052,6 +1219,7 @@ fn handle(state: &mut AppState, e: Event) {
                 let k = c.key(i);
                 if !c.selected.contains(&k) {
                     c.selected.clear();
+                    c.dir_selected = None;
                     c.selected.insert(k);
                     c.anchor = Some(row);
                 }
@@ -1109,6 +1277,7 @@ fn stage_op(state: &mut AppState, op: DropOp, paths: Vec<PathBuf>) {
 }
 
 fn select(c: &mut ChangesUi, row: usize, cmd: bool, shift: bool) {
+    c.dir_selected = None;
     let path_of = |c: &ChangesUi, r: usize| match c.rows.get(r).map(|r| &r.kind) {
         Some(RowKind::File(i)) => Some(c.key(*i)),
         _ => None,

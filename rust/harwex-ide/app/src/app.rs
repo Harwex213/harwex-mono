@@ -55,6 +55,9 @@ pub struct AppOptions {
     /// Where "Back up files before saving" keeps old versions (`settings::files`). `None` (the
     /// default, and every test that does not set it) makes no backups.
     pub backup_dir: Option<PathBuf>,
+    /// The global settings file (`settings::global`). `None` (the default, and every test
+    /// that does not set it) keeps the global settings in eframe storage.
+    pub settings_file: Option<PathBuf>,
 }
 
 impl Default for AppOptions {
@@ -73,6 +76,7 @@ impl Default for AppOptions {
             instance: None,
             terminal_db: None,
             backup_dir: None,
+            settings_file: None,
         }
     }
 }
@@ -137,9 +141,10 @@ impl IdeApp {
                 None => state.notifications.warn("node not found", "TypeScript navigation needs node on PATH, in nvm or in /opt/homebrew/bin."),
             });
         }
+        // Before any project opens: its config goes in force over the global defaults.
+        crate::settings::load(&mut state, storage, options.settings_file);
         let mut restore = crate::persist::Restore::default();
         if let Some(storage) = storage {
-            crate::settings::load_storage(&mut state, storage);
             git::load_storage(&mut state, storage);
             find::load_storage(&mut state, storage);
             restore = crate::persist::load(&mut state, storage);
@@ -1247,7 +1252,10 @@ fn confirm_close(s: &mut AppState, ctx: &Context) {
     match choice {
         Some(0) => {
             s.ws.confirm_close = None;
-            crate::format::save(s, id, true);
+            // A merge tab saves by resolving the conflict; it closes itself afterwards.
+            if !crate::git::conflicts::request_merge_save(s, id) {
+                crate::format::save(s, id, true);
+            }
         }
         Some(1) => {
             s.ws.confirm_close = None;

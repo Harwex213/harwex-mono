@@ -338,8 +338,8 @@ pub fn show(state: &mut AppState, ctx: &egui::Context) -> Option<PathBuf> {
 /// One result row: the file name, then its folder in a smaller dim font. A row that does not
 /// fit cuts the folder first; a name that alone does not fit loses its middle (`middle_cut`).
 /// While the pointer is over a cut row, an overlay on the tooltip layer repeats the row with
-/// more text. The overlay keeps the row's right edge and grows to the left, at most to the
-/// screen's left edge (unlike `util::expandable_row`, which grows right).
+/// more text. The overlay keeps the row's left edge and grows to the right, at most to the
+/// screen's right edge, like `util::expandable_row`.
 fn hit_row(ui: &mut egui::Ui, hit: &SearchHit, selected: bool, row_h: f32) -> egui::Response {
     let pad = ui.spacing().button_padding;
     let width = ui.available_width();
@@ -407,8 +407,8 @@ fn middle_cut(name: &str, mut fits: impl FnMut(usize, usize) -> bool) -> (usize,
     split(lo)
 }
 
-/// Paints the hover overlay of a cut row: right-aligned to the row, as wide as the whole text
-/// needs, and never past the screen's left edge. Text that still does not fit is cut the same
+/// Paints the hover overlay of a cut row: left-aligned to the row, as wide as the whole text
+/// needs, and never past the screen's right edge. Text that still does not fit is cut the same
 /// way as the row.
 fn paint_overlay(ui: &egui::Ui, resp: &egui::Response, hit: &SearchHit, selected: bool, cut_size: egui::Vec2) {
     let pad = ui.spacing().button_padding;
@@ -423,9 +423,9 @@ fn paint_overlay(ui: &egui::Ui, resp: &egui::Response, hit: &SearchHit, selected
     };
     let screen = ui.ctx().screen_rect();
     let full_w = ui.fonts(|f| f.layout_job(hit_job(hit, None, f32::INFINITY)).size().x);
-    let max_w = rect.max.x - screen.min.x;
+    let max_w = screen.max.x - rect.min.x;
     let width = (full_w + 2.0 * pad.x).max(rect.width()).min(max_w);
-    let overlay = egui::Rect::from_min_max(egui::pos2(rect.max.x - width, rect.min.y), rect.max);
+    let overlay = egui::Rect::from_min_size(rect.min, egui::vec2(width, rect.height()));
     let (galley, _) = fit_galley(ui, hit, width - 2.0 * pad.x);
     // The text sits at the same height as the row's own text.
     let text_y = ui.layout().align_size_within_rect(cut_size, rect.shrink2(pad)).min.y;

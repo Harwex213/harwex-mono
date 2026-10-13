@@ -45,8 +45,9 @@ winit = { version = "0.30", default-features = false }
 # nothing new is compiled.
 raw-window-handle = "0.6"
 objc2 = "0.5"
-objc2-foundation = { version = "0.2", features = ["NSGeometry", "NSString", "NSThread", "NSUserDefaults", "NSFileManager", "NSURL", "NSError"] }
-objc2-app-kit = { version = "0.2", features = ["NSButton", "NSControl", "NSEvent", "NSResponder", "NSView", "NSWindow"] }
+# The pasteboard features are for Copy Image (`fileops::system_copy_image`).
+objc2-foundation = { version = "0.2", features = ["NSGeometry", "NSString", "NSThread", "NSUserDefaults", "NSFileManager", "NSURL", "NSError", "NSData"] }
+objc2-app-kit = { version = "0.2", features = ["NSButton", "NSControl", "NSEvent", "NSResponder", "NSView", "NSWindow", "NSPasteboard", "NSImageRep", "NSBitmapImageRep"] }
 
 [dev-dependencies]
 egui_kittest = { version = "0.31", features = ["wgpu", "snapshot", "eframe"] }

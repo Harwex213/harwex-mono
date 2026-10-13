@@ -626,3 +626,77 @@ fn oxlint_dying_on_initialize_stops_after_three_tries_with_one_toast() {
     assert_eq!(fake_count(&ide, "died on initialize"), 3, "{}", fake_log(&ide));
     assert_eq!(ide.state().notifications.toast_titles(), vec!["Diagnostics failed".to_string()]);
 }
+
+/// Copy from the Problems window (task 103), IDEA's way: a click selects a row and moves the
+/// caret there while the list keeps the keys, ⌘C copies the selected message, and the row
+/// menu has Copy and Copy with location (`path:line:col: message [origin]`). The arrows move
+/// the selection and Enter gives the editor the keys. The problems are set directly, so no
+/// server or linter is needed.
+#[test]
+fn problems_window_copies_the_selected_problem() {
+    use harwex_ide::diagnostics::Problem;
+    let fx = Fixture::new(SUITE, "copy");
+    let repo = basic_repo(fx.path("repo"));
+    repo.write("src/notes.txt", "first line\nsecond line here\n");
+    let mut ide = Ide::open(SUITE, &repo.dir);
+    ide.open_file("src/notes.txt");
+    {
+        let e = ide.state_mut().ws.tabs.active_editor_mut().expect("notes.txt");
+        let version = e.doc.version();
+        let start = e.doc.position_to_char(ide_editor::Position::new(1, 7));
+        let error = Problem { start, end: start + 4, severity: ProblemSeverity::Error, message: "Unknown type name 'X'\nnote: declared here".into(), source: SourceId::Clangd, code: Some("unknown_typename".into()) };
+        let warning = Problem { start: 0, end: 5, severity: ProblemSeverity::Warning, message: "Unexpected first".into(), source: SourceId::Eslint, code: Some("no-first".into()) };
+        e.problems.set_answer(SourceId::Clangd, version, vec![error]);
+        e.problems.set_answer(SourceId::Eslint, version, vec![warning]);
+    }
+    ide.state_mut().ws.layout.show(harwex_ide::layout::ToolWindow::Problems);
+    ide.settle();
+    let error_row = "Problem Unknown type name 'X' at 2:8";
+    let warning_row = "Problem Unexpected first at 1:1";
+    assert!(ide.has(error_row) && ide.has(warning_row), "{:?}", ide.labels());
+    let copied = |ide: &Ide| ide.state().platform.calls().last().cloned().unwrap_or_default();
+    let copy_key = |ide: &mut Ide| {
+        ide.harness.input_mut().modifiers = Modifiers::COMMAND;
+        ide.harness.input_mut().events.push(egui::Event::Copy);
+        ide.step();
+        ide.harness.input_mut().modifiers = Modifiers::NONE;
+        ide.settle();
+    };
+
+    // A click selects the row and moves the caret; the list keeps the keys.
+    ide.click(error_row);
+    ide.settle();
+    assert!(ide.is_selected(error_row));
+    assert_eq!(ide.cursor(), (1, 7));
+    let ctx = ide.ctx();
+    assert!(ctx.memory(|m| m.has_focus(harwex_ide::diagnostics::problems::list_id())), "the list has the keys");
+    ide.snapshot("problems_selected");
+    copy_key(&mut ide);
+    assert_eq!(copied(&ide), "copy Unknown type name 'X'\nnote: declared here", "⌘C copies the whole message");
+
+    // The row menu: Copy with location.
+    ide.right_click(warning_row);
+    ide.settle();
+    assert!(ide.is_selected(warning_row), "a right click selects the row");
+    ide.snapshot("problems_menu");
+    ide.click("Copy with location");
+    ide.settle();
+    assert_eq!(copied(&ide), "copy src/notes.txt:1:1: Unexpected first [eslint(no-first)]");
+    ide.right_click(error_row);
+    ide.settle();
+    ide.click("Copy");
+    ide.settle();
+    assert_eq!(copied(&ide), "copy Unknown type name 'X'\nnote: declared here");
+
+    // The arrows walk the rows, Enter opens the problem in the editor.
+    ide.key(Key::ArrowDown);
+    ide.settle();
+    assert!(ide.is_selected(warning_row));
+    assert_eq!(ide.cursor(), (0, 0));
+    ide.key(Key::ArrowUp);
+    ide.key(Key::Enter);
+    ide.settle();
+    assert_eq!(ide.cursor(), (1, 7));
+    let ctx = ide.ctx();
+    assert!(ide.state().ws.tabs.active_editor().is_some_and(|e| e.view.owns_focus(&ctx)), "Enter gives the editor the keys");
+}

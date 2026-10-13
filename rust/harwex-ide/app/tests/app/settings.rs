@@ -1,6 +1,8 @@
 //! The Settings dialog (task 101): the gear opens it, the pages, global settings in storage,
 //! project settings in `.harwex/ide.toml`, and System › Files at work: idle save, save on focus
 //! loss and on the terminal, backups, Trash or permanent delete, and the sync of open files.
+//! Task 104: the global `settings.toml` (in a fixture folder, never the user's), shared
+//! sections with a project override, and the migration from storage.
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -52,12 +54,27 @@ fn gear_opens_the_pages() {
     ide.snapshot("system");
 
     ide.click("Settings page Keymap");
-    ide.click("Filter keymap");
-    ide.type_text("save");
     ide.settle();
-    ide.assert_text("Save All");
-    ide.assert_no_text("Go to Declaration");
+    // Groups are cards with a count; a header click folds the group.
+    assert!(ide.is_selected("Keymap group General"));
     ide.snapshot("keymap");
+    ide.click("Keymap group General");
+    ide.settle();
+    assert!(!ide.is_selected("Keymap group General"));
+    ide.assert_no_text("Save All");
+    // A filter keeps the matching rows in their groups, hides the empty groups and opens folded ones.
+    ide.click("Filter keymap");
+    ide.type_text("commit");
+    ide.settle();
+    ide.assert_text("Commit (from the message)");
+    ide.assert_no_text("Go to Declaration");
+    assert!(!ide.has("Keymap group Search") && ide.has("Keymap group Tool Windows") && ide.has("Keymap group Git"));
+    ide.snapshot("keymap_filter");
+    let d = ide.state_mut().ws.settings.as_mut().expect("open");
+    d.keymap.filter = "save".into();
+    ide.settle();
+    assert!(ide.is_selected("Keymap group General"), "a filter opens a folded group");
+    ide.assert_text("Save All");
 
     ide.click("Settings page Editor");
     ide.wait_until("oxfmt looked up", |ide| ide.shows_text("oxfmt: not found (no node_modules/oxfmt from the project root up)"));
@@ -130,6 +147,8 @@ fn project_pages_write_only_changed_keys() {
     ide.settle();
     ide.click("Settings page Languages");
     ide.settle();
+    // The section holds global values until the project takes it over.
+    ide.click("Language servers scope Project");
     ide.click("Rust");
     ide.click("clangd path");
     ide.type_text("/opt/llvm/bin/clangd");
@@ -145,6 +164,109 @@ fn project_pages_write_only_changed_keys() {
     ide.click("OK");
     ide.settle();
     assert!(!repo.dir.join(".harwex/ide.toml").exists());
+}
+
+fn global_options(repo: &std::path::Path, file: &std::path::Path) -> harwex_ide::app::AppOptions {
+    harwex_ide::app::AppOptions { settings_file: Some(file.to_path_buf()), ..test_options(Some(repo)) }
+}
+
+#[test]
+fn project_overrides_the_global_settings() {
+    use harwex_ide::lang::LangId;
+    let fx = Fixture::new(SUITE, "scope");
+    let repo = basic_repo(fx.path("repo"));
+    let global = fx.path("global/settings.toml");
+    std::fs::create_dir_all(global.parent().unwrap()).unwrap();
+    std::fs::write(&global, "# mine\nlanguages = [\"ts\"]\n\n[rust]\nserver = \"/g/ra\"\n").unwrap();
+    let mut ide = Ide::with_options(SUITE, global_options(&repo.dir, &global), None);
+    ide.settle();
+    // The project has no ide.toml: the global values are in force.
+    let config = &ide.state().ws.langs.config;
+    assert_eq!(config.languages, Some(vec![LangId::TypeScript]));
+    assert_eq!(config.rust.server.as_deref(), Some(std::path::Path::new("/g/ra")));
+
+    ide.cmd(Key::Comma);
+    ide.click("Settings page Languages");
+    ide.settle();
+    assert!(ide.is_selected("Language servers scope Global") && !ide.is_selected("Language servers scope Project"));
+    assert!(ide.is_enabled("Open global settings"));
+    // A global change goes into settings.toml only. (The ESLint row is below the page's fold.)
+    ide.state_mut().ws.settings.as_mut().expect("open").global_values.eslint = Some(false);
+    ide.click("OK");
+    ide.wait_for("global applied", |s| s.ws.langs.config.diagnostics.eslint.enabled == Some(false));
+    ide.settle();
+    assert_eq!(std::fs::read_to_string(&global).unwrap(), "# mine\nlanguages = [\"ts\"]\n\n[rust]\nserver = \"/g/ra\"\n\n[diagnostics.eslint]\nenabled = false\n");
+    assert!(!repo.dir.join(".harwex/ide.toml").exists());
+
+    // Project scope starts from the global values and writes the whole section.
+    ide.cmd(Key::Comma);
+    ide.settle();
+    ide.click("Language servers scope Project");
+    ide.settle();
+    ide.click("Rust");
+    ide.click("clangd path");
+    ide.type_text("/p/clangd");
+    ide.settle();
+    assert!(ide.has("Reset Language servers to Global"));
+    ide.assert_text("This project overrides the global values.");
+    let d = ide.state_mut().ws.settings.as_mut().expect("open");
+    d.servers = [Detected::Found("/tools/rust-analyzer".into()), Detected::Found("/tools/clangd".into()), Detected::Missing("No Roslyn server.".into()), Detected::Found("/tools/dotnet".into())];
+    ide.settle();
+    ide.snapshot("languages_project");
+    ide.click("OK");
+    ide.wait_for("project applied", |s| s.ws.langs.config.cpp.clangd.is_some());
+    assert_eq!(repo.read(".harwex/ide.toml"), "languages = [\"ts\", \"rust\"]\n\n[rust]\nserver = \"/g/ra\"\n\n[cpp]\nclangd = \"/p/clangd\"\n");
+    let config = &ide.state().ws.langs.config;
+    assert_eq!(config.languages, Some(vec![LangId::TypeScript, LangId::Rust]));
+    // The linters stay global.
+    assert_eq!(config.diagnostics.eslint.enabled, Some(false));
+
+    // Reset to Global removes the section's keys from the project.
+    ide.cmd(Key::Comma);
+    ide.settle();
+    assert!(ide.is_selected("Language servers scope Project"));
+    assert!(ide.is_enabled("Open .harwex/ide.toml"));
+    ide.click("Reset Language servers to Global");
+    ide.settle();
+    assert!(ide.is_selected("Language servers scope Global"));
+    ide.click("OK");
+    ide.wait_for("reset applied", |s| s.ws.langs.config.cpp.clangd.is_none());
+    assert_eq!(repo.read(".harwex/ide.toml"), "");
+    assert_eq!(ide.state().ws.langs.config.languages, Some(vec![LangId::TypeScript]));
+
+    // The footer opens the global file; a save there puts it in force.
+    ide.cmd(Key::Comma);
+    ide.settle();
+    ide.click("Open global settings");
+    ide.settle();
+    assert!(ide.state().ws.settings.is_none());
+    assert_eq!(ide.active_title().as_deref(), Some("settings.toml"));
+    ide.click_at(ide.caret_pos(0, 0));
+    ide.type_text("idle_timeout_secs = 5\n");
+    ide.cmd(Key::S);
+    ide.wait_for("global file read again", |s| s.ws.langs.config.idle_timeout == Duration::from_secs(5));
+    assert!(ide.state().settings.global.layer.contains_key("idle_timeout_secs"));
+}
+
+#[test]
+fn global_file_takes_the_stored_settings() {
+    let fx = Fixture::new(SUITE, "migrate");
+    let repo = basic_repo(fx.path("repo"));
+    let global = fx.path("global/settings.toml");
+    let mut storage = MemoryStorage::default();
+    storage.map.insert("global_settings".into(), "[files]\ntrash = false\n".into());
+    let mut ide = Ide::with_options(SUITE, global_options(&repo.dir, &global), Some(&storage));
+    assert!(!ide.state().settings.global.files.trash);
+    ide.wait_until("settings.toml written", |_| global.exists());
+    let text = std::fs::read_to_string(&global).unwrap();
+    assert!(text.contains("trash = false"), "{text}");
+    // With a file, storage keeps no copy.
+    let mut after = MemoryStorage::default();
+    eframe::App::save(ide.harness.state_mut(), &mut after);
+    assert!(!after.map.contains_key("global_settings"));
+    // The next start reads the file.
+    let ide = Ide::with_options(SUITE, global_options(&repo.dir, &global), None);
+    assert!(!ide.state().settings.global.files.trash);
 }
 
 #[test]

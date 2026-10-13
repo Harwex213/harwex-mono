@@ -63,6 +63,9 @@
 //! ```
 //!
 //! A missing file means defaults. A broken file also means defaults, plus a warning.
+//!
+//! The global `settings.toml` may hold any of these keys as a default for every project
+//! (`settings::global`); `IdeConfig::layered` puts the project's own keys (`own`) over them.
 
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -234,6 +237,8 @@ pub struct IdeConfig {
     pub warnings: Vec<String>,
     /// Where the file was read from; `None` when there is none.
     pub source: Option<PathBuf>,
+    /// The project file's own keys, before the global layer (`layered`). Empty without a file.
+    pub own: toml::Table,
 }
 
 impl Default for IdeConfig {
@@ -255,6 +260,7 @@ impl Default for IdeConfig {
             excluded: Vec::new(),
             warnings: Vec::new(),
             source: None,
+            own: toml::Table::new(),
         }
     }
 }
@@ -274,15 +280,23 @@ impl IdeConfig {
     }
 
     pub fn parse(text: &str) -> IdeConfig {
-        let mut config = IdeConfig::default();
         let table: toml::Table = match text.parse() {
             Ok(t) => t,
             Err(e) => {
+                let mut config = IdeConfig::default();
                 config.warnings.push(format!("{CONFIG_PATH} is not valid TOML, using defaults: {}", e.message()));
                 return config;
             }
         };
-        for (key, value) in &table {
+        let mut config = IdeConfig::parse_table(&table);
+        config.own = table;
+        config
+    }
+
+    /// The config of a parsed table. `own` stays empty.
+    pub fn parse_table(table: &toml::Table) -> IdeConfig {
+        let mut config = IdeConfig::default();
+        for (key, value) in table {
             match key.as_str() {
                 "languages" => match value.as_array() {
                     Some(items) => {
@@ -351,6 +365,25 @@ impl IdeConfig {
             }
         }
         config
+    }
+
+    /// The config in force: the project's own keys (`own`) over the global defaults `global`
+    /// (Settings, task 104). A project key wins, a table merges key by key. Calling it again
+    /// with other defaults starts from `own` again. Keeps the project's warnings and source.
+    pub fn layered(&self, global: &toml::Table) -> IdeConfig {
+        if global.is_empty() {
+            return IdeConfig::parse_table(&self.own).with_origin(self);
+        }
+        let mut merged = global.clone();
+        merge_tables(&mut merged, &self.own);
+        IdeConfig::parse_table(&merged).with_origin(self)
+    }
+
+    fn with_origin(mut self, from: &IdeConfig) -> IdeConfig {
+        self.own = from.own.clone();
+        self.source = from.source.clone();
+        self.warnings = from.warnings.clone();
+        self
     }
 
     /// The excluded folders as absolute paths under `root`.
@@ -590,6 +623,18 @@ fn secs(value: &toml::Value, key: &str, warnings: &mut Vec<String>) -> Option<Du
         _ => {
             warnings.push(format!("{CONFIG_PATH}: {key} must be a number of seconds"));
             None
+        }
+    }
+}
+
+/// Writes `over` into `base`: a table merges key by key, any other value replaces.
+pub fn merge_tables(base: &mut toml::Table, over: &toml::Table) {
+    for (k, v) in over {
+        match (base.get_mut(k), v) {
+            (Some(toml::Value::Table(b)), toml::Value::Table(o)) => merge_tables(b, o),
+            _ => {
+                base.insert(k.clone(), v.clone());
+            }
         }
     }
 }

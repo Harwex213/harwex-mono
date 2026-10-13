@@ -1,9 +1,16 @@
-//! Global settings: they belong to the IDE, not to a project, and live in eframe storage (the
-//! app config) under `STORAGE_KEY`, as TOML text. Per-project settings stay in
-//! `.harwex/ide.toml` (architecture rule 10).
+//! Global settings: they belong to the IDE, not to a project. They live in one TOML file,
+//! `settings.toml` in the app data folder (`AppOptions::settings_file`). Without a file (tests
+//! that set none) they live in eframe storage under `STORAGE_KEY`, where task 101 kept them;
+//! the first run with a file moves them there.
+//!
+//! `[files]` and `[editor]` are global only. Every other key is a default for the keys of each
+//! project's `.harwex/ide.toml` (`layer`): a key the project sets wins (`IdeConfig::layered`).
 
 /// The eframe storage key of the global settings.
 pub const STORAGE_KEY: &str = "global_settings";
+
+/// The file name of the global settings, also the name the Settings dialog shows.
+pub const FILE_NAME: &str = "settings.toml";
 
 /// The idle time before an idle save, when nothing is stored.
 pub const DEFAULT_IDLE_SECS: u32 = 15;
@@ -54,7 +61,13 @@ impl Default for EditorSettings {
 pub struct GlobalSettings {
     pub files: FilesSettings,
     pub editor: EditorSettings,
+    /// The `.harwex/ide.toml` keys every project gets unless it sets its own: the file without
+    /// `[files]` and `[editor]`.
+    pub layer: toml::Table,
 }
+
+/// The sections that belong to the global file only.
+const OWN_SECTIONS: [&str; 2] = ["files", "editor"];
 
 impl GlobalSettings {
     /// Reads the stored text. Unknown keys and broken values keep their defaults.
@@ -80,15 +93,56 @@ impl GlobalSettings {
         if let Some(v) = size {
             s.editor.font_size = (v as f32).clamp(MIN_FONT_SIZE, MAX_FONT_SIZE);
         }
+        s.layer = table.into_iter().filter(|(k, _)| !OWN_SECTIONS.contains(&k.as_str())).collect();
         s
     }
 
+    /// The whole file: `[files]`, `[editor]` and the project defaults.
     pub fn to_text(&self) -> String {
         let f = &self.files;
-        format!(
+        let mut text = toml::to_string(&self.layer).unwrap_or_default();
+        if !text.is_empty() {
+            text.push('\n');
+        }
+        // The layer's top-level values must come before any table, so the own sections go last.
+        text.push_str(&format!(
             "[files]\ntrash = {}\nsave_on_idle = {}\nidle_secs = {}\nsave_on_deactivate = {}\nbackup = {}\nsync_on_activate = {}\nsync_periodically = {}\n\n[editor]\nfont_size = {:.1}\n",
             f.trash, f.save_on_idle, f.idle_secs, f.save_on_deactivate, f.backup, f.sync_on_activate, f.sync_periodically, self.editor.font_size
-        )
+        ));
+        text
+    }
+
+    /// The edits that turn `old`'s `[files]` and `[editor]` into `self`'s, only changed keys.
+    pub fn own_edits(&self, old: &GlobalSettings) -> Vec<super::project::Edit> {
+        use super::project::Edit;
+        let (n, o) = (&self.files, &old.files);
+        let mut out = Vec::new();
+        let flags = [
+            ("trash", n.trash, o.trash),
+            ("save_on_idle", n.save_on_idle, o.save_on_idle),
+            ("save_on_deactivate", n.save_on_deactivate, o.save_on_deactivate),
+            ("backup", n.backup, o.backup),
+            ("sync_on_activate", n.sync_on_activate, o.sync_on_activate),
+            ("sync_periodically", n.sync_periodically, o.sync_periodically),
+        ];
+        for (key, new, old) in flags {
+            if new != old {
+                out.push(Edit::set(&["files", key], new));
+            }
+        }
+        if n.idle_secs != o.idle_secs {
+            out.push(Edit::set(&["files", "idle_secs"], n.idle_secs as i64));
+        }
+        if self.editor.font_size != old.editor.font_size {
+            out.push(Edit::set(&["editor", "font_size"], (self.editor.font_size as f64 * 10.0).round() / 10.0));
+        }
+        out
+    }
+
+    /// Problems in the project defaults, named after the global file.
+    pub fn layer_warnings(&self) -> Vec<String> {
+        let config = crate::lang::IdeConfig::parse_table(&self.layer);
+        config.warnings.into_iter().map(|w| w.replace(crate::lang::config::CONFIG_PATH, FILE_NAME)).collect()
     }
 
     pub fn load(storage: &dyn eframe::Storage) -> GlobalSettings {
@@ -115,6 +169,27 @@ mod tests {
         s.files.sync_periodically = true;
         s.editor.font_size = 15.0;
         assert_eq!(GlobalSettings::parse(&s.to_text()), s);
+        // Project defaults keep their place before the own sections.
+        s.layer = "languages = [\"ts\"]\n[rust]\nserver = \"/ra\"\n".parse().unwrap();
+        let text = s.to_text();
+        assert!(text.starts_with("languages = [\"ts\"]\n"), "{text}");
+        assert_eq!(GlobalSettings::parse(&text), s);
+        assert!(s.layer_warnings().is_empty());
+        s.layer = "[rust]\nservr = 1\n".parse().unwrap();
+        assert_eq!(s.layer_warnings(), ["settings.toml: unknown key rust.servr"]);
+    }
+
+    #[test]
+    fn own_edits_only_changed_keys() {
+        let old = GlobalSettings::default();
+        assert!(old.own_edits(&old).is_empty());
+        let mut new = old.clone();
+        new.files.trash = false;
+        new.editor.font_size = 14.5;
+        let text = super::super::project::apply("# mine\nlanguages = [\"ts\"]\n", &new.own_edits(&old)).unwrap();
+        assert_eq!(text, "# mine\nlanguages = [\"ts\"]\n\n[files]\ntrash = false\n\n[editor]\nfont_size = 14.5\n");
+        let back = GlobalSettings::parse(&text);
+        assert!(!back.files.trash && back.editor.font_size == 14.5 && back.layer.contains_key("languages"));
     }
 
     #[test]

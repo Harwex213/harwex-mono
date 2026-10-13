@@ -766,6 +766,18 @@ impl Document {
         self.edit(prefix..removed_end, &inserted, Selection::caret(prefix), after, EditKind::Other);
     }
 
+    /// Replaces the whole text as the new start of the undo history: undo never goes back past
+    /// it. The document counts as dirty until the next save (the merge window's first result,
+    /// which must not undo back to git's conflict markers).
+    pub fn reset_text(&mut self, text: &str) {
+        self.set_text(text);
+        self.history.undo.clear();
+        self.history.redo.clear();
+        self.history.sealed = true;
+        // `top_id` is 0 with an empty history; a save sets `saved_id` back to it.
+        self.saved_id = u64::MAX;
+    }
+
     /// Returns the selection to restore, or `None` when there is nothing to undo.
     pub fn undo(&mut self) -> Option<Selection> {
         self.undo_carets().map(|c| c.primary())

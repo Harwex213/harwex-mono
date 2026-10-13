@@ -1,9 +1,10 @@
-//! Viewers for what a text editor cannot show: images (`image.rs`, also the image diff) and the
-//! Markdown preview (`markdown.rs`).
+//! Viewers for what a text editor cannot show: images (`image.rs`, also the image diff), Copy
+//! Image (`clip.rs`) and the Markdown preview (`markdown.rs`).
 //!
 //! Decoding runs on workers only (`decode`). The UI thread turns the decoded pixels into a
 //! texture once, on the first frame that draws them.
 
+pub mod clip;
 pub mod image;
 pub mod markdown;
 

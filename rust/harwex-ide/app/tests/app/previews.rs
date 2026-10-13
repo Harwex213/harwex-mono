@@ -272,3 +272,132 @@ fn an_image_with_a_position_opens_as_text() {
     ide.state_mut().open_location(&path, Some(ide_editor::Position::new(0, 0)), true);
     ide.wait_for("text tab", |s| s.ws.tabs.active_editor().is_some_and(|e| e.path == path));
 }
+
+// Copy Image (task 109). The test platform records the images instead of the pasteboard.
+
+fn copied(ide: &Ide) -> Vec<harwex_ide::fileops::ClipImage> {
+    ide.state().platform.copied_images()
+}
+
+/// Sends ⌘C the way macOS does: only a Copy event, with Cmd held.
+fn cmd_c(ide: &mut Ide) {
+    ide.harness.input_mut().modifiers = Modifiers::COMMAND;
+    ide.harness.input_mut().events.push(Event::Copy);
+    ide.step();
+    ide.harness.input_mut().modifiers = Modifiers::NONE;
+    ide.settle();
+}
+
+fn decoded(png: &[u8]) -> image::RgbaImage {
+    image::load_from_memory_with_format(png, image::ImageFormat::Png).expect("a PNG").to_rgba8()
+}
+
+#[test]
+fn the_viewer_copies_its_image_with_cmd_c_and_the_menu() {
+    let fx = Fixture::new(SUITE, "copy_viewer");
+    let repo = image_repo(&fx);
+    let mut ide = Ide::open(SUITE, &repo.dir);
+    open_image(&mut ide, "img/pic.png");
+    let file = std::fs::read(repo.dir.join("img/pic.png")).expect("png");
+
+    cmd_c(&mut ide);
+    let images = copied(&ide);
+    assert_eq!(images.len(), 1, "{:?}", ide.state().platform.calls());
+    assert_eq!((images[0].width, images[0].height, images[0].text.as_deref()), (64, 48, None));
+    assert_eq!(images[0].png, file, "a PNG goes as its own bytes");
+
+    ide.right_click("Image pic.png");
+    ide.settle();
+    assert!(ide.has("Copy Image"));
+    ide.snapshot("image_copy_menu");
+    ide.click("Copy Image");
+    ide.settle();
+    assert_eq!(copied(&ide).len(), 2);
+    assert!(ide.state().notifications.toast_titles().is_empty(), "no toast on success");
+}
+
+#[test]
+fn an_svg_copies_as_a_bitmap_at_the_viewer_size_plus_its_text() {
+    let fx = Fixture::new(SUITE, "copy_svg");
+    let repo = image_repo(&fx);
+    let mut ide = Ide::open(SUITE, &repo.dir);
+    open_image(&mut ide, "img/logo.svg");
+    let ppp = ide.harness.ctx.pixels_per_point();
+
+    cmd_c(&mut ide);
+    ide.click("Zoom In");
+    ide.settle();
+    cmd_c(&mut ide);
+    let images = copied(&ide);
+    assert_eq!(images.len(), 2);
+    let side = |z: f32| (32.0 * z * ppp).round() as u32;
+    assert_eq!((images[0].width, images[0].height), (side(1.0), side(1.0)), "fitted at 1:1");
+    assert_eq!((images[1].width, images[1].height), (side(1.25), side(1.25)), "zoomed in");
+    assert_eq!(images[1].text.as_deref(), Some(SVG));
+    let px = decoded(&images[1].png);
+    assert_eq!(px.dimensions(), (side(1.25), side(1.25)));
+    assert_eq!(px.get_pixel(px.width() / 4, px.height() / 2).0, [0x35, 0x74, 0xF0, 255], "the blue square");
+    assert_eq!(px.get_pixel(0, 0).0[3], 0, "transparent corner");
+}
+
+#[test]
+fn the_tree_menu_copies_an_image_file() {
+    let fx = Fixture::new(SUITE, "copy_tree");
+    let repo = image_repo(&fx);
+    // A BMP is decoded and encoded as PNG at its full size.
+    let mut bmp = Vec::new();
+    image::RgbaImage::from_pixel(5000, 3, image::Rgba([10, 20, 30, 255])).write_to(&mut std::io::Cursor::new(&mut bmp), image::ImageFormat::Bmp).expect("bmp");
+    write_bytes(&repo, "img/wide.bmp", &bmp);
+    write_bytes(&repo, "img/bad.png", b"not an image");
+    let mut ide = Ide::open(SUITE, &repo.dir);
+    let root = ide.root();
+    ide.state_mut().ws.tree.reveal(&root, &root.join("img/wide.bmp"));
+    ide.settle();
+
+    ide.right_click("README.md");
+    ide.settle();
+    assert!(!ide.has("Copy Image"), "images only");
+    ide.key(Key::Escape);
+    ide.settle();
+
+    ide.right_click("img/wide.bmp");
+    ide.settle();
+    ide.click("Copy Image");
+    ide.settle();
+    let images = copied(&ide);
+    assert_eq!(images.len(), 1);
+    let px = decoded(&images[0].png);
+    assert_eq!((px.dimensions(), px.get_pixel(4999, 2).0), ((5000, 3), [10, 20, 30, 255]), "full size, never cut to the texture size");
+    assert!(ide.state().ws.tabs.custom_by_key(&format!("image:{}", root.join("img/wide.bmp").display())).is_none(), "nothing opens");
+
+    ide.right_click("img/bad.png");
+    ide.settle();
+    ide.click("Copy Image");
+    ide.settle();
+    assert_eq!(copied(&ide).len(), 1);
+    assert_eq!(ide.state().notifications.toast_titles(), vec!["Cannot copy image".to_string()]);
+}
+
+#[test]
+fn each_side_of_an_image_diff_copies_its_own_picture() {
+    let fx = Fixture::new(SUITE, "copy_diff");
+    let repo = image_repo(&fx);
+    let new = png(80, 40, 90);
+    write_bytes(&repo, "img/pic.png", &new);
+    let mut ide = Ide::open(SUITE, &repo.dir);
+    open_diff(&mut ide, "img/pic.png");
+    let labels = image_labels(&ide);
+
+    ide.right_click(&labels[0]);
+    ide.settle();
+    ide.click("Copy Image");
+    ide.settle();
+    ide.right_click(&labels[1]);
+    ide.settle();
+    ide.click("Copy Image");
+    ide.settle();
+    let images = copied(&ide);
+    assert_eq!(images.len(), 2);
+    assert_eq!(images[0].png, png(64, 48, 0), "HEAD");
+    assert_eq!(images[1].png, new, "working tree");
+}

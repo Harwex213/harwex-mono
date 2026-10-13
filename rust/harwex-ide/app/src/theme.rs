@@ -118,6 +118,15 @@ pub struct Theme {
     /// Count badges (`badge.rs`): the pill and its number.
     pub count_badge_bg: Color32,
     pub count_badge_text: Color32,
+    /// Settings: the scope badges (Global, Project) and their text.
+    pub scope_global_bg: Color32,
+    pub scope_project_bg: Color32,
+    pub scope_text: Color32,
+    /// Settings › Keymap: the group cards and the key caps.
+    pub card_bg: Color32,
+    pub card_border: Color32,
+    pub keycap_bg: Color32,
+    pub keycap_border: Color32,
 
     // Git log.
     pub lanes: [Color32; 8],
@@ -141,6 +150,10 @@ pub struct Theme {
     pub merge_changed: Color32,
     pub merge_conflict: Color32,
     pub merge_resolved: Color32,
+    /// The bars where one merge pane has lines the other lacks, and the applied marks.
+    pub merge_changed_edge: Color32,
+    pub merge_conflict_edge: Color32,
+    pub merge_resolved_edge: Color32,
     pub scrollbar_track: Color32,
     pub scrollbar_thumb: Color32,
     pub scrollbar_thumb_active: Color32,
@@ -305,6 +318,13 @@ impl Theme {
             title_tint_alpha: 46,
             count_badge_bg: hex(0x3574F0),
             count_badge_text: hex(0xFFFFFF),
+            scope_global_bg: hex(0x4A4D53),
+            scope_project_bg: hex(0x2E5A3C),
+            scope_text: hex(0xDFE1E5),
+            card_bg: hex(0x26282B),
+            card_border: hex(0x393B40),
+            keycap_bg: hex(0x3A3D42),
+            keycap_border: hex(0x55585E),
 
             lanes: [
                 hex(0x5F9EE6),
@@ -334,6 +354,9 @@ impl Theme {
             merge_changed: hex(0x253857),
             merge_conflict: hex(0x4A2B2B),
             merge_resolved: hex(0x283B2C),
+            merge_changed_edge: hex(0x4673BD),
+            merge_conflict_edge: hex(0xC75450),
+            merge_resolved_edge: hex(0x5F9E68),
             scrollbar_track: hex(0x1E1F22),
             scrollbar_thumb: hexa(0xFFFFFF, 40),
             scrollbar_thumb_active: hexa(0xFFFFFF, 70),

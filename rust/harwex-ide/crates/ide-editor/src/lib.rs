@@ -24,5 +24,6 @@ pub use search::{preserve_case, FindOptions, Matcher, SearchFilter, Template};
 pub use highlight::{HlKind, Span};
 pub use language::Language;
 pub use occurrences::MAX_OCCURRENCES;
-pub use view::{column_advance, ClickChain, CHAIN_DIST, EditorAction, EditorGeometry, EditorResponse, EditorState, EditorView, GutterMark, ProblemMark, ProblemSeverity, ViewState};
+pub use layout::Fold;
+pub use view::{column_advance, ClickChain, CHAIN_DIST, EditorAction, EditorGeometry, EditorResponse, EditorState, EditorView, GutterMark, LineBand, ProblemMark, ProblemSeverity, ViewState};
 pub use theme::EditorTheme;

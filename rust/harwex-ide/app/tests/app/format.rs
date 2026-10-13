@@ -169,10 +169,17 @@ fn settings_page_turns_on_save_on() {
     ide.click("Settings page Editor");
     ide.wait_until("oxfmt detected", |ide| ide.shows_text("oxfmt 0.72.0 in node_modules/oxfmt"));
     ide.snapshot("settings_oxfmt");
+    // The section is global until the project takes it over (task 104); the override writes
+    // the whole section.
+    ide.click("Formatting: oxfmt scope Project");
     ide.click("Run oxfmt on save");
     ide.click("OK");
     ide.wait_for("on_save applied", |s| s.ws.langs.config.oxfmt.on_save);
-    assert_eq!(repo.read(".harwex/ide.toml"), "[format.oxfmt]\non_save = true\n");
+    assert_eq!(
+        repo.read(".harwex/ide.toml"),
+        "[format.oxfmt]\non_save = true\nextensions = [\"js\", \"jsx\", \"ts\", \"tsx\", \"mjs\", \"cjs\", \"mts\", \"cts\", \"json\", \"jsonc\", \"css\", \"md\"]\n"
+    );
+    assert!(!ide.state().settings.global.layer.contains_key("format"), "a project override leaves the global value");
     assert!(ide.state().ws.settings.is_none());
     edit_keep_line(&mut ide);
     ide.cmd(Key::S);

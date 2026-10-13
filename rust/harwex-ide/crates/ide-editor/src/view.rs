@@ -20,7 +20,7 @@ use crate::find::{FindState, MAX_MATCHES};
 use crate::find_bar::{self, BarCmd, BarEnv, BarIds, HISTORY_LEN};
 use crate::search::{FindOptions, Matcher};
 use crate::highlight::{HlKind, Span};
-use crate::layout::{CaretMoves, LineMoves, NoWrap, RowLayout};
+use crate::layout::{valid_folds, CaretMoves, Fold, FoldMap, LineMoves, NoWrap, RowLayout};
 use crate::occurrences::Occurrences;
 use crate::theme::EditorTheme;
 use crate::wrap::{DrawnRow, LineRows, RowMoves, SoftWrap, WrapMap};
@@ -57,6 +57,14 @@ pub struct ProblemMark {
     pub start: usize,
     pub end: usize,
     pub severity: ProblemSeverity,
+}
+
+/// A background behind whole lines (a merge chunk). An empty `lines` range draws a thin bar at
+/// the top of line `lines.start` instead: the place where the other side has lines.
+#[derive(Clone, Debug, PartialEq)]
+pub struct LineBand {
+    pub lines: Range<usize>,
+    pub fill: egui::Color32,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -96,6 +104,9 @@ pub struct EditorResponse {
     pub has_focus: bool,
     /// The text area's response; lets the app attach tooltips or its own popups.
     pub response: egui::Response,
+    /// The fold this frame opened: a press on its row, or a caret that moved into it. The view
+    /// already dropped it from `EditorState::folds`.
+    pub unfolded: Option<Fold>,
 }
 
 struct HighlightCache {
@@ -188,6 +199,10 @@ pub struct EditorState {
     usages: Occurrences,
     /// Scrollbar marks of the occurrences: the key they were built for and their y fractions.
     occurrence_marks: (u64, Vec<f32>),
+    /// Folded line runs of the unwrapped layout (`set_folds`).
+    folds: Vec<Fold>,
+    /// The fold placeholder rows drawn last frame: fold index and screen rect.
+    fold_rects: Vec<(usize, Rect)>,
 }
 
 /// Where an editor is scrolled, in text terms, so a reopened tab lands on the same text even at
@@ -416,6 +431,8 @@ impl EditorState {
             preedit: String::new(),
             usages: Occurrences::default(),
             occurrence_marks: (0, Vec::new()),
+            folds: Vec::new(),
+            fold_rects: Vec::new(),
         }
     }
 
@@ -811,7 +828,7 @@ impl EditorState {
     /// The visual row of `pos` as drawn last frame. Without soft wrap it is the line.
     pub fn visual_row(&self, doc: &Document, pos: Position) -> usize {
         if !self.drawn_wrap {
-            return pos.line;
+            return FoldMap { folds: &self.folds }.row_of_line(pos.line);
         }
         let text = doc.line(pos.line);
         let rows = LineRows::new(&text, self.wrap.cols());
@@ -823,7 +840,8 @@ impl EditorState {
     pub fn char_center(&self, doc: &Document, pos: Position) -> Option<Pos2> {
         let g = self.geometry?;
         if !self.drawn_wrap {
-            return Some(g.char_center(doc, pos));
+            let c = g.char_center(doc, pos);
+            return Some(Pos2::new(c.x, g.row_center(FoldMap { folds: &self.folds }.row_of_line(pos.line))));
         }
         let text = doc.line(pos.line);
         let rows = LineRows::new(&text, self.wrap.cols());
@@ -835,6 +853,32 @@ impl EditorState {
             None => g.origin.x + (rows.x_offset(k) + d) as f32 * g.char_w,
         };
         Some(Pos2::new(x + g.char_w / 2.0, g.row_center(row)))
+    }
+
+    /// Folds line runs: each hides behind one row that shows its label (the merge window's
+    /// unchanged lines). Only the unwrapped layout folds; soft wrap ignores the list. The view
+    /// keeps the folds that fit the text, sorted and not overlapping.
+    pub fn set_folds(&mut self, folds: Vec<Fold>) {
+        if self.folds != folds {
+            self.folds = folds;
+        }
+    }
+
+    pub fn folds(&self) -> &[Fold] {
+        &self.folds
+    }
+
+    /// The fold placeholder rows drawn last frame, as (index into `folds()`, screen rect).
+    pub fn fold_rects(&self) -> &[(usize, Rect)] {
+        &self.fold_rects
+    }
+
+    /// Screen y of the top and the bottom of the row that holds `line`, as drawn last frame
+    /// (a folded line gives its fold's row). `None` before the first frame. Unwrapped layout.
+    pub fn line_span(&self, line: usize) -> Option<(f32, f32)> {
+        let g = self.geometry?;
+        let row = FoldMap { folds: &self.folds }.row_of_line(line);
+        Some((g.row_top(row), g.row_top(row + 1)))
     }
 
     /// Moves the primary caret and drops the others (a plain click).
@@ -857,6 +901,8 @@ pub struct EditorView<'a> {
     theme: Option<&'a EditorTheme>,
     font_size: f32,
     read_only: bool,
+    bands: &'a [LineBand],
+    name: Option<&'a str>,
 }
 
 const MARK_W: f32 = 5.0;
@@ -899,7 +945,7 @@ enum MenuCmd {
 
 impl<'a> EditorView<'a> {
     pub fn new(doc: &'a mut Document, state: &'a mut EditorState) -> Self {
-        EditorView { doc, state, marks: &[], annotations: &[], problems: &[], theme: None, font_size: 13.0, read_only: false }
+        EditorView { doc, state, marks: &[], annotations: &[], problems: &[], theme: None, font_size: 13.0, read_only: false, bands: &[], name: None }
     }
 
     /// Problems to underline and to mark on the scrollbar, sorted by `start`.
@@ -936,8 +982,21 @@ impl<'a> EditorView<'a> {
         self
     }
 
+    /// Backgrounds behind whole lines, sorted by `lines.start` (unwrapped layout only).
+    pub fn line_bands(mut self, bands: &'a [LineBand]) -> Self {
+        self.bands = bands;
+        self
+    }
+
+    /// The name in the accessibility labels (`Editor <name>`) instead of the file name, for
+    /// views that show the same file side by side.
+    pub fn name(mut self, name: &'a str) -> Self {
+        self.name = Some(name);
+        self
+    }
+
     pub fn show(self, ui: &mut Ui) -> EditorResponse {
-        let EditorView { doc, state, marks, annotations, problems, theme, font_size, read_only } = self;
+        let EditorView { doc, state, marks, annotations, problems, theme, font_size, read_only, bands, name: name_override } = self;
         let default_theme;
         let theme = match theme {
             Some(t) => t,
@@ -1036,7 +1095,10 @@ impl<'a> EditorView<'a> {
         let resp = ui.interact(text_rect, id, Sense::click_and_drag());
         let gutter_resp = ui.interact(gutter_rect, id.with("gutter"), Sense::click());
         // Accessibility names, which UI tests also use to find the editor.
-        let name = doc.path().and_then(|p| p.file_name()).map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        let name = match name_override {
+            Some(n) => n.to_string(),
+            None => doc.path().and_then(|p| p.file_name()).map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(),
+        };
         resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Other, true, format!("Editor {name}")));
         gutter_resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Other, true, format!("Gutter {name}")));
 
@@ -1057,11 +1119,21 @@ impl<'a> EditorView<'a> {
         let wrap_on = state.soft_wrap && wrappable;
         let wrap_map = RefCell::new(std::mem::take(&mut state.wrap));
         let wrap_cols = wrap_cols(text_rect.width(), char_w);
+        // Folds belong to the unwrapped layout; soft wrap keeps them for later.
+        let mut folds = std::mem::take(&mut state.folds);
+        let kept_folds = if wrap_on {
+            std::mem::take(&mut folds)
+        } else {
+            valid_folds(&mut folds, line_count);
+            Vec::new()
+        };
+        let fold_map = FoldMap { folds: &folds };
+        let mut unfold: Option<usize> = None;
         // Hit tests aim at what the last frame drew, in the layout it drew with.
-        let no_wrap = NoWrap { origin, line_h, ppp, char_w, line_count, drawn: &drawn };
+        let no_wrap = NoWrap { origin, line_h, ppp, char_w, line_count, drawn: &drawn, folds: fold_map };
         let soft = SoftWrap { map: &wrap_map, drawn: &drawn_rows, origin, line_h, ppp, char_w, lean: Cell::new(false) };
         let layout: &dyn RowLayout = if state.drawn_wrap { &soft } else { &no_wrap };
-        let line_moves = LineMoves;
+        let line_moves = LineMoves { folds: fold_map };
         let lean_in = if wrap_on && state.lean.1 == doc.version() { std::mem::take(&mut state.lean.0) } else { Vec::new() };
         let row_moves = RowMoves { cols: wrap_cols, map: &wrap_map, lean_in: RefCell::new(lean_in), lean_out: RefCell::new(Vec::new()) };
         let moves: &dyn CaretMoves = if wrap_on { &row_moves } else { &line_moves };
@@ -1089,6 +1161,12 @@ impl<'a> EditorView<'a> {
         for (p, middle_pressed) in presses {
             if resp.hovered() && text_rect.contains(p) {
                 resp.request_focus();
+                // A press on a fold's row opens the fold and places no caret.
+                if let Some(i) = (!state.drawn_wrap).then(|| no_wrap.fold_at(p.y)).flatten() {
+                    unfold = Some(i);
+                    state.click_chain.reset();
+                    continue;
+                }
                 let idx = hit(doc, p);
                 // A press past the end of a wrapped row keeps the caret at that row's end.
                 let leans = layout.leans();
@@ -1419,7 +1497,7 @@ impl<'a> EditorView<'a> {
         } else {
             Vec2::new(
                 (doc.max_line_chars() as f32 + 8.0) * char_w + TEXT_PAD * 2.0,
-                line_count as f32 * line_h + (view.y - 3.0 * line_h).max(0.0),
+                fold_map.rows(line_count) as f32 * line_h + (view.y - 3.0 * line_h).max(0.0),
             )
         };
         // Horizontal scroll is ours, not the ScrollArea's: the vertical ScrollArea keeps its
@@ -1452,6 +1530,8 @@ impl<'a> EditorView<'a> {
             }
         }
         state.scroll.x = sx.clamp(0.0, max_x);
+        // A caret that a key, a reveal or a find moved into a fold opens it, like IDEA.
+        let check_fold = caret_moved || state.pending_reveal.is_some() || state.find_scroll.is_some();
         let mut new_scroll = None;
         if let Some(pos) = state.pending_reveal.take() {
             let idx = doc.position_to_char(pos);
@@ -1511,7 +1591,7 @@ impl<'a> EditorView<'a> {
                 let col = v.column.min(doc.line_len(line));
                 moves.place(doc, doc.line_start(line) + col).1
             } else {
-                v.line.min(line_count.saturating_sub(1))
+                fold_map.row_of_line(v.line.min(line_count.saturating_sub(1)))
             };
             let y = (row as f32 * line_h + v.offset.clamp(0.0, line_h)).clamp(0.0, (content.y - view.y).max(0.0));
             new_scroll = Some(Vec2::new(v.x.clamp(0.0, max_x), y));
@@ -1530,13 +1610,18 @@ impl<'a> EditorView<'a> {
                     let line = a.line.min(m.line_count().saturating_sub(1));
                     m.row_of_line(line) + a.k.min(m.rows(line) - 1)
                 } else {
-                    a.line.min(line_count.saturating_sub(1))
+                    fold_map.row_of_line(a.line.min(line_count.saturating_sub(1)))
                 };
                 if wrap_on != state.drawn_wrap || (wrap_on && row != a.row) {
                     let y = (row as f32 * line_h + a.off).clamp(0.0, (content.y - view.y).max(0.0));
                     new_scroll = Some(Vec2::new(if wrap_on { 0.0 } else { state.scroll.x }, y));
                 }
             }
+        }
+
+        if check_fold && unfold.is_none() && !fold_map.is_empty() {
+            let line = doc.char_to_position(state.carets.primary().head).line;
+            unfold = fold_map.fold_of_line(line);
         }
 
         // The sides that still belong to a caret head.
@@ -1617,11 +1702,16 @@ impl<'a> EditorView<'a> {
                     occurrence_current: occurrence_current.clone(),
                 }
                 .paint(ui, viewport, origin);
+                state.fold_rects.clear();
                 return (Vec::new(), drawn_scroll, caret);
             }
-            let first = ((viewport.min.y / line_h).floor().max(0.0) as usize).min(line_count);
-            let last = ((viewport.max.y / line_h).ceil().max(0.0) as usize + 1).min(line_count);
+            // Rows, which are lines unless a fold hides some.
+            let total_rows = fold_map.rows(line_count);
+            let first = ((viewport.min.y / line_h).floor().max(0.0) as usize).min(total_rows);
+            let last = ((viewport.max.y / line_h).ceil().max(0.0) as usize + 1).min(total_rows);
             let visible = first..last;
+            let row_line = |row: usize| if row >= total_rows { line_count } else { fold_map.line_of_row(row).0 };
+            let (first, last) = (row_line(first), row_line(last));
 
             let version = doc.highlight_version();
             let cached = state
@@ -1658,9 +1748,23 @@ impl<'a> EditorView<'a> {
             let mut drawn_now = std::mem::take(&mut drawn_buf);
             drawn_now.clear();
             let mut caret = None;
-            for line in visible {
-                let y = row_top(origin.y, line_h, ppp, line as isize);
-                let y_end = row_top(origin.y, line_h, ppp, line as isize + 1);
+            let mut fold_rects = Vec::new();
+            for row in visible {
+                let y = row_top(origin.y, line_h, ppp, row as isize);
+                let y_end = row_top(origin.y, line_h, ppp, row as isize + 1);
+                let (line, fold) = fold_map.line_of_row(row);
+                // Folds were checked against the text before this frame's edits.
+                if line >= line_count {
+                    break;
+                }
+                if let Some(i) = fold {
+                    let r = Rect::from_min_max(Pos2::new(full_left + TEXT_PAD, y + 2.0), Pos2::new(full_right - TEXT_PAD, y_end - 2.0));
+                    painter.rect_filled(r, 3.0, theme.gutter_background);
+                    painter.rect_stroke(r, 3.0, Stroke::new(1.0_f32, theme.gutter_separator), egui::StrokeKind::Inside);
+                    painter.text(r.center(), Align2::CENTER_CENTER, &folds[i].label, FontId::proportional(font_size - 1.0), theme.line_number_current);
+                    fold_rects.push((i, r));
+                    continue;
+                }
                 let text = doc.line(line);
                 let line_start = doc.line_start(line);
                 let line_chars = text.chars().count();
@@ -1723,6 +1827,16 @@ impl<'a> EditorView<'a> {
                         0.0,
                         theme.current_line,
                     );
+                }
+                // Merge chunks over the caret line: a band behind the lines, or a bar where the
+                // other side has lines.
+                let bi = bands.partition_point(|b| b.lines.start <= line);
+                for b in bands[..bi].iter().rev().take_while(|b| b.lines.start == line || b.lines.contains(&line)) {
+                    if b.lines.is_empty() {
+                        painter.rect_filled(Rect::from_min_max(Pos2::new(full_left, y - 1.0), Pos2::new(full_right, y + 1.0)), 0.0, b.fill);
+                    } else {
+                        painter.rect_filled(Rect::from_min_max(Pos2::new(full_left, y), Pos2::new(full_right, y_end)), 0.0, b.fill);
+                    }
                 }
 
                 // Under the selection and the find matches.
@@ -1828,6 +1942,14 @@ impl<'a> EditorView<'a> {
                     drawn_now.push(DrawnLine { line, window_start: window.start, galley });
                 }
             }
+            // A bar after the last line: the other side has lines past the end.
+            if last >= line_count {
+                let y = row_top(origin.y, line_h, ppp, total_rows as isize);
+                for b in bands.iter().filter(|b| b.lines.is_empty() && b.lines.start >= line_count) {
+                    painter.rect_filled(Rect::from_min_max(Pos2::new(full_left, y - 1.0), Pos2::new(full_right, y + 1.0)), 0.0, b.fill);
+                }
+            }
+            state.fold_rects = fold_rects;
             (drawn_now, drawn_scroll, caret)
         });
         let drawn_caret;
@@ -1860,7 +1982,7 @@ impl<'a> EditorView<'a> {
                 let marks = if wrap_on {
                     wrap_scroll_marks(doc, &wrap_map.borrow(), occ, |r| r.start, text_rect.height(), content.y, line_h)
                 } else {
-                    scroll_marks(doc, occ, |r| r.start, text_rect.height(), content.y, line_h)
+                    scroll_marks(doc, fold_map, occ, |r| r.start, text_rect.height(), content.y, line_h)
                 };
                 state.occurrence_marks = (key, marks);
             }
@@ -1880,7 +2002,7 @@ impl<'a> EditorView<'a> {
                 let marks = if wrap_on {
                     wrap_scroll_marks(doc, &wrap_map.borrow(), state.carets.all(), |s| state.shown_head(inner, s), text_rect.height(), content.y, line_h)
                 } else {
-                    scroll_marks(doc, state.carets.all(), |s| state.shown_head(inner, s), text_rect.height(), content.y, line_h)
+                    scroll_marks(doc, fold_map, state.carets.all(), |s| state.shown_head(inner, s), text_rect.height(), content.y, line_h)
                 };
                 state.caret_marks = (key, marks);
             }
@@ -1900,7 +2022,7 @@ impl<'a> EditorView<'a> {
                 let marks = if wrap_on {
                     wrap_scroll_marks(doc, &wrap_map.borrow(), state.find.matches(), |m| m.range.start, text_rect.height(), content.y, line_h)
                 } else {
-                    scroll_marks(doc, state.find.matches(), |m| m.range.start, text_rect.height(), content.y, line_h)
+                    scroll_marks(doc, fold_map, state.find.matches(), |m| m.range.start, text_rect.height(), content.y, line_h)
                 };
                 state.find_marks = (key, marks);
             }
@@ -1925,7 +2047,7 @@ impl<'a> EditorView<'a> {
                     let ys = if wrap_on {
                         wrap_scroll_marks(doc, &wrap_map.borrow(), &starts, |s| *s, text_rect.height(), content.y, line_h)
                     } else {
-                        scroll_marks(doc, &starts, |s| *s, text_rect.height(), content.y, line_h)
+                        scroll_marks(doc, fold_map, &starts, |s| *s, text_rect.height(), content.y, line_h)
                     };
                     out.extend(ys.into_iter().map(|y| (sev, y)));
                 }
@@ -1991,7 +2113,22 @@ impl<'a> EditorView<'a> {
         let last = (((state.drawn_scroll.y + view.y) / line_h).ceil() as usize + 1).min(line_count);
         let numbers_right = gutter_rect.min.x + ann_w + numbers_w;
         let text_y = ((line_h - row_h) / 2.0).round();
-        if !wrap_on {
+        if !wrap_on && !fold_map.is_empty() {
+            let total_rows = fold_map.rows(line_count);
+            let (first_row, last_row) = (first.min(total_rows), last.min(total_rows));
+            let line_of = |row: usize| if row >= total_rows { line_count } else { fold_map.line_of_row(row).0 };
+            let (l0, l1) = (line_of(first_row), line_of(last_row));
+            let caret_lines: Vec<usize> = state.carets.touching(doc.line_start(l0)..doc.line_start(l1.min(line_count.saturating_sub(1)))).iter().map(|s| doc.char_to_position(state.shown_head(inner, s)).line).collect();
+            for row in first_row..last_row {
+                let (line, fold) = fold_map.line_of_row(row);
+                if fold.is_some() {
+                    continue;
+                }
+                let y = row_top(top, line_h, ppp, row as isize);
+                let color = if caret_lines.contains(&line) { theme.line_number_current } else { theme.line_number };
+                painter.text(Pos2::new(numbers_right - char_w, y + text_y), Align2::RIGHT_TOP, (line + 1).to_string(), font.clone(), color);
+            }
+        } else if !wrap_on {
             // Lines with a caret, among the visible ones.
             let mut caret_rows = vec![false; last.saturating_sub(first)];
             for s in state.carets.touching(doc.line_start(first)..doc.line_start(last)) {
@@ -2036,11 +2173,15 @@ impl<'a> EditorView<'a> {
             wrap_gutter(&painter, &gutter, doc, &wrap_map.borrow(), carets, (state.drawn_scroll.y, view.y), annotations, marks);
         } else {
             for &(line, mark) in marks {
-                if line < first || line > last {
+                if fold_map.fold_of_line(line).is_some() {
                     continue;
                 }
-                let y = row_top(top, line_h, ppp, line as isize);
-                let y_end = row_top(top, line_h, ppp, line as isize + 1);
+                let row = fold_map.row_of_line(line);
+                if row < first || row > last {
+                    continue;
+                }
+                let y = row_top(top, line_h, ppp, row as isize);
+                let y_end = row_top(top, line_h, ppp, row as isize + 1);
                 match mark {
                     GutterMark::Added | GutterMark::Modified => {
                         let color = if mark == GutterMark::Added { theme.mark_added } else { theme.mark_modified };
@@ -2069,11 +2210,14 @@ impl<'a> EditorView<'a> {
             resp.hover_pos().and_then(|p| soft.hover(doc, p))
         } else if resp.hovered() {
             resp.hover_pos().and_then(|p| {
-                let line = line_at_y(origin.y, line_h, ppp, p.y);
-                if line < 0 || line as usize >= line_count {
+                let row = line_at_y(origin.y, line_h, ppp, p.y);
+                if row < 0 {
                     return None;
                 }
-                let line = line as usize;
+                let (line, fold) = fold_map.line_of_row(row as usize);
+                if fold.is_some() || line >= line_count {
+                    return None;
+                }
                 let text = doc.line(line);
                 // The char under the pointer, not the nearest boundary.
                 let d = display_col_at(&state.drawn, line, p.x - origin.x, char_w);
@@ -2085,7 +2229,7 @@ impl<'a> EditorView<'a> {
         };
         // The top line, so a re-wrap or a toggle next frame keeps it in place.
         let top_row = (state.drawn_scroll.y / line_h).floor().max(0.0) as usize;
-        let (line, k) = if wrap_on { wrap_map.borrow().line_of_row(top_row) } else { (top_row, 0) };
+        let (line, k) = if wrap_on { wrap_map.borrow().line_of_row(top_row) } else { (fold_map.line_of_row(top_row).0, 0) };
         state.anchor = Some(Anchor { line, k, row: top_row, off: state.drawn_scroll.y - top_row as f32 * line_h });
         state.drawn_wrap = wrap_on;
         // An editor without soft wrap keeps no row table.
@@ -2099,6 +2243,12 @@ impl<'a> EditorView<'a> {
             ui.ctx().request_repaint_after(Duration::from_millis(16));
         }
 
+        let unfolded = unfold.map(|i| {
+            ui.ctx().request_repaint();
+            folds.remove(i)
+        });
+        state.folds = if wrap_on { kept_folds } else { folds };
+
         EditorResponse {
             changed,
             action: out_action,
@@ -2108,6 +2258,7 @@ impl<'a> EditorView<'a> {
             cursor: caret_pos,
             has_focus,
             response: resp,
+            unfolded,
         }
     }
 }
@@ -2549,20 +2700,23 @@ fn span_units(first: &Range<usize>, under: Range<usize>) -> Selection {
     }
 }
 
-fn scroll_marks<T>(doc: &Document, items: &[T], start: impl Fn(&T) -> usize, track_h: f32, content_h: f32, line_h: f32) -> Vec<f32> {
+fn scroll_marks<T>(doc: &Document, folds: FoldMap, items: &[T], start: impl Fn(&T) -> usize, track_h: f32, content_h: f32, line_h: f32) -> Vec<f32> {
     let mut out = Vec::new();
     let line_count = doc.line_count();
     if track_h <= 0.0 || content_h <= 0.0 {
         return out;
     }
+    let rows = folds.rows(line_count);
+    let line_of = |row: usize| if row >= rows { line_count } else { folds.line_of_row(row).0 };
     let per_px = content_h / track_h / line_h;
     let mut y = 0.0;
     while y < track_h {
-        let l0 = ((y * per_px).floor() as usize).min(line_count);
-        let l1 = (((y + 2.0) * per_px).ceil() as usize).max(l0 + 1).min(line_count);
-        if l0 >= line_count {
+        let r0 = ((y * per_px).floor() as usize).min(rows);
+        let r1 = (((y + 2.0) * per_px).ceil() as usize).max(r0 + 1).min(rows);
+        if r0 >= rows {
             break;
         }
+        let (l0, l1) = (line_of(r0), line_of(r1));
         let c0 = doc.line_start(l0);
         let c1 = if l1 >= line_count { doc.len_chars() + 1 } else { doc.line_start(l1) };
         let i = items.partition_point(|m| start(m) < c0);

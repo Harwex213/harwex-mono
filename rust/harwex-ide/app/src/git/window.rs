@@ -385,12 +385,14 @@ pub fn tool_window(state: &mut AppState, ui: &mut Ui) {
                 .width_range(150.0..=600.0)
                 .frame(Frame::NONE.inner_margin(Margin { left: 0, right: 6, top: 0, bottom: 0 }))
                 .show_inside(ui, |ui| actions = branch_tree::show(state, &mut tab.tree, id, ui));
-            egui::CentralPanel::default().frame(Frame::NONE.inner_margin(Margin { left: 6, right: 0, top: 0, bottom: 0 })).show_inside(ui, |ui| log::log_body(state, &mut tab.view, ui));
+            // The filter goes in before the log draws, so the press frame already starts the
+            // load and shows the loading bar.
             for a in actions.iter() {
                 if let TreeAction::Filter(f) = a {
                     tab.view.set_branches(f.clone());
                 }
             }
+            egui::CentralPanel::default().frame(Frame::NONE.inner_margin(Margin { left: 6, right: 0, top: 0, bottom: 0 })).show_inside(ui, |ui| log::log_body(state, &mut tab.view, ui));
         }
         TabKind::Console => super::console::body(state, ui),
         TabKind::History(view) => log::log_body(state, view, ui),

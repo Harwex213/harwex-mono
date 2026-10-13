@@ -9,6 +9,7 @@ mod caret;
 mod click;
 mod document;
 mod find;
+mod folds;
 mod hscroll;
 mod ime;
 mod languages;

@@ -10,6 +10,7 @@ use ide_git::{ChangeKind, ChangedFile, Oid};
 
 use super::log::{self, LogView};
 use crate::icons::{self, Icon};
+use crate::speed_search;
 use crate::state::AppState;
 use crate::theme;
 
@@ -176,6 +177,10 @@ pub struct ChangesPane {
     view_height: f32,
     /// The horizontal scroll offset as of the last frame.
     scroll_x: f32,
+    /// The speed search text typed into the focused tree; empty while no search runs.
+    search: String,
+    /// Whether a row matched `search` when it last changed (the field turns red if not).
+    search_found: bool,
 }
 
 impl ChangesPane {
@@ -209,6 +214,36 @@ impl ChangesPane {
                 }
             })
             .collect()
+    }
+
+    /// The speed search text; empty while no search runs.
+    pub fn search(&self) -> &str {
+        &self.search
+    }
+
+    /// Moves the selection to a speed search match. The search runs over every row as if all
+    /// folders were open (the root row is not searched), and the folders above the match
+    /// expand, like IDEA.
+    fn search_move(&mut self, keys: &speed_search::Keys) {
+        let all = self.tree.rows(&HashSet::new());
+        let hits: Vec<usize> = all.iter().enumerate().filter(|&(i, &(n, _))| i > 0 && speed_search::matches(&self.tree.nodes[n].name, &self.search).is_some()).map(|(i, _)| i).collect();
+        if keys.changed {
+            self.search_found = !hits.is_empty();
+        }
+        let cur = self.selected.last().and_then(|s| all.iter().position(|&(n, _)| &self.tree.nodes[n].path == s));
+        let Some(to) = speed_search::step(&hits, cur, keys) else { return };
+        // The rows above the match with a smaller depth are its folders.
+        let mut depth = all[to].1;
+        for &(n, d) in all[..to].iter().rev() {
+            if d < depth {
+                self.collapsed.remove(&self.tree.nodes[n].path);
+                depth = d;
+            }
+        }
+        let path = self.tree.nodes[all[to].0].path.clone();
+        self.scroll_to = self.tree.rows(&self.collapsed).iter().position(|&(n, _)| self.tree.nodes[n].path == path);
+        self.selected = vec![path.clone()];
+        self.anchor = Some(path);
     }
 
     /// Paths of the selected rows.
@@ -331,6 +366,11 @@ pub(super) fn show(state: &mut AppState, view: &mut LogView, ui: &mut Ui) {
     if collapse_all {
         pane.collapsed = pane.tree.folders().map(|n| n.path.clone()).collect();
     }
+    let search_keys = search_keys(pane, view.id, ui);
+    // The speed search field covers the bar above the tree, so it never hides a row.
+    if !pane.search.is_empty() {
+        speed_search::tree_field(ui, bar, &pane.search, pane.search_found, crate::workspace::wid(("git-changes-speed-search", view.id)));
+    }
 
     let oids = view.selection_oldest_first();
     egui::CentralPanel::default().frame(Frame::NONE).show_inside(ui, |ui| {
@@ -350,6 +390,32 @@ pub(super) fn show(state: &mut AppState, view: &mut LogView, ui: &mut Ui) {
             run_file_action(state, oids, files, action);
         }
     });
+    // Enter acts on the selected match (the tree's own Enter) and ends the search, like IDEA.
+    if search_keys.enter {
+        view.changes.search.clear();
+    }
+}
+
+/// The speed search keys of a view's changes tree, read before the tree's own keys. The search
+/// lives only while the tree has the focus.
+fn search_keys(pane: &mut ChangesPane, view_id: u64, ui: &Ui) -> speed_search::Keys {
+    let focus = focus_id(view_id);
+    if !ui.memory(|m| m.has_focus(focus)) {
+        pane.search.clear();
+        return speed_search::Keys::default();
+    }
+    // The arrows belong to the tree, not to egui's focus navigation. While a speed search runs,
+    // Escape clears it; otherwise egui's Escape drops the focus.
+    let escape = !pane.search.is_empty();
+    ui.memory_mut(|m| m.set_focus_lock_filter(focus, egui::EventFilter { tab: false, horizontal_arrows: true, vertical_arrows: true, escape }));
+    if ui.ctx().is_context_menu_open() || pane.files().is_none_or(|f| f.is_empty()) {
+        return speed_search::Keys::default();
+    }
+    let keys = speed_search::take_keys(ui, &mut pane.search);
+    if keys.moves() {
+        pane.search_move(&keys);
+    }
+    keys
 }
 
 /// The dim text after a row's name: a folder's file count, a renamed file's old name.
@@ -442,7 +508,16 @@ fn tree(state: &mut AppState, view_id: u64, pane: &mut ChangesPane, ui: &mut Ui)
                 None => t.text,
             };
             let clip = painter.with_clip_rect(rect.intersect(painter.clip_rect()));
-            let name_rect = clip.text(pos2(x + 34.0, cy), Align2::LEFT_CENTER, name, t.ui_font(), color);
+            let hits = if i == 0 || pane.search.is_empty() { None } else { speed_search::matches(name, &pane.search) };
+            let name_rect = match hits {
+                Some(h) => {
+                    let g = clip.layout_job(speed_search::name_job(name, &h, t.ui_font(), color));
+                    let r = Rect::from_min_size(pos2(x + 34.0, cy - g.size().y / 2.0), g.size());
+                    clip.galley(r.min, g, color);
+                    r
+                }
+                None => clip.text(pos2(x + 34.0, cy), Align2::LEFT_CENTER, name, t.ui_font(), color),
+            };
             if let Some(extra) = row_extra(row) {
                 clip.text(pos2(name_rect.right() + 8.0, cy), Align2::LEFT_CENTER, extra, t.ui_font(), t.text_dim);
             }
@@ -488,6 +563,7 @@ fn tree(state: &mut AppState, view_id: u64, pane: &mut ChangesPane, ui: &mut Ui)
     pane.view_height = out.inner_rect.height();
     if let Some(i) = pressed {
         pane.click_row(&rows, i, command, shift);
+        pane.search.clear();
     }
     if let Some(i) = right {
         if !pane.selected.contains(&rows[i].path) {

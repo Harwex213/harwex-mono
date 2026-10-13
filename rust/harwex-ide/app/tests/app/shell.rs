@@ -305,7 +305,7 @@ fn search_everywhere_ranking_with_cmd_shift_o() {
 
 /// A row whose path is cut with `…` expands in place on hover (IDEA's expandable item): in the
 /// same frame an overlay on the row shows the whole row on one line. The overlay keeps the
-/// row's right edge and grows to the left, at most to the screen's left edge; text that still
+/// row's left edge and grows to the right, at most to the screen's right edge; text that still
 /// does not fit cuts the folder first. A row that fits shows none. A file name that alone does
 /// not fit loses its middle, in the row and in the overlay, and keeps its extension.
 #[test]
@@ -338,8 +338,9 @@ fn search_everywhere_expands_cut_row() {
     ide.move_to(row.center());
     let (rect, text) = expanded(&ide).expect("the overlay shows in the frame the pointer arrives");
     assert_eq!(text, label, "the overlay holds the whole row");
-    assert_eq!((rect.max, rect.height()), (row.max, row.height()), "the overlay keeps the row's right edge");
-    assert!(rect.min.x < row.min.x - 20.0 && rect.min.x >= 0.0, "the overlay grows left: {rect:?} vs {row:?}");
+    let screen = ide.ctx().screen_rect();
+    assert_eq!((rect.min, rect.height()), (row.min, row.height()), "the overlay keeps the row's left edge");
+    assert!(rect.max.x > row.max.x + 20.0 && rect.max.x <= screen.max.x, "the overlay grows right: {rect:?} vs {row:?}");
     assert!(!ide.shows_text(deep), "no tooltip");
     ide.snapshot_here("search_expanded_row");
 
@@ -353,8 +354,8 @@ fn search_everywhere_expands_cut_row() {
     let row = ide.rect(&long_label);
     ide.move_to(row.center());
     let (rect, text) = expanded(&ide).expect("overlay of the long name");
-    assert_eq!(rect.max, row.max);
-    assert!(rect.min.x.abs() < 0.5, "the overlay stops at the screen's left edge: {rect:?}");
+    assert_eq!(rect.min, row.min);
+    assert!((rect.max.x - screen.max.x).abs() < 0.5, "the overlay stops at the screen's right edge: {rect:?}");
     assert!(text.starts_with("generated_very_long") && text.ends_with("_tail.ts") && text.contains('…'), "{text}");
     assert!(!text.contains("  src"), "the folder goes first: {text}");
     ide.snapshot_here("search_long_name");
@@ -364,7 +365,8 @@ fn search_everywhere_expands_cut_row() {
     let row = ide.rect(&label);
     ide.move_to(row.center());
     let (rect, text) = expanded(&ide).expect("overlay in a narrow window");
-    assert!(rect.max == row.max && rect.min.x.abs() < 0.5, "{rect:?} vs {row:?}");
+    let screen = ide.ctx().screen_rect();
+    assert!(rect.min == row.min && (rect.max.x - screen.max.x).abs() < 0.5, "{rect:?} vs {row:?}");
     assert_eq!(rect.height(), row.height(), "one line");
     assert!(text.starts_with("validated_password_field_utils.ts  packages/") && text.ends_with('…'), "the folder is cut: {text}");
 }

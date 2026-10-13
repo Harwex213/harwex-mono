@@ -79,6 +79,13 @@ pub enum RepoState {
     Other,
 }
 
+/// Where a stopped rebase stands: `step` commits replayed or in work, of `total`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RebaseProgress {
+    pub step: usize,
+    pub total: usize,
+}
+
 impl Repo {
     // ---- Remote -------------------------------------------------------------------------
 
@@ -426,6 +433,26 @@ impl Repo {
         })
     }
 
+    /// The progress of a rebase in progress, `None` otherwise. Only commands that make a commit
+    /// count (`pick`, `edit`, ...): git's own `msgnum`/`end` also count `update-ref` and `exec`
+    /// lines.
+    pub fn rebase_progress(&self) -> Result<Option<RebaseProgress>> {
+        let git_dir = self.open()?.path().to_path_buf();
+        let merge = git_dir.join("rebase-merge");
+        if merge.is_dir() {
+            let count = |name: &str| std::fs::read_to_string(merge.join(name)).map(|t| t.lines().filter(|l| makes_commit(l)).count()).unwrap_or(0);
+            let done = count("done");
+            let total = done + count("git-rebase-todo");
+            return Ok((total > 0).then_some(RebaseProgress { step: done.max(1), total }));
+        }
+        let apply = git_dir.join("rebase-apply");
+        let num = |name: &str| std::fs::read_to_string(apply.join(name)).ok().and_then(|t| t.trim().parse::<usize>().ok());
+        Ok(match (num("next"), num("last")) {
+            (Some(step), Some(total)) if apply.is_dir() && total > 0 => Some(RebaseProgress { step: step.min(total), total }),
+            _ => None,
+        })
+    }
+
     /// Aborts whatever merge, rebase, cherry-pick or revert is in progress.
     pub fn abort_operation(&self) -> Result<CommandOutcome> {
         let args: &[&str] = match self.state()? {
@@ -449,4 +476,10 @@ impl Repo {
         };
         self.git(args)
     }
+}
+
+/// A todo line of an interactive rebase that replays a commit.
+fn makes_commit(line: &str) -> bool {
+    let cmd = line.split_whitespace().next().unwrap_or("");
+    matches!(cmd, "pick" | "p" | "reword" | "r" | "edit" | "e" | "squash" | "s" | "fixup" | "f" | "merge" | "m")
 }

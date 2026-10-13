@@ -12,7 +12,8 @@ mod table;
 use std::collections::HashMap;
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use egui::{Context, Frame, Key, Margin, Modal, RichText, TextEdit, Ui};
@@ -60,6 +61,8 @@ pub struct LogUi {
     /// A view was drawn once, so ref moves matter.
     drawn: bool,
     pub(crate) last_load_ms: Option<f64>,
+    /// Tests: while set, log loads wait on their worker (`hold_loads`).
+    hold: Option<Arc<AtomicBool>>,
 }
 
 impl LogUi {
@@ -81,6 +84,15 @@ impl LogUi {
     /// The commit is the git user's own: same email, or same name when no email is set.
     pub fn is_me(&self, c: &CommitInfo) -> bool {
         self.me.as_ref().is_some_and(|(name, email)| if email.is_empty() { !name.is_empty() && c.author_name == *name } else { c.author_email.eq_ignore_ascii_case(email) })
+    }
+
+    /// Tests: holds every log load that starts from now on until the returned flag is cleared,
+    /// so a test can see the loading bar. Dropping the hold needs `store(false)`.
+    #[doc(hidden)]
+    pub fn hold_loads(&mut self) -> Arc<AtomicBool> {
+        let flag = Arc::new(AtomicBool::new(true));
+        self.hold = Some(flag.clone());
+        flag
     }
 
     fn post(&mut self, view: u64, msg: ViewMsg) {
@@ -476,8 +488,34 @@ pub fn log_body(state: &mut AppState, view: &mut LogView, ui: &mut Ui) {
     // scroll bar takes the press and the splitter can be grabbed only right of the edge.
     egui::CentralPanel::default().frame(Frame::NONE.inner_margin(Margin { left: 0, right: 6, top: 0, bottom: 0 })).show_inside(ui, |ui| {
         filters::bar(state, view, ui);
+        let table_rect = ui.available_rect_before_wrap();
         table::show(state, view, ui);
+        if view.loading {
+            loading_bar(ui, table_rect, view.id, state.deterministic);
+        }
     });
+}
+
+/// Height of the loading bar at the table's bottom edge.
+const LOADING_BAR_H: f32 = 2.0;
+
+/// A thin moving bar over the bottom edge of the commit table while a page loads. It is only
+/// painted, never laid out, so the table, the filter bar and the changes pane keep their
+/// place. The load reports no share, so a segment moves; snapshots hold it at the start.
+fn loading_bar(ui: &mut Ui, table: egui::Rect, view_id: u64, deterministic: bool) {
+    let rect = egui::Rect::from_min_max(egui::pos2(table.left(), table.bottom() - LOADING_BAR_H), table.right_bottom());
+    // Hover-only: rows under it keep their clicks.
+    let node = ui.interact(rect, crate::workspace::wid(("git-log-loading", view_id)), egui::Sense::hover());
+    crate::util::label_widget(&node, egui::WidgetType::ProgressIndicator, "Log loading");
+    let w = rect.width() * 0.3;
+    let x = if deterministic { rect.min.x } else { rect.min.x + (rect.width() + w) * (ui.input(|i| i.time) * 0.8).fract() as f32 - w };
+    let fill = egui::Rect::from_min_max(egui::pos2(x.max(rect.min.x), rect.min.y), egui::pos2((x + w).min(rect.max.x), rect.max.y));
+    if fill.width() > 0.0 {
+        ui.painter().rect_filled(fill, 0.0, theme::T.accent);
+    }
+    if !deterministic {
+        ui.ctx().request_repaint();
+    }
 }
 
 /// Loads `user.name`/`user.email` once per project.
@@ -512,8 +550,10 @@ fn reload(state: &mut AppState, view: &mut LogView, keep: usize) {
     let generation = state.project_generation();
     let id = view.id;
     let started = Instant::now();
+    let hold = state.ws.git_ui.log.hold.clone();
     state.jobs.spawn_quiet(
         move || {
+            wait_hold(hold);
             let commits = repo.log(&filter, 0, limit).map_err(|e| e.to_string());
             let branches = repo.branches().ok();
             (filter, commits, branches)
@@ -532,6 +572,12 @@ fn reload(state: &mut AppState, view: &mut LogView, keep: usize) {
     );
 }
 
+fn wait_hold(hold: Option<Arc<AtomicBool>>) {
+    while hold.as_ref().is_some_and(|h| h.load(Ordering::Relaxed)) {
+        std::thread::sleep(Duration::from_millis(5));
+    }
+}
+
 fn load_more(state: &mut AppState, view: &mut LogView) {
     let Some(repo) = state.ws.git.repo.clone() else { return };
     if view.loading || !view.has_more {
@@ -544,8 +590,10 @@ fn load_more(state: &mut AppState, view: &mut LogView) {
     let generation = state.project_generation();
     let id = view.id;
     let started = Instant::now();
+    let hold = state.ws.git_ui.log.hold.clone();
     state.jobs.spawn_quiet(
         move || {
+            wait_hold(hold);
             let result = repo.log(&filter, skip, PAGE).map_err(|e| e.to_string());
             (filter, result)
         },

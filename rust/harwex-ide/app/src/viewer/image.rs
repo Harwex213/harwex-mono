@@ -2,10 +2,12 @@
 //!
 //! An image opens fitted to the view (never above 100 %). Cmd+= / Cmd+- and Cmd+wheel (or a
 //! pinch) zoom, a drag or the wheel pans a zoomed image, "1:1" shows it at its own size. A
-//! checkerboard shows through transparent pixels.
+//! checkerboard shows through transparent pixels. Cmd+C and the context menu's "Copy Image" copy
+//! the picture (`viewer::clip`).
 
 use std::any::Any;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use egui::{pos2, vec2, Color32, CursorIcon, Id, Key, Modifiers, Rect, Sense, TextureHandle, TextureOptions, Ui, Vec2};
 
@@ -148,8 +150,9 @@ fn checker(ctx: &egui::Context) -> TextureHandle {
 }
 
 /// Draws `pic` into `rect` under `view` and handles zoom and pan. `id` is the view's widget id;
-/// `label` its accessibility name.
-pub fn show_pic(ui: &mut Ui, rect: Rect, id: Id, label: &str, pic: &Ready, view: &mut ImageView) -> egui::Response {
+/// `label` its accessibility name. The bool is true when Cmd+C or the menu's "Copy Image" asked
+/// for a copy.
+pub fn show_pic(ui: &mut Ui, rect: Rect, id: Id, label: &str, pic: &Ready, view: &mut ImageView) -> (egui::Response, bool) {
     let resp = ui.interact(rect, id, Sense::click_and_drag());
     crate::util::label_widget(&resp, egui::WidgetType::Image, label);
     if resp.is_pointer_button_down_on() && !resp.has_focus() {
@@ -157,9 +160,22 @@ pub fn show_pic(ui: &mut Ui, rect: Rect, id: Id, label: &str, pic: &Ready, view:
     }
     let img = pic.size();
     let focused = ui.memory(|m| m.focused());
+    let mut copy = false;
     if focused.is_none() || focused == Some(id) {
         view.keys(ui, rect.size(), img);
+        // macOS sends Cmd+C as a Copy event with no key event.
+        copy = ui.input_mut(|i| {
+            let n = i.events.len();
+            i.events.retain(|e| !matches!(e, egui::Event::Copy));
+            i.events.len() != n
+        });
     }
+    resp.context_menu(|ui| {
+        if ui.add(egui::Button::new("Copy Image").shortcut_text("⌘C")).clicked() {
+            copy = true;
+            ui.close_menu();
+        }
+    });
     if resp.hovered() {
         let (zoom, scroll, pointer) = ui.input(|i| (i.zoom_delta(), i.smooth_scroll_delta, i.pointer.hover_pos()));
         if zoom != 1.0 {
@@ -184,7 +200,7 @@ pub fn show_pic(ui: &mut Ui, rect: Rect, id: Id, label: &str, pic: &Ready, view:
         painter.image(checker(ui.ctx()).id(), shown, uv, theme::T.image_tint);
         painter.image(pic.tex.id(), at, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), theme::T.image_tint);
     }
-    resp
+    (resp, copy)
 }
 
 /// A small toolbar button: an icon or a short text, with an accessibility label.
@@ -362,7 +378,13 @@ impl CustomTab for ImageTab {
             }
             Some((_, p)) => {
                 if let Some(r) = p.ready(ui.ctx(), &name) {
-                    show_pic(ui, body, id, &format!("Image {name}"), r, &mut self.view);
+                    let (_, copy) = show_pic(ui, body, id, &format!("Image {name}"), r, &mut self.view);
+                    if copy {
+                        // An SVG copies at the size the view shows it, in screen pixels.
+                        let scale = self.view.scale(body.size(), r.size()) * ui.ctx().pixels_per_point();
+                        let path = self.path.clone();
+                        env.jobs.post(move |state| super::clip::copy_file(state, path, scale));
+                    }
                 }
             }
         }
@@ -378,14 +400,18 @@ impl CustomTab for ImageTab {
 pub struct DiffImages {
     old: Option<Pic>,
     new: Option<Pic>,
+    /// The file bytes of each side, kept for Copy Image (the texture holds only scaled pixels).
+    old_bytes: Option<Arc<[u8]>>,
+    new_bytes: Option<Arc<[u8]>>,
     view: ImageView,
 }
 
 impl DiffImages {
     /// Decodes the sides that exist. Call it on a worker.
-    pub fn decode(old: Option<&[u8]>, new: Option<&[u8]>) -> DiffImages {
-        let side = |b: Option<&[u8]>| b.map(|b| Pic::from_result(super::decode(b, false)));
-        DiffImages { old: side(old), new: side(new), view: ImageView::default() }
+    pub fn decode(old: Option<Vec<u8>>, new: Option<Vec<u8>>) -> DiffImages {
+        let side = |b: &Option<Arc<[u8]>>| b.as_ref().map(|b| Pic::from_result(super::decode(b, false)));
+        let (old_bytes, new_bytes) = (old.map(Arc::from), new.map(Arc::from));
+        DiffImages { old: side(&old_bytes), new: side(&new_bytes), old_bytes, new_bytes, view: ImageView::default() }
     }
 
     pub fn view(&self) -> ImageView {
@@ -397,8 +423,9 @@ impl DiffImages {
     }
 
     /// Draws the panes: both side by side, or one when the file was added or deleted.
-    /// `titles` are the side headers (old, new).
-    pub fn ui(&mut self, ui: &mut Ui, key: &str, titles: (String, String)) {
+    /// `titles` are the side headers (old, new). Returns the bytes of the side whose menu (or
+    /// Cmd+C) asked for Copy Image.
+    pub fn ui(&mut self, ui: &mut Ui, key: &str, titles: (String, String)) -> Option<Arc<[u8]>> {
         let t = &theme::T;
         let (bar, body) = toolbar_rect(ui);
         let name = key.to_string();
@@ -423,6 +450,7 @@ impl DiffImages {
             bar_ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| status_text(ui, &format!("{}%", self.view.percent(pane, img)), t.text_dim));
         }
         ui.painter().hline(bar.x_range(), bar.max.y - 0.5, egui::Stroke::new(1.0_f32, t.border));
+        let mut copy = None;
         for (i, (side, title, pic)) in sides.into_iter().enumerate() {
             let pane = Rect::from_min_size(pos2(body.min.x + pane_w * i as f32, body.min.y), vec2(pane_w, body.height()));
             let head = Rect::from_min_size(pane.min, vec2(pane.width(), TOOLBAR_H));
@@ -440,12 +468,15 @@ impl DiffImages {
                     if let Some(r) = p.ready(ui.ctx(), &format!("{name}:{side}")) {
                         status_text(&mut foot_ui, &r.info(), t.text_dim);
                         let id = crate::workspace::wid(("image-diff", key, side));
-                        show_pic(ui, img_rect, id, &format!("Image {side} {title}"), r, &mut self.view);
+                        if show_pic(ui, img_rect, id, &format!("Image {side} {title}"), r, &mut self.view).1 {
+                            copy = if side == "old" { self.old_bytes.clone() } else { self.new_bytes.clone() };
+                        }
                     }
                 }
             }
         }
         ui.allocate_rect(Rect::from_min_max(bar.min, body.max), Sense::hover());
+        copy
     }
 }
 

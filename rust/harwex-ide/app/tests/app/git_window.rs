@@ -557,3 +557,120 @@ fn rebase_update_refs_moves_the_stack() {
     let full = ide_git::Repo::discover(&repo.dir).expect("repo").status().expect("status");
     assert_eq!(ide.state().ws.git.changes, full, "the incremental status equals a full one");
 }
+
+fn main_log_loading(s: &harwex_ide::state::AppState) -> bool {
+    s.ws.git_ui.window.log_tab(0).is_some_and(|t| t.view.is_loading())
+}
+
+/// A press on a branch shows the loading bar at the table's bottom edge in that same frame. The
+/// bar is painted over the table, so nothing moves; it stays while a newer pick replaces the
+/// load and goes away with the log.
+#[test]
+fn branch_pick_shows_loading_bar_at_once() {
+    let fx = Fixture::new(SUITE, "loading_bar");
+    let repo = branchy_repo(&fx);
+    let mut ide = Ide::open(SUITE, &repo.dir);
+    open_git(&mut ide);
+    assert!(!ide.has("Log loading"));
+    let still = ["Log filter bar", "Log changes pane", "Commit After merge", "Tree branch side"];
+    let before: Vec<_> = still.iter().map(|l| ide.rect(l)).collect();
+
+    let hold = ide.state_mut().ws.git_ui.log.hold_loads();
+    let at = ide.rect("Tree branch prototype/ostrov").center();
+    ide.pointer_frame(0.6, &[(at, true)]);
+    assert!(ide.has("Log loading"), "the press frame shows the bar");
+    assert!(main_log_loading(ide.state()));
+    let bar = ide.rect("Log loading");
+    let pane = ide.rect("Log changes pane");
+    assert!(bar.height() <= 3.0 && bar.right() <= pane.left() && bar.width() > 300.0, "{bar:?}");
+    for (l, r) in still.iter().zip(&before) {
+        assert_eq!(ide.rect(l), *r, "{l} moved when the bar showed");
+    }
+    ide.pointer_frame(0.05, &[(at, false)]);
+    ide.snapshot_running("loading_bar");
+    for (l, r) in still.iter().zip(&before) {
+        assert_eq!(ide.rect(l), *r, "{l} moved while the log loads");
+    }
+
+    // A second pick replaces the load: the bar stays, and the log shows the second branch.
+    let side = ide.rect("Tree branch side").center();
+    ide.pointer_frame(0.6, &[(side, true)]);
+    ide.pointer_frame(0.05, &[(side, false)]);
+    assert!(ide.has("Log loading"));
+    assert_eq!(active_title(&ide), "Log: side");
+    hold.store(false, std::sync::atomic::Ordering::Relaxed);
+    ide.wait_for("log loaded", |s| !main_log_loading(s));
+    ide.settle();
+    assert!(!ide.has("Log loading"));
+    let top = ide.state().ws.git_ui.window.log_tab(0).expect("log tab").view.commits()[0].summary.clone();
+    assert_eq!(top, "More side work");
+}
+
+/// Force push sits right of the button. With it on, the first press turns the button into
+/// "Confirm force push" in place; Esc or unticking go back; the second press pushes with lease.
+#[test]
+fn force_push_confirms_on_the_same_button() {
+    let fx = Fixture::new(SUITE, "force_push");
+    let (repo, bare) = repo_with_remote(&fx);
+    let remote_top = || {
+        let out = std::process::Command::new("git").args(["--git-dir", bare.to_str().expect("utf8"), "log", "-1", "--format=%s", "main"]).output().expect("git log");
+        String::from_utf8_lossy(&out.stdout).trim().to_string()
+    };
+    // The remote has the commit; an amend makes the local branch diverge, so only a force push works.
+    repo.git(&["push", "-q"]);
+    repo.git(&["commit", "-q", "--amend", "-m", "Local work amended"]);
+    let mut ide = Ide::open(SUITE, &repo.dir);
+    ide.cmd_shift(Key::K);
+    ide.wait_for("push dialog", |s| s.ws.git_ui.remote.push_open() && !s.ws.git_ui.remote.push_commits().is_empty());
+    ide.settle();
+
+    let force = "Force push (with lease)";
+    let button = ide.rect("Push");
+    let check = ide.rect(force);
+    assert!(check.right() < button.left() && button.left() - check.right() < 24.0, "the checkbox sits next to Push: {check:?} {button:?}");
+    assert!((check.center().y - button.center().y).abs() < 1.0);
+    assert!(!ide.is_selected(force));
+
+    ide.click(force);
+    ide.settle();
+    assert!(ide.is_selected(force));
+    assert_eq!(ide.rect("Force Push"), button);
+    assert_eq!(ide.rect(force), check);
+
+    // First press: the same button asks for confirmation; nothing is pushed.
+    ide.click("Force Push");
+    ide.settle();
+    assert_eq!(ide.rect("Confirm force push"), button);
+    assert_eq!(ide.rect(force), check);
+    assert!(!ide.has("Force Push"));
+    ide.snapshot("push_confirm_force");
+    assert_eq!(remote_top(), "Local work to push");
+
+    // Esc returns to the normal state; the dialog stays.
+    ide.key(Key::Escape);
+    ide.settle();
+    assert!(ide.state().ws.git_ui.remote.push_open());
+    assert_eq!(ide.rect("Force Push"), button);
+
+    // Unticking returns to a plain Push.
+    ide.click("Force Push");
+    ide.settle();
+    assert!(ide.has("Confirm force push"));
+    ide.click(force);
+    ide.settle();
+    assert!(!ide.is_selected(force));
+    assert_eq!(ide.rect("Push"), button);
+    assert!(!ide.has("Confirm force push"));
+
+    // Second press pushes with lease.
+    ide.click(force);
+    ide.settle();
+    ide.click("Force Push");
+    ide.settle();
+    ide.click("Confirm force push");
+    ide.wait_for("pushed", |s| !s.ws.git_ui.remote.push_open());
+    assert_eq!(remote_top(), "Local work amended");
+    let entries = ide.state().ws.git_ui.window.console.entries();
+    let push = entries.iter().find(|e| e.args.first().map(String::as_str) == Some("push")).expect("push logged");
+    assert!(push.success() && push.args.iter().any(|a| a == "--force-with-lease"), "{:?}", push.args);
+}

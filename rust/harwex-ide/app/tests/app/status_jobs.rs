@@ -117,6 +117,34 @@ fn tasks_popup_lists_every_job_and_cancels_one() {
     assert!(!ide.labels().iter().any(|l| l.starts_with("Task ")));
 }
 
+/// The text and the `×` share one rounded hover background: the pointer over either part
+/// shows the same pill, which spans from the slot's left end to the `×`'s right end.
+#[test]
+fn text_and_stop_share_one_background() {
+    let fx = Fixture::new(SUITE, "pill");
+    let repo = deep_repo(&fx);
+    let mut ide = Ide::open(SUITE, &repo.dir);
+    ide.open_file("src/util.ts");
+    let job = ide.state().jobs.busy(LONG);
+    ide.steps(3);
+    let text = ide.rect(&format!("Running: {LONG}"));
+    let stop = ide.rect(&format!("Cancel {LONG}"));
+    ide.park_mouse();
+    ide.steps(2);
+    assert!(harwex_ide::progress::hover_pill(&ide.ctx()).is_none(), "no background without the pointer");
+    ide.move_to(text.center());
+    ide.steps(2);
+    let over_text = harwex_ide::progress::hover_pill(&ide.ctx()).expect("the pill under the text");
+    assert!(over_text.min.x <= text.min.x + 0.5 && over_text.max.x >= stop.max.x - 0.5, "one pill for both: {over_text:?} text {text:?} stop {stop:?}");
+    ide.snapshot_running_here("slot_hover_text");
+    ide.move_to(stop.center());
+    ide.steps(2);
+    assert_eq!(harwex_ide::progress::hover_pill(&ide.ctx()), Some(over_text), "the same pill under the ×");
+    ide.snapshot_running_here("slot_hover_stop");
+    drop(job);
+    ide.settle();
+}
+
 /// The slot's width: from its left end (the job text) to its right end (the `×`).
 fn slot_width(ide: &Ide) -> f32 {
     ide.rect(&format!("Cancel {LONG}")).max.x - ide.rect(&format!("Running: {LONG}")).min.x

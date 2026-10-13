@@ -349,18 +349,23 @@ pub fn hit_key(h: &FindHit) -> HitKey {
 
 enum Engine {
     Literal { finder: memchr::memmem::Finder<'static>, case_sensitive: bool },
-    Regex(regex::bytes::Regex),
+    /// `expand`: the replacement holds `$1` groups (Regex on). A plain query that needs the
+    /// regex (Words, a non-ASCII case-insensitive text) replaces with its text as typed.
+    Regex { re: regex::bytes::Regex, expand: bool },
 }
 
 impl Engine {
     fn new(q: &Query) -> Result<Engine, String> {
-        if !q.regex && !q.whole_words {
+        // The memchr path folds case by lowering ASCII bytes only, so a case-insensitive query
+        // with a non-ASCII char ("цели") goes to the regex, which folds Unicode case.
+        if !q.regex && !q.whole_words && (q.case_sensitive || q.text.is_ascii()) {
             let needle: Vec<u8> = if q.case_sensitive { q.text.as_bytes().to_vec() } else { q.text.as_bytes().to_ascii_lowercase() };
             return Ok(Engine::Literal { finder: memchr::memmem::Finder::new(&needle).into_owned(), case_sensitive: q.case_sensitive });
         }
         let body = if q.regex { q.text.clone() } else { regex::escape(&q.text) };
         let pattern = if q.whole_words { format!(r"\b(?:{body})\b") } else { body };
-        regex::bytes::RegexBuilder::new(&pattern).case_insensitive(!q.case_sensitive).multi_line(true).build().map(Engine::Regex).map_err(|e| e.to_string())
+        let re = regex::bytes::RegexBuilder::new(&pattern).case_insensitive(!q.case_sensitive).multi_line(true).build().map_err(|e| e.to_string())?;
+        Ok(Engine::Regex { re, expand: q.regex })
     }
 
     /// How many matches `bytes` has; nothing per match is kept.
@@ -373,7 +378,7 @@ impl Engine {
                     with_lowered(bytes, |hay| finder.find_iter(hay).count())
                 }
             }
-            Engine::Regex(re) => re.find_iter(bytes).filter(|m| !m.is_empty()).count(),
+            Engine::Regex { re, .. } => re.find_iter(bytes).filter(|m| !m.is_empty()).count(),
         }
     }
 
@@ -398,7 +403,7 @@ impl Engine {
                     with_lowered(bytes, collect);
                 }
             }
-            Engine::Regex(re) => {
+            Engine::Regex { re, expand } => {
                 for caps in re.captures_iter(bytes) {
                     let Some(m) = caps.get(0) else { continue };
                     // An empty match has nothing to show or replace.
@@ -406,6 +411,9 @@ impl Engine {
                         continue;
                     }
                     let rep = replacement.map(|r| {
+                        if !*expand {
+                            return r.to_string();
+                        }
                         let mut dst = Vec::new();
                         caps.expand(r.as_bytes(), &mut dst);
                         String::from_utf8_lossy(&dst).into_owned()
@@ -1257,6 +1265,24 @@ mod tests {
         found.push(FindHit { matched: "zzz".into(), ..found[0].clone() });
         assert_eq!(replace_in_file(&path, &found).unwrap(), 2);
         assert_eq!(std::fs::read_to_string(&path).unwrap(), "let addOne = plus(1);\nplus(2);\r\nadd_x\n");
+    }
+
+    #[test]
+    fn case_folds_non_ascii_text() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().canonicalize().unwrap();
+        std::fs::write(root.join("a.ts"), "title: \"Цели\",\nцели и ЦЕЛИ\nStraße STRASSE\n").unwrap();
+        let q = |text: &str| Query { text: text.into(), ..Default::default() };
+        let at = |q: Query| hits(&root, q).into_iter().map(|h| (h.1, h.2)).collect::<Vec<_>>();
+        assert_eq!(at(q("цели")), [(0, 8), (1, 0), (1, 7)], "lower case finds every case");
+        assert_eq!(at(q("ЦЕЛИ")), [(0, 8), (1, 0), (1, 7)], "upper case finds every case");
+        assert_eq!(at(Query { case_sensitive: true, ..q("цели") }), [(1, 0)]);
+        assert_eq!(at(Query { case_sensitive: true, ..q("Цели") }), [(0, 8)]);
+        assert_eq!(at(Query { whole_words: true, ..q("цели") }), [(0, 8), (1, 0), (1, 7)]);
+        assert_eq!(at(q("STRAßE")), [(2, 0)], "a mixed query");
+        // The regex path must not read `$1` in a plain replacement as a group.
+        let rep = hits(&root, Query { replacement: Some("$1 goal".into()), ..q("цели") });
+        assert!(rep.iter().all(|h| h.3.as_deref() == Some("$1 goal")), "{rep:?}");
     }
 
     #[test]

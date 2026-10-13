@@ -52,6 +52,8 @@ pub enum TreeCommand {
     Paste,
     CopyAbsPath,
     CopyProjectPath,
+    /// Puts an image file's picture on the clipboard (`viewer::clip`).
+    CopyImage,
     FindUsages,
     FindInFiles,
     ReplaceInFiles,
@@ -250,6 +252,9 @@ pub fn menu(ui: &mut Ui, target: &Target, info: &MenuInfo) -> Option<TreeCommand
     item(ui, "Paste", "⌘V", info.can_paste, TreeCommand::Paste);
     item(ui, "Copy Absolute Path", "⇧⌘C", true, TreeCommand::CopyAbsPath);
     item(ui, "Copy Project Path", "⌥C", true, TreeCommand::CopyProjectPath);
+    if !target.is_dir && crate::viewer::is_image(&target.path) {
+        item(ui, "Copy Image", "", true, TreeCommand::CopyImage);
+    }
     ui.separator();
     item(ui, "Find Usages", "⌥F7", true, TreeCommand::FindUsages);
     item(ui, "Find in Files...", "⇧⌘F", true, TreeCommand::FindInFiles);
@@ -330,6 +335,7 @@ pub fn run(state: &mut AppState, cmd: TreeCommand, targets: Vec<Target>) {
             let lines: Vec<String> = paths.iter().map(|p| fileops::relative(&root, p)).collect();
             state.platform.copy_text(&state.ctx, &lines.join("\n"));
         }
+        TreeCommand::CopyImage => crate::viewer::clip::copy_file(state, target.path, 1.0),
         TreeCommand::FindUsages => find_file_usages(state, target.path, None),
         TreeCommand::FindInFiles => state.ws.find.open_scoped(Some(target.dir()), false),
         TreeCommand::ReplaceInFiles => state.ws.find.open_scoped(Some(target.dir()), true),

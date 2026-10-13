@@ -569,9 +569,12 @@ impl AppState {
         );
     }
 
-    /// Applies `.harwex/ide.toml` (defaults when there is none). Open tabs of a language that
+    /// Applies `.harwex/ide.toml` (defaults when there is none) over the global settings'
+    /// defaults (`GlobalSettings::layer`). Open tabs of a language that
     /// is turned off now stop talking to its server.
     pub fn apply_ide_config(&mut self, config: IdeConfig) {
+        // The project's own keys over the global defaults (Settings, task 104).
+        let config = config.layered(&self.settings.global.layer);
         for w in &config.warnings {
             self.notifications.warn("Project settings", w.clone());
         }
@@ -682,7 +685,7 @@ impl AppState {
         }
     }
 
-    fn add_editor_tab(&mut self, path: PathBuf, doc: Document, pos: Option<Position>) {
+    pub(crate) fn add_editor_tab(&mut self, path: PathBuf, doc: Document, pos: Option<Position>) {
         // A diff that edits this file without a tab hands over its unsaved document: one buffer.
         let doc = crate::git::diff::adopt_hidden(self, &path).unwrap_or(doc);
         let mut tab = EditorTab::new(path.clone(), doc);
@@ -722,15 +725,20 @@ impl AppState {
             }
             TabContent::Custom(mut c) => {
                 let mut commands = Vec::new();
+                // A tab that edits a file's editor tab gets it lent on close too (the merge
+                // puts git's conflict text back).
+                let shared = c.shared_editor().and_then(|p| self.ws.tabs.editor_by_path(&p));
+                let crate::workspace::Workspace { tabs, project, git, .. } = &mut self.ws;
+                let editor = shared.and_then(|eid| tabs.editor_mut(eid).map(|e| (eid, e)));
                 let mut env = TabEnv {
                     jobs: &self.jobs,
                     notifications: &mut self.notifications,
-                    project: self.ws.project.as_ref(),
-                    git: &self.ws.git,
+                    project: project.as_ref(),
+                    git,
                     commands: &mut commands,
                     tab_id: id,
                     editor_theme: &self.editor_theme,
-                    editor: None,
+                    editor,
                 };
                 c.on_close(&mut env);
                 self.ws.commands.extend(commands);
@@ -792,8 +800,9 @@ impl AppState {
         let path = e.path.clone();
         // System › Files › "Back up files before saving".
         let backups = self.settings.backup_target();
+        let saved = path.clone();
         self.jobs.spawn_quiet(
-            move || crate::settings::files::write_file(&path, &text, backups.as_deref()),
+            move || crate::settings::files::write_file(&saved, &text, backups.as_deref()),
             move |state, res| {
                 let Some(e) = state.ws.tabs.editor_mut(id) else { return };
                 e.saving = false;
@@ -805,6 +814,7 @@ impl AppState {
                         if then_close {
                             state.close_tab(id, false);
                         }
+                        crate::settings::saved(state, &path);
                     }
                     Err(err) => state.notifications.error("Save failed", err),
                 }
