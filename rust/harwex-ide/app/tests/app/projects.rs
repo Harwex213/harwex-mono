@@ -299,3 +299,128 @@ fn missing_recent_folder_is_grey_and_does_not_open() {
     ide.settle();
     assert_eq!(ide.state().workspaces().len(), 2);
 }
+
+/// The names of the Open Projects rows, top to bottom.
+fn open_rows(ide: &Ide) -> Vec<String> {
+    let mut rows: Vec<(f32, String)> = ide.labels().into_iter().filter(|l| l.starts_with("Open project ")).map(|l| (ide.rect(&l).min.y, l)).collect();
+    rows.sort_by(|a, b| a.0.total_cmp(&b.0));
+    rows.into_iter().map(|(_, l)| l.trim_start_matches("Open project ").to_string()).collect()
+}
+
+fn order(ide: &Ide) -> Vec<String> {
+    ide.state().workspaces().into_iter().map(|w| w.name).collect()
+}
+
+/// Task 111: Move Up / Move Down on an Open Projects row and Alt+Shift+Up/Down reorder the
+/// window's projects. The ends are disabled, the active project and the open popup stay, the
+/// moved row keeps the highlight, the buttons appear without moving anything, and the order
+/// survives a restart.
+#[test]
+fn reorder_open_projects() {
+    let fx = Fixture::new(SUITE, "reorder");
+    let a = basic_repo(fx.path("alpha"));
+    let b = basic_repo(fx.path("beta"));
+    let c = basic_repo(fx.path("gamma"));
+    let mut storage = MemoryStorage::default();
+    {
+        let mut ide = Ide::open(SUITE, &a.dir);
+        open_loaded(&mut ide, &b.dir);
+        let c_id = open_loaded(&mut ide, &c.dir);
+        ide.click("Project gamma");
+        ide.park_mouse();
+        ide.settle();
+        assert_eq!(open_rows(&ide), vec!["alpha", "beta", "gamma"]);
+
+        // Nothing moves when the buttons appear: every row keeps its rect and its cross.
+        let watched = ["Open project alpha", "Close project alpha", "Open project beta", "Close project gamma", "Recent project alpha"];
+        let before: Vec<Option<egui::Rect>> = watched.iter().map(|l| ide.has(l).then(|| ide.rect(l))).collect();
+        assert!(!ide.is_enabled("Move project alpha down"), "the buttons are off while the row is neither hovered nor selected");
+        ide.hover("Open project alpha");
+        let after: Vec<Option<egui::Rect>> = watched.iter().map(|l| ide.has(l).then(|| ide.rect(l))).collect();
+        assert_eq!(before, after);
+        assert!(!ide.is_enabled("Move project alpha up"), "the first row cannot go up");
+        assert!(ide.is_enabled("Move project alpha down"));
+        ide.hover("Open project gamma");
+        assert!(ide.is_enabled("Move project gamma up"));
+        assert!(!ide.is_enabled("Move project gamma down"), "the last row cannot go down");
+
+        // A press on Move Down: the order changes everywhere, gamma stays active.
+        ide.hover("Open project alpha");
+        ide.click("Move project alpha down");
+        ide.settle();
+        assert_eq!(order(&ide), vec!["beta", "alpha", "gamma"]);
+        assert_eq!(open_rows(&ide), vec!["beta", "alpha", "gamma"]);
+        assert_eq!(ide.state().ws.id, c_id, "the active project does not change");
+        assert!(popup_open(&ide), "the popup stays open after a move");
+        assert!(ide.is_selected("Open project alpha"), "the moved row keeps the highlight");
+
+        // A press on a disabled button does nothing, not even a switch.
+        ide.hover("Open project beta");
+        ide.click("Move project beta up");
+        ide.settle();
+        assert_eq!(order(&ide), vec!["beta", "alpha", "gamma"]);
+        assert_eq!(ide.state().ws.id, c_id);
+        assert!(popup_open(&ide));
+
+        // The keyboard moves the selected row. The hover left beta selected; one step down is
+        // alpha (Open..., beta, alpha, gamma).
+        ide.park_mouse();
+        assert!(ide.is_selected("Open project beta"));
+        ide.key(Key::ArrowDown);
+        assert!(ide.is_selected("Open project alpha"));
+        let alt_shift = egui::Modifiers::ALT | egui::Modifiers::SHIFT;
+        ide.key_mods(alt_shift, Key::ArrowDown);
+        ide.settle();
+        assert_eq!(order(&ide), vec!["beta", "gamma", "alpha"]);
+        assert!(ide.is_selected("Open project alpha"), "the highlight follows the moved row");
+        ide.key_mods(alt_shift, Key::ArrowDown);
+        ide.settle();
+        assert_eq!(order(&ide), vec!["beta", "gamma", "alpha"], "the last row stays last");
+        assert!(ide.is_selected("Open project alpha"), "the key did not move the selection");
+        ide.key_mods(alt_shift, Key::ArrowUp);
+        ide.key_mods(alt_shift, Key::ArrowUp);
+        ide.settle();
+        assert_eq!(order(&ide), vec!["alpha", "beta", "gamma"]);
+        ide.key_mods(alt_shift, Key::ArrowDown);
+        ide.settle();
+        assert_eq!(order(&ide), vec!["beta", "alpha", "gamma"]);
+        assert_eq!(ide.state().ws.id, c_id);
+        assert!(popup_open(&ide));
+
+        // Closing the active project activates the one above it in the new order.
+        ide.key(Key::Escape);
+        ide.settle();
+        ide.state_mut().close_workspace(c_id);
+        ide.settle();
+        assert_eq!(active_name(&ide).as_deref(), Some("alpha"));
+        open_loaded(&mut ide, &c.dir);
+        assert_eq!(order(&ide), vec!["beta", "alpha", "gamma"]);
+        eframe::App::save(ide.harness.state_mut(), &mut storage);
+    }
+    let lines: Vec<String> = storage.map.get("open_projects").map(|t| t.lines().map(str::to_string).collect()).unwrap_or_default();
+    assert_eq!(lines, [&b.dir, &a.dir, &c.dir].map(|d| canonical(d).display().to_string()));
+
+    let options = harwex_ide::AppOptions { restore_last_folder: true, ..test_options(None) };
+    let mut ide = Ide::with_options(SUITE, options, Some(&storage));
+    ide.wait_for("three projects restored", |s| s.workspaces().iter().filter(|w| w.root.is_some()).count() == 3 && s.ws.git.status_ms.is_some());
+    ide.settle();
+    assert_eq!(order(&ide), vec!["beta", "alpha", "gamma"]);
+    assert_eq!(active_name(&ide).as_deref(), Some("gamma"));
+}
+
+/// The hovered Open Projects row with its Move Up / Move Down buttons; Move Up is disabled on
+/// the first row.
+#[test]
+fn reorder_buttons_snapshot() {
+    let fx = Fixture::new(SUITE, "reorder_snapshot");
+    let a = basic_repo(fx.path("harwex-notes"));
+    let b = basic_repo(fx.path("harwex-mono"));
+    let mut ide = Ide::open(SUITE, &a.dir);
+    open_loaded(&mut ide, &b.dir);
+    ide.click("Project harwex-mono");
+    ide.settle();
+    ide.hover("Open project harwex-notes");
+    ide.snapshot_here("popup_move_first");
+    ide.hover("Move project harwex-mono up");
+    ide.snapshot_here("popup_move_hover");
+}

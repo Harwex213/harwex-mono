@@ -19,6 +19,7 @@ pub const ACTIONS: &[(&str, &str, &str)] = &[
     ("General", "Settings", "⌘,"),
     ("General", "Save", "⌘S"),
     ("General", "Save All", "⌥⌘S"),
+    ("General", "Move Project Up / Down (project selector)", "⌥⇧↑ / ⌥⇧↓"),
     ("Search", "Search Everywhere (files)", "⇧⇧ or ⇧⌘O"),
     ("Search", "Find in Files", "⇧⌘F"),
     ("Search", "Replace in Files", "⇧⌘R"),

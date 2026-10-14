@@ -96,8 +96,11 @@ pub struct AppState {
     /// The workspace in context: the active one while a frame draws, the job's own one while
     /// its callback runs (`with_ws`). See `workspace.rs`.
     pub ws: Workspace,
-    /// Every other open workspace, in no particular order (`workspaces()` sorts by id).
+    /// Every other open workspace, in no particular order (`workspaces()` sorts by `order`).
     others: Vec<Workspace>,
+    /// The window's project order: open order, changed by `move_workspace`. Every list of the
+    /// window's projects (selector, saved `open_projects`, the next active one on close) uses it.
+    order: Vec<WorkspaceId>,
     active: WorkspaceId,
     next_ws: u64,
     /// Nesting of `with_ws`. At 0, `ws` is the active workspace.
@@ -148,6 +151,7 @@ impl AppState {
             notifications: Notifications::default(),
             ws,
             others: Vec::new(),
+            order: vec![first],
             active: first,
             next_ws: 2,
             depth: 0,
@@ -229,11 +233,26 @@ impl AppState {
         self.active
     }
 
-    /// The open workspaces in open order, for the project selector.
+    /// The open workspaces in the window's order (`move_workspace`), for the project selector.
     pub fn workspaces(&self) -> Vec<WorkspaceInfo> {
         let mut out: Vec<WorkspaceInfo> = self.all_ws().map(|w| w.info(self.active)).collect();
-        out.sort_by_key(|w| w.id);
+        out.sort_by_key(|w| self.order_index(w.id));
         out
+    }
+
+    /// The position of `id` in the window's project order.
+    pub fn order_index(&self, id: WorkspaceId) -> usize {
+        self.order.iter().position(|&w| w == id).unwrap_or(usize::MAX)
+    }
+
+    /// Moves workspace `id` one place up (`delta` -1) or down (+1) in the window's project order.
+    /// The active workspace stays active. False when `id` is not open or already at that end.
+    pub fn move_workspace(&mut self, id: WorkspaceId, delta: isize) -> bool {
+        let Some(i) = self.order.iter().position(|&w| w == id) else { return false };
+        let Some(j) = i.checked_add_signed(delta).filter(|&j| j < self.order.len()) else { return false };
+        self.order.swap(i, j);
+        self.ctx.request_repaint();
+        true
     }
 
     pub fn workspace(&self, id: WorkspaceId) -> Option<&Workspace> {
@@ -288,6 +307,7 @@ impl AppState {
         self.next_ws += 1;
         let ws = Workspace::new(id, &self.jobs, &self.ctx, self.terminal_command.clone(), self.default_layout);
         self.others.push(ws);
+        self.order.push(id);
         id
     }
 
@@ -376,10 +396,9 @@ impl AppState {
             self.add_workspace();
         }
         if self.active == id {
-            // The previous workspace in open order, else the next one.
-            let mut ids: Vec<WorkspaceId> = self.all_ws().map(|w| w.id).filter(|&w| w != id).collect();
-            ids.sort();
-            let next = ids.iter().rev().find(|&&w| w < id).or_else(|| ids.first()).copied().expect("another workspace");
+            // The previous workspace in the window's order, else the next one.
+            let i = self.order_index(id);
+            let next = if i > 0 { self.order[i - 1] } else { self.order[1] };
             self.activate(next);
         }
         let mut closed = if self.ws.id == id {
@@ -392,6 +411,7 @@ impl AppState {
             let i = self.others.iter().position(|w| w.id == id).expect("open workspace");
             self.others.remove(i)
         };
+        self.order.retain(|&w| w != id);
         self.remember(&closed);
         crate::terminal::save_closed(self, &closed);
         closed.shutdown();

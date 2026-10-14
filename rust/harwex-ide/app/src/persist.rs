@@ -2,7 +2,8 @@
 //! open files of each project, keyed by canonical root.
 //!
 //! Keys:
-//! - `open_projects`: one canonical root per line, in open order.
+//! - `open_projects`: one canonical root per line, in the window's project order
+//!   (`AppState::move_workspace`).
 //! - `active_project`: the active root.
 //! - `project_state`: one line per known project: `root \t layout \t active file \t files...`.
 //!   Closed projects stay, so a project opened again gets its layout back.
@@ -114,7 +115,7 @@ pub fn load(state: &mut AppState, storage: &dyn eframe::Storage) -> Restore {
 pub fn save(state: &mut AppState, storage: &mut dyn eframe::Storage) {
     let open: Vec<(PathBuf, SavedWorkspace)> = {
         let mut ws: Vec<&Workspace> = state.all_ws().collect();
-        ws.sort_by_key(|w| w.id);
+        ws.sort_by_key(|w| state.order_index(w.id));
         ws.into_iter().filter_map(|w| w.project.as_ref().map(|p| (p.root.clone(), SavedWorkspace::of(w)))).collect()
     };
     let roots: Vec<String> = open.iter().map(|(r, _)| r.display().to_string()).collect();

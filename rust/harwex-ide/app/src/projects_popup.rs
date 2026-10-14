@@ -7,6 +7,11 @@
 //! app storage (`persist.rs`, key `recent_projects`), newest first; it also holds the open
 //! projects, which the popup hides.
 //!
+//! An Open Projects row shows Move Up / Move Down buttons left of its cross while it is hovered
+//! or selected; Alt+Shift+Up/Down move the selected row (task 111). The order is
+//! `AppState::move_workspace`'s window order. The buttons sit in slots that every row reserves,
+//! so nothing moves when they appear.
+//!
 //! A Recent folder can vanish from disk. Each opening of the popup checks the Recent roots on a
 //! worker; a missing one draws grey, and a press on it only shows a toast. Its cross still works.
 
@@ -31,6 +36,8 @@ const SEPARATOR_H: f32 = 11.0;
 const PAD: f32 = 6.0;
 const BADGE: f32 = 20.0;
 const CROSS_W: f32 = 28.0;
+/// One Move Up / Move Down slot, left of the cross.
+const MOVE_W: f32 = 24.0;
 
 #[derive(Default)]
 struct Keys {
@@ -38,6 +45,8 @@ struct Keys {
     up: bool,
     down: bool,
     enter: bool,
+    move_up: bool,
+    move_down: bool,
 }
 
 /// The popup's state and the Recent Projects list. Lives in `AppState::projects`.
@@ -107,6 +116,7 @@ enum Action {
     OpenFolder,
     Activate(WorkspaceId),
     Close(WorkspaceId),
+    Move(WorkspaceId, isize),
     OpenRecent(PathBuf),
     Missing(PathBuf),
     Remove(PathBuf),
@@ -153,7 +163,11 @@ pub fn take_keys(s: &mut AppState, ctx: &Context) {
         return;
     }
     let none = Modifiers::NONE;
+    let alt_shift = Modifiers::ALT | Modifiers::SHIFT;
+    // The moves go first: `consume_key(NONE, ArrowUp)` also takes an Alt+Shift+Up.
     s.projects.keys = ctx.input_mut(|i| Keys {
+        move_up: i.consume_key(alt_shift, Key::ArrowUp),
+        move_down: i.consume_key(alt_shift, Key::ArrowDown),
         escape: i.consume_key(none, Key::Escape),
         up: i.consume_key(none, Key::ArrowUp),
         down: i.consume_key(none, Key::ArrowDown),
@@ -207,6 +221,14 @@ pub fn show(s: &mut AppState, ctx: &Context) {
         sel = (sel + 1) % len;
     }
     let mut actions = Vec::new();
+    if let Item::Project { id, .. } = &items[sel] {
+        if keys.move_up {
+            actions.push(Action::Move(*id, -1));
+        }
+        if keys.move_down {
+            actions.push(Action::Move(*id, 1));
+        }
+    }
     if keys.enter {
         actions.push(match &items[sel] {
             Item::OpenFolder => Action::OpenFolder,
@@ -232,13 +254,18 @@ pub fn show(s: &mut AppState, ctx: &Context) {
             .iter()
             .zip(&paths)
             .map(|(i, p)| match i {
-                Item::Project { name, .. } | Item::Recent { name, .. } => f.layout_no_wrap(name.clone(), name_font.clone(), t.text).size().x.max(f.layout_no_wrap(p.clone(), path_font.clone(), t.text).size().x),
+                Item::Project { name, .. } | Item::Recent { name, .. } => {
+                    // The move buttons share the name's line only; the path runs under them.
+                    let buttons = if matches!(i, Item::Project { .. }) { 2.0 * MOVE_W } else { 0.0 };
+                    (f.layout_no_wrap(name.clone(), name_font.clone(), t.text).size().x + buttons).max(f.layout_no_wrap(p.clone(), path_font.clone(), t.text).size().x)
+                }
                 Item::OpenFolder => 0.0,
             })
             .fold(0.0_f32, f32::max)
     });
     let width = (PAD + 8.0 + BADGE + 10.0 + text_w + CROSS_W + PAD).clamp(320.0, 560.0);
     let n_open = items.iter().filter(|i| matches!(i, Item::Project { .. })).count();
+    let first_project = items.iter().position(|i| matches!(i, Item::Project { .. }));
     let n_recent = items.iter().filter(|i| matches!(i, Item::Recent { .. })).count();
     let section_h = |n: usize| if n == 0 { 0.0 } else { SEPARATOR_H + HEADER_H + n as f32 * PROJECT_H };
     let height = ACTION_H + section_h(n_open) + section_h(n_recent);
@@ -303,8 +330,40 @@ pub fn show(s: &mut AppState, ctx: &Context) {
                     let c = ui.interact(cross, Id::new(("projects-popup-cross", i, item_key(item))), Sense::hover());
                     crate::util::label_widget(&c, egui::WidgetType::Button, l.clone());
                 }
-                let on_cross = cross_label.is_some() && ui.input(|inp| inp.pointer.interact_pos()).is_some_and(|p| cross.contains(p));
-                if pressed(ui, &resp) {
+                let pointer = ui.input(|inp| inp.pointer.interact_pos());
+                let on_cross = cross_label.is_some() && pointer.is_some_and(|p| cross.contains(p));
+                // Move Up / Move Down: hover-only a11y nodes like the cross, live while the row
+                // is hovered or selected; the first row cannot go up, the last cannot go down.
+                let mut moves = None;
+                let mut on_move = None;
+                if let Item::Project { id, name, .. } = item {
+                    let index = i - first_project.unwrap_or(0);
+                    let slots = move_slots(rect);
+                    let shown = resp.hovered() || i == sel;
+                    let enabled = [index > 0, index + 1 < n_open];
+                    let mut hit = None;
+                    for (k, (slot, dir)) in slots.iter().zip(["up", "down"]).enumerate() {
+                        let b = ui.interact(*slot, Id::new(("projects-popup-move", dir, item_key(item))), Sense::hover());
+                        let label = format!("Move project {name} {dir}");
+                        let live = shown && enabled[k];
+                        b.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, live, label.clone()));
+                        if pointer.is_some_and(|p| slot.contains(p)) {
+                            on_move = Some((*id, k, live));
+                            if live {
+                                hit = Some(k);
+                            }
+                        }
+                    }
+                    if shown {
+                        moves = Some(MoveButtons { slots, enabled, hovered: hit });
+                    }
+                }
+                if let (Some((id, k, live)), true) = (on_move, pressed(ui, &resp)) {
+                    // A press on a disabled button does nothing, not even a switch.
+                    if live {
+                        actions.push(Action::Move(id, if k == 0 { -1 } else { 1 }));
+                    }
+                } else if pressed(ui, &resp) {
                     actions.push(match (item, on_cross) {
                         (Item::OpenFolder, _) => Action::OpenFolder,
                         (Item::Project { id, .. }, true) => Action::Close(*id),
@@ -314,7 +373,7 @@ pub fn show(s: &mut AppState, ctx: &Context) {
                         (Item::Recent { root, .. }, false) => Action::OpenRecent(root.clone()),
                     });
                 }
-                paint_row(ui, rect, item, &paths[i], i == sel, resp.hovered(), on_cross);
+                paint_row(ui, rect, item, &paths[i], i == sel, resp.hovered(), on_cross, moves);
             }
         });
     });
@@ -354,6 +413,14 @@ pub fn show(s: &mut AppState, ctx: &Context) {
                 }
             }
             Action::Remove(root) => s.projects.remove_recent(&root),
+            // The popup stays open, and the moved row keeps the highlight.
+            Action::Move(id, delta) => {
+                if s.move_workspace(id, delta) {
+                    if let Some(i) = self::items(s).iter().position(|it| matches!(it, Item::Project { id: w, .. } if w == &id)) {
+                        s.projects.selected = i;
+                    }
+                }
+            }
         }
     }
 }
@@ -365,7 +432,24 @@ fn item_key(item: &Item) -> Option<&Path> {
     }
 }
 
-fn paint_row(ui: &Ui, rect: Rect, item: &Item, path: &str, selected: bool, hovered: bool, on_cross: bool) {
+/// The Move Up and Move Down slots of a project row, left of the cross.
+fn move_slots(rect: Rect) -> [Rect; 2] {
+    let right = rect.max.x - CROSS_W;
+    let slot = |k: f32| Rect::from_min_max(pos2(right - (2.0 - k) * MOVE_W, rect.min.y), pos2(right - (1.0 - k) * MOVE_W, rect.max.y));
+    [slot(0.0), slot(1.0)]
+}
+
+/// The Move Up / Move Down buttons of a hovered or selected project row.
+#[derive(Clone, Copy)]
+struct MoveButtons {
+    slots: [Rect; 2],
+    enabled: [bool; 2],
+    /// The enabled button under the pointer: 0 up, 1 down.
+    hovered: Option<usize>,
+}
+
+#[allow(clippy::too_many_arguments)]
+fn paint_row(ui: &Ui, rect: Rect, item: &Item, path: &str, selected: bool, hovered: bool, on_cross: bool, moves: Option<MoveButtons>) {
     let t = &theme::T;
     let painter = ui.painter().with_clip_rect(rect);
     if selected {
@@ -398,6 +482,17 @@ fn paint_row(ui: &Ui, rect: Rect, item: &Item, path: &str, selected: bool, hover
                 icons::paint(&painter, cross, Icon::Close, if on_cross { t.icon_active } else { t.icon });
             } else if active {
                 icons::paint(&painter, cross, Icon::Check, t.text_dim);
+            }
+            if let Some(m) = moves {
+                for (k, icon) in [Icon::ArrowUp, Icon::ArrowDown].into_iter().enumerate() {
+                    let r = Rect::from_center_size(pos2(m.slots[k].center().x, cross.center().y), vec2(14.0, 14.0));
+                    let on = m.hovered == Some(k);
+                    if on {
+                        painter.rect_filled(r.expand(3.0), t.radius.small, t.button_hover);
+                    }
+                    let color = if !m.enabled[k] { t.text_dim } else if on { t.icon_active } else { t.icon };
+                    icons::paint(&painter, r, icon, color);
+                }
             }
         }
     }
