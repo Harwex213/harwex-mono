@@ -832,6 +832,8 @@ fn orphaned_context_menu_closes() {
     // A menu in the Commit window, then the Project window comes back without a click.
     ide.state_mut().ws.layout.left = Some(ToolWindow::Commit);
     ide.settle();
+    ide.click("Expand All");
+    ide.settle();
     let c = ide.rect("src/app.ts");
     let at = egui::pos2(c.min.x + 120.0, c.center().y);
     ide.right_click_at(at);

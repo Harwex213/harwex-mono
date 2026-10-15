@@ -67,7 +67,8 @@ struct Hidden {
 
 enum Msg {
     Loaded(PathBuf, Result<Box<Document>, String>),
-    Saved(PathBuf, u64),
+    /// A write finished: the token on success.
+    Saved(PathBuf, Option<u64>),
 }
 
 impl Default for FilePreview {
@@ -161,7 +162,9 @@ pub fn tick(state: &mut AppState, preview: &mut FilePreview) {
             Msg::Saved(path, token) => {
                 if let Some(h) = preview.hidden.as_mut().filter(|h| h.path == path) {
                     h.saving = false;
-                    h.doc.mark_saved(token);
+                    if let Some(t) = token {
+                        h.doc.mark_saved(t);
+                    }
                 }
             }
         }
@@ -182,12 +185,14 @@ pub fn flush(state: &mut AppState, preview: &mut FilePreview) {
         return;
     }
     match preview.source.clone() {
-        Source::Tab(id) => state.save_tab(id, false),
+        Source::Tab(id) => crate::save::save(state, crate::save::Target::Tab(id), crate::save::Reason::Debounce),
         Source::Hidden(_) => save_hidden(state, preview),
         Source::None => {}
     }
 }
 
+/// The hidden document is no editor tab, so the save module tells the preview through its
+/// channel (`Owner::Detached`); `tick` marks the document saved when it is still the same file.
 fn save_hidden(state: &mut AppState, preview: &mut FilePreview) {
     let Some(h) = preview.hidden.as_mut() else {
         return;
@@ -195,30 +200,21 @@ fn save_hidden(state: &mut AppState, preview: &mut FilePreview) {
     if !h.doc.is_dirty() || crate::lang::is_library_path(&h.path) {
         return;
     }
-    h.saving = true;
-    let (text, token) = h.doc.save_snapshot();
+    if h.saving {
+        // A write runs; this one waits for the next tick.
+        preview.edited_at = Some(Instant::now());
+        return;
+    }
     let path = h.path.clone();
     let tx = preview.tx.clone();
-    state.jobs.spawn_quiet(
-        move || {
-            let res = std::fs::write(&path, text).map_err(|e| format!("{}: {e}", path.display()));
-            // The receiver may be gone (the preview closed); the file is written either way.
-            let _ = tx.send(Msg::Saved(path.clone(), token));
-            (path, res)
-        },
-        |state, (path, res)| match res {
-            Ok(()) => {
-                // No watcher in tests, and the watcher is slow: refresh status and gutters now.
-                let paths = std::iter::once(path).collect();
-                state.on_fs_batch(crate::watcher::FsBatch {
-                    paths,
-                    structure_changed: false,
-                    git_changed: false,
-                });
-            }
-            Err(e) => state.notifications.error("Save failed", e),
-        },
-    );
+    let tell = {
+        let path = path.clone();
+        // The receiver may be gone (the preview closed); the file is written either way.
+        move |_: &mut AppState, token: Option<u64>| drop(tx.send(Msg::Saved(path, token)))
+    };
+    let owner = crate::save::Owner::Detached(Box::new(tell));
+    let pending = crate::save::snapshot(&mut h.doc, &mut h.saving, path, owner, crate::save::Reason::Debounce, false, crate::save::backups(state));
+    crate::save::spawn(&state.jobs, pending);
 }
 
 /// Draws the preview (file name + path header, editable code) into `ui`'s rect.

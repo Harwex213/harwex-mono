@@ -13,8 +13,9 @@
 //! Project tree. While the bar has the keyboard, the tree's file keys (`tree::command_keys`) and
 //! Alt+F1 act on the selected crumb.
 //!
-//! Listings run on a worker through `tree::list_dir` without ignored entries (the Project tree
-//! may show them dimmed; the popups never do). Icons come from `icons`.
+//! Listings run on a worker through `tree::list_dir`. With `files.show_ignored` they hold the
+//! git-ignored entries, drawn dimmed like the Project tree, and the crumbs of an ignored path are
+//! dimmed too. Icons come from `icons`.
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -213,6 +214,13 @@ pub fn focus_id() -> Id {
 pub struct Breadcrumbs {
     listings: HashMap<PathBuf, Vec<Entry>>,
     loading: HashSet<PathBuf>,
+    /// Bumped when every listing must be read again (the Show ignored files setting changed); a
+    /// listing started before the bump is dropped.
+    list_gen: u64,
+    /// The active file and, per crumb, whether it is git-ignored (`tree::ignored_below`).
+    ignored: Option<(PathBuf, Vec<bool>)>,
+    /// The file whose ignored crumbs a worker computes.
+    ignored_loading: Option<PathBuf>,
     pub popup: Option<Popup>,
     /// The open file menu. It never shows together with `popup`.
     pub menu: Option<FileMenu>,
@@ -263,6 +271,18 @@ impl Breadcrumbs {
     pub fn items(&self, level: &Level) -> Option<&[Entry]> {
         self.listings.get(&level.dir).map(Vec::as_slice)
     }
+
+    /// Drops every listing, so the next popup lists again (with the new Show ignored files value).
+    pub fn relist(&mut self) {
+        self.listings.clear();
+        self.loading.clear();
+        self.list_gen += 1;
+    }
+
+    /// Whether crumb `index` of `file` is git-ignored. `None` until a worker has checked the file.
+    pub fn crumb_ignored(&self, file: &Path, index: usize) -> Option<bool> {
+        self.ignored.as_ref().filter(|(f, _)| f == file).map(|(_, flags)| flags.get(index).copied().unwrap_or(false))
+    }
 }
 
 /// The file the active tab shows (an editor's file, or the file of a diff tab).
@@ -292,18 +312,67 @@ fn active_segments(state: &AppState) -> Option<Vec<Segment>> {
 }
 
 /// Lists `dir` on a worker. A cached listing stays on screen until the fresh one arrives.
-fn request(state: &mut AppState, dir: PathBuf) {
+/// `dir_ignored` is whether `dir` itself is git-ignored; `None` lets the worker find out.
+fn request(state: &mut AppState, dir: PathBuf, dir_ignored: Option<bool>) {
     if !state.ws.breadcrumbs.loading.insert(dir.clone()) {
         return;
     }
     let generation = state.project_generation();
+    let list_gen = state.ws.breadcrumbs.list_gen;
+    let show = state.settings.global.files.show_ignored;
+    let root = state.ws.project.as_ref().map(|p| p.root.clone());
     let d = dir.clone();
     state.jobs.spawn_quiet(
-        move || tree::list_dir(&d, false, false),
+        move || {
+            if !show {
+                return tree::list_dir(&d, false, false);
+            }
+            // A folder inside an ignored one matches no ignore rule itself; its listing must know.
+            let ignored = dir_ignored.unwrap_or_else(|| root.is_some_and(|r| tree::ignored_below(&r, &d).last().copied().unwrap_or(false)));
+            tree::list_dir(&d, true, ignored)
+        },
         move |state, entries| {
-            state.ws.breadcrumbs.loading.remove(&dir);
-            if state.project_generation() == generation {
-                state.ws.breadcrumbs.listings.insert(dir, entries);
+            let current = state.project_generation() == generation;
+            let crumbs = &mut state.ws.breadcrumbs;
+            if crumbs.list_gen != list_gen {
+                return;
+            }
+            crumbs.loading.remove(&dir);
+            if current {
+                crumbs.listings.insert(dir, entries);
+            }
+        },
+    );
+}
+
+/// Checks on a worker which crumbs of `file` are git-ignored, once per active file.
+fn request_ignored(state: &mut AppState, file: &Path) {
+    let crumbs = &state.ws.breadcrumbs;
+    if crumbs.ignored.as_ref().is_some_and(|(f, _)| f == file) || crumbs.ignored_loading.as_deref() == Some(file) {
+        return;
+    }
+    let Some(root) = state.ws.project.as_ref().map(|p| p.root.clone()) else { return };
+    if !file.starts_with(&root) {
+        return;
+    }
+    state.ws.breadcrumbs.ignored_loading = Some(file.to_path_buf());
+    let generation = state.project_generation();
+    let f = file.to_path_buf();
+    state.jobs.spawn_quiet(
+        move || {
+            // Crumb 0 is the project root.
+            let mut flags = vec![false];
+            flags.extend(tree::ignored_below(&root, &f));
+            (f, flags)
+        },
+        move |state, (file, flags)| {
+            let current = state.project_generation() == generation;
+            let crumbs = &mut state.ws.breadcrumbs;
+            if crumbs.ignored_loading.as_ref() == Some(&file) {
+                crumbs.ignored_loading = None;
+            }
+            if current {
+                crumbs.ignored = Some((file, flags));
             }
         },
     );
@@ -358,7 +427,8 @@ fn open_popup(state: &mut AppState, slot: usize, segs: &[Segment], anchor: Pos2)
     // The file segment lists its siblings, with the file highlighted.
     let dir_index = if seg.kind == SegmentKind::File { slot.saturating_sub(1) } else { slot };
     let level = Level::dir(segs[dir_index].path.clone(), &file);
-    request(state, level.dir.clone());
+    let dir_ignored = state.ws.breadcrumbs.crumb_ignored(&file, dir_index);
+    request(state, level.dir.clone(), dir_ignored);
     state.ws.breadcrumbs.menu = None;
     state.ws.breadcrumbs.popup = Some(Popup { levels: vec![level], focus: 0, slot, file, anchor });
 }
@@ -481,6 +551,8 @@ pub fn bar(state: &mut AppState, ui: &mut Ui) {
         return;
     };
     let file = segs.last().map(|s| s.path.clone()).unwrap_or_default();
+    request_ignored(state, &file);
+    let show_ignored = state.settings.global.files.show_ignored;
     let crumbs = &mut state.ws.breadcrumbs;
     if crumbs.popup.as_ref().is_some_and(|p| p.file != file) {
         crumbs.popup = None;
@@ -532,6 +604,7 @@ pub fn bar(state: &mut AppState, ui: &mut Ui) {
     let mut menu_click: Option<(usize, Target)> = None;
     let mut reveal: Option<PathBuf> = None;
     let root = state.ws.project.as_ref().map(|p| p.root.clone());
+    let crumb_ignored: Vec<bool> = (0..segs.len()).map(|n| show_ignored && state.ws.breadcrumbs.crumb_ignored(&file, n).unwrap_or(false)).collect();
     let git = &state.ws.git;
     let mut slot_rects = Vec::with_capacity(segs.len());
     // A plain mouse wheel scrolls the row too, not only a sideways swipe or Shift+wheel.
@@ -576,6 +649,7 @@ pub fn bar(state: &mut AppState, ui: &mut Ui) {
                     }
                     x += ICON_W;
                     let color = match seg.kind {
+                        _ if crumb_ignored[n] => theme::T.tree_ignored,
                         SegmentKind::File => tree::name_color(git, &seg.path, false),
                         _ => theme::T.text,
                     };
@@ -870,7 +944,7 @@ pub fn show_popup(state: &mut AppState, ctx: &Context) {
                         } else {
                             file_icon(painter, pos2(rect.min.x + 13.0, cy), &e.name);
                         }
-                        let mut color = tree::name_color(git, &e.path, e.is_dir);
+                        let mut color = if e.ignored { theme::T.tree_ignored } else { tree::name_color(git, &e.path, e.is_dir) };
                         if selected && focused && color == theme::T.text {
                             color = theme::T.text_bright;
                         }
@@ -923,7 +997,7 @@ pub fn show_popup(state: &mut AppState, ctx: &Context) {
                 popup.focus = level;
                 if let Some(e) = entry.filter(|e| e.is_dir) {
                     popup.levels.push(Level::dir(e.path.clone(), &popup.file));
-                    to_list.push(e.path);
+                    to_list.push((e.path, e.ignored));
                     if enter {
                         popup.focus = level + 1;
                     }
@@ -932,8 +1006,8 @@ pub fn show_popup(state: &mut AppState, ctx: &Context) {
         }
     }
     state.ws.breadcrumbs.popup_rects = popup_rects;
-    for d in to_list {
-        request(state, d);
+    for (d, ignored) in to_list {
+        request(state, d, Some(ignored));
     }
     if escape {
         leave(state, ctx);

@@ -1,13 +1,13 @@
-//! Code formatting: oxfmt on explicit save and "Reformat File with oxfmt" (⌥⌘L).
+//! Code formatting: oxfmt before a save that formats (`save::Reason::formats`) and
+//! "Reformat File with oxfmt" (⌥⌘L).
 //!
 //! The buffer, not the disk, goes to the formatter on a worker (`oxfmt.rs`). The worker also
 //! computes a line diff, so the UI thread only applies the changed blocks: one undo step, the
 //! carets and the scroll stay on their text where it did not change.
 //!
-//! Explicit saves format: ⌘S, Save All (⌥⌘S) and "Save" in the close prompts. Saves that the
-//! app makes itself (refactorings, Replace in Files, the commit's save of dirty files) do not:
-//! IDEA runs its "Actions on Save" only on a save the user asks for. A failure (no oxfmt, a
-//! syntax error, the time limit) saves the text unformatted and leaves one status bar line.
+//! Only `save` starts a format before a save (`start_save`) and hands the document back to
+//! `save::write_now` when the format lands. A failure (no oxfmt, a syntax error, the time limit)
+//! saves the text unformatted and leaves one status bar line.
 
 pub mod oxfmt;
 
@@ -20,21 +20,22 @@ use ide_editor::{EditKind, Selection};
 
 use crate::jobs::Cancel;
 use crate::notifications::Level;
+use crate::save::{Reason, Target};
 use crate::state::AppState;
 use crate::tabs::TabId;
 use oxfmt::FormatError;
 
-/// A format in flight for one tab.
+/// A format in flight for one document.
 struct Flight {
     cancel: Cancel,
-    /// `Some(then_close)` when the tab is saved after the format lands.
-    save: Option<bool>,
+    /// The save that waits for the format: its reason and whether the tab closes after it.
+    save: Option<(Reason, bool)>,
 }
 
 /// Per-workspace formatter state.
 #[derive(Default)]
 pub struct FormatState {
-    flights: HashMap<TabId, Flight>,
+    flights: HashMap<Target, Flight>,
     /// "oxfmt is not installed" was said for an on-save format of this project. A manual
     /// reformat says it again.
     told_missing: bool,
@@ -44,7 +45,12 @@ pub struct FormatState {
 
 impl FormatState {
     pub fn in_flight(&self, id: TabId) -> bool {
-        self.flights.contains_key(&id)
+        self.flights.contains_key(&Target::Tab(id))
+    }
+
+    /// A format of any document runs (a project close waits for the saves behind them).
+    pub fn any_in_flight(&self) -> bool {
+        !self.flights.is_empty()
     }
 
     /// Stops every format (the project closes or its settings change).
@@ -56,36 +62,43 @@ impl FormatState {
     }
 }
 
-/// An explicit save of tab `id`: formats first when `[format.oxfmt] on_save` covers the file.
-pub fn save(state: &mut AppState, id: TabId, then_close: bool) {
-    let config = &state.ws.langs.config.oxfmt;
-    let Some(e) = state.ws.tabs.editor_mut(id) else { return };
-    if let Some(f) = state.ws.format.flights.get_mut(&id) {
-        // A manual reformat is running: the save waits for it.
-        if !e.read_only && f.save.is_none() {
-            f.save = Some(then_close);
-            e.saving = true;
+/// A format of `target` is running.
+pub(crate) fn in_flight_for(state: &AppState, target: &Target) -> bool {
+    state.ws.format.flights.contains_key(target)
+}
+
+/// A save of `target` while a manual reformat of it runs: the save waits for the format.
+/// Returns false when no format runs.
+pub(crate) fn queue_save(state: &mut AppState, target: &Target, reason: Reason, then_close: bool) -> bool {
+    let Some(waiting) = state.ws.format.flights.get(target).map(|f| f.save.is_some()) else { return false };
+    if !waiting {
+        if let Some(s) = crate::save::slot(state, target).filter(|s| !s.read_only) {
+            *s.saving = true;
+            if let Some(f) = state.ws.format.flights.get_mut(target) {
+                f.save = Some((reason, then_close));
+            }
         }
-        return;
     }
-    if !config.on_save || !config.covers(&e.path) || e.read_only || !e.doc.is_dirty() || e.saving {
-        state.save_tab(id, then_close);
-        return;
-    }
-    e.saving = true;
-    start(state, id, Some(then_close));
+    true
+}
+
+/// Formats `target`, then saves it (`save::write_now`). Called by `save` only.
+pub(crate) fn start_save(state: &mut AppState, target: Target, reason: Reason, then_close: bool) {
+    let Some(s) = crate::save::slot(state, &target) else { return };
+    *s.saving = true;
+    start(state, target, Some((reason, then_close)));
 }
 
 /// "Reformat File with oxfmt" (⌥⌘L) on the active editor. It does not save.
 pub fn reformat_active(state: &mut AppState) {
     let Some(id) = state.ws.tabs.active else { return };
     let Some(e) = state.ws.tabs.editor_mut(id) else { return };
-    if e.read_only || state.ws.format.flights.contains_key(&id) {
+    if e.read_only || state.ws.format.flights.contains_key(&Target::Tab(id)) {
         return;
     }
     // A manual action always reports a missing install.
     state.ws.format.told_missing = false;
-    start(state, id, None);
+    start(state, Target::Tab(id), None);
 }
 
 /// What the worker hands back: the formatter's changes as blocks of whole lines.
@@ -103,14 +116,15 @@ struct Hunk {
     new_lines: Range<usize>,
 }
 
-fn start(state: &mut AppState, id: TabId, save: Option<bool>) {
+fn start(state: &mut AppState, target: Target, save: Option<(Reason, bool)>) {
     let timeout = state.ws.langs.config.oxfmt.timeout;
-    let Some(e) = state.ws.tabs.editor_mut(id) else { return };
+    let Some(s) = crate::save::slot(state, &target) else { return };
     // A rope clone is cheap; the worker turns it into a string.
-    let rope = e.doc.rope().clone();
-    let version = e.doc.version();
-    let path = e.path.clone();
+    let rope = s.doc.rope().clone();
+    let version = s.doc.version();
+    let path = s.path;
     let name = path.file_name().map_or_else(String::new, |n| n.to_string_lossy().into_owned());
+    let key = target.clone();
     let cancel = state.jobs.spawn_cancellable(
         format!("oxfmt {name}"),
         move || {
@@ -120,20 +134,32 @@ fn start(state: &mut AppState, id: TabId, save: Option<bool>) {
             let formatted = oxfmt::format(&install, &path, &text, timeout, &cancel)?;
             Ok::<_, FormatError>((formatted != text).then(|| plan(&text, &formatted)))
         },
-        move |state, res| finish(state, id, version, res),
+        move |state, res| finish(state, key, version, res),
     );
-    state.ws.format.flights.insert(id, Flight { cancel, save });
+    state.ws.format.flights.insert(target, Flight { cancel, save });
 }
 
-fn finish(state: &mut AppState, id: TabId, version: u64, res: Result<Option<Plan>, FormatError>) {
-    let Some(flight) = state.ws.format.flights.remove(&id) else { return };
-    let Some(e) = state.ws.tabs.editor_mut(id) else { return };
+fn finish(state: &mut AppState, target: Target, version: u64, res: Result<Option<Plan>, FormatError>) {
+    let Some(flight) = state.ws.format.flights.remove(&target) else { return };
+    let Some(s) = crate::save::slot(state, &target) else { return };
     if flight.save.is_some() {
-        e.saving = false;
+        *s.saving = false;
     }
+    let current = s.doc.version() == version;
     let note = match res {
-        Ok(Some(plan)) if e.doc.version() == version => {
-            apply(e, &plan);
+        Ok(Some(plan)) if current => {
+            match &target {
+                Target::Tab(id) => {
+                    if let Some(e) = state.ws.tabs.editor_mut(*id) {
+                        apply(e, &plan);
+                    }
+                }
+                Target::DiffHidden { .. } => {
+                    if let Some(s) = crate::save::slot(state, &target) {
+                        apply_doc(s.doc, &plan);
+                    }
+                }
+            }
             state.ws.format.applied += 1;
             None
         }
@@ -148,8 +174,8 @@ fn finish(state: &mut AppState, id: TabId, version: u64, res: Result<Option<Plan
         let title = if flight.save.is_some() { format!("{title}. Saved unformatted.") } else { title };
         state.notifications.log_only(Level::Warning, title, body);
     }
-    if let Some(then_close) = flight.save {
-        state.save_tab(id, then_close);
+    if let Some((reason, then_close)) = flight.save {
+        crate::save::write_now(state, target, reason, then_close);
     }
 }
 
@@ -290,6 +316,15 @@ fn apply(e: &mut crate::tabs::EditorTab, plan: &Plan) {
         e.view.restore_view(v);
     }
     e.last_edit = Instant::now();
+}
+
+/// Applies the plan to a document without a view of its own (a diff's hidden document): one
+/// undo step; the diff's view clamps its carets.
+fn apply_doc(doc: &mut ide_editor::Document, plan: &Plan) {
+    let sel = Selection::new(0, 0);
+    doc.seal_undo_group();
+    doc.transact(plan.edits(), sel, sel, EditKind::Other);
+    doc.seal_undo_group();
 }
 
 /// The folder whose oxfmt the Settings page shows: the active file's, else the project root.

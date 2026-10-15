@@ -61,6 +61,24 @@ pub enum Icon {
     Error,
     /// A warning: a filled triangle with an exclamation mark cut out.
     Warning,
+    /// Settings › System: a monitor on a stand.
+    Monitor,
+    /// Settings › Keymap: a keyboard.
+    Keyboard,
+    /// Settings › Languages: angle brackets around a slash.
+    Code,
+    /// Settings › Frameworks: a cube.
+    Cube,
+    /// An info note: a ring with an `i`.
+    Info,
+    /// Fonts: a `T`.
+    Text,
+    /// Formatting: lines of text, aligned left.
+    Format,
+    /// A document: a sheet with a folded corner.
+    Document,
+    /// File sync: two arrows in a circle.
+    Sync,
 }
 
 /// Paints `icon` centered in `rect` (any size; the grid scales to the shorter side).
@@ -251,6 +269,77 @@ pub fn paint(painter: &Painter, rect: Rect, icon: Icon, color: Color32) {
             let cut = Stroke::new((1.6 * s).max(1.0), T.island_bg);
             painter.line_segment([p(8.0, 5.8), p(8.0, 10.0)], cut);
             painter.add(CircleShape::filled(p(8.0, 12.0), 1.0 * s, T.island_bg));
+        }
+        Icon::Monitor => {
+            frame(p(1.5, 2.5), p(14.5, 11.0), 1.5);
+            line(p(8.0, 11.0), p(8.0, 13.5));
+            line(p(5.0, 13.8), p(11.0, 13.8));
+        }
+        Icon::Keyboard => {
+            frame(p(1.0, 4.0), p(15.0, 12.5), 1.5);
+            for x in [4.0, 6.7, 9.3, 12.0] {
+                dot(p(x, 6.7), 0.75);
+            }
+            dot(p(4.0, 9.0), 0.75);
+            dot(p(12.0, 9.0), 0.75);
+            line(p(6.0, 9.8), p(10.0, 9.8));
+        }
+        Icon::Code => {
+            line(p(5.0, 4.0), p(1.5, 8.0));
+            line(p(1.5, 8.0), p(5.0, 12.0));
+            line(p(11.0, 4.0), p(14.5, 8.0));
+            line(p(14.5, 8.0), p(11.0, 12.0));
+            line(p(9.3, 2.8), p(6.7, 13.2));
+        }
+        Icon::Cube => {
+            let top = [p(8.0, 1.5), p(14.0, 4.8), p(8.0, 8.1), p(2.0, 4.8)];
+            for i in 0..4 {
+                line(top[i], top[(i + 1) % 4]);
+            }
+            line(p(2.0, 4.8), p(2.0, 11.2));
+            line(p(14.0, 4.8), p(14.0, 11.2));
+            line(p(8.0, 8.1), p(8.0, 14.5));
+            line(p(2.0, 11.2), p(8.0, 14.5));
+            line(p(14.0, 11.2), p(8.0, 14.5));
+        }
+        Icon::Info => {
+            ring(p(8.0, 8.0), 6.0);
+            dot(p(8.0, 4.9), 0.9);
+            line(p(8.0, 7.0), p(8.0, 11.5));
+        }
+        Icon::Text => {
+            line(p(2.5, 2.8), p(13.5, 2.8));
+            line(p(2.5, 2.8), p(2.5, 4.6));
+            line(p(13.5, 2.8), p(13.5, 4.6));
+            line(p(8.0, 2.8), p(8.0, 13.5));
+            line(p(5.8, 13.5), p(10.2, 13.5));
+        }
+        Icon::Format => {
+            line(p(1.5, 3.0), p(14.5, 3.0));
+            line(p(4.5, 6.3), p(14.5, 6.3));
+            line(p(4.5, 9.6), p(12.0, 9.6));
+            line(p(1.5, 13.0), p(10.0, 13.0));
+        }
+        Icon::Document => {
+            line(p(3.0, 1.5), p(9.5, 1.5));
+            line(p(9.5, 1.5), p(13.0, 5.0));
+            line(p(13.0, 5.0), p(13.0, 14.5));
+            line(p(13.0, 14.5), p(3.0, 14.5));
+            line(p(3.0, 14.5), p(3.0, 1.5));
+            line(p(9.5, 1.5), p(9.5, 5.0));
+            line(p(9.5, 5.0), p(13.0, 5.0));
+            line(p(5.5, 8.5), p(10.5, 8.5));
+            line(p(5.5, 11.5), p(10.5, 11.5));
+        }
+        Icon::Sync => {
+            curve(p(2.5, 7.0), p(3.2, 3.8), p(5.6, 2.2), p(8.0, 2.2));
+            curve(p(8.0, 2.2), p(10.4, 2.2), p(12.4, 3.6), p(13.3, 5.6));
+            line(p(13.3, 5.6), p(13.6, 2.4));
+            line(p(13.3, 5.6), p(10.2, 5.2));
+            curve(p(13.5, 9.0), p(12.8, 12.2), p(10.4, 13.8), p(8.0, 13.8));
+            curve(p(8.0, 13.8), p(5.6, 13.8), p(3.6, 12.4), p(2.7, 10.4));
+            line(p(2.7, 10.4), p(2.4, 13.6));
+            line(p(2.7, 10.4), p(5.8, 10.8));
         }
         Icon::Lock => {
             painter.rect_filled(Rect::from_min_max(p(3.5, 7.5), p(12.5, 14.0)), CornerRadius::same((1.5 * s) as u8), color);

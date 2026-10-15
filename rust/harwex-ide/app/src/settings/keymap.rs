@@ -158,14 +158,23 @@ pub fn key_parts(keys: &str) -> Vec<KeyPart> {
     out
 }
 
-pub fn page(ui: &mut Ui, view: &mut KeymapView) {
+/// The page: a card with the scope badge and the filter, then the group cards, which scroll.
+/// `width` is the cards' width (the scroll bar floats right of it).
+pub fn page(ui: &mut Ui, view: &mut KeymapView, width: f32) {
     let t = &theme::T;
-    // The keys are the same in every project.
-    super::pages::section(ui, "Shortcuts", super::Scope::Global);
-    ui.add_space(4.0);
-    let edit = ui.add(TextEdit::singleline(&mut view.filter).hint_text("Filter actions or keys").desired_width(f32::INFINITY));
-    crate::util::label_widget(&edit, egui::WidgetType::TextEdit, "Filter keymap");
-    ui.add_space(6.0);
+    ui.allocate_ui_with_layout(egui::vec2(width, 0.0), egui::Layout::top_down(egui::Align::Min), |ui| {
+        ui.set_width(width);
+        super::kit::card(ui, |ui| {
+            // The keys are the same in every project.
+            super::kit::header(ui, crate::icons::Icon::Keyboard, "Shortcuts", "Read-only. A filter matches actions, groups and keys", |ui| {
+                super::kit::badge(ui, "Shortcuts", super::Scope::Global);
+            });
+            ui.add_space(4.0);
+            let edit = ui.add(TextEdit::singleline(&mut view.filter).hint_text("Filter actions or keys").desired_width(f32::INFINITY).margin(egui::vec2(6.0, 4.0)));
+            crate::util::label_widget(&edit, egui::WidgetType::TextEdit, "Filter keymap");
+            ui.add_space(4.0);
+        });
+    });
     let groups = grouped(&view.filter);
     if groups.is_empty() {
         ui.label(RichText::new("Nothing found").color(t.text_dim));
@@ -173,12 +182,13 @@ pub fn page(ui: &mut Ui, view: &mut KeymapView) {
     }
     let filtering = !view.filter.trim().is_empty();
     egui::ScrollArea::vertical().id_salt("keymap-rows").auto_shrink([false, false]).min_scrolled_height(0.0).show(ui, |ui| {
-        ui.set_width(ui.available_width() - 14.0);
+        ui.set_width(width);
         ui.spacing_mut().item_spacing.y = 0.0;
         for (group, rows) in groups {
             let open = view.is_open(group);
             let total = ACTIONS.iter().filter(|r| r.0 == group).count();
-            let frame = egui::Frame::new().fill(t.card_bg).stroke(egui::Stroke::new(1.0_f32, t.card_border)).corner_radius(t.radius.popup).inner_margin(egui::Margin::symmetric(10, 4));
+            let margin = egui::Margin { top: 4, bottom: 4, ..super::kit::CARD_MARGIN };
+            let frame = egui::Frame::new().fill(t.card_bg).stroke(egui::Stroke::new(1.0_f32, t.card_border)).corner_radius(t.radius.popup).inner_margin(margin);
             frame.show(ui, |ui| {
                 ui.set_width(ui.available_width());
                 if header(ui, group, rows.len(), total, open, filtering) && !filtering {
@@ -195,7 +205,7 @@ pub fn page(ui: &mut Ui, view: &mut KeymapView) {
                     }
                 }
             });
-            ui.add_space(8.0);
+            ui.add_space(super::kit::CARD_GAP);
         }
     });
 }
@@ -204,11 +214,11 @@ pub fn page(ui: &mut Ui, view: &mut KeymapView) {
 /// `Keymap group <name>`, selected while open.
 fn header(ui: &mut Ui, group: &str, shown: usize, total: usize, open: bool, filtering: bool) -> bool {
     let t = &theme::T;
-    let h = 28.0;
+    let h = 34.0;
     let (rect, resp) = ui.allocate_exact_size(egui::vec2(ui.available_width(), h), Sense::click());
     let p = ui.painter();
     crate::icons::tree_chevron(p, egui::pos2(rect.left() + 6.0, rect.center().y), open, if filtering { t.text_dim } else { t.tree_chevron });
-    let name = p.layout_no_wrap(group.to_string(), t.semibold(t.font.ui), t.text_bright);
+    let name = p.layout_no_wrap(group.to_string(), t.semibold(t.font.ui + 0.5), t.text_bright);
     let name_w = name.size().x;
     p.galley(egui::pos2(rect.left() + 18.0, rect.center().y - name.size().y / 2.0), name, t.text_bright);
     let count = if shown == total { total.to_string() } else { format!("{shown} of {total}") };

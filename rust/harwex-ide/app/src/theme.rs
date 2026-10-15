@@ -129,6 +129,16 @@ pub struct Theme {
     pub card_border: Color32,
     pub keycap_bg: Color32,
     pub keycap_border: Color32,
+    /// Settings: the page list column and its selected row, a section's icon tile and icon,
+    /// the off track and the knob of a switch, info lines and the project-override strip.
+    pub settings_nav_bg: Color32,
+    pub settings_nav_selected: Color32,
+    pub section_icon_bg: Color32,
+    pub section_icon: Color32,
+    pub switch_off: Color32,
+    pub switch_knob: Color32,
+    pub info_bg: Color32,
+    pub override_bg: Color32,
 
     // Git log.
     pub lanes: [Color32; 8],
@@ -138,6 +148,8 @@ pub struct Theme {
     pub ref_local: (Color32, Color32),
     pub ref_remote: (Color32, Color32),
     pub ref_tag: (Color32, Color32),
+    /// The `+N` chip that stands for the ref labels that do not fit.
+    pub ref_more: (Color32, Color32),
 
     // Diff and merge.
     pub diff_inserted_bg: Color32,
@@ -243,6 +255,8 @@ pub struct FontSizes {
     pub mono_small: f32,
     pub hint: f32,
     pub big: f32,
+    /// A dialog page's title (Settings).
+    pub title: f32,
     pub welcome: f32,
     pub badge: f32,
     pub count_badge: f32,
@@ -328,6 +342,14 @@ impl Theme {
             card_border: hex(0x393B40),
             keycap_bg: hex(0x3A3D42),
             keycap_border: hex(0x55585E),
+            settings_nav_bg: hex(0x25272A),
+            settings_nav_selected: hexa(0x3574F0, 56),
+            section_icon_bg: hexa(0x3574F0, 46),
+            section_icon: hex(0x7AA5F8),
+            switch_off: hex(0x55585E),
+            switch_knob: hex(0xF0F1F2),
+            info_bg: hexa(0xFFFFFF, 7),
+            override_bg: hexa(0x4C9A5F, 38),
 
             lanes: [
                 hex(0x5F9EE6),
@@ -344,6 +366,7 @@ impl Theme {
             ref_local: (hex(0x253D2A), hex(0x8ED596)),
             ref_remote: (hex(0x3A2F4D), hex(0xC9A8F0)),
             ref_tag: (hex(0x3D3A26), hex(0xE0D890)),
+            ref_more: (hex(0x3C3F45), hex(0xCED0D6)),
 
             diff_inserted_bg: hex(0x253D2C),
             diff_inserted_word: hex(0x33603D),
@@ -402,7 +425,7 @@ impl Theme {
                 count_badge_ring: 1.5,
                 count_badge_text_dy: 0.0,
             },
-            font: FontSizes { ui: 13.0, small: 12.0, tiny: 11.0, mono: 13.0, mono_small: 12.0, hint: 13.0, big: 15.0, welcome: 24.0, badge: 10.5, count_badge: 9.0, preview: 14.0, preview_headings: [26.0, 21.0, 17.0, 15.0, 14.0, 13.0] },
+            font: FontSizes { ui: 13.0, small: 12.0, tiny: 11.0, mono: 13.0, mono_small: 12.0, hint: 13.0, big: 15.0, title: 18.0, welcome: 24.0, badge: 10.5, count_badge: 9.0, preview: 14.0, preview_headings: [26.0, 21.0, 17.0, 15.0, 14.0, 13.0] },
 
             editor: EditorTheme::islands_dark(),
             terminal: TerminalTheme::islands_dark(),

@@ -55,9 +55,9 @@ fn commit_tree_speed_search() {
     ide.click("Commit tool window");
     ide.settle();
     assert_eq!(ide.state().ws.layout.left, Some(ToolWindow::Commit));
-    ide.click("Collapse All");
-    ide.settle();
+    // Folders start collapsed (task 112), so the search has to reveal the match.
     assert!(!ide.has(SHARED));
+    assert!(ide.has("Directory etc/ci in Unstaged"), "{:?}", ide.labels());
     // A press on a row gives the tree the focus.
     ide.click("README.md");
     ide.settle();

@@ -350,6 +350,23 @@ impl Ide {
         self.step();
     }
 
+    /// Scrolls the open Settings page until the widget labelled `label` sits above the dialog's
+    /// footer: the page scrolls, and a press on a row below the fold lands outside the dialog.
+    pub fn reveal_in_settings(&mut self, label: &str) {
+        let ok = self.rect("OK");
+        let footer = ok.top() - 16.0;
+        self.move_to(Pos2::new(ok.center().x - 200.0, footer - 80.0));
+        for _ in 0..30 {
+            if self.rect(label).bottom() <= footer {
+                break;
+            }
+            self.push(Event::MouseWheel { unit: egui::MouseWheelUnit::Point, delta: egui::vec2(0.0, -60.0), modifiers: Modifiers::NONE });
+            self.steps(2);
+        }
+        self.settle();
+        assert!(self.rect(label).bottom() <= footer, "{label:?} stays below the Settings footer");
+    }
+
     /// Moves the pointer to a spot with no widget (the `gap` right of the islands, above the
     /// status bar), so snapshots carry no hover highlight or tooltip.
     pub fn park_mouse(&mut self) {

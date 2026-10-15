@@ -12,7 +12,8 @@
 //!   One buffer, one undo history; the tab shows the dirty mark, and Cmd+S saves it.
 //! - The file is not open: the diff loads a hidden `Document` on a worker and edits it. It saves
 //!   `SAVE_DEBOUNCE` after the last edit, on focus loss and on close (IDEA auto-saves). An editor
-//!   tab that opens for the file takes the unsaved document over (`adopt_hidden`).
+//!   tab that opens for the file takes the unsaved document over (`adopt_hidden`). These rules
+//!   only decide when; every write goes through `save` (Cmd+S formats like an editor tab's).
 //! - After every edit the hunks are recomputed on a worker from a rope snapshot (`Relayout`);
 //!   the UI thread only compares doc versions.
 
@@ -29,6 +30,7 @@ use ide_editor::{ClickChain, Document, EditorTheme, HlKind, Language, Position, 
 use ide_git::{DiffHunk, DiffSide, FileDiff, LineKind, Oid, Repo};
 
 use crate::jobs::Jobs;
+use crate::save::{Owner, Reason, Slot, Target};
 use crate::state::{AppCommand, AppState, TabEnv};
 use crate::tabs::{CustomTab, TabContent, TabId};
 use crate::theme;
@@ -677,7 +679,7 @@ impl CustomTab for DiffTab {
         self.live.edited_at.is_some()
     }
     fn on_close(&mut self, env: &mut TabEnv) {
-        save_hidden(env.jobs, self, true);
+        save_hidden_here(env.jobs, env.backups.clone(), self, Reason::Close);
     }
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
@@ -723,7 +725,7 @@ impl CustomTab for DiffTab {
         let mut editor = env.editor.take().filter(|(_, e)| editable && !e.read_only);
         if editor.is_some() && self.live.hidden.is_some() {
             // An editor tab holds the file now (`adopt_hidden` took unsaved edits over).
-            save_hidden(env.jobs, self, true);
+            save_hidden_here(env.jobs, env.backups.clone(), self, Reason::Close);
             self.live.hidden = None;
             self.live.hidden_gen += 1;
         }
@@ -770,7 +772,7 @@ impl CustomTab for DiffTab {
             }
         }
         if self.live.had_focus && !out.has_focus && self.live.edited_at.is_some() {
-            save_hidden(env.jobs, self, false);
+            save_hidden_here(env.jobs, env.backups.clone(), self, Reason::Debounce);
         }
         self.live.had_focus = out.has_focus;
         if let Some(text) = out.copied {
@@ -1685,12 +1687,13 @@ pub fn show_in_active_worktree_diff(state: &mut AppState, path: &Path) {
         state.ws.tabs.activate(open);
         return;
     }
+    let backups = crate::save::backups(state);
     let AppState { ws, jobs, .. } = state;
     if let Some(t) = ws.tabs.get_mut(id) {
         // The replaced diff's unsaved edits go to disk first.
         if let TabContent::Custom(c) = &mut t.content {
             if let Some(old) = c.as_any_mut().downcast_mut::<DiffTab>() {
-                save_hidden(jobs, old, true);
+                save_hidden_here(jobs, backups, old, Reason::Close);
             }
         }
         t.content = TabContent::Custom(Box::new(tab));
@@ -1886,70 +1889,85 @@ fn load_hidden(jobs: &Jobs, tab: &mut DiffTab) {
     );
 }
 
-/// Writes the hidden document's unsaved edits on a worker. A write that is already running
-/// makes this one wait for the next tick, unless `now` (the diff closes).
-fn save_hidden(jobs: &Jobs, tab: &mut DiffTab, now: bool) {
+/// Decides whether the hidden document saves now; `save` writes it. A write that is already
+/// running makes this one wait for the next tick, unless `now` (the diff closes).
+fn hidden_due(tab: &mut DiffTab, now: bool) -> Option<Target> {
     tab.live.edited_at = None;
-    let Some(h) = tab.live.hidden.as_mut() else { return };
-    if !h.is_dirty() {
-        return;
+    if !tab.live.hidden.as_ref().is_some_and(Document::is_dirty) {
+        return None;
     }
     if tab.live.saving && !now {
         tab.live.edited_at = Some(Instant::now());
-        return;
+        return None;
     }
-    tab.live.saving = true;
-    let (text, token) = h.save_snapshot();
-    let (path, key, gen) = (tab.abs().to_path_buf(), tab.key.clone(), tab.live.hidden_gen);
-    jobs.spawn_quiet(
-        move || std::fs::write(&path, text).map(|()| path.clone()).map_err(|e| format!("{}: {e}", path.display())),
-        move |state, res| {
-            if let Some(tab) = state.ws.tabs.custom_mut::<DiffTab>(&key) {
-                tab.live.saving = false;
-                if let (Ok(_), Some(h), true) = (&res, tab.live.hidden.as_mut(), tab.live.hidden_gen == gen) {
-                    h.mark_saved(token);
-                }
-            }
-            match res {
-                // No watcher in tests, and the watcher is slow: refresh status and gutters now.
-                Ok(path) => state.on_fs_batch(crate::watcher::FsBatch { paths: std::iter::once(path).collect(), structure_changed: false, git_changed: false }),
-                Err(e) => state.notifications.error("Save failed", e),
-            }
-        },
-    );
+    Some(Target::DiffHidden { key: tab.key.clone(), gen: tab.live.hidden_gen })
+}
+
+/// Saves the hidden document from a place that holds the tab outside `AppState` (a frame of
+/// the diff, its close, a replaced diff). `Reason::Close` writes also while a write runs.
+fn save_hidden_here(jobs: &Jobs, backups: Option<PathBuf>, tab: &mut DiffTab, reason: Reason) {
+    let Some(target) = hidden_due(tab, reason == Reason::Close) else { return };
+    let path = tab.abs().to_path_buf();
+    let Some(doc) = tab.live.hidden.as_mut() else { return };
+    let pending = crate::save::snapshot(doc, &mut tab.live.saving, path, Owner::Target(target), reason, false, backups);
+    crate::save::spawn(jobs, pending);
+}
+
+/// The hidden documents that are due for a save (`hidden_due`) in the workspace in context.
+pub(crate) fn due_hidden(state: &mut AppState, now: bool) -> Vec<Target> {
+    let mut out = Vec::new();
+    for t in state.ws.tabs.list.iter_mut() {
+        let TabContent::Custom(c) = &mut t.content else { continue };
+        if let Some(d) = c.as_any_mut().downcast_mut::<DiffTab>() {
+            out.extend(hidden_due(d, now));
+        }
+    }
+    out
+}
+
+/// The hidden document of diff `key`, while it is still generation `gen`.
+pub(crate) fn hidden_slot<'a>(state: &'a mut AppState, key: &str, gen: u64) -> Option<Slot<'a>> {
+    let tab = state.ws.tabs.custom_mut::<DiffTab>(key)?;
+    if tab.live.hidden_gen != gen {
+        return None;
+    }
+    let path = tab.abs().to_path_buf();
+    let doc = tab.live.hidden.as_mut()?;
+    Some(Slot { doc, saving: &mut tab.live.saving, path, read_only: false })
+}
+
+/// A write of diff `key`'s hidden document finished; `token` on success. A newer document
+/// (another generation) is never marked.
+pub(crate) fn hidden_saved(state: &mut AppState, key: &str, gen: u64, token: Option<u64>) {
+    let Some(tab) = state.ws.tabs.custom_mut::<DiffTab>(key) else { return };
+    tab.live.saving = false;
+    if let (Some(t), Some(h), true) = (token, tab.live.hidden.as_mut(), tab.live.hidden_gen == gen) {
+        h.mark_saved(t);
+    }
 }
 
 /// Saves the hidden documents whose last edit rested `SAVE_DEBOUNCE`. Runs every frame, so a
 /// pending save lands while the diff is not drawn.
 pub fn tick(state: &mut AppState) {
-    let AppState { ws, jobs, ctx, .. } = state;
     let mut wake: Option<Duration> = None;
-    for t in ws.tabs.list.iter_mut() {
+    let mut due = Vec::new();
+    for t in state.ws.tabs.list.iter_mut() {
         let TabContent::Custom(c) = &mut t.content else { continue };
         let Some(d) = c.as_any_mut().downcast_mut::<DiffTab>() else { continue };
         let Some(at) = d.live.edited_at else { continue };
         let rest = at.elapsed();
         if rest >= SAVE_DEBOUNCE {
-            save_hidden(jobs, d, false);
+            due.extend(hidden_due(d, false));
         } else {
             let left = SAVE_DEBOUNCE - rest;
             wake = Some(wake.map_or(left, |w| w.min(left)));
         }
     }
-    if let Some(w) = wake {
-        ctx.request_repaint_after(w);
+    for target in due {
+        crate::save::save(state, target, Reason::Debounce);
     }
-}
-
-/// Save All: writes every diff's unsaved hidden document now.
-pub fn save_hidden_all(state: &mut AppState) {
-    let AppState { ws, jobs, .. } = state;
-    for t in ws.tabs.list.iter_mut() {
-        if let TabContent::Custom(c) = &mut t.content {
-            if let Some(d) = c.as_any_mut().downcast_mut::<DiffTab>() {
-                save_hidden(jobs, d, false);
-            }
-        }
+    if let Some(w) = wake {
+        state.ctx.request_repaint_after(w);
     }
 }
 
@@ -1974,8 +1992,8 @@ pub fn adopt_hidden(state: &mut AppState, path: &Path) -> Option<Document> {
     found
 }
 
-/// Cmd+S in an editable diff: saves the file's editor tab, or the hidden document. Returns
-/// false when the active tab is no such diff.
+/// Cmd+S in an editable diff: saves the file's editor tab, or the hidden document, like ⌘S in
+/// an editor tab (oxfmt first). Returns false when the active tab is no such diff.
 pub fn save_active(state: &mut AppState) -> bool {
     let Some(id) = state.ws.tabs.active else { return false };
     let abs = match state.ws.tabs.get_mut(id).map(|t| &mut t.content) {
@@ -1985,15 +2003,15 @@ pub fn save_active(state: &mut AppState) -> bool {
         },
         _ => return false,
     };
-    if let Some(editor) = state.ws.tabs.editor_by_path(&abs) {
-        state.save_tab(editor, false);
-        return true;
-    }
-    let AppState { ws, jobs, .. } = state;
-    if let Some(TabContent::Custom(c)) = ws.tabs.get_mut(id).map(|t| &mut t.content) {
-        if let Some(d) = c.as_any_mut().downcast_mut::<DiffTab>() {
-            save_hidden(jobs, d, false);
-        }
+    let target = match state.ws.tabs.editor_by_path(&abs) {
+        Some(editor) => Some(Target::Tab(editor)),
+        None => match state.ws.tabs.get_mut(id).map(|t| &mut t.content) {
+            Some(TabContent::Custom(c)) => c.as_any_mut().downcast_mut::<DiffTab>().and_then(|d| hidden_due(d, false)),
+            _ => None,
+        },
+    };
+    if let Some(target) = target {
+        crate::save::save(state, target, Reason::Explicit);
     }
     true
 }

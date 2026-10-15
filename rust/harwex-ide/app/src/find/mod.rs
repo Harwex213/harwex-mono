@@ -1009,10 +1009,11 @@ pub fn replace_selected(state: &mut AppState) {
         None => {
             let (path, one) = (hit.path.clone(), vec![hit.clone()]);
             let changed = hit.path.clone();
+            let backups = crate::save::backups(state);
             state.ws.find.replacing = true;
             state.jobs.spawn(
                 "Replacing in files",
-                move || replace_in_file(&path, &one),
+                move || replace_in_file(&path, &one, backups.as_deref()),
                 move |state, res| {
                     state.ws.find.replacing = false;
                     match res {
@@ -1084,7 +1085,7 @@ fn replace_in_doc(state: &mut AppState, id: crate::tabs::TabId, hits: &[FindHit]
     e.doc.seal_undo_group();
     e.doc.transact(edits, sel, sel, EditKind::Other);
     e.doc.seal_undo_group();
-    state.save_tab(id, false);
+    crate::save::save(state, crate::save::Target::Tab(id), crate::save::Reason::Refactor);
     n
 }
 
@@ -1101,6 +1102,7 @@ fn replace_counted(state: &mut AppState, query: Query, counted: Vec<(PathBuf, us
         let text: Snapshot = Box::new(move || rope.to_string());
         (e.path.clone(), text)
     }));
+    let backups = crate::save::backups(state);
     state.ws.find.replacing = true;
     state.jobs.spawn(
         "Replacing in files",
@@ -1108,7 +1110,7 @@ fn replace_counted(state: &mut AppState, query: Query, counted: Vec<(PathBuf, us
             let engine = Engine::new(&query)?;
             let no = AtomicBool::new(false);
             let (open_hits, _) = search_with(&Targets::Files(open), &docs, &query, None, &[], &no, usize::MAX, &|_, _| {})?;
-            Ok((open_hits, replace_in_closed_files(&closed, &engine, &query)))
+            Ok((open_hits, replace_in_closed_files(&closed, &engine, &query, backups.as_deref())))
         },
         move |state, res| {
             state.ws.find.replacing = false;
@@ -1158,7 +1160,7 @@ fn replace_counted(state: &mut AppState, query: Query, counted: Vec<(PathBuf, us
 
 /// Searches and writes the closed files on all cores, one file per thread at a time. Returns
 /// how many matches each file got replaced, or its error.
-fn replace_in_closed_files(files: &[PathBuf], engine: &Engine, query: &Query) -> Written {
+fn replace_in_closed_files(files: &[PathBuf], engine: &Engine, query: &Query, backups: Option<&Path>) -> Written {
     let out: Mutex<Written> = Mutex::default();
     let threads = std::thread::available_parallelism().map_or(4, |n| n.get()).min(8);
     let chunk = files.len().div_ceil(threads).max(1);
@@ -1167,7 +1169,7 @@ fn replace_in_closed_files(files: &[PathBuf], engine: &Engine, query: &Query) ->
             let out = &out;
             scope.spawn(move || {
                 for path in part {
-                    let r = replace_all_in_file(path, engine, query);
+                    let r = replace_all_in_file(path, engine, query, backups);
                     crate::lang::lock(out).push((path.clone(), r));
                 }
             });
@@ -1178,7 +1180,7 @@ fn replace_in_closed_files(files: &[PathBuf], engine: &Engine, query: &Query) ->
 
 /// Replaces every match of `query` in one file. A missing, too big or binary file gets none.
 /// The bytes between matches are copied as they are, line breaks included.
-fn replace_all_in_file(path: &Path, engine: &Engine, query: &Query) -> Result<usize, String> {
+fn replace_all_in_file(path: &Path, engine: &Engine, query: &Query, backups: Option<&Path>) -> Result<usize, String> {
     let Some(rep) = query.replacement.as_deref() else { return Ok(0) };
     let Some(bytes) = Disk.read(path) else { return Ok(0) };
     if is_binary(&bytes) {
@@ -1196,14 +1198,14 @@ fn replace_all_in_file(path: &Path, engine: &Engine, query: &Query) -> Result<us
         last = *end;
     }
     out.extend_from_slice(&bytes[last..]);
-    std::fs::write(path, out).map_err(|e| format!("{}: {e}", path.display()))?;
+    crate::save::write_file(path, &out, backups)?;
     Ok(found.len())
 }
 
 /// Replaces the hits in one file; a hit may span lines. A hit whose text is no longer at its
 /// place is skipped. Line breaks are kept as they are (the match carries its own). Returns how
 /// many hits were replaced.
-pub fn replace_in_file(path: &Path, hits: &[FindHit]) -> Result<usize, String> {
+pub fn replace_in_file(path: &Path, hits: &[FindHit], backups: Option<&Path>) -> Result<usize, String> {
     let text = std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
     let line_starts: Vec<usize> = std::iter::once(0).chain(text.match_indices('\n').map(|(i, _)| i + 1)).collect();
     let mut edits: Vec<(usize, usize, &str)> = Vec::new();
@@ -1230,7 +1232,7 @@ pub fn replace_in_file(path: &Path, hits: &[FindHit]) -> Result<usize, String> {
         last = end;
     }
     out.push_str(&text[last..]);
-    std::fs::write(path, out).map_err(|e| format!("{}: {e}", path.display()))?;
+    crate::save::write_file(path, out.as_bytes(), backups)?;
     Ok(edits.len())
 }
 
@@ -1263,7 +1265,7 @@ mod tests {
         let (r, _) = search(&root, &Query { whole_words: true, replacement: Some("plus".into()), ..q("add") }, &[], &AtomicBool::new(false)).unwrap();
         let mut found = r[0].1.clone();
         found.push(FindHit { matched: "zzz".into(), ..found[0].clone() });
-        assert_eq!(replace_in_file(&path, &found).unwrap(), 2);
+        assert_eq!(replace_in_file(&path, &found, None).unwrap(), 2);
         assert_eq!(std::fs::read_to_string(&path).unwrap(), "let addOne = plus(1);\nplus(2);\r\nadd_x\n");
     }
 
@@ -1321,7 +1323,7 @@ mod tests {
         let h = &r[0].1[0];
         assert_eq!((h.line, h.column, h.end_column, h.end()), (0, 8, 10, (1, 5)));
         assert_eq!(h.line_text, "let a = 1;");
-        assert_eq!(replace_in_file(&lf, &r[0].1).unwrap(), 1);
+        assert_eq!(replace_in_file(&lf, &r[0].1, None).unwrap(), 1);
         assert_eq!(std::fs::read_to_string(&lf).unwrap(), "let a = 1; let b = 2;\nend\n");
 
         // A regex with groups across CRLF lines.
@@ -1331,14 +1333,14 @@ mod tests {
         let h = &r[0].1[0];
         assert_eq!((h.line, h.end_column, h.end()), (1, 10, (2, 10)), "the shown part leaves the \\r out");
         assert_eq!(h.replacement.as_deref(), Some("let [a, b] = [1, 2];"));
-        assert_eq!(replace_in_file(&crlf, &r[0].1).unwrap(), 1);
+        assert_eq!(replace_in_file(&crlf, &r[0].1, None).unwrap(), 1);
         assert_eq!(std::fs::read_to_string(&crlf).unwrap(), "x\r\nlet [a, b] = [1, 2];\r\n");
 
         // The guard: text changed since the search is left alone.
         std::fs::write(&crlf, "x\r\nlet a = 1;\r\nlet b = 2;\r\n").unwrap();
         let (r, _) = search(&root, &q, &[], &no).unwrap();
         std::fs::write(&crlf, "x\r\nlet a = 1;\r\nlet c = 2;\r\n").unwrap();
-        assert_eq!(replace_in_file(&crlf, &r[0].1).unwrap(), 0);
+        assert_eq!(replace_in_file(&crlf, &r[0].1, None).unwrap(), 0);
         assert_eq!(std::fs::read_to_string(&crlf).unwrap(), "x\r\nlet a = 1;\r\nlet c = 2;\r\n");
     }
 
@@ -1368,7 +1370,7 @@ mod tests {
         let all = Targets::Walk { root: root.clone(), max_depth: None };
         assert_eq!(count_with(&all, &Disk, &q, None, &[], &AtomicBool::new(false)).unwrap(), [(path.clone(), 6000)]);
         assert!(count_with(&all, &Disk, &q, None, &[], &AtomicBool::new(true)).unwrap().is_empty(), "a cancelled count stops");
-        assert_eq!(replace_all_in_file(&path, &Engine::new(&q).unwrap(), &q).unwrap(), 6000);
+        assert_eq!(replace_all_in_file(&path, &Engine::new(&q).unwrap(), &q, None).unwrap(), 6000);
         assert_eq!(std::fs::read_to_string(&path).unwrap(), "x x\r\n".repeat(3000));
     }
 

@@ -68,6 +68,8 @@ pub struct TabEnv<'a> {
     pub editor_theme: &'a EditorTheme,
     /// The editor tab of `CustomTab::shared_editor`'s file, lent while the tab draws.
     pub editor: Option<(TabId, &'a mut crate::tabs::EditorTab)>,
+    /// The backup folder for a save the tab makes through `save::snapshot`.
+    pub backups: Option<std::path::PathBuf>,
 }
 
 /// Timing lines go to stderr and to the Notifications log, so a run can be measured.
@@ -447,7 +449,7 @@ impl AppState {
                 crate::terminal::tick(s);
                 crate::find_window::tick(s);
                 crate::git::diff::tick(s);
-                if s.ws.close_when_saved && !s.ws.tabs.editors().any(|e| e.saving) {
+                if s.ws.close_when_saved && !s.ws.tabs.editors().any(|e| e.saving) && !s.ws.format.any_in_flight() {
                     s.ws.close_when_saved = false;
                     // A failed save keeps the file dirty; then the workspace stays open.
                     if !s.ws.tabs.list.iter().any(|t| t.is_dirty()) {
@@ -748,6 +750,7 @@ impl AppState {
                 // A tab that edits a file's editor tab gets it lent on close too (the merge
                 // puts git's conflict text back).
                 let shared = c.shared_editor().and_then(|p| self.ws.tabs.editor_by_path(&p));
+                let backups = crate::save::backups(self);
                 let crate::workspace::Workspace { tabs, project, git, .. } = &mut self.ws;
                 let editor = shared.and_then(|eid| tabs.editor_mut(eid).map(|e| (eid, e)));
                 let mut env = TabEnv {
@@ -759,6 +762,7 @@ impl AppState {
                     tab_id: id,
                     editor_theme: &self.editor_theme,
                     editor,
+                    backups,
                 };
                 c.on_close(&mut env);
                 self.ws.commands.extend(commands);
@@ -800,56 +804,6 @@ impl AppState {
                 }
             }
         }
-    }
-
-    /// Writes the tab's text on a worker. `then_close` closes the tab once the write succeeded.
-    pub fn save_tab(&mut self, id: TabId, then_close: bool) {
-        let Some(e) = self.ws.tabs.editor_mut(id) else { return };
-        if e.read_only {
-            // The view ignores edits, so there is nothing to write.
-            return;
-        }
-        if !e.doc.is_dirty() || e.saving {
-            if then_close && !e.doc.is_dirty() {
-                self.close_tab(id, true);
-            }
-            return;
-        }
-        e.saving = true;
-        let (text, token) = e.doc.save_snapshot();
-        let path = e.path.clone();
-        // System › Files › "Back up files before saving".
-        let backups = self.settings.backup_target();
-        let saved = path.clone();
-        self.jobs.spawn_quiet(
-            move || crate::settings::files::write_file(&saved, &text, backups.as_deref()),
-            move |state, res| {
-                let Some(e) = state.ws.tabs.editor_mut(id) else { return };
-                e.saving = false;
-                match res {
-                    Ok(()) => {
-                        e.doc.mark_saved(token);
-                        // IDEA checks again on save; servers that read the disk see it now.
-                        e.problems.force = true;
-                        if then_close {
-                            state.close_tab(id, false);
-                        }
-                        crate::settings::saved(state, &path);
-                    }
-                    Err(err) => state.notifications.error("Save failed", err),
-                }
-            },
-        );
-    }
-
-    /// An explicit Save All (⌥⌘S, the close-project prompt): oxfmt formats first when the
-    /// project turned it on (`format::save`).
-    pub fn save_all(&mut self) {
-        let ids: Vec<TabId> = self.ws.tabs.editors_mut().filter(|(_, e)| e.doc.is_dirty() && !e.read_only).map(|(id, _)| id).collect();
-        for id in ids {
-            crate::format::save(self, id, false);
-        }
-        crate::git::diff::save_hidden_all(self);
     }
 
     /// Re-reads the whole git status and the branch on a worker, and recomputes every gutter.

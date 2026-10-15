@@ -395,10 +395,10 @@ fn shortcuts(s: &mut AppState, ctx: &Context) {
         }
     }
     if save_all {
-        s.save_all();
+        crate::save::save_all(s, crate::save::Reason::Explicit);
     } else if save && !git::diff::save_active(s) {
         if let Some(id) = s.ws.tabs.active {
-            crate::format::save(s, id, false);
+            crate::save::save(s, crate::save::Target::Tab(id), crate::save::Reason::Explicit);
         }
     }
     if reformat {
@@ -1095,6 +1095,7 @@ fn editor_area(s: &mut AppState, ui: &mut egui::Ui) {
     };
 
     let font_size = s.settings.global.editor.font_size;
+    let backups = crate::save::backups(s);
     let AppState { ws, jobs, notifications, editor_theme, .. } = &mut *s;
     let crate::workspace::Workspace { tabs, project, git: git_info, commands, .. } = ws;
     // A custom tab that edits a file's document in place borrows that file's editor tab.
@@ -1144,6 +1145,7 @@ fn editor_area(s: &mut AppState, ui: &mut egui::Ui) {
                 tab_id: active,
                 editor_theme,
                 editor,
+                backups,
             };
             c.ui(ui, &mut env);
             None
@@ -1254,7 +1256,7 @@ fn confirm_close(s: &mut AppState, ctx: &Context) {
             s.ws.confirm_close = None;
             // A merge tab saves by resolving the conflict; it closes itself afterwards.
             if !crate::git::conflicts::request_merge_save(s, id) {
-                crate::format::save(s, id, true);
+                crate::save::save_then_close(s, id);
             }
         }
         Some(1) => {
@@ -1315,7 +1317,7 @@ fn confirm_close_workspace(s: &mut AppState, ctx: &Context) {
     match choice {
         Some(0) => {
             s.confirm_close_ws = None;
-            s.save_all();
+            crate::save::save_all(s, crate::save::Reason::ClosePrompt);
             s.ws.close_when_saved = true;
         }
         Some(1) => s.close_workspace_now(id),

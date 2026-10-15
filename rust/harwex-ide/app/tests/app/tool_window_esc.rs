@@ -53,7 +53,8 @@ fn esc_from_project_commit_git_and_problems() {
     ide.settle();
     assert_eq!(ide.state().ws.layout.left, Some(ToolWindow::Commit));
     esc_returns_to_editor(&mut ide, ToolWindow::Commit);
-    ide.click("src/added.ts");
+    // A top-level file: folders start collapsed.
+    ide.click("scratch.txt");
     ide.settle();
     esc_returns_to_editor(&mut ide, ToolWindow::Commit);
 

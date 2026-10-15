@@ -16,6 +16,7 @@ use crate::tabs::TabId;
 pub mod changes;
 pub mod diff;
 pub mod editor_git;
+pub mod patch;
 // Owned by the "history" agent: log, branches popup, push/update/stash, conflicts.
 pub mod branches;
 pub mod conflicts;

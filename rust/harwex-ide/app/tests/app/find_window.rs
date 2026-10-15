@@ -475,6 +475,35 @@ fn preview_edits_a_closed_file_and_saves() {
     ide.snapshot("preview_closed");
 }
 
+/// The preview's hidden document saves through the one save path: a backup of the old text,
+/// no oxfmt (`on_save` is on, oxfmt is not installed, and no "Saved unformatted" line appears).
+#[test]
+fn preview_save_backs_up_and_does_not_format() {
+    let (fx, _repo, mut ide) = open_repo("preview_backup");
+    let backups = fx.path("backups");
+    ide.state_mut().settings.backup_dir = Some(backups.clone());
+    ide.state_mut().ws.langs.config.oxfmt.on_save = true;
+    let root = ide.root();
+    show_usages(&mut ide, "add", add_refs(&root));
+    ide.wait_for("preview loaded", |s| {
+        s.ws.find_window
+            .active_tab()
+            .is_some_and(|t| t.preview.hidden_doc().is_some())
+    });
+    ide.settle();
+    let util = root.join("src/util.ts");
+    let before = read(&util);
+    let p = preview_pos(&ide, 4, 0);
+    ide.click_at(p);
+    ide.type_text("zz");
+    ide.wait_until("saved", |ide| ide.state().is_idle() && read(&util).contains("\nzzexport const ZERO"));
+    let folder = harwex_ide::settings::files::backup_folder(&backups, &util);
+    let kept: Vec<String> = harwex_ide::settings::files::backups_of(&folder).iter().map(read).collect();
+    assert_eq!(kept, [before]);
+    let notes: Vec<String> = ide.state().notifications.log().iter().filter(|n| n.title.starts_with("oxfmt")).map(|n| n.title.clone()).collect();
+    assert!(notes.is_empty(), "a preview save never formats: {notes:?}");
+}
+
 #[test]
 fn preview_edits_an_open_file() {
     let (_fx, _repo, mut ide) = open_repo("preview_open");

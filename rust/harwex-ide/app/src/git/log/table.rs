@@ -118,7 +118,7 @@ pub(super) fn show(state: &mut AppState, view: &mut LogView, ui: &mut Ui) {
             let selected = view.selection.contains(&commit.oid);
             crate::util::label_selectable(&resp, format!("Commit {}", commit.summary), selected);
             let style = view.row_style(log, i);
-            draw_row(ui, rect, commit, &view.graph[i], graph_w, style, selected, has_focus, resp.hovered());
+            draw_row(ui, resp.id, rect, commit, &view.graph[i], graph_w, style, selected, has_focus, resp.hovered());
             // Selection follows the press, like the Project tree; egui reports no click for a
             // long press.
             if resp.is_pointer_button_down_on() && ui.input(|inp| inp.pointer.primary_pressed()) {
@@ -209,7 +209,7 @@ fn keyboard(view: &mut LogView, ui: &mut Ui) {
 }
 
 #[allow(clippy::too_many_arguments)]
-fn draw_row(ui: &Ui, rect: Rect, c: &CommitInfo, g: &GraphRow, graph_w: f32, style: RowStyle, selected: bool, focused: bool, hovered: bool) {
+fn draw_row(ui: &Ui, id: egui::Id, rect: Rect, c: &CommitInfo, g: &GraphRow, graph_w: f32, style: RowStyle, selected: bool, focused: bool, hovered: bool) {
     let t = &theme::T;
     let painter = ui.painter();
     let bg = if selected {
@@ -243,23 +243,120 @@ fn draw_row(ui: &Ui, rect: Rect, c: &CommitInfo, g: &GraphRow, graph_w: f32, sty
 
     let subject_rect = Rect::from_min_max(pos2(graph_rect.right(), rect.top()), pos2(date_x - 10.0, rect.bottom()));
     let sp = painter.with_clip_rect(subject_rect.intersect(painter.clip_rect()));
+    let text_left = subject_rect.left() + 2.0;
+    let full = painter.layout_no_wrap(c.summary.clone(), t.ui_font(), text).size().x;
+    let labels: Vec<f32> = c.refs.iter().map(|r| ref_label_width(&sp, r)).collect();
+    let fit = fit_refs(subject_rect.right() - text_left, full, &labels, |n| more_width(&sp, n));
+
     // Ref labels sit right-aligned at the end of the subject column, like IDEA.
     let mut right = subject_rect.right();
-    let shown = c.refs.len().min(3);
-    if c.refs.len() > shown {
-        let g = sp.layout_no_wrap(format!("+{}", c.refs.len() - shown), t.tiny_font(), t.text_dim);
-        right -= g.size().x;
-        sp.galley(pos2(right, cy - g.size().y / 2.0), g, t.text_dim);
-        right -= 4.0;
-    }
-    for r in c.refs[..shown].iter().rev() {
-        let w = ref_label_width(&sp, r);
+    if fit.more > 0 {
+        let w = more_width(&sp, fit.more);
         right -= w;
-        draw_ref_label(&sp, pos2(right, cy), r);
-        right -= 4.0;
+        let chip = draw_more(&sp, pos2(right, cy), fit.more);
+        more_refs_hover(ui, id.with("more-refs"), chip, &c.refs, fit.more);
+        right -= REF_GAP;
     }
-    let text_rect = Rect::from_min_max(subject_rect.min, pos2(right.max(subject_rect.left()), subject_rect.bottom()));
-    painter.with_clip_rect(text_rect.intersect(painter.clip_rect())).text(pos2(subject_rect.left() + 2.0, cy), Align2::LEFT_CENTER, &c.summary, t.ui_font(), text);
+    for (r, w) in c.refs[..fit.shown].iter().zip(&labels).rev() {
+        right -= w;
+        let chip = Rect::from_min_size(pos2(right, cy - REF_H / 2.0), vec2(*w, REF_H));
+        draw_ref_label(&sp, pos2(right, cy), r);
+        let resp = ui.interact(chip.intersect(subject_rect), id.with(("ref", &r.name)), Sense::hover());
+        crate::util::label_widget(&resp, egui::WidgetType::Label, format!("Ref label {}", r.name));
+        right -= REF_GAP;
+    }
+    // The message ends with `…` when it does not fit; below the width of `…` it is not drawn,
+    // so no half glyph shows.
+    if fit.message_w >= ellipsis_width(&sp) {
+        let galley = sp.layout_job(message_job(&c.summary, fit.message_w, text));
+        let text_rect = Rect::from_min_max(subject_rect.min, pos2(text_left + fit.message_w, subject_rect.bottom()));
+        sp.with_clip_rect(text_rect.intersect(sp.clip_rect())).galley(pos2(text_left, cy - galley.size().y / 2.0), galley, text);
+    }
+}
+
+/// The gap between the message and a ref label, and between two labels.
+const REF_GAP: f32 = 4.0;
+/// The message keeps this much room (or its whole width, when shorter) before the labels
+/// collapse to `+N` alone.
+pub const MIN_MESSAGE_W: f32 = 120.0;
+const REF_H: f32 = 16.0;
+
+/// How the subject column splits between the message and the ref labels.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct RefFit {
+    /// The first `shown` labels are drawn.
+    pub shown: usize,
+    /// A `+more` chip stands for the labels that are not drawn; 0 draws no chip.
+    pub more: usize,
+    /// The room left for the message, left of the labels.
+    pub message_w: f32,
+}
+
+/// Splits `avail` points between a message `message_w` wide and the ref labels (`labels` holds
+/// their widths, HEAD or the current branch first). `more_w(n)` is the width of a `+n` chip.
+/// The steps, like IDEA: every label with the whole message; else the first label and `+N`
+/// while the message keeps `MIN_MESSAGE_W`; else `+N` for all labels. The labels never depend on
+/// hover or selection, so a row never shifts.
+pub fn fit_refs(avail: f32, message_w: f32, labels: &[f32], more_w: impl Fn(usize) -> f32) -> RefFit {
+    let n = labels.len();
+    let avail = avail.max(0.0);
+    let used = |shown: usize, more: usize| {
+        let chip = if more > 0 { more_w(more) + REF_GAP } else { 0.0 };
+        labels[..shown].iter().map(|w| w + REF_GAP).sum::<f32>() + chip
+    };
+    let fit = |shown: usize, more: usize| RefFit { shown, more, message_w: (avail - used(shown, more)).max(0.0) };
+    if n == 0 {
+        return fit(0, 0);
+    }
+    if message_w + used(n, 0) <= avail {
+        return fit(n, 0);
+    }
+    let keep = message_w.min(MIN_MESSAGE_W);
+    if keep + used(1, n - 1) <= avail {
+        return fit(1, n - 1);
+    }
+    fit(0, n)
+}
+
+/// The message on one line, cut with `…` at `width`.
+fn message_job(summary: &str, width: f32, color: Color32) -> egui::text::LayoutJob {
+    let mut job = egui::text::LayoutJob::simple_singleline(summary.to_owned(), theme::T.ui_font(), color);
+    job.wrap = egui::text::TextWrapping { max_width: width, max_rows: 1, break_anywhere: true, overflow_character: Some('…') };
+    job
+}
+
+fn more_width(painter: &egui::Painter, n: usize) -> f32 {
+    painter.layout_no_wrap(format!("+{n}"), theme::T.tiny_font(), theme::T.text).size().x + 8.0
+}
+
+fn ellipsis_width(painter: &egui::Painter) -> f32 {
+    painter.layout_no_wrap("…".into(), theme::T.ui_font(), theme::T.text).size().x
+}
+
+/// Draws the `+n` chip at `left_center`; returns its rect.
+fn draw_more(painter: &egui::Painter, left_center: egui::Pos2, n: usize) -> Rect {
+    let (bg, fg) = theme::T.ref_more;
+    let galley = painter.layout_no_wrap(format!("+{n}"), theme::T.tiny_font(), fg);
+    let size = galley.size() + vec2(8.0, 2.0);
+    let rect = Rect::from_min_size(pos2(left_center.x, left_center.y - size.y / 2.0), size);
+    painter.rect_filled(rect, 3.0, bg);
+    painter.galley(pos2(rect.left() + 4.0, rect.top() + 1.0), galley, fg);
+    rect
+}
+
+/// A hover on the `+N` chip lists every ref of the commit as labels.
+fn more_refs_hover(ui: &Ui, id: egui::Id, chip: Rect, refs: &[ide_git::RefLabel], more: usize) {
+    let resp = ui.interact(chip.intersect(ui.clip_rect()), id, Sense::hover());
+    crate::util::label_widget(&resp, egui::WidgetType::Label, format!("More refs +{more}"));
+    resp.on_hover_ui(|ui| {
+        ui.spacing_mut().item_spacing.y = 3.0;
+        for r in refs {
+            let w = ref_label_width(ui.painter(), r);
+            let (rect, resp) = ui.allocate_exact_size(vec2(w, REF_H), Sense::hover());
+            draw_ref_label(ui.painter(), pos2(rect.left(), rect.center().y), r);
+            crate::util::label_widget(&resp, egui::WidgetType::Label, format!("Ref list {}", r.name));
+        }
+    });
 }
 
 /// Draws one row of the lane graph. A segment between two rows is a straight line from lane
@@ -318,4 +415,61 @@ pub fn draw_ref_label(painter: &egui::Painter, left_center: egui::Pos2, r: &ide_
     painter.rect_filled(rect, 3.0, bg);
     painter.galley(pos2(rect.left() + 4.0, rect.top() + 1.0), galley, fg);
     size.x
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Labels 40 and 30 wide; a `+n` chip is 20 wide.
+    fn fit(avail: f32, message: f32, labels: &[f32]) -> RefFit {
+        fit_refs(avail, message, labels, |_| 20.0)
+    }
+
+    #[test]
+    fn every_label_while_the_whole_message_fits() {
+        // 200 + (40 + 4) + (30 + 4) = 278.
+        assert_eq!(fit(300.0, 200.0, &[40.0, 30.0]), RefFit { shown: 2, more: 0, message_w: 222.0 });
+        assert_eq!(fit(278.0, 200.0, &[40.0, 30.0]).shown, 2);
+        assert_eq!(fit(100.0, 10.0, &[]), RefFit { shown: 0, more: 0, message_w: 100.0 });
+    }
+
+    #[test]
+    fn first_label_and_more_while_the_message_keeps_its_minimum() {
+        // The labels do not fit beside the whole message: the first label and `+1` take 68.
+        let f = fit(277.0, 200.0, &[40.0, 30.0]);
+        assert_eq!(f, RefFit { shown: 1, more: 1, message_w: 209.0 });
+        // The message keeps exactly MIN_MESSAGE_W.
+        let f = fit(MIN_MESSAGE_W + 68.0, 500.0, &[40.0, 30.0]);
+        assert_eq!((f.shown, f.more, f.message_w), (1, 1, MIN_MESSAGE_W));
+        // A single label collapses to `+1` only below the minimum.
+        assert_eq!(fit(MIN_MESSAGE_W + 44.0, 500.0, &[40.0]), RefFit { shown: 1, more: 0, message_w: MIN_MESSAGE_W });
+    }
+
+    #[test]
+    fn only_more_below_the_minimum() {
+        let f = fit(MIN_MESSAGE_W + 67.0, 500.0, &[40.0, 30.0]);
+        assert_eq!((f.shown, f.more), (0, 2));
+        assert_eq!(f.message_w, MIN_MESSAGE_W + 67.0 - 24.0);
+        // A short message needs less room than the minimum.
+        assert_eq!(fit(50.0 + 68.0, 50.0, &[40.0, 30.0]).shown, 1);
+        // Even a column narrower than `+N` keeps `+N` and gives the message nothing.
+        assert_eq!(fit(10.0, 500.0, &[40.0, 30.0]), RefFit { shown: 0, more: 2, message_w: 0.0 });
+    }
+
+    #[test]
+    fn a_cut_message_ends_with_an_ellipsis() {
+        let ctx = egui::Context::default();
+        let _ = ctx.run(Default::default(), |_| {});
+        let glyphs = |width: f32| {
+            let g = ctx.fonts(|f| f.layout_job(message_job("Rework the lane graph so long subjects end with an ellipsis", width, theme::T.text)));
+            let text: String = g.rows.iter().flat_map(|r| r.glyphs.iter().map(|g| g.chr)).collect();
+            (text, g.size().x, g.rows.len())
+        };
+        let (text, w, rows) = glyphs(120.0);
+        assert!(text.ends_with('…') && text.len() > 3, "{text}");
+        assert!(w <= 120.0 + 0.5 && rows == 1, "width {w}, rows {rows}");
+        let (text, _, _) = glyphs(f32::INFINITY);
+        assert!(!text.contains('…'), "{text}");
+    }
 }

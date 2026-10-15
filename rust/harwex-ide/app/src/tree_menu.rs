@@ -713,6 +713,7 @@ fn relocate_all(state: &mut AppState, moves: Vec<Move>, edits: Vec<FileEdit>) {
     let closed: Vec<FileEdit> = closed.into_iter().map(|f| FileEdit { path: after_moves(&f.path, &moves).unwrap_or(f.path), edits: f.edits }).collect();
     let platform = state.platform.clone();
     let generation = state.project_generation();
+    let backups = crate::save::backups(state);
     let todo = moves.clone();
     let closed_paths: Vec<PathBuf> = closed.iter().map(|f| f.path.clone()).collect();
     let closed_edits: usize = closed.iter().map(|f| f.edits.len()).sum();
@@ -727,7 +728,7 @@ fn relocate_all(state: &mut AppState, moves: Vec<Move>, edits: Vec<FileEdit>) {
                 }
             }
             // Edits for files that did not move stay valid; all moves went through here.
-            (todo.len(), None, apply_closed(&closed))
+            (todo.len(), None, apply_closed(&closed, backups.as_deref()))
         },
         move |state, (done_count, error, errors)| {
             if state.project_generation() != generation {
@@ -757,7 +758,7 @@ fn relocate_all(state: &mut AppState, moves: Vec<Move>, edits: Vec<FileEdit>) {
                     edited += f.edits.len();
                     files += 1;
                     apply_to_tab(state, id, &f.edits);
-                    state.save_tab(id, false);
+                    crate::save::save(state, crate::save::Target::Tab(id), crate::save::Reason::Refactor);
                 }
             }
             for m in &moves {
@@ -795,7 +796,7 @@ fn relocate_all(state: &mut AppState, moves: Vec<Move>, edits: Vec<FileEdit>) {
 }
 
 /// Applies edits to closed files on all cores. Returns one message per failed file.
-pub(crate) fn apply_closed(files: &[FileEdit]) -> Vec<String> {
+pub(crate) fn apply_closed(files: &[FileEdit], backups: Option<&Path>) -> Vec<String> {
     if files.is_empty() {
         return Vec::new();
     }
@@ -807,7 +808,7 @@ pub(crate) fn apply_closed(files: &[FileEdit]) -> Vec<String> {
             let errors = &errors;
             scope.spawn(move || {
                 for f in part {
-                    if let Err(e) = fileops::apply_edits_on_disk(&f.path, &f.edits) {
+                    if let Err(e) = fileops::apply_edits_on_disk(&f.path, &f.edits, backups) {
                         lock(errors).push(e);
                     }
                 }

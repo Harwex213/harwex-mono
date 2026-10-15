@@ -4,7 +4,7 @@
 use crate::common::*;
 use egui::{Event, Key, Modifiers, MouseWheelUnit, Vec2};
 use harwex_ide::viewer::image::ImageTab;
-use harwex_ide::viewer::markdown::Mode;
+use harwex_ide::viewer::markdown::{Mode, TextPos};
 
 const SUITE: &str = "previews";
 
@@ -400,4 +400,104 @@ fn each_side_of_an_image_diff_copies_its_own_picture() {
     assert_eq!(images.len(), 2);
     assert_eq!(images[0].png, png(64, 48, 0), "HEAD");
     assert_eq!(images[1].png, new, "working tree");
+}
+
+// Selectable preview text (task 117).
+
+const SELECT_DOC: &str = "# Select Me\n\nFirst paragraph here.\n\nSecond paragraph with a [web](https://example.com/w) link.\n\n```\nfn a() {\n    b();\n}\n```\n\n- one\n  - two\n\n| A | B |\n|---|---|\n| 1 | 2 |\n\nAfter.\n";
+
+fn select_repo(fx: &Fixture) -> Repo {
+    let repo = basic_repo(fx.path("repo"));
+    repo.write("sel.md", SELECT_DOC);
+    let long: String = (0..60).map(|i| format!("Paragraph {i} with some words in it.\n\n")).collect();
+    repo.write("long.md", &long);
+    repo.commit_all("init");
+    repo
+}
+
+fn preview(ide: &Ide) -> &harwex_ide::viewer::markdown::Preview {
+    ide.state().ws.tabs.active_editor().and_then(|e| e.markdown.as_deref()).expect("markdown tab")
+}
+
+fn at(ide: &Ide, block: usize, ch: usize) -> egui::Pos2 {
+    preview(ide).char_pos(TextPos { block, ch }).unwrap_or_else(|| panic!("block {block} char {ch} not drawn"))
+}
+
+fn copies(ide: &Ide) -> Vec<String> {
+    ide.state().platform.calls().into_iter().filter_map(|c| c.strip_prefix("copy ").map(str::to_string)).collect()
+}
+
+fn url_opens(ide: &Ide) -> usize {
+    ide.state().platform.calls().iter().filter(|c| c.starts_with("open-url")).count()
+}
+
+#[test]
+fn preview_text_selects_across_blocks_and_copies() {
+    let fx = Fixture::new(SUITE, "select");
+    let repo = select_repo(&fx);
+    let mut ide = Ide::open(SUITE, &repo.dir);
+    ide.open_file("sel.md");
+    ide.click("Show Editor and Preview");
+    ide.settle();
+
+    // From "paragraph" in the first paragraph to the end of "b();" in the code block.
+    let (from, to) = (at(&ide, 1, 6), at(&ide, 3, 17));
+    ide.drag(from, to);
+    assert_eq!(preview(&ide).selection(), Some((TextPos { block: 1, ch: 6 }, TextPos { block: 3, ch: 17 })));
+    assert!(ide.is_focused("Markdown preview sel.md"), "the press focuses the preview");
+    ide.snapshot("markdown_selection");
+    cmd_c(&mut ide);
+    assert_eq!(copies(&ide), ["paragraph here.\n\nSecond paragraph with a web link.\n\nfn a() {\n    b();"]);
+    assert_eq!(ide.selected_text(), "", "the editor keeps its own (empty) selection");
+
+    // A double click selects a word.
+    ide.double_click_at(at(&ide, 2, 9) + egui::vec2(3.0, 0.0));
+    assert_eq!(preview(&ide).selected_text().as_deref(), Some("paragraph"));
+
+    // Shift+click extends from the anchor.
+    ide.click_button_at(at(&ide, 7, 3), egui::PointerButton::Primary, Modifiers::SHIFT);
+    assert_eq!(preview(&ide).selected_text().as_deref(), Some("paragraph with a web link.\n\nfn a() {\n    b();\n}\n\n- one\n  - two\n\nA\tB\n1\t2\n\nAft"));
+
+    // Cmd+A takes the whole document, list markers included.
+    ide.cmd(Key::A);
+    cmd_c(&mut ide);
+    let all = "Select Me\n\nFirst paragraph here.\n\nSecond paragraph with a web link.\n\nfn a() {\n    b();\n}\n\n- one\n  - two\n\nA\tB\n1\t2\n\nAfter.";
+    assert_eq!(copies(&ide).last().map(String::as_str), Some(all));
+    assert_eq!(ide.selected_text(), "", "Cmd+A in the preview leaves the editor alone");
+
+    // A click on a link without a move opens it; a drag from it selects instead.
+    let opens = url_opens(&ide);
+    ide.click("Link web");
+    ide.settle();
+    assert_eq!(url_opens(&ide), opens + 1, "{:?}", ide.state().platform.calls());
+    let link = ide.rect("Link web");
+    ide.drag(link.left_center() + egui::vec2(2.0, 0.0), at(&ide, 2, 33));
+    ide.settle();
+    assert_eq!(url_opens(&ide), opens + 1, "a drag never opens the link");
+    assert_eq!(preview(&ide).selected_text().as_deref(), Some("web link."));
+}
+
+#[test]
+fn a_drag_past_the_edge_scrolls_the_preview() {
+    let fx = Fixture::new(SUITE, "select_scroll");
+    let repo = select_repo(&fx);
+    let mut ide = Ide::open(SUITE, &repo.dir);
+    ide.open_file("long.md");
+    ide.click("Show Preview Only");
+    ide.settle();
+    let rect = ide.rect("Markdown preview long.md");
+    let from = at(&ide, 0, 0);
+    ide.move_to(from);
+    ide.harness.input_mut().events.push(Event::PointerButton { pos: from, button: egui::PointerButton::Primary, pressed: true, modifiers: Modifiers::NONE });
+    ide.step();
+    let below = egui::pos2(from.x + 40.0, rect.max.y + 30.0);
+    ide.move_to(below);
+    ide.steps(30);
+    let offset = preview(&ide).offset();
+    assert!(offset > 300.0, "the preview scrolled while the drag held below it: {offset}");
+    ide.harness.input_mut().events.push(Event::PointerButton { pos: below, button: egui::PointerButton::Primary, pressed: false, modifiers: Modifiers::NONE });
+    ide.settle();
+    let (a, b) = preview(&ide).selection().expect("a selection");
+    assert_eq!(a, TextPos { block: 0, ch: 0 });
+    assert!(b.block > 10, "the selection followed the scroll: {b:?}");
 }

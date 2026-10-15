@@ -266,7 +266,8 @@ fn shift_esc_from_the_commit_tree_git_log_find_and_problems() {
     // Commit: a press on a file row.
     ide.cmd(Key::K);
     ide.settle();
-    ide.click("src/added.ts");
+    // A top-level file: folders start collapsed.
+    ide.click("scratch.txt");
     ide.settle();
     assert!(focus_on(&ide, Side::Left));
     shift_esc_hides(&mut ide, ToolWindow::Commit);

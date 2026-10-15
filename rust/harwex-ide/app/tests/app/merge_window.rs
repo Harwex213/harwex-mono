@@ -312,3 +312,27 @@ fn result_shows_type_errors() {
     ide.steps(3);
     assert!(tab(&mut ide, REL).result_problems() > 0, "the result pane draws the problems");
 }
+
+/// "Save and Mark Resolved" writes through the one save path: git's conflict text goes into a
+/// backup, oxfmt does not run (`on_save` is on, oxfmt is not installed, and no "Saved
+/// unformatted" line appears), and the file is staged.
+#[test]
+fn save_and_mark_resolved_backs_up_and_does_not_format() {
+    let (fx, repo, mut ide) = open_merge("save_backup", REL);
+    let backups = fx.path("backups");
+    ide.state_mut().settings.backup_dir = Some(backups.clone());
+    ide.state_mut().ws.langs.config.oxfmt.on_save = true;
+    let conflicted = repo.read(REL);
+    ide.click("Accept Theirs");
+    ide.settle();
+    let result = result_doc(&ide, REL).text();
+    ide.click("Save and Mark Resolved");
+    ide.wait_for("resolved", |s| s.ws.git_ui.conflicts.files().is_empty() && s.is_idle());
+    assert_eq!(repo.read(REL), result);
+    let folder = harwex_ide::settings::files::backup_folder(&backups, &ide.root().join(REL));
+    let kept: Vec<String> = harwex_ide::settings::files::backups_of(&folder).iter().map(|p| std::fs::read_to_string(p).expect("backup")).collect();
+    assert_eq!(kept, [conflicted]);
+    let notes: Vec<String> = ide.state().notifications.log().iter().filter(|n| n.title.starts_with("oxfmt")).map(|n| n.title.clone()).collect();
+    assert!(notes.is_empty(), "the merge's save never formats: {notes:?}");
+    assert!(repo.status_short().lines().any(|l| l.starts_with("M ") && l.ends_with(REL)), "staged: {}", repo.status_short());
+}

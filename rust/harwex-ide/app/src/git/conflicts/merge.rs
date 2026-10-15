@@ -20,8 +20,9 @@ use ide_editor::{Document, EditKind, EditorState, EditorView, Fold, Language, Li
 use ide_git::ConflictSides;
 
 use crate::icons::{self, Icon};
+use crate::save::{Owner, Pending, Reason, Target};
 use crate::state::{AppCommand, TabEnv};
-use crate::tabs::{CustomTab, EditorTab};
+use crate::tabs::{CustomTab, EditorTab, TabId};
 use crate::theme;
 
 /// Unchanged runs longer than this fold, keeping `CONTEXT` lines on each side.
@@ -317,18 +318,33 @@ impl MergeTab {
         self.apply(doc, &picks, true);
     }
 
-    fn save(&mut self, env: &mut TabEnv, e: &mut EditorTab) {
+    /// "Save and Mark Resolved": the one save path writes the result (backup, no formatting),
+    /// then git stages it.
+    fn save(&mut self, env: &mut TabEnv, eid: TabId, e: &mut EditorTab) {
         let Some(repo) = env.git.repo.clone() else { return };
         self.saving = true;
-        let (text, token) = e.doc.save_snapshot();
+        let owner = Owner::Target(Target::Tab(eid));
+        let pending = crate::save::snapshot(&mut e.doc, &mut e.saving, self.abs.clone(), owner, Reason::Resolve, false, env.backups.clone());
         let rel = self.rel.clone();
         let abs = self.abs.clone();
         let key = self.key();
         let opened = self.opened_editor;
         env.jobs.spawn(
             format!("Resolving {}", rel.display()),
-            move || repo.resolve(&rel, &text).map(|_| None),
-            move |state, res| {
+            move || {
+                let written = pending.write();
+                // A failed write is reported by `save::finish`; nothing is staged.
+                let staged = written.ok().then(|| repo.stage(&[rel]).map(|_| None));
+                (written, staged)
+            },
+            move |state, (written, staged)| {
+                crate::save::finish(state, written);
+                let Some(res) = staged else {
+                    if let Some(tab) = state.ws.tabs.custom_mut::<MergeTab>(&key) {
+                        tab.saving = false;
+                    }
+                    return;
+                };
                 let title = "Merge conflict resolved";
                 let ok = crate::git::remote::report(state, title, &format!("{} saved and staged", key.trim_start_matches("merge:")), res);
                 crate::git::refresh::changed(state);
@@ -339,9 +355,6 @@ impl MergeTab {
                 }
                 tab.done = true;
                 let editor = state.ws.tabs.editor_by_path(&abs);
-                if let Some(e) = editor.and_then(|id| state.ws.tabs.editor_mut(id)) {
-                    e.doc.mark_saved(token);
-                }
                 if let Some(id) = state.ws.tabs.custom_by_key(&key) {
                     state.close_tab(id, true);
                 }
@@ -368,17 +381,10 @@ impl MergeTab {
                 env.commands.push(AppCommand::CloseTab(*id));
             }
         }
-        // An idle or focus-loss save may have written the result meanwhile.
-        let abs = self.abs.clone();
+        // An idle or focus-loss save may have written the result meanwhile; git's bytes go back
+        // as they are (`write_back` writes nothing when the file already holds them).
         let bytes = std::mem::take(&mut self.original);
-        env.jobs.spawn_quiet(
-            move || {
-                if std::fs::read(&abs).ok().as_deref() != Some(&bytes[..]) {
-                    let _ = std::fs::write(&abs, &bytes);
-                }
-            },
-            |_, _| {},
-        );
+        crate::save::spawn(env.jobs, Pending::write_back(self.abs.clone(), bytes, Reason::Discard, env.backups.clone()));
     }
 
     /// The result lines of each chunk, for tests: (left lines, result lines, right lines).
@@ -535,7 +541,7 @@ impl CustomTab for MergeTab {
         };
         self.follow(&e.doc);
         if std::mem::take(&mut self.save_requested) && !self.saving {
-            self.save(env, e);
+            self.save(env, eid, e);
         }
         let left_n = self.unresolved();
         let action = header(ui, self, left_n);
@@ -549,7 +555,7 @@ impl CustomTab for MergeTab {
                 e.last_edit = Instant::now();
             }
             Some(Header::Save) if left_n > 0 => self.confirm_unresolved = true,
-            Some(Header::Save) => self.save(env, e),
+            Some(Header::Save) => self.save(env, eid, e),
             Some(Header::Cancel) => {
                 // `discard` reads the lent editor from `env`.
                 env.editor = Some((eid, e));
@@ -564,7 +570,7 @@ impl CustomTab for MergeTab {
                 ui.label(RichText::new(format!("{left_n} conflict(s) are not resolved; the result keeps the base text there. Save anyway?")).color(theme::T.warning));
                 if ui.button("Save").clicked() {
                     self.confirm_unresolved = false;
-                    self.save(env, e);
+                    self.save(env, eid, e);
                 }
                 if ui.button("Keep editing").clicked() {
                     self.confirm_unresolved = false;

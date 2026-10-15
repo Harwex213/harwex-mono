@@ -230,17 +230,18 @@ fn apply(state: &mut AppState, old: &str, new: &str, edits: Vec<FileEdit>) {
         if let Some(id) = state.ws.tabs.editor_by_path(&f.path) {
             count += f.edits.len();
             crate::tree_menu::apply_to_tab(state, id, &f.edits);
-            state.save_tab(id, false);
+            crate::save::save(state, crate::save::Target::Tab(id), crate::save::Reason::Refactor);
         }
     }
     let files = open.len() + closed.len();
     let closed_count: usize = closed.iter().map(|f| f.edits.len()).sum();
     let what = format!("Renamed {old} to {new}");
     let generation = state.project_generation();
+    let backups = crate::save::backups(state);
     state.jobs.spawn(
         format!("Renaming {old}"),
         move || {
-            let errors = crate::tree_menu::apply_closed(&closed);
+            let errors = crate::tree_menu::apply_closed(&closed, backups.as_deref());
             (closed.into_iter().map(|f| f.path).collect::<Vec<PathBuf>>(), errors)
         },
         move |state, (paths, errors)| {

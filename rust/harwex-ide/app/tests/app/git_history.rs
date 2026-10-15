@@ -888,3 +888,70 @@ fn log_context_menu_new_branch_and_reset() {
     ide.click("Reset --hard");
     ide.wait_until("reset done", |_| repo.subjects("HEAD") == ["Initial commit"]);
 }
+
+/// The HEAD commit carries a longer subject and three refs: the current branch `main`, the
+/// branch `feature` and a tag.
+fn many_refs_repo(fx: &Fixture) -> Repo {
+    let repo = history_repo(fx.path("repo"));
+    repo.write("src/lanes.ts", "export const lanes = 2;\n");
+    repo.commit_all("Rework the lane graph for long subjects");
+    repo.git(&["branch", "-f", "feature"]);
+    repo.git(&["tag", "v2.0"]);
+    repo
+}
+
+/// Moves the left edge of the changes pane by `dx`, so the commit table gets wider or narrower.
+fn move_changes_splitter(ide: &mut Ide, dx: f32) {
+    let pane = ide.rect("Log changes pane");
+    let y = pane.center().y;
+    let x = splitter_x(ide, pane.min.x, y);
+    ide.drag(egui::pos2(x, y), egui::pos2(x + dx, y));
+    ide.settle();
+}
+
+/// Ref labels collapse before they cut the message: every label while the whole message fits,
+/// then the current branch plus `+N`, then `+N` alone. A hover on `+N` lists every ref, and a
+/// hover on the row moves nothing.
+#[test]
+fn log_ref_labels_collapse_with_the_column_width() {
+    let fx = Fixture::new(SUITE, "ref_labels");
+    let repo = many_refs_repo(&fx);
+    let mut ide = Ide::open(SUITE, &repo.dir);
+    open_log(&mut ide);
+    let head = "Commit Rework the lane graph for long subjects";
+    ide.click(head);
+    wait_changes(&mut ide);
+
+    // Wide (the default split): the whole message and every label.
+    for name in ["main", "feature", "v2.0"] {
+        assert!(ide.has(&format!("Ref label {name}")), "label {name} shown in a wide table");
+    }
+    assert!(!ide.has("More refs +2") && !ide.has("More refs +3"));
+    ide.snapshot("ref_labels_wide");
+
+    // Medium: the current branch first, the rest behind `+2`.
+    move_changes_splitter(&mut ide, -150.0);
+    assert!(ide.has("Ref label main") && ide.has("More refs +2"), "{:?}", ide.labels());
+    assert!(!ide.has("Ref label feature") && !ide.has("Ref label v2.0"));
+    let chips = (ide.rect("Ref label main"), ide.rect("More refs +2"));
+    let row = ide.rect(head);
+    assert!(chips.0.max.x < chips.1.min.x && chips.1.max.x <= row.max.x, "labels in order inside the row: {chips:?} {row:?}");
+    ide.snapshot("ref_labels_medium");
+    // A hover on the row keeps every label in place.
+    ide.move_to(egui::pos2(row.min.x + 200.0, row.center().y));
+    ide.settle();
+    assert_eq!((ide.rect("Ref label main"), ide.rect("More refs +2")), chips, "hover moves no label");
+    // A hover on `+2` lists all three refs.
+    ide.hover("More refs +2");
+    ide.wait_until("refs tooltip", |ide| ide.has("Ref list v2.0"));
+    for name in ["main", "feature", "v2.0"] {
+        assert!(ide.has(&format!("Ref list {name}")), "tooltip lists {name}");
+    }
+    ide.snapshot_here("ref_labels_tooltip");
+
+    // Narrow: the message keeps its minimum, so only `+3` stays.
+    move_changes_splitter(&mut ide, -200.0);
+    assert!(ide.has("More refs +3"), "{:?}", ide.labels());
+    assert!(!ide.has("Ref label main"));
+    ide.snapshot("ref_labels_narrow");
+}

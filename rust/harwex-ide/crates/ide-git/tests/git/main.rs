@@ -12,5 +12,6 @@ mod cancel;
 mod changes;
 mod history;
 mod large_repo;
+mod local_patch;
 mod status;
 mod window;

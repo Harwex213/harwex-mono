@@ -12,7 +12,7 @@ use std::ops::Range;
 use std::path::{Path, PathBuf};
 
 use egui::{pos2, vec2, Align2, Context, CursorIcon, Key, LayerId, Modal, Modifiers, Order, Rect, RichText, ScrollArea, Sense, Shape, Stroke, Ui};
-use ide_git::{ChangeKind, FileChange};
+use ide_git::{ChangeKind, FileChange, LocalChange, LocalPatchFile};
 
 use super::refresh::Refresh;
 use crate::icons::CheckState;
@@ -132,7 +132,7 @@ pub struct ChangesUi {
     checked_files: usize,
     rows: Vec<Row>,
     rows_dirty: bool,
-    collapsed: HashSet<String>,
+    fold: Fold,
     selected: HashSet<ItemKey>,
     /// Last clicked row, the anchor for Shift+click.
     anchor: Option<usize>,
@@ -153,14 +153,40 @@ pub struct ChangesUi {
     /// The folder row the speed search selected (by its collapse key). Only files go into
     /// `selected`, so a folder match is held here; any other selection clears it.
     dir_selected: Option<String>,
+    /// The open Create Patch dialog (`git::patch`).
+    pub(super) patch_dialog: Option<super::patch::PatchDialog>,
 }
 
-/// Rows and display order while they are built. `collapsed` is `None` for the speed search's
+/// Which rows are open. Groups start open and folders start collapsed, so a status change
+/// (a staged file moving into Staged) never opens a folder. Keys are collapse keys.
+#[derive(Default)]
+struct Fold {
+    /// Group rows the user collapsed.
+    collapsed_groups: HashSet<String>,
+    /// Folder rows the user expanded. Keys of folders that are gone are dropped on rebuild.
+    expanded: HashSet<String>,
+}
+
+/// Rows and display order while they are built. `fold` is `None` for the speed search's
 /// view, where every folder is open.
 struct Flat<'a> {
     rows: Vec<Row>,
     order: Vec<usize>,
-    collapsed: Option<&'a HashSet<String>>,
+    fold: Option<&'a Fold>,
+    /// The collapse key of every folder, shown or hidden.
+    dirs: HashSet<String>,
+}
+
+impl Fold {
+    fn set_open(&mut self, row: &Row, open: bool) {
+        match (&row.kind, open) {
+            (RowKind::Group, true) => _ = self.collapsed_groups.remove(&row.key),
+            (RowKind::Group, false) => _ = self.collapsed_groups.insert(row.key.clone()),
+            (RowKind::Dir(_), true) => _ = self.expanded.insert(row.key.clone()),
+            (RowKind::Dir(_), false) => _ = self.expanded.remove(&row.key),
+            (RowKind::File(_), _) => {}
+        }
+    }
 }
 
 impl ChangesUi {
@@ -240,6 +266,7 @@ impl ChangesUi {
         if changes == self.entries && !self.rows.is_empty() {
             return;
         }
+        let old: HashSet<ItemKey> = (0..self.items.len()).map(|i| self.key(i)).collect();
         // Remember the current boxes before the items go away.
         for i in 0..self.items.len() {
             let c = self.checked[i];
@@ -248,7 +275,17 @@ impl ChangesUi {
         self.items = changes.iter().enumerate().flat_map(|(entry, e)| Group::of(e).map(move |group| Item { entry, group })).collect();
         let present: HashSet<ItemKey> = self.items.iter().map(|it| (changes[it.entry].path.clone(), it.group)).collect();
         self.check_memory.retain(|k, _| present.contains(k));
+        // A selected file that left its group (staged, unstaged) stays selected in the group
+        // it moved to; `rebuild` moves the selection to its folder row when that row is hidden.
+        let moved: Vec<ItemKey> = self
+            .selected
+            .iter()
+            .filter(|k| !present.contains(*k))
+            .flat_map(|(p, _)| Group::ALL.map(|g| (p.clone(), g)))
+            .filter(|n| present.contains(n) && !old.contains(n))
+            .collect();
         self.selected.retain(|k| present.contains(k));
+        self.selected.extend(moved);
         // A row new to its group starts with the group's default: newly staged files are ticked.
         self.checked = self.items.iter().map(|it| self.check_memory.get(&(changes[it.entry].path.clone(), it.group)).copied().unwrap_or(it.group.checked_by_default())).collect();
         self.entries = changes;
@@ -257,15 +294,43 @@ impl ChangesUi {
 
     fn rebuild(&mut self) {
         self.rows_dirty = false;
-        let (rows, order) = self.flatten(Some(&self.collapsed));
+        let (rows, order, dirs) = self.flatten(Some(&self.fold));
+        self.fold.expanded.retain(|k| dirs.contains(k));
         self.rows = rows;
         self.order = order;
         self.recount();
+        self.reselect_hidden();
     }
 
-    /// The rows and the item display order. With `collapsed` = `None` every folder is open.
-    fn flatten(&self, collapsed: Option<&HashSet<String>>) -> (Vec<Row>, Vec<usize>) {
-        let mut f = Flat { rows: Vec::new(), order: Vec::new(), collapsed };
+    /// A selected file whose row is hidden (it moved into a group whose folders are
+    /// collapsed) gives its selection to the nearest folder row shown above it. Several hidden
+    /// files, or one under a collapsed group, leave no selection behind them.
+    fn reselect_hidden(&mut self) {
+        if self.selected.is_empty() {
+            return;
+        }
+        let shown: HashSet<usize> = self.rows.iter().filter_map(|r| if let RowKind::File(i) = r.kind { Some(i) } else { None }).collect();
+        let hidden: Vec<usize> = (0..self.items.len()).filter(|i| !shown.contains(i) && self.selected.contains(&self.key(*i))).collect();
+        if hidden.is_empty() {
+            return;
+        }
+        for &i in &hidden {
+            self.selected.remove(&self.key(i));
+        }
+        if !self.selected.is_empty() || hidden.len() > 1 {
+            self.anchor = None;
+            return;
+        }
+        let Some(at) = self.order.iter().position(|&i| i == hidden[0]) else { return };
+        let row = self.rows.iter().rposition(|r| matches!(r.kind, RowKind::Dir(_)) && r.span.contains(&at));
+        self.dir_selected = row.map(|r| self.rows[r].key.clone());
+        self.anchor = row;
+    }
+
+    /// The rows, the item display order and the collapse key of every folder. With `fold` =
+    /// `None` every folder is open.
+    fn flatten(&self, fold: Option<&Fold>) -> (Vec<Row>, Vec<usize>, HashSet<String>) {
+        let mut f = Flat { rows: Vec::new(), order: Vec::new(), fold, dirs: HashSet::new() };
         for group in Group::ALL {
             let files: Vec<usize> = (0..self.items.len()).filter(|&i| self.items[i].group == group).collect();
             // Staged and Unstaged stay visible while empty: each is a drop target.
@@ -284,14 +349,14 @@ impl ChangesUi {
                 node.files.push(i);
             }
             let key = group.title().to_string();
-            let collapsed = f.collapsed.is_some_and(|c| c.contains(&key));
+            let collapsed = f.fold.is_some_and(|c| c.collapsed_groups.contains(&key));
             let row = f.rows.len();
             let start = f.order.len();
             f.rows.push(Row { kind: RowKind::Group, group, depth: 0, key: key.clone(), span: 0..0, collapsed });
             self.emit(&mut f, &root, group, &key, 1, collapsed);
             f.rows[row].span = start..f.order.len();
         }
-        (f.rows, f.order)
+        (f.rows, f.order, f.dirs)
     }
 
     /// Appends rows for `node`'s children. When `hidden`, files still go into `order` (so the
@@ -308,7 +373,8 @@ impl ChangesUi {
                 child = c;
             }
             let child_key = format!("{key}/{label}");
-            let collapsed = f.collapsed.is_some_and(|c| c.contains(&child_key));
+            let collapsed = f.fold.is_some_and(|c| !c.expanded.contains(&child_key));
+            f.dirs.insert(child_key.clone());
             let start = f.order.len();
             let row = if hidden {
                 None
@@ -498,7 +564,7 @@ impl ChangesUi {
     /// folders were open, and the folders above the match expand, like IDEA. Returns the file
     /// path of a file match, for the preview diff.
     fn search_move(&mut self, keys: &speed_search::Keys) -> Option<PathBuf> {
-        let (all, _) = self.flatten(None);
+        let (all, _, _) = self.flatten(None);
         let hits: Vec<usize> = all.iter().enumerate().filter(|(_, r)| self.search_name(r).is_some_and(|n| speed_search::matches(&n, &self.search).is_some())).map(|(i, _)| i).collect();
         if keys.changed {
             self.search_found = !hits.is_empty();
@@ -512,7 +578,7 @@ impl ChangesUi {
                 break;
             }
             if r.depth < depth {
-                self.collapsed.remove(&r.key);
+                self.fold.set_open(r, true);
                 depth = r.depth;
             }
         }
@@ -532,6 +598,57 @@ impl ChangesUi {
                 None
             }
         }
+    }
+
+    /// What a patch of `items` holds: one entry per file. Both rows of a partly staged file
+    /// give its whole change against HEAD; one row gives that row's side. Conflicted files
+    /// are left out: git has no patch for them.
+    fn patch_files(&self, items: &[usize]) -> Vec<LocalPatchFile> {
+        let mut by_entry: BTreeMap<usize, [bool; 3]> = BTreeMap::new();
+        for &i in items {
+            let it = self.items[i];
+            let groups = by_entry.entry(it.entry).or_default();
+            groups[Group::ALL.iter().position(|&g| g == it.group).expect("a group")] = true;
+        }
+        by_entry
+            .into_iter()
+            .filter_map(|(entry, [staged, unstaged, untracked])| {
+                let e = &self.entries[entry];
+                let change = match (staged, unstaged, untracked) {
+                    _ if e.kind() == ChangeKind::Conflicted => return None,
+                    (_, _, true) => LocalChange::Untracked,
+                    (true, true, _) => LocalChange::Both,
+                    (true, false, _) => LocalChange::Staged,
+                    (false, true, _) => LocalChange::Unstaged,
+                    (false, false, false) => return None,
+                };
+                // A rename is staged; its HEAD side is needed whenever the index side is in.
+                let old_path = if change == LocalChange::Unstaged { None } else { e.old_path.clone() };
+                Some(LocalPatchFile { path: e.path.clone(), old_path, change })
+            })
+            .collect()
+    }
+
+    /// The items a toolbar action takes: the selected files and the folder the speed search
+    /// selected, or every change when nothing is selected.
+    fn selection_or_all(&self) -> Vec<usize> {
+        let mut items: Vec<usize> = (0..self.items.len()).filter(|&i| self.selected.contains(&self.key(i))).collect();
+        if let Some(row) = self.dir_selected.as_ref().and_then(|k| self.rows.iter().find(|r| &r.key == k && matches!(r.kind, RowKind::Dir(_)))) {
+            items.extend_from_slice(&self.order[row.span.clone()]);
+        }
+        if items.is_empty() {
+            return (0..self.items.len()).collect();
+        }
+        items
+    }
+
+    /// The files a patch from the toolbar takes (`selection_or_all`), for tests.
+    pub fn toolbar_patch_files(&self) -> Vec<LocalPatchFile> {
+        self.patch_files(&self.selection_or_all())
+    }
+
+    pub fn has_patch_dialog(&self) -> bool {
+        self.patch_dialog.is_some()
     }
 
     fn is_partly_staged(&self, e: &FileChange) -> bool {
@@ -608,6 +725,8 @@ enum Event {
     OpenSelected,
     /// A plain press on a file row: its diff replaces the active worktree diff, if one is active.
     Preview(PathBuf),
+    CopyPatch(Vec<LocalPatchFile>),
+    CreatePatch(Vec<LocalPatchFile>),
 }
 
 pub fn tool_window(state: &mut AppState, ui: &mut Ui) {
@@ -709,6 +828,7 @@ fn changes_body(state: &mut AppState, ui: &mut Ui, panel_min: f32, reserve: f32,
         if icon_button(ui, Icon::CollapseAll, "Collapse All", "Collapse All").clicked() {
             events.push(Event::ExpandAll(false));
         }
+        patch_menu(c, ui, events);
         ui.add_space(6.0);
         ui.label(RichText::new(format!("{} of {} selected", c.checked_files, c.entries.len())).size(theme::T.font.tiny).color(theme::T.text_dim));
     });
@@ -1033,11 +1153,44 @@ fn context_menu(c: &ChangesUi, row: &Row, ui: &mut Ui, events: &mut Vec<Event>) 
         ui.close_menu();
     }
     ui.separator();
+    let patch = c.patch_files(&items);
+    if ui.add_enabled(!patch.is_empty(), egui::Button::new("Copy as Patch to Clipboard")).clicked() {
+        events.push(Event::CopyPatch(patch.clone()));
+        ui.close_menu();
+    }
+    if ui.add_enabled(!patch.is_empty(), egui::Button::new("Create Patch...")).clicked() {
+        events.push(Event::CreatePatch(patch));
+        ui.close_menu();
+    }
+    ui.separator();
     let deletable: Vec<PathBuf> = entries.iter().filter(|e| e.kind() != ChangeKind::Deleted).map(|e| e.path.clone()).collect();
     if ui.add_enabled(!deletable.is_empty(), egui::Button::new("Delete...")).clicked() {
         events.push(Event::Delete(deletable));
         ui.close_menu();
     }
+}
+
+/// The toolbar's patch actions (the `⋯` button): they take the selection, or every change
+/// when nothing is selected.
+fn patch_menu(c: &ChangesUi, ui: &mut Ui, events: &mut Vec<Event>) {
+    let more = crate::layout::icon_button_enabled(ui, !c.items.is_empty(), crate::icons::Icon::More, "Patch actions", "Create Patch from the selection, or from all changes");
+    let id = crate::workspace::wid("changes-patch-menu");
+    if more.clicked() {
+        ui.memory_mut(|m| m.toggle_popup(id));
+    }
+    egui::popup_below_widget(ui, id, &more, egui::PopupCloseBehavior::CloseOnClick, |ui| {
+        ui.set_min_width(220.0);
+        // Rows like a context menu's: no button frames, the full width hovers.
+        ui.visuals_mut().button_frame = false;
+        ui.with_layout(egui::Layout::top_down_justified(egui::Align::LEFT), |ui| {
+            if ui.button("Copy as Patch to Clipboard").clicked() {
+                events.push(Event::CopyPatch(c.toolbar_patch_files()));
+            }
+            if ui.button("Create Patch...").clicked() {
+                events.push(Event::CreatePatch(c.toolbar_patch_files()));
+            }
+        });
+    });
 }
 
 /// The message box, Amend and the commit buttons. Returns `Some(push)` when a button was hit.
@@ -1149,9 +1302,7 @@ fn handle(state: &mut AppState, e: Event) {
     match e {
         Event::Toggle(row) => {
             if let Some(r) = c.rows.get(row) {
-                if !c.collapsed.remove(&r.key) {
-                    c.collapsed.insert(r.key.clone());
-                }
+                c.fold.set_open(r, r.collapsed);
                 c.rows_dirty = true;
             }
         }
@@ -1182,8 +1333,8 @@ fn handle(state: &mut AppState, e: Event) {
         // On a folder the speed search selected, Enter toggles it, like a double click.
         Event::OpenSelected if c.selected.is_empty() && c.dir_selected.is_some() => {
             if let Some(key) = c.dir_selected.clone() {
-                if !c.collapsed.remove(&key) {
-                    c.collapsed.insert(key);
+                if !c.fold.expanded.remove(&key) {
+                    c.fold.expanded.insert(key);
                 }
                 c.rows_dirty = true;
             }
@@ -1202,16 +1353,14 @@ fn handle(state: &mut AppState, e: Event) {
         Event::Stage(paths) => stage_op(state, DropOp::Stage, paths),
         Event::Unstage(paths) => stage_op(state, DropOp::Unstage, paths),
         Event::ExpandAll(expand) => {
-            if expand {
-                c.collapsed.clear();
-            } else {
-                c.collapsed = c.rows.iter().filter(|r| !matches!(r.kind, RowKind::File(_))).map(|r| r.key.clone()).collect();
-                // Groups stay open so the directories are still visible.
-                c.collapsed.retain(|k| k.contains('/'));
-            }
+            c.fold.collapsed_groups.clear();
+            // Groups stay open on Collapse All, so the directories are still visible.
+            c.fold.expanded = if expand { c.flatten(None).2 } else { HashSet::new() };
             c.rows_dirty = true;
         }
         Event::Refresh => state.refresh_git(),
+        Event::CopyPatch(files) => super::patch::copy(state, files),
+        Event::CreatePatch(files) => super::patch::open_dialog(state, files),
         Event::DragStart(row) => {
             let Some(r) = c.rows.get(row) else { return };
             // Like IDEA: a drag on a row outside the selection drags that row alone.
@@ -1343,49 +1492,37 @@ fn start_commit(state: &mut AppState, push: bool) {
         return;
     }
     c.committing = true;
-    // IDEA saves every document before a commit. The texts are written by the commit worker
-    // itself, so git sees them before it runs and the UI thread never touches the disk.
-    let mut saves = Vec::new();
-    for (id, e) in state.ws.tabs.editors_mut() {
-        if e.doc.is_dirty() && !e.read_only && !e.saving {
-            let (text, token) = e.doc.save_snapshot();
-            saves.push((id, e.path.clone(), text, token));
-        }
-    }
+    // IDEA saves every document before a commit. The commit worker writes them itself (through
+    // the one save path), so git sees them before it runs and the UI thread never touches the disk.
+    let saves = crate::save::take_all(state, crate::save::Reason::Commit);
     let n = paths.len() + staged_only.len();
     // A commit changes HEAD against the index for the committed paths only. Saved documents
     // changed on disk too.
     let mut touched: Vec<PathBuf> = paths.iter().chain(&staged_only).cloned().collect();
-    touched.extend(saves.iter().map(|s| s.1.clone()));
+    touched.extend(saves.iter().map(|s| s.path().to_path_buf()));
     super::refresh::write_started(state);
     state.jobs.spawn(
         if amend { "Amending commit" } else { "Committing" },
         move || {
-            std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
-                let mut saved = Vec::new();
-                for (id, path, text, token) in saves {
-                    if std::fs::write(&path, text).is_ok() {
-                        saved.push((id, token));
-                    }
-                }
+            let saved: Vec<crate::save::Written> = saves.into_iter().map(crate::save::Pending::write).collect();
+            let out = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
                 // Concluding a merge commits the whole index (`commit_selection`).
                 let whole_index = !matches!(repo.state(), Ok(ide_git::RepoState::Clean));
-                (saved, repo.commit_selection(&message, &paths, &staged_only, amend), message, whole_index)
+                (repo.commit_selection(&message, &paths, &staged_only, amend), message, whole_index)
             }))
-            .ok()
+            .ok();
+            (saved, out)
         },
-        move |state, out| {
-            let Some((saved, res, message, whole_index)) = out else {
+        move |state, (saved, out)| {
+            for w in saved {
+                crate::save::finish(state, w);
+            }
+            let Some((res, message, whole_index)) = out else {
                 state.ws.git_ui.changes.committing = false;
                 state.notifications.error("Commit failed", "The task panicked.");
                 super::refresh::write_done(state, Refresh::Full);
                 return;
             };
-            for (id, token) in saved {
-                if let Some(e) = state.ws.tabs.editor_mut(id) {
-                    e.doc.mark_saved(token);
-                }
-            }
             state.ws.git_ui.changes.committing = false;
             let refresh = if whole_index { Refresh::Changed } else { Refresh::Paths(touched) };
             let subject = message.lines().next().unwrap_or_default().to_string();
@@ -1436,6 +1573,7 @@ pub fn show_windows(state: &mut AppState, ctx: &Context) {
         state.ws.git_ui.changes.focus_message = true;
     }
     confirm_dialog(state, ctx);
+    super::patch::show_dialog(state, ctx);
     test_tick(state);
 }
 

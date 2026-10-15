@@ -43,6 +43,12 @@ fn names(s: &AppState, level: usize) -> Vec<String> {
     s.ws.breadcrumbs.items(&p.levels[level]).unwrap_or_default().iter().map(|e| e.name.clone()).collect()
 }
 
+/// The names of the git-ignored entries that popup level `level` lists.
+fn ignored_names(s: &AppState, level: usize) -> Vec<String> {
+    let p = s.ws.breadcrumbs.popup.as_ref().expect("popup open");
+    s.ws.breadcrumbs.items(&p.levels[level]).unwrap_or_default().iter().filter(|e| e.ignored).map(|e| e.name.clone()).collect()
+}
+
 fn active_rel(ide: &Ide) -> String {
     let root = ide.root();
     let e = ide.state().ws.tabs.active_editor().expect("active editor");
@@ -78,8 +84,10 @@ fn popup_lists_children_and_opens_nested_popups() {
     ide.click("Breadcrumb src");
     ide.wait_until("src popup", |ide| ide.has("Breadcrumb item src/app.ts"));
     ide.settle();
-    // Directories first, ignored ones left out; the child on the path is selected.
-    assert_eq!(names(ide.state(), 0), ["core", "app.ts", "util.ts"]);
+    // Directories first, the git-ignored one dimmed (Show ignored files is on); the child on
+    // the path is selected.
+    assert_eq!(names(ide.state(), 0), ["core", "ignored", "app.ts", "util.ts"]);
+    assert_eq!(ignored_names(ide.state(), 0), ["ignored"]);
     assert_eq!(selected(ide.state(), 0).as_deref(), Some("src/core"));
     assert!(ide.is_selected("Breadcrumb src"));
     ide.snapshot("popup_src");
@@ -146,6 +154,8 @@ fn keyboard_moves_enters_and_opens() {
     ide.wait_until("src popup", |ide| ide.has("Breadcrumb item src/app.ts"));
     ide.settle();
     ide.park_mouse();
+    ide.key(Key::ArrowDown);
+    assert_eq!(selected(ide.state(), 0).as_deref(), Some("src/ignored"));
     ide.key(Key::ArrowDown);
     assert_eq!(selected(ide.state(), 0).as_deref(), Some("src/app.ts"));
     ide.key(Key::ArrowDown);
@@ -497,6 +507,8 @@ fn popup_keys_wrap_enter_back_out_and_hop_between_segments() {
 
     // Down wraps from the last row to the first.
     ide.key(Key::ArrowDown);
+    assert_eq!(selected(ide.state(), 0).as_deref(), Some("src/ignored"));
+    ide.key(Key::ArrowDown);
     assert_eq!(selected(ide.state(), 0).as_deref(), Some("src/app.ts"));
     ide.key(Key::ArrowDown);
     assert_eq!(selected(ide.state(), 0).as_deref(), Some("src/util.ts"));
@@ -534,6 +546,7 @@ fn popup_keys_wrap_enter_back_out_and_hop_between_segments() {
 
     // Right on a file at the first level hops to the next segment's popup.
     ide.key(Key::ArrowDown);
+    ide.key(Key::ArrowDown);
     assert_eq!(selected(ide.state(), 0).as_deref(), Some("src/app.ts"));
     key_then(&mut ide, Key::ArrowRight, 0, "src/core/deep");
     assert_eq!(levels(ide.state())[0], "src/core");
@@ -563,6 +576,8 @@ fn popup_keys_wrap_enter_back_out_and_hop_between_segments() {
     // Hops reach the file segment; Right there has no next segment.
     ide.key(Key::ArrowDown);
     key_then(&mut ide, Key::ArrowRight, 0, "src/core");
+    // Past `src/ignored`, a folder that Right would enter.
+    ide.key(Key::ArrowDown);
     ide.key(Key::ArrowDown);
     key_then(&mut ide, Key::ArrowRight, 0, "src/core/deep");
     ide.key(Key::ArrowDown);
@@ -1093,7 +1108,7 @@ fn typing_filters_a_popup_like_speed_search() {
     ide.wait_until("src popup", |ide| selected(ide.state(), 0).as_deref() == Some("src/core"));
     ide.settle();
     ide.park_mouse();
-    assert_eq!(drawn_rows(&ide), ["src/core", "src/app.ts", "src/util.ts"]);
+    assert_eq!(drawn_rows(&ide), ["src/core", "src/ignored", "src/app.ts", "src/util.ts"]);
 
     // Typing hides the rows that do not match and selects the first match.
     ide.type_text("ts");
@@ -1128,7 +1143,7 @@ fn typing_filters_a_popup_like_speed_search() {
     ide.settle();
     assert!(ide.state().ws.breadcrumbs.popup.is_some(), "the first Escape keeps the popup");
     assert!(!ide.labels().iter().any(|l| l.starts_with("Speed search")));
-    assert_eq!(drawn_rows(&ide), ["src/core", "src/app.ts", "src/util.ts"]);
+    assert_eq!(drawn_rows(&ide), ["src/core", "src/ignored", "src/app.ts", "src/util.ts"]);
     ide.key(Key::Escape);
     assert!(ide.state().ws.breadcrumbs.popup.is_none());
     assert_eq!(ide.active_text(), text, "no typed key reached the editor");
@@ -1143,11 +1158,106 @@ fn typing_filters_a_popup_like_speed_search() {
     ide.settle();
     assert_eq!(levels(ide.state()), ["src", "src/core"]);
     assert_eq!(selected(ide.state(), 1).as_deref(), Some("src/core/fresh.ts"));
-    assert_eq!(drawn_rows(&ide), ["src/core", "src/app.ts", "src/util.ts", "src/core/fresh.ts"], "the first level keeps its rows");
+    assert_eq!(drawn_rows(&ide), ["src/core", "src/ignored", "src/app.ts", "src/util.ts", "src/core/fresh.ts"], "the first level keeps its rows");
     ide.snapshot("filter_nested");
     ide.key(Key::Enter);
     ide.wait_for("fresh.ts open", |s| s.ws.tabs.active_tab().is_some_and(|t| t.title() == "fresh.ts"));
     ide.settle();
     assert!(ide.state().ws.breadcrumbs.popup.is_none());
     assert_eq!(ide.active_text(), "export const fresh = 1;\n");
+}
+
+/// `crumbs_repo` plus a git-ignored `node_modules` package and a git-ignored `debug.log`.
+fn ignored_repo(fx: &Fixture) -> Repo {
+    let repo = crumbs_repo(fx);
+    repo.write(".gitignore", "ignored/\nnode_modules/\n*.log\n");
+    repo.commit_all("ignore");
+    repo.write("node_modules/pkg/index.js", "export const pkg = 1;\n");
+    repo.write("node_modules/pkg/lib/deep.js", "export const deep = 1;\n");
+    repo.write("debug.log", "log\n");
+    repo
+}
+
+/// Per crumb of the active file: whether the bar draws it dimmed.
+fn dimmed_crumbs(ide: &Ide) -> Vec<bool> {
+    let s = ide.state();
+    let file = harwex_ide::breadcrumbs::active_file(s).expect("active file");
+    (0..s.ws.breadcrumbs.slots.len()).map(|n| s.settings.global.files.show_ignored && s.ws.breadcrumbs.crumb_ignored(&file, n) == Some(true)).collect()
+}
+
+fn set_show_ignored(ide: &mut Ide, on: bool) {
+    let mut global = ide.state().settings.global.clone();
+    global.files.show_ignored = on;
+    harwex_ide::settings::set_global(ide.state_mut(), global, None);
+    ide.settle();
+}
+
+#[test]
+fn ignored_entries_show_dimmed_and_follow_the_setting() {
+    let fx = Fixture::new(SUITE, "ignored");
+    let repo = ignored_repo(&fx);
+    let mut ide = Ide::open(SUITE, &repo.dir);
+    assert!(ide.state().settings.global.files.show_ignored, "on by default");
+
+    // A file inside an ignored folder: every crumb below the root is dimmed.
+    ide.open_file("node_modules/pkg/lib/deep.js");
+    let file = ide.root().join("node_modules/pkg/lib/deep.js");
+    ide.wait_for("crumbs checked", |s| s.ws.breadcrumbs.crumb_ignored(&file, 0).is_some());
+    ide.settle();
+    assert_eq!(dimmed_crumbs(&ide), [false, true, true, true, true]);
+    ide.snapshot("ignored_crumbs");
+
+    // The root popup lists the ignored entries, dimmed; `.git` stays hidden.
+    ide.click("Breadcrumb repo");
+    ide.wait_until("root popup", |ide| ide.has("Breadcrumb item README.md"));
+    ide.settle();
+    ide.park_mouse();
+    assert_eq!(names(ide.state(), 0), ["docs", "node_modules", "src", ".gitignore", "debug.log", "README.md"]);
+    assert_eq!(ignored_names(ide.state(), 0), ["node_modules", "debug.log"]);
+    ide.snapshot("ignored_root_popup");
+
+    // Type-to-filter matches ignored entries too.
+    ide.type_text("deb");
+    ide.settle();
+    assert_eq!(drawn_rows(&ide), ["debug.log"]);
+    assert_eq!(selected(ide.state(), 0).as_deref(), Some("debug.log"));
+    ide.key(Key::Escape);
+    ide.key(Key::Escape);
+    assert!(ide.state().ws.breadcrumbs.popup.is_none());
+
+    // A folder inside an ignored one: all its children are ignored, also in a nested level.
+    ide.click("Breadcrumb pkg");
+    ide.wait_until("pkg popup", |ide| ide.has("Breadcrumb item node_modules/pkg/index.js"));
+    ide.settle();
+    assert_eq!(names(ide.state(), 0), ["lib", "index.js"]);
+    assert_eq!(ignored_names(ide.state(), 0), ["lib", "index.js"]);
+    assert_eq!(selected(ide.state(), 0).as_deref(), Some("node_modules/pkg/lib"));
+    ide.hover("Breadcrumb item node_modules/pkg/lib");
+    ide.wait_until("lib popup", |ide| ide.has("Breadcrumb item node_modules/pkg/lib/deep.js"));
+    ide.settle();
+    assert_eq!(ignored_names(ide.state(), 1), ["deep.js"]);
+    ide.key(Key::Escape);
+    assert!(ide.state().ws.breadcrumbs.popup.is_none());
+
+    // Setting off: no dimmed crumbs, and the popups leave the ignored entries out.
+    set_show_ignored(&mut ide, false);
+    assert_eq!(dimmed_crumbs(&ide), [false; 5]);
+    ide.click("Breadcrumb repo");
+    ide.wait_until("root popup", |ide| ide.has("Breadcrumb item README.md"));
+    ide.settle();
+    assert_eq!(names(ide.state(), 0), ["docs", "src", ".gitignore", "README.md"]);
+    ide.hover("Breadcrumb item src");
+    ide.wait_until("src popup", |ide| ide.has("Breadcrumb item src/app.ts"));
+    ide.settle();
+    assert_eq!(names(ide.state(), 1), ["core", "app.ts", "util.ts"]);
+    ide.park_mouse();
+    ide.key(Key::Escape);
+    ide.settle();
+    ide.snapshot("ignored_setting_off");
+
+    // On again: the listings are read again with the ignored entries.
+    set_show_ignored(&mut ide, true);
+    ide.click("Breadcrumb repo");
+    ide.wait_until("root popup", |ide| ide.has("Breadcrumb item node_modules"));
+    assert_eq!(ignored_names(ide.state(), 0), ["node_modules", "debug.log"]);
 }

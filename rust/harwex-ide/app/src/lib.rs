@@ -27,6 +27,7 @@ pub mod notifications;
 pub mod persist;
 pub mod projects_popup;
 pub mod rename_symbol;
+pub mod save;
 pub mod search;
 pub mod unreal;
 pub mod settings;

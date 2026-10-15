@@ -37,7 +37,7 @@ impl Selection<'_> {
 }
 
 /// The empty tree's id, the base of a root commit. git knows this object without storing it.
-fn empty_tree_id() -> Result<Oid> {
+pub(crate) fn empty_tree_id() -> Result<Oid> {
     Ok(Oid::hash_object(git2::ObjectType::Tree, &[])?)
 }
 

@@ -19,6 +19,13 @@ fn open_commit_window(ide: &mut Ide) {
     ide.click("Commit tool window");
     ide.settle();
     assert_eq!(ide.state().ws.layout.left, Some(ToolWindow::Commit));
+    // Folders start collapsed; these tests click file rows, so they open every folder.
+    expand_all(ide);
+}
+
+fn expand_all(ide: &mut Ide) {
+    ide.click("Expand All");
+    ide.settle();
 }
 
 fn checked(ide: &Ide) -> Vec<String> {
@@ -278,6 +285,7 @@ fn amend_with_cmd_enter() {
     assert_eq!(ide.state().ws.layout.left, Some(ToolWindow::Commit));
     ide.type_text("draft");
     assert_eq!(ide.state().ws.git_ui.changes.message, "draft");
+    expand_all(&mut ide);
 
     // Amend fills in the last commit's message; unticking restores the draft.
     ide.click("Amend");
@@ -681,4 +689,118 @@ fn single_click_with_editor_active_only_selects() {
     assert_eq!(ide.tab_titles(), tabs, "arrows only select too");
     ide.key(Key::Enter);
     wait_active_diff(&mut ide, "notes.md (Diff)");
+}
+
+/// Modified files in `src` (with a nested `src/core/deep`) and `docs`, one staged file in
+/// `lib`, two untracked files in `new`.
+fn folders_repo(dir: PathBuf) -> Repo {
+    let r = basic_repo(dir);
+    r.write("src/app.ts", &APP_TS.replace("add(1, 2)", "add(40, 2)"));
+    r.write("src/util.ts", "export const changed = 1;\n");
+    r.write("src/core/deep/nested.ts", "export const nested = 2;\n");
+    r.write("docs/notes.md", "more notes\n");
+    r.write("lib/staged.ts", "export const staged = 1;\n");
+    r.git(&["add", "lib/staged.ts"]);
+    r.write("new/one.ts", "export const one = 1;\n");
+    r.write("new/two.ts", "export const two = 2;\n");
+    r
+}
+
+/// Stages or unstages through the row's context menu and waits for the write.
+fn menu_stage(ide: &mut Ide, row: &str, action: &str) {
+    ide.right_click(row);
+    ide.settle();
+    ide.click(action);
+    ide.wait_for("git write", |s| s.is_idle());
+    ide.settle();
+    ide.dismiss_toasts();
+}
+
+fn assert_hidden(ide: &Ide, rows: &[&str]) {
+    for row in rows {
+        assert!(!ide.has(row), "row {row:?} is shown; {:?}", ide.labels());
+    }
+}
+
+fn assert_shown(ide: &Ide, rows: &[&str]) {
+    for row in rows {
+        assert!(ide.has(row), "row {row:?} missing; {:?}", ide.labels());
+    }
+}
+
+/// Folders start collapsed, and no status change opens one (task 112). Only the group rows
+/// are open; a folder the user opened stays open while it exists.
+#[test]
+fn folders_start_collapsed() {
+    let fx = Fixture::new(SUITE, "collapsed");
+    let repo = folders_repo(fx.path("repo"));
+    let mut ide = Ide::open(SUITE, &repo.dir);
+    ide.click("Commit tool window");
+    ide.settle();
+    assert_shown(&ide, &["Staged group", "Unstaged group", "Unversioned Files group", "Directory lib in Staged", "Directory src in Unstaged", "Directory docs in Unstaged", "Directory new in Unversioned Files"]);
+    assert_hidden(&ide, &["lib/staged.ts", "src/app.ts", "Directory src/core/deep in Unstaged", "docs/notes.md", "new/one.ts"]);
+    ide.snapshot("collapsed_default");
+
+    // The user opens src; its nested folder shows collapsed.
+    ide.double_click("Directory src in Unstaged");
+    ide.settle();
+    assert_shown(&ide, &["src/app.ts", "src/util.ts", "Directory src/core/deep in Unstaged"]);
+    assert_hidden(&ide, &["src/core/deep/nested.ts"]);
+
+    // Staging docs from Unstaged: its folder in Staged starts collapsed, src stays open.
+    drag_rows(&mut ide, "Directory docs in Unstaged", "Staged group");
+    ide.wait_for("docs staged", |s| s.ws.git_ui.changes.group_paths(Group::Staged).contains(&PathBuf::from("docs/notes.md")));
+    ide.dismiss_toasts();
+    ide.settle();
+    assert_shown(&ide, &["Directory docs in Staged", "Directory lib in Staged", "src/app.ts"]);
+    assert_hidden(&ide, &["docs/notes.md", "Directory docs in Unstaged", "lib/staged.ts"]);
+
+    // Staging the untracked folder through the menu: new in Staged starts collapsed.
+    menu_stage(&mut ide, "Directory new in Unversioned Files", "Stage (git add)");
+    ide.wait_for("new staged", |s| s.ws.git_ui.changes.group_paths(Group::Staged).contains(&PathBuf::from("new/one.ts")));
+    ide.settle();
+    assert_shown(&ide, &["Directory new in Staged", "src/app.ts"]);
+    assert_hidden(&ide, &["new/one.ts", "new/two.ts", "Unversioned Files group"]);
+
+    // A refresh keeps the open folder open and the others collapsed.
+    ide.click("Refresh");
+    ide.wait_for("refresh", |s| s.is_idle());
+    ide.settle();
+    assert_shown(&ide, &["src/app.ts", "Directory docs in Staged"]);
+    assert_hidden(&ide, &["docs/notes.md", "new/one.ts"]);
+
+    // A selected file that moves to a collapsed folder leaves its selection on that folder row.
+    ide.click("src/util.ts");
+    ide.settle();
+    assert_eq!(ide.state().ws.git_ui.changes.selected_paths(), [PathBuf::from("src/util.ts")]);
+    menu_stage(&mut ide, "src/util.ts", "Stage (git add)");
+    ide.wait_for("util staged", |s| s.ws.git_ui.changes.group_paths(Group::Staged).contains(&PathBuf::from("src/util.ts")));
+    ide.settle();
+    assert_hidden(&ide, &["src/util.ts"]);
+    assert_shown(&ide, &["Directory src in Staged", "src/app.ts"]);
+    assert!(ide.state().ws.git_ui.changes.selected_paths().is_empty());
+    assert_eq!(ide.state().ws.git_ui.changes.selected_dir().as_deref(), Some("Directory src in Staged"));
+    ide.snapshot("staged_selection_on_folder");
+
+    // An open folder that goes away forgets its state: docs comes back collapsed.
+    ide.double_click("Directory docs in Staged");
+    ide.settle();
+    assert_shown(&ide, &["docs/notes.md"]);
+    drag_rows(&mut ide, "Directory docs in Staged", "Unstaged group");
+    ide.wait_for("docs unstaged", |s| s.ws.git_ui.changes.group_paths(Group::Unstaged).contains(&PathBuf::from("docs/notes.md")));
+    ide.dismiss_toasts();
+    drag_rows(&mut ide, "Directory docs in Unstaged", "Staged group");
+    ide.wait_for("docs staged again", |s| s.ws.git_ui.changes.group_paths(Group::Staged).contains(&PathBuf::from("docs/notes.md")));
+    ide.dismiss_toasts();
+    ide.settle();
+    assert_shown(&ide, &["Directory docs in Staged"]);
+    assert_hidden(&ide, &["docs/notes.md"]);
+
+    // Expand All opens every folder, the nested ones too; Collapse All closes them, groups stay open.
+    expand_all(&mut ide);
+    assert_shown(&ide, &["docs/notes.md", "lib/staged.ts", "new/one.ts", "src/util.ts", "src/app.ts", "src/core/deep/nested.ts"]);
+    ide.click("Collapse All");
+    ide.settle();
+    assert_shown(&ide, &["Staged group", "Unstaged group", "Directory src in Unstaged", "Directory docs in Staged"]);
+    assert_hidden(&ide, &["docs/notes.md", "lib/staged.ts", "src/app.ts", "src/util.ts"]);
 }

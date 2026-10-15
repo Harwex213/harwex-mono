@@ -5,6 +5,7 @@ use std::time::{Duration, Instant};
 
 use crate::common::*;
 use egui::{Key, Modifiers};
+use harwex_ide::git::diff::{DiffTab, Side};
 use harwex_ide::notifications::Level;
 
 /// `UNFORMATTED_TS` after oxfmt with the fixture's `singleQuote`, with "keep" typed as "keeps".
@@ -135,7 +136,7 @@ fn large_file_formats_on_a_worker() {
     ide.type_text("// x\n");
     let id = active_id(&ide);
     let start = Instant::now();
-    harwex_ide::format::save(ide.state_mut(), id, false);
+    harwex_ide::save::save(ide.state_mut(), harwex_ide::save::Target::Tab(id), harwex_ide::save::Reason::Explicit);
     let call = start.elapsed();
     assert!(ide.state().ws.format.in_flight(id), "the format runs on a worker");
     assert!(call < Duration::from_millis(50), "starting the format took {call:?}");
@@ -154,6 +155,68 @@ fn large_file_formats_on_a_worker() {
     eprintln!("format::large_file_formats_on_a_worker: slowest frame {slowest:?}");
     // Debug build: the frame that applies 2000 blocks is the slowest one.
     assert!(slowest < Duration::from_millis(500), "a frame took {slowest:?}");
+}
+
+/// Opens the worktree diff of `src/app.ts` (the fixture changes it on disk first) and types "s"
+/// after "keep" on its right side.
+fn edit_in_diff(ide: &mut Ide) -> String {
+    let path = ide.root().join("src/app.ts");
+    harwex_ide::git::diff::open_worktree_diff(ide.state_mut(), &path);
+    let key = "diff:wt:src/app.ts".to_string();
+    ide.wait_until("diff", |ide| ide.state().is_idle() && ide.state().ws.tabs.custom_by_key(&key).is_some());
+    ide.settle();
+    let t = ide.state_mut().ws.tabs.custom_mut::<DiffTab>(&key).expect("diff tab");
+    let a = t.char_center(Side::New, 2, 17).expect("diff drawn");
+    let b = t.char_center(Side::New, 2, 18).expect("diff drawn");
+    ide.click_at(egui::Pos2::new(a.x - (b.x - a.x) / 2.0 + 1.0, a.y));
+    ide.type_text("s");
+    key
+}
+
+/// The fixture's text plus a line that oxfmt keeps, so the worktree diff has a change.
+const MORE: &str = "export const more = 2;\n";
+
+/// Cmd+S in an editable diff whose file has no editor tab formats the diff's hidden document
+/// like Cmd+S in an editor tab, then saves it.
+#[test]
+fn diff_cmd_s_formats_the_hidden_document() {
+    if skip_without_oxfmt("format::diff_cmd_s_formats_the_hidden_document") {
+        return;
+    }
+    let fx = Fixture::new("format", "diff_cmd_s_formats_the_hidden_document");
+    let repo = oxfmt_project(fx.path("repo"), true);
+    repo.write("src/app.ts", &format!("{UNFORMATTED_TS}{MORE}"));
+    let mut ide = Ide::open("format", &repo.dir);
+    let key = edit_in_diff(&mut ide);
+    ide.cmd(Key::S);
+    let want = format!("{FORMATTED_KEEPS}{MORE}");
+    ide.wait_until("formatted and saved", |ide| ide.state().is_idle() && repo.read("src/app.ts") == want);
+    let t = ide.state_mut().ws.tabs.custom_mut::<DiffTab>(&key).expect("diff tab");
+    let doc = t.hidden_doc().expect("the hidden document");
+    assert_eq!((doc.text(), doc.is_dirty()), (want, false));
+    assert_eq!(ide.state().ws.format.applied, 1);
+    assert!(oxfmt_notes(&ide).is_empty(), "{:?}", oxfmt_notes(&ide));
+}
+
+/// Cmd+S in an editable diff whose file is open in an editor tab formats that tab.
+#[test]
+fn diff_cmd_s_formats_the_editor_tab() {
+    if skip_without_oxfmt("format::diff_cmd_s_formats_the_editor_tab") {
+        return;
+    }
+    let fx = Fixture::new("format", "diff_cmd_s_formats_the_editor_tab");
+    let repo = oxfmt_project(fx.path("repo"), true);
+    repo.write("src/app.ts", &format!("{UNFORMATTED_TS}{MORE}"));
+    let mut ide = Ide::open("format", &repo.dir);
+    ide.open_file("src/app.ts");
+    edit_in_diff(&mut ide);
+    assert!(ide.active_title().is_some_and(|t| t.ends_with("(Diff)")), "the diff tab is active");
+    ide.cmd(Key::S);
+    let want = format!("{FORMATTED_KEEPS}{MORE}");
+    ide.wait_until("formatted and saved", |ide| ide.state().is_idle() && repo.read("src/app.ts") == want);
+    let e = ide.state().ws.tabs.editors().next().expect("the editor tab");
+    assert_eq!((e.doc.text(), e.doc.is_dirty()), (want, false));
+    assert_eq!(ide.state().ws.format.applied, 1);
 }
 
 #[test]

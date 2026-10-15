@@ -17,6 +17,7 @@
 pub mod files;
 pub mod global;
 pub mod keymap;
+mod kit;
 mod pages;
 pub mod project;
 
@@ -131,6 +132,7 @@ pub fn set_global(state: &mut AppState, new: GlobalSettings, skip: Option<crate:
     if relist {
         for ws in state.all_ws_mut() {
             ws.tree.relist();
+            ws.breadcrumbs.relist();
         }
     }
     if !layer_changed {
@@ -196,6 +198,28 @@ impl Page {
             Page::Editor => "Editor",
             Page::Languages => "Languages",
             Page::Frameworks => "Frameworks",
+        }
+    }
+
+    /// The one line under the page's title.
+    pub fn subtitle(self) -> &'static str {
+        match self {
+            Page::System => "Files, autosave and the Project view",
+            Page::Keymap => "The keyboard shortcuts of every action",
+            Page::Editor => "Font and formatting",
+            Page::Languages => "Language servers, linters and checks",
+            Page::Frameworks => "Game engine projects",
+        }
+    }
+
+    pub fn icon(self) -> crate::icons::Icon {
+        use crate::icons::Icon;
+        match self {
+            Page::System => Icon::Monitor,
+            Page::Keymap => Icon::Keyboard,
+            Page::Editor => Icon::Edit,
+            Page::Languages => Icon::Code,
+            Page::Frameworks => Icon::Cube,
         }
     }
 
@@ -621,11 +645,52 @@ fn ask_servers(state: &mut AppState) {
     );
 }
 
-/// The width of the page list and of the page.
-const NAV_W: f32 = 150.0;
-const PAGE_W: f32 = 600.0;
-/// The height of every page; fixed, so the dialog never changes size.
-pub const PAGE_H: f32 = 430.0;
+/// The dialog's size: as big as `DIALOG` allows, smaller in a small window, fixed for a
+/// window size so the dialog never moves.
+const DIALOG: egui::Vec2 = egui::vec2(880.0, 580.0);
+const DIALOG_TOP: f32 = 64.0;
+/// The page list's width, and in a dialog under `NARROW` wide.
+const NAV_W: f32 = 200.0;
+const NAV_W_NARROW: f32 = 156.0;
+const NARROW: f32 = 760.0;
+const FOOTER_H: f32 = 56.0;
+
+pub fn dialog_size(screen: egui::Rect) -> egui::Vec2 {
+    egui::vec2((screen.width() - 32.0).clamp(480.0, DIALOG.x), (screen.height() - DIALOG_TOP - 24.0).clamp(320.0, DIALOG.y))
+}
+
+/// The page list: the dialog's title, then one row per page with its icon. The selected row
+/// has an accent tint and an accent bar at its left edge. A11y: `Settings page <title>`.
+fn nav(ui: &mut egui::Ui, rect: egui::Rect, page: &mut Page) {
+    let t = &theme::T;
+    let title_pos = rect.min + egui::vec2(20.0, 20.0);
+    let title = ui.painter().text(title_pos, egui::Align2::LEFT_TOP, "Settings", t.semibold(t.font.big), t.text_bright);
+    let r = ui.interact(title, wid("settings-title"), egui::Sense::hover());
+    crate::util::label_widget(&r, egui::WidgetType::Label, "Settings");
+    let mut y = rect.top() + 56.0;
+    for p in Page::ALL {
+        let row = egui::Rect::from_min_size(egui::pos2(rect.left() + 10.0, y), egui::vec2(rect.width() - 20.0, 32.0));
+        y += 34.0;
+        let resp = ui.interact(row, wid(("settings-nav", p.title())), egui::Sense::click());
+        let selected = *page == p;
+        let painter = ui.painter();
+        if selected {
+            painter.rect_filled(row, t.radius.button, t.settings_nav_selected);
+            let bar = egui::Rect::from_min_size(egui::pos2(row.left(), row.top() + 8.0), egui::vec2(3.0, row.height() - 16.0));
+            painter.rect_filled(bar, 1.5, t.accent);
+        } else if resp.hovered() {
+            painter.rect_filled(row, t.radius.button, t.hover);
+        }
+        let icon = egui::Rect::from_center_size(egui::pos2(row.left() + 20.0, row.center().y), egui::vec2(16.0, 16.0));
+        crate::icons::paint(painter, icon, p.icon(), if selected { t.section_icon } else { t.tree_chevron });
+        let (font, color) = if selected { (t.semibold(t.font.ui), t.text_bright) } else { (t.ui_font(), t.text) };
+        painter.text(egui::pos2(icon.right() + 10.0, row.center().y), egui::Align2::LEFT_CENTER, p.title(), font, color);
+        crate::util::label_selectable(&resp, p.label(), selected);
+        if resp.clicked() {
+            *page = p;
+        }
+    }
+}
 
 pub fn show(state: &mut AppState, ctx: &Context) {
     if state.ws.settings.as_ref().is_some_and(|d| d.page == Page::Languages) {
@@ -639,63 +704,60 @@ pub fn show(state: &mut AppState, ctx: &Context) {
     let mut ok = false;
     let mut cancel = false;
     let mut open_file = false;
+    let size = dialog_size(ctx.screen_rect());
     // Anchored at the top like the tree dialogs: the title must not move.
-    let area = Modal::default_area(wid("settings-dialog-area")).anchor(egui::Align2::CENTER_TOP, [0.0, 70.0]);
-    let modal = Modal::new(wid("settings-dialog")).area(area).show(ctx, |ui| {
-        ui.set_width(NAV_W + PAGE_W + 25.0);
-        ui.label(RichText::new("Settings").strong());
-        ui.add_space(8.0);
-        ui.horizontal_top(|ui| {
-            // Justified: each row is the list's width, its text on the left like IDEA's.
-            let nav = ui.allocate_ui_with_layout(egui::vec2(NAV_W, PAGE_H), egui::Layout::top_down_justified(egui::Align::Min), |ui| {
-                ui.set_width(NAV_W);
-                ui.set_height(PAGE_H);
-                ui.spacing_mut().button_padding = egui::vec2(8.0, 5.0);
-                for page in Page::ALL {
-                    let selected = dialog.page == page;
-                    let r = ui.add(egui::SelectableLabel::new(selected, page.title()));
-                    crate::util::label_selectable(&r, page.label(), selected);
-                    if r.clicked() {
-                        dialog.page = page;
-                    }
+    let area = Modal::default_area(wid("settings-dialog-area")).anchor(egui::Align2::CENTER_TOP, [0.0, DIALOG_TOP]);
+    let frame = egui::Frame::new().fill(t.popup_bg).stroke(egui::Stroke::new(1.0_f32, t.popup_border)).corner_radius(t.radius.popup).shadow(t.popup_shadow());
+    let modal = Modal::new(wid("settings-dialog")).area(area).frame(frame).show(ctx, |ui| {
+        let (rect, _) = ui.allocate_exact_size(size, egui::Sense::hover());
+        let nav_w = if size.x < NARROW { NAV_W_NARROW } else { NAV_W };
+        let nav_rect = egui::Rect::from_min_size(rect.min, egui::vec2(nav_w, size.y));
+        let r = t.radius.popup as u8;
+        ui.painter().rect_filled(nav_rect, egui::CornerRadius { nw: r, sw: r, ne: 0, se: 0 }, t.settings_nav_bg);
+        ui.painter().vline(nav_rect.right(), nav_rect.y_range(), egui::Stroke::new(1.0_f32, t.popup_border));
+        nav(ui, nav_rect, &mut dialog.page);
+
+        let footer = egui::Rect::from_min_max(egui::pos2(nav_rect.right(), rect.bottom() - FOOTER_H), rect.max);
+        ui.painter().hline(footer.x_range(), footer.top(), egui::Stroke::new(1.0_f32, t.popup_border));
+        // The page: title and subtitle, then the content, which scrolls on its own.
+        let page_rect = egui::Rect::from_min_max(egui::pos2(nav_rect.right() + 24.0, rect.top() + 18.0), egui::pos2(rect.right() - 10.0, footer.top()));
+        let mut page_ui = ui.new_child(egui::UiBuilder::new().max_rect(page_rect).layout(egui::Layout::top_down(egui::Align::Min)));
+        let ui = &mut page_ui;
+        ui.spacing_mut().item_spacing.y = 0.0;
+        ui.label(RichText::new(dialog.page.title()).font(t.semibold(t.font.title)).color(t.text_bright));
+        ui.add_space(3.0);
+        ui.label(RichText::new(dialog.page.subtitle()).color(t.text_dim));
+        ui.add_space(14.0);
+        // The scroll bar floats in the page's right margin.
+        let content_w = ui.available_width() - 14.0;
+        if dialog.page == Page::Keymap {
+            keymap::page(ui, &mut dialog.keymap, content_w);
+        } else {
+            egui::ScrollArea::vertical().id_salt(("settings-page", dialog.page.title())).auto_shrink([false, false]).min_scrolled_height(0.0).show(ui, |ui| {
+                ui.set_width(content_w);
+                ui.spacing_mut().item_spacing.y = 0.0;
+                match dialog.page {
+                    Page::System => pages::system(ui, &mut dialog.global),
+                    Page::Editor => pages::editor(ui, dialog),
+                    Page::Languages => pages::languages(ui, dialog, running, langs_off),
+                    Page::Frameworks => pages::frameworks(ui, dialog),
+                    Page::Keymap => {}
                 }
             });
-            // A drawn line: egui's vertical separator grows with the row and moves the modal.
-            let x = nav.response.rect.right() + 8.0;
-            ui.painter().vline(x, nav.response.rect.y_range(), egui::Stroke::new(1.0_f32, t.popup_border));
-            ui.add_space(16.0);
-            ui.allocate_ui_with_layout(egui::vec2(PAGE_W, PAGE_H), egui::Layout::top_down(egui::Align::Min), |ui| {
-                ui.set_width(PAGE_W);
-                ui.set_height(PAGE_H);
-                ui.label(RichText::new(dialog.page.title()).strong().size(t.font.big));
-                ui.add_space(6.0);
-                if dialog.page == Page::Keymap {
-                    keymap::page(ui, &mut dialog.keymap);
-                    return;
-                }
-                egui::ScrollArea::vertical().id_salt(("settings-page", dialog.page.title())).auto_shrink([false, false]).min_scrolled_height(0.0).show(ui, |ui| {
-                    ui.set_width(PAGE_W - 14.0);
-                    match dialog.page {
-                        Page::System => pages::system(ui, &mut dialog.global),
-                        Page::Editor => pages::editor(ui, dialog),
-                        Page::Languages => pages::languages(ui, dialog, running, langs_off),
-                        Page::Frameworks => pages::frameworks(ui, dialog),
-                        Page::Keymap => {}
-                    }
-                });
-            });
-        });
-        ui.add_space(10.0);
-        ui.horizontal(|ui| {
-            let (text, enabled) = match page_scope(dialog.page, &dialog.project) {
-                Scope::Global => ("Open global settings".to_string(), has_file),
-                Scope::Project => (format!("Open {}", crate::lang::config::CONFIG_PATH), dialog.project.is_some()),
-            };
-            open_file = ui.add_enabled(enabled, egui::Button::new(text)).clicked();
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                cancel = ui.button("Cancel").clicked();
-                ok = ui.button("OK").clicked();
-            });
+        }
+
+        let mut foot = page_ui.new_child(egui::UiBuilder::new().max_rect(footer.shrink2(egui::vec2(16.0, 0.0))).layout(egui::Layout::left_to_right(egui::Align::Center)));
+        let ui = &mut foot;
+        ui.spacing_mut().button_padding = egui::vec2(14.0, 5.0);
+        let (text, enabled) = match page_scope(dialog.page, &dialog.project) {
+            Scope::Global => ("Open global settings".to_string(), has_file),
+            Scope::Project => (format!("Open {}", crate::lang::config::CONFIG_PATH), dialog.project.is_some()),
+        };
+        open_file = ui.add_enabled(enabled, egui::Button::new(text)).clicked();
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            let min = egui::vec2(76.0, 28.0);
+            cancel = ui.add(egui::Button::new("Cancel").min_size(min)).clicked();
+            ok = ui.add(egui::Button::new(RichText::new("OK").color(t.on_accent)).fill(t.accent).stroke(egui::Stroke::NONE).min_size(min)).clicked();
         });
     });
     let page = dialog.page;

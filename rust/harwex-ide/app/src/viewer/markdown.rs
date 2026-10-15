@@ -9,6 +9,11 @@
 //! Images in the text load on workers (`viewer::load`); remote images show their alt text.
 //! Links open through `Platform::open_url`; a relative link to a file opens it in the IDE, and
 //! `#anchor` scrolls to the heading.
+//!
+//! Text selection works like a browser's: one selection over the whole document, kept as two
+//! `TextPos` (block, char in `block_text`). Each frame records the galleys it drew (`Piece`);
+//! the next frame's pointer input hits those, and the drawing paints the selection under each
+//! galley.
 
 use std::collections::HashMap;
 use std::ops::Range;
@@ -16,7 +21,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use egui::text::{LayoutJob, TextFormat};
-use egui::{pos2, vec2, Align2, Color32, CursorIcon, FontId, Galley, Id, Rect, Sense, Stroke, Ui, Vec2};
+use egui::{pos2, vec2, Align2, Color32, CursorIcon, FontId, Galley, Id, Key, Modifiers, Pos2, Rect, Sense, Stroke, Ui, Vec2};
 use pulldown_cmark::{Alignment, Event, Options, Parser, Tag, TagEnd};
 
 use super::image::Pic;
@@ -33,6 +38,8 @@ const LIST_INDENT: f32 = 24.0;
 const QUOTE_INDENT: f32 = 16.0;
 const CELL_PAD: f32 = 8.0;
 const SPLITTER_W: f32 = 6.0;
+/// A drag closer than this to the preview's top or bottom edge (or past it) scrolls.
+const AUTO_SCROLL_EDGE: f32 = 24.0;
 
 pub fn is_markdown(path: &Path) -> bool {
     path.extension().is_some_and(|e| e.eq_ignore_ascii_case("md") || e.eq_ignore_ascii_case("markdown"))
@@ -460,6 +467,38 @@ pub struct LinkHit {
     pub rect: Rect,
 }
 
+/// A place in the preview's text: a block and a char offset into its `block_text`.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
+pub struct TextPos {
+    pub block: usize,
+    pub ch: usize,
+}
+
+/// What a drag extends by: chars after a single press, words after a double, blocks after a
+/// triple.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Unit {
+    Char,
+    Word,
+    Block,
+}
+
+/// A galley drawn last frame, in content coordinates, for hit tests.
+struct Piece {
+    block: usize,
+    /// Its first char in the block's text.
+    start: usize,
+    len: usize,
+    galley: Arc<Galley>,
+    pos: Pos2,
+}
+
+impl Piece {
+    fn rect(&self) -> Rect {
+        Rect::from_min_size(self.pos, self.galley.size())
+    }
+}
+
 /// The preview half of a Markdown tab. Lives in `EditorTab::markdown`.
 pub struct Preview {
     pub mode: Mode,
@@ -485,6 +524,12 @@ pub struct Preview {
     links: Vec<LinkHit>,
     /// The preview pane as drawn last frame.
     rect: Option<Rect>,
+    /// The selection as (anchor, head); empty when both are equal.
+    sel: Option<(TextPos, TextPos)>,
+    /// The drag that started on the preview: its unit and the unit range of its press.
+    drag: Option<(Unit, TextPos, TextPos)>,
+    chain: ide_editor::ClickChain,
+    pieces: Vec<Piece>,
 }
 
 impl Default for Preview {
@@ -505,6 +550,10 @@ impl Default for Preview {
             split: 0.5,
             links: Vec::new(),
             rect: None,
+            sel: None,
+            drag: None,
+            chain: ide_editor::ClickChain::default(),
+            pieces: Vec::new(),
         }
     }
 }
@@ -533,7 +582,69 @@ impl Preview {
         self.parsing || self.images.values().any(|s| matches!(s, Slot::Loading))
     }
 
+    /// The selection, start before end; `None` when nothing is selected.
+    pub fn selection(&self) -> Option<(TextPos, TextPos)> {
+        let (a, b) = self.sel?;
+        (a != b).then(|| (a.min(b), a.max(b)))
+    }
+
+    /// The selected text as Cmd+C copies it.
+    pub fn selected_text(&self) -> Option<String> {
+        let (a, b) = self.selection()?;
+        Some(selection_text(&self.blocks, a, b))
+    }
+
+    /// The screen point at the left edge of `pos`, vertically centered on its row, when its
+    /// text was drawn last frame. For tests.
+    pub fn char_pos(&self, pos: TextPos) -> Option<Pos2> {
+        let rect = self.rect?;
+        let piece = self.pieces.iter().find(|x| x.block == pos.block && (x.start..=x.start + x.len).contains(&pos.ch))?;
+        let r = piece.galley.pos_from_ccursor(egui::text::CCursor::new(pos.ch - piece.start));
+        Some(pos2(rect.min.x + piece.pos.x + r.min.x, rect.min.y - self.offset + piece.pos.y + r.center().y))
+    }
+
+    /// Selects the whole document (Cmd+A).
+    pub fn select_all(&mut self) {
+        let Some(last) = self.blocks.len().checked_sub(1) else { return };
+        let end = TextPos { block: last, ch: block_text(&self.blocks[last]).chars().count() };
+        self.sel = Some((TextPos::default(), end));
+    }
+
+    /// The text position at content point `p`, from the galleys drawn last frame.
+    fn hit(&self, p: Pos2) -> Option<TextPos> {
+        let at = |piece: &Piece, ch: usize| TextPos { block: piece.block, ch: piece.start + ch.min(piece.len) };
+        let row = self.pieces.iter().filter(|x| x.rect().y_range().contains(p.y)).min_by(|a, b| {
+            let dist = |r: Rect| (r.min.x - p.x).max(p.x - r.max.x).max(0.0);
+            dist(a.rect()).total_cmp(&dist(b.rect()))
+        });
+        if let Some(piece) = row {
+            return Some(at(piece, piece.galley.cursor_from_pos(p - piece.pos).ccursor.index));
+        }
+        // Between blocks: the end of the last text above.
+        match self.pieces.iter().rev().find(|x| x.rect().max.y <= p.y) {
+            Some(piece) => Some(at(piece, piece.len)),
+            None => self.pieces.first().map(|piece| at(piece, 0)),
+        }
+    }
+
+    /// The range of `unit` around `pos`.
+    fn unit_range(&self, pos: TextPos, unit: Unit) -> (TextPos, TextPos) {
+        let Some(b) = self.blocks.get(pos.block) else { return (pos, pos) };
+        match unit {
+            Unit::Char => (pos, pos),
+            Unit::Block => (TextPos { block: pos.block, ch: 0 }, TextPos { block: pos.block, ch: block_text(b).chars().count() }),
+            Unit::Word => {
+                let chars: Vec<char> = block_text(b).chars().collect();
+                let (s, e) = word_at(&chars, pos.ch);
+                (TextPos { block: pos.block, ch: s }, TextPos { block: pos.block, ch: e })
+            }
+        }
+    }
+
     fn set_blocks(&mut self, blocks: Vec<Block>, version: u64) {
+        self.sel = None;
+        self.drag = None;
+        self.pieces.clear();
         self.heights = vec![f32::NAN; blocks.len()];
         self.blocks = Arc::new(blocks);
         self.parsed = Some(version);
@@ -791,9 +902,12 @@ fn show_preview(ui: &mut Ui, p: &mut Preview, rect: Rect, path: &Path, env: &Env
     let mut child = ui.new_child(egui::UiBuilder::new().max_rect(rect).layout(egui::Layout::top_down(egui::Align::Min)));
     child.set_clip_rect(rect.intersect(ui.clip_rect()));
     child.painter().rect_filled(rect, 0.0, t.island_bg);
-    let pane = child.interact(rect, crate::workspace::wid(("md-preview", path)), Sense::hover());
+    // The pane is the selection widget. It sits under the links, so a press on a link that
+    // moves selects, and one that does not opens the link.
+    let pane = child.interact(rect, crate::workspace::wid(("md-preview", path)), Sense::click_and_drag());
     crate::util::label_widget(&pane, egui::WidgetType::Other, format!("Markdown preview {}", path.file_name().map(|n| n.to_string_lossy()).unwrap_or_default()));
-    let mut area = egui::ScrollArea::vertical().id_salt(("md-preview-scroll", path)).auto_shrink([false, false]);
+    let auto_scrolled = select(ui, p, &pane, rect, env);
+    let mut area = egui::ScrollArea::vertical().id_salt(("md-preview-scroll", path)).auto_shrink([false, false]).drag_to_scroll(false);
     let jumped = p.scroll_to.take();
     if let Some(y) = jumped {
         area = area.vertical_scroll_offset(y.max(0.0));
@@ -802,6 +916,9 @@ fn show_preview(ui: &mut Ui, p: &mut Preview, rect: Rect, path: &Path, env: &Env
     let mut want = Vec::new();
     let mut clicked: Option<String> = None;
     let mut links = Vec::new();
+    let mut pieces = Vec::new();
+    let sel = p.selection();
+    let sel_color = if pane.has_focus() { t.selection } else { t.selection_inactive };
     let out = area.show_viewport(&mut child, |ui, viewport| {
         let origin = ui.min_rect().min;
         let blocks = p.blocks.clone();
@@ -813,7 +930,20 @@ fn show_preview(ui: &mut Ui, p: &mut Preview, rect: Rect, path: &Path, env: &Env
             tops.push(y);
             let h = p.height(i);
             if y + h >= view.min.y && y <= view.max.y {
-                let mut d = Draw { ui, origin, width, images: &mut p.images, want: &mut want, clicked: &mut clicked, links: &mut links, id: crate::workspace::wid(("md-block", path, i)) };
+                let mut d = Draw {
+                    ui,
+                    origin,
+                    width,
+                    images: &mut p.images,
+                    want: &mut want,
+                    clicked: &mut clicked,
+                    links: &mut links,
+                    id: crate::workspace::wid(("md-block", path, i)),
+                    index: i,
+                    sel,
+                    sel_color,
+                    pieces: &mut pieces,
+                };
                 let drawn = d.block(b, y);
                 if (drawn - h).abs() > 0.5 {
                     changed = true;
@@ -832,7 +962,8 @@ fn show_preview(ui: &mut Ui, p: &mut Preview, rect: Rect, path: &Path, env: &Env
         }
     });
     p.links = links;
-    let user_scrolled = jumped.is_none() && (out.state.offset.y - p.offset).abs() > 0.5;
+    p.pieces = pieces;
+    let user_scrolled = (jumped.is_none() || auto_scrolled) && (out.state.offset.y - p.offset).abs() > 0.5;
     p.offset = out.state.offset.y;
     for url in want {
         request_image(p, env, &base_dir, url, path);
@@ -841,6 +972,79 @@ fn show_preview(ui: &mut Ui, p: &mut Preview, rect: Rect, path: &Path, env: &Env
         open_link(p, env, &base_dir, &url);
     }
     user_scrolled
+}
+
+/// The pointer and keys of the selection, read before the preview draws: presses and drags
+/// hit the galleys of last frame. Returns true when a drag past an edge scrolled.
+fn select(ui: &Ui, p: &mut Preview, pane: &egui::Response, rect: Rect, env: &Env) -> bool {
+    let (pressed, down, pointer, shift, time) = ui.input(|i| (i.pointer.primary_pressed(), i.pointer.primary_down(), i.pointer.interact_pos(), i.modifiers.shift, i.time));
+    let delay = ui.ctx().options(|o| o.input_options.max_double_click_delay);
+    // Content coordinates of last frame: the pieces were drawn at that scroll offset.
+    let content = |pos: Pos2| pos2(pos.x - rect.min.x, pos.y - rect.min.y + p.offset);
+    if pane.hovered() {
+        ui.ctx().set_cursor_icon(CursorIcon::Text);
+    }
+    let mut auto_scrolled = false;
+    if pressed && pane.is_pointer_button_down_on() {
+        pane.request_focus();
+        if let Some(hit) = pointer.and_then(|pos| p.hit(content(pos))) {
+            if shift {
+                p.chain.reset();
+                let anchor = p.sel.map_or(hit, |(a, _)| a);
+                p.sel = Some((anchor, hit));
+                p.drag = Some((Unit::Char, anchor, anchor));
+            } else {
+                let n = pointer.map_or(1, |pos| p.chain.press(time, pos, delay, ide_editor::CHAIN_DIST));
+                let unit = match n {
+                    1 => Unit::Char,
+                    2 => Unit::Word,
+                    _ => Unit::Block,
+                };
+                let (a, b) = p.unit_range(hit, unit);
+                p.sel = Some((a, b));
+                p.drag = Some((unit, a, b));
+            }
+        } else {
+            p.sel = None;
+        }
+    } else if let (Some((unit, a, b)), true, Some(pos)) = (p.drag, down, pointer) {
+        if let Some(hit) = p.hit(content(pos)) {
+            let (h0, h1) = p.unit_range(hit, unit);
+            p.sel = Some(if h0 < a { (b, h0) } else { (a, h1.max(b)) });
+        }
+        let over = if pos.y < rect.min.y + AUTO_SCROLL_EDGE {
+            pos.y - (rect.min.y + AUTO_SCROLL_EDGE)
+        } else if pos.y > rect.max.y - AUTO_SCROLL_EDGE {
+            pos.y - (rect.max.y - AUTO_SCROLL_EDGE)
+        } else {
+            0.0
+        };
+        if over != 0.0 && pane.dragged() {
+            p.scroll_to = Some((p.offset + (over * 0.5).clamp(-40.0, 40.0)).max(0.0));
+            auto_scrolled = true;
+            ui.ctx().request_repaint();
+        }
+    }
+    if !down {
+        p.drag = None;
+    }
+    if pane.has_focus() {
+        let (copy, all) = ui.input_mut(|i| {
+            // macOS sends Cmd+C as a Copy event with no key event.
+            let n = i.events.len();
+            i.events.retain(|e| !matches!(e, egui::Event::Copy));
+            let copy = i.events.len() != n || i.consume_key(Modifiers::COMMAND, Key::C);
+            (copy, i.consume_key(Modifiers::COMMAND, Key::A))
+        });
+        if all {
+            p.select_all();
+        }
+        if let Some(text) = copy.then(|| p.selected_text()).flatten() {
+            let ctx = ui.ctx().clone();
+            env.jobs.post(move |state| state.platform.copy_text(&ctx, &text));
+        }
+    }
+    auto_scrolled
 }
 
 /// Where a relative link or image points: next to the Markdown file, or under the project
@@ -908,9 +1112,42 @@ struct Draw<'a, 'u> {
     clicked: &'a mut Option<String>,
     links: &'a mut Vec<LinkHit>,
     id: Id,
+    /// The block being drawn.
+    index: usize,
+    /// The selection, start before end.
+    sel: Option<(TextPos, TextPos)>,
+    sel_color: Color32,
+    pieces: &'a mut Vec<Piece>,
 }
 
 impl Draw<'_, '_> {
+    /// Paints a text galley at `pos` (screen) over its part of the selection and records it for
+    /// hit tests. `start` is its first char in the block's text.
+    fn text(&mut self, g: Arc<Galley>, pos: Pos2, start: usize, color: Color32) {
+        let len = g.job.text.chars().count();
+        if let Some((a, b)) = self.sel {
+            let i = self.index;
+            let from = match a.block.cmp(&i) {
+                std::cmp::Ordering::Less => 0,
+                std::cmp::Ordering::Equal => a.ch.saturating_sub(start),
+                std::cmp::Ordering::Greater => usize::MAX,
+            };
+            let to = match b.block.cmp(&i) {
+                std::cmp::Ordering::Greater => usize::MAX,
+                std::cmp::Ordering::Equal => b.ch.saturating_sub(start),
+                std::cmp::Ordering::Less => 0,
+            };
+            // A range that goes past this galley's end selects its line break too.
+            if from <= len && to > from {
+                for r in selection_rects(&g, &(from..to)) {
+                    self.ui.painter().rect_filled(r.translate(pos.to_vec2()), 0.0, self.sel_color);
+                }
+            }
+        }
+        self.pieces.push(Piece { block: self.index, start, len, galley: g.clone(), pos: pos - self.origin.to_vec2() });
+        self.ui.painter().galley(pos, g, color);
+    }
+
     /// Draws block `b` with its top at content y `y`. Returns its height, gap included.
     fn block(&mut self, b: &Block, y: f32) -> f32 {
         let t = &theme::T;
@@ -967,7 +1204,7 @@ impl Draw<'_, '_> {
                 let g = self.ui.fonts(|f| f.layout_job(job));
                 let r = Rect::from_min_size(pos2(x, top), vec2(w, g.size().y + 2.0 * CELL_PAD));
                 self.ui.painter().rect_filled(r, t.radius.small, t.input_bg);
-                self.ui.painter().galley(r.min + Vec2::splat(CELL_PAD), g, t.text);
+                self.text(g, r.min + Vec2::splat(CELL_PAD), 0, t.text);
                 r.height()
             }
             Kind::Rule => {
@@ -1010,14 +1247,14 @@ impl Draw<'_, '_> {
                 }
             }
         }
-        self.ui.painter().galley(pos, g, color);
+        self.text(g, pos, 0, color);
         h
     }
 
     #[allow(clippy::too_many_arguments)]
     fn table(&mut self, aligns: &[Alignment], head: &[Inline], rows: &[Vec<Inline>], x: f32, top: f32, w: f32) -> f32 {
         let t = &theme::T;
-        let cols = head.len().max(rows.iter().map(Vec::len).max().unwrap_or(0));
+        let cols = table_cols(head, rows);
         if cols == 0 {
             return 0.0;
         }
@@ -1042,6 +1279,8 @@ impl Draw<'_, '_> {
         }
         let table_w: f32 = col_w.iter().sum();
         let mut y = top;
+        // Each cell's first char in `block_text`: cells end with a tab, rows with a newline.
+        let mut offset = 0;
         let empty = Inline::default();
         let all = std::iter::once((head, true)).chain(rows.iter().map(|r| (r.as_slice(), false)));
         for (r, (cells, is_head)) in all.enumerate() {
@@ -1081,7 +1320,9 @@ impl Draw<'_, '_> {
                         self.links.push(LinkHit { text: label, url: url.clone(), rect });
                     }
                 }
-                self.ui.painter().galley(gpos, g, t.text);
+                let len = g.job.text.chars().count();
+                self.text(g, gpos, offset, t.text);
+                offset += len + 1;
                 if c > 0 {
                     self.ui.painter().vline(cx, row_rect.y_range(), Stroke::new(1.0_f32, t.border));
                 }
@@ -1149,6 +1390,109 @@ impl Draw<'_, '_> {
         }
         cy + row_h - top
     }
+}
+
+/// A block's selectable text. Table cells are joined by tabs and rows by newlines; a rule and
+/// images have none. Selection offsets count chars of this text.
+pub fn block_text(b: &Block) -> String {
+    match &b.kind {
+        Kind::Heading { text, .. } | Kind::Para(text) | Kind::Item { text, .. } => text.plain(),
+        Kind::Code(code) => code.clone(),
+        Kind::Table { head, rows, .. } => {
+            let cols = table_cols(head, rows);
+            std::iter::once(head)
+                .chain(rows.iter())
+                .map(|row| (0..cols).map(|c| row.get(c).map(Inline::plain).unwrap_or_default()).collect::<Vec<_>>().join("\t"))
+                .collect::<Vec<_>>()
+                .join("\n")
+        }
+        Kind::Rule | Kind::Images(_) => String::new(),
+    }
+}
+
+fn table_cols(head: &[Inline], rows: &[Vec<Inline>]) -> usize {
+    head.len().max(rows.iter().map(Vec::len).max().unwrap_or(0))
+}
+
+/// The word around char `ch`: a run of letters, digits and `_`, or the one other char there.
+fn word_at(chars: &[char], ch: usize) -> (usize, usize) {
+    let is_word = |c: char| c.is_alphanumeric() || c == '_';
+    let ch = ch.min(chars.len());
+    // A press right after a word's last char picks that word.
+    let i = if chars.get(ch).is_some_and(|&c| is_word(c)) || ch == 0 || !is_word(chars[ch - 1]) { ch } else { ch - 1 };
+    match chars.get(i) {
+        Some(&c) if is_word(c) => {
+            let s = chars[..i].iter().rposition(|&c| !is_word(c)).map_or(0, |k| k + 1);
+            let e = chars[i..].iter().position(|&c| !is_word(c)).map_or(chars.len(), |k| i + k);
+            (s, e)
+        }
+        Some(_) => (i, i + 1),
+        None => (i, i),
+    }
+}
+
+/// A list item's marker as copied text, with its nesting.
+fn marker_text(b: &Block, marker: Marker) -> String {
+    let indent = "  ".repeat(b.indent.saturating_sub(1) as usize);
+    match marker {
+        Marker::Bullet => format!("{indent}- "),
+        Marker::Number(n) => format!("{indent}{n}. "),
+        Marker::Task(done) => format!("{indent}- [{}] ", if done { 'x' } else { ' ' }),
+    }
+}
+
+/// The plain text from `a` to `b`. A list item whose start is selected keeps its marker; list
+/// blocks are joined by one newline, other blocks by an empty line.
+fn selection_text(blocks: &[Block], a: TextPos, b: TextPos) -> String {
+    let mut out = String::new();
+    let mut prev: Option<&Block> = None;
+    for (i, block) in blocks.iter().enumerate().take(b.block + 1).skip(a.block) {
+        let text = block_text(block);
+        let start = if i == a.block { a.ch } else { 0 };
+        let end = if i == b.block { b.ch } else { usize::MAX };
+        let part: String = text.chars().skip(start).take(end.saturating_sub(start)).collect();
+        if part.is_empty() {
+            continue;
+        }
+        if let Some(p) = prev {
+            out.push_str(if p.indent > 0 && block.indent > 0 { "\n" } else { "\n\n" });
+        }
+        if let (0, Kind::Item { marker, .. }) = (start, &block.kind) {
+            out.push_str(&marker_text(block, *marker));
+        }
+        out.push_str(&part);
+        prev = Some(block);
+    }
+    out
+}
+
+/// The rects (galley coordinates) of the selected chars `range` of a galley, one per row. A
+/// selection that goes on past a row's end covers a little room for the line break, like a
+/// browser.
+fn selection_rects(g: &Galley, range: &Range<usize>) -> Vec<Rect> {
+    let mut out = Vec::new();
+    let mut start = 0;
+    let last = g.rows.len().saturating_sub(1);
+    for (k, row) in g.rows.iter().enumerate() {
+        let n = row.char_count_excluding_newline();
+        let (a, b) = (range.start.max(start), range.end.min(start + n));
+        let goes_on = (row.ends_with_newline || k == last) && range.start <= start + n && range.end > start + n;
+        let nl = row.rect.height() * 0.3;
+        let x0 = if a < b { row.glyphs[a - start].pos.x } else { row.rect.max.x };
+        let x1 = match (a < b, goes_on) {
+            (_, true) => row.rect.max.x + nl,
+            (true, false) => {
+                let g = &row.glyphs[b - 1 - start];
+                g.pos.x + g.advance_width
+            }
+            (false, false) => x0,
+        };
+        if x1 > x0 {
+            out.push(Rect::from_x_y_ranges(x0..=x1, row.rect.y_range()));
+        }
+        start += row.char_count_including_newline();
+    }
+    out
 }
 
 /// The layout job of inline text, plus the char ranges of its links.
@@ -1292,5 +1636,17 @@ mod tests {
         assert_eq!(p.y_of_line(3.0), Some(60.0), "between two blocks");
         assert_eq!(p.line_of_y(60.0), Some(3.0));
         assert_eq!(p.line_of_y(0.0), Some(0.0));
+    }
+
+    #[test]
+    fn words_and_copied_text() {
+        let chars: Vec<char> = "say hello_1, now".chars().collect();
+        assert_eq!(word_at(&chars, 6), (4, 11));
+        assert_eq!(word_at(&chars, 11), (4, 11), "right after a word picks it");
+        assert_eq!(word_at(&chars, 12), (12, 13), "a space is its own word");
+        let b = parse("Para one.\n\n1. first\n   - [x] sub\n\n```\n  x\n```\n");
+        let pos = |block, ch| TextPos { block, ch };
+        assert_eq!(selection_text(&b, pos(0, 5), pos(3, 3)), "one.\n\n1. first\n  - [x] sub\n\n  x");
+        assert_eq!(selection_text(&b, pos(1, 2), pos(2, 1)), "rst\n  - [x] s", "a marker only with the item's start");
     }
 }

@@ -7,16 +7,9 @@ Run at most 2–3 agents that build at once: on 2026-10-05 seven parallel cargo 
 ## Ideas
 
 Diagnostics:
-- [idea] Cmd+S in an editable diff tab (task 071) saves without oxfmt: `git/diff.rs` saves through its own path, not `format::save` (found in task 081).
-- [idea] oxlint 1.77 panics in `disable_fix.rs:52` on every file with a `jsPlugins` diagnostic, and its LSP waits for tsgolint with no timeout. We work around both (quarantine, restart, type-aware fallback). File the upstream reports drafted in `oxlint-upstream.md` when the user decides.
-
-Git window:
-- [idea] Merge window: the file also shows as a normal tab beside the merge tab; the Result pane has no hover text or Go to Declaration; no IDEA × "ignore change"; panes ignore the Settings font size; Cancel write-back after an idle save has no test (found in task 106).
-- [idea] In a very narrow commit table the date column draws over the graph (`git_history/filter_bar_narrow.png`). Shrink or hide columns by priority.
-- [idea] Create Patch asks for a path in a text box. Use a native save dialog through `state.platform`.
-- [idea] Ref labels cut the HEAD commit message without an ellipsis (`Afte`). Truncate the message with `…` and collapse labels to `+N` earlier.
 
 Tooling:
+- [idea] One save path (task 115) has no tests for the commit save (`take_all`), merge Cancel `write_back`, or backups of closed files edited by Replace in Files / Rename / moves.
 - [idea] Flaky: `cpp_nav::find_usages_across_files` and `cpp_nav::rename_symbol_shows_a_preview_then_edits_every_file` fail in full `cargo xtask test` runs (clangd under load) but pass alone 9/9; seen in tasks 101 and 109.
 - [idea] Flaky: `cancel::hung_annotate_is_cancelled_from_the_status_bar_and_runs_again` fails now and then under load ("Annotate failed" instead of a second "Cancelled"); seen in tasks 103 and 105.
 - [idea] Settings: a server lookup error still names `.harwex/ide.toml` when the path came from the global `settings.toml`; a project cannot force Auto over a global value (TOML has no null) (found in task 104).
@@ -26,11 +19,11 @@ Tooling:
 - [idea] The workspace is not rustfmt-clean. Run `cargo fmt --all` once and add `cargo fmt --all --check` to "Done means" and to `cargo xtask clean-check`.
 
 Commit window:
+- [idea] Commit patches (task 114) do not save dirty editor tabs first (IDEA does); the Git window's Create Patch in `git/log.rs` still has its own dialog, move it onto `git/patch.rs`.
 - [idea] Commit tree rows are `available_width().max(240)` wide inside `ScrollArea::both`, so in a narrow panel the clipped end of each row takes no clicks (same bug task 014 fixed in Project). Make rows exactly the viewport wide.
 - [idea] Stage/Unstage (drop or menu) shows a success toast on every action, because it goes through `run_op`. IDEA is silent on success. Make stage/unstage success quiet; keep error toasts.
 
 Navigation and languages:
-- [idea] Breadcrumb popups still hide git-ignored entries (the Project tree shows them dimmed since task 110).
 - [idea] Find in Files: a case-insensitive non-ASCII query now goes to the regex path; its speed on mono is not measured. An all-ASCII query still misses Unicode folds like the Kelvin sign (found in task 103).
 - [idea] Problems has single selection only; IDEA copies several selected rows (found in task 103).
 - [idea] Find in Files on mono: a no-match search still reads all 500k files (16 s with 4 threads; rg 25.8 s). Only an index makes it instant: IDEA keeps a trigram index of file contents. Build one on a worker (persisted, updated from watcher batches), filter candidate files by the query's trigrams, then grep only those (found in task 099).
@@ -49,33 +42,13 @@ Navigation and languages:
 - [idea] Search Everywhere for symbols and actions, not only files.
 
 Project tree and shell:
-- [idea] Settings (task 101) gaps: backups cover only `save_tab` (not diff/Find-preview/commit writes); font size skips diff and preview views; no global soft-wrap default; removing a key from `ide.toml` also drops the comment above it.
-- [idea] Viewers (task 095) gaps: image tabs are not restored after restart or by Cmd+Shift+T; preview mode is not persisted; animated GIF shows frame 1; SVG text not drawn; preview text not selectable; Markdown preview images do not reload on change. A binary `FileDiff` keeps both sides' raw bytes, check the memory on big binaries (cap by size).
-- [idea] `jobs::report_progress` exists but no real job calls it, so every job shows a moving bar, not a share. Wire it into indexing, git fetch/update and UBT (found in task 088).
-- [idea] The editor has no file context menu (its right-click menu holds only code actions). IDEA puts file actions (Copy Path, Reveal, Rename File, Git → Annotate/History…) into the editor tab menu; reuse `tree_menu::file_menu` there (found in task 082).
-- [idea] Show ignored files (like `node_modules`) in olive in the tree, like IDEA, instead of hiding them.
-- [idea] Opening another folder with dirty tabs asks Save / Discard instead of refusing.
-
-Terminal:
-- [idea] Closing a terminal tab blocks the UI thread up to 200 ms: portable-pty's `kill` waits for the shell after SIGHUP (breaks rule 1). Move the kill to a worker (found in task 070).
-- [idea] Terminal: kitty keyboard protocol, OSC 8 hyperlinks, scrollback search, bell indicator, a real bold face.
-- [idea] Terminal color queries (OSC 4/10/11) answer the program's own OSC 4 overrides.
+- [idea] Settings (task 101) gaps: font size skips diff and preview views; no global soft-wrap default; removing a key from `ide.toml` also drops the comment above it.
+- [idea] Viewers (task 095) gaps: image tabs are not restored after restart or by Cmd+Shift+T; preview mode is not persisted; animated GIF shows frame 1; SVG text not drawn. A binary `FileDiff` keeps both sides' raw bytes, check the memory on big binaries (cap by size).
 
 Git:
 - [idea] The full status on mono stays 12 s (startup, Refresh, Unstash): 9.8 s untracked walk + 2.1 s lstat. Only fsmonitor plus the untracked cache gets it near 1 s, and both need a written index (a private copy through `GIT_INDEX_FILE` in our cache, refreshed when the real index entries change) and, for fsmonitor, a daemon that writes into the user's `.git` (`-c core.fsmonitor=true`) or our own watcher as an fsmonitor hook (found in task 100).
 - [idea] Unstage takes 3.1 s on mono: libgit2 `rename_sources` + `reset_default` read the whole 108 MB index. `git reset -q -- <paths>` through the CLI is a candidate (found in task 067).
-- [idea] Diff tab: apply/revert hunk arrows, unified view, ignore whitespace, collapse unchanged runs.
-- [idea] Editable diff without an open tab: edits younger than the 500 ms autosave are lost on an immediate quit, and the diff tab shows no dirty mark (found in task 071).
-- [idea] Commit window: changelists, Group By options, keyboard navigation, partial commit per hunk.
-- [idea] Merge tab: syntax highlighting and word-level marks. Show line-ending-only changes, which `diff_texts` hides. Scroll the Result editor sideways to follow the caret.
-- [idea] Git log: column resizing, date and user filter popups, multi-select, Show Diff with Working Tree.
-- [idea] A conflicted merge shows an error toast next to the Conflicts dialog. Show a softer "Merge conflicts" notice like IDEA.
-- [idea] Unstash dialog and stash diff list the untracked files from the stash's third parent.
-- [idea] LFS-tracked text files: diff the smudged content, not the pointer text.
-- [idea] File history and the log path filter follow renames on side branches.
-- [idea] Submodule support (today they are excluded from status).
 - [idea] A cached log walker. Paging re-walks from the tip, O(skip), which matters only past 100k commits.
 
 Tests:
 - [idea] Flaky: `git_window::push_non_current_branch_from_tree` failed 1 of 22 runs under load (seen in task 064). Not investigated.
-- [idea] Cover with tests: the file watcher and the reload of unmodified editors, Cmd+Alt+S, Find in Files "Match case", running Stage, Unstage and Delete from the commit context menu, Commit and Push, force push, Fetch, branch rename and delete, running Checkout Revision, Revert and Cherry-Pick from the log, rebase conflict labels, per-block `>>` / `<<` and hand edits in the merge tab, "Show more" in toasts, terminal selection, copy and mouse reporting, horizontal scrolling in the diff and merge tabs.

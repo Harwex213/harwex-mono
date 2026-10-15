@@ -164,6 +164,25 @@ pub fn list_dir(dir: &Path, show_ignored: bool, dir_ignored: bool) -> Vec<Entry>
     out
 }
 
+/// Whether each component of `path` below `root` is git-ignored, in order (empty when `path` is
+/// not under `root`). A child of an ignored folder is ignored, so only the folders down to the
+/// first ignored component are listed. Blocking: call it on a worker.
+pub fn ignored_below(root: &Path, path: &Path) -> Vec<bool> {
+    let Ok(rest) = path.strip_prefix(root) else { return Vec::new() };
+    let mut out = Vec::new();
+    let mut dir = root.to_path_buf();
+    let mut ignored = false;
+    for c in rest.components() {
+        let child = dir.join(c);
+        if !ignored {
+            ignored = !list_dir(&dir, false, false).iter().any(|e| e.path == child);
+        }
+        out.push(ignored);
+        dir = child;
+    }
+    out
+}
+
 /// The entries of `dir` that `keep` accepts, as ignored entries; `.git` never shows.
 fn read_all(dir: &Path, keep: impl Fn(&str) -> bool) -> Vec<Entry> {
     let Ok(rd) = std::fs::read_dir(dir) else { return Vec::new() };

@@ -144,6 +144,7 @@ fn the_setting_hides_ignored_files() {
 
     ide.cmd(Key::Comma);
     ide.settle();
+    ide.reveal_in_settings("Show ignored files in Project");
     ide.click("Show ignored files in Project");
     ide.click("OK");
     ide.wait_for("relisted", |s| s.ws.tree.is_loaded(&root) && !s.settings.global.files.show_ignored);
@@ -157,6 +158,7 @@ fn the_setting_hides_ignored_files() {
     // On again: the expanded folder comes back expanded.
     ide.cmd(Key::Comma);
     ide.settle();
+    ide.reveal_in_settings("Show ignored files in Project");
     ide.click("Show ignored files in Project");
     ide.click("OK");
     ide.wait_for("relisted", |s| s.ws.tree.is_loaded(&root.join("node_modules")) && s.settings.global.files.show_ignored);

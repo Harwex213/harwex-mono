@@ -419,3 +419,53 @@ fn delete_to_trash_or_permanently() {
     assert_eq!(ide.state().platform.calls().len(), 1, "no second trash call");
     assert_eq!(std::fs::read_dir(&trash).unwrap().count(), 1);
 }
+
+/// Scrolls the Settings page under `at` to its end.
+fn scroll_page_end(ide: &mut Ide, at: egui::Pos2) {
+    ide.move_to(at);
+    for _ in 0..6 {
+        ide.harness.input_mut().events.push(egui::Event::MouseWheel { unit: egui::MouseWheelUnit::Point, delta: egui::vec2(0.0, -400.0), modifiers: egui::Modifiers::NONE });
+        ide.steps(2);
+    }
+    ide.settle();
+}
+
+/// The page scrolls under a fixed title and footer, and a narrow window wraps the labels
+/// instead of pushing the controls out of the cards (task 113).
+#[test]
+fn pages_scroll_and_fit_a_narrow_window() {
+    let fx = Fixture::new(SUITE, "narrow");
+    let repo = basic_repo(fx.path("repo"));
+    let mut ide = Ide::open(SUITE, &repo.dir);
+    ide.cmd(Key::Comma);
+    ide.settle();
+    ide.click("Settings page Languages");
+    ide.wait_for("servers looked up", |s| s.ws.settings.as_ref().is_some_and(|d| d.servers.iter().all(|x| *x != Detected::Looking)));
+    let d = ide.state_mut().ws.settings.as_mut().expect("open");
+    d.servers = [Detected::Found("/tools/rust-analyzer".into()), Detected::Found("/tools/clangd".into()), Detected::Missing("No Roslyn server.".into()), Detected::Found("/tools/dotnet".into())];
+    let title = ide.rect("Languages");
+    let ok = ide.rect("OK");
+    scroll_page_end(&mut ide, egui::pos2(ok.center().x - 200.0, title.bottom() + 150.0));
+    assert_eq!(ide.rect("Languages"), title, "the title stays");
+    assert_eq!(ide.rect("OK"), ok, "the footer stays");
+    assert!(ide.rect("ESLint: Off").bottom() < ok.top() - 8.0, "the last row scrolls above the footer");
+    ide.snapshot("languages_end");
+
+    ide.resize(egui::vec2(640.0, 720.0));
+    ide.click("Settings page System");
+    ide.settle();
+    let ok = ide.rect("OK");
+    let cancel = ide.rect("Cancel");
+    assert!(ok.right() < cancel.left() && cancel.right() <= 640.0);
+    // Each switch sits right of its label, inside the dialog.
+    for label in ["Move files to the Trash instead of deleting permanently", "Save files when switching to a different application or to the built-in terminal"] {
+        let row = ide.rect(label);
+        assert!(row.right() < cancel.right() && row.left() > ide.rect("Settings page System").right(), "{label}: {row:?}");
+    }
+    assert!(ide.rect("Idle seconds").right() < ide.rect("Save files if the IDE is idle for").right() - 30.0);
+    ide.snapshot("narrow_system");
+    ide.click("Settings page Languages");
+    ide.settle();
+    scroll_page_end(&mut ide, egui::pos2(ok.center().x - 100.0, 400.0));
+    ide.snapshot("narrow_languages_end");
+}

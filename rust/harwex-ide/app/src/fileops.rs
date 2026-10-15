@@ -433,10 +433,10 @@ pub fn apply_edits(text: &str, edits: &[TextEdit]) -> String {
     out.into_iter().collect()
 }
 
-/// Reads, edits and writes one closed file.
-pub fn apply_edits_on_disk(path: &Path, edits: &[TextEdit]) -> Result<(), String> {
+/// Reads, edits and writes one closed file (through `save::write_file`, with its backup).
+pub fn apply_edits_on_disk(path: &Path, edits: &[TextEdit], backups: Option<&Path>) -> Result<(), String> {
     let text = std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
-    std::fs::write(path, apply_edits(&text, edits)).map_err(|e| format!("{}: {e}", path.display()))
+    crate::save::write_file(path, apply_edits(&text, edits).as_bytes(), backups)
 }
 
 const TS_EXTENSIONS: [&str; 8] = ["ts", "tsx", "mts", "cts", "js", "jsx", "mjs", "cjs"];

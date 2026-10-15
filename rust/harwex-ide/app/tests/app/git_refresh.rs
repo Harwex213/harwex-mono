@@ -40,6 +40,13 @@ fn drag_rows(ide: &mut Ide, from: &str, to: &str) {
 fn open_commit_window(ide: &mut Ide) {
     ide.click("Commit tool window");
     ide.settle();
+    // Folders start collapsed; these tests click file rows, so they open every folder.
+    expand_all(ide);
+}
+
+fn expand_all(ide: &mut Ide) {
+    ide.click("Expand All");
+    ide.settle();
 }
 
 fn fs_batch(ide: &mut Ide, paths: &[PathBuf], git_changed: bool) {
@@ -108,6 +115,8 @@ fn a_rename_refreshes_both_sides() {
     fs_batch(&mut ide, &[old, new], false);
     ide.settle();
     assert_matches_full_status(&ide, &repo.dir, "after the move");
+    // The move made a new folder row in Unversioned Files; it starts collapsed.
+    expand_all(&mut ide);
 
     // Staging both sides makes a staged rename.
     ide.click("src/app.ts");
@@ -116,6 +125,7 @@ fn a_rename_refreshes_both_sides() {
     drag_rows(&mut ide, "src/main.ts", "Staged group");
     ide.wait_for("rename staged", |s| s.ws.git.changes.iter().any(|c| c.old_path.as_deref() == Some(Path::new("src/app.ts"))));
     assert_matches_full_status(&ide, &repo.dir, "after staging the rename");
+    expand_all(&mut ide);
 
     // Unstaging the new side brings back the old side, both unstaged.
     ide.click("extra.txt");
