@@ -60,6 +60,20 @@ impl Platform for SystemPlatform {
         system_trash(path)
     }
 
+    #[cfg(windows)]
+    fn reveal(&self, path: &Path) -> Result<(), String> {
+        use std::os::windows::process::CommandExt;
+        // explorer wants `/select,"<path>"` as one raw argument: std's quoting of the whole
+        // argument makes it open the Documents folder instead. It exits with 1 even when it
+        // worked, so only a failed start is an error.
+        std::process::Command::new("explorer.exe")
+            .raw_arg(format!("/select,\"{}\"", path.display()))
+            .spawn()
+            .map(drop)
+            .map_err(|e| e.to_string())
+    }
+
+    #[cfg(not(windows))]
     fn reveal(&self, path: &Path) -> Result<(), String> {
         let mut cmd = if cfg!(target_os = "macos") {
             let mut c = std::process::Command::new("open");
@@ -86,8 +100,25 @@ impl Platform for SystemPlatform {
         system_copy_image(image)
     }
 
+    #[cfg(windows)]
     fn open_url(&self, url: &str) -> Result<(), String> {
-        let program = if cfg!(target_os = "macos") { "/usr/bin/open" } else { "xdg-open" };
+        use windows_sys::Win32::UI::Shell::ShellExecuteW;
+        use windows_sys::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+        let wide = |s: &str| s.encode_utf16().chain([0]).collect::<Vec<u16>>();
+        let (verb, target) = (wide("open"), wide(url));
+        // SAFETY: both strings are NUL-terminated and outlive the call; null means "none".
+        let code = unsafe { ShellExecuteW(std::ptr::null_mut(), verb.as_ptr(), target.as_ptr(), std::ptr::null(), std::ptr::null(), SW_SHOWNORMAL) };
+        // A value above 32 means success; below is an error code.
+        if code as usize > 32 {
+            Ok(())
+        } else {
+            Err(format!("Windows cannot open {url} (error {})", code as usize))
+        }
+    }
+
+    #[cfg(not(windows))]
+    fn open_url(&self, url: &str) -> Result<(), String> {
+        let program =if cfg!(target_os = "macos") { "/usr/bin/open" } else { "xdg-open" };
         let mut cmd = std::process::Command::new(program);
         // The caller passes only http, https, file and mailto URLs, so the argument never
         // starts with `-` and cannot be read as an option.
@@ -147,14 +178,57 @@ fn system_copy_image(image: &ClipImage) -> Result<(), String> {
     }
 }
 
-#[cfg(not(target_os = "macos"))]
-fn system_copy_image(_image: &ClipImage) -> Result<(), String> {
-    Err("Copying an image is only supported on macOS.".into())
+/// arboard writes a DIB (and PNG for apps that read it); the source text goes along as text.
+#[cfg(windows)]
+fn system_copy_image(image: &ClipImage) -> Result<(), String> {
+    let rgba = image::load_from_memory_with_format(&image.png, image::ImageFormat::Png).map_err(|e| e.to_string())?.into_rgba8();
+    let mut board = arboard::Clipboard::new().map_err(|e| e.to_string())?;
+    let data = arboard::ImageData { width: rgba.width() as usize, height: rgba.height() as usize, bytes: rgba.into_raw().into() };
+    board.set_image(data).map_err(|e| e.to_string())?;
+    // arboard replaces the clipboard on each set, so the text cannot join the image there.
+    Ok(())
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", windows)))]
+fn system_copy_image(_image: &ClipImage) -> Result<(), String> {
+    Err("Copying an image is only supported on macOS and Windows.".into())
+}
+
+/// The Recycle Bin through `SHFileOperationW`: the one call that still undoes from Explorer
+/// and needs no COM apartment on the worker thread.
+#[cfg(windows)]
 fn system_trash(path: &Path) -> Result<(), String> {
-    Err(format!("Moving {} to the Trash is only supported on macOS.", path.display()))
+    use windows_sys::Win32::UI::Shell::{SHFileOperationW, SHFILEOPSTRUCTW};
+    const FO_DELETE: u32 = 0x3;
+    const FOF_SILENT: u16 = 0x4;
+    const FOF_NOCONFIRMATION: u16 = 0x10;
+    const FOF_ALLOWUNDO: u16 = 0x40;
+    const FOF_NOERRORUI: u16 = 0x400;
+    use std::os::windows::ffi::OsStrExt;
+    // A list of paths, each NUL-terminated, the list ended by a second NUL.
+    let from: Vec<u16> = path.as_os_str().encode_wide().chain([0, 0]).collect();
+    let mut op = SHFILEOPSTRUCTW {
+        hwnd: std::ptr::null_mut(),
+        wFunc: FO_DELETE,
+        pFrom: from.as_ptr(),
+        pTo: std::ptr::null(),
+        fFlags: FOF_ALLOWUNDO | FOF_NOCONFIRMATION | FOF_SILENT | FOF_NOERRORUI,
+        fAnyOperationsAborted: 0,
+        hNameMappings: std::ptr::null_mut(),
+        lpszProgressTitle: std::ptr::null(),
+    };
+    // SAFETY: `from` is double-NUL-terminated and lives for the call; the struct is ours.
+    let code = unsafe { SHFileOperationW(&mut op) };
+    if code == 0 && op.fAnyOperationsAborted == 0 {
+        Ok(())
+    } else {
+        Err(format!("Cannot move {} to the Recycle Bin (error {code:#x}).", path.display()))
+    }
+}
+
+#[cfg(not(any(target_os = "macos", windows)))]
+fn system_trash(path: &Path) -> Result<(), String> {
+    Err(format!("Moving {} to the Trash is only supported on macOS and Windows.", path.display()))
 }
 
 /// Records every call. `trash` moves the item into its own folder, so a test can check both
@@ -235,13 +309,13 @@ pub fn check_new_name(name: &str) -> Result<(), String> {
     if name.is_empty() {
         return Err("Enter a name.".into());
     }
-    if name.starts_with('/') {
+    if name.starts_with(SEPARATORS) || Path::new(name).is_absolute() {
         return Err("Use a name relative to the folder.".into());
     }
-    if name.trim_end_matches('/').split('/').any(|s| s.is_empty() || s == "." || s == "..") {
+    if name.trim_end_matches(SEPARATORS).split(SEPARATORS).any(|s| s.is_empty() || s == "." || s == "..") {
         return Err("The name has an empty, \".\" or \"..\" part.".into());
     }
-    Ok(())
+    name.trim_end_matches(SEPARATORS).split(SEPARATORS).try_for_each(check_windows_segment)
 }
 
 /// Checks a new name for Rename: one path segment.
@@ -250,8 +324,32 @@ pub fn check_rename(name: &str) -> Result<(), String> {
     if name.is_empty() {
         return Err("Enter a name.".into());
     }
-    if name.contains('/') || name == "." || name == ".." {
-        return Err("A name cannot contain \"/\".".into());
+    if name.contains(SEPARATORS) || name == "." || name == ".." {
+        return Err(format!("A name cannot contain \"{}\".", std::path::MAIN_SEPARATOR));
+    }
+    check_windows_segment(name)
+}
+
+/// The separators a typed name may use for nested folders: `/`, and on Windows also `\`.
+const SEPARATORS: &[char] = if cfg!(windows) { &['/', '\\'] } else { &['/'] };
+
+/// Names Windows refuses or silently changes: reserved characters (`C:` would also leave the
+/// folder), device names, and a trailing dot or space, which Windows drops.
+fn check_windows_segment(segment: &str) -> Result<(), String> {
+    if !cfg!(windows) {
+        return Ok(());
+    }
+    if let Some(c) = segment.chars().find(|c| matches!(c, '<' | '>' | ':' | '"' | '|' | '?' | '*') || c.is_control()) {
+        return Err(format!("A name cannot contain {c:?}."));
+    }
+    if segment.ends_with(['.', ' ']) {
+        return Err("A name cannot end with a dot or a space.".into());
+    }
+    let stem = segment.split('.').next().unwrap_or("").trim_end().to_ascii_uppercase();
+    let device = matches!(stem.as_str(), "CON" | "PRN" | "AUX" | "NUL")
+        || (stem.len() == 4 && (stem.starts_with("COM") || stem.starts_with("LPT")) && stem.as_bytes()[3].is_ascii_digit());
+    if device {
+        return Err(format!("{segment:?} is a reserved name on Windows."));
     }
     Ok(())
 }
@@ -260,12 +358,12 @@ pub fn check_rename(name: &str) -> Result<(), String> {
 /// Returns the deepest new path. An existing target is an error.
 pub fn create_entry(dir: &Path, rel: &str, is_dir: bool) -> Result<PathBuf, String> {
     check_new_name(rel)?;
-    let target = dir.join(rel.trim().trim_end_matches('/'));
+    let target = dir.join(rel.trim().trim_end_matches(SEPARATORS));
     if target.exists() {
         return Err(format!("{} already exists.", target.display()));
     }
     let made = |e: std::io::Error| format!("{}: {e}", target.display());
-    if is_dir || rel.trim().ends_with('/') {
+    if is_dir || rel.trim().ends_with(SEPARATORS) {
         std::fs::create_dir_all(&target).map_err(made)?;
     } else {
         if let Some(parent) = target.parent() {
@@ -331,12 +429,15 @@ pub fn copy_path(src: &Path, dst: &Path) -> Result<(), String> {
     }
 }
 
+/// `EXDEV` on unix, `ERROR_NOT_SAME_DEVICE` on Windows.
+const CROSS_DEVICE: i32 = if cfg!(windows) { 17 } else { 18 };
+
 /// Moves a file or folder. Across file systems the rename fails, so it copies and removes.
 pub fn move_path(src: &Path, dst: &Path) -> Result<(), String> {
     match std::fs::rename(src, dst) {
         Ok(()) => Ok(()),
-        Err(e) if e.raw_os_error() == Some(18) => {
-            // EXDEV: another volume.
+        Err(e) if e.raw_os_error() == Some(CROSS_DEVICE) => {
+            // Another volume.
             copy_path(src, dst)?;
             if src.is_dir() { std::fs::remove_dir_all(src) } else { std::fs::remove_file(src) }.map_err(|e| format!("{}: {e}", src.display()))
         }
@@ -686,7 +787,7 @@ mod tests {
 
     fn tmp() -> (tempfile::TempDir, PathBuf) {
         let t = tempfile::tempdir().unwrap();
-        let root = std::fs::canonicalize(t.path()).unwrap();
+        let root = dunce::canonicalize(t.path()).unwrap();
         (t, root)
     }
 
@@ -739,7 +840,7 @@ mod tests {
         let moved = paste(&platform, &src, &dst_dir, true, Some(Collision::Overwrite)).unwrap();
         assert_eq!(std::fs::read_to_string(&moved).unwrap(), "A");
         assert!(!src.exists());
-        assert_eq!(platform.calls(), [format!("trash {}", root.join("dst/a.ts").display())]);
+        assert_eq!(platform.calls(), [format!("trash {}", root.join("dst").join("a.ts").display())]);
         let trashed: Vec<_> = std::fs::read_dir(root.join(".trash")).unwrap().collect();
         assert_eq!(trashed.len(), 1, "the overwritten file sits in the trash, not deleted");
 

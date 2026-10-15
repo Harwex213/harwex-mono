@@ -269,8 +269,13 @@ impl Repo {
         let head_oid = repo.refname_to_id("HEAD").ok();
         let index_path = repo.path().join("index");
         let index_file = std::fs::metadata(&index_path).ok().map(|m| {
-            use std::os::unix::fs::MetadataExt;
-            (m.len(), m.modified().unwrap_or(std::time::UNIX_EPOCH), m.ino())
+            #[cfg(unix)]
+            let ino = std::os::unix::fs::MetadataExt::ino(&m);
+            // The file index is unstable in std on Windows. git replaces the index by a rename,
+            // and NTFS gives the new file a fresh mtime, so size and mtime still catch it.
+            #[cfg(not(unix))]
+            let ino = 0;
+            (m.len(), m.modified().unwrap_or(std::time::UNIX_EPOCH), ino)
         });
         let index_hash = match prev {
             Some(p) if index_file.is_some() && p.index_file == index_file => p.index_hash,

@@ -42,6 +42,9 @@ pub fn configure(dir: &Path) {
     git_in(dir, &["config", "commit.gpgsign", "false"]);
     // A global hooksPath would run the developer's hooks inside test repos.
     git_in(dir, &["config", "core.hooksPath", ".git/hooks"]);
+    // Git for Windows installs with a global `core.autocrlf=true`; checkouts would turn the
+    // tests' `\n` into `\r\n`.
+    git_in(dir, &["config", "core.autocrlf", "false"]);
 }
 
 impl TestRepo {

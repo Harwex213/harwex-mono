@@ -12,7 +12,7 @@ use harwex_ide::WorkspaceId;
 const SUITE: &str = "workspaces";
 
 fn canonical(p: &Path) -> PathBuf {
-    std::fs::canonicalize(p).expect("canonical")
+    dunce::canonicalize(p).expect("canonical")
 }
 
 /// Opens `dir` as another workspace and waits until its tree, index and git status loaded.

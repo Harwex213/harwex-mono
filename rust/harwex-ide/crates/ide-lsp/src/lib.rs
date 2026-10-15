@@ -22,7 +22,7 @@ use std::fmt;
 use std::path::PathBuf;
 use std::time::Duration;
 
-pub use cancel::CancelScope;
+pub use cancel::{hide_console, kill_tree, CancelScope};
 pub use client::{
     default_capabilities, keep_stderr_tail, lock, read_text, ClientConfig, ConfigurationHandler, LspClient, NotificationHandler, Progress,
 };

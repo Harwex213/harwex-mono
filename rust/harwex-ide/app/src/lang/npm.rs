@@ -14,7 +14,7 @@ pub mod registry;
 pub mod versions;
 
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -269,7 +269,7 @@ fn wanted(site: &Site) -> bool {
 /// Starts the registry request the popup needs, unless it is cached or in flight.
 fn request(s: &mut AppState, root: &Path, dir: &Path, ctx: &Context) {
     let Some(p) = &mut s.ws.npm.popup else { return };
-    let home = std::env::var_os("HOME").map(PathBuf::from);
+    let home = crate::os::home_dir();
     let (root, dir) = (root.to_path_buf(), dir.to_path_buf());
     match p.site.slot.clone() {
         Slot::Version { package } => {

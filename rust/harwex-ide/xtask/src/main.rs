@@ -20,6 +20,7 @@ mod clean_check;
 mod full_test;
 mod test_tools;
 mod tools;
+mod windows;
 
 const BIN_NAME: &str = "harwex-ide";
 const APP_NAME: &str = "Harwex IDE.app";
@@ -36,9 +37,11 @@ usage: cargo xtask <install|uninstall> [options]
        cargo xtask clean-check [--no-wait] [--dir <d>]  run test-tools + the workspace tests on a clean copy
 
 options:
-  --prefix <dir>  install root (default: ~/opt/harwex-ide); the binary goes to <dir>/bin
-  --no-path       do not touch shell rc files
+  --prefix <dir>  install root (default: ~/opt/harwex-ide, on Windows
+                  %LOCALAPPDATA%\\Programs\\harwex-ide); the binary goes to <dir>/bin
+  --no-path       do not touch shell rc files (Windows: the user PATH in the registry)
   --no-app        do not create or remove ~/Applications/Harwex IDE.app (macOS)
+                  or the Start menu shortcut \"Harwex IDE\" (Windows)
   --dry-run       print the actions, change nothing
   --yes, -y       install: install missing rustup components without asking
   --no-tools      install: skip the language tool checks
@@ -91,7 +94,7 @@ fn run() -> Result<(), String> {
     }
     let home = home_dir()?;
     let mut options = Options {
-        prefix: home.join("opt").join(BIN_NAME),
+        prefix: if cfg!(windows) { windows::default_prefix(&home) } else { home.join("opt").join(BIN_NAME) },
         path: true,
         app: true,
         dry_run: false,
@@ -145,7 +148,7 @@ fn install(options: &Options, home: &Path) -> Result<(), String> {
     let built = build(options.dry_run)?;
 
     let bin_dir = options.prefix.join("bin");
-    let target = bin_dir.join(BIN_NAME);
+    let target = bin_dir.join(exe_name());
     println!("install {} -> {}", built.display(), target.display());
     if !options.dry_run {
         copy_atomic(&built, &target).map_err(|e| format!("install {}: {e}", target.display()))?;
@@ -159,12 +162,23 @@ fn install(options: &Options, home: &Path) -> Result<(), String> {
                 .map_err(|e| format!("create {}: {e}", app.display()))?;
         }
     }
+    if options.app && cfg!(windows) {
+        let lnk = windows::start_menu_shortcut(home);
+        println!("create {}", lnk.display());
+        if !options.dry_run {
+            windows::create_shortcut(&lnk, &target, &bin_dir).map_err(|e| format!("create {}: {e}", lnk.display()))?;
+        }
+    }
 
     if options.path {
         register_path(options, home, &bin_dir)?;
     }
 
-    println!("done: run `{BIN_NAME}` from a new shell");
+    if cfg!(windows) {
+        println!("done: run `{BIN_NAME}` from a new terminal, or \"Harwex IDE\" from the Start menu");
+    } else {
+        println!("done: run `{BIN_NAME}` from a new shell");
+    }
     Ok(())
 }
 
@@ -193,17 +207,62 @@ fn build(dry_run: bool) -> Result<PathBuf, String> {
 
 /// Copies to a temp file in the destination dir, then renames it over the target.
 /// The rename swaps the directory entry, so a running IDE keeps its old inode intact.
+///
+/// Windows refuses to replace or delete a running `.exe`, but it lets one be renamed. The old
+/// binary therefore moves aside to `.harwex-ide.old-<pid>.exe` first; a later install deletes
+/// the leftovers whose IDE has quit since.
 fn copy_atomic(src: &Path, dst: &Path) -> io::Result<()> {
     let dir = dst.parent().expect("target has a parent dir");
     fs::create_dir_all(dir)?;
+    if cfg!(windows) {
+        remove_old_binaries(dir);
+    }
     let tmp = dir.join(format!(".{BIN_NAME}.tmp-{}", std::process::id()));
-    let result = fs::copy(src, &tmp)
-        .and_then(|_| set_executable(&tmp))
-        .and_then(|_| fs::rename(&tmp, dst));
+    let result = fs::copy(src, &tmp).and_then(|_| set_executable(&tmp)).and_then(|_| replace(&tmp, dst));
     if result.is_err() {
         let _ = fs::remove_file(&tmp);
     }
     result
+}
+
+#[cfg(not(windows))]
+fn replace(tmp: &Path, dst: &Path) -> io::Result<()> {
+    fs::rename(tmp, dst)
+}
+
+#[cfg(windows)]
+fn replace(tmp: &Path, dst: &Path) -> io::Result<()> {
+    let dir = dst.parent().expect("target has a parent dir");
+    let old = dir.join(format!(".{BIN_NAME}.old-{}.exe", std::process::id()));
+    let moved = match fs::rename(dst, &old) {
+        Ok(()) => true,
+        Err(e) if e.kind() == io::ErrorKind::NotFound => false,
+        Err(e) => return Err(e),
+    };
+    let result = fs::rename(tmp, dst);
+    match (&result, moved) {
+        // Put the old binary back, so a failed install leaves a working one.
+        (Err(_), true) => {
+            let _ = fs::rename(&old, dst);
+        }
+        // Deleting fails while that IDE still runs; the next install tries again.
+        (Ok(()), true) => {
+            let _ = fs::remove_file(&old);
+        }
+        _ => {}
+    }
+    result
+}
+
+/// Deletes the `.harwex-ide.old-*` binaries of earlier installs. One whose IDE still runs
+/// stays.
+fn remove_old_binaries(dir: &Path) {
+    let prefix = format!(".{BIN_NAME}.old-");
+    for entry in fs::read_dir(dir).into_iter().flatten().flatten() {
+        if entry.file_name().to_string_lossy().starts_with(&prefix) {
+            let _ = fs::remove_file(entry.path());
+        }
+    }
 }
 
 fn write_app_bundle(app: &Path, binary: &Path) -> io::Result<()> {
@@ -294,7 +353,40 @@ fn path_block(shell: Shell, home: &Path, bin_dir: &Path) -> String {
     format!("{BLOCK_START}\n{line}\n{BLOCK_END}\n")
 }
 
+/// Windows has no rc file that every terminal reads: the user PATH lives in the registry
+/// (`HKCU\Environment`), and PowerShell, cmd and Git Bash all start from it.
+fn register_windows_path(dry_run: bool, bin_dir: &Path) -> Result<(), String> {
+    let dir = bin_dir.display().to_string();
+    let raw = windows::read_user_path(windows::ENVIRONMENT).map_err(|e| format!("read the user PATH: {e}"))?;
+    let Some(updated) = windows::path_with(&raw, &dir) else {
+        println!("PATH already holds {dir}");
+        return Ok(());
+    };
+    println!("add {dir} to the user PATH (HKCU\\Environment)");
+    if !dry_run {
+        windows::write_user_path(windows::ENVIRONMENT, &updated).map_err(|e| format!("write the user PATH: {e}"))?;
+    }
+    println!("open a new terminal to pick up PATH");
+    Ok(())
+}
+
+fn unregister_windows_path(dry_run: bool, bin_dir: &Path) -> Result<(), String> {
+    let dir = bin_dir.display().to_string();
+    let raw = windows::read_user_path(windows::ENVIRONMENT).map_err(|e| format!("read the user PATH: {e}"))?;
+    let Some(updated) = windows::path_without(&raw, &dir) else {
+        return Ok(());
+    };
+    println!("remove {dir} from the user PATH (HKCU\\Environment)");
+    if dry_run {
+        return Ok(());
+    }
+    windows::write_user_path(windows::ENVIRONMENT, &updated).map_err(|e| format!("write the user PATH: {e}"))
+}
+
 fn register_path(options: &Options, home: &Path, bin_dir: &Path) -> Result<(), String> {
+    if cfg!(windows) {
+        return register_windows_path(options.dry_run, bin_dir);
+    }
     let Some(shell) = detect_shell() else {
         println!(
             "unknown shell in $SHELL: add {} to PATH by hand",
@@ -375,7 +467,8 @@ fn uninstall(options: &Options, home: &Path) -> Result<(), String> {
         println!("dry run: nothing will be changed");
     }
     let bin_dir = options.prefix.join("bin");
-    remove_path(&bin_dir, options.dry_run)?;
+    // Windows cannot delete a running binary.
+    remove_path(&bin_dir, options.dry_run).map_err(|e| if cfg!(windows) { format!("{e}\nquit Harwex IDE and run uninstall again") } else { e })?;
     // Drop the prefix itself when nothing else lives there.
     if !options.dry_run && is_empty_dir(&options.prefix) {
         let _ = fs::remove_dir(&options.prefix);
@@ -384,8 +477,13 @@ fn uninstall(options: &Options, home: &Path) -> Result<(), String> {
     if options.app && cfg!(target_os = "macos") {
         remove_path(&home.join("Applications").join(APP_NAME), options.dry_run)?;
     }
+    if options.app && cfg!(windows) {
+        remove_path(&windows::start_menu_shortcut(home), options.dry_run)?;
+    }
 
-    if options.path {
+    if options.path && cfg!(windows) {
+        unregister_windows_path(options.dry_run, &bin_dir)?;
+    } else if options.path {
         // Check every shell, not only $SHELL: the user may have switched shells since install.
         for shell in [Shell::Zsh, Shell::Bash, Shell::Fish] {
             unregister_path(shell, home, options.dry_run)?;
@@ -440,11 +538,14 @@ fn remove_path(path: &Path, dry_run: bool) -> Result<(), String> {
 // ---------------------------------------------------------------------------------------------
 // helpers
 
+/// `HOME`, else `USERPROFILE`: Windows sets only the second one (Git Bash sets both).
 fn home_dir() -> Result<PathBuf, String> {
-    match env::var_os("HOME") {
-        Some(home) if !home.is_empty() => Ok(PathBuf::from(home)),
-        _ => Err("$HOME is not set".to_string()),
-    }
+    ["HOME", "USERPROFILE"]
+        .into_iter()
+        .filter_map(env::var_os)
+        .find(|home| !home.is_empty())
+        .map(PathBuf::from)
+        .ok_or_else(|| "$HOME is not set".to_string())
 }
 
 /// `cargo nextest run <args>` through the pinned binary in `target/tools/nextest/`. Nothing is
@@ -485,7 +586,7 @@ fn exe_name() -> String {
 }
 
 fn expand_tilde(value: &str, home: &Path) -> PathBuf {
-    match value.strip_prefix("~/") {
+    match value.strip_prefix("~/").or_else(|| value.strip_prefix("~\\").filter(|_| cfg!(windows))) {
         Some(rest) => home.join(rest),
         None if value == "~" => home.to_path_buf(),
         None => PathBuf::from(value),
@@ -535,4 +636,53 @@ fn set_executable(path: &Path) -> io::Result<()> {
 #[cfg(not(unix))]
 fn set_executable(_path: &Path) -> io::Result<()> {
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn temp_dir(name: &str) -> PathBuf {
+        let dir = env::temp_dir().join(format!("xtask-{name}-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn copy_atomic_replaces_the_target() {
+        let dir = temp_dir("copy");
+        let (src, dst) = (dir.join("new"), dir.join("bin").join(exe_name()));
+        fs::write(&src, "v1").unwrap();
+        copy_atomic(&src, &dst).unwrap();
+        fs::write(&src, "v2").unwrap();
+        copy_atomic(&src, &dst).unwrap();
+        assert_eq!(fs::read_to_string(&dst).unwrap(), "v2");
+        let names: Vec<_> = fs::read_dir(dst.parent().unwrap()).unwrap().map(|e| e.unwrap().file_name()).collect();
+        assert_eq!(names, [std::ffi::OsString::from(exe_name())], "no temp or old file is left");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// The installed IDE may be running. Windows refuses to overwrite a running `.exe`, so the
+    /// old one moves aside and is deleted by the next install once it has quit.
+    #[cfg(windows)]
+    #[test]
+    fn copy_atomic_replaces_a_running_binary() {
+        let dir = temp_dir("running");
+        let dst = dir.join(exe_name());
+        let system = env::var_os("SystemRoot").map(PathBuf::from).unwrap();
+        fs::copy(system.join(r"System32\PING.EXE"), &dst).unwrap();
+        let mut running = Command::new(&dst).args(["-n", "30", "127.0.0.1"]).stdout(std::process::Stdio::null()).spawn().unwrap();
+        let src = dir.join("new.exe");
+        fs::write(&src, "new build").unwrap();
+        copy_atomic(&src, &dst).unwrap();
+        assert_eq!(fs::read_to_string(&dst).unwrap(), "new build");
+        let old = |dir: &Path| fs::read_dir(dir).unwrap().filter(|e| e.as_ref().unwrap().file_name().to_string_lossy().starts_with(".harwex-ide.old-")).count();
+        assert_eq!(old(&dir), 1, "the running binary moved aside");
+        running.kill().unwrap();
+        running.wait().unwrap();
+        copy_atomic(&src, &dst).unwrap();
+        assert_eq!(old(&dir), 0, "the next install deletes it");
+        let _ = fs::remove_dir_all(&dir);
+    }
 }

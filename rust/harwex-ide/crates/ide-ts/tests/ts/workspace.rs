@@ -27,7 +27,7 @@ fn write(root: &Path, rel: &str, text: &str) {
 
 fn generate() -> Workspace {
     let tmp = tempfile::tempdir().unwrap();
-    let root = tmp.path().canonicalize().unwrap();
+    let root = dunce::canonicalize(tmp.path()).unwrap();
     write(&root, "package.json", r#"{ "name": "big-ws", "private": true, "workspaces": ["packages/*"] }"#);
     write(
         &root,
@@ -69,7 +69,7 @@ fn generate() -> Workspace {
             write(&root, &format!("{dir}/src/mod{m}.ts"), &text);
         }
         write(&root, &format!("{dir}/src/index.ts"), &index);
-        std::os::unix::fs::symlink(format!("../../{dir}"), root.join(format!("node_modules/@ws/pkg{p}"))).unwrap();
+        crate::common::symlink_dir(format!("../../{dir}"), root.join(format!("node_modules/@ws/pkg{p}"))).unwrap();
     }
     Workspace { _tmp: tmp, root }
 }
@@ -87,9 +87,9 @@ fn check_backend(preference: BackendPreference, kind: BackendKind) {
     }
     let (ws, generated) = timed(generate);
     let root = &ws.root;
-    std::os::unix::fs::symlink(crate::common::ts7().unwrap(), root.join("node_modules/typescript")).unwrap();
+    crate::common::symlink_dir(crate::common::ts7().unwrap(), root.join("node_modules/typescript")).unwrap();
     std::fs::create_dir_all(root.join("node_modules/@typescript")).unwrap();
-    std::os::unix::fs::symlink(crate::common::ts5().unwrap(), root.join("node_modules/@typescript/old")).unwrap();
+    crate::common::symlink_dir(crate::common::ts5().unwrap(), root.join("node_modules/@typescript/old")).unwrap();
 
     let ts = TsService::new();
     ts.set_timeout(Duration::from_secs(60));

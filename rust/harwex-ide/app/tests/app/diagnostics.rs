@@ -187,7 +187,7 @@ fn open_eslint(name: &str, ide_toml: Option<&str>, file: &str) -> (Fixture, Ide)
         repo.write(".harwex/ide.toml", toml);
     }
     let mut ide = Ide::open(SUITE, &repo.dir);
-    let path = std::fs::canonicalize(repo.dir.join(file)).expect("file exists");
+    let path = dunce::canonicalize(repo.dir.join(file)).expect("file exists");
     ide.state_mut().open_location(&path, None, true);
     (fx, ide)
 }

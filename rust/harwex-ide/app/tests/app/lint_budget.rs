@@ -103,7 +103,7 @@ fn generate(root: &Path, typed: bool) {
         }
     }
     link_eslint(root);
-    std::os::unix::fs::symlink(oxlint().expect("oxlint"), root.join("node_modules/oxlint")).expect("oxlint link");
+    crate::common::fixtures::symlink_dir(oxlint().expect("oxlint"), root.join("node_modules/oxlint")).expect("oxlint link");
 }
 
 /// Memory of every process below this test process (the linter, its node and tsgolint). The
@@ -198,7 +198,7 @@ fn run(typed: bool) -> Option<(Row, Row)> {
     let fx = Fixture::new(SUITE, name);
     let root = fx.dir.join("mono");
     generate(&root, typed);
-    let root = std::fs::canonicalize(&root).expect("canonical");
+    let root = dunce::canonicalize(&root).expect("canonical");
 
     let eslint = EslintSource::new(None);
     let es = measure(&eslint, |p| LintTarget::Eslint(plan(p, typed).eslint.expect("ESLint planned")), &root);

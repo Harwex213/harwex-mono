@@ -11,7 +11,7 @@ use harwex_ide::WorkspaceId;
 const SUITE: &str = "badges";
 
 fn canonical(p: &Path) -> PathBuf {
-    std::fs::canonicalize(p).expect("canonical")
+    dunce::canonicalize(p).expect("canonical")
 }
 
 /// The labels of all count badges on screen.

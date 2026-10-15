@@ -11,6 +11,13 @@ pub fn path_to_uri(path: &Path) -> String {
         return doc.uri;
     }
     let s = path.to_string_lossy();
+    // A path too long for `canonical` to strip keeps its verbatim prefix; servers know only
+    // the plain form.
+    let s = match (s.strip_prefix(r"\\?\UNC\"), s.strip_prefix(r"\\?\")) {
+        (Some(unc), _) => format!(r"\\{unc}").into(),
+        (None, Some(plain)) => plain.to_string().into(),
+        (None, None) => s,
+    };
     let mut out = String::from("file://");
     if !s.starts_with('/') {
         out.push('/');
@@ -35,6 +42,17 @@ pub fn uri_to_path(uri: &str) -> Option<PathBuf> {
     let s = match s.as_bytes() {
         [b'/', d, b':', ..] if d.is_ascii_alphabetic() => s[1..].to_string(),
         _ => s,
+    };
+    // Paths compare by their text in tab keys and maps, so a Windows path uses `\` like the
+    // ones the file system hands out, and the drive letter is upper case like `canonicalize`'s
+    // (VS Code-style servers send `c%3A`).
+    #[cfg(windows)]
+    let s = {
+        let mut s = s.replace('/', "\\");
+        if s.as_bytes().get(1) == Some(&b':') {
+            s[..1].make_ascii_uppercase();
+        }
+        s
     };
     Some(PathBuf::from(s))
 }

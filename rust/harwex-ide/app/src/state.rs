@@ -469,7 +469,7 @@ impl AppState {
         self.jobs.spawn(
             "Opening project",
             move || {
-                let root = std::fs::canonicalize(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+                let root = dunce::canonicalize(&path).map_err(|e| format!("{}: {e}", path.display()))?;
                 if !root.is_dir() {
                     return Err(format!("{} is not a folder", root.display()));
                 }
@@ -671,7 +671,7 @@ impl AppState {
         self.jobs.spawn(
             format!("Opening {}", path.file_name().map(|n| n.to_string_lossy()).unwrap_or_default()),
             move || {
-                let canonical = std::fs::canonicalize(&requested).unwrap_or_else(|_| requested.clone());
+                let canonical = dunce::canonicalize(&requested).unwrap_or_else(|_| requested.clone());
                 let doc = Document::open(&canonical);
                 (requested, canonical, doc)
             },

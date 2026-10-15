@@ -232,14 +232,17 @@ fn changed_paths_give_up_above_the_limit_and_on_an_unborn_head() {
 
 /// A fake git that hangs, so a status can only end through its cancel flag.
 fn hanging_git(dir: &std::path::Path) -> PathBuf {
+    #[cfg(unix)]
     use std::os::unix::fs::PermissionsExt;
     let script = dir.join("fake-git");
     std::fs::write(&script, format!("#!/bin/sh\necho $$ > '{}/git.pid'\nexec sleep 60\n", dir.display())).unwrap();
+    #[cfg(unix)]
     std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
     script
 }
 
 #[test]
+#[cfg_attr(windows, ignore = "the fake git is a sh script")]
 fn cancel_kills_a_running_full_status() {
     let t = renamed_repo();
     let fake = tempfile::tempdir().unwrap();

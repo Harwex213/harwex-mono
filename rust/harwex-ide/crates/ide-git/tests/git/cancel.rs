@@ -23,7 +23,11 @@ fn hanging_git(dir: &Path) -> PathBuf {
 }
 
 fn make_executable(path: &Path) {
+    #[cfg(not(unix))]
+    let _ = path;
+    #[cfg(unix)]
     use std::os::unix::fs::PermissionsExt;
+    #[cfg(unix)]
     std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755)).unwrap();
 }
 
@@ -61,6 +65,7 @@ fn file_repo(t: &TestRepo) -> PathBuf {
 }
 
 #[test]
+#[cfg_attr(windows, ignore = "the fake git is a sh script and the test checks unix process groups")]
 fn hanging_git_times_out_and_its_group_dies() {
     let t = TestRepo::new();
     let file = file_repo(&t);
@@ -78,6 +83,7 @@ fn hanging_git_times_out_and_its_group_dies() {
 }
 
 #[test]
+#[cfg_attr(windows, ignore = "the fake git is a sh script and the test checks unix process groups")]
 fn cancel_kills_the_whole_process_group() {
     let t = TestRepo::new();
     let file = file_repo(&t);
@@ -111,6 +117,7 @@ fn a_set_flag_starts_no_command() {
 }
 
 #[test]
+#[cfg_attr(windows, ignore = "the fake git is a sh script and the test checks unix process groups")]
 fn cancelled_add_leaves_no_index_lock() {
     let t = TestRepo::new();
     t.write(".gitattributes", "*.slow filter=slow\n");

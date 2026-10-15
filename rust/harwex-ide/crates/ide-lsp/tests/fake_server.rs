@@ -20,7 +20,7 @@ struct Fixture {
 
 fn fixture() -> Fixture {
     let tmp = tempfile::tempdir().unwrap();
-    let root = std::fs::canonicalize(tmp.path()).unwrap();
+    let root = ide_lsp::canonical(tmp.path());
     let file = root.join("src/main.rs");
     std::fs::create_dir_all(file.parent().unwrap()).unwrap();
     std::fs::write(&file, "fn main() {}\n").unwrap();

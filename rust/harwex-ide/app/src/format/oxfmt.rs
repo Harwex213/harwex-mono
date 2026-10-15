@@ -82,9 +82,9 @@ pub fn format(install: &OxfmtInstall, path: &Path, text: &str, timeout: Duration
     // file's folder is still the least surprising one for a config that reads relative paths.
     cmd.current_dir(path.parent().filter(|d| d.is_dir()).unwrap_or(Path::new("/")));
     if let Some(dir) = node.parent() {
-        let path_var = std::env::var_os("PATH").map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
-        cmd.env("PATH", format!("{}:{path_var}", dir.display()));
+        cmd.env("PATH", crate::os::prepend_path(dir));
     }
+    ide_lsp::hide_console(&mut cmd);
     cmd.env("NO_COLOR", "1").stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
     let mut child = cmd.spawn().map_err(|e| FormatError::Failed(format!("cannot start {}: {e}", node.display())))?;
     // stdin, stdout and stderr each get a thread: a big file fills a pipe buffer otherwise.

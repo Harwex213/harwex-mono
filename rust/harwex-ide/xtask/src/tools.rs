@@ -140,14 +140,21 @@ pub fn check_and_install(host: &mut dyn Host, home: &Path, options: &ToolsOption
         if !matches!(status, Status::Missing { .. }) {
             continue;
         }
-        match *name {
-            "node" => host.say(
+        match (*name, cfg!(windows)) {
+            ("node", false) => host.say(
                 "node: install it with nvm (https://github.com/nvm-sh/nvm) or `brew install node`, \
                  or set HARWEX_NODE=/path/to/node",
             ),
-            "git" => host.say(
+            ("node", true) => host.say(
+                "node: install it with `winget install OpenJS.NodeJS.LTS` or nvm-windows \
+                 (https://github.com/coreybutler/nvm-windows), or set HARWEX_NODE=C:\\path\\to\\node.exe",
+            ),
+            ("git", false) => host.say(
                 "git: install it with `xcode-select --install` or `brew install git`, \
                  or set HARWEX_GIT=/path/to/git",
+            ),
+            ("git", true) => host.say(
+                "git: install it with `winget install Git.Git`, or set HARWEX_GIT=C:\\path\\to\\git.exe",
             ),
             _ => {}
         }
@@ -244,11 +251,16 @@ fn path_dirs(host: &dyn Host) -> Vec<PathBuf> {
     std::env::split_paths(&host.var("PATH").unwrap_or_default()).collect()
 }
 
+/// The file name of a program: `rustup.exe` on Windows.
+fn exe(name: &str) -> String {
+    format!("{name}{}", std::env::consts::EXE_SUFFIX)
+}
+
 /// `~/.cargo/bin/rustup` first, as the app does, then PATH (Homebrew ships rustup there).
 fn find_rustup(host: &dyn Host, cargo_bin: &Path) -> Option<PathBuf> {
     std::iter::once(cargo_bin.to_path_buf())
         .chain(path_dirs(host))
-        .map(|dir| dir.join("rustup"))
+        .map(|dir| dir.join(exe("rustup")))
         .find(|p| host.is_file(p))
 }
 
@@ -260,8 +272,8 @@ fn find_rust_analyzer(host: &dyn Host, cargo_bin: &Path, rustup: Option<&Path>) 
     if let Some(p) = host.var("HARWEX_RUST_ANALYZER") {
         candidates.push(PathBuf::from(p));
     }
-    candidates.extend(path_dirs(host).into_iter().map(|d| d.join("rust-analyzer")));
-    candidates.push(cargo_bin.join("rust-analyzer"));
+    candidates.extend(path_dirs(host).into_iter().map(|d| d.join(exe("rust-analyzer"))));
+    candidates.push(cargo_bin.join(exe("rust-analyzer")));
     let mut last_error = None;
     let mut tried: Vec<PathBuf> = Vec::new();
     let mut probe = |p: PathBuf, last_error: &mut Option<String>| -> Option<Status> {
@@ -307,7 +319,7 @@ fn find_rust_analyzer(host: &dyn Host, cargo_bin: &Path, rustup: Option<&Path>) 
 
 /// Present when `$(rustc --print sysroot)/lib/rustlib/src/rust/library` exists.
 fn find_rust_src(host: &dyn Host, cargo_bin: &Path) -> Status {
-    let rustc = Some(cargo_bin.join("rustc"))
+    let rustc = Some(cargo_bin.join(exe("rustc")))
         .filter(|p| host.is_file(p))
         .unwrap_or_else(|| PathBuf::from("rustc"));
     let sysroot = match host.output(&rustc, &["--print", "sysroot"]) {
@@ -318,7 +330,7 @@ fn find_rust_src(host: &dyn Host, cargo_bin: &Path) -> Status {
             }
         }
     };
-    let library = sysroot.join("lib/rustlib/src/rust/library");
+    let library = ["lib", "rustlib", "src", "rust", "library"].iter().fold(sysroot, |p, c| p.join(c));
     if host.is_dir(&library) {
         Status::Found {
             path: library,
@@ -331,15 +343,29 @@ fn find_rust_src(host: &dyn Host, cargo_bin: &Path) -> Status {
     }
 }
 
-/// An override variable, then PATH, then the Homebrew dirs the `.app` launcher adds.
+/// Where node and git live when they are not on PATH, as the app searches: the Homebrew dirs
+/// the `.app` launcher adds; on Windows the nvm-windows link and the official installers.
+fn known_dirs(host: &dyn Host) -> Vec<PathBuf> {
+    if !cfg!(windows) {
+        return vec![PathBuf::from("/opt/homebrew/bin"), PathBuf::from("/usr/local/bin")];
+    }
+    let mut dirs: Vec<PathBuf> = host.var("NVM_SYMLINK").map(PathBuf::from).into_iter().collect();
+    if let Some(programs) = host.var("ProgramFiles").map(PathBuf::from) {
+        dirs.push(programs.join("nodejs"));
+        dirs.push(programs.join("Git").join("cmd"));
+    }
+    dirs
+}
+
+/// An override variable, then PATH, then the known install dirs (`known_dirs`).
 fn find_plain(host: &dyn Host, name: &str, override_var: &str) -> Status {
     let mut candidates: Vec<PathBuf> = Vec::new();
     if let Some(p) = host.var(override_var) {
         candidates.push(PathBuf::from(p));
     }
-    candidates.extend(path_dirs(host).into_iter().map(|d| d.join(name)));
-    for dir in ["/opt/homebrew/bin", "/usr/local/bin"] {
-        candidates.push(Path::new(dir).join(name));
+    candidates.extend(path_dirs(host).into_iter().map(|d| d.join(exe(name))));
+    for dir in known_dirs(host) {
+        candidates.push(dir.join(exe(name)));
     }
     for p in candidates {
         if !host.is_file(&p) {
@@ -468,7 +494,23 @@ fn discard_pending_input() {
     }
 }
 
-#[cfg(not(unix))]
+/// Drops the key events waiting in the console input buffer (`FlushConsoleInputBuffer`).
+#[cfg(windows)]
+fn discard_pending_input() {
+    use std::os::raw::c_void;
+    const STD_INPUT_HANDLE: u32 = -10i32 as u32;
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn GetStdHandle(which: u32) -> *mut c_void;
+        fn FlushConsoleInputBuffer(handle: *mut c_void) -> i32;
+    }
+    // SAFETY: both calls take plain values; on a redirected stdin the flush just fails.
+    unsafe {
+        FlushConsoleInputBuffer(GetStdHandle(STD_INPUT_HANDLE));
+    }
+}
+
+#[cfg(not(any(unix, windows)))]
 fn discard_pending_input() {}
 
 // ---------------------------------------------------------------------------------------------
@@ -486,10 +528,11 @@ mod tests {
     const PROXY_ERROR: &str =
         "error: Unknown binary 'rust-analyzer' in official toolchain 'stable'.";
 
-    /// A machine described by tables. Commands not listed fail.
+    /// A machine described by tables. Commands not listed fail. Paths are compared as `norm`
+    /// strings, so the same tables describe a Windows machine.
     struct Fake {
-        files: HashSet<PathBuf>,
-        dirs: HashSet<PathBuf>,
+        files: HashSet<String>,
+        dirs: HashSet<String>,
         vars: HashMap<String, OsString>,
         outputs: HashMap<String, Result<String, String>>,
         install_fails: bool,
@@ -501,8 +544,14 @@ mod tests {
         said: Vec<String>,
     }
 
+    /// A path with `/` separators and without `.exe`: `C:/x\y.exe` and `C:/x/y` are one file.
+    fn norm(path: &Path) -> String {
+        let s = path.display().to_string().replace('\\', "/");
+        s.strip_suffix(".exe").map(str::to_string).unwrap_or(s)
+    }
+
     fn key(program: &Path, args: &[&str]) -> String {
-        format!("{} {}", program.display(), args.join(" "))
+        format!("{} {}", norm(program), args.join(" "))
     }
 
     impl Host for Fake {
@@ -510,7 +559,7 @@ mod tests {
             self.outputs
                 .get(&key(program, args))
                 .cloned()
-                .unwrap_or_else(|| Err(format!("no such command {}", program.display())))
+                .unwrap_or_else(|| Err(format!("no such command {}", norm(program))))
         }
         fn run(&mut self, program: &Path, args: &[&str]) -> Result<(), String> {
             self.ran.push(key(program, args));
@@ -521,10 +570,10 @@ mod tests {
             }
         }
         fn is_file(&self, path: &Path) -> bool {
-            self.files.contains(path)
+            self.files.contains(&norm(path))
         }
         fn is_dir(&self, path: &Path) -> bool {
-            self.dirs.contains(path)
+            self.dirs.contains(&norm(path))
         }
         fn var(&self, name: &str) -> Option<OsString> {
             self.vars.get(name).cloned()
@@ -561,7 +610,7 @@ mod tests {
                 said: Vec::new(),
             };
             for tool in ["rustup", "rustc", "rust-analyzer"] {
-                fake.files.insert(Path::new(CARGO_BIN).join(tool));
+                fake.files.insert(format!("{CARGO_BIN}/{tool}"));
             }
             fake.cmd(
                 &format!("{CARGO_BIN}/rust-analyzer --version"),
@@ -587,12 +636,12 @@ mod tests {
                 &format!("{CARGO_BIN}/rust-analyzer --version"),
                 Ok("rust-analyzer 1.90.0 (1159e78c 2025-09-14)\n"),
             );
-            self.dirs.insert(PathBuf::from(LIBRARY));
+            self.dirs.insert(LIBRARY.to_string());
             self
         }
 
         fn without_rustup(mut self) -> Fake {
-            self.files.remove(&Path::new(CARGO_BIN).join("rustup"));
+            self.files.remove(&format!("{CARGO_BIN}/rustup"));
             self
         }
 
@@ -627,7 +676,7 @@ mod tests {
     fn rustup_which_finds_a_toolchain_binary() {
         let mut fake = Fake::bare_rustup();
         let real = "/fake-home/u/.rustup/toolchains/stable/bin/rust-analyzer";
-        fake.files.insert(PathBuf::from(real));
+        fake.files.insert(real.to_string());
         fake.cmd(&format!("{CARGO_BIN}/rustup which rust-analyzer"), Ok(real));
         fake.cmd(&format!("{real} --version"), Ok("rust-analyzer 1.90.0"));
         let rustup = Path::new(CARGO_BIN).join("rustup");
@@ -760,15 +809,15 @@ mod tests {
         assert!(fake.said("git            missing"), "{:?}", fake.said);
         assert!(fake.ran.is_empty());
 
+        // Not on PATH, but where Homebrew (or Git for Windows) puts it.
         let mut fake = Fake::bare_rustup().with_components();
-        fake.files.insert(PathBuf::from("/opt/homebrew/bin/git"));
-        fake.cmd(
-            "/opt/homebrew/bin/git --version",
-            Ok("git version 2.50.0\n"),
-        );
+        fake.vars.insert("ProgramFiles".to_string(), OsString::from("/pf"));
+        let git = if cfg!(windows) { "/pf/Git/cmd/git" } else { "/opt/homebrew/bin/git" };
+        fake.files.insert(git.to_string());
+        fake.cmd(&format!("{git} --version"), Ok("git version 2.50.0\n"));
         fake.check(false, false);
         assert!(
-            fake.said("git            found    git version 2.50.0 (/opt/homebrew/bin/git)"),
+            fake.said("git            found    git version 2.50.0 ("),
             "{:?}",
             fake.said
         );
@@ -779,9 +828,9 @@ mod tests {
         let mut fake = Fake::bare_rustup().without_rustup();
         fake.vars.insert(
             "PATH".to_string(),
-            OsString::from(format!("/opt/homebrew/bin:{CARGO_BIN}")),
+            std::env::join_paths(["/opt/homebrew/bin", CARGO_BIN]).unwrap(),
         );
-        fake.files.insert(PathBuf::from("/opt/homebrew/bin/rustup"));
+        fake.files.insert("/opt/homebrew/bin/rustup".to_string());
         fake.check(true, false);
         assert_eq!(
             fake.ran[0],

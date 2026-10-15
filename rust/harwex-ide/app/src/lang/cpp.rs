@@ -51,6 +51,8 @@ const INDEX_START_GRACE: Duration = Duration::from_secs(3);
 pub fn install_hint() -> &'static str {
     if cfg!(target_os = "macos") {
         "Install the Xcode Command Line Tools (`xcode-select --install`) or LLVM (`brew install llvm`), or set `clangd` under [cpp] in .harwex/ide.toml."
+    } else if cfg!(windows) {
+        "Install LLVM (`winget install LLVM.LLVM`) or the \"C++ Clang tools\" of Visual Studio, or set `clangd` under [cpp] in .harwex/ide.toml."
     } else {
         "Install clangd with your package manager (`apt install clangd`), or set `clangd` under [cpp] in .harwex/ide.toml."
     }
@@ -100,7 +102,7 @@ pub fn find_clangd(configured: Option<&Path>) -> Result<Clangd, String> {
         return Err(format!("clangd was not found: HARWEX_CLANGD is {} ({why}). {}", p.display(), install_hint()));
     }
     for dir in std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default()) {
-        let candidate = dir.join("clangd");
+        let candidate = dir.join(crate::os::exe("clangd"));
         // On macOS `/usr/bin/clangd` is the Xcode shim; without developer tools it asks the
         // user to install them in a system dialog. The `xcrun` step below covers it quietly.
         if cfg!(target_os = "macos") && candidate.starts_with("/usr/bin") {
@@ -128,10 +130,36 @@ pub fn find_clangd(configured: Option<&Path>) -> Result<Clangd, String> {
             }
         }
     }
+    // The LLVM installer does not add itself to PATH by default; Visual Studio's Clang tools
+    // never do.
+    #[cfg(windows)]
+    for found in windows_clangd_candidates() {
+        if let Some(found) = check(found, &mut notes) {
+            return Ok(found);
+        }
+    }
     if notes.is_empty() {
         notes.push("not on PATH, in Xcode or in Homebrew LLVM".into());
     }
     Err(format!("clangd was not found. {}\n\nSearched: {}", install_hint(), notes.join("; ")))
+}
+
+/// `%ProgramFiles%\LLVM\bin\clangd.exe`, then the Clang tools of each Visual Studio install.
+#[cfg(windows)]
+fn windows_clangd_candidates() -> Vec<PathBuf> {
+    let mut out = Vec::new();
+    for var in ["ProgramFiles", "ProgramFiles(x86)"] {
+        let Some(root) = std::env::var_os(var).map(PathBuf::from) else { continue };
+        out.push(root.join(r"LLVM\bin\clangd.exe"));
+        // `Microsoft Visual Studio\<year>\<edition>\VC\Tools\Llvm\x64\bin\clangd.exe`
+        let vs = root.join("Microsoft Visual Studio");
+        for year in std::fs::read_dir(&vs).into_iter().flatten().flatten() {
+            for edition in std::fs::read_dir(year.path()).into_iter().flatten().flatten() {
+                out.push(edition.path().join(r"VC\Tools\Llvm\x64\bin\clangd.exe"));
+            }
+        }
+    }
+    out
 }
 
 /// The version of a clangd binary: "22.1.6" from "clangd version 22.1.6 (...)" or
@@ -150,6 +178,7 @@ pub fn parse_version(out: &str) -> Option<String> {
 /// Runs a short command with a 10 s limit and returns its stdout. A failure returns the
 /// first stderr line.
 fn output(cmd: &mut Command) -> Result<String, String> {
+    ide_lsp::hide_console(cmd);
     let mut child = cmd.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().map_err(|e| e.to_string())?;
     let deadline = Instant::now() + Duration::from_secs(10);
     let status = loop {
@@ -560,6 +589,7 @@ fn index_not_ignored(root: &Path, db: &Path) -> bool {
     let index = db.join(".cache/clangd/index");
     let mut cmd = Command::new("git");
     cmd.arg("-C").arg(root).args(["check-ignore", "-q"]).arg(&index);
+    ide_lsp::hide_console(&mut cmd);
     let Ok(mut child) = cmd.stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).spawn() else { return false };
     let deadline = Instant::now() + Duration::from_secs(5);
     loop {
@@ -870,7 +900,7 @@ mod tests {
         let cfg = CppConfig { background_index: false, args: vec!["--clang-tidy".into()], ..CppConfig::default() };
         let args = clangd_args(&r, &cfg);
         assert_eq!(args[0], "--background-index=false");
-        assert!(args.contains(&format!("--compile-commands-dir={}", root.join("c/cmake-build-debug").display())), "{args:?}");
+        assert!(args.contains(&format!("--compile-commands-dir={}", root.join("c").join("cmake-build-debug").display())), "{args:?}");
         assert_eq!(args.last().map(String::as_str), Some("--clang-tidy"));
         // compile_flags.txt counts as a database; .clangd only marks the root.
         write(&root.join("d/compile_flags.txt"), "-std=c++20\n");
@@ -910,6 +940,10 @@ mod tests {
         assert_eq!(parse_version("rust-analyzer 1.0\n"), None);
         let e = find_clangd(Some(Path::new("/nonexistent/clangd"))).unwrap_err();
         assert!(e.contains("/nonexistent/clangd") && e.contains("[cpp]"), "{e}");
+        // `/bin/echo` stands for a program that is not clangd; Windows has none at a fixed path.
+        if cfg!(windows) {
+            return;
+        }
         let e = find_clangd(Some(Path::new("/bin/echo"))).unwrap_err();
         assert!(e.contains("unexpected --version output"), "{e}");
     }

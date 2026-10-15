@@ -806,7 +806,7 @@ fn toolbar(tab: &mut DiffTab, ui: &mut Ui, body_id: Id) -> bool {
     egui::Frame::NONE.fill(theme::T.island_bg).inner_margin(egui::Margin::symmetric(8, 3)).show(ui, |ui| {
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 4.0;
-            if ui.add_enabled(hunks > 0, egui::Button::new("Prev").small()).on_hover_text("Previous Difference (⇧F7)").clicked() || shift_f7 {
+            if ui.add_enabled(hunks > 0, egui::Button::new("Prev").small()).on_hover_text(ide_editor::shortcut_label("Previous Difference (⇧F7)").as_ref()).clicked() || shift_f7 {
                 tab.step(false);
             }
             let next = ui.add_enabled(hunks > 0, egui::Button::new("Next").small()).on_hover_text("Next Difference (F7)");
@@ -1236,19 +1236,19 @@ fn body(tab: &mut DiffTab, ui: &mut Ui, theme_e: &EditorTheme, body_id: Id, mut 
             ui.close_menu();
         }
         ui.separator();
-        if editable && ui.add(egui::Button::new("Cut").shortcut_text("⌘X")).clicked() {
+        if editable && ui.add(egui::Button::new("Cut").shortcut_text(ide_editor::shortcut_label("⌘X").as_ref())).clicked() {
             menu_cut = true;
             ui.close_menu();
         }
-        if ui.add_enabled(has_sel, egui::Button::new("Copy").shortcut_text("⌘C")).clicked() {
+        if ui.add_enabled(has_sel, egui::Button::new("Copy").shortcut_text(ide_editor::shortcut_label("⌘C").as_ref())).clicked() {
             menu_copy = true;
             ui.close_menu();
         }
-        if editable && ui.add(egui::Button::new("Paste").shortcut_text("⌘V")).clicked() {
+        if editable && ui.add(egui::Button::new("Paste").shortcut_text(ide_editor::shortcut_label("⌘V").as_ref())).clicked() {
             menu_paste = true;
             ui.close_menu();
         }
-        if ui.add(egui::Button::new("Select All").shortcut_text("⌘A")).clicked() {
+        if ui.add(egui::Button::new("Select All").shortcut_text(ide_editor::shortcut_label("⌘A").as_ref())).clicked() {
             menu_all = true;
             ui.close_menu();
         }
@@ -1375,17 +1375,26 @@ fn body(tab: &mut DiffTab, ui: &mut Ui, theme_e: &EditorTheme, body_id: Id, mut 
     out
 }
 
-/// The caret move a key event asks for, with Shift held or not. macOS keys: Alt moves by
-/// words, Cmd to the line or text edges.
+/// The caret move a key event asks for, with Shift held or not. The editor's keymap
+/// (`ide_editor::keys`): on macOS Alt moves by words and Cmd to the line or text edges,
+/// elsewhere Ctrl moves by words and Ctrl+Home/End go to the text edges.
 fn key_move(e: &Event, page: usize) -> Option<(Move, bool)> {
+    use ide_editor::keys::{self, Reach, Vertical};
     let Event::Key { key, pressed: true, modifiers: m, .. } = e else { return None };
+    let reach = keys::arrow_reach(*m);
     let mv = match key {
-        Key::ArrowLeft if m.command => Move::LineStart,
-        Key::ArrowLeft if m.alt => Move::WordLeft,
-        Key::ArrowLeft => Move::Left,
-        Key::ArrowRight if m.command => Move::LineEnd,
-        Key::ArrowRight if m.alt => Move::WordRight,
-        Key::ArrowRight => Move::Right,
+        Key::ArrowLeft => match reach {
+            Reach::Line | Reach::Document => Move::LineStart,
+            Reach::Word => Move::WordLeft,
+            Reach::Char => Move::Left,
+        },
+        Key::ArrowRight => match reach {
+            Reach::Line | Reach::Document => Move::LineEnd,
+            Reach::Word => Move::WordRight,
+            Reach::Char => Move::Right,
+        },
+        // Ctrl+Up/Down scroll the editor off macOS; the diff panes have no such scroll.
+        Key::ArrowUp | Key::ArrowDown if keys::vertical(*m) == Vertical::Scroll => return None,
         Key::ArrowUp if m.command => Move::DocStart,
         Key::ArrowUp => Move::Up(1),
         Key::ArrowDown if m.command => Move::DocEnd,

@@ -195,6 +195,10 @@ fn passes_edit_stops() {
 }
 
 fn make_executable(path: &std::path::Path) {
+    #[cfg(not(unix))]
+    let _ = path;
+    #[cfg(unix)]
     use std::os::unix::fs::PermissionsExt;
+    #[cfg(unix)]
     std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755)).unwrap();
 }

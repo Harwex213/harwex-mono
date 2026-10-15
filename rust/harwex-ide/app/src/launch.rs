@@ -19,14 +19,35 @@ pub fn startup_folder(args: &[String], cwd: Option<&Path>, tty: bool) -> Option<
         return Some(PathBuf::from(arg));
     }
     let cwd = cwd?;
-    let from_terminal = cwd != Path::new("/") || tty;
+    let from_terminal = !launcher_cwd(cwd) || tty;
     from_terminal.then(|| cwd.to_path_buf())
+}
+
+/// Whether `cwd` is the directory a launcher starts apps in, not one the user picked.
+#[cfg(not(windows))]
+fn launcher_cwd(cwd: &Path) -> bool {
+    cwd == Path::new("/")
+}
+
+/// Explorer and Start-menu shortcuts start an app in its own folder, some launchers in
+/// `System32`. The release build has no console, so the TTY check never helps there.
+#[cfg(windows)]
+fn launcher_cwd(cwd: &Path) -> bool {
+    let exe_dir = std::env::current_exe().ok().and_then(|e| e.parent().map(Path::to_path_buf));
+    let system_root = std::env::var_os("SystemRoot").map(PathBuf::from);
+    is_launcher_dir(cwd, exe_dir.as_deref(), system_root.as_deref())
+}
+
+#[cfg_attr(not(any(windows, test)), allow(dead_code))]
+fn is_launcher_dir(cwd: &Path, exe_dir: Option<&Path>, system_root: Option<&Path>) -> bool {
+    let same = |a: &Path, b: &Path| a.to_string_lossy().eq_ignore_ascii_case(&b.to_string_lossy());
+    cwd.parent().is_none() || exe_dir.is_some_and(|d| same(cwd, d)) || system_root.is_some_and(|r| cwd.starts_with(r) || same(cwd, r))
 }
 
 /// The folder as the running instance must see it: canonical when it exists, else made
 /// absolute against `cwd`. The new process is not the UI thread, so it may block on the disk.
 pub fn handoff_folder(folder: &Path, cwd: Option<&Path>) -> PathBuf {
-    if let Ok(real) = std::fs::canonicalize(folder) {
+    if let Ok(real) = dunce::canonicalize(folder) {
         return real;
     }
     match cwd {
@@ -89,9 +110,19 @@ mod tests {
     #[test]
     fn handoff_folder_is_absolute() {
         let tmp = std::env::temp_dir();
-        let real = std::fs::canonicalize(&tmp).expect("canonical temp dir");
+        let real = dunce::canonicalize(&tmp).expect("canonical temp dir");
         assert_eq!(handoff_folder(&tmp, None), real);
         assert_eq!(handoff_folder(Path::new("no/such/dir"), Some(Path::new("/work"))), PathBuf::from("/work/no/such/dir"));
+    }
+
+    #[test]
+    fn windows_launch_dirs() {
+        let (exe, sys) = (Path::new("/apps/harwex"), Path::new("/win"));
+        assert!(is_launcher_dir(Path::new("/"), Some(exe), Some(sys)));
+        assert!(is_launcher_dir(Path::new("/apps/harwex"), Some(exe), Some(sys)));
+        assert!(is_launcher_dir(Path::new("/win/System32"), Some(exe), Some(sys)));
+        assert!(!is_launcher_dir(Path::new("/work/project"), Some(exe), Some(sys)));
+        assert!(!is_launcher_dir(Path::new("/work/project"), None, None));
     }
 
     #[test]

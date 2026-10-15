@@ -439,7 +439,7 @@ fn layout_persists_through_storage() {
         eframe::App::save(ide.harness.state_mut(), &mut storage);
     }
     assert_eq!(storage.map.get("tool_windows").map(String::as_str), Some("left=Commit;bottom=Git"));
-    let root = std::fs::canonicalize(&repo.dir).expect("canonical");
+    let root = dunce::canonicalize(&repo.dir).expect("canonical");
     assert_eq!(storage.map.get("last_folder").map(String::as_str), root.to_str());
 
     // A new app restores the layout and reopens the last folder from the same storage.

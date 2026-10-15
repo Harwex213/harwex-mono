@@ -43,7 +43,7 @@ fn at(ide: &mut Ide, key: &str, side: Side, line: usize, col: usize) -> Pos2 {
 }
 
 fn editor_text(ide: &Ide, rel: &str) -> (String, bool) {
-    let path = std::fs::canonicalize(ide.root().join(rel)).expect("file");
+    let path = dunce::canonicalize(ide.root().join(rel)).expect("file");
     let e = ide.state().ws.tabs.editors().find(|e| e.path == path).expect("editor tab");
     (e.doc.text(), e.doc.is_dirty())
 }
@@ -168,7 +168,7 @@ fn right_side_without_a_tab_saves_on_its_own() {
     let p = at(&mut ide, &key, Side::New, 0, 0);
     ide.click_at(p);
     ide.type_text("y");
-    let file = std::fs::canonicalize(ide.root().join("sel.ts")).expect("file");
+    let file = dunce::canonicalize(ide.root().join("sel.ts")).expect("file");
     ide.state_mut().open_location(&file, None, true);
     ide.wait_for("editor tab", |s| s.ws.tabs.editor_by_path(&file).is_some());
     ide.settle();

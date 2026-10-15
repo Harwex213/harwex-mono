@@ -327,6 +327,9 @@ pub trait LintSource: Send + Sync + 'static {
 
 type LintDone = Box<dyn FnOnce(Option<Result<Vec<Diagnostic>, String>>) + Send>;
 
+// `PathBuf` is larger on Windows, which tips the variant sizes over the lint; one command per
+// lint request is not worth a box.
+#[allow(clippy::large_enum_variant)]
 enum LintCmd {
     Lint { target: LintTarget, path: PathBuf, text: String, latest: Arc<AtomicU64>, generation: u64, done: LintDone },
     Close(PathBuf),

@@ -218,7 +218,7 @@ fn read_only_tab_searches_but_does_not_replace() {
     repo.write(".gitignore", "node_modules/\n");
     repo.write("node_modules/dep/index.js", "module.exports = 1;\nmodule.id = 2;\n");
     let mut ide = Ide::open(SUITE, &repo.dir);
-    let path = std::fs::canonicalize(repo.dir.join("node_modules/dep/index.js")).expect("file");
+    let path = dunce::canonicalize(repo.dir.join("node_modules/dep/index.js")).expect("file");
     ide.state_mut().open_location(&path, None, true);
     ide.wait_for("dep tab", |s| s.ws.tabs.active_editor().is_some_and(|e| e.path == path));
     ide.settle();

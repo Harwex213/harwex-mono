@@ -560,7 +560,24 @@ fn thread_cpu_time() -> Duration {
             return Duration::new(ts.tv_sec as u64, ts.tv_nsec as u32);
         }
     }
+    #[cfg(windows)]
+    {
+        use windows_sys::Win32::Foundation::FILETIME;
+        use windows_sys::Win32::System::Threading::{GetCurrentThread, GetThreadTimes};
+        let mut t = [FILETIME { dwLowDateTime: 0, dwHighDateTime: 0 }; 4];
+        let [c, e, k, u] = &mut t;
+        // SAFETY: GetThreadTimes writes four FILETIMEs we own; the pseudo handle needs no close.
+        if unsafe { GetThreadTimes(GetCurrentThread(), c, e, k, u) } != 0 {
+            return Duration::from_nanos((filetime(t[2]) + filetime(t[3])) * 100);
+        }
+    }
     Duration::ZERO
+}
+
+/// A FILETIME as a count of 100 ns ticks.
+#[cfg(windows)]
+fn filetime(t: windows_sys::Win32::Foundation::FILETIME) -> u64 {
+    (u64::from(t.dwHighDateTime) << 32) | u64::from(t.dwLowDateTime)
 }
 
 // libc deprecates its copy in favour of the mach2 crate; one declaration is cheaper.
@@ -580,6 +597,17 @@ extern "C" {
 pub struct RealSource {
     #[cfg(target_os = "macos")]
     timebase: (u64, u64),
+    /// One Toolhelp snapshot serves the whole walk of a sample: `children` runs once per
+    /// process, and a snapshot costs about a millisecond.
+    #[cfg(windows)]
+    snapshot: std::sync::Mutex<Option<(Instant, Vec<WinProc>)>>,
+}
+
+#[cfg(windows)]
+struct WinProc {
+    pid: Pid,
+    parent: Pid,
+    name: String,
 }
 
 impl RealSource {
@@ -597,7 +625,11 @@ impl RealSource {
         {
             Some(RealSource {})
         }
-        #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+        #[cfg(windows)]
+        {
+            Some(RealSource { snapshot: std::sync::Mutex::new(None) })
+        }
+        #[cfg(not(any(target_os = "macos", target_os = "linux", windows)))]
         {
             None
         }
@@ -712,6 +744,127 @@ impl ProcessSource for RealSource {
     fn physical_ram(&self) -> u64 {
         // SAFETY: sysconf only reads system constants.
         unsafe { (libc::sysconf(libc::_SC_PHYS_PAGES).max(0) as u64) * (libc::sysconf(libc::_SC_PAGESIZE).max(0) as u64) }
+    }
+}
+
+/// Windows: the tree comes from a Toolhelp snapshot, memory is the private commit
+/// (`PrivateUsage`, close to macOS's footprint; Task Manager's "Commit size").
+#[cfg(windows)]
+impl ProcessSource for RealSource {
+    fn self_pid(&self) -> Pid {
+        std::process::id()
+    }
+
+    fn children(&self, pid: Pid, out: &mut Vec<Pid>) {
+        // Windows keeps a dead parent's pid in its children, and the pid may be reused since.
+        // A real child cannot be older than its parent.
+        let born = win::creation_time(pid);
+        let candidates: Vec<Pid> = self.with_snapshot(|procs| procs.iter().filter(|p| p.parent == pid && p.pid != pid).map(|p| p.pid).collect());
+        out.extend(candidates.into_iter().filter(|&c| born.is_none() || win::creation_time(c) >= born));
+    }
+
+    fn stat(&self, pid: Pid) -> Option<ProcStat> {
+        let name = self.with_snapshot(|procs| procs.iter().find(|p| p.pid == pid).map(|p| p.name.clone()));
+        let (memory, cpu_ns) = win::counters(pid)?;
+        Some(ProcStat { name: name.unwrap_or_else(|| "?".to_string()), memory, cpu_ns, zombie: false })
+    }
+
+    fn physical_ram(&self) -> u64 {
+        use windows_sys::Win32::System::SystemInformation::{GlobalMemoryStatusEx, MEMORYSTATUSEX};
+        // SAFETY: MEMORYSTATUSEX is plain data; dwLength must be set before the call.
+        let mut status: MEMORYSTATUSEX = unsafe { std::mem::zeroed() };
+        status.dwLength = std::mem::size_of::<MEMORYSTATUSEX>() as u32;
+        if unsafe { GlobalMemoryStatusEx(&mut status) } != 0 {
+            status.ullTotalPhys
+        } else {
+            0
+        }
+    }
+}
+
+#[cfg(windows)]
+impl RealSource {
+    fn with_snapshot<T>(&self, f: impl FnOnce(&[WinProc]) -> T) -> T {
+        let mut guard = self.snapshot.lock().unwrap();
+        if !guard.as_ref().is_some_and(|(at, _)| at.elapsed() < Duration::from_millis(500)) {
+            *guard = Some((Instant::now(), win::processes()));
+        }
+        f(guard.as_ref().map(|(_, procs)| procs.as_slice()).unwrap_or_default())
+    }
+}
+
+#[cfg(windows)]
+mod win {
+    use super::{filetime, Pid, WinProc};
+    use windows_sys::Win32::Foundation::{CloseHandle, FILETIME, HANDLE, INVALID_HANDLE_VALUE};
+    use windows_sys::Win32::System::Diagnostics::ToolHelp::{CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W, TH32CS_SNAPPROCESS};
+    use windows_sys::Win32::System::ProcessStatus::{K32GetProcessMemoryInfo, PROCESS_MEMORY_COUNTERS, PROCESS_MEMORY_COUNTERS_EX};
+    use windows_sys::Win32::System::Threading::{GetProcessTimes, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION};
+
+    pub(super) fn processes() -> Vec<WinProc> {
+        let mut out = Vec::new();
+        // SAFETY: the snapshot handle is closed below; PROCESSENTRY32W is plain data with
+        // dwSize set before the first call.
+        unsafe {
+            let snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+            if snap == INVALID_HANDLE_VALUE {
+                return out;
+            }
+            let mut entry: PROCESSENTRY32W = std::mem::zeroed();
+            entry.dwSize = std::mem::size_of::<PROCESSENTRY32W>() as u32;
+            let mut ok = Process32FirstW(snap, &mut entry);
+            while ok != 0 {
+                let len = entry.szExeFile.iter().position(|&c| c == 0).unwrap_or(entry.szExeFile.len());
+                let name = String::from_utf16_lossy(&entry.szExeFile[..len]);
+                // `classify` matches unix names (`node`, `git`), so the `.exe` goes.
+                let name = name.strip_suffix(".exe").or_else(|| name.strip_suffix(".EXE")).unwrap_or(&name).to_string();
+                out.push(WinProc { pid: entry.th32ProcessID, parent: entry.th32ParentProcessID, name });
+                ok = Process32NextW(snap, &mut entry);
+            }
+            CloseHandle(snap);
+        }
+        out
+    }
+
+    struct Process(HANDLE);
+
+    impl Process {
+        fn open(pid: Pid) -> Option<Process> {
+            // SAFETY: OpenProcess returns null on failure; the handle is closed on drop.
+            let h = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid) };
+            (!h.is_null()).then_some(Process(h))
+        }
+
+        /// Creation, kernel and user time in 100 ns ticks.
+        fn times(&self) -> Option<(u64, u64, u64)> {
+            let mut t = [FILETIME { dwLowDateTime: 0, dwHighDateTime: 0 }; 4];
+            let [c, e, k, u] = &mut t;
+            // SAFETY: GetProcessTimes writes four FILETIMEs we own.
+            (unsafe { GetProcessTimes(self.0, c, e, k, u) } != 0).then(|| (filetime(t[0]), filetime(t[2]), filetime(t[3])))
+        }
+    }
+
+    impl Drop for Process {
+        fn drop(&mut self) {
+            // SAFETY: the handle came from OpenProcess and is closed once.
+            unsafe { CloseHandle(self.0) };
+        }
+    }
+
+    pub(super) fn creation_time(pid: Pid) -> Option<u64> {
+        Process::open(pid)?.times().map(|t| t.0)
+    }
+
+    /// Private bytes and CPU time in nanoseconds.
+    pub(super) fn counters(pid: Pid) -> Option<(u64, u64)> {
+        let p = Process::open(pid)?;
+        let (_, kernel, user) = p.times()?;
+        // SAFETY: the EX struct starts with the plain one; cb tells the call which it got.
+        let mut mem: PROCESS_MEMORY_COUNTERS_EX = unsafe { std::mem::zeroed() };
+        mem.cb = std::mem::size_of::<PROCESS_MEMORY_COUNTERS_EX>() as u32;
+        let ok = unsafe { K32GetProcessMemoryInfo(p.0, (&mut mem as *mut PROCESS_MEMORY_COUNTERS_EX).cast::<PROCESS_MEMORY_COUNTERS>(), mem.cb) };
+        let memory = if ok != 0 { mem.PrivateUsage as u64 } else { 0 };
+        Some((memory, (kernel + user) * 100))
     }
 }
 

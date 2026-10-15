@@ -56,6 +56,26 @@ pub(crate) fn signal_group(pgid: u32, signal: i32) {
     }
 }
 
+/// `CREATE_NO_WINDOW`: a console child of a GUI process gets a hidden console, which its own
+/// children (hooks, `sh`) inherit, instead of a window each.
+#[cfg(windows)]
+pub(crate) const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
+/// Kills `pid` and every process below it. Windows has no process groups; `taskkill /T`
+/// walks the parent links instead.
+#[cfg(windows)]
+pub(crate) fn kill_tree(pid: u32) {
+    use std::os::windows::process::CommandExt;
+    let system = std::env::var_os("SystemRoot").map(std::path::PathBuf::from).unwrap_or_else(|| r"C:\Windows".into());
+    let _ = std::process::Command::new(system.join(r"System32\taskkill.exe"))
+        .args(["/T", "/F", "/PID", &pid.to_string()])
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .creation_flags(CREATE_NO_WINDOW)
+        .status();
+}
+
 #[cfg(unix)]
 pub(crate) const SIGTERM: i32 = libc::SIGTERM;
 #[cfg(unix)]

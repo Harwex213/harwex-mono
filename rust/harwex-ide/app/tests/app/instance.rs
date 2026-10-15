@@ -67,14 +67,14 @@ fn second_launch_hands_off_and_exits() {
     let _cleanup = server.cleanup();
     let options = AppOptions { instance: Some(server), ..test_options(Some(&first.dir)) };
     let mut ide = Ide::with_options(SUITE, options, None);
-    let first_root = std::fs::canonicalize(&first.dir).expect("canonical");
+    let first_root = dunce::canonicalize(&first.dir).expect("canonical");
     ide.wait_for("first project", |s| s.ws.project.as_ref().is_some_and(|p| p.root == first_root));
 
     let (status, err) = second_launch(&socket, &[&second.dir.display().to_string()]);
     assert!(status.success(), "exit {status}: {err}");
     assert!(err.contains("handed over to the running instance"), "stderr: {err}");
 
-    let second_root = std::fs::canonicalize(&second.dir).expect("canonical");
+    let second_root = dunce::canonicalize(&second.dir).expect("canonical");
     ide.wait_for("second project opened and active", |s| s.ws.project.as_ref().is_some_and(|p| p.root == second_root));
     let roots: Vec<_> = ide.state().workspaces().into_iter().filter_map(|w| w.root).collect();
     assert_eq!(roots, vec![first_root.clone(), second_root.clone()]);

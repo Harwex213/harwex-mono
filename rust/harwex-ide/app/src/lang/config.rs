@@ -640,8 +640,8 @@ pub fn merge_tables(base: &mut toml::Table, over: &toml::Table) {
 }
 
 fn expand_home(s: &str) -> PathBuf {
-    match (s.strip_prefix("~/"), std::env::var_os("HOME")) {
-        (Some(rest), Some(home)) => PathBuf::from(home).join(rest),
+    match (s.strip_prefix("~/"), crate::os::home_dir()) {
+        (Some(rest), Some(home)) => home.join(rest),
         _ => PathBuf::from(s),
     }
 }

@@ -70,7 +70,7 @@ fn context_menu_go_to_declaration_into_workspace_package() {
     ide.click("Go to Declaration");
     wait_for_file(&mut ide, "src/index.ts");
     // tsserver reports the real path behind the node_modules/@ws/util symlink.
-    let real = std::fs::canonicalize(fx.path("repo/packages/util/src/index.ts")).expect("real path");
+    let real = dunce::canonicalize(fx.path("repo/packages/util/src/index.ts")).expect("real path");
     assert_eq!(active_path(&ide), real.display().to_string());
     assert!(!ide.state().ws.tabs.active_editor().expect("editor").read_only, "workspace sources stay editable");
     assert_eq!(ide.cursor(), (0, 16));

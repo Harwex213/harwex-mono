@@ -295,7 +295,7 @@ fn result_shows_type_errors() {
     repo.write("tsconfig.json", "{\n  \"compilerOptions\": { \"strict\": true, \"module\": \"commonjs\", \"target\": \"es2020\" },\n  \"include\": [\"src\"]\n}\n");
     repo.write("package.json", "{ \"name\": \"merge\", \"private\": true }\n");
     std::fs::create_dir_all(repo.dir.join("node_modules")).expect("node_modules");
-    std::os::unix::fs::symlink(typescript().expect("TypeScript 5"), repo.dir.join("node_modules/typescript")).expect("typescript link");
+    crate::common::fixtures::symlink_dir(typescript().expect("TypeScript 5"), repo.dir.join("node_modules/typescript")).expect("typescript link");
     let mut ide = Ide::open(SUITE, &repo.dir);
     ide.wait_for("conflicts found", |s| s.ws.git_ui.conflicts.files().len() == 1 && s.is_idle());
     harwex_ide::git::conflicts::open_merge(ide.state_mut(), PathBuf::from(REL));

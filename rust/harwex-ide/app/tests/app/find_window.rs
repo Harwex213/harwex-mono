@@ -556,7 +556,7 @@ fn preview_edits_an_open_file() {
 fn old_layout_storage_loads() {
     let fx = Fixture::new(SUITE, "old_layout");
     let repo = basic_repo(fx.path("repo"));
-    let root = std::fs::canonicalize(&repo.dir).expect("canonical");
+    let root = dunce::canonicalize(&repo.dir).expect("canonical");
     let mut storage = MemoryStorage::default();
     // Saved by a version with the left Find window and the bottom Find Usages window.
     storage

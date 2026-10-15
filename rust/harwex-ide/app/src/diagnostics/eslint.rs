@@ -67,8 +67,7 @@ impl EslintSource {
         config.cwd = Some(root.clone());
         config.root = Some(root.clone());
         if let Some(dir) = node.parent() {
-            let path = std::env::var_os("PATH").map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
-            config.env.push(("PATH".into(), format!("{}:{path}", dir.display())));
+            config.env.push(("PATH".into(), crate::os::prepend_path_string(dir)));
         }
         // A config can leave out its type-aware rules in the IDE (docs/usage.md).
         config.env.push(("HARWEX_IDE".into(), "1".into()));

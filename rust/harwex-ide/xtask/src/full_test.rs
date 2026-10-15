@@ -104,15 +104,30 @@ fn local_hh_mm() -> String {
     }
 }
 
+/// Where the owner info lives: inside the lock file on unix, where `flock` is advisory. Windows
+/// locks are mandatory, so a waiter could not read a locked file; the info goes beside it.
+pub fn owner_file(lock: &Path) -> PathBuf {
+    if cfg!(windows) {
+        lock.with_extension("owner")
+    } else {
+        lock.to_path_buf()
+    }
+}
+
 /// The held lock. Dropping it empties the owner info and releases the `flock`.
 #[derive(Debug)]
 pub struct Lock {
     file: File,
+    owner: PathBuf,
 }
 
 impl Drop for Lock {
     fn drop(&mut self) {
-        let _ = self.file.set_len(0);
+        if cfg!(windows) {
+            let _ = fs::write(&self.owner, "");
+        } else {
+            let _ = self.file.set_len(0);
+        }
         let _ = self.file.unlock();
     }
 }
@@ -155,7 +170,7 @@ pub fn acquire(path: &Path, me: &Owner, wait: &Wait, out: &mut dyn FnMut(&str)) 
             Err(fs::TryLockError::WouldBlock) => {}
             Err(fs::TryLockError::Error(e)) => return Err(format!("lock {}: {e}", path.display())),
         }
-        let owner = fs::read_to_string(path).ok().and_then(|t| Owner::decode(&t));
+        let owner = fs::read_to_string(owner_file(path)).ok().and_then(|t| Owner::decode(&t));
         let who = owner.as_ref().map_or_else(|| "owner unknown".to_string(), Owner::describe);
         if !wait.wait {
             return Err(format!(
@@ -173,17 +188,26 @@ pub fn acquire(path: &Path, me: &Owner, wait: &Wait, out: &mut dyn FnMut(&str)) 
         }
         thread::sleep(wait.poll);
     }
+    let owner = owner_file(path);
     let mut old = String::new();
-    let _ = file.read_to_string(&mut old);
+    if cfg!(windows) {
+        old = fs::read_to_string(&owner).unwrap_or_default();
+    } else {
+        let _ = file.read_to_string(&mut old);
+    }
     if let Some(stale) = Owner::decode(&old) {
         out(&format!("taking over the stale lock of a full run that is gone ({})", stale.describe()));
     }
-    let write = file.set_len(0).and_then(|_| file.seek(SeekFrom::Start(0))).and_then(|_| {
-        file.write_all(me.encode().as_bytes())?;
-        file.flush()
-    });
-    write.map_err(|e| format!("write {}: {e}", path.display()))?;
-    Ok(Lock { file })
+    let write = if cfg!(windows) {
+        fs::write(&owner, me.encode())
+    } else {
+        file.set_len(0).and_then(|_| file.seek(SeekFrom::Start(0))).and_then(|_| {
+            file.write_all(me.encode().as_bytes())?;
+            file.flush()
+        })
+    };
+    write.map_err(|e| format!("write {}: {e}", owner.display()))?;
+    Ok(Lock { file, owner })
 }
 
 /// Splits our own flags (`--wait`, `--no-wait`) from the arguments for the test runner.
@@ -397,14 +421,14 @@ mod tests {
         let path = temp_lock("stale");
         fs::create_dir_all(path.parent().unwrap()).unwrap();
         // A run that was killed: its info is still there, but no process holds the flock.
-        fs::write(&path, "pid=999999\nstarted=03:00\nby=gone-agent\n").unwrap();
+        fs::write(owner_file(&path), "pid=999999\nstarted=03:00\nby=gone-agent\n").unwrap();
         let mut lines = Vec::new();
         let mut out = |line: &str| lines.push(line.to_string());
         let lock = acquire(&path, &owner("agent-b"), &fast(false), &mut out).expect("a stale lock is free");
         assert!(lines.iter().any(|l| l.contains("stale lock") && l.contains("pid 999999")), "{lines:?}");
-        assert_eq!(Owner::decode(&fs::read_to_string(&path).unwrap()), Some(owner("agent-b")));
+        assert_eq!(Owner::decode(&fs::read_to_string(owner_file(&path)).unwrap()), Some(owner("agent-b")));
         drop(lock);
-        assert_eq!(fs::read_to_string(&path).unwrap(), "", "a released lock holds no owner");
+        assert_eq!(fs::read_to_string(owner_file(&path)).unwrap(), "", "a released lock holds no owner");
     }
 
     #[test]

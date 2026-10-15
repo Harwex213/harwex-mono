@@ -420,12 +420,16 @@ fn shortcuts(s: &mut AppState, ctx: &Context) {
     }
 }
 
-/// The editor's find bar: Cmd+F, Cmd+R, Cmd+G, Shift+Cmd+G and Ctrl+Cmd+G (Select All
-/// Occurrences). They act on the active editor while it or its bar has the focus (or nothing
+/// The editor's find bar: Cmd+F, Cmd+R, Find Next, Find Previous and Select All
+/// Occurrences (`ide_editor::keys`). They act on the active editor while it or its bar has the focus (or nothing
 /// has), never on another text field. From a tool window they focus the editor first.
 fn editor_find_keys(s: &mut AppState, ctx: &Context) {
-    let ctrl_cmd = Modifiers::COMMAND | Modifiers::CTRL;
-    let cmd_shift = Modifiers::COMMAND | Modifiers::SHIFT;
+    // ⌃⌘G / ⇧⌘G / ⌘G on macOS; Ctrl+Alt+Shift+J / Shift+F3 / F3 elsewhere, where Ctrl+G and
+    // Ctrl+Cmd+G would be one key (`command` is Ctrl there).
+    use ide_editor::keys;
+    let (all_mods, all_key) = keys::select_all_occurrences();
+    let (prev_mods, prev_key) = keys::find_previous();
+    let (next_mods, next_key) = keys::find_next();
     let Some(owns) = s.ws.tabs.active_editor().map(|e| ctx.memory(|m| m.focused()).is_none() || e.view.owns_focus(ctx)) else { return };
     // From a tool window (not its text fields) these keys move to the editor and act there.
     let from_tool = !owns && focused_tool_side(&s.ws, ctx).is_some() && !ctx.memory(|m| m.focused()).is_some_and(|id| egui::text_edit::TextEditState::load(ctx, id).is_some());
@@ -435,9 +439,9 @@ fn editor_find_keys(s: &mut AppState, ctx: &Context) {
     }
     let (select_all, prev, next, replace, find) = ctx.input_mut(|i| {
         (
-            i.consume_key(ctrl_cmd, Key::G),
-            i.consume_key(cmd_shift, Key::G),
-            i.consume_key(Modifiers::COMMAND, Key::G),
+            i.consume_key(all_mods, all_key),
+            i.consume_key(prev_mods, prev_key),
+            i.consume_key(next_mods, next_key),
             i.consume_key(Modifiers::COMMAND, Key::R),
             i.consume_key(Modifiers::COMMAND, Key::F),
         )
@@ -941,12 +945,19 @@ fn tool_window_keys(s: &mut AppState, ctx: &Context) {
         }
         return;
     }
-    // Exact modifiers: consume_key ignores an extra Shift, and ⇧⌘<digit> is not ours.
+    // Exact modifiers: consume_key ignores an extra Shift, and ⇧⌘<digit> is not ours. IDEA's
+    // Windows keymap uses Alt+<digit>; Ctrl+<digit> stays free there.
     let digit = ctx.input_mut(|i| {
-        if !i.modifiers.command_only() {
+        let m = i.modifiers;
+        let (exact, mods) = if ide_editor::keys::MAC {
+            (m.command_only(), Modifiers::COMMAND)
+        } else {
+            (m.alt && !m.ctrl && !m.shift && !m.command, Modifiers::ALT)
+        };
+        if !exact {
             return None;
         }
-        [Key::Num1, Key::Num0, Key::Num9, Key::Num6].into_iter().find(|&k| i.consume_key(Modifiers::COMMAND, k))
+        [Key::Num1, Key::Num0, Key::Num9, Key::Num6].into_iter().find(|&k| i.consume_key(mods, k))
     });
     if let Some(w) = digit.and_then(ToolWindow::for_digit) {
         activate_tool_window(s, ctx, w);
@@ -1200,7 +1211,7 @@ fn empty_editor_hints(ui: &mut egui::Ui) {
     for (i, (action, keys)) in hints.iter().enumerate() {
         let y = top + i as f32 * line_h + line_h / 2.0;
         let a = painter.layout_no_wrap(action.to_string(), FontId::proportional(t.font.hint), t.text_dim);
-        let k = painter.layout_no_wrap(keys.to_string(), FontId::proportional(t.font.hint), t.link);
+        let k = painter.layout_no_wrap(ide_editor::shortcut_label(keys).into_owned(), FontId::proportional(t.font.hint), t.link);
         let w = a.size().x + if keys.is_empty() { 0.0 } else { gap + k.size().x };
         let x = rect.center().x - w / 2.0;
         painter.galley(pos2(x, y - a.size().y / 2.0), a.clone(), t.text_dim);

@@ -601,7 +601,7 @@ fn bottom_bar(state: &mut AppState, ui: &mut Ui, rect: Rect, actions: &mut Vec<A
             if ui.add_enabled(any, egui::Button::new("Open in Find Window")).clicked() {
                 actions.push(Action::OpenInFindWindow);
             }
-            ui.label(egui::RichText::new("⌘⏎").color(t.text_dim));
+            ui.label(egui::RichText::new(ide_editor::shortcut_label("⌘⏎")).color(t.text_dim));
             if f.replace_mode {
                 let can = any && !f.replacing && f.hit_count() > 0;
                 if ui.add_enabled(can, egui::Button::new("Replace All")).clicked() {

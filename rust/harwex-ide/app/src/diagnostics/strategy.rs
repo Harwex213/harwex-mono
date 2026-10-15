@@ -283,15 +283,14 @@ fn package_version(package: &Path) -> Option<String> {
 /// symlinked `node_modules/oxlint`), else `node_modules/.bin/tsgolint`.
 fn find_tsgolint(package: &Path) -> Option<PathBuf> {
     let (os, arch) = node_os_arch();
-    let platform = format!("@oxlint-tsgolint/{os}-{arch}/tsgolint");
+    let platform = format!("@oxlint-tsgolint/{os}-{arch}/{}", crate::os::exe("tsgolint"));
     let mut dirs: Vec<PathBuf> = package.parent().map(Path::to_path_buf).into_iter().collect();
-    if let Some(real) = std::fs::canonicalize(package).ok().and_then(|p| p.parent().map(Path::to_path_buf)) {
+    if let Some(real) = dunce::canonicalize(package).ok().and_then(|p| p.parent().map(Path::to_path_buf)) {
         dirs.push(real);
     }
-    dirs.iter()
-        .map(|nm| nm.join(&platform))
-        .chain(dirs.iter().map(|nm| nm.join(".bin/tsgolint")))
-        .find(|p| p.is_file())
+    // On Windows `.bin/tsgolint` is a sh shim that oxlint cannot start.
+    let shims = if cfg!(windows) { Vec::new() } else { dirs.iter().map(|nm| nm.join(".bin/tsgolint")).collect() };
+    dirs.iter().map(|nm| nm.join(&platform)).chain(shims).find(|p| p.is_file())
 }
 
 /// `process.platform` and `process.arch` of node.
@@ -405,7 +404,9 @@ mod tests {
         assert_eq!(a.oxlint_marker, Some(w.join("packages/a/oxlint.config.ts")));
         let ox = a.oxlint.unwrap();
         assert_eq!((ox.root.as_path(), ox.package.as_path(), ox.version.as_str()), (w, w.join("node_modules/oxlint").as_path(), "1.77.0"));
-        assert_eq!(ox.tsgolint, Some(w.join("node_modules/.bin/tsgolint")));
+        // Windows skips the `.bin` shim: it is a sh script there.
+        let shim = (!cfg!(windows)).then(|| w.join("node_modules/.bin/tsgolint"));
+        assert_eq!(ox.tsgolint, shim);
 
         let b = detect(&w.join("packages/b/src/y.ts"));
         assert_eq!(b.oxlint_marker, Some(w.join("packages/b/package.json")));
@@ -489,6 +490,6 @@ mod tests {
         let d = std::env::temp_dir().join(format!("harwex-strategy-{}-{}", std::process::id(), N.fetch_add(1, Ordering::SeqCst)));
         let _ = std::fs::remove_dir_all(&d);
         std::fs::create_dir_all(&d).unwrap();
-        std::fs::canonicalize(&d).unwrap()
+        dunce::canonicalize(&d).unwrap()
     }
 }

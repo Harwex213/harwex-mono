@@ -20,6 +20,7 @@ use crate::find::{FindState, MAX_MATCHES};
 use crate::find_bar::{self, BarCmd, BarEnv, BarIds, HISTORY_LEN};
 use crate::search::{FindOptions, Matcher};
 use crate::highlight::{HlKind, Span};
+use crate::keys::{self, Reach, Vertical};
 use crate::layout::{valid_folds, CaretMoves, Fold, FoldMap, LineMoves, NoWrap, RowLayout};
 use crate::occurrences::Occurrences;
 use crate::theme::EditorTheme;
@@ -136,6 +137,8 @@ pub struct EditorState {
     select_all_pending: bool,
     /// Scrollbar marks of the carets: the key they were built for and their y fractions.
     caret_marks: (u64, Vec<f32>),
+    /// Lines Ctrl+Up/Down asked to scroll by (off macOS), applied on the next layout.
+    scroll_lines: isize,
     scroll: Vec2,
     /// The scroll offset the text was drawn with last frame. The scroll area reports its offset
     /// after this frame's wheel input, so during a scroll `scroll` is already one step ahead of
@@ -396,6 +399,7 @@ impl EditorState {
             occurrence_words: false,
             select_all_pending: false,
             caret_marks: (0, Vec::new()),
+            scroll_lines: 0,
             scroll: Vec2::ZERO,
             drawn_scroll: Vec2::ZERO,
             hbar: None,
@@ -1404,7 +1408,7 @@ impl<'a> EditorView<'a> {
         resp.context_menu(|ui| {
             ui.set_min_width(220.0);
             let mut item = |ui: &mut Ui, label: &str, shortcut: &str, enabled: bool, cmd: MenuCmd| {
-                let b = Button::new(label).shortcut_text(shortcut);
+                let b = Button::new(label).shortcut_text(keys::shortcut_label(shortcut).as_ref());
                 if ui.add_enabled(enabled, b).clicked() {
                     menu_cmd = Some(cmd);
                     ui.close_menu();
@@ -1562,6 +1566,14 @@ impl<'a> EditorView<'a> {
                 new_scroll = Some(s);
             }
             doc.seal_undo_group();
+        } else if state.scroll_lines != 0 {
+            // Ctrl+Up/Down: the view moves and the caret may leave it, like in IDEA.
+            let n = std::mem::take(&mut state.scroll_lines);
+            let mut s = state.scroll;
+            s.y = (s.y + n as f32 * line_h).clamp(0.0, (content.y - view.y).max(0.0));
+            if s != state.scroll {
+                new_scroll = Some(s);
+            }
         } else if caret_moved {
             let (col, row) = moves.place(doc, state.caret_char(doc));
             let x = col as f32 * char_w + TEXT_PAD;
@@ -2740,7 +2752,8 @@ fn is_edit_key(key: Key, m: Modifiers) -> bool {
     match key {
         Key::Backspace | Key::Delete | Key::Enter | Key::Tab => true,
         Key::Z | Key::D | Key::Slash => m.command,
-        Key::Y => m.ctrl && !m.mac_cmd,
+        // Redo (⌃Y) on macOS, Delete Line (Ctrl+Y) elsewhere.
+        Key::Y => keys::is_extra_redo(key, m) || keys::is_delete_line(key, m),
         // Rename Symbol edits files.
         Key::F6 => m.shift,
         _ => false,
@@ -2782,32 +2795,29 @@ fn on_key(doc: &mut Document, state: &mut EditorState, key: Key, m: Modifiers, p
             if shift { Selection::new(s.anchor, to) } else { Selection::caret(to) }
         });
     };
+    let reach = keys::arrow_reach(m);
+    let word = keys::word_modifier(m);
     match key {
-        Key::ArrowLeft => move_heads(state, &|s: Selection| {
-            if m.command {
-                moves.home(doc, s.head)
-            } else if m.alt {
-                editing::word_left(doc, s.head)
-            } else if !s.is_empty() && !shift {
-                s.start()
-            } else {
-                s.head.saturating_sub(1)
-            }
+        Key::ArrowLeft => move_heads(state, &|s: Selection| match reach {
+            Reach::Line | Reach::Document => moves.home(doc, s.head),
+            Reach::Word => editing::word_left(doc, s.head),
+            Reach::Char if !s.is_empty() && !shift => s.start(),
+            Reach::Char => s.head.saturating_sub(1),
         }),
-        Key::ArrowRight => move_heads(state, &|s: Selection| {
-            if m.command {
-                moves.end(doc, s.head)
-            } else if m.alt {
-                editing::word_right(doc, s.head)
-            } else if !s.is_empty() && !shift {
-                s.end()
-            } else {
-                (s.head + 1).min(doc.len_chars())
-            }
+        Key::ArrowRight => move_heads(state, &|s: Selection| match reach {
+            Reach::Line | Reach::Document => moves.end(doc, s.head),
+            Reach::Word => editing::word_right(doc, s.head),
+            Reach::Char if !s.is_empty() && !shift => s.end(),
+            Reach::Char => (s.head + 1).min(doc.len_chars()),
         }),
+        Key::ArrowUp | Key::ArrowDown if keys::vertical(m) == Vertical::Scroll => {
+            // The caret stays; the view moves one line (IDEA's Scroll Up/Down off macOS).
+            state.scroll_lines += if key == Key::ArrowUp { -1 } else { 1 };
+            keep_col = true;
+        }
         Key::ArrowUp | Key::ArrowDown | Key::PageUp | Key::PageDown => {
             let up = matches!(key, Key::ArrowUp | Key::PageUp);
-            if m.command && matches!(key, Key::ArrowUp | Key::ArrowDown) {
+            if keys::vertical(m) == Vertical::DocumentEdge && matches!(key, Key::ArrowUp | Key::ArrowDown) {
                 let to = if up { 0 } else { doc.len_chars() };
                 move_heads(state, &|_| to);
             } else {
@@ -2834,16 +2844,13 @@ fn on_key(doc: &mut Document, state: &mut EditorState, key: Key, m: Modifiers, p
                 keep_col = true;
             }
         }
+        Key::Home if keys::home_end_reach(m) == Reach::Document => move_heads(state, &|_| 0),
+        Key::End if keys::home_end_reach(m) == Reach::Document => move_heads(state, &|_| doc.len_chars()),
         Key::Home => move_heads(state, &|s: Selection| moves.home(doc, s.head)),
         Key::End => move_heads(state, &|s: Selection| moves.end(doc, s.head)),
-        Key::Backspace => {
-            if m.command {
-                carets::edit_each(doc, &mut state.carets, |doc, sel, _| editing::delete_line(doc, sel));
-            } else {
-                carets::edit_each(doc, &mut state.carets, |doc, sel, _| editing::backspace(doc, sel, m.alt));
-            }
-        }
-        Key::Delete => carets::edit_each(doc, &mut state.carets, |doc, sel, _| editing::delete_forward(doc, sel, m.alt)),
+        _ if keys::is_delete_line(key, m) => carets::edit_each(doc, &mut state.carets, |doc, sel, _| editing::delete_line(doc, sel)),
+        Key::Backspace => carets::edit_each(doc, &mut state.carets, |doc, sel, _| editing::backspace(doc, sel, word)),
+        Key::Delete => carets::edit_each(doc, &mut state.carets, |doc, sel, _| editing::delete_forward(doc, sel, word)),
         Key::Enter => carets::edit_each(doc, &mut state.carets, |doc, sel, _| {
             if shift {
                 *sel = Selection::caret(editing::line_end_of(doc, sel.head));
@@ -2873,7 +2880,7 @@ fn on_key(doc: &mut Document, state: &mut EditorState, key: Key, m: Modifiers, p
                 state.carets = c;
             }
         }
-        Key::Y if m.ctrl && !m.mac_cmd => {
+        _ if keys::is_extra_redo(key, m) => {
             if let Some(mut c) = doc.redo_carets() {
                 c.clamp(doc.len_chars());
                 state.carets = c;
@@ -2881,7 +2888,7 @@ fn on_key(doc: &mut Document, state: &mut EditorState, key: Key, m: Modifiers, p
         }
         Key::D if m.command => carets::edit_each(doc, &mut state.carets, |doc, sel, _| editing::duplicate(doc, sel)),
         Key::Slash if m.command => carets::toggle_comment(doc, &mut state.carets),
-        Key::G if m.ctrl && !m.command => {
+        _ if keys::is_next_occurrence(key, m) => {
             if shift {
                 state.remove_last_occurrence();
             } else {

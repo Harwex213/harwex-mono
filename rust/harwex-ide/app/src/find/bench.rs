@@ -32,7 +32,7 @@ fn bench_mono() {
         eprintln!("skipping: HARWEX_FIND_BENCH_ROOT is not set");
         return;
     };
-    let root = root.canonicalize().unwrap();
+    let root = dunce::canonicalize(root).unwrap();
     // Leave the user's machine usable: the run takes at most 4 threads.
     THREADS_OVERRIDE.store(4, std::sync::atomic::Ordering::Relaxed);
     let no = AtomicBool::new(false);

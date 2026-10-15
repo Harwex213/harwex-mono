@@ -465,7 +465,7 @@ pub fn oxfmt_project(dir: PathBuf, on_save: bool) -> Repo {
         r.write(".harwex/ide.toml", "[format.oxfmt]\non_save = true\n");
     }
     std::fs::create_dir_all(r.dir.join("node_modules")).expect("node_modules");
-    std::os::unix::fs::symlink(oxfmt().expect("oxfmt"), r.dir.join("node_modules/oxfmt")).expect("oxfmt link");
+    symlink_dir(oxfmt().expect("oxfmt"), r.dir.join("node_modules/oxfmt")).expect("oxfmt link");
     r.commit_all("Formatter project");
     r
 }
@@ -522,7 +522,7 @@ pub fn link_eslint(root: &Path) {
     let modules = eslint_modules().expect("ESLint");
     std::fs::create_dir_all(root.join("node_modules/@eslint")).expect("node_modules");
     for pkg in ["eslint", "@eslint/js", "typescript-eslint", "typescript"] {
-        std::os::unix::fs::symlink(modules.join(pkg), root.join("node_modules").join(pkg)).expect("eslint link");
+        symlink_dir(modules.join(pkg), root.join("node_modules").join(pkg)).expect("eslint link");
     }
 }
 
@@ -571,10 +571,10 @@ pub fn problems_project(dir: PathBuf, native: bool, with_oxlint: bool) -> Repo {
     r.write("src/app.ts", PROBLEMS_TS);
     std::fs::create_dir_all(r.dir.join("node_modules")).expect("node_modules");
     let ts = if native { typescript7().expect("TypeScript 7") } else { typescript().expect("TypeScript 5") };
-    std::os::unix::fs::symlink(ts, r.dir.join("node_modules/typescript")).expect("typescript link");
+    symlink_dir(ts, r.dir.join("node_modules/typescript")).expect("typescript link");
     if with_oxlint {
         r.write(".oxlintrc.json", "{\n  \"rules\": { \"no-debugger\": \"error\", \"eqeqeq\": \"warn\", \"typescript/no-floating-promises\": \"error\" }\n}\n");
-        std::os::unix::fs::symlink(oxlint().expect("oxlint"), r.dir.join("node_modules/oxlint")).expect("oxlint link");
+        symlink_dir(oxlint().expect("oxlint"), r.dir.join("node_modules/oxlint")).expect("oxlint link");
     }
     r.commit_all("Problems project");
     r
@@ -596,8 +596,8 @@ pub fn ts_project(dir: PathBuf) -> Repo {
     r.write("node_modules/fake-lib/index.d.ts", FAKE_DTS);
     r.write("node_modules/fake-lib/index.js", FAKE_JS);
     std::fs::create_dir_all(r.dir.join("node_modules/@ws")).expect("scope dir");
-    std::os::unix::fs::symlink("../../packages/util", r.dir.join("node_modules/@ws/util")).expect("workspace link");
-    std::os::unix::fs::symlink(typescript().expect("TypeScript 5"), r.dir.join("node_modules/typescript")).expect("typescript link");
+    symlink_dir("../../packages/util", r.dir.join("node_modules/@ws/util")).expect("workspace link");
+    symlink_dir(typescript().expect("TypeScript 5"), r.dir.join("node_modules/typescript")).expect("typescript link");
     r.commit_all("TS project");
     r
 }
@@ -889,4 +889,12 @@ pub fn unity_project(dir: &Path, with_solution: bool) -> Repo {
     }
     r.commit_all("Unity project");
     r
+}
+
+/// A directory symlink (on Windows it needs Developer Mode or an elevated shell).
+pub fn symlink_dir(target: impl AsRef<Path>, link: impl AsRef<Path>) -> std::io::Result<()> {
+    #[cfg(unix)]
+    return std::os::unix::fs::symlink(target, link);
+    #[cfg(windows)]
+    return std::os::windows::fs::symlink_dir(target, link);
 }

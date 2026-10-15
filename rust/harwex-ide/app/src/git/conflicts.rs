@@ -599,7 +599,7 @@ pub fn open_merge(state: &mut AppState, path: PathBuf) {
         move || {
             let sides = repo.conflict_sides(&path)?;
             let abs = repo.workdir().join(&sides.path);
-            let abs = std::fs::canonicalize(&abs).unwrap_or(abs);
+            let abs = dunce::canonicalize(&abs).unwrap_or(abs);
             let bytes = std::fs::read(&abs).unwrap_or_default();
             let doc = ide_editor::Document::open(&abs).ok();
             Ok((sides, abs, bytes, doc))

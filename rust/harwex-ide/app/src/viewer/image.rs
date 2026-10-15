@@ -171,7 +171,7 @@ pub fn show_pic(ui: &mut Ui, rect: Rect, id: Id, label: &str, pic: &Ready, view:
         });
     }
     resp.context_menu(|ui| {
-        if ui.add(egui::Button::new("Copy Image").shortcut_text("⌘C")).clicked() {
+        if ui.add(egui::Button::new("Copy Image").shortcut_text(ide_editor::shortcut_label("⌘C").as_ref())).clicked() {
             copy = true;
             ui.close_menu();
         }

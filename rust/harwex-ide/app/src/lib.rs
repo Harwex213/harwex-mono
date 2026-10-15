@@ -24,6 +24,7 @@ pub mod layout;
 pub mod memory;
 pub mod nav;
 pub mod notifications;
+pub mod os;
 pub mod persist;
 pub mod projects_popup;
 pub mod rename_symbol;

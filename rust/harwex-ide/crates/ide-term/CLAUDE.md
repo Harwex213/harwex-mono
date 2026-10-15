@@ -17,8 +17,8 @@ Integrated terminals: a PTY (`portable-pty`) feeds an `alacritty_terminal` emula
 
 ## Contract
 
-- `Terminal::spawn(cwd, ctx)` runs `$SHELL -l` (fallback `/bin/zsh`) with `TERM=xterm-256color`, `COLORTERM=truecolor` and `TERM_PROGRAM=harwex-ide`. `SpawnOptions` runs any command (the tests use `zsh -f`).
-- `kill()` sends SIGHUP and is idempotent. Dropping a `Terminal` kills its shell and reaps it on a thread, so a closed tab leaves no zombie (portable-pty's kill falls back to SIGKILL after 200 ms and never waits).
+- `Terminal::spawn(cwd, ctx)` runs `$SHELL -l` (fallback `/bin/zsh`; on Windows `pwsh.exe -NoLogo`, else `powershell.exe`, through ConPTY) with `TERM=xterm-256color`, `COLORTERM=truecolor` and `TERM_PROGRAM=harwex-ide`. `SpawnOptions` runs any command (the tests use `zsh -f`).
+- `kill()` sends SIGHUP (Windows: terminates the shell) and is idempotent. Dropping a `Terminal` kills its shell and reaps it on a thread, so a closed tab leaves no zombie (portable-pty's kill falls back to SIGKILL after 200 ms and never waits).
 - `open_path` line and column are 1-based, as printed. `ide-editor` and the language crates are 0-based, so the app subtracts 1.
 - A path is a link on plain hover. A URL is a link only while Cmd is held (`modifiers.command`). An OSC 8 hyperlink (`cell.hyperlink()`) wins over URL text, and a URL wins over a path at the same cell. The exception is a `file://` URL whose path exists: it stays a path link and opens in the editor.
 - `open_url` carries only `links::is_openable_url` schemes (http, https, file, mailto). The app checks again before it opens the URL.
@@ -48,7 +48,7 @@ Unit tests spawn real PTYs with short scripts. App behaviour (Alt+F12, focus, Es
 - egui-winit drops control characters from `Event::Text`, so Enter of any kind reaches the widget only as `Event::Key`. `consume_key(Modifiers::NONE, Enter)` elsewhere in the app also matches Shift+Enter (`matches_logically` ignores Shift).
 - zsh's vi keymap (picked when `$EDITOR`/`$VISUAL` contains `vi`) reads `ESC CR` as Escape plus accept-line. Tests that type Shift+Enter run `bindkey -e` first.
 - URL text ends at whitespace, quotes, `<>`, box drawing and `…`. Trailing `.,;:!?'"` and an unbalanced `)]}` are cut off. URLs are searched on the logical line (soft-wrapped rows joined), so a URL across a wrap is one link. A program that wraps with its own newlines breaks the URL.
-- Relative link paths resolve against the foreground process's cwd first (`proc_pidinfo`), then against the spawn directory.
+- Relative link paths resolve against the foreground process's cwd first (`proc_pidinfo`; unknown on Windows), then against the spawn directory.
 - `blocks.rs` draws Block Elements (U+2580–U+259F), sextants (U+1FB00–U+1FB3B), the Claude Code spinner stars `✢ ✳ ✶ ✻ ✽` and `⎿`. The font is not used for them. JetBrains Mono's block glyphs overshoot the cell by up to 2 px and smear the logo. No bundled font has the sextants, `✢ ✻ ✽` or `⎿`. There is deliberately no screenshot test of a real program's output (the Claude Code banner): such snapshots race the program and were flaky; `blocks.rs` unit tests cover the geometry.
 - Drawn rectangles and background runs snap to the physical pixel grid. Neighbour cells then share one edge pixel, so blocks join without seams. An unsnapped rectangle gets an anti-aliased edge that shows as a line between rows.
 - Claude Code draws the logo's eyes as the black background (`rgb(0,0,0)`) that a quadrant glyph leaves uncovered. A glyph that bleeds out of its cell hides the eyes.

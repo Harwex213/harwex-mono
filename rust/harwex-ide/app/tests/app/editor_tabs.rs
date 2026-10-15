@@ -40,7 +40,7 @@ fn tab_rects(ide: &Ide) -> Vec<(String, Rect)> {
 
 /// Makes the tab of file `i` modified, without a save.
 fn make_dirty(ide: &mut Ide, i: usize) {
-    let path = std::fs::canonicalize(ide.root().join(file_rel(i))).expect("file exists");
+    let path = dunce::canonicalize(ide.root().join(file_rel(i))).expect("file exists");
     let tabs = &mut ide.state_mut().ws.tabs;
     let id = tabs.editor_by_path(&path).expect("tab is open");
     tabs.editor_mut(id).expect("editor tab").doc.replace(Position::new(0, 0), Position::new(0, 0), "edit ");

@@ -23,7 +23,11 @@ const SUITE: &str = "cancel";
 static FAKE_GIT: Once = Once::new();
 
 fn make_executable(path: &Path) {
+    #[cfg(not(unix))]
+    let _ = path;
+    #[cfg(unix)]
     use std::os::unix::fs::PermissionsExt;
+    #[cfg(unix)]
     std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755)).expect("chmod");
 }
 
