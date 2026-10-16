@@ -267,7 +267,7 @@ impl Repo {
         // File names with glob characters must match literally. Per-path magic instead of
         // GIT_LITERAL_PATHSPECS, because that variable breaks `git stash -u`'s cleanup.
         let rel: Vec<String> = paths.iter().map(|p| literal_pathspec(&self.rel(p))).collect();
-        for chunk in rel.chunks(500) {
+        for chunk in arg_chunks(&rel, 500, String::len) {
             let mut all: Vec<&str> = args.to_vec();
             all.push("--");
             all.extend(chunk.iter().map(String::as_str));
@@ -316,4 +316,53 @@ fn terminate(pid: u32, rx: &mpsc::Receiver<std::io::Result<std::process::Output>
 
 pub(crate) fn literal_pathspec(rel: &Path) -> String {
     format!(":(literal){}", crate::git_path(rel))
+}
+
+/// Total argument length one git run may carry. Windows caps the whole command line at
+/// 32767 UTF-16 units (spawn fails with os error 206), and Git for Windows' `cmd\git.exe`
+/// starts the real git with a longer line than it got. macOS allows about 1 MB.
+const ARGS_BUDGET: usize = if cfg!(windows) { 24_000 } else { 256_000 };
+
+/// Splits `items` into runs of at most `max` items whose arguments fit `ARGS_BUDGET`.
+/// `len` is the total byte length of one item's arguments. An item longer than the budget
+/// still gets a run of its own: the OS then reports the error.
+pub(crate) fn arg_chunks<T>(items: &[T], max: usize, len: impl Fn(&T) -> usize) -> Vec<&[T]> {
+    let mut out = Vec::new();
+    let (mut start, mut used) = (0, 0);
+    for (i, item) in items.iter().enumerate() {
+        // A space before the argument and quotes around it, in the worst case.
+        let cost = len(item) + 3;
+        if i > start && (i - start >= max || used + cost > ARGS_BUDGET) {
+            out.push(&items[start..i]);
+            (start, used) = (i, 0);
+        }
+        used += cost;
+    }
+    if start < items.len() {
+        out.push(&items[start..]);
+    }
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn arg_chunks_split_by_count_and_length() {
+        let short: Vec<String> = (0..1200).map(|i| format!("f{i}")).collect();
+        let sizes: Vec<usize> = arg_chunks(&short, 500, String::len).iter().map(|c| c.len()).collect();
+        assert_eq!(sizes, [500, 500, 200]);
+
+        // 500 paths of 200 chars are 100 kB: far over the Windows limit.
+        let long: Vec<String> = (0..500).map(|i| format!("{i:0>200}")).collect();
+        let chunks = arg_chunks(&long, 500, String::len);
+        assert!(chunks.len() > 1);
+        for c in &chunks {
+            assert!(c.iter().map(|s| s.len() + 3).sum::<usize>() <= ARGS_BUDGET);
+        }
+        assert_eq!(chunks.iter().map(|c| c.len()).sum::<usize>(), 500);
+
+        assert!(arg_chunks::<String>(&[], 500, String::len).is_empty());
+    }
 }

@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 
 use git2::Sort;
 
-use crate::cli::{literal_pathspec, Run};
+use crate::cli::{arg_chunks, literal_pathspec, Run};
 use crate::diff::{build, tree_blob, FileDiff};
 use crate::log::{changed_files, commit_info, entry_id, ref_map, rename_source, ChangedFile};
 use crate::{ChangeKind, CommandOutcome, CommitInfo, Error, Oid, Repo, Result};
@@ -256,9 +256,10 @@ impl Repo {
                 None => empty_tree_id(),
             }
         };
-        // (base, tip) -> paths. A contiguous range is one group; otherwise each file spans
-        // the selected commits that change it.
-        let mut groups: Vec<((Oid, Oid), Vec<PathBuf>)> = Vec::new();
+        // (base, tip) -> one pathspec list per file (a rename's both sides). A contiguous
+        // range is one group; otherwise each file spans the selected commits that change it.
+        type FileSpecs = Vec<String>;
+        let mut groups: Vec<((Oid, Oid), Vec<FileSpecs>)> = Vec::new();
         for f in files {
             let names: Vec<PathBuf> = std::iter::once(f.path.clone()).chain(f.old_path.clone()).collect();
             let key = if sel.contiguous {
@@ -274,39 +275,44 @@ impl Repo {
                 let (Some(a), Some(b)) = (touching.first(), touching.last()) else { continue };
                 (base_of(a)?, b.id())
             };
+            let specs: Vec<String> = names.iter().map(|p| literal_pathspec(p)).collect();
             match groups.iter_mut().find(|(k, _)| *k == key) {
-                Some((_, list)) => list.extend(names),
-                None => groups.push((key, names)),
+                Some((_, list)) => list.push(specs),
+                None => groups.push((key, vec![specs])),
             }
         }
         let mut out = Vec::new();
-        for ((base, tip), names) in groups {
+        for ((base, tip), files) in groups {
             let (base, tip) = (base.to_string(), tip.to_string());
-            let specs: Vec<String> = names.iter().map(|p| literal_pathspec(p)).collect();
-            // Renames are detected only inside one run, so the pathspec is not chunked here:
-            // a selection rarely has thousands of files, and a long command line still works
-            // up to the OS limit of about 1 MB on macOS.
-            let mut args = vec![
-                "diff",
-                "--binary",
-                "--full-index",
-                "-M",
-                "--no-color",
-                "--no-ext-diff",
-                "--no-textconv",
-                "--no-relative",
-                "--src-prefix=a/",
-                "--dst-prefix=b/",
-                &base,
-                &tip,
-                "--",
-            ];
-            args.extend(specs.iter().map(String::as_str));
-            let (outcome, bytes) = self.git_run(&args, Run::default())?;
-            outcome.into_result()?;
-            out.extend_from_slice(&bytes);
+            // Renames are detected only inside one run, so a chunk never splits a file's
+            // both sides; the pairs are known from `changes_of` already.
+            for chunk in arg_chunks(&files, 500, |f| f.iter().map(|s| s.len() + 3).sum()) {
+                out.extend(self.patch_run(&base, &tip, chunk)?);
+            }
         }
         Ok(out)
+    }
+
+    fn patch_run(&self, base: &str, tip: &str, files: &[Vec<String>]) -> Result<Vec<u8>> {
+        let mut args = vec![
+            "diff",
+            "--binary",
+            "--full-index",
+            "-M",
+            "--no-color",
+            "--no-ext-diff",
+            "--no-textconv",
+            "--no-relative",
+            "--src-prefix=a/",
+            "--dst-prefix=b/",
+            base,
+            tip,
+            "--",
+        ];
+        args.extend(files.iter().flatten().map(String::as_str));
+        let (outcome, bytes) = self.git_run(&args, Run::default())?;
+        outcome.into_result()?;
+        Ok(bytes)
     }
 
     /// "Cherry-Pick Selected Changes": applies only `paths` of `oid` to the index and the

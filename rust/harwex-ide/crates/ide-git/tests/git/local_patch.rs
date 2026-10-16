@@ -13,7 +13,8 @@ fn file(path: &str, change: LocalChange) -> LocalPatchFile {
 /// Clones HEAD of `t` next to it, checks and applies `patch` there, and returns the clone.
 fn apply_on_head(t: &TestRepo, patch: &LocalPatch) -> tempfile::TempDir {
     let clone = tempfile::tempdir().unwrap();
-    git_in(clone.path(), &["clone", "-q", t.path().to_str().unwrap(), "."]);
+    // Git for Windows' system `core.autocrlf=true` would check the clone out with `\r\n`.
+    git_in(clone.path(), &["clone", "-q", "-c", "core.autocrlf=false", t.path().to_str().unwrap(), "."]);
     // Outside the clone, so the patch file is no untracked file of it.
     let file = tempfile::NamedTempFile::new().unwrap().into_temp_path();
     std::fs::write(&file, &patch.bytes).unwrap();
@@ -144,7 +145,8 @@ fn renames_deletes_and_mode_changes_are_kept() {
     assert!(s.contains("deleted file mode 100644"), "{s}");
     #[cfg(unix)]
     assert!(s.contains("old mode 100644\nnew mode 100755"), "{s}");
-    assert_eq!(patch.files, 3, "{s}");
+    // Windows has no exec bit to change, so `run.sh` has no change there.
+    assert_eq!(patch.files, if cfg!(unix) { 3 } else { 2 }, "{s}");
     let clone = apply_on_head(&t, &patch);
     assert!(!clone.path().join("old.txt").exists());
     assert!(!clone.path().join("gone.txt").exists());

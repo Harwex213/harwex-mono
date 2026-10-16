@@ -198,7 +198,7 @@ impl Repo {
         specs.sort();
         specs.dedup();
         let mut out = Vec::new();
-        for chunk in specs.chunks(500) {
+        for chunk in crate::cli::arg_chunks(&specs, 500, String::len) {
             let mut args: Vec<&str> = STATUS_ARGS.to_vec();
             args.push("--");
             args.extend(chunk.iter().map(String::as_str));

@@ -2,7 +2,7 @@
 
 use std::path::PathBuf;
 
-use crate::cli::{literal_pathspec, Run};
+use crate::cli::{arg_chunks, literal_pathspec, Run};
 use crate::{Repo, Result};
 
 /// Which part of a file's local change goes into the patch.
@@ -38,6 +38,12 @@ pub struct LocalPatch {
 /// Files per git run: a selection of thousands of files stays under the OS argument limit.
 const CHUNK: usize = 500;
 
+/// An upper bound of a file's pathspec length: the given path may be absolute while the spec
+/// is relative; plus `:(literal)`, a space and quotes per side of a rename.
+fn spec_len(f: &&LocalPatchFile) -> usize {
+    std::iter::once(&f.path).chain(&f.old_path).map(|p| p.as_os_str().len() + 13).sum()
+}
+
 /// Options every patch run forces: user config (textconv, an external diff, `diff.noprefix`,
 /// `diff.relative`) would make the patch unappliable.
 const PATCH_ARGS: &[&str] = &["diff", "--binary", "--full-index", "--no-color", "--no-ext-diff", "--no-textconv", "--src-prefix=a/", "--dst-prefix=b/"];
@@ -59,7 +65,7 @@ impl Repo {
         let mut out = Vec::new();
         for (change, base) in [(LocalChange::Staged, Some("--cached")), (LocalChange::Unstaged, None), (LocalChange::Both, Some(head.as_str()))] {
             let class: Vec<&LocalPatchFile> = files.iter().filter(|f| f.change == change).collect();
-            for chunk in class.chunks(CHUNK) {
+            for chunk in arg_chunks(&class, CHUNK, spec_len) {
                 let specs: Vec<String> = chunk
                     .iter()
                     .flat_map(|f| std::iter::once(&f.path).chain(&f.old_path))
