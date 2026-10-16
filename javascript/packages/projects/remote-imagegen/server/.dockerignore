@@ -1,0 +1,5 @@
+# Only `dist/` and `package.json` belong in the build context. The Dockerfile
+# makes the runtime package.json out of the second one.
+*
+!dist/
+!package.json

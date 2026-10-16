@@ -1,0 +1,47 @@
+# Copied to the droplet by deploy.sh, into $REMOTE_DIR.
+#
+# The image is put into the droplet's local store by `docker load`, so there is
+# no registry to fetch it from. `pull_policy: never` stops compose from trying
+# Docker Hub and failing.
+#
+# To roll back, pick an older tag from `docker images hw-imagegen`:
+#   IMAGEGEN_TAG=1a6a96e docker compose up -d
+services:
+  # The service name is also the container's DNS name on the `hw` network.
+  # nginx in hw-sites proxies imagegen.harwexworld.com to http://hw-imagegen:3000.
+  hw-imagegen:
+    image: hw-imagegen:${IMAGEGEN_TAG:-latest}
+    pull_policy: never
+    restart: unless-stopped
+    # Created by hand once, next to this file. It holds REMOTE_IMAGEGEN_TOKEN
+    # and, optionally, CODEX_MODEL. It stays out of the repo and the image.
+    env_file: .env
+    volumes:
+      # The ChatGPT login that `codex login` saves. It must survive redeploys,
+      # or every deploy would need a new login.
+      - codex-home:/codex-home
+    # No published ports. Only nginx reaches the server, over the `hw` network.
+    networks:
+      - hw
+    # The slim image has no curl, so node itself makes the request.
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://localhost:3000/health').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+      start_interval: 2s
+
+volumes:
+  codex-home:
+
+networks:
+  # Created once, outside any compose project, by `docker network create hw`.
+  # deploy.sh does that if it is missing. compose will not create an external
+  # network and fails to start without it.
+  hw:
+    external: true

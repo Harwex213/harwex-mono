@@ -1,0 +1,32 @@
+{
+  "name": "remote-imagegen-mcp",
+  "description": "Local stdio MCP proxy to a remote image generation MCP server",
+  "version": "0.1.0",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "remote-imagegen-mcp": "dist/main.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json && chmod +x dist/main.js",
+    "dev": "tsx src/main.ts",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "yarn build"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.30.0",
+    "zod": "4.5.4"
+  },
+  "devDependencies": {
+    "@hw/typescript-config": "workspace:*",
+    "@types/node": "24.1.0",
+    "tsx": "4.19.4",
+    "typescript": "5.9.3"
+  }
+}

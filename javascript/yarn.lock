@@ -3718,6 +3718,20 @@ __metadata:
   languageName: unknown
   linkType: soft
 
+"@hw/remote-imagegen-server@workspace:packages/projects/remote-imagegen/server":
+  version: 0.0.0-use.local
+  resolution: "@hw/remote-imagegen-server@workspace:packages/projects/remote-imagegen/server"
+  dependencies:
+    "@hw/typescript-config": "workspace:*"
+    "@modelcontextprotocol/sdk": "npm:1.30.0"
+    "@openai/codex-sdk": "npm:0.153.4"
+    "@types/node": "npm:24.1.0"
+    tsx: "npm:4.19.4"
+    typescript: "npm:5.9.3"
+    zod: "npm:4.5.4"
+  languageName: unknown
+  linkType: soft
+
 "@hw/rspack-first-project@workspace:packages/learning/rspack/rspack-first-project":
   version: 0.0.0-use.local
   resolution: "@hw/rspack-first-project@workspace:packages/learning/rspack/rspack-first-project"
@@ -16017,6 +16031,21 @@ __metadata:
   checksum: 10/32b2f6093ba08e713183629b37e633e0999b6981560eec41f04fe957f76fc6f56dcc14c87c6b45419863be844c6f1130eb2dc055085fc0adc0775b1df7340348
   languageName: node
   linkType: hard
+
+"remote-imagegen-mcp@workspace:packages/projects/remote-imagegen/mcp":
+  version: 0.0.0-use.local
+  resolution: "remote-imagegen-mcp@workspace:packages/projects/remote-imagegen/mcp"
+  dependencies:
+    "@hw/typescript-config": "workspace:*"
+    "@modelcontextprotocol/sdk": "npm:1.30.0"
+    "@types/node": "npm:24.1.0"
+    tsx: "npm:4.19.4"
+    typescript: "npm:5.9.3"
+    zod: "npm:4.5.4"
+  bin:
+    remote-imagegen-mcp: ./dist/main.js
+  languageName: unknown
+  linkType: soft
 
 "renderkid@npm:^3.0.0":
   version: 3.0.0

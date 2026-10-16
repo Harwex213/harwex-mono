@@ -21,6 +21,7 @@
 #   curl -fsSL https://get.docker.com | sh
 #   usermod -aG docker <the ssh user>          # so docker runs without sudo
 #   mkdir -p /etc/ssl/origin                   # then place cert.pem and key.pem
+#   docker network create hw                   # done by this script if missing
 #
 # Migrating from the per-site setup: the old Faenwald container still holds
 # ports 80 and 443. Stop it once before the first deploy:
@@ -43,10 +44,13 @@ fi
 
 # Checked before the 22 MB transfer rather than after: a missing certificate
 # leaves nginx unable to start, and the container restart-loops instead.
+# The shared `hw` network is created here when missing. compose.yaml declares
+# it external, so compose up fails without it.
 echo "==> checking $HOST"
 ssh "$HOST" "docker version > /dev/null \
   && test -r /etc/ssl/origin/cert.pem \
-  && test -r /etc/ssl/origin/key.pem" \
+  && test -r /etc/ssl/origin/key.pem \
+  && { docker network inspect hw > /dev/null 2>&1 || docker network create hw > /dev/null; }" \
   || {
     echo "droplet not ready: needs docker, plus cert.pem and key.pem in /etc/ssl/origin" >&2
     exit 1

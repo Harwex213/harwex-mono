@@ -18,3 +18,16 @@ services:
       # Cloudflare Origin CA certificate, placed on the droplet by hand once.
       # nginx will not start without both files.
       - /etc/ssl/origin:/etc/ssl/origin:ro
+    # `default` keeps the network compose would create anyway. `hw` is shared
+    # with other compose projects on the droplet, such as hw-imagegen, so nginx
+    # can reach their containers by name.
+    networks:
+      - default
+      - hw
+
+networks:
+  # Created once, outside any compose project, by `docker network create hw`.
+  # deploy.sh does that if it is missing. compose will not create an external
+  # network and fails to start without it.
+  hw:
+    external: true
