@@ -57,6 +57,13 @@ yarn workspace @hw/faenwald-parser parse:fixture  # offline smoke check against 
 yarn workspace @hw/faenwald-parser typecheck      # tsc --noEmit (covers src/ and scripts/)
 ```
 
+VK routes cookie-less requests to an anti-bot page (`302 → /challenge.html`).
+`VkClient` detects that redirect and throws a `FaenwaldFetchError`. Live fetches
+need the cookie of a vk.com browser session. `:vk-parse` sends every header from
+`headers.json` in the package root: a JSON object copied from a browser request,
+with a `cookie` key. The file holds a live session, so it is git-ignored. The
+client does not try to solve the challenge itself.
+
 The package is consumed as source (`exports: ./src/index.ts`); there is no build step.
 The root `:vk-parse` script forwards the caller's directory as `VK_PARSE_CWD` so a
 relative `-o` resolves against where the command was run, not the package dir.

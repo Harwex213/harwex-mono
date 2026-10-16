@@ -1,8 +1,15 @@
+import { readFile } from "node:fs/promises";
 import { extname, isAbsolute, resolve } from "node:path";
 import { parseArgs } from "node:util";
 
 import { VkClient } from "../src/index.js";
-import { DEFAULT_OUT_DIR, articleFileStem, renderArticle, writeArticle } from "./shared.js";
+import {
+  DEFAULT_OUT_DIR,
+  PACKAGE_ROOT,
+  articleFileStem,
+  renderArticle,
+  writeArticle,
+} from "./shared.js";
 
 // One-command VK article parser: fetch -> parse -> render -> write <slug>.md.
 // Invoked from anywhere via the root global script `yarn :vk-parse`.
@@ -10,7 +17,9 @@ import { DEFAULT_OUT_DIR, articleFileStem, renderArticle, writeArticle } from ".
 const USAGE = `Usage: yarn :vk-parse <vk-article-url...> [-o <dir-or-file>]
 
 Fetches VK article pages (vk.com/@owner-slug), parses them and writes
-rendered Markdown.
+rendered Markdown. Requests carry the headers from faenwald-parser/headers.json
+(a JSON object copied from a vk.com browser request; it must hold "cookie").
+Without that session VK answers with an anti-bot challenge page.
 
 Options:
   -o, --output   Target directory (default: faenwald-parser/out/).
@@ -42,7 +51,16 @@ if (outputIsFile && urls.length > 1) {
 const resolveOut = (path: string): string => (isAbsolute(path) ? path : resolve(userCwd, path));
 const outDir = output && !outputIsFile ? resolveOut(output) : DEFAULT_OUT_DIR;
 
-const client = new VkClient({ minRequestIntervalMs: 1000 });
+const HEADERS_PATH = resolve(PACKAGE_ROOT, "headers.json");
+let headers: Record<string, string>;
+try {
+  headers = JSON.parse(await readFile(HEADERS_PATH, "utf8")) as Record<string, string>;
+} catch (error) {
+  console.error(`error: cannot read ${HEADERS_PATH}: ${(error as Error).message}`);
+  process.exit(1);
+}
+
+const client = new VkClient({ minRequestIntervalMs: 1000, headers });
 let failures = 0;
 
 for (const url of urls) {
