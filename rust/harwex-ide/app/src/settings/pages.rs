@@ -51,7 +51,7 @@ pub fn system(ui: &mut Ui, g: &mut GlobalSettings) {
         header(ui, Icon::Document, "Files", "Deleting, autosave and backups", |ui| {
             kit::badge(ui, "Files", Scope::Global);
         });
-        kit::switch_row(ui, "Move files to the Trash instead of deleting permanently", None, &mut f.trash);
+        kit::switch_row(ui, &format!("Move files to the {} instead of deleting permanently", crate::os::TRASH), None, &mut f.trash);
         let unit = "seconds";
         let extra = 52.0 + 6.0 + kit::unit_width(ui, unit);
         let idle = &mut f.idle_secs;
@@ -100,7 +100,8 @@ pub fn editor(ui: &mut Ui, d: &mut SettingsDialog) {
     card(ui, |ui| {
         let scope = shared_header(ui, d, Shared::Formatting, Icon::Format, "Formats JS, TS, JSON, CSS and Markdown files");
         let v = values(d, scope);
-        kit::switch_row(ui, "Run oxfmt on save", Some("On ⌘S and Save All (⌥⌘S). ⌥⌘L formats the active file at any time."), &mut v.on_save);
+        let keys = ide_editor::shortcut_label("On ⌘S and Save All (⌥⌘S). ⌥⌘L formats the active file at any time.");
+        kit::switch_row(ui, "Run oxfmt on save", Some(&*keys), &mut v.on_save);
         let field_w = (ui.available_width() * 0.55).min(320.0);
         let ext = &mut v.extensions;
         kit::control_row(ui, "File types", Some("Extensions, comma-separated"), field_w, |ui| {

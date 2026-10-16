@@ -77,6 +77,35 @@ pub const ACTIONS: &[(&str, &str, &str)] = &[
 
 type Row = (&'static str, &'static str, &'static str);
 
+/// (group, action, keys) off macOS, where IDEA's Windows keymap differs in more than the
+/// modifier names (`ide_editor::keys`). Every other row is its macOS text with the glyphs
+/// named (`shortcut_label`).
+const OTHER_KEYS: &[Row] = &[
+    ("Search", "Find Next", "F3"),
+    ("Search", "Find Previous", "⇧F3"),
+    ("Navigation", "Line Start / End", "Home / End"),
+    ("Navigation", "File Start / End", "⌃Home / ⌃End"),
+    ("Editing", "Delete Line", "⌃Y"),
+    ("Editing", "Select All Occurrences", "⌃⌥⇧J"),
+    ("Editing", "Add Caret at Next Occurrence", "⌥J"),
+    ("Tool Windows", "Project", "⌥1"),
+    ("Tool Windows", "Problems", "⌥6"),
+    ("Tool Windows", "Git", "⌥9"),
+    ("Tool Windows", "Commit", "⌥0"),
+    ("Project Tree", "Delete", "Delete"),
+    ("Terminal", "Clear", "⌃⇧K"),
+];
+
+/// The keys of `row` as this platform shows them.
+pub fn keys_of(row: &Row) -> std::borrow::Cow<'static, str> {
+    keys_for(row, ide_editor::keys::MAC)
+}
+
+fn keys_for(row: &Row, mac: bool) -> std::borrow::Cow<'static, str> {
+    let raw = if mac { row.2 } else { OTHER_KEYS.iter().find(|o| o.0 == row.0 && o.1 == row.1).map_or(row.2, |o| o.2) };
+    ide_editor::keys::shortcut_label_for(raw, mac)
+}
+
 /// The page's own state, per dialog.
 #[derive(Default)]
 pub struct KeymapView {
@@ -101,13 +130,14 @@ impl KeymapView {
     }
 }
 
-/// The rows whose group, action or keys contain every word of `filter`, any case.
+/// The rows whose group, action or keys contain every word of `filter`, any case. The keys
+/// match in both spellings (`⌘K` and `Ctrl+K`), so a filter copied from IDEA's docs works.
 pub fn filter(filter: &str) -> Vec<&'static Row> {
     let words: Vec<String> = filter.split_whitespace().map(str::to_lowercase).collect();
     ACTIONS
         .iter()
-        .filter(|(group, action, keys)| {
-            let hay = format!("{group} {action} {keys}").to_lowercase();
+        .filter(|row @ (group, action, keys)| {
+            let hay = format!("{group} {action} {keys} {}", keys_of(row)).to_lowercase();
             words.iter().all(|w| hay.contains(w.as_str()))
         })
         .collect()
@@ -127,8 +157,11 @@ pub enum KeyPart {
 }
 
 const MODIFIERS: &str = "⌃⌥⇧⌘";
+/// The modifier names `shortcut_label` writes off macOS.
+const MODIFIER_NAMES: &[&str] = &["Ctrl+", "Alt+", "Shift+"];
 
-/// Splits a keys text into caps and words.
+/// Splits a keys text into caps and words. Takes macOS glyphs (`⇧⌘F`) and the names of
+/// other platforms (`Ctrl+Shift+F`, `Double Shift`).
 pub fn key_parts(keys: &str) -> Vec<KeyPart> {
     let mut out = Vec::new();
     for (i, alt) in keys.split(" or ").enumerate() {
@@ -140,9 +173,20 @@ pub fn key_parts(keys: &str) -> Vec<KeyPart> {
                 out.push(KeyPart::Text("/".into()));
             }
             let mut rest = part;
-            while let Some(c) = rest.chars().next().filter(|c| MODIFIERS.contains(*c)) {
-                out.push(KeyPart::Cap(c.to_string()));
-                rest = &rest[c.len_utf8()..];
+            if let Some(key) = rest.strip_prefix("Double ") {
+                out.push(KeyPart::Text("Double".into()));
+                rest = key;
+            }
+            loop {
+                if let Some(c) = rest.chars().next().filter(|c| MODIFIERS.contains(*c)) {
+                    out.push(KeyPart::Cap(c.to_string()));
+                    rest = &rest[c.len_utf8()..];
+                } else if let Some(name) = MODIFIER_NAMES.iter().find(|n| rest.starts_with(**n) && rest.len() > n.len()) {
+                    out.push(KeyPart::Cap(name.trim_end_matches('+').to_string()));
+                    rest = &rest[name.len()..];
+                } else {
+                    break;
+                }
             }
             let rest = rest.trim();
             if rest.is_empty() {
@@ -195,13 +239,13 @@ pub fn page(ui: &mut Ui, view: &mut KeymapView, width: f32) {
                     view.toggle(group);
                 }
                 if open {
-                    for (i, (_, action, keys)) in rows.iter().enumerate() {
+                    for (i, r) in rows.iter().enumerate() {
                         if i > 0 {
                             let y = ui.cursor().top();
                             let x = ui.max_rect().x_range();
                             ui.painter().hline(x, y, egui::Stroke::new(1.0_f32, t.card_border));
                         }
-                        row(ui, action, keys);
+                        row(ui, r.1, &keys_of(r));
                     }
                 }
             });
@@ -314,5 +358,24 @@ mod tests {
         assert_eq!(key_parts("⌘X / ⌘C"), [cap("⌘"), cap("X"), Text("/".into()), cap("⌘"), cap("C")]);
         assert_eq!(key_parts("⌘[ or mouse button 4"), [cap("⌘"), cap("["), Text("or".into()), Text("mouse button 4".into())]);
         assert_eq!(key_parts("Esc"), [cap("Esc")]);
+        assert_eq!(key_parts("Ctrl+Shift+F12"), [cap("Ctrl"), cap("Shift"), cap("F12")]);
+        assert_eq!(key_parts("Double Shift or Ctrl+Shift+O"), [Text("Double".into()), cap("Shift"), Text("or".into()), cap("Ctrl"), cap("Shift"), cap("O")]);
+        assert_eq!(key_parts("Ctrl+B or Ctrl+click"), [cap("Ctrl"), cap("B"), Text("or".into()), cap("Ctrl"), Text("click".into())]);
+        assert_eq!(key_parts("Ctrl+Alt+←"), [cap("Ctrl"), cap("Alt"), cap("←")]);
+    }
+
+    #[test]
+    fn other_platforms_get_idea_windows_keys() {
+        let keys = |action: &str, mac: bool| keys_for(ACTIONS.iter().find(|r| r.1 == action).unwrap(), mac).into_owned();
+        assert!(OTHER_KEYS.iter().all(|o| ACTIONS.iter().any(|r| r.0 == o.0 && r.1 == o.1)), "an override names no row");
+        assert_eq!(keys("Find in Files", false), "Ctrl+Shift+F");
+        assert_eq!(keys("Find in Files", true), "⇧⌘F");
+        assert_eq!(keys("Find Next", false), "F3");
+        assert_eq!(keys("Delete Line", false), "Ctrl+Y");
+        assert_eq!(keys("Add Caret at Next Occurrence", false), "Alt+J");
+        assert_eq!(keys("Select All Occurrences", false), "Ctrl+Alt+Shift+J");
+        assert_eq!(keys("Back", false), "Ctrl+[ or Ctrl+Alt+← or mouse button 4");
+        assert_eq!(keys("Search Everywhere (files)", false), "Double Shift or Ctrl+Shift+O");
+        assert_eq!(keys("Problems", false), "Alt+6");
     }
 }

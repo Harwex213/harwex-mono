@@ -1,6 +1,7 @@
 //! Single instance: `harwex-ide <dir>` hands the folder to the IDE that already runs.
 //!
-//! The first instance listens on a unix socket in `$TMPDIR` (the name holds the uid). A new
+//! The first instance listens on a unix socket in `$TMPDIR` (the name holds the uid; on Windows
+//! an AF_UNIX socket through `uds_windows`, named after the user, in the per-user temp dir). A new
 //! launch connects, sends the canonical folder, waits for `ok` and exits. A socket file without
 //! a listener is stale: the new launch removes it and becomes the instance. The listener thread
 //! posts each request to the UI thread through `Jobs::post`, which also asks for a repaint.
@@ -10,11 +11,12 @@
 //! by default, so a headless app never listens.
 
 use std::io::{self, Read, Write};
-use std::os::unix::ffi::{OsStrExt, OsStringExt};
-use std::os::unix::fs::{FileTypeExt, MetadataExt};
+#[cfg(unix)]
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
+#[cfg(windows)]
+use uds_windows::{UnixListener, UnixStream};
 
 use crate::jobs::Jobs;
 
@@ -44,7 +46,7 @@ impl Request {
             Request::Activate => b"activate\n".to_vec(),
             Request::Open(path) => {
                 let mut out = b"open\n".to_vec();
-                out.extend_from_slice(path.as_os_str().as_bytes());
+                out.extend_from_slice(&path_bytes(path));
                 out
             }
         }
@@ -54,28 +56,60 @@ impl Request {
         if bytes == b"activate\n" {
             return Some(Request::Activate);
         }
-        let path = bytes.strip_prefix(b"open\n")?;
-        if path.first() != Some(&b'/') {
-            return None;
-        }
-        Some(Request::Open(PathBuf::from(std::ffi::OsString::from_vec(path.to_vec()))))
+        let path = path_from_bytes(bytes.strip_prefix(b"open\n")?)?;
+        path.is_absolute().then_some(Request::Open(path))
     }
 }
 
-/// The socket for `name`: a path when it holds a `/`, else a file in the temp dir.
+#[cfg(unix)]
+fn path_bytes(path: &Path) -> Vec<u8> {
+    std::os::unix::ffi::OsStrExt::as_bytes(path.as_os_str()).to_vec()
+}
+
+#[cfg(unix)]
+fn path_from_bytes(bytes: &[u8]) -> Option<PathBuf> {
+    Some(PathBuf::from(<std::ffi::OsString as std::os::unix::ffi::OsStringExt>::from_vec(bytes.to_vec())))
+}
+
+/// UTF-16LE, so a path that is not valid Unicode (an unpaired surrogate) still round-trips.
+#[cfg(windows)]
+fn path_bytes(path: &Path) -> Vec<u8> {
+    std::os::windows::ffi::OsStrExt::encode_wide(path.as_os_str()).flat_map(u16::to_le_bytes).collect()
+}
+
+#[cfg(windows)]
+fn path_from_bytes(bytes: &[u8]) -> Option<PathBuf> {
+    let (pairs, []) = bytes.as_chunks::<2>() else { return None };
+    let wide: Vec<u16> = pairs.iter().map(|&p| u16::from_le_bytes(p)).collect();
+    Some(PathBuf::from(<std::ffi::OsString as std::os::windows::ffi::OsStringExt>::from_wide(&wide)))
+}
+
+/// The socket for `name`: a path when it holds a separator, else a file in the temp dir.
 pub fn socket_path(name: &str) -> PathBuf {
-    if name.contains('/') {
+    if name.contains('/') || (cfg!(windows) && name.contains('\\')) {
         return PathBuf::from(name);
     }
-    // SAFETY: getuid has no preconditions and cannot fail.
-    let uid = unsafe { libc::getuid() };
-    socket_in(&std::env::temp_dir(), uid, name)
+    socket_in(&std::env::temp_dir(), &user_tag(), name)
 }
 
-/// A socket path holds at most 103 bytes on macOS (104 with the NUL). A long `$TMPDIR` (the
-/// clean-check sandbox, a custom one) gets a short name with a hash of `name` instead, so both
-/// sides still compute the same path.
-fn socket_in(dir: &Path, uid: u32, name: &str) -> PathBuf {
+#[cfg(unix)]
+fn user_tag() -> String {
+    // SAFETY: getuid has no preconditions and cannot fail.
+    unsafe { libc::getuid() }.to_string()
+}
+
+/// The temp dir is already per user on Windows; the name only keeps two accounts that share a
+/// custom `TEMP` apart. Anything outside `[A-Za-z0-9_-]` becomes `_`.
+#[cfg(windows)]
+fn user_tag() -> String {
+    let name = std::env::var("USERNAME").unwrap_or_default();
+    name.chars().map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '_' }).collect()
+}
+
+/// A socket path holds at most 103 bytes on macOS (104 with the NUL; Windows AF_UNIX allows
+/// 107). A long `$TMPDIR` (the clean-check sandbox, a custom one) gets a short name with a hash
+/// of `name` instead, so both sides still compute the same path.
+fn socket_in(dir: &Path, uid: &str, name: &str) -> PathBuf {
     const MAX: usize = 103;
     let full = dir.join(format!("harwex-ide-{uid}-{name}.sock"));
     if full.as_os_str().len() <= MAX {
@@ -113,6 +147,10 @@ pub enum Sent {
 
 /// Sends `req` to the instance at `path` and waits up to `timeout` for its `ok`.
 pub fn send(path: &Path, req: &Request, timeout: Duration) -> io::Result<Sent> {
+    // Windows reports a missing socket file as a winsock error that maps to no `ErrorKind`.
+    if cfg!(windows) && std::fs::symlink_metadata(path).is_err() {
+        return Ok(Sent::NoListener);
+    }
     let mut stream = match UnixStream::connect(path) {
         Ok(s) => s,
         Err(e) if matches!(e.kind(), io::ErrorKind::NotFound | io::ErrorKind::ConnectionRefused) => return Ok(Sent::NoListener),
@@ -166,11 +204,33 @@ pub fn claim(path: &Path, req: &Request, timeout: Duration) -> Claim {
 /// Removes a socket file that no process listens on. Any other file stays: it is not ours.
 fn remove_stale(path: &Path) -> io::Result<()> {
     match std::fs::symlink_metadata(path) {
-        Ok(meta) if meta.file_type().is_socket() => std::fs::remove_file(path),
+        Ok(meta) if is_socket(&meta) => std::fs::remove_file(path),
         Ok(_) => Err(io::Error::other("exists and is not a socket")),
         Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(()),
         Err(e) => Err(e),
     }
+}
+
+#[cfg(unix)]
+fn is_socket(meta: &std::fs::Metadata) -> bool {
+    std::os::unix::fs::FileTypeExt::is_socket(&meta.file_type())
+}
+
+/// An AF_UNIX socket file is a reparse point with the `IO_REPARSE_TAG_AF_UNIX` tag. std does
+/// not expose the tag, so any reparse point counts; a plain file still stays.
+#[cfg(windows)]
+fn is_socket(meta: &std::fs::Metadata) -> bool {
+    const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x400;
+    std::os::windows::fs::MetadataExt::file_attributes(meta) & FILE_ATTRIBUTE_REPARSE_POINT != 0
+}
+
+/// What tells our socket file from a newer one at the same path: the inode, on Windows the
+/// creation time.
+fn file_id(meta: &std::fs::Metadata) -> u64 {
+    #[cfg(unix)]
+    return std::os::unix::fs::MetadataExt::ino(meta);
+    #[cfg(windows)]
+    return std::os::windows::fs::MetadataExt::creation_time(meta);
 }
 
 /// The bound socket of the running instance. `serve` starts the listener thread.
@@ -183,7 +243,7 @@ pub struct Server {
 impl Server {
     pub fn bind(path: &Path) -> io::Result<Server> {
         let listener = UnixListener::bind(path)?;
-        let ino = std::fs::symlink_metadata(path)?.ino();
+        let ino = file_id(&std::fs::symlink_metadata(path)?);
         Ok(Server { listener, path: path.to_path_buf(), ino })
     }
 
@@ -266,7 +326,7 @@ pub struct SocketFile {
 
 impl Drop for SocketFile {
     fn drop(&mut self) {
-        if std::fs::symlink_metadata(&self.path).is_ok_and(|m| m.ino() == self.ino) {
+        if std::fs::symlink_metadata(&self.path).is_ok_and(|m| file_id(&m) == self.ino) {
             let _ = std::fs::remove_file(&self.path);
         }
     }
@@ -278,7 +338,8 @@ mod tests {
 
     #[test]
     fn request_round_trip() {
-        for req in [Request::Activate, Request::Open(PathBuf::from("/work/a b/new\nline"))] {
+        let path = if cfg!(windows) { "C:\\work\\a b\\new\nline" } else { "/work/a b/new\nline" };
+        for req in [Request::Activate, Request::Open(PathBuf::from(path))] {
             assert_eq!(Request::decode(&req.encode()), Some(req));
         }
         assert_eq!(Request::decode(b"open\nrelative"), None);
@@ -300,20 +361,20 @@ mod tests {
 
     #[test]
     fn long_temp_dir_gets_a_short_name() {
-        let short = socket_in(Path::new("/t"), 501, "default");
+        let short = socket_in(Path::new("/t"), "501", "default");
         assert_eq!(short, PathBuf::from("/t/harwex-ide-501-default.sock"));
         let dir = PathBuf::from(format!("/{}", "d".repeat(78)));
-        let a = socket_in(&dir, 501, "default");
-        let b = socket_in(&dir, 501, "other");
+        let a = socket_in(&dir, "501", "default");
+        let b = socket_in(&dir, "501", "other");
         assert!(a.as_os_str().len() <= 103, "{}", a.display());
         assert_ne!(a, b);
-        assert_eq!(a, socket_in(&dir, 501, "default"));
+        assert_eq!(a, socket_in(&dir, "501", "default"));
         assert!(a.file_name().unwrap().to_string_lossy().starts_with("hx-501-"));
     }
 
     #[test]
     fn socket_name_holds_the_uid() {
-        let uid = unsafe { libc::getuid() };
+        let uid = user_tag();
         let name = socket_path(DEFAULT_NAME).file_name().unwrap().to_string_lossy().into_owned();
         assert_eq!(name, format!("harwex-ide-{uid}-default.sock"));
     }

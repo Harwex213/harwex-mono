@@ -156,7 +156,7 @@ fn fake_project(dir: PathBuf) -> Repo {
 }
 
 fn canonical(p: PathBuf) -> PathBuf {
-    std::fs::canonicalize(&p).unwrap_or(p)
+    dunce::canonicalize(&p).unwrap_or(p)
 }
 
 /// The IDE on `dir` with the memory indicator shown, after its first sample.

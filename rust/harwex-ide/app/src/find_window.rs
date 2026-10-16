@@ -860,7 +860,7 @@ pub fn show(state: &mut AppState, ui: &mut Ui) {
     let fw = &mut state.ws.find_window;
     if fw.tabs.is_empty() {
         ui.label(
-            RichText::new("Find Usages (⌥F7) and Find in Files (⇧⌘F) results show here")
+            RichText::new(ide_editor::shortcut_label("Find Usages (⌥F7) and Find in Files (⇧⌘F) results show here"))
                 .color(T.text_dim),
         );
         return;

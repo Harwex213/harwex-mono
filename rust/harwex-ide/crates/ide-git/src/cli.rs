@@ -105,13 +105,19 @@ fn git_binary() -> &'static Path {
         }
         if let Some(paths) = std::env::var_os("PATH") {
             for dir in std::env::split_paths(&paths) {
-                let candidate = dir.join("git");
+                let candidate = dir.join(if cfg!(windows) { "git.exe" } else { "git" });
                 if candidate.is_file() {
                     return candidate;
                 }
             }
         }
-        for candidate in ["/opt/homebrew/bin/git", "/usr/local/bin/git", "/usr/bin/git"] {
+        // Git for Windows installs here, also when its installer was told to leave PATH alone.
+        let known: &[&str] = if cfg!(windows) {
+            &[r"C:\Program Files\Git\cmd\git.exe"]
+        } else {
+            &["/opt/homebrew/bin/git", "/usr/local/bin/git", "/usr/bin/git"]
+        };
+        for candidate in known {
             if Path::new(candidate).is_file() {
                 return PathBuf::from(candidate);
             }
@@ -193,6 +199,9 @@ impl Repo {
         // Its own process group: a cancel then reaches git's children (hooks, sh, git-lfs).
         #[cfg(unix)]
         std::os::unix::process::CommandExt::process_group(&mut cmd, 0);
+        // A GUI process would flash a console window for every git run.
+        #[cfg(windows)]
+        std::os::windows::process::CommandExt::creation_flags(&mut cmd, crate::cancel::CREATE_NO_WINDOW);
         let mut child = cmd.spawn()?;
         let pid = child.id();
         if let Some(input) = run.stdin {
@@ -296,8 +305,13 @@ fn terminate(pid: u32, rx: &mpsc::Receiver<std::io::Result<std::process::Output>
             let _ = rx.recv_timeout(KILL_GRACE);
         }
     }
-    #[cfg(not(unix))]
-    let _ = (pid, rx);
+    // A console program started without a console receives no Ctrl+C, so Windows gets no
+    // graceful step: the whole tree dies at once, and git may leave `index.lock` behind.
+    #[cfg(windows)]
+    {
+        crate::cancel::kill_tree(pid);
+        let _ = rx.recv_timeout(KILL_GRACE);
+    }
 }
 
 pub(crate) fn literal_pathspec(rel: &Path) -> String {

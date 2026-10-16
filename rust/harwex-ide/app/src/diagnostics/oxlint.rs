@@ -141,8 +141,7 @@ impl OxlintSource {
         config.cwd = Some(plan.install.root.clone());
         config.root = Some(plan.install.root.clone());
         if let Some(dir) = node.parent() {
-            let path = std::env::var_os("PATH").map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
-            config.env.push(("PATH".into(), format!("{}:{path}", dir.display())));
+            config.env.push(("PATH".into(), crate::os::prepend_path_string(dir)));
         }
         if let Some(t) = &plan.install.tsgolint {
             config.env.push(("OXLINT_TSGOLINT_PATH".into(), t.display().to_string()));

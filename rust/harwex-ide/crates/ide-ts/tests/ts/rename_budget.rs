@@ -58,11 +58,11 @@ fn check_backend(preference: BackendPreference, kind: BackendKind) {
         return;
     }
     let tmp = tempfile::tempdir().unwrap();
-    let root = tmp.path().canonicalize().unwrap();
+    let root = dunce::canonicalize(tmp.path()).unwrap();
     let files = generate(&root);
     std::fs::create_dir_all(root.join("node_modules/@typescript")).unwrap();
-    std::os::unix::fs::symlink(crate::common::ts7().unwrap(), root.join("node_modules/typescript")).unwrap();
-    std::os::unix::fs::symlink(crate::common::ts5().unwrap(), root.join("node_modules/@typescript/old")).unwrap();
+    crate::common::symlink_dir(crate::common::ts7().unwrap(), root.join("node_modules/typescript")).unwrap();
+    crate::common::symlink_dir(crate::common::ts5().unwrap(), root.join("node_modules/@typescript/old")).unwrap();
 
     let ts = TsService::new();
     ts.set_timeout(Duration::from_secs(60));

@@ -354,7 +354,7 @@ fn more_menu(ui: &mut Ui, find: &mut FindState, ids: &BarIds, theme: &EditorThem
     }
     egui::popup_below_widget(ui, popup, &r, PopupCloseBehavior::CloseOnClickOutside, |ui| {
         ui.set_min_width(220.0);
-        if ui.add_enabled(any, Button::new("Select All Occurrences").shortcut_text("⌃⌘G").frame(false)).clicked() {
+        if ui.add_enabled(any, Button::new("Select All Occurrences").shortcut_text(crate::keys::select_all_occurrences_label()).frame(false)).clicked() {
             cmds.push(BarCmd::SelectAll);
             ui.memory_mut(|m| m.close_popup());
         }
@@ -365,7 +365,7 @@ fn more_menu(ui: &mut Ui, find: &mut FindState, ids: &BarIds, theme: &EditorThem
             find.set_in_selection(on);
             find.popup_clicked = true;
         }
-        r.on_disabled_hover_text("Select text before ⌘F");
+        r.on_disabled_hover_text(crate::keys::shortcut_label("Select text before ⌘F").as_ref());
     });
 }
 
@@ -500,7 +500,7 @@ fn icon_button_sized(ui: &mut Ui, enabled: bool, icon: FindIcon, label: &str, to
         ui.painter().add(Shape::convex_polygon(vec![c + vec2(-3.0, -2.0), c + vec2(3.0, -2.0), c + vec2(0.0, 2.0)], color, Stroke::NONE));
     }
     if enabled {
-        resp.on_hover_text(tooltip)
+        resp.on_hover_text(crate::keys::shortcut_label(tooltip).as_ref())
     } else {
         resp
     }

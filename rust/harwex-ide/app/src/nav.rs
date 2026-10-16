@@ -442,14 +442,17 @@ pub fn show_popup(state: &mut AppState, ctx: &Context) {
 /// at the crate directory of a Cargo registry source (`egui-0.31.1/src/ui.rs`), or at the
 /// standard library (`library/core/src/option.rs`).
 pub fn display_path(root: &Path, path: &Path) -> String {
+    // Callers group and split the result on `/` (Find window folders, preview headers), so a
+    // Windows path is shown with `/` too.
+    let slashes = |s: String| if cfg!(windows) { s.replace('\\', "/") } else { s };
     if let Ok(rel) = path.strip_prefix(root) {
-        return rel.display().to_string();
+        return slashes(rel.display().to_string());
     }
     // A server-generated document lives in a temp dir; its path means nothing to the user.
     if let Some(kind) = crate::lang::virtual_kind(path) {
         return format!("[{kind}] {}", path.file_name().map(|n| n.to_string_lossy()).unwrap_or_default());
     }
-    let s = path.display().to_string();
+    let s = slashes(path.display().to_string());
     if let Some(i) = s.find("node_modules/") {
         return s[i..].to_string();
     }

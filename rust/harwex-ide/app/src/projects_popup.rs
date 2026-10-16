@@ -95,7 +95,7 @@ impl ProjectsUi {
     }
 
     fn tilde(&mut self, path: &Path) -> String {
-        let home = self.home.get_or_insert_with(|| std::env::var_os("HOME").map(PathBuf::from).filter(|h| h.is_absolute()));
+        let home = self.home.get_or_insert_with(|| crate::os::home_dir().filter(|h| h.is_absolute()));
         match home.as_ref().and_then(|h| path.strip_prefix(h).ok()) {
             Some(rest) if rest.as_os_str().is_empty() => "~".into(),
             Some(rest) => format!("~/{}", rest.display()),

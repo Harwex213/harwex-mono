@@ -50,7 +50,7 @@ const UNITY_HINT: &str = "In Unity open Edit › Preferences › External Tools,
 const TEMP_DIR_NAME: &str = "harwex-ide-roslyn";
 
 fn home() -> Option<PathBuf> {
-    std::env::var_os("HOME").map(PathBuf::from)
+    crate::os::home_dir()
 }
 
 /// The server dll behind a candidate path: the dll itself, its folder, or an apphost
@@ -144,7 +144,7 @@ struct Tools {
 pub fn find_dotnet(configured: Option<&Path>) -> Result<Dotnet, String> {
     let exe = if cfg!(windows) { "dotnet.exe" } else { "dotnet" };
     let check = |p: &Path| -> Result<Dotnet, String> {
-        let real = std::fs::canonicalize(p).map_err(|_| format!("{} does not exist", p.display()))?;
+        let real = dunce::canonicalize(p).map_err(|_| format!("{} does not exist", p.display()))?;
         let root = real.parent().map(Path::to_path_buf).unwrap_or_default();
         if subdirs(&root.join("sdk")).is_empty() {
             return Err(format!("{} has no .NET SDK (no {}/sdk)", p.display(), root.display()));
@@ -163,6 +163,7 @@ pub fn find_dotnet(configured: Option<&Path>) -> Result<Dotnet, String> {
     }
     candidates.extend(std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default()).map(|d| d.join(exe)));
     candidates.push(PathBuf::from("/usr/local/share/dotnet").join(exe));
+    candidates.extend(std::env::var_os("ProgramFiles").map(|d| PathBuf::from(d).join("dotnet").join(exe)));
     if let Some(h) = home() {
         candidates.push(h.join(".dotnet").join(exe));
     }
@@ -370,6 +371,9 @@ impl CsServer {
             ("PATH".into(), path.to_string_lossy().into_owned()),
             // .NET reads the temp dir from TMPDIR; a trailing `/` keeps it a directory.
             ("TMPDIR".into(), format!("{}/", temp.display())),
+            // ... and on Windows from TMP and TEMP (GetTempPath).
+            ("TMP".into(), temp.display().to_string()),
+            ("TEMP".into(), temp.display().to_string()),
             ("DOTNET_CLI_TELEMETRY_OPTOUT".into(), "1".into()),
             ("DOTNET_NOLOGO".into(), "1".into()),
             ("DOTNET_SKIP_FIRST_TIME_EXPERIENCE".into(), "1".into()),

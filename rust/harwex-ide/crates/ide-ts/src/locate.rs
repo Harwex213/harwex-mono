@@ -29,9 +29,11 @@ fn search_node() -> Option<PathBuf> {
             return Some(path);
         }
     }
-    if let Some(path) = search_path("node") {
-        return Some(path);
-    }
+    search_path("node").or_else(installed_node)
+}
+
+#[cfg(unix)]
+fn installed_node() -> Option<PathBuf> {
     // The login shell knows the user's chosen node (nvm default, asdf, volta shims).
     // `-l` alone skips .zshrc, where nvm usually lives, hence the interactive retry.
     if let Ok(shell) = env::var("SHELL") {
@@ -57,13 +59,53 @@ fn search_node() -> Option<PathBuf> {
     fixed.into_iter().find(|p| is_executable(p))
 }
 
+/// A GUI app on Windows gets the full user PATH, so this only covers a node that is not on it:
+/// the nvm-windows link, its newest version, Volta and the official installer.
+#[cfg(windows)]
+fn installed_node() -> Option<PathBuf> {
+    let var = |name: &str| env::var_os(name).map(PathBuf::from);
+    let mut fixed: Vec<PathBuf> = Vec::new();
+    fixed.extend(var("NVM_SYMLINK").map(|d| d.join("node.exe")));
+    fixed.extend(var("NVM_HOME").and_then(|d| newest_version_dir(&d, "node.exe")));
+    fixed.extend(var("LOCALAPPDATA").map(|d| d.join(r"Volta\bin\node.exe")));
+    fixed.extend(var("ProgramFiles").map(|d| d.join(r"nodejs\node.exe")));
+    fixed.into_iter().find(|p| is_executable(p))
+}
+
+/// `<dir>/v<version>/<exe>` with the highest version (nvm-windows' layout).
+#[cfg(windows)]
+fn newest_version_dir(dir: &Path, exe: &str) -> Option<PathBuf> {
+    let mut versions: Vec<(Vec<u64>, PathBuf)> = std::fs::read_dir(dir)
+        .ok()?
+        .filter_map(|e| e.ok())
+        .filter_map(|e| {
+            let name = e.file_name().to_string_lossy().into_owned();
+            let key = name.trim_start_matches('v').split('.').map(|n| n.parse().unwrap_or(0)).collect();
+            let path = e.path().join(exe);
+            is_executable(&path).then_some((key, path))
+        })
+        .collect();
+    versions.sort();
+    versions.pop().map(|(_, p)| p)
+}
+
+/// `name` in a PATH directory. On Windows the file is `name.exe` (or `.cmd` for npm shims).
 fn search_path(name: &str) -> Option<PathBuf> {
     let path = env::var_os("PATH")?;
     env::split_paths(&path)
-        .map(|dir| dir.join(name))
+        .flat_map(|dir| executable_names(name).into_iter().map(move |n| dir.join(n)))
         .find(|p| is_executable(p))
 }
 
+fn executable_names(name: &str) -> Vec<String> {
+    if cfg!(windows) {
+        vec![format!("{name}.exe"), format!("{name}.cmd")]
+    } else {
+        vec![name.to_string()]
+    }
+}
+
+#[cfg(unix)]
 fn shell_lookup(shell: &str, flags: &str) -> Option<PathBuf> {
     let mut cmd = Command::new(shell);
     cmd.arg(flags).arg("command -v node");
@@ -77,6 +119,7 @@ fn shell_lookup(shell: &str, flags: &str) -> Option<PathBuf> {
         .find(|p| is_executable(p))
 }
 
+#[cfg(unix)]
 fn newest_nvm_node(home: &Path) -> Option<PathBuf> {
     let dir = home.join(".nvm/versions/node");
     let mut versions: Vec<(Vec<u64>, PathBuf)> = std::fs::read_dir(dir)
@@ -114,6 +157,7 @@ fn is_executable(path: &Path) -> bool {
 /// Runs a short helper command and returns its stdout. A hung login shell must not hang
 /// the IDE, so the command is killed after `timeout`.
 fn run_with_timeout(mut cmd: Command, timeout: Duration) -> Option<String> {
+    ide_lsp::hide_console(&mut cmd);
     let mut child = cmd
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
@@ -338,7 +382,7 @@ fn native_exe(package_dir: &Path, pkg: &Value) -> Result<PathBuf, String> {
     let platform_package = format!("{base}-{}-{}", node_platform(), node_arch());
     // Node resolves from the real path of the module, so a symlinked package (yarn, pnpm)
     // finds its platform package next to its real location.
-    let real = std::fs::canonicalize(package_dir).unwrap_or_else(|_| package_dir.to_path_buf());
+    let real = dunce::canonicalize(package_dir).unwrap_or_else(|_| package_dir.to_path_buf());
     let normalized = real.to_string_lossy().replace('\\', "/");
     let (exe_dir, bin) = if normalized.ends_with(&format!("/_packages/{base}")) {
         // Running from a typescript-go checkout: `hereby build` always produces `tsgo`.
@@ -351,12 +395,12 @@ fn native_exe(package_dir: &Path, pkg: &Value) -> Result<PathBuf, String> {
             .join("lib")
             .ancestors()
             .filter(|d| d.file_name().is_none_or(|n| n != "node_modules"))
-            .map(|d| d.join("node_modules").join(&scoped))
+            .map(|d| d.join("node_modules").join("@typescript").join(&platform_package))
             .find(|p| p.join("package.json").is_file());
         match found {
             Some(dir) => (dir.join("lib"), expected_bin),
             None => {
-                let sibling = real.parent().unwrap_or(&real).join(&scoped).join("lib").join(expected_bin);
+                let sibling = real.parent().unwrap_or(&real).join("@typescript").join(&platform_package).join("lib").join(expected_bin);
                 return Err(format!(
                     "the platform package {scoped} is not installed (the native executable would be {})",
                     sibling.display()
@@ -398,9 +442,10 @@ fn npm_global_root() -> Option<PathBuf> {
     ROOT.get_or_init(|| {
         // Prefer the npm next to the node we run, for the same GUI PATH reason as above.
         let npm = find_node()
-            .and_then(|n| n.parent().map(|d| d.join("npm")))
+            // Beside a Windows node.exe, `npm` is a sh script; `npm.cmd` is the one to run.
+            .and_then(|n| n.parent().map(|d| d.join(if cfg!(windows) { "npm.cmd" } else { "npm" })))
             .filter(|p| is_executable(p))
-            .unwrap_or_else(|| PathBuf::from("npm"));
+            .unwrap_or_else(|| PathBuf::from(if cfg!(windows) { "npm.cmd" } else { "npm" }));
         let mut cmd = Command::new(npm);
         cmd.args(["root", "-g"]);
         if let Some(dir) = find_node().and_then(|n| n.parent().map(Path::to_path_buf)) {
@@ -416,6 +461,15 @@ fn npm_global_root() -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The executable name the locator looks for: `.exe` on Windows.
+    fn bin(rel: &str) -> String {
+        if cfg!(windows) {
+            format!("{rel}.exe")
+        } else {
+            rel.to_string()
+        }
+    }
 
     fn write(path: &Path, text: &str) {
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -469,11 +523,11 @@ mod tests {
     #[test]
     fn typescript_7_resolves_sibling_platform_package() {
         let tmp = tempfile::tempdir().unwrap();
-        let root = tmp.path().canonicalize().unwrap();
+        let root = dunce::canonicalize(tmp.path()).unwrap();
         let modules = root.join("node_modules");
         write(&modules.join("typescript/package.json"), TS7_PACKAGE);
         write(&modules.join("typescript/lib/getExePath.js"), "");
-        let exe = modules.join("@typescript").join(platform_package()).join("lib/tsc");
+        let exe = modules.join("@typescript").join(platform_package()).join("lib").join(bin("tsc"));
         write(&modules.join("@typescript").join(platform_package()).join("package.json"), "{}");
         write_exe(&exe);
         let install = find_typescript(&root.join("packages/a/src")).unwrap();
@@ -488,29 +542,29 @@ mod tests {
     #[test]
     fn typescript_7_resolves_nested_platform_package() {
         let tmp = tempfile::tempdir().unwrap();
-        let root = tmp.path().canonicalize().unwrap();
+        let root = dunce::canonicalize(tmp.path()).unwrap();
         let ts = root.join("node_modules/typescript");
         write(&ts.join("package.json"), TS7_PACKAGE);
         let platform = ts.join("node_modules/@typescript").join(platform_package());
         write(&platform.join("package.json"), "{}");
-        write_exe(&platform.join("lib/tsc"));
+        write_exe(&platform.join("lib").join(bin("tsc")));
         let native = find_typescript(&root).unwrap().native.unwrap();
-        assert_eq!(native.exe, platform.join("lib/tsc"));
+        assert_eq!(native.exe, platform.join("lib").join(bin("tsc")));
     }
 
     #[test]
     fn typescript_7_with_old_tsserver_offers_both() {
         let tmp = tempfile::tempdir().unwrap();
-        let root = tmp.path().canonicalize().unwrap();
+        let root = dunce::canonicalize(tmp.path()).unwrap();
         let modules = root.join("node_modules");
         write(&modules.join("typescript/package.json"), TS7_PACKAGE);
         let platform = modules.join("@typescript").join(platform_package());
         write(&platform.join("package.json"), "{}");
-        write_exe(&platform.join("lib/tsc"));
+        write_exe(&platform.join("lib").join(bin("tsc")));
         write(&modules.join("@typescript/old/package.json"), r#"{"name":"typescript","version":"6.0.3"}"#);
         write(&modules.join("@typescript/old/lib/tsserver.js"), "");
         let install = find_typescript(&root).unwrap();
-        assert_eq!(install.native.unwrap().exe, platform.join("lib/tsc"));
+        assert_eq!(install.native.unwrap().exe, platform.join("lib").join(bin("tsc")));
         let old = install.tsserver.unwrap();
         assert_eq!(old.path, modules.join("@typescript/old/lib/tsserver.js"));
         assert_eq!(old.version, "6.0.3");
@@ -519,7 +573,7 @@ mod tests {
     #[test]
     fn typescript_7_without_platform_package_falls_back_to_old() {
         let tmp = tempfile::tempdir().unwrap();
-        let root = tmp.path().canonicalize().unwrap();
+        let root = dunce::canonicalize(tmp.path()).unwrap();
         let modules = root.join("node_modules");
         write(&modules.join("typescript/package.json"), TS7_PACKAGE);
         write(&modules.join("@typescript/old/lib/tsserver.js"), "");
@@ -531,7 +585,7 @@ mod tests {
     #[test]
     fn missing_native_exe_explains_what_was_searched() {
         let tmp = tempfile::tempdir().unwrap();
-        let root = tmp.path().canonicalize().unwrap();
+        let root = dunce::canonicalize(tmp.path()).unwrap();
         let modules = root.join("node_modules");
         write(&modules.join("typescript/package.json"), TS7_PACKAGE);
         // The platform package exists, but its binary does not.
@@ -539,7 +593,7 @@ mod tests {
         let notes = find_typescript(&root.join("src")).unwrap_err();
         let text = notes.join("; ");
         assert!(text.contains("TypeScript 7.0.2 (native)"), "{text}");
-        let exe = modules.join("@typescript").join(platform_package()).join("lib/tsc");
+        let exe = modules.join("@typescript").join(platform_package()).join("lib").join(bin("tsc"));
         assert!(text.contains(&format!("{} is missing", exe.display())), "{text}");
 
         std::fs::remove_dir_all(modules.join("@typescript")).unwrap();
@@ -564,7 +618,7 @@ mod tests {
     #[test]
     fn native_preview_is_found() {
         let tmp = tempfile::tempdir().unwrap();
-        let root = tmp.path().canonicalize().unwrap();
+        let root = dunce::canonicalize(tmp.path()).unwrap();
         let modules = root.join("node_modules/@typescript");
         write(
             &modules.join("native-preview/package.json"),
@@ -572,16 +626,16 @@ mod tests {
         );
         let platform = modules.join(format!("native-preview-{}-{}", node_platform(), node_arch()));
         write(&platform.join("package.json"), "{}");
-        write_exe(&platform.join("lib/tsgo"));
+        write_exe(&platform.join("lib").join(bin("tsgo")));
         let native = find_typescript(&root).unwrap().native.unwrap();
-        assert_eq!(native.exe, platform.join("lib/tsgo"));
+        assert_eq!(native.exe, platform.join("lib").join(bin("tsgo")));
         assert_eq!(native.package, "@typescript/native-preview");
     }
 
     #[test]
     fn nearest_level_wins_and_broken_levels_are_skipped() {
         let tmp = tempfile::tempdir().unwrap();
-        let root = tmp.path().canonicalize().unwrap();
+        let root = dunce::canonicalize(tmp.path()).unwrap();
         write(&root.join("node_modules/typescript/lib/tsserver.js"), "");
         // A nested package with a broken TypeScript 7 install: the walk goes on to the root.
         write(&root.join("packages/a/node_modules/typescript/package.json"), TS7_PACKAGE);

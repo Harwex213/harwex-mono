@@ -676,7 +676,7 @@ impl Ide {
 
     /// Opens `rel` (relative to the project root) and waits for its tab.
     pub fn open_file(&mut self, rel: &str) {
-        let path = std::fs::canonicalize(self.root().join(rel)).expect("file exists");
+        let path = dunce::canonicalize(self.root().join(rel)).expect("file exists");
         self.state_mut().open_location(&path, None, true);
         self.wait_for(&format!("tab for {rel}"), |s| s.ws.tabs.active_editor().is_some_and(|e| e.path == path));
         self.settle();
@@ -684,7 +684,7 @@ impl Ide {
 
     /// Like `open_file`, while a job still runs (`settle` would wait for it).
     pub fn open_file_running(&mut self, rel: &str) {
-        let path = std::fs::canonicalize(self.root().join(rel)).expect("file exists");
+        let path = dunce::canonicalize(self.root().join(rel)).expect("file exists");
         self.state_mut().open_location(&path, None, true);
         self.wait_for(&format!("tab for {rel}"), |s| s.ws.tabs.active_editor().is_some_and(|e| e.path == path));
         self.steps(5);

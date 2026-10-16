@@ -632,7 +632,7 @@ fn tab_menu(ui: &mut Ui, id: TabId, m: MenuState) -> Option<TabBarEvent> {
     ui.set_min_width(220.0);
     let mut picked = None;
     let mut item = |ui: &mut Ui, label: &str, shortcut: &str, enabled: bool, event: TabBarEvent| {
-        if ui.add_enabled(enabled, egui::Button::new(label).shortcut_text(shortcut)).clicked() {
+        if ui.add_enabled(enabled, egui::Button::new(label).shortcut_text(ide_editor::shortcut_label(shortcut).as_ref())).clicked() {
             picked = Some(event);
             ui.close_menu();
         }

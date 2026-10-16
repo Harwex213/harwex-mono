@@ -1217,11 +1217,11 @@ fn message_area(state: &mut AppState, ui: &mut Ui) -> Option<bool> {
         // grow down past the panel edge. Bottom-aligned items grow upwards.
         ui.with_layout(egui::Layout::left_to_right(egui::Align::Max), |ui| {
             let label = if c.amend { "Amend Commit" } else { "Commit" };
-            let hint = if c.message.trim().is_empty() { "Enter a commit message" } else if checked == 0 && !c.amend { "Select files to commit" } else { "⌘⏎" };
-            if ui.add_enabled(can, egui::Button::new(RichText::new(label).color(theme::T.on_accent)).fill(theme::T.accent)).on_disabled_hover_text(hint).clicked() {
+            let hint = if c.message.trim().is_empty() { "Enter a commit message".into() } else if checked == 0 && !c.amend { "Select files to commit".into() } else { ide_editor::shortcut_label("⌘⏎") };
+            if ui.add_enabled(can, egui::Button::new(RichText::new(label).color(theme::T.on_accent)).fill(theme::T.accent)).on_disabled_hover_text(hint.as_ref()).clicked() {
                 out = Some(false);
             }
-            if ui.add_enabled(can, egui::Button::new(if c.amend { "Amend Commit and Push..." } else { "Commit and Push..." })).on_disabled_hover_text(hint).clicked() {
+            if ui.add_enabled(can, egui::Button::new(if c.amend { "Amend Commit and Push..." } else { "Commit and Push..." })).on_disabled_hover_text(hint.as_ref()).clicked() {
                 out = Some(true);
             }
             if c.committing {

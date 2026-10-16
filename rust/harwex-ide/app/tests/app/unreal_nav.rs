@@ -81,7 +81,9 @@ fn fake_engine(fx: &Fixture, folder: &str, version: (u32, u32, u32)) -> PathBuf 
     for platform in ["Mac", "Linux"] {
         let rel = format!("Engine/Build/BatchFiles/{platform}/Build.sh");
         write(&engine, &rel, &build_sh(fx, &engine));
+        #[cfg(unix)]
         use std::os::unix::fs::PermissionsExt;
+        #[cfg(unix)]
         std::fs::set_permissions(engine.join(&rel), std::fs::Permissions::from_mode(0o755)).expect("chmod Build.sh");
     }
     engine

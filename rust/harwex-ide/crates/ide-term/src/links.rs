@@ -82,7 +82,7 @@ fn looks_like_path(path: &str) -> bool {
     if !path.chars().any(|c| c.is_alphabetic()) {
         return false;
     }
-    if path.contains('/') {
+    if path.contains('/') || (cfg!(windows) && path.contains('\\')) {
         return true;
     }
     // A bare name needs an extension that is not purely numeric (rules out "1.5", "v2.0").
@@ -138,6 +138,11 @@ pub fn path_at(line: &[char], col: usize) -> Option<PathHit> {
 
     let token: String = line[start..end].iter().collect();
     let token = token.strip_prefix("file://").unwrap_or(&token);
+    // `file:///C:/x` leaves `/C:/x`, which is no Windows path.
+    let token = match token.as_bytes() {
+        [b'/', d, b':', ..] if cfg!(windows) && d.is_ascii_alphabetic() => &token[1..],
+        _ => token,
+    };
     let (path, line_no, column) = split_location(token);
     if !looks_like_path(path) {
         return None;
@@ -291,10 +296,12 @@ pub fn is_openable_url(url: &str) -> bool {
 }
 
 /// Turns a detected path into an existing file, trying each base directory in order.
-/// `~` expands to `$HOME`. Returns `None` when nothing exists on disk.
+/// `~` expands to `$HOME` (`%USERPROFILE%` on Windows). Returns `None` when nothing exists on
+/// disk.
 pub fn resolve(path: &str, bases: &[&Path]) -> Option<PathBuf> {
-    let expanded = if let Some(rest) = path.strip_prefix("~/") {
-        PathBuf::from(std::env::var_os("HOME")?).join(rest)
+    let home = || ["HOME", "USERPROFILE"].iter().filter_map(std::env::var_os).find(|h| !h.is_empty());
+    let expanded = if let Some(rest) = path.strip_prefix("~/").or_else(|| path.strip_prefix("~\\").filter(|_| cfg!(windows))) {
+        PathBuf::from(home()?).join(rest)
     } else {
         PathBuf::from(path)
     };

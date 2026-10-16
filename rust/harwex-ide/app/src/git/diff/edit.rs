@@ -3,7 +3,7 @@
 //! Backspace, undo, cut and paste behave as in an editor tab and land in its undo history.
 
 use egui::{Event, Key, Modifiers};
-use ide_editor::{carets, editing, Carets, Document, EditKind, Selection};
+use ide_editor::{carets, editing, keys, Carets, Document, EditKind, Selection};
 
 /// One edit request from the keyboard or the clipboard.
 #[derive(Clone, Debug)]
@@ -31,7 +31,7 @@ fn is_edit_key(key: Key, m: Modifiers) -> bool {
     match key {
         Key::Backspace | Key::Delete | Key::Enter | Key::Tab => true,
         Key::Z | Key::D | Key::Slash => m.command,
-        Key::Y => m.ctrl && !m.mac_cmd,
+        Key::Y => keys::is_extra_redo(key, m) || keys::is_delete_line(key, m),
         _ => false,
     }
 }
@@ -58,9 +58,9 @@ pub(super) fn apply(doc: &mut Document, sel: Selection, edit: &Edit) -> (Selecti
         Edit::Paste(t) => carets::paste(doc, &mut c, t),
         Edit::Cut => cut = Some(carets::cut(doc, &mut c)),
         Edit::Key(key, m) => match key {
-            Key::Backspace if m.command => carets::edit_each(doc, &mut c, |doc, s, _| editing::delete_line(doc, s)),
-            Key::Backspace => carets::edit_each(doc, &mut c, |doc, s, _| editing::backspace(doc, s, m.alt)),
-            Key::Delete => carets::edit_each(doc, &mut c, |doc, s, _| editing::delete_forward(doc, s, m.alt)),
+            _ if keys::is_delete_line(*key, *m) => carets::edit_each(doc, &mut c, |doc, s, _| editing::delete_line(doc, s)),
+            Key::Backspace => carets::edit_each(doc, &mut c, |doc, s, _| editing::backspace(doc, s, keys::word_modifier(*m))),
+            Key::Delete => carets::edit_each(doc, &mut c, |doc, s, _| editing::delete_forward(doc, s, keys::word_modifier(*m))),
             Key::Enter => carets::edit_each(doc, &mut c, |doc, s, _| {
                 if m.shift {
                     *s = Selection::caret(editing::line_end_of(doc, s.head));

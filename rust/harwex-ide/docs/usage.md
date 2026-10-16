@@ -41,6 +41,17 @@ cargo install-ide
 
 Удаление: `cargo uninstall-ide`. Команда удаляет `bin`, `.app` и блок PATH. Компоненты rustup остаются на месте.
 
+### Установка на Windows
+
+Команда та же: `cargo install-ide` (в PowerShell, cmd или Git Bash). Отличия от macOS:
+
+- Бинарник ложится в `%LOCALAPPDATA%\Programs\harwex-ide\bin\harwex-ide.exe`.
+- Вместо `.app` команда создаёт ярлык «Harwex IDE» в меню «Пуск» (`%APPDATA%\Microsoft\Windows\Start Menu\Programs`). Ярлык запускает IDE в её папке, поэтому IDE открывает последний проект. `--no-app` ярлык не создаёт.
+- Вместо rc-файла команда добавляет папку `bin` в пользовательский PATH (реестр, `HKCU\Environment`). Остальные записи PATH не меняются, переменные вида `%USERPROFILE%` остаются как есть. Повторный запуск запись не дублирует. Новые терминалы видят PATH сразу, уже открытые нет. `--no-path` PATH не трогает.
+- Обновлять IDE можно, пока она запущена. Windows не даёт перезаписать запущенный `.exe`, поэтому старый файл переименовывается в `.harwex-ide.old-<число>.exe`. Следующая установка удаляет такие файлы, если их IDE уже закрыта. Новый `harwex-ide.exe` запускается при следующем старте.
+- Подсказки для `node` и `git`: `winget install OpenJS.NodeJS.LTS` (или nvm-windows) и `winget install Git.Git`.
+- `cargo uninstall-ide` удаляет `bin`, ярлык и запись в PATH. Перед удалением закройте IDE: запущенный `.exe` удалить нельзя.
+
 ## Что нужно
 
 - Rust (stable).
@@ -69,6 +80,35 @@ IDE запускается в одном экземпляре. Если IDE уж
 - `--new-instance` запускает отдельную IDE, даже если одна уже открыта. Эта IDE сокет не слушает.
 - `HARWEX_IDE_SOCKET=<имя>` задаёт своё имя сокета (`$TMPDIR/harwex-ide-<uid>-<имя>.sock`). Значение с `/` считается полным путём.
 - Фоновый режим (`HARWEX_IDE_BACKGROUND=1`, флаги `--test-*`) без `HARWEX_IDE_SOCKET` сокет не использует. Такой запуск никогда не попадает в вашу открытую IDE.
+
+### Windows
+
+IDE работает на Windows 10 (1803 и новее) и Windows 11, x64.
+
+- Для сборки нужны Rust (`stable-x86_64-pc-windows-msvc`) и Visual Studio Build Tools с компонентом C++ и Windows SDK.
+- Сборка и запуск те же: `cargo build --release`, потом `target\release\harwex-ide.exe C:\path\to\project`. Установка: `cargo install-ide` (раздел «Установка на Windows» выше).
+- Release-сборка не открывает окно консоли. Debug-сборка (`cargo run`) пишет журнал в консоль.
+- Если IDE запущена из Проводника или ярлыком, она открывает последний проект. Если из терминала в папке проекта, она открывает эту папку.
+- `git` ищется в `PATH`, потом в `C:\Program Files\Git\cmd`. `node` ищется в `PATH`, потом в nvm-windows (`NVM_SYMLINK`, `NVM_HOME`), Volta и `C:\Program Files\nodejs`.
+- Единственный экземпляр работает через AF_UNIX-сокет во временной папке пользователя (`%TEMP%\harwex-ide-<имя пользователя>-default.sock`).
+- Терминал запускает `pwsh.exe` (PowerShell 7), а если его нет, то `powershell.exe`. Ctrl+C без выделения отправляет прерывание в программу, с выделением копирует. Ctrl+V вставляет. Ctrl+Shift+K очищает экран.
+- Удаление в корзину кладёт файлы в Корзину Windows. «Open In Explorer» показывает файл в Проводнике.
+- Над полосой заголовка IDE остаётся обычный заголовок окна Windows.
+- Клавиши как в раскладке IDEA для Windows: Cmd в этом руководстве означает Ctrl. Отличия:
+
+| Действие | macOS | Windows |
+|---|---|---|
+| По словам влево/вправо, удалить слово | ⌥←/→, ⌥⌫ | Ctrl+←/→, Ctrl+Backspace |
+| Начало/конец строки | ⌘←/→ | Home/End |
+| Начало/конец файла | ⌘↑/↓ | Ctrl+Home/End |
+| Удалить строку | ⌘⌫ | Ctrl+Y |
+| Redo | ⇧⌘Z | Ctrl+Shift+Z |
+| Добавить следующее вхождение / убрать последнее | ⌃G / ⌃⇧G | Alt+J / Alt+Shift+J |
+| Выделить все вхождения | ⌃⌘G | Ctrl+Alt+Shift+J |
+| Find Next / Find Previous | ⌘G / ⇧⌘G | F3 / Shift+F3 |
+| Окна Project, Problems, Git, Commit | ⌘1, ⌘6, ⌘9, ⌘0 | Alt+1, Alt+6, Alt+9, Alt+0 |
+
+Подсказки клавиш в меню и в Settings → Keymap на Windows уже показаны в виде `Ctrl+Shift+F`.
 
 ### Список проектов
 

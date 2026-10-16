@@ -5,6 +5,7 @@ edition.workspace = true
 publish.workspace = true
 
 [dependencies]
+dunce.workspace = true
 eframe.workspace = true
 egui.workspace = true
 ide-git = { path = "../crates/ide-git" }
@@ -38,6 +39,15 @@ pulldown-cmark = { version = "0.13", default-features = false }
 # The memory indicator reads process stats through libproc (macOS) and sysconf (Linux).
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
+
+# The single-instance socket (`instance.rs`): AF_UNIX on Windows, which std does not wrap.
+# The memory indicator walks processes through Toolhelp and reads their counters; fileops uses
+# the shell for the Recycle Bin and for opening URLs, and arboard (already linked by
+# egui-winit) for Copy Image.
+[target.'cfg(windows)'.dependencies]
+uds_windows = "1.2"
+windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_System_Threading", "Win32_System_Diagnostics_ToolHelp", "Win32_System_ProcessStatus", "Win32_System_SystemInformation", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging", "Win32_UI_Input_KeyboardAndMouse"] }
+arboard = { version = "3", default-features = false, features = ["image-data"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 winit = { version = "0.30", default-features = false }

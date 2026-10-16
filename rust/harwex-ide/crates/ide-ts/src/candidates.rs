@@ -122,7 +122,7 @@ mod tests {
     #[test]
     fn needles_and_candidates() {
         let tmp = tempfile::tempdir().unwrap();
-        let root = tmp.path().canonicalize().unwrap();
+        let root = dunce::canonicalize(tmp.path()).unwrap();
         write(&root, "packages/core/package.json", r#"{"name": "@ws/core", "main": "src/index.ts"}"#);
         let entry = write(&root, "packages/core/src/index.ts", "export * from './shapes';\n");
         let shapes = write(&root, "packages/core/src/shapes.ts", "export const area = 1;\n");

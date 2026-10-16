@@ -310,6 +310,7 @@ impl Server {
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
+        ide_lsp::hide_console(&mut cmd);
         if self.project_root.is_some() {
             cmd.arg("--useInferredProjectPerProjectRoot");
         }

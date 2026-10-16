@@ -477,7 +477,7 @@ fn rename_preview_keeps_frames_fast_in_a_monorepo() {
         write(&dir, &format!("packages/pkg{p}/src/index.ts"), &format!("{import}export const id{p} = {p};\n"));
     }
     std::fs::create_dir_all(dir.join("node_modules")).expect("node_modules");
-    std::os::unix::fs::symlink(typescript().expect("TypeScript 5"), dir.join("node_modules/typescript")).expect("typescript link");
+    crate::common::fixtures::symlink_dir(typescript().expect("TypeScript 5"), dir.join("node_modules/typescript")).expect("typescript link");
     let mut ide = Ide::open(SUITE, &dir);
     ide.open_file("packages/core/src/shapes.ts");
     reveal(&mut ide, "packages/core/src/shapes.ts");

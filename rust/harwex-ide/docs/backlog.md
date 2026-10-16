@@ -6,6 +6,16 @@ Run at most 2–3 agents that build at once: on 2026-10-05 seven parallel cargo 
 
 ## Ideas
 
+Windows (`docs/windows.md`):
+- [idea] Windows: two title bars (the native one above ours). An undecorated window needs our own min/max/close buttons, `BeginResize` edges and the snap layouts.
+- [idea] Windows: `test-tools` needs `shasum`/`tar`/`curl` replacements; `clean-check` uses macOS `sandbox-exec`; nextest has no pinned Windows binary.
+- [idea] Windows: the app integration suites are not run (macOS snapshots, sh fixtures, directory symlinks need Developer Mode). ide-git: 44 pass; the 4 cancel tests are ignored (sh fake git) and need a Windows twin.
+- [idea] Windows: Unreal source builds are registered in `HKCU\Software\Epic Games\Unreal Engine\Builds`, which is not read; `cpp::is_system_header` does not know MSVC/Windows Kits include dirs.
+- [idea] Windows: AltGr reaches winit as Ctrl+Alt; check that text typed with AltGr (Polish, German layouts) is not dropped by the editor, diff and speed search.
+- [idea] Windows: the terminal cannot read the foreground process's cwd (no process group in ConPTY), so relative links resolve against the spawn dir only.
+- [idea] Windows: `fileops::apply_edits_on_disk` inserts LSP `newText` with `\n` into CRLF files; pushed diagnostics (`ide-lsp` client, clangd) are keyed by `uri_to_path` without `canonical`, so a server that changes component case misses the tab.
+- [idea] Windows: rust-analyzer and clangd navigation are not smoke-tested (TS 5 tsserver and TS 7 native were, with jumps into `node_modules`).
+
 Diagnostics:
 
 Tooling:

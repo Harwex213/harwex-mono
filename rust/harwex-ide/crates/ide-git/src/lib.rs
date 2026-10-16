@@ -138,7 +138,7 @@ impl Repo {
             .ok_or_else(|| Error::Other("bare repositories are not supported".into()))?;
         // Canonical form, so that absolute paths from the app (which may come through a
         // symlink such as /var -> /private/var on macOS) can be made relative reliably.
-        let workdir = workdir.canonicalize().unwrap_or_else(|_| workdir.to_path_buf());
+        let workdir = dunce::canonicalize(workdir).unwrap_or_else(|_| workdir.to_path_buf());
         Ok(Repo { workdir, sink: None, git: None, timeout: None })
     }
 
@@ -191,7 +191,7 @@ impl Repo {
                 tail.push(name.to_os_string());
             }
             existing = parent;
-            if let Ok(canon) = existing.canonicalize() {
+            if let Ok(canon) = dunce::canonicalize(existing) {
                 if let Ok(r) = canon.strip_prefix(&self.workdir) {
                     let mut out = r.to_path_buf();
                     for part in tail.iter().rev() {

@@ -640,12 +640,12 @@ fn library_roots() -> &'static [PathBuf] {
         if let Some(cargo) = rust::cargo_home() {
             for sub in ["registry", "git"] {
                 let p = cargo.join(sub);
-                roots.push(std::fs::canonicalize(&p).unwrap_or(p));
+                roots.push(dunce::canonicalize(&p).unwrap_or(p));
             }
         }
         if let Some(src) = std::env::var_os("RUST_SRC_PATH") {
             let p = PathBuf::from(src);
-            roots.push(std::fs::canonicalize(&p).unwrap_or(p));
+            roots.push(dunce::canonicalize(&p).unwrap_or(p));
         }
         roots
     })
@@ -683,7 +683,7 @@ mod tests {
         assert!(is_library_path(Path::new("/p/node_modules/x/index.d.ts")));
         assert!(is_library_path(Path::new("/r/toolchains/stable/lib/rustlib/src/rust/library/core/src/option.rs")));
         if let Some(cargo) = rust::cargo_home() {
-            let cargo = std::fs::canonicalize(&cargo).unwrap_or(cargo);
+            let cargo = dunce::canonicalize(&cargo).unwrap_or(cargo);
             assert!(is_library_path(&cargo.join("registry/src/index.crates.io-1/egui-0.31.1/src/ui.rs")));
         }
         assert!(!is_library_path(Path::new("/p/src/main.rs")));

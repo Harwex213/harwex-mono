@@ -58,7 +58,7 @@ pub fn ts7() -> Result<PathBuf, String> {
     let dir = install("HARWEX_TEST_TS7", "ts7/node_modules/typescript", |dir| {
         (!dir.join("package.json").is_file()).then(|| format!("{} is missing", dir.join("package.json").display()))
     })?;
-    let real = dir.canonicalize().map_err(|e| format!("{}: {e}", dir.display()))?;
+    let real = dunce::canonicalize(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
     let tsc = real.parent().expect("node_modules").join(ts7_platform()).join("lib/tsc");
     if !tsc.is_file() {
         return Err(format!("{} is missing ({HINT})", tsc.display()));
@@ -114,14 +114,14 @@ pub fn project(link: TsLink) -> Option<Project> {
     }
     let tmp = tempfile::tempdir().unwrap();
     // Servers answer with real paths; /var is a symlink to /private/var on macOS.
-    let root = tmp.path().canonicalize().unwrap();
+    let root = dunce::canonicalize(tmp.path()).unwrap();
     let write = |rel: &str, text: &str| {
         let p = root.join(rel);
         std::fs::create_dir_all(p.parent().unwrap()).unwrap();
         std::fs::write(p, text).unwrap();
     };
     std::fs::create_dir_all(root.join("node_modules/@typescript")).unwrap();
-    let link_to = |target: PathBuf, rel: &str| std::os::unix::fs::symlink(target, root.join(rel)).unwrap();
+    let link_to = |target: PathBuf, rel: &str| symlink_dir(target, root.join(rel)).unwrap();
     match link {
         TsLink::TsServer => link_to(ts5().unwrap(), "node_modules/typescript"),
         TsLink::Native => link_to(ts7().unwrap(), "node_modules/typescript"),
@@ -257,4 +257,12 @@ pub fn check_file_rename(link: TsLink) {
     std::fs::rename(&util, p.root.join("src/util2.ts")).unwrap();
     ts.files_renamed(&util, &p.root.join("src/util2.ts"));
     ts.shutdown();
+}
+
+/// A directory symlink (on Windows it needs Developer Mode or an elevated shell).
+pub fn symlink_dir(target: impl AsRef<Path>, link: impl AsRef<Path>) -> std::io::Result<()> {
+    #[cfg(unix)]
+    return std::os::unix::fs::symlink(target, link);
+    #[cfg(windows)]
+    return std::os::windows::fs::symlink_dir(target, link);
 }

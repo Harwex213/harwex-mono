@@ -35,7 +35,7 @@ pub fn cargo_home() -> Option<PathBuf> {
     if let Some(h) = std::env::var_os("CARGO_HOME") {
         return Some(PathBuf::from(h));
     }
-    std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".cargo"))
+    crate::os::home_dir().map(|h| h.join(".cargo"))
 }
 
 /// Finds a working rust-analyzer. `Err` lists what was tried. Blocking (runs `--version`).
@@ -73,17 +73,17 @@ pub fn find_rust_analyzer(configured: Option<&Path>) -> Result<PathBuf, String> 
         }
     }
     for dir in std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default()) {
-        if let Some(found) = check(dir.join("rust-analyzer"), &mut notes) {
+        if let Some(found) = check(dir.join(crate::os::exe("rust-analyzer")), &mut notes) {
             return Ok(found);
         }
     }
     let cargo_bin = cargo_home().map(|h| h.join("bin"));
     if let Some(bin) = &cargo_bin {
-        if let Some(found) = check(bin.join("rust-analyzer"), &mut notes) {
+        if let Some(found) = check(bin.join(crate::os::exe("rust-analyzer")), &mut notes) {
             return Ok(found);
         }
     }
-    let rustup = cargo_bin.map(|b| b.join("rustup")).filter(|p| p.is_file()).unwrap_or_else(|| PathBuf::from("rustup"));
+    let rustup = cargo_bin.map(|b| b.join(crate::os::exe("rustup"))).filter(|p| p.is_file()).unwrap_or_else(|| PathBuf::from("rustup"));
     match output(Command::new(&rustup).args(["which", "rust-analyzer"])) {
         Ok(out) => {
             let p = PathBuf::from(out.trim());
@@ -111,6 +111,7 @@ fn run_version(exe: &Path) -> Result<String, String> {
 /// Runs a short command with a 10 s limit and returns its stdout. A failure returns the
 /// first stderr line, which is where rustup explains a missing component.
 fn output(cmd: &mut Command) -> Result<String, String> {
+    ide_lsp::hide_console(cmd);
     let mut child = cmd.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().map_err(|e| e.to_string())?;
     let deadline = Instant::now() + Duration::from_secs(10);
     let status = loop {
@@ -190,7 +191,7 @@ pub fn rust_src_missing() -> Option<String> {
     if let Some(p) = std::env::var_os("RUST_SRC_PATH") {
         return (!Path::new(&p).is_dir()).then(|| format!("RUST_SRC_PATH={} does not exist.", Path::new(&p).display()));
     }
-    let rustc = cargo_home().map(|h| h.join("bin/rustc")).filter(|p| p.is_file()).unwrap_or_else(|| PathBuf::from("rustc"));
+    let rustc = cargo_home().map(|h| h.join("bin").join(crate::os::exe("rustc"))).filter(|p| p.is_file()).unwrap_or_else(|| PathBuf::from("rustc"));
     let sysroot = output(Command::new(rustc).args(["--print", "sysroot"])).ok()?;
     let library = Path::new(sysroot.trim()).join("lib/rustlib/src/rust/library");
     (!library.is_dir()).then(|| format!("{} is missing. Install it with `rustup component add rust-src`.", library.display()))
@@ -691,6 +692,9 @@ mod tests {
         assert!(e.contains("rustup component add rust-analyzer"), "{e}");
         assert!(e.contains("/nonexistent/rust-analyzer"), "{e}");
         // A file that is not rust-analyzer fails the `--version` check.
+        if cfg!(windows) {
+            return;
+        }
         let e = find_rust_analyzer(Some(Path::new("/bin/echo"))).unwrap_err();
         assert!(e.contains("unexpected --version output"), "{e}");
     }

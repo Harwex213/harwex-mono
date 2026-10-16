@@ -210,7 +210,7 @@ fn favourites_sort_first_and_persist() {
     let fx = Fixture::new(SUITE, "favourites");
     let repo = branchy_repo(&fx);
     let mut storage = MemoryStorage::default();
-    let root = std::fs::canonicalize(&repo.dir).expect("canonical");
+    let root = dunce::canonicalize(&repo.dir).expect("canonical");
     {
         let mut ide = Ide::open(SUITE, &repo.dir);
         open_git(&mut ide);

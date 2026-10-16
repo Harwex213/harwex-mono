@@ -178,7 +178,7 @@ pub fn tick(state: &mut AppState) {
         return;
     }
     // Steps run on the --open file; wait until its tab exists.
-    let tab = t.open.as_ref().and_then(|p| std::fs::canonicalize(p).ok()).and_then(|p| state.ws.tabs.editor_by_path(&p));
+    let tab = t.open.as_ref().and_then(|p| dunce::canonicalize(p).ok()).and_then(|p| state.ws.tabs.editor_by_path(&p));
     let Some(tab) = tab else {
         if t.open.is_none() {
             finish(state);

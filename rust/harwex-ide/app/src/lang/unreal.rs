@@ -286,17 +286,25 @@ pub fn engine_root(path: &Path) -> Option<PathBuf> {
     None
 }
 
-/// The Epic launcher's install list (macOS only; there is no launcher on Linux).
+/// The Epic launcher's install list (macOS and Windows; there is no launcher on Linux).
 fn launcher_dat_path() -> Option<PathBuf> {
+    if cfg!(windows) {
+        return std::env::var_os("ProgramData").map(|d| PathBuf::from(d).join(r"Epic\UnrealEngineLauncher\LauncherInstalled.dat"));
+    }
     if !cfg!(target_os = "macos") {
         return None;
     }
-    std::env::var_os("HOME").map(|h| PathBuf::from(h).join("Library/Application Support/Epic/UnrealEngineLauncher/LauncherInstalled.dat"))
+    crate::os::home_dir().map(|h| h.join("Library/Application Support/Epic/UnrealEngineLauncher/LauncherInstalled.dat"))
 }
 
-/// The list of registered source builds.
+/// The list of registered source builds. Windows keeps it in the registry
+/// (`HKCU\Software\Epic Games\Unreal Engine\Builds`), which is not read yet: a source build
+/// there needs `[unreal] engine` in `.harwex/ide.toml`.
 fn install_ini_path() -> Option<PathBuf> {
-    let home = PathBuf::from(std::env::var_os("HOME")?);
+    if cfg!(windows) {
+        return None;
+    }
+    let home = crate::os::home_dir()?;
     if cfg!(target_os = "macos") {
         Some(home.join("Library/Application Support/Epic/UnrealEngine/Install.ini"))
     } else {
@@ -358,8 +366,21 @@ pub fn pick_target(names: &[String], project: &str) -> Option<String> {
 pub fn platform() -> &'static str {
     if cfg!(target_os = "macos") {
         "Mac"
+    } else if cfg!(windows) {
+        "Win64"
     } else {
         "Linux"
+    }
+}
+
+/// UBT's entry script: `Build.bat` sits directly in `BatchFiles` on Windows, `Build.sh` in the
+/// platform folder elsewhere.
+fn build_script(engine_root: &Path) -> PathBuf {
+    let batch = engine_root.join("Engine/Build/BatchFiles");
+    if cfg!(windows) {
+        batch.join("Build.bat")
+    } else {
+        batch.join(platform()).join("Build.sh")
     }
 }
 
@@ -391,12 +412,12 @@ fn shell_quote(s: &str) -> String {
     }
 }
 
-/// `<Engine>/Build/BatchFiles/<Mac|Linux>/Build.sh -mode=GenerateClangDatabase
+/// `<Engine>/Build/BatchFiles/<Mac|Linux>/Build.sh` (`BatchFiles/Build.bat` on Windows) `-mode=GenerateClangDatabase
 /// -project=<.uproject> -game -engine -OutputDir=<project>/.harwex/unreal/ubt <Target> <Platform>
 /// Development`. UE 5's `GenerateClangDatabase` has `-OutputDir`; without it UBT writes into the
 /// engine folder.
 pub fn generate_command(p: &UnrealProject, engine: &Engine, target: &str) -> GenerateCommand {
-    let program = engine.root.join("Engine/Build/BatchFiles").join(platform()).join("Build.sh");
+    let program = build_script(&engine.root);
     let output_dir = p.root.join(UBT_DIR);
     let args = vec![
         "-mode=GenerateClangDatabase".to_string(),
@@ -441,6 +462,7 @@ pub fn run_generate(cmd: &GenerateCommand, keep_engine: bool, cancel: &AtomicBoo
     command.args(&cmd.args).current_dir(&cmd.engine).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
     #[cfg(unix)]
     std::os::unix::process::CommandExt::process_group(&mut command, 0);
+    ide_lsp::hide_console(&mut command);
     let mut child = command.spawn().map_err(|e| format!("Cannot start {}: {e}", cmd.program.display()))?;
     let (tx, rx) = channel::<String>();
     let mut readers = Vec::new();
@@ -511,6 +533,9 @@ fn kill_group(child: &mut std::process::Child) {
         // SAFETY: as above; the group may be gone already, which is fine.
         unsafe { libc::killpg(pgid, libc::SIGKILL) };
     }
+    // No groups and no graceful signal on Windows: UBT, dotnet and the compilers die at once.
+    #[cfg(windows)]
+    ide_lsp::kill_tree(child.id());
     let _ = child.kill();
     let _ = child.wait();
 }
@@ -794,7 +819,8 @@ mod tests {
 
         let cfg = UnrealConfig { engine: Some(engine.clone()), ..Default::default() };
         let cmd = detect(&game, &cfg).unwrap().command().unwrap();
-        assert_eq!(cmd.program, engine.join("Engine/Build/BatchFiles").join(platform()).join("Build.sh"));
+        let script = if cfg!(windows) { engine.join("Engine/Build/BatchFiles/Build.bat") } else { engine.join("Engine/Build/BatchFiles").join(platform()).join("Build.sh") };
+        assert_eq!(cmd.program, script);
         assert_eq!(cmd.args[0], "-mode=GenerateClangDatabase");
         assert_eq!(cmd.args[1], format!("-project={}", game.join("Game.uproject").display()));
         assert_eq!(cmd.args[4], format!("-OutputDir={}", game.join(".harwex/unreal/ubt").display()));
@@ -953,7 +979,8 @@ mod tests {
         let db = format!(
             r#"[{{"file": "{0}/Source/Game/Private/A.cpp", "directory": "/E/Engine/Source"}},
                 {{"file": "Private/T.cpp", "directory": "{0}/Plugins/Tools/Source/Tools"}}]"#,
-            game.display()
+            // A Windows `\` would be a JSON escape.
+            game.display().to_string().replace('\\', "/")
         );
         write(&game.join(".harwex/unreal/compile_commands.json"), &db);
         touch(&game.join(".harwex/unreal/compile_commands.json"), 2000);
@@ -1014,7 +1041,7 @@ mod tests {
         touch(&p.root.join("Source/GameTests/GameTests.Build.cs"), 3000);
         assert_eq!(stale(&check_db(&p, None), Some(&m)), Some(Stale::NoModule("GameTests".into())));
         // A unity build lists the module's generated file under Intermediate.
-        let unity = format!(r#"[{{"file": "{}/Intermediate/Build/Mac/arm64/UnrealEditor/Development/GameTests/Module.GameTests.cpp"}}]"#, p.root.display());
+        let unity = format!(r#"[{{"file": "{}/Intermediate/Build/Mac/arm64/UnrealEditor/Development/GameTests/Module.GameTests.cpp"}}]"#, p.root.display().to_string().replace('\\', "/"));
         let index = DbIndex::parse(&unity, std::time::UNIX_EPOCH);
         assert!(index.covers(&m) && !index.covers(&game));
     }

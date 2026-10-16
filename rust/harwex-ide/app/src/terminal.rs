@@ -911,7 +911,7 @@ fn open_url(s: &mut AppState, url: String) {
 }
 
 fn new_terminal(s: &mut AppState) {
-    let cwd = s.ws.project.as_ref().map(|p| p.root.clone()).or_else(|| std::env::var_os("HOME").map(PathBuf::from)).unwrap_or_else(|| PathBuf::from("/"));
+    let cwd = s.ws.project.as_ref().map(|p| p.root.clone()).or_else(crate::os::home_dir).unwrap_or_else(|| PathBuf::from("/"));
     if let Err(e) = s.ws.terminals.spawn(cwd, s.ctx.clone()) {
         s.notifications.error("Could not start a terminal", e.to_string());
     }

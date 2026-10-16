@@ -17,7 +17,7 @@ A generic Language Server Protocol client. It exists so every language server (t
 - `open` / `change` / `close` send full text with increasing versions. `ensure_open` opens a never-opened file from disk and re-reads it when its mtime moves.
 - Each request has a timeout. A timeout sends `$/cancelRequest` and drops the late answer.
 - Cancel: a request watches the thread's `CancelScope` flag. Once it is set, the request sends `$/cancelRequest`, drops the answer and returns `Error::Cancelled` (its text holds `CANCELLED`).
-- A server runs in its own process group. `kill`, drop and `shutdown` SIGKILL the group, so its helpers (oxlint's tsgolint, proc-macro servers) die with it.
+- A server runs in its own process group. `kill`, drop and `shutdown` SIGKILL the group, so its helpers (oxlint's tsgolint, proc-macro servers) die with it. Windows: `taskkill /T /F` on the tree, and the server starts with `CREATE_NO_WINDOW`. `hide_console` and `kill_tree` are public for the app's and ide-ts' own children.
 - The reader thread answers server requests at once: `workspace/configuration` from the `configuration` handler (else `null` per item), `workspace/applyEdit` as not applied, everything else `null`. Never block the reader thread. A blocked reader stalls every request of that server.
 - `Error::is_retryable()` is true for content modified, server cancelled and request cancelled. Adapters retry those.
 - `framing` is also used by the tsserver reader in `ide-ts`. Lengths are UTF-8 bytes.

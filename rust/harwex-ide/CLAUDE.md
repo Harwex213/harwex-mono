@@ -6,13 +6,14 @@ A native IDE in Rust for macOS (Apple Silicon). It exists because IntelliJ IDEA 
 2. Git management that feels like JetBrains IDEA.
 3. Go to Declaration in JS/TS and Rust, including jumps into dependencies (`node_modules`, `.d.ts`, the real `.js`, `~/.cargo/registry`, std).
 
-Linux should compile, but nobody tests it.
+Windows 10/11 (x64, MSVC) builds and runs; its unit tests and clippy are green. Linux should compile, but nobody tests it.
 
 Read first: this file, the `CLAUDE.md` of each crate you touch (its contract and traps), and your task file in `docs/tasks/`. Other docs, when the task needs them:
 - `docs/architecture.md`: the full architecture rules, how the code follows them, and the recorded exceptions.
 - `docs/testing.md`: headless UI tests, snapshots, fixtures, real-window smoke tests.
 - `docs/timings.md`: the asserted speed budgets and reference numbers. Read it when you touch a hot path.
 - `docs/usage.md`: the user manual (in Russian). Update it when a user-visible behaviour changes.
+- `docs/windows.md`: the Windows contracts and traps. Read it when you touch processes, paths, the terminal, keys or fileops.
 
 Open work is in `docs/backlog.md`, one line per task.
 
@@ -58,7 +59,7 @@ Open work is in `docs/backlog.md`, one line per task.
 ## Shared contracts
 
 - Positions at every crate API are 0-based lines and 0-based columns in chars. Wire formats differ (tsserver is 1-based with UTF-16 offsets, LSP uses UTF-16 columns). Each crate converts in one place. `ide-term`'s `open_path` is the exception: it is 1-based as printed, so the app subtracts 1.
-- Paths are canonical (`/var` becomes `/private/var`, symlinked workspace packages become their real path). Servers report real paths. Tabs are keyed by canonical path. Canonicalize on a worker, never on the UI thread.
+- Paths are canonical (`/var` becomes `/private/var`, symlinked workspace packages become their real path). Servers report real paths. Tabs are keyed by canonical path. Canonicalize on a worker, never on the UI thread, and through `dunce::canonicalize` or `ide_lsp::canonical`, never `std::fs::canonicalize` (`\\?\` on Windows).
 - Library calls into `ide-git`, `ide-ts` and `ide-lsp` block. Call them only from worker threads.
 
 ## Done means

@@ -141,13 +141,19 @@ impl ToolWindow {
     }
 
     /// The shortcut shown in the strip button's tooltip: IDEA's tool window numbers. Find has
-    /// none, because ⌘3 opens a terminal in the folder.
+    /// none, because ⌘3 opens a terminal in the folder. Off macOS the digits go with Alt, as
+    /// in IDEA's Windows keymap.
     pub fn shortcut(self) -> &'static str {
+        let mac = ide_editor::keys::MAC;
         match self {
-            ToolWindow::Project => "⌘1",
-            ToolWindow::Commit => "⌘0",
-            ToolWindow::Git => "⌘9",
-            ToolWindow::Problems => "⌘6",
+            ToolWindow::Project if mac => "⌘1",
+            ToolWindow::Commit if mac => "⌘0",
+            ToolWindow::Git if mac => "⌘9",
+            ToolWindow::Problems if mac => "⌘6",
+            ToolWindow::Project => "⌥1",
+            ToolWindow::Commit => "⌥0",
+            ToolWindow::Git => "⌥9",
+            ToolWindow::Problems => "⌥6",
             ToolWindow::Terminal => "⌥F12",
             ToolWindow::Find | ToolWindow::Notifications => "",
         }
@@ -230,7 +236,7 @@ fn strip_button(ui: &mut Ui, rect: Rect, layout: &mut Layout, w: ToolWindow, bad
     }
     let tip = match w.shortcut() {
         "" => w.title().to_string(),
-        k => format!("{}  {k}", w.title()),
+        k => format!("{}  {}", w.title(), ide_editor::shortcut_label(k)),
     };
     if resp.on_hover_text(tip).clicked() {
         layout.toggle(w);
@@ -264,7 +270,7 @@ pub fn icon_button(ui: &mut Ui, icon: Icon, label: &str, tooltip: &str) -> Respo
     if tooltip.is_empty() {
         resp
     } else {
-        resp.on_hover_text(tooltip)
+        resp.on_hover_text(ide_editor::shortcut_label(tooltip).as_ref())
     }
 }
 

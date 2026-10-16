@@ -692,7 +692,7 @@ fn ts_locations(server: &Server, spans: &Value) -> Vec<Location> {
     let mut out: Vec<Location> = Vec::new();
     for span in spans {
         let Some(file) = span["file"].as_str() else { continue };
-        let path = PathBuf::from(file);
+        let path = server_path(file);
         let index = files.index(&path);
         let (line, column) = ts_convert(index.as_ref(), &span["start"]);
         let location = Location { path, line, column };
@@ -709,7 +709,7 @@ fn ts_references(server: &Server, body: &Value) -> Vec<Reference> {
     let refs = body["refs"].as_array().map(Vec::as_slice).unwrap_or_default();
     refs.iter()
         .filter_map(|r| {
-            let file = PathBuf::from(r["file"].as_str()?);
+            let file = server_path(r["file"].as_str()?);
             let index = files.index(&file);
             let (line, column) = ts_convert(index.as_ref(), &r["start"]);
             let (end_line, end_column) = ts_convert(index.as_ref(), &r["end"]);
@@ -736,7 +736,7 @@ fn ts_file_edits(server: &Server, body: &Value) -> Vec<FileEdit> {
     items
         .iter()
         .filter_map(|f| {
-            let path = PathBuf::from(f["fileName"].as_str()?);
+            let path = server_path(f["fileName"].as_str()?);
             let index = files.index(&path);
             let edits: Vec<TextEdit> = f["textChanges"]
                 .as_array()
@@ -1014,10 +1014,24 @@ fn display_text(value: &Value) -> String {
     }
 }
 
+/// A path as tsserver writes it. On Windows that is `c:/x/y.ts`: forward slashes and often a
+/// lower-case drive, while tabs are keyed by `C:\x\y.ts`. No disk access: a usage list can hold
+/// thousands of paths.
+fn server_path(file: &str) -> PathBuf {
+    if !cfg!(windows) {
+        return PathBuf::from(file);
+    }
+    let mut s = file.replace('/', "\\");
+    if s.as_bytes().get(1) == Some(&b':') {
+        s[..1].make_ascii_uppercase();
+    }
+    PathBuf::from(s)
+}
+
 /// Servers report module results by real path (`/private/var/...`, workspace packages
 /// behind symlinks). Using real paths for our own files too keeps one name per file.
 fn normalize(path: &Path) -> PathBuf {
-    std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
+    dunce::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
 }
 
 #[cfg(test)]

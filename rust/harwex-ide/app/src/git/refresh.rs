@@ -331,7 +331,7 @@ fn start_paths(state: &mut AppState) {
     let Some(repo) = repo_of(state) else { return };
     let r = &mut state.ws.git.refresh;
     let own = std::mem::take(&mut r.pending_own);
-    let mut set: HashSet<PathBuf> = r.pending.drain().collect();
+    let mut set: HashSet<PathBuf> = std::mem::take(&mut r.pending);
     if set.is_empty() && !own {
         return;
     }

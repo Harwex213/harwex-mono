@@ -307,7 +307,7 @@ const REGISTRY_CRATE: &str = "cargo/registry/src/index.crates.io-1949cf8c6b5b557
 
 /// Opens `path` (absolute, outside the project) and waits for its tab.
 fn open_external(ide: &mut Ide, path: &std::path::Path) {
-    let path = std::fs::canonicalize(path).expect("file exists");
+    let path = dunce::canonicalize(path).expect("file exists");
     ide.state_mut().open_location(&path, None, true);
     ide.wait_for("external tab", |s| s.ws.tabs.active_editor().is_some_and(|e| e.path == path));
     ide.settle();
@@ -341,7 +341,7 @@ fn registry_file_roots_at_crate_and_version() {
     ide.click("Breadcrumb serde 1.0.228");
     ide.wait_until("crate popup", |ide| ide.state().ws.breadcrumbs.popup.as_ref().is_some_and(|p| ide.state().ws.breadcrumbs.items(&p.levels[0]).is_some()));
     ide.settle();
-    let krate = std::fs::canonicalize(&krate).expect("crate dir");
+    let krate = dunce::canonicalize(&krate).expect("crate dir");
     assert_eq!(level_dir(&ide, 0).as_deref(), Some(krate.as_path()));
     assert_eq!(names(ide.state(), 0), ["src", "README.md"]);
     ide.snapshot("external_registry");
@@ -369,7 +369,7 @@ fn other_external_file_shows_three_segments() {
     ide.key(Key::Escape);
     ide.click("Breadcrumb External");
     ide.wait_until("root popup", |ide| ide.state().ws.breadcrumbs.popup.as_ref().is_some_and(|p| ide.state().ws.breadcrumbs.items(&p.levels[0]).is_some()));
-    let outside = std::fs::canonicalize(fx.path("outside")).expect("outside dir");
+    let outside = dunce::canonicalize(fx.path("outside")).expect("outside dir");
     assert_eq!(level_dir(&ide, 0).as_deref(), Some(outside.as_path()));
     assert_eq!(names(ide.state(), 0), ["notes"]);
 }

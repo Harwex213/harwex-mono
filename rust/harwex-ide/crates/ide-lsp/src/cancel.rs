@@ -61,6 +61,40 @@ pub(crate) fn kill_group(pgid: u32) {
         const SIGKILL: i32 = 9;
         kill(-(pgid as i32), SIGKILL);
     }
-    #[cfg(not(unix))]
-    let _ = pgid;
+    // Windows has no process groups: `taskkill /T` follows the parent links instead. It must
+    // run before the server itself dies, or its helpers are no longer reachable.
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        use std::process::Stdio;
+        let system = std::env::var_os("SystemRoot").map(std::path::PathBuf::from).unwrap_or_else(|| r"C:\Windows".into());
+        let _ = std::process::Command::new(system.join(r"System32\taskkill.exe"))
+            .args(["/T", "/F", "/PID", &pgid.to_string()])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .creation_flags(CREATE_NO_WINDOW)
+            .status();
+    }
+}
+
+/// `CREATE_NO_WINDOW`: a console server started by a GUI process gets a hidden console instead
+/// of a window, and its helpers inherit it.
+#[cfg(windows)]
+pub(crate) const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
+/// Starts `cmd` without a console window on Windows (a no-op elsewhere). Every child of the
+/// IDE that is a console program (servers, node, git, compilers) needs it, or each start
+/// flashes a window. The app and `ide-ts` use it for their own spawns.
+pub fn hide_console(cmd: &mut std::process::Command) {
+    #[cfg(windows)]
+    std::os::windows::process::CommandExt::creation_flags(cmd, CREATE_NO_WINDOW);
+    #[cfg(not(windows))]
+    let _ = cmd;
+}
+
+/// Kills `pid` together with every process it started: its process group on unix (the
+/// child must have been started with `process_group(0)`), its descendants on Windows.
+pub fn kill_tree(pid: u32) {
+    kill_group(pid);
 }

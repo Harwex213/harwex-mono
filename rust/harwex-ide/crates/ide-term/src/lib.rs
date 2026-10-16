@@ -117,7 +117,8 @@ pub(crate) struct IoState {
 #[derive(Clone, Debug)]
 pub struct SpawnOptions {
     pub cwd: PathBuf,
-    /// Program and arguments. `None` runs `$SHELL -l` (fallback `/bin/zsh`).
+    /// Program and arguments. `None` runs `$SHELL -l` (fallback `/bin/zsh`), on Windows
+    /// `pwsh.exe` (fallback `powershell.exe`).
     pub command: Option<Vec<String>>,
     /// Extra environment, applied after `TERM`/`COLORTERM`.
     pub env: Vec<(String, String)>,
@@ -156,11 +157,25 @@ pub struct Terminal {
     pub(crate) view: view::ViewState,
 }
 
-fn login_shell() -> String {
-    std::env::var("SHELL")
+#[cfg(unix)]
+fn default_argv() -> Vec<String> {
+    let shell = std::env::var("SHELL")
         .ok()
         .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| "/bin/zsh".to_string())
+        .unwrap_or_else(|| "/bin/zsh".to_string());
+    vec![shell, "-l".to_string()]
+}
+
+/// PowerShell 7 when it is on `PATH`, else the Windows PowerShell every Windows has. `$SHELL`
+/// is ignored: on Windows only Git Bash and MSYS set it, and it names a POSIX path.
+#[cfg(windows)]
+fn default_argv() -> Vec<String> {
+    let on_path = |exe: &str| {
+        std::env::var_os("PATH")
+            .is_some_and(|path| std::env::split_paths(&path).any(|dir| dir.join(exe).is_file()))
+    };
+    let shell = if on_path("pwsh.exe") { "pwsh.exe" } else { "powershell.exe" };
+    vec![shell.to_string(), "-NoLogo".to_string()]
 }
 
 impl Terminal {
@@ -181,7 +196,7 @@ impl Terminal {
         let argv = options
             .command
             .clone()
-            .unwrap_or_else(|| vec![login_shell(), "-l".to_string()]);
+            .unwrap_or_else(default_argv);
         let program_name = Path::new(&argv[0])
             .file_name()
             .map(|n| n.to_string_lossy().into_owned())
@@ -316,10 +331,12 @@ impl Terminal {
     /// The working directory of the foreground process (the shell after `cd`), when the OS
     /// can tell. Used to resolve relative paths in the output.
     pub fn current_dir(&self) -> Option<PathBuf> {
-        let pid = self
-            .master
-            .process_group_leader()
-            .or_else(|| self.process_id().map(|p| p as i32))?;
+        #[cfg(unix)]
+        let leader = self.master.process_group_leader();
+        // ConPTY has no foreground process group.
+        #[cfg(not(unix))]
+        let leader = None;
+        let pid = leader.or_else(|| self.process_id().map(|p| p as i32))?;
         process_cwd(pid)
     }
 
@@ -590,7 +607,71 @@ fn process_cwd(_pid: i32) -> Option<PathBuf> {
     None
 }
 
-#[cfg(test)]
+/// ConPTY: the shell scripts of the unix tests have no Windows twin, so these only check that a
+/// console program starts, prints into the grid, reads input and exits.
+#[cfg(all(test, windows))]
+mod windows_tests {
+    use super::*;
+    use std::time::Duration;
+
+    fn wait_for(term: &Terminal, what: impl Fn(&str) -> bool) -> String {
+        let start = Instant::now();
+        loop {
+            let text = term.screen_text();
+            if what(&text) || start.elapsed() > Duration::from_secs(10) {
+                return text;
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+    }
+
+    fn cmd(script: &str) -> SpawnOptions {
+        let mut options = SpawnOptions::new(&std::env::temp_dir());
+        options.command = Some(vec!["cmd.exe".into(), "/d".into(), "/c".into(), script.into()]);
+        options
+    }
+
+    #[test]
+    fn echo_lands_in_the_grid_and_the_child_exits() {
+        let term = Terminal::spawn_with(cmd("echo hi-from-conpty"), egui::Context::default()).unwrap();
+        let text = wait_for(&term, |t| t.contains("hi-from-conpty"));
+        assert!(text.contains("hi-from-conpty"), "screen was:\n{text}");
+        assert!(!term.title().is_empty());
+        let start = Instant::now();
+        while term.is_alive() && start.elapsed() < Duration::from_secs(10) {
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        assert!(!term.is_alive());
+    }
+
+    #[test]
+    fn input_reaches_the_child() {
+        let term = Terminal::spawn_with(cmd("set /p x=ask: & call echo got:%x%"), egui::Context::default()).unwrap();
+        wait_for(&term, |t| t.contains("ask:"));
+        term.write("abc\r");
+        let text = wait_for(&term, |t| t.contains("got:abc"));
+        assert!(text.contains("got:abc"), "screen was:\n{text}");
+    }
+
+    #[test]
+    fn dropped_terminal_ends_its_child() {
+        let term = Terminal::spawn_with(cmd("echo ready & ping -n 30 127.0.0.1 >nul"), egui::Context::default()).unwrap();
+        wait_for(&term, |t| t.contains("ready"));
+        let pid = term.process_id().unwrap();
+        drop(term);
+        let start = Instant::now();
+        while std::process::Command::new("tasklist")
+            .args(["/FI", &format!("PID eq {pid}"), "/NH"])
+            .output()
+            .is_ok_and(|o| String::from_utf8_lossy(&o.stdout).contains(&pid.to_string()))
+        {
+            assert!(start.elapsed() < Duration::from_secs(10), "pid {pid} still runs");
+            std::thread::sleep(Duration::from_millis(100));
+        }
+    }
+}
+
+#[cfg(all(test, unix))]
 mod tests {
     use super::*;
     use std::time::Duration;

@@ -370,7 +370,8 @@ mod tests {
             if rel.starts_with("save/") {
                 continue;
             }
-            let text = std::fs::read_to_string(file).expect("read source");
+            // A Windows checkout (`core.autocrlf`) has CRLF lines.
+            let text = std::fs::read_to_string(file).expect("read source").replace("\r\n", "\n");
             // Unit tests write their own fixtures.
             let code = text.split("#[cfg(test)]\nmod tests").next().unwrap_or_default();
             for (n, line) in code.lines().enumerate() {

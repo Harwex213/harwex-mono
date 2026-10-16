@@ -1,3 +1,4 @@
+#![cfg(unix)] // A unix socket left behind by a killed instance; Windows is covered by unit tests.
 //! Stale socket recovery (`instance::claim`). It has its own test binary: a child that another
 //! test forks inherits the dropped listener's fd until its `exec`, and a connect in that window
 //! looks like a live instance that answers nothing.

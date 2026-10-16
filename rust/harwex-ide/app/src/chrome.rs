@@ -89,13 +89,20 @@ pub fn system_double_click_interval() -> Option<f64> {
     {
         Some(macos::double_click_interval()).filter(|s| s.is_finite() && *s > 0.0)
     }
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(windows)]
+    {
+        // SAFETY: GetDoubleClickTime has no arguments and cannot fail.
+        let ms = unsafe { windows_sys::Win32::UI::Input::KeyboardAndMouse::GetDoubleClickTime() };
+        Some(f64::from(ms) / 1000.0).filter(|s| *s > 0.0)
+    }
+    #[cfg(not(any(target_os = "macos", windows)))]
     None
 }
 
 /// The `--test-chrome` check: the button frames after the window settles, then again after a
 /// resize, which makes macOS lay the buttons out anew.
 #[derive(Default)]
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub struct ChromeCheck {
     stable_frames: u32,
     phase: u32,

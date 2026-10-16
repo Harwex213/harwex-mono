@@ -71,7 +71,7 @@ pub fn load(state: &mut AppState, storage: Option<&dyn eframe::Storage>, file: O
         return;
     };
     // Tabs are keyed by canonical path; a save of this file must find it (`saved`).
-    let file = match (file.parent().and_then(|d| std::fs::canonicalize(d).ok()), file.file_name()) {
+    let file = match (file.parent().and_then(|d| dunce::canonicalize(d).ok()), file.file_name()) {
         (Some(dir), Some(name)) => dir.join(name),
         _ => file,
     };

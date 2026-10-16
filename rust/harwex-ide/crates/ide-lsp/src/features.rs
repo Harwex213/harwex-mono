@@ -243,7 +243,37 @@ impl<F: Fn(&Path) -> Option<Arc<str>>> FileTexts<F> {
 /// Servers report results by real path (`/private/var/...`, packages behind symlinks).
 /// Using real paths everywhere keeps one name per file.
 pub fn canonical(path: &Path) -> PathBuf {
-    std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
+    std::fs::canonicalize(path).map(strip_verbatim).unwrap_or_else(|_| path.to_path_buf())
+}
+
+/// Windows `canonicalize` answers `\\?\C:\x` (or `\\?\UNC\host\share\x`). Servers, git and the
+/// rest of the IDE know `C:\x`, so the prefix goes (the app does the same through `dunce`).
+/// A path that only works in verbatim form (a reserved name, a trailing dot) keeps it.
+fn strip_verbatim(path: PathBuf) -> PathBuf {
+    if !cfg!(windows) {
+        return path;
+    }
+    let Some(s) = path.to_str() else { return path };
+    let plain = if let Some(rest) = s.strip_prefix(r"\\?\UNC\") {
+        format!(r"\\{rest}")
+    } else if let Some(rest) = s.strip_prefix(r"\\?\").filter(|r| r.as_bytes().get(1) == Some(&b':')) {
+        rest.to_string()
+    } else {
+        return path;
+    };
+    let lossless = plain.len() < 260
+        && !plain.split('\\').skip(1).any(|c| c.ends_with('.') || c.ends_with(' ') || is_reserved(c));
+    if lossless {
+        PathBuf::from(plain)
+    } else {
+        path
+    }
+}
+
+fn is_reserved(component: &str) -> bool {
+    let stem = component.split('.').next().unwrap_or("").to_ascii_uppercase();
+    matches!(stem.as_str(), "CON" | "PRN" | "AUX" | "NUL")
+        || (stem.len() == 4 && (stem.starts_with("COM") || stem.starts_with("LPT")) && stem.as_bytes()[3].is_ascii_digit())
 }
 
 #[cfg(test)]

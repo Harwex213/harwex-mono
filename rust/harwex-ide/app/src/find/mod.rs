@@ -347,6 +347,8 @@ pub fn hit_key(h: &FindHit) -> HitKey {
     (h.path.clone(), h.line, h.column)
 }
 
+// One engine per search; the size of the regex variant does not matter.
+#[allow(clippy::large_enum_variant)]
 enum Engine {
     Literal { finder: memchr::memmem::Finder<'static>, case_sensitive: bool },
     /// `expand`: the replacement holds `$1` groups (Regex on). A plain query that needs the
@@ -692,7 +694,9 @@ fn walk(targets: &Targets, skip: &[PathBuf], stop: &(dyn Fn() -> bool + Sync), v
                                 if stop() {
                                     return;
                                 }
-                                let path = root.join(rel);
+                                // Index entries use `/`; a Windows path shown with mixed
+                                // separators would not match the walk's paths in the UI.
+                                let path = if cfg!(windows) { root.join(rel.replace('/', "\\")) } else { root.join(rel) };
                                 if !skip.iter().any(|s| path.starts_with(s)) {
                                     visit(&path);
                                 }
@@ -728,7 +732,7 @@ fn lower_priority() {
     if LOWERED_PRIORITY.replace(true) {
         return;
     }
-    // SAFETY: both calls change only the calling thread's scheduling and take no pointers.
+    // SAFETY: each call changes only the calling thread's scheduling and takes no pointers.
     #[cfg(target_os = "macos")]
     unsafe {
         libc::pthread_set_qos_class_self_np(libc::qos_class_t::QOS_CLASS_UTILITY, 0);
@@ -736,6 +740,13 @@ fn lower_priority() {
     #[cfg(target_os = "linux")]
     unsafe {
         libc::setpriority(libc::PRIO_PROCESS, libc::gettid() as libc::id_t, 10);
+    }
+    // Below normal, not background mode: that one also drops the I/O priority so far that a
+    // search on a busy disk crawls.
+    #[cfg(windows)]
+    unsafe {
+        use windows_sys::Win32::System::Threading::{GetCurrentThread, SetThreadPriority, THREAD_PRIORITY_BELOW_NORMAL};
+        SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_BELOW_NORMAL);
     }
 }
 
@@ -1249,7 +1260,7 @@ mod tests {
     #[test]
     fn words_regex_case_and_replacement() {
         let tmp = tempfile::tempdir().unwrap();
-        let root = tmp.path().canonicalize().unwrap();
+        let root = dunce::canonicalize(tmp.path()).unwrap();
         std::fs::write(root.join("a.ts"), "let addOne = add(1);\nADD(2);\r\nadd_x\n").unwrap();
         let q = |text: &str| Query { text: text.into(), ..Default::default() };
         assert_eq!(hits(&root, q("add")).len(), 4, "plain, case-insensitive");
@@ -1272,7 +1283,7 @@ mod tests {
     #[test]
     fn case_folds_non_ascii_text() {
         let tmp = tempfile::tempdir().unwrap();
-        let root = tmp.path().canonicalize().unwrap();
+        let root = dunce::canonicalize(tmp.path()).unwrap();
         std::fs::write(root.join("a.ts"), "title: \"Цели\",\nцели и ЦЕЛИ\nStraße STRASSE\n").unwrap();
         let q = |text: &str| Query { text: text.into(), ..Default::default() };
         let at = |q: Query| hits(&root, q).into_iter().map(|h| (h.1, h.2)).collect::<Vec<_>>();
@@ -1290,7 +1301,7 @@ mod tests {
     #[test]
     fn scope_and_exclusions() {
         let tmp = tempfile::tempdir().unwrap();
-        let root = tmp.path().canonicalize().unwrap();
+        let root = dunce::canonicalize(tmp.path()).unwrap();
         for rel in ["src/a.ts", "dist/a.js", "src/sub/b.ts"] {
             let p = root.join(rel);
             std::fs::create_dir_all(p.parent().unwrap()).unwrap();
@@ -1311,7 +1322,7 @@ mod tests {
     #[test]
     fn multiline_matches_replace_across_lines() {
         let tmp = tempfile::tempdir().unwrap();
-        let root = tmp.path().canonicalize().unwrap();
+        let root = dunce::canonicalize(tmp.path()).unwrap();
         let (lf, crlf) = (root.join("a.ts"), root.join("c.ts"));
         std::fs::write(&lf, "let a = 1;\nlet b = 2;\nend\n").unwrap();
         std::fs::write(&crlf, "x\r\nlet a = 1;\r\nlet b = 2;\r\n").unwrap();
@@ -1363,7 +1374,7 @@ mod tests {
     #[test]
     fn count_and_replace_all_have_no_cap() {
         let tmp = tempfile::tempdir().unwrap();
-        let root = tmp.path().canonicalize().unwrap();
+        let root = dunce::canonicalize(tmp.path()).unwrap();
         let path = root.join("a.txt");
         std::fs::write(&path, "Add add\r\n".repeat(3000)).unwrap();
         let q = Query { text: "add".into(), replacement: Some("x".into()), ..Default::default() };
@@ -1377,7 +1388,7 @@ mod tests {
     #[test]
     fn the_index_finds_what_the_walk_finds() {
         let tmp = tempfile::tempdir().unwrap();
-        let root = tmp.path().canonicalize().unwrap();
+        let root = dunce::canonicalize(tmp.path()).unwrap();
         for rel in ["src/a.ts", "src/sub/b.ts", "src-b/c.ts", "srcx.ts", "dist/d.js", "img.dat"] {
             let p = root.join(rel);
             std::fs::create_dir_all(p.parent().unwrap()).unwrap();
@@ -1390,7 +1401,7 @@ mod tests {
         let no = AtomicBool::new(false);
         let found = |t: &Targets, skip: &[PathBuf]| {
             let (r, _) = search_with(t, &Disk, &q, None, skip, &no, 100, &|_, _| {}).unwrap();
-            r.into_iter().map(|(p, h)| (p.strip_prefix(&root).unwrap().display().to_string(), h[0].column)).collect::<Vec<_>>()
+            r.into_iter().map(|(p, h)| (p.strip_prefix(&root).unwrap().display().to_string().replace('\\', "/"), h[0].column)).collect::<Vec<_>>()
         };
         let index = |dir: &str| Targets::Index { root: root.clone(), files: files.clone(), dir: root.join(dir) };
         let walk = |dir: &str| Targets::Walk { root: root.join(dir), max_depth: None };

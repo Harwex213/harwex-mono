@@ -549,6 +549,8 @@ impl LspClient {
         // Its own process group, so `kill` reaches the helpers the server starts.
         #[cfg(unix)]
         std::os::unix::process::CommandExt::process_group(&mut cmd, 0);
+        #[cfg(windows)]
+        crate::cancel::hide_console(&mut cmd);
         if let Some(cwd) = &self.config.cwd {
             cmd.current_dir(cwd);
         }

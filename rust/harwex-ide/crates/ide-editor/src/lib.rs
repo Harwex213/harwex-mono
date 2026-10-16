@@ -9,6 +9,7 @@ pub mod editing;
 mod find;
 mod find_bar;
 mod highlight;
+pub mod keys;
 mod language;
 mod layout;
 mod occurrences;
@@ -22,6 +23,7 @@ pub use document::{Document, EditKind, Indent, Position, Selection, TextChange, 
 pub use find::{FindState, Match, MAX_MATCHES};
 pub use search::{preserve_case, FindOptions, Matcher, SearchFilter, Template};
 pub use highlight::{HlKind, Span};
+pub use keys::shortcut_label;
 pub use language::Language;
 pub use occurrences::MAX_OCCURRENCES;
 pub use layout::Fold;

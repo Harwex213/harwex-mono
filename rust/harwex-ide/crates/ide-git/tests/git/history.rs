@@ -127,7 +127,8 @@ fn with_remote() -> (tempfile::TempDir, TestRepo, TestRepo) {
     seed.git(&["push", "-q", "-u", "origin", "main"]);
 
     let dir = tempfile::tempdir().unwrap();
-    git_in(dir.path(), &["clone", "-q", url, "."]);
+    // The checkout of the clone runs before `configure` (see its autocrlf note).
+    git_in(dir.path(), &["clone", "-q", "--config", "core.autocrlf=false", url, "."]);
     configure(dir.path());
     let repo = Repo::discover(dir.path()).unwrap();
     (remote, seed, TestRepo { dir, repo })
@@ -246,7 +247,7 @@ fn push_non_current_branch() {
 
     // Force-with-lease refuses when the remote moved since the last fetch.
     let other = tempfile::tempdir().unwrap();
-    git_in(other.path(), &["clone", "-q", "-b", "feature", remote.path().to_str().unwrap(), "."]);
+    git_in(other.path(), &["clone", "-q", "--config", "core.autocrlf=false", "-b", "feature", remote.path().to_str().unwrap(), "."]);
     configure(other.path());
     std::fs::write(other.path().join("o.txt"), "o\n").unwrap();
     git_in(other.path(), &["add", "-A"]);

@@ -45,7 +45,7 @@ fn image_repo(fx: &Fixture) -> Repo {
 
 /// Opens `rel` as the tree would and waits for the decoded image.
 fn open_image(ide: &mut Ide, rel: &str) -> String {
-    let path = std::fs::canonicalize(ide.root().join(rel)).expect("file exists");
+    let path = dunce::canonicalize(ide.root().join(rel)).expect("file exists");
     ide.state_mut().open_location(&path, None, true);
     let key = format!("image:{}", path.display());
     ide.wait_until("image decoded", |ide| ide.state().is_idle() && ide.state().ws.tabs.custom_by_key(&key).is_some());
@@ -98,7 +98,7 @@ fn an_image_opens_in_the_viewer_and_zooms() {
 
     // A change on disk decodes the file again.
     write_bytes(&repo, "img/pic.png", &png(80, 40, 30));
-    let path = std::fs::canonicalize(repo.dir.join("img/pic.png")).expect("png");
+    let path = dunce::canonicalize(repo.dir.join("img/pic.png")).expect("png");
     ide.state_mut().on_fs_batch(harwex_ide::watcher::FsBatch { paths: std::iter::once(path).collect(), structure_changed: false, git_changed: false });
     ide.settle();
     assert!(image_tab(&mut ide, &key).info().is_some_and(|i| i.starts_with("80×40 PNG")));
@@ -122,7 +122,7 @@ fn an_svg_renders_and_opens_as_text() {
     assert!(ide.active_text().starts_with("<svg"));
     // With a text tab open, the tree opens the text again.
     ide.open_file("README.md");
-    let path = std::fs::canonicalize(ide.root().join("img/logo.svg")).expect("svg");
+    let path = dunce::canonicalize(ide.root().join("img/logo.svg")).expect("svg");
     ide.state_mut().open_location(&path, None, true);
     ide.settle();
     assert!(ide.state().ws.tabs.active_editor().is_some_and(|e| e.path == path));
@@ -268,7 +268,7 @@ fn an_image_with_a_position_opens_as_text() {
     let fx = Fixture::new(SUITE, "position");
     let repo = image_repo(&fx);
     let mut ide = Ide::open(SUITE, &repo.dir);
-    let path = std::fs::canonicalize(repo.dir.join("img/logo.svg")).expect("svg");
+    let path = dunce::canonicalize(repo.dir.join("img/logo.svg")).expect("svg");
     ide.state_mut().open_location(&path, Some(ide_editor::Position::new(0, 0)), true);
     ide.wait_for("text tab", |s| s.ws.tabs.active_editor().is_some_and(|e| e.path == path));
 }

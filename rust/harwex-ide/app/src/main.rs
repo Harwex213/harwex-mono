@@ -6,6 +6,10 @@
 //! activating the app: no Dock icon, no focus change, no switch to another Space. Agents that
 //! launch the real window while the user works must use it.
 
+// A release build started from Explorer must not open a console window next to the IDE. Debug
+// builds keep the console, so `cargo run` still shows the `[harwex-ide]` log lines.
+#![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
+
 use std::io::IsTerminal;
 use std::time::Instant;
 

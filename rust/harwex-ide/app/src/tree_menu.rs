@@ -239,7 +239,7 @@ pub fn menu(ui: &mut Ui, target: &Target, info: &MenuInfo) -> Option<TreeCommand
     let several = info.count > 1;
     let mut item = |ui: &mut Ui, label: &str, shortcut: &str, enabled: bool, cmd: TreeCommand| {
         let enabled = enabled && !(several && cmd.single_only());
-        if ui.add_enabled(enabled, egui::Button::new(label).shortcut_text(shortcut)).clicked() {
+        if ui.add_enabled(enabled, egui::Button::new(label).shortcut_text(ide_editor::shortcut_label(shortcut).as_ref())).clicked() {
             picked = Some(cmd);
             ui.close_menu();
         }
@@ -261,9 +261,9 @@ pub fn menu(ui: &mut Ui, target: &Target, info: &MenuInfo) -> Option<TreeCommand
     item(ui, "Replace in Files...", "⇧⌘R", true, TreeCommand::ReplaceInFiles);
     ui.separator();
     item(ui, "Rename...", "⇧F6", true, TreeCommand::Rename);
-    item(ui, "Delete...", "⌫", true, TreeCommand::Delete);
+    item(ui, "Delete...", if ide_editor::keys::MAC { "⌫" } else { "Delete" }, true, TreeCommand::Delete);
     ui.separator();
-    item(ui, "Open In Finder", "", true, TreeCommand::OpenInFinder);
+    item(ui, &format!("Open In {}", crate::os::FILE_MANAGER), "", true, TreeCommand::OpenInFinder);
     item(ui, "Open In Terminal", "⌘3", true, TreeCommand::OpenInTerminal);
     ui.separator();
     item(ui, "Git Rollback...", "", info.has_repo && info.has_changes, TreeCommand::GitRollback);
@@ -284,7 +284,7 @@ pub fn menu(ui: &mut Ui, target: &Target, info: &MenuInfo) -> Option<TreeCommand
 /// so both menus list the same file commands.
 pub fn file_menu(ui: &mut Ui, target: &Target, info: &MenuInfo) -> Option<TreeCommand> {
     let mut picked = None;
-    if ui.add(egui::Button::new("Select in Project").shortcut_text("⌥F1")).clicked() {
+    if ui.add(egui::Button::new("Select in Project").shortcut_text(ide_editor::shortcut_label("⌥F1").as_ref())).clicked() {
         picked = Some(TreeCommand::SelectInProject);
         ui.close_menu();
     }
@@ -361,7 +361,7 @@ pub fn run(state: &mut AppState, cmd: TreeCommand, targets: Vec<Target>) {
                 move || platform.reveal(&path),
                 |state, res| {
                     if let Err(e) = res {
-                        state.notifications.error("Cannot open Finder", e);
+                        state.notifications.error(format!("Cannot open {}", crate::os::FILE_MANAGER), e);
                     }
                 },
             );
@@ -1074,7 +1074,7 @@ fn delete(state: &mut AppState, targets: Vec<Target>) {
             let mut trashed = Vec::new();
             for (path, res) in paths.into_iter().zip(results) {
                 if let Err(e) = res {
-                    let title = if trash { format!("Cannot move {} to the Trash", fileops::file_name(&path)) } else { format!("Cannot delete {}", fileops::file_name(&path)) };
+                    let title = if trash { format!("Cannot move {} to the {}", fileops::file_name(&path), crate::os::TRASH) } else { format!("Cannot delete {}", fileops::file_name(&path)) };
                     state.notifications.error(title, e);
                     continue;
                 }
@@ -1098,7 +1098,7 @@ fn delete(state: &mut AppState, targets: Vec<Target>) {
                 return;
             }
             state.on_fs_batch(FsBatch { paths: batch, structure_changed: true, git_changed: false });
-            let done = if trash { format!("Moved {} to the Trash", trashed.join(", ")) } else { format!("Deleted {}", trashed.join(", ")) };
+            let done = if trash { format!("Moved {} to the {}", trashed.join(", "), crate::os::TRASH) } else { format!("Deleted {}", trashed.join(", ")) };
             state.notifications.log_only(Level::Info, done, String::new());
         },
     );
@@ -1266,13 +1266,13 @@ pub fn show_dialogs(state: &mut AppState, ctx: &Context) {
                         let kind = if one.is_dir { "directory" } else { "file" };
                         ui.label(RichText::new(if one.is_dir { "Delete Directory" } else { "Delete File" }).strong());
                         let name = fileops::file_name(&one.path);
-                        ui.label(if trash { format!("Move the {kind} \"{name}\" to the Trash?") } else { format!("Delete the {kind} \"{name}\" permanently?") });
+                        ui.label(if trash { format!("Move the {kind} \"{name}\" to the {}?", crate::os::TRASH) } else { format!("Delete the {kind} \"{name}\" permanently?") });
                     }
                     many => {
                         ui.label(RichText::new(format!("Delete {} Items", many.len())).strong());
                         let names: Vec<String> = many.iter().map(|t| fileops::file_name(&t.path)).collect();
                         let names = names.join(", ");
-                        ui.label(if trash { format!("Move {} items to the Trash: {names}?", many.len()) } else { format!("Delete {} items permanently: {names}?", many.len()) });
+                        ui.label(if trash { format!("Move {} items to the {}: {names}?", many.len(), crate::os::TRASH) } else { format!("Delete {} items permanently: {names}?", many.len()) });
                     }
                 }
                 let before = d.safe;
