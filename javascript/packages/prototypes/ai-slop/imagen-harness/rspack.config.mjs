@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import { rspack } from "@rspack/core";
 
 const PORT = Number(process.env.IMAGEN_WEB_PORT ?? 5761);
@@ -7,7 +8,7 @@ export default {
     main: "./src/main.tsx",
   },
   output: {
-    path: new URL("dist/renderer", import.meta.url).pathname,
+    path: fileURLToPath(new URL("dist/renderer", import.meta.url)),
     filename: "[name].[contenthash].js",
     cssFilename: "[name].[contenthash].css",
     // The built page is opened over file://, so every asset has to be relative.
