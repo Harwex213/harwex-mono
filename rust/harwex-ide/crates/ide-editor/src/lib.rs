@@ -4,6 +4,7 @@
 //! laid out, and line galleys are cached by content.
 
 pub mod carets;
+mod conf;
 mod document;
 pub mod editing;
 mod find;

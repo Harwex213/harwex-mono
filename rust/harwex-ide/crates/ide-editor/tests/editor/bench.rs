@@ -583,3 +583,121 @@ fn bench_wrapped_giant_line() {
         assert!(avg(&down) < Duration::from_millis(8), "Down frame too slow");
     }
 }
+
+/// A pnpm-lock-style YAML file of up to `max_bytes` and `max_lines` lines.
+fn generate_yaml_lock(max_bytes: usize, max_lines: usize) -> String {
+    const HEADER_LINES: usize = 7;
+    const BLOCK_LINES: usize = 9;
+    let mut s = String::from("lockfileVersion: '9.0'\n\nsettings:\n  autoInstallPeers: true\n\npackages:\n\n");
+    let mut i = 0;
+    while s.len() < max_bytes && HEADER_LINES + (i + 1) * BLOCK_LINES < max_lines {
+        s.push_str(&format!(
+            "  '@scope/pkg-{i}@1.{i}.0':\n    resolution: {{integrity: sha512-Q2xhbmd1YWdlIGlzIG5vdCBhIGhhc2g{i}==}}\n    engines: {{node: '>=18.0.0'}}\n    hasBin: true\n    dependencies:\n      debug: 4.3.{i}\n      '@scope/dep-{i}': link:../dep # local\n    dev: false\n\n"
+        ));
+        i += 1;
+    }
+    s
+}
+
+/// An nginx/INI-style config of about 5 MB, colored line by line without a tree.
+fn generate_conf() -> String {
+    let mut s = String::new();
+    let mut i = 0;
+    while s.len() < 5_000_000 {
+        s.push_str(&format!(
+            "# upstream {i}\n[section_{i}]\nname = \"service {i}\" ; quoted\nport: {i}\nenabled = true\nserver {{ listen {i}; proxy_pass http://$host:{i}; }}\n\n"
+        ));
+        i += 1;
+    }
+    s
+}
+
+/// Open, highlight, keystroke, steady, jump-scroll and typing frames of a big file stay in the
+/// TypeScript budgets.
+fn bench_big_file(label: &str, lang: Language, text: &str) {
+    let (first, open_first) = time(|| Document::from_text(text, lang));
+    drop(first);
+    let (mut doc, open) = time(|| Document::from_text(text, lang));
+    let lines = doc.line_count();
+    let (_, parse) = time(|| doc.wait_syntax());
+    let mid = lines / 2;
+    let (spans, hl) = time(|| doc.highlight(mid..mid + 60));
+    assert!(spans.iter().any(|l| !l.is_empty()), "{label}: the middle is colored");
+
+    let at = doc.position_to_char(Position::new(mid, 4));
+    let mut sel = Selection::caret(at);
+    let mut edit_times = Vec::new();
+    for i in 0..1000 {
+        let c = if i % 7 == 6 { " " } else { "a" };
+        let (_, d) = time(|| {
+            let after = Selection::caret(sel.head + 1);
+            doc.edit(sel.head..sel.head, c, sel, after, EditKind::Insert);
+            sel = after;
+            doc.highlight(mid..mid + 60)
+        });
+        edit_times.push(d);
+    }
+    let (_, reparse) = time(|| doc.wait_syntax());
+    let avg = |v: &[Duration]| v.iter().sum::<Duration>() / v.len() as u32;
+    let max = |v: &[Duration]| v.iter().max().copied().unwrap_or_default();
+
+    let ctx = egui::Context::default();
+    let mut state = EditorState::new();
+    state.request_focus();
+    frame(&ctx, &mut doc, &mut state, vec![]);
+    let steady: Vec<Duration> = (0..50).map(|_| frame(&ctx, &mut doc, &mut state, vec![])).collect();
+    let mut jumps = Vec::new();
+    for i in 0..50 {
+        state.reveal(Position::new((i * 3_919) % lines, 0));
+        jumps.push(frame(&ctx, &mut doc, &mut state, vec![]));
+    }
+    state.reveal(Position::new(mid, 4));
+    frame(&ctx, &mut doc, &mut state, vec![]);
+    let mut typing = Vec::new();
+    for i in 0..100 {
+        let t = if i % 5 == 4 { " " } else { "x" };
+        typing.push(frame(&ctx, &mut doc, &mut state, vec![Event::Text(t.into())]));
+    }
+    assert!(doc.is_dirty(), "typing frames must reach the document");
+
+    eprintln!("ide-editor {label} benchmark, {} lines, {:.1} MB", lines, text.len() as f64 / 1e6);
+    eprintln!("  first open (+ query compile)   {:8.2} ms", ms(open_first));
+    eprintln!("  open (rope + indent scan)      {:8.2} ms", ms(open));
+    eprintln!("  full parse (worker)            {:8.2} ms", ms(parse));
+    eprintln!("  highlight 60 lines (cold)      {:8.2} ms", ms(hl));
+    eprintln!("  keystroke edit+hl avg          {:8.3} ms (max {:.2} ms, 1000 edits)", ms(avg(&edit_times)), ms(max(&edit_times)));
+    eprintln!("  background reparse after edits {:8.2} ms (off the UI thread)", ms(reparse));
+    eprintln!("  widget steady frame avg        {:8.3} ms (max {:.2} ms)", ms(avg(&steady)), ms(max(&steady)));
+    eprintln!("  widget jump-scroll frame avg   {:8.3} ms (max {:.2} ms)", ms(avg(&jumps)), ms(max(&jumps)));
+    eprintln!("  widget typing frame avg        {:8.3} ms (max {:.2} ms)", ms(avg(&typing)), ms(max(&typing)));
+    if !cfg!(debug_assertions) {
+        assert!(avg(&edit_times) < Duration::from_millis(4), "{label}: keystroke too slow");
+        assert!(avg(&steady) < Duration::from_millis(4), "{label}: steady frame too slow");
+        assert!(avg(&typing) < Duration::from_millis(8), "{label}: typing frame too slow");
+        assert!(avg(&jumps) < Duration::from_millis(12), "{label}: jump frame too slow");
+    }
+}
+
+/// Over `YAML_MAX_TREE_LINES` lines, so colored by the line lexer.
+#[test]
+fn bench_5mb_yaml_lockfile() {
+    let text = generate_yaml_lock(5_000_000, usize::MAX);
+    assert!(text.lines().count() > Language::YAML_MAX_TREE_LINES);
+    bench_big_file("YAML lockfile", Language::Yaml, &text);
+}
+
+/// Just under the line limit, so parsed by tree-sitter-yaml on a worker.
+#[test]
+fn bench_yaml_tree_at_line_limit() {
+    let text = generate_yaml_lock(usize::MAX, Language::YAML_MAX_TREE_LINES);
+    let mut doc = Document::from_text(&text, Language::Yaml);
+    assert!(doc.line_count() > Language::YAML_MAX_TREE_LINES - 10, "{}", doc.line_count());
+    doc.wait_syntax();
+    assert!(!doc.syntax_tree().expect("a tree").root_node().has_error(), "the whole file parses");
+    bench_big_file("YAML tree at the line limit", Language::Yaml, &text);
+}
+
+#[test]
+fn bench_5mb_conf() {
+    bench_big_file("config", Language::Conf, &generate_conf());
+}

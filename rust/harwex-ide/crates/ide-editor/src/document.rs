@@ -334,6 +334,9 @@ impl Document {
 
     fn init_syntax(&mut self) {
         self.syntax = None;
+        if self.language.line_lexed(self.rope.len_lines()) {
+            return;
+        }
         let Some(config) = self.language.highlight_config() else {
             return;
         };
@@ -1015,6 +1018,13 @@ impl Document {
 
     /// Colored spans per line for `lines`. Lines without a tree come back empty (plain text).
     pub fn highlight(&mut self, lines: Range<usize>) -> Vec<Vec<Span>> {
+        // A YAML file that has grown past the tree's line limit since it opened switches too.
+        if self.language.line_lexed(self.rope.len_lines()) {
+            return match self.language {
+                Language::Yaml => crate::conf::yaml_spans(&self.rope, lines),
+                _ => crate::conf::conf_spans(&self.rope, lines),
+            };
+        }
         self.ensure_parsed(false);
         match &self.syntax {
             Some(Syntax { tree: Some(tree), config, .. }) => {

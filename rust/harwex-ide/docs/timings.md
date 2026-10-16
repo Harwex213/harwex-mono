@@ -20,6 +20,7 @@ Read this file when a change touches a hot path and you need the budget or a ref
 | soft wrap, 100k-line Markdown: steady / jump-scroll / wheel scroll / typing / sweep and resize frames | < 4 / 12 / 8 / 8 / 12 ms | same (`bench_wrapped_markdown`) |
 | soft wrap, one 2 MB line: steady / typing / Down frame | < 4 / 8 / 8 ms | same (`bench_wrapped_giant_line`) |
 | 200k-line C++ file (Unreal-style macros): keystroke / steady / typing / jump-scroll frame | < 4 / 4 / 8 / 12 ms | same (`bench_200k_lines_cpp`) |
+| 5 MB YAML lockfile (line lexer), 32.7k-line YAML (tree), 5 MB config file: keystroke / steady / typing / jump-scroll frame | < 4 / 4 / 8 / 12 ms | same (`bench_5mb_yaml_lockfile`, `bench_yaml_tree_at_line_limit`, `bench_5mb_conf`) |
 | warm Go to Declaration in Rust | < 500 ms | `cargo test -p harwex-ide --test app rust_nav::` |
 | git status warm (fastest of 3, git CLI) / log page of 200 / log at skip 1000, generated 4000-file repo | < 300 / 100 / 100 ms | `cargo test -p ide-git --test git large_repo::` |
 | TS cold / warm definition, source definition, references, generated 1240-file workspace | < 15 s / 50 ms, < 3 s, < 5 s | `cargo test -p ide-ts --test ts workspace::` |
@@ -78,6 +79,8 @@ File rename on the generated monorepo (`cargo test -p ide-ts --test ts rename_bu
 10k problem underlines on the same file (every 20 lines, all four severities): steady frame 0.14 ms, jump-scroll frame 0.45 ms.
 
 C++ benchmark (`bench_200k_lines_cpp`, 200k lines, 4.1 MB, an Unreal class every 20 lines): first open 36 ms (about 30 ms of it compiles the C++ highlight query, once per process; the app opens files on a worker), open 6 ms, full parse 0.7-1.1 s and reparse after edits 1.3 s (both on a worker), keystroke 0.07 ms avg (max 0.27 ms), steady frame 0.02 ms, jump-scroll frame 0.29 ms avg (max 0.40 ms), typing frame 0.29-0.34 ms avg (max 3.2 ms).
+
+YAML and config benchmarks (release): a 5 MB pnpm-lock-style YAML file (175k lines, over the tree's line limit, colored by the line lexer): open 5 ms, keystroke 0.015 ms, steady frame 0.02 ms, jump-scroll frame 0.14 ms, typing frame 0.13 ms. The same YAML cut to 32.7k lines (0.9 MB, parsed by tree-sitter-yaml): full parse 61 ms on a worker, reparse 3 ms, keystroke 0.08 ms, steady frame 0.03 ms, jump-scroll frame 0.32 ms, typing frame 0.30 ms. A 5 MB nginx/INI-style config (238k lines, line lexer): open 6 ms, steady frame 0.02 ms, jump-scroll frame 0.14 ms, typing frame 0.11 ms.
 
 Soft wrap on a generated 100k-line Markdown file (9.6 MB, 160 columns): first frame 3.4-4.1 ms, then 9 sweep frames of 2.3 ms that count every line's rows, steady frame 0.03 ms, jump-scroll frame 0.30 ms avg (max 0.40 ms), wheel scroll frame 0.10 ms, typing frame 0.20 ms avg (max 0.30 ms), resize frame 2.5 ms avg (max 2.8 ms) followed by 9 sweep frames. One 2 MB line (about 13k rows): steady frame 0.06 ms, typing frame 3.9 ms avg (max 8 ms, a full re-wrap of the line per keystroke), Down 0.21 ms. The same line without wrap: steady 2.9 ms, typing 5.0 ms.
 

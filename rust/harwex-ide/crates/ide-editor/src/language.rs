@@ -19,10 +19,30 @@ pub enum Language {
     Java,
     Kotlin,
     Glsl,
+    Yaml,
+    Dockerfile,
+    /// `.conf`, `.ini`, `.properties`, `.env` and similar `key = value` files. No grammar fits
+    /// them all, so `conf.rs` colors each line on its own.
+    Conf,
     Plain,
 }
 
 impl Language {
+    /// tree-sitter-yaml's scanner keeps rows in `int16_t`. Past this line its row compare
+    /// wraps, and the rest of the file parses as one error node. Longer YAML files (lockfiles)
+    /// get no tree and are colored line by line (`conf::yaml_spans`).
+    pub const YAML_MAX_TREE_LINES: usize = 32_767;
+
+    /// Whether a document of this language with `line_count` lines is colored by a line lexer
+    /// (`conf.rs`) instead of a tree.
+    pub(crate) fn line_lexed(self, line_count: usize) -> bool {
+        match self {
+            Language::Conf => true,
+            Language::Yaml => line_count > Language::YAML_MAX_TREE_LINES,
+            _ => false,
+        }
+    }
+
     pub fn from_path(path: &Path) -> Language {
         let ext = path
             .extension()
@@ -47,11 +67,31 @@ impl Language {
             "java" => Language::Java,
             "kt" | "kts" => Language::Kotlin,
             "glsl" | "vert" | "frag" | "geom" | "comp" | "tesc" | "tese" => Language::Glsl,
+            "yaml" | "yml" => Language::Yaml,
+            "dockerfile" | "containerfile" => Language::Dockerfile,
+            "conf" | "cfg" | "ini" | "properties" | "env" | "editorconfig" | "gitconfig" | "npmrc" => {
+                Language::Conf
+            }
             _ => {
                 // Dotfiles like `.eslintrc` or `tsconfig` variants without an extension.
                 let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+                let lower = name.to_ascii_lowercase();
                 match name {
                     ".babelrc" | ".eslintrc" | ".prettierrc" => Language::Json,
+                    ".clang-format" | ".clang-tidy" | ".yamllint" => Language::Yaml,
+                    ".env" | ".editorconfig" | ".gitconfig" | ".gitmodules" | ".npmrc" | ".yarnrc" => {
+                        Language::Conf
+                    }
+                    // `.env.local`, `.env.production`: the extension is the environment name.
+                    _ if name.starts_with(".env.") => Language::Conf,
+                    // `Dockerfile.dev`: the extension is the variant name.
+                    _ if lower == "dockerfile"
+                        || lower == "containerfile"
+                        || lower.starts_with("dockerfile.")
+                        || lower.starts_with("containerfile.") =>
+                    {
+                        Language::Dockerfile
+                    }
                     // The C++ standard library headers have no extension (`c++/v1/vector`).
                     _ if ext.is_empty() && path.components().any(|c| c.as_os_str() == "c++") => Language::Cpp,
                     _ => Language::Plain,
@@ -76,6 +116,9 @@ impl Language {
             Language::Java => "Java",
             Language::Kotlin => "Kotlin",
             Language::Glsl => "GLSL",
+            Language::Yaml => "YAML",
+            Language::Dockerfile => "Dockerfile",
+            Language::Conf => "Config",
             Language::Plain => "Plain text",
         }
     }
@@ -96,6 +139,7 @@ impl Language {
             | Language::Kotlin
             | Language::Glsl => Some(("//", "")),
             Language::Css => Some(("/*", "*/")),
+            Language::Yaml | Language::Dockerfile | Language::Conf => Some(("#", "")),
             Language::Markdown | Language::Plain => None,
         }
     }
@@ -110,7 +154,9 @@ impl Language {
             | Language::CSharp
             | Language::Java
             | Language::Kotlin
-            | Language::Glsl => 4,
+            | Language::Glsl
+            | Language::Dockerfile
+            | Language::Conf => 4,
             _ => 2,
         }
     }
@@ -141,7 +187,9 @@ impl Language {
             Language::Java => cached!(),
             Language::Kotlin => cached!(),
             Language::Glsl => cached!(),
-            Language::Plain => None,
+            Language::Yaml => cached!(),
+            Language::Dockerfile => cached!(),
+            Language::Conf | Language::Plain => None,
         }
     }
 
@@ -201,7 +249,17 @@ impl Language {
             // The grammar crate's own query is written for Neovim (`#lua-match?`, which tree-sitter
             // here ignores, so every identifier would match it), so only the C query plus ours.
             Language::Glsl => (tree_sitter_glsl::LANGUAGE_GLSL.into(), &[C, C_EXTRA, GLSL_EXTRA]),
-            Language::Plain => return None,
+            Language::Yaml => (
+                tree_sitter_yaml::LANGUAGE.into(),
+                &[tree_sitter_yaml::HIGHLIGHTS_QUERY, YAML_EXTRA],
+            ),
+            // The shell after `RUN` stays plain: the grammar's query injects bash, and a document
+            // here has one parser.
+            Language::Dockerfile => (
+                tree_sitter_containerfile::LANGUAGE.into(),
+                &[tree_sitter_containerfile::HIGHLIGHTS_QUERY, DOCKERFILE_EXTRA],
+            ),
+            Language::Conf | Language::Plain => return None,
         };
         Some(grammar)
     }
@@ -296,6 +354,37 @@ const JSON_EXTRA: &str = r##"
 (pair key: (string) @property)
 "##;
 
+/// YAML: keys in the JSON key color, also keys that look like a number or a boolean (`1:`,
+/// `true:`); anchors and aliases with their `&`/`*` as one token; tags, directives and the
+/// document markers as keywords; escapes. The grammar's query paints `&`, `*`,
+/// `---` and `...` as plain punctuation and anchors as labels, which have no color here.
+const YAML_EXTRA: &str = r##"
+(escape_sequence) @string.escape
+(block_mapping_pair key: (flow_node (plain_scalar (_) @property)))
+(flow_pair key: (flow_node (plain_scalar (_) @property)))
+(flow_pair key: (flow_node [(double_quote_scalar) (single_quote_scalar)] @property))
+[(anchor) (alias) (anchor_name) (alias_name)] @type
+(anchor "&" @type)
+(alias "*" @type)
+(tag) @keyword
+["---" "..."] @keyword
+[(yaml_directive) (tag_directive) (reserved_directive)] @keyword
+"##;
+
+/// Dockerfile: `$VAR` and `${VAR}` as one token in any case (the grammar's query colors only
+/// upper-case names and leaves `$`, `{`, `}` plain), whole flags like `--from=builder` (the
+/// grammar's flag name is a hidden token, so the query cannot reach it alone), the stage name
+/// after `AS`, and the heredoc markers. The grammar's heredoc markers are labels, which have no
+/// color here.
+const DOCKERFILE_EXTRA: &str = r##"
+(expansion) @constant
+(expansion ["$" "{" "}"] @constant)
+(expansion (variable) @constant)
+[(param) (mount_param)] @property
+(image_alias) @type
+[(heredoc_marker) (heredoc_end)] @keyword
+"##;
+
 /// Markdown: the nodes whose text may hold `inline code`. The block grammar has no code spans,
 /// so `highlight_lines` finds them inside these nodes itself (`highlight::CODE_SCOPE`).
 const MARKDOWN_EXTRA: &str = r##"
@@ -363,6 +452,8 @@ mod tests {
             Language::Glsl,
             Language::Json,
             Language::Markdown,
+            Language::Yaml,
+            Language::Dockerfile,
         ] {
             let (language, queries) = lang.grammar().expect("has a grammar");
             if let Err(err) = tree_sitter::Query::new(&language, &queries.join("\n")) {

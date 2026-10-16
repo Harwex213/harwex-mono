@@ -1,6 +1,6 @@
 //! Highlighting of C, C++, C#, Java, Kotlin and GLSL: one sample per language with the expected
 //! color class of a keyword, a type, a function, a string, a comment and a directive or annotation.
-//! Also JSON keys and the `code spans` of Markdown and plain text.
+//! Also JSON keys, the `code spans` of Markdown and plain text, YAML, Dockerfile and config files.
 
 use std::path::Path;
 
@@ -161,7 +161,8 @@ fn kinds_on_line(doc: &mut Document, line: usize) -> Vec<(String, HlKind)> {
     let spans = doc.highlight(line..line + 1).remove(0);
     spans
         .iter()
-        .map(|s| (text[s.start as usize..s.end as usize].to_string(), s.kind))
+        // A span may run into the line break, which `line` leaves out.
+        .map(|s| (text[s.start as usize..(s.end as usize).min(text.len())].to_string(), s.kind))
         .collect()
 }
 
@@ -551,4 +552,358 @@ fn inline_code_in_markdown_and_plain_text() {
     // Runs of different lengths never pair.
     let mut doc = Document::from_text("``make install` x\n", Language::Plain);
     assert_eq!(kinds_on_line(&mut doc, 0), vec![]);
+}
+
+#[test]
+fn yaml_dockerfile_conf_file_names() {
+    let cases = [
+        ("a.yaml", Language::Yaml),
+        ("a.YML", Language::Yaml),
+        ("pnpm-lock.yaml", Language::Yaml),
+        (".github/workflows/ci.yml", Language::Yaml),
+        (".clang-format", Language::Yaml),
+        (".clang-tidy", Language::Yaml),
+        (".yamllint", Language::Yaml),
+        ("Dockerfile", Language::Dockerfile),
+        ("dockerfile", Language::Dockerfile),
+        ("Dockerfile.dev", Language::Dockerfile),
+        ("api.Dockerfile", Language::Dockerfile),
+        ("api.dockerfile", Language::Dockerfile),
+        ("Containerfile", Language::Dockerfile),
+        ("Containerfile.prod", Language::Dockerfile),
+        ("nginx.conf", Language::Conf),
+        ("setup.cfg", Language::Conf),
+        ("tox.ini", Language::Conf),
+        ("app.properties", Language::Conf),
+        ("prod.env", Language::Conf),
+        (".env", Language::Conf),
+        (".env.local", Language::Conf),
+        (".env.production", Language::Conf),
+        (".editorconfig", Language::Conf),
+        (".gitconfig", Language::Conf),
+        (".gitmodules", Language::Conf),
+        (".npmrc", Language::Conf),
+        (".yarnrc", Language::Conf),
+        // Not a Dockerfile variant, and not a dotenv file.
+        ("Dockerfile.json", Language::Json),
+        ("my.envelope", Language::Plain),
+        ("environment", Language::Plain),
+    ];
+    for (name, lang) in cases {
+        assert_eq!(Language::from_path(Path::new(name)), lang, "{name}");
+    }
+    let names = [Language::Yaml, Language::Dockerfile, Language::Conf].map(Language::name);
+    assert_eq!(names, ["YAML", "Dockerfile", "Config"]);
+    for lang in [Language::Yaml, Language::Dockerfile, Language::Conf] {
+        assert_eq!(lang.comment_tokens(), Some(("#", "")), "{lang:?}");
+        let mut doc = Document::from_text("a: 1\n", lang);
+        let mut sel = ide_editor::Selection::caret(0);
+        ide_editor::editing::toggle_comment(&mut doc, &mut sel);
+        assert_eq!(doc.text(), "# a: 1\n", "{lang:?}");
+        // Not plain text any more, so backticks get no code-span background.
+        let mut doc = Document::from_text("RUN echo `date`\n", lang);
+        doc.wait_syntax();
+        assert!(!doc.highlight(0..1)[0].iter().any(|s| s.kind == HlKind::InlineCode), "{lang:?}");
+    }
+}
+
+const YAML_SAMPLE: &str = r#"%YAML 1.2
+---
+# CI workflow
+name: CI
+on:
+  push:
+    branches: [main, "release/*"]
+defaults: &defaults
+  retries: 3
+  ratio: 1.5
+  enabled: true
+  empty: null
+  tagged: !!str 42
+  when: 2001-12-14
+job:
+  <<: *defaults
+  script: |
+    echo "not a key: here"
+  "quoted key": 'single'
+  escaped: "tab\there"
+  1: one
+  flow: {a: 1, 'b': x}
+...
+"#;
+
+/// Keys get the JSON key color, also a key that reads as a number. Values keep their own kind.
+#[test]
+fn yaml_kinds() {
+    use HlKind::*;
+    expect(
+        Language::Yaml,
+        YAML_SAMPLE,
+        &[
+            (0, "%YAML 1.2", Keyword),
+            (1, "---", Keyword),
+            (2, "# CI workflow", Comment),
+            (3, "name", Property),
+            (3, "CI", String),
+            (4, "on", Property),
+            (6, "branches", Property),
+            (6, "main", String),
+            (6, "\"release/*\"", String),
+            (7, "&defaults", Type),
+            (8, "3", Number),
+            (9, "1.5", Number),
+            (10, "true", Builtin),
+            (11, "null", Builtin),
+            (12, "!!str", Keyword),
+            (12, "42", Number),
+            (13, "2001-12-14", String),
+            (15, "<<", Property),
+            (15, "*defaults", Type),
+            (17, "    echo \"not a key: here\"", String),
+            (18, "\"quoted key\"", Property),
+            (18, "'single'", String),
+            (19, "\\t", Escape),
+            (20, "1", Property),
+            (21, "a", Property),
+            (21, "'b'", Property),
+            (21, "x", String),
+            (22, "...", Keyword),
+        ],
+    );
+}
+
+/// A YAML file over the tree's line limit is colored line by line, with the same kinds as the
+/// tree, except inside a block scalar (line 17), which a line alone cannot tell apart.
+#[test]
+fn yaml_without_tree_past_the_line_limit() {
+    use HlKind::*;
+    let mut text = YAML_SAMPLE.to_string();
+    for i in 0..Language::YAML_MAX_TREE_LINES {
+        text.push_str(&format!("k{i}: v\n"));
+    }
+    let mut doc = Document::from_text(&text, Language::Yaml);
+    doc.wait_syntax();
+    assert!(doc.syntax_tree().is_none(), "no tree past the limit");
+    expect(
+        Language::Yaml,
+        &text,
+        &[
+            (0, "%YAML 1.2", Keyword),
+            (1, "---", Keyword),
+            (2, "# CI workflow", Comment),
+            (3, "name", Property),
+            (3, "CI", String),
+            (4, "on", Property),
+            (6, "branches", Property),
+            (6, "main", String),
+            (6, "\"release/*\"", String),
+            (7, "&defaults", Type),
+            (8, "3", Number),
+            (9, "1.5", Number),
+            (10, "true", Builtin),
+            (11, "null", Builtin),
+            (12, "!!str", Keyword),
+            (12, "42", Number),
+            (13, "2001-12-14", String),
+            (15, "<<", Property),
+            (15, "*defaults", Type),
+            (18, "\"quoted key\"", Property),
+            (18, "'single'", String),
+            (19, "\\t", Escape),
+            (20, "1", Property),
+            (21, "a", Property),
+            (21, "'b'", Property),
+            (21, "x", String),
+            (22, "...", Keyword),
+            (23, "k0", Property),
+        ],
+    );
+    // Lockfile lines: a quoted key, a flow mapping with a comment after it, a version string.
+    let lines = [
+        "  '@scope/pkg@1.0.0':",
+        "    resolution: {integrity: sha512-abc==} # pinned",
+        "      debug: 4.3.4",
+        "  - name: x",
+    ];
+    let lock = format!("{}{}", lines.join("\n"), "\nk: v".repeat(Language::YAML_MAX_TREE_LINES));
+    expect(
+        Language::Yaml,
+        &lock,
+        &[
+            (0, "'@scope/pkg@1.0.0'", Property),
+            (1, "resolution", Property),
+            (1, "integrity", Property),
+            (1, "sha512-abc==", String),
+            (1, "# pinned", Comment),
+            (2, "4.3.4", String),
+            (3, "name", Property),
+        ],
+    );
+}
+
+const DOCKERFILE_SAMPLE: &str = r#"# syntax=docker/dockerfile:1
+ARG NODE_VERSION=20
+FROM node:${NODE_VERSION}-alpine AS builder
+WORKDIR /app
+ENV PATH="/app/bin:$PATH" mode=prod
+COPY --from=builder --chown=node:node package.json ./
+RUN --mount=type=cache,target=/root/.npm npm ci
+RUN <<EOT
+apt-get update
+EOT
+EXPOSE 8080/tcp
+LABEL org.opencontainers.image.title='demo'
+ENTRYPOINT ["node", "server\tjs"]
+CMD echo $home
+"#;
+
+/// Instructions are keywords, `${VAR}` one token, flags and pair names properties, the stage
+/// name a type and a heredoc a string. The shell after `RUN` stays plain.
+#[test]
+fn dockerfile_kinds() {
+    use HlKind::*;
+    expect(
+        Language::Dockerfile,
+        DOCKERFILE_SAMPLE,
+        &[
+            (0, "# syntax=docker/dockerfile:1", Comment),
+            (1, "ARG", Keyword),
+            (1, "NODE_VERSION", Property),
+            (2, "FROM", Keyword),
+            (2, "${NODE_VERSION}", Constant),
+            (2, "AS", Keyword),
+            (2, "builder", Type),
+            (3, "WORKDIR", Keyword),
+            (4, "ENV", Keyword),
+            (4, "PATH", Property),
+            (4, "$PATH", Constant),
+            (4, "mode", Property),
+            (5, "COPY", Keyword),
+            (5, "--from=builder", Property),
+            (5, "--chown=node:node", Property),
+            (6, "RUN", Keyword),
+            (6, "--mount=type=cache,target=/root/.npm", Property),
+            (7, "<<EOT", Keyword),
+            (8, "apt-get update", String),
+            (9, "EOT", Keyword),
+            (10, "EXPOSE", Keyword),
+            (10, "8080/tcp", Number),
+            (11, "LABEL", Keyword),
+            (11, "org.opencontainers.image.title", Property),
+            (11, "'demo'", String),
+            (12, "ENTRYPOINT", Keyword),
+            (12, "\"node\"", String),
+            (12, "\\t", Escape),
+            (13, "CMD", Keyword),
+        ],
+    );
+    let mut doc = Document::from_text(DOCKERFILE_SAMPLE, Language::Dockerfile);
+    doc.wait_syntax();
+    let run = kinds_on_line(&mut doc, 6);
+    assert!(!run.iter().any(|(t, _)| t.contains("npm ci")), "the shell stays plain: {run:?}");
+}
+
+const INI_SAMPLE: &str = r#"; global settings
+root = true
+
+[*.{js,ts}]
+indent_size = 2
+trim_trailing_whitespace = false
+[remote "origin"]
+	url = git@github.com:a/b.git
+name: "Ann \"A\" Lee"   # inline
+install_requires =
+    requests
+export API_URL=https://x.io/${STAGE}/v1
+timeout 30s
+ratio=-1.5
+"#;
+
+/// INI, gitconfig, properties and dotenv lines: comments, sections, keys before `=`, `:` or a
+/// space, strings with escapes, variables, numbers and booleans.
+#[test]
+fn conf_ini_kinds() {
+    use HlKind::*;
+    expect(
+        Language::Conf,
+        INI_SAMPLE,
+        &[
+            (0, "; global settings", Comment),
+            (1, "root", Property),
+            (1, "true", Builtin),
+            (3, "[*.{js,ts}]", Keyword),
+            (4, "indent_size", Property),
+            (4, "2", Number),
+            (5, "false", Builtin),
+            (6, "[remote ", Keyword),
+            (6, "\"origin\"", String),
+            (6, "]", Keyword),
+            (7, "url", Property),
+            (8, "name", Property),
+            (8, "\"Ann ", String),
+            (8, "\\\"", Escape),
+            (8, "# inline", Comment),
+            (9, "install_requires", Property),
+            (11, "export", Keyword),
+            (11, "API_URL", Property),
+            (11, "${STAGE}", Constant),
+            (12, "timeout", Property),
+            (12, "30s", Number),
+            (13, "ratio", Property),
+            (13, "-1.5", Number),
+        ],
+    );
+    // An indented line without `=`, `;` or `{` continues the value above it.
+    let mut doc = Document::from_text(INI_SAMPLE, Language::Conf);
+    assert_eq!(kinds_on_line(&mut doc, 10), vec![]);
+}
+
+const NGINX_SAMPLE: &str = r#"# nginx
+worker_processes auto;
+http {
+    server { listen 80; server_name example.com; }
+    server {
+        listen 443 ssl;
+        gzip on;
+        location /api {
+            proxy_pass http://127.0.0.1:8080;
+            proxy_set_header Host $host;
+            return 301 "https://$host$request_uri";
+        }
+    }
+}
+"#;
+
+/// nginx: directives are keys, also after `{` and `;` on one line; `$variables`, numbers and
+/// `on`/`off`.
+#[test]
+fn conf_nginx_kinds() {
+    use HlKind::*;
+    expect(
+        Language::Conf,
+        NGINX_SAMPLE,
+        &[
+            (0, "# nginx", Comment),
+            (1, "worker_processes", Property),
+            (2, "http", Property),
+            (3, "server", Property),
+            (3, "listen", Property),
+            (3, "80", Number),
+            (3, "server_name", Property),
+            (5, "listen", Property),
+            (5, "443", Number),
+            (6, "gzip", Property),
+            (6, "on", Builtin),
+            (7, "location", Property),
+            (8, "proxy_pass", Property),
+            (9, "$host", Constant),
+            (10, "return", Property),
+            (10, "301", Number),
+            (10, "\"https://", String),
+            (10, "$host$request_uri", Constant),
+        ],
+    );
+    let mut doc = Document::from_text(NGINX_SAMPLE, Language::Conf);
+    let line = kinds_on_line(&mut doc, 3);
+    assert!(!line.iter().any(|(t, _)| t.contains("example")), "{line:?}");
 }

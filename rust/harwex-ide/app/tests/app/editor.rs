@@ -432,3 +432,40 @@ fn glsl_json_inline_code_highlight() {
         ide.snapshot(snapshot);
     }
 }
+
+const LANG_YAML: &str = "# CI for every push\nname: CI\non:\n  push:\n    branches: [main, \"release/*\"]\n\ndefaults: &defaults\n  runs-on: ubuntu-latest\n  timeout-minutes: 15\n  continue-on-error: false\n  env:\n    NODE_ENV: production\n    CACHE: null\n\njobs:\n  test:\n    <<: *defaults\n    tags: !!set {fast: true}\n    steps:\n      - uses: actions/checkout@v4\n      - name: 'Run tests'\n        run: |\n          cargo test --workspace\n          echo \"done\\n\"\n---\nversion: 1.5\n";
+
+const LANG_DOCKERFILE: &str = "# syntax=docker/dockerfile:1\nARG NODE_VERSION=20\nFROM node:${NODE_VERSION}-alpine AS builder\nWORKDIR /app\nENV PATH=\"/app/node_modules/.bin:$PATH\" NODE_ENV=production\nCOPY --chown=node:node package.json yarn.lock ./\nRUN --mount=type=cache,target=/root/.yarn yarn install --frozen-lockfile\nRUN <<EOT\nset -e\nyarn build\nEOT\n\nFROM nginx:1.27-alpine\nCOPY --from=builder /app/dist /usr/share/nginx/html\nLABEL org.opencontainers.image.title='web'\nEXPOSE 8080/tcp\nHEALTHCHECK --interval=30s CMD wget -qO- http://localhost:8080/ || exit 1\nENTRYPOINT [\"nginx\", \"-g\", \"daemon off;\"]\n";
+
+const LANG_NGINX: &str = "# Reverse proxy for the API\nworker_processes auto;\n\nhttp {\n    gzip on;\n    server { listen 80; return 301 https://$host$request_uri; }\n\n    server {\n        listen 443 ssl;\n        server_name example.com;\n        client_max_body_size 16m;\n\n        location /api/ {\n            proxy_pass http://127.0.0.1:8080;\n            proxy_set_header Host $host;\n            add_header X-Frame-Options \"DENY\";\n        }\n    }\n}\n";
+
+const LANG_INI: &str = "; editorconfig-style settings\nroot = true\n\n[*.{js,ts}]\nindent_style = space\nindent_size = 2\ntrim_trailing_whitespace = false\n\n[remote \"origin\"]\n\turl = git@github.com:acme/web.git\n\tfetch = +refs/heads/*:refs/remotes/origin/*\n\n# dotenv\nexport API_URL=\"https://api.acme.io/${STAGE}\"  # per stage\nRETRIES=3\ntimeout: 2.5\n";
+
+/// YAML (a GitHub workflow), a Dockerfile, an nginx `.conf` and an INI/dotenv file open with
+/// colors and their language name. Snapshots, checked by eye.
+#[test]
+fn yaml_dockerfile_conf_highlight() {
+    let fx = Fixture::new(SUITE, "languages_119");
+    let repo = basic_repo(fx.path("repo"));
+    let files = [
+        (".github/workflows/ci.yml", LANG_YAML, ide_editor::Language::Yaml, "lang_yaml"),
+        ("Dockerfile", LANG_DOCKERFILE, ide_editor::Language::Dockerfile, "lang_dockerfile"),
+        ("deploy/nginx.conf", LANG_NGINX, ide_editor::Language::Conf, "lang_conf_nginx"),
+        ("config/app.ini", LANG_INI, ide_editor::Language::Conf, "lang_conf_ini"),
+    ];
+    for (rel, text, _, _) in files {
+        repo.write(rel, text);
+    }
+    repo.commit_all("YAML, Dockerfile and configs");
+    let mut ide = Ide::open(SUITE, &repo.dir);
+    ide.state_mut().apply_ide_config(harwex_ide::lang::IdeConfig::parse("languages = [\"ts\"]"));
+    for (rel, text, language, snapshot) in files {
+        ide.open_file(rel);
+        let editor = ide.state().ws.tabs.active_editor().expect("editor");
+        assert_eq!(editor.doc.language(), language, "{rel}");
+        assert!(!editor.view.soft_wrap(), "{rel}: code files do not wrap");
+        assert_eq!(ide.active_text(), text);
+        ide.assert_text(language.name());
+        ide.snapshot(snapshot);
+    }
+}
