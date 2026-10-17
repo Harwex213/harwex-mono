@@ -2,6 +2,10 @@ use std::io;
 use rand::prelude::*;
 
 fn main() {
+    let result: Option = divide(0.0, 24.0);
+
+    assert_eq!(result.unwrap_or_default(), 0.0);
+
     let secret_number = rand::rng().random_range(1..=100);
 
     let mut guess: u32;
@@ -17,6 +21,14 @@ fn main() {
         let temperature = get_temperature_value(secret_number, guess);
 
         println!("ты ввёл нумбер {guess}, но не угадал! Температурка: {temperature}");
+    }
+}
+
+fn divide(denominator: f64, numenator: f64) -> Option<f64> {
+    if denominator == 0.0 {
+        Option::None
+    } else {
+        Option::Some(numenator / denominator)
     }
 }
 
