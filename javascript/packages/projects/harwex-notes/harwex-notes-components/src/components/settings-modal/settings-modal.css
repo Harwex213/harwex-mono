@@ -1,0 +1,276 @@
+/* The modal reads the host's semantic tokens (--color-*) and falls back to the light
+   palette when a host defines none. Every value the rules use is a --settings-* token. */
+.settings-modal {
+  --settings-bg: var(--color-surface, #ffffff);
+  --settings-backdrop: rgba(29, 28, 26, 0.28);
+  --settings-border: var(--color-border, #d9d7d1);
+  --settings-border-strong: var(--color-border-strong, #b9b6ae);
+  --settings-text: var(--color-text, #1d1c1a);
+  --settings-text-muted: var(--color-text-muted, #6f6c65);
+  --settings-accent: var(--color-accent, #3b6ea5);
+  --settings-accent-subtle: var(--color-accent-subtle, #e8eef6);
+  --settings-sunken: var(--color-surface-sunken, #f1f0ec);
+  --settings-checker: #d9d7d1;
+
+  --settings-width: 760px;
+  --settings-top: 8vh;
+  --settings-radius: 10px;
+  --settings-padding: 16px 20px 18px;
+  --settings-gap: 14px;
+  --settings-shadow: 0 10px 30px rgba(0, 0, 0, 0.18), 0 1px 3px rgba(0, 0, 0, 0.12);
+  --settings-font-size: 13px;
+  --settings-title-size: 16px;
+  --settings-label-width: 96px;
+  --settings-swatch-size: 22px;
+  --settings-preview-width: 240px;
+
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: var(--settings-top) 16px 16px;
+  background: var(--settings-backdrop);
+  font-size: var(--settings-font-size);
+  color: var(--settings-text);
+}
+
+.settings-modal,
+.settings-modal * {
+  box-sizing: border-box;
+}
+
+.settings-modal__panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--settings-gap);
+  width: min(var(--settings-width), 100%);
+  max-height: calc(100vh - var(--settings-top) - 16px);
+  padding: var(--settings-padding);
+  overflow-y: auto;
+  background: var(--settings-bg);
+  border: 1px solid var(--settings-border-strong);
+  border-radius: var(--settings-radius);
+  box-shadow: var(--settings-shadow);
+}
+
+.settings-modal__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.settings-modal__title {
+  margin: 0;
+  font-size: var(--settings-title-size);
+  font-weight: 600;
+}
+
+.settings-modal__close {
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--settings-text-muted);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.settings-modal__close:hover {
+  background: var(--settings-sunken);
+}
+
+.settings-modal__section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.settings-modal__section-title {
+  margin: 0;
+  font-size: var(--settings-font-size);
+  font-weight: 600;
+}
+
+.settings-modal__hint {
+  margin: 2px 0 0;
+  color: var(--settings-text-muted);
+}
+
+.settings-modal__body {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+}
+
+.settings-modal__fields {
+  display: flex;
+  flex: 1 1 380px;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.settings-modal__aside {
+  display: flex;
+  flex: 0 1 var(--settings-preview-width);
+  flex-direction: column;
+  gap: 10px;
+}
+
+.settings-modal__field {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.settings-modal__label {
+  flex: 0 0 var(--settings-label-width);
+  color: var(--settings-text-muted);
+}
+
+.settings-modal__control {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.settings-modal__segmented {
+  display: inline-flex;
+  flex-wrap: wrap;
+  border: 1px solid var(--settings-border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.settings-modal__segment {
+  padding: 4px 10px;
+  border: none;
+  border-right: 1px solid var(--settings-border);
+  background: var(--settings-bg);
+  color: var(--settings-text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.settings-modal__segment:last-child {
+  border-right: none;
+}
+
+.settings-modal__segment:hover {
+  background: var(--settings-sunken);
+}
+
+.settings-modal__segment--active,
+.settings-modal__segment--active:hover {
+  background: var(--settings-accent-subtle);
+  color: var(--settings-accent);
+  font-weight: 600;
+}
+
+.settings-modal__swatches {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.settings-modal__swatch {
+  position: relative;
+  width: var(--settings-swatch-size);
+  height: var(--settings-swatch-size);
+  padding: 0;
+  border: 1px solid var(--settings-border-strong);
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+/* The ring marks the choice by shape as well as by colour (FEED-5). */
+.settings-modal__swatch--active {
+  outline: 2px solid var(--settings-accent);
+  outline-offset: 2px;
+}
+
+.settings-modal__swatch--transparent {
+  background-color: var(--settings-bg);
+  background-image:
+    linear-gradient(45deg, var(--settings-checker) 25%, transparent 25%),
+    linear-gradient(-45deg, var(--settings-checker) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, var(--settings-checker) 75%),
+    linear-gradient(-45deg, transparent 75%, var(--settings-checker) 75%);
+  background-size: 8px 8px;
+  background-position: 0 0, 0 4px, 4px -4px, -4px 0;
+}
+
+.settings-modal__swatch--custom {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: conic-gradient(#e03131, #f08c00, #2f9e44, #1971c2, #9c36b5, #e03131);
+}
+
+.settings-modal__color-input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.settings-modal__pair {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.settings-modal__select {
+  padding: 3px 6px;
+  border: 1px solid var(--settings-border);
+  border-radius: 6px;
+  background: var(--settings-bg);
+  color: var(--settings-text);
+  font: inherit;
+}
+
+.settings-modal__range {
+  width: 160px;
+  accent-color: var(--settings-accent);
+}
+
+.settings-modal__value {
+  min-width: 3em;
+  color: var(--settings-text-muted);
+}
+
+.settings-modal__preview {
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--settings-border);
+  border-radius: 8px;
+  background: var(--settings-bg);
+}
+
+.settings-modal__reset {
+  align-self: flex-start;
+  padding: 5px 10px;
+  border: 1px solid var(--settings-border);
+  border-radius: 6px;
+  background: var(--settings-bg);
+  color: var(--settings-text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.settings-modal__reset:hover:not(:disabled) {
+  border-color: var(--settings-border-strong);
+}
+
+.settings-modal__reset:disabled {
+  color: var(--settings-text-muted);
+  cursor: default;
+}

@@ -14,7 +14,10 @@
   --tabs-tab-hover-bg: var(--color-surface, #ffffff);
   --tabs-tab-active-bg: var(--color-surface, #ffffff);
   --tabs-icon-markdown: var(--color-kind-markdown, #3b6ea5);
+  --tabs-icon-text: var(--color-kind-text, #6f6c65);
   --tabs-icon-sketch: var(--color-kind-sketch, #7b52c4);
+  --tabs-icon-image: var(--color-kind-image, #2f8a5b);
+  --tabs-icon-html: var(--color-kind-html, #c2573a);
 
   --tabs-border-width: 1px;
   --tabs-height: 38px;
@@ -149,8 +152,20 @@
   color: var(--tabs-icon-markdown);
 }
 
+.tabs-bar__icon .fs-viewer__icon--text {
+  color: var(--tabs-icon-text);
+}
+
 .tabs-bar__icon .fs-viewer__icon--sketch {
   color: var(--tabs-icon-sketch);
+}
+
+.tabs-bar__icon .fs-viewer__icon--image {
+  color: var(--tabs-icon-image);
+}
+
+.tabs-bar__icon .fs-viewer__icon--html {
+  color: var(--tabs-icon-html);
 }
 
 .tabs-bar__name {

@@ -5,6 +5,8 @@ import type { TFsNode } from "@hw/harwex-notes-protocol";
 import { FsDataAccess } from "../data-access/fs-data-access.js";
 import { createMemoryVaultFs, type TMemoryVaultFs } from "../data-access/memory-vault-fs.js";
 import { SAMPLE_VAULT, SAMPLE_VAULT_PATH } from "../data-access/sample-vault.js";
+import { openStateDb } from "../data-access/state-db.js";
+import { StateStore } from "../data-access/state-store.js";
 import type { TContext } from "../trpc.js";
 import {
   createNode,
@@ -48,7 +50,7 @@ beforeEach(async () => {
   disk = createMemoryVaultFs(SAMPLE_VAULT_PATH, SAMPLE_VAULT);
   const dataAccess = new FsDataAccess(disk, SAMPLE_VAULT_PATH);
   await dataAccess.preload();
-  ctx = { dataAccess };
+  ctx = { dataAccess, stateStore: new StateStore(openStateDb(":memory:")) };
 });
 
 describe("fetchTree", () => {
@@ -69,9 +71,12 @@ describe("fetchTree", () => {
     assert.equal(byPath(nodes, "Projects/harwex-notes/overview.md").kind, "markdown");
     assert.equal(byPath(nodes, "Projects/harwex-notes/notes/deep/readme.markdown").kind, "markdown");
     assert.equal(byPath(nodes, "Projects/harwex-notes/architecture.excalidraw").kind, "excalidraw");
+    assert.equal(byPath(nodes, "Projects/harwex-notes/notes/todo.txt").kind, "text");
     assert.equal(byPath(nodes, "Inbox/empty").kind, "folder");
     assert.equal(byPath(nodes, "archive.zip").kind, "file");
-    assert.equal(byPath(nodes, "index.html").kind, "file");
+    assert.equal(byPath(nodes, "index.html").kind, "html");
+    assert.equal(byPath(nodes, "Media/blocks.png").kind, "image");
+    assert.equal(byPath(nodes, "Media/site/style.css").kind, "file");
   });
 });
 
@@ -80,7 +85,15 @@ describe("fetchDocument", () => {
     const node = byPath(ctx.dataAccess.tree, "Journal/2026-08-26.md");
     const document = await fetchDocument(ctx, node.id);
 
-    assert.deepEqual(document, { kind: "markdown", nodeId: node.id, text: "Read the spec twice.\n" });
+    assert.deepEqual(document, { kind: "markdown", nodeId: node.id, version: document.version, text: "Read the spec twice.\n" });
+    assert.equal(typeof document.version, "string");
+  });
+
+  it("returns plain text as it is on disk, line endings included", async () => {
+    const node = byPath(ctx.dataAccess.tree, "Projects/harwex-notes/notes/todo.txt");
+    const document = await fetchDocument(ctx, node.id);
+
+    assert.deepEqual(document, { kind: "text", nodeId: node.id, version: document.version, text: "- wire the real vault\r\n- search\r\n" });
   });
 
   it("returns the elements and files of a drawing", async () => {
@@ -130,10 +143,18 @@ describe("updateDocument", () => {
   it("writes markdown text to disk as it is", async () => {
     const node = byPath(ctx.dataAccess.tree, "Journal/2026-08-26.md");
 
-    await updateDocument(ctx, { kind: "markdown", nodeId: node.id, text: "Read it once.\n" });
+    const { version } = await updateDocument(ctx, { kind: "markdown", nodeId: node.id, text: "Read it once.\n" });
 
     assert.equal(disk.readText("Journal/2026-08-26.md"), "Read it once.\n");
-    assert.deepEqual(await fetchDocument(ctx, node.id), { kind: "markdown", nodeId: node.id, text: "Read it once.\n" });
+    assert.deepEqual(await fetchDocument(ctx, node.id), { kind: "markdown", nodeId: node.id, version, text: "Read it once.\n" });
+  });
+
+  it("writes plain text to disk as it is", async () => {
+    const node = byPath(ctx.dataAccess.tree, "Projects/harwex-notes/notes/todo.txt");
+
+    await updateDocument(ctx, { kind: "text", nodeId: node.id, text: "a\r\nb" });
+
+    assert.equal(disk.readText("Projects/harwex-notes/notes/todo.txt"), "a\r\nb");
   });
 
   it("replaces the elements of a drawing and keeps the rest of the file", async () => {
@@ -148,6 +169,32 @@ describe("updateDocument", () => {
     assert.deepEqual(after["appState"], before["appState"]);
     assert.deepEqual(after["elements"], elements);
     assert.deepEqual(after["files"], { f1: { id: "f1" } });
+  });
+
+  it("merges the scene style into the file's appState and reads it back", async () => {
+    const node = byPath(ctx.dataAccess.tree, "Projects/harwex-notes/architecture.excalidraw");
+    const before = JSON.parse(disk.readText("Projects/harwex-notes/architecture.excalidraw") ?? "") as Record<string, unknown>;
+    const appState = { currentItemStrokeColor: "#e03131", currentItemFontSize: 28, scrollX: 500 };
+
+    await updateDocument(ctx, {
+      kind: "excalidraw",
+      nodeId: node.id,
+      scene: { elements: [], files: {}, appState: appState as Record<string, unknown> },
+    });
+
+    const after = JSON.parse(disk.readText("Projects/harwex-notes/architecture.excalidraw") ?? "") as Record<string, unknown>;
+    const afterAppState = after["appState"] as Record<string, unknown>;
+    assert.equal(afterAppState["currentItemStrokeColor"], "#e03131");
+    assert.equal(afterAppState["currentItemFontSize"], 28);
+    // The viewport is not style, so it never reaches the file (EX-8).
+    assert.equal(afterAppState["scrollX"], (before["appState"] as Record<string, unknown> | undefined)?.["scrollX"]);
+
+    const document = await fetchDocument(ctx, node.id);
+    assert.equal(document.kind, "excalidraw");
+    if (document.kind === "excalidraw") {
+      assert.equal(document.scene.appState?.currentItemStrokeColor, "#e03131");
+      assert.equal(document.scene.appState?.currentItemFontSize, 28);
+    }
   });
 
   it("rewrites a drawing that did not parse into a valid one", async () => {
@@ -219,6 +266,18 @@ describe("createNode", () => {
 
     const document = await fetchDocument(ctx, node.id);
     assert.equal(document.kind, "excalidraw");
+  });
+
+  it("gives a new drawing the default style the user chose", async () => {
+    ctx.stateStore.writeSetting("excalidraw.defaultStyle", { currentItemStrokeColor: "#1971c2", bogus: 1 });
+
+    await createNode(ctx, { parentId: null, name: "styled.excalidraw", kind: "excalidraw" });
+
+    const parsed = JSON.parse(disk.readText("styled.excalidraw") ?? "") as Record<string, unknown>;
+    const appState = parsed["appState"] as Record<string, unknown>;
+    assert.equal(appState["currentItemStrokeColor"], "#1971c2");
+    assert.equal(appState["currentItemArrowType"], "elbow");
+    assert.equal(appState["bogus"], undefined);
   });
 
   it("creates a folder at the root when no parent is given", async () => {

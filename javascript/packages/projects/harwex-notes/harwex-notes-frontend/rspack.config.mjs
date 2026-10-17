@@ -3,7 +3,13 @@ import path from "node:path";
 import { rspack } from "@rspack/core";
 
 const DEV_SERVER_PORT = 8140;
-const DEFAULT_API_URL = "http://localhost:4001/api";
+// The app calls the api on its own origin. The backend serves the built app, and in
+// development the dev server forwards `/api` to the backend, so the browser never makes a
+// cross-origin call. The backend refuses those (see origin-guard.ts in the backend).
+const DEFAULT_API_URL = "/api";
+const API_ROUTE_PREFIX = "/api";
+// Where the dev server forwards `/api`. Override with `BACKEND_URL=http://localhost:4002`.
+const DEFAULT_BACKEND_URL = "http://localhost:4001";
 
 const require = createRequire(import.meta.url);
 
@@ -98,5 +104,18 @@ export default (env = {}) => ({
   devServer: {
     hot: true,
     port: DEV_SERVER_PORT,
+    // An HTML page runs in a sandboxed frame with an origin of its own, so the browser marks
+    // its stylesheet, image and script requests as cross-site. The dev server refuses such
+    // requests unless the host is listed here.
+    allowedHosts: ["localhost", "127.0.0.1"],
+    proxy: [
+      {
+        // tRPC calls, images and HTML pages (`/api/raw/...`). The Host header is kept as
+        // the browser sent it, so the backend sees the request as same-origin.
+        context: [API_ROUTE_PREFIX],
+        target: process.env.BACKEND_URL ?? DEFAULT_BACKEND_URL,
+        changeOrigin: false,
+      },
+    ],
   },
 });

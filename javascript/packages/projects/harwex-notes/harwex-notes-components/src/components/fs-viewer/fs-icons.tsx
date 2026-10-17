@@ -64,6 +64,23 @@ const MarkdownIcon: FC = () => {
   );
 };
 
+// A sheet with plain lines: text with no markup (TXT-1).
+const TextIcon: FC = () => {
+  return (
+    <svg className="fs-viewer__icon fs-viewer__icon--text" height="14" viewBox="0 0 16 16" width="14">
+      <path
+        d="M3 1.8h6.4L13 5.4v8.8H3z"
+        fill="currentColor"
+        fillOpacity="0.22"
+        stroke="currentColor"
+        strokeWidth="1.2"
+      />
+      <path d="M9.2 1.8v3.8H13" fill="none" stroke="currentColor" strokeWidth="1.2" />
+      <path d="M5.2 8.4h5.6M5.2 10.4h5.6M5.2 12.4h3.6" fill="none" stroke="currentColor" strokeWidth="1.1" />
+    </svg>
+  );
+};
+
 const SketchIcon: FC = () => {
   return (
     <svg className="fs-viewer__icon fs-viewer__icon--sketch" height="14" viewBox="0 0 16 16" width="14">
@@ -79,6 +96,51 @@ const SketchIcon: FC = () => {
         fill="none"
         stroke="currentColor"
         strokeLinecap="round"
+        strokeWidth="1.2"
+      />
+    </svg>
+  );
+};
+
+const ImageIcon: FC = () => {
+  return (
+    <svg className="fs-viewer__icon fs-viewer__icon--image" height="14" viewBox="0 0 16 16" width="14">
+      <path
+        d="M2 2.8h12v10.4H2z"
+        fill="currentColor"
+        fillOpacity="0.22"
+        stroke="currentColor"
+        strokeWidth="1.2"
+      />
+      <circle cx="5.6" cy="6" fill="currentColor" r="1.2" />
+      <path
+        d="M2.6 12.4l3.6-3.6 2.4 2.4 2-2 2.8 2.8"
+        fill="none"
+        stroke="currentColor"
+        strokeLinejoin="round"
+        strokeWidth="1.2"
+      />
+    </svg>
+  );
+};
+
+const HtmlIcon: FC = () => {
+  return (
+    <svg className="fs-viewer__icon fs-viewer__icon--html" height="14" viewBox="0 0 16 16" width="14">
+      <path
+        d="M3 1.8h6.4L13 5.4v8.8H3z"
+        fill="currentColor"
+        fillOpacity="0.22"
+        stroke="currentColor"
+        strokeWidth="1.2"
+      />
+      <path d="M9.2 1.8v3.8H13" fill="none" stroke="currentColor" strokeWidth="1.2" />
+      <path
+        d="M6.4 8.2L4.8 9.9l1.6 1.7M9.6 8.2l1.6 1.7-1.6 1.7"
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
         strokeWidth="1.2"
       />
     </svg>
@@ -170,6 +232,22 @@ const NodeIcon: FC<TNodeIconProps> = ({ kind }) => {
 
   if (kind === "markdown") {
     return <MarkdownIcon />;
+  }
+
+  if (kind === "text") {
+    return <TextIcon />;
+  }
+
+  if (kind === "image") {
+    return <ImageIcon />;
+  }
+
+  if (kind === "html") {
+    return <HtmlIcon />;
+  }
+
+  if (kind === "file") {
+    return <FileIcon />;
   }
 
   return <SketchIcon />;

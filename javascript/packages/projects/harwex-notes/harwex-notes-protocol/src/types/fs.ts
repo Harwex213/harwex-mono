@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-const fsNodeKindSchema = z.enum(["folder", "markdown", "excalidraw", "file"]);
+const fsNodeKindSchema = z.enum(["folder", "markdown", "text", "excalidraw", "image", "html", "file"]);
 
 const fsNodeIdSchema = z.string().min(1);
 

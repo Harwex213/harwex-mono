@@ -1,5 +1,7 @@
 import { ensureDocument, flushDocument } from "./documents-state";
 import { toggleFolderAction } from "./fs-state";
+import { forgetClosedDocument } from "./sync-state";
+import { isVaultHref, resolveVaultLink } from "./vault-links";
 import type { TStore } from "../store/store";
 import type { TApiClient } from "../api/api";
 
@@ -40,8 +42,41 @@ const openNodeAction = (store: TStore, api: TApiClient, nodeId: string) => {
   }
 
   store.tabs.activeId.value = nodeId;
+  store.tabs.linkError.value = null;
 
   ensureDocument(store, api, nodeId);
+};
+
+// Opens the vault file a link in a document points at, as a tab (EX-9, MD-6). A folder is
+// shown in the tree instead. A link with no target opens nothing and says why (MD-7).
+const openVaultLinkAction = (store: TStore, api: TApiClient, fromNodeId: string, href: string) => {
+  if (!isVaultHref(href)) {
+    return;
+  }
+
+  const target = resolveVaultLink(store.fs.nodes.peek(), fromNodeId, href);
+  if (target.status === "refused") {
+    store.tabs.linkError.value = target.message;
+
+    return;
+  }
+
+  if (target.node.kind === "folder") {
+    store.tabs.linkError.value = null;
+    store.fs.selectedId.value = target.node.id;
+
+    if (!store.fs.expandedIds.peek().includes(target.node.id)) {
+      toggleFolderAction(store, api, target.node.id);
+    }
+
+    return;
+  }
+
+  openNodeAction(store, api, target.node.id);
+};
+
+const dismissLinkErrorAction = (store: TStore, _api: TApiClient) => {
+  store.tabs.linkError.value = null;
 };
 
 const activateTabAction = (store: TStore, api: TApiClient, nodeId: string) => {
@@ -66,6 +101,7 @@ const closeTabAction = (store: TStore, api: TApiClient, nodeId: string) => {
   }
 
   void flushDocument(store, api, nodeId);
+  forgetClosedDocument(store, nodeId);
 
   if (store.tabs.activeId.peek() === nodeId) {
     store.tabs.activeId.value = pickNeighbourId(openIds, nodeId);
@@ -74,4 +110,10 @@ const closeTabAction = (store: TStore, api: TApiClient, nodeId: string) => {
   store.tabs.openIds.value = openIds.filter((id) => id !== nodeId);
 };
 
-export { activateTabAction, closeTabAction, openNodeAction };
+export {
+  activateTabAction,
+  closeTabAction,
+  dismissLinkErrorAction,
+  openNodeAction,
+  openVaultLinkAction,
+};

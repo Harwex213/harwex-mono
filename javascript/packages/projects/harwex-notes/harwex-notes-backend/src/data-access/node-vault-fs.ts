@@ -35,6 +35,21 @@ const createNodeVaultFs = (): TVaultFs => {
     return stats.size;
   };
 
+  // The modification time in nanoseconds plus the size. An editor that saves by renaming
+  // a new file over the old one changes both the time and usually the size.
+  const fileVersion = async (filePath: string): Promise<string | null> => {
+    try {
+      const stats = await fs.stat(filePath, { bigint: true });
+      if (!stats.isFile()) {
+        return null;
+      }
+
+      return `${stats.mtimeNs.toString(36)}-${stats.size.toString(36)}`;
+    } catch {
+      return null;
+    }
+  };
+
   const readFile = async (filePath: string): Promise<Uint8Array> => {
     return fs.readFile(filePath);
   };
@@ -66,7 +81,7 @@ const createNodeVaultFs = (): TVaultFs => {
     await fs.rm(targetPath, { recursive: true });
   };
 
-  return { readDir, fileSize, readFile, writeFile, makeDir, rename, remove };
+  return { readDir, fileSize, fileVersion, readFile, writeFile, makeDir, rename, remove };
 };
 
 export { createNodeVaultFs };

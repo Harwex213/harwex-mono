@@ -6,10 +6,14 @@ import type {
   TDocument,
   TExcalidrawDocument,
   TExcalidrawScene,
+  TExcalidrawStyle,
   TFsFileKind,
   TFsNode,
   TFsNodeKind,
+  TJsonValue,
   TMarkdownDocument,
+  TTextDocument,
+  TTreeState,
 } from "@hw/harwex-notes-protocol";
 
 export type {
@@ -18,8 +22,12 @@ export type {
   TDocument,
   TExcalidrawDocument,
   TExcalidrawScene,
+  TExcalidrawStyle,
   TFsFileKind,
   TFsNode,
   TFsNodeKind,
+  TJsonValue,
   TMarkdownDocument,
+  TTextDocument,
+  TTreeState,
 };

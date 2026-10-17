@@ -8,8 +8,9 @@ const packageDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".
 const distDir = path.join(packageDir, "dist");
 const staticDir = path.resolve(packageDir, "../harwex-notes-backend/static");
 
-// The api url baked into the bundle. Override with `API_URL=... yarn build:static`.
-const DEFAULT_API_URL = "http://localhost:4001/api";
+// The api url baked into the bundle. The backend serves the app, so the api sits on the same
+// origin. Override with `API_URL=... yarn build:static`.
+const DEFAULT_API_URL = "/api";
 const apiUrl = process.env.API_URL ?? DEFAULT_API_URL;
 
 console.log(`Building with API_URL=${apiUrl}`);

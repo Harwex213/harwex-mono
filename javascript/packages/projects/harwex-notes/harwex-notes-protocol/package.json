@@ -4,7 +4,10 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
-  "exports": "./exports.ts",
+  "exports": {
+    ".": "./exports.ts",
+    "./router": "./router.ts"
+  },
   "scripts": {
     "typecheck": "tsc --noEmit"
   },

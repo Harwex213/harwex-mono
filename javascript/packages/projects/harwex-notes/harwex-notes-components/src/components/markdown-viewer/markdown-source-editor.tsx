@@ -11,6 +11,10 @@ type TMarkdownSourceEditorProps = {
   theme: "light" | "dark";
   readOnly: boolean;
   onChange: (text: string) => void;
+  // Plain text: no Markdown language and no line wrapping, so the file shows as it is
+  // (TXT-1, TXT-2). The text viewer uses the same editor this way.
+  plain?: boolean;
+  className?: string;
 };
 
 // The editor draws from the host's `--color-*` variables, so the same instance follows a
@@ -57,6 +61,8 @@ const MarkdownSourceEditor: FC<TMarkdownSourceEditorProps> = ({
   theme,
   readOnly,
   onChange,
+  plain = false,
+  className = "markdown-viewer__editor",
 }) => {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const viewRef = useRef<EditorView | null>(null);
@@ -79,8 +85,7 @@ const MarkdownSourceEditor: FC<TMarkdownSourceEditorProps> = ({
         doc: text,
         extensions: [
           basicSetup,
-          markdown({ base: markdownLanguage, codeLanguages: languages }),
-          EditorView.lineWrapping,
+          plain ? [] : [markdown({ base: markdownLanguage, codeLanguages: languages }), EditorView.lineWrapping],
           themeCompartmentRef.current.of(buildTheme(theme === "dark")),
           readOnlyCompartmentRef.current.of([
             EditorState.readOnly.of(readOnly),
@@ -104,6 +109,7 @@ const MarkdownSourceEditor: FC<TMarkdownSourceEditorProps> = ({
       viewRef.current = null;
     };
     // The editor is created once per mount; `text` after that is applied by the effect below.
+    // `plain` never changes for one mount: each viewer passes a constant.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -157,7 +163,7 @@ const MarkdownSourceEditor: FC<TMarkdownSourceEditorProps> = ({
     });
   }, [text]);
 
-  return <div className="markdown-viewer__editor" ref={hostRef} />;
+  return <div className={className} ref={hostRef} />;
 };
 
 export { MarkdownSourceEditor };

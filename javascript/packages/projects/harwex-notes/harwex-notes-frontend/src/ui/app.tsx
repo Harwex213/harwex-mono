@@ -1,5 +1,10 @@
 import { useSignals } from "@preact/signals-react/runtime";
+import { ConflictModalContainer } from "./components/conflict-modal-container";
+import { DeletedFileLine } from "./components/deleted-file-line";
 import { FsViewerContainer } from "./components/fs-viewer-container";
+import { LinkErrorLine } from "./components/link-error-line";
+import { SaveStatusLine } from "./components/save-status-line";
+import { SettingsContainer } from "./components/settings-container";
 import { SplitController } from "./components/split-controller";
 import { TabsBarContainer } from "./components/tabs-bar-container";
 import { ViewerPane } from "./components/viewer-pane";
@@ -58,10 +63,19 @@ const App: FC<TAppProps> = ({ registry }) => {
       <main className="app__main">
         <div className="app__bar">
           <TabsBarContainer registry={registry} />
+
+          <div className="app__bar-end">
+            <LinkErrorLine registry={registry} />
+            <DeletedFileLine registry={registry} />
+            <SaveStatusLine />
+            <SettingsContainer registry={registry} />
+          </div>
         </div>
 
         <ViewerPane registry={registry} />
       </main>
+
+      <ConflictModalContainer registry={registry} />
 
     </div>
   );

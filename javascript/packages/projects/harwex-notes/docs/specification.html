@@ -359,8 +359,10 @@ tr.marked td:last-child {
     <li><a href="#md">MD — Markdown viewer</a></li>
     <li><a href="#txt">TXT — Text viewer</a></li>
     <li><a href="#html">HTML — HTML viewer</a></li>
+    <li><a href="#img">IMG — Image viewer</a></li>
     <li><a href="#feed">FEED — Messages and empty states</a></li>
     <li><a href="#sess">SESS — What survives a reload</a></li>
+    <li><a href="#set">SET — Settings</a></li>
     <li><a href="#life">Document lifecycle</a></li>
     <li><a href="#walk">Conformance walk</a></li>
     <li><a href="#outofscope">Out of scope</a></li>
@@ -369,8 +371,9 @@ tr.marked td:last-child {
 
 <section id="purpose">
   <h2><span class="num">01</span> Purpose</h2>
-  <p>One folder on the user's machine holds notes in four forms: Excalidraw drawings, Markdown documents, plain text files and HTML pages. Today each form needs a different program. This app opens all four in one place, in a browser, against the folder as it sits on disk.</p>
-  <p>The folder is the model. There is no database, no account and no copy of the content anywhere else. What the app shows is what the disk holds, and an edit in the app is an edit to the file.</p>
+  <p>One folder on the user's machine holds notes in five forms: Excalidraw drawings, Markdown documents, plain text files, HTML pages and images. Today each form needs a different program. This app opens all five in one place, in a browser, against the folder as it sits on disk.</p>
+  <p>The folder is the model. The content lives only in the files: there is no account and no copy of the content anywhere else. What the app shows is what the disk holds, and an edit in the app is an edit to the file.</p>
+  <p>The app keeps one small database of its own, and it holds only UI state: which folders are open, which row is selected, per-file view state and app settings. It never holds content. Deleting it loses no note; the app then starts at its defaults. See SESS.</p>
 </section>
 
 <section id="vocabulary">
@@ -384,7 +387,9 @@ tr.marked td:last-child {
       <tr><td><strong>Vault</strong></td><td>The one folder the app opens. Everything the app can read or write lives inside it.</td></tr>
       <tr><td><strong>Entry</strong></td><td>A file or a folder inside the vault.</td></tr>
       <tr><td><strong>Supported file</strong></td><td>A file the app can open, decided by its extension. See VAULT-2.</td></tr>
-      <tr><td><strong>Viewer</strong></td><td>The surface that shows one open file. Four exist: drawing, Markdown, text, HTML.</td></tr>
+      <tr><td><strong>Viewer</strong></td><td>The surface that shows one open file. Five exist: drawing, Markdown, text, HTML, image.</td></tr>
+      <tr><td><strong>Read-only file</strong></td><td>A supported file the app shows but never writes. HTML pages and images are read-only.</td></tr>
+      <tr><td><strong>Raw file</strong></td><td>A vault file as the browser loads it, addressed by its path inside the vault. Images, HTML pages, the assets of those pages and the images of Markdown files load this way.</td></tr>
       <tr><td><strong>Tab</strong></td><td>One open file in the tab bar. At most five exist at once.</td></tr>
       <tr><td><strong>Document</strong></td><td>The content of one open file as the app holds it, together with its save state.</td></tr>
       <tr><td><strong>Unsaved changes</strong></td><td>A document differs from the file on disk because the user edited it and the save has not landed yet.</td></tr>
@@ -405,10 +410,11 @@ tr.marked td:last-child {
     </div>
     <div class="wire-right">
       <div class="wire-box wire-tabs">tabs</div>
-      <div class="wire-box wire-viewer">drawing / Markdown / text / HTML viewer</div>
+      <div class="wire-box wire-viewer">drawing / Markdown / text / HTML / image viewer</div>
     </div>
   </div>
   <p>Two columns. The left column holds a search field over the file tree of the whole vault. The right column is a tab bar over one viewer, and the viewer fills the rest of the height. The divider between the columns is draggable. Nothing else is on the screen: no menu bar, no sidebar, no second route.</p>
+  <p>One exception: a small gear button sits at the right end of the tab bar row. It opens the Settings dialog (SET-1). A refused link explains itself on the same row, left of the gear (EX-10).</p>
 </section>
 
 <section id="app">
@@ -436,9 +442,9 @@ tr.marked td:last-child {
     <thead><tr><th class="mark-col"></th><th>ID</th><th>Rule</th></tr></thead>
     <tbody>
       <tr data-rule="VAULT-1"><td class="mark"><input type="checkbox" class="rule-mark" aria-label="Mark VAULT-1"></td><td class="id">VAULT-1</td><td>Every file and every folder in the vault appears in the tree. Nothing is hidden because of its type.</td></tr>
-      <tr data-rule="VAULT-2"><td class="mark"><input type="checkbox" class="rule-mark" aria-label="Mark VAULT-2"></td><td class="id">VAULT-2</td><td>Six extensions are supported, matched without regard to case: <code>.excalidraw</code>, <code>.md</code>, <code>.markdown</code>, <code>.txt</code>, <code>.html</code>, <code>.htm</code>.</td></tr>
+      <tr data-rule="VAULT-2"><td class="mark"><input type="checkbox" class="rule-mark" aria-label="Mark VAULT-2"></td><td class="id">VAULT-2</td><td>Fifteen extensions are supported, matched without regard to case. Six are text kinds: <code>.excalidraw</code>, <code>.md</code>, <code>.markdown</code>, <code>.txt</code>, <code>.html</code>, <code>.htm</code>. Nine are images: <code>.png</code>, <code>.jpg</code>, <code>.jpeg</code>, <code>.gif</code>, <code>.webp</code>, <code>.svg</code>, <code>.bmp</code>, <code>.ico</code>, <code>.avif</code>.</td></tr>
       <tr data-rule="VAULT-3"><td class="mark"><input type="checkbox" class="rule-mark" aria-label="Mark VAULT-3"></td><td class="id">VAULT-3</td><td>Every other file is shown, marked visibly as not openable, and cannot be opened.</td></tr>
-      <tr data-rule="VAULT-4"><td class="mark"><input type="checkbox" class="rule-mark" aria-label="Mark VAULT-4"></td><td class="id">VAULT-4</td><td>A file larger than 8 MB is refused when the user tries to open it. The refusal names the size limit and no tab opens.</td></tr>
+      <tr data-rule="VAULT-4"><td class="mark"><input type="checkbox" class="rule-mark" aria-label="Mark VAULT-4"></td><td class="id">VAULT-4</td><td>A file larger than 128 MB is refused when the user tries to open it. The refusal names the size limit and no tab opens.</td></tr>
       <tr data-rule="VAULT-5"><td class="mark"><input type="checkbox" class="rule-mark" aria-label="Mark VAULT-5"></td><td class="id">VAULT-5</td><td>A supported file whose content is not readable text is refused the same way. The refusal states that the file is not text.</td></tr>
       <tr data-rule="VAULT-6"><td class="mark"><input type="checkbox" class="rule-mark" aria-label="Mark VAULT-6"></td><td class="id">VAULT-6</td><td>A vault too large to list is refused at startup, with a message naming the reason. The app never shows part of a vault as though it were the whole vault.</td></tr>
       <tr data-rule="VAULT-7"><td class="mark"><input type="checkbox" class="rule-mark" aria-label="Mark VAULT-7"></td><td class="id">VAULT-7</td><td>The app reads and writes only inside the vault. An entry that points outside the vault is listed but never followed, and the app never opens or writes the target.</td></tr>
@@ -492,6 +498,18 @@ tr.marked td:last-child {
       <tr data-rule="SRCH-16"><td class="mark"><input type="checkbox" class="rule-mark" aria-label="Mark SRCH-16"></td><td class="id">SRCH-16</td><td>While a search over a large vault is still running the panel says so, and results appear as they are found. The panel never looks empty while it is still working.</td></tr>
       <tr data-rule="SRCH-17"><td class="mark"><input type="checkbox" class="rule-mark" aria-label="Mark SRCH-17"></td><td class="id">SRCH-17</td><td>A term that matches nothing states that nothing matched it, and names how many files were searched.</td></tr>
       <tr data-rule="SRCH-18"><td class="mark"><input type="checkbox" class="rule-mark" aria-label="Mark SRCH-18"></td><td class="id">SRCH-18</td><td>Search only finds. Nothing in the app changes what a search has found, in one file or across the vault.</td></tr>
+      <tr data-rule="SRCH-19"><td class="mark"><input type="checkbox" class="rule-mark" aria-label="Mark SRCH-19"></td><td class="id">SRCH-19</td><td>A folder that matches by name keeps its whole content. Expanding it shows every entry inside, not only the matching ones.</td></tr>
+      <tr data-rule="SRCH-20"><td class="mark"><input type="checkbox" class="rule-mark" aria-label="Mark SRCH-20"></td><td class="id">SRCH-20</td><td>Expanding or collapsing a folder during a search changes only the filtered tree. Each new term opens the path to every match again. Clearing the field brings back the folders the user had expanded before the search (SRCH-3).</td></tr>
+      <tr data-rule="SRCH-21"><td class="mark"><input type="checkbox" class="rule-mark" aria-label="Mark SRCH-21"></td><td class="id">SRCH-21</td><td>The part of a name that matches the term is highlighted in its row.</td></tr>
+      <tr data-rule="SRCH-22"><td class="mark"><input type="checkbox" class="rule-mark" aria-label="Mark SRCH-22"></td><td class="id">SRCH-22</td><td><code>Cmd/Ctrl+Shift+F</code> moves focus to the search field from anywhere in the app. Plain <code>Cmd/Ctrl+F</code> stays with the browser.</td></tr>
+      <tr data-rule="SRCH-23"><td class="mark"><input type="checkbox" class="rule-mark" aria-label="Mark SRCH-23"></td><td class="id">SRCH-23</td><td>In the search field, Escape clears the term. Escape on an empty field leaves the field. Down moves focus to the first row of the tree.</td></tr>
+      <tr data-rule="SRCH-24"><td class="mark"><input type="checkbox" class="rule-mark" aria-label="Mark SRCH-24"></td><td class="id">SRCH-24</td><td>Starting to create an entry clears the search first, so the new entry does not vanish from a filter that its name does not match.</td></tr>
+      <tr data-rule="SRCH-25"><td class="mark"><input type="checkbox" class="rule-mark" aria-label="Mark SRCH-25"></td><td class="id">SRCH-25</td><td>Markdown and plain text are searched as written. Markup characters are part of the text, so a term can match them.</td></tr>
+      <tr data-rule="SRCH-26"><td class="mark"><input type="checkbox" class="rule-mark" aria-label="Mark SRCH-26"></td><td class="id">SRCH-26</td><td>In a drawing, the text the user typed is the text of its text elements and the names of its frames. A label wrapped to fit its shape is searched without the line breaks the wrapping added. Deleted elements are not searched.</td></tr>
+      <tr data-rule="SRCH-27"><td class="mark"><input type="checkbox" class="rule-mark" aria-label="Mark SRCH-27"></td><td class="id">SRCH-27</td><td>In an HTML file, only the text the page shows is searched. Tags, attributes, comments, scripts, styles and the page title are not. Character entities such as <code>&amp;amp;</code> are searched as the character they stand for.</td></tr>
+      <tr data-rule="SRCH-28"><td class="mark"><input type="checkbox" class="rule-mark" aria-label="Mark SRCH-28"></td><td class="id">SRCH-28</td><td>A term never matches across two separate pieces of text: two text elements of a drawing, or two paragraphs of a page.</td></tr>
+      <tr data-rule="SRCH-29"><td class="mark"><input type="checkbox" class="rule-mark" aria-label="Mark SRCH-29"></td><td class="id">SRCH-29</td><td>Content search waits for a short pause in typing before it starts. Name matches appear at once. Results for an older term never show next to a newer term.</td></tr>
+      <tr data-rule="SRCH-30"><td class="mark"><input type="checkbox" class="rule-mark" aria-label="Mark SRCH-30"></td><td class="id">SRCH-30</td><td>A file larger than 8 MB is not read by search, even though VAULT-4 lets it open. It matches on its name alone (SRCH-7). The lower limit keeps one large file from stalling a search of the whole vault.</td></tr>
     </tbody>
   </table>
   </div>
@@ -507,7 +525,7 @@ tr.marked td:last-child {
       <tr data-rule="MUT-3"><td class="mark"><input type="checkbox" class="rule-mark" aria-label="Mark MUT-3"></td><td class="id">MUT-3</td><td>Creation happens inside the selected folder. When a file is selected, creation happens in the folder that holds it. When nothing is selected, creation happens at the root of the vault.</td></tr>
       <tr data-rule="MUT-4"><td class="mark"><input type="checkbox" class="rule-mark" aria-label="Mark MUT-4"></td><td class="id">MUT-4</td><td>Naming happens in the tree itself: the row becomes a text field. Enter commits the name, Escape cancels the operation, and clicking away commits.</td></tr>
       <tr data-rule="MUT-5"><td class="mark"><input type="checkbox" class="rule-mark" aria-label="Mark MUT-5"></td><td class="id">MUT-5</td><td>The user types the extension. The app never adds one, never completes one and never offers a list to pick from.</td></tr>
-      <tr data-rule="MUT-6"><td class="mark"><input type="checkbox" class="rule-mark" aria-label="Mark MUT-6"></td><td class="id">MUT-6</td><td>Creating a file whose extension is not one of the six is refused. A name with no extension is refused for the same reason.</td></tr>
+      <tr data-rule="MUT-6"><td class="mark"><input type="checkbox" class="rule-mark" aria-label="Mark MUT-6"></td><td class="id">MUT-6</td><td>Creating a file whose extension is not one of the six text kinds of VAULT-2 is refused. A name with no extension is refused for the same reason. An image extension is refused as well, see IMG-6.</td></tr>
       <tr data-rule="MUT-7"><td class="mark"><input type="checkbox" class="rule-mark" aria-label="Mark MUT-7"></td><td class="id">MUT-7</td><td>Renaming may not leave a supported file unsupported. Renaming a file that was already unsupported is unrestricted, because it was never openable.</td></tr>
       <tr data-rule="MUT-8"><td class="mark"><input type="checkbox" class="rule-mark" aria-label="Mark MUT-8"></td><td class="id">MUT-8</td><td>A name already used by another entry in the same folder is refused.</td></tr>
       <tr data-rule="MUT-9"><td class="mark"><input type="checkbox" class="rule-mark" aria-label="Mark MUT-9"></td><td class="id">MUT-9</td><td>A refusal keeps the text field open with the name the user typed, and states the reason underneath. Nothing is written to disk. The user corrects the name or presses Escape.</td></tr>
@@ -568,7 +586,7 @@ tr.marked td:last-child {
       <tr data-rule="DOC-6"><td class="mark"><input type="checkbox" class="rule-mark" aria-label="Mark DOC-6"></td><td class="id">DOC-6</td><td>One status line beside the tab bar states the state of the app as a whole: <em>Saving…</em>, <em>All changes saved</em>, <em>Save failed</em>, or <em>Offline</em>.</td></tr>
       <tr data-rule="DOC-7"><td class="mark"><input type="checkbox" class="rule-mark" aria-label="Mark DOC-7"></td><td class="id">DOC-7</td><td>A save that fails for a reason other than a conflict is reported at once, with the reason the system gave. The app does not retry on its own. Automatic saving of that file stops until the user asks to try again.</td></tr>
       <tr data-rule="DOC-8"><td class="mark"><input type="checkbox" class="rule-mark" aria-label="Mark DOC-8"></td><td class="id">DOC-8</td><td>A failed save never discards content. The document stays in the viewer exactly as the user left it.</td></tr>
-      <tr data-rule="DOC-9"><td class="mark"><input type="checkbox" class="rule-mark" aria-label="Mark DOC-9"></td><td class="id">DOC-9</td><td>HTML files are never written. See HTML-5.</td></tr>
+      <tr data-rule="DOC-9"><td class="mark"><input type="checkbox" class="rule-mark" aria-label="Mark DOC-9"></td><td class="id">DOC-9</td><td>HTML files and images are never written. See HTML-5 and IMG-5.</td></tr>
       <tr data-rule="DOC-10"><td class="mark"><input type="checkbox" class="rule-mark" aria-label="Mark DOC-10"></td><td class="id">DOC-10</td><td>Line endings are preserved. A file that used CRLF still uses CRLF after the app saves it.</td></tr>
       <tr data-rule="DOC-11"><td class="mark"><input type="checkbox" class="rule-mark" aria-label="Mark DOC-11"></td><td class="id">DOC-11</td><td>A byte-order mark at the start of a file is preserved.</td></tr>
       <tr data-rule="DOC-12"><td class="mark"><input type="checkbox" class="rule-mark" aria-label="Mark DOC-12"></td><td class="id">DOC-12</td><td>A save either replaces the whole file or leaves it as it was. A file is never left half written, whatever interrupts the save.</td></tr>
@@ -592,6 +610,12 @@ tr.marked td:last-child {
       <tr data-rule="SYNC-7"><td class="mark"><input type="checkbox" class="rule-mark" aria-label="Mark SYNC-7"></td><td class="id">SYNC-7</td><td>When the app loses contact with the vault, the status line says <em>Offline</em> and the app keeps trying to restore it.</td></tr>
       <tr data-rule="SYNC-8"><td class="mark"><input type="checkbox" class="rule-mark" aria-label="Mark SYNC-8"></td><td class="id">SYNC-8</td><td>Once contact is restored, the app re-checks the whole vault and every open file. A clean file whose content changed reloads. A file with unsaved changes whose content changed raises a conflict.</td></tr>
       <tr data-rule="SYNC-9"><td class="mark"><input type="checkbox" class="rule-mark" aria-label="Mark SYNC-9"></td><td class="id">SYNC-9</td><td>The app's own saves do not count as outside changes. Saving a file never reloads the viewer the user is working in.</td></tr>
+      <tr data-rule="SYNC-10"><td class="mark"><input type="checkbox" class="rule-mark" aria-label="Mark SYNC-10"></td><td class="id">SYNC-10</td><td>A burst of outside changes, such as a checkout or an editor that saves through a temporary file, appears as one update. The update arrives within about a second after the disk goes quiet. A burst that never pauses still shows its changes at least once a second.</td></tr>
+      <tr data-rule="SYNC-11"><td class="mark"><input type="checkbox" class="rule-mark" aria-label="Mark SYNC-11"></td><td class="id">SYNC-11</td><td>Changes inside the folders the tree never lists (VAULT-8) and inside the app's own state folder (SESS-6) are ignored. They never update the tree, a viewer or a search.</td></tr>
+      <tr data-rule="SYNC-12"><td class="mark"><input type="checkbox" class="rule-mark" aria-label="Mark SYNC-12"></td><td class="id">SYNC-12</td><td>A save that finds the file changed on disk since the app read it does not write. It raises a conflict instead (CONF-1). This holds even when the app has not been told about the change yet, and it is how two browser tabs on one file collide (APP-4).</td></tr>
+      <tr data-rule="SYNC-13"><td class="mark"><input type="checkbox" class="rule-mark" aria-label="Mark SYNC-13"></td><td class="id">SYNC-13</td><td>An outside change to a file that is loaded but not shown in any tab is not applied. The file reads the disk again when it is next opened.</td></tr>
+      <tr data-rule="SYNC-14"><td class="mark"><input type="checkbox" class="rule-mark" aria-label="Mark SYNC-14"></td><td class="id">SYNC-14</td><td>An image or an HTML page that changes on disk is loaded again from the new file. An image returns to the fitted view of IMG-3.</td></tr>
+      <tr data-rule="SYNC-15"><td class="mark"><input type="checkbox" class="rule-mark" aria-label="Mark SYNC-15"></td><td class="id">SYNC-15</td><td>Writing back a file deleted on disk (SYNC-5) recreates every missing folder on its old path. When another entry has taken that path meanwhile, writing back is refused with the reason, and the tab stays marked as deleted. Closing a tab marked as deleted asks the user to confirm losing its content, as TAB-9 does for a conflict.</td></tr>
     </tbody>
   </table>
   </div>
@@ -638,6 +662,7 @@ tr.marked td:last-child {
       <tr><td><code>.md</code> <code>.markdown</code></td><td>Markdown</td><td>Yes</td></tr>
       <tr><td><code>.txt</code></td><td>Text</td><td>Yes</td></tr>
       <tr><td><code>.html</code> <code>.htm</code></td><td>HTML</td><td>No</td></tr>
+      <tr><td><code>.png</code> <code>.jpg</code> <code>.jpeg</code> <code>.gif</code> <code>.webp</code> <code>.svg</code> <code>.bmp</code> <code>.ico</code> <code>.avif</code></td><td>Image</td><td>No</td></tr>
     </tbody>
   </table>
   </div>
@@ -649,12 +674,17 @@ tr.marked td:last-child {
   <table>
     <thead><tr><th class="mark-col"></th><th>ID</th><th>Rule</th></tr></thead>
     <tbody>
-      <tr data-rule="EX-1"><td class="mark"><input type="checkbox" class="rule-mark" aria-label="Mark EX-1"></td><td class="id">EX-1</td><td>An <code>.excalidraw</code> file opens as a drawing surface with the full tool set of Excalidraw. The app adds no tools of its own and removes none.</td></tr>
+      <tr data-rule="EX-1"><td class="mark"><input type="checkbox" class="rule-mark" aria-label="Mark EX-1"></td><td class="id">EX-1</td><td>An <code>.excalidraw</code> file opens as a drawing surface with the full tool set of Excalidraw. The app removes none of its tools and adds one command of its own: “Link to file” (EX-9).</td></tr>
       <tr data-rule="EX-2"><td class="mark"><input type="checkbox" class="rule-mark" aria-label="Mark EX-2"></td><td class="id">EX-2</td><td>Drawing is editing. Changes save under the DOC rules, with no save command.</td></tr>
       <tr data-rule="EX-3"><td class="mark"><input type="checkbox" class="rule-mark" aria-label="Mark EX-3"></td><td class="id">EX-3</td><td>Files stay interchangeable with excalidraw.com. A drawing the app saved opens there, and a drawing saved there opens in the app.</td></tr>
       <tr data-rule="EX-4"><td class="mark"><input type="checkbox" class="rule-mark" aria-label="Mark EX-4"></td><td class="id">EX-4</td><td>An image pasted into a drawing is kept, saved with the drawing and still there when the file is reopened.</td></tr>
       <tr data-rule="EX-5"><td class="mark"><input type="checkbox" class="rule-mark" aria-label="Mark EX-5"></td><td class="id">EX-5</td><td>A file whose content is not a valid drawing is refused with a message naming the reason. No empty canvas is shown in its place, because saving that canvas would destroy the file.</td></tr>
       <tr data-rule="EX-6"><td class="mark"><input type="checkbox" class="rule-mark" aria-label="Mark EX-6"></td><td class="id">EX-6</td><td>Panning and zooming are not edits and never cause a save.</td></tr>
+      <tr data-rule="EX-7"><td class="mark"><input type="checkbox" class="rule-mark" aria-label="Mark EX-7"></td><td class="id">EX-7</td><td>Each drawing keeps its own current style: stroke and background colour, fill, stroke width and style, sloppiness, opacity, edges, arrow type and arrowheads, font, font size and text alignment. The style is stored in the file's <code>appState</code> under Excalidraw's own key names, so excalidraw.com reads the same style (EX-3). Reopening the drawing restores it. A change to the style alone is an edit and saves under the DOC rules. A style key the file does not set comes from the default for new drawings (SET-2).</td></tr>
+      <tr data-rule="EX-8"><td class="mark"><input type="checkbox" class="rule-mark" aria-label="Mark EX-8"></td><td class="id">EX-8</td><td>Each drawing reopens where the user left it: the same scroll position and zoom. The viewport is view state of this user, so it is kept in the state database (SESS-6), never in the file, and keeping it never writes the file (EX-6). A drawing with no saved viewport opens fitted to its content.</td></tr>
+      <tr data-rule="EX-9"><td class="mark"><input type="checkbox" class="rule-mark" aria-label="Mark EX-9"></td><td class="id">EX-9</td><td>An element can link to a file of the vault. With elements selected, a “Link to file…” button at the top right of the canvas (also <kbd>⇧⌘K</kbd>, <kbd>Ctrl+Shift+K</kbd> elsewhere) opens a filterable list of every file in the vault. Picking one sets the link on every selected element. The link is stored as <code>vault:</code> followed by the vault-relative path, for example <code>vault:Projects/plan.md</code>. A path typed into Excalidraw's own link editor works too. A path that starts with <code>vault:</code> or <code>/</code> is read from the vault root. A bare path is read next to the drawing first, then from the vault root. Following such a link opens the file as a tab under the TAB rules and never navigates the app away (APP-1). An <code>http</code> or <code>https</code> link keeps Excalidraw's own behaviour and opens in a new browser tab.</td></tr>
+      <tr data-rule="EX-10"><td class="mark"><input type="checkbox" class="rule-mark" aria-label="Mark EX-10"></td><td class="id">EX-10</td><td>A link to a file that is missing or unsupported opens nothing. A short message names the reason at the right end of the tab bar row (FEED-4). The message stays until the next file opens or the user dismisses it. A link to a folder selects and expands that folder in the tree.</td></tr>
+      <tr data-rule="EX-11"><td class="mark"><input type="checkbox" class="rule-mark" aria-label="Mark EX-11"></td><td class="id">EX-11</td><td>Links are not rewritten when their target is renamed or moved. A link whose path no longer exists still finds its file when exactly one file in the vault has the same name, so a moved file stays reachable. A renamed file is not found, and the link shows the EX-10 message.</td></tr>
     </tbody>
   </table>
   </div>
@@ -670,7 +700,7 @@ tr.marked td:last-child {
       <tr data-rule="MD-2"><td class="mark"><input type="checkbox" class="rule-mark" aria-label="Mark MD-2"></td><td class="id">MD-2</td><td>The rendered side follows the source as the user types. No command is needed to refresh it.</td></tr>
       <tr data-rule="MD-3"><td class="mark"><input type="checkbox" class="rule-mark" aria-label="Mark MD-3"></td><td class="id">MD-3</td><td>Either side can be collapsed, so the user can work in source alone or read the rendered document alone. The choice applies to the app, not to one file, and it survives a reload.</td></tr>
       <tr data-rule="MD-4"><td class="mark"><input type="checkbox" class="rule-mark" aria-label="Mark MD-4"></td><td class="id">MD-4</td><td>Rendering covers standard Markdown plus tables, task lists, strikethrough and fenced code blocks.</td></tr>
-      <tr data-rule="MD-5"><td class="mark"><input type="checkbox" class="rule-mark" aria-label="Mark MD-5"></td><td class="id">MD-5</td><td>An image whose path is relative to the file renders from the vault.</td></tr>
+      <tr data-rule="MD-5"><td class="mark"><input type="checkbox" class="rule-mark" aria-label="Mark MD-5"></td><td class="id">MD-5</td><td>An image whose path is relative to the file renders from the vault as a raw file. <code>../</code> climbs out of the file's folder. A path that starts with <code>/</code> is read from the vault root. An <code>http</code>, <code>https</code> or <code>data:</code> image loads as written. An image that is not in the vault, or that the browser cannot draw, leaves a placeholder in its place, and the rest of the document still renders. An image changed on disk redraws in the open file. See SYNC-3.</td></tr>
       <tr data-rule="MD-6"><td class="mark"><input type="checkbox" class="rule-mark" aria-label="Mark MD-6"></td><td class="id">MD-6</td><td>A link to a supported file inside the vault opens that file as a tab, under the TAB rules.</td></tr>
       <tr data-rule="MD-7"><td class="mark"><input type="checkbox" class="rule-mark" aria-label="Mark MD-7"></td><td class="id">MD-7</td><td>A link to a file that is missing or unsupported shows the refusal message from FEED-2 and opens nothing.</td></tr>
       <tr data-rule="MD-8"><td class="mark"><input type="checkbox" class="rule-mark" aria-label="Mark MD-8"></td><td class="id">MD-8</td><td>An <code>http</code> or <code>https</code> link opens in a new browser tab. The app itself is never navigated away.</td></tr>
@@ -705,7 +735,7 @@ tr.marked td:last-child {
       <tr data-rule="HTML-1"><td class="mark"><input type="checkbox" class="rule-mark" aria-label="Mark HTML-1"></td><td class="id">HTML-1</td><td>An <code>.html</code> or <code>.htm</code> file opens rendered, as the file would appear in a browser.</td></tr>
       <tr data-rule="HTML-2"><td class="mark"><input type="checkbox" class="rule-mark" aria-label="Mark HTML-2"></td><td class="id">HTML-2</td><td>Images, stylesheets and scripts referenced by a path relative to the file load from the vault. A page and its assets look the same in the app as they do when opened directly.</td></tr>
       <tr data-rule="HTML-3"><td class="mark"><input type="checkbox" class="rule-mark" aria-label="Mark HTML-3"></td><td class="id">HTML-3</td><td>Scripts in the page run.</td></tr>
-      <tr data-rule="HTML-4"><td class="mark"><input type="checkbox" class="rule-mark" aria-label="Mark HTML-4"></td><td class="id">HTML-4</td><td>The page is isolated from the app. It cannot read or change anything around it, and it cannot navigate the app away.</td></tr>
+      <tr data-rule="HTML-4"><td class="mark"><input type="checkbox" class="rule-mark" aria-label="Mark HTML-4"></td><td class="id">HTML-4</td><td>The page is isolated from the app. It cannot read or change anything around it, it cannot call the app's own server, and it cannot navigate the app away.</td></tr>
       <tr data-rule="HTML-5"><td class="mark"><input type="checkbox" class="rule-mark" aria-label="Mark HTML-5"></td><td class="id">HTML-5</td><td>There is no editing: no source view, no save, no way for the app to write an HTML file.</td></tr>
       <tr data-rule="HTML-6"><td class="mark"><input type="checkbox" class="rule-mark" aria-label="Mark HTML-6"></td><td class="id">HTML-6</td><td>A change to the file on disk re-renders the page. See SYNC-3. An HTML file can never have unsaved changes, so it never conflicts.</td></tr>
     </tbody>
@@ -713,13 +743,34 @@ tr.marked td:last-child {
   </div>
 </section>
 
-<section id="feed">
-  <h2><span class="num">18</span> FEED — Messages and empty states</h2>
+<section id="img">
+  <h2><span class="num">18</span> IMG — Image viewer</h2>
   <div class="table-wrap">
   <table>
     <thead><tr><th class="mark-col"></th><th>ID</th><th>Rule</th></tr></thead>
     <tbody>
-      <tr data-rule="FEED-1"><td class="mark"><input type="checkbox" class="rule-mark" aria-label="Mark FEED-1"></td><td class="id">FEED-1</td><td>With no tab open, the viewer pane names the vault, lists the four kinds the app can open, and states that a file opens on a double click.</td></tr>
+      <tr data-rule="IMG-1"><td class="mark"><input type="checkbox" class="rule-mark" aria-label="Mark IMG-1"></td><td class="id">IMG-1</td><td>A file with an image extension from VAULT-2 opens in the image viewer. VAULT-5 does not apply to it, because an image is not text.</td></tr>
+      <tr data-rule="IMG-2"><td class="mark"><input type="checkbox" class="rule-mark" aria-label="Mark IMG-2"></td><td class="id">IMG-2</td><td>The image loads from the vault as a raw file. The viewer shows it as the browser draws it, with no conversion.</td></tr>
+      <tr data-rule="IMG-3"><td class="mark"><input type="checkbox" class="rule-mark" aria-label="Mark IMG-3"></td><td class="id">IMG-3</td><td>On open, the whole image fits the pane and sits in its centre. An image smaller than the pane is shown at its own size. The viewer never enlarges it to fill the pane.</td></tr>
+      <tr data-rule="IMG-4"><td class="mark"><input type="checkbox" class="rule-mark" aria-label="Mark IMG-4"></td><td class="id">IMG-4</td><td>The viewer states the width and height of the image in pixels. It also states the current zoom as a percentage.</td></tr>
+      <tr data-rule="IMG-5"><td class="mark"><input type="checkbox" class="rule-mark" aria-label="Mark IMG-5"></td><td class="id">IMG-5</td><td>There is no editing. Zooming and panning change only the view, and the app never writes an image file.</td></tr>
+      <tr data-rule="IMG-6"><td class="mark"><input type="checkbox" class="rule-mark" aria-label="Mark IMG-6"></td><td class="id">IMG-6</td><td>The app cannot create an image file. Creating a file with an image extension is refused, because an empty file is not an image. Renaming an image to another image extension is allowed.</td></tr>
+      <tr data-rule="IMG-7"><td class="mark"><input type="checkbox" class="rule-mark" aria-label="Mark IMG-7"></td><td class="id">IMG-7</td><td>The wheel zooms around the pointer. The zoom buttons zoom around the centre of the pane. Dragging pans the image. <strong>Fit</strong> returns to the view from IMG-3, and <strong>1:1</strong> shows the image at its own size. A double click switches between those two views.</td></tr>
+      <tr data-rule="IMG-8"><td class="mark"><input type="checkbox" class="rule-mark" aria-label="Mark IMG-8"></td><td class="id">IMG-8</td><td>Behind the image the pane shows a checkerboard, so transparent parts are visible.</td></tr>
+      <tr data-rule="IMG-9"><td class="mark"><input type="checkbox" class="rule-mark" aria-label="Mark IMG-9"></td><td class="id">IMG-9</td><td>A file the browser cannot draw states in the pane that it is not a readable image. See VIEW-4.</td></tr>
+      <tr data-rule="IMG-10"><td class="mark"><input type="checkbox" class="rule-mark" aria-label="Mark IMG-10"></td><td class="id">IMG-10</td><td>A change to the file on disk shows the new image. See SYNC-3. An image can never have unsaved changes, so it never conflicts.</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section id="feed">
+  <h2><span class="num">19</span> FEED — Messages and empty states</h2>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th class="mark-col"></th><th>ID</th><th>Rule</th></tr></thead>
+    <tbody>
+      <tr data-rule="FEED-1"><td class="mark"><input type="checkbox" class="rule-mark" aria-label="Mark FEED-1"></td><td class="id">FEED-1</td><td>With no tab open, the viewer pane names the vault, lists the five kinds the app can open, and states that a file opens on a double click.</td></tr>
       <tr data-rule="FEED-2"><td class="mark"><input type="checkbox" class="rule-mark" aria-label="Mark FEED-2"></td><td class="id">FEED-2</td><td>A double click on an unsupported file shows a short message naming the extension and stating that the app cannot open it. The row stays visibly marked as not openable, so the refusal is never the user's first hint.</td></tr>
       <tr data-rule="FEED-3"><td class="mark"><input type="checkbox" class="rule-mark" aria-label="Mark FEED-3"></td><td class="id">FEED-3</td><td>Every refusal names its reason: unsupported extension, name already taken, file too large, file is not text, tab limit reached.</td></tr>
       <tr data-rule="FEED-4"><td class="mark"><input type="checkbox" class="rule-mark" aria-label="Mark FEED-4"></td><td class="id">FEED-4</td><td>A message appears next to the thing that caused it. A refused name is explained under the text field; a refused open is explained near the tab bar.</td></tr>
@@ -731,23 +782,43 @@ tr.marked td:last-child {
 </section>
 
 <section id="sess">
-  <h2><span class="num">19</span> SESS — What survives a reload</h2>
+  <h2><span class="num">20</span> SESS — What survives a reload</h2>
   <div class="table-wrap">
   <table>
     <thead><tr><th class="mark-col"></th><th>ID</th><th>Rule</th></tr></thead>
     <tbody>
       <tr data-rule="SESS-1"><td class="mark"><input type="checkbox" class="rule-mark" aria-label="Mark SESS-1"></td><td class="id">SESS-1</td><td>A reload restores the open tabs, the active tab, the expanded folders, the selected row, the tree panel width and the Markdown pane choice from MD-3.</td></tr>
       <tr data-rule="SESS-2"><td class="mark"><input type="checkbox" class="rule-mark" aria-label="Mark SESS-2"></td><td class="id">SESS-2</td><td>A restored path that no longer exists, or that is no longer supported, is dropped without a message. A reload never shows an error about a file the user has already moved on from.</td></tr>
-      <tr data-rule="SESS-3"><td class="mark"><input type="checkbox" class="rule-mark" aria-label="Mark SESS-3"></td><td class="id">SESS-3</td><td>Cursor position and scroll position are not restored.</td></tr>
+      <tr data-rule="SESS-3"><td class="mark"><input type="checkbox" class="rule-mark" aria-label="Mark SESS-3"></td><td class="id">SESS-3</td><td>Cursor position and scroll position are not restored. One exception: a drawing reopens at its saved scroll position and zoom (EX-8).</td></tr>
       <tr data-rule="SESS-4"><td class="mark"><input type="checkbox" class="rule-mark" aria-label="Mark SESS-4"></td><td class="id">SESS-4</td><td>Unsaved changes are not restored. They were written to disk before the reload, or they were lost with the page — the app keeps no draft of its own.</td></tr>
       <tr data-rule="SESS-5"><td class="mark"><input type="checkbox" class="rule-mark" aria-label="Mark SESS-5"></td><td class="id">SESS-5</td><td>The search term is not restored. A reload clears the field and shows the whole tree, because a filter is a momentary act and not part of the workspace.</td></tr>
+      <tr data-rule="SESS-6"><td class="mark"><input type="checkbox" class="rule-mark" aria-label="Mark SESS-6"></td><td class="id">SESS-6</td><td>What survives a reload is kept by the app in a state database, apart from the content. A real vault keeps it in a hidden <code>.harwex-notes</code> folder at the vault root, so the state moves with the vault. That folder never appears in the tree and is never searched.</td></tr>
+      <tr data-rule="SESS-7"><td class="mark"><input type="checkbox" class="rule-mark" aria-label="Mark SESS-7"></td><td class="id">SESS-7</td><td>State is keyed by the entry's path inside the vault. Renaming or moving an entry in the app carries its state, and the state of everything below it, to the new path. Deleting an entry in the app drops its state and the state of everything below it.</td></tr>
+      <tr data-rule="SESS-8"><td class="mark"><input type="checkbox" class="rule-mark" aria-label="Mark SESS-8"></td><td class="id">SESS-8</td><td>A missing, empty or unreadable state database never blocks the app and never shows a message. The app starts at its defaults: the top-level folders expanded and no row selected.</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <div class="note"><strong>On SESS-6.</strong> The state database is one SQLite file. The <code>STATE_DB_PATH</code> environment variable names it explicitly. Without it, a vault given by <code>VAULT_PATH</code> uses <code>&lt;vault&gt;/.harwex-notes/state.sqlite</code>, and the built-in sample vault keeps its state in memory only. The database has three parts: the tree state (expanded folder paths and the selected path), a per-path key/value store for view state of one file (for example the viewport of a drawing), and a global key/value store for app settings (for example the default drawing style). Values are JSON. A change made outside the app, such as renaming a file in the system file manager, does not carry the state; the old path is then dropped under SESS-2.</div>
+</section>
+
+<section id="set">
+  <h2><span class="num">21</span> SET — Settings</h2>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th class="mark-col"></th><th>ID</th><th>Rule</th></tr></thead>
+    <tbody>
+      <tr data-rule="SET-1"><td class="mark"><input type="checkbox" class="rule-mark" aria-label="Mark SET-1"></td><td class="id">SET-1</td><td>The gear button at the right end of the tab bar row opens the Settings dialog. <kbd>⌘,</kbd> (<kbd>Ctrl+,</kbd> elsewhere) opens and closes it as well. Escape, the close button and a click outside the dialog close it.</td></tr>
+      <tr data-rule="SET-2"><td class="mark"><input type="checkbox" class="rule-mark" aria-label="Mark SET-2"></td><td class="id">SET-2</td><td>The “New drawings” group chooses the style a new drawing starts with: the same properties as EX-7. Each control offers Excalidraw's own choices: the five first colour picks plus any other colour, and the named steps for width, sloppiness and font size. A small preview shows a box, an arrow and a line of text in the chosen style.</td></tr>
+      <tr data-rule="SET-3"><td class="mark"><input type="checkbox" class="rule-mark" aria-label="Mark SET-3"></td><td class="id">SET-3</td><td>A change takes effect at once and is saved at once. There is no apply button. “Reset to the app's style” drops the user's choice and returns to the app's own style.</td></tr>
+      <tr data-rule="SET-4"><td class="mark"><input type="checkbox" class="rule-mark" aria-label="Mark SET-4"></td><td class="id">SET-4</td><td>The chosen style is written into a drawing only when the app creates it. Drawings that already exist keep their own style (EX-7). A drawing whose file holds no style uses the chosen style for every key it lacks.</td></tr>
+      <tr data-rule="SET-5"><td class="mark"><input type="checkbox" class="rule-mark" aria-label="Mark SET-5"></td><td class="id">SET-5</td><td>Settings apply to the whole app, not to one file. They are kept in the state database (SESS-6) under the key <code>excalidraw.defaultStyle</code> and survive a reload. A failed read leaves the app's own style and shows no message (SESS-8).</td></tr>
     </tbody>
   </table>
   </div>
 </section>
 
 <section id="life">
-  <h2><span class="num">20</span> Document lifecycle</h2>
+  <h2><span class="num">22</span> Document lifecycle</h2>
   <p>Every open file is in exactly one of these states. The table is the authority on which transitions exist.</p>
   <div class="table-wrap">
   <table>
@@ -767,7 +838,7 @@ tr.marked td:last-child {
 </section>
 
 <section id="walk">
-  <h2><span class="num">21</span> Conformance walk</h2>
+  <h2><span class="num">23</span> Conformance walk</h2>
   <p>Each walk is performed in the running app against a vault holding at least one file of each supported kind, one unsupported file, and folders nested three deep. A walk passes only when every rule it names holds.</p>
 
   <h3>W1 — Browsing</h3>
@@ -829,6 +900,7 @@ tr.marked td:last-child {
   <h3>W7 — Viewers</h3>
   <ol>
     <li>Open a Markdown file holding a relative image, a link to another vault file, and an external link. The image renders; the vault link opens a tab; the external link opens a browser tab and the app stays put. <span class="chip">MD-5</span> <span class="chip">MD-6</span> <span class="chip">MD-8</span></li>
+    <li>Open a <code>.txt</code> file holding a line that starts with <code>#</code> and a line longer than the pane. Neither is rendered or wrapped. Type a word, wait for the save, and reopen the file. The word is there and nothing else changed. <span class="chip">TXT-1</span> <span class="chip">TXT-2</span> <span class="chip">TXT-3</span></li>
     <li>Collapse the rendered side, reload the page, and it is still collapsed. <span class="chip">MD-3</span> <span class="chip">SESS-1</span></li>
     <li>Open an HTML file that loads a relative stylesheet and runs a script. Both work, and no editing surface is offered. <span class="chip">HTML-2</span> <span class="chip">HTML-3</span> <span class="chip">HTML-5</span></li>
     <li>Open a drawing saved by excalidraw.com, edit it, and open the file there again. It still opens. <span class="chip">EX-3</span></li>
@@ -873,7 +945,7 @@ tr.marked td:last-child {
 </section>
 
 <section id="outofscope">
-  <h2><span class="num">22</span> Out of scope</h2>
+  <h2><span class="num">24</span> Out of scope</h2>
   <p>These are named so they are not assumed to exist.</p>
   <ul>
     <li><strong>Multiple selection.</strong> Every operation acts on one entry. There is no way to select several rows, so nothing can be moved, deleted or opened in bulk.</li>
@@ -883,7 +955,7 @@ tr.marked td:last-child {
   </ul>
 </section>
 
-<footer class="footer">Harwex Notes &middot; behavioural specification &middot; 26 August 2026</footer>
+<footer class="footer">Harwex Notes &middot; behavioural specification &middot; 17 October 2026</footer>
 
 </div>
 

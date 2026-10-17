@@ -12,3 +12,144 @@
   width: 100%;
   height: 100%;
 }
+
+/* ------------------------------------------------------------------ */
+/* Link to file (EX-9)                                                 */
+/* ------------------------------------------------------------------ */
+
+.excalidraw-viewer {
+  --excalidraw-link-bg: var(--color-surface, #ffffff);
+  --excalidraw-link-border: var(--color-border, #d9d7d1);
+  --excalidraw-link-border-strong: var(--color-border-strong, #b9b6ae);
+  --excalidraw-link-text: var(--color-text, #1d1c1a);
+  --excalidraw-link-text-muted: var(--color-text-muted, #6f6c65);
+  --excalidraw-link-active-bg: var(--color-accent-subtle, #e8eef6);
+  --excalidraw-link-accent: var(--color-accent, #3b6ea5);
+  --excalidraw-link-shadow: 0 10px 30px rgba(0, 0, 0, 0.18), 0 1px 3px rgba(0, 0, 0, 0.12);
+  --excalidraw-link-width: 420px;
+  --excalidraw-link-list-height: 320px;
+  --excalidraw-link-radius: 8px;
+  --excalidraw-link-font-size: 13px;
+}
+
+.excalidraw-viewer__link-button {
+  height: 2.25rem;
+  padding: 0 12px;
+  border: 1px solid var(--excalidraw-link-border);
+  border-radius: var(--excalidraw-link-radius);
+  background: var(--excalidraw-link-bg);
+  color: var(--excalidraw-link-text);
+  font: inherit;
+  font-size: var(--excalidraw-link-font-size);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.excalidraw-viewer__link-button:hover {
+  border-color: var(--excalidraw-link-border-strong);
+}
+
+.excalidraw-link-picker {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 64px;
+  pointer-events: none;
+  font-size: var(--excalidraw-link-font-size);
+  color: var(--excalidraw-link-text);
+}
+
+.excalidraw-link-picker,
+.excalidraw-link-picker * {
+  box-sizing: border-box;
+}
+
+.excalidraw-link-picker__panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: min(var(--excalidraw-link-width), calc(100% - 32px));
+  padding: 12px;
+  border: 1px solid var(--excalidraw-link-border-strong);
+  border-radius: var(--excalidraw-link-radius);
+  background: var(--excalidraw-link-bg);
+  box-shadow: var(--excalidraw-link-shadow);
+  pointer-events: auto;
+}
+
+.excalidraw-link-picker__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.excalidraw-link-picker__title {
+  font-weight: 600;
+}
+
+.excalidraw-link-picker__close {
+  border: none;
+  background: none;
+  color: var(--excalidraw-link-text-muted);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.excalidraw-link-picker__input {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--excalidraw-link-border);
+  border-radius: 6px;
+  font: inherit;
+  color: inherit;
+  background: var(--excalidraw-link-bg);
+}
+
+.excalidraw-link-picker__input:focus {
+  outline: 2px solid var(--excalidraw-link-accent);
+  outline-offset: -1px;
+}
+
+.excalidraw-link-picker__list {
+  max-height: var(--excalidraw-link-list-height);
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.excalidraw-link-picker__row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 5px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  min-width: 0;
+}
+
+.excalidraw-link-picker__row--active {
+  background: var(--excalidraw-link-active-bg);
+}
+
+.excalidraw-link-picker__name {
+  flex: 0 0 auto;
+}
+
+.excalidraw-link-picker__folder {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--excalidraw-link-text-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.excalidraw-link-picker__empty {
+  margin: 4px 0;
+  color: var(--excalidraw-link-text-muted);
+}
