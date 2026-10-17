@@ -240,6 +240,8 @@ pub enum Detected<T> {
 /// One detected Unreal project, for the Frameworks page.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct UnrealRow {
+    /// The project folder, the key of `ws.unreal.projects`.
+    pub root: PathBuf,
     /// The folder relative to the opened one (`""` for the opened folder itself).
     pub rel: String,
     pub name: String,
@@ -610,7 +612,7 @@ fn unreal_rows(state: &AppState, root: &std::path::Path) -> Vec<UnrealRow> {
                 Ok(e) => Ok(format!("{} at {}", p.engine_label().unwrap_or_else(|| "Engine".into()), e.root.display())),
                 Err(e) => Err(e.clone()),
             };
-            UnrealRow { rel, name: p.name.clone(), engine, detected }
+            UnrealRow { root: p.root.clone(), rel, name: p.name.clone(), engine, detected }
         })
         .collect()
 }
@@ -699,6 +701,12 @@ pub fn show(state: &mut AppState, ctx: &Context) {
     let running: [usize; 4] = LangId::ALL.map(|l| state.ws.langs.running(l));
     let langs_off = state.ws.langs.is_off();
     let has_file = state.settings.file.is_some();
+    // Live per frame: a run may start or end while the dialog is open.
+    let unreal: Vec<Option<crate::unreal::Status>> = match state.ws.settings.as_ref() {
+        Some(d) if d.page == Page::Frameworks => d.project.iter().flat_map(|p| &p.values.unreal_projects).map(|r| crate::unreal::status_of(state, &r.root)).collect(),
+        _ => Vec::new(),
+    };
+    let mut unreal_action = None;
     let Some(dialog) = state.ws.settings.as_mut() else { return };
     let t = &theme::T;
     let mut ok = false;
@@ -740,7 +748,7 @@ pub fn show(state: &mut AppState, ctx: &Context) {
                     Page::System => pages::system(ui, &mut dialog.global),
                     Page::Editor => pages::editor(ui, dialog),
                     Page::Languages => pages::languages(ui, dialog, running, langs_off),
-                    Page::Frameworks => pages::frameworks(ui, dialog),
+                    Page::Frameworks => unreal_action = pages::frameworks(ui, dialog, &unreal),
                     Page::Keymap => {}
                 }
             });
@@ -762,6 +770,12 @@ pub fn show(state: &mut AppState, ctx: &Context) {
     });
     let page = dialog.page;
     state.settings.last_page = page;
+    // The confirmation opens over the dialog, which stays open with its edits.
+    match unreal_action {
+        Some(pages::UnrealAction::Regenerate(dir)) => crate::unreal::request_generate(state, &dir),
+        Some(pages::UnrealAction::Stop(dir)) => crate::unreal::stop(state, &dir),
+        None => {}
+    }
     if open_file {
         let Some(d) = state.ws.settings.take() else { return };
         match page_scope(d.page, &d.project) {
@@ -857,7 +871,7 @@ mod tests {
     }
 
     fn row() -> UnrealRow {
-        UnrealRow { rel: "Sub/Game".into(), name: "Game".into(), engine: String::new(), detected: Err("none".into()) }
+        UnrealRow { root: PathBuf::from("/p/Sub/Game"), rel: "Sub/Game".into(), name: "Game".into(), engine: String::new(), detected: Err("none".into()) }
     }
 
     fn draft(global: &str, project: &str) -> (IdeConfig, ProjectDraft) {

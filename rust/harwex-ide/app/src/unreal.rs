@@ -21,6 +21,12 @@
 //! worker after each detection, after a UBT run, on a `*.Build.cs`/`*.Target.cs`/database
 //! change and when the active file enters another module; the JSON is parsed once per mtime.
 //! The banner then names the reason and offers the same Generate button.
+//!
+//! Task 120: the database can be regenerated at any time, also while it looks fresh and after
+//! "Not now". The Unreal part of the status bar opens a menu (Regenerate or Stop, Restart
+//! clangd, the database's age and entry count), and each project row in Settings › Frameworks
+//! has a Regenerate button. Every entry goes through `request_generate`, so the same
+//! confirmation dialog, the one-run-per-engine rule and the running banner apply.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -41,6 +47,11 @@ pub const ACTION: &str = "Generate compile_commands.json (UnrealBuildTool)";
 pub const CHOICE_TITLE: &str = "Several .uproject files";
 /// The title of the refusal while UBT runs with the same engine.
 pub const BUSY_TITLE: &str = "UnrealBuildTool is busy";
+/// The menu item and the Settings button that run UBT again.
+pub const REGENERATE: &str = "Regenerate compile_commands.json (UnrealBuildTool)";
+/// The menu item while UBT runs for the project.
+pub const STOP: &str = "Stop UnrealBuildTool";
+pub const RESTART_CLANGD: &str = "Restart clangd";
 
 /// One UBT run.
 pub struct Run {
@@ -114,6 +125,52 @@ impl UnrealState {
         let module = self.modules.get(file.parent()?).and_then(Option::as_ref);
         unreal::stale(check, module)
     }
+}
+
+/// What a project's database looks like after its last check.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum DbInfo {
+    /// No check has finished yet.
+    Checking,
+    Missing,
+    Present { mtime: std::time::SystemTime, entries: usize },
+}
+
+impl DbInfo {
+    /// "compile_commands.json: 12 entries, generated 3 min ago".
+    pub fn text(&self) -> String {
+        match self {
+            DbInfo::Checking => "Checking compile_commands.json…".into(),
+            DbInfo::Missing => "No compile_commands.json yet".into(),
+            DbInfo::Present { mtime, entries } => {
+                let n = if *entries == 1 { "1 entry".to_string() } else { format!("{entries} entries") };
+                format!("compile_commands.json: {n}, generated {}", age_text(*mtime))
+            }
+        }
+    }
+}
+
+/// "just now", "5 min ago", "3 h ago", "2 days ago". A relative age needs no time zone.
+pub fn age_text(t: std::time::SystemTime) -> String {
+    let secs = std::time::SystemTime::now().duration_since(t).map_or(0, |d| d.as_secs());
+    match secs {
+        0..60 => "just now".into(),
+        60..3600 => format!("{} min ago", secs / 60),
+        3600..86400 => format!("{} h ago", secs / 3600),
+        _ if secs < 2 * 86400 => "1 day ago".into(),
+        _ => format!("{} days ago", secs / 86400),
+    }
+}
+
+/// The state of one project for the status bar menu and Settings › Frameworks.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Status {
+    pub name: String,
+    /// UBT runs for this project now.
+    pub running: bool,
+    /// Whether a run may start now, or why not.
+    pub can: Result<(), String>,
+    pub db: DbInfo,
 }
 
 /// The active editor's C/C++ file, when it may belong to an Unreal project.
@@ -385,6 +442,50 @@ fn start_external(dirs: Vec<PathBuf>, jobs: Jobs) -> Option<ExternalWatch> {
     Some(ExternalWatch { _inner: inner })
 }
 
+/// The state of a detected project, `None` for an unknown folder.
+pub fn status_of(state: &AppState, dir: &Path) -> Option<Status> {
+    let u = &state.ws.unreal;
+    let p = u.projects.get(dir)?;
+    let db = match u.dbs.get(dir) {
+        None => DbInfo::Checking,
+        Some(DbCheck { index: None, .. }) => DbInfo::Missing,
+        Some(DbCheck { index: Some(i), .. }) => DbInfo::Present { mtime: i.mtime, entries: i.entries },
+    };
+    Some(Status { name: p.name.clone(), running: u.is_running(dir), can: can_generate(state, dir), db })
+}
+
+/// Whether UBT may start for the project now: the engine and the target are known, and no
+/// other run uses the same engine. A project that runs already counts as busy.
+pub fn can_generate(state: &AppState, dir: &Path) -> Result<(), String> {
+    let p = state.ws.unreal.projects.get(dir).ok_or_else(|| "The project is not detected.".to_string())?;
+    let cmd = p.command()?;
+    match engine_busy(state, &cmd.engine) {
+        Some(other) if other == dir => Err("UnrealBuildTool is running for this project.".into()),
+        Some(other) => {
+            let other = state.ws.unreal.projects.get(other).map_or_else(|| other.display().to_string(), |o| o.name.clone());
+            Err(format!("UnrealBuildTool is writing the database of {other} with the same engine, and it locks the engine."))
+        }
+        None => Ok(()),
+    }
+}
+
+/// Opens the confirmation dialog for a run. Every entry (banner, status bar menu, Settings)
+/// goes through here, so UBT never starts without the confirmation. A busy engine is refused
+/// with a toast.
+pub fn request_generate(state: &mut AppState, dir: &Path) {
+    if state.ws.unreal.is_running(dir) || refuse_busy(state, dir) {
+        return;
+    }
+    state.ws.unreal.confirm = Some(dir.to_path_buf());
+}
+
+/// Stops the project's UBT run, if one runs.
+pub fn stop(state: &mut AppState, dir: &Path) {
+    if let Some(r) = state.ws.unreal.runs.get(dir) {
+        r.cancel.cancel();
+    }
+}
+
 /// The project that runs UBT with this engine now, if any.
 fn engine_busy<'a>(state: &'a AppState, engine: &Path) -> Option<&'a Path> {
     state.ws.unreal.runs.iter().find(|(_, r)| r.engine == engine).map(|(dir, _)| dir.as_path())
@@ -421,13 +522,13 @@ pub fn banner(state: &mut AppState, ctx: &Context) {
             Err(why) => format!("{}: {why}", p.name),
         },
     };
-    let (mut generate, mut stop, mut dismiss) = (false, false, false);
+    let (mut generate, mut stop_run, mut dismiss) = (false, false, false);
     egui::TopBottomPanel::top(crate::workspace::wid("unreal-banner")).frame(Frame::NONE.fill(theme::T.banner_bg).inner_margin(egui::Margin::symmetric(10, 4))).show(ctx, |ui| {
         ui.horizontal(|ui| {
             if running {
                 // The status bar shows the job with its time; the banner adds UBT's output.
                 if ui.button("Stop").clicked() {
-                    stop = true;
+                    stop_run = true;
                 }
             } else {
                 if ui.add_enabled(ready.is_ok(), egui::Button::new(ACTION)).clicked() {
@@ -440,17 +541,111 @@ pub fn banner(state: &mut AppState, ctx: &Context) {
             ui.add(egui::Label::new(RichText::new(text).color(theme::T.text_bright)).truncate());
         });
     });
-    if generate && !refuse_busy(state, &dir) {
-        state.ws.unreal.confirm = Some(dir.clone());
+    if generate {
+        request_generate(state, &dir);
     }
     if dismiss {
         state.ws.unreal.dismissed.insert(dir.clone());
     }
-    if stop {
-        if let Some(r) = state.ws.unreal.runs.get(&dir) {
-            r.cancel.cancel();
-        }
+    if stop_run {
+        stop(state, &dir);
     }
+}
+
+fn menu_open_id() -> egui::Id {
+    crate::workspace::wid("unreal-status-menu-open")
+}
+
+/// Whether the status bar menu is open, for tests.
+pub fn menu_open(ctx: &Context) -> bool {
+    ctx.data(|d| d.get_temp::<bool>(menu_open_id())).unwrap_or(false)
+}
+
+/// The status bar text of a C/C++ file of an Unreal project ("clangd 22.1 · Game2 · UE 5.8").
+/// A press opens the project's menu. A11y: `Unreal project <name>`, the text as its value.
+pub fn status_item(state: &mut AppState, ui: &mut egui::Ui, text: &str) {
+    let t = &theme::T;
+    let Some(dir) = active_project(state).map(|p| p.root.clone()) else { return };
+    let Some(status) = status_of(state, &dir) else { return };
+    let ctx = ui.ctx().clone();
+    let galley = ui.painter().layout_no_wrap(text.to_string(), t.small_font(), t.text_dim);
+    let (rect, resp) = ui.allocate_exact_size(galley.size(), egui::Sense::click());
+    let open = menu_open(&ctx);
+    if resp.hovered() || open {
+        ui.painter().rect_filled(rect.expand2(egui::vec2(4.0, 2.0)), t.radius.button, t.hover_on_window);
+    }
+    ui.painter().galley(rect.min, galley, t.text_dim);
+    let value = text.to_string();
+    resp.widget_info(|| egui::WidgetInfo { current_text_value: Some(value.clone()), ..egui::WidgetInfo::labeled(egui::WidgetType::Button, true, format!("Unreal project {}", status.name)) });
+    if crate::clicks::pressed(&resp) {
+        ctx.data_mut(|d| d.insert_temp(menu_open_id(), !open));
+        return;
+    }
+    if !open {
+        resp.on_hover_text("Press for the compile database actions");
+        return;
+    }
+    match status_menu(&ctx, rect, &status) {
+        Some(MenuChoice::Regenerate) => request_generate(state, &dir),
+        Some(MenuChoice::Stop) => stop(state, &dir),
+        Some(MenuChoice::RestartClangd) => {
+            state.timings.log(format!("{RESTART_CLANGD} for {}", dir.display()));
+            restart_clangd(state, &dir);
+        }
+        None => return,
+    }
+    ctx.data_mut(|d| d.insert_temp(menu_open_id(), false));
+}
+
+enum MenuChoice {
+    Regenerate,
+    Stop,
+    RestartClangd,
+}
+
+const MENU_W: f32 = 380.0;
+
+/// The menu above the status bar item, its right edge at the item's right edge.
+fn status_menu(ctx: &Context, anchor: egui::Rect, status: &Status) -> Option<MenuChoice> {
+    let t = &theme::T;
+    let frame = Frame::popup(&ctx.style()).fill(t.popup_bg).stroke(egui::Stroke::new(1.0_f32, t.popup_border)).corner_radius(t.radius.popup).inner_margin(egui::Margin::same(6)).shadow(t.popup_shadow());
+    let pos = egui::pos2((anchor.right() + 4.0).min(ctx.screen_rect().right() - 4.0), anchor.top() - 6.0);
+    let mut choice = None;
+    let area = egui::Area::new(crate::workspace::wid("unreal-status-menu")).order(egui::Order::Foreground).fixed_pos(pos).pivot(egui::Align2::RIGHT_BOTTOM).constrain(true).default_size(egui::vec2(MENU_W, 90.0)).show(ctx, |ui| {
+        frame.show(ui, |ui| {
+            ui.set_width(MENU_W);
+            ui.visuals_mut().button_frame = false;
+            ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Truncate);
+            ui.with_layout(egui::Layout::top_down_justified(egui::Align::LEFT), |ui| {
+                if status.running {
+                    if ui.button(STOP).clicked() {
+                        choice = Some(MenuChoice::Stop);
+                    }
+                } else {
+                    let r = ui.add_enabled(status.can.is_ok(), egui::Button::new(REGENERATE));
+                    let r = match &status.can {
+                        Err(why) => r.on_disabled_hover_text(why),
+                        Ok(()) => r,
+                    };
+                    if r.clicked() {
+                        choice = Some(MenuChoice::Regenerate);
+                    }
+                }
+                if ui.button(RESTART_CLANGD).clicked() {
+                    choice = Some(MenuChoice::RestartClangd);
+                }
+                ui.separator();
+                ui.add_enabled(false, egui::Label::new(RichText::new(status.db.text()).size(t.font.small)));
+            });
+        });
+    });
+    let menu = area.response.rect;
+    let pressed_outside = ctx.input(|i| i.pointer.any_pressed() && i.pointer.interact_pos().is_some_and(|p| !menu.contains(p) && !anchor.contains(p)));
+    let escape = ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape));
+    if choice.is_none() && (pressed_outside || escape) {
+        ctx.data_mut(|d| d.insert_temp(menu_open_id(), false));
+    }
+    choice
 }
 
 /// Refuses a run while UBT runs with the same engine for another project. True: refused.
@@ -574,7 +769,7 @@ fn generate(state: &mut AppState, dir: PathBuf, cmd: unreal::GenerateCommand, ke
 
 /// Only the project's clangd stops; its open files (and engine headers it served) go to a
 /// fresh one, which finds the new database. Other projects keep their servers.
-fn restart_clangd(state: &mut AppState, dir: &Path) {
+pub fn restart_clangd(state: &mut AppState, dir: &Path) {
     let mut docs = Vec::new();
     for (_, e) in state.ws.tabs.editors_mut() {
         if e.lang == Some(LangId::Cpp) {
@@ -586,4 +781,32 @@ fn restart_clangd(state: &mut AppState, dir: &Path) {
         }
     }
     state.ws.langs.bridge(LangId::Cpp).restart_root(dir, docs);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::{Duration, SystemTime};
+
+    #[test]
+    fn database_info_text() {
+        let ago = |s: u64| SystemTime::now() - Duration::from_secs(s);
+        assert_eq!(age_text(ago(5)), "just now");
+        assert_eq!(age_text(ago(125)), "2 min ago");
+        assert_eq!(age_text(ago(3 * 3600 + 10)), "3 h ago");
+        assert_eq!(age_text(ago(86400 + 10)), "1 day ago");
+        assert_eq!(age_text(ago(5 * 86400)), "5 days ago");
+        // A clock that went back reads as now.
+        assert_eq!(age_text(SystemTime::now() + Duration::from_secs(60)), "just now");
+        assert_eq!(DbInfo::Present { mtime: ago(0), entries: 1 }.text(), "compile_commands.json: 1 entry, generated just now");
+        assert_eq!(DbInfo::Present { mtime: ago(600), entries: 12 }.text(), "compile_commands.json: 12 entries, generated 10 min ago");
+        assert_eq!(DbInfo::Missing.text(), "No compile_commands.json yet");
+    }
+
+    #[test]
+    fn index_counts_entries() {
+        let text = r#"[{"file": "/p/A.cpp", "directory": "/p"}, {"file": "B.cpp", "directory": "/p"}, {"directory": "/p"}]"#;
+        assert_eq!(unreal::DbIndex::parse(text, SystemTime::UNIX_EPOCH).entries, 2);
+        assert_eq!(unreal::DbIndex::parse("not json", SystemTime::UNIX_EPOCH).entries, 0);
+    }
 }

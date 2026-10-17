@@ -177,7 +177,15 @@ pub fn languages(ui: &mut Ui, d: &mut SettingsDialog, running: [usize; 4], off: 
     });
 }
 
-pub fn frameworks(ui: &mut Ui, d: &mut SettingsDialog) {
+/// A press on a project row's button in Frameworks.
+pub enum UnrealAction {
+    Regenerate(std::path::PathBuf),
+    Stop(std::path::PathBuf),
+}
+
+/// `live`: each project row's state now (`unreal::status_of`), in row order.
+pub fn frameworks(ui: &mut Ui, d: &mut SettingsDialog, live: &[Option<crate::unreal::Status>]) -> Option<UnrealAction> {
+    let mut action = None;
     card(ui, |ui| {
         header(ui, Icon::Cube, "Unreal Engine", "The engine and clangd setup of Unreal projects", |ui| {
             kit::badge(ui, "Unreal Engine", Scope::Project);
@@ -192,7 +200,7 @@ pub fn frameworks(ui: &mut Ui, d: &mut SettingsDialog) {
         if v.unreal_projects.is_empty() {
             kit::note(ui, "No Unreal project found yet. A project (a folder with a *.uproject) is detected when one of its C/C++ files opens.");
         }
-        for row in &mut v.unreal_projects {
+        for (i, row) in v.unreal_projects.iter_mut().enumerate() {
             kit::divider(ui);
             let folder = if row.rel.is_empty() { "the opened folder".to_string() } else { row.rel.clone() };
             kit::subheading(ui, &format!("{} ({folder})", row.name));
@@ -201,6 +209,11 @@ pub fn frameworks(ui: &mut Ui, d: &mut SettingsDialog) {
                 Err(e) => Detected::Missing(e.clone()),
             };
             kit::path_row(ui, &format!("Engine for {}", row.name), &mut row.engine, "the default engine", Some(&shown), 0.0);
+            if let Some(status) = live.get(i).and_then(Option::as_ref) {
+                if let Some(a) = regenerate_row(ui, row, status) {
+                    action = Some(a);
+                }
+            }
         }
     });
     card(ui, |ui| {
@@ -209,4 +222,31 @@ pub fn frameworks(ui: &mut Ui, d: &mut SettingsDialog) {
         });
         kit::note(ui, "Unity projects need no settings here: C# goes through the Roslyn server (Languages).");
     });
+    action
+}
+
+/// The project's database (age and entries) and its Regenerate button, or Stop while UBT
+/// runs. A11y: the row `Compile database of <name>`, the button `Regenerate <name>` /
+/// `Stop UnrealBuildTool for <name>`.
+fn regenerate_row(ui: &mut Ui, row: &super::UnrealRow, status: &crate::unreal::Status) -> Option<UnrealAction> {
+    let t = &theme::T;
+    let label = format!("Compile database of {}", row.name);
+    let hint = if status.running { "UnrealBuildTool is writing it now…".to_string() } else { status.db.text() };
+    let text = if status.running { "Stop" } else { "Regenerate" };
+    let w = ui.painter().layout_no_wrap("Regenerate".into(), t.ui_font(), t.text).size().x + 2.0 * ui.spacing().button_padding.x;
+    let mut action = None;
+    kit::control_row(ui, &label, Some(&hint), w, |ui| {
+        let enabled = status.running || status.can.is_ok();
+        let r = ui.add_enabled(enabled, egui::Button::new(text).min_size(egui::vec2(w, 22.0)));
+        let a11y = if status.running { format!("Stop UnrealBuildTool for {}", row.name) } else { format!("Regenerate {}", row.name) };
+        crate::util::label_widget(&r, egui::WidgetType::Button, a11y);
+        let r = match &status.can {
+            Err(why) if !status.running => r.on_disabled_hover_text(why),
+            _ => r.on_hover_text(if status.running { crate::unreal::STOP } else { crate::unreal::REGENERATE }),
+        };
+        if r.clicked() {
+            action = Some(if status.running { UnrealAction::Stop(row.root.clone()) } else { UnrealAction::Regenerate(row.root.clone()) });
+        }
+    });
+    action
 }

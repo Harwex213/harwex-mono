@@ -642,6 +642,8 @@ pub fn module_of(file: &Path, project: &Path) -> Option<Module> {
 #[derive(Debug, PartialEq, Eq)]
 pub struct DbIndex {
     pub mtime: std::time::SystemTime,
+    /// The number of entries with a file.
+    pub entries: usize,
     /// The folders of the entries' files.
     dirs: std::collections::BTreeSet<PathBuf>,
     /// Module names from UBT's generated files: `Intermediate/.../<Module>/Module.<Module>.gen.cpp`.
@@ -651,10 +653,11 @@ pub struct DbIndex {
 impl DbIndex {
     /// Parses `compile_commands.json` text. A broken file gives an empty index.
     pub fn parse(text: &str, mtime: std::time::SystemTime) -> DbIndex {
-        let mut index = DbIndex { mtime, dirs: Default::default(), modules: Default::default() };
+        let mut index = DbIndex { mtime, entries: 0, dirs: Default::default(), modules: Default::default() };
         let entries: Vec<Value> = serde_json::from_str(text).unwrap_or_default();
         for e in entries {
             let Some(file) = e["file"].as_str() else { continue };
+            index.entries += 1;
             let file = Path::new(file);
             let file = if file.is_absolute() { file.to_path_buf() } else { Path::new(e["directory"].as_str().unwrap_or_default()).join(file) };
             let Some(dir) = file.parent() else { continue };

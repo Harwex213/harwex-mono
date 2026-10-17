@@ -722,24 +722,30 @@ fn status_right(s: &mut AppState, ui: &mut egui::Ui) {
     // The branch lives in the title bar; the caret position is not shown. The language stays:
     // it tells whether the IDE understands the file or treats it as plain text.
     crate::memory::status_widget(s, ui);
-    if let Some(tab) = s.ws.tabs.active_tab() {
-        match &tab.content {
-            TabContent::Editor(e) => {
-                item(ui, e.doc.language().name(), t.text);
-                let backend = e.lang.and_then(|l| s.ws.langs.status(l, &e.path));
-                // The Unreal project and engine of a C/C++ file: "clangd 22.1 · Game2 · UE 5.8".
-                let backend = match (backend, crate::unreal::status_label(s)) {
-                    (Some(b), Some(u)) => Some(format!("{b} · {u}")),
-                    (b, u) => b.or(u),
-                };
-                if let Some(backend) = backend.filter(|_| wide) {
-                    item(ui, &backend, t.text_dim);
-                }
-                if e.read_only {
-                    item(ui, "read-only", t.warning);
-                }
+    // Read the tab first: the Unreal item below needs `s` mutably.
+    let editor = s.ws.tabs.active_tab().and_then(|tab| match &tab.content {
+        TabContent::Editor(e) => Some((e.doc.language().name(), e.lang.and_then(|l| s.ws.langs.status(l, &e.path)), e.read_only)),
+        TabContent::Custom(_) => None,
+    });
+    if let Some((language, backend, read_only)) = editor {
+        item(ui, language, t.text);
+        // The Unreal project and engine of a C/C++ file: "clangd 22.1 · Game2 · UE 5.8".
+        let unreal = crate::unreal::status_label(s);
+        let is_unreal = unreal.is_some();
+        let backend = match (backend, unreal) {
+            (Some(b), Some(u)) => Some(format!("{b} · {u}")),
+            (b, u) => b.or(u),
+        };
+        if let Some(backend) = backend.filter(|_| wide) {
+            // An Unreal file's text opens the compile database menu (task 120).
+            if is_unreal {
+                crate::unreal::status_item(s, ui, &backend);
+            } else {
+                item(ui, &backend, t.text_dim);
             }
-            TabContent::Custom(_) => {}
+        }
+        if read_only {
+            item(ui, "read-only", t.warning);
         }
     }
     // A fixed-width slot, so a job that starts or ends never moves the breadcrumbs.
