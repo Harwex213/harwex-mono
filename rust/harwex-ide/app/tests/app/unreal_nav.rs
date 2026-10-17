@@ -4,7 +4,8 @@
 //! `-mode=GenerateClangDatabase`. No real Unreal or Epic tool runs. Covered: detection and the
 //! banner, the confirmation, the generate action (a worker, Stop kills the fake UBT, then clangd
 //! restarts with the database), Cmd+B from a game class into an engine header (read-only) and
-//! the missing `.generated.h` hint, and the out-of-date database banner (task 102). Tests that
+//! the missing `.generated.h` hint, the out-of-date database banner (task 102), and the
+//! regenerate entries of the status bar menu and Settings › Frameworks (task 120). Tests that
 //! start clangd skip without the pinned one.
 
 use std::path::{Path, PathBuf};
@@ -16,7 +17,7 @@ use egui::Key;
 use harwex_ide::lang::{HoverInfo, LangId, LanguageServer, Location, Reference};
 use harwex_ide::nav::NavKind;
 use harwex_ide::lang::unreal::UnrealProject;
-use harwex_ide::unreal::{active_project, active_stale, status_label, ACTION, BUSY_TITLE, CHOICE_TITLE};
+use harwex_ide::unreal::{active_project, active_stale, status_label, ACTION, BUSY_TITLE, CHOICE_TITLE, REGENERATE, RESTART_CLANGD, STOP};
 
 const SUITE: &str = "unreal_nav";
 
@@ -600,4 +601,138 @@ fn cmd_b_goes_into_each_projects_engine() {
     }
     assert_eq!(ide.state().ws.langs.running(LangId::Cpp), 2, "engine headers stay on the projects' clangd");
     ide.state().ws.langs.shutdown();
+}
+
+/// Task 120: after "Not now", and with a fresh database, the status bar menu still regenerates
+/// through the confirmation, shows the running banner, restarts only the project's clangd, and
+/// stops a run.
+#[test]
+fn status_bar_menu_regenerates_at_any_time() {
+    let u = unreal_project("status_menu", "", true);
+    u.repo.write(".harwex/ide.toml", &format!("languages = [\"ts\"]\n[unreal]\nengine = \"{}\"\n", u.engine.display()));
+    let mut ide = Ide::open(SUITE, &u.repo.dir);
+    let recorder = Arc::new(Recorder::default());
+    ide.state_mut().ws.langs.set_server(LangId::Cpp, recorder.clone());
+    ide.open_file("Source/Game/MyActor.cpp");
+    detected(&mut ide, "Game");
+    ide.settle();
+    ide.click("Not now");
+    ide.settle();
+    ide.assert_no_text(ACTION);
+
+    // The status bar item opens the menu; Regenerate asks first.
+    ide.assert_text("Game · UE 5.4");
+    ide.click("Unreal project Game");
+    ide.settle();
+    assert!(harwex_ide::unreal::menu_open(&ide.harness.ctx));
+    ide.assert_text("No compile_commands.json yet");
+    ide.click(REGENERATE);
+    ide.settle();
+    assert!(!harwex_ide::unreal::menu_open(&ide.harness.ctx), "a choice closes the menu");
+    ide.assert_text(&format!("{ACTION}?"));
+    ide.click("Cancel");
+    ide.settle();
+    assert!(!u.pids.exists(), "nothing runs without the confirmation");
+    ide.click("Unreal project Game");
+    ide.settle();
+    ide.click(REGENERATE);
+    ide.settle();
+    ide.click("Generate");
+    ide.wait_for("database generated", |s| s.ws.unreal.runs.is_empty() && active_project(s).is_some_and(|p| p.has_db));
+    ide.settle();
+    assert!(u.repo.read(".harwex/unreal/compile_commands.json").contains("MyActor.cpp"));
+    assert_eq!(*recorder.restarted_roots.lock().unwrap(), vec![u.repo.dir.clone()]);
+    ide.assert_no_text(ACTION);
+
+    // A fresh database: no banner, the menu still offers Regenerate and shows the database.
+    ide.dismiss_toasts();
+    ide.click("Unreal project Game");
+    ide.wait_until("database checked", |ide| ide.shows_text("compile_commands.json: 2 entries, generated just now"));
+    ide.snapshot("status_menu");
+    ide.click(RESTART_CLANGD);
+    ide.settle();
+    assert_eq!(recorder.restarted_roots.lock().unwrap().len(), 2, "Restart clangd restarts the project's clangd");
+    assert_eq!(*recorder.full_restarts.lock().unwrap(), 0);
+
+    // While UBT runs, the banner shows its line despite "Not now", and the menu stops it.
+    std::fs::write(u._fx.path("UE_5.4.slow"), "").expect("slow marker");
+    std::fs::remove_file(&u.pids).expect("pids");
+    ide.click("Unreal project Game");
+    ide.settle();
+    ide.click(REGENERATE);
+    ide.settle();
+    ide.click("Generate");
+    ide.wait_until("UBT waits", |ide| std::fs::read_to_string(&u.pids).is_ok_and(|t| t.lines().count() == 2) && ide.shows_text("Game: UnrealBuildTool is writing compile_commands.json: Creating target..."));
+    ide.click("Unreal project Game");
+    ide.steps(3);
+    ide.assert_no_text(REGENERATE);
+    ide.click(STOP);
+    ide.wait_for("UBT stopped", |s| s.ws.unreal.runs.is_empty());
+    ide.settle();
+    for pid in std::fs::read_to_string(&u.pids).expect("pids").lines() {
+        assert!(!alive(pid), "process {pid} of the fake UBT still runs");
+    }
+    // The banner goes away again: "Not now" still holds and the old database stays.
+    ide.assert_text(&format!("Cancelled: {ACTION}"));
+    ide.assert_no_text("Not now");
+    assert!(u.repo.dir.join(".harwex/unreal/compile_commands.json").exists());
+}
+
+/// Task 120: Settings › Frameworks has a Regenerate button per project, disabled without an
+/// engine and while another run uses the same engine.
+#[test]
+fn frameworks_regenerate_buttons() {
+    let m = multi_project("frameworks", "languages = [\"ts\"]\n");
+    game(&m.repo, "Sub/Game3", "Game3", "Game3", "5.4", true);
+    let missing = m.fx.path("UE_missing");
+    m.repo.write(".harwex/ide.toml", &format!("languages = [\"ts\"]\n{}[unreal.projects.\"Sub/Game3\"]\nengine = \"{}\"\n", multi_toml(&m, ""), missing.display()));
+    std::fs::write(m.fx.path("UE_5.4.slow"), "").expect("slow marker");
+    let mut ide = Ide::open(SUITE, &m.repo.dir);
+    for (file, name) in [("Sub/Game1/Source/Game1/MyActor.cpp", "Game1"), ("Pair/Source/Pair/MyActor.cpp", "Pair"), ("Sub/Game2/Source/Game2/MyActor.cpp", "Game2"), ("Sub/Game3/Source/Game3/MyActor.cpp", "Game3")] {
+        ide.open_file(file);
+        detected(&mut ide, name);
+    }
+    ide.settle();
+    ide.dismiss_toasts();
+    // The banner of Game3 shows why it cannot run; the menu item is disabled too.
+    ide.click("Unreal project Game3");
+    ide.settle();
+    assert!(!ide.is_enabled(REGENERATE), "no engine, no run");
+    ide.key(Key::Escape);
+    ide.settle();
+    assert!(!harwex_ide::unreal::menu_open(&ide.harness.ctx));
+
+    ide.cmd(Key::Comma);
+    ide.settle();
+    ide.click("Settings page Frameworks");
+    ide.settle();
+    for g in ["Game1", "Game2", "Game3", "Pair"] {
+        ide.assert_text(&format!("Compile database of {g}"));
+    }
+    assert!(ide.is_enabled("Regenerate Game1") && ide.is_enabled("Regenerate Game2") && ide.is_enabled("Regenerate Pair"));
+    assert!(!ide.is_enabled("Regenerate Game3"), "Game3's engine is not found");
+
+    // Regenerate opens the same confirmation over Settings, which stays open.
+    ide.reveal_in_settings("Regenerate Game1");
+    ide.click("Regenerate Game1");
+    ide.settle();
+    ide.assert_text("UnrealBuildTool runs this command for Game1. It can take several minutes:");
+    ide.click("Generate");
+    let pids = m.fx.path("UE_5.4.pids");
+    ide.wait_until("UBT waits", |_| std::fs::read_to_string(&pids).is_ok_and(|t| t.lines().count() == 2));
+    ide.steps(3);
+    assert!(ide.state().ws.settings.is_some(), "Settings stays open");
+    ide.assert_text("Stop UnrealBuildTool for Game1");
+    // Pair shares UE 5.4 with the running Game1; Game2 has its own engine.
+    assert!(!ide.is_enabled("Regenerate Pair"), "the engine is busy");
+    assert!(ide.is_enabled("Regenerate Game2"));
+    ide.snapshot_running("frameworks_rows");
+    ide.click("Stop UnrealBuildTool for Game1");
+    ide.wait_for("UBT stopped", |s| s.ws.unreal.runs.is_empty());
+    ide.settle();
+    assert!(ide.is_enabled("Regenerate Pair"), "the engine is free again");
+    for pid in std::fs::read_to_string(&pids).expect("pids").lines() {
+        assert!(!alive(pid), "process {pid} of the fake UBT still runs");
+    }
+    assert!(!missing.exists() && !m.fx.path("UE_5.8.pids").exists(), "no other engine ran");
 }
