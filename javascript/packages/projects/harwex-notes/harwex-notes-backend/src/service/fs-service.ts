@@ -1,9 +1,23 @@
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { TRPCError } from "@trpc/server";
-import type { TDocument, TExcalidrawScene, TFsNode, TFsNodeKind } from "@hw/harwex-notes-protocol";
+import {
+  DEFAULT_EXCALIDRAW_STYLE,
+  EXCALIDRAW_DEFAULT_STYLE_SETTING,
+  pickExcalidrawStyle,
+} from "@hw/harwex-notes-protocol";
+import type {
+  TDocument,
+  TExcalidrawScene,
+  TExcalidrawStyle,
+  TFsNode,
+  TFsNodeKind,
+  TUpdateDocumentResult,
+} from "@hw/harwex-notes-protocol";
 import { readFileKind } from "../data-access/fs-data-access.js";
 import type { FsDataAccess } from "../data-access/fs-data-access.types.js";
+import { buildRawUrl } from "./raw-service.js";
+import { fetchSetting, followPathChange, followPathRemoval, readNodePath } from "./state-service.js";
 import type { TContext } from "../trpc.js";
 import type {
   TCreateNode,
@@ -12,6 +26,7 @@ import type {
   TFetchTree,
   TMoveNode,
   TRenameNode,
+  TRestoreDocument,
   TUpdateDocument,
 } from "./fs-service.types.js";
 
@@ -22,6 +37,15 @@ const SUPPORTED_EXTENSIONS: ReadonlySet<string> = new Set([
   ".txt",
   ".html",
   ".htm",
+  ".png",
+  ".jpg",
+  ".jpeg",
+  ".gif",
+  ".webp",
+  ".svg",
+  ".bmp",
+  ".ico",
+  ".avif",
 ]);
 
 const MAX_DOCUMENT_MEGABYTES = 128;
@@ -158,9 +182,26 @@ const encodeExcalidrawFile = (file: Record<string, unknown>): Uint8Array => {
   return new TextEncoder().encode(JSON.stringify(file, null, 2));
 };
 
-const createBlankContent = (kind: TFsNodeKind): Uint8Array => {
+// The style a new drawing starts with: the user's default (SET-2) over the app's own. A
+// state database that cannot be read leaves the app's own style (SESS-8).
+const readNewDrawingStyle = (ctx: TContext): TExcalidrawStyle => {
+  let chosen: TExcalidrawStyle = {};
+
+  try {
+    chosen = pickExcalidrawStyle(fetchSetting(ctx, EXCALIDRAW_DEFAULT_STYLE_SETTING));
+  } catch (error) {
+    console.error(`Cannot read the default drawing style: ${describeSystemError(error)}`);
+  }
+
+  return { ...DEFAULT_EXCALIDRAW_STYLE, ...chosen };
+};
+
+const createBlankContent = (ctx: TContext, kind: TFsNodeKind): Uint8Array => {
   if (kind === "excalidraw") {
-    return encodeExcalidrawFile({ ...BLANK_EXCALIDRAW_FILE });
+    const blankAppState = BLANK_EXCALIDRAW_FILE["appState"] as Record<string, unknown>;
+    const appState = { ...blankAppState, ...readNewDrawingStyle(ctx) };
+
+    return encodeExcalidrawFile({ ...BLANK_EXCALIDRAW_FILE, appState });
   }
 
   return new Uint8Array();
@@ -205,7 +246,7 @@ const parseExcalidrawScene = (text: string, name: string): TExcalidrawScene => {
     throw badRequest(`"${name}" is not a valid drawing: "files" is not an object`);
   }
 
-  return { elements, files: files ?? {} };
+  return { elements, files: files ?? {}, appState: pickExcalidrawStyle(parsed["appState"]) };
 };
 
 const readTree = (dataAccess: FsDataAccess): readonly TFsNode[] => [...dataAccess.tree];
@@ -241,16 +282,26 @@ const fetchTree: TFetchTree = async (ctx) => {
 const fetchDocument: TFetchDocument = async (ctx, nodeId) => {
   const node = readNode(ctx.dataAccess.tree, nodeId);
 
-  if (node.kind !== "markdown" && node.kind !== "excalidraw") {
+  if (node.kind === "folder" || node.kind === "file") {
     throw badRequest(`"${node.name}" cannot be opened: "${path.extname(node.name)}" is not a supported extension`);
   }
 
   let bytes: Uint8Array;
+  let version: string | undefined;
 
   try {
     const size = await ctx.dataAccess.readFileSize(nodeId);
     if (size > MAX_DOCUMENT_BYTES) {
       throw badRequest(`"${node.name}" is larger than ${MAX_DOCUMENT_MEGABYTES} MB and cannot be opened`);
+    }
+
+    // Read before the content, so a change that lands in between shows up as a newer
+    // version later instead of going unnoticed.
+    version = (await ctx.dataAccess.readFileVersion(nodeId)) ?? undefined;
+
+    // The browser loads an image or a page itself, from the raw route.
+    if (node.kind === "image" || node.kind === "html") {
+      return { kind: node.kind, nodeId, version, src: buildRawUrl(ctx.dataAccess.tree, nodeId) };
     }
 
     bytes = await ctx.dataAccess.readFile(nodeId);
@@ -264,15 +315,16 @@ const fetchDocument: TFetchDocument = async (ctx, nodeId) => {
 
   const text = decodeText(bytes, node.name);
 
-  if (node.kind === "markdown") {
-    return { kind: "markdown", nodeId, text };
+  if (node.kind === "markdown" || node.kind === "text") {
+    return { kind: node.kind, nodeId, version, text };
   }
 
-  return { kind: "excalidraw", nodeId, scene: parseExcalidrawScene(text, node.name) };
+  return { kind: "excalidraw", nodeId, version, scene: parseExcalidrawScene(text, node.name) };
 };
 
-// Keeps whatever else the file on disk holds (appState, version, source) and replaces
-// only the elements and files. A file that does not parse starts from the blank envelope.
+// Keeps whatever else the file on disk holds (version, source, the rest of appState) and
+// replaces the elements and files. The scene's style keys are merged into the file's
+// appState (EX-7). A file that does not parse starts from the blank envelope.
 const readExcalidrawEnvelope = (bytes: Uint8Array): Record<string, unknown> => {
   try {
     const parsed: unknown = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
@@ -284,23 +336,55 @@ const readExcalidrawEnvelope = (bytes: Uint8Array): Record<string, unknown> => {
 };
 
 const encodeDocument = async (ctx: TContext, document: TDocument): Promise<Uint8Array> => {
-  if (document.kind === "markdown") {
+  // Images and HTML pages are never written (HTML-5, IMG-5).
+  if (document.kind === "image" || document.kind === "html") {
+    throw badRequest(`A ${document.kind} file is read-only and cannot be saved`);
+  }
+
+  if (document.kind === "markdown" || document.kind === "text") {
     return new TextEncoder().encode(document.text);
   }
 
   const envelope = readExcalidrawEnvelope(await ctx.dataAccess.readFile(document.nodeId));
 
+  const fileAppState = isRecord(envelope["appState"]) ? envelope["appState"] : {};
+  const appState = { ...fileAppState, ...pickExcalidrawStyle(document.scene.appState) };
+
   return encodeExcalidrawFile({
     ...envelope,
     elements: document.scene.elements,
+    appState,
     files: document.scene.files,
   });
+};
+
+// A save that names the version it was based on is refused when the file on disk has
+// another one: someone else changed it since this client read it (CONF-1, APP-4).
+const assertUnchangedOnDisk = async (ctx: TContext, node: TFsNode, version: string | undefined) => {
+  if (version === undefined) {
+    return;
+  }
+
+  const current = await ctx.dataAccess.readFileVersion(node.id);
+  if (current !== version) {
+    throw new TRPCError({ code: "CONFLICT", message: `"${node.name}" changed on disk after it was opened` });
+  }
+};
+
+const writeDocument = async (ctx: TContext, node: TFsNode, document: TDocument): Promise<string> => {
+  const bytes = await encodeDocument(ctx, document);
+
+  if (bytes.byteLength > MAX_DOCUMENT_BYTES) {
+    throw badRequest(`"${node.name}" would be larger than ${MAX_DOCUMENT_MEGABYTES} MB and cannot be saved`);
+  }
+
+  return ctx.dataAccess.writeFile(node.id, bytes);
 };
 
 const updateDocument: TUpdateDocument = async (ctx, document) => {
   // Runs under the same lock as tree mutations, so a rename cannot slip between reading
   // the node and writing its file.
-  await ctx.dataAccess.runExclusive(async () => {
+  return ctx.dataAccess.runExclusive(async (): Promise<TUpdateDocumentResult> => {
     const node = readNode(ctx.dataAccess.tree, document.nodeId);
 
     if (node.kind !== document.kind) {
@@ -308,13 +392,9 @@ const updateDocument: TUpdateDocument = async (ctx, document) => {
     }
 
     try {
-      const bytes = await encodeDocument(ctx, document);
+      await assertUnchangedOnDisk(ctx, node, document.version);
 
-      if (bytes.byteLength > MAX_DOCUMENT_BYTES) {
-        throw badRequest(`"${node.name}" would be larger than ${MAX_DOCUMENT_MEGABYTES} MB and cannot be saved`);
-      }
-
-      await ctx.dataAccess.writeFile(node.id, bytes);
+      return { version: await writeDocument(ctx, node, document) };
     } catch (error) {
       if (error instanceof TRPCError) {
         throw error;
@@ -322,6 +402,73 @@ const updateDocument: TUpdateDocument = async (ctx, document) => {
 
       throw diskFailure(error);
     }
+  });
+};
+
+// A path segment as it was on disk. Unlike a typed name it is not trimmed.
+const assertPathSegment = (segment: string): string => {
+  if (segment.length === 0 || segment === "." || segment === ".." || /[\\]/.test(segment) || segment.includes("\0")) {
+    throw badRequest(`"${segment}" is not a valid name`);
+  }
+
+  return segment;
+};
+
+// Writes back a document whose file was deleted on disk while it had unsaved changes
+// (SYNC-5). Folders on the path that are gone too are created again. The file gets the
+// document's node id back, so its tab stays where it is.
+const restoreDocument: TRestoreDocument = async (ctx, input) => {
+  const { document } = input;
+
+  if (document.kind === "image" || document.kind === "html") {
+    throw badRequest(`A ${document.kind} file is read-only and cannot be saved`);
+  }
+
+  const folderNames = input.path.split("/").map(assertPathSegment);
+  const name = folderNames.pop() as string;
+
+  if (readFileKind(name) !== document.kind) {
+    throw badRequest(`"${name}" is not a ${document.kind} document`);
+  }
+
+  return mutateTree(ctx.dataAccess, (nodes) => {
+    if (nodes.some((node) => node.id === document.nodeId)) {
+      throw badRequest(`"${name}" is already in the vault`);
+    }
+
+    const nextNodes = [...nodes];
+    let parentId: string | null = null;
+
+    for (const folderName of folderNames) {
+      const folderParentId: string | null = parentId;
+      const existing: TFsNode | undefined = nextNodes.find((node) => node.parentId === folderParentId && node.name === folderName);
+
+      if (existing !== undefined && existing.kind !== "folder") {
+        throw badRequest(`"${folderName}" is not a folder`);
+      }
+
+      if (existing !== undefined) {
+        parentId = existing.id;
+        continue;
+      }
+
+      const folder: TFsNode = { id: randomUUID(), parentId, name: folderName, kind: "folder" };
+      nextNodes.push(folder);
+      parentId = folder.id;
+    }
+
+    assertFreeName(nextNodes, parentId, name, null);
+
+    const node: TFsNode = { id: document.nodeId, parentId, name, kind: document.kind };
+    nextNodes.push(node);
+
+    const result = { nodes: nextNodes, node, version: "" };
+
+    const after = async () => {
+      result.version = await writeDocument(ctx, node, { ...document, version: undefined });
+    };
+
+    return { nodes: nextNodes, result, after };
   });
 };
 
@@ -336,6 +483,11 @@ const createNode: TCreateNode = async (ctx, input) => {
       assertSupportedFileName(name);
     }
 
+    // An empty file is not an image, so images are opened and renamed but never created (IMG-6).
+    if (kind === "image") {
+      throw badRequest(`"${name}" is an image. The app cannot create an image file`);
+    }
+
     assertFreeName(nodes, input.parentId, name, null);
 
     const node: TFsNode = { id: randomUUID(), parentId: input.parentId, name, kind };
@@ -346,7 +498,7 @@ const createNode: TCreateNode = async (ctx, input) => {
         return;
       }
 
-      await ctx.dataAccess.writeFile(node.id, createBlankContent(kind));
+      await ctx.dataAccess.writeFile(node.id, createBlankContent(ctx, kind));
     };
 
     return { nodes: nextNodes, result: { nodes: nextNodes, node }, after };
@@ -380,7 +532,11 @@ const renameNode: TRenameNode = async (ctx, nodeId, name) => {
       return { ...candidate, name: nextName, kind };
     });
 
-    return { nodes: nextNodes, result: nextNodes };
+    const after = async () => {
+      followPathChange(ctx, readNodePath(nodes, nodeId), readNodePath(nextNodes, nodeId));
+    };
+
+    return { nodes: nextNodes, result: nextNodes, after };
   });
 };
 
@@ -408,7 +564,11 @@ const moveNode: TMoveNode = async (ctx, nodeId, parentId) => {
       return { ...candidate, parentId };
     });
 
-    return { nodes: nextNodes, result: nextNodes };
+    const after = async () => {
+      followPathChange(ctx, readNodePath(nodes, nodeId), readNodePath(nextNodes, nodeId));
+    };
+
+    return { nodes: nextNodes, result: nextNodes, after };
   });
 };
 
@@ -419,7 +579,12 @@ const deleteNode: TDeleteNode = async (ctx, nodeId) => {
     const removedIds = collectSubtreeIds(nodes, nodeId);
     const nextNodes = nodes.filter((node) => !removedIds.has(node.id));
 
-    return { nodes: nextNodes, result: nextNodes };
+    const removedPath = readNodePath(nodes, nodeId);
+    const after = async () => {
+      followPathRemoval(ctx, removedPath);
+    };
+
+    return { nodes: nextNodes, result: nextNodes, after };
   });
 };
 
@@ -432,4 +597,5 @@ export {
   renameNode,
   moveNode,
   deleteNode,
+  restoreDocument,
 };

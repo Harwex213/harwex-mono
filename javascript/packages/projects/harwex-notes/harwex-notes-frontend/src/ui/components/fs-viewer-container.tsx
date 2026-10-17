@@ -18,11 +18,12 @@ const FsViewerContainer: FC<TFsViewerContainerProps> = ({ registry }) => {
       activeId={store.tabs.activeId.value}
       draft={store.fs.draft.value}
       error={store.fs.error.value}
-      expandedIds={store.fs.expandedIds.value}
+      expandedIds={store.derived.treeExpandedIds.value}
       isBusy={store.fs.isBusy.value}
       isLoading={store.fs.isLoading.value}
       nodes={store.fs.nodes.value}
       registry={registry}
+      search={store.derived.fsSearch.value}
       selectedId={store.fs.selectedId.value}
     />
   );

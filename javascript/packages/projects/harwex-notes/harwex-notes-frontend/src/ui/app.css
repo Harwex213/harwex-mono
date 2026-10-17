@@ -49,6 +49,8 @@
   --base-color-red-700: #a63d33;
   --base-color-amber-300: #e0b45f;
   --base-color-amber-600: #cf9432;
+  --base-color-green-600: #2f8a5b;
+  --base-color-rust-600: #c2573a;
   --base-color-black: #000000;
   --base-color-transparent: transparent;
 
@@ -156,7 +158,10 @@
   /* file kinds */
   --color-kind-folder: var(--base-color-amber-600);
   --color-kind-markdown: var(--base-color-blue-600);
+  --color-kind-text: var(--base-color-warm-600);
   --color-kind-sketch: var(--base-color-violet-600);
+  --color-kind-image: var(--base-color-green-600);
+  --color-kind-html: var(--base-color-rust-600);
 
   /* elevation */
   --shadow-popover: 0 var(--base-shadow-y-6) var(--base-shadow-blur-20)
@@ -296,6 +301,19 @@
   --save-status-text: var(--color-text-faint);
   --save-status-failed-text: var(--color-danger);
 
+  /* settings button: the gear at the end of the tabs bar (SET-1). */
+  --settings-button-size: var(--space-6xl);
+  --settings-button-icon-size: var(--base-size-15);
+  --settings-button-radius: var(--radius-md);
+  --settings-button-text: var(--color-text-muted);
+  --settings-button-hover-bg: var(--color-surface-sunken);
+  --settings-button-hover-text: var(--color-text);
+
+  /* link error: why a followed link opened nothing, beside the tabs bar (EX-9, FEED-4). */
+  --link-error-gap: var(--space-xs);
+  --link-error-text: var(--color-danger);
+  --link-error-close-text: var(--color-text-muted);
+
   /* sketch: the frame around the embedded Excalidraw canvas. Excalidraw carries its own
      stylesheet and keeps element colors in the scene, so there is nothing to theme here. */
   --sketch-background: var(--color-transparent);
@@ -361,6 +379,99 @@ button {
   min-width: 0;
 }
 
+.app__bar-end {
+  display: flex;
+  align-items: center;
+  gap: var(--save-status-gap);
+  min-width: 0;
+}
+
+/* ------------------------------------------------------------------ */
+/* settings button                                                     */
+/* ------------------------------------------------------------------ */
+
+.settings-button {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: var(--settings-button-size);
+  height: var(--settings-button-size);
+  padding: 0;
+  border: none;
+  border-radius: var(--settings-button-radius);
+  background: none;
+  color: var(--settings-button-text);
+  cursor: pointer;
+}
+
+.settings-button:hover {
+  background: var(--settings-button-hover-bg);
+  color: var(--settings-button-hover-text);
+}
+
+.settings-button svg {
+  width: var(--settings-button-icon-size);
+  height: var(--settings-button-icon-size);
+}
+
+/* ------------------------------------------------------------------ */
+/* link error                                                          */
+/* ------------------------------------------------------------------ */
+
+.link-error {
+  display: flex;
+  align-items: center;
+  gap: var(--link-error-gap);
+  min-width: 0;
+  margin: 0;
+  color: var(--link-error-text);
+}
+
+.link-error__text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.link-error__close {
+  flex: 0 0 auto;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--link-error-close-text);
+  cursor: pointer;
+}
+
+/* ------------------------------------------------------------------ */
+/* deleted file (SYNC-5)                                               */
+/* ------------------------------------------------------------------ */
+
+.deleted-file {
+  display: flex;
+  align-items: center;
+  gap: var(--link-error-gap);
+  min-width: 0;
+  margin: 0;
+  color: var(--link-error-text);
+}
+
+.deleted-file__text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.deleted-file__restore {
+  flex: 0 0 auto;
+  padding: var(--viewer-retry-padding);
+  background: none;
+  border: var(--viewer-border-width) solid var(--viewer-retry-border);
+  border-radius: var(--viewer-retry-radius);
+  color: inherit;
+  cursor: pointer;
+}
+
 /* ------------------------------------------------------------------ */
 /* save status                                                         */
 /* ------------------------------------------------------------------ */
@@ -372,7 +483,8 @@ button {
   white-space: nowrap;
 }
 
-.save-status--failed {
+.save-status--failed,
+.save-status--offline {
   color: var(--save-status-failed-text);
 }
 
@@ -514,7 +626,22 @@ button {
   overflow: hidden;
 }
 
+.viewer--text {
+  padding: 0;
+  overflow: hidden;
+}
+
 .viewer--sketch {
+  padding: 0;
+  overflow: hidden;
+}
+
+.viewer--image {
+  padding: 0;
+  overflow: hidden;
+}
+
+.viewer--html {
   padding: 0;
   overflow: hidden;
 }

@@ -3,29 +3,44 @@ import "./excalidraw-viewer.css";
 import {
   CaptureUpdateAction,
   Excalidraw,
-  FONT_FAMILY,
   getNonDeletedElements,
   getSceneVersion,
+  newElementWith,
   THEME,
 } from "@excalidraw/excalidraw";
-import { useEffect, useRef } from "react";
+import {
+  DEFAULT_EXCALIDRAW_STYLE,
+  EXCALIDRAW_STYLE_KEYS,
+  VAULT_LINK_PREFIX,
+} from "@hw/harwex-notes-protocol";
+import { useEffect, useRef, useState } from "react";
+import { ExcalidrawLinkPicker } from "./excalidraw-link-picker";
 import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
 import type {
+  AppState,
   BinaryFileData,
   BinaryFiles,
   ExcalidrawImperativeAPI,
+  ExcalidrawProps,
+  UIAppState,
 } from "@excalidraw/excalidraw/types";
-import type { FC } from "react";
-import type { TExcalidrawScene } from "@hw/harwex-notes-protocol";
+import type { FC, KeyboardEvent } from "react";
+import type { TExcalidrawScene, TExcalidrawStyle } from "@hw/harwex-notes-protocol";
 import type { TExcalidrawViewerProps } from "./excalidraw-viewer.types";
 
 // A cheap fingerprint of a scene. `getSceneVersion` sums the element versions, which change
 // on every edit and on nothing else; the file count catches an image whose data arrives
-// after the element that holds it.
+// after the element that holds it. The style is part of the scene too (EX-7): a new stroke
+// colour with nothing drawn yet is still a change worth saving.
 type TSceneStamp = {
   version: number;
   fileCount: number;
+  style: string;
 };
+
+type TLinkOpenHandler = NonNullable<ExcalidrawProps["onLinkOpen"]>;
+
+const URL_SCHEME_PATTERN = /^[a-z][a-z0-9+.-]*:/i;
 
 // The protocol carries the scene as opaque records. These two are the only place that hands
 // them back to Excalidraw under its own types.
@@ -37,31 +52,65 @@ const asFiles = (scene: TExcalidrawScene): BinaryFiles => {
   return scene.files as BinaryFiles;
 };
 
-const stampOf = (elements: readonly ExcalidrawElement[], files: BinaryFiles): TSceneStamp => {
-  return { version: getSceneVersion(elements), fileCount: Object.keys(files).length };
+// Copies the style keys out of Excalidraw's whole app state. It runs on every pointer move,
+// so it copies values as they are instead of validating them; the backend validates.
+const readStyle = (appState: Readonly<Record<string, unknown>>): TExcalidrawStyle => {
+  const style: Record<string, unknown> = {};
+
+  for (const key of EXCALIDRAW_STYLE_KEYS) {
+    if (appState[key] !== undefined) {
+      style[key] = appState[key];
+    }
+  }
+
+  return style as TExcalidrawStyle;
+};
+
+// A file may set only some style keys, or none (one made on excalidraw.com, say). The rest
+// come from the user's default, then from the app's own.
+const readSceneStyle = (scene: TExcalidrawScene, defaultStyle: TExcalidrawStyle): TExcalidrawStyle => {
+  return { ...DEFAULT_EXCALIDRAW_STYLE, ...defaultStyle, ...scene.appState };
+};
+
+const stampOf = (
+  elements: readonly ExcalidrawElement[],
+  files: BinaryFiles,
+  style: TExcalidrawStyle
+): TSceneStamp => {
+  return {
+    version: getSceneVersion(elements),
+    fileCount: Object.keys(files).length,
+    style: JSON.stringify(readStyle(style)),
+  };
 };
 
 const isSameStamp = (left: TSceneStamp, right: TSceneStamp): boolean => {
-  return left.version === right.version && left.fileCount === right.fileCount;
+  return left.version === right.version && left.fileCount === right.fileCount && left.style === right.style;
 };
 
-// The style a new element gets. Excalidraw keeps these in `appState`, and it reads them from
-// `initialData` on mount, so this is where the app's own defaults go. Two values are numbers
-// the editor names only in its internals: a roughness of 0 is the `architect` sloppiness, and
-// a font size of 16 is `small`. `Nunito` is the font the picker calls `normal`.
-const DEFAULT_ITEM_STYLE = {
-  currentItemArrowType: "elbow",
-  currentItemFontFamily: FONT_FAMILY.Nunito,
-  currentItemFontSize: 16,
-  currentItemRoughness: 0,
-  currentItemRoundness: "sharp",
-} as const;
+// A link names a vault file when it has the `vault:` prefix or no scheme at all (EX-9).
+// Every other link (http, mailto) keeps Excalidraw's own behaviour.
+const isVaultHref = (href: string): boolean => {
+  const trimmed = href.trim();
+  if (trimmed.startsWith(VAULT_LINK_PREFIX)) {
+    return true;
+  }
+
+  return trimmed.length > 0 && !trimmed.startsWith("#") && !URL_SCHEME_PATTERN.test(trimmed);
+};
+
+const hasSelection = (appState: UIAppState): boolean => {
+  return Object.values(appState.selectedElementIds).some(Boolean);
+};
 
 const ExcalidrawViewer: FC<TExcalidrawViewerProps> = ({
   document,
   registry,
   theme = "light",
   readOnly = false,
+  defaultStyle = {},
+  viewport = null,
+  linkTargets = [],
 }) => {
   const apiRef = useRef<ExcalidrawImperativeAPI | null>(null);
   const nodeIdRef = useRef(document.nodeId);
@@ -72,21 +121,30 @@ const ExcalidrawViewer: FC<TExcalidrawViewerProps> = ({
   // What the editor last reported, and what the host and the viewer last agreed on. They
   // differ because the emitted scene drops the elements the user deleted, so each direction
   // needs its own fingerprint to tell a real change from its own echo.
-  const editorStampRef = useRef(stampOf(asElements(document.scene), asFiles(document.scene)));
+  const editorStampRef = useRef(
+    stampOf(asElements(document.scene), asFiles(document.scene), readSceneStyle(document.scene, defaultStyle))
+  );
   const documentStampRef = useRef(editorStampRef.current);
+  // The first scroll is Excalidraw placing the drawing, not the user moving it.
+  const isViewportLiveRef = useRef(false);
+  // The elements a "Link to file" pick applies to, or null while the picker is closed.
+  const [linkElementIds, setLinkElementIds] = useState<readonly string[] | null>(null);
 
   useEffect(() => {
     const elements = asElements(document.scene);
     const files = asFiles(document.scene);
-    const stamp = stampOf(elements, files);
+    const style = readSceneStyle(document.scene, defaultStyle);
+    const stamp = stampOf(elements, files, style);
 
     // A different drawing: the instance is keyed on the node, so it remounts and reads
     // `initialData` itself.
     if (nodeIdRef.current !== document.nodeId) {
       nodeIdRef.current = document.nodeId;
       isHandOverPendingRef.current = true;
+      isViewportLiveRef.current = false;
       editorStampRef.current = stamp;
       documentStampRef.current = stamp;
+      setLinkElementIds(null);
 
       return;
     }
@@ -108,27 +166,36 @@ const ExcalidrawViewer: FC<TExcalidrawViewerProps> = ({
     documentStampRef.current = stamp;
     isHandOverPendingRef.current = true;
     // The scene changed underneath the user, so it is not theirs to undo.
-    api.updateScene({ elements, captureUpdate: CaptureUpdateAction.NEVER });
+    api.updateScene({
+      elements,
+      // Only the style keys are set; `updateScene` merges them into the editor's state.
+      appState: style as unknown as AppState,
+      captureUpdate: CaptureUpdateAction.NEVER,
+    });
     api.addFiles(Object.values(files) as BinaryFileData[]);
+    // `defaultStyle` only fills keys a file lacks, and a change to it is not a new scene.
   }, [document]);
 
   const handleChange = (
     elements: readonly ExcalidrawElement[],
-    _appState: unknown,
+    appState: AppState,
     files: BinaryFiles
   ) => {
-    const stamp = stampOf(elements, files);
+    const style = readStyle(appState as unknown as Record<string, unknown>);
+    const stamp = stampOf(elements, files, style);
 
     // The scene the viewer handed over, coming back. Excalidraw repairs what it is given —
     // it fills in a missing order index, for one — so the stamp it reports is its own.
     if (isHandOverPendingRef.current) {
       isHandOverPendingRef.current = false;
+      isViewportLiveRef.current = true;
       editorStampRef.current = stamp;
 
       return;
     }
 
     // Excalidraw reports a change on every pointer move, panning and zooming included.
+    // Neither is an edit (EX-6), and neither changes the stamp.
     if (isSameStamp(stamp, editorStampRef.current)) {
       return;
     }
@@ -141,31 +208,139 @@ const ExcalidrawViewer: FC<TExcalidrawViewerProps> = ({
     const scene: TExcalidrawScene = {
       elements: nextElements as readonly Record<string, unknown>[],
       files: files as Record<string, unknown>,
+      appState: style,
     };
 
-    documentStampRef.current = stampOf(nextElements, files);
+    documentStampRef.current = stampOf(nextElements, files, style);
 
     registry.excalidrawDocumentChangedAction(document.nodeId, scene);
   };
 
+  const handleScrollChange = (scrollX: number, scrollY: number, zoom: { value: number }) => {
+    if (!isViewportLiveRef.current) {
+      return;
+    }
+
+    registry.excalidrawViewportChangedAction(document.nodeId, { scrollX, scrollY, zoom: zoom.value });
+  };
+
+  // Excalidraw would open a link without a scheme as a page of this app, which would
+  // navigate the app away (APP-1). A vault link opens a tab instead (EX-9).
+  const handleLinkOpen: TLinkOpenHandler = (element, event) => {
+    const link = element.link ?? "";
+    if (!isVaultHref(link)) {
+      return;
+    }
+
+    event.preventDefault();
+    registry.openVaultLinkAction(document.nodeId, link);
+  };
+
+  const openLinkPicker = () => {
+    const api = apiRef.current;
+    if (api === null || readOnly) {
+      return;
+    }
+
+    const selected = Object.entries(api.getAppState().selectedElementIds)
+      .filter(([, isSelected]) => isSelected)
+      .map(([id]) => id);
+
+    if (selected.length === 0) {
+      return;
+    }
+
+    setLinkElementIds(selected);
+  };
+
+  // The link is written as an edit, so it can be undone and it saves (EX-2).
+  const applyLink = (path: string) => {
+    const api = apiRef.current;
+    const ids = new Set(linkElementIds ?? []);
+
+    setLinkElementIds(null);
+
+    if (api === null || ids.size === 0) {
+      return;
+    }
+
+    const link = `${VAULT_LINK_PREFIX}${path}`;
+    const elements = api.getSceneElementsIncludingDeleted().map((element) => {
+      return ids.has(element.id) ? newElementWith(element, { link }) : element;
+    });
+
+    api.updateScene({ elements, captureUpdate: CaptureUpdateAction.IMMEDIATELY });
+  };
+
+  // Cmd+Shift+K (Ctrl+Shift+K elsewhere) next to Excalidraw's own Cmd+K link editor.
+  const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    const isChord = (event.metaKey || event.ctrlKey) && event.shiftKey && !event.altKey;
+    if (!isChord || event.key.toLowerCase() !== "k" || linkElementIds !== null) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    openLinkPicker();
+  };
+
+  const renderTopRightUI = (_isMobile: boolean, appState: UIAppState) => {
+    if (readOnly || !hasSelection(appState)) {
+      return null;
+    }
+
+    return (
+      <button
+        className="excalidraw-viewer__link-button"
+        onClick={openLinkPicker}
+        title={"Link the selection to a file of the vault (⇧⌘K)"}
+        type="button"
+      >
+        {"Link to file…"}
+      </button>
+    );
+  };
+
+  const initialAppState: Partial<AppState> = {
+    ...(readSceneStyle(document.scene, defaultStyle) as Partial<AppState>),
+    viewBackgroundColor: "transparent",
+  };
+
+  if (viewport !== null) {
+    initialAppState.scrollX = viewport.scrollX;
+    initialAppState.scrollY = viewport.scrollY;
+    initialAppState.zoom = { value: viewport.zoom as AppState["zoom"]["value"] };
+  }
+
   return (
-    <div className="excalidraw-viewer">
+    <div className="excalidraw-viewer" onKeyDownCapture={handleKeyDown}>
       <Excalidraw
         excalidrawAPI={(api) => {
           apiRef.current = api;
         }}
         initialData={{
-          appState: { ...DEFAULT_ITEM_STYLE, viewBackgroundColor: "transparent" },
+          appState: initialAppState,
           elements: asElements(document.scene),
           files: asFiles(document.scene),
-          scrollToContent: true,
+          scrollToContent: viewport === null,
         }}
         // `initialData` is read once, on mount, so a different drawing needs a new instance.
         key={document.nodeId}
         onChange={handleChange}
+        onLinkOpen={handleLinkOpen}
+        onScrollChange={handleScrollChange}
+        renderTopRightUI={renderTopRightUI}
         theme={theme === "dark" ? THEME.DARK : THEME.LIGHT}
         viewModeEnabled={readOnly}
       />
+
+      {linkElementIds === null ? null : (
+        <ExcalidrawLinkPicker
+          onClose={() => setLinkElementIds(null)}
+          onPick={applyLink}
+          paths={linkTargets}
+        />
+      )}
     </div>
   );
 };

@@ -12,7 +12,8 @@ import {
   NodeIcon,
 } from "./fs-icons";
 import { FsNodeMenu, clampMenuX } from "./fs-node-menu";
-import { flattenTree } from "./fs-rows";
+import { collectSearchVisibleIds, flattenTree } from "./fs-rows";
+import { HighlightedName, SearchField } from "./fs-search";
 import type { TFsViewerProps } from "./fs-viewer.types";
 
 type TMenuState = {
@@ -31,7 +32,10 @@ const NEW_NAME_BY_KIND: Readonly<Record<TFsNodeKind, string>> = {
   folder: "new-folder",
   file: "untitled",
   markdown: "untitled.md",
+  text: "untitled.txt",
   excalidraw: "untitled.excalidraw",
+  image: "untitled.png",
+  html: "untitled.html",
 };
 
 const EXTENSIONS_HINT = FILE_EXTENSIONS.join(" · ");
@@ -178,15 +182,30 @@ const FsViewer: FC<TFsViewerProps> = ({
   isLoading = false,
   isBusy = false,
   error = null,
+  search = null,
   registry,
 }) => {
   const nodeById = useMemo(() => {
     return new Map(nodes.map((node) => [node.id, node]));
   }, [nodes]);
 
+  const searchVisibleIds = useMemo(() => {
+    return search === null ? null : collectSearchVisibleIds(nodeById, search.matchById.keys());
+  }, [nodeById, search]);
+
   const rows = useMemo(() => {
-    return flattenTree(nodeById, expandedIds, draft);
-  }, [nodeById, expandedIds, draft]);
+    return flattenTree(nodeById, expandedIds, draft, searchVisibleIds);
+  }, [nodeById, expandedIds, draft, searchVisibleIds]);
+
+  const treeRef = useRef<HTMLDivElement>(null);
+
+  const focusFirstRow = useCallback(() => {
+    const firstRow = treeRef.current?.querySelector<HTMLElement>(".fs-viewer__row[tabindex]");
+
+    firstRow?.focus();
+  }, []);
+
+  const isSearchEmpty = search !== null && !search.isRunning && search.matchById.size === 0;
 
   const [menu, setMenu] = useState<TMenuState | null>(null);
   const [dragId, setDragId] = useState<string | null>(null);
@@ -320,6 +339,13 @@ const FsViewer: FC<TFsViewerProps> = ({
         </span>
       </header>
 
+      <SearchField
+        onChange={registry.changeSearchAction}
+        onClear={registry.clearSearchAction}
+        onLeaveDown={focusFirstRow}
+        term={search?.term ?? ""}
+      />
+
       <div
         className={`fs-viewer__body${dropId === null && dragId !== null ? " fs-viewer__body--drop" : ""}`}
         onContextMenu={(event) => {
@@ -343,7 +369,17 @@ const FsViewer: FC<TFsViewerProps> = ({
 
         {error === null ? null : <p className="fs-viewer__error">{error}</p>}
 
-        <div className="fs-viewer__tree" role="presentation">
+        {search !== null && search.isRunning ? (
+          <p className="fs-viewer__hint">{"Searching…"}</p>
+        ) : null}
+
+        {isSearchEmpty ? (
+          <p className="fs-viewer__hint">
+            {`Nothing matches “${search.term}”. ${search.searchedFileCount} files searched.`}
+          </p>
+        ) : null}
+
+        <div className="fs-viewer__tree" ref={treeRef} role="presentation">
           {rows.map((row) => {
             if (row.type === "draft") {
               return (
@@ -372,6 +408,7 @@ const FsViewer: FC<TFsViewerProps> = ({
               && draft.nodeId === node.id;
 
             const isFolder = node.kind === "folder";
+            const match = search?.matchById.get(node.id);
             // Dropping on a file moves into the folder that holds the file.
             const dropTargetId = isFolder ? node.id : node.parentId;
 
@@ -432,8 +469,16 @@ const FsViewer: FC<TFsViewerProps> = ({
                     onCancel={registry.cancelDraftAction}
                     onSubmit={registry.submitDraftAction}
                   />
+                ) : match?.isNameMatch === true ? (
+                  <HighlightedName name={node.name} term={search?.term ?? ""} />
                 ) : (
                   <span className="fs-viewer__name">{node.name}</span>
+                )}
+
+                {match === undefined || match.contentCount === null ? null : (
+                  <span className="fs-viewer__count" title="Occurrences in the file">
+                    {match.contentCount}
+                  </span>
                 )}
               </div>
             );
@@ -457,4 +502,10 @@ const FsViewer: FC<TFsViewerProps> = ({
 };
 
 export { FsViewer };
-export type { TFsDraft, TFsViewerProps, TFsViewerRegistrySlice } from "./fs-viewer.types";
+export type {
+  TFsDraft,
+  TFsSearch,
+  TFsSearchMatch,
+  TFsViewerProps,
+  TFsViewerRegistrySlice,
+} from "./fs-viewer.types";

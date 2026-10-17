@@ -16,7 +16,10 @@ const CREATE_ITEMS: readonly { kind: TFsNodeKind; label: string }[] = [
 const LABEL_BY_KIND: Readonly<Record<TFsNodeKind, string>> = {
   folder: "folder",
   markdown: "note",
+  text: "text",
   excalidraw: "sketch",
+  image: "image",
+  html: "page",
   file: "file",
 };
 

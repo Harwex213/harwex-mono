@@ -4,7 +4,12 @@ import { FsViewer } from "./fs-viewer";
 import { readFileKind } from "./fs-file-kinds";
 import type { CSSProperties } from "react";
 import type { TFsNode, TFsNodeKind } from "@hw/harwex-notes-protocol";
-import type { TFsDraft, TFsViewerRegistrySlice } from "./fs-viewer.types";
+import type {
+  TFsDraft,
+  TFsSearch,
+  TFsSearchMatch,
+  TFsViewerRegistrySlice,
+} from "./fs-viewer.types";
 import type { TDemo } from "../../../dev/demo";
 
 // The vault from the design: three root folders, two of them holding notes, and one
@@ -140,6 +145,11 @@ const isLoading = signal(false);
 const error = signal<string | null>(null);
 const theme = signal<"light" | "dark">("light");
 const log = signal<readonly string[]>([]);
+// The demo keeps the search-time expanded set apart from the reader's own set, as the app
+// does, so clearing the field brings the old tree back.
+const searchTerm = signal("");
+const searchExpandedIds = signal<readonly string[]>([]);
+const preSearchSelectedId = signal<string | null>(null);
 
 const report = (line: string) => {
   log.value = [line, ...log.peek()].slice(0, 8);
@@ -215,8 +225,56 @@ const readCreateKind = (draftKind: TFsNodeKind, name: string): TFsNodeKind => {
   return kind;
 };
 
+const readNameMatches = (term: string): ReadonlyMap<string, TFsSearchMatch> => {
+  const lowerTerm = term.toLowerCase();
+  const matches = nodes.peek().filter((node) => node.name.toLowerCase().includes(lowerTerm));
+
+  return new Map(matches.map((node) => [node.id, { isNameMatch: true, contentCount: null }]));
+};
+
+const readAncestorIds = (matchIds: Iterable<string>): readonly string[] => {
+  const nodeById = new Map(nodes.peek().map((node) => [node.id, node]));
+  const ancestorIds = new Set<string>();
+
+  for (const matchId of matchIds) {
+    let parentId = nodeById.get(matchId)?.parentId ?? null;
+    while (parentId !== null && !ancestorIds.has(parentId)) {
+      ancestorIds.add(parentId);
+      parentId = nodeById.get(parentId)?.parentId ?? null;
+    }
+  }
+
+  return [...ancestorIds];
+};
+
+const readSearch = (): TFsSearch | null => {
+  const term = searchTerm.value;
+  if (term.length === 0) {
+    return null;
+  }
+
+  const fileCount = nodes.value.filter((node) => node.kind !== "folder").length;
+
+  return { term, matchById: readNameMatches(term), searchedFileCount: fileCount, isRunning: false };
+};
+
 const registry: TFsViewerRegistrySlice = {
   toggleFolderAction: (nodeId) => {
+    if (searchTerm.peek().length > 0) {
+      const ids = searchExpandedIds.peek();
+      if (ids.includes(nodeId)) {
+        const collapsed = collectSubtreeIds(nodeId);
+
+        searchExpandedIds.value = ids.filter((id) => !collapsed.has(id));
+
+        return;
+      }
+
+      searchExpandedIds.value = [...ids, nodeId];
+
+      return;
+    }
+
     if (!expandedIds.peek().includes(nodeId)) {
       expandedIds.value = [...expandedIds.peek(), nodeId];
 
@@ -248,6 +306,7 @@ const registry: TFsViewerRegistrySlice = {
     draft.value = null;
   },
   startCreateAction: (parentId, kind) => {
+    registry.clearSearchAction();
     error.value = null;
     expandFolder(parentId);
     draft.value = { mode: "create", parentId, kind };
@@ -345,6 +404,29 @@ const registry: TFsViewerRegistrySlice = {
       }
     });
   },
+  changeSearchAction: (term) => {
+    if (searchTerm.peek().length === 0 && term.length > 0) {
+      preSearchSelectedId.value = selectedId.peek();
+    }
+
+    if (term.length === 0) {
+      registry.clearSearchAction();
+
+      return;
+    }
+
+    searchTerm.value = term;
+    searchExpandedIds.value = readAncestorIds(readNameMatches(term).keys());
+  },
+  clearSearchAction: () => {
+    if (searchTerm.peek().length === 0) {
+      return;
+    }
+
+    searchTerm.value = "";
+    searchExpandedIds.value = [];
+    selectedId.value = preSearchSelectedId.peek();
+  },
 };
 
 const reset = () => {
@@ -357,6 +439,8 @@ const reset = () => {
   draft.value = null;
   error.value = null;
   log.value = [];
+  searchTerm.value = "";
+  searchExpandedIds.value = [];
 };
 
 const Demo = () => {
@@ -438,7 +522,7 @@ const Demo = () => {
         </button>
 
         <span>
-          {"Click selects · double click opens · right click for the menu · drag to move"}
+          {"Click selects · double click opens · right click for the menu · drag to move · Cmd/Ctrl+Shift+F searches"}
         </span>
       </div>
 
@@ -448,11 +532,12 @@ const Demo = () => {
             activeId={activeId.value}
             draft={draft.value}
             error={error.value}
-            expandedIds={expandedIds.value}
+            expandedIds={searchTerm.value.length > 0 ? searchExpandedIds.value : expandedIds.value}
             isBusy={isBusy.value}
             isLoading={isLoading.value}
             nodes={nodes.value}
             registry={registry}
+            search={readSearch()}
             selectedId={selectedId.value}
           />
         </div>

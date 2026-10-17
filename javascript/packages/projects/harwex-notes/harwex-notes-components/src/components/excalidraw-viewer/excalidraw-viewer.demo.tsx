@@ -130,6 +130,8 @@ const documentSignal = signal<TExcalidrawDocument>({
   scene: FLOW_SCENE,
 });
 const edits = signal(0);
+const lastViewport = signal("none");
+const lastLink = signal("none");
 const readOnly = signal(false);
 const theme = signal<"light" | "dark">("light");
 
@@ -144,7 +146,22 @@ const registry: TExcalidrawViewerRegistrySlice = {
     edits.value++;
     documentSignal.value = { ...documentSignal.peek(), scene };
   },
+  excalidrawViewportChangedAction: (_nodeId, viewport) => {
+    lastViewport.value = `${Math.round(viewport.scrollX)}, ${Math.round(viewport.scrollY)} @ ${viewport.zoom.toFixed(2)}`;
+  },
+  openVaultLinkAction: (_nodeId, href) => {
+    lastLink.value = href;
+  },
 };
+
+// What the host would list as vault files for the "Link to file" picker.
+const LINK_TARGETS: readonly string[] = [
+  "flow.excalidraw",
+  "second.excalidraw",
+  "Projects/harwex-notes/architecture.excalidraw",
+  "Projects/harwex-notes/notes/plan.md",
+  "Journal/2026-08-26.md",
+];
 
 const openDrawing = (nodeId: string, scene: TExcalidrawScene) => {
   edits.value = 0;
@@ -201,11 +218,13 @@ const Demo = () => {
         </label>
 
         <span>{`${document.nodeId} \u00b7 ${document.scene.elements.length} elements \u00b7 ${edits.value} edits reported`}</span>
+        <span>{`viewport: ${lastViewport.value} \u00b7 last vault link: ${lastLink.value}`}</span>
       </div>
 
       <div style={{ height: "70vh" }}>
         <ExcalidrawViewer
           document={document}
+          linkTargets={LINK_TARGETS}
           readOnly={readOnly.value}
           registry={registry}
           theme={theme.value}

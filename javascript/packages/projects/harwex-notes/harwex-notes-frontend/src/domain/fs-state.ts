@@ -1,8 +1,11 @@
-import { cancelScheduledSave, flushDocument } from "./documents-state";
+import { cancelScheduledSave, flushDocument, reloadMovedDocuments } from "./documents-state";
 import type { TFsNode, TFsNodeKind } from "@hw/harwex-notes-protocol";
 import type { TStore } from "../store/store";
 import type { TApiClient } from "../api/api";
 import { FILE_EXTENSIONS, readFileKind } from "./fs-file-kinds";
+import { clearSearch, isSearchActive, toggleSearchFolder } from "./search-state";
+import { fetchSavedSession, restoreSession, watchTreeState } from "./session-state";
+import { watchVault } from "./sync-state";
 
 // A folder and everything below it.
 const collectSubtreeIds = (nodes: readonly TFsNode[], nodeId: string): ReadonlySet<string> => {
@@ -78,12 +81,17 @@ const loadTreeAction = async (store: TStore, api: TApiClient) => {
   store.fs.error.value = null;
 
   try {
-    const nodes = await api.fs.tree.query();
+    // The saved session is read next to the tree, so the tree appears already restored.
+    const [nodes, savedSession] = await Promise.all([api.fs.tree.query(), fetchSavedSession(api)]);
 
     store.fs.nodes.value = nodes;
     store.fs.expandedIds.value = nodes
       .filter((node) => node.kind === "folder" && node.parentId === null)
       .map((node) => node.id);
+
+    restoreSession(store, savedSession);
+    watchTreeState(store, api);
+    watchVault(store, api);
   } catch (error) {
     store.fs.error.value = readErrorMessage(error);
   } finally {
@@ -94,6 +102,12 @@ const loadTreeAction = async (store: TStore, api: TApiClient) => {
 // Collapsing a folder collapses everything below it, so reopening the folder
 // always shows a closed subtree.
 const toggleFolderAction = (store: TStore, _api: TApiClient, nodeId: string) => {
+  if (isSearchActive(store)) {
+    toggleSearchFolder(store, nodeId, collectSubtreeIds(store.fs.nodes.peek(), nodeId));
+
+    return;
+  }
+
   const expandedIds = store.fs.expandedIds.peek();
   if (!expandedIds.includes(nodeId)) {
     store.fs.expandedIds.value = [...expandedIds, nodeId];
@@ -117,6 +131,10 @@ const startCreateAction = (
   parentId: string | null,
   kind: TFsNodeKind
 ) => {
+  // A new entry would vanish from a filter its fresh name does not match, so creating
+  // ends the search and shows the full tree first.
+  clearSearch(store);
+
   store.fs.error.value = null;
 
   expandFolder(store, parentId);
@@ -181,6 +199,8 @@ const renameNode = async (store: TStore, api: TApiClient, nodeId: string, name: 
   await flushSubtree(store, api, nodeId);
   store.fs.nodes.value = await api.fs.renameNode.mutate({ nodeId, name });
   store.fs.draft.value = null;
+
+  reloadMovedDocuments(store, api, collectSubtreeIds(store.fs.nodes.peek(), nodeId));
 };
 
 const submitDraftAction = async (store: TStore, api: TApiClient, name: string) => {
@@ -229,6 +249,7 @@ const moveNodeAction = async (
     store.fs.nodes.value = await api.fs.moveNode.mutate({ nodeId, parentId });
 
     expandFolder(store, parentId);
+    reloadMovedDocuments(store, api, collectSubtreeIds(store.fs.nodes.peek(), nodeId));
   } catch (error) {
     store.fs.error.value = readErrorMessage(error);
   } finally {

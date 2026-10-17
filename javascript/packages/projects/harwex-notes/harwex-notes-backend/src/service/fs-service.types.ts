@@ -3,6 +3,9 @@ import type {
   TCreateNodeResult,
   TDocument,
   TFsNode,
+  TRestoreDocumentInput,
+  TRestoreDocumentResult,
+  TUpdateDocumentResult,
 } from "@hw/harwex-notes-protocol";
 import type { TContext } from "../trpc.js";
 
@@ -14,4 +17,5 @@ export type TMoveNode = (ctx: TContext, nodeId: string, parentId: string | null)
 export type TDeleteNode = (ctx: TContext, nodeId: string) => Promise<readonly TFsNode[]>;
 
 export type TFetchDocument = (ctx: TContext, nodeId: string) => Promise<TDocument>;
-export type TUpdateDocument = (ctx: TContext, document: TDocument) => Promise<void>;
+export type TUpdateDocument = (ctx: TContext, document: TDocument) => Promise<TUpdateDocumentResult>;
+export type TRestoreDocument = (ctx: TContext, input: TRestoreDocumentInput) => Promise<TRestoreDocumentResult>;

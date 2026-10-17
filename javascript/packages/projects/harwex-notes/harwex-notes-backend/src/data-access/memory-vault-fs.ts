@@ -4,9 +4,9 @@ import type { TVaultEntry, TVaultFs } from "./vault-fs.types.js";
 // A folder is `null`, a file is its bytes. Keys are normalised absolute paths.
 type TMemoryEntries = Map<string, Uint8Array | null>;
 
-// Initial content: a relative path per entry, text for a file, `null` for an empty folder.
-// Parent folders are created on the way.
-type TMemoryVaultSeed = Readonly<Record<string, string | null>>;
+// Initial content: a relative path per entry, text or bytes for a file, `null` for an empty
+// folder. Parent folders are created on the way.
+type TMemoryVaultSeed = Readonly<Record<string, string | Uint8Array | null>>;
 
 type TMemoryVaultFs = TVaultFs & {
   // Test helpers: look at the disk as the app left it.
@@ -25,6 +25,10 @@ const failWithCode = (code: string, message: string): never => {
 const createMemoryVaultFs = (vaultPath: string, seed: TMemoryVaultSeed = {}): TMemoryVaultFs => {
   const root = path.normalize(vaultPath);
   const entries: TMemoryEntries = new Map([[root, null]]);
+  // Every write stores a fresh array, so the array itself identifies one version of a file.
+  // A rename moves the array and keeps the version, as a rename keeps a file's mtime.
+  const versionByContent = new WeakMap<Uint8Array, string>();
+  let nextVersion = 1;
 
   const normalise = (target: string) => path.normalize(target);
 
@@ -44,7 +48,7 @@ const createMemoryVaultFs = (vaultPath: string, seed: TMemoryVaultSeed = {}): TM
   for (const [relativePath, content] of Object.entries(seed)) {
     const target = normalise(path.join(root, relativePath));
     ensureParents(target);
-    entries.set(target, content === null ? null : encoder.encode(content));
+    entries.set(target, typeof content === "string" ? encoder.encode(content) : content);
   }
 
   const assertParentExists = (target: string) => {
@@ -88,6 +92,22 @@ const createMemoryVaultFs = (vaultPath: string, seed: TMemoryVaultSeed = {}): TM
     return content.byteLength;
   };
 
+  const fileVersion = async (filePath: string): Promise<string | null> => {
+    const content = entries.get(normalise(filePath));
+    if (content === undefined || content === null) {
+      return null;
+    }
+
+    let version = versionByContent.get(content);
+    if (version === undefined) {
+      version = `m${nextVersion}`;
+      nextVersion += 1;
+      versionByContent.set(content, version);
+    }
+
+    return version;
+  };
+
   const writeFile = async (filePath: string, data: Uint8Array): Promise<void> => {
     const target = normalise(filePath);
     assertParentExists(target);
@@ -96,7 +116,7 @@ const createMemoryVaultFs = (vaultPath: string, seed: TMemoryVaultSeed = {}): TM
       failWithCode("EISDIR", `is a directory, "${target}"`);
     }
 
-    entries.set(target, data);
+    entries.set(target, data.slice());
   };
 
   const makeDir = async (dirPath: string): Promise<void> => {
@@ -172,6 +192,7 @@ const createMemoryVaultFs = (vaultPath: string, seed: TMemoryVaultSeed = {}): TM
   return {
     readDir,
     fileSize,
+    fileVersion,
     readFile,
     writeFile,
     makeDir,

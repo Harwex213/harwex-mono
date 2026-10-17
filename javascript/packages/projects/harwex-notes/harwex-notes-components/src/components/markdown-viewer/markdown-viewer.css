@@ -116,6 +116,16 @@
   max-width: 100%;
 }
 
+/* Stands in for an image that is not in the vault or cannot be drawn (MD-5). */
+.markdown-viewer__image-missing {
+  display: inline-block;
+  padding: 4px 10px;
+  border: 1px dashed var(--color-border, #d9d7d1);
+  border-radius: 4px;
+  color: var(--color-text-muted, #6f6c65);
+  font-size: 0.9em;
+}
+
 .markdown-viewer__rendered table {
   display: block;
   max-width: 100%;

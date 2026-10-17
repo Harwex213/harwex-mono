@@ -65,10 +65,51 @@ const sortIds = (ids: readonly string[], nodeById: ReadonlyMap<string, TFsNode>)
   });
 };
 
+// A search lists every match under its real folders. A folder that matches by name keeps
+// its whole content, so expanding it shows every entry inside and not an empty folder.
+const collectSearchVisibleIds = (
+  nodeById: ReadonlyMap<string, TFsNode>,
+  matchIds: Iterable<string>
+): ReadonlySet<string> => {
+  const { childIdsByParentId } = groupChildIds(nodeById.values());
+  const visibleIds = new Set<string>();
+  const pendingIds: string[] = [];
+
+  for (const matchId of matchIds) {
+    const match = nodeById.get(matchId);
+    if (match === undefined) {
+      continue;
+    }
+
+    if (match.kind === "folder") {
+      pendingIds.push(match.id);
+    }
+
+    let current: TFsNode | undefined = match;
+    while (current !== undefined && !visibleIds.has(current.id)) {
+      visibleIds.add(current.id);
+      current = current.parentId === null ? undefined : nodeById.get(current.parentId);
+    }
+  }
+
+  while (pendingIds.length > 0) {
+    const folderId = pendingIds.pop() as string;
+
+    for (const childId of childIdsByParentId.get(folderId) ?? []) {
+      visibleIds.add(childId);
+      pendingIds.push(childId);
+    }
+  }
+
+  return visibleIds;
+};
+
+// visibleIds is null outside a search, and every node is listed then.
 const flattenTree = (
   nodeById: ReadonlyMap<string, TFsNode>,
   expandedIds: readonly string[],
-  draft: TFsDraft | null
+  draft: TFsDraft | null,
+  visibleIds: ReadonlySet<string> | null = null
 ): readonly TFsRow[] => {
   const { childIdsByParentId, rootIds } = groupChildIds(nodeById.values());
   const expanded = new Set(expandedIds);
@@ -86,7 +127,7 @@ const flattenTree = (
   const walk = (ids: readonly string[], depth: number, parentId: string | null) => {
     for (const id of sortIds(ids, nodeById)) {
       const node = nodeById.get(id);
-      if (node === undefined) {
+      if (node === undefined || (visibleIds !== null && !visibleIds.has(id))) {
         continue;
       }
 
@@ -115,4 +156,4 @@ const flattenTree = (
 };
 
 export type { TFsDraftRow, TFsNodeRow, TFsRow };
-export { flattenTree };
+export { collectSearchVisibleIds, flattenTree };

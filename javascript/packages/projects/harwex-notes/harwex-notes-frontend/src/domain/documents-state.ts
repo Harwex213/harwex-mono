@@ -1,3 +1,6 @@
+import { isConflictError } from "../api/errors";
+import { loadExcalidrawViewport } from "./excalidraw-state";
+import { raiseConflict, takeOutsideChangeDuringSave } from "./outside-changes";
 import type { TDocument, TExcalidrawScene } from "@hw/harwex-notes-protocol";
 import type { TDocumentEntry, TDocumentSaveState, TStore } from "../store/store";
 import type { TApiClient } from "../api/api";
@@ -89,9 +92,23 @@ const saveDocument = async (store: TStore, api: TApiClient, nodeId: string) => {
   const snapshot = entry.document;
   setSaveState(store, nodeId, { state: "saving" });
 
+  let version: string;
+
   try {
-    await api.fs.updateDocument.mutate(snapshot);
+    ({ version } = await api.fs.updateDocument.mutate(snapshot));
   } catch (error) {
+    // The file was deleted on disk while the save was in flight. That state stays.
+    if (readReadyEntry(store, nodeId)?.save.state !== "saving") {
+      return;
+    }
+
+    // The file changed on disk since this document read it (CONF-1).
+    if (isConflictError(error)) {
+      raiseConflict(store, nodeId);
+
+      return;
+    }
+
     // A failed save keeps the content and stops saving on its own; the next edit tries
     // again (DOC-7, DOC-8).
     setSaveState(store, nodeId, { state: "failed", message: readErrorMessage(error) });
@@ -104,11 +121,24 @@ const saveDocument = async (store: TStore, api: TApiClient, nodeId: string) => {
     return;
   }
 
+  const isSnapshotCurrent = current.document === snapshot;
+  const document = { ...current.document, version };
+
+  // The file changed on disk while the save was in flight, and the change was not this
+  // save. The disk now holds someone else's content (CONF-1).
+  const outsideVersion = takeOutsideChangeDuringSave(store, nodeId);
+  if (outsideVersion !== undefined && outsideVersion !== version) {
+    setEntry(store, nodeId, { status: "ready", document, save: { state: "saving" } });
+    raiseConflict(store, nodeId);
+
+    return;
+  }
+
   // Edits that arrived while the save was in flight are still unsaved.
-  if (current.document === snapshot) {
-    setSaveState(store, nodeId, { state: "saved" });
+  if (isSnapshotCurrent) {
+    setEntry(store, nodeId, { status: "ready", document, save: { state: "saved" } });
   } else {
-    setSaveState(store, nodeId, { state: "unsaved" });
+    setEntry(store, nodeId, { status: "ready", document, save: { state: "unsaved" } });
     scheduleSave(store, api, nodeId);
   }
 };
@@ -139,8 +169,11 @@ const changeDocument = (store: TStore, api: TApiClient, nodeId: string, document
 
   // While a save is in flight the state stays "saving"; `saveDocument` notices the newer
   // document afterwards. There is no retry command, so the next edit after a failure is
-  // what asks to try again.
-  const save: TDocumentSaveState = entry.save.state === "saving" ? entry.save : { state: "unsaved" };
+  // what asks to try again. A conflict and a file deleted on disk keep automatic saving
+  // stopped until the user chooses (CONF-4, SYNC-5).
+  const isSaveHeld =
+    entry.save.state === "saving" || entry.save.state === "conflict" || entry.save.state === "deleted";
+  const save: TDocumentSaveState = isSaveHeld ? entry.save : { state: "unsaved" };
 
   setEntry(store, nodeId, { status: "ready", document, save });
 
@@ -158,7 +191,11 @@ const loadDocument = async (store: TStore, api: TApiClient, nodeId: string) => {
   setEntry(store, nodeId, { status: "loading" });
 
   try {
-    const document = await api.fs.document.query({ nodeId });
+    // A drawing opens where the user left it, so its viewport has to be known first (EX-8).
+    const [document] = await Promise.all([
+      api.fs.document.query({ nodeId }),
+      loadExcalidrawViewport(store, api, nodeId),
+    ]);
 
     setEntry(store, nodeId, { status: "ready", document, save: { state: "saved" } });
   } catch (error) {
@@ -173,6 +210,30 @@ const ensureDocument = (store: TStore, api: TApiClient, nodeId: string) => {
   }
 
   void loadDocument(store, api, nodeId);
+};
+
+// After a rename or a move inside the app. An image or a page is loaded by the browser from
+// a URL that holds its path, so the old URL is gone. A rename that changes the kind needs
+// the viewer of the new kind (VIEW-3). Both reload. A document that has unsaved changes
+// keeps them: reloading it would drop what the user typed.
+const reloadMovedDocuments = (store: TStore, api: TApiClient, nodeIds: Iterable<string>) => {
+  const entryById = store.documents.entryById.peek();
+  const nodeById = store.derived.nodeById.peek();
+
+  for (const nodeId of nodeIds) {
+    const entry = entryById[nodeId];
+    const node = nodeById.get(nodeId);
+    if (entry === undefined || entry.status !== "ready" || node === undefined) {
+      continue;
+    }
+
+    const isLoadedByPath = entry.document.kind === "image" || entry.document.kind === "html";
+    const isKindChanged = entry.document.kind !== node.kind;
+
+    if ((isLoadedByPath || isKindChanged) && entry.save.state === "saved") {
+      void loadDocument(store, api, nodeId);
+    }
+  }
 };
 
 const reloadDocumentAction = (store: TStore, api: TApiClient, nodeId: string) => {
@@ -211,6 +272,25 @@ const markdownDocumentChangedAction = (
   changeDocument(store, api, nodeId, { ...entry.document, text });
 };
 
+// A plain text file saves the same way as Markdown (TXT-3).
+const textDocumentChangedAction = (
+  store: TStore,
+  api: TApiClient,
+  nodeId: string,
+  text: string
+) => {
+  const entry = readReadyEntry(store, nodeId);
+  if (entry === null || entry.document.kind !== "text") {
+    return;
+  }
+
+  if (entry.document.text === text) {
+    return;
+  }
+
+  changeDocument(store, api, nodeId, { ...entry.document, text });
+};
+
 // Cmd+S: every unsaved document goes to disk now instead of waiting for its timer.
 const flushDocumentsAction = (store: TStore, api: TApiClient) => {
   const entryById = store.documents.entryById.peek();
@@ -227,9 +307,14 @@ const flushDocumentsAction = (store: TStore, api: TApiClient) => {
 export {
   cancelScheduledSave,
   ensureDocument,
+  loadDocument,
+  readReadyEntry,
+  setEntry,
   excalidrawDocumentChangedAction,
   flushDocument,
   flushDocumentsAction,
   markdownDocumentChangedAction,
   reloadDocumentAction,
+  textDocumentChangedAction,
+  reloadMovedDocuments,
 };

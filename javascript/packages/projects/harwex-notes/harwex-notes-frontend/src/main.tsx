@@ -22,6 +22,17 @@ const main = () => {
 
   void registry.loadTreeAction();
 
+  // Switching to another browser tab and closing the page both hide it first. Pending
+  // saves go out at that moment instead of after their debounce (DOC-3, APP-6).
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") {
+      registry.pageHiddenAction();
+    }
+  });
+  window.addEventListener("pagehide", () => {
+    registry.pageHiddenAction();
+  });
+
   root.render(
     <StoreProvider value={store}>
       <App registry={registry} />
