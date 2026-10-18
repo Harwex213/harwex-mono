@@ -1,15 +1,18 @@
 import { useEffect } from "react";
 import { useSignals } from "@preact/signals-react/runtime";
-import { Shell } from "./ui/Shell";
-import { ensureMapLoaded, loadError, loadPhase, loadProgress, loadStep } from "./state/map-store";
+import { MapPage } from "./ui/pages/map/MapPage";
 import {
   dismissStateWarning,
+  ensureMapLoaded,
+  initCountrySync,
   initWorldStore,
   installStateFlush,
+  loadError,
+  loadPhase,
+  loadProgress,
+  loadStep,
   stateWarning,
-} from "./state/world-store";
-import { initCountrySync } from "./state/country-store";
-import { initEconomySync } from "./state/economy-store";
+} from "./state/index";
 import styles from "./app.module.css";
 
 function statusLine(phase: string, step: string, progress: number, error: string | null): string {
@@ -36,12 +39,9 @@ function App() {
     // Registers the effect that pushes the province -> country assignment into
     // the T04 border worker, debounced.
     const stopCountrySync = initCountrySync();
-    // Drops the economy draft of a country that no longer exists.
-    const stopEconomySync = initEconomySync();
     // Never rejects; a failure lands in `loadError`.
     ensureMapLoaded();
     return () => {
-      stopEconomySync();
       stopCountrySync();
       uninstall();
     };
@@ -52,11 +52,11 @@ function App() {
 
   return (
     <div className={styles.app}>
-      {/* `App` stays lifecycle-shaped and renders one child. `Shell` owns the
+      {/* `App` stays lifecycle-shaped and renders one child. `MapPage` owns the
           layout, and the map inside it is mounted unconditionally, so the
           viewport is measured while the assets are still loading and the first
           painted frame is already fitted. */}
-      <Shell />
+      <MapPage />
 
       {warning === null ? null : (
         <div className={styles.warning} data-kind={warning.kind}>

@@ -3,10 +3,22 @@ import { fileURLToPath } from "node:url";
 import assert from "node:assert/strict";
 import test from "node:test";
 
-// The numbers in PLAN section 2 are load-bearing for every later task: T02 sizes
-// its lookup table by them, T03 clamps zoom against them, T04 walks the bitmap
-// with them. If someone regenerates the assets and a number moves, this file
-// fails before the map silently renders wrong.
+// Contract test for the map assets: provinces_map.png, map.png and
+// provinces_manifest.json.
+//
+// What it pins:
+// - Map size: 3653x2855. map.png is exactly 1 px narrower.
+// - Provinces: 1648, all of kind "land", each with a unique colour.
+// - Centroid: the centre of mass, not the centre of the bounding box.
+// - Pixel totals: the per-province counts sum to the painted total.
+//
+// Trap: province ids are not contiguous. The max id is 1650, but only 1648
+// provinces exist. Look provinces up by id, never as `provinces[id - 1]`.
+//
+// Why: the map code depends on these numbers. The colour lookup table is sized
+// by them, zoom is clamped against them, and hit-testing walks the bitmap with
+// them. If the assets are regenerated and a number changes, this test fails
+// first. Without it, the map would render wrong without any error.
 
 const packageRoot = fileURLToPath(new URL("../", import.meta.url));
 
