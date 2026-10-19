@@ -36,6 +36,7 @@ impl LspServer {
         // TypeScript numbers lines with U+2028 and U+2029 as terminators.
         config.line_breaks = LineBreaks::Unicode;
         config.min_initialize_timeout = MIN_INITIALIZE_TIMEOUT;
+        config.configuration = Some(Arc::new(configuration));
         config.capabilities = json!({
             "general": {"positionEncodings": ["utf-16"]},
             "textDocument": {
@@ -43,6 +44,7 @@ impl LspServer {
                 "definition": {"linkSupport": true},
                 "typeDefinition": {"linkSupport": true},
                 "references": {},
+                "rename": {"prepareSupport": false},
                 "documentHighlight": {},
                 "hover": {"contentFormat": ["markdown", "plaintext"]},
                 "diagnostic": {"dynamicRegistration": false, "tagSupport": {"valueSet": [1, 2]}},
@@ -101,6 +103,15 @@ impl LspServer {
         self.client.diagnostics(path, timeout).map_err(map_err)
     }
 
+    /// The text the server has for an open file.
+    pub(crate) fn open_text(&self, path: &Path) -> Option<Arc<str>> {
+        self.client.open_text(path)
+    }
+
+    pub(crate) fn rename(&self, path: &Path, line: usize, column: usize, new_name: &str, timeout: Duration) -> Result<Vec<FileEdit>, Error> {
+        self.client.rename(path, line, column, new_name, timeout).map_err(map_err)
+    }
+
     pub(crate) fn will_rename(&self, old: &Path, new: &Path, timeout: Duration) -> Result<Vec<FileEdit>, Error> {
         self.client.will_rename_files(&[(old.to_path_buf(), new.to_path_buf())], timeout).map_err(map_err)
     }
@@ -124,6 +135,16 @@ impl LspServer {
 
     pub(crate) fn kill(&self) {
         self.client.kill();
+    }
+}
+
+/// The answer to `workspace/configuration`. Rename Symbol renames every use, like tsserver
+/// with default preferences: without `useAliasesForRenames: false` the server keeps the old
+/// name at a re-export (`export { newName as oldName }`), and importers in other packages keep it.
+fn configuration(item: &serde_json::Value) -> serde_json::Value {
+    match item["section"].as_str() {
+        Some("typescript" | "javascript" | "js/ts") => json!({"preferences": {"useAliasesForRenames": false}}),
+        _ => serde_json::Value::Null,
     }
 }
 

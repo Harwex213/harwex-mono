@@ -8,12 +8,14 @@
 
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use egui::{Context, Frame, Key, LayerId, Pos2, RichText, ScrollArea};
 use ide_editor::Position;
 
-use crate::lang::{HoverInfo, Location};
+use crate::lang::{HoverInfo, LangId, LanguageServer, Loading, Location};
 use crate::state::AppState;
 use crate::tabs::TabId;
 use crate::theme;
@@ -233,30 +235,171 @@ pub fn usages(state: &mut AppState, path: PathBuf, pos: Position, word: String, 
     usages_with(state, lang, path, pos, word, into);
 }
 
-fn usages_with(state: &mut AppState, lang: crate::lang::LangId, path: PathBuf, pos: Position, word: String, into: Option<u64>) {
+fn usages_with(state: &mut AppState, lang: LangId, path: PathBuf, pos: Position, word: String, into: Option<u64>) {
     let origin = crate::find_window::UsageOrigin::Symbol { path: path.clone(), pos, word: word.clone() };
     let (tab, generation) = crate::find_window::start_usages(state, origin, into);
-    let jobs = state.jobs.clone();
-    state.ws.langs.bridge(lang).run(move |server| {
-        let _busy = jobs.busy(format!("{}: {word}", NavKind::Usages.label()));
-        let started = Instant::now();
-        let result = server.references(&path, pos.line, pos.column);
+    let progress: Progress = Arc::default();
+    let cancel = Arc::new(AtomicBool::new(false));
+    crate::find_window::track_search(state, tab, progress.clone(), cancel.clone());
+    let started = Instant::now();
+    let p = path.clone();
+    let ask: Ask<Vec<crate::lang::Reference>> = Box::new(move |server, candidates, loading| server.references_across(&p, pos.line, pos.column, candidates, loading));
+    let label = format!("{}: {word}", NavKind::Usages.label());
+    let done: AskDone<Vec<crate::lang::Reference>> = Box::new(move |state, result, stats| {
         let ms = started.elapsed().as_secs_f64() * 1000.0;
-        jobs.post(move |state| {
-            state.ws.nav.last_ms = Some(ms);
-            match &result {
-                Ok(r) => state.timings.log(format!("Find Usages `{word}`: {} reference(s) in {ms:.1} ms", r.len())),
-                Err(e) => state.timings.log(format!("Find Usages `{word}` failed after {ms:.1} ms: {e}")),
-            }
-            if state.test.is_some() {
-                crate::testhook::step_done(state);
-            }
-            if let Err(e) = &result {
+        state.ws.nav.last_ms = Some(ms);
+        match &result {
+            Ok(r) => state.timings.log(format!("Find Usages `{word}`: {} reference(s) in {ms:.1} ms ({stats})", r.len())),
+            Err(e) => state.timings.log(format!("Find Usages `{word}` failed after {ms:.1} ms ({stats}): {e}")),
+        }
+        if state.test.is_some() {
+            crate::testhook::step_done(state);
+        }
+        if let Err(e) = &result {
+            if !crate::progress::is_cancel_text(e) {
                 state.notifications.error("Find Usages failed", e.clone());
             }
-            crate::find_window::finish_usages(state, tab, generation, result);
-        });
+        }
+        crate::find_window::finish_usages(state, tab, generation, result);
     });
+    across_projects(state, Across { lang, path, pos, label, progress, cancel, ask, done });
+}
+
+/// A question about the symbol at `pos` that needs the projects of its users loaded.
+pub struct Across<T> {
+    pub lang: LangId,
+    pub path: PathBuf,
+    pub pos: Position,
+    /// The status bar label of the steps.
+    pub label: String,
+    pub progress: Progress,
+    pub cancel: Arc<AtomicBool>,
+    pub ask: Ask<T>,
+    pub done: AskDone<T>,
+}
+
+/// The text the UI shows while a search runs ("Loading 12 projects… 3/12").
+pub type Progress = Arc<Mutex<String>>;
+
+/// A question for the server, given the candidate files and the loading control.
+pub type Ask<T> = Box<dyn FnOnce(&dyn LanguageServer, &[PathBuf], &Loading) -> Result<T, String> + Send>;
+/// The answer on the UI thread, with what the search did before the question.
+pub type AskDone<T> = Box<dyn FnOnce(&mut AppState, Result<T, String>, AcrossStats) + Send>;
+
+/// What `across_projects` did before the question, for the timings log.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct AcrossStats {
+    /// Code files read by the pre-filter (0: no pre-filter).
+    pub scanned: usize,
+    pub candidates: usize,
+    /// Projects that were not loaded yet and were loaded for the question.
+    pub projects: usize,
+}
+
+impl std::fmt::Display for AcrossStats {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} candidate files of {} scanned, {} projects loaded", self.candidates, self.scanned, self.projects)
+    }
+}
+
+/// The error text of a search stopped by the user; `progress::is_cancel_text` knows it.
+pub fn cancel_text() -> String {
+    format!("Search {}", ide_lsp::CANCELLED)
+}
+
+fn set_progress(progress: &Progress, ctx: &Context, text: String) {
+    *progress.lock().unwrap_or_else(|e| e.into_inner()) = text;
+    ctx.request_repaint();
+}
+
+/// Asks `ask` with the projects of every file that may use the symbol loaded (Find Usages,
+/// Rename Symbol). A server answers only for the projects it has loaded, and in a monorepo the
+/// users of an exported symbol sit in packages nobody opened.
+///
+/// 1. On the language queue: `symbol_scope` (where the symbol is declared, whether it is
+///    exported). A local symbol, or a language without scopes, goes to `ask` right there.
+/// 2. On a worker: `ide_ts::symbol_candidates` over the file index, on at most
+///    `find::search_threads()` threads at low priority.
+/// 3. On the queue again: `ask` with the candidates. It loads their projects and reports
+///    `(loaded, total)` through `Loading`.
+///
+/// `cancel` (the Find tab's close and ⟳, the dialog's Cancel) and the status bar × of each step
+/// stop the search; `done` then gets `cancel_text()`.
+pub fn across_projects<T: Send + 'static>(state: &mut AppState, request: Across<T>) {
+    let Across { lang, path, pos, label, progress, cancel, ask, done } = request;
+    let jobs = state.jobs.clone();
+    let ctx = state.ctx.clone();
+    let root = state.ws.project.as_ref().map(|p| p.root.clone());
+    let index = state.ws.index.files.clone();
+    state.ws.langs.bridge(lang).run(move |server| {
+        let busy = jobs.busy(label.clone());
+        let job = crate::jobs::current_cancel();
+        let stats = AcrossStats::default();
+        if cancel.load(Ordering::Relaxed) || job.load(Ordering::Relaxed) {
+            jobs.post(move |state| done(state, Err(cancel_text()), stats));
+            return;
+        }
+        set_progress(&progress, &ctx, "Looking for the declaration...".into());
+        let scope = server.symbol_scope(&path, pos.line, pos.column).filter(|s| s.exported);
+        let (Some(scope), Some(root)) = (scope, root) else {
+            let result = ask_with(server, ask, &[], &progress, &ctx, &cancel, &job, &AtomicUsize::new(0));
+            jobs.post(move |state| done(state, result, stats));
+            return;
+        };
+        drop(busy);
+        let name = scope.name.clone();
+        let (p, c, x) = (progress.clone(), cancel.clone(), ctx.clone());
+        jobs.spawn(
+            format!("Scanning for usages of {name}"),
+            move || {
+                let files = crate::tree_menu::code_files(&root, &index);
+                set_progress(&p, &x, format!("Scanning {} files for {name}...", files.len()));
+                let job = crate::jobs::current_cancel();
+                let stopped = || c.load(Ordering::Relaxed) || job.load(Ordering::Relaxed);
+                let options = ide_ts::ScanOptions { threads: crate::find::search_threads(), prepare_thread: &crate::find::lower_priority, cancelled: &stopped };
+                let candidates = ide_ts::symbol_candidates(&files, &scope, &options);
+                (files.len(), candidates, stopped())
+            },
+            move |state, (scanned, candidates, stopped)| {
+                let mut stats = AcrossStats { scanned, candidates: candidates.len(), projects: 0 };
+                if stopped {
+                    done(state, Err(cancel_text()), stats);
+                    return;
+                }
+                let jobs = state.jobs.clone();
+                let ctx = state.ctx.clone();
+                state.ws.langs.bridge(lang).run(move |server| {
+                    let _busy = jobs.busy(label);
+                    let job = crate::jobs::current_cancel();
+                    let projects = AtomicUsize::new(0);
+                    let result = ask_with(server, ask, &candidates, &progress, &ctx, &cancel, &job, &projects);
+                    stats.projects = projects.load(Ordering::Relaxed);
+                    jobs.post(move |state| done(state, result, stats));
+                });
+            },
+        );
+    });
+}
+
+/// Runs `ask` with a `Loading` that watches both cancel flags and turns the project count into
+/// progress text.
+#[allow(clippy::too_many_arguments)]
+fn ask_with<T>(server: &dyn LanguageServer, ask: Ask<T>, candidates: &[PathBuf], progress: &Progress, ctx: &Context, cancel: &AtomicBool, job: &AtomicBool, projects: &AtomicUsize) -> Result<T, String> {
+    let cancelled = || cancel.load(Ordering::Relaxed) || job.load(Ordering::Relaxed);
+    let report = |loaded: usize, total: usize| {
+        projects.store(total, Ordering::Relaxed);
+        let text = if loaded < total { format!("Loading {total} projects... {loaded}/{total}") } else { "Asking the language server...".to_string() };
+        set_progress(progress, ctx, text);
+    };
+    if candidates.is_empty() {
+        set_progress(progress, ctx, "Asking the language server...".into());
+    }
+    let loading = Loading { cancelled: &cancelled, progress: &report };
+    let result = ask(server, candidates, &loading);
+    if cancelled() {
+        return Err(cancel_text());
+    }
+    result
 }
 
 enum NavResult {

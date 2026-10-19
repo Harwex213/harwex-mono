@@ -105,6 +105,8 @@ pub struct FindTab {
     /// Last frame's scroll offset and viewport height of the tree.
     view: (f32, f32),
     cancel: Option<Arc<AtomicBool>>,
+    /// What a running usages search does now ("Loading 12 projects... 3/12").
+    progress: Option<crate::nav::Progress>,
 }
 
 impl FindTab {
@@ -126,11 +128,27 @@ impl FindTab {
             reveal: false,
             view: (0.0, 0.0),
             cancel: None,
+            progress: None,
         }
     }
 
     pub fn is_usages(&self) -> bool {
         matches!(self.kind, TabKind::Usages(_))
+    }
+
+    /// The progress text of a running search, if it reports one.
+    pub fn progress_text(&self) -> Option<String> {
+        let p = self.progress.as_ref()?;
+        let text = p.lock().unwrap_or_else(|e| e.into_inner()).clone();
+        (!text.is_empty()).then_some(text)
+    }
+
+    /// Stops the running search (its cancel flag), if any.
+    fn stop_search(&mut self) {
+        if let Some(c) = self.cancel.take() {
+            c.store(true, Ordering::Relaxed);
+        }
+        self.progress = None;
     }
 
     /// Replaces the results and selects the first one, like IDEA.
@@ -396,12 +414,23 @@ pub fn start_usages(state: &mut AppState, origin: UsageOrigin, into: Option<u64>
         None => fw.push(usages_title(&origin), TabKind::Usages(origin)),
     };
     let tab = fw.tab_mut(id).expect("tab exists");
+    tab.stop_search();
     tab.generation += 1;
     tab.searching = true;
     tab.error = None;
     let generation = tab.generation;
     state.ws.layout.show(ToolWindow::Find);
     (id, generation)
+}
+
+/// Gives a usages tab the progress text and the cancel flag of its search: closing the tab, a
+/// rerun or a language server restart sets the flag.
+pub fn track_search(state: &mut AppState, tab: u64, progress: crate::nav::Progress, cancel: Arc<AtomicBool>) {
+    if let Some(t) = state.ws.find_window.tab_mut(tab) {
+        t.stop_search();
+        t.progress = Some(progress);
+        t.cancel = Some(cancel);
+    }
 }
 
 /// The answer of a usages search. A tab that was closed or rerun meanwhile drops it.
@@ -421,6 +450,8 @@ pub fn finish_usages(
         return;
     };
     t.searching = false;
+    t.cancel = None;
+    t.progress = None;
     match result {
         Ok(refs) => {
             let mut seen = HashSet::new();
@@ -449,6 +480,7 @@ pub fn finish_usages(
                 .collect();
             t.set_items(&root, items);
         }
+        Err(e) if crate::progress::is_cancel_text(&e) => t.error = Some("Search cancelled.".into()),
         Err(e) => t.error = Some(e),
     }
 }
@@ -457,6 +489,7 @@ pub fn finish_usages(
 pub fn cancel_searches(state: &mut AppState) {
     for t in &mut state.ws.find_window.tabs {
         if t.is_usages() && t.searching {
+            t.stop_search();
             t.searching = false;
             t.generation += 1;
         }
@@ -987,9 +1020,10 @@ fn tree(
 ) {
     let t = &T;
     if tab.searching && tab.items.is_empty() {
+        let text = tab.progress_text().unwrap_or_else(|| "Searching...".into());
         ui.horizontal(|ui| {
             ui.spinner();
-            ui.label(RichText::new("Searching...").color(t.text_dim));
+            ui.label(RichText::new(text).color(t.text_dim));
         });
         return;
     }

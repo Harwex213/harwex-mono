@@ -3,22 +3,9 @@ import { fileURLToPath } from "node:url";
 import assert from "node:assert/strict";
 import test from "node:test";
 
-// Contract test for the map assets: provinces_map.png, map.png and
-// provinces_manifest.json.
-//
-// What it pins:
-// - Map size: 3653x2855. map.png is exactly 1 px narrower.
-// - Provinces: 1648, all of kind "land", each with a unique colour.
-// - Centroid: the centre of mass, not the centre of the bounding box.
-// - Pixel totals: the per-province counts sum to the painted total.
-//
-// Trap: province ids are not contiguous. The max id is 1650, but only 1648
-// provinces exist. Look provinces up by id, never as `provinces[id - 1]`.
-//
-// Why: the map code depends on these numbers. The colour lookup table is sized
-// by them, zoom is clamped against them, and hit-testing walks the bitmap with
-// them. If the assets are regenerated and a number changes, this test fails
-// first. Without it, the map would render wrong without any error.
+// Pins the asset facts the map code depends on: sizes, province count,
+// unique colours, centroids and pixel totals. A regenerated asset that changes
+// a number fails here instead of rendering a wrong map silently.
 
 const packageRoot = fileURLToPath(new URL("../", import.meta.url));
 
@@ -48,9 +35,8 @@ type Manifest = {
 
 const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
 
-// Pure byte parsing — no canvas, no image decode. A PNG is an 8-byte signature
-// followed by chunks; the first chunk must be IHDR, whose payload starts with a
-// big-endian width and height.
+// Pure byte parsing: a PNG starts with an 8-byte signature and an IHDR chunk
+// whose payload begins with a big-endian width and height.
 function readPngSize(bytes: Uint8Array): { width: number; height: number } {
   for (let index = 0; index < PNG_SIGNATURE.length; index += 1) {
     if (bytes[index] !== PNG_SIGNATURE[index]) {
@@ -110,8 +96,7 @@ test("provinces_map.png is the authoritative 3653x2855 surface", () => {
 });
 
 test("map.png is one pixel narrower and otherwise the same size", () => {
-  // PLAN section 2: screen -> map pixel lookup is 1:1. The art layer is
-  // letterboxed/stretched by exactly 1 px of width, nothing more.
+  // The 1 px difference keeps screen-to-map lookup 1:1.
   const art = readPngSize(readAssetBytes("map.png"));
 
   assert.equal(art.height, MAP_HEIGHT);
@@ -145,8 +130,7 @@ test("the manifest holds 1648 provinces, all of kind land", () => {
 });
 
 test("province ids are unique but NOT contiguous — index by id, never by position", () => {
-  // The trap for T02: ids run to 1650 while only 1648 provinces exist, so two
-  // ids are missing. `provinces[id - 1]` returns the wrong province.
+  // Ids run to 1650 for 1648 provinces, so `provinces[id - 1]` is wrong.
   const manifest = readManifest();
   const ids = new Set(manifest.provinces.map((province) => {
     return province.id;
@@ -232,9 +216,8 @@ test("every centroid is an integer pixel inside its own bounds", () => {
 });
 
 test("the centroid is the centre of mass, not the centre of the bounding box", () => {
-  // PLAN section 2 states this explicitly. It is the fact most likely to be
-  // "simplified" away by a later agent that needs a label anchor. On the sample
-  // province the bbox centre is (595, 392.5) while the centroid is (598, 391).
+  // Labels rely on this. On the sample province the bbox centre is (595, 392.5)
+  // and the centroid is (598, 391).
   const manifest = readManifest();
   let differing = 0;
 
@@ -295,8 +278,7 @@ test("the declared coverage is the painted fraction of the map", () => {
 });
 
 test("all province names are the placeholder form, and all are distinct", () => {
-  // PLAN section 2: names are placeholders and there is no country data. A later
-  // agent must not read meaning into them.
+  // Names are placeholders and carry no meaning.
   const manifest = readManifest();
   const names = new Set<string>();
 

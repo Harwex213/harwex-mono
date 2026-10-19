@@ -34,6 +34,8 @@ Commit window:
 - [idea] Stage/Unstage (drop or menu) shows a success toast on every action, because it goes through `run_op`. IDEA is silent on success. Make stage/unstage success quiet; keep error toasts.
 
 Navigation and languages:
+- [idea] TS Find Usages across packages (task 121): a warm search on mono still costs ~7 s, almost all the text scan (cache candidates per symbol or use the trigram index idea); users that import through another package's re-export are missed; tsserver on mono not measured.
+- [idea] Failing tests from the Windows work: `ide-git cli::tests::arg_chunks_split_by_count_and_length`, `xtask windows::tests::default_locations_are_per_user` (seen in tasks 120, 121).
 - [idea] Highlighting (task 119): a trailing `# ...` on a Dockerfile `RUN` line makes the next instruction lose its keyword color (tree-sitter-containerfile bug); no shell injection after `RUN`; YAML over 32767 lines uses a line lexer (tree-sitter-yaml int16 rows), so block scalars may color keys and Find comment/string filters see plain code.
 - [idea] Find in Files: a case-insensitive non-ASCII query now goes to the regex path; its speed on mono is not measured. An all-ASCII query still misses Unicode folds like the Kelvin sign (found in task 103).
 - [idea] Problems has single selection only; IDEA copies several selected rows (found in task 103).

@@ -1,19 +1,13 @@
 import { useEffect } from "react";
 import { useSignals } from "@preact/signals-react/runtime";
-import { MapPage } from "./ui/pages/map/MapPage";
-import {
-  dismissStateWarning,
-  ensureMapLoaded,
-  initCountrySync,
-  initWorldStore,
-  installStateFlush,
-  loadError,
-  loadPhase,
-  loadProgress,
-  loadStep,
-  stateWarning,
-} from "./state/index";
+import { MapPage } from "./ui/pages/map/map-page";
+import { useStore } from "./store/index";
+import type { TAppRegistry } from "./actions/index";
 import styles from "./app.module.css";
+
+type TAppProps = {
+  registry: TAppRegistry;
+};
 
 function statusLine(phase: string, step: string, progress: number, error: string | null): string {
   if (phase === "loading") {
@@ -25,30 +19,44 @@ function statusLine(phase: string, step: string, progress: number, error: string
   return phase;
 }
 
-function App() {
-  // Reactivity is opt-in per component — without this call nothing below
-  // re-renders when the load progresses.
+function App({ registry }: TAppProps) {
+  // Without this call the component does not re-render on load progress.
   useSignals();
+  const store = useStore();
 
   useEffect(() => {
-    // First, and synchronously: a panel added by a later task must never read an
-    // un-hydrated store, and hydration cannot delay the map load because it does
-    // not await anything.
-    initWorldStore();
-    const uninstall = installStateFlush();
-    // Registers the effect that pushes the province -> country assignment into
-    // the T04 border worker, debounced.
-    const stopCountrySync = initCountrySync();
-    // Never rejects; a failure lands in `loadError`.
-    ensureMapLoaded();
-    return () => {
-      stopCountrySync();
-      uninstall();
-    };
-  }, []);
+    // First and synchronous, so no panel reads an un-hydrated store.
+    registry.hydrateWorld();
+    const stopCountrySync = registry.startCountryBorderSync();
+    // Never rejects; a failure lands in `map.error`.
+    void registry.loadMap();
 
-  const phase = loadPhase.value;
-  const warning = stateWarning.value;
+    // Also on `visibilitychange`: iOS Safari can kill a hidden tab without `pagehide`.
+    const onPageHide = (): void => {
+      try {
+        registry.flushWorld();
+      } catch {
+        // Never throw during unload.
+      }
+    };
+    const onVisibility = (): void => {
+      if (document.visibilityState !== "hidden") {
+        return;
+      }
+      onPageHide();
+    };
+    window.addEventListener("pagehide", onPageHide);
+    document.addEventListener("visibilitychange", onVisibility);
+
+    return () => {
+      window.removeEventListener("pagehide", onPageHide);
+      document.removeEventListener("visibilitychange", onVisibility);
+      stopCountrySync();
+    };
+  }, [registry]);
+
+  const phase = store.map.phase.value;
+  const warning = store.world.warning.value;
 
   return (
     <div className={styles.app}>
@@ -56,12 +64,16 @@ function App() {
           layout, and the map inside it is mounted unconditionally, so the
           viewport is measured while the assets are still loading and the first
           painted frame is already fitted. */}
-      <MapPage />
+      <MapPage registry={registry} />
 
       {warning === null ? null : (
         <div className={styles.warning} data-kind={warning.kind}>
           <span className={styles.warningText}>{warning.message}</span>
-          <button className={styles.warningDismiss} type="button" onClick={dismissStateWarning}>
+          <button
+            className={styles.warningDismiss}
+            type="button"
+            onClick={registry.dismissStateWarning}
+          >
             dismiss
           </button>
         </div>
@@ -69,7 +81,7 @@ function App() {
 
       {phase === "ready" ? null : (
         <p className={styles.status} data-phase={phase}>
-          {statusLine(phase, loadStep.value, loadProgress.value, loadError.value)}
+          {statusLine(phase, store.map.step.value, store.map.progress.value, store.map.error.value)}
         </p>
       )}
     </div>

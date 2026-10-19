@@ -12,7 +12,9 @@ Stack: rspack, TypeScript, React 19, `@preact/signals-react`. Rendering is Canva
 yarn dev          # dev server on an OS-picked port
 yarn build        # bundle to dist/
 yarn typecheck    # tsc --noEmit; prints nothing on success
-yarn test         # tsx --test over src/**/*.test.ts
+yarn test         # unit tests: tsx --test over src/**/*.test.ts
+yarn test:screenshots         # screenshot tests in e2e/, see below
+yarn test:screenshots:update  # rewrite the screenshot baselines
 ```
 
 Run those from this directory, or as `yarn workspace @hw/civitas-interactive-map <script>`
@@ -79,44 +81,112 @@ Facts a consumer can rely on, each pinned by a test in `src/assets.test.ts`:
 
 ## Architecture
 
-The app boots from `src/main.tsx`, which mounts `App` with `createRoot`. There is no
-`StrictMode`.
+```
+UI --subscribes to--> Store
+UI --calls--> Actions --change--> Store
+              Actions --call--> Datasource
+UI --creates--> Services --subscribe to--> Store
+                Services --call--> Actions
+```
 
-Reactivity is opt-in per component. A component that reads a signal calls
-`useSignals()` from `@preact/signals-react/runtime` at its top. The repo has no babel
-plugin, so a component that skips the call does not re-render.
-
-State lives in `localStorage` alone under the versioned key `civitas.state.v1`. There
-is no export or import UI and no server.
-
-### UI structure
-
-`src/ui/` has three layers. A layer imports only from the layers below it.
-
-| Layer | What goes there | Imports from |
+| Folder | What goes there | Imports from |
 |---|---|---|
-| `pages/` | A whole screen. Lays out widgets and owns screen-wide input such as the Escape key. `pages/map/` is the only page. | widgets, components, lib |
-| `widgets/` | One self-contained block of the screen: the map canvas, the country panel, the plaque. | components, lib |
-| `components/` | Reusable building blocks with no knowledge of a specific feature. Empty since the tabs were removed. | — |
+| `src/ui/` | React components. A component reads the store and calls actions. | services, store, domain, the `TAppRegistry` type |
+| `src/services/` | Long-lived objects that own a piece of the DOM outside React. A service gets the store and its registry slice from its creator. | store, domain, the `TAppRegistry` type |
+| `src/store/` | Signals and computeds only. No function changes state. No function does I/O. | domain, types from datasource |
+| `src/actions/` | Every state change. An action is a plain function `(store, ...args)` or `(store, sources, ...args)`. | store, datasource, domain |
+| `src/datasource/` | Everything outside the app: `fetch` of the map assets, `localStorage`, the border web worker, the timers. | domain |
+| `src/domain/` | Pure logic with no signals, no DOM and no I/O. | — |
+| `e2e/` | Screenshot tests and their own composition root. See [Screenshot tests](#screenshot-tests). | the `index.ts` of each layer |
 
-- `lib/` is for pure helpers that several widgets share. It has no React and no DOM.
-- `theme.css` is the global token sheet.
-- Each widget and component has its own folder. The folder holds the `.tsx`, its
-  `*.module.css`, its pure logic module and the tests of that module.
-- A widget does not import another widget. Code that two widgets need moves down
-  to `components/` or `lib/`.
-- `src/state/` imports `tint-layer.ts` and `border-layer.ts` from
-  `widgets/map-canvas/`. Those two files are pure data builders, not React code.
+- `src/main.tsx` is the composition root. It calls `createStore()`, `createDatasources()`
+  and `createRegistry(store, sources)`. It wraps `App` in `StoreProvider` and passes
+  `registry` as a prop. There is no `StrictMode`.
+- Every folder in the table except `src/ui/` and `e2e/` has an `index.ts`. Code
+  outside a folder imports from that folder's `index.ts` only. Files inside a folder
+  import each other by path and never import their own `index.ts`, so no import cycle
+  can form. A test may import its own module directly.
+- `src/actions/registry.ts` lists every action. A new action goes into `storeActions`
+  or `sourceActions` there. Its type is derived from the function.
+- Read-only lookups that need the store (`provinceAt`, `provinceDisplayName`,
+  `mapPixelAt`, ...) live in `src/store/selectors.ts`.
+- State lives in `localStorage` alone under the versioned key `civitas.state.v1`.
+  There is no export or import UI and no server.
 
-### Conventions
+### UI
+
+- A component reads the store with `useStore()`. It calls `useSignals()` from
+  `@preact/signals-react/runtime` at its top. The repo has no babel plugin, so a
+  component that skips the call does not re-render.
+- A component gets actions through a `registry` prop. It declares the actions it uses
+  as `Pick<TAppRegistry, ...>`. Its parent passes the registry down.
+- `src/ui/pages/` holds whole screens. A page lays out widgets and owns screen-wide
+  input such as the Escape key. `pages/map/` is the only page.
+- `src/ui/widgets/` holds self-contained blocks of the screen: the map canvas, the
+  country panel and the plaque. Each widget has its own folder with its `.tsx`, its
+  `*.module.css` and its small sub-components.
+- A page imports widgets. A widget does not import another widget or a page. Code
+  that two widgets need goes into a new `src/ui/components/` folder or into
+  `src/domain/`.
+- `src/ui/theme.css` is the global token sheet.
+
+### MapCanvasService
+
+`src/services/map-canvas/` holds the whole map canvas. React does not draw the map and
+does not handle its input. The widget `ui/widgets/map-canvas/map-canvas.tsx` renders
+the host `div`, two canvases and the debug HUD. The widget's one `useEffect` creates
+the service, calls `attach(host, { scene, overlay })` and calls `dispose()` on cleanup.
+
+| File | Role |
+|---|---|
+| `map-canvas-service.ts` | The lifecycle. Owns the input listeners, the ResizeObserver, the dpr media query, the signal effects, the requestAnimationFrame scheduling and the host's `data-mode` / `data-painting` / `data-panning`. `dispose` also disposes the border worker and the tint canvas. |
+| `map-canvas-registry.ts` | `TMapCanvasServiceRegistry`, the registry slice the service calls. |
+| `interaction-machine.ts` | Pure. The input state machine. States: `idle`, `panning` (`pending` or `dragging`), `strokeRequested`, `painting`. `transition(state, event)` returns the next state and a list of commands. |
+| `input-handler.ts` | Turns each DOM event into a machine event and runs the commands through the registry. It makes no decision of its own. |
+| `renderer/frame.ts` | One frame: prepare the canvases, the scene pass, the overlay pass. Reads the store fresh on each frame. |
+| `renderer/passes.ts` | The scene pass (art) and the overlay pass (tint, highlights, borders, hairline, labels). |
+| `renderer/layers/` | One module per layer: `art-layer`, `tint-layer`, `highlight-layer`, `border-layer`, `label-layer`. |
+
+A new gesture rule goes into `interaction-machine.ts` with a test. A new layer goes
+into `renderer/layers/` and gets its slot in `drawOverlay`.
+
+## Conventions
 
 - `javascript/CLAUDE.md` governs code style. Statements end with `;`, `if` and loops
   always use braces, strings use double quotes, each file has one grouped named
   export at its end, and CSS has one declaration per line.
+- Every file and folder under `src/` and `e2e/` is named in kebab-case:
+  `map-canvas.tsx`, `country-panel.module.css`, `borders-worker.ts`. Playwright names
+  `e2e/map.spec.ts-snapshots/` itself.
+- CSS modules sit beside their component as `*.module.css`.
 - Dependency versions are exact. No `^`, no `~`. They match `../civitas-map`.
 - `tsconfig.json` is standalone and does not extend `@hw/typescript-config`. It sets
   `strict`, `noUnusedLocals` and `noUnusedParameters`. There are no path aliases.
-- CSS modules sit beside their component as `*.module.css`.
-- Tests use Node's built-in runner through `tsx` and sit beside the file they test.
-  They cover pure logic only. There is no jsdom, so DOM and canvas go untested.
+- Unit tests use Node's built-in runner through `tsx` and sit beside the file they
+  test. They cover pure logic only. There is no jsdom, so unit tests do not touch the
+  DOM or the canvas. The screenshot tests cover the DOM and the canvas.
+- A test builds its own app with `createTestApp()` from `src/test-support.ts`. The app
+  has a fresh store, a memory storage, fake timers and a fake border worker.
 
+## Screenshot tests
+
+`e2e/` holds black-box screenshot tests on `@playwright/test`. The tests drive the app
+with the mouse and the keyboard only. So the tests survive refactors of the code
+behind the map. `yarn test:screenshots` builds `e2e/dist/app` and compares it against
+the baselines. `yarn test:screenshots:update` rewrites the baselines after a deliberate
+visual change.
+
+- `e2e/main.tsx` is a second composition root. It mirrors `src/main.tsx` but hands
+  `createDatasources` a memory storage. The storage holds the world from
+  `e2e/fixture.ts` (Aurelia, Borealis, Calderra). With `?world=empty` the storage is
+  empty. The map assets and the border worker stay real.
+- `e2e/main.tsx` sets `window.__civitasE2E.ready()`. The tests wait on this call
+  instead of a timeout.
+- `e2e/rspack.config.mjs` extends the app config and writes to `e2e/dist/app`. So
+  `yarn build` and `yarn dev` stay untouched.
+- Playwright serves the bundle with `python3 -m http.server` on port 47613 and stops
+  the server itself.
+- The viewport is 1400 x 900 at device scale 1. The debug HUD is masked.
+- The baselines live in `e2e/map.spec.ts-snapshots/` and are committed. The local
+  Chromium on macOS rendered them. Another OS renders fonts differently and needs its
+  own baselines.

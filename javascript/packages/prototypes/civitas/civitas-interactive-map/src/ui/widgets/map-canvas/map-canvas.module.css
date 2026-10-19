@@ -1,7 +1,4 @@
-/* EXPLICIT, not inherited. T08's `theme.css` re-points `--bg-sunken` at
-   parchment-dim, because `index.css` styles `input[type="text"]` with it and the
-   sea colour there would put ink text on a near-black field. The sea belongs to
-   this element and nothing else. */
+/* An explicit sea colour: `--bg-sunken` is parchment for text inputs, so the host cannot inherit it. */
 .host {
   background: var(--civ-sea);
   contain: strict;
@@ -33,9 +30,7 @@
   position: absolute;
 }
 
-/* Bottom-LEFT, so it never sits under the shell's centred button bar. It is
-   instrumentation over the sea, so it stays on the dark register rather than
-   taking the parchment surface the panels use. */
+/* Bottom-left, clear of the centred button bar. Dark, because it is a debug readout over the sea. */
 .hud {
   background: var(--civ-scrim);
   border: 1px solid var(--civ-rule-strong);
@@ -48,8 +43,7 @@
   font-size: var(--civ-text-xs);
   gap: var(--civ-space-4);
   left: var(--civ-space-4);
-  /* Stops short of the shell's centred button bar, which is about 340 px wide,
-     and wraps instead of sliding underneath it. */
+  /* Wraps before the centred button bar (about 340 px wide). */
   max-width: calc(50% - 190px);
   padding: var(--civ-space-2) var(--civ-space-3);
   pointer-events: none;

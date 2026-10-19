@@ -30,6 +30,7 @@ use std::time::{Duration, Instant};
 
 pub use config::IdeConfig;
 pub use ide_lsp::{FileEdit, Location, Reference, TextEdit};
+pub use ide_ts::{Loading, SymbolScope};
 
 use crate::jobs::Jobs;
 use crate::nav::NavKind;
@@ -180,6 +181,20 @@ pub trait LanguageServer: Send + Sync + 'static {
     /// carries the reason a server refuses (or that the language has no rename).
     fn rename_symbol(&self, _path: &Path, _line: usize, _column: usize, _new_name: &str) -> Result<Vec<FileEdit>, String> {
         Err("Rename Symbol is not supported for this language yet.".into())
+    }
+    /// Where the symbol at a position is declared and whether other modules see it, for the
+    /// text pre-filter of Find Usages and Rename Symbol (`nav::across_projects`). `None` for a
+    /// server that loads the whole workspace anyway.
+    fn symbol_scope(&self, _path: &Path, _line: usize, _column: usize) -> Option<SymbolScope> {
+        None
+    }
+    /// `references` after loading the projects of `candidates` (files that may use the symbol).
+    fn references_across(&self, path: &Path, line: usize, column: usize, _candidates: &[PathBuf], _loading: &Loading) -> Result<Vec<Reference>, String> {
+        self.references(path, line, column)
+    }
+    /// `rename_symbol` after loading the projects of `candidates`.
+    fn rename_symbol_across(&self, path: &Path, line: usize, column: usize, new_name: &str, _candidates: &[PathBuf], _loading: &Loading) -> Result<Vec<FileEdit>, String> {
+        self.rename_symbol(path, line, column, new_name)
     }
     /// After a move on disk: forget files under `old`, tell the server about the new names.
     fn files_renamed(&self, _old: &Path, _new: &Path) {}

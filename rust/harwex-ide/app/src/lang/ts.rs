@@ -9,7 +9,7 @@ use std::time::{Duration, Instant};
 
 use ide_ts::TsService;
 
-use super::{lock, HoverInfo, LanguageServer, Location, Reference, RenameEdits};
+use super::{lock, FileEdit, HoverInfo, LanguageServer, Loading, Location, Reference, RenameEdits, SymbolScope};
 use crate::nav::NavKind;
 
 pub struct TsServer {
@@ -74,6 +74,25 @@ impl LanguageServer for TsServer {
     fn references(&self, path: &Path, line: usize, column: usize) -> Result<Vec<Reference>, String> {
         self.touch();
         self.service.references(path, line, column).map_err(|e| e.to_string())
+    }
+
+    fn symbol_scope(&self, path: &Path, line: usize, column: usize) -> Option<SymbolScope> {
+        self.touch();
+        self.service.symbol_scope(path, line, column).ok().flatten()
+    }
+
+    fn references_across(&self, path: &Path, line: usize, column: usize, candidates: &[PathBuf], loading: &Loading) -> Result<Vec<Reference>, String> {
+        self.touch();
+        self.service.references_across(path, line, column, candidates, loading).map_err(|e| e.to_string())
+    }
+
+    fn rename_symbol(&self, path: &Path, line: usize, column: usize, new_name: &str) -> Result<Vec<FileEdit>, String> {
+        self.rename_symbol_across(path, line, column, new_name, &[], &Loading::none())
+    }
+
+    fn rename_symbol_across(&self, path: &Path, line: usize, column: usize, new_name: &str, candidates: &[PathBuf], loading: &Loading) -> Result<Vec<FileEdit>, String> {
+        self.touch();
+        self.service.rename_symbol(path, line, column, new_name, candidates, loading).map_err(|e| e.to_string())
     }
 
     fn hover(&self, path: &Path, line: usize, column: usize) -> Result<Option<HoverInfo>, String> {

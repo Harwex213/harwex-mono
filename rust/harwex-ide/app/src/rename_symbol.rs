@@ -2,9 +2,15 @@
 //! and a dialog shows them before anything changes. Open documents get one undo step each and
 //! are saved; closed files are edited on disk on workers. Languages whose server has no rename
 //! answer with a reason (`LanguageServer::rename_symbol`).
+//!
+//! The edits come through `nav::across_projects`, like Find Usages: for an exported TypeScript
+//! symbol the projects of every package that may use it are loaded first, so the rename edits
+//! every package. The dialog shows the progress; Cancel and Back stop the search.
 
 use std::collections::HashSet;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 
 use egui::{Context, Key, Modal, RichText, ScrollArea, TextEdit};
 use ide_editor::Position;
@@ -18,7 +24,7 @@ use crate::watcher::FsBatch;
 
 pub enum Phase {
     Edit,
-    Computing { generation: u64 },
+    Computing { generation: u64, progress: crate::nav::Progress },
     Preview { edits: Vec<FileEdit> },
 }
 
@@ -33,9 +39,17 @@ pub struct RenameSymbol {
     pub phase: Phase,
     focus: bool,
     generation: u64,
+    /// The cancel flag of the running computation.
+    cancel: Option<Arc<AtomicBool>>,
 }
 
 impl RenameSymbol {
+    fn stop(&mut self) {
+        if let Some(c) = self.cancel.take() {
+            c.store(true, Ordering::Relaxed);
+        }
+    }
+
     /// Every edit of the preview.
     pub fn edit_count(&self) -> usize {
         match &self.phase {
@@ -68,7 +82,7 @@ pub fn start(state: &mut AppState, tab: TabId, pos: Position) {
     let old = e.doc.slice(e.doc.position_to_char(word.start)..e.doc.position_to_char(word.end));
     let path = e.path.clone();
     let generation = state.ws.nav.rename.as_ref().map_or(0, |r| r.generation) + 1;
-    state.ws.nav.rename = Some(RenameSymbol { path, pos: word.start, lang, name: old.clone(), old, error: None, phase: Phase::Edit, focus: true, generation });
+    state.ws.nav.rename = Some(RenameSymbol { path, pos: word.start, lang, name: old.clone(), old, error: None, phase: Phase::Edit, focus: true, generation, cancel: None });
 }
 
 #[derive(Clone, Copy)]
@@ -112,11 +126,15 @@ pub fn show(state: &mut AppState, ctx: &Context) {
                     action = Some(Action::Next);
                 }
             }
-            Phase::Computing { .. } => {
+            Phase::Computing { progress, .. } => {
+                let step = progress.lock().unwrap_or_else(|e| e.into_inner()).clone();
                 ui.horizontal(|ui| {
                     ui.spinner();
                     ui.label(RichText::new(format!("Looking for references to `{}`…", r.old)).color(t.text_dim));
                 });
+                if !step.is_empty() {
+                    ui.label(RichText::new(step).color(t.text_dim).size(t.font.small));
+                }
                 buttons(ui, &mut action, &[("Cancel", Action::Back)]);
             }
             Phase::Preview { edits } => {
@@ -143,6 +161,7 @@ pub fn show(state: &mut AppState, ctx: &Context) {
         Action::Close => close(state),
         Action::Back => {
             if let Some(r) = &mut state.ws.nav.rename {
+                r.stop();
                 r.generation += 1;
                 r.phase = Phase::Edit;
                 r.focus = true;
@@ -160,7 +179,8 @@ pub fn show(state: &mut AppState, ctx: &Context) {
 }
 
 fn close(state: &mut AppState) {
-    if let Some(r) = state.ws.nav.rename.take() {
+    if let Some(mut r) = state.ws.nav.rename.take() {
+        r.stop();
         refocus(state, &r.path);
     }
 }
@@ -187,38 +207,46 @@ fn compute(state: &mut AppState) {
     }
     r.generation += 1;
     let generation = r.generation;
-    r.phase = Phase::Computing { generation };
+    let progress: crate::nav::Progress = Arc::default();
+    let cancel = Arc::new(AtomicBool::new(false));
+    r.stop();
+    r.cancel = Some(cancel.clone());
+    r.phase = Phase::Computing { generation, progress: progress.clone() };
     let (path, pos, lang) = (r.path.clone(), r.pos, r.lang);
+    let label = format!("Rename Symbol: {}", r.old);
     if let Some(id) = state.ws.tabs.editor_by_path(&path) {
         crate::nav::flush_lsp(state, id);
     }
-    let jobs = state.jobs.clone();
-    state.ws.langs.bridge(lang).run(move |server| {
-        let _busy = jobs.busy(format!("Rename Symbol: {name}"));
-        let result = server.rename_symbol(&path, pos.line, pos.column, &name);
-        jobs.post(move |state| {
-            let Some(r) = &mut state.ws.nav.rename else { return };
-            if r.generation != generation {
-                return;
+    let (p, new_name) = (path.clone(), name.clone());
+    let ask: crate::nav::Ask<Vec<FileEdit>> = Box::new(move |server, candidates, loading| server.rename_symbol_across(&p, pos.line, pos.column, &new_name, candidates, loading));
+    let done: crate::nav::AskDone<Vec<FileEdit>> = Box::new(move |state, result, stats| {
+        state.timings.log(format!("Rename Symbol to `{name}`: {} ({stats})", match &result {
+            Ok(edits) => format!("{} files", edits.len()),
+            Err(e) => format!("failed: {e}"),
+        }));
+        let Some(r) = &mut state.ws.nav.rename else { return };
+        if r.generation != generation {
+            return;
+        }
+        r.cancel = None;
+        match result {
+            Ok(edits) if edits.iter().all(|f| f.edits.is_empty()) => {
+                r.phase = Phase::Edit;
+                r.error = Some("The server found nothing to rename here.".into());
             }
-            match result {
-                Ok(edits) if edits.iter().all(|f| f.edits.is_empty()) => {
-                    r.phase = Phase::Edit;
-                    r.error = Some("The server found nothing to rename here.".into());
-                }
-                Ok(mut edits) => {
-                    edits.retain(|f| !f.edits.is_empty());
-                    edits.sort_by(|a, b| a.path.cmp(&b.path));
-                    r.phase = Phase::Preview { edits };
-                }
-                Err(e) => {
-                    r.phase = Phase::Edit;
-                    r.focus = true;
-                    r.error = Some(e);
-                }
+            Ok(mut edits) => {
+                edits.retain(|f| !f.edits.is_empty());
+                edits.sort_by(|a, b| a.path.cmp(&b.path));
+                r.phase = Phase::Preview { edits };
             }
-        });
+            Err(e) => {
+                r.phase = Phase::Edit;
+                r.focus = true;
+                r.error = Some(if crate::progress::is_cancel_text(&e) { "Cancelled.".into() } else { e });
+            }
+        }
     });
+    crate::nav::across_projects(state, crate::nav::Across { lang, path, pos, label, progress, cancel, ask, done });
 }
 
 /// Applies the edits: open documents through the edit API (one undo step each, then saved),

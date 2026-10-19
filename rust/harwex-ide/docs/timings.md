@@ -76,6 +76,8 @@ TypeScript on the generated workspace (`cargo test -p ide-ts --test ts workspace
 
 File rename on the generated monorepo (`cargo test -p ide-ts --test ts rename_budget:: -- --nocapture`, debug, 1002 files in 201 projects, 30 importers): pre-filter 13 ms over 1002 code files (31 candidates), whole preview 59 ms native / 0.9 s tsserver, 31 projects loaded, 31 files changed. In the app (`project_menu`, tsserver, 60 projects): preview about 1 s, worst UI frame under 1 ms when the test runs alone.
 
+Find Usages across packages on `mono` (read-only, worktree, task 121, debug build, `nice -n 19`, `GOMAXPROCS=4`, 4 scan threads, `tests/ts/mono_usages.rs`): `rootOrm` from `live-casino-ui-core/src/Common/index.ts:882` on TS 7.0.2 native. Cold: `symbol_scope` 0.5 s, pre-filter over 509,507 listed files (222,209 code files) 6.6 s to 212 candidates, 50 projects loaded in 33 s, references 0.2 s after that; 40.4 s in all, 183 usages in 85 files (all 85 real users: 32 in ui-core, 53 importers by package name; none missed, none extra). Warm: 7.2 s, of it the pre-filter 6.9 s and references 0.23 s, 0 projects loaded. Before task 121 Find Usages found only the 32 ui-core files.
+
 10k problem underlines on the same file (every 20 lines, all four severities): steady frame 0.14 ms, jump-scroll frame 0.45 ms.
 
 C++ benchmark (`bench_200k_lines_cpp`, 200k lines, 4.1 MB, an Unreal class every 20 lines): first open 36 ms (about 30 ms of it compiles the C++ highlight query, once per process; the app opens files on a worker), open 6 ms, full parse 0.7-1.1 s and reparse after edits 1.3 s (both on a worker), keystroke 0.07 ms avg (max 0.27 ms), steady frame 0.02 ms, jump-scroll frame 0.29 ms avg (max 0.40 ms), typing frame 0.29-0.34 ms avg (max 3.2 ms).

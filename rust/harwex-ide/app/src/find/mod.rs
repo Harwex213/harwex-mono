@@ -728,7 +728,7 @@ thread_local! {
 
 /// Puts a search thread below the UI and the user's other programs: QoS utility on macOS, nice
 /// 10 on Linux. Called on threads the search spawns, once per thread.
-fn lower_priority() {
+pub(crate) fn lower_priority() {
     if LOWERED_PRIORITY.replace(true) {
         return;
     }

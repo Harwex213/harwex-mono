@@ -2803,6 +2803,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@hw/civitas-interactive-map@workspace:packages/prototypes/civitas/civitas-interactive-map"
   dependencies:
+    "@playwright/test": "npm:1.61.1"
     "@preact/signals-react": "npm:3.9.0"
     "@rspack/cli": "npm:2.1.4"
     "@rspack/core": "npm:2.1.4"
@@ -4772,6 +4773,17 @@ __metadata:
   version: 0.11.0
   resolution: "@pkgjs/parseargs@npm:0.11.0"
   checksum: 10/115e8ceeec6bc69dff2048b35c0ab4f8bbee12d8bb6c1f4af758604586d802b6e669dcb02dda61d078de42c2b4ddce41b3d9e726d7daa6b4b850f4adbf7333ff
+  languageName: node
+  linkType: hard
+
+"@playwright/test@npm:1.61.1":
+  version: 1.61.1
+  resolution: "@playwright/test@npm:1.61.1"
+  dependencies:
+    playwright: "npm:1.61.1"
+  bin:
+    playwright: cli.js
+  checksum: 10/08915357031e1bc273a19bb428fb7e51031ca44f25750832e389bcd69c399f6a243f5f832e7832d46153b57b1305f1f5f5dd63f3a3261f928f61e464c6b3c64e
   languageName: node
   linkType: hard
 
@@ -16043,7 +16055,7 @@ __metadata:
     typescript: "npm:5.9.3"
     zod: "npm:4.5.4"
   bin:
-    remote-imagegen-mcp: ./dist/main.js
+    remote-imagegen-mcp: dist/main.js
   languageName: unknown
   linkType: soft
 

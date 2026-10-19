@@ -192,3 +192,111 @@ fn hover_shows_quick_info() {
     assert!(!ide.shows_text("(alias) greet(name: string): string"));
     ide.release_modifiers();
 }
+
+/// A workspace of four TypeScript projects (task 121). Package `@ws/a` declares `rootStore` in
+/// `src/common/services/store.ts` and re-exports it from `src/common/index.ts` (its `./common`
+/// export) and `src/index.ts` (its entry). B imports it from `@ws/a/common`, C from `@ws/a`; D
+/// has its own `rootStore`. No tsconfig has project references, so only the pre-filter makes
+/// the server load B and C.
+fn packages_project(dir: std::path::PathBuf) -> Repo {
+    let r = Repo::init(dir);
+    let tsconfig = "{\"compilerOptions\":{\"strict\":true,\"module\":\"esnext\",\"target\":\"es2020\",\"moduleResolution\":\"bundler\"},\"include\":[\"src\"]}\n";
+    r.write(".gitignore", "node_modules/\n");
+    r.write("package.json", "{ \"name\": \"usages-ws\", \"private\": true, \"workspaces\": [\"packages/*\"] }\n");
+    r.write("packages/a/package.json", "{\"name\":\"@ws/a\",\"version\":\"1.0.0\",\"exports\":{\".\":\"./src/index.ts\",\"./common\":\"./src/common/index.ts\"}}\n");
+    r.write("packages/a/src/common/services/store.ts", "export const rootStore = { size: 1 };\n\nexport function sizeOf(): number {\n  return rootStore.size;\n}\n");
+    r.write("packages/a/src/common/index.ts", "export { rootStore, sizeOf } from \"./services/store\";\n");
+    r.write("packages/a/src/index.ts", "export * from \"./common\";\n");
+    r.write("packages/b/src/use.ts", "import { rootStore } from \"@ws/a/common\";\n\nexport const b = rootStore.size + 1;\n");
+    r.write("packages/c/src/use.ts", "import { rootStore, sizeOf } from \"@ws/a\";\n\nexport const c = rootStore.size + sizeOf();\nconsole.log(rootStore);\n");
+    r.write("packages/d/src/local.ts", "export const rootStore = { size: 2 };\n");
+    r.write("packages/d/src/use.ts", "import { rootStore } from \"./local\";\n\nexport const d = rootStore.size;\n");
+    std::fs::create_dir_all(r.dir.join("node_modules/@ws")).expect("scope dir");
+    for p in ["a", "b", "c", "d"] {
+        r.write(&format!("packages/{p}/tsconfig.json"), tsconfig);
+        if p != "a" {
+            r.write(&format!("packages/{p}/package.json"), &format!("{{\"name\":\"@ws/{p}\",\"version\":\"1.0.0\"}}\n"));
+        }
+        symlink_dir(format!("../../packages/{p}"), r.dir.join(format!("node_modules/@ws/{p}"))).expect("workspace link");
+    }
+    symlink_dir(typescript().expect("TypeScript 5"), r.dir.join("node_modules/typescript")).expect("typescript link");
+    r.commit_all("TS workspace");
+    r
+}
+
+fn open_store(name: &str) -> Option<(Fixture, Ide)> {
+    if skip_without_tsserver(name) {
+        return None;
+    }
+    let fx = Fixture::new(SUITE, name);
+    let repo = packages_project(fx.path("repo"));
+    let mut ide = Ide::open(SUITE, &repo.dir);
+    ide.open_file("packages/a/src/common/services/store.ts");
+    Some((fx, ide))
+}
+
+#[test]
+fn find_usages_across_packages() {
+    let Some((_fx, mut ide)) = open_store("usages_packages") else { return };
+    // `rootStore` in `export const rootStore = ...`.
+    let p = ide.char_pos(0, 15);
+    ide.right_click_at(p);
+    ide.settle();
+    ide.click("Find Usages");
+    let done = |s: &harwex_ide::AppState| s.ws.find_window.active_tab().is_some_and(|t| !t.searching && !t.items.is_empty());
+    ide.wait_for("usages", done);
+    ide.settle();
+    let tab = ide.state().ws.find_window.active_tab().expect("usages tab");
+    assert_eq!(tab.title, "rootStore in Project Files");
+    let root = ide.root();
+    let mut files: Vec<String> = tab.items.iter().map(|i| i.path.strip_prefix(&root).unwrap_or(&i.path).to_string_lossy().replace('\\', "/")).collect();
+    files.sort();
+    files.dedup();
+    assert_eq!(files, ["packages/a/src/common/index.ts", "packages/a/src/common/services/store.ts", "packages/b/src/use.ts", "packages/c/src/use.ts"], "D's own rootStore is not a usage");
+    assert_eq!(tab.items.iter().filter(|i| i.path.ends_with("packages/c/src/use.ts")).count(), 3);
+    assert!(tab.error.is_none());
+
+    // ⟳: the projects stay loaded, the answer is the same.
+    ide.click("Rerun");
+    ide.wait_for("rerun", done);
+    assert_eq!(ide.state().ws.find_window.active_tab().map(|t| t.items.len()), Some(8));
+}
+
+#[test]
+fn find_usages_cancel_closes_quietly() {
+    let Some((_fx, mut ide)) = open_store("usages_cancel") else { return };
+    let p = ide.caret_pos(0, 15);
+    ide.click_at(p);
+    // Find Usages, then the tab closes at once: the search stops and its answer is dropped.
+    let path = ide.state().ws.tabs.active_editor().expect("editor").path.clone();
+    harwex_ide::nav::usages(ide.state_mut(), path, ide_editor::Position::new(0, 15), "rootStore".into(), None);
+    assert_eq!(ide.state().ws.find_window.tabs.len(), 1);
+    harwex_ide::find_window::close_tab(ide.state_mut(), 0);
+    ide.wait_for("languages idle", |s| s.ws.langs.queued() == 0 && s.jobs.running().is_empty());
+    ide.settle();
+    assert!(ide.state().ws.find_window.tabs.is_empty());
+    assert!(!ide.shows_text("Find Usages failed"), "a cancel is no error");
+}
+
+#[test]
+fn rename_symbol_across_packages() {
+    let Some((fx, mut ide)) = open_store("rename_packages") else { return };
+    let p = ide.caret_pos(0, 15);
+    ide.click_at(p);
+    ide.key_mods(egui::Modifiers::SHIFT, Key::F6);
+    ide.settle();
+    ide.type_text("mainStore");
+    ide.key(Key::Enter);
+    ide.wait_until("rename preview", |ide| ide.shows_text("Rename `rootStore` to `mainStore`: 8 occurrences in 4 files"));
+    ide.snapshot("rename_packages_preview");
+    ide.key(Key::Enter);
+    let c = fx.path("repo/packages/c/src/use.ts");
+    ide.wait_until("C renamed", move |_| std::fs::read_to_string(&c).is_ok_and(|t| t.contains("mainStore")));
+    ide.settle();
+    let read = |rel: &str| std::fs::read_to_string(fx.path(&format!("repo/{rel}"))).expect(rel);
+    assert_eq!(read("packages/b/src/use.ts"), "import { mainStore } from \"@ws/a/common\";\n\nexport const b = mainStore.size + 1;\n");
+    assert_eq!(read("packages/c/src/use.ts"), "import { mainStore, sizeOf } from \"@ws/a\";\n\nexport const c = mainStore.size + sizeOf();\nconsole.log(mainStore);\n");
+    assert_eq!(read("packages/a/src/common/index.ts"), "export { mainStore, sizeOf } from \"./services/store\";\n");
+    assert!(read("packages/d/src/use.ts").contains("rootStore") && read("packages/d/src/local.ts").contains("rootStore"), "D keeps its own name");
+    assert!(ide.active_text().starts_with("export const mainStore = "));
+}
