@@ -1,8 +1,12 @@
-import { useEffect, useRef, useState } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+} from "react";
 import { useSignals } from "@preact/signals-react/runtime";
 import { countryDisplayName } from "../../../domain/index";
 import { useStore } from "../../../store/index";
-import type { MouseEvent as ReactMouseEvent } from "react";
 import type { TAppRegistry } from "../../../actions/index";
 import styles from "./country-panel.module.css";
 

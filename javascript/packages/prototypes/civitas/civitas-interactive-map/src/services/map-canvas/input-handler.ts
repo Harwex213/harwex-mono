@@ -1,10 +1,20 @@
-import { IDLE, transition } from "./interaction-machine";
-import { samplePathPixels } from "../../domain/index";
-import { mapPixelAt, provinceAt } from "../../store/index";
-import type { InteractionCommand, InteractionEvent, InteractionState } from "./interaction-machine";
-import type { Point } from "../../domain/index";
+import {
+  IDLE,
+  transition,
+  type InteractionCommand,
+  type InteractionEvent,
+  type InteractionState,
+} from "./interaction-machine";
+import {
+  samplePathPixels,
+  type Point,
+} from "../../domain/index";
+import {
+  mapPixelAt,
+  provinceAt,
+  type TStore,
+} from "../../store/index";
 import type { TMapCanvasServiceRegistry } from "./map-canvas-registry";
-import type { TStore } from "../../store/index";
 
 // Bridge from DOM events to `interaction-machine.ts`.
 // The machine decides. This file only fills events and runs commands through the registry.

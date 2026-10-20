@@ -1,5 +1,9 @@
-import { packRgb, shouldSmooth } from "../../../../domain/index";
-import type { Province, ProvinceIndex, View } from "../../../../domain/index";
+import {
+  ProvinceIndex,
+  shouldSmooth,
+  type Province,
+  type View,
+} from "../../../../domain/index";
 
 // Fills the hovered and the selected province with a stamp built from the province map.
 // The stamp follows the exact province shape, with no polygon and no bleed.
@@ -28,7 +32,7 @@ function buildStampPixels(
   const width = Math.max(0, bounds.width);
   const height = Math.max(0, bounds.height);
   const out = new Uint8ClampedArray(width * height * 4);
-  const target = packRgb(province.rgb[0], province.rgb[1], province.rgb[2]);
+  const target = ProvinceIndex.packColor(province.rgb);
 
   for (let y = 0; y < height; y += 1) {
     for (let x = 0; x < width; x += 1) {
@@ -112,16 +116,8 @@ function drawProvinceHighlight(
   );
 }
 
-function clearHighlightCache(): void {
-  stampCache.clear();
-}
-
 export {
-  HOVER_FILL,
-  SELECT_FILL,
   buildStampPixels,
-  clearHighlightCache,
   drawProvinceHighlight,
   type HighlightRequest,
-  type HighlightRole,
 };

@@ -6,22 +6,22 @@ import {
   setActiveCountry,
   setAssignMode,
   toggleAssignMode,
-} from "./assign-actions";
+} from "./interaction/assign-actions";
 import {
   disposeBorders,
   flushCountryBorders,
   scanBorders,
   startCountryBorderSync,
-} from "./border-actions";
-import { toggleLabels } from "./label-actions";
-import { loadMap } from "./map-actions";
+} from "./map/border-actions";
+import { toggleLabels } from "./labels/label-actions";
+import { loadMap } from "./map/map-actions";
 import {
   clearSelection,
   selectCountry,
   selectCountryOfProvince,
   selectProvince,
   setHoveredProvince,
-} from "./selection-actions";
+} from "./interaction/selection-actions";
 import {
   panTo,
   resetView,
@@ -31,7 +31,7 @@ import {
   setViewport,
   syncView,
   zoomAtPoint,
-} from "./view-actions";
+} from "./map/view-actions";
 import {
   addCountry,
   assignProvinces,
@@ -44,7 +44,7 @@ import {
   setProvinceLore,
   setProvinceName,
   updateCountry,
-} from "./world-actions";
+} from "./world/world-actions";
 import type { TDatasources } from "../datasource/index";
 import type { TStore } from "../store/index";
 

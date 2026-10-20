@@ -1,7 +1,15 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { DRAG_THRESHOLD, IDLE, isContextPress, transition, wheelZoomFactor } from "./interaction-machine";
-import type { InteractionCommand, InteractionEvent, InteractionState } from "./interaction-machine";
+import {
+  DRAG_THRESHOLD,
+  IDLE,
+  isContextPress,
+  transition,
+  wheelZoomFactor,
+  type InteractionCommand,
+  type InteractionEvent,
+  type InteractionState,
+} from "./interaction-machine";
 
 type PointerDown = Extract<InteractionEvent, { type: "pointerDown" }>;
 type PointerUp = Extract<InteractionEvent, { type: "pointerUp" }>;

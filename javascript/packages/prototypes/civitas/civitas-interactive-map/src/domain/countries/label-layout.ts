@@ -1,6 +1,11 @@
-import { mapToScreen, screenToMap } from "../view/view";
+import {
+  mapToScreen,
+  screenToMap,
+  type Point,
+  type Size,
+  type View,
+} from "../view/view";
 import type { Bounds } from "../data/manifest";
-import type { Point, Size, View } from "../view/view";
 
 // Pure country-label layout: font ramp, anchor search and greedy collision layout.
 // Text widths arrive as numbers. The canvas layer measures text, so that this module stays testable in Node.
@@ -486,16 +491,9 @@ export {
   rectsOverlap,
   resolveLabelAnchor,
   type AnchorCandidate,
-  type AnchorInput,
-  type AnchorSource,
   type ContainsFn,
   type CountryLabelSource,
-  type GridOptions,
-  type InsideFn,
-  type LabelAnchor,
   type LabelCandidate,
-  type LabelFontRamp,
   type LabelPlacement,
   type LabelRect,
-  type LayoutOptions,
 };

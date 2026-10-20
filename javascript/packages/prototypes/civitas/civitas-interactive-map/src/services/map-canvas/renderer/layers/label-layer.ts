@@ -1,11 +1,12 @@
-import { labelFontSize, layoutLabels } from "../../../../domain/index";
-import type {
-  ContainsFn,
-  CountryLabelSource,
-  LabelCandidate,
-  LabelPlacement,
-  Size,
-  View,
+import {
+  labelFontSize,
+  layoutLabels,
+  type ContainsFn,
+  type CountryLabelSource,
+  type LabelCandidate,
+  type LabelPlacement,
+  type Size,
+  type View,
 } from "../../../../domain/index";
 
 // Measures label text, runs the pure layout from `src/domain`, and draws the result.
@@ -180,7 +181,6 @@ export {
   HALO_WIDTH_RATIO,
   LABEL_FILL,
   LABEL_FONT_STACK,
-  LABEL_FONT_WEIGHT,
   LABEL_HALO,
   LETTER_SPACING_EM,
   METRIC_CACHE_LIMIT,
@@ -192,7 +192,4 @@ export {
   labelTextWidth,
   layoutCountryLabels,
   measureLabelMetrics,
-  type LabelLayoutInput,
-  type LabelMetrics,
-  type LabelStats,
 };

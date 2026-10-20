@@ -1,16 +1,20 @@
 import { effect, untracked } from "@preact/signals-react";
 import { bindInput } from "./input-handler";
-import { renderFrame } from "./renderer/frame";
+import {
+  renderFrame,
+  type MapCanvases,
+} from "./renderer/frame";
 import {
   SELECTED_TINT_ALPHA,
   buildTintWordTable,
   disposeTintLayer,
   syncTintLayer,
 } from "./renderer/layers/tint-layer";
-import { provinceById } from "../../store/index";
-import type { MapCanvases } from "./renderer/frame";
+import {
+  provinceById,
+  type TStore,
+} from "../../store/index";
 import type { TMapCanvasServiceRegistry } from "./map-canvas-registry";
-import type { TStore } from "../../store/index";
 
 // Runs the map canvas outside React.
 // The widget renders the host and two canvases and passes them to `attach`.
@@ -178,4 +182,4 @@ function createMapCanvasService(store: TStore, registry: TMapCanvasServiceRegist
   return new MapCanvasService(store, registry);
 }
 
-export { MapCanvasService, createMapCanvasService };
+export { createMapCanvasService };

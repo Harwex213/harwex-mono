@@ -1,5 +1,9 @@
-import { visibleTiles } from "../../../../domain/index";
-import type { BorderTiles, Size, View } from "../../../../domain/index";
+import {
+  visibleTiles,
+  type BorderTiles,
+  type Size,
+  type View,
+} from "../../../../domain/index";
 
 // Decisions:
 // - Stroke width is fixed in screen pixels at every zoom.
@@ -103,8 +107,6 @@ export {
   COUNTRY_BORDER,
   PROVINCE_BORDER,
   borderPathsFor,
-  buildBorderPaths,
   drawBorders,
   type BorderPaths,
-  type BorderStyle,
 };

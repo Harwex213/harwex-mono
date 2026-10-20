@@ -1,5 +1,13 @@
-import { shouldSmooth, sourceRect } from "../../../../domain/index";
-import type { Bounds, Country, Province, ProvinceIndex, Size, View } from "../../../../domain/index";
+import {
+  shouldSmooth,
+  sourceRect,
+  type Bounds,
+  type Country,
+  type Province,
+  type ProvinceIndex,
+  type Size,
+  type View,
+} from "../../../../domain/index";
 
 // Country tint layer.
 // Decisions:
@@ -262,5 +270,4 @@ export {
   getTintCanvas,
   syncTintLayer,
   tintWordFor,
-  type TintSync,
 };

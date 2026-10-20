@@ -1,5 +1,9 @@
-import { expect, test } from "@playwright/test";
-import type { Locator, Page } from "@playwright/test";
+import {
+  expect,
+  test,
+  type Locator,
+  type Page,
+} from "@playwright/test";
 
 // Black-box screenshot tests: mouse, keyboard, text and ARIA labels only,
 // so that a refactor behind the map does not break them.

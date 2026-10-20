@@ -1,11 +1,11 @@
 import { createContext, useContext } from "react";
-import { createAssignSlice } from "./assign-slice";
-import { createBordersSlice } from "./borders-slice";
-import { createLabelsSlice } from "./labels-slice";
-import { createMapSlice } from "./map-slice";
-import { createSelectionSlice } from "./selection-slice";
-import { createViewSlice } from "./view-slice";
-import { createWorldSlice } from "./world-slice";
+import { createAssignSlice } from "./interaction/assign-slice";
+import { createBordersSlice } from "./map/borders-slice";
+import { createLabelsSlice } from "./labels/labels-slice";
+import { createMapSlice } from "./map/map-slice";
+import { createSelectionSlice } from "./interaction/selection-slice";
+import { createViewSlice } from "./map/view-slice";
+import { createWorldSlice } from "./world/world-slice";
 
 // The app state as signals and computeds. No setters and no I/O: the UI reads
 // through `useStore`, and only actions write.

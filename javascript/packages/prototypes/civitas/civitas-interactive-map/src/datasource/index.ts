@@ -1,38 +1,48 @@
-// Public surface of `src/datasource`. Lists only names used outside the folder.
-// Modules inside the folder import each other by path, never via this index, to avoid cycles.
+// `src/datasource` holds all code that talks to systems outside the app's memory: network, localStorage, worker, clock.
+// Each subfolder covers one system. This file lists what the rest of the app may import from the folder.
+// Decisions:
+// - Datasource modules import each other by file path, not through this index, so no cycle can form.
+// - Only names used outside `src/datasource` are listed. Tests import their module directly.
 
-import { BORDER_PUSH_MS, SAVE_DELAY_MS, createDatasources } from "./datasources";
-import type { DatasourceOptions, TDatasources } from "./datasources";
-
-import { STATE_KEY, STORAGE_BUDGET_BYTES, createMemoryStorage } from "./state-storage";
-import type { StateStorage, StateWarning, WarningKind } from "./state-storage";
-
-import type { BordersSource, CountryResult } from "./borders-source";
-import type { BorderStats } from "./borders-worker";
-
-import { createDebouncer } from "./debouncer";
-import type { TimerHandle, Timers } from "./debouncer";
-
+// datasources.ts — `createDatasources()`: builds the one object that holds every source; actions receive it as `sources`.
+// The app passes no options and gets the real sources. Tests and the e2e entry pass fakes.
 export {
-  // composed set
-  BORDER_PUSH_MS,
-  SAVE_DELAY_MS,
   createDatasources,
   type DatasourceOptions,
   type TDatasources,
-  // storage
+} from "./datasources";
+
+// storage/ — the world document in `localStorage`: read, write, quota and recovery.
+export {
   STATE_KEY,
   STORAGE_BUDGET_BYTES,
   createMemoryStorage,
   type StateStorage,
   type StateWarning,
   type WarningKind,
-  // borders
-  type BorderStats,
+} from "./storage/state-storage";
+
+// borders/ — the border web worker and its promise wrapper.
+export {
   type BordersSource,
   type CountryResult,
-  // clock
-  createDebouncer,
+} from "./borders/borders-source";
+export {
+  type BorderStats,
+} from "./borders/borders-worker";
+
+// timers/ — the debouncer over `setTimeout`.
+export {
   type TimerHandle,
   type Timers,
-};
+} from "./timers/debouncer";
+
+// map-assets/ — the `fetch` of the map PNGs and the manifest, and the steps of that load.
+// Only `datasources.ts` calls the loader. The store and the actions use its result type and its steps.
+export {
+  loadProgress,
+  type LoadStep,
+} from "./map-assets/load-steps";
+export {
+  type LoadedMapAssets,
+} from "./map-assets/map-assets";

@@ -16,8 +16,13 @@ import {
   layoutCountryLabels,
   measureLabelMetrics,
 } from "./label-layer";
-import { labelFontSize } from "../../../../domain/index";
-import type { CountryLabelSource, LabelPlacement, Size, View } from "../../../../domain/index";
+import {
+  labelFontSize,
+  type CountryLabelSource,
+  type LabelPlacement,
+  type Size,
+  type View,
+} from "../../../../domain/index";
 
 // A recorder context, not a canvas. Its `measureText` reads the px size from the current `font`,
 // so the 100 px measurement and the linear scaling are really tested.

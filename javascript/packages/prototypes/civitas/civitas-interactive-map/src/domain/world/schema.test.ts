@@ -11,8 +11,8 @@ import {
   defaultCountryColor,
   normalizeState,
   serializeState,
+  type CivitasState,
 } from "./schema";
-import type { CivitasState } from "./schema";
 
 // Document shape, sparsity rule and repairing parser.
 

@@ -1,32 +1,47 @@
-import { createBordersSource } from "./borders-source";
-import { createDebouncer } from "./debouncer";
-import { loadMapAssets } from "./map-assets";
-import { createStorageSource } from "./state-storage";
-import type { BordersSource } from "./borders-source";
-import type { Debouncer, Timers } from "./debouncer";
-import type { LoadStep, LoadedMapAssets } from "./map-assets";
-import type { StateStorage, StorageSource } from "./state-storage";
+import {
+  createBordersSource,
+  type BordersSource,
+} from "./borders/borders-source";
+import {
+  createDebouncer,
+  type Debouncer,
+  type Timers,
+} from "./timers/debouncer";
+import {
+  loadMapAssets,
+  type LoadedMapAssets,
+} from "./map-assets/map-assets";
+import {
+  createStorageSource,
+  type StateStorage,
+  type StorageSource,
+} from "./storage/state-storage";
+import type { LoadStep } from "./map-assets/load-steps";
 
-// The outside world that the actions call: network, storage, border worker, clock.
-// `main.tsx` builds one set. A test builds its own set with fakes.
+// This file builds the object that holds every external system the app talks to.
+// An external system is anything outside the app's own memory:
+// the network, browser storage, a worker thread and the clock.
 
-// Bounds how much typing a crash can lose.
+// A crash loses at most the edits of the last 400 ms.
 const SAVE_DELAY_MS = 400;
 // Shorter than the save delay, so borders stay live during a drag.
-// Each answer costs a main-thread `buildBorderPaths`; 120 ms caps a 1 s drag at ~8.
+// Each worker answer costs one `buildBorderPaths` call on the main thread.
+// At 120 ms, a 1 s drag costs about 8 calls.
 const BORDER_PUSH_MS = 120;
 
-type MapAssetsSource = {
-  load(onStep?: (step: LoadStep) => void): Promise<LoadedMapAssets>;
-};
+type LoadMapAssets = (onStep?: (step: LoadStep) => void) => Promise<LoadedMapAssets>;
 
+// Actions receive this object as `sources` and call the external systems only through it.
 type TDatasources = {
-  mapAssets: MapAssetsSource;
+  // Loads the map PNGs and the province manifest over HTTP.
+  loadMapAssets: LoadMapAssets;
+  // Reads and writes the saved world in browser `localStorage`.
   storage: StorageSource;
+  // Sends work to the border web worker and gets the answers back.
   borders: BordersSource;
-  // Defers the write of the world document.
+  // Delays the save of the world, so quick edits collapse into one write.
   saveQueue: Debouncer;
-  // Defers the push of the province -> country assignment to the border worker.
+  // Delays the push of country assignments to the border worker.
   borderQueue: Debouncer;
 };
 
@@ -35,13 +50,16 @@ type DatasourceOptions = {
   timers?: Timers;
   saveDelayMs?: number;
   borderDelayMs?: number;
-  mapAssets?: MapAssetsSource;
+  loadMapAssets?: LoadMapAssets;
   borders?: BordersSource;
 };
 
+// The app calls `createDatasources()` with no options and gets the real systems.
+// The e2e entry and the unit tests pass fakes through `options`.
+// Examples of fakes: a memory storage instead of `localStorage`, fake timers, a fake border worker.
 function createDatasources(options: DatasourceOptions = {}): TDatasources {
   return {
-    mapAssets: options.mapAssets ?? { load: loadMapAssets },
+    loadMapAssets: options.loadMapAssets ?? loadMapAssets,
     storage: createStorageSource(options.storage),
     borders: options.borders ?? createBordersSource(),
     saveQueue: createDebouncer({
@@ -56,10 +74,7 @@ function createDatasources(options: DatasourceOptions = {}): TDatasources {
 }
 
 export {
-  BORDER_PUSH_MS,
-  SAVE_DELAY_MS,
   createDatasources,
   type DatasourceOptions,
-  type MapAssetsSource,
   type TDatasources,
 };

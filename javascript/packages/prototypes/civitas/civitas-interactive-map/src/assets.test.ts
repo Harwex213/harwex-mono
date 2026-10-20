@@ -141,6 +141,11 @@ test("province ids are unique but NOT contiguous — index by id, never by posit
   assert.equal(maxId, 1650);
   assert.ok(maxId > PROVINCE_COUNT, "ids must not be assumed contiguous");
   assert.notEqual(manifest.provinces[PROVINCE_COUNT - 1].id, PROVINCE_COUNT);
+
+  // The two missing ids. `provinces[id - 1]` is wrong for every id past 1318.
+  assert.equal(ids.has(1318), false);
+  assert.equal(ids.has(1458), false);
+  assert.notEqual(manifest.provinces[1317].id, 1318);
 });
 
 test("province colours are unique — the lookup table cannot collide", () => {

@@ -11,10 +11,6 @@ function packRgb(r: number, g: number, b: number): number {
   return (((r & 0xff) << 16) | ((g & 0xff) << 8) | (b & 0xff)) >>> 0;
 }
 
-function unpackRgb(packed: number): [number, number, number] {
-  return [(packed >>> 16) & 0xff, (packed >>> 8) & 0xff, packed & 0xff];
-}
-
 // Any alpha below 255 counts as unpainted. A canvas premultiplies alpha, so a
 // part-transparent pixel reads back with a shifted colour that matches no province.
 function packPixels(bytes: Uint8ClampedArray | Uint8Array, pixelCount: number): Uint32Array {
@@ -65,7 +61,42 @@ function buildColorIndex(provinces: readonly Province[]): Map<number, number> {
   return index;
 }
 
+// The only DOM code here. It stays inside a function so tests can import the module in Node.
+function decodeRgba(bitmap: ImageBitmap): Uint8ClampedArray {
+  const canvas = document.createElement("canvas");
+  canvas.width = bitmap.width;
+  canvas.height = bitmap.height;
+
+  // `srgb` is the default. It is explicit to pin it. Decode options live in `map-assets.ts`.
+  const ctx = canvas.getContext("2d", { willReadFrequently: true, colorSpace: "srgb" });
+  if (!ctx) {
+    throw new Error("2d canvas context unavailable");
+  }
+
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(bitmap, 0, 0);
+
+  // Throws on a tainted canvas. Assets must stay same-origin or carry CORS headers.
+  const data = ctx.getImageData(0, 0, bitmap.width, bitmap.height).data;
+
+  // Releases the ~42 MB backing store. `data` is a copy and stays valid.
+  canvas.width = 0;
+  canvas.height = 0;
+
+  return data;
+}
+
+// Why: `provinces_map.png` is the authoritative pick surface.
+// One decoded bitmap answers "which province is under this map pixel" for every consumer.
+// - The PNG is decoded once into packed 0x00RRGGBB values in a Uint32Array.
+// - Colour to id goes through a Map, because ids are not contiguous.
+// - Lookups return null off the map and on unknown colours, so callers need no guards.
+// - The constructor is private: every factory builds the colour index from the provinces,
+//   so a duplicate colour always throws.
 class ProvinceIndex {
+  // What `packedAt` returns off the map and on a transparent pixel.
+  static readonly UNPAINTED = UNPAINTED;
+
   readonly width: number;
   readonly height: number;
   // 41.7 MB, alive for the app's lifetime.
@@ -73,7 +104,7 @@ class ProvinceIndex {
   readonly pixels: Uint32Array;
   readonly colorIndex: ReadonlyMap<number, number>;
 
-  constructor(
+  private constructor(
     width: number,
     height: number,
     pixels: Uint32Array,
@@ -95,6 +126,50 @@ class ProvinceIndex {
     this.height = height;
     this.pixels = pixels;
     this.colorIndex = colorIndex;
+  }
+
+  // The value `packedAt` returns for a pixel of this colour.
+  static packColor(rgb: readonly [number, number, number]): number {
+    return packRgb(rgb[0], rgb[1], rgb[2]);
+  }
+
+  // `pixels` holds packed colours, as `packColor` and `UNPAINTED` produce them.
+  static fromProvinces(
+    width: number,
+    height: number,
+    pixels: Uint32Array,
+    provinces: readonly Province[],
+  ): ProvinceIndex {
+    return new ProvinceIndex(width, height, pixels, buildColorIndex(provinces));
+  }
+
+  // `bytes` is RGBA in ImageData order, four bytes per pixel.
+  static fromRgba(
+    width: number,
+    height: number,
+    bytes: Uint8ClampedArray | Uint8Array,
+    provinces: readonly Province[],
+  ): ProvinceIndex {
+    return ProvinceIndex.fromProvinces(width, height, packPixels(bytes, width * height), provinces);
+  }
+
+  // Browser only: the decode draws the bitmap on a canvas.
+  static fromBitmap(bitmap: ImageBitmap, manifest: MapManifest): ProvinceIndex {
+    // Checked before the decode, so a mismatch fails without touching `document`.
+    if (bitmap.width !== manifest.map.width || bitmap.height !== manifest.map.height) {
+      throw new Error(
+        "provinces_map.png is " +
+          bitmap.width +
+          "x" +
+          bitmap.height +
+          ", the manifest describes " +
+          manifest.map.width +
+          "x" +
+          manifest.map.height,
+      );
+    }
+    const rgba = decodeRgba(bitmap);
+    return ProvinceIndex.fromRgba(bitmap.width, bitmap.height, rgba, manifest.provinces);
   }
 
   // Row-major. Fractional coordinates are floored: pixel `n` covers `[n, n + 1)`.
@@ -121,88 +196,28 @@ class ProvinceIndex {
     const id = this.colorIndex.get(packed);
     return id === undefined ? null : id;
   }
-}
 
-// Detects a browser that colour-converts the bitmap on decode. Then every lookup returns `null`.
-// A ratio test: 14 of 1648 centroids lie outside their province. A correct decode
-// scores about 0.985 over 200 provinces, a converted one about 0.
-function sampleIntegrity(
-  index: ProvinceIndex,
-  provinces: readonly Province[],
-  sampleSize: number,
-): { checked: number; matched: number } {
-  let checked = 0;
-  let matched = 0;
-  const limit = Math.min(sampleSize, provinces.length);
+  // Detects a browser that colour-converts the bitmap on decode. Then every lookup returns `null`.
+  // A ratio test: 14 of 1648 centroids lie outside their province. A correct decode
+  // scores about 0.985 over 200 provinces, a converted one about 0.
+  sampleIntegrity(
+    provinces: readonly Province[],
+    sampleSize: number,
+  ): { checked: number; matched: number } {
+    let checked = 0;
+    let matched = 0;
+    const limit = Math.min(sampleSize, provinces.length);
 
-  for (let i = 0; i < limit; i += 1) {
-    const province = provinces[i];
-    checked += 1;
-    if (index.provinceAt(province.centroid.x, province.centroid.y) === province.id) {
-      matched += 1;
+    for (let i = 0; i < limit; i += 1) {
+      const province = provinces[i];
+      checked += 1;
+      if (this.provinceAt(province.centroid.x, province.centroid.y) === province.id) {
+        matched += 1;
+      }
     }
-  }
 
-  return { checked, matched };
+    return { checked, matched };
+  }
 }
 
-// The only DOM code here. It stays inside a function so tests can import the module in Node.
-function decodeProvincePixels(bitmap: ImageBitmap): Uint32Array {
-  const width = bitmap.width;
-  const height = bitmap.height;
-
-  const canvas = document.createElement("canvas");
-  canvas.width = width;
-  canvas.height = height;
-
-  // `srgb` is the default. It is explicit to pin it. Decode options live in `map-assets.ts`.
-  const ctx = canvas.getContext("2d", { willReadFrequently: true, colorSpace: "srgb" });
-  if (!ctx) {
-    throw new Error("2d canvas context unavailable");
-  }
-
-  ctx.imageSmoothingEnabled = false;
-  ctx.drawImage(bitmap, 0, 0);
-
-  // Throws on a tainted canvas. Assets must stay same-origin or carry CORS headers.
-  const data = ctx.getImageData(0, 0, width, height).data;
-  const pixels = packPixels(data, width * height);
-
-  // Releases the ~42 MB backing store.
-  canvas.width = 0;
-  canvas.height = 0;
-
-  return pixels;
-}
-
-function createProvinceIndex(bitmap: ImageBitmap, manifest: MapManifest): ProvinceIndex {
-  if (bitmap.width !== manifest.map.width || bitmap.height !== manifest.map.height) {
-    throw new Error(
-      "provinces_map.png is " +
-        bitmap.width +
-        "x" +
-        bitmap.height +
-        ", the manifest describes " +
-        manifest.map.width +
-        "x" +
-        manifest.map.height,
-    );
-  }
-
-  const pixels = decodeProvincePixels(bitmap);
-  const colorIndex = buildColorIndex(manifest.provinces);
-
-  return new ProvinceIndex(manifest.map.width, manifest.map.height, pixels, colorIndex);
-}
-
-export {
-  ProvinceIndex,
-  UNPAINTED,
-  buildColorIndex,
-  createProvinceIndex,
-  decodeProvincePixels,
-  packPixels,
-  packRgb,
-  sampleIntegrity,
-  unpackRgb,
-};
+export { ProvinceIndex };

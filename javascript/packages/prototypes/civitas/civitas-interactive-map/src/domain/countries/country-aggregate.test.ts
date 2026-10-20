@@ -3,8 +3,12 @@ import { fileURLToPath } from "node:url";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { aggregateCountry, unionBounds } from "./country-aggregate";
-import { indexProvincesById, parseManifestText } from "../data/manifest";
-import type { Bounds, Point, Province } from "../data/manifest";
+import {
+  parseManifestText,
+  type Bounds,
+  type Point,
+  type Province,
+} from "../data/manifest";
 
 // Pure maths against a fake lookup.
 
@@ -178,7 +182,9 @@ test("the whole shipped manifest aggregated as one country matches PLAN section 
   const manifest = parseManifestText(
     readFileSync(packageRoot + "assets/provinces_manifest.json", "utf8"),
   );
-  const byId = indexProvincesById(manifest.provinces);
+  const byId = new Map(manifest.provinces.map((province) => {
+    return [province.id, province];
+  }));
   const lookup = (id: number): Province | null => {
     return byId.get(id) ?? null;
   };
@@ -216,7 +222,9 @@ test("a country of the two ids the manifest lacks aggregates to nothing", () => 
   const manifest = parseManifestText(
     readFileSync(packageRoot + "assets/provinces_manifest.json", "utf8"),
   );
-  const byId = indexProvincesById(manifest.provinces);
+  const byId = new Map(manifest.provinces.map((province) => {
+    return [province.id, province];
+  }));
   const aggregate = aggregateCountry(9, [1318, 1458], (id) => {
     return byId.get(id) ?? null;
   });

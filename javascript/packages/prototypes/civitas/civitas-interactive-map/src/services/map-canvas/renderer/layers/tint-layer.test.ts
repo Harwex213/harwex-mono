@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { ProvinceIndex, UNPAINTED, buildColorIndex, packRgb } from "../../../../domain/data/province-index";
+import { ProvinceIndex } from "../../../../domain/data/province-index";
 import {
   SELECTED_TINT_ALPHA,
   TINT_ALPHA,
@@ -27,6 +27,8 @@ function province(id: number, rgb: [number, number, number], bounds: Province["b
   };
 }
 
+const UNPAINTED = ProvinceIndex.UNPAINTED;
+
 // A non-square grid, so a transposed x/y address fails loudly.
 function index(rows: number[][], provinces: readonly Province[]): ProvinceIndex {
   const height = rows.length;
@@ -37,7 +39,7 @@ function index(rows: number[][], provinces: readonly Province[]): ProvinceIndex 
       pixels[y * width + x] = rows[y][x];
     }
   }
-  return new ProvinceIndex(width, height, pixels, buildColorIndex(provinces));
+  return ProvinceIndex.fromProvinces(width, height, pixels, provinces);
 }
 
 function wordsOf(entries: readonly (readonly [number, number])[], length: number): Uint32Array {
@@ -82,7 +84,7 @@ test("an alpha above 1 clamps to 255 and a tiny one still shows", () => {
 });
 
 test("buildTintPixels writes R, G, B, A in that order for a tinted province", () => {
-  const red = packRgb(200, 0, 0);
+  const red = ProvinceIndex.packColor([200, 0, 0]);
   const target = province(1, [200, 0, 0], { x: 0, y: 0, width: 1, height: 1 });
   const surface = index([[red], [UNPAINTED], [UNPAINTED]], [target]);
 
@@ -96,8 +98,8 @@ test("buildTintPixels writes R, G, B, A in that order for a tinted province", ()
 
 test("a bounding box paints a NEIGHBOUR in the neighbour's own colour", () => {
   // Boxes overlap and `putImageData` replaces alpha, so the neighbour must keep its tint.
-  const red = packRgb(200, 0, 0);
-  const blue = packRgb(0, 0, 200);
+  const red = ProvinceIndex.packColor([200, 0, 0]);
+  const blue = ProvinceIndex.packColor([0, 0, 200]);
   const target = province(1, [200, 0, 0], { x: 0, y: 0, width: 2, height: 3 });
   const neighbour = province(2, [0, 0, 200], { x: 1, y: 0, width: 1, height: 3 });
 
@@ -131,8 +133,8 @@ test("a bounding box paints a NEIGHBOUR in the neighbour's own colour", () => {
 });
 
 test("unpainted pixels and provinces with no tint stay fully clear", () => {
-  const red = packRgb(200, 0, 0);
-  const blue = packRgb(0, 0, 200);
+  const red = ProvinceIndex.packColor([200, 0, 0]);
+  const blue = ProvinceIndex.packColor([0, 0, 200]);
   const target = province(1, [200, 0, 0], { x: 0, y: 0, width: 2, height: 2 });
   const neighbour = province(2, [0, 0, 200], { x: 1, y: 0, width: 1, height: 2 });
 
@@ -159,7 +161,7 @@ test("unpainted pixels and provinces with no tint stay fully clear", () => {
 });
 
 test("a zero-sized bounding box produces an empty tile instead of throwing", () => {
-  const surface = index([[packRgb(200, 0, 0)]], [
+  const surface = index([[ProvinceIndex.packColor([200, 0, 0])]], [
     province(1, [200, 0, 0], { x: 0, y: 0, width: 1, height: 1 }),
   ]);
 
@@ -247,7 +249,7 @@ test("tintWordFor returns the no-tint word for a non-finite alpha", () => {
 });
 
 test("buildTintPixels fills exactly width * height * 4 bytes", () => {
-  const red = packRgb(200, 0, 0);
+  const red = ProvinceIndex.packColor([200, 0, 0]);
   const surface = index([[red, red], [red, red], [red, red]], [
     province(1, [200, 0, 0], { x: 0, y: 0, width: 2, height: 3 }),
   ]);
@@ -261,8 +263,8 @@ test("buildTintPixels fills exactly width * height * 4 bytes", () => {
 
 test("two overlapping boxes composite to the same surface in either order", () => {
   // Box repaints in any order give the same result.
-  const red = packRgb(200, 0, 0);
-  const blue = packRgb(0, 0, 200);
+  const red = ProvinceIndex.packColor([200, 0, 0]);
+  const blue = ProvinceIndex.packColor([0, 0, 200]);
   const first = province(1, [200, 0, 0], { x: 0, y: 0, width: 2, height: 3 });
   const second = province(2, [0, 0, 200], { x: 1, y: 0, width: 2, height: 4 });
 
@@ -313,7 +315,7 @@ test("two overlapping boxes composite to the same surface in either order", () =
 
 test("a bounding box running past the edge of the map paints only what exists", () => {
   // An out-of-range box comes back transparent, with no throw and no row wrap.
-  const red = packRgb(200, 0, 0);
+  const red = ProvinceIndex.packColor([200, 0, 0]);
   const surface = index(
     [[red], [red]],
     [province(1, [200, 0, 0], { x: 0, y: 0, width: 1, height: 2 })],

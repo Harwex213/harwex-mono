@@ -15,17 +15,19 @@ import {
   layoutLabels,
   rectsOverlap,
   resolveLabelAnchor,
+  type AnchorCandidate,
+  type ContainsFn,
+  type LabelCandidate,
+  type LabelPlacement,
+  type LabelRect,
 } from "./label-layout";
-import type {
-  AnchorCandidate,
-  ContainsFn,
-  LabelCandidate,
-  LabelPlacement,
-  LabelRect,
-} from "./label-layout";
-import { screenToMap } from "../view/view";
+import {
+  screenToMap,
+  type Point,
+  type Size,
+  type View,
+} from "../view/view";
 import type { Bounds } from "../data/manifest";
-import type { Point, Size, View } from "../view/view";
 
 // Pure tests. Every text width is a number the test supplies.
 

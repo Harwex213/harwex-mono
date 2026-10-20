@@ -1,20 +1,20 @@
-// Public surface of `src/actions`. The UI gets every action through the registry.
-// Modules inside `src/actions` import each other by path, so no import cycle forms.
+// The public surface of `src/actions`: every state change. The UI gets each action through the registry.
+// Decisions:
+// - Action modules import each other by file path, not through this index, so no cycle can form.
+// - The subfolders mirror `src/store`: the actions in `map/` mostly change the slices in `store/map/`.
 
-// - registry.ts: binds every action to the store and the datasources.
-import { createRegistry } from "./registry";
-import type { TAppRegistry } from "./registry";
-
-// - map-actions.ts: loads the map assets.
-// - view-actions.ts: the camera. Fit, zoom, pan, viewport and cursor.
-// - selection-actions.ts: hover and selection of provinces and countries.
-// - assign-actions.ts: assign mode and the brush stroke.
-// - world-actions.ts: countries, province overrides, hydration and saving.
-// - border-actions.ts: the border scan and the debounced country border push.
-// - label-actions.ts: shows or hides the country labels.
-
+// registry.ts — binds every action below to the store and the datasources.
 export {
-  // registry
   createRegistry,
   type TAppRegistry,
-};
+} from "./registry";
+
+// map/ — map-actions loads the assets, view-actions moves the camera,
+// border-actions runs the border scan and the debounced country border push.
+
+// world/ — world-actions edits countries and province overrides, hydrates and saves the document.
+
+// interaction/ — selection-actions handles hover and selection,
+// assign-actions handles assign mode and the brush stroke.
+
+// labels/ — label-actions shows or hides the country labels.

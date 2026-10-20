@@ -95,8 +95,8 @@ UI --creates--> Services --subscribe to--> Store
 | `src/services/` | Long-lived objects that own a piece of the DOM outside React. A service gets the store and its registry slice from its creator. | store, domain, the `TAppRegistry` type |
 | `src/store/` | Signals and computeds only. No function changes state. No function does I/O. | domain, types from datasource |
 | `src/actions/` | Every state change. An action is a plain function `(store, ...args)` or `(store, sources, ...args)`. | store, datasource, domain |
-| `src/datasource/` | Everything outside the app: `fetch` of the map assets, `localStorage`, the border web worker, the timers. | domain |
-| `src/domain/` | Pure logic with no signals, no DOM and no I/O. | — |
+| `src/datasource/` | Everything outside the app, one subfolder per system: `map-assets/` (`fetch`, plus the load steps and `loadProgress`), `storage/` (`localStorage`), `borders/` (the web worker), `timers/`. | domain |
+| `src/domain/` | The app's rules and vocabulary about the map and the world: the manifest format and its parser, `ProvinceIndex`, the view math, border extraction, label layout, the world document schema and its migrations, the interaction rules. Pure: no signals, no DOM, no I/O. Domain does not know how data is loaded, stored or sent to a worker. | — |
 | `e2e/` | Screenshot tests and their own composition root. See [Screenshot tests](#screenshot-tests). | the `index.ts` of each layer |
 
 - `src/main.tsx` is the composition root. It calls `createStore()`, `createDatasources()`
@@ -106,6 +106,12 @@ UI --creates--> Services --subscribe to--> Store
   outside a folder imports from that folder's `index.ts` only. Files inside a folder
   import each other by path and never import their own `index.ts`, so no import cycle
   can form. A test may import its own module directly.
+- A layer never re-exports another layer's names. A consumer imports a name from
+  the `index.ts` of the layer that owns it. A renamed alias such as
+  `type TMyRegistry = TOtherLayerType` counts as a re-export too.
+- `src/store/` and `src/actions/` share four area subfolders: `map/` (assets, camera,
+  borders), `world/` (the saved document), `interaction/` (selection, assign mode) and
+  `labels/`. The actions for the slices in `store/<area>/` live in `actions/<area>/`.
 - `src/actions/registry.ts` lists every action. A new action goes into `storeActions`
   or `sourceActions` there. Its type is derived from the function.
 - Read-only lookups that need the store (`provinceAt`, `provinceDisplayName`,
@@ -155,6 +161,18 @@ into `renderer/layers/` and gets its slot in `drawOverlay`.
 - `javascript/CLAUDE.md` governs code style. Statements end with `;`, `if` and loops
   always use braces, strings use double quotes, each file has one grouped named
   export at its end, and CSS has one declaration per line.
+- An `index.ts` is the exception to the grouped export. It has no imports. It has one
+  `export { ... } from "./file";` per file of its own folder, with inline `type`
+  modifiers and one name per line. `src/scaffold.test.ts` checks both forms.
+- A file that imports both values and types from one module uses one import with
+  inline `type` modifiers, one name per line, values first. A types-only import
+  stays `import type { ... }`.
+  ```ts
+  import {
+    createDatasources,
+    type TDatasources,
+  } from "./datasources";
+  ```
 - Every file and folder under `src/` and `e2e/` is named in kebab-case:
   `map-canvas.tsx`, `country-panel.module.css`, `borders-worker.ts`. Playwright names
   `e2e/map.spec.ts-snapshots/` itself.

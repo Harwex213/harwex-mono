@@ -12,10 +12,11 @@ import {
   mapPixelsToIds,
   scanBorders,
   visibleTiles,
+  type BorderRuns,
+  type BorderScan,
 } from "./borders";
-import { packPixels, packRgb } from "../data/province-index";
+import { ProvinceIndex } from "../data/province-index";
 import { parseManifestText } from "../data/manifest";
-import type { BorderRuns, BorderScan } from "./borders";
 
 // Expected values on synthetic fixtures are written by hand, not computed by a
 // second implementation. The real-asset counts at the bottom are the regression pins.
@@ -907,13 +908,13 @@ function realScan(): RealScan {
   }
   const manifest = parseManifestText(readFileSync(manifestPath, "utf8"));
   const png = decodePng(new Uint8Array(readFileSync(bitmapPath)));
-  const packed = packPixels(png.data, png.width * png.height);
+  const packed = ProvinceIndex.fromRgba(png.width, png.height, png.data, manifest.provinces).pixels;
 
   const colors = new Uint32Array(manifest.provinces.length);
   const paletteIds = new Uint16Array(manifest.provinces.length);
   for (let i = 0; i < manifest.provinces.length; i += 1) {
     const province = manifest.provinces[i];
-    colors[i] = packRgb(province.rgb[0], province.rgb[1], province.rgb[2]);
+    colors[i] = ProvinceIndex.packColor(province.rgb);
     paletteIds[i] = province.id;
   }
 

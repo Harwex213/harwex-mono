@@ -144,19 +144,42 @@ test("no source file imports a map asset into the bundle", () => {
 
 test("source files obey the grouped-named-export convention", () => {
   // One grouped named export at the end, per javascript/CLAUDE.md.
+  // An index.ts is the exception: one `export { ... } from "./file"` per file of its own folder.
   // Ambient .d.ts files are exempt: `declare module` needs `export default`.
   const sources = collectSourceFiles(packageRoot + "src", []).filter((file) => {
     return !file.endsWith(".d.ts");
   });
+  const reExport = /^export\s*(type\s*)?\{[^}]*\}\s*from\s*"([^"]+)";/gm;
 
   for (const file of sources) {
     const body = readFileSync(file, "utf8");
     assert.doesNotMatch(body, /^export default /m, file + " has a default export");
+    assert.doesNotMatch(body, /^export \*/m, file + " has a star export");
     assert.doesNotMatch(
       body,
       /^export\s+(const|let|var|function|class|interface|type|enum|async)\b/m,
       file + " has an inline export keyword",
     );
+
+    if (!file.endsWith("/index.ts")) {
+      assert.doesNotMatch(body, reExport, file + " re-exports; only an index.ts may");
+      continue;
+    }
+
+    assert.doesNotMatch(body, /^import /m, file + " imports; an index.ts only re-exports");
+    const specifiers = [...body.matchAll(reExport)].map((match) => {
+      return match[2];
+    });
+    assert.ok(specifiers.length > 0, file + " re-exports nothing");
+    for (const specifier of specifiers) {
+      assert.ok(
+        specifier.startsWith("./"),
+        file + " re-exports " + specifier + " from outside its own folder",
+      );
+    }
+    // Every export statement in an index must be an `export { ... } from`.
+    const exportCount = body.match(/^export\b/gm)?.length ?? 0;
+    assert.equal(exportCount, specifiers.length, file + " has an export without `from`");
   }
 });
 

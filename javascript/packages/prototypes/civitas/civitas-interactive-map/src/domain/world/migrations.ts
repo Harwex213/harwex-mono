@@ -79,5 +79,4 @@ export {
   runMigrations,
   type Migration,
   type MigrationDoc,
-  type MigrationResult,
 };

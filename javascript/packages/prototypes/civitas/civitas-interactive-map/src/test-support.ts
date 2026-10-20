@@ -1,17 +1,23 @@
-import { createRegistry } from "./actions/index";
-import { createDatasources, createMemoryStorage } from "./datasource/index";
-import { createStore } from "./store/index";
-import type {
-  BordersSource,
-  CountryResult,
-  DatasourceOptions,
-  TDatasources,
-  TimerHandle,
-  Timers,
+import {
+  createRegistry,
+  type TAppRegistry,
+} from "./actions/index";
+import {
+  createDatasources,
+  createMemoryStorage,
+  type BordersSource,
+  type CountryResult,
+  type DatasourceOptions,
+  type LoadedMapAssets,
+  type TDatasources,
+  type TimerHandle,
+  type Timers,
 } from "./datasource/index";
-import type { LoadedMapAssets, MapManifest, Province, ProvinceIndex } from "./domain/index";
-import type { TAppRegistry } from "./actions/index";
-import type { TStore } from "./store/index";
+import {
+  createStore,
+  type TStore,
+} from "./store/index";
+import type { MapManifest, Province, ProvinceIndex } from "./domain/index";
 
 // Test helpers. Each test builds its own app, so no state leaks between tests.
 
@@ -130,11 +136,11 @@ function fakeMapAssets(options: {
 function markMapReady(store: TStore, assets: LoadedMapAssets): void {
   store.map.assets.value = assets;
   store.map.phase.value = "ready";
+  store.map.progress.value = 1;
 }
 
 export {
   createTestApp,
-  fakeBorders,
   fakeMapAssets,
   fakeTimers,
   markMapReady,

@@ -1,21 +1,18 @@
-// Public surface of `src/store`: names used outside the folder.
-// Modules inside `src/store` import each other by path, so no import cycle forms.
+// The public surface of `src/store`: signals and computeds, no state changes, no I/O.
+// Decisions:
+// - Store modules import each other by file path, not through this index, so no cycle can form.
+// - The subfolders mirror `src/actions`: the slices in `map/` are mostly changed by `actions/map/`.
 
-// - store.ts: builds the store from its slices and hands it to React.
-import { StoreProvider, createStore, useStore } from "./store";
-import type { TStore } from "./store";
+// store.ts — builds the store from its slices and hands it to React.
+export {
+  StoreProvider,
+  createStore,
+  useStore,
+  type TStore,
+} from "./store";
 
-// - map-slice.ts: the loaded map assets and the load progress.
-// - view-slice.ts: the camera, the viewport and the cursor.
-// - borders-slice.ts: the border tiles from the worker.
-// - world-slice.ts: the saved document and the status of its storage.
-// - selection-slice.ts: the hovered, selected province and selected country.
-// - assign-slice.ts: assign mode and the brush stroke.
-// - labels-slice.ts: the country label sources and their cached anchors.
-import type { Viewport } from "./view-slice";
-
-// - selectors.ts: read-only lookups over the store, such as `provinceAt`.
-import {
+// selectors.ts — read-only lookups over the store, such as `provinceAt`.
+export {
   countryContainsPoint,
   mapPixelAt,
   provinceAt,
@@ -23,18 +20,15 @@ import {
   provinceDisplayName,
 } from "./selectors";
 
+// map/ — map-slice holds the loaded assets and the load progress,
+// view-slice the camera, the viewport and the cursor, borders-slice the border tiles.
 export {
-  // store
-  StoreProvider,
-  createStore,
-  useStore,
-  type TStore,
-  // slices
   type Viewport,
-  // lookups
-  countryContainsPoint,
-  mapPixelAt,
-  provinceAt,
-  provinceById,
-  provinceDisplayName,
-};
+} from "./map/view-slice";
+
+// world/ — world-slice holds the saved document and the status of its storage.
+
+// interaction/ — selection-slice holds the hovered and selected province and the selected country,
+// assign-slice holds assign mode and the brush stroke.
+
+// labels/ — labels-slice holds the country label sources and their cached anchors.

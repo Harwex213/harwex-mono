@@ -430,5 +430,4 @@ export {
   type BorderRuns,
   type BorderScan,
   type BorderTiles,
-  type TileRange,
 };

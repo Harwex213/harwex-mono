@@ -16,11 +16,18 @@ import {
   labelFontSize,
   layoutLabels,
   resolveLabelAnchor,
+  type AnchorCandidate,
+  type ContainsFn,
+  type LabelCandidate,
 } from "./label-layout";
-import { MAX_SCALE, fitScale } from "../view/view";
-import type { AnchorCandidate, ContainsFn, LabelCandidate } from "./label-layout";
+import {
+  MAX_SCALE,
+  fitScale,
+  type Point,
+  type Size,
+  type View,
+} from "../view/view";
 import type { Bounds } from "../data/manifest";
-import type { Point, Size, View } from "../view/view";
 
 // Boundary tests for label layout: constants, option overrides, guards and degenerate inputs.
 

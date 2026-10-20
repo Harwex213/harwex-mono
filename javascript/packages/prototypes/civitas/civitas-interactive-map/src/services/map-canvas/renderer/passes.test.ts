@@ -1,10 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { COUNTRY_BORDER, PROVINCE_BORDER } from "./layers/border-layer";
+import {
+  COUNTRY_BORDER,
+  PROVINCE_BORDER,
+  type BorderPaths,
+} from "./layers/border-layer";
 import { buildBorderTiles } from "../../../domain/borders/borders";
 import { clampView, fitView, snapView, sourceRect } from "../../../domain/view/view";
 import { drawOverlay, drawScene } from "./passes";
-import type { BorderPaths } from "./layers/border-layer";
 import type { BorderTiles, Size, View } from "../../../domain/index";
 
 // A recorder context, not a canvas. The tests cover the geometry `passes.ts` hands to the context:

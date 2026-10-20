@@ -18,8 +18,9 @@ import {
   sourceRect,
   translateTo,
   zoomAt,
+  type Size,
+  type View,
 } from "./view";
-import type { Size, View } from "./view";
 
 // The art bitmap is one column narrower than the map.
 const MAP: Size = { width: 3653, height: 2855 };

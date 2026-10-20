@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { MIGRATIONS, assertChain, runMigrations } from "./migrations";
-import type { Migration, MigrationDoc } from "./migrations";
+import {
+  MIGRATIONS,
+  assertChain,
+  runMigrations,
+  type Migration,
+  type MigrationDoc,
+} from "./migrations";
 
 // The shipped chain is empty, so a synthetic chain exercises the loop.
 

@@ -2,9 +2,12 @@ import { borderPathsFor } from "./layers/border-layer";
 import { buildHighlights } from "./highlights";
 import { drawOverlay, drawScene } from "./passes";
 import { getTintCanvas } from "./layers/tint-layer";
-import { countryContainsPoint, provinceById } from "../../../store/index";
+import {
+  countryContainsPoint,
+  provinceById,
+  type TStore,
+} from "../../../store/index";
 import type { Size } from "../../../domain/index";
-import type { TStore } from "../../../store/index";
 
 // One frame: size the canvases, draw the scene pass, draw the overlay pass.
 // `renderFrame` reads every input fresh inside rAF, so a coalesced frame paints the newest state.

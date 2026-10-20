@@ -419,7 +419,6 @@ function transition(state: InteractionState, event: InteractionEvent): Transitio
 }
 
 export {
-  DOUBLE_CLICK_FACTOR,
   DRAG_THRESHOLD,
   IDLE,
   isContextPress,
@@ -428,5 +427,4 @@ export {
   type InteractionCommand,
   type InteractionEvent,
   type InteractionState,
-  type Transition,
 };

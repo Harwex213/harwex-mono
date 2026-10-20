@@ -15,8 +15,13 @@ import {
   layoutCountryLabels,
   measureLabelMetrics,
 } from "./label-layer";
-import { NAME_MAX } from "../../../../domain/index";
-import type { CountryLabelSource, LabelPlacement, Size, View } from "../../../../domain/index";
+import {
+  NAME_MAX,
+  type CountryLabelSource,
+  type LabelPlacement,
+  type Size,
+  type View,
+} from "../../../../domain/index";
 
 // Cache lifetime, degenerate strings and the draw state left behind.
 // `label-layer.test.ts` covers measuring and drawing. A recorder context stands in for the canvas.

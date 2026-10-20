@@ -1,5 +1,10 @@
-import { shouldSmooth, sourceRect } from "../../../../domain/index";
-import type { DrawRect, Size, View } from "../../../../domain/index";
+import {
+  shouldSmooth,
+  sourceRect,
+  type DrawRect,
+  type Size,
+  type View,
+} from "../../../../domain/index";
 
 // The artistic map `map.png`, the only layer of the scene canvas.
 

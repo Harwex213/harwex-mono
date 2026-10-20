@@ -355,7 +355,6 @@ export {
   serializeState,
   type CivitasState,
   type Country,
-  type NormalizeResult,
   type ProvinceOverride,
   type StateDoc,
 };

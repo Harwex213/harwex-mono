@@ -6,15 +6,15 @@ fn main() {
     let str2 = take_ownership(str);
 
     // println!("{}", str); // won't compile: not is owner or borrowed ref
-    println!("{}", str2);
+    println!("str2: {}", str2);
 
     let clever_number = CONST_STR;
 
     take_ownership_scalar(clever_number);
 
-    println!("{}", clever_number);
+    println!("clever_number: {}", clever_number);
 
-    println!("{}", hello_man());
+    println!("hello_man: {}", hello_man());
 
     fn hello_man() -> String {
         String::from("lol")   
@@ -24,7 +24,7 @@ fn main() {
     let str2_ref = &str2;
     let str2_ref2 = &str2;
 
-    println!("{} = {}", str2_ref, str2_ref2);
+    println!("str2_ref: {} = {}: str2_ref2", str2_ref, str2_ref2);
 
     let mut str3 = String::from("zdarova zaebal");
 
@@ -33,7 +33,7 @@ fn main() {
 
     str3_mut_ref.push_str("a");
 
-    println!("{}", str3);
+    println!("str3: {}", str3);
 
     let mut str4 = String::from("zdarova zaebal");
     
@@ -42,7 +42,29 @@ fn main() {
 
     // let str4_mut_ref = &mut str4; // won't compile: can't have mutuable reference & readonly reference at the same time
 
-    println!("{}", str4_ref2);
+    println!("str4_ref2: {}", str4_ref2);
+    
+    let str_with_number = "12";
+    
+    let number: i16 = str_with_number.parse().unwrap_or_default();
+
+    println!("number: {}", number);
+
+    println!("str4_ref2: {}", get_str_len_by_sliced_ref(str4_ref2));
+
+    let str4_sliced_ref = &str4[..5];
+
+    println!("str4_sliced_ref: {}", get_str_len_by_sliced_ref(str4_sliced_ref));
+
+    let krutoi_array = [1,2,3,4,5];
+
+    let krutoi_array2 = krutoi_array; // here will be copy
+
+    let krutoi_array_sliced_ref = &krutoi_array[2..3];
+
+    for i in krutoi_array_sliced_ref {
+        println!("krutoi_array: {}", i);   
+    }
 }
 
 fn take_ownership(str: String) -> String {
@@ -57,4 +79,8 @@ fn take_ownership(str: String) -> String {
 
 fn take_ownership_scalar(num: u32) {
     println!("{}", num);
+}
+
+fn get_str_len_by_sliced_ref(num: &str) -> usize {
+    num.len()
 }

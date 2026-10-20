@@ -1,12 +1,25 @@
 import { drawArt } from "./layers/art-layer";
-import { COUNTRY_BORDER, PROVINCE_BORDER, drawBorders } from "./layers/border-layer";
+import {
+  COUNTRY_BORDER,
+  PROVINCE_BORDER,
+  drawBorders,
+  type BorderPaths,
+} from "./layers/border-layer";
 import { drawCountryLabels, layoutCountryLabels } from "./layers/label-layer";
-import { drawProvinceHighlight } from "./layers/highlight-layer";
+import {
+  drawProvinceHighlight,
+  type HighlightRequest,
+} from "./layers/highlight-layer";
 import { drawTint } from "./layers/tint-layer";
-import { mapToScreen, snapView } from "../../../domain/index";
-import type { BorderPaths } from "./layers/border-layer";
-import type { ContainsFn, CountryLabelSource, ProvinceIndex, Size, View } from "../../../domain/index";
-import type { HighlightRequest } from "./layers/highlight-layer";
+import {
+  mapToScreen,
+  snapView,
+  type ContainsFn,
+  type CountryLabelSource,
+  type ProvinceIndex,
+  type Size,
+  type View,
+} from "../../../domain/index";
 
 // The scene pass draws the art. The overlay pass draws every other layer.
 // Both take a context and plain values, with no signals and no DOM lookups.
@@ -123,4 +136,4 @@ function drawOverlay(input: OverlayInput): void {
   drawLabels(input, view);
 }
 
-export { drawOverlay, drawScene, type OverlayInput, type SceneInput };
+export { drawOverlay, drawScene };

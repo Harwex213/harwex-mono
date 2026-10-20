@@ -1,5 +1,8 @@
-import { screenToMap } from "../domain/index";
-import type { Point, Province } from "../domain/index";
+import {
+  screenToMap,
+  type Point,
+  type Province,
+} from "../domain/index";
 import type { TStore } from "./store";
 
 // Read-only lookups for the UI and the actions.

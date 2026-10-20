@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { EMPTY_SELECTION, nextSelection, sameSelection } from "./selection";
-import type { SelectionState } from "./selection";
+import {
+  EMPTY_SELECTION,
+  nextSelection,
+  sameSelection,
+  type SelectionState,
+} from "./selection";
 
 const EMPTY: SelectionState = EMPTY_SELECTION;
 

@@ -1,17 +1,19 @@
 import { useEffect } from "react";
 import { useSignals } from "@preact/signals-react/runtime";
-import { CountryPanel } from "../../widgets/country-panel/country-panel";
+import {
+  CountryPanel,
+  type TCountryPanelRegistry,
+} from "../../widgets/country-panel/country-panel";
 import { CountryPlaque } from "../../widgets/country-plaque/country-plaque";
 import { MapCanvas } from "../../widgets/map-canvas/map-canvas";
 import { useStore } from "../../../store/index";
-import type { TCountryPanelRegistry } from "../../widgets/country-panel/country-panel";
-import type { TMapCanvasRegistry } from "../../widgets/map-canvas/map-canvas";
 import type { TAppRegistry } from "../../../actions/index";
+import type { TMapCanvasServiceRegistry } from "../../../services/index";
 import styles from "./map-page.module.css";
 
 type TMapPageRegistry = Pick<TAppRegistry, "resetView" | "setAssignMode"> &
   TCountryPanelRegistry &
-  TMapCanvasRegistry;
+  TMapCanvasServiceRegistry;
 
 type TMapPageProps = {
   registry: TMapPageRegistry;
@@ -97,4 +99,4 @@ function MapPage({ registry }: TMapPageProps) {
   );
 }
 
-export { MapPage, type TMapPageRegistry };
+export { MapPage };

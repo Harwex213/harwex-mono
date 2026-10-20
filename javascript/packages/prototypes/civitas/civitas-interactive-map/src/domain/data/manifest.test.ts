@@ -2,8 +2,8 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import assert from "node:assert/strict";
 import test from "node:test";
-import { indexProvincesById, parseManifest, parseManifestText } from "./manifest";
-import { buildColorIndex } from "./province-index";
+import { parseManifest, parseManifestText } from "./manifest";
+import { ProvinceIndex } from "./province-index";
 
 const manifestPath = fileURLToPath(new URL("../../../assets/provinces_manifest.json", import.meta.url));
 
@@ -317,8 +317,8 @@ test("the parser copies the centre of mass through and never recomputes it", () 
   assert.deepEqual(parsed.provinces[0].centroid, { x: 598, y: 391 });
 });
 
-test("the parser does not police colours — that is buildColorIndex's job", () => {
-  // The parser accepts a colour collision. `buildColorIndex` rejects it, because it owns the packing.
+test("the parser does not police colours — that is ProvinceIndex's job", () => {
+  // The parser accepts a colour collision. `ProvinceIndex` rejects it, because it owns the packing.
   const clashing = validManifest();
   const second = (clashing.provinces as Record<string, unknown>[])[1];
   second.rgb = [152, 215, 171];
@@ -330,22 +330,8 @@ test("the parser does not police colours — that is buildColorIndex's job", () 
 
   assert.throws(
     () => {
-      return buildColorIndex(parsed.provinces);
+      return ProvinceIndex.fromProvinces(0, 0, new Uint32Array(0), parsed.provinces);
     },
     /provinces 1 and 7 share colour #98d7ab/,
   );
-});
-
-test("indexProvincesById keys on the id, and the id is not the array position", () => {
-  const parsed = parseManifestText(readFileSync(manifestPath, "utf8"));
-  const byId = indexProvincesById(parsed.provinces);
-
-  assert.equal(byId.size, 1648);
-  assert.equal(byId.get(1)?.hex, "#98d7ab");
-  assert.ok(byId.get(1650), "id 1650 exists even though there are only 1648 provinces");
-
-  // The two missing ids. `provinces[id - 1]` is wrong for every id past 1318.
-  assert.equal(byId.get(1318), undefined);
-  assert.equal(byId.get(1458), undefined);
-  assert.notEqual(parsed.provinces[1317].id, 1318);
 });

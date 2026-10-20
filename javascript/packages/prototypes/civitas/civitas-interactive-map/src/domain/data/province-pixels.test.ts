@@ -3,18 +3,22 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import assert from "node:assert/strict";
 import test from "node:test";
-import { ProvinceIndex, UNPAINTED, buildColorIndex, packPixels } from "./province-index";
-import { parseManifestText } from "./manifest";
-import type { MapManifest } from "./manifest";
+import { ProvinceIndex } from "./province-index";
+import {
+  parseManifestText,
+  type MapManifest,
+} from "./manifest";
 
 // Checks the shipped `provinces_map.png` against the manifest. Other tests use synthetic
 // grids, so a swapped channel order or a transposed address could agree with itself.
 // Decisions:
 // - A test-only PNG decoder on `node:zlib`, so no dependency is added.
-// - The decoded bytes go through the real `packPixels` -> `buildColorIndex` -> `provinceAt` path.
+// - The decoded bytes go through the real `ProvinceIndex.fromRgba` -> `provinceAt` path.
 
 const manifestPath = fileURLToPath(new URL("../../../assets/provinces_manifest.json", import.meta.url));
 const bitmapPath = fileURLToPath(new URL("../../../assets/provinces_map.png", import.meta.url));
+
+const UNPAINTED = ProvinceIndex.UNPAINTED;
 
 const PNG_SIGNATURE = [137, 80, 78, 71, 13, 10, 26, 10];
 
@@ -214,8 +218,7 @@ function realMap(): RealMap {
   }
   const manifest = parseManifestText(readFileSync(manifestPath, "utf8"));
   const png = decodePng(new Uint8Array(readFileSync(bitmapPath)));
-  const pixels = packPixels(png.data, png.width * png.height);
-  const index = new ProvinceIndex(png.width, png.height, pixels, buildColorIndex(manifest.provinces));
+  const index = ProvinceIndex.fromRgba(png.width, png.height, png.data, manifest.provinces);
   cached = { manifest, png, index };
   return cached;
 }
@@ -323,12 +326,7 @@ test("the bitmap holds exactly the 1648 colours the manifest registers, and no o
 test("sampleIntegrity on the real asset clears the 0.9 load threshold but is not 1", () => {
   const { manifest, index } = realMap();
 
-  let matched = 0;
-  for (const province of manifest.provinces) {
-    if (index.provinceAt(province.centroid.x, province.centroid.y) === province.id) {
-      matched += 1;
-    }
-  }
+  const { matched } = index.sampleIntegrity(manifest.provinces, manifest.provinces.length);
 
   // 14 of 1648 centroids lie outside their concave province, so `loadMapAssets` uses a ratio.
   // An exact count catches a colour-converted decode and a manifest with bbox centres.

@@ -215,7 +215,7 @@ function parsePainted(raw: unknown): PaintedInfo {
 
 // Decisions:
 // - Builds new objects field by field, so an unvalidated extra key cannot leak into the result.
-// - Duplicate colours are checked by `buildColorIndex`, which owns the packing.
+// - Duplicate colours are checked by `ProvinceIndex`, which owns the packing.
 function parseManifest(payload: unknown): MapManifest {
   if (!isRecord(payload)) {
     throw new Error("manifest is not a JSON object");
@@ -269,28 +269,11 @@ function parseManifestText(text: string): MapManifest {
   return parseManifest(payload);
 }
 
-// Ids are not contiguous: 1648 entries span ids 1..1650. `provinces[id - 1]` is wrong,
-// so every lookup by id goes through this map.
-function indexProvincesById(provinces: readonly Province[]): Map<number, Province> {
-  const byId = new Map<number, Province>();
-  for (const province of provinces) {
-    byId.set(province.id, province);
-  }
-  return byId;
-}
-
 export {
-  MANIFEST_FORMAT,
-  MANIFEST_VERSION,
-  PROVINCE_KINDS,
-  indexProvincesById,
   parseManifest,
   parseManifestText,
   type Bounds,
-  type MapInfo,
   type MapManifest,
-  type PaintedInfo,
   type Point,
   type Province,
-  type ProvinceKind,
 };

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { ProvinceIndex, UNPAINTED, buildColorIndex, packRgb } from "../../../../domain/data/province-index";
+import { ProvinceIndex } from "../../../../domain/data/province-index";
 import { buildStampPixels } from "./highlight-layer";
 import type { Province } from "../../../../domain/index";
 
@@ -28,6 +28,8 @@ function province(id: number, rgb: [number, number, number], bounds: Province["b
   };
 }
 
+const UNPAINTED = ProvinceIndex.UNPAINTED;
+
 // A non-square grid, so a transposed x/y address fails loudly.
 function index(rows: number[][], provinces: readonly Province[]): ProvinceIndex {
   const height = rows.length;
@@ -38,12 +40,12 @@ function index(rows: number[][], provinces: readonly Province[]): ProvinceIndex 
       pixels[y * width + x] = rows[y][x];
     }
   }
-  return new ProvinceIndex(width, height, pixels, buildColorIndex(provinces));
+  return ProvinceIndex.fromProvinces(width, height, pixels, provinces);
 }
 
 test("the stamp paints the province's own pixels and nothing else", () => {
-  const red = packRgb(200, 0, 0);
-  const blue = packRgb(0, 0, 200);
+  const red = ProvinceIndex.packColor([200, 0, 0]);
+  const blue = ProvinceIndex.packColor([0, 0, 200]);
   const target = province(1, [200, 0, 0], { x: 1, y: 0, width: 2, height: 3 });
   const neighbour = province(2, [0, 0, 200], { x: 0, y: 0, width: 1, height: 3 });
 
@@ -73,7 +75,7 @@ test("the stamp paints the province's own pixels and nothing else", () => {
 });
 
 test("a province whose bounds fall outside the bitmap produces a clear stamp", () => {
-  const red = packRgb(200, 0, 0);
+  const red = ProvinceIndex.packColor([200, 0, 0]);
   const target = province(1, [200, 0, 0], { x: 40, y: 40, width: 2, height: 2 });
   const surface = index(
     [
@@ -92,7 +94,7 @@ test("a province whose bounds fall outside the bitmap produces a clear stamp", (
 
 test("a zero-sized bounding box produces an empty stamp instead of throwing", () => {
   const target = province(1, [200, 0, 0], { x: 0, y: 0, width: 0, height: 0 });
-  const surface = index([[packRgb(200, 0, 0)]], [target]);
+  const surface = index([[ProvinceIndex.packColor([200, 0, 0])]], [target]);
 
   assert.equal(buildStampPixels(surface, target, FILL).length, 0);
 });
