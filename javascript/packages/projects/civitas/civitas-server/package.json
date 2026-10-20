@@ -1,6 +1,9 @@
 {
   "name": "@hw/civitas-server",
   "packageManager": "yarn@4.1.1",
+  "scripts": {
+    "dev-server": "SERVICE_PORT=8090 tsx --watch src/app.ts"
+  },
   "dependencies": {
     "@fastify/type-provider-zod": "^1.0.0",
     "dotenv": "^17.4.2",

@@ -4,9 +4,7 @@
   "version": "0.1.0",
   "license": "MIT",
   "type": "module",
-  "bin": {
-    "remote-imagegen-mcp": "dist/main.js"
-  },
+  "bin": "dist/main.js",
   "files": [
     "dist"
   ],
