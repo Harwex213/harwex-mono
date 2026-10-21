@@ -2821,6 +2821,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@hw/civitas-map@workspace:packages/prototypes/civitas/civitas-map"
   dependencies:
+    "@playwright/test": "npm:1.61.1"
     "@preact/signals-react": "npm:3.9.0"
     "@rspack/cli": "npm:2.1.4"
     "@rspack/core": "npm:2.1.4"
@@ -2829,6 +2830,7 @@ __metadata:
     "@types/react-dom": "npm:19.2.0"
     react: "npm:19.2.0"
     react-dom: "npm:19.2.0"
+    tsx: "npm:4.19.4"
     typescript: "npm:5.9.3"
   languageName: unknown
   linkType: soft

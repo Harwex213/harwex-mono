@@ -1,4 +1,8 @@
+import { fileURLToPath } from "node:url";
 import { rspack } from "@rspack/core";
+import { createMapsApiMiddleware } from "./dev-server/maps-api.mjs";
+
+const mapsDirectory = fileURLToPath(new URL("./assets/maps/", import.meta.url));
 
 export default {
   entry: {
@@ -59,11 +63,24 @@ export default {
     // lets a forgotten server from an earlier run answer with a stale bundle.
     port: 0,
     static: {
-      // `assets/map.png` is served but never bundled: it is a 66 MB source
-      // render, and the editor takes its map from a file picker anyway. Dev
-      // builds can pull it over `/assets/map.png` to skip the picker.
+      // The images in `assets/maps/` are served but never bundled: they run to
+      // tens of megabytes. The app lists them through `/api/maps` and fetches the
+      // one the operator picks from `/assets/maps/<name>`.
       directory: "./assets",
       publicPath: "/assets",
+    },
+    // A stand-in for the backend: `GET /api/maps` lists `assets/maps/`. The
+    // contract is documented in `dev-server/maps-api.mjs`.
+    setupMiddlewares: (middlewares) => {
+      middlewares.unshift({
+        name: "maps-api",
+        path: "/api/maps",
+        middleware: createMapsApiMiddleware({
+          directory: mapsDirectory,
+          urlPrefix: "assets/maps/",
+        }),
+      });
+      return middlewares;
     },
   },
 };
