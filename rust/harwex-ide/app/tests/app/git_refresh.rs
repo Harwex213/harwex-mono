@@ -267,3 +267,101 @@ fn file_changes_refresh_only_their_paths() {
     assert_eq!(runs(&ide).0, full, "no full status for file changes");
     assert_eq!(runs(&ide).1, paths + 1);
 }
+
+/// `rows` synthetic status rows in 50 packages; every 5th is a staged rename from `file<i>.ts`
+/// to `moved<i>.ts`.
+fn synthetic_rows(rows: usize) -> Vec<ide_git::FileChange> {
+    use ide_git::{ChangeKind, FileChange};
+    let mut out: Vec<FileChange> = (0..rows)
+        .map(|i| {
+            let dir = format!("pkg{}/src/dir{}", i % 50, i % 700);
+            let rename = i % 5 == 0;
+            FileChange {
+                path: format!("{dir}/moved{i}.ts").into(),
+                old_path: rename.then(|| format!("{dir}/file{i}.ts").into()),
+                staged: rename.then_some(ChangeKind::Renamed),
+                unstaged: (!rename).then_some(ChangeKind::Modified),
+            }
+        })
+        .collect();
+    out.sort_by(|a, b| a.path.cmp(&b.path));
+    out
+}
+
+/// `n` absolute paths under the synthetic packages, on the old sides of the renames.
+fn burst(dir: &Path, n: usize) -> Vec<PathBuf> {
+    (0..n).map(|i| dir.join(format!("pkg{}/src/dir{}/file{i}.ts", i % 50, i % 700))).collect()
+}
+
+/// Steps frames until the app is idle. Returns the slowest frame.
+fn worst_frame_until_idle(ide: &mut Ide) -> std::time::Duration {
+    let started = std::time::Instant::now();
+    let mut worst = std::time::Duration::ZERO;
+    loop {
+        let t = std::time::Instant::now();
+        ide.step();
+        worst = worst.max(t.elapsed());
+        if ide.state().is_idle() {
+            return worst;
+        }
+        assert!(started.elapsed() < std::time::Duration::from_secs(60), "the refresh did not end in 60 s");
+        std::thread::sleep(std::time::Duration::from_millis(1));
+    }
+}
+
+/// Task 122: a watcher burst of 100k paths with 10k status rows froze the UI for minutes
+/// (rows x paths `starts_with` calls in `start_paths`). The budget (`docs/timings.md`) holds the
+/// `paths` call and every frame until the refresh lands.
+#[test]
+fn a_huge_burst_keeps_frames_fast() {
+    use harwex_ide::git::refresh;
+    const BUDGET: std::time::Duration = std::time::Duration::from_millis(100);
+    let fx = Fixture::new(SUITE, "huge_burst");
+    let repo = changed_repo(fx.path("repo"));
+    let mut ide = Ide::open(SUITE, &repo.dir);
+    let rows = synthetic_rows(10_000);
+
+    // 100k paths: the whole tree is dirty, and one full status runs.
+    ide.state_mut().apply_status(rows.clone());
+    let (full, paths, _) = runs(&ide);
+    let many = burst(&repo.dir, 100_000);
+    let t = std::time::Instant::now();
+    refresh::paths(ide.state_mut(), many, false);
+    let call = t.elapsed();
+    assert!(ide.state().ws.git.refresh.pending().is_empty(), "the burst is never stored");
+    let worst = worst_frame_until_idle(&mut ide);
+    eprintln!("100k paths, 10k rows: paths() {call:?}, worst frame {worst:?}");
+    assert_eq!(runs(&ide).0, full + 1, "a burst above the cap walks the whole tree");
+    assert_eq!(runs(&ide).1, paths, "and runs no path refresh");
+    assert_matches_full_status(&ide, &repo.dir, "after the 100k burst");
+    assert!(call < BUDGET && worst < BUDGET, "paths() {call:?}, worst frame {worst:?}");
+
+    // Just under the cap: a path refresh. The partner pass and the coarsening run on the
+    // worker; the UI merges 10k rows.
+    ide.state_mut().apply_status(rows);
+    let (full, paths, _) = runs(&ide);
+    let near = burst(&repo.dir, refresh::MAX_PENDING);
+    let t = std::time::Instant::now();
+    refresh::paths(ide.state_mut(), near, false);
+    let call = t.elapsed();
+    let worst = worst_frame_until_idle(&mut ide);
+    eprintln!("{} paths, 10k rows: paths() {call:?}, worst frame {worst:?}", refresh::MAX_PENDING);
+    assert_eq!(runs(&ide).0, full, "no full status under the cap");
+    assert_eq!(runs(&ide).1, paths + 1);
+    assert!(ide.state().ws.git.changes.iter().all(|c| !c.path.starts_with("pkg0")), "the rows under the refreshed folders are gone");
+    assert!(call < BUDGET && worst < BUDGET, "paths() {call:?}, worst frame {worst:?}");
+}
+
+/// A frame longer than the guard's limit logs its longest section (task 122).
+#[test]
+fn a_slow_frame_names_its_longest_section() {
+    let fx = Fixture::new(SUITE, "slow_frame");
+    let repo = changed_repo(fx.path("repo"));
+    let mut ide = Ide::open(SUITE, &repo.dir);
+    ide.state_mut().frame_clock.slow_after = std::time::Duration::from_millis(30);
+    ide.state().jobs.post(|_| std::thread::sleep(std::time::Duration::from_millis(60)));
+    ide.step();
+    let slow = ide.state().frame_clock.last_slow.clone().expect("a slow frame");
+    assert!(slow.section.contains("a_slow_frame_names_its_longest_section"), "{}", slow.line());
+    assert!(slow.section_took >= std::time::Duration::from_millis(60), "{}", slow.line());
+}
