@@ -1,11 +1,29 @@
 import { createRoot } from "react-dom/client";
-import { App } from "./App";
+import { createRegistry } from "./actions/index";
+import { createDatasources } from "./datasource/index";
+import { StoreProvider, createStore } from "./store/index";
+import { App } from "./app";
 import "./index.css";
-// AFTER `./index.css`, so its `:root` block wins on equal specificity and
-// re-points T01's palette onto the `--civ-*` tokens.
+// After `./index.css`, so its `:root` block wins and maps the base palette onto `--civ-*`.
 import "./ui/theme.css";
 
-// No `StrictMode`: it double-invokes effects, and from T03 on the render effects
-// here own a canvas each. A second pass would resize and repaint the canvas twice
-// per change for no benefit.
-createRoot(document.getElementById("root")!).render(<App />);
+// The composition root: UI -> registry actions -> store and datasources.
+const main = () => {
+  const container = document.getElementById("root");
+  if (!container) {
+    throw new Error("No root was found to mount app");
+  }
+
+  const store = createStore();
+  const sources = createDatasources();
+  const registry = createRegistry(store, sources);
+
+  // No `StrictMode`: its double effects would resize and repaint each canvas twice.
+  createRoot(container).render(
+    <StoreProvider value={store}>
+      <App registry={registry} />
+    </StoreProvider>,
+  );
+};
+
+main();

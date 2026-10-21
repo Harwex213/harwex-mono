@@ -1,10 +1,5 @@
-/* The left dock: country CRUD and the assign-mode toggle. On the `--civ-*`
-   tokens like every other panel from T08 on. T09 replaces the body of this
-   panel; the geometry stays.
-
-   `color-scheme: light` for the same reason `panel.module.css` sets it: the
-   surface is parchment and the document root is dark, so without it the colour
-   input and the list scrollbar render dark on light. */
+/* The left dock with the country list.
+   `color-scheme: light`: the root is dark, so native inputs and scrollbars would render dark on parchment. */
 .panel {
   background: var(--civ-parchment);
   border: var(--civ-border-plaque);
@@ -104,8 +99,7 @@
   padding: var(--civ-space-2) var(--civ-space-2);
 }
 
-/* Two independent marks: `active` is the paint target, `selected` is what the
-   plaque and the panels show. They are usually the same row and need not be. */
+/* Two separate marks: `active` is the paint target, `selected` is what the plaque shows. */
 .row[data-active="true"] {
   border-color: var(--civ-gild-soft);
 }

@@ -9,6 +9,7 @@ pub mod clicks;
 pub mod diagnostics;
 pub mod fileops;
 pub mod format;
+pub mod frame_clock;
 pub mod find;
 pub mod find_window;
 pub mod preview;

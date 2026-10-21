@@ -180,15 +180,19 @@ impl eframe::App for IdeApp {
             log.begin(ctx);
         }
         s.clicks.begin_frame(ctx);
+        s.frame_clock.begin();
         self.frames += 1;
         if self.frames == 1 {
             s.timings.log("first frame (update called)");
         } else if self.frames == 2 {
             s.timings.log("second frame (first frame presented)");
         }
+        // Each job callback is a section of its own (`drain_inbox`).
         s.drain_inbox();
+        let mut t = Instant::now();
         shortcuts(s, ctx);
         chrome::sync(ctx, frame, s.test.as_mut().and_then(|t| t.chrome.as_mut()));
+        lap(s, &mut t, "shortcuts");
 
         title_bar(s, ctx);
         // Right under the title bar while a merge/rebase/cherry-pick/revert is in progress.
@@ -196,6 +200,7 @@ impl eframe::App for IdeApp {
         // Above the editor while an Unreal project has no compile database (task 085).
         crate::unreal::banner(s, ctx);
         status_bar(s, ctx);
+        lap(s, &mut t, "title and status bars");
         let t = &theme::T;
         let unread = s.notifications.unread;
         let (terminals, changes) = (s.ws.terminals.len(), s.ws.git.changes.len());
@@ -222,7 +227,7 @@ impl eframe::App for IdeApp {
                 .resizable(true)
                 .show_separator_line(false)
                 .frame(window.inner_margin(Margin { top: half, right: gap, ..Margin::ZERO }))
-                .show(ctx, |ui| tool_window(s, ui, w));
+                .show(ctx, |ui| timed_tool_window(s, ui, w));
         }
         if let Some(w) = s.ws.layout.left {
             egui::SidePanel::left(crate::workspace::wid("left-tool-window"))
@@ -230,7 +235,7 @@ impl eframe::App for IdeApp {
                 .width_range(160.0..=900.0)
                 .show_separator_line(false)
                 .frame(window.inner_margin(Margin { right: half, bottom: if has_bottom { half } else { 0 }, ..Margin::ZERO }))
-                .show(ctx, |ui| tool_window(s, ui, w));
+                .show(ctx, |ui| timed_tool_window(s, ui, w));
         }
         let editor_margin = Margin { left: if has_left { half } else { 0 }, right: gap, bottom: if has_bottom { half } else { 0 }, ..Margin::ZERO };
         egui::CentralPanel::default().frame(window.inner_margin(editor_margin)).show(ctx, |ui| {
@@ -238,12 +243,15 @@ impl eframe::App for IdeApp {
             ui.push_id(crate::workspace::salt(), |ui| {
                 layout::island(t.space.editor_pad).show(ui, |ui| {
                     ui.set_min_size(ui.available_size());
+                    let t = Instant::now();
                     editor_area(s, ui);
+                    s.frame_clock.note("editor", t.elapsed());
                 });
             });
         });
         open_dropped_files(s, ctx);
 
+        let mut t = Instant::now();
         if let Some(path) = search::show(s, ctx) {
             s.open_location(&path, None, true);
         }
@@ -263,16 +271,21 @@ impl eframe::App for IdeApp {
         finish_tool_escape(s, ctx);
         crate::terminal::end_frame(s);
         crate::util::close_orphaned_context_menu(ctx);
+        lap(s, &mut t, "popups and dialogs");
 
         s.tick_workspaces();
         crate::settings::files::tick(s, ctx);
         testhook::tick(s);
+        lap(s, &mut t, "workspace ticks");
         if !s.jobs.running().is_empty() {
             // Keeps the spinner turning; ~10 fps is enough and costs nothing measurable.
             ctx.request_repaint_after(std::time::Duration::from_millis(100));
         }
         if let Some(log) = s.input_log.as_mut() {
             log.end();
+        }
+        if let Some(slow) = s.frame_clock.end() {
+            report_slow_frame(s, &slow);
         }
     }
 
@@ -296,6 +309,28 @@ impl eframe::App for IdeApp {
         // Before the shells die: their working directories are read now.
         crate::terminal::flush_on_exit(&mut self.state);
         self.state.shutdown_all();
+    }
+}
+
+/// Notes the time since `t` as section `name` and restarts `t`.
+fn lap(s: &mut AppState, t: &mut Instant, name: &'static str) {
+    s.frame_clock.note(name, t.elapsed());
+    *t = Instant::now();
+}
+
+fn timed_tool_window(s: &mut AppState, ui: &mut egui::Ui, w: ToolWindow) {
+    let t = Instant::now();
+    tool_window(s, ui, w);
+    s.frame_clock.note(w.title(), t.elapsed());
+}
+
+/// One timings line per slow frame. Outside the tests it also goes to the Notifications log,
+/// because an IDE started from the Finder has no stderr to read.
+fn report_slow_frame(s: &mut AppState, slow: &crate::frame_clock::SlowFrame) {
+    let line = slow.line();
+    s.timings.log(&line);
+    if !s.deterministic {
+        s.notifications.log_only(crate::notifications::Level::Info, "Slow frame", line);
     }
 }
 

@@ -139,6 +139,8 @@ pub struct AppState {
     pub find_history: HashMap<PathBuf, crate::find::FindHistory>,
     /// Global settings, autosave and sync (`settings.rs`).
     pub settings: crate::settings::AppSettings,
+    /// The slow-frame guard: section times of the current frame (`frame_clock.rs`).
+    pub frame_clock: crate::frame_clock::FrameClock,
 }
 
 impl AppState {
@@ -175,6 +177,7 @@ impl AppState {
             terminal_store: None,
             find_history: HashMap::new(),
             settings: Default::default(),
+            frame_clock: Default::default(),
         };
         state.ws.visible.store(true, std::sync::atomic::Ordering::Relaxed);
         state.enter_context();
@@ -201,13 +204,15 @@ impl AppState {
         // or this loop could run forever.
         let pending: Vec<Posted> = self.inbox.try_iter().collect();
         let n = pending.len();
-        for (ws, f) in pending {
+        for (ws, f, name) in pending {
+            let started = Instant::now();
             match ws {
                 None => f(self),
                 Some(id) => {
                     self.with_ws(id, f);
                 }
             }
+            self.frame_clock.note(name, started.elapsed());
         }
         self.jobs.delivered(n);
     }
@@ -812,7 +817,9 @@ impl AppState {
         crate::git::refresh::full(self);
     }
 
-    pub(crate) fn apply_status(&mut self, changes: Vec<FileChange>) {
+    /// Shows `changes` as the git status. Git refreshes call it; tests use it to stage big
+    /// synthetic statuses.
+    pub fn apply_status(&mut self, changes: Vec<FileChange>) {
         let Some(workdir) = self.ws.git.repo.as_ref().map(|r| r.workdir().to_path_buf()) else { return };
         let mut status = HashMap::with_capacity(changes.len());
         let mut dirs = HashSet::new();

@@ -1,5 +1,4 @@
-/* The shell layout: a full-bleed map with the chrome positioned absolutely over
-   it. Every piece here is a SIBLING of the map host, never a descendant. */
+/* A full-bleed map with controls over it. Each control is a sibling of the map host. */
 
 .shell {
   height: 100%;
@@ -14,8 +13,7 @@
   z-index: var(--civ-z-map);
 }
 
-/* Spans the window, so it must not take pointer events. Only the plaque box and
-   the banner inside it set `pointer-events: auto`. */
+/* Spans the window, so it passes clicks through. Only the plaque and the banner take pointer events. */
 .plaqueRail {
   align-items: center;
   display: flex;
@@ -80,8 +78,7 @@
   color: var(--civ-ink);
 }
 
-/* An inset ring around the whole viewport. Purely decorative, so it never takes
-   a pointer event. */
+/* Decorative ring around the viewport. It takes no pointer events. */
 .assignRail {
   box-shadow: inset 0 0 0 2px var(--civ-gild-soft);
   inset: 0;

@@ -585,3 +585,35 @@ fn old_layout_storage_loads() {
     assert_eq!(ide.state().ws.layout.bottom, Some(ToolWindow::Find));
     ide.assert_text("Find Usages (⌥F7) and Find in Files (⇧⌘F) results show here");
 }
+
+#[test]
+fn searching_tab_shows_progress_and_stops_on_close() {
+    let (_fx, _repo, mut ide) = open_repo("search_progress");
+    let root = ide.root();
+    let origin = UsageOrigin::Symbol { path: root.join("src/util.ts"), pos: ide_editor::Position::new(0, 16), word: "add".into() };
+    let (tab, generation) = find_window::start_usages(ide.state_mut(), origin.clone(), None);
+    let progress: harwex_ide::nav::Progress = Default::default();
+    let cancel = std::sync::Arc::new(AtomicBool::new(false));
+    find_window::track_search(ide.state_mut(), tab, progress.clone(), cancel.clone());
+    ide.settle();
+    assert!(ide.shows_text("Searching..."), "no progress yet");
+    *progress.lock().unwrap() = "Loading 12 projects... 3/12".into();
+    ide.settle();
+    assert!(ide.shows_text("Loading 12 projects... 3/12"));
+    ide.snapshot("search_progress");
+
+    // A rerun stops the old search; a cancelled answer says so instead of an error.
+    let (_, generation2) = find_window::start_usages(ide.state_mut(), origin, Some(tab));
+    assert!(cancel.load(std::sync::atomic::Ordering::Relaxed), "the rerun stopped the old search");
+    find_window::finish_usages(ide.state_mut(), tab, generation, Ok(add_refs(&root)));
+    assert!(active(&ide).searching, "the old answer is dropped");
+    find_window::finish_usages(ide.state_mut(), tab, generation2, Err(harwex_ide::nav::cancel_text()));
+    ide.settle();
+    assert!(ide.shows_text("Search cancelled."));
+
+    // Closing the tab stops its search.
+    let cancel = std::sync::Arc::new(AtomicBool::new(false));
+    find_window::track_search(ide.state_mut(), tab, Default::default(), cancel.clone());
+    find_window::close_tab(ide.state_mut(), 0);
+    assert!(cancel.load(std::sync::atomic::Ordering::Relaxed));
+}

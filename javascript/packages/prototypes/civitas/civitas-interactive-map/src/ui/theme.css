@@ -1,13 +1,8 @@
-/* The design tokens every panel from T08 on consumes. Global CSS, not a module:
-   custom properties have to reach every subtree, and a module would need an
-   import in every file for no gain.
-
-   Imported from `src/main.tsx` AFTER `./index.css`, so this `:root` block wins
-   on equal specificity.
-
-   The register is a political map: parchment surfaces, ink text, a dark sea.
-   No panel written from here on hardcodes a colour, a gap, a radius or a font
-   size. */
+/* Global design tokens in a political-map style: parchment, ink, a dark sea.
+   Decisions:
+   - Global CSS, not a module, so the tokens reach every subtree.
+   - Imported after `index.css`, so this `:root` wins.
+   - Panels use tokens only, never raw colours, gaps, radii or font sizes. */
 
 :root {
   /* surfaces */
@@ -74,18 +69,9 @@
   --civ-z-warning: 6;
 }
 
-/* T01's palette re-pointed onto the tokens above, so one file moves the whole
-   theme instead of four CSS files each being rewritten. New CSS uses `--civ-*`
-   only.
-
-   `--bg-sunken` maps to parchment-dim and NOT to the sea: `index.css` styles
-   `input[type="text"]` with it and `color: var(--text)`, so the sea colour there
-   would put ink text on a near-black field. `.host` in `map-canvas.module.css`
-   therefore sets its own explicit `background: var(--civ-sea)`.
-
-   `--font` stays on the sans stack. `LABEL_FONT_STACK` in `label-layer.ts`
-   duplicates it and canvas cannot read a custom property, so pointing it at
-   `--civ-font-display` would silently diverge the canvas labels from the DOM. */
+/* The old palette mapped onto the tokens, so this file alone sets the theme. New CSS uses `--civ-*`.
+   - `--bg-sunken` is parchment-dim, not the sea: text inputs use it under ink text.
+   - `--font` stays sans: `LABEL_FONT_STACK` in `label-layer.ts` copies it for the canvas. */
 
 :root {
   --bg: var(--civ-sea);

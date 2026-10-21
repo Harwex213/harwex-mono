@@ -450,7 +450,7 @@ fn langs_at(path: &Path) -> Vec<LangId> {
 }
 
 /// Code files of the file index, absolute.
-fn code_files(root: &Path, index: &[String]) -> Vec<PathBuf> {
+pub(crate) fn code_files(root: &Path, index: &[String]) -> Vec<PathBuf> {
     index.iter().filter(|f| LangId::for_path(Path::new(f.as_str())) == Some(LangId::TypeScript)).map(|f| root.join(f)).collect()
 }
 

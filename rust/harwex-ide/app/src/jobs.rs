@@ -14,8 +14,9 @@ use crate::workspace::WorkspaceId;
 /// A piece of work for the UI thread.
 pub type UiCallback = Box<dyn FnOnce(&mut AppState) + Send>;
 
-/// A callback and the workspace it belongs to (`None`: the window itself).
-pub type Posted = (Option<WorkspaceId>, UiCallback);
+/// A callback, the workspace it belongs to (`None`: the window itself) and the callback's
+/// type name, which names the function that posted it (the slow-frame guard, `frame_clock.rs`).
+pub type Posted = (Option<WorkspaceId>, UiCallback, &'static str);
 
 /// Cheap to clone; clones share the channel and the list of running tasks.
 ///
@@ -265,7 +266,7 @@ impl Jobs {
             // The callback is counted before the job stops counting, so the total never
             // drops to zero in between.
             match result {
-                Ok(r) => jobs.post(move |state| done(state, r)),
+                Ok(r) => jobs.post_named(std::any::type_name::<D>(), move |state| done(state, r)),
                 Err(_) => jobs.post(move |state| state.notifications.error(format!("{name} failed"), "The task panicked.")),
             }
             jobs.in_flight.fetch_sub(1, Ordering::SeqCst);
@@ -330,10 +331,14 @@ impl Jobs {
     }
 
     /// Schedules `f` on the UI thread. Callable from any thread.
-    pub fn post(&self, f: impl FnOnce(&mut AppState) + Send + 'static) {
+    pub fn post<F: FnOnce(&mut AppState) + Send + 'static>(&self, f: F) {
+        self.post_named(std::any::type_name::<F>(), f);
+    }
+
+    fn post_named(&self, name: &'static str, f: impl FnOnce(&mut AppState) + Send + 'static) {
         self.in_flight.fetch_add(1, Ordering::SeqCst);
         // A send error means the app is shutting down; the result is no longer wanted.
-        if self.tx.send((self.ws, Box::new(f))).is_err() {
+        if self.tx.send((self.ws, Box::new(f), name)).is_err() {
             self.in_flight.fetch_sub(1, Ordering::SeqCst);
         }
         self.ctx.request_repaint();

@@ -15,7 +15,7 @@ mod position;
 mod protocol;
 mod server;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
@@ -25,7 +25,7 @@ use std::time::Duration;
 
 use serde_json::{json, Value};
 
-pub use candidates::{import_candidates, import_needles};
+pub use candidates::{import_candidates, import_needles, symbol_candidates, visibility_needles, ScanOptions, SymbolScope};
 pub use locate::{
     find_global_tsserver, find_global_typescript, find_local_tsserver, find_node, find_typescript, Installation,
     NativeServer, TsServerJs,
@@ -175,6 +175,11 @@ struct Inner {
     lsp: Mutex<HashMap<LspKey, Arc<LspServer>>>,
     /// Directory -> installation. Walking up and stat-ing on every call would add up.
     lookup: Mutex<HashMap<PathBuf, Lookup>>,
+    /// Folder -> the folder of its project (nearest `tsconfig.json`/`jsconfig.json`).
+    projects: Mutex<HashMap<PathBuf, PathBuf>>,
+    /// Project folder -> the file opened so its server would load it. The project counts as
+    /// loaded while its server still has that file open.
+    loaded: Mutex<HashMap<PathBuf, PathBuf>>,
     timeout_ms: AtomicU64,
     prefer_tsserver: AtomicBool,
 }
@@ -205,7 +210,41 @@ pub struct FileRenameEdits {
     pub projects_loaded: usize,
 }
 
+/// Control of a request that loads the projects of candidate files first.
+pub struct Loading<'a> {
+    /// Polled before each project; `true` ends the request with a cancel error.
+    pub cancelled: &'a dyn Fn() -> bool,
+    /// `(loaded, total)` of the projects that were not loaded yet. Called with `(0, total)`
+    /// first, also when `total` is 0.
+    pub progress: &'a dyn Fn(usize, usize),
+}
+
+impl Loading<'static> {
+    /// No cancel and no progress.
+    pub fn none() -> Loading<'static> {
+        Loading { cancelled: &never, progress: &ignore_progress }
+    }
+}
+
+fn never() -> bool {
+    false
+}
+
+fn ignore_progress(_: usize, _: usize) {}
+
+/// The error of a request whose project loading was cancelled. Carries `ide_lsp::CANCELLED`,
+/// so the app treats it as a cancel, not a failure.
+fn cancelled_error() -> Error {
+    Error::Server(format!("loading projects {}", ide_lsp::CANCELLED))
+}
+
+/// tsserver element kinds of names no other module can reach.
+const LOCAL_KINDS: [&str; 6] = ["local var", "local function", "local class", "parameter", "type parameter", "label"];
+/// Kinds of module-level declarations: visible to other modules only when exported.
+const MODULE_KINDS: [&str; 10] = ["const", "let", "var", "function", "class", "interface", "type", "enum", "module", "alias"];
+
 /// The server that answers for one file.
+#[derive(Clone)]
 enum Backend {
     TsServer(Arc<Server>),
     Native {
@@ -223,6 +262,13 @@ impl Backend {
             _ => false,
         }
     }
+
+    fn open_text(&self, path: &Path) -> Option<Arc<str>> {
+        match self {
+            Backend::TsServer(server) => server.open_text(path),
+            Backend::Native { lsp, .. } => lsp.open_text(path),
+        }
+    }
 }
 
 impl TsService {
@@ -232,6 +278,8 @@ impl TsService {
                 servers: Mutex::default(),
                 lsp: Mutex::default(),
                 lookup: Mutex::default(),
+                projects: Mutex::default(),
+                loaded: Mutex::default(),
                 timeout_ms: AtomicU64::new(DEFAULT_TIMEOUT.as_millis() as u64),
                 prefer_tsserver: AtomicBool::new(false),
             }),
@@ -388,15 +436,225 @@ impl TsService {
         }
     }
 
+    /// Find Usages in the projects the server has loaded. [`TsService::references_across`]
+    /// loads the projects of candidate files first.
     pub fn references(&self, path: &Path, line: usize, column: usize) -> Result<Vec<Reference>> {
         let path = normalize(path);
-        match self.server_for(&path)? {
+        let backend = self.server_for(&path)?;
+        self.references_on(&backend, &path, line, column)
+    }
+
+    fn references_on(&self, backend: &Backend, path: &Path, line: usize, column: usize) -> Result<Vec<Reference>> {
+        match backend {
             Backend::TsServer(server) => {
-                let body = self.ts_position_request(&server, &path, line, column, "references")?;
-                Ok(ts_references(&server, &body))
+                let body = self.ts_position_request(server, path, line, column, "references")?;
+                Ok(ts_references(server, &body))
             }
-            Backend::Native { lsp, .. } => lsp.references(&path, line, column, self.timeout()),
+            Backend::Native { lsp, .. } => lsp.references(path, line, column, self.timeout()),
         }
+    }
+
+    /// Where the symbol at a position is declared, its name, and whether other modules can see
+    /// it. `None` when the server finds no declaration. Feed it to [`symbol_candidates`].
+    ///
+    /// A declaration is local when the server calls it a local or a parameter, or when it is a
+    /// module-level name that its file never exports. Members (properties, methods) count as
+    /// visible: they travel with their type.
+    pub fn symbol_scope(&self, path: &Path, line: usize, column: usize) -> Result<Option<SymbolScope>> {
+        let path = normalize(path);
+        let defs = self.definition(&path, line, column)?;
+        let mut scope = SymbolScope { name: String::new(), declarations: Vec::new(), exported: false };
+        for d in &defs {
+            let Some(text) = self.text_of(&d.path) else { continue };
+            let word = word_at(&text, d.line, d.column);
+            if word.is_empty() {
+                continue;
+            }
+            if scope.name.is_empty() {
+                scope.name = word.clone();
+            }
+            if !scope.declarations.contains(&d.path) {
+                scope.declarations.push(d.path.clone());
+            }
+            if !scope.exported {
+                scope.exported = self.is_exported(d, &word, &text);
+            }
+        }
+        Ok((!scope.declarations.is_empty()).then_some(scope))
+    }
+
+    fn is_exported(&self, d: &Location, name: &str, text: &str) -> bool {
+        let file = d.path.to_string_lossy();
+        if file.contains("node_modules") || file.ends_with(".d.ts") {
+            return true;
+        }
+        match self.quick_info(&d.path, d.line, d.column) {
+            Ok(Some(info)) if LOCAL_KINDS.contains(&info.kind.as_str()) => false,
+            Ok(Some(info)) if info.kind_modifiers.split(',').any(|m| m.trim() == "export") => true,
+            Ok(Some(info)) if MODULE_KINDS.contains(&info.kind.as_str()) || info.kind.is_empty() => mentions_export(text, name),
+            Ok(Some(_)) => true,
+            Ok(None) | Err(_) => mentions_export(text, name),
+        }
+    }
+
+    /// The text the server sees for `path`, opening it if needed.
+    fn text_of(&self, path: &Path) -> Option<Arc<str>> {
+        match self.server_for(path).ok()? {
+            Backend::TsServer(server) => server.ensure_open(path).ok(),
+            Backend::Native { lsp, .. } => lsp.ensure_open(path, self.timeout()).ok(),
+        }
+    }
+
+    /// Find Usages after loading the projects of `candidates` (see [`symbol_candidates`]): one
+    /// file per project that is not loaded yet is opened, and the server is asked to load it.
+    /// Loaded projects stay loaded, so a second search loads nothing. The result is sorted by
+    /// path and position, without duplicates.
+    pub fn references_across(&self, path: &Path, line: usize, column: usize, candidates: &[PathBuf], loading: &Loading) -> Result<Vec<Reference>> {
+        let path = normalize(path);
+        let backends = self.load_candidates(&path, candidates, loading)?;
+        // Another installation does not know the request's file; it is asked at the declaration.
+        let decl = if backends.len() > 1 { self.definition(&path, line, column)?.into_iter().next() } else { None };
+        let mut out: Vec<Reference> = Vec::new();
+        for (i, backend) in backends.iter().enumerate() {
+            if (loading.cancelled)() {
+                return Err(cancelled_error());
+            }
+            if i == 0 {
+                out.extend(self.references_on(backend, &path, line, column)?);
+            } else if let Some(d) = &decl {
+                out.extend(self.references_on(backend, &d.path, d.line, d.column).unwrap_or_default());
+            }
+        }
+        out.sort_by(|a, b| (&a.location.path, a.location.line, a.location.column).cmp(&(&b.location.path, b.location.line, b.location.column)));
+        out.dedup_by(|a, b| a.location == b.location);
+        Ok(out)
+    }
+
+    /// Rename Symbol: the edits that rename the symbol at a position to `new_name`, after
+    /// loading the projects of `candidates` like [`TsService::references_across`]. A refusal
+    /// (not a symbol, a library name) is `Error::Server` with the server's reason.
+    pub fn rename_symbol(&self, path: &Path, line: usize, column: usize, new_name: &str, candidates: &[PathBuf], loading: &Loading) -> Result<Vec<FileEdit>> {
+        let path = normalize(path);
+        let backends = self.load_candidates(&path, candidates, loading)?;
+        let decl = if backends.len() > 1 { self.definition(&path, line, column)?.into_iter().next() } else { None };
+        let mut edits: Vec<FileEdit> = Vec::new();
+        for (i, backend) in backends.iter().enumerate() {
+            if (loading.cancelled)() {
+                return Err(cancelled_error());
+            }
+            let found = if i == 0 {
+                self.rename_on(backend, &path, line, column, new_name)?
+            } else if let Some(d) = &decl {
+                self.rename_on(backend, &d.path, d.line, d.column, new_name).unwrap_or_default()
+            } else {
+                Vec::new()
+            };
+            // Two installations can both know a file; the first answer wins.
+            for f in found {
+                if !edits.iter().any(|e| e.path == f.path) {
+                    edits.push(f);
+                }
+            }
+        }
+        Ok(edits)
+    }
+
+    fn rename_on(&self, backend: &Backend, path: &Path, line: usize, column: usize, new_name: &str) -> Result<Vec<FileEdit>> {
+        match backend {
+            Backend::TsServer(server) => {
+                let body = self.ts_position_request(server, path, line, column, "rename")?;
+                if body.is_null() {
+                    return Ok(Vec::new());
+                }
+                if body["info"]["canRename"].as_bool() == Some(false) {
+                    let why = body["info"]["localizedErrorMessage"].as_str().unwrap_or("This element cannot be renamed.");
+                    return Err(Error::Server(why.to_string()));
+                }
+                Ok(ts_rename_edits(server, &body, new_name))
+            }
+            Backend::Native { lsp, .. } => lsp.rename(path, line, column, new_name, self.timeout()),
+        }
+    }
+
+    /// Opens `anchor`, then one file of each candidate project that is not loaded yet, and waits
+    /// until its server has loaded it. Returns each server once, the anchor's first.
+    fn load_candidates(&self, anchor: &Path, candidates: &[PathBuf], loading: &Loading) -> Result<Vec<Backend>> {
+        let first = self.server_for(anchor)?;
+        match &first {
+            Backend::TsServer(server) => {
+                server.ensure_open(anchor)?;
+            }
+            Backend::Native { lsp, .. } => {
+                lsp.ensure_open(anchor, self.timeout())?;
+            }
+        }
+        let anchor_project = self.project_of(anchor);
+        let mut seen: HashSet<PathBuf> = HashSet::from([anchor_project]);
+        let mut backends = vec![first];
+        let mut todo: Vec<(PathBuf, PathBuf, Backend)> = Vec::new();
+        for c in candidates {
+            let file = normalize(c);
+            let project = self.project_of(&file);
+            if !seen.insert(project.clone()) {
+                continue;
+            }
+            // A candidate under another (broken) install is skipped.
+            let Ok(backend) = self.server_for(&file) else { continue };
+            if !backends.iter().any(|b| b.same_server(&backend)) {
+                backends.push(backend.clone());
+            }
+            let opened = lock(&self.inner.loaded).get(&project).cloned();
+            if opened.is_some_and(|f| backend.open_text(&f).is_some()) {
+                continue;
+            }
+            todo.push((file, project, backend));
+        }
+        let total = todo.len();
+        (loading.progress)(0, total);
+        for (i, (file, project, backend)) in todo.into_iter().enumerate() {
+            if (loading.cancelled)() {
+                return Err(cancelled_error());
+            }
+            match self.load_project(&backend, &file) {
+                Ok(()) => {
+                    lock(&self.inner.loaded).insert(project, file);
+                }
+                Err(e) if e.to_string().contains(ide_lsp::CANCELLED) => return Err(e),
+                // A file that cannot be opened, or a project slower than the timeout: the
+                // final request waits for it or misses it, like before.
+                Err(_) => {}
+            }
+            (loading.progress)(i + 1, total);
+        }
+        Ok(backends)
+    }
+
+    /// Opens `file` and waits until its server has loaded the project: tsserver loads it while
+    /// handling `open`, so any later request waits for that; the native server loads it for the
+    /// first request about the file.
+    fn load_project(&self, backend: &Backend, file: &Path) -> Result<()> {
+        match backend {
+            Backend::TsServer(server) => {
+                server.ensure_open(file)?;
+                server.request("projectInfo", json!({"file": file, "needFileNameList": false}), self.timeout())?;
+            }
+            Backend::Native { lsp, .. } => {
+                lsp.ensure_open(file, self.timeout())?;
+                lsp.hover(file, 0, 0, self.timeout())?;
+            }
+        }
+        Ok(())
+    }
+
+    /// The project folder of a file, cached per folder.
+    fn project_of(&self, file: &Path) -> PathBuf {
+        let dir = file.parent().unwrap_or(file).to_path_buf();
+        if let Some(p) = lock(&self.inner.projects).get(&dir) {
+            return p.clone();
+        }
+        let p = project_dir(&dir);
+        lock(&self.inner.projects).insert(dir, p.clone());
+        p
     }
 
     pub fn quick_info(&self, path: &Path, line: usize, column: usize) -> Result<Option<QuickInfo>> {
@@ -572,6 +830,7 @@ impl TsService {
 
     /// Stops every server. The service stays usable: the next call starts a fresh process.
     pub fn shutdown(&self) {
+        lock(&self.inner.loaded).clear();
         let servers: Vec<Arc<Server>> = lock(&self.inner.servers).drain().map(|(_, s)| s).collect();
         for server in servers {
             server.shutdown();
@@ -782,6 +1041,80 @@ fn ts_diagnostics(index: &LineIndex, body: &Value) -> Vec<Diagnostic> {
             }
         })
         .collect()
+}
+
+/// `rename`: `{info: {canRename}, locs: [{file, locs: [{start, end, prefixText?, suffixText?}]}]}`.
+/// The prefix and suffix keep shorthand properties and import aliases working.
+fn ts_rename_edits(server: &Server, body: &Value, new_name: &str) -> Vec<FileEdit> {
+    let mut files = FileTexts::new(|p| server.open_text(p));
+    let groups = body["locs"].as_array().map(Vec::as_slice).unwrap_or_default();
+    let mut out: Vec<FileEdit> = Vec::new();
+    for g in groups {
+        let Some(file) = g["file"].as_str() else { continue };
+        let path = server_path(file);
+        let index = files.index(&path);
+        let edits: Vec<TextEdit> = g["locs"]
+            .as_array()
+            .map(Vec::as_slice)
+            .unwrap_or_default()
+            .iter()
+            .map(|l| {
+                let (start_line, start_column) = ts_convert(index.as_ref(), &l["start"]);
+                let (end_line, end_column) = ts_convert(index.as_ref(), &l["end"]);
+                let new_text = format!("{}{new_name}{}", l["prefixText"].as_str().unwrap_or_default(), l["suffixText"].as_str().unwrap_or_default());
+                TextEdit { start_line, start_column, end_line, end_column, new_text }
+            })
+            .collect();
+        if edits.is_empty() {
+            continue;
+        }
+        match out.iter_mut().find(|f| f.path == path) {
+            Some(f) => f.edits.extend(edits),
+            None => out.push(FileEdit { path, edits }),
+        }
+    }
+    out
+}
+
+/// The identifier at a 0-based line and char column, or "".
+fn word_at(text: &str, line: usize, column: usize) -> String {
+    let Some(l) = text.split('\n').nth(line) else { return String::new() };
+    let chars: Vec<char> = l.chars().collect();
+    let is_ident = |c: char| c.is_alphanumeric() || c == '_' || c == '$';
+    let mut start = column.min(chars.len());
+    while start > 0 && is_ident(chars[start - 1]) {
+        start -= 1;
+    }
+    let mut end = column.min(chars.len());
+    while end < chars.len() && is_ident(chars[end]) {
+        end += 1;
+    }
+    chars[start..end].iter().collect()
+}
+
+/// Whether `text` exports `name` by some statement: a line with `export` (`exports.`,
+/// `module.exports`) that names it, or an `export { ... }` list over several lines.
+fn mentions_export(text: &str, name: &str) -> bool {
+    let names = |s: &str| {
+        s.match_indices(name).any(|(i, _)| {
+            let is_ident = |c: char| c.is_alphanumeric() || c == '_' || c == '$';
+            s[..i].chars().next_back().is_none_or(|c| !is_ident(c)) && s[i + name.len()..].chars().next().is_none_or(|c| !is_ident(c))
+        })
+    };
+    if text.lines().any(|l| l.contains("export") && names(l)) {
+        return true;
+    }
+    let mut rest = text;
+    while let Some(i) = rest.find("export") {
+        rest = &rest[i + "export".len()..];
+        let list = rest.trim_start();
+        if let Some(body) = list.strip_prefix('{').and_then(|b| b.split_once('}')).map(|(b, _)| b) {
+            if names(body) {
+                return true;
+            }
+        }
+    }
+    false
 }
 
 /// Edits as Find Usages entries: each edited span is one place that names the file.
@@ -1079,6 +1412,35 @@ mod tests {
         assert_eq!((d[0].line, d[0].column, d[0].end_column, d[0].severity), (0, 8, 9, Severity::Error));
         assert_eq!((d[0].code.as_deref(), d[0].source.as_deref()), (Some("2304"), Some("ts")));
         assert_eq!((d[1].column, d[1].end_column, d[1].severity, d[1].unnecessary), (4, 5, Severity::Hint, true));
+    }
+
+    #[test]
+    fn words_and_exports() {
+        assert_eq!(word_at("const rootOrm = 1;\n", 0, 8), "rootOrm");
+        assert_eq!(word_at("a\n  $x_1 + y", 1, 2), "$x_1");
+        assert_eq!(word_at("a", 5, 0), "");
+        assert!(mentions_export("export const rootOrm = 1;\n", "rootOrm"));
+        assert!(mentions_export("const a = 1;\nexport {\n  b,\n  a,\n};\n", "a"));
+        assert!(mentions_export("exports.greet = greet;\n", "greet"));
+        assert!(!mentions_export("export const rootOrmX = 1;\nconst rootOrm = 2;\n", "rootOrm"));
+        assert!(!mentions_export("function f() {\n  const tmp = 1;\n}\nexport { f };\n", "tmp"));
+    }
+
+    #[test]
+    fn tsserver_rename_edits_keep_prefix_and_suffix() {
+        let body = json!({
+            "info": {"canRename": true},
+            "locs": [{"file": "/nowhere/a.ts", "locs": [
+                {"start": {"line": 1, "offset": 10}, "end": {"line": 1, "offset": 13}},
+                {"start": {"line": 2, "offset": 3}, "end": {"line": 2, "offset": 6}, "prefixText": "old: "},
+            ]}],
+        });
+        let server = Server::new(PathBuf::from("node"), PathBuf::from("tsserver.js"), None);
+        let edits = ts_rename_edits(&server, &body, "neu");
+        assert_eq!(edits.len(), 1);
+        let e = &edits[0].edits;
+        assert_eq!((e[0].start_line, e[0].start_column, e[0].end_column, e[0].new_text.as_str()), (0, 9, 12, "neu"));
+        assert_eq!((e[1].start_line, e[1].new_text.as_str()), (1, "old: neu"));
     }
 
     #[test]

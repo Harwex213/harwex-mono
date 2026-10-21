@@ -28,6 +28,7 @@ Read this file when a change touches a hot path and you need the budget or a ref
 | UI frame while a rename preview loads 30 projects (tsserver, 60 projects) | < 250 ms worst frame (with the other tests of the `app` binary in parallel) | `cargo test -p harwex-ide --test app project_menu::rename_preview_keeps_frames_fast` |
 | ESLint and oxlint, generated 200-package monorepo: warm per-file lint after an edit (median) / cold first diagnostics | < 300 ms without types, < 1 s type-aware / < 20 s | `cargo test -p harwex-ide --test app lint_budget:: -- --nocapture` |
 | one memory indicator sample (thread CPU time, median of 30) | < 0.5 ms | `cargo test -p harwex-ide --test app memory::sampling_cost -- --nocapture` |
+| git path refresh with 10k status rows: the `refresh::paths` call and every frame until it lands, for a 100k-path burst (whole-tree walk) and a 10k-path burst (path refresh) | < 100 ms (debug, with the other tests of the `app` binary in parallel) | `cargo test -p harwex-ide --test app git_refresh::a_huge_burst_keeps_frames_fast -- --nocapture` |
 
 The benchmark file has 200k lines (4.2 MB of TypeScript).
 
@@ -68,6 +69,8 @@ ide-git on harwex-mono: status 343 ms cold, 90-103 ms warm (`git status` itself 
 
 Git refresh on a `git clone --local` copy of mono (484,662 files, release build, task 067): full status + branch 14-17 s (the CLI; libgit2 took 19-23 s). Stage of 2 files to updated Commit window 0.52 s, Commit of 2 files 4.6 s (`git commit` itself 4.5 s), status of 1-2 paths 0.10-0.11 s. The `.git` events of our own writes and a stat-only index rewrite run no status; an outside `git add` runs one full status.
 
+Git refresh bookkeeping on the UI thread (task 122, debug, `git_refresh::a_huge_burst_keeps_frames_fast` alone): 10k status rows; a 100k-path burst costs 27 ms in `refresh::paths` (15 ms of it strips the workdir prefix, 11 ms fills the capped set) and frames under 1 ms after; a 10k-path burst costs 17 ms in the call and 12 ms in the frame that merges the rows. On the worker, the rename partners of 10k rows against 100k paths take 7 ms and the coarsening to 500 folders 140 ms. Before task 122 the partner pass ran on the UI thread and compared every row with every path: 0.67 s per 1k paths x 10k rows in debug, about a minute for 100k paths.
+
 Git refresh on mono itself, read-only (500,334 index entries, 112 MB index, release, `cargo test --release -p ide-git --test git large_repo::bench_external_repo -- --ignored --nocapture` with `HARWEX_GIT_BENCH_REPO`, task 100): full status 12.1-12.4 s on a quiet machine (15-23 s while other agents build); of it the untracked walk 9.8 s and the lstat of all entries 2.1 s; `-uno` 2.4 s. The incremental status after a HEAD or index change: `changed_paths` 0.4-0.75 s (18-153 paths), `status_of` of those 0.17-1.7 s, the stamp 0.7 s beside them; about 1-2 s against the 12 s walk that ran before after every checkout, merge, rebase, pull, stash, reset, fetch and outside commit. `status_of` costs about 4 ms per file pathspec there; 190 directory pathspecs took 7.5 s.
 
 ide-git on the generated repo (`cargo test -p ide-git --test git large_repo:: -- --nocapture`, debug, 4000 files, 1441 commits): status 55 ms cold, 48 ms warm through the git CLI (22 and 18 ms with libgit2 before task 067; the CLI pays one process start). Log page of 200: 7 ms, at skip 1000: 8 ms. Graph of 200 rows: 0.1 ms.
@@ -75,6 +78,8 @@ ide-git on the generated repo (`cargo test -p ide-git --test git large_repo:: --
 TypeScript on the generated workspace (`cargo test -p ide-ts --test ts workspace:: -- --nocapture`, 1240 files): cold definition 72 ms native / 490 ms tsserver, warm under 0.4 ms, references with 2401 results 89 ms / 195 ms.
 
 File rename on the generated monorepo (`cargo test -p ide-ts --test ts rename_budget:: -- --nocapture`, debug, 1002 files in 201 projects, 30 importers): pre-filter 13 ms over 1002 code files (31 candidates), whole preview 59 ms native / 0.9 s tsserver, 31 projects loaded, 31 files changed. In the app (`project_menu`, tsserver, 60 projects): preview about 1 s, worst UI frame under 1 ms when the test runs alone.
+
+Find Usages across packages on `mono` (read-only, worktree, task 121, debug build, `nice -n 19`, `GOMAXPROCS=4`, 4 scan threads, `tests/ts/mono_usages.rs`): `rootOrm` from `live-casino-ui-core/src/Common/index.ts:882` on TS 7.0.2 native. Cold: `symbol_scope` 0.5 s, pre-filter over 509,507 listed files (222,209 code files) 6.6 s to 212 candidates, 50 projects loaded in 33 s, references 0.2 s after that; 40.4 s in all, 183 usages in 85 files (all 85 real users: 32 in ui-core, 53 importers by package name; none missed, none extra). Warm: 7.2 s, of it the pre-filter 6.9 s and references 0.23 s, 0 projects loaded. Before task 121 Find Usages found only the 32 ui-core files.
 
 10k problem underlines on the same file (every 20 lines, all four severities): steady frame 0.14 ms, jump-scroll frame 0.45 ms.
 

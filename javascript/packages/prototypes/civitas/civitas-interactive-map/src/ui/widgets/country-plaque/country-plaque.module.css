@@ -1,6 +1,5 @@
-/* The legend plaque. Parchment, a heavy frame, and display type in tracked caps
-   — the register of a printed political map. `color-scheme: light` for the same
-   reason the panel sets it: the surface is parchment and the root is dark. */
+/* The name tablet in printed-map style: parchment, a heavy frame, tracked caps.
+   `color-scheme: light`, because the root is dark and the surface is parchment. */
 
 .plaque {
   align-items: center;
@@ -17,8 +16,7 @@
   pointer-events: auto;
 }
 
-/* The one visual difference between the two scopes, and the visible answer to
-   "did my right click do something". */
+/* Marks the country scope, so a right click shows a visible result. */
 .plaque[data-scope="country"] {
   border-color: var(--civ-gild);
 }
@@ -31,9 +29,7 @@
   width: 64px;
 }
 
-/* `contain`, not `cover`. A 2:1 flag cropped into a 3:2 box loses its left and
-   right ends, which is where the charge usually is. The country colour behind
-   the box does the letterboxing. */
+/* `contain`, not `cover`: cropping would cut the flag ends. The country colour fills the gaps. */
 .flagImage {
   display: block;
   height: 100%;

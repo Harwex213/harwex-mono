@@ -6,7 +6,9 @@
     "dev": "rspack serve",
     "build": "rspack build",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test \"src/**/*.test.ts\""
+    "test": "tsx --test \"src/**/*.test.ts\"",
+    "test:screenshots": "rspack build -c e2e/rspack.config.mjs && playwright test -c e2e/playwright.config.ts",
+    "test:screenshots:update": "rspack build -c e2e/rspack.config.mjs && playwright test -c e2e/playwright.config.ts --update-snapshots"
   },
   "dependencies": {
     "@preact/signals-react": "3.9.0",
@@ -14,6 +16,7 @@
     "react-dom": "19.2.0"
   },
   "devDependencies": {
+    "@playwright/test": "1.61.1",
     "@rspack/cli": "2.1.4",
     "@rspack/core": "2.1.4",
     "@rspack/dev-server": "2.1.0",
