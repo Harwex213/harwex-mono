@@ -1122,7 +1122,9 @@ fn editor_area(s: &mut AppState, ui: &mut egui::Ui) {
     crate::tabs::enforce_limit(s);
     if !s.ws.tabs.list.is_empty() {
         let any_unmodified = s.ws.tabs.list.iter().any(|t| !s.tab_modified(t));
-        let event = s.ws.tabs.show_bar(ui, any_unmodified);
+        crate::tab_status::request(s);
+        let colors = crate::tab_status::colors(s);
+        let event = s.ws.tabs.show_bar(ui, any_unmodified, &colors);
         match event {
             Some(TabBarEvent::Activate(id)) => {
                 s.ws.tabs.activate(id);

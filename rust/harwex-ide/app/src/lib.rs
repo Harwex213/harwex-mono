@@ -35,6 +35,7 @@ pub mod unreal;
 pub mod settings;
 pub mod speed_search;
 pub mod state;
+pub mod tab_status;
 pub mod tabs;
 pub mod terminal;
 pub mod terminal_store;

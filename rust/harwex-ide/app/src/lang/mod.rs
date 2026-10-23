@@ -30,7 +30,7 @@ use std::time::{Duration, Instant};
 
 pub use config::IdeConfig;
 pub use ide_lsp::{FileEdit, Location, Reference, TextEdit};
-pub use ide_ts::{Loading, SymbolScope};
+pub use ide_ts::{Loading, Stream, SymbolScope};
 
 use crate::jobs::Jobs;
 use crate::nav::NavKind;
@@ -188,9 +188,14 @@ pub trait LanguageServer: Send + Sync + 'static {
     fn symbol_scope(&self, _path: &Path, _line: usize, _column: usize) -> Option<SymbolScope> {
         None
     }
-    /// `references` after loading the projects of `candidates` (files that may use the symbol).
-    fn references_across(&self, path: &Path, line: usize, column: usize, _candidates: &[PathBuf], _loading: &Loading) -> Result<Vec<Reference>, String> {
-        self.references(path, line, column)
+    /// `references` after loading the projects of `candidates` (files that may use the symbol),
+    /// delivered through `stream.found` as they arrive. With `stream.loaded_asked` the caller
+    /// already has the answer of `references`, so that question is not asked again.
+    fn references_across(&self, path: &Path, line: usize, column: usize, _candidates: &[PathBuf], _loading: &Loading, stream: &Stream) -> Result<(), String> {
+        if !stream.loaded_asked {
+            (stream.found)(self.references(path, line, column)?);
+        }
+        Ok(())
     }
     /// `rename_symbol` after loading the projects of `candidates`.
     fn rename_symbol_across(&self, path: &Path, line: usize, column: usize, new_name: &str, _candidates: &[PathBuf], _loading: &Loading) -> Result<Vec<FileEdit>, String> {

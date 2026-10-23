@@ -105,8 +105,10 @@ pub struct FindTab {
     /// Last frame's scroll offset and viewport height of the tree.
     view: (f32, f32),
     cancel: Option<Arc<AtomicBool>>,
-    /// What a running usages search does now ("Loading 12 projects... 3/12").
+    /// What a running usages search does now ("3 of 12 packages checked").
     progress: Option<crate::nav::Progress>,
+    /// The search was stopped; the results found until then stay.
+    pub cancelled: bool,
 }
 
 impl FindTab {
@@ -129,6 +131,7 @@ impl FindTab {
             view: (0.0, 0.0),
             cancel: None,
             progress: None,
+            cancelled: false,
         }
     }
 
@@ -136,11 +139,20 @@ impl FindTab {
         matches!(self.kind, TabKind::Usages(_))
     }
 
-    /// The progress text of a running search, if it reports one.
+    /// The progress text of a running search, if it reports one. A usages search that found
+    /// something, or that checks packages, leads with the count: "4 usages · 3 of 12 packages
+    /// checked".
     pub fn progress_text(&self) -> Option<String> {
         let p = self.progress.as_ref()?;
         let text = p.lock().unwrap_or_else(|e| e.into_inner()).clone();
-        (!text.is_empty()).then_some(text)
+        if text.is_empty() {
+            return None;
+        }
+        let n = self.items.len();
+        if self.is_usages() && (n > 0 || text.ends_with("packages checked")) {
+            return Some(format!("{} · {text}", usages_count(n)));
+        }
+        Some(text)
     }
 
     /// Stops the running search (its cancel flag), if any.
@@ -164,6 +176,31 @@ impl FindTab {
         self.selected = None;
         self.preview.clear();
         if !self.items.is_empty() {
+            self.select_item(0);
+        }
+    }
+
+    /// Adds results of a running search: new ones only, sorted in among the others. The
+    /// selection and the collapsed folders stay; with no selection the first result is
+    /// selected.
+    fn add_items(&mut self, root: &Path, items: Vec<ResultItem>) {
+        let known: HashSet<(PathBuf, usize, usize)> = self.items.iter().map(|i| (i.path.clone(), i.line, i.column)).collect();
+        let mut added = false;
+        for mut it in items {
+            if known.contains(&(it.path.clone(), it.line, it.column)) {
+                continue;
+            }
+            it.id = self.next_item;
+            self.next_item += 1;
+            self.items.push(it);
+            added = true;
+        }
+        if !added {
+            return;
+        }
+        rows::sort_items(root, &mut self.items);
+        self.rows = None;
+        if self.selected.is_none() && !self.items.is_empty() {
             self.select_item(0);
         }
     }
@@ -413,11 +450,16 @@ pub fn start_usages(state: &mut AppState, origin: UsageOrigin, into: Option<u64>
         Some(id) => id,
         None => fw.push(usages_title(&origin), TabKind::Usages(origin)),
     };
+    let root = project_root(state);
+    let fw = &mut state.ws.find_window;
     let tab = fw.tab_mut(id).expect("tab exists");
     tab.stop_search();
     tab.generation += 1;
     tab.searching = true;
     tab.error = None;
+    tab.cancelled = false;
+    // Results stream in; a rerun starts from an empty list.
+    tab.set_items(&root, Vec::new());
     let generation = tab.generation;
     state.ws.layout.show(ToolWindow::Find);
     (id, generation)
@@ -433,7 +475,17 @@ pub fn track_search(state: &mut AppState, tab: u64, progress: crate::nav::Progre
     }
 }
 
-/// The answer of a usages search. A tab that was closed or rerun meanwhile drops it.
+/// Usages that a running search found so far (`nav::usages` streams them). A tab that was
+/// closed or rerun meanwhile drops them.
+pub fn add_usages(state: &mut AppState, tab: u64, generation: u64, refs: Vec<crate::lang::Reference>) {
+    let root = project_root(state);
+    if let Some(t) = state.ws.find_window.tab_mut(tab).filter(|t| t.generation == generation) {
+        t.add_items(&root, usage_items(refs));
+    }
+}
+
+/// The end of a usages search, with its last usages. A tab that was closed or rerun meanwhile
+/// drops it. A cancel or an error keeps the usages found before it.
 pub fn finish_usages(
     state: &mut AppState,
     tab: u64,
@@ -453,35 +505,51 @@ pub fn finish_usages(
     t.cancel = None;
     t.progress = None;
     match result {
-        Ok(refs) => {
-            let mut seen = HashSet::new();
-            let items = refs
-                .into_iter()
-                .filter(|r| {
-                    seen.insert((r.location.path.clone(), r.location.line, r.location.column))
-                })
-                .map(|r| {
-                    let kind = Some(UsageKind::of(&r));
-                    let end_column = if r.end_line == r.location.line {
-                        r.end_column
-                    } else {
-                        r.line_text.chars().count()
-                    };
-                    ResultItem {
-                        id: 0,
-                        path: r.location.path,
-                        line: r.location.line,
-                        column: r.location.column,
-                        end_column,
-                        line_text: r.line_text,
-                        kind,
-                    }
-                })
-                .collect();
-            t.set_items(&root, items);
-        }
-        Err(e) if crate::progress::is_cancel_text(&e) => t.error = Some("Search cancelled.".into()),
+        Ok(refs) => t.add_items(&root, usage_items(refs)),
+        Err(e) if crate::progress::is_cancel_text(&e) => t.cancelled = true,
         Err(e) => t.error = Some(e),
+    }
+}
+
+fn usage_items(refs: Vec<crate::lang::Reference>) -> Vec<ResultItem> {
+    let mut seen = HashSet::new();
+    refs.into_iter()
+        .filter(|r| seen.insert((r.location.path.clone(), r.location.line, r.location.column)))
+        .map(|r| {
+            let kind = Some(UsageKind::of(&r));
+            let end_column = if r.end_line == r.location.line {
+                r.end_column
+            } else {
+                r.line_text.chars().count()
+            };
+            ResultItem {
+                id: 0,
+                path: r.location.path,
+                line: r.location.line,
+                column: r.location.column,
+                end_column,
+                line_text: r.line_text,
+                kind,
+            }
+        })
+        .collect()
+}
+
+/// "1 usage", "12 usages".
+fn usages_count(n: usize) -> String {
+    if n == 1 {
+        "1 usage".into()
+    } else {
+        format!("{n} usages")
+    }
+}
+
+/// Stop: ends the running search of a tab; the results found so far stay.
+pub fn stop_search(state: &mut AppState, tab: u64) {
+    if let Some(t) = state.ws.find_window.tab_mut(tab) {
+        if let Some(c) = &t.cancel {
+            c.store(true, Ordering::Relaxed);
+        }
     }
 }
 
@@ -886,6 +954,7 @@ pub fn header_tabs(state: &mut AppState, ui: &mut Ui) {
 enum Action {
     Open(PathBuf, Position),
     Rerun,
+    Stop,
 }
 
 /// The Find tool window body: toolbar, result tree, preview.
@@ -910,6 +979,7 @@ pub fn show(state: &mut AppState, ui: &mut Ui) {
         match a {
             Action::Open(path, pos) => state.open_location(&path, Some(pos), true),
             Action::Rerun => rerun(state, state.ws.find_window.tabs[at].id),
+            Action::Stop => stop_search(state, state.ws.find_window.tabs[at].id),
         }
     }
 }
@@ -933,6 +1003,11 @@ fn body(state: &mut AppState, ui: &mut Ui, tab: &mut FindTab) -> Vec<Action> {
         .clicked()
     {
         actions.push(Action::Rerun);
+    }
+    if layout::icon_button_enabled(&mut bar_ui, tab.searching && tab.cancel.is_some(), Icon::Stop, "Stop", "Stop")
+        .clicked()
+    {
+        actions.push(Action::Stop);
     }
     if layout::icon_button_enabled(
         &mut bar_ui,
@@ -1027,9 +1102,30 @@ fn tree(
         });
         return;
     }
+    if tab.searching {
+        // Results stream in: the progress line stays above them.
+        let text = tab.progress_text().unwrap_or_else(|| "Searching...".into());
+        ui.horizontal(|ui| {
+            ui.spinner();
+            ui.label(RichText::new(text).color(t.text_dim));
+        });
+    }
     if let Some(e) = &tab.error {
         ui.label(RichText::new(e).color(t.error));
-        return;
+        if tab.items.is_empty() {
+            return;
+        }
+    }
+    if tab.cancelled {
+        let text = if tab.items.is_empty() {
+            "Search cancelled.".to_string()
+        } else {
+            format!("Search cancelled · {} found before the stop", usages_count(tab.items.len()))
+        };
+        ui.label(RichText::new(text).color(t.text_dim));
+        if tab.items.is_empty() {
+            return;
+        }
     }
     if tab.items.is_empty() {
         let text = if tab.is_usages() {

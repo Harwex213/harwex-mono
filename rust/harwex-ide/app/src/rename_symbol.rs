@@ -246,7 +246,7 @@ fn compute(state: &mut AppState) {
             }
         }
     });
-    crate::nav::across_projects(state, crate::nav::Across { lang, path, pos, label, progress, cancel, ask, done });
+    crate::nav::across_projects(state, crate::nav::Across { lang, path, pos, label, progress, cancel, first: None, ask, done });
 }
 
 /// Applies the edits: open documents through the edit API (one undo step each, then saved),

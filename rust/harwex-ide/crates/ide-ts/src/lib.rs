@@ -11,6 +11,7 @@
 mod candidates;
 mod locate;
 mod lsp;
+mod packages;
 mod position;
 mod protocol;
 mod server;
@@ -21,11 +22,13 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use serde_json::{json, Value};
 
-pub use candidates::{import_candidates, import_needles, symbol_candidates, visibility_needles, ScanOptions, SymbolScope};
+pub use candidates::{import_candidates, import_needles, symbol_candidates, visibility_needles, ScanOptions, SymbolCandidates, SymbolScope};
+pub use packages::PackageGraph;
+
 pub use locate::{
     find_global_tsserver, find_global_typescript, find_local_tsserver, find_node, find_typescript, Installation,
     NativeServer, TsServerJs,
@@ -214,9 +217,33 @@ pub struct FileRenameEdits {
 pub struct Loading<'a> {
     /// Polled before each project; `true` ends the request with a cancel error.
     pub cancelled: &'a dyn Fn() -> bool,
-    /// `(loaded, total)` of the projects that were not loaded yet. Called with `(0, total)`
-    /// first, also when `total` is 0.
+    /// `(checked, total)` of the candidate projects, the anchor's included. Called once before
+    /// any loading, then after each step. A project already loaded counts as checked once its
+    /// server has been asked.
     pub progress: &'a dyn Fn(usize, usize),
+}
+
+/// Where [`TsService::references_streaming`] delivers usages.
+pub struct Stream<'a> {
+    /// Gets each batch of new usages, sorted by path and position.
+    pub found: &'a dyn Fn(Vec<Reference>),
+    /// The caller already asked [`TsService::references`] (the anchor's server, the projects it
+    /// has loaded), so that first question is skipped.
+    pub loaded_asked: bool,
+}
+
+/// After a load, the servers are asked again when the loads since the last question took at
+/// least this many times that question. Keeps the questions under about a third of the time.
+pub const ASK_RATIO: u32 = 2;
+
+/// The candidate projects of a request, sorted by `plan_loading`.
+struct LoadPlan {
+    /// Each server once, the anchor's first.
+    backends: Vec<Backend>,
+    /// (file, project, server) of each project that is not loaded yet.
+    todo: Vec<(PathBuf, PathBuf, Backend)>,
+    /// Distinct candidate projects, the anchor's included.
+    projects: usize,
 }
 
 impl Loading<'static> {
@@ -508,26 +535,93 @@ impl TsService {
     /// Find Usages after loading the projects of `candidates` (see [`symbol_candidates`]): one
     /// file per project that is not loaded yet is opened, and the server is asked to load it.
     /// Loaded projects stay loaded, so a second search loads nothing. The result is sorted by
-    /// path and position, without duplicates.
+    /// path and position, without duplicates. [`TsService::references_streaming`] delivers the
+    /// same usages while the projects load.
     pub fn references_across(&self, path: &Path, line: usize, column: usize, candidates: &[PathBuf], loading: &Loading) -> Result<Vec<Reference>> {
+        let out: Mutex<Vec<Reference>> = Mutex::default();
+        let found = |batch: Vec<Reference>| lock(&out).extend(batch);
+        self.references_streaming(path, line, column, candidates, loading, &Stream { found: &found, loaded_asked: false })?;
+        let mut out = out.into_inner().unwrap_or_else(|e| e.into_inner());
+        out.sort_by(|a, b| (&a.location.path, a.location.line, a.location.column).cmp(&(&b.location.path, b.location.line, b.location.column)));
+        Ok(out)
+    }
+
+    /// Find Usages that delivers its usages as they arrive: first those of the projects the
+    /// servers have loaded (unless `stream.loaded_asked`), then, while the candidate projects
+    /// load one by one, the usages each of them adds. Each batch holds only usages not delivered
+    /// before, sorted by path and position. `loading.progress` gets `(checked, total)` of the
+    /// candidate projects (the anchor's included) after each batch. A cancel or an error ends
+    /// the call; the batches delivered before stay valid.
+    ///
+    /// Asking costs time on a big loaded set, so after a load the servers are asked again only
+    /// when the loads since the last question took at least [`ASK_RATIO`] times that question;
+    /// the last project is always asked.
+    pub fn references_streaming(&self, path: &Path, line: usize, column: usize, candidates: &[PathBuf], loading: &Loading, stream: &Stream) -> Result<()> {
         let path = normalize(path);
-        let backends = self.load_candidates(&path, candidates, loading)?;
+        let plan = self.plan_loading(&path, candidates)?;
+        let total = plan.projects;
+        let mut checked = total - plan.todo.len();
         // Another installation does not know the request's file; it is asked at the declaration.
-        let decl = if backends.len() > 1 { self.definition(&path, line, column)?.into_iter().next() } else { None };
-        let mut out: Vec<Reference> = Vec::new();
-        for (i, backend) in backends.iter().enumerate() {
+        let decl = if plan.backends.len() > 1 { self.definition(&path, line, column)?.into_iter().next() } else { None };
+        let mut seen: HashSet<Location> = HashSet::new();
+        let ask = |which: &[bool], seen: &mut HashSet<Location>| -> Result<()> {
+            let mut batch: Vec<Reference> = Vec::new();
+            for (i, backend) in plan.backends.iter().enumerate() {
+                if !which[i] {
+                    continue;
+                }
+                if (loading.cancelled)() {
+                    return Err(cancelled_error());
+                }
+                if i == 0 {
+                    batch.extend(self.references_on(backend, &path, line, column)?);
+                } else if let Some(d) = &decl {
+                    batch.extend(self.references_on(backend, &d.path, d.line, d.column).unwrap_or_default());
+                }
+            }
+            batch.retain(|r| seen.insert(r.location.clone()));
+            if !batch.is_empty() {
+                batch.sort_by(|a, b| (&a.location.path, a.location.line, a.location.column).cmp(&(&b.location.path, b.location.line, b.location.column)));
+                (stream.found)(batch);
+            }
+            Ok(())
+        };
+        (loading.progress)(if stream.loaded_asked { checked } else { 0 }, total);
+        let started = Instant::now();
+        // The anchor's server was asked by the caller; other installations still are.
+        let first: Vec<bool> = (0..plan.backends.len()).map(|i| i > 0 || !stream.loaded_asked).collect();
+        if first.iter().any(|b| *b) {
+            ask(&first, &mut seen)?;
+            if !stream.loaded_asked {
+                (loading.progress)(checked, total);
+            }
+        }
+        let mut last_ask = if stream.loaded_asked { Duration::ZERO } else { started.elapsed() };
+        let mut window = Instant::now();
+        let mut dirty = vec![false; plan.backends.len()];
+        let mut pending = 0;
+        let n = plan.todo.len();
+        for (i, (file, project, backend)) in plan.todo.into_iter().enumerate() {
             if (loading.cancelled)() {
                 return Err(cancelled_error());
             }
-            if i == 0 {
-                out.extend(self.references_on(backend, &path, line, column)?);
-            } else if let Some(d) = &decl {
-                out.extend(self.references_on(backend, &d.path, d.line, d.column).unwrap_or_default());
+            self.load_one(&backend, file, project)?;
+            if let Some(k) = plan.backends.iter().position(|b| b.same_server(&backend)) {
+                dirty[k] = true;
+            }
+            pending += 1;
+            if i + 1 == n || window.elapsed() >= last_ask * ASK_RATIO {
+                let t = Instant::now();
+                ask(&dirty, &mut seen)?;
+                last_ask = t.elapsed();
+                window = Instant::now();
+                dirty.iter_mut().for_each(|d| *d = false);
+                checked += pending;
+                pending = 0;
+                (loading.progress)(checked, total);
             }
         }
-        out.sort_by(|a, b| (&a.location.path, a.location.line, a.location.column).cmp(&(&b.location.path, b.location.line, b.location.column)));
-        out.dedup_by(|a, b| a.location == b.location);
-        Ok(out)
+        Ok(())
     }
 
     /// Rename Symbol: the edits that rename the symbol at a position to `new_name`, after
@@ -578,7 +672,25 @@ impl TsService {
 
     /// Opens `anchor`, then one file of each candidate project that is not loaded yet, and waits
     /// until its server has loaded it. Returns each server once, the anchor's first.
+    /// `loading.progress` gets `(checked, total)`: the projects already loaded count as checked.
     fn load_candidates(&self, anchor: &Path, candidates: &[PathBuf], loading: &Loading) -> Result<Vec<Backend>> {
+        let plan = self.plan_loading(anchor, candidates)?;
+        let total = plan.projects;
+        let mut checked = total - plan.todo.len();
+        (loading.progress)(checked, total);
+        for (file, project, backend) in plan.todo {
+            if (loading.cancelled)() {
+                return Err(cancelled_error());
+            }
+            self.load_one(&backend, file, project)?;
+            checked += 1;
+            (loading.progress)(checked, total);
+        }
+        Ok(plan.backends)
+    }
+
+    /// Opens `anchor` and sorts the candidate projects into loaded ones and those to load.
+    fn plan_loading(&self, anchor: &Path, candidates: &[PathBuf]) -> Result<LoadPlan> {
         let first = self.server_for(anchor)?;
         match &first {
             Backend::TsServer(server) => {
@@ -609,24 +721,20 @@ impl TsService {
             }
             todo.push((file, project, backend));
         }
-        let total = todo.len();
-        (loading.progress)(0, total);
-        for (i, (file, project, backend)) in todo.into_iter().enumerate() {
-            if (loading.cancelled)() {
-                return Err(cancelled_error());
+        Ok(LoadPlan { backends, todo, projects: seen.len() })
+    }
+
+    /// Loads one candidate project. Only a cancel is an error: a file that cannot be opened, or
+    /// a project slower than the timeout, is missed by the question or waited for by it.
+    fn load_one(&self, backend: &Backend, file: PathBuf, project: PathBuf) -> Result<()> {
+        match self.load_project(backend, &file) {
+            Ok(()) => {
+                lock(&self.inner.loaded).insert(project, file);
+                Ok(())
             }
-            match self.load_project(&backend, &file) {
-                Ok(()) => {
-                    lock(&self.inner.loaded).insert(project, file);
-                }
-                Err(e) if e.to_string().contains(ide_lsp::CANCELLED) => return Err(e),
-                // A file that cannot be opened, or a project slower than the timeout: the
-                // final request waits for it or misses it, like before.
-                Err(_) => {}
-            }
-            (loading.progress)(i + 1, total);
+            Err(e) if e.to_string().contains(ide_lsp::CANCELLED) => Err(e),
+            Err(_) => Ok(()),
         }
-        Ok(backends)
     }
 
     /// Opens `file` and waits until its server has loaded the project: tsserver loads it while

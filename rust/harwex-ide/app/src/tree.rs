@@ -893,10 +893,8 @@ pub fn show(state: &mut AppState, ui: &mut Ui) -> Option<TreeEvent> {
                 t.tree_cut
             } else if tree.is_excluded(&row.entry.path) {
                 t.tree_excluded
-            } else if row.entry.ignored {
-                t.tree_ignored
             } else {
-                name_color(git, &row.entry.path, row.entry.is_dir)
+                status_color(git, &row.entry.path, row.entry.is_dir, row.entry.ignored).unwrap_or(t.text)
             };
             let icon_c = pos2(x + 22.0, cy);
             if row.entry.is_dir {
@@ -1164,13 +1162,19 @@ fn drag_ghost(ctx: &egui::Context, pointer: egui::Pos2, paths: &[PathBuf]) {
 }
 
 pub fn name_color(git: &GitInfo, path: &Path, is_dir: bool) -> Color32 {
+    status_color(git, path, is_dir, false).unwrap_or(theme::T.text)
+}
+
+/// The color of a name by its git status, the one mapping for the Project tree, the
+/// breadcrumbs and the editor tabs. `ignored` (git-ignored) wins; `None` for a clean name.
+pub fn status_color(git: &GitInfo, path: &Path, is_dir: bool, ignored: bool) -> Option<Color32> {
+    if ignored {
+        return Some(theme::T.tree_ignored);
+    }
     if is_dir {
-        return if git.dirty_dirs.contains(path) { theme::T.git_modified } else { theme::T.text };
+        return git.dirty_dirs.contains(path).then_some(theme::T.git_modified);
     }
-    match git.status.get(path) {
-        Some(kind) => change_color(*kind),
-        None => theme::T.text,
-    }
+    git.status.get(path).map(|kind| change_color(*kind))
 }
 
 pub fn change_color(kind: ChangeKind) -> Color32 {

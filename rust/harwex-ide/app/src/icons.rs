@@ -41,6 +41,8 @@ pub enum Icon {
     More,
     Lock,
     Refresh,
+    /// Stop a running search: a square.
+    Stop,
     /// Rollback: an arrow turning back.
     Rollback,
     /// Show Diff: two panes with a change between them.
@@ -340,6 +342,9 @@ pub fn paint(painter: &Painter, rect: Rect, icon: Icon, color: Color32) {
             curve(p(8.0, 13.8), p(5.6, 13.8), p(3.6, 12.4), p(2.7, 10.4));
             line(p(2.7, 10.4), p(2.4, 13.6));
             line(p(2.7, 10.4), p(5.8, 10.8));
+        }
+        Icon::Stop => {
+            painter.rect_filled(Rect::from_min_max(p(4.0, 4.0), p(12.0, 12.0)), CornerRadius::same((1.5 * s) as u8), color);
         }
         Icon::Lock => {
             painter.rect_filled(Rect::from_min_max(p(3.5, 7.5), p(12.5, 14.0)), CornerRadius::same((1.5 * s) as u8), color);

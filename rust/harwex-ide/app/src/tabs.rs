@@ -9,7 +9,7 @@ use std::time::Instant;
 
 use std::collections::HashMap;
 
-use egui::{CursorIcon, Rect, Sense, Ui, Vec2};
+use egui::{Color32, CursorIcon, Rect, Sense, Ui, Vec2};
 use ide_editor::{Document, EditorState, GutterMark, Position, ViewState};
 
 use crate::state::TabEnv;
@@ -457,13 +457,16 @@ impl Tabs {
     /// A drag moves a tab, like IDEA: the other tabs stay in place, the dragged tab follows the
     /// pointer over them, and a marker shows where the drop inserts it. The press that starts
     /// a drag has already activated the tab.
-    pub fn show_bar(&mut self, ui: &mut Ui, any_unmodified: bool) -> Option<TabBarEvent> {
+    ///
+    /// `colors` are the title colors by git status (`tab_status::colors`), in strip order;
+    /// `None` keeps the normal title color.
+    pub fn show_bar(&mut self, ui: &mut Ui, any_unmodified: bool, colors: &[Option<Color32>]) -> Option<TabBarEvent> {
         let t = &theme::T;
         let row_h = t.space.tab_h;
         let width = ui.available_width();
         let max_w = (width - 2.0 * TAB_GAP).max(1.0);
         let painter = ui.painter().clone();
-        let galleys: Vec<_> = self.list.iter().map(|tab| tab_galley(&painter, tab, self.active == Some(tab.id), max_w)).collect();
+        let galleys: Vec<_> = self.list.iter().enumerate().map(|(i, tab)| tab_galley(&painter, tab, self.active == Some(tab.id), colors.get(i).copied().flatten(), max_w)).collect();
         let widths: Vec<f32> = galleys.iter().map(|g| tab_width(g.size().x).min(max_w)).collect();
         let (slots, rows) = flow(&widths, width, row_h);
         let (bar, _) = ui.allocate_exact_size(Vec2::new(width, rows as f32 * row_h), Sense::hover());
@@ -565,10 +568,11 @@ fn flow(widths: &[f32], width: f32, row_h: f32) -> (Vec<Rect>, usize) {
     (slots, row + 1)
 }
 
-/// The tab title, cut with an ellipsis when the tab would be wider than the strip.
-fn tab_galley(painter: &egui::Painter, tab: &Tab, active: bool, max_w: f32) -> std::sync::Arc<egui::Galley> {
+/// The tab title, cut with an ellipsis when the tab would be wider than the strip. A git status
+/// color replaces the normal color, also on the active tab.
+fn tab_galley(painter: &egui::Painter, tab: &Tab, active: bool, status: Option<Color32>, max_w: f32) -> std::sync::Arc<egui::Galley> {
     let t = &theme::T;
-    let color = if active { t.text_bright } else { t.text };
+    let color = status.unwrap_or(if active { t.text_bright } else { t.text });
     let mut job = egui::text::LayoutJob::simple_singleline(tab.title(), t.ui_font(), color);
     job.wrap = egui::text::TextWrapping::truncate_at_width((max_w - tab_width(0.0)).max(1.0));
     painter.layout_job(job)

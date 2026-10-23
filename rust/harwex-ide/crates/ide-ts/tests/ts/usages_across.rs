@@ -10,7 +10,7 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use crate::common::{apply_edits, pos, TsLink};
-use ide_ts::{BackendKind, BackendPreference, Loading, ScanOptions, TsService};
+use ide_ts::{BackendKind, BackendPreference, Loading, PackageGraph, ScanOptions, TsService};
 
 struct Workspace {
     _tmp: tempfile::TempDir,
@@ -50,7 +50,10 @@ fn generate(link: TsLink) -> Workspace {
     write("packages/d/src/use.ts", D_USE);
     for p in ["a", "b", "c", "d"] {
         write(&format!("packages/{p}/tsconfig.json"), tsconfig);
-        if p != "a" {
+        // B and C list A, as a workspace that installs with yarn must.
+        if p == "b" || p == "c" {
+            write(&format!("packages/{p}/package.json"), &format!(r#"{{"name":"@ws/{p}","version":"1.0.0","dependencies":{{"@ws/a":"workspace:*"}}}}"#));
+        } else if p == "d" {
             write(&format!("packages/{p}/package.json"), &format!(r#"{{"name":"@ws/{p}","version":"1.0.0"}}"#));
         }
     }
@@ -85,7 +88,10 @@ fn candidates(ws: &Workspace, ts: &TsService, file: &Path, line: usize, column: 
     assert_eq!(scope.declarations, [ws.root.join("packages/a/src/common/services/store.ts")]);
     assert!(scope.exported);
     let options = ScanOptions { threads: 2, prepare_thread: &|| {}, cancelled: &|| false };
-    ide_ts::symbol_candidates(&ws.files, &scope, &options)
+    let graph = PackageGraph::build(["", "packages/a/", "packages/b/", "packages/c/", "packages/d/"].map(|d| ws.root.join(format!("{d}package.json"))));
+    let found = ide_ts::symbol_candidates(&ws.files, &scope, &graph, &options);
+    assert_eq!(found.packages, Some(3), "A and the two packages that list it");
+    found.files
 }
 
 /// Files of the references, relative to the workspace root.
@@ -127,7 +133,9 @@ fn check(link: TsLink, preference: BackendPreference, kind: BackendKind) {
     // C names it three times (import, two reads), B twice.
     let in_c = refs.iter().filter(|r| r.location.path.ends_with("packages/c/src/use.ts")).count();
     assert_eq!(in_c, 3, "{refs:?}");
-    assert_eq!(*progress.lock().unwrap(), [(0, 2), (1, 2), (2, 2)], "B and C were loaded, A already was");
+    let steps = progress.lock().unwrap().clone();
+    assert_eq!((steps.first(), steps.last()), (Some(&(0, 3)), Some(&(3, 3))), "B and C were loaded, A already was: {steps:?}");
+    assert!(steps.windows(2).all(|w| w[0].0 <= w[1].0), "{steps:?}");
     assert!(refs.windows(2).all(|w| (&w[0].location.path, w[0].location.line) <= (&w[1].location.path, w[1].location.line)), "sorted");
 
     // Warm: the projects stay loaded.
@@ -136,7 +144,7 @@ fn check(link: TsLink, preference: BackendPreference, kind: BackendKind) {
     let again = ts.references_across(&store, line, column, &found, &loading).unwrap();
     let warm = started.elapsed();
     assert_eq!(again.len(), refs.len());
-    assert_eq!(*progress.lock().unwrap(), [(0, 0)]);
+    assert_eq!(*progress.lock().unwrap(), [(0, 3), (3, 3)], "asked once, nothing loaded");
     eprintln!("{kind:?}: usages across packages cold {cold:?}, warm {warm:?}");
 
     // Rename from the declaration edits A, B and C, not D.

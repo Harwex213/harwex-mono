@@ -214,7 +214,10 @@ fn packages_project(dir: std::path::PathBuf) -> Repo {
     std::fs::create_dir_all(r.dir.join("node_modules/@ws")).expect("scope dir");
     for p in ["a", "b", "c", "d"] {
         r.write(&format!("packages/{p}/tsconfig.json"), tsconfig);
-        if p != "a" {
+        // B and C list A in their manifests; the package graph scans only them (task 123).
+        if p == "b" || p == "c" {
+            r.write(&format!("packages/{p}/package.json"), &format!("{{\"name\":\"@ws/{p}\",\"version\":\"1.0.0\",\"dependencies\":{{\"@ws/a\":\"workspace:*\"}}}}\n"));
+        } else if p == "d" {
             r.write(&format!("packages/{p}/package.json"), &format!("{{\"name\":\"@ws/{p}\",\"version\":\"1.0.0\"}}\n"));
         }
         symlink_dir(format!("../../packages/{p}"), r.dir.join(format!("node_modules/@ws/{p}"))).expect("workspace link");

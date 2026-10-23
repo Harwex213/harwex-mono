@@ -11,4 +11,5 @@ mod rename_budget;
 mod mono_usages;
 mod tsserver;
 mod usages_across;
+mod usages_scoped;
 mod workspace;
