@@ -1,0 +1,136 @@
+{
+  "format": "civitas.countries-info",
+  "version": 1,
+  "countries": [
+    {
+      "countryId": 4,
+      "profile": {
+        "capital": "Таллас",
+        "region": "Бэньго",
+        "history": "Технократия выросла из союза горных инженерных гильдий. Двести лет назад гильдии построили первые паровые насосы на рудниках Талласа и выкупили город у разорившегося князя.\n\nС тех пор страной правит Совет мастеров. Место в совете получает тот, кто сдал экзамен Академии. Совет пережил две крестьянские войны и одну войну с Пасошией за перевалы.",
+        "culture": "Таллассцы ценят точность и письменный договор. Города строят по единому плану: прямые улицы, башни с часами, общие мастерские на каждом квартале. Праздник Первого насоса отмечают раз в год парадом машин.",
+        "religion": "Культ Великого Механизма",
+        "government": "Технократическая республика, Совет мастеров",
+        "democraticElections": false,
+        "ideology": "Технократия"
+      },
+      "economy": {
+        "year": 1912,
+        "gdp": 84200,
+        "growthPct": 3.4,
+        "sectors": [
+          { "kind": "agriculture", "volume": 12600, "growthPct": 1.1 },
+          { "kind": "lightIndustry", "volume": 18500, "growthPct": 3 },
+          { "kind": "heavyIndustry", "volume": 24400, "growthPct": 4.8 },
+          { "kind": "commerce", "volume": 15200, "growthPct": 3.6 },
+          { "kind": "extraction", "volume": 10100, "growthPct": -0.5 },
+          { "kind": "other", "title": "Приборостроение", "volume": 3400, "growthPct": 7.2 }
+        ],
+        "creditRating": "A",
+        "stateControl": 62,
+        "emissionPct": 1,
+        "militarySpendingPct": 6,
+        "fs": 1240,
+        "vpk": 380,
+        "fsReserve": 600,
+        "vpkStockpile": 150,
+        "resources": [
+          { "title": "Уголь", "balance": 40 },
+          { "title": "Нефть", "balance": -25 },
+          { "title": "Волокно", "balance": 10 },
+          { "title": "Чёрные металлы", "balance": 0 },
+          { "title": "Цветные металлы", "balance": -15 },
+          { "title": "Каучук", "balance": -30 },
+          { "title": "Хим. сырьё", "balance": 20 },
+          { "title": "Драг. металлы", "balance": 5 }
+        ]
+      }
+    },
+    {
+      "countryId": 5,
+      "profile": {
+        "capital": "Пасо",
+        "region": "Аглань",
+        "history": "Пасошия — бывшая провинция старой империи. После распада империи губернатор Пасо объявил независимость и передал власть Народному собранию.",
+        "culture": "Земледельческая страна с сильной общиной. Урожай делят по общинным спискам, а ярмарки в Пасо собирают купцов со всего региона.",
+        "religion": "Церковь Святого Поля",
+        "government": "Народная республика",
+        "democraticElections": true,
+        "ideology": "Аграрный социализм"
+      },
+      "economy": {
+        "year": 1912,
+        "gdp": 41800,
+        "growthPct": 1.2,
+        "sectors": [
+          { "kind": "agriculture", "volume": 17900, "growthPct": 2.4 },
+          { "kind": "lightIndustry", "volume": 9200, "growthPct": 1.5 },
+          { "kind": "heavyIndustry", "volume": 4100, "growthPct": -1.2 },
+          { "kind": "commerce", "volume": 6300, "growthPct": 0 },
+          { "kind": "extraction", "volume": 4300, "growthPct": 0.8 }
+        ],
+        "creditRating": "C",
+        "stateControl": 24,
+        "emissionPct": 4,
+        "militarySpendingPct": 3,
+        "fs": 1610,
+        "vpk": 120,
+        "fsReserve": 0,
+        "vpkStockpile": 40,
+        "resources": [
+          { "title": "Уголь", "balance": -20 },
+          { "title": "Нефть", "balance": -10 },
+          { "title": "Волокно", "balance": 55 },
+          { "title": "Чёрные металлы", "balance": -35 },
+          { "title": "Цветные металлы", "balance": 0 },
+          { "title": "Каучук", "balance": 0 },
+          { "title": "Хим. сырьё", "balance": 15 },
+          { "title": "Драг. металлы", "balance": 0 }
+        ]
+      }
+    },
+    {
+      "countryId": 6,
+      "profile": {
+        "capital": "Фор-Арден",
+        "region": "Судхара",
+        "history": "Федерация Фортов Ардена возникла как оборонительный союз приморских крепостей. Союз постоянно воюет с пиратами и держит большой флот.",
+        "culture": "",
+        "religion": "",
+        "government": "Военная федерация",
+        "democraticElections": false,
+        "ideology": "Милитаризм"
+      },
+      "economy": {
+        "year": 1912,
+        "gdp": 29500,
+        "growthPct": -2.1,
+        "sectors": [
+          { "kind": "agriculture", "volume": 5200, "growthPct": -3.5 },
+          { "kind": "lightIndustry", "volume": 4800, "growthPct": -2.8 },
+          { "kind": "heavyIndustry", "volume": 11300, "growthPct": 1.9 },
+          { "kind": "commerce", "volume": 3900, "growthPct": -6.4 },
+          { "kind": "extraction", "volume": 4300, "growthPct": -1 }
+        ],
+        "creditRating": "E",
+        "stateControl": 50,
+        "emissionPct": 7,
+        "militarySpendingPct": 14,
+        "fs": 310,
+        "vpk": 920,
+        "fsReserve": 0,
+        "vpkStockpile": 1400,
+        "resources": [
+          { "title": "Уголь", "balance": 15 },
+          { "title": "Нефть", "balance": -60 },
+          { "title": "Волокно", "balance": -20 },
+          { "title": "Чёрные металлы", "balance": 30 },
+          { "title": "Цветные металлы", "balance": -10 },
+          { "title": "Каучук", "balance": -40 },
+          { "title": "Хим. сырьё", "balance": 0 },
+          { "title": "Драг. металлы", "balance": -5 }
+        ]
+      }
+    }
+  ]
+}

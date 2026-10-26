@@ -1,7 +1,8 @@
 # Civitas interactive map
 
 An interactive game map for the Civitas province set. It is a static web app with no
-backend. It shows the provinces and the countries and lets the player inspect them.
+backend. It shows the provinces and the countries and lets the player inspect them:
+the registration form and the economy of each country.
 It edits nothing.
 
 The sibling package `../civitas-map` is the editor that produces the assets,
@@ -24,7 +25,7 @@ from `javascript/`. The workspace uses the `node-modules` linker and hoists to
 
 ## Assets
 
-Five files live in `assets/`. The dev server serves that directory at `/assets`.
+Six files live in `assets/`. The dev server serves that directory at `/assets`.
 The production build copies the same directory to `dist/assets` through
 `rspack.CopyRspackPlugin`. Both paths answer the same URLs, so the code requests
 `assets/map.png` with no leading slash.
@@ -34,7 +35,8 @@ The production build copies the same directory to `dist/assets` through
 | `provinces_map.png` | 3653 x 2855 RGBA. One flat unique colour per province. The pick and border source. |
 | `map.png` | 3652 x 2855 RGBA. The artistic render. Display only. |
 | `provinces_manifest.json` | 588 KB. Describes all 1648 provinces. |
-| `countries.json` | The countries, exported from the editor. It ships with an empty list. See [Countries contract](#countries-contract). |
+| `countries.json` | The countries, exported from the editor. See [Countries contract](#countries-contract). |
+| `countries-info.json` | The registration form and the economy of each country. Written by hand; today it holds demo numbers. See [Country info contract](#country-info-contract). |
 | `country-flag.jpg` | 735 x 490. One sample flag. |
 
 `provinces_map.png` is the authoritative surface. `map.png` is exactly 1 px narrower
@@ -43,8 +45,8 @@ and the same height, so screen to map pixel lookup is 1:1 with no rescaling.
 No source file under `src/` may import a file from `assets/`. A test enforces this.
 The rule keeps the 2.5 MB PNG and the 588 KB manifest out of the bundle.
 
-`loadMap` fetches all four data files at once. A failed fetch of any of them,
-`countries.json` included, fails the load.
+`loadMap` fetches all five data files at once. A failed fetch of any of them,
+`countries.json` and `countries-info.json` included, fails the load.
 
 ## Manifest contract
 
@@ -119,6 +121,60 @@ reads it.
   dismissible notice at the top of the screen.
 - The list order is the panel order.
 
+## Country info contract
+
+`countries-info.json` holds what the country sheet shows: the registration form of
+each country (`docs/sources/registration.md`) and the result of its economy
+calculator for the current year (`docs/sources/174454458-clm-ekonomicheskaya-sistema.md`).
+The app shows the calculator result only. It has no formulas and keeps no history
+of years. `parseCountryInfo` in `src/domain/world/country-info-file.ts` reads it.
+
+```jsonc
+{
+  "format": "civitas.countries-info",
+  "version": 1,
+  "countries": [
+    {
+      "countryId": 4,                     // an id from countries.json
+      "profile": {
+        "capital": "Таллас", "region": "Бэньго", "government": "…",
+        "democraticElections": false, "ideology": "…", "religion": "…",
+        "history": "…", "culture": "…"
+      },
+      "economy": {                        // null while the country has no calculator
+        "year": 1912,
+        "gdp": 84200, "growthPct": 3.4,   // millions of arlings, percent
+        "sectors": [{ "kind": "agriculture", "volume": 12600, "growthPct": 1.1 },
+                    { "kind": "other", "title": "Приборостроение", "volume": 3400, "growthPct": 7.2 }],
+        "creditRating": "A",              // A+ A B C D E F
+        "stateControl": 62,               // 0 plan .. 50 neutral .. 100 market
+        "emissionPct": 1, "militarySpendingPct": 6,
+        "fs": 1240, "vpk": 380, "fsReserve": 600, "vpkStockpile": 150,
+        "resources": [{ "title": "Уголь", "balance": 40 }]   // + surplus, − deficit
+      }
+    }
+  ]
+}
+```
+
+- The parser throws on any `format` other than `civitas.countries-info` and any
+  `version` other than `1`. The load then fails.
+- An entry with a bad or repeated `countryId` is dropped. A missing profile field
+  becomes `""`, and a missing `democraticElections` becomes `false`.
+- An economy with a missing number or an unknown rating becomes `null`, so the
+  sheet never shows half an economy. A bad sector or resource row is dropped on
+  its own. A third `other` sector is dropped: the rules allow two.
+- A sector `kind` is one of `agriculture`, `lightIndustry`, `heavyIndustry`,
+  `commerce`, `extraction`, `other`. Only `other` uses `title`; the UI names the
+  base sectors itself.
+- `gdp` is the calculator's figure. The sheet does not sum the sectors to get it.
+  A sector's share is its `volume` over the sum of the sector volumes.
+- The rating steps come from the rules text. Their exact list is on a picture of
+  the calculator that the docs do not include, so it may need a fix.
+- A country without an entry, or with `economy: null`, shows a "not filled in"
+  line in the sheet.
+- Every dropped item becomes a repair note in the same notice as `countries.json`.
+
 ## Architecture
 
 ```
@@ -157,7 +213,8 @@ UI --creates--> Services --subscribe to--> Store
 - Read-only lookups that need the store (`provinceAt`, `provinceDisplayName`,
   `mapPixelAt`, ...) live in `src/store/selectors.ts`.
 - The app saves nothing. It has no storage, no export and no server.
-  The countries come from `countries.json` and do not change after the load.
+  The countries come from `countries.json` and their info from
+  `countries-info.json`. Neither changes after the load.
 
 ### UI
 
@@ -169,7 +226,10 @@ UI --creates--> Services --subscribe to--> Store
 - `src/ui/pages/` holds whole screens. A page lays out widgets and owns screen-wide
   input. `pages/map/` is the only page.
 - `src/ui/widgets/` holds self-contained blocks of the screen: the map canvas, the
-  country panel (a read-only list; a row click selects the country) and the plaque. Each widget has its own folder with its `.tsx`, its
+  country panel (a read-only list on the left; a row click selects the country),
+  the plaque, and the country sheet (on the right; the form and the economy of the
+  selected country in two tabs; its close button clears the selection). The sheet
+  is in Russian, like the game texts. Each widget has its own folder with its `.tsx`, its
   `*.module.css` and its small sub-components.
 - A page imports widgets. A widget does not import another widget or a page. Code
   that two widgets need goes into a new `src/ui/components/` folder or into
@@ -235,9 +295,11 @@ behind the map. `yarn test:screenshots` builds `e2e/dist/app` and compares it ag
 the baselines. `yarn test:screenshots:update` rewrites the baselines after a deliberate
 visual change.
 
-- The tests serve `assets/countries.json` through `page.route`: the countries from
-  `e2e/fixture.ts` (Aurelia, Borealis, Calderra, with slogans and flags), an empty
-  list, or a damaged file. The other assets and the border worker stay real.
+- The tests serve `assets/countries.json` and `assets/countries-info.json` through
+  `page.route`: the countries from `e2e/fixture.ts` (Aurelia, Borealis, Calderra,
+  with slogans and flags), an empty list, or a damaged file. In the info fixture
+  Aurelia has a full form and an economy, Borealis a form without an economy, and
+  Calderra no entry. The other assets and the border worker stay real.
 - `e2e/main.tsx` is a second composition root. It mirrors `src/main.tsx`.
 - `e2e/main.tsx` sets `window.__civitasE2E.ready()`. The tests wait on this call
   instead of a timeout.

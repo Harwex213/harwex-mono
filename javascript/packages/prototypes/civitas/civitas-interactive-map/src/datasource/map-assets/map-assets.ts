@@ -1,17 +1,21 @@
 import {
   ProvinceIndex,
   parseCountriesText,
+  parseCountryInfoText,
   parseManifestText,
   type CountriesFile,
+  type CountryInfoFile,
   type MapManifest,
 } from "../../domain/index";
 import type { LoadStep } from "./load-steps";
 
 // What `loadMapAssets` resolves to. `art` is a decoded `ImageBitmap`, which is a browser resource.
-// `countries` is the parsed `countries.json`, with the notes of what the parser repaired.
+// `countries` is the parsed `countries.json`, and `countryInfo` the parsed
+// `countries-info.json`, each with the notes of what its parser repaired.
 type LoadedMapAssets = {
   manifest: MapManifest;
   countries: CountriesFile;
+  countryInfo: CountryInfoFile;
   index: ProvinceIndex;
   art: ImageBitmap;
 };
@@ -23,6 +27,8 @@ const PROVINCE_IMAGE_URL = "assets/provinces_map.png";
 const MAP_IMAGE_URL = "assets/map.png";
 // Written by the editor in `../civitas-map`.
 const COUNTRIES_URL = "assets/countries.json";
+// The registration form and the economy of each country. Written by hand for now.
+const COUNTRY_INFO_URL = "assets/countries-info.json";
 
 // `colorSpaceConversion: "none"`: province pixels are ids, not colour.
 // A colour profile added on a later re-export must not shift them.
@@ -52,15 +58,16 @@ async function fetchParsed<T>(url: string, parse: (text: string) => T): Promise<
 }
 
 async function loadMapAssets(onStep?: (step: LoadStep) => void): Promise<LoadedMapAssets> {
-  // Start all four downloads at once.
+  // Start all five downloads at once.
   const manifestPromise = fetchParsed(MANIFEST_URL, parseManifestText);
   const countriesPromise = fetchParsed(COUNTRIES_URL, parseCountriesText);
+  const countryInfoPromise = fetchParsed(COUNTRY_INFO_URL, parseCountryInfoText);
   const provincePromise = fetchBitmap(PROVINCE_IMAGE_URL);
   const artPromise = fetchBitmap(MAP_IMAGE_URL);
 
   // The promises are awaited in order. A no-op catch stops an "unhandled rejection"
   // when an earlier one fails. The await still sees the real rejection.
-  for (const promise of [manifestPromise, countriesPromise, provincePromise, artPromise]) {
+  for (const promise of [manifestPromise, countriesPromise, countryInfoPromise, provincePromise, artPromise]) {
     promise.catch(() => undefined);
   }
 
@@ -69,6 +76,9 @@ async function loadMapAssets(onStep?: (step: LoadStep) => void): Promise<LoadedM
 
   onStep?.("countries");
   const countries = await countriesPromise;
+
+  onStep?.("country-info");
+  const countryInfo = await countryInfoPromise;
 
   onStep?.("province-bitmap");
   const provinceBitmap = await provincePromise;
@@ -114,11 +124,12 @@ async function loadMapAssets(onStep?: (step: LoadStep) => void): Promise<LoadedM
   onStep?.("done");
 
   // `art` stays open: the map canvas renders from it.
-  return { manifest, countries, index, art };
+  return { manifest, countries, countryInfo, index, art };
 }
 
 export {
   COUNTRIES_URL,
+  COUNTRY_INFO_URL,
   MANIFEST_URL,
   MAP_IMAGE_URL,
   PROVINCE_IMAGE_URL,

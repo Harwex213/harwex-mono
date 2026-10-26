@@ -3,6 +3,10 @@ import {
   type TCountryPanelRegistry,
 } from "../../widgets/country-panel/country-panel";
 import { CountryPlaque } from "../../widgets/country-plaque/country-plaque";
+import {
+  CountrySheet,
+  type TCountrySheetRegistry,
+} from "../../widgets/country-sheet/country-sheet";
 import { MapCanvas } from "../../widgets/map-canvas/map-canvas";
 import type { TAppRegistry } from "../../../actions/index";
 import type { TMapCanvasServiceRegistry } from "../../../services/index";
@@ -10,6 +14,7 @@ import styles from "./map-page.module.css";
 
 type TMapPageRegistry = Pick<TAppRegistry, "resetView"> &
   TCountryPanelRegistry &
+  TCountrySheetRegistry &
   TMapCanvasServiceRegistry;
 
 type TMapPageProps = {
@@ -33,6 +38,8 @@ function MapPage({ registry }: TMapPageProps) {
       </div>
 
       <CountryPanel registry={registry} />
+
+      <CountrySheet registry={registry} />
 
       <div className={styles.bar}>
         {/* An action, not a toggle. Never disabled: a button that greys out on a fitted view confuses more than a no-op click. */}

@@ -6,12 +6,15 @@ import {
 } from "@playwright/test";
 import {
   createEmptyCountries,
+  createEmptyCountryInfo,
   createFixtureCountries,
+  createFixtureCountryInfo,
 } from "./fixture";
 
 // Black-box screenshot tests: mouse, keyboard, text and ARIA labels only,
 // so that a refactor behind the map does not break them.
-// The countries come from a mocked `assets/countries.json`. The other assets are real.
+// The countries come from a mocked `assets/countries.json` and
+// `assets/countries-info.json`. The other assets are real.
 
 const VIEWPORT = { width: 1400, height: 900 };
 const MAP = { width: 3653, height: 2855 };
@@ -56,8 +59,12 @@ async function nextFrames(page: Page): Promise<void> {
 async function openMap(page: Page, world: "fixture" | "empty" | object): Promise<void> {
   const body =
     world === "empty" ? createEmptyCountries() : world === "fixture" ? createFixtureCountries() : world;
+  const info = world === "empty" ? createEmptyCountryInfo() : createFixtureCountryInfo();
   await page.route("**/assets/countries.json", async (route) => {
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
+  });
+  await page.route("**/assets/countries-info.json", async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(info) });
   });
   await page.goto("/");
   await page.waitForFunction(() => {
@@ -161,4 +168,46 @@ test("a damaged countries file keeps the good countries and shows what was dropp
 
   await page.getByRole("button", { name: "dismiss" }).click();
   await expect(page.getByText("countries.json:", { exact: false })).toHaveCount(0);
+});
+
+function countrySheet(page: Page): Locator {
+  return page.getByLabel("country details");
+}
+
+test("the country sheet shows the form of the selected country", async ({ page }) => {
+  await openMap(page, "fixture");
+  await page.getByText("Aurelia", { exact: true }).click();
+  await parkMouse(page);
+  await expect(countrySheet(page)).toContainText("Столица: Aurum");
+  await expect(countrySheet(page).getByRole("tab", { name: "Анкета" })).toHaveAttribute("aria-selected", "true");
+  await expect(countrySheet(page)).toContainText("Guild republic");
+  await expectScreen(page, "country-sheet-profile.png");
+
+  await countrySheet(page).getByRole("button", { name: "ещё" }).click();
+  await expect(countrySheet(page).getByRole("button", { name: "свернуть" })).toBeVisible();
+});
+
+test("the economy tab shows the calculator result of the year", async ({ page }) => {
+  await openMap(page, "fixture");
+  await page.getByText("Aurelia", { exact: true }).click();
+  await countrySheet(page).getByRole("tab", { name: "Экономика" }).click();
+  await parkMouse(page);
+  await expect(countrySheet(page)).toContainText("Экономика · 1912");
+  await expect(countrySheet(page)).toContainText("Clockwork");
+  await expectScreen(page, "country-sheet-economy.png");
+});
+
+test("a country without info says so, and the close button clears the selection", async ({ page }) => {
+  await openMap(page, "fixture");
+  await page.getByText("Borealis", { exact: true }).click();
+  await countrySheet(page).getByRole("tab", { name: "Экономика" }).click();
+  await expect(countrySheet(page)).toContainText("Экономика ещё не заполнена");
+
+  await page.getByText("Calderra", { exact: true }).click();
+  await countrySheet(page).getByRole("tab", { name: "Анкета" }).click();
+  await expect(countrySheet(page)).toContainText("Анкета не заполнена");
+
+  await countrySheet(page).getByRole("button", { name: "close" }).click();
+  await expect(countrySheet(page)).toHaveCount(0);
+  await expect(page.getByLabel("selected country")).toContainText("no selection");
 });

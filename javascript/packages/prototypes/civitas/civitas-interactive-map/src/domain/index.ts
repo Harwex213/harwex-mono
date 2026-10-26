@@ -62,13 +62,26 @@ export {
   type LabelPlacement,
 } from "./countries/label-layout";
 
-// world/ — the countries file the editor writes: its shape and its parser.
+// world/ — the countries file the editor writes, and the country info file with the
+// registration form and the economy of each country: their shapes and their parsers.
 export {
   countryDisplayName,
   parseCountriesText,
   type CountriesFile,
   type Country,
 } from "./world/countries-file";
+export {
+  CREDIT_RATINGS,
+  parseCountryInfoText,
+  type CountryInfo,
+  type CountryInfoFile,
+  type CountryProfile,
+  type CreditRating,
+  type EconomySnapshot,
+  type ResourceBalance,
+  type Sector,
+  type SectorKind,
+} from "./world/country-info-file";
 
 // interaction/ — the rules of what a click or a drag means.
 export {

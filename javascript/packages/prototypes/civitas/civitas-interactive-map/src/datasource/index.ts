@@ -27,7 +27,7 @@ export {
   type Timers,
 } from "./timers/debouncer";
 
-// map-assets/ — the `fetch` of the map PNGs, the manifest and the countries, and the steps of that load.
+// map-assets/ — the `fetch` of the map PNGs, the manifest, the countries and the country info, and the steps of that load.
 // Only `datasources.ts` calls the loader. The store and the actions use its result type and its steps.
 export {
   loadProgress,

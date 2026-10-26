@@ -12,7 +12,7 @@ import type { LoadStep } from "../../datasource/index";
 
 test("loadMap moves progress with each step and ends at 1", async () => {
   const seen: number[] = [];
-  const steps: LoadStep[] = ["manifest", "countries", "province-bitmap", "province-index", "map-art", "done"];
+  const steps: LoadStep[] = ["manifest", "countries", "country-info", "province-bitmap", "province-index", "map-art", "done"];
   const { store, sources } = createTestApp({
     async loadMapAssets(onStep) {
       for (const step of steps) {
@@ -26,7 +26,7 @@ test("loadMap moves progress with each step and ends at 1", async () => {
   assert.equal(store.map.progress.peek(), 0);
   await loadMap(store, sources);
 
-  assert.deepEqual(seen, [0, 0.2, 0.4, 0.6, 0.8, 1]);
+  assert.deepEqual(seen, [0, 1 / 6, 2 / 6, 3 / 6, 4 / 6, 5 / 6, 1]);
   assert.equal(store.map.phase.peek(), "ready");
   assert.equal(store.map.progress.peek(), 1);
 });
@@ -81,4 +81,38 @@ test("the repairs of the countries file become one dismissible notice", async ()
 
   registry.dismissCountriesNotice();
   assert.equal(store.world.notice.peek(), null);
+});
+
+test("loadMap keys the country info by country id and reports its repairs too", async () => {
+  const info = {
+    countryId: 4,
+    profile: {
+      capital: "Thalla",
+      region: "",
+      history: "",
+      culture: "",
+      religion: "",
+      government: "",
+      democraticElections: false,
+      ideology: "",
+    },
+    economy: null,
+  };
+  const { store, sources } = createTestApp({
+    async loadMapAssets() {
+      const assets = fakeMapAssets({ width: 4, height: 4 });
+      return {
+        ...assets,
+        countries: { countries: [], repairs: ["dropped 1 malformed countries"] },
+        countryInfo: { info: [info], repairs: ["dropped 1 incomplete economies"] },
+      };
+    },
+  });
+
+  await loadMap(store, sources);
+  assert.equal(store.world.info.peek().get(4), info);
+  assert.equal(
+    store.world.notice.peek(),
+    "countries.json: dropped 1 malformed countries · countries-info.json: dropped 1 incomplete economies",
+  );
 });

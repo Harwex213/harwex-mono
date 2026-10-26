@@ -26,11 +26,20 @@ async function loadMap(store: TStore, sources: TDatasources): Promise<void> {
         store.map.progress.value = loadProgress(step);
       });
     });
-    const repairs = loaded.countries.repairs;
+    const notes: string[] = [];
+    if (loaded.countries.repairs.length > 0) {
+      notes.push("countries.json: " + loaded.countries.repairs.join("; "));
+    }
+    if (loaded.countryInfo.repairs.length > 0) {
+      notes.push("countries-info.json: " + loaded.countryInfo.repairs.join("; "));
+    }
     batch(() => {
       store.map.assets.value = loaded;
       store.world.countries.value = loaded.countries.countries;
-      store.world.notice.value = repairs.length === 0 ? null : "countries.json: " + repairs.join("; ");
+      store.world.info.value = new Map(loaded.countryInfo.info.map((entry) => {
+        return [entry.countryId, entry];
+      }));
+      store.world.notice.value = notes.length === 0 ? null : notes.join(" · ");
       store.map.phase.value = "ready";
       store.map.progress.value = 1;
     });

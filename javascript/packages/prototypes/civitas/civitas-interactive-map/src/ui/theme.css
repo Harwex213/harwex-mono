@@ -25,6 +25,10 @@
   --civ-gild: #9a6b1f;
   --civ-gild-soft: #d8a24a;
   --civ-danger: #8f3a2e;
+  --civ-gain: #3f6b34;
+  /* the two ends of the state control scale */
+  --civ-plan: #c9a9a0;
+  --civ-market: #a9bfa0;
 
   /* space */
   --civ-space-1: 2px;

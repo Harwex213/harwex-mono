@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   COUNTRIES_URL,
+  COUNTRY_INFO_URL,
   MANIFEST_URL,
   MAP_IMAGE_URL,
   PROVINCE_IMAGE_URL,
@@ -33,8 +34,9 @@ test("the asset URLs are relative, so a subdirectory deploy still resolves them"
   assert.equal(PROVINCE_IMAGE_URL, "assets/provinces_map.png");
   assert.equal(MAP_IMAGE_URL, "assets/map.png");
   assert.equal(COUNTRIES_URL, "assets/countries.json");
+  assert.equal(COUNTRY_INFO_URL, "assets/countries-info.json");
 
-  for (const url of [MANIFEST_URL, PROVINCE_IMAGE_URL, MAP_IMAGE_URL, COUNTRIES_URL]) {
+  for (const url of [MANIFEST_URL, PROVINCE_IMAGE_URL, MAP_IMAGE_URL, COUNTRIES_URL, COUNTRY_INFO_URL]) {
     // Relative URLs resolve in dev, in `dist/` and under a deploy sub-path.
     assert.ok(!url.startsWith("/"), url + " must not start with a slash");
     assert.ok(url.startsWith("assets/"), url + " must live under assets/");

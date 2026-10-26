@@ -11,6 +11,7 @@ test("LOAD_STEPS lists every step once, in order, ending at done", () => {
   const expected: LoadStep[] = [
     "manifest",
     "countries",
+    "country-info",
     "province-bitmap",
     "province-index",
     "map-art",

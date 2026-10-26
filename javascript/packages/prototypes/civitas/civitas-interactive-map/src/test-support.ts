@@ -127,7 +127,13 @@ function fakeMapAssets(options: {
         return null;
       },
     } as unknown as ProvinceIndex);
-  return { manifest, countries: { countries: [], repairs: [] }, index, art: {} as ImageBitmap };
+  return {
+    manifest,
+    countries: { countries: [], repairs: [] },
+    countryInfo: { info: [], repairs: [] },
+    index,
+    art: {} as ImageBitmap,
+  };
 }
 
 // A country as `assets/countries.json` describes it.

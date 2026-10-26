@@ -97,4 +97,88 @@ function createEmptyCountries(): CountriesFixture {
   return { format: "civitas.countries", version: 1, countries: [] };
 }
 
-export { createEmptyCountries, createFixtureCountries, type CountriesFixture };
+// The `assets/countries-info.json` the screenshot tests serve. Aurelia has the whole
+// form and an economy, Borealis a form without an economy, Calderra no entry.
+// The economy covers every visual state: an `other` sector, growth, decline and
+// zero, a surplus, a deficit and a zero resource balance.
+function createFixtureCountryInfo(): object {
+  return {
+    format: "civitas.countries-info",
+    version: 1,
+    countries: [
+      {
+        countryId: 1,
+        profile: {
+          capital: "Aurum",
+          region: "Western Reach",
+          history: "Aurelia began as a league of mining towns in the western hills. " +
+            "The towns bought their charters from a bankrupt crown and elected a council of guilds. " +
+            "Two hundred years later the council still meets in the old assay hall of Aurum. " +
+            "It has survived three peasant risings and one long war over the river fords.",
+          culture: "Gold leaf on every door frame, long harvest feasts and a love of written contracts.",
+          religion: "The Church of the Deep Vein",
+          government: "Guild republic",
+          democraticElections: true,
+          ideology: "Mercantilism",
+        },
+        economy: {
+          year: 1912,
+          gdp: 84200,
+          growthPct: 3.4,
+          sectors: [
+            { kind: "agriculture", volume: 12600, growthPct: 1.1 },
+            { kind: "lightIndustry", volume: 18500, growthPct: 3 },
+            { kind: "heavyIndustry", volume: 24400, growthPct: 4.8 },
+            { kind: "commerce", volume: 15200, growthPct: 0 },
+            { kind: "extraction", volume: 10100, growthPct: -0.5 },
+            { kind: "other", title: "Clockwork", volume: 3400, growthPct: 7.2 },
+          ],
+          creditRating: "B",
+          stateControl: 62,
+          emissionPct: 1,
+          militarySpendingPct: 6.5,
+          fs: 1240,
+          vpk: 380,
+          fsReserve: 600,
+          vpkStockpile: 150,
+          resources: [
+            { title: "Coal", balance: 40 },
+            { title: "Oil", balance: -25 },
+            { title: "Fibre", balance: 10 },
+            { title: "Iron", balance: 0 },
+            { title: "Copper", balance: -15 },
+            { title: "Rubber", balance: -30 },
+            { title: "Chemicals", balance: 20 },
+            { title: "Gems", balance: 5 },
+          ],
+        },
+      },
+      {
+        countryId: 2,
+        profile: {
+          capital: "Frostgate",
+          region: "",
+          history: "",
+          culture: "",
+          religion: "",
+          government: "Elective monarchy",
+          democraticElections: false,
+          ideology: "",
+        },
+        economy: null,
+      },
+    ],
+  };
+}
+
+function createEmptyCountryInfo(): object {
+  return { format: "civitas.countries-info", version: 1, countries: [] };
+}
+
+export {
+  createEmptyCountries,
+  createEmptyCountryInfo,
+  createFixtureCountries,
+  createFixtureCountryInfo,
+  type CountriesFixture,
+};

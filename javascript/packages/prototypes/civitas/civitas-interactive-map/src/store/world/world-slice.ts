@@ -1,11 +1,17 @@
 import { computed, signal } from "@preact/signals-react";
-import type { Country } from "../../domain/index";
+import type {
+  Country,
+  CountryInfo,
+} from "../../domain/index";
 
-// The countries from `assets/countries.json`. `loadMap` writes them once.
+// The countries from `assets/countries.json` and their info from
+// `assets/countries-info.json`. `loadMap` writes both once.
 
 function createWorldSlice() {
   const countries = signal<Country[]>([]);
-  // What the countries parser repaired, as one sentence. `null` for a clean file.
+  // Keyed by country id. A country without an entry has no info yet.
+  const info = signal<ReadonlyMap<number, CountryInfo>>(new Map());
+  // What the parsers of both files repaired, as one sentence. `null` for clean files.
   const notice = signal<string | null>(null);
 
   const countryById = computed(() => {
@@ -28,6 +34,7 @@ function createWorldSlice() {
 
   return {
     countries,
+    info,
     notice,
     countryById,
     countryOfProvince,

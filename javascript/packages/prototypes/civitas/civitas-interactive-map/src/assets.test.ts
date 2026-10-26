@@ -2,7 +2,10 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import assert from "node:assert/strict";
 import test from "node:test";
-import { parseCountriesText } from "./domain/index";
+import {
+  parseCountriesText,
+  parseCountryInfoText,
+} from "./domain/index";
 
 // Pins the asset facts the map code depends on: sizes, province count,
 // unique colours, centroids and pixel totals. A regenerated asset that changes
@@ -297,7 +300,7 @@ test("all province names are the placeholder form, and all are distinct", () => 
 });
 
 test("countries.json parses cleanly and names only provinces of the manifest", () => {
-  // The editor in `../civitas-map` writes this file. It ships with an empty list.
+  // The editor in `../civitas-map` writes this file.
   const parsed = parseCountriesText(readFileSync(packageRoot + "assets/countries.json", "utf8"));
   const ids = new Set(
     readManifest().provinces.map((province) => {
@@ -310,5 +313,21 @@ test("countries.json parses cleanly and names only provinces of the manifest", (
     for (const id of country.provinceIds) {
       assert.ok(ids.has(id), "country " + country.id + " names province " + id + ", which the manifest lacks");
     }
+  }
+});
+
+test("countries-info.json parses cleanly and describes only countries of countries.json", () => {
+  // Written by hand for now: demo numbers until the game has a real calculator.
+  const parsed = parseCountryInfoText(readFileSync(packageRoot + "assets/countries-info.json", "utf8"));
+  const countries = parseCountriesText(readFileSync(packageRoot + "assets/countries.json", "utf8"));
+  const ids = new Set(
+    countries.countries.map((country) => {
+      return country.id;
+    }),
+  );
+
+  assert.deepEqual(parsed.repairs, []);
+  for (const info of parsed.info) {
+    assert.ok(ids.has(info.countryId), "country info " + info.countryId + " has no country in countries.json");
   }
 });
