@@ -5,6 +5,8 @@
     "dev-server": "tsx --watch src/app.ts"
   },
   "dependencies": {
+    "@fastify/multipart": "10.1.6",
+    "@fastify/static": "10.1.7",
     "@fastify/type-provider-zod": "^1.0.0",
     "dotenv": "^17.4.2",
     "drizzle-orm": "1.0.0-rc.4",
