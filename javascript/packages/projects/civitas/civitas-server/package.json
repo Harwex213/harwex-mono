@@ -1,8 +1,12 @@
 {
   "name": "@hw/civitas-server",
   "packageManager": "yarn@4.1.1",
+  "installConfig": {
+    "hoistingLimits": "dependencies"
+  },
   "scripts": {
-    "dev-server": "tsx --watch src/app.ts"
+    "dev-server": "tsx --watch src/app.ts",
+    "dev-migration": "drizzle-kit generate && drizzle-kit migrate"
   },
   "dependencies": {
     "@fastify/multipart": "10.1.6",
