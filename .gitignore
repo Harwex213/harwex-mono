@@ -2,6 +2,7 @@
 .idea
 .vscode
 node_modules
+javascript/.yarn/cache
 dist
 .parcel-cache/
 out
