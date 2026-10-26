@@ -586,6 +586,58 @@ fn old_layout_storage_loads() {
     ide.assert_text("Find Usages (⌥F7) and Find in Files (⇧⌘F) results show here");
 }
 
+/// Task 123: usages arrive in batches while packages load. The tab shows them at once, sorted
+/// in among the earlier ones, under the line "N usages · k of M packages checked". Stop ends
+/// the search and keeps the rows.
+#[test]
+fn usages_stream_in_and_stop_keeps_rows() {
+    let (_fx, _repo, mut ide) = open_repo("usages_stream");
+    let root = ide.root();
+    let origin = UsageOrigin::Symbol { path: root.join("src/util.ts"), pos: ide_editor::Position::new(0, 16), word: "add".into() };
+    let (tab, generation) = find_window::start_usages(ide.state_mut(), origin, None);
+    let progress: harwex_ide::nav::Progress = Default::default();
+    let cancel = std::sync::Arc::new(AtomicBool::new(false));
+    find_window::track_search(ide.state_mut(), tab, progress.clone(), cancel.clone());
+    let refs = add_refs(&root);
+    // The declaring package first: the definition and the two uses in src/app.ts.
+    find_window::add_usages(ide.state_mut(), tab, generation, refs[..3].to_vec());
+    *progress.lock().unwrap() = "1 of 3 packages checked".into();
+    ide.settle();
+    tall(&mut ide);
+    ide.assert_text("3 usages · 1 of 3 packages checked");
+    assert_eq!(item_count(&ide), 3);
+    let first = active(&ide).selected.clone();
+    assert!(first.is_some(), "the first row is selected at once");
+
+    // The next package: a duplicate is dropped, the new rows sort in, the selection stays.
+    find_window::add_usages(ide.state_mut(), tab, generation, refs[2..5].to_vec());
+    *progress.lock().unwrap() = "2 of 3 packages checked".into();
+    ide.settle();
+    ide.assert_text("5 usages · 2 of 3 packages checked");
+    assert_eq!(item_count(&ide), 5);
+    assert_eq!(active(&ide).selected, first);
+    let lines: Vec<(PathBuf, usize)> = active(&ide).items.iter().filter(|i| i.path.ends_with("sum.ts")).map(|i| (i.path.clone(), i.line)).collect();
+    assert_eq!(lines.iter().map(|l| l.1).collect::<Vec<_>>(), [0, 2], "the new rows sort by position: {lines:?}");
+    assert!(ide.shows_text("sum.ts"), "the new file shows");
+    ide.snapshot("usages_streaming");
+
+    // Stop: the search's flag is set; its cancelled end keeps the rows.
+    ide.click("Stop");
+    assert!(cancel.load(std::sync::atomic::Ordering::Relaxed), "Stop set the search's cancel flag");
+    find_window::finish_usages(ide.state_mut(), tab, generation, Err(harwex_ide::nav::cancel_text()));
+    ide.settle();
+    assert_eq!(item_count(&ide), 5);
+    ide.assert_text("Search cancelled · 5 usages found before the stop");
+    assert!(!active(&ide).searching);
+    ide.snapshot("usages_stopped");
+
+    // A rerun starts from an empty list.
+    let origin = active(&ide).kind.clone();
+    let harwex_ide::find_window::TabKind::Usages(origin) = origin else { panic!("a usages tab") };
+    find_window::start_usages(ide.state_mut(), origin, Some(tab));
+    assert_eq!(item_count(&ide), 0);
+}
+
 #[test]
 fn searching_tab_shows_progress_and_stops_on_close() {
     let (_fx, _repo, mut ide) = open_repo("search_progress");
@@ -597,9 +649,9 @@ fn searching_tab_shows_progress_and_stops_on_close() {
     find_window::track_search(ide.state_mut(), tab, progress.clone(), cancel.clone());
     ide.settle();
     assert!(ide.shows_text("Searching..."), "no progress yet");
-    *progress.lock().unwrap() = "Loading 12 projects... 3/12".into();
+    *progress.lock().unwrap() = "3 of 12 packages checked".into();
     ide.settle();
-    assert!(ide.shows_text("Loading 12 projects... 3/12"));
+    assert!(ide.shows_text("0 usages · 3 of 12 packages checked"));
     ide.snapshot("search_progress");
 
     // A rerun stops the old search; a cancelled answer says so instead of an error.

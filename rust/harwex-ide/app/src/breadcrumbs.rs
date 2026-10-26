@@ -944,7 +944,7 @@ pub fn show_popup(state: &mut AppState, ctx: &Context) {
                         } else {
                             file_icon(painter, pos2(rect.min.x + 13.0, cy), &e.name);
                         }
-                        let mut color = if e.ignored { theme::T.tree_ignored } else { tree::name_color(git, &e.path, e.is_dir) };
+                        let mut color = tree::status_color(git, &e.path, e.is_dir, e.ignored).unwrap_or(theme::T.text);
                         if selected && focused && color == theme::T.text {
                             color = theme::T.text_bright;
                         }

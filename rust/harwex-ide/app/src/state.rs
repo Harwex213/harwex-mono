@@ -985,6 +985,7 @@ impl AppState {
             }
         }
         crate::unreal::on_fs_batch(self, &batch.paths);
+        crate::tab_status::on_fs_batch(self, &batch.paths);
         if batch.structure_changed {
             crate::search::rebuild_index(self);
         }

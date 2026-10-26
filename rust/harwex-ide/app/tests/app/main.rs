@@ -56,6 +56,7 @@ mod shell;
 mod soft_wrap;
 mod status_jobs;
 mod tab_shortcuts;
+mod tab_status;
 mod terminal;
 mod terminal_here;
 mod time_limits;

@@ -34,12 +34,12 @@ Commit window:
 - [idea] Stage/Unstage (drop or menu) shows a success toast on every action, because it goes through `run_op`. IDEA is silent on success. Make stage/unstage success quiet; keep error toasts.
 
 Navigation and languages:
-- [idea] TS Find Usages across packages (task 121): a warm search on mono still costs ~7 s, almost all the text scan (cache candidates per symbol or use the trigram index idea); users that import through another package's re-export are missed; tsserver on mono not measured.
+- [idea] TS usages package scope (task 123) trusts package.json: a package importing a workspace package it does not list (hoisted, relative path, tsconfig paths) is missed; nested `export *` of a re-exporter in an already-read package is missed.
+- [idea] TS Find Usages across packages (task 121): a warm search on mono still costs ~7 s, almost all the text scan (task 123 scopes it by the package graph); users that import through another package's re-export are missed; tsserver on mono not measured.
 - [idea] Failing tests from the Windows work: `ide-git cli::tests::arg_chunks_split_by_count_and_length`, `xtask windows::tests::default_locations_are_per_user` (seen in tasks 120, 121).
 - [idea] Highlighting (task 119): a trailing `# ...` on a Dockerfile `RUN` line makes the next instruction lose its keyword color (tree-sitter-containerfile bug); no shell injection after `RUN`; YAML over 32767 lines uses a line lexer (tree-sitter-yaml int16 rows), so block scalars may color keys and Find comment/string filters see plain code.
 - [idea] Find in Files: a case-insensitive non-ASCII query now goes to the regex path; its speed on mono is not measured. An all-ASCII query still misses Unicode folds like the Kelvin sign (found in task 103).
 - [idea] Problems has single selection only; IDEA copies several selected rows (found in task 103).
-- [idea] Find in Files on mono: a no-match search still reads all 500k files (16 s with 4 threads; rg 25.8 s). Only an index makes it instant: IDEA keeps a trigram index of file contents. Build one on a worker (persisted, updated from watcher batches), filter candidate files by the query's trigrams, then grep only those (found in task 099).
 - [idea] The Find window shows only a spinner while it fills; stream results into it like the popup. Editing a `.gitignore` does not rebuild the file index (found in task 099).
 - [idea] Inline-code background applies to every `Language::Plain` file, so backticks in shell scripts and Dockerfiles get it too; `Language` does not know the extension. Limit it to `.txt`/no extension. Code spans broken by a newline are not marked (found in task 094).
 - [idea] The terminal never sets `PlatformOutput::ime`, so IME (dead keys, CJK) is off there and the input-source bubble sits at a stale rect (found in task 090).

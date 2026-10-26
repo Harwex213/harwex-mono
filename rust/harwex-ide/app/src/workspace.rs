@@ -51,6 +51,8 @@ pub struct Workspace {
     pub tabs: Tabs,
     pub tree: ProjectTree,
     pub breadcrumbs: crate::breadcrumbs::Breadcrumbs,
+    /// Which open tab files are git-ignored, for the tab title colors (`tab_status.rs`).
+    pub tab_ignored: crate::tab_status::TabIgnored,
     pub git: GitInfo,
     pub git_ui: GitUi,
     /// Language servers by language, with the project's `.harwex/ide.toml`.
@@ -118,6 +120,7 @@ impl Workspace {
             tabs: Tabs::default(),
             tree: ProjectTree::default(),
             breadcrumbs: Default::default(),
+            tab_ignored: Default::default(),
             git: GitInfo::default(),
             git_ui: GitUi::default(),
             langs,

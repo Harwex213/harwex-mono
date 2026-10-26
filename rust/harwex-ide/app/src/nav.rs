@@ -96,6 +96,25 @@ pub struct Navigation {
     generation: u64,
     /// Last latency, for the status bar tooltip and the timings log.
     pub last_ms: Option<f64>,
+    /// The package graph of Find Usages, built on the first search.
+    pub packages: PackageCache,
+}
+
+/// The project's package graph (`ide_ts::PackageGraph`, task 123): built from the `package.json`
+/// files of the file index on the first Find Usages or Rename Symbol, never at project open, and
+/// dropped when a `package.json` changes. It holds names and folders, no file contents.
+#[derive(Default)]
+pub struct PackageCache {
+    pub graph: Option<Arc<ide_ts::PackageGraph>>,
+    /// Counts the drops, so a graph built from older manifests is not stored.
+    epoch: u64,
+}
+
+impl PackageCache {
+    pub fn invalidate(&mut self) {
+        self.graph = None;
+        self.epoch += 1;
+    }
 }
 
 const HISTORY_LIMIT: usize = 200;
@@ -117,7 +136,8 @@ impl Navigation {
     /// reply from the old project is dropped.
     pub fn reset(&mut self) {
         let generation = self.generation + 1;
-        *self = Navigation { generation, ..Default::default() };
+        let packages = PackageCache { graph: None, epoch: self.packages.epoch + 1 };
+        *self = Navigation { generation, packages, ..Default::default() };
     }
 
     /// The language servers restarted: answers to requests sent before are dropped, and the
@@ -242,15 +262,36 @@ fn usages_with(state: &mut AppState, lang: LangId, path: PathBuf, pos: Position,
     let cancel = Arc::new(AtomicBool::new(false));
     crate::find_window::track_search(state, tab, progress.clone(), cancel.clone());
     let started = Instant::now();
+    // Usages go to the tab as they arrive; the tab dedups and sorts them.
+    let jobs = state.jobs.clone();
+    let post = Arc::new(move |refs: Vec<crate::lang::Reference>| {
+        if !refs.is_empty() {
+            jobs.post(move |state| crate::find_window::add_usages(state, tab, generation, refs));
+        }
+    });
+    // Set once the loaded projects answered while the pre-filter ran.
+    let asked = Arc::new(AtomicBool::new(false));
+    let (p, first_post, first_asked) = (path.clone(), post.clone(), asked.clone());
+    let first: First = Box::new(move |server| {
+        if let Ok(refs) = server.references(&p, pos.line, pos.column) {
+            first_post(refs);
+            first_asked.store(true, Ordering::Relaxed);
+        }
+    });
     let p = path.clone();
-    let ask: Ask<Vec<crate::lang::Reference>> = Box::new(move |server, candidates, loading| server.references_across(&p, pos.line, pos.column, candidates, loading));
+    let ask: Ask<()> = Box::new(move |server, candidates, loading| {
+        let found = |refs: Vec<crate::lang::Reference>| post(refs);
+        let stream = crate::lang::Stream { found: &found, loaded_asked: asked.load(Ordering::Relaxed) };
+        server.references_across(&p, pos.line, pos.column, candidates, loading, &stream)
+    });
     let label = format!("{}: {word}", NavKind::Usages.label());
-    let done: AskDone<Vec<crate::lang::Reference>> = Box::new(move |state, result, stats| {
+    let done: AskDone<()> = Box::new(move |state, result, stats| {
         let ms = started.elapsed().as_secs_f64() * 1000.0;
         state.ws.nav.last_ms = Some(ms);
+        let count = state.ws.find_window.tab(tab).map_or(0, |t| t.items.len());
         match &result {
-            Ok(r) => state.timings.log(format!("Find Usages `{word}`: {} reference(s) in {ms:.1} ms ({stats})", r.len())),
-            Err(e) => state.timings.log(format!("Find Usages `{word}` failed after {ms:.1} ms ({stats}): {e}")),
+            Ok(()) => state.timings.log(format!("Find Usages `{word}`: {count} reference(s) in {ms:.1} ms ({stats})")),
+            Err(e) => state.timings.log(format!("Find Usages `{word}` failed after {ms:.1} ms with {count} reference(s) ({stats}): {e}")),
         }
         if state.test.is_some() {
             crate::testhook::step_done(state);
@@ -260,9 +301,9 @@ fn usages_with(state: &mut AppState, lang: LangId, path: PathBuf, pos: Position,
                 state.notifications.error("Find Usages failed", e.clone());
             }
         }
-        crate::find_window::finish_usages(state, tab, generation, result);
+        crate::find_window::finish_usages(state, tab, generation, result.map(|()| Vec::new()));
     });
-    across_projects(state, Across { lang, path, pos, label, progress, cancel, ask, done });
+    across_projects(state, Across { lang, path, pos, label, progress, cancel, first: Some(first), ask, done });
 }
 
 /// A question about the symbol at `pos` that needs the projects of its users loaded.
@@ -274,11 +315,18 @@ pub struct Across<T> {
     pub label: String,
     pub progress: Progress,
     pub cancel: Arc<AtomicBool>,
+    /// Asked on the language queue while the pre-filter runs, when one runs (Find Usages: the
+    /// usages in the projects the server has loaded, shown at once).
+    pub first: Option<First>,
     pub ask: Ask<T>,
     pub done: AskDone<T>,
 }
 
-/// The text the UI shows while a search runs ("Loading 12 projects… 3/12").
+/// See `Across::first`.
+pub type First = Box<dyn FnOnce(&dyn LanguageServer) + Send>;
+
+/// The text the UI shows while a search runs ("3 of 12 packages checked"; the Find tab puts the
+/// usage count in front).
 pub type Progress = Arc<Mutex<String>>;
 
 /// A question for the server, given the candidate files and the loading control.
@@ -291,14 +339,19 @@ pub type AskDone<T> = Box<dyn FnOnce(&mut AppState, Result<T, String>, AcrossSta
 pub struct AcrossStats {
     /// Code files read by the pre-filter (0: no pre-filter).
     pub scanned: usize,
+    /// Packages the pre-filter read; `None`: every code file.
+    pub packages: Option<usize>,
     pub candidates: usize,
-    /// Projects that were not loaded yet and were loaded for the question.
+    /// Candidate projects checked, the declaring one included.
     pub projects: usize,
+    /// The pre-filter's time, package graph included.
+    pub scan_ms: f64,
 }
 
 impl std::fmt::Display for AcrossStats {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{} candidate files of {} scanned, {} projects loaded", self.candidates, self.scanned, self.projects)
+        let scope = self.packages.map_or("all packages".to_string(), |p| format!("{p} packages"));
+        write!(f, "{} candidate files of {} read in {scope} in {:.0} ms, {} projects checked", self.candidates, self.scanned, self.scan_ms, self.projects)
     }
 }
 
@@ -318,19 +371,22 @@ fn set_progress(progress: &Progress, ctx: &Context, text: String) {
 ///
 /// 1. On the language queue: `symbol_scope` (where the symbol is declared, whether it is
 ///    exported). A local symbol, or a language without scopes, goes to `ask` right there.
-/// 2. On a worker: `ide_ts::symbol_candidates` over the file index, on at most
-///    `find::search_threads()` threads at low priority.
+/// 2. On a worker: `ide_ts::symbol_candidates` over the file index, scoped by the package
+///    graph (`PackageCache`), on at most `find::search_threads()` threads at normal priority:
+///    the user waits for this answer. Meanwhile `first` runs on the queue.
 /// 3. On the queue again: `ask` with the candidates. It loads their projects and reports
-///    `(loaded, total)` through `Loading`.
+///    `(checked, total)` through `Loading`.
 ///
 /// `cancel` (the Find tab's close and ⟳, the dialog's Cancel) and the status bar × of each step
 /// stop the search; `done` then gets `cancel_text()`.
 pub fn across_projects<T: Send + 'static>(state: &mut AppState, request: Across<T>) {
-    let Across { lang, path, pos, label, progress, cancel, ask, done } = request;
+    let Across { lang, path, pos, label, progress, cancel, first, ask, done } = request;
     let jobs = state.jobs.clone();
     let ctx = state.ctx.clone();
     let root = state.ws.project.as_ref().map(|p| p.root.clone());
     let index = state.ws.index.files.clone();
+    let cached = state.ws.nav.packages.graph.clone();
+    let epoch = state.ws.nav.packages.epoch;
     state.ws.langs.bridge(lang).run(move |server| {
         let busy = jobs.busy(label.clone());
         let job = crate::jobs::current_cancel();
@@ -346,22 +402,31 @@ pub fn across_projects<T: Send + 'static>(state: &mut AppState, request: Across<
             jobs.post(move |state| done(state, result, stats));
             return;
         };
-        drop(busy);
         let name = scope.name.clone();
         let (p, c, x) = (progress.clone(), cancel.clone(), ctx.clone());
+        let first_cancel = cancel.clone();
         jobs.spawn(
             format!("Scanning for usages of {name}"),
             move || {
+                let started = Instant::now();
+                set_progress(&p, &x, format!("Scanning for usages of {name}..."));
                 let files = crate::tree_menu::code_files(&root, &index);
-                set_progress(&p, &x, format!("Scanning {} files for {name}...", files.len()));
+                let built = cached.is_none();
+                let graph = cached.unwrap_or_else(|| Arc::new(package_graph(&root, &index)));
                 let job = crate::jobs::current_cancel();
                 let stopped = || c.load(Ordering::Relaxed) || job.load(Ordering::Relaxed);
-                let options = ide_ts::ScanOptions { threads: crate::find::search_threads(), prepare_thread: &crate::find::lower_priority, cancelled: &stopped };
-                let candidates = ide_ts::symbol_candidates(&files, &scope, &options);
-                (files.len(), candidates, stopped())
+                // Normal priority on purpose: the user waits for this scan. Find in Files, which
+                // runs while the user types, keeps its lowered priority.
+                let options = ide_ts::ScanOptions { threads: crate::find::search_threads(), prepare_thread: &|| {}, cancelled: &stopped };
+                let found = ide_ts::symbol_candidates(&files, &scope, &graph, &options);
+                let scan_ms = started.elapsed().as_secs_f64() * 1000.0;
+                (found, scan_ms, stopped(), built.then_some(graph))
             },
-            move |state, (scanned, candidates, stopped)| {
-                let mut stats = AcrossStats { scanned, candidates: candidates.len(), projects: 0 };
+            move |state, (found, scan_ms, stopped, built)| {
+                if let Some(graph) = built.filter(|_| state.ws.nav.packages.epoch == epoch) {
+                    state.ws.nav.packages.graph = Some(graph);
+                }
+                let mut stats = AcrossStats { scanned: found.scanned, packages: found.packages, candidates: found.files.len(), projects: 0, scan_ms };
                 if stopped {
                     done(state, Err(cancel_text()), stats);
                     return;
@@ -372,13 +437,24 @@ pub fn across_projects<T: Send + 'static>(state: &mut AppState, request: Across<
                     let _busy = jobs.busy(label);
                     let job = crate::jobs::current_cancel();
                     let projects = AtomicUsize::new(0);
-                    let result = ask_with(server, ask, &candidates, &progress, &ctx, &cancel, &job, &projects);
+                    let result = ask_with(server, ask, &found.files, &progress, &ctx, &cancel, &job, &projects);
                     stats.projects = projects.load(Ordering::Relaxed);
                     jobs.post(move |state| done(state, result, stats));
                 });
             },
         );
+        if let Some(first) = first {
+            if !first_cancel.load(Ordering::Relaxed) && !job.load(Ordering::Relaxed) {
+                first(server);
+            }
+        }
+        drop(busy);
     });
+}
+
+/// The package graph of the `package.json` files in the file index.
+fn package_graph(root: &Path, index: &[String]) -> ide_ts::PackageGraph {
+    ide_ts::PackageGraph::build(index.iter().filter(|f| Path::new(f.as_str()).file_name().is_some_and(|n| n == "package.json")).map(|f| root.join(f)))
 }
 
 /// Runs `ask` with a `Loading` that watches both cancel flags and turns the project count into
@@ -388,8 +464,7 @@ fn ask_with<T>(server: &dyn LanguageServer, ask: Ask<T>, candidates: &[PathBuf],
     let cancelled = || cancel.load(Ordering::Relaxed) || job.load(Ordering::Relaxed);
     let report = |loaded: usize, total: usize| {
         projects.store(total, Ordering::Relaxed);
-        let text = if loaded < total { format!("Loading {total} projects... {loaded}/{total}") } else { "Asking the language server...".to_string() };
-        set_progress(progress, ctx, text);
+        set_progress(progress, ctx, format!("{loaded} of {total} packages checked"));
     };
     if candidates.is_empty() {
         set_progress(progress, ctx, "Asking the language server...".into());

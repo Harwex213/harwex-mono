@@ -6,7 +6,7 @@
 //! somewhere (or the package name, for a package's entry file), so a substring scan over the
 //! code files finds every candidate. The server then decides which candidates really import it.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::path::{Component, Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
@@ -14,6 +14,7 @@ use std::sync::Mutex;
 use serde_json::Value;
 
 use crate::is_source;
+use crate::packages::{in_node_modules, PackageGraph};
 
 /// The words an import of `target` must contain: the file stem (`shapes` for `shapes.ts`),
 /// the folder name for an `index` file or a folder, and the package name when `target` is the
@@ -100,7 +101,9 @@ pub fn import_candidates(files: &[PathBuf], target: &Path, cancel: &AtomicBool) 
     }
     let code: Vec<&PathBuf> = files.iter().filter(|f| is_source(f) && !f.starts_with(target)).collect();
     let threads = std::thread::available_parallelism().map_or(4, |n| n.get()).clamp(1, 8);
-    scan(&code, threads, &|| {}, &|| cancel.load(Ordering::Relaxed), &|text| needles.iter().any(|n| contains(text, n.as_bytes())))
+    let mut found = scan(&code, threads, &|| {}, &|| cancel.load(Ordering::Relaxed), &|f: &&PathBuf, text| needles.iter().any(|n| contains(text, n.as_bytes())).then(|| (*f).clone()));
+    found.sort();
+    found
 }
 
 /// Where a symbol is declared and whether other modules can see it ([`crate::TsService::symbol_scope`]).
@@ -115,31 +118,213 @@ pub struct SymbolScope {
     pub exported: bool,
 }
 
-/// How [`symbol_candidates`] scans: the thread count, a hook each scan thread runs first (the
-/// app lowers the thread's priority there), and a cancel check polled per file (the result is
-/// then partial).
+/// How [`symbol_candidates`] scans: the thread count, a hook each scan thread runs first, and a
+/// cancel check polled per file (the result is then partial).
 pub struct ScanOptions<'a> {
     pub threads: usize,
     pub prepare_thread: &'a (dyn Fn() + Sync),
     pub cancelled: &'a (dyn Fn() -> bool + Sync),
 }
 
+/// What [`symbol_candidates`] found and how much it read.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct SymbolCandidates {
+    /// Sorted, without duplicates.
+    pub files: Vec<PathBuf>,
+    /// Code files read (a file checked again in a later round counts again).
+    pub scanned: usize,
+    /// Packages whose files were scanned; `None` when the scan covered every code file (no
+    /// package graph, a declaration outside any package, or a symbol that 2/3 of 100 or more
+    /// packages see).
+    pub packages: Option<usize>,
+}
+
+/// A cross-package re-export chain longer than this many rounds is cut.
+const ROUND_LIMIT: usize = 8;
+
+/// In a workspace of at least `WIDE_MIN_PACKAGES` packages, a symbol that at least
+/// `WIDE_MULTIPLE / WIDE_DIVISOR` (2/3) of them can see is scanned over the whole index.
+const WIDE_MIN_PACKAGES: usize = 100;
+const WIDE_MULTIPLE: usize = 2;
+const WIDE_DIVISOR: usize = 3;
+
 /// Code files among `files` that may use the exported symbol of `scope`: the text contains the
 /// name, and one of [`visibility_needles`], so the file can import a module that declares or
 /// re-exports it. Empty for a symbol that is not exported.
-pub fn symbol_candidates(files: &[PathBuf], scope: &SymbolScope, options: &ScanOptions) -> Vec<PathBuf> {
+///
+/// With a package graph, only these files are read: the files outside any package, the files
+/// of the packages that declare or re-export the symbol, and of their direct dependents. A
+/// dependent that re-exports the symbol by package name (`export { x } from "@ws/a"`,
+/// `export * from "@ws/a"`) joins the chain, and the next round scans its dependents too. A
+/// declaration outside any package (or in `node_modules`) falls back to scanning every file, and
+/// so does a symbol that at least 2/3 of 100 or more packages see (there the split costs more than it
+/// saves, and re-exports by package name are not followed).
+pub fn symbol_candidates(files: &[PathBuf], scope: &SymbolScope, packages: &PackageGraph, options: &ScanOptions) -> SymbolCandidates {
     if !scope.exported || scope.name.is_empty() || scope.declarations.is_empty() {
-        return Vec::new();
+        return SymbolCandidates::default();
     }
-    let needles = visibility_needles(files, &scope.declarations);
+    let mut chain = reexport_chain(files, &scope.declarations);
+    let mut needles: Vec<String> = Vec::new();
+    add_needles(&mut needles, &chain);
     if needles.is_empty() {
-        return Vec::new();
+        return SymbolCandidates::default();
     }
     let code: Vec<&PathBuf> = files.iter().filter(|f| is_source(f) && !scope.declarations.contains(f) && !in_node_modules(f)).collect();
     let name = scope.name.as_bytes();
-    scan(&code, options.threads.max(1), options.prepare_thread, options.cancelled, &|text| {
-        contains(text, name) && needles.iter().any(|n| contains(text, n.as_bytes()))
-    })
+    let threads = options.threads.max(1);
+    let chain_packages: Option<HashSet<usize>> = if packages.is_empty() { None } else { chain.iter().map(|f| packages.package_of(f)).collect() };
+    // When most packages see the symbol anyway, splitting the files by package costs more than
+    // the few files it saves: read everything, as without a graph.
+    let wide = packages.len() >= WIDE_MIN_PACKAGES && chain_packages.as_ref().is_some_and(|c| {
+        let seeing: HashSet<usize> = c.iter().flat_map(|&p| std::iter::once(p).chain(packages.dependents(p).iter().copied())).collect();
+        seeing.len() * WIDE_DIVISOR >= packages.len() * WIDE_MULTIPLE
+    });
+    let Some(mut chain_packages) = chain_packages.filter(|_| !wide) else {
+        let mut found = scan(&code, threads, options.prepare_thread, options.cancelled, &|f: &&PathBuf, text| {
+            (contains(text, name) && needles.iter().any(|n| contains(text, n.as_bytes()))).then(|| (*f).clone())
+        });
+        found.sort();
+        return SymbolCandidates { files: found, scanned: code.len(), packages: None };
+    };
+
+    // The memo is keyed by the folders' bytes: hashing a `Path` walks its components, which
+    // cost a second over the 220k code files of a big monorepo.
+    let mut by_package: HashMap<Option<usize>, Vec<&PathBuf>> = HashMap::new();
+    let mut memo: HashMap<&std::ffi::OsStr, Option<usize>> = HashMap::new();
+    for f in &code {
+        let Some(dir) = f.parent() else { continue };
+        by_package.entry(packages.package_of_dir(dir, &mut memo)).or_default().push(f);
+    }
+    let mut scanned_packages: HashSet<usize> = HashSet::new();
+    let mut targets: Vec<(&PathBuf, Option<usize>)> = by_package.get(&None).into_iter().flatten().map(|f| (*f, None)).collect();
+    let mut visible: Vec<usize> = chain_packages.iter().copied().collect();
+    let mut found: BTreeSet<PathBuf> = BTreeSet::new();
+    // Files that name the symbol but none of the needles yet: a later round's needles may match.
+    let mut name_only: BTreeMap<PathBuf, Option<usize>> = BTreeMap::new();
+    let mut recheck: Vec<(PathBuf, Option<usize>)> = Vec::new();
+    let mut scanned = 0;
+    for round in 0..ROUND_LIMIT {
+        let mut opened: Vec<usize> = Vec::new();
+        for p in visible.drain(..) {
+            opened.push(p);
+            opened.extend_from_slice(packages.dependents(p));
+        }
+        for p in opened {
+            if scanned_packages.insert(p) {
+                targets.extend(by_package.get(&Some(p)).into_iter().flatten().map(|f| (*f, Some(p))));
+            }
+        }
+        let names: Vec<String> = chain_packages.iter().filter_map(|&p| packages.name(p)).map(str::to_string).collect();
+        let mut items: Vec<(&PathBuf, Option<usize>)> = std::mem::take(&mut targets);
+        items.extend(recheck.iter().map(|(f, p)| (f, *p)));
+        scanned += items.len();
+        let in_chain = &chain_packages;
+        let symbol = scope.name.as_str();
+        let hits = scan(&items, threads, options.prepare_thread, options.cancelled, &|(f, owner): &(&PathBuf, Option<usize>), text| {
+            let named = contains(text, name);
+            let candidate = named && needles.iter().any(|n| contains(text, n.as_bytes()));
+            let reexports = owner.is_some_and(|o| !in_chain.contains(&o)) && reexports_from(text, &names, symbol);
+            (named || reexports).then(|| ((*f).clone(), *owner, candidate, reexports))
+        });
+        recheck.clear();
+        let mut joined: Vec<PathBuf> = Vec::new();
+        for (f, owner, candidate, reexports) in hits {
+            if candidate {
+                name_only.remove(&f);
+                found.insert(f.clone());
+            } else if !found.contains(&f) {
+                name_only.insert(f.clone(), owner);
+            }
+            if reexports && !chain.contains(&f) && !joined.contains(&f) {
+                joined.push(f);
+            }
+        }
+        if joined.is_empty() || (options.cancelled)() || round + 1 == ROUND_LIMIT {
+            break;
+        }
+        // The re-exporting files, and the files of their packages that re-export them.
+        let mut grown: Vec<PathBuf> = Vec::new();
+        for f in reexport_chain(files, &joined) {
+            if !chain.contains(&f) {
+                chain.push(f.clone());
+                grown.push(f);
+            }
+        }
+        add_needles(&mut needles, &grown);
+        let mut fresh: Vec<usize> = Vec::new();
+        for f in &grown {
+            if let Some(p) = packages.package_of(f) {
+                if chain_packages.insert(p) {
+                    fresh.push(p);
+                }
+            }
+        }
+        // Files of packages that see the new links: those scanned before with the old needles
+        // and that named the symbol are read again.
+        let mut seeing: HashSet<usize> = fresh.iter().copied().collect();
+        for &p in &fresh {
+            seeing.extend(packages.dependents(p).iter().copied());
+        }
+        recheck = name_only.iter().filter(|(_, o)| o.is_some_and(|o| seeing.contains(&o) && scanned_packages.contains(&o))).map(|(f, o)| (f.clone(), *o)).collect();
+        visible = fresh;
+    }
+    SymbolCandidates { files: found.into_iter().collect(), scanned, packages: Some(scanned_packages.len()) }
+}
+
+fn add_needles(needles: &mut Vec<String>, files: &[PathBuf]) {
+    for f in files {
+        for n in import_needles(f) {
+            if !needles.contains(&n) {
+                needles.push(n);
+            }
+        }
+    }
+}
+
+/// Whether `text` re-exports `symbol` (by name or `*`) from one of the packages `names`. Only
+/// the places where a package name follows a quote are examined: most files that name the
+/// package import from it, and parsing every statement of them cost seconds on a big monorepo.
+fn reexports_from(text: &[u8], names: &[String], symbol: &str) -> bool {
+    for name in names {
+        let finder = memchr::memmem::Finder::new(name.as_bytes());
+        for at in finder.find_iter(text) {
+            if at == 0 || !matches!(text[at - 1], b'"' | b'\'') {
+                continue;
+            }
+            let quote = text[at - 1];
+            let rest = &text[at + name.len()..];
+            // The specifier is the package or one of its subpaths: `"@ws/a"`, `"@ws/a/common"`.
+            if !(rest.first() == Some(&quote) || rest.first() == Some(&b'/')) {
+                continue;
+            }
+            if reexport_before(&text[..at - 1], symbol) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+/// Whether the statement that ends at `head` (the text up to a specifier's opening quote) is
+/// `export <names, braces, commas, *> from`, naming `symbol` or `*`.
+fn reexport_before(head: &[u8], symbol: &str) -> bool {
+    let head = trim_end(head);
+    let Some(head) = head.strip_suffix(b"from") else { return false };
+    let window = &head[head.len().saturating_sub(2000)..];
+    let Some(export) = memchr::memmem::rfind(window, b"export") else { return false };
+    if export > 0 && is_ident(window[export - 1] as char) {
+        return false;
+    }
+    let list = &window[export + "export".len()..];
+    if list.first().is_some_and(|c| is_ident(*c as char)) || !list.iter().all(|&c| is_ident(c as char) || c.is_ascii_whitespace() || matches!(c, b'{' | b'}' | b',' | b'*')) {
+        return false;
+    }
+    list.contains(&b'*') || list.split(|&c| !is_ident(c as char)).any(|w| w == symbol.as_bytes())
+}
+
+fn trim_end(bytes: &[u8]) -> &[u8] {
+    let end = bytes.iter().rposition(|c| !c.is_ascii_whitespace()).map_or(0, |i| i + 1);
+    &bytes[..end]
 }
 
 /// The words an import of a declaring file or of a file that re-exports it must contain:
@@ -148,13 +333,7 @@ pub fn symbol_candidates(files: &[PathBuf], scope: &SymbolScope, options: &ScanO
 /// name comes in when one of them is the package's entry or an `exports` target.
 pub fn visibility_needles(files: &[PathBuf], declarations: &[PathBuf]) -> Vec<String> {
     let mut needles: Vec<String> = Vec::new();
-    for f in reexport_chain(files, declarations) {
-        for n in import_needles(&f) {
-            if !needles.contains(&n) {
-                needles.push(n);
-            }
-        }
-    }
+    add_needles(&mut needles, &reexport_chain(files, declarations));
     needles
 }
 
@@ -265,36 +444,48 @@ fn lexical_join(dir: &Path, spec: &str) -> PathBuf {
     out
 }
 
-fn in_node_modules(path: &Path) -> bool {
-    path.components().any(|c| c.as_os_str() == "node_modules")
-}
-
-/// Files of `code` whose bytes pass `keep`, read on `threads` threads, sorted.
-fn scan(code: &[&PathBuf], threads: usize, prepare_thread: &(dyn Fn() + Sync), cancelled: &(dyn Fn() -> bool + Sync), keep: &(dyn Fn(&[u8]) -> bool + Sync)) -> Vec<PathBuf> {
-    let chunk = code.len().div_ceil(threads).max(1);
-    let out: Mutex<Vec<PathBuf>> = Mutex::default();
+/// What `keep` returns for the items of `items` it accepts, each file read once, on `threads`
+/// threads. The order is unspecified.
+fn scan<I: Sync + AsPath, T: Send>(items: &[I], threads: usize, prepare_thread: &(dyn Fn() + Sync), cancelled: &(dyn Fn() -> bool + Sync), keep: &(dyn Fn(&I, &[u8]) -> Option<T> + Sync)) -> Vec<T> {
+    let chunk = items.len().div_ceil(threads.max(1)).max(1);
+    let out: Mutex<Vec<T>> = Mutex::default();
     std::thread::scope(|scope| {
-        for part in code.chunks(chunk) {
+        for part in items.chunks(chunk) {
             let out = &out;
             scope.spawn(move || {
                 prepare_thread();
                 let mut found = Vec::new();
-                for f in part {
+                for item in part {
                     if cancelled() {
                         break;
                     }
-                    let Ok(text) = std::fs::read(f) else { continue };
-                    if keep(&text) {
-                        found.push((*f).clone());
+                    let Ok(text) = std::fs::read(item.as_path()) else { continue };
+                    if let Some(t) = keep(item, &text) {
+                        found.push(t);
                     }
                 }
                 crate::server::lock(out).extend(found);
             });
         }
     });
-    let mut v = out.into_inner().unwrap_or_else(|e| e.into_inner());
-    v.sort();
-    v
+    out.into_inner().unwrap_or_else(|e| e.into_inner())
+}
+
+/// The file a scan item reads.
+trait AsPath {
+    fn as_path(&self) -> &Path;
+}
+
+impl AsPath for &PathBuf {
+    fn as_path(&self) -> &Path {
+        self
+    }
+}
+
+impl AsPath for (&PathBuf, Option<usize>) {
+    fn as_path(&self) -> &Path {
+        self.0
+    }
 }
 
 fn contains(hay: &[u8], needle: &[u8]) -> bool {
@@ -338,6 +529,39 @@ mod tests {
         assert!(import_candidates(&files, &shapes, &cancelled).is_empty());
     }
 
+    /// 120 packages that all list `@ws/utils`: the split by package would save nothing.
+    #[test]
+    fn a_symbol_most_packages_see_reads_the_whole_index() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = dunce::canonicalize(tmp.path()).unwrap();
+        let mut files = vec![write(&root, "utils/package.json", r#"{"name": "@ws/utils", "main": "src/index.ts"}"#)];
+        let decl = write(&root, "utils/src/index.ts", "export const LIMIT = 1;\n");
+        files.push(decl.clone());
+        for i in 0..120 {
+            files.push(write(&root, &format!("p{i}/package.json"), &format!(r#"{{"name": "@ws/p{i}", "dependencies": {{"@ws/utils": "*"}}}}"#)));
+            files.push(write(&root, &format!("p{i}/src/a.ts"), if i == 7 { "import { LIMIT } from '@ws/utils';\n" } else { "export {};\n" }));
+        }
+        let graph = PackageGraph::from_files(&files);
+        let scope = SymbolScope { name: "LIMIT".into(), declarations: vec![decl], exported: true };
+        let options = ScanOptions { threads: 2, prepare_thread: &|| {}, cancelled: &|| false };
+        let found = symbol_candidates(&files, &scope, &graph, &options);
+        assert_eq!(found.packages, None);
+        assert_eq!(found.files, [root.join("p7/src/a.ts")]);
+    }
+
+    #[test]
+    fn reexports_by_package_name() {
+        let names = ["@ws/a".to_string()];
+        let yes = |t: &str| reexports_from(t.as_bytes(), &names, "rootOrm");
+        assert!(yes("export { rootOrm } from \"@ws/a\";"));
+        assert!(yes("import x from '@ws/b';\nexport {\n  other,\n  rootOrm as orm,\n} from '@ws/a/common';"));
+        assert!(yes("export * from '@ws/a';"));
+        assert!(!yes("import { rootOrm } from '@ws/a';\nexport { rootOrm };"), "an import, not a re-export");
+        assert!(!yes("export { other } from '@ws/a';"));
+        assert!(!yes("export { rootOrm } from '@ws/abc';"), "another package");
+        assert!(!yes("export const x = 1; import { rootOrm } from '@ws/a';"));
+    }
+
     #[test]
     fn reexport_statements() {
         let text = "import { a } from './a';\nexport { rootOrm } from \"./Services/Orm/RootOrm\";\nexport * from './common';\nexport * as ns from \"./ns\";\nexport type {\n  T,\n  U as V,\n} from './types';\nexport const x = f(\"from\");\nexport function g() { return 'from'; }\nexported from './no';\n";
@@ -375,10 +599,58 @@ mod tests {
         assert_eq!(needles, ["RootOrm", "Common", "@ws/a", "src"]);
         let scope = SymbolScope { name: "rootOrm".into(), declarations: vec![decl.clone()], exported: true };
         let options = ScanOptions { threads: 2, prepare_thread: &|| {}, cancelled: &|| false };
-        assert_eq!(symbol_candidates(&files, &scope, &options), [common, b, c], "D names rootOrm but imports nothing of A; E imports A but never names rootOrm");
+        let none = PackageGraph::default();
+        let found = symbol_candidates(&files, &scope, &none, &options);
+        assert_eq!(found.files, [common, b, c], "D names rootOrm but imports nothing of A; E imports A but never names rootOrm");
+        assert_eq!(found.packages, None, "no graph: every file is read");
         let local = SymbolScope { exported: false, ..scope.clone() };
-        assert!(symbol_candidates(&files, &local, &options).is_empty());
+        assert!(symbol_candidates(&files, &local, &none, &options).files.is_empty());
         let cancelled = ScanOptions { cancelled: &|| true, ..options };
-        assert!(symbol_candidates(&files, &scope, &cancelled).is_empty());
+        assert!(symbol_candidates(&files, &scope, &none, &cancelled).files.is_empty());
+    }
+
+    /// `@ws/utils` declares `formatDate`; `@ws/app` and `@ws/core` list it. `@ws/core` re-exports
+    /// it, and `@ws/leaf` lists only `@ws/core`. `@ws/shop` lists neither but has its own
+    /// `formatDate` in a file of the same stem. A root script outside any package imports it by
+    /// path.
+    #[test]
+    fn symbol_candidates_scan_only_packages_that_see_the_symbol() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = dunce::canonicalize(tmp.path()).unwrap();
+        let mut files = vec![
+            write(&root, "package.json", r#"{"name": "root", "workspaces": ["packages/*"]}"#),
+            write(&root, "packages/utils/package.json", r#"{"name": "@ws/utils", "main": "src/index.ts"}"#),
+            write(&root, "packages/app/package.json", r#"{"name": "@ws/app", "dependencies": {"@ws/utils": "workspace:*"}}"#),
+            write(&root, "packages/core/package.json", r#"{"name": "@ws/core", "main": "src/index.ts", "dependencies": {"@ws/utils": "workspace:*"}}"#),
+            write(&root, "packages/leaf/package.json", r#"{"name": "@ws/leaf", "dependencies": {"@ws/core": "workspace:*"}}"#),
+            write(&root, "packages/shop/package.json", r#"{"name": "@ws/shop"}"#),
+        ];
+        let decl = write(&root, "packages/utils/src/dates.ts", "export const formatDate = 1;\n");
+        let entry = write(&root, "packages/utils/src/index.ts", "export * from './dates';\n");
+        let app = write(&root, "packages/app/src/use.ts", "import { formatDate } from '@ws/utils';\nformatDate;\n");
+        let app_other = write(&root, "packages/app/src/other.ts", "export const formatDate2 = 'dates';\n");
+        let core = write(&root, "packages/core/src/index.ts", "export { formatDate } from '@ws/utils';\n");
+        let leaf = write(&root, "packages/leaf/src/use.ts", "import { formatDate } from '@ws/core';\nformatDate;\n");
+        let shop_decl = write(&root, "packages/shop/src/dates.ts", "export const formatDate = 2;\n");
+        let shop = write(&root, "packages/shop/src/use.ts", "import { formatDate } from './dates';\nformatDate;\n");
+        let script = write(&root, "scripts/build.ts", "import { formatDate } from '../packages/utils/src/dates';\n");
+        files.extend([decl.clone(), entry.clone(), app.clone(), app_other.clone(), core.clone(), leaf.clone(), shop_decl, shop.clone(), script.clone()]);
+        files.sort();
+        let graph = PackageGraph::from_files(&files);
+        let scope = SymbolScope { name: "formatDate".into(), declarations: vec![decl.clone()], exported: true };
+        let options = ScanOptions { threads: 2, prepare_thread: &|| {}, cancelled: &|| false };
+
+        let everything = symbol_candidates(&files, &scope, &PackageGraph::default(), &options);
+        assert!(everything.files.contains(&shop), "without the graph the same-named symbol of shop passes the text test");
+        assert!(!everything.files.contains(&leaf), "and leaf names neither a file of utils nor its package");
+
+        let scoped = symbol_candidates(&files, &scope, &graph, &options);
+        assert_eq!(scoped.files, [app_other, app, core, leaf, script.clone()], "shop is not read; leaf comes through core's re-export");
+        assert_eq!(scoped.packages, Some(4), "utils, app, core, then leaf");
+        assert!(scoped.scanned < everything.scanned, "{} < {}", scoped.scanned, everything.scanned);
+
+        // The declaration outside any package: every file is read.
+        let loose = SymbolScope { declarations: vec![script.clone()], ..scope.clone() };
+        assert_eq!(symbol_candidates(&files, &loose, &graph, &options).packages, None);
     }
 }
