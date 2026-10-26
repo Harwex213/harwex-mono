@@ -9,7 +9,6 @@ import {
   diffTintWords,
   tintWordFor,
 } from "./tint-layer";
-import { createCountry } from "../../../../domain/world/schema";
 import type { Country, Province } from "../../../../domain/index";
 
 // The pure half of the tint layer. The canvas wrapper needs a DOM and stays untested here.
@@ -337,10 +336,7 @@ test("a bounding box running past the edge of the map paints only what exists", 
 // --- buildTintWordTable -----------------------------------------------------
 
 function country(id: number, colorHex: string, provinceIds: number[]): Country {
-  const made = createCountry(id, "Country " + id);
-  made.colorHex = colorHex;
-  made.provinceIds = provinceIds;
-  return made;
+  return { id, name: "Country " + id, slogan: "", flagDataUrl: null, provinceIds, colorHex };
 }
 
 test("the tint table carries each country's word at each of its province ids", () => {

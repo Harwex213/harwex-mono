@@ -5,13 +5,22 @@ import {
   fromHex,
   type ProvinceKind,
 } from "../../../domain/index";
-import { useStore } from "../../../store/index";
+import {
+  hasWork,
+  useStore,
+} from "../../../store/index";
 import styles from "./province-panel.module.css";
 
 type TProvincePanelProps = {
   registry: Pick<
     TAppRegistry,
-    "addProvince" | "deleteProvince" | "recolorProvince" | "renameProvince" | "selectProvince" | "setProvinceKind"
+    | "addProvince"
+    | "deleteProvince"
+    | "detectFromBaseMap"
+    | "recolorProvince"
+    | "renameProvince"
+    | "selectProvince"
+    | "setProvinceKind"
   >;
 };
 
@@ -37,6 +46,7 @@ function ProvincePanel({ registry }: TProvincePanelProps) {
   const list = store.provinces.list.value;
   const activeId = store.provinces.activeId.value;
   const disabled = store.map.info.value === null;
+  const busy = store.status.busy.value;
 
   useEffect(() => {
     const scroller = scrollerRef.current;
@@ -96,6 +106,23 @@ function ProvincePanel({ registry }: TProvincePanelProps) {
           + New
         </button>
       </header>
+
+      <div className={styles.actions}>
+        <button
+          disabled={disabled || busy}
+          onClick={() => {
+            if (hasWork(store) && !window.confirm("Replace the provinces layer with detected borders?")) {
+              return;
+            }
+
+            void registry.detectFromBaseMap();
+          }}
+          title="Find provinces from borders drawn into the map image"
+          type="button"
+        >
+          {store.status.detecting.value ? "Detecting…" : "Detect borders"}
+        </button>
+      </div>
 
       <div
         className={styles.scroller}

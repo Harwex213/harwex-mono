@@ -18,8 +18,6 @@ function MapCanvasHud() {
   const selected = store.selection.selectedProvinceId.value;
   // The message tells a failed scan from a slow one.
   const failure = store.borders.error.value;
-  const activeId = store.assign.activeCountryId.value;
-  const activeCountry = activeId === null ? null : store.world.countryById.value.get(activeId);
   // One frame stale. The HUD re-renders on every cursor move, so the number stays live enough.
   const labelStats = getLastLabelStats();
   const labelsOn = store.labels.showLabels.value;
@@ -71,14 +69,6 @@ function MapCanvasHud() {
         <span>
           country <span className={styles.hudValue}>
             {country ? Math.round(country.elapsedMs) + " ms / " + country.segments : "—"}
-          </span>
-        </span>
-        <span>
-          mode <span className={styles.hudValue}>{store.assign.mode.value ? "assign" : "pan"}</span>
-        </span>
-        <span>
-          active <span className={styles.hudProvince}>
-            {activeCountry ? activeCountry.name : "—"}
           </span>
         </span>
         <span>

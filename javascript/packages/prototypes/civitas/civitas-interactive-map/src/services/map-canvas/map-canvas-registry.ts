@@ -3,11 +3,7 @@ import type { TAppRegistry } from "../../actions/index";
 // The registry slice `MapCanvasService` calls. The creator passes it in, so the service imports no action.
 type TMapCanvasServiceRegistry = Pick<
   TAppRegistry,
-  | "beginStroke"
-  | "cancelStroke"
   | "disposeBorders"
-  | "endStroke"
-  | "extendStroke"
   | "panTo"
   | "resetView"
   | "scanBorders"

@@ -1,4 +1,4 @@
-// The saved world for the screenshot tests. Each country is a disc of provinces on its own landmass:
+// The `assets/countries.json` the screenshot tests serve. Each country is a disc of provinces on its own landmass:
 // - Aurelia: centroids within 260 px of (1460, 1100), the western landmass.
 // - Borealis: centroids within 260 px of (2740, 800), the north-eastern landmass.
 // - Calderra: centroids within 240 px of (2480, 1830), the southern landmass.
@@ -8,17 +8,15 @@ type FixtureCountry = {
   id: number;
   name: string;
   slogan: string;
-  lore: string;
-  flagDataUrl: string | null;
+  flagDataUrl: string;
   provinceIds: number[];
   colorHex: string;
 };
 
-type FixtureDoc = {
+type CountriesFixture = {
+  format: string;
   version: number;
-  provinceOverrides: { [id: string]: { name?: string; lore?: string } };
   countries: FixtureCountry[];
-  nextCountryId: number;
 };
 
 function svgFlag(top: string, middle: string, bottom: string): string {
@@ -61,16 +59,15 @@ const CALDERRA_IDS = [
   1510, 1511, 1513, 1514, 1516, 1520, 1522, 1526, 1527, 1529, 1530, 1533, 1534, 1537,
 ];
 
-function createFixtureDoc(): FixtureDoc {
+function createFixtureCountries(): CountriesFixture {
   return {
+    format: "civitas.countries",
     version: 1,
-    provinceOverrides: {},
     countries: [
       {
         id: 1,
         name: "Aurelia",
         slogan: "Gold in the hills",
-        lore: "",
         flagDataUrl: svgFlag("#c0563f", "#f2d27a", "#c0563f"),
         provinceIds: AURELIA_IDS,
         colorHex: "#c0563f",
@@ -79,7 +76,6 @@ function createFixtureDoc(): FixtureDoc {
         id: 2,
         name: "Borealis",
         slogan: "North of everything",
-        lore: "",
         flagDataUrl: svgFlag("#4f7fb5", "#ffffff", "#2d4a6b"),
         provinceIds: BOREALIS_IDS,
         colorHex: "#4f7fb5",
@@ -88,14 +84,17 @@ function createFixtureDoc(): FixtureDoc {
         id: 3,
         name: "Calderra",
         slogan: "Fire under the fields",
-        lore: "",
         flagDataUrl: svgFlag("#6f9e57", "#2f2f2f", "#6f9e57"),
         provinceIds: CALDERRA_IDS,
         colorHex: "#6f9e57",
       },
     ],
-    nextCountryId: 4,
   };
 }
 
-export { createFixtureDoc, type FixtureDoc };
+// The shipped file: no countries yet.
+function createEmptyCountries(): CountriesFixture {
+  return { format: "civitas.countries", version: 1, countries: [] };
+}
+
+export { createEmptyCountries, createFixtureCountries, type CountriesFixture };

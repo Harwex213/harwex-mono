@@ -34,10 +34,9 @@
   pointer-events: auto;
 }
 
-/* The state warning. Top-centre, ABOVE the plaque and covering it while it
-   shows. That is deliberate: `unavailable` and `future` mean edits are not being
-   saved, which matters more than the name of the selected country. It is
-   dismissible, and dismissing it uncovers the plaque. */
+/* The countries repair notice. Top-centre, ABOVE the plaque and covering it while
+   it shows: a damaged countries file matters more than the name of the selected
+   country. It is dismissible, and dismissing it uncovers the plaque. */
 .warning {
   align-items: center;
   background: var(--civ-plaque);
@@ -56,11 +55,6 @@
   position: absolute;
   transform: translateX(-50%);
   z-index: var(--civ-z-warning);
-}
-
-.warning[data-kind="quota"],
-.warning[data-kind="unavailable"] {
-  border-color: var(--civ-danger);
 }
 
 .warningText {

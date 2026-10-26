@@ -123,6 +123,16 @@ function provincesManifest(): string {
   });
 }
 
+// The countries of the export: Northmark and Eastvale form Highlands, and
+// Southreach is left unassigned.
+function provincesCountries(): string {
+  return JSON.stringify({
+    format: "civitas.countries",
+    version: 1,
+    countries: [{ id: 1, name: "Highlands", colorHex: "#8a5fa8", provinceIds: [1, 2] }],
+  });
+}
+
 function drawWrongSize(): Buffer {
   const width = 100;
   const height = 80;
@@ -146,6 +156,7 @@ function createFixtureFiles(): Map<string, FixtureFile> {
     ["fixture-map.png", { body: drawFixtureMap(), contentType: "image/png" }],
     ["fixture-provinces.png", { body: drawProvincesExport(), contentType: "image/png" }],
     ["fixture-provinces.json", { body: Buffer.from(provincesManifest()), contentType: "application/json" }],
+    ["fixture-provinces.countries.json", { body: Buffer.from(provincesCountries()), contentType: "application/json" }],
     ["wrong-size.png", { body: drawWrongSize(), contentType: "image/png" }],
   ]);
 }

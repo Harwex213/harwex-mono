@@ -22,7 +22,9 @@ export {
 // provinces/ — provinces-slice holds the registry and the active province;
 // hover-slice the pixel and the province under the cursor.
 
-// tools/ — tools-slice holds the tool, the brush and the layer display options.
+// countries/ — countries-slice holds the countries, the active country and the open stroke.
+
+// tools/ — tools-slice holds the editor mode, the tool, the brush and the layer display options.
 
 // status/ — status-slice holds the busy flags, the error and the notice.
 

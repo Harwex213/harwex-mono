@@ -67,12 +67,13 @@ function pickLibraryImage(store: TStore, sources: TDatasources, image: MapImage)
   }
 
   return loadProvinces(store, sources, async () => {
-    const [imageBlob, manifestText] = await Promise.all([
+    const [imageBlob, manifestText, countriesText] = await Promise.all([
       sources.mapLibrary.fetchImage(image),
       sources.mapLibrary.fetchManifest(image),
+      sources.mapLibrary.fetchCountries(image),
     ]);
 
-    return { image: imageBlob, manifestText };
+    return { image: imageBlob, manifestText, countriesText };
   });
 }
 

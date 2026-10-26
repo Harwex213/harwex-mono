@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import assert from "node:assert/strict";
 import test from "node:test";
+import { parseCountriesText } from "./domain/index";
 
 // Pins the asset facts the map code depends on: sizes, province count,
 // unique colours, centroids and pixel totals. A regenerated asset that changes
@@ -293,4 +294,21 @@ test("all province names are the placeholder form, and all are distinct", () => 
   }
   assert.equal(names.size, PROVINCE_COUNT);
   assert.equal(JSON.stringify(manifest).includes("\"country\""), false);
+});
+
+test("countries.json parses cleanly and names only provinces of the manifest", () => {
+  // The editor in `../civitas-map` writes this file. It ships with an empty list.
+  const parsed = parseCountriesText(readFileSync(packageRoot + "assets/countries.json", "utf8"));
+  const ids = new Set(
+    readManifest().provinces.map((province) => {
+      return province.id;
+    }),
+  );
+
+  assert.deepEqual(parsed.repairs, []);
+  for (const country of parsed.countries) {
+    for (const id of country.provinceIds) {
+      assert.ok(ids.has(id), "country " + country.id + " names province " + id + ", which the manifest lacks");
+    }
+  }
 });

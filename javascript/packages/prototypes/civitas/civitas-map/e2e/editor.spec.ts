@@ -152,6 +152,7 @@ test("Load provinces loads the PNG and the manifest beside it", async ({ page })
 
   await libraryDialog(page).getByRole("button", { name: /^fixture-provinces\.png/ }).click();
   await expect(page.getByRole("status")).toContainText("Loaded 3 provinces from the manifest.");
+  await expect(page.getByRole("status")).toContainText("Loaded 1 country.");
   const rows = page.getByRole("listitem");
   await expect(rows).toHaveCount(3);
   // A row holds the colour input first and the name field last; both are textboxes.
@@ -164,6 +165,77 @@ test("Load provinces loads the PNG and the manifest beside it", async ({ page })
   await page.keyboard.press("v");
   await nextFrames(page);
   await expect(page).toHaveScreenshot("provinces-layer-hidden.png");
+});
+
+async function loadFixtureProvinces(page: Page): Promise<void> {
+  await pickFromLibrary(page, "Load provinces…", "fixture-provinces.png");
+  await expect(page.getByRole("status")).toContainText("Loaded 3 provinces from the manifest.");
+}
+
+async function click(page: Page, point: Point, button: "left" | "right"): Promise<void> {
+  const at = await toScreen(page, point);
+  await page.mouse.click(at.x, at.y, { button });
+  await nextFrames(page);
+}
+
+function countryRows(page: Page) {
+  return page.getByRole("complementary").getByRole("listitem");
+}
+
+test("the countries mode shows the countries loaded with the provinces", async ({ page }) => {
+  await openEditor(page);
+  await loadFixtureMap(page);
+  await loadFixtureProvinces(page);
+  await page.getByRole("button", { name: "Countries", exact: true }).click();
+
+  await expect(page.getByRole("heading", { name: "Cursor Mode" })).toHaveCount(0);
+  await expect(countryRows(page)).toHaveCount(1);
+  await expect(countryRows(page).first().getByRole("textbox").last()).toHaveValue("Highlands");
+  await expect(countryRows(page).first()).toContainText("2 provinces");
+  await parkMouse(page);
+  await expect(page).toHaveScreenshot("countries-loaded.png");
+});
+
+test("a click puts a province into the active country, the right button takes it out", async ({ page }) => {
+  await openEditor(page);
+  await loadFixtureMap(page);
+  await loadFixtureProvinces(page);
+  await page.getByRole("button", { name: "Countries", exact: true }).click();
+  await page.getByRole("button", { name: "+ New" }).click();
+  await expect(countryRows(page)).toHaveCount(2);
+  await expect(page.getByRole("contentinfo")).toContainText(/assigning to:\s*Country 2/);
+
+  // Southreach joins Country 2.
+  await click(page, { x: 170, y: 160 }, "left");
+  await expect(countryRows(page).nth(1)).toContainText("1 province");
+  // Northmark leaves Highlands.
+  await click(page, { x: 115, y: 90 }, "right");
+  await expect(countryRows(page).nth(0)).toContainText("1 province");
+  await expect(page.getByRole("contentinfo")).toContainText(/country:\s*none/);
+  await parkMouse(page);
+  await expect(page).toHaveScreenshot("countries-assigned.png");
+
+  const downloads: Download[] = [];
+  page.on("download", (download) => {
+    downloads.push(download);
+  });
+  await page.getByRole("button", { name: "Export PNG + JSON" }).click();
+  await expect.poll(() => {
+    return downloads.length;
+  }).toBe(3);
+
+  const countriesDownload = downloads.find((download) => {
+    return download.suggestedFilename() === "fixture-map-provinces.countries.json";
+  });
+  const file = JSON.parse((await readDownload(countriesDownload!)).toString("utf8"));
+  expect(file).toEqual({
+    format: "civitas.countries",
+    version: 1,
+    countries: [
+      { id: 1, name: "Highlands", colorHex: "#8a5fa8", provinceIds: [2] },
+      { id: 2, name: "Country 2", colorHex: "#4f7fb5", provinceIds: [3] },
+    ],
+  });
 });
 
 test("a provinces image of another size is refused", async ({ page }) => {

@@ -47,7 +47,7 @@ function createBordersSource(createWorker: () => Worker = createBorderWorker): B
   let worker: Worker | null = null;
   let nextRequestId = 1;
   let scanning: PendingScan | null = null;
-  // One request in flight plus the newest replacement, so a paint drag cannot build a backlog.
+  // One request in flight plus the newest replacement, so a burst of pushes cannot build a backlog.
   let inFlight: PendingCountry | null = null;
   let queued: QueuedCountry | null = null;
 

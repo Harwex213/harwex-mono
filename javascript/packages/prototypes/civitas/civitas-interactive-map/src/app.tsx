@@ -25,38 +25,17 @@ function App({ registry }: TAppProps) {
   const store = useStore();
 
   useEffect(() => {
-    // First and synchronous, so no panel reads an un-hydrated store.
-    registry.hydrateWorld();
     const stopCountrySync = registry.startCountryBorderSync();
-    // Never rejects; a failure lands in `map.error`.
+    // Never rejects; a failure lands in `map.error`. It also loads the countries.
     void registry.loadMap();
 
-    // Also on `visibilitychange`: iOS Safari can kill a hidden tab without `pagehide`.
-    const onPageHide = (): void => {
-      try {
-        registry.flushWorld();
-      } catch {
-        // Never throw during unload.
-      }
-    };
-    const onVisibility = (): void => {
-      if (document.visibilityState !== "hidden") {
-        return;
-      }
-      onPageHide();
-    };
-    window.addEventListener("pagehide", onPageHide);
-    document.addEventListener("visibilitychange", onVisibility);
-
     return () => {
-      window.removeEventListener("pagehide", onPageHide);
-      document.removeEventListener("visibilitychange", onVisibility);
       stopCountrySync();
     };
   }, [registry]);
 
   const phase = store.map.phase.value;
-  const warning = store.world.warning.value;
+  const notice = store.world.notice.value;
 
   return (
     <div className={styles.app}>
@@ -66,13 +45,13 @@ function App({ registry }: TAppProps) {
           painted frame is already fitted. */}
       <MapPage registry={registry} />
 
-      {warning === null ? null : (
-        <div className={styles.warning} data-kind={warning.kind}>
-          <span className={styles.warningText}>{warning.message}</span>
+      {notice === null ? null : (
+        <div className={styles.warning}>
+          <span className={styles.warningText}>{notice}</span>
           <button
             className={styles.warningDismiss}
             type="button"
-            onClick={registry.dismissStateWarning}
+            onClick={registry.dismissCountriesNotice}
           >
             dismiss
           </button>

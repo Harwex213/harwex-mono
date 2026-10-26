@@ -6,6 +6,7 @@ import {
   isMapImageFile,
 } from "../../../domain/index";
 import { useStore } from "../../../store/index";
+import { CountryPanel } from "../../widgets/country-panel/country-panel";
 import { MapCanvas } from "../../widgets/map-canvas/map-canvas";
 import { MapLibraryDialog } from "../../widgets/map-library-dialog/map-library-dialog";
 import { ProvincePanel } from "../../widgets/province-panel/province-panel";
@@ -19,8 +20,9 @@ type TEditorPageProps = {
   registry: TAppRegistry;
 };
 
-// The one screen: the top bar, the tools, the map, the provinces, the status bar,
-// and the map library dialog over them. The page owns the window-wide input: the
+// The one screen: the top bar, the left menu, the map, the right menu (the
+// provinces or the countries, by mode), the status bar, and the map library
+// dialog over them. The page owns the window-wide input: the
 // keyboard shortcuts and the drop of local files.
 function EditorPage({ registry }: TEditorPageProps) {
   useSignals();
@@ -83,7 +85,11 @@ function EditorPage({ registry }: TEditorPageProps) {
         <main className={styles.stage}>
           <MapCanvas registry={registry} />
         </main>
-        <ProvincePanel registry={registry} />
+        {store.tools.mode.value === "countries" ? (
+          <CountryPanel registry={registry} />
+        ) : (
+          <ProvincePanel registry={registry} />
+        )}
       </div>
 
       <StatusBar />

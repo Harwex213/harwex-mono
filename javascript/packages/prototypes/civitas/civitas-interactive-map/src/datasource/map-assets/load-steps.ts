@@ -1,6 +1,6 @@
 // The stages of a map load. They describe how the loader works, not the map, so they live beside the loader.
 
-type LoadStep = "manifest" | "province-bitmap" | "province-index" | "map-art" | "done";
+type LoadStep = "manifest" | "countries" | "province-bitmap" | "province-index" | "map-art" | "done";
 
 // Why: this list is the one ordered source of truth for the load sequence.
 // - `loadMapAssets(onStep)` in `map-assets.ts` calls `onStep(step)` at each load stage. `onStep` is its progress callback.
@@ -11,6 +11,7 @@ type LoadStep = "manifest" | "province-bitmap" | "province-index" | "map-art" | 
 // - "done" stays last, so progress reaches 1.
 const LOAD_STEPS: readonly LoadStep[] = [
   "manifest",
+  "countries",
   "province-bitmap",
   "province-index",
   "map-art",

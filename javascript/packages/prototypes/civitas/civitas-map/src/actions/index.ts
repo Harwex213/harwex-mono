@@ -15,7 +15,10 @@ export {
 // provinces/ — province-actions edits the registry, import-actions loads an export
 // back in, detect-actions runs border detection, export-actions downloads the export.
 
-// tools/ — tool-actions sets the tool, the brush and the layer display options.
+// countries/ — country-actions edits the countries and runs the strokes that
+// put provinces into a country.
+
+// tools/ — tool-actions sets the editor mode, the tool, the brush and the layer display options.
 
 // status/ — status-actions shows and dismisses the error and the notice.
 

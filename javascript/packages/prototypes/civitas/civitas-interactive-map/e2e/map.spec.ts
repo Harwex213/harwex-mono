@@ -4,9 +4,14 @@ import {
   type Locator,
   type Page,
 } from "@playwright/test";
+import {
+  createEmptyCountries,
+  createFixtureCountries,
+} from "./fixture";
 
 // Black-box screenshot tests: mouse, keyboard, text and ARIA labels only,
 // so that a refactor behind the map does not break them.
+// The countries come from a mocked `assets/countries.json`. The other assets are real.
 
 const VIEWPORT = { width: 1400, height: 900 };
 const MAP = { width: 3653, height: 2855 };
@@ -48,8 +53,13 @@ async function nextFrames(page: Page): Promise<void> {
   });
 }
 
-async function openMap(page: Page, world: "fixture" | "empty"): Promise<void> {
-  await page.goto(world === "empty" ? "/?world=empty" : "/");
+async function openMap(page: Page, world: "fixture" | "empty" | object): Promise<void> {
+  const body =
+    world === "empty" ? createEmptyCountries() : world === "fixture" ? createFixtureCountries() : world;
+  await page.route("**/assets/countries.json", async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
+  });
+  await page.goto("/");
   await page.waitForFunction(() => {
     return window.__civitasE2E !== undefined && window.__civitasE2E.ready();
   });
@@ -131,4 +141,24 @@ test("a right click selects a country", async ({ page }) => {
   await parkMouse(page);
   await expect(page.getByLabel("selected country")).toContainText("Borealis");
   await expectScreen(page, "country-selected.png");
+});
+
+test("a row of the country list selects its country", async ({ page }) => {
+  await openMap(page, "fixture");
+  await page.getByText("Calderra", { exact: true }).click();
+  await parkMouse(page);
+  await expect(page.getByLabel("selected country")).toContainText("Calderra");
+  await expectScreen(page, "country-row-selected.png");
+});
+
+test("a damaged countries file keeps the good countries and shows what was dropped", async ({ page }) => {
+  const damaged = createFixtureCountries();
+  const broken = [...damaged.countries, { id: 1, name: "Duplicate", colorHex: "#000000", provinceIds: [] }];
+  await openMap(page, { ...damaged, countries: broken });
+  await parkMouse(page);
+  await expect(page.getByText("countries.json: dropped 1 malformed countries")).toBeVisible();
+  await expectScreen(page, "countries-repaired.png");
+
+  await page.getByRole("button", { name: "dismiss" }).click();
+  await expect(page.getByText("countries.json:", { exact: false })).toHaveCount(0);
 });

@@ -22,7 +22,7 @@ import {
 
 type FakeMapLibrary = MapLibrary & {
   images: MapImage[];
-  // Blobs by url, as `fetchImage` and `fetchManifest` return them.
+  // Blobs by url, as `fetchImage`, `fetchManifest` and `fetchCountries` return them.
   files: Map<string, Blob>;
   // When set, `listImages` rejects with it.
   failure: Error | null;
@@ -53,6 +53,16 @@ function fakeMapLibrary(images: MapImage[] = []): FakeMapLibrary {
       const blob = library.files.get(image.manifestUrl);
       if (!blob) {
         throw new Error(image.manifestUrl + " responded 404");
+      }
+      return blob.text();
+    },
+    async fetchCountries(image: MapImage): Promise<string | null> {
+      if (image.countriesUrl === null) {
+        return null;
+      }
+      const blob = library.files.get(image.countriesUrl);
+      if (!blob) {
+        throw new Error(image.countriesUrl + " responded 404");
       }
       return blob.text();
     },
@@ -142,8 +152,8 @@ function createTestApp(options: DatasourceOptions & { detect?: () => Promise<Det
   return { store, sources, registry: createRegistry(store, sources), library, images, downloads };
 }
 
-function mapImage(name: string, manifestUrl: string | null = null): MapImage {
-  return { name, url: "assets/maps/" + name, bytes: 100, manifestUrl };
+function mapImage(name: string, manifestUrl: string | null = null, countriesUrl: string | null = null): MapImage {
+  return { name, url: "assets/maps/" + name, bytes: 100, manifestUrl, countriesUrl };
 }
 
 export {

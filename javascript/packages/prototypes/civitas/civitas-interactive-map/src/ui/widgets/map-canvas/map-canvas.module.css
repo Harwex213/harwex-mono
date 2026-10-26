@@ -15,14 +15,6 @@
   cursor: grabbing;
 }
 
-.host[data-mode="assign"] {
-  cursor: crosshair;
-}
-
-.host[data-mode="assign"][data-painting="true"] {
-  cursor: cell;
-}
-
 .canvas {
   display: block;
   inset: 0;

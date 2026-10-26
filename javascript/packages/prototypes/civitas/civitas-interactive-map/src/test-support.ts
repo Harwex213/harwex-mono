@@ -4,7 +4,6 @@ import {
 } from "./actions/index";
 import {
   createDatasources,
-  createMemoryStorage,
   type BordersSource,
   type CountryResult,
   type DatasourceOptions,
@@ -17,7 +16,7 @@ import {
   createStore,
   type TStore,
 } from "./store/index";
-import type { MapManifest, Province, ProvinceIndex } from "./domain/index";
+import type { Country, MapManifest, Province, ProvinceIndex } from "./domain/index";
 
 // Test helpers. Each test builds its own app, so no state leaks between tests.
 
@@ -93,12 +92,11 @@ type TestApp = {
   timers: FakeTimers;
 };
 
-// Defaults: memory storage, fake timers and a fake border worker.
+// Defaults: fake timers and a fake border worker.
 function createTestApp(options: DatasourceOptions = {}): TestApp {
   const timers = (options.timers as FakeTimers | undefined) ?? fakeTimers();
   const store = createStore();
   const sources = createDatasources({
-    storage: createMemoryStorage(),
     borders: fakeBorders(),
     ...options,
     timers,
@@ -129,7 +127,25 @@ function fakeMapAssets(options: {
         return null;
       },
     } as unknown as ProvinceIndex);
-  return { manifest, index, art: {} as ImageBitmap };
+  return { manifest, countries: { countries: [], repairs: [] }, index, art: {} as ImageBitmap };
+}
+
+// A country as `assets/countries.json` describes it.
+function country(id: number, provinceIds: number[], fields: Partial<Country> = {}): Country {
+  return {
+    id,
+    name: "Country " + id,
+    slogan: "",
+    flagDataUrl: null,
+    colorHex: "#c0563f",
+    ...fields,
+    provinceIds,
+  };
+}
+
+// Puts the countries into the store, as a finished `loadMap` would.
+function setCountries(store: TStore, countries: Country[]): void {
+  store.world.countries.value = countries;
 }
 
 // Puts a loaded map into the store, as a finished `loadMap` would.
@@ -140,10 +156,12 @@ function markMapReady(store: TStore, assets: LoadedMapAssets): void {
 }
 
 export {
+  country,
   createTestApp,
   fakeMapAssets,
   fakeTimers,
   markMapReady,
+  setCountries,
   type FakeBorders,
   type FakeTimers,
   type TestApp,

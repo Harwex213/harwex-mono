@@ -12,12 +12,17 @@ type LibraryMock =
 
 const files = createFixtureFiles();
 
-// The list the default mock serves. `fixture-provinces.png` has its manifest beside it.
+// The list the default mock serves. `fixture-provinces.png` has its manifest and
+// its countries file beside it.
 function listedImages(): unknown[] {
   return [
-    { name: "fixture-map.png", manifestUrl: null },
-    { name: "fixture-provinces.png", manifestUrl: "assets/maps/fixture-provinces.json" },
-    { name: "wrong-size.png", manifestUrl: null },
+    { name: "fixture-map.png", manifestUrl: null, countriesUrl: null },
+    {
+      name: "fixture-provinces.png",
+      manifestUrl: "assets/maps/fixture-provinces.json",
+      countriesUrl: "assets/maps/fixture-provinces.countries.json",
+    },
+    { name: "wrong-size.png", manifestUrl: null, countriesUrl: null },
   ].map((entry) => {
     const file = files.get(entry.name);
     if (!file) {
@@ -28,6 +33,7 @@ function listedImages(): unknown[] {
       url: "assets/maps/" + entry.name,
       bytes: file.body.length,
       manifestUrl: entry.manifestUrl,
+      countriesUrl: entry.countriesUrl,
     };
   });
 }

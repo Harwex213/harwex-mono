@@ -28,7 +28,7 @@ function CountryPlaque() {
             {name}
           </p>
           <p className={styles.hint}>
-            unassigned — right-click to select a country, or paint it in assign mode
+            unassigned — right-click to select a country
           </p>
         </div>
       </section>

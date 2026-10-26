@@ -56,9 +56,9 @@ test("lists the images sorted by name, with their size and url", async () => {
   await withDirectory({ "b.webp": "bb", "a.png": "a", "c.JPG": "ccc", "notes.txt": "x" }, async (directory) => {
     const images = await listMapImages(directory, "assets/maps/");
     assert.deepEqual(images, [
-      { name: "a.png", url: "assets/maps/a.png", bytes: 1, manifestUrl: null },
-      { name: "b.webp", url: "assets/maps/b.webp", bytes: 2, manifestUrl: null },
-      { name: "c.JPG", url: "assets/maps/c.JPG", bytes: 3, manifestUrl: null },
+      { name: "a.png", url: "assets/maps/a.png", bytes: 1, manifestUrl: null, countriesUrl: null },
+      { name: "b.webp", url: "assets/maps/b.webp", bytes: 2, manifestUrl: null, countriesUrl: null },
+      { name: "c.JPG", url: "assets/maps/c.JPG", bytes: 3, manifestUrl: null, countriesUrl: null },
     ]);
   });
 });
@@ -68,6 +68,15 @@ test("an image with a JSON file of the same stem gets it as its manifest", async
     const images = await listMapImages(directory, "assets/maps/");
     assert.equal(images.length, 1);
     assert.equal(images[0].manifestUrl, "assets/maps/x-provinces.json");
+  });
+});
+
+test("an image with a .countries.json file of the same stem gets it as its countries file", async () => {
+  const files = { "x-provinces.png": "p", "x-provinces.json": "{}", "x-provinces.countries.json": "{}" };
+  await withDirectory(files, async (directory) => {
+    const images = await listMapImages(directory, "assets/maps/");
+    assert.equal(images.length, 1);
+    assert.equal(images[0].countriesUrl, "assets/maps/x-provinces.countries.json");
   });
 });
 
@@ -91,7 +100,7 @@ test("the middleware answers GET with the JSON list", async () => {
     assert.equal(response.statusCode, 200);
     assert.match(response.headers["content-type"], /^application\/json/);
     assert.deepEqual(JSON.parse(response.body), {
-      images: [{ name: "a.png", url: "assets/maps/a.png", bytes: 1, manifestUrl: null }],
+      images: [{ name: "a.png", url: "assets/maps/a.png", bytes: 1, manifestUrl: null, countriesUrl: null }],
     });
   });
 });

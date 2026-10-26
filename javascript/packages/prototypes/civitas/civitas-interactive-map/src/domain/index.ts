@@ -32,9 +32,6 @@ export {
   type Size,
   type View,
 } from "./view/view";
-export {
-  samplePathPixels,
-} from "./view/paint-path";
 
 // borders/ — province and country borders. The worker is `src/datasource/borders/borders-worker.ts`.
 export {
@@ -65,31 +62,13 @@ export {
   type LabelPlacement,
 } from "./countries/label-layout";
 
-// world/ — the saved document: its schema and its migrations.
+// world/ — the countries file the editor writes: its shape and its parser.
 export {
-  LORE_MAX,
-  MAX_COUNTRY_ID,
-  NAME_MAX,
-  SLOGAN_MAX,
-  STATE_VERSION,
-  clampText,
   countryDisplayName,
-  createCountry,
-  createEmptyState,
-  isImageDataUrl,
-  isPlainObject,
-  normalizeState,
-  serializeState,
-  type CivitasState,
+  parseCountriesText,
+  type CountriesFile,
   type Country,
-  type ProvinceOverride,
-} from "./world/schema";
-export {
-  MIGRATIONS,
-  runMigrations,
-  type Migration,
-  type MigrationDoc,
-} from "./world/migrations";
+} from "./world/countries-file";
 
 // interaction/ — the rules of what a click or a drag means.
 export {
@@ -100,7 +79,3 @@ export {
   type SelectionScope,
   type SelectionState,
 } from "./interaction/selection";
-export {
-  strokeActionFor,
-  type StrokeAction,
-} from "./interaction/stroke";

@@ -6,7 +6,7 @@ import type { Bounds, Point, Province } from "../data/manifest";
 
 type CountryAggregate = {
   countryId: number;
-  // Ids the user assigned, including any the manifest does not carry.
+  // Ids the countries file names, including any the manifest does not carry.
   provinceCount: number;
   // Ids found in the manifest. Smaller than `provinceCount` when the document holds a phantom id.
   resolvedCount: number;

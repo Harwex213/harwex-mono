@@ -26,9 +26,8 @@ export {
   type Viewport,
 } from "./map/view-slice";
 
-// world/ — world-slice holds the saved document and the status of its storage.
+// world/ — world-slice holds the countries from `assets/countries.json`.
 
-// interaction/ — selection-slice holds the hovered and selected province and the selected country,
-// assign-slice holds assign mode and the brush stroke.
+// interaction/ — selection-slice holds the hovered and selected province and the selected country.
 
 // labels/ — labels-slice holds the country label sources and their cached anchors.

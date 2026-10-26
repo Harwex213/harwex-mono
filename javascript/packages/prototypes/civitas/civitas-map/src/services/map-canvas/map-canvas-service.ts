@@ -2,6 +2,7 @@ import { effect, signal } from "@preact/signals-react";
 import type { TStore } from "../../store/index";
 import { InputHandler } from "./input-handler";
 import type { TMapCanvasServiceRegistry } from "./map-canvas-registry";
+import { CountryCanvas } from "./renderer/country-canvas";
 import { LayerCanvas } from "./renderer/layer-canvas";
 import {
   drawPreview,
@@ -41,6 +42,9 @@ function createMapCanvasService(store: TStore, registry: TMapCanvasServiceRegist
   const spaceHeld = signal(false);
   // The canvas copy of the current layer. Rebuilt when the layer is replaced.
   let layerCanvas: LayerCanvas | null = null;
+  // The countries view. Rebuilt when the layer's pixels or the province
+  // registry change, which is rare in the countries mode.
+  let countryCanvas: CountryCanvas | null = null;
 
   function currentLayerCanvas(): LayerCanvas | null {
     const layer = store.map.layer.peek();
@@ -58,6 +62,26 @@ function createMapCanvasService(store: TStore, registry: TMapCanvasServiceRegist
     }
 
     return layerCanvas;
+  }
+
+  function currentCountryCanvas(): CountryCanvas | null {
+    const layer = store.map.layer.peek();
+    const provinces = store.provinces.list.peek();
+    const revision = store.map.layerRevision.peek();
+
+    if (!layer) {
+      countryCanvas = null;
+
+      return null;
+    }
+
+    if (countryCanvas?.layer !== layer || countryCanvas.provinces !== provinces || countryCanvas.revision !== revision) {
+      countryCanvas = new CountryCanvas(layer, provinces, revision);
+    }
+
+    countryCanvas.sync(store.countries.owners.peek(), store.countries.list.peek());
+
+    return countryCanvas;
   }
 
   function listen<K extends keyof HTMLElementEventMap>(
@@ -124,8 +148,9 @@ function createMapCanvasService(store: TStore, registry: TMapCanvasServiceRegist
 
     cleanups.push(effect(() => {
       const tool = store.tools.tool.value;
+      const picking = store.tools.mode.value === "provinces" && tool === "picker";
 
-      host.dataset.cursor = spaceHeld.value ? "pan" : tool === "picker" ? "picker" : "paint";
+      host.dataset.cursor = spaceHeld.value ? "pan" : picking ? "picker" : "paint";
     }));
 
     frameEffect(
@@ -134,7 +159,16 @@ function createMapCanvasService(store: TStore, registry: TMapCanvasServiceRegist
         void store.map.layerRevision.value;
         void store.map.layer.value;
 
+        const countriesMode = store.tools.mode.value === "countries";
+
+        if (countriesMode) {
+          // Read for the dependency: the country canvas reads them with `peek`.
+          void store.provinces.list.value;
+          void store.countries.list.value;
+        }
+
         return {
+          countriesMode,
           size: store.view.viewport.value,
           view: store.view.view.value,
           bitmap: store.map.bitmap.value,
@@ -158,7 +192,7 @@ function createMapCanvasService(store: TStore, registry: TMapCanvasServiceRegist
           dpr,
           view: scene.view,
           bitmap: scene.bitmap,
-          layer: currentLayerCanvas(),
+          layer: scene.countriesMode ? currentCountryCanvas() : currentLayerCanvas(),
           showBaseMap: scene.showBaseMap,
           showLayer: scene.showLayer,
           layerOpacity: scene.layerOpacity,
@@ -169,6 +203,7 @@ function createMapCanvasService(store: TStore, registry: TMapCanvasServiceRegist
     frameEffect(
       () => {
         const tool = store.tools.tool.value;
+        const countriesMode = store.tools.mode.value === "countries";
 
         return {
           size: store.view.viewport.value,
@@ -177,9 +212,9 @@ function createMapCanvasService(store: TStore, registry: TMapCanvasServiceRegist
           mask: store.tools.brushMask.value,
           color: store.provinces.active.value?.color ?? 0,
           erasing: tool === "eraser",
-          // Bucket and picker act on one pixel, so a brush footprint would
-          // overstate what a click does.
-          crosshairOnly: tool === "bucket" || tool === "picker",
+          // Bucket and picker act on one pixel, and the countries mode on one
+          // province, so a brush footprint would overstate what a click does.
+          crosshairOnly: countriesMode || tool === "bucket" || tool === "picker",
         };
       },
       (preview) => {
@@ -212,6 +247,7 @@ function createMapCanvasService(store: TStore, registry: TMapCanvasServiceRegist
     }
 
     layerCanvas = null;
+    countryCanvas = null;
   }
 
   return { attach, dispose };

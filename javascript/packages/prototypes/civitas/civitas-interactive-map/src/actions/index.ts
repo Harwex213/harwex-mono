@@ -9,12 +9,11 @@ export {
   type TAppRegistry,
 } from "./registry";
 
-// map/ — map-actions loads the assets, view-actions moves the camera,
+// map/ — map-actions loads the assets and the countries, view-actions moves the camera,
 // border-actions runs the border scan and the debounced country border push.
 
-// world/ — world-actions edits countries and province overrides, hydrates and saves the document.
+// world/ — world-actions hides the countries repair notice.
 
-// interaction/ — selection-actions handles hover and selection,
-// assign-actions handles assign mode and the brush stroke.
+// interaction/ — selection-actions handles hover and selection.
 
 // labels/ — label-actions shows or hides the country labels.

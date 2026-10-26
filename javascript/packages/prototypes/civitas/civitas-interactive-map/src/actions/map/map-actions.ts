@@ -5,7 +5,7 @@ import {
 } from "../../datasource/index";
 import type { TStore } from "../../store/index";
 
-// Idempotent. Never rejects: a failure lands in `map.error`, so a caller may ignore the promise.
+// Loads the map and its countries. Idempotent. Never rejects: a failure lands in `map.error`, so a caller may ignore the promise.
 async function loadMap(store: TStore, sources: TDatasources): Promise<void> {
   const phase = store.map.phase.peek();
   if (phase === "loading" || phase === "ready") {
@@ -26,8 +26,11 @@ async function loadMap(store: TStore, sources: TDatasources): Promise<void> {
         store.map.progress.value = loadProgress(step);
       });
     });
+    const repairs = loaded.countries.repairs;
     batch(() => {
       store.map.assets.value = loaded;
+      store.world.countries.value = loaded.countries.countries;
+      store.world.notice.value = repairs.length === 0 ? null : "countries.json: " + repairs.join("; ");
       store.map.phase.value = "ready";
       store.map.progress.value = 1;
     });

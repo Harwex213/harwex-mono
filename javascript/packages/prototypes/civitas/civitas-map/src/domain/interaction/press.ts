@@ -3,11 +3,16 @@
 
 type Tool = "brush" | "bucket" | "eraser" | "picker";
 
+// What the editor edits: the province layer, or the countries made of provinces.
+type EditorMode = "provinces" | "countries";
+
 type PressInput = {
   // Space is held: any tool pans, the way it does in every paint program.
   spaceHeld: boolean;
   // `PointerEvent.button`: 0 left, 1 middle, 2 right.
   button: number;
+  altKey: boolean;
+  mode: EditorMode;
   tool: Tool;
 };
 
@@ -16,7 +21,8 @@ type Press =
   | { kind: "ignore" }
   | { kind: "pick" }
   | { kind: "fill"; erasing: boolean }
-  | { kind: "stroke"; erasing: boolean };
+  | { kind: "stroke"; erasing: boolean }
+  | { kind: "countryStroke"; erasing: boolean };
 
 function classifyPress(input: PressInput): Press {
   if (input.spaceHeld || input.button === 1) {
@@ -25,6 +31,12 @@ function classifyPress(input: PressInput): Press {
 
   if (input.button !== 0 && input.button !== 2) {
     return { kind: "ignore" };
+  }
+
+  // The countries mode has no tools: a press puts provinces into the active
+  // country. The right button or Alt takes them out.
+  if (input.mode === "countries") {
+    return { kind: "countryStroke", erasing: input.button === 2 || input.altKey };
   }
 
   if (input.tool === "picker") {
@@ -44,6 +56,7 @@ function classifyPress(input: PressInput): Press {
 
 export {
   classifyPress,
+  type EditorMode,
   type Press,
   type PressInput,
   type Tool,

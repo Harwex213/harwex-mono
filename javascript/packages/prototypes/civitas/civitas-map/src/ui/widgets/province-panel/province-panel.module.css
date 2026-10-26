@@ -28,6 +28,13 @@
   text-transform: uppercase;
 }
 
+.actions {
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  padding: 8px 12px;
+}
+
 .count {
   color: var(--accent);
   font-family: var(--mono);

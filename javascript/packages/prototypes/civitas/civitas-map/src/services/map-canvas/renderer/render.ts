@@ -3,10 +3,18 @@ import {
   type BrushMask,
   type View,
 } from "../../../domain/index";
-import type { LayerCanvas } from "./layer-canvas";
 
-// The two drawing passes of the map canvas: the scene (base map, province layer,
-// map bounds) and the preview (the brush footprint or crosshair under the cursor).
+// The two drawing passes of the map canvas: the scene (base map, the province
+// layer or its countries view, map bounds) and the preview (the brush footprint
+// or crosshair under the cursor).
+
+// A canvas at map resolution drawn over the base map: the layer canvas or the
+// country canvas.
+type MapOverlay = {
+  canvas: HTMLCanvasElement;
+  width: number;
+  height: number;
+};
 
 type SceneInput = {
   ctx: CanvasRenderingContext2D;
@@ -15,7 +23,7 @@ type SceneInput = {
   dpr: number;
   view: View;
   bitmap: ImageBitmap | null;
-  layer: LayerCanvas | null;
+  layer: MapOverlay | null;
   showBaseMap: boolean;
   showLayer: boolean;
   layerOpacity: number;

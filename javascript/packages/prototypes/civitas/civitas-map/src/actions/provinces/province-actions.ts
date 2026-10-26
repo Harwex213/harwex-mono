@@ -1,5 +1,7 @@
+import { batch } from "@preact/signals-react";
 import {
   createProvince,
+  keepProvinces,
   packOpaque,
   takenColors,
   toHex,
@@ -106,11 +108,14 @@ function deleteProvince(store: TStore, id: number): void {
     commitStroke(store);
   }
 
-  store.provinces.list.value = store.provinces.list.value.filter((province) => province.id !== id);
+  batch(() => {
+    store.provinces.list.value = store.provinces.list.value.filter((province) => province.id !== id);
+    store.countries.list.value = keepProvinces(store.countries.list.value, (provinceId) => provinceId !== id);
 
-  if (store.provinces.activeId.value === id) {
-    store.provinces.activeId.value = store.provinces.list.value.at(-1)?.id ?? null;
-  }
+    if (store.provinces.activeId.value === id) {
+      store.provinces.activeId.value = store.provinces.list.value.at(-1)?.id ?? null;
+    }
+  });
 }
 
 export {

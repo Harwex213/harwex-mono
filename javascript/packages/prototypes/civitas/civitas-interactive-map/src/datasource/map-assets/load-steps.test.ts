@@ -10,6 +10,7 @@ test("LOAD_STEPS lists every step once, in order, ending at done", () => {
   // `loadProgress` divides by `LOAD_STEPS.length - 1`, so order and length both matter.
   const expected: LoadStep[] = [
     "manifest",
+    "countries",
     "province-bitmap",
     "province-index",
     "map-art",

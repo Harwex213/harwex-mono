@@ -20,13 +20,10 @@ function down(patch: Partial<PointerDown> = {}): PointerDown {
     pointerId: 1,
     button: 0,
     ctrlKey: false,
-    altKey: false,
     clientX: 100,
     clientY: 100,
     onHudControl: false,
     view: { x: 10, y: 20 },
-    assignMode: false,
-    pixel: { x: 500, y: 600 },
     ...patch,
   };
 }
@@ -54,18 +51,6 @@ function types(commands: readonly InteractionCommand[]): string[] {
   });
 }
 
-// Runs events in order and feeds no stroke answer; returns the last transition.
-function run(events: readonly InteractionEvent[], start: InteractionState = IDLE) {
-  let state = start;
-  let commands: InteractionCommand[] = [];
-  for (const event of events) {
-    const next = transition(state, event);
-    state = next.state;
-    commands = next.commands;
-  }
-  return { state, commands };
-}
-
 const PENDING_PAN: InteractionState = {
   kind: "panning",
   phase: "pending",
@@ -76,7 +61,7 @@ const PENDING_PAN: InteractionState = {
   originY: 20,
 };
 
-const PAINTING: InteractionState = { kind: "painting", pointerId: 1, lastX: 500, lastY: 600 };
+const DRAGGING_PAN: InteractionState = { ...PENDING_PAN, phase: "dragging" };
 
 test("a context press is button 2 or a ctrl+left press", () => {
   assert.equal(isContextPress({ button: 2, ctrlKey: false }), true);
@@ -85,7 +70,7 @@ test("a context press is button 2 or a ctrl+left press", () => {
   assert.equal(isContextPress({ button: 1, ctrlKey: true }), false);
 });
 
-test("a left press in pan mode starts a pending pan and captures the pointer", () => {
+test("a left press starts a pending pan and captures the pointer", () => {
   const next = transition(IDLE, down());
   assert.deepEqual(next.state, PENDING_PAN);
   assert.deepEqual(next.commands, [{ type: "preventDefault" }, { type: "capturePointer", pointerId: 1 }]);
@@ -104,8 +89,8 @@ test("a press on a HUD control or before the map has a view is ignored", () => {
   assert.deepEqual(transition(IDLE, down({ view: null })).commands, []);
 });
 
-test("the middle button pans even in assign mode", () => {
-  const next = transition(IDLE, down({ button: 1, assignMode: true }));
+test("the middle button pans", () => {
+  const next = transition(IDLE, down({ button: 1 }));
   assert.equal(next.state.kind, "panning");
   assert.deepEqual(types(next.commands), ["preventDefault", "capturePointer"]);
 });
@@ -114,37 +99,6 @@ test("another button only prevents the default", () => {
   const next = transition(IDLE, down({ button: 3 }));
   assert.equal(next.state, IDLE);
   assert.deepEqual(types(next.commands), ["preventDefault"]);
-});
-
-test("a left press in assign mode requests a stroke, with alt as erase", () => {
-  const next = transition(IDLE, down({ assignMode: true, altKey: true }));
-  assert.equal(next.state.kind, "strokeRequested");
-  assert.deepEqual(next.commands, [
-    { type: "preventDefault" },
-    { type: "beginStroke", pixel: { x: 500, y: 600 }, erase: true },
-  ]);
-});
-
-test("a left press in assign mode outside the map pans", () => {
-  const next = transition(IDLE, down({ assignMode: true, pixel: null }));
-  assert.equal(next.state.kind, "panning");
-});
-
-test("an accepted stroke paints from the pressed pixel and captures the pointer", () => {
-  const next = run([down({ assignMode: true }), { type: "strokeBegan" }]);
-  assert.deepEqual(next.state, PAINTING);
-  assert.deepEqual(next.commands, [{ type: "capturePointer", pointerId: 1 }]);
-});
-
-test("a refused stroke falls back to a pending pan from the press", () => {
-  const next = run([down({ assignMode: true }), { type: "strokeRefused" }]);
-  assert.deepEqual(next.state, PENDING_PAN);
-  assert.deepEqual(next.commands, [{ type: "capturePointer", pointerId: 1 }]);
-});
-
-test("a stroke answer outside strokeRequested changes nothing", () => {
-  assert.deepEqual(transition(IDLE, { type: "strokeBegan" }), { state: IDLE, commands: [] });
-  assert.deepEqual(transition(PENDING_PAN, { type: "strokeRefused" }).state, PENDING_PAN);
 });
 
 test("every move reports the hover first", () => {
@@ -189,28 +143,6 @@ test("a move from another pointer does not pan", () => {
   assert.deepEqual(types(next.commands), ["hover"]);
 });
 
-test("painting walks the line from the last pixel and advances it", () => {
-  const next = transition(PAINTING, move(0, 0, { x: 520, y: 610 }));
-  assert.deepEqual(next.state, { ...PAINTING, lastX: 520, lastY: 610 });
-  assert.deepEqual(next.commands[1], { type: "paintLine", fromX: 500, fromY: 600, toX: 520, toY: 610 });
-});
-
-test("painting off the map waits instead of painting", () => {
-  const next = transition(PAINTING, move(0, 0, null));
-  assert.deepEqual(next.state, PAINTING);
-  assert.deepEqual(next.commands, [{ type: "hover", pixel: null }]);
-});
-
-test("releasing a stroke ends it and the gesture", () => {
-  const next = transition(PAINTING, up());
-  assert.equal(next.state, IDLE);
-  assert.deepEqual(next.commands, [
-    { type: "endStroke" },
-    { type: "releasePointer", pointerId: 1 },
-    { type: "setPanning", on: false },
-  ]);
-});
-
 test("a click without a drag selects the province", () => {
   const next = transition(PENDING_PAN, up({ clientX: 7, clientY: 8 }));
   assert.equal(next.state, IDLE);
@@ -243,19 +175,13 @@ test("a release on a HUD control does nothing", () => {
   assert.deepEqual(transition(PENDING_PAN, up({ onHudControl: true })), { state: PENDING_PAN, commands: [] });
 });
 
-test("a cancelled pointer cancels the stroke and never selects", () => {
+test("a cancelled pointer ends the pan and never selects", () => {
   const next = transition(PENDING_PAN, { type: "pointerCancel", pointerId: 1 });
   assert.equal(next.state, IDLE);
-  assert.deepEqual(types(next.commands), ["cancelStroke", "releasePointer", "setPanning"]);
+  assert.deepEqual(types(next.commands), ["releasePointer", "setPanning"]);
 });
 
-test("leaving the host clears the hover and cancels only a stroke", () => {
-  assert.deepEqual(types(transition(PAINTING, { type: "pointerLeave", pointerId: 1 }).commands), [
-    "hover",
-    "cancelStroke",
-    "releasePointer",
-    "setPanning",
-  ]);
+test("leaving the host clears the hover and ends the pan", () => {
   assert.deepEqual(types(transition(PENDING_PAN, { type: "pointerLeave", pointerId: 1 }).commands), [
     "hover",
     "releasePointer",
@@ -263,12 +189,11 @@ test("leaving the host clears the hover and cancels only a stroke", () => {
   ]);
 });
 
-test("a lost capture goes idle and cancels only a stroke", () => {
-  assert.deepEqual(transition(PAINTING, { type: "lostPointerCapture" }), {
+test("a lost capture goes idle and stops the pan", () => {
+  assert.deepEqual(transition(DRAGGING_PAN, { type: "lostPointerCapture" }), {
     state: IDLE,
-    commands: [{ type: "cancelStroke" }, { type: "setPanning", on: false }],
+    commands: [{ type: "setPanning", on: false }],
   });
-  assert.deepEqual(types(transition(PENDING_PAN, { type: "lostPointerCapture" }).commands), ["setPanning"]);
 });
 
 test("a context menu always prevents the default and selects the country only when idle", () => {
@@ -278,20 +203,18 @@ test("a context menu always prevents the default and selects the country only wh
     { type: "selectCountryAt", clientX: 1, clientY: 2 },
   ]);
   assert.deepEqual(types(transition(PENDING_PAN, event).commands), ["preventDefault"]);
-  assert.deepEqual(types(transition(PAINTING, event).commands), ["preventDefault"]);
+  assert.deepEqual(types(transition(DRAGGING_PAN, event).commands), ["preventDefault"]);
   assert.deepEqual(types(transition(IDLE, { ...event, onHudControl: true }).commands), ["preventDefault"]);
 });
 
-test("a double click zooms 2x, but not in assign mode or on a HUD control", () => {
+test("a double click zooms 2x, but not on a HUD control", () => {
   const event: InteractionEvent = {
     type: "doubleClick",
     clientX: 5,
     clientY: 6,
     onHudControl: false,
-    assignMode: false,
   };
   assert.deepEqual(transition(IDLE, event).commands, [{ type: "zoomAt", clientX: 5, clientY: 6, factor: 2 }]);
-  assert.deepEqual(transition(IDLE, { ...event, assignMode: true }).commands, []);
   assert.deepEqual(transition(IDLE, { ...event, onHudControl: true }).commands, []);
 });
 
@@ -300,8 +223,8 @@ test("the wheel converts line and page deltas to pixels", () => {
   assert.equal(wheelZoomFactor(3, 1), 1.0015 ** -48);
   assert.equal(wheelZoomFactor(1, 2), 1.0015 ** -100);
   assert.equal(wheelZoomFactor(10, 9), 1.0015 ** -10);
-  const next = transition(PAINTING, { type: "wheel", clientX: 1, clientY: 2, deltaY: -100, deltaMode: 0 });
-  assert.deepEqual(next.state, PAINTING);
+  const next = transition(DRAGGING_PAN, { type: "wheel", clientX: 1, clientY: 2, deltaY: -100, deltaMode: 0 });
+  assert.deepEqual(next.state, DRAGGING_PAN);
   assert.deepEqual(next.commands, [
     { type: "preventDefault" },
     { type: "zoomAt", clientX: 1, clientY: 2, factor: 1.0015 ** 100 },
@@ -327,7 +250,7 @@ test("L toggles labels and 0 resets the view, except with modifiers or while typ
 });
 
 test("a new press replaces the current gesture", () => {
-  const next = transition(PAINTING, down({ button: 1, pointerId: 2 }));
+  const next = transition(DRAGGING_PAN, down({ button: 1, pointerId: 2 }));
   assert.equal(next.state.kind, "panning");
   assert.deepEqual(types(next.commands), ["preventDefault", "capturePointer"]);
 });

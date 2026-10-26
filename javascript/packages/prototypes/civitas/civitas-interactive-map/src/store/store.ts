@@ -1,5 +1,4 @@
 import { createContext, useContext } from "react";
-import { createAssignSlice } from "./interaction/assign-slice";
 import { createBordersSlice } from "./map/borders-slice";
 import { createLabelsSlice } from "./labels/labels-slice";
 import { createMapSlice } from "./map/map-slice";
@@ -9,7 +8,7 @@ import { createWorldSlice } from "./world/world-slice";
 
 // The app state as signals and computeds. No setters and no I/O: the UI reads
 // through `useStore`, and only actions write.
-// Slice layers: map, view, borders, world <- selection, assign, labels.
+// Slice layers: map, view, borders, world <- selection, labels.
 
 function createStore() {
   const map = createMapSlice();
@@ -20,7 +19,6 @@ function createStore() {
     borders: createBordersSlice(),
     world,
     selection: createSelectionSlice(map, world),
-    assign: createAssignSlice(world),
     labels: createLabelsSlice(map, world),
   };
 }

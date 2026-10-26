@@ -14,12 +14,16 @@ type MapImage = {
   // The JSON manifest beside the image, when the server has one. An export of
   // this editor is such a pair.
   manifestUrl: string | null;
+  // The countries file beside the image, `<stem>.countries.json`, when the
+  // server has one.
+  countriesUrl: string | null;
 };
 
 type MapLibrary = {
   listImages(): Promise<MapImage[]>;
   fetchImage(image: MapImage): Promise<Blob>;
   fetchManifest(image: MapImage): Promise<string | null>;
+  fetchCountries(image: MapImage): Promise<string | null>;
 };
 
 type FetchFn = (input: string, init?: RequestInit) => Promise<Response>;
@@ -38,6 +42,14 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 // The server is outside the app, so its answer is checked field by field. A
 // malformed entry is an error, not a silent skip: the list is short, and a
 // missing image would look like a bug in the editor.
+function optionalUrl(value: unknown, name: string, what: string): string | null {
+  if (value !== null && value !== undefined && typeof value !== "string") {
+    throw new Error("map library entry " + name + " has a bad " + what + " url");
+  }
+
+  return typeof value === "string" && value.length > 0 ? value : null;
+}
+
 function parseImageList(payload: unknown): MapImage[] {
   if (!isRecord(payload) || !Array.isArray(payload.images)) {
     throw new Error("the map library answered without an `images` list");
@@ -48,7 +60,7 @@ function parseImageList(payload: unknown): MapImage[] {
       throw new Error("map library entry " + index + " is not an object");
     }
 
-    const { name, url, bytes, manifestUrl } = entry;
+    const { name, url, bytes, manifestUrl, countriesUrl } = entry;
 
     if (typeof name !== "string" || name.length === 0) {
       throw new Error("map library entry " + index + " has no name");
@@ -59,15 +71,12 @@ function parseImageList(payload: unknown): MapImage[] {
     if (typeof bytes !== "number" || !Number.isFinite(bytes) || bytes < 0) {
       throw new Error("map library entry " + name + " has no size");
     }
-    if (manifestUrl !== null && manifestUrl !== undefined && typeof manifestUrl !== "string") {
-      throw new Error("map library entry " + name + " has a bad manifest url");
-    }
-
     return {
       name,
       url,
       bytes,
-      manifestUrl: typeof manifestUrl === "string" && manifestUrl.length > 0 ? manifestUrl : null,
+      manifestUrl: optionalUrl(manifestUrl, name, "manifest"),
+      countriesUrl: optionalUrl(countriesUrl, name, "countries"),
     };
   });
 }
@@ -115,6 +124,16 @@ function createMapLibrary(options: MapLibraryOptions = {}): MapLibrary {
       }
 
       const response = await request(fetchFn, image.manifestUrl);
+
+      return response.text();
+    },
+
+    async fetchCountries(image: MapImage): Promise<string | null> {
+      if (image.countriesUrl === null) {
+        return null;
+      }
+
+      const response = await request(fetchFn, image.countriesUrl);
 
       return response.text();
     },

@@ -20,13 +20,13 @@ function fakeFetch(routes: Record<string, Response>): { fetch: FetchFn; calls: s
 test("the list is read from api/maps", async () => {
   const server = fakeFetch({
     "api/maps": Response.json({
-      images: [{ name: "a.png", url: "assets/maps/a.png", bytes: 3, manifestUrl: "assets/maps/a.json" }],
+      images: [{ name: "a.png", url: "assets/maps/a.png", bytes: 3, manifestUrl: "assets/maps/a.json", countriesUrl: null }],
     }),
   });
   const library = createMapLibrary({ fetch: server.fetch });
 
   assert.deepEqual(await library.listImages(), [
-    { name: "a.png", url: "assets/maps/a.png", bytes: 3, manifestUrl: "assets/maps/a.json" },
+    { name: "a.png", url: "assets/maps/a.png", bytes: 3, manifestUrl: "assets/maps/a.json", countriesUrl: null },
   ]);
   assert.deepEqual(server.calls, ["api/maps"]);
 });
@@ -47,8 +47,8 @@ test("a failed or malformed answer is an error with the reason", async () => {
 });
 
 test("a missing or empty manifest url means no manifest", () => {
-  assert.deepEqual(parseImageList({ images: [{ name: "a", url: "u", bytes: 1, manifestUrl: "" }] }), [
-    { name: "a", url: "u", bytes: 1, manifestUrl: null },
+  assert.deepEqual(parseImageList({ images: [{ name: "a", url: "u", bytes: 1, manifestUrl: "", countriesUrl: null }] }), [
+    { name: "a", url: "u", bytes: 1, manifestUrl: null, countriesUrl: null },
   ]);
 });
 
@@ -58,9 +58,20 @@ test("the image and its manifest are fetched from their urls", async () => {
     "assets/maps/a.json": new Response("{\"provinces\":[]}"),
   });
   const library = createMapLibrary({ fetch: server.fetch });
-  const image = { name: "a.png", url: "assets/maps/a.png", bytes: 3, manifestUrl: "assets/maps/a.json" };
+  const image = { name: "a.png", url: "assets/maps/a.png", bytes: 3, manifestUrl: "assets/maps/a.json", countriesUrl: null };
 
   assert.equal(await (await library.fetchImage(image)).text(), "png");
   assert.equal(await library.fetchManifest(image), "{\"provinces\":[]}");
-  assert.equal(await library.fetchManifest({ ...image, manifestUrl: null }), null);
+  assert.equal(await library.fetchManifest({ ...image, manifestUrl: null, countriesUrl: null }), null);
+});
+
+test("the countries file is fetched from its url, and a missing url means none", async () => {
+  const server = fakeFetch({
+    "assets/maps/a.countries.json": new Response("{\"countries\":[]}"),
+  });
+  const library = createMapLibrary({ fetch: server.fetch });
+  const image = { name: "a.png", url: "assets/maps/a.png", bytes: 3, manifestUrl: null, countriesUrl: "assets/maps/a.countries.json" };
+
+  assert.equal(await library.fetchCountries(image), "{\"countries\":[]}");
+  assert.equal(await library.fetchCountries({ ...image, countriesUrl: null }), null);
 });

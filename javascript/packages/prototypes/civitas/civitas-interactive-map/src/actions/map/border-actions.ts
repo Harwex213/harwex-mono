@@ -3,7 +3,7 @@ import { buildCountryOf } from "../../domain/index";
 import type { TDatasources } from "../../datasource/index";
 import type { TStore } from "../../store/index";
 
-// The border worker. One scan per session, then a debounced push on each ownership change.
+// The border worker. One scan per session, then a debounced push when the countries arrive.
 
 // Idempotent and safe before the map loads. Never rejects, so the app still works without borders.
 async function scanBorders(store: TStore, sources: TDatasources): Promise<void> {
@@ -80,11 +80,6 @@ function startCountryBorderSync(store: TStore, sources: TDatasources): () => voi
   };
 }
 
-// Lets a released stroke update the border without waiting for the debounce.
-function flushCountryBorders(_store: TStore, sources: TDatasources): void {
-  sources.borderQueue.flush();
-}
-
 function disposeBorders(store: TStore, sources: TDatasources): void {
   sources.borders.dispose();
   batch(() => {
@@ -96,4 +91,4 @@ function disposeBorders(store: TStore, sources: TDatasources): void {
   });
 }
 
-export { disposeBorders, flushCountryBorders, scanBorders, startCountryBorderSync };
+export { disposeBorders, scanBorders, startCountryBorderSync };

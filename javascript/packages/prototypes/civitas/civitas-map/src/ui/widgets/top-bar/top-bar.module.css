@@ -14,10 +14,32 @@
   margin: 0;
 }
 
-.titleDim {
-  color: var(--text-dim);
-  font-weight: 400;
-  margin-left: 7px;
+/* A segmented switch: two buttons that read as one control. */
+.modes {
+  display: flex;
+}
+
+.mode {
+  border-radius: 0;
+}
+
+.mode:first-child {
+  border-radius: var(--radius) 0 0 var(--radius);
+}
+
+.mode:last-child {
+  border-left: none;
+  border-radius: 0 var(--radius) var(--radius) 0;
+}
+
+.modeActive {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.mode:last-child.modeActive {
+  border-left: 1px solid var(--accent);
 }
 
 .group {

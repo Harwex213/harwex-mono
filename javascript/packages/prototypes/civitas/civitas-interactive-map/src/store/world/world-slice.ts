@@ -1,20 +1,12 @@
 import { computed, signal } from "@preact/signals-react";
-import type { Country, ProvinceOverride } from "../../domain/index";
-import type { StateWarning } from "../../datasource/index";
+import type { Country } from "../../domain/index";
 
-// The saved document and the status of its storage.
-// Actions replace a container instead of mutating it, so that subscribers are notified.
+// The countries from `assets/countries.json`. `loadMap` writes them once.
 
 function createWorldSlice() {
-  const provinceOverrides = signal<Map<number, ProvinceOverride>>(new Map());
   const countries = signal<Country[]>([]);
-  const nextCountryId = signal(1);
-  // Only the latest warning is kept: a `quota` warning replaces a `repaired` one.
-  const warning = signal<StateWarning | null>(null);
-  const bytes = signal(0);
-  // False blocks writes: before hydration, with broken storage, or for a document
-  // from a newer build. It starts false so nothing is written before `hydrateWorld`.
-  const persistent = signal(false);
+  // What the countries parser repaired, as one sentence. `null` for a clean file.
+  const notice = signal<string | null>(null);
 
   const countryById = computed(() => {
     const out = new Map<number, Country>();
@@ -35,12 +27,8 @@ function createWorldSlice() {
   });
 
   return {
-    provinceOverrides,
     countries,
-    nextCountryId,
-    warning,
-    bytes,
-    persistent,
+    notice,
     countryById,
     countryOfProvince,
   };

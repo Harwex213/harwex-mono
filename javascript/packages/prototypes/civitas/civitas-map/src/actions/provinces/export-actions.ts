@@ -1,12 +1,14 @@
 import type { TDatasources } from "../../datasource/index";
 import {
   baseName,
+  buildCountriesFile,
   buildManifest,
 } from "../../domain/index";
 import type { TStore } from "../../store/index";
 import { errorMessage } from "../status/status-actions";
 
-// Writes `<map>-provinces.png` and `<map>-provinces.json`.
+// Writes `<map>-provinces.png`, `<map>-provinces.json` and, when there are
+// countries, `<map>-provinces.countries.json`.
 async function exportAll(store: TStore, sources: TDatasources): Promise<void> {
   const layer = store.map.layer.value;
   const info = store.map.info.value;
@@ -24,6 +26,10 @@ async function exportAll(store: TStore, sources: TDatasources): Promise<void> {
 
     await sources.downloads.downloadPixelsPng(layer.readPixels(), layer.width, layer.height, `${stem}.png`);
     sources.downloads.downloadJson(manifest, `${stem}.json`);
+
+    if (store.countries.list.value.length > 0) {
+      sources.downloads.downloadJson(buildCountriesFile(store.countries.list.value), `${stem}.countries.json`);
+    }
   } catch (cause) {
     store.status.error.value = errorMessage(cause);
   } finally {

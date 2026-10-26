@@ -1,8 +1,13 @@
 # Civitas map editor
 
-Paints a province map over a terrain image and exports the pair a grand-strategy
-map needs: an indexed-by-colour province PNG and a JSON manifest describing every
-province in it. Inspired by how EU-style province maps are authored.
+Paints a province map over a terrain image, groups the provinces into countries,
+and exports what a grand-strategy map needs: an indexed-by-colour province PNG, a
+JSON manifest describing every province in it, and a countries file. Inspired by
+how EU-style province maps are authored.
+
+The editor has two modes, switched in the top bar: `Provinces` paints the
+province layer, `Countries` makes countries out of provinces. The sibling package
+`../civitas-interactive-map` only displays the result.
 
 Stack: rspack, TypeScript, React, `@preact/signals-react`.
 
@@ -27,14 +32,14 @@ keeps its contract:
 
 ```jsonc
 // GET api/maps -> 200
-{ "images": [{ "name": "map.png", "url": "assets/maps/map.png", "bytes": 2653014, "manifestUrl": null }] }
+{ "images": [{ "name": "map.png", "url": "assets/maps/map.png", "bytes": 2653014, "manifestUrl": null, "countriesUrl": null }] }
 ```
 
-- `url` and `manifestUrl` are relative to the page. The dev server's static
+- The urls are relative to the page. The dev server's static
   handler serves the files themselves at `/assets/maps/<name>`.
 - An image whose stem also has a `.json` file beside it gets that file as
-  `manifestUrl`. That pair is what `Export PNG + JSON` writes, and a
-  `Load provinces…` pick loads both halves.
+  `manifestUrl`, and a `.countries.json` file as `countriesUrl`. That is what
+  `Export PNG + JSON` writes, and a `Load provinces…` pick loads all of it.
 - `yarn build` has no API. The dialog then shows the failed request and a Retry.
 - `src/datasource/map-library/map-library.ts` is the client side. It checks the
   answer field by field.
@@ -42,11 +47,10 @@ keeps its contract:
 ## Workflow
 
 1. **Load a map** — `Load map…` and pick an image from the map library, or drop a
-   png/jpg/webp anywhere on the window. The `Sample` button opens
-   `assets/maps/map.png` in dev builds.
+   png/jpg/webp anywhere on the window.
    To carry on from an earlier session, `Load provinces…` after the map — see
    [Reopening an export](#reopening-an-export). If the map already has its borders
-   drawn on it, `Detect borders` does steps 2 to 4 for you — see
+   drawn on it, `Detect borders` in the right menu does steps 2 to 4 for you — see
    [Detecting borders](#detecting-borders-already-drawn-on-the-map).
 2. **Outline a province** with the brush. Every province owns one exact RGB, and
    the first one is created for you.
@@ -55,7 +59,9 @@ keeps its contract:
    source image has no borders to stop it, so close the outline first.
 4. Repeat with `+ New` per province. `Picker` makes the province under the cursor
    active again when you come back to it.
-5. **Export** — writes `<map>-provinces.png` and `<map>-provinces.json`.
+5. **Make countries** — switch to `Countries`, see [Countries](#countries).
+6. **Export** — writes `<map>-provinces.png`, `<map>-provinces.json` and, when
+   there are countries, `<map>-provinces.countries.json`.
 
 ## Controls
 
@@ -63,13 +69,17 @@ keeps its contract:
 |---|---|
 | wheel | zoom at the cursor |
 | space + drag, middle drag | pan |
-| right drag | erase, whichever tool is active |
-| `B` `G` `E` `I` | brush, bucket (**g**round fill), eraser, p**i**cker |
-| `[` `]` | brush size |
-| `N` | new province |
-| `V` | hide/show the province layer |
+| right drag | provinces: erase, whichever tool is active; countries: take provinces out |
+| left drag | countries: put provinces into the active country |
+| alt + left drag | countries: take provinces out |
+| `B` `G` `E` `I` | provinces: brush, bucket (**g**round fill), eraser, p**i**cker |
+| `[` `]` | provinces: brush size |
+| `N` | new province, or new country in the countries mode |
+| `V` | hide/show the layer |
 | `0` `+` `-` | fit, zoom in, zoom out |
-| `⌘Z` / `⌘⇧Z` | undo / redo |
+| `⌘Z` / `⌘⇧Z` | provinces: undo / redo |
+
+The UI shows no hint line for these. This table is the reference.
 
 ## Export format
 
@@ -104,6 +114,47 @@ from the image. `centroid` is the centre of mass, which is where a label or a un
 marker belongs — the centre of the bounding box can fall outside a curved
 province. `unregisteredColors` lists paint whose province is gone from the
 registry; it should stay empty.
+
+## Countries
+
+The `Countries` mode shows each province in the colour of its country. An
+unassigned province is shown faintly in its own colour. Every province gets a dark
+outline, so single provinces stay visible inside a country.
+
+- The left menu has no cursor modes, no brush and no history. It keeps `Fit` and
+  the layer options. The right menu lists the countries: `+ New`, name, colour,
+  province count, delete.
+- A press on a province puts it into the active country. A drag puts every
+  province it crosses there. A province belongs to at most one country, so it
+  leaves its old country.
+- A stroke that starts on a province of the active country takes provinces out
+  instead. The right button or Alt always takes them out. The rule is decided once
+  per stroke (`strokeActionFor` in `src/domain/countries/countries.ts`), so
+  dragging back over a province does not flip it twice.
+- Country changes have no undo. `⌘Z` does nothing in this mode, because the history
+  holds province paint, which this mode does not show.
+- A new map and `Detect borders` drop all countries. Deleting a province takes it
+  out of its country. Deleting a country leaves its provinces unassigned.
+
+The countries file. `../civitas-interactive-map` reads the same file as
+`assets/countries.json`:
+
+```json
+{
+  "format": "civitas.countries",
+  "version": 1,
+  "countries": [
+    { "id": 1, "name": "Aurelia", "colorHex": "#c0563f", "provinceIds": [431, 448] }
+  ]
+}
+```
+
+- `provinceIds` are the ids of the manifest beside it, sorted.
+- `slogan` and `flagDataUrl` are optional. The editor does not edit them. It keeps
+  them from a loaded file and writes them back unchanged.
+- A reader refuses another `format` or `version`. Inside a valid file it skips a
+  bad country, an unknown province id, and a province that an earlier country
+  already claimed.
 
 ## Detecting borders already drawn on the map
 
@@ -148,14 +199,17 @@ split them by hand.
 ## Reopening an export
 
 `Load provinces…` reads a previous export back in. Pick the provinces PNG in the map
-library; a JSON manifest with the same name beside it is loaded with it. Dropping a
-manifest onto the window, with or without its PNG, imports the whole drop. The base
+library; a JSON manifest and a countries file with the same name beside it are
+loaded with it. Dropping a manifest onto the window, with or without its PNG and
+its countries file, imports the whole drop. The base
 map has to be open first, since the layer is sized from it — a dropped image on its
 own is always taken as a new base map, never as a province layer.
 
 Each half carries what the other cannot: the PNG holds the shapes, the manifest
-holds the names, kinds and ids. Both are read before either is applied, so a broken
-manifest leaves the layer as it was.
+holds the names, kinds and ids. All parts are read before any is applied, so a
+broken manifest or countries file leaves the layer as it was. Without a countries
+file the import drops the current countries, because their province ids belong to
+the registry that is being replaced.
 
 The rules it applies, all reported in a notice after the import:
 
@@ -222,7 +276,7 @@ UI --creates--> Services --subscribe to--> Store
 | `src/store/` | Signals and computeds only. No function changes state. No function does I/O. | domain, types from datasource |
 | `src/actions/` | Every state change. An action is a plain function `(store, ...args)` or `(store, sources, ...args)`. | store, datasource, domain |
 | `src/datasource/` | Everything outside the app, one subfolder per system: `map-library/` (`GET api/maps` and the image fetch), `images/` (`createImageBitmap` and canvas reads), `detect/` (the web worker), `downloads/`. | domain |
-| `src/domain/` | The editor's rules: colours, brushes, the view math, the province layer, the manifest format, border detection, the province registry rules, what a press on the map means. Pure: no signals, no DOM, no I/O. | — |
+| `src/domain/` | The editor's rules: colours, brushes, the view math, the province layer, the manifest format, border detection, the province registry rules, countries and the countries file, what a press on the map means. Pure: no signals, no DOM, no I/O. | — |
 | `dev-server/` | The stand-in backend: the maps API middleware for the rspack dev server. | — |
 | `e2e/` | Screenshot tests. See [Screenshot tests](#screenshot-tests). | — |
 
@@ -236,10 +290,11 @@ UI --creates--> Services --subscribe to--> Store
   allowed imports between layers.
 - An `index.ts` has no imports. It has one `export { ... } from "./file";` per file
   of its own folder, with inline `type` modifiers and one name per line.
-- `src/store/` and `src/actions/` share five area subfolders: `map/` (the open map,
+- `src/store/` and `src/actions/` share six area subfolders: `map/` (the open map,
   the layer, the camera), `provinces/` (the registry, hover, import, detection,
-  export), `tools/`, `status/` (busy flags, error, notice) and `library/` (the map
-  library dialog).
+  export), `countries/` (the countries, the active country, the stroke), `tools/`
+  (the editor mode, the tool, the brush), `status/` (busy flags, error, notice) and
+  `library/` (the map library dialog).
 - `src/actions/registry.ts` lists every action. A new action goes into
   `storeActions` or `sourceActions` there. Its type is derived from the function.
 
@@ -253,8 +308,9 @@ UI --creates--> Services --subscribe to--> Store
 - `src/ui/pages/editor/` is the one page. It lays out the widgets and owns the
   window-wide input: the keyboard shortcuts (`use-shortcuts.ts`) and the drop of
   local files.
-- `src/ui/widgets/` holds `top-bar`, `toolbar`, `map-canvas`, `province-panel`,
-  `status-bar` and `map-library-dialog`. A widget does not import another widget.
+- `src/ui/widgets/` holds `top-bar`, `toolbar` (the left menu), `map-canvas`,
+  `province-panel` and `country-panel` (the right menu, by mode), `status-bar` and
+  `map-library-dialog`. A widget does not import another widget.
 
 ### MapCanvasService
 
@@ -266,8 +322,9 @@ and two canvases; its one `useEffect` creates the service, calls
 |---|---|
 | `map-canvas-service.ts` | The lifecycle: the input listeners, the ResizeObserver, the space key, the cursor, and the two redraw effects with their requestAnimationFrame scheduling. |
 | `input-handler.ts` | Turns pointer and wheel events into registry calls. What a press means is `classifyPress` in `src/domain/interaction/press.ts`. |
-| `renderer/render.ts` | The scene pass (base map, layer, bounds) and the preview pass (brush footprint or crosshair). |
+| `renderer/render.ts` | The scene pass (base map, the layer or the countries view, bounds) and the preview pass (brush footprint or crosshair). |
 | `renderer/layer-canvas.ts` | The canvas copy of the province layer. |
+| `renderer/country-canvas.ts` | The countries view. It builds the per-pixel province index (`src/domain/countries/province-index.ts`) once per layer state. A country change repaints only the provinces whose colour changed. |
 
 ## Conventions
 
@@ -284,15 +341,14 @@ and two canvases; its one `useEffect` creates the service, calls
 
 `e2e/` holds black-box screenshot tests on `@playwright/test`. They drive the editor
 with the mouse, the keyboard, text and ARIA roles only, so a refactor behind the UI
-does not break them. They were written before the move to the layered architecture
-and passed unchanged after it.
+does not break them.
 
 - The backend is mocked at the network level (`e2e/mock-library.ts`): `api/maps`
   and the files under `assets/maps/`. The bundle is the real `src/main.tsx`, built
   in production mode into `e2e/dist/app` by `e2e/rspack.config.mjs`.
 - The fixture images are drawn in code (`e2e/fixtures/`): a 360 x 240 map with ink
-  borders, a provinces export of it with its manifest, and an image of another
-  size. No binary fixture is committed.
+  borders, a provinces export of it with its manifest and its countries file, and
+  an image of another size. No binary fixture is committed.
 - Playwright serves the bundle with `python3 -m http.server` on port 47623 and
   stops the server itself.
 - The viewport is 1400 x 900 at device scale 1. The baselines live in

@@ -1,15 +1,5 @@
 import {
-  beginStroke,
-  cancelStroke,
-  endStroke,
-  extendStroke,
-  setActiveCountry,
-  setAssignMode,
-  toggleAssignMode,
-} from "./interaction/assign-actions";
-import {
   disposeBorders,
-  flushCountryBorders,
   scanBorders,
   startCountryBorderSync,
 } from "./map/border-actions";
@@ -32,19 +22,7 @@ import {
   syncView,
   zoomAtPoint,
 } from "./map/view-actions";
-import {
-  addCountry,
-  assignProvinces,
-  clearProvinceOverride,
-  deleteCountry,
-  dismissStateWarning,
-  flushWorld,
-  hydrateWorld,
-  setProvinceImage,
-  setProvinceLore,
-  setProvinceName,
-  updateCountry,
-} from "./world/world-actions";
+import { dismissCountriesNotice } from "./world/world-actions";
 import type { TDatasources } from "../datasource/index";
 import type { TStore } from "../store/index";
 
@@ -54,49 +32,30 @@ import type { TStore } from "../store/index";
 
 // Actions that only read and write the store.
 const storeActions = {
-  cancelStroke,
   clearSelection,
-  dismissStateWarning,
+  dismissCountriesNotice,
   panTo,
   resetView,
   selectCountry,
   selectCountryOfProvince,
   selectProvince,
-  setActiveCountry,
-  setAssignMode,
   setCursor,
   setDpr,
   setHoveredProvince,
   setPanning,
   setViewport,
   syncView,
-  toggleAssignMode,
   toggleLabels,
   zoomAtPoint,
 };
 
 // Actions that also call a datasource.
 const sourceActions = {
-  addCountry,
-  assignProvinces,
-  beginStroke,
-  clearProvinceOverride,
-  deleteCountry,
   disposeBorders,
-  endStroke,
-  extendStroke,
-  flushCountryBorders,
-  flushWorld,
-  hydrateWorld,
   loadMap,
   scanBorders,
-  setProvinceImage,
-  setProvinceLore,
-  setProvinceName,
   startCountryBorderSync,
-  updateCountry,
 };
-
 type BoundStore<F> = F extends (store: TStore, ...args: infer A) => infer R ? (...args: A) => R : never;
 type BoundSources<F> = F extends (store: TStore, sources: TDatasources, ...args: infer A) => infer R
   ? (...args: A) => R

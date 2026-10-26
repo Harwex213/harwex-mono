@@ -8,7 +8,13 @@ import {
   type Province,
 } from "../../domain/index";
 import { countryContainsPoint } from "../selectors";
-import { createTestApp, fakeMapAssets, markMapReady } from "../../test-support";
+import {
+  country as makeCountry,
+  createTestApp,
+  fakeMapAssets,
+  markMapReady,
+  setCountries,
+} from "../../test-support";
 
 // Covers the wiring only: the map-load gate and the anchor cache. The anchor
 // maths has its own tests in `domain/countries` and the label layer.
@@ -43,11 +49,10 @@ function twoProvinceMap() {
 
 test("the map load gates the label sources, so nothing is anchored blind", () => {
   // Without the gate the cache fills with nulls and no country gets a label.
-  const { store, registry } = createTestApp();
+  const { store } = createTestApp();
   assert.notEqual(store.map.phase.peek(), "ready");
 
-  const country = registry.addCountry("Aurelia");
-  registry.assignProvinces(country.id, [1, 2, 3]);
+  setCountries(store, [makeCountry(1, [1, 2, 3], { name: "Aurelia" })]);
 
   assert.deepEqual(store.labels.labelSources.value, []);
   assert.equal(store.labels.anchorCache.size, 0, "and no anchor was computed");
@@ -67,9 +72,9 @@ test("showLabels starts on, toggles both ways, and empties the sources when off"
 });
 
 test("countryContainsPoint is false for every argument before the map loads", () => {
-  const { store, registry } = createTestApp();
-  const country = registry.addCountry("Borland");
-  registry.assignProvinces(country.id, [7]);
+  const { store } = createTestApp();
+  const country = makeCountry(1, [7], { name: "Borland" });
+  setCountries(store, [country]);
 
   for (const point of [
     { x: 0, y: 0 },
@@ -87,9 +92,9 @@ test("countryContainsPoint is false for every argument before the map loads", ()
 });
 
 test("a ready map anchors a label inside its country and caches the anchor", () => {
-  const { store, registry } = createTestApp();
-  const country = registry.addCountry("Aurelia");
-  registry.assignProvinces(country.id, [1]);
+  const { store } = createTestApp();
+  const country = makeCountry(1, [1], { name: "Aurelia" });
+  setCountries(store, [country]);
   markMapReady(store, twoProvinceMap());
 
   assert.equal(countryContainsPoint(store, country.id, 1, 1), true);
@@ -102,14 +107,14 @@ test("a ready map anchors a label inside its country and caches the anchor", () 
   assert.ok(anchor !== undefined && countryContainsPoint(store, country.id, anchor.x, anchor.y));
   assert.equal(store.labels.anchorCache.size, 1);
 
-  // A rename keeps the `provinceIds` array, so the cached anchor is reused.
+  // A renamed country with the same `provinceIds` array reuses the cached anchor.
   const cached = store.labels.anchorCache.get(country.id);
-  registry.updateCountry(country.id, { name: "Aurelia Magna" });
+  setCountries(store, [{ ...country, name: "Aurelia Magna" }]);
   assert.equal(store.labels.labelSources.value[0]?.text, "AURELIA MAGNA");
   assert.equal(store.labels.anchorCache.get(country.id), cached);
 
-  // A deleted country leaves the cache on the next pass.
-  registry.deleteCountry(country.id);
+  // A country that is gone leaves the cache on the next pass.
+  setCountries(store, []);
   assert.deepEqual(store.labels.labelSources.value, []);
   assert.equal(store.labels.anchorCache.size, 0);
 });
@@ -124,11 +129,9 @@ test("a cleared country name cannot drop the label off the map", () => {
     assert.notEqual(countryDisplayName(7, name).trim().toUpperCase(), "", JSON.stringify(name));
   }
 
-  const { store, registry } = createTestApp();
-  const country = registry.addCountry("Aurelia");
-  registry.assignProvinces(country.id, [1]);
+  const { store } = createTestApp();
+  setCountries(store, [makeCountry(1, [1], { name: "" })]);
   markMapReady(store, twoProvinceMap());
-  registry.updateCountry(country.id, { name: "" });
   assert.equal(store.labels.labelSources.value.length, 1, "the fallback name keeps the label");
 });
 

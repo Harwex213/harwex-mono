@@ -26,11 +26,7 @@ function provinceById(store: Pick<TStore, "map">, id: number): Province | null {
 }
 
 // The last fallback covers the moments before the manifest loads.
-function provinceDisplayName(store: Pick<TStore, "map" | "world">, id: number): string {
-  const override = store.world.provinceOverrides.value.get(id);
-  if (override && override.name !== undefined && override.name !== "") {
-    return override.name;
-  }
+function provinceDisplayName(store: Pick<TStore, "map">, id: number): string {
   const province = provinceById(store, id);
   if (province) {
     return province.name;

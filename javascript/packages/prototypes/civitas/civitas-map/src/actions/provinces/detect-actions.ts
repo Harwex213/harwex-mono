@@ -6,11 +6,12 @@ import {
   type DetectOptions,
 } from "../../domain/index";
 import type { TStore } from "../../store/index";
+import { replaceCountries } from "../countries/country-actions";
 import { markLayerChanged } from "../map/layer-commit";
 import { errorMessage } from "../status/status-actions";
 
 // Rebuilds the province layer from borders drawn into the base map. Replaces the
-// layer and the registry wholesale; the UI asks first when there is work to lose.
+// layer and the registry wholesale and drops the countries; the UI asks first when there is work to lose.
 async function detectFromBaseMap(
   store: TStore,
   sources: TDatasources,
@@ -46,6 +47,7 @@ async function detectFromBaseMap(
       });
       store.provinces.nextId.value = outcome.provinces.length + 1;
       store.provinces.activeId.value = store.provinces.list.value[0]?.id ?? null;
+      replaceCountries(store, []);
       store.hover.pixel.value = null;
       store.hover.color.value = 0;
       store.map.historyRevision.value += 1;

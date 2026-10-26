@@ -1,4 +1,4 @@
-// `src/datasource` holds all code that talks to systems outside the app's memory: network, localStorage, worker, clock.
+// `src/datasource` holds all code that talks to systems outside the app's memory: network, worker, clock.
 // Each subfolder covers one system. This file lists what the rest of the app may import from the folder.
 // Decisions:
 // - Datasource modules import each other by file path, not through this index, so no cycle can form.
@@ -11,16 +11,6 @@ export {
   type DatasourceOptions,
   type TDatasources,
 } from "./datasources";
-
-// storage/ — the world document in `localStorage`: read, write, quota and recovery.
-export {
-  STATE_KEY,
-  STORAGE_BUDGET_BYTES,
-  createMemoryStorage,
-  type StateStorage,
-  type StateWarning,
-  type WarningKind,
-} from "./storage/state-storage";
 
 // borders/ — the border web worker and its promise wrapper.
 export {
@@ -37,7 +27,7 @@ export {
   type Timers,
 } from "./timers/debouncer";
 
-// map-assets/ — the `fetch` of the map PNGs and the manifest, and the steps of that load.
+// map-assets/ — the `fetch` of the map PNGs, the manifest and the countries, and the steps of that load.
 // Only `datasources.ts` calls the loader. The store and the actions use its result type and its steps.
 export {
   loadProgress,

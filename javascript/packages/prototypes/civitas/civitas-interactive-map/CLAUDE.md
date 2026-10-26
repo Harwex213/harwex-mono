@@ -1,10 +1,11 @@
 # Civitas interactive map
 
 An interactive game map for the Civitas province set. It is a static web app with no
-backend. Players create countries, paint provinces into them and inspect the map.
+backend. It shows the provinces and the countries and lets the player inspect them.
+It edits nothing.
 
-The sibling package `../civitas-map` is the editor that produced the assets. This
-package only reads them. It never imports from the editor.
+The sibling package `../civitas-map` is the editor that produces the assets,
+including the countries. This package only reads them. It never imports from the editor.
 
 Stack: rspack, TypeScript, React 19, `@preact/signals-react`. Rendering is Canvas 2D.
 
@@ -23,7 +24,7 @@ from `javascript/`. The workspace uses the `node-modules` linker and hoists to
 
 ## Assets
 
-Four files live in `assets/`. The dev server serves that directory at `/assets`.
+Five files live in `assets/`. The dev server serves that directory at `/assets`.
 The production build copies the same directory to `dist/assets` through
 `rspack.CopyRspackPlugin`. Both paths answer the same URLs, so the code requests
 `assets/map.png` with no leading slash.
@@ -33,6 +34,7 @@ The production build copies the same directory to `dist/assets` through
 | `provinces_map.png` | 3653 x 2855 RGBA. One flat unique colour per province. The pick and border source. |
 | `map.png` | 3652 x 2855 RGBA. The artistic render. Display only. |
 | `provinces_manifest.json` | 588 KB. Describes all 1648 provinces. |
+| `countries.json` | The countries, exported from the editor. It ships with an empty list. See [Countries contract](#countries-contract). |
 | `country-flag.jpg` | 735 x 490. One sample flag. |
 
 `provinces_map.png` is the authoritative surface. `map.png` is exactly 1 px narrower
@@ -40,6 +42,9 @@ and the same height, so screen to map pixel lookup is 1:1 with no rescaling.
 
 No source file under `src/` may import a file from `assets/`. A test enforces this.
 The rule keeps the 2.5 MB PNG and the 588 KB manifest out of the bundle.
+
+`loadMap` fetches all four data files at once. A failed fetch of any of them,
+`countries.json` included, fails the load.
 
 ## Manifest contract
 
@@ -77,7 +82,42 @@ Facts a consumer can rely on, each pinned by a test in `src/assets.test.ts`:
 - `centroid` is the centre of mass, not the centre of `bounds`. Labels and markers
   belong on the centroid.
 - Every name is the placeholder `"Province <id>"`.
-- The manifest holds no country data. The user creates countries inside the app.
+- The manifest holds no country data. The countries live in `countries.json`.
+
+## Countries contract
+
+The editor writes `countries.json`. `parseCountries` in `src/domain/world/countries-file.ts`
+reads it.
+
+```jsonc
+{
+  "format": "civitas.countries",
+  "version": 1,
+  "countries": [
+    {
+      "id": 1,
+      "name": "Aurelia",
+      "colorHex": "#c0563f",
+      "provinceIds": [431, 448],
+      "slogan": "Gold in the hills",               // optional
+      "flagDataUrl": "data:image/svg+xml;base64,…" // optional
+    }
+  ]
+}
+```
+
+- The parser throws on any `format` other than `civitas.countries` and any `version`
+  other than `1`. The load then fails.
+- `id` is an integer from 1 to 65535 and unique. `colorHex` is `#rrggbb`.
+  `provinceIds` is a list of positive integers. An entry that breaks one of these
+  rules is dropped.
+- One province has one owner. The first country that names a province keeps it.
+  Later claims are dropped.
+- A flag that is not a `data:image/` URL is dropped. The country stays.
+- A blank name shows as `"Country <id>"`.
+- Every dropped item becomes a repair note. The app joins the notes into one
+  dismissible notice at the top of the screen.
+- The list order is the panel order.
 
 ## Architecture
 
@@ -95,8 +135,8 @@ UI --creates--> Services --subscribe to--> Store
 | `src/services/` | Long-lived objects that own a piece of the DOM outside React. A service gets the store and its registry slice from its creator. | store, domain, the `TAppRegistry` type |
 | `src/store/` | Signals and computeds only. No function changes state. No function does I/O. | domain, types from datasource |
 | `src/actions/` | Every state change. An action is a plain function `(store, ...args)` or `(store, sources, ...args)`. | store, datasource, domain |
-| `src/datasource/` | Everything outside the app, one subfolder per system: `map-assets/` (`fetch`, plus the load steps and `loadProgress`), `storage/` (`localStorage`), `borders/` (the web worker), `timers/`. | domain |
-| `src/domain/` | The app's rules and vocabulary about the map and the world: the manifest format and its parser, `ProvinceIndex`, the view math, border extraction, label layout, the world document schema and its migrations, the interaction rules. Pure: no signals, no DOM, no I/O. Domain does not know how data is loaded, stored or sent to a worker. | — |
+| `src/datasource/` | Everything outside the app, one subfolder per system: `map-assets/` (`fetch` of the PNGs, the manifest and the countries, plus the load steps and `loadProgress`), `borders/` (the web worker), `timers/`. | domain |
+| `src/domain/` | The app's rules and vocabulary about the map and the world: the manifest format and its parser, `ProvinceIndex`, the view math, border extraction, label layout, the countries file and its parser, the selection rules. Pure: no signals, no DOM, no I/O. Domain does not know how data is loaded or sent to a worker. | — |
 | `e2e/` | Screenshot tests and their own composition root. See [Screenshot tests](#screenshot-tests). | the `index.ts` of each layer |
 
 - `src/main.tsx` is the composition root. It calls `createStore()`, `createDatasources()`
@@ -110,14 +150,14 @@ UI --creates--> Services --subscribe to--> Store
   the `index.ts` of the layer that owns it. A renamed alias such as
   `type TMyRegistry = TOtherLayerType` counts as a re-export too.
 - `src/store/` and `src/actions/` share four area subfolders: `map/` (assets, camera,
-  borders), `world/` (the saved document), `interaction/` (selection, assign mode) and
+  borders), `world/` (the countries), `interaction/` (hover and selection) and
   `labels/`. The actions for the slices in `store/<area>/` live in `actions/<area>/`.
 - `src/actions/registry.ts` lists every action. A new action goes into `storeActions`
   or `sourceActions` there. Its type is derived from the function.
 - Read-only lookups that need the store (`provinceAt`, `provinceDisplayName`,
   `mapPixelAt`, ...) live in `src/store/selectors.ts`.
-- State lives in `localStorage` alone under the versioned key `civitas.state.v1`.
-  There is no export or import UI and no server.
+- The app saves nothing. It has no storage, no export and no server.
+  The countries come from `countries.json` and do not change after the load.
 
 ### UI
 
@@ -127,9 +167,9 @@ UI --creates--> Services --subscribe to--> Store
 - A component gets actions through a `registry` prop. It declares the actions it uses
   as `Pick<TAppRegistry, ...>`. Its parent passes the registry down.
 - `src/ui/pages/` holds whole screens. A page lays out widgets and owns screen-wide
-  input such as the Escape key. `pages/map/` is the only page.
+  input. `pages/map/` is the only page.
 - `src/ui/widgets/` holds self-contained blocks of the screen: the map canvas, the
-  country panel and the plaque. Each widget has its own folder with its `.tsx`, its
+  country panel (a read-only list; a row click selects the country) and the plaque. Each widget has its own folder with its `.tsx`, its
   `*.module.css` and its small sub-components.
 - A page imports widgets. A widget does not import another widget or a page. Code
   that two widgets need goes into a new `src/ui/components/` folder or into
@@ -145,9 +185,9 @@ the service, calls `attach(host, { scene, overlay })` and calls `dispose()` on c
 
 | File | Role |
 |---|---|
-| `map-canvas-service.ts` | The lifecycle. Owns the input listeners, the ResizeObserver, the dpr media query, the signal effects, the requestAnimationFrame scheduling and the host's `data-mode` / `data-painting` / `data-panning`. `dispose` also disposes the border worker and the tint canvas. |
+| `map-canvas-service.ts` | The lifecycle. Owns the input listeners, the ResizeObserver, the dpr media query, the signal effects, the requestAnimationFrame scheduling and the host's `data-panning`. `dispose` also disposes the border worker and the tint canvas. |
 | `map-canvas-registry.ts` | `TMapCanvasServiceRegistry`, the registry slice the service calls. |
-| `interaction-machine.ts` | Pure. The input state machine. States: `idle`, `panning` (`pending` or `dragging`), `strokeRequested`, `painting`. `transition(state, event)` returns the next state and a list of commands. |
+| `interaction-machine.ts` | Pure. The input state machine. States: `idle`, `panning` (`pending` or `dragging`). A left or middle drag pans. A left click selects the province, a right click its country. `transition(state, event)` returns the next state and a list of commands. |
 | `input-handler.ts` | Turns each DOM event into a machine event and runs the commands through the registry. It makes no decision of its own. |
 | `renderer/frame.ts` | One frame: prepare the canvases, the scene pass, the overlay pass. Reads the store fresh on each frame. |
 | `renderer/passes.ts` | The scene pass (art) and the overlay pass (tint, highlights, borders, hairline, labels). |
@@ -184,7 +224,8 @@ into `renderer/layers/` and gets its slot in `drawOverlay`.
   test. They cover pure logic only. There is no jsdom, so unit tests do not touch the
   DOM or the canvas. The screenshot tests cover the DOM and the canvas.
 - A test builds its own app with `createTestApp()` from `src/test-support.ts`. The app
-  has a fresh store, a memory storage, fake timers and a fake border worker.
+  has a fresh store, fake timers and a fake border worker. `setCountries()` puts
+  countries into the store as a finished load would.
 
 ## Screenshot tests
 
@@ -194,10 +235,10 @@ behind the map. `yarn test:screenshots` builds `e2e/dist/app` and compares it ag
 the baselines. `yarn test:screenshots:update` rewrites the baselines after a deliberate
 visual change.
 
-- `e2e/main.tsx` is a second composition root. It mirrors `src/main.tsx` but hands
-  `createDatasources` a memory storage. The storage holds the world from
-  `e2e/fixture.ts` (Aurelia, Borealis, Calderra). With `?world=empty` the storage is
-  empty. The map assets and the border worker stay real.
+- The tests serve `assets/countries.json` through `page.route`: the countries from
+  `e2e/fixture.ts` (Aurelia, Borealis, Calderra, with slogans and flags), an empty
+  list, or a damaged file. The other assets and the border worker stay real.
+- `e2e/main.tsx` is a second composition root. It mirrors `src/main.tsx`.
 - `e2e/main.tsx` sets `window.__civitasE2E.ready()`. The tests wait on this call
   instead of a timeout.
 - `e2e/rspack.config.mjs` extends the app config and writes to `e2e/dist/app`. So

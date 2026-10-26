@@ -2,8 +2,7 @@ import type { Point } from "../../domain/index";
 
 // Pure state machine of map input: plain events in, next state and commands out.
 // It reads neither the DOM nor the store, so every rule is unit tested in Node.
-// States: idle, panning (pending | dragging), strokeRequested, painting.
-// `strokeRequested` waits for the `beginStroke` answer: `strokeBegan` or `strokeRefused`.
+// States: idle, panning (pending | dragging).
 
 // Index is `deltaMode`: pixel, line, page.
 // Firefox reports one wheel notch as 3 lines. Read as 3 pixels, the wheel barely zooms.
@@ -26,18 +25,7 @@ type PanState = {
 
 type InteractionState =
   | { kind: "idle" }
-  | PanState
-  | {
-      kind: "strokeRequested";
-      pointerId: number;
-      pixel: Point;
-      startX: number;
-      startY: number;
-      originX: number;
-      originY: number;
-    }
-  // `lastX` / `lastY` are MAP pixels: the start point of the next line walk.
-  | { kind: "painting"; pointerId: number; lastX: number; lastY: number };
+  | PanState;
 
 type InteractionEvent =
   | {
@@ -45,15 +33,11 @@ type InteractionEvent =
       pointerId: number;
       button: number;
       ctrlKey: boolean;
-      altKey: boolean;
       clientX: number;
       clientY: number;
       onHudControl: boolean;
       // The current view offset, or `null` before the map has a view.
       view: Point | null;
-      assignMode: boolean;
-      // The map pixel under the press, or `null` outside the map.
-      pixel: Point | null;
     }
   | { type: "pointerMove"; pointerId: number; clientX: number; clientY: number; pixel: Point | null }
   | {
@@ -68,10 +52,8 @@ type InteractionEvent =
   | { type: "pointerCancel"; pointerId: number }
   | { type: "pointerLeave"; pointerId: number }
   | { type: "lostPointerCapture" }
-  | { type: "strokeBegan" }
-  | { type: "strokeRefused" }
   | { type: "contextMenu"; clientX: number; clientY: number; onHudControl: boolean }
-  | { type: "doubleClick"; clientX: number; clientY: number; onHudControl: boolean; assignMode: boolean }
+  | { type: "doubleClick"; clientX: number; clientY: number; onHudControl: boolean }
   | { type: "wheel"; clientX: number; clientY: number; deltaY: number; deltaMode: number }
   | { type: "auxClick" }
   | {
@@ -90,10 +72,6 @@ type InteractionCommand =
   | { type: "capturePointer"; pointerId: number }
   | { type: "releasePointer"; pointerId: number }
   | { type: "hover"; pixel: Point | null }
-  | { type: "beginStroke"; pixel: Point; erase: boolean }
-  | { type: "paintLine"; fromX: number; fromY: number; toX: number; toY: number }
-  | { type: "endStroke" }
-  | { type: "cancelStroke" }
   | { type: "setPanning"; on: boolean }
   | { type: "panTo"; x: number; y: number }
   | { type: "selectProvinceAt"; clientX: number; clientY: number }
@@ -164,8 +142,7 @@ function onPointerDown(
   if (event.onHudControl) {
     return stay(state);
   }
-  // A context press starts no gesture, so a ctrl+click never paints.
-  // `beginStroke` assigns the province at once and cannot be undone.
+  // A context press starts no gesture.
   // The return comes before `preventDefault`: a prevented pointerdown suppresses
   // `mousedown`, and some engines derive `contextmenu` from `mousedown`.
   if (isContextPress(event)) {
@@ -177,29 +154,9 @@ function onPointerDown(
   // Stops text selection, native image drag and Chrome's middle-button autoscroll.
   const prevent: InteractionCommand[] = [{ type: "preventDefault" }];
 
-  // The middle button always pans, so the map stays navigable in assign mode.
-  if (event.button === 1) {
-    return startPan(event.pointerId, event.clientX, event.clientY, event.view, prevent);
-  }
-  if (event.button !== 0) {
+  // The left and the middle button pan.
+  if (event.button !== 0 && event.button !== 1) {
     return { state, commands: prevent };
-  }
-
-  // A press outside the map starts a pan, not a stroke.
-  if (event.assignMode && event.pixel) {
-    return {
-      state: {
-        kind: "strokeRequested",
-        pointerId: event.pointerId,
-        pixel: event.pixel,
-        startX: event.clientX,
-        startY: event.clientY,
-        originX: event.view.x,
-        originY: event.view.y,
-      },
-      // `beginStroke` goes last because its answer is the next event.
-      commands: [...prevent, { type: "beginStroke", pixel: event.pixel, erase: event.altKey }],
-    };
   }
 
   return startPan(event.pointerId, event.clientX, event.clientY, event.view, prevent);
@@ -210,27 +167,6 @@ function onPointerMove(
   event: Extract<InteractionEvent, { type: "pointerMove" }>,
 ): Transition {
   const hover: InteractionCommand = { type: "hover", pixel: event.pixel };
-
-  if (state.kind === "painting" && state.pointerId === event.pointerId) {
-    // Outside the map the stroke waits, so no line runs to a clamped edge pixel.
-    if (!event.pixel) {
-      return stay(state, [hover]);
-    }
-    // A line from the last pixel, because a fast flick skips pixels between moves.
-    return {
-      state: { ...state, lastX: event.pixel.x, lastY: event.pixel.y },
-      commands: [
-        hover,
-        {
-          type: "paintLine",
-          fromX: state.lastX,
-          fromY: state.lastY,
-          toX: event.pixel.x,
-          toY: event.pixel.y,
-        },
-      ],
-    };
-  }
 
   if (state.kind !== "panning" || state.pointerId !== event.pointerId) {
     return stay(state, [hover]);
@@ -265,9 +201,7 @@ function onPointerMove(
 }
 
 // Left click ownership:
-// - Paint owns the left button when assign mode is on and a country is active.
-//   The paint branch returns first, so painting never moves the selection.
-// - Otherwise the press is a pan, and a pan with no drag selects the province.
+// - A left press is a pan, and a pan with no drag selects the province.
 // - Ctrl+left is a context press and selects the country.
 // The province comes from the pointer position, so a click with no prior move still selects.
 function onPointerUp(
@@ -277,11 +211,6 @@ function onPointerUp(
   // Pointer capture retargets to the host. A HUD target means `pointerDown` declined the press.
   if (event.onHudControl) {
     return stay(state);
-  }
-
-  if (state.kind === "painting" && state.pointerId === event.pointerId) {
-    // `endStroke` flushes the debounced border push, so the outline updates on release.
-    return endGesture(event.pointerId, [{ type: "endStroke" }]);
   }
 
   // Ctrl+click where no `contextmenu` fires.
@@ -301,9 +230,9 @@ function onPointerUp(
   return endGesture(event.pointerId, select);
 }
 
-// Right click selects the country of the province in both modes.
+// Right click selects the country of the province.
 // `contextmenu` covers the macOS ctrl+click too.
-// The idle guard ignores a right press made during a pan or a stroke.
+// The idle guard ignores a right press made during a pan.
 function onContextMenu(
   state: InteractionState,
   event: Extract<InteractionEvent, { type: "contextMenu" }>,
@@ -317,7 +246,6 @@ function onContextMenu(
 }
 
 // `L` toggles labels. `0` resets the view.
-// `Escape` belongs to `MapPage`, the single owner of that key.
 // No `preventDefault`: neither key has a default action outside a text field.
 function onKeyDown(event: Extract<InteractionEvent, { type: "keyDown" }>): InteractionCommand[] {
   if (event.altKey || event.ctrlKey || event.metaKey) {
@@ -346,51 +274,23 @@ function transition(state: InteractionState, event: InteractionEvent): Transitio
     case "pointerUp": {
       return onPointerUp(state, event);
     }
-    case "strokeBegan": {
-      if (state.kind !== "strokeRequested") {
-        return stay(state);
-      }
-      return {
-        state: { kind: "painting", pointerId: state.pointerId, lastX: state.pixel.x, lastY: state.pixel.y },
-        commands: [{ type: "capturePointer", pointerId: state.pointerId }],
-      };
-    }
-    case "strokeRefused": {
-      // No active country: the press becomes a pan, so the map stays usable.
-      if (state.kind !== "strokeRequested") {
-        return stay(state);
-      }
-      const origin = { x: state.originX, y: state.originY };
-      return startPan(state.pointerId, state.startX, state.startY, origin, []);
-    }
     // A cancelled pointer never selects.
-    // A cancelled stroke keeps its pixels but skips the border flush.
     case "pointerCancel": {
-      return endGesture(event.pointerId, [{ type: "cancelStroke" }]);
+      return endGesture(event.pointerId);
     }
-    // A fallback: pointer capture normally prevents a leave mid-stroke.
+    // A fallback: pointer capture normally prevents a leave mid-pan.
     case "pointerLeave": {
-      const before: InteractionCommand[] = [{ type: "hover", pixel: null }];
-      if (state.kind === "painting") {
-        before.push({ type: "cancelStroke" });
-      }
-      return endGesture(event.pointerId, before);
+      return endGesture(event.pointerId, [{ type: "hover", pixel: null }]);
     }
     case "lostPointerCapture": {
-      const commands: InteractionCommand[] = [];
-      if (state.kind === "painting") {
-        commands.push({ type: "cancelStroke" });
-      }
-      commands.push({ type: "setPanning", on: false });
-      return { state: IDLE, commands };
+      return { state: IDLE, commands: [{ type: "setPanning", on: false }] };
     }
     case "contextMenu": {
       return onContextMenu(state, event);
     }
     case "doubleClick": {
       // No zoom on a HUD control.
-      // No zoom in assign mode: a double click there is two strokes.
-      if (event.onHudControl || event.assignMode) {
+      if (event.onHudControl) {
         return stay(state);
       }
       return stay(state, [

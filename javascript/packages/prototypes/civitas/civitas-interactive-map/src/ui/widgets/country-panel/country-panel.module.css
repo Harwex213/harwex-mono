@@ -34,45 +34,6 @@
   text-transform: uppercase;
 }
 
-.action {
-  background: var(--civ-vellum);
-  border: var(--civ-border-strong);
-  border-radius: var(--civ-radius-sm);
-  color: var(--civ-ink);
-  cursor: pointer;
-  font-family: var(--civ-font-mono);
-  font-size: var(--civ-text-sm);
-  padding: var(--civ-space-1) var(--civ-space-3);
-}
-
-.action:hover:not(:disabled) {
-  border-color: var(--civ-gild);
-}
-
-.action:disabled {
-  color: var(--civ-ink-faint);
-  cursor: default;
-  opacity: 0.55;
-}
-
-.action[data-on="true"] {
-  background: var(--civ-gild);
-  border-color: var(--civ-gild);
-  color: var(--civ-ink-invert);
-}
-
-.modeRow {
-  display: flex;
-  gap: var(--civ-space-2);
-}
-
-.hint {
-  color: var(--civ-ink-faint);
-  font-family: var(--civ-font-mono);
-  font-size: var(--civ-text-xs);
-  margin: 0;
-}
-
 .list {
   display: flex;
   flex-direction: column;
@@ -99,23 +60,17 @@
   padding: var(--civ-space-2) var(--civ-space-2);
 }
 
-/* Two separate marks: `active` is the paint target, `selected` is what the plaque shows. */
-.row[data-active="true"] {
-  border-color: var(--civ-gild-soft);
-}
-
+/* `selected` is what the plaque shows. */
 .row[data-selected="true"] {
   border-color: var(--civ-gild);
 }
 
-.color {
-  background: none;
+.swatch {
   border: var(--civ-border-hair);
   border-radius: var(--civ-radius-sm);
-  cursor: pointer;
+  display: block;
   flex: none;
-  height: 24px;
-  padding: 1px;
+  height: 20px;
   width: 28px;
 }
 
@@ -128,40 +83,16 @@
 }
 
 .name {
-  background: var(--civ-parchment-dim);
-  border: var(--civ-border-hair);
-  border-radius: var(--civ-radius-sm);
   color: var(--civ-ink);
   font-family: var(--civ-font-sans);
   font-size: var(--civ-text-md);
-  padding: var(--civ-space-1) var(--civ-space-2);
-  width: 100%;
-}
-
-.name:focus {
-  border-color: var(--civ-gild);
-  outline: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .stats {
   color: var(--civ-ink-faint);
   font-family: var(--civ-font-mono);
   font-size: var(--civ-text-xs);
-}
-
-.delete {
-  background: var(--civ-vellum);
-  border: var(--civ-border-hair);
-  border-radius: var(--civ-radius-sm);
-  color: var(--civ-ink-dim);
-  cursor: pointer;
-  flex: none;
-  font-family: var(--civ-font-mono);
-  font-size: var(--civ-text-xs);
-  padding: var(--civ-space-1) var(--civ-space-2);
-}
-
-.delete[data-armed="true"] {
-  border-color: var(--civ-danger);
-  color: var(--civ-danger);
 }

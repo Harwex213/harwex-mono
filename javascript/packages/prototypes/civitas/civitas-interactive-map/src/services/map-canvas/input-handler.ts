@@ -5,10 +5,7 @@ import {
   type InteractionEvent,
   type InteractionState,
 } from "./interaction-machine";
-import {
-  samplePathPixels,
-  type Point,
-} from "../../domain/index";
+import type { Point } from "../../domain/index";
 import {
   mapPixelAt,
   provinceAt,
@@ -57,18 +54,6 @@ function bindInput(
     return pixel ? provinceAt(store, pixel.x, pixel.y) : null;
   }
 
-  function paintLine(command: Extract<InteractionCommand, { type: "paintLine" }>): void {
-    const ids: number[] = [];
-    samplePathPixels(command.fromX, command.fromY, command.toX, command.toY, (x, y) => {
-      const id = provinceAt(store, x, y);
-      if (id !== null) {
-        ids.push(id);
-      }
-    });
-    // One call per event. `extendStroke` dedupes the ids.
-    registry.extendStroke(ids);
-  }
-
   function run(command: InteractionCommand, domEvent: Event | null): void {
     switch (command.type) {
       case "preventDefault": {
@@ -92,24 +77,6 @@ function bindInput(
         registry.setHoveredProvince(
           command.pixel ? provinceAt(store, command.pixel.x, command.pixel.y) : null,
         );
-        return;
-      }
-      case "beginStroke": {
-        const id = provinceAt(store, command.pixel.x, command.pixel.y);
-        const began = registry.beginStroke(id, command.erase) !== null;
-        dispatch({ type: began ? "strokeBegan" : "strokeRefused" }, domEvent);
-        return;
-      }
-      case "paintLine": {
-        paintLine(command);
-        return;
-      }
-      case "endStroke": {
-        registry.endStroke();
-        return;
-      }
-      case "cancelStroke": {
-        registry.cancelStroke();
         return;
       }
       case "setPanning": {
@@ -144,7 +111,7 @@ function bindInput(
     }
   }
 
-  // The state is stored before the commands run, so a nested dispatch from `beginStroke` sees it.
+  // The state is stored before the commands run.
   function dispatch(event: InteractionEvent, domEvent: Event | null): void {
     const next = transition(state, event);
     state = next.state;
@@ -161,13 +128,10 @@ function bindInput(
         pointerId: event.pointerId,
         button: event.button,
         ctrlKey: event.ctrlKey,
-        altKey: event.altKey,
         clientX: event.clientX,
         clientY: event.clientY,
         onHudControl: isHudControl(event.target),
         view: current ? { x: current.x, y: current.y } : null,
-        assignMode: store.assign.mode.peek(),
-        pixel: pixelAtClient(event.clientX, event.clientY),
       },
       event,
     );
@@ -232,7 +196,6 @@ function bindInput(
         clientX: event.clientX,
         clientY: event.clientY,
         onHudControl: isHudControl(event.target),
-        assignMode: store.assign.mode.peek(),
       },
       event,
     );

@@ -2,12 +2,14 @@ import { computed, signal } from "@preact/signals-react";
 import {
   buildMask,
   type BrushShape,
+  type EditorMode,
   type Tool,
 } from "../../domain/index";
 
-// The active tool, the brush, and how the two images are shown.
+// The editor mode, the active tool, the brush, and how the two images are shown.
 
 function createToolsSlice() {
+  const mode = signal<EditorMode>("provinces");
   const tool = signal<Tool>("brush");
   const brushSize = signal(12);
   const brushShape = signal<BrushShape>("circle");
@@ -21,7 +23,7 @@ function createToolsSlice() {
     return buildMask(brushSize.value, brushShape.value);
   });
 
-  return { tool, brushSize, brushShape, brushMask, layerOpacity, layerVisible, showBaseMap };
+  return { mode, tool, brushSize, brushShape, brushMask, layerOpacity, layerVisible, showBaseMap };
 }
 
 type TToolsSlice = ReturnType<typeof createToolsSlice>;

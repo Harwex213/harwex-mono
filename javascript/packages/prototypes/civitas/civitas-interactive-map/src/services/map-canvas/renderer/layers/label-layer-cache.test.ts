@@ -16,7 +16,6 @@ import {
   measureLabelMetrics,
 } from "./label-layer";
 import {
-  NAME_MAX,
   type CountryLabelSource,
   type LabelPlacement,
   type Size,
@@ -203,18 +202,18 @@ test("a broken measureText cannot put NaN into a collision rect", () => {
   assert.deepEqual(measureLabelMetrics(negative.ctx, "AB").advances, [0, 0]);
 });
 
-test("a name at the schema's NAME_MAX is measured whole, with n - 1 gaps", () => {
-  // A maximum-length name is measured as is. The fit test hides it; nothing truncates it.
+test("a long name is measured whole, with n - 1 gaps", () => {
+  // A long name is measured as is. The fit test hides it; nothing truncates it.
   clearLabelMetricsCache();
   const recorder = createRecorder();
-  const text = "A".repeat(NAME_MAX);
+  const length = 120;
+  const text = "A".repeat(length);
   const metrics = measureLabelMetrics(recorder.ctx, text);
 
-  assert.equal(NAME_MAX, 120);
-  assert.equal(metrics.advances.length, NAME_MAX);
+  assert.equal(metrics.advances.length, length);
   assert.equal(
     labelTextWidth(metrics, 20),
-    (metrics.total * 20) / METRIC_FONT_PX + LETTER_SPACING_EM * 20 * (NAME_MAX - 1),
+    (metrics.total * 20) / METRIC_FONT_PX + LETTER_SPACING_EM * 20 * (length - 1),
   );
 });
 

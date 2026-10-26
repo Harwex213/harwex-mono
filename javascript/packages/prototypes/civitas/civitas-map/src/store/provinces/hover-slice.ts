@@ -15,7 +15,7 @@ function createHoverSlice(provinces: TProvincesSlice) {
       return null;
     }
 
-    return provinces.list.value.find((entry) => entry.color === value) ?? null;
+    return provinces.byColor.value.get(value) ?? null;
   });
 
   return { pixel, color, province };

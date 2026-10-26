@@ -8,6 +8,7 @@
 // colors/ — the packed RGBA word that identifies a province, hex and generated colours.
 export {
   fromHex,
+  pack,
   packOpaque,
   toHex,
   unpack,
@@ -68,6 +69,7 @@ export {
 // files/ — what a file is, judged from its name and type, and the base name of an export.
 export {
   baseName,
+  isCountriesFile,
   isJsonFile,
   isMapImageFile,
   isPngFile,
@@ -88,6 +90,31 @@ export {
 // interaction/ — what a press on the map means.
 export {
   classifyPress,
+  type EditorMode,
   type Press,
   type Tool,
 } from "./interaction/press";
+
+// countries/ — countries as groups of provinces, the countries file, and the
+// per-pixel province index the countries view is coloured from.
+export {
+  assignProvinces,
+  createCountry,
+  keepProvinces,
+  nextCountryIdAfter,
+  ownerOf,
+  strokeActionFor,
+  type Country,
+  type StrokeAction,
+} from "./countries/countries";
+export {
+  buildCountriesFile,
+  parseCountriesFile,
+} from "./countries/countries-file";
+export {
+  buildProvinceIndex,
+  paintSlots,
+  provinceAtPixel,
+  unionRect,
+  type ProvinceIndex,
+} from "./countries/province-index";

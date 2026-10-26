@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  COUNTRIES_URL,
   MANIFEST_URL,
   MAP_IMAGE_URL,
   PROVINCE_IMAGE_URL,
@@ -31,8 +32,9 @@ test("the asset URLs are relative, so a subdirectory deploy still resolves them"
   assert.equal(MANIFEST_URL, "assets/provinces_manifest.json");
   assert.equal(PROVINCE_IMAGE_URL, "assets/provinces_map.png");
   assert.equal(MAP_IMAGE_URL, "assets/map.png");
+  assert.equal(COUNTRIES_URL, "assets/countries.json");
 
-  for (const url of [MANIFEST_URL, PROVINCE_IMAGE_URL, MAP_IMAGE_URL]) {
+  for (const url of [MANIFEST_URL, PROVINCE_IMAGE_URL, MAP_IMAGE_URL, COUNTRIES_URL]) {
     // Relative URLs resolve in dev, in `dist/` and under a deploy sub-path.
     assert.ok(!url.startsWith("/"), url + " must not start with a slash");
     assert.ok(url.startsWith("assets/"), url + " must live under assets/");
@@ -95,4 +97,54 @@ test("a manifest the parser rejects surfaces the parser's own message, prefixed"
 
   // The caller already knows which step failed.
   assert.deepEqual(steps, ["manifest"]);
+});
+
+// A manifest the parser accepts, so the load reaches the countries step.
+const VALID_MANIFEST = JSON.stringify({
+  format: "civitas.province-map",
+  version: 1,
+  map: { source: "x.png", width: 2, height: 1 },
+  provinces: [],
+  painted: { pixelCount: 0, coverage: 0, unregisteredColors: [] },
+});
+
+test("a missing countries file fails the load with its URL and status", async () => {
+  const steps: LoadStep[] = [];
+  await withFetch(
+    (url) => {
+      if (url === MANIFEST_URL) {
+        return new Response(VALID_MANIFEST, { status: 200 });
+      }
+      return new Response("nope", { status: 404 });
+    },
+    async () => {
+      await assert.rejects(
+        loadMapAssets((step) => {
+          steps.push(step);
+        }),
+        /assets\/countries\.json responded 404/,
+      );
+    },
+  );
+
+  assert.deepEqual(steps, ["manifest", "countries"]);
+});
+
+test("a countries file of another format fails the load with the parser's message", async () => {
+  await withFetch(
+    (url) => {
+      if (url === MANIFEST_URL) {
+        return new Response(VALID_MANIFEST, { status: 200 });
+      }
+      if (url === COUNTRIES_URL) {
+        return new Response(JSON.stringify({ format: "civitas.countries", version: 9, countries: [] }), {
+          status: 200,
+        });
+      }
+      return new Response("nope", { status: 404 });
+    },
+    async () => {
+      await assert.rejects(loadMapAssets(), /assets\/countries\.json: countries version is 9, expected 1/);
+    },
+  );
 });

@@ -1,9 +1,14 @@
 import {
   clampSize,
   type BrushShape,
+  type EditorMode,
   type Tool,
 } from "../../domain/index";
 import type { TStore } from "../../store/index";
+
+function setMode(store: TStore, mode: EditorMode): void {
+  store.tools.mode.value = mode;
+}
 
 function setTool(store: TStore, tool: Tool): void {
   store.tools.tool.value = tool;
@@ -45,6 +50,7 @@ export {
   setBrushSize,
   setLayerOpacity,
   setLayerVisible,
+  setMode,
   setShowBaseMap,
   setTool,
   stepBrushSize,

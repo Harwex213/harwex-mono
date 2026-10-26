@@ -26,6 +26,12 @@ function isJsonFile(file: FileLike): boolean {
   return file.type === "application/json" || /\.json$/i.test(file.name);
 }
 
+// The countries file of an export is `<export>.countries.json`, beside the
+// manifest `<export>.json`. Both are JSON, so the name tells them apart.
+function isCountriesFile(file: FileLike): boolean {
+  return /\.countries\.json$/i.test(file.name);
+}
+
 // The file name without its extension, used to name an export after its map.
 function baseName(filename: string): string {
   return filename.replace(/\.[^./\\]+$/, "") || "map";
@@ -33,6 +39,7 @@ function baseName(filename: string): string {
 
 export {
   baseName,
+  isCountriesFile,
   isJsonFile,
   isMapImageFile,
   isPngFile,

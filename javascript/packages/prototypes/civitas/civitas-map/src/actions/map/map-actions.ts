@@ -1,25 +1,21 @@
 import { batch } from "@preact/signals-react";
-import type { LoadedMap, MapImage, TDatasources } from "../../datasource/index";
+import type {
+  LoadedMap,
+  MapImage,
+  TDatasources,
+} from "../../datasource/index";
 import {
   ProvinceLayer,
   isMapImageFile,
 } from "../../domain/index";
 import type { TStore } from "../../store/index";
+import { replaceCountries } from "../countries/country-actions";
 import { addProvince } from "../provinces/province-actions";
 import { errorMessage } from "../status/status-actions";
 import { markLayerChanged } from "./layer-commit";
 import { fitToViewport } from "./view-actions";
 
-// Dev builds serve `assets/maps/map.png` from the package folder (see the rspack
-// config), which saves picking the map on every reload.
-const SAMPLE_IMAGE: MapImage = {
-  name: "map.png",
-  url: "/assets/maps/map.png",
-  bytes: 0,
-  manifestUrl: null,
-};
-
-// A new map replaces everything: the layer, the registry, the history.
+// A new map replaces everything: the layer, the registry, the countries, the history.
 function adoptMap(store: TStore, loaded: LoadedMap): void {
   batch(() => {
     store.map.bitmap.value?.close();
@@ -33,6 +29,7 @@ function adoptMap(store: TStore, loaded: LoadedMap): void {
     store.hover.pixel.value = null;
     store.hover.color.value = 0;
     store.map.historyRevision.value += 1;
+    replaceCountries(store, []);
 
     // A fresh map starts with one province, so the brush is usable straight away
     // instead of refusing the first stroke.
@@ -73,12 +70,7 @@ function openMapImage(store: TStore, sources: TDatasources, image: MapImage): Pr
   });
 }
 
-function openSampleMap(store: TStore, sources: TDatasources): Promise<void> {
-  return openMapImage(store, sources, SAMPLE_IMAGE);
-}
-
 export {
   openMapFile,
   openMapImage,
-  openSampleMap,
 };

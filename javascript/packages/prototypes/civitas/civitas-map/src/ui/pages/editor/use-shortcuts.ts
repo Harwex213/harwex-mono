@@ -5,7 +5,15 @@ import type { TStore } from "../../../store/index";
 
 type TShortcutsRegistry = Pick<
   TAppRegistry,
-  "addProvince" | "fitToViewport" | "redo" | "setTool" | "stepBrushSize" | "toggleLayerVisible" | "undo" | "zoomCentre"
+  | "addCountry"
+  | "addProvince"
+  | "fitToViewport"
+  | "redo"
+  | "setTool"
+  | "stepBrushSize"
+  | "toggleLayerVisible"
+  | "undo"
+  | "zoomCentre"
 >;
 
 const TOOL_KEYS: Record<string, Tool> = {
@@ -42,6 +50,12 @@ function useShortcuts(store: TStore, registry: TShortcutsRegistry): void {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "z") {
         event.preventDefault();
 
+        // The history holds province paint. The countries mode does not show
+        // that paint, so an undo there would change what the user cannot see.
+        if (store.tools.mode.peek() === "countries") {
+          return;
+        }
+
         if (event.shiftKey) {
           registry.redo();
         } else {
@@ -60,7 +74,9 @@ function useShortcuts(store: TStore, registry: TShortcutsRegistry): void {
       }
 
       const key = event.key.toLowerCase();
-      const nextTool = TOOL_KEYS[key];
+      const provincesMode = store.tools.mode.peek() === "provinces";
+      // The countries mode has no tools and no brush.
+      const nextTool = provincesMode ? TOOL_KEYS[key] : undefined;
 
       if (nextTool) {
         registry.setTool(nextTool);
@@ -70,9 +86,15 @@ function useShortcuts(store: TStore, registry: TShortcutsRegistry): void {
 
       switch (event.key) {
         case "[":
+          if (!provincesMode) {
+            return;
+          }
           registry.stepBrushSize(-1);
           break;
         case "]":
+          if (!provincesMode) {
+            return;
+          }
           registry.stepBrushSize(1);
           break;
         case "0":
@@ -86,7 +108,11 @@ function useShortcuts(store: TStore, registry: TShortcutsRegistry): void {
           registry.zoomCentre(0.8);
           break;
         case "n":
-          registry.addProvince();
+          if (provincesMode) {
+            registry.addProvince();
+          } else {
+            registry.addCountry();
+          }
           break;
         case "v":
           registry.toggleLayerVisible();

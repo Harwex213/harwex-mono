@@ -1,17 +1,17 @@
 import { useSignals } from "@preact/signals-react/runtime";
 import type { TAppRegistry } from "../../../actions/index";
-import {
-  hasWork,
-  useStore,
-} from "../../../store/index";
+import type { EditorMode } from "../../../domain/index";
+import { useStore } from "../../../store/index";
 import styles from "./top-bar.module.css";
 
 type TTopBarProps = {
-  registry: Pick<TAppRegistry, "detectFromBaseMap" | "exportAll" | "fitToViewport" | "openLibrary" | "openSampleMap">;
+  registry: Pick<TAppRegistry, "exportAll" | "openLibrary" | "setMode">;
 };
 
-// Production builds have no sample map, so the button is compiled out.
-const IS_DEV = process.env.NODE_ENV !== "production";
+const MODES: Array<{ id: EditorMode; label: string; hint: string }> = [
+  { id: "provinces", label: "Provinces", hint: "Paint provinces onto the map" },
+  { id: "countries", label: "Countries", hint: "Make countries out of provinces" },
+];
 
 function TopBar({ registry }: TTopBarProps) {
   useSignals();
@@ -22,9 +22,25 @@ function TopBar({ registry }: TTopBarProps) {
 
   return (
     <header className={styles.bar}>
-      <h1 className={styles.title}>
-        Civitas<span className={styles.titleDim}>map editor</span>
-      </h1>
+      <h1 className={styles.title}>Civitas</h1>
+
+      <div aria-label="Editor mode" className={styles.modes} role="group">
+        {MODES.map((entry) => (
+          <button
+            aria-pressed={entry.id === store.tools.mode.value}
+            className={entry.id === store.tools.mode.value ? `${styles.mode} ${styles.modeActive}` : styles.mode}
+            disabled={!info}
+            key={entry.id}
+            onClick={() => {
+              registry.setMode(entry.id);
+            }}
+            title={entry.hint}
+            type="button"
+          >
+            {entry.label}
+          </button>
+        ))}
+      </div>
 
       {/* Both load buttons open the map library dialog. A drop on the window still
           takes local files, see the editor page. */}
@@ -48,18 +64,6 @@ function TopBar({ registry }: TTopBarProps) {
         >
           Load provinces…
         </button>
-        {IS_DEV && (
-          <button
-            disabled={busy}
-            onClick={() => {
-              void registry.openSampleMap();
-            }}
-            title="assets/maps/map.png"
-            type="button"
-          >
-            Sample
-          </button>
-        )}
       </div>
 
       {info && (
@@ -74,29 +78,6 @@ function TopBar({ registry }: TTopBarProps) {
       <div className={styles.spacer} />
 
       <div className={styles.group}>
-        <button
-          disabled={!info || busy}
-          onClick={() => {
-            if (hasWork(store) && !window.confirm("Replace the provinces layer with detected borders?")) {
-              return;
-            }
-
-            void registry.detectFromBaseMap();
-          }}
-          title="Find provinces from borders drawn into the map image"
-          type="button"
-        >
-          {store.status.detecting.value ? "Detecting…" : "Detect borders"}
-        </button>
-        <button
-          disabled={!info}
-          onClick={() => {
-            registry.fitToViewport();
-          }}
-          type="button"
-        >
-          Fit
-        </button>
         <button
           className={styles.primary}
           disabled={!info || busy || store.provinces.list.value.length === 0}

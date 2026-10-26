@@ -15,6 +15,16 @@ import {
   pickLibraryImage,
   retryLibrary,
 } from "./library/library-actions";
+import {
+  addCountry,
+  beginCountryStroke,
+  deleteCountry,
+  endCountryStroke,
+  extendCountryStroke,
+  recolorCountry,
+  renameCountry,
+  selectCountry,
+} from "./countries/country-actions";
 import { detectFromBaseMap } from "./provinces/detect-actions";
 import {
   dismissError,
@@ -23,10 +33,7 @@ import {
 } from "./status/status-actions";
 import { exportAll } from "./provinces/export-actions";
 import { importProvinceFiles } from "./provinces/import-actions";
-import {
-  openMapFile,
-  openSampleMap,
-} from "./map/map-actions";
+import { openMapFile } from "./map/map-actions";
 import {
   addProvince,
   deleteProvince,
@@ -40,6 +47,7 @@ import {
   setBrushSize,
   setLayerOpacity,
   setLayerVisible,
+  setMode,
   setShowBaseMap,
   setTool,
   stepBrushSize,
@@ -61,29 +69,38 @@ import type { TStore } from "../store/index";
 
 // Actions that only read and write the store.
 const storeActions = {
+  addCountry,
   addProvince,
+  beginCountryStroke,
   beginStroke,
   clearLayer,
   closeLibrary,
+  deleteCountry,
   deleteProvince,
   dismissError,
   dismissNotice,
+  endCountryStroke,
   endStroke,
+  extendCountryStroke,
   extendStroke,
   fillAt,
   fitToViewport,
   measureViewport,
   panTo,
   pickAt,
+  recolorCountry,
   recolorProvince,
   redo,
+  renameCountry,
   renameProvince,
+  selectCountry,
   selectProvince,
   setBrushShape,
   setBrushSize,
   setHover,
   setLayerOpacity,
   setLayerVisible,
+  setMode,
   setProvinceKind,
   setShowBaseMap,
   setTool,
@@ -102,7 +119,6 @@ const sourceActions = {
   importProvinceFiles,
   openLibrary,
   openMapFile,
-  openSampleMap,
   pickLibraryImage,
   retryLibrary,
 };

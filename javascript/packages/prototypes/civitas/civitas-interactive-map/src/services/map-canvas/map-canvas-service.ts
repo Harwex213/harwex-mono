@@ -167,12 +167,10 @@ class MapCanvasService {
     };
   }
 
-  // Host CSS picks the cursor from these attributes.
+  // Host CSS picks the cursor from this attribute.
   private watchHostAttributes(host: HTMLElement): () => void {
     const store = this.store;
     return effect(() => {
-      host.dataset.mode = store.assign.mode.value ? "assign" : "pan";
-      host.dataset.painting = store.assign.painting.value ? "true" : "false";
       host.dataset.panning = store.view.panning.value ? "true" : "false";
     });
   }

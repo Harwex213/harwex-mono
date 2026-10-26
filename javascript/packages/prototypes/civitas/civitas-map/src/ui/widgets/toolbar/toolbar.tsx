@@ -12,6 +12,7 @@ type TToolbarProps = {
   registry: Pick<
     TAppRegistry,
     | "clearLayer"
+    | "fitToViewport"
     | "redo"
     | "setBrushShape"
     | "setBrushSize"
@@ -32,81 +33,103 @@ const TOOLS: Array<{ id: Tool; label: string; hint: string }> = [
 
 const SIZE_PRESETS = [1, 4, 12, 32, 64];
 
+// The left menu. The provinces mode shows the cursor modes, the brush and the
+// history. The countries mode has one thing a click does, so it shows only the
+// view and the layer.
 function Toolbar({ registry }: TToolbarProps) {
   useSignals();
 
   const store = useStore();
   const tools = store.tools;
   const disabled = store.map.info.value === null;
+  const provincesMode = tools.mode.value === "provinces";
 
   return (
     <aside className={styles.panel}>
-      <section className={styles.section}>
-        <h2 className={styles.heading}>Tools</h2>
-        <div className={styles.tools}>
-          {TOOLS.map((entry) => (
-            <button
-              className={entry.id === tools.tool.value ? `${styles.tool} ${styles.toolActive}` : styles.tool}
-              disabled={disabled}
-              key={entry.id}
-              onClick={() => {
-                registry.setTool(entry.id);
-              }}
-              title={entry.hint}
-              type="button"
-            >
-              {entry.label}
-            </button>
-          ))}
-        </div>
-      </section>
+      {provincesMode && (
+        <section className={styles.section}>
+          <h2 className={styles.heading}>Cursor Mode</h2>
+          <div className={styles.tools}>
+            {TOOLS.map((entry) => (
+              <button
+                className={entry.id === tools.tool.value ? `${styles.tool} ${styles.toolActive}` : styles.tool}
+                disabled={disabled}
+                key={entry.id}
+                onClick={() => {
+                  registry.setTool(entry.id);
+                }}
+                title={entry.hint}
+                type="button"
+              >
+                {entry.label}
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {provincesMode && (
+        <section className={styles.section}>
+          <h2 className={styles.heading}>
+            Brush<span className={styles.value}>{tools.brushSize.value} px</span>
+          </h2>
+          <input
+            disabled={disabled}
+            max={MAX_SIZE}
+            min={MIN_SIZE}
+            onChange={(event) => {
+              registry.setBrushSize(Number(event.target.value));
+            }}
+            type="range"
+            value={tools.brushSize.value}
+          />
+          <div className={styles.presets}>
+            {SIZE_PRESETS.map((size) => (
+              <button
+                className={styles.preset}
+                disabled={disabled}
+                key={size}
+                onClick={() => {
+                  registry.setBrushSize(size);
+                }}
+                type="button"
+              >
+                {size}
+              </button>
+            ))}
+          </div>
+          <div className={styles.shapes}>
+            {(["circle", "square"] as const).map((shape) => (
+              <button
+                className={
+                  shape === tools.brushShape.value ? `${styles.tool} ${styles.toolActive}` : styles.tool
+                }
+                disabled={disabled}
+                key={shape}
+                onClick={() => {
+                  registry.setBrushShape(shape);
+                }}
+                type="button"
+              >
+                {shape === "circle" ? "Round" : "Square"}
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
 
       <section className={styles.section}>
-        <h2 className={styles.heading}>
-          Brush<span className={styles.value}>{tools.brushSize.value} px</span>
-        </h2>
-        <input
+        <h2 className={styles.heading}>View</h2>
+        <button
           disabled={disabled}
-          max={MAX_SIZE}
-          min={MIN_SIZE}
-          onChange={(event) => {
-            registry.setBrushSize(Number(event.target.value));
+          onClick={() => {
+            registry.fitToViewport();
           }}
-          type="range"
-          value={tools.brushSize.value}
-        />
-        <div className={styles.presets}>
-          {SIZE_PRESETS.map((size) => (
-            <button
-              className={styles.preset}
-              disabled={disabled}
-              key={size}
-              onClick={() => {
-                registry.setBrushSize(size);
-              }}
-              type="button"
-            >
-              {size}
-            </button>
-          ))}
-        </div>
-        <div className={styles.shapes}>
-          {(["circle", "square"] as const).map((shape) => (
-            <button
-              className={
-                shape === tools.brushShape.value ? `${styles.tool} ${styles.toolActive}` : styles.tool
-              }
-              disabled={disabled}
-              key={shape}
-              onClick={() => {
-                registry.setBrushShape(shape);
-              }}
-              type="button"
-            >
-              {shape === "circle" ? "Round" : "Square"}
-            </button>
-          ))}
-        </div>
+          title="0 — fit the whole map into the window"
+          type="button"
+        >
+          Fit
+        </button>
       </section>
 
       <section className={styles.section}>
@@ -132,7 +155,7 @@ function Toolbar({ registry }: TToolbarProps) {
             }}
             type="checkbox"
           />
-          Provinces layer
+          {provincesMode ? "Provinces layer" : "Countries layer"}
         </label>
         <label className={styles.check}>
           <input
@@ -147,41 +170,43 @@ function Toolbar({ registry }: TToolbarProps) {
         </label>
       </section>
 
-      <section className={styles.section}>
-        <h2 className={styles.heading}>History</h2>
-        <div className={styles.row}>
+      {provincesMode && (
+        <section className={styles.section}>
+          <h2 className={styles.heading}>History</h2>
+          <div className={styles.row}>
+            <button
+              disabled={!store.map.canUndo.value}
+              onClick={() => {
+                registry.undo();
+              }}
+              type="button"
+            >
+              Undo
+            </button>
+            <button
+              disabled={!store.map.canRedo.value}
+              onClick={() => {
+                registry.redo();
+              }}
+              type="button"
+            >
+              Redo
+            </button>
+          </div>
           <button
-            disabled={!store.map.canUndo.value}
+            className={styles.danger}
+            disabled={disabled}
             onClick={() => {
-              registry.undo();
+              if (window.confirm("Erase the whole provinces layer?")) {
+                registry.clearLayer();
+              }
             }}
             type="button"
           >
-            Undo
+            Clear layer
           </button>
-          <button
-            disabled={!store.map.canRedo.value}
-            onClick={() => {
-              registry.redo();
-            }}
-            type="button"
-          >
-            Redo
-          </button>
-        </div>
-        <button
-          className={styles.danger}
-          disabled={disabled}
-          onClick={() => {
-            if (window.confirm("Erase the whole provinces layer?")) {
-              registry.clearLayer();
-            }
-          }}
-          type="button"
-        >
-          Clear layer
-        </button>
-      </section>
+        </section>
+      )}
     </aside>
   );
 }

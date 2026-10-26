@@ -13,7 +13,8 @@ import type { TMapCanvasServiceRegistry } from "./map-canvas-registry";
 type Gesture =
   | { kind: "idle" }
   | { kind: "pan"; pointerId: number; startX: number; startY: number; originX: number; originY: number }
-  | { kind: "paint"; pointerId: number; erasing: boolean; last: { x: number; y: number } };
+  | { kind: "paint"; pointerId: number; erasing: boolean; last: { x: number; y: number } }
+  | { kind: "country"; pointerId: number; last: { x: number; y: number } };
 
 const WHEEL_STEP = 1.0015;
 
@@ -48,6 +49,8 @@ class InputHandler {
     const press = classifyPress({
       spaceHeld: this.spaceHeld.peek(),
       button: event.button,
+      altKey: event.altKey,
+      mode: this.store.tools.mode.peek(),
       tool: this.store.tools.tool.peek(),
     });
 
@@ -84,6 +87,14 @@ class InputHandler {
       return;
     }
 
+    if (press.kind === "countryStroke") {
+      if (this.registry.beginCountryStroke(pixel.x, pixel.y, press.erasing)) {
+        this.gesture = { kind: "country", pointerId: event.pointerId, last: pixel };
+      }
+
+      return;
+    }
+
     if (this.registry.beginStroke(pixel.x, pixel.y, press.erasing)) {
       this.gesture = { kind: "paint", pointerId: event.pointerId, erasing: press.erasing, last: pixel };
     }
@@ -111,11 +122,16 @@ class InputHandler {
 
     this.registry.setHover(pixel);
 
-    if (gesture.kind !== "paint" || gesture.pointerId !== event.pointerId) {
+    if (gesture.kind === "idle" || gesture.pointerId !== event.pointerId) {
       return;
     }
 
-    this.registry.extendStroke(gesture.last, pixel, gesture.erasing);
+    if (gesture.kind === "country") {
+      this.registry.extendCountryStroke(gesture.last, pixel);
+    } else {
+      this.registry.extendStroke(gesture.last, pixel, gesture.erasing);
+    }
+
     gesture.last = pixel;
   };
 
@@ -128,6 +144,10 @@ class InputHandler {
 
     if (gesture.kind === "paint") {
       this.registry.endStroke();
+    }
+
+    if (gesture.kind === "country") {
+      this.registry.endCountryStroke();
     }
 
     this.gesture = { kind: "idle" };

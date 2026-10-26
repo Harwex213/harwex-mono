@@ -5,16 +5,17 @@ import path from "node:path";
 // response is the whole contract the app relies on:
 //
 //   GET /api/maps -> 200 { "images": [MapImage, ...] }
-//   MapImage = { name, url, bytes, manifestUrl }
+//   MapImage = { name, url, bytes, manifestUrl, countriesUrl }
 //
-// `url` and `manifestUrl` are relative to the page. The images themselves are
+// The urls are relative to the page. The images themselves are
 // served by the dev server's static handler, not by this module.
 
 const IMAGE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".webp"]);
 
 // Lists the images in `directory`, sorted by name. An image whose stem also has a
-// `.json` file beside it gets that file as `manifestUrl`: that pair is what the
-// editor's export writes, and `Load provinces…` reads both halves.
+// `.json` file beside it gets that file as `manifestUrl`, and a
+// `.countries.json` file as `countriesUrl`: that is what the editor's export
+// writes, and `Load provinces…` reads all of it.
 async function listMapImages(directory, urlPrefix) {
   let names;
   try {
@@ -43,11 +44,13 @@ async function listMapImages(directory, urlPrefix) {
     }
     const stem = name.slice(0, name.length - extension.length);
     const manifestName = lowerNames.get((stem + ".json").toLowerCase()) ?? null;
+    const countriesName = lowerNames.get((stem + ".countries.json").toLowerCase()) ?? null;
     images.push({
       name,
       url: urlPrefix + encodeURIComponent(name),
       bytes: info.size,
       manifestUrl: manifestName === null ? null : urlPrefix + encodeURIComponent(manifestName),
+      countriesUrl: countriesName === null ? null : urlPrefix + encodeURIComponent(countriesName),
     });
   }
 

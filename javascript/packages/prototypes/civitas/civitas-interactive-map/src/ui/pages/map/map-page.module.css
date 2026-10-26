@@ -13,7 +13,7 @@
   z-index: var(--civ-z-map);
 }
 
-/* Spans the window, so it passes clicks through. Only the plaque and the banner take pointer events. */
+/* Spans the window, so it passes clicks through. Only the plaque takes pointer events. */
 .plaqueRail {
   align-items: center;
   display: flex;
@@ -25,29 +25,6 @@
   right: 0;
   top: var(--civ-space-4);
   z-index: var(--civ-z-plaque);
-}
-
-.assignBanner {
-  align-items: center;
-  background: var(--civ-scrim);
-  border: 1px solid var(--civ-gild-soft);
-  border-radius: var(--civ-radius-sm);
-  color: var(--civ-ink-invert);
-  display: flex;
-  font-family: var(--civ-font-mono);
-  font-size: var(--civ-text-sm);
-  gap: var(--civ-space-3);
-  max-width: calc(100vw - var(--civ-space-7));
-  padding: var(--civ-space-2) var(--civ-space-4);
-  pointer-events: none;
-}
-
-.assignSwatch {
-  border: 1px solid var(--civ-ink-invert);
-  display: block;
-  flex: none;
-  height: 12px;
-  width: 18px;
 }
 
 .bar {
@@ -76,13 +53,4 @@
 .barAction:hover {
   border-color: var(--civ-gild);
   color: var(--civ-ink);
-}
-
-/* Decorative ring around the viewport. It takes no pointer events. */
-.assignRail {
-  box-shadow: inset 0 0 0 2px var(--civ-gild-soft);
-  inset: 0;
-  pointer-events: none;
-  position: absolute;
-  z-index: var(--civ-z-banner);
 }
