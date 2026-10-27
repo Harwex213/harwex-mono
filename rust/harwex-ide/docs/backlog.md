@@ -65,3 +65,4 @@ Git:
 
 Tests:
 - [idea] Flaky: `git_window::push_non_current_branch_from_tree` failed 1 of 22 runs under load (seen in task 064). Not investigated.
+- [idea] MR diff tab (task 125): no tree context menu and no jump to the side-by-side diff; long lines are clipped, no sideways scroll; every file's diff is computed up front, not lazily per file.

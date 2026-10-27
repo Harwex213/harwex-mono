@@ -2,7 +2,7 @@
 //! left of each Log tab, and the Log body from `log::log_body`. Task 028 owns this file.
 //!
 //! Tab 0 is the main Log tab and never closes. `+` adds a Log tab with clean filters. Console,
-//! History, Compare with branch and Diff with Working Tree are temporary tabs. The tab strip lives
+//! History, Compare with branch, Compare MR Diff and Diff with Working Tree are temporary tabs. The tab strip lives
 //! in the tool window's header (`header_tabs`); `⌄` lists every tab when they do not fit.
 
 use std::collections::{BTreeSet, HashMap};
@@ -14,6 +14,7 @@ use ide_git::{BranchCompare, ChangedFile, CommitInfo, Oid};
 use super::branch_tree::{self, Refs, TreeAction, TreeState};
 use super::console::ConsoleUi;
 use super::log::{self, LogView};
+use super::mr_diff::{self, MrTab};
 use crate::icons::{self, Icon};
 use crate::layout::ToolWindow;
 use crate::state::AppState;
@@ -71,6 +72,7 @@ enum TabKind {
     History(Box<LogView>),
     Compare(Box<CompareTab>),
     WorktreeDiff(Box<WorktreeDiffTab>),
+    MrDiff(Box<MrTab>),
 }
 
 struct CompareTab {
@@ -97,6 +99,7 @@ impl GitTab {
             },
             TabKind::Compare(c) => format!("Compare with {}", c.other),
             TabKind::WorktreeDiff(d) => format!("Diff with {}", d.rev),
+            TabKind::MrDiff(m) => m.title(),
         }
     }
 }
@@ -136,6 +139,17 @@ impl GitWindowUi {
             TabKind::Compare(c) => c.data.as_ref().and_then(|d| d.as_ref().ok()).map(|d| (d.only_current.len(), d.only_other.len())),
             _ => None,
         })
+    }
+
+    /// The active Compare MR Diff tab, else the first one.
+    pub fn mr_tab(&self) -> Option<&MrTab> {
+        fn of(t: &GitTab) -> Option<&MrTab> {
+            match &t.kind {
+                TabKind::MrDiff(m) => Some(m),
+                _ => None,
+            }
+        }
+        self.tabs.get(self.active).and_then(of).or_else(|| self.tabs.iter().find_map(of))
     }
 
     fn push_tab(&mut self, kind: TabKind, activate: bool) {
@@ -398,6 +412,7 @@ pub fn tool_window(state: &mut AppState, ui: &mut Ui) {
         TabKind::History(view) => log::log_body(state, view, ui),
         TabKind::Compare(c) => compare_body(state, c, id, ui),
         TabKind::WorktreeDiff(d) => worktree_diff_body(state, d, ui),
+        TabKind::MrDiff(m) => mr_diff::body(state, m, id, ui),
     }
     if let Some(i) = state.ws.git_ui.window.index_of(id) {
         state.ws.git_ui.window.tabs[i].kind = kind;
@@ -435,6 +450,7 @@ fn apply(state: &mut AppState, a: TreeAction) {
         }
         TreeAction::Compare(other) => open_compare(state, other),
         TreeAction::DiffWithWorkingTree(rev) => open_worktree_diff(state, rev),
+        TreeAction::CompareMr(source) => open_mr_diff(state, source),
     }
 }
 
@@ -477,6 +493,33 @@ fn open_worktree_diff(state: &mut AppState, rev: String) {
             }
         },
     );
+}
+
+/// Opens (or activates and reloads) the Compare MR Diff tab of `source` against the current
+/// branch.
+fn open_mr_diff(state: &mut AppState, source: String) {
+    let target = state.ws.git.branch.clone().unwrap_or_else(|| "HEAD".into());
+    let w = &mut state.ws.git_ui.window;
+    match w.tabs.iter().position(|t| matches!(&t.kind, TabKind::MrDiff(m) if m.source == source && m.target == target)) {
+        Some(i) => w.active = i,
+        None => w.push_tab(TabKind::MrDiff(Box::new(MrTab::new(source, target))), true),
+    }
+    let id = w.tabs[w.active].id;
+    let mut kind = std::mem::replace(&mut w.tabs[w.active].kind, TabKind::Console);
+    if let TabKind::MrDiff(m) = &mut kind {
+        mr_diff::load(state, id, m);
+    }
+    if let Some(i) = state.ws.git_ui.window.index_of(id) {
+        state.ws.git_ui.window.tabs[i].kind = kind;
+    }
+}
+
+/// The MR diff tab `id`, for its jobs' results.
+pub(super) fn mr_tab_mut(state: &mut AppState, id: u64) -> Option<&mut MrTab> {
+    match tab_kind_mut(state, id)? {
+        TabKind::MrDiff(m) => Some(m),
+        _ => None,
+    }
 }
 
 fn tab_kind_mut(state: &mut AppState, id: u64) -> Option<&mut TabKind> {

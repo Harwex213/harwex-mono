@@ -34,6 +34,12 @@ const DEBOUNCE: Duration = Duration::from_millis(300);
 
 static NEXT_VIEW: AtomicU64 = AtomicU64::new(1);
 
+/// A fresh view id. Other panes that reuse the changes tree (the MR diff tab) take theirs from
+/// here, so their widget ids never meet a Log view's.
+pub(super) fn next_view_id() -> u64 {
+    NEXT_VIEW.fetch_add(1, Ordering::Relaxed)
+}
+
 /// State shared by every Log tab.
 #[derive(Default)]
 pub struct LogUi {

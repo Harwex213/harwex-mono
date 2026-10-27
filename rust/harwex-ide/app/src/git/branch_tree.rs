@@ -238,6 +238,8 @@ pub enum TreeAction {
     Checkout(String),
     NewBranchFrom(String),
     Compare(String),
+    /// Compare MR Diff (Beta): the branch's changes since it forked from the current one.
+    CompareMr(String),
     DiffWithWorkingTree(String),
     Merge(String),
     Rebase(String),
@@ -490,6 +492,7 @@ fn branch_menu(ui: &mut Ui, b: &BranchRow, current_upstream: Option<&str>, actio
     item(ui, true, &format!("New Branch from '{n}'..."), TreeAction::NewBranchFrom(n.clone()));
     if !b.current {
         item(ui, true, "Compare with Current", TreeAction::Compare(n.clone()));
+        item(ui, true, "Compare MR Diff (Beta)", TreeAction::CompareMr(n.clone()));
     }
     item(ui, true, "Show Diff with Working Tree", TreeAction::DiffWithWorkingTree(n.clone()));
     if !b.current {

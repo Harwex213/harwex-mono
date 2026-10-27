@@ -37,6 +37,7 @@ Git logic for the IDE's IDEA-style Git UI: status, commit of a file subset, diff
 - `rebase_update_refs(onto)` is `git rebase --update-refs <onto>` (git 2.38+): branches that point at rebased commits move too, only when the rebase completes. Conflicts stop it like `rebase`.
 - `rebase_progress()` is the step of a rebase in progress (`RebaseProgress { step, total }`), `None` otherwise. It counts only todo lines that replay a commit (`pick`, `edit`, ...). git's own `msgnum`/`end` also count `update-ref` and `exec` lines.
 - `update_branch(name)` updates a branch that is not checked out: `git fetch <remote> <merge>:refs/heads/<name>` fast-forwards it (git refuses a non-fast-forward and a branch checked out in any worktree) and moves the remote-tracking ref too. It returns `BranchUpdate::{UpToDate, FastForwarded, NotFastForward}`. The current branch is an error: use `pull`.
+- `mr_changes(source)` compares HEAD's tree with `source`'s tree (two-dot, no merge-base), renames detected. `mr_file_diff` reads one of its files; a side over `max_bytes` gives `TooLarge` from the blob sizes, without a line diff.
 - Graph lines longer than `LONG_EDGE_ROWS` (30) rows are cut into two one-row stubs with `GraphRow.arrows`; between them the line holds no lane.
 - A binary `FileDiff` has no texts or hunks but keeps both sides' raw bytes (`old_bytes`, `new_bytes`; empty for text and for a missing side): the app's image diff decodes them.
 - Diffs (`similar`, patience) have a 1.5 s line-diff deadline. Word ranges are computed only for blocks of at most 400 lines.

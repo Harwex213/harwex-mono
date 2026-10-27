@@ -26,6 +26,8 @@ pub mod remote;
 pub mod branch_tree;
 pub mod commit_changes;
 pub mod console;
+// Compare MR Diff (Beta), task 125.
+pub mod mr_diff;
 // Full and path-limited status refresh (task 067).
 pub mod refresh;
 pub mod window;

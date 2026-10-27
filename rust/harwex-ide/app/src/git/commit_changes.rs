@@ -2,7 +2,7 @@
 //! Project tree's look, and the file context menu (Show Diff,
 //! Compare with Local, Edit Source, Cherry-Pick Selected Changes, Create Patch, Copy Patch).
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use egui::{pos2, vec2, Align, Align2, Frame, Id, Key, Layout, Modifiers, Rect, RichText, ScrollArea, Sense, Ui};
@@ -181,9 +181,38 @@ pub struct ChangesPane {
     search: String,
     /// Whether a row matched `search` when it last changed (the field turns red if not).
     search_found: bool,
+    /// Added and deleted lines per file, drawn after the name (the MR diff tab); empty in a Log tab.
+    pub(super) stats: HashMap<PathBuf, (usize, usize)>,
 }
 
 impl ChangesPane {
+    /// Shows `files` without a commit selection (a pane that loads its files itself).
+    pub(super) fn set_list(&mut self, files: Vec<ChangedFile>) {
+        self.requested = Some(Vec::new());
+        self.key = vec![Oid::zero()];
+        self.set_files(Vec::new(), Ok(files));
+    }
+
+    /// Selects the row of `path` and brings it into view, opening the folders above it. The
+    /// focus does not move.
+    pub(super) fn reveal(&mut self, path: &Path) {
+        if self.selected.len() == 1 && self.selected[0] == path {
+            return;
+        }
+        let all = self.tree.rows(&HashSet::new());
+        let Some(at) = all.iter().position(|&(n, _)| self.tree.nodes[n].path == path) else { return };
+        let mut depth = all[at].1;
+        for &(n, d) in all[..at].iter().rev() {
+            if d < depth {
+                self.collapsed.remove(&self.tree.nodes[n].path);
+                depth = d;
+            }
+        }
+        self.scroll_to = self.tree.rows(&self.collapsed).iter().position(|&(n, _)| self.tree.nodes[n].path == path);
+        self.selected = vec![path.to_path_buf()];
+        self.anchor = Some(path.to_path_buf());
+    }
+
     /// The horizontal scroll offset as of the last frame (long paths scroll sideways).
     pub fn scroll_x(&self) -> f32 {
         self.scroll_x
@@ -344,6 +373,17 @@ pub(super) fn show(state: &mut AppState, view: &mut LogView, ui: &mut Ui) {
         log::load_changes(state, view.id, key);
     }
 
+    let note = (view.selection.len() > 1).then(|| format!("{} commits selected", view.selection.len()));
+    let oids = view.selection_oldest_first();
+    if let Some((action, files)) = pane_ui(state, view.id, &mut view.changes, ui, note, true) {
+        run_file_action(state, oids, files, action);
+    }
+}
+
+/// The toolbar (Expand All, Collapse All, an optional dim note), the speed search and the tree of
+/// a changes pane. `menu` turns the file context menu on. Returns what the user asked for on the
+/// tree's files; a pane without the menu still gets Enter and double clicks as `ShowDiff`.
+pub(super) fn pane_ui(state: &mut AppState, view_id: u64, pane: &mut ChangesPane, ui: &mut Ui, note: Option<String>, menu: bool) -> Option<(FileAction, Vec<ChangedFile>)> {
     let mut expand_all = false;
     let mut collapse_all = false;
     let (bar, _) = ui.allocate_exact_size(vec2(ui.available_width(), 30.0), Sense::hover());
@@ -354,46 +394,46 @@ pub(super) fn show(state: &mut AppState, view: &mut LogView, ui: &mut Ui) {
     if crate::layout::icon_button(&mut right, Icon::ExpandAll, "Expand All", "Expand All").clicked() {
         expand_all = true;
     }
-    if view.selection.len() > 1 {
+    if let Some(note) = note {
         let mut left = ui.new_child(egui::UiBuilder::new().max_rect(bar).layout(Layout::left_to_right(Align::Center)));
         left.add_space(4.0);
-        left.label(RichText::new(format!("{} commits selected", view.selection.len())).size(theme::T.font.small).color(theme::T.text_dim));
+        left.label(RichText::new(note).size(theme::T.font.small).color(theme::T.text_dim));
     }
-    let pane = &mut view.changes;
     if expand_all {
         pane.collapsed.clear();
     }
     if collapse_all {
         pane.collapsed = pane.tree.folders().map(|n| n.path.clone()).collect();
     }
-    let search_keys = search_keys(pane, view.id, ui);
+    let search_keys = search_keys(pane, view_id, ui);
     // The speed search field covers the bar above the tree, so it never hides a row.
     if !pane.search.is_empty() {
-        speed_search::tree_field(ui, bar, &pane.search, pane.search_found, crate::workspace::wid(("git-changes-speed-search", view.id)));
+        speed_search::tree_field(ui, bar, &pane.search, pane.search_found, crate::workspace::wid(("git-changes-speed-search", view_id)));
     }
 
-    let oids = view.selection_oldest_first();
-    egui::CentralPanel::default().frame(Frame::NONE).show_inside(ui, |ui| {
-        if let Some(e) = &view.changes.error {
-            ui.label(RichText::new(e).color(theme::T.error));
-            return;
-        }
-        if view.changes.requested.as_ref() != Some(&view.changes.key) && view.changes.files.is_empty() {
-            ui.label(RichText::new("Loading...").color(theme::T.text_dim));
-            return;
-        }
-        if view.changes.files.is_empty() {
-            ui.label(RichText::new("No changed files.").color(theme::T.text_dim));
-            return;
-        }
-        if let Some((action, files)) = tree(state, view.id, &mut view.changes, ui) {
-            run_file_action(state, oids, files, action);
-        }
-    });
+    let out = egui::CentralPanel::default()
+        .frame(Frame::NONE)
+        .show_inside(ui, |ui| {
+            if let Some(e) = &pane.error {
+                ui.label(RichText::new(e).color(theme::T.error));
+                return None;
+            }
+            if pane.requested.as_ref() != Some(&pane.key) && pane.files.is_empty() {
+                ui.label(RichText::new("Loading...").color(theme::T.text_dim));
+                return None;
+            }
+            if pane.files.is_empty() {
+                ui.label(RichText::new("No changed files.").color(theme::T.text_dim));
+                return None;
+            }
+            tree(state, view_id, pane, ui, menu)
+        })
+        .inner;
     // Enter acts on the selected match (the tree's own Enter) and ends the search, like IDEA.
     if search_keys.enter {
-        view.changes.search.clear();
+        pane.search.clear();
     }
+    out
 }
 
 /// The speed search keys of a view's changes tree, read before the tree's own keys. The search
@@ -436,12 +476,20 @@ fn row_width(fonts: &egui::text::Fonts, row: &ChangeRow, name: &str) -> f32 {
     4.0 + row.depth as f32 * t.space.indent + 34.0 + measure(name.to_string()) + extra + 12.0
 }
 
+/// The width of a file's `+a -d` counts, with the gap before them.
+fn stats_width(fonts: &egui::text::Fonts, stats: Option<&(usize, usize)>) -> f32 {
+    let Some((adds, dels)) = stats else { return 0.0 };
+    let t = &theme::T;
+    let measure = |s: String| fonts.layout_no_wrap(s, t.small_font(), t.text).size().x;
+    8.0 + measure(format!("+{adds}")) + 4.0 + measure(format!("-{dels}"))
+}
+
 /// The focus id of a view's changes tree.
 fn focus_id(view_id: u64) -> Id {
     crate::workspace::wid(("git-changes-tree", view_id))
 }
 
-fn tree(state: &mut AppState, view_id: u64, pane: &mut ChangesPane, ui: &mut Ui) -> Option<(FileAction, Vec<ChangedFile>)> {
+fn tree(state: &mut AppState, view_id: u64, pane: &mut ChangesPane, ui: &mut Ui, with_menu: bool) -> Option<(FileAction, Vec<ChangedFile>)> {
     let t = &theme::T;
     let rows = pane.rows();
     let focus = focus_id(view_id);
@@ -471,7 +519,7 @@ fn tree(state: &mut AppState, view_id: u64, pane: &mut ChangesPane, ui: &mut Ui)
     let mut menu: Option<FileAction> = None;
     ui.spacing_mut().item_spacing.y = 0.0;
     let view = ui.available_rect_before_wrap();
-    let content_w = ui.fonts(|f| rows.iter().enumerate().map(|(i, r)| row_width(f, r, if i == 0 && r.name.is_empty() { &root_name } else { &r.name })).fold(0.0, f32::max));
+    let content_w = ui.fonts(|f| rows.iter().enumerate().map(|(i, r)| row_width(f, r, if i == 0 && r.name.is_empty() { &root_name } else { &r.name }) + stats_width(f, pane.stats.get(&r.path).filter(|_| !r.is_dir))).fold(0.0, f32::max));
     let out = area.show_rows(ui, row_h, rows.len(), |ui, range| {
         for i in range {
             let row = &rows[i];
@@ -518,8 +566,13 @@ fn tree(state: &mut AppState, view_id: u64, pane: &mut ChangesPane, ui: &mut Ui)
                 }
                 None => clip.text(pos2(x + 34.0, cy), Align2::LEFT_CENTER, name, t.ui_font(), color),
             };
+            let mut end = name_rect.right();
             if let Some(extra) = row_extra(row) {
-                clip.text(pos2(name_rect.right() + 8.0, cy), Align2::LEFT_CENTER, extra, t.ui_font(), t.text_dim);
+                end = clip.text(pos2(end + 8.0, cy), Align2::LEFT_CENTER, extra, t.ui_font(), t.text_dim).right();
+            }
+            if let Some(&(adds, dels)) = pane.stats.get(&row.path).filter(|_| !row.is_dir) {
+                let r = clip.text(pos2(end + 8.0, cy), Align2::LEFT_CENTER, format!("+{adds}"), t.small_font(), t.git_added);
+                clip.text(pos2(r.right() + 4.0, cy), Align2::LEFT_CENTER, format!("-{dels}"), t.small_font(), t.git_deleted);
             }
             let on_chevron = chevron_cell.zip(resp.interact_pointer_pos()).is_some_and(|(c, p)| c.contains(p));
             if resp.is_pointer_button_down_on() && ui.input(|inp| inp.pointer.primary_pressed()) && !on_chevron {
@@ -538,6 +591,9 @@ fn tree(state: &mut AppState, view_id: u64, pane: &mut ChangesPane, ui: &mut Ui)
             }
             if resp.secondary_clicked() {
                 right = Some(i);
+            }
+            if !with_menu {
+                continue;
             }
             resp.context_menu(|ui| {
                 ui.set_min_width(260.0);

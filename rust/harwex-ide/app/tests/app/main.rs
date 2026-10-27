@@ -40,6 +40,7 @@ mod launch;
 mod lint_budget;
 mod memory;
 mod merge_window;
+mod mr_diff;
 mod multi_caret;
 mod navigation;
 mod npm_completion;

@@ -937,9 +937,9 @@ fn jump_from_revision(state: &mut AppState, abs: PathBuf, revision: String, line
     );
 }
 
-struct Metrics {
-    char_w: f32,
-    font: FontId,
+pub(super) struct Metrics {
+    pub(super) char_w: f32,
+    pub(super) font: FontId,
 }
 
 /// What a frame of the body did.
@@ -1559,11 +1559,11 @@ fn draw_pane(painter: &egui::Painter, rect: Rect, pane: PaneView, hunks: &[DiffH
 }
 
 /// Display column of char column `col`: tabs are shown as 4 spaces.
-fn display_col(text: &str, col: usize) -> usize {
+pub(super) fn display_col(text: &str, col: usize) -> usize {
     text.chars().take(col).map(|c| if c == '\t' { 4 } else { 1 }).sum()
 }
 
-fn line_job(text: &str, spans: &[Span], m: &Metrics, th: &EditorTheme) -> LayoutJob {
+pub(super) fn line_job(text: &str, spans: &[Span], m: &Metrics, th: &EditorTheme) -> LayoutJob {
     let mut job = LayoutJob { break_on_newline: false, ..Default::default() };
     let cut = text.char_indices().nth(MAX_COLS).map_or(text.len(), |(i, _)| i);
     let text = &text[..cut];

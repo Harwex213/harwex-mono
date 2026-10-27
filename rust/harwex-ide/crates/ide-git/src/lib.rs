@@ -14,6 +14,7 @@ mod diff;
 mod graph;
 mod local_patch;
 mod log;
+mod mr;
 mod ops;
 mod selection;
 mod status;
@@ -35,6 +36,7 @@ pub use diff::{DiffHunk, DiffSide, FileDiff, LineChange, LineChangeKind, LineKin
 pub use graph::{layout as graph_layout, ArrowDir, GraphArrow, GraphEdge, GraphRow, LONG_EDGE_ROWS};
 pub use local_patch::{LocalChange, LocalPatch, LocalPatchFile};
 pub use log::{BlameLine, ChangedFile, CommitDetails, CommitInfo, LogFilter, RefKind, RefLabel};
+pub use mr::{MrChanges, MrFileDiff};
 pub use selection::{BranchCompare, COMPARE_LIMIT};
 pub use ops::{BranchUpdate, ConflictChoice, ConflictSides, PushTarget, RebaseProgress, RepoState, ResetMode, StashEntry};
 pub use status::{ChangeKind, CommitOutcome, FileChange, GitStamp};
