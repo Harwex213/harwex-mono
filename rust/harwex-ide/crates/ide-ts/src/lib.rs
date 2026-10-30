@@ -949,6 +949,16 @@ impl TsService {
         }
     }
 
+    /// Restart Language Servers: `shutdown`, and forget which installation and project each
+    /// folder has. A `typescript` installed since then (`yarn install` after a failed lookup)
+    /// is found, and a failed global lookup runs again.
+    pub fn restart(&self) {
+        self.shutdown();
+        lock(&self.inner.lookup).clear();
+        lock(&self.inner.projects).clear();
+        locate::forget_failed_global_lookups();
+    }
+
     /// Kills the server that serves `path`, as a crash would. For tests of the restart path.
     #[doc(hidden)]
     pub fn kill_server_for(&self, path: &Path) {

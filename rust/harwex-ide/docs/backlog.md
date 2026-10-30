@@ -4,6 +4,8 @@ One line per task. Details live in `tasks/<id>-<slug>.md`. A closed task loses i
 
 Run at most 2–3 agents that build at once: on 2026-10-05 seven parallel cargo builds flooded macOS `syspolicyd` (Gatekeeper checks every new unsigned binary), every new process froze at `dyld_start`, and in the end WindowServer hung.
 
+- [126] Restart Language Servers forgets the TypeScript lookup (tasks/126-ts-restart-forgets-lookup.md)
+
 ## Ideas
 
 Windows (`docs/windows.md`):

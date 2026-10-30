@@ -8,6 +8,7 @@ mod common;
 
 mod native_lsp;
 mod rename_budget;
+mod restart;
 mod mono_usages;
 mod tsserver;
 mod usages_across;

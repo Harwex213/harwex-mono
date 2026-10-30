@@ -274,6 +274,13 @@ impl FileProblems {
         self.force = true;
     }
 
+    /// Restart Language Servers: `recheck`, and detect the linters again, so an oxlint or ESLint
+    /// installed since then is found. The old results stay visible until the new ones land.
+    pub fn redetect(&mut self) {
+        self.recheck();
+        self.plan = None;
+    }
+
     /// Forgets the plan and the results (the settings changed). The tab is checked again.
     pub fn reset(&mut self) {
         let latest = self.latest.clone();

@@ -160,4 +160,10 @@ impl LanguageServer for TsServer {
         self.service.shutdown();
         *lock(&self.last_used) = None;
     }
+
+    fn restart(&self) {
+        // `shutdown` keeps the per-folder lookup; a restart must find a `typescript` installed since.
+        self.service.restart();
+        *lock(&self.last_used) = None;
+    }
 }

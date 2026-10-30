@@ -81,10 +81,14 @@ fn project(s: &mut AppState, action: Action, tally: Arc<Mutex<Tally>>) {
             e.problems.reset();
             continue;
         }
-        e.problems.recheck();
+        e.problems.redetect();
         let Some(lang) = e.lang else { continue };
         e.lsp_version = Some(e.doc.version());
         docs.push((lang, e.path.clone(), e.doc.text()));
+    }
+    if action != Action::Stop {
+        // The linter detection per folder is cached too; a linter installed since is found.
+        s.ws.diagnostics.reset();
     }
     let files = docs.len();
     let jobs = s.jobs.clone();

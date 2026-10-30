@@ -8,7 +8,7 @@ use std::env;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::sync::OnceLock;
+use std::sync::{Mutex, OnceLock};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -263,11 +263,31 @@ pub fn find_typescript(dir: &Path) -> Result<Installation, Vec<String>> {
     Err(notes)
 }
 
-/// A global install found through `npm root -g`, once per process.
+/// The global lookups. A success stays for the process; `forget_failed_global_lookups`
+/// drops a failure, so Restart Language Servers looks again.
+static GLOBAL: Mutex<Option<Result<Installation, Vec<String>>>> = Mutex::new(None);
+static NPM_ROOT: Mutex<Option<Option<PathBuf>>> = Mutex::new(None);
+
+/// Drops a failed global lookup (no `npm root -g`, no global `typescript`), so the next call
+/// searches again. A found install stays cached.
+pub fn forget_failed_global_lookups() {
+    let mut global = GLOBAL.lock().unwrap_or_else(|e| e.into_inner());
+    if global.as_ref().is_some_and(|g| g.is_err()) {
+        *global = None;
+    }
+    let mut root = NPM_ROOT.lock().unwrap_or_else(|e| e.into_inner());
+    if root.as_ref().is_some_and(|r| r.is_none()) {
+        *root = None;
+    }
+}
+
+/// A global install found through `npm root -g`, once per process (a failure again after
+/// `forget_failed_global_lookups`).
 pub fn find_global_typescript() -> Result<Installation, Vec<String>> {
-    static GLOBAL: OnceLock<Result<Installation, Vec<String>>> = OnceLock::new();
-    GLOBAL
-        .get_or_init(|| {
+    // Held during the search, so concurrent callers wait for one search, as with a OnceLock.
+    let mut global = GLOBAL.lock().unwrap_or_else(|e| e.into_inner());
+    global
+        .get_or_insert_with(|| {
             let Some(root) = npm_global_root() else {
                 return Err(vec!["no global install (`npm root -g` failed)".to_string()]);
             };
@@ -438,8 +458,8 @@ fn node_arch() -> &'static str {
 }
 
 fn npm_global_root() -> Option<PathBuf> {
-    static ROOT: OnceLock<Option<PathBuf>> = OnceLock::new();
-    ROOT.get_or_init(|| {
+    let mut root = NPM_ROOT.lock().unwrap_or_else(|e| e.into_inner());
+    root.get_or_insert_with(|| {
         // Prefer the npm next to the node we run, for the same GUI PATH reason as above.
         let npm = find_node()
             // Beside a Windows node.exe, `npm` is a sh script; `npm.cmd` is the one to run.
