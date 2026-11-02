@@ -1,0 +1,6 @@
+# Applies to the API package directory that api/Dockerfile builds from.
+node_modules
+data
+.env
+*.log
+*.test.ts

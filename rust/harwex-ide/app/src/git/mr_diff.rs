@@ -1,11 +1,13 @@
 //! Compare MR Diff (Beta): a Git window tab like a GitLab merge request's Changes view. The
-//! files that differ between the current branch (left side) and the picked branch (right side),
-//! a two-dot compare of their trees, as the Log's changes tree on the left
-//! (`commit_changes::pane_ui`, with `+a -d` counts), and the selected file's unified diff on the
-//! right, like a Find tab's preview.
+//! current branch is the MR source, the picked branch the target. The tab shows the files that
+//! the current branch changed since it forked from the target: the tree of their merge-base
+//! (left side) against HEAD's tree (right side). The files are the Log's changes tree on the left
+//! (`commit_changes::pane_ui`, with `+a -d` counts), and the selected file's unified diff is on
+//! the right, like a Find tab's preview.
 //!
-//! Speed: the worker reads the file list and the per-file diffs (`ide_git`'s line diff, in
-//! parallel) and turns them into display rows. The right pane draws only the rows in view
+//! Speed: the worker finds the merge-base once per load (`ide_git::Repo::mr_changes`), then reads
+//! the file list and the per-file diffs (`ide_git`'s line diff, in parallel) and turns them into
+//! display rows. The right pane draws only the rows in view
 //! (`show_rows`). Syntax colors come per file, on a worker, the first time a file is shown.
 //! Binary files and files over `MAX_FILE_BYTES` show a note; a diff over `BIG_DIFF_ROWS` rows
 //! waits behind a "Show Large Diff" button.
@@ -187,7 +189,9 @@ fn note_of(f: &MrFile, collapsed: bool) -> Option<String> {
 
 /// One Compare MR Diff tab.
 pub struct MrTab {
+    /// The current branch when the tab opened (the MR source).
     pub source: String,
+    /// The picked branch (the MR target).
     pub target: String,
     view_id: u64,
     /// Bumped by each load; older results are dropped.
@@ -202,7 +206,7 @@ pub struct MrTab {
 }
 
 pub struct MrData {
-    /// The current branch's commit (the left side).
+    /// The merge-base of HEAD and the target (the left side).
     pub base: Oid,
     pub files: Vec<MrFile>,
 }
@@ -274,10 +278,10 @@ pub(super) fn load(state: &mut AppState, id: u64, tab: &mut MrTab) {
     tab.generation += 1;
     tab.data = None;
     let generation = tab.generation;
-    let source = tab.source.clone();
+    let target = tab.target.clone();
     state.jobs.spawn(
-        format!("MR diff of {source}"),
-        move || compute(&repo, &source),
+        format!("MR diff against {target}"),
+        move || compute(&repo, &target),
         move |state, res| {
             if let Some(tab) = super::window::mr_tab_mut(state, id) {
                 tab.set_data(generation, res);
@@ -286,8 +290,8 @@ pub(super) fn load(state: &mut AppState, id: u64, tab: &mut MrTab) {
     );
 }
 
-fn compute(repo: &Repo, source: &str) -> Result<MrData, String> {
-    let mr = repo.mr_changes(source).map_err(|e| e.to_string())?;
+fn compute(repo: &Repo, target: &str) -> Result<MrData, String> {
+    let mr = repo.mr_changes(target).map_err(|e| e.to_string())?;
     let cancel = crate::jobs::current_cancel();
     let next = AtomicUsize::new(0);
     let done = AtomicUsize::new(0);

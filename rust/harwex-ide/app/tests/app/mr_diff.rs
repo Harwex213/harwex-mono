@@ -1,6 +1,6 @@
-//! Compare MR Diff (Beta): the branch tree's menu opens a Git window tab with the files that
-//! differ between the current branch and the picked one on the left and the selected file's diff
-//! on the right.
+//! Compare MR Diff (Beta): the branch tree's menu opens a Git window tab with the files that the
+//! current branch changed since it forked from the picked one (the merge-base against HEAD, like
+//! a GitLab MR) on the left and the selected file's diff on the right.
 
 use crate::common::*;
 use egui::{Key, Pos2};
@@ -10,7 +10,7 @@ use std::path::Path;
 const SUITE: &str = "mr_diff";
 
 /// `history_repo` plus a branch `mr` with edits, a new file, a deletion, a binary file and a
-/// run of small files; `main` moves on after the fork.
+/// run of small files; `main` moves on after the fork. `mr` is checked out.
 fn mr_repo(fx: &Fixture) -> Repo {
     let r = history_repo(fx.path("repo"));
     r.git(&["checkout", "-q", "-b", "mr"]);
@@ -25,17 +25,18 @@ fn mr_repo(fx: &Fixture) -> Repo {
     std::fs::remove_file(r.dir.join("src/side.ts")).unwrap();
     r.commit_all("MR work");
     r.git(&["checkout", "-q", "main"]);
-    // After the fork: the two-dot compare shows it as main's side of the file.
+    // After the fork: main's own change is not part of the MR.
     r.write("src/after.ts", "export const after = 2;\n");
     r.commit_all("Main moves on");
+    r.git(&["checkout", "-q", "mr"]);
     r
 }
 
 fn open_mr(ide: &mut Ide) {
-    open_mr_of(ide, "mr");
+    open_mr_of(ide, "main");
 }
 
-fn open_mr_of(ide: &mut Ide, branch: &str) {
+fn open_mr_of(ide: &mut Ide, target: &str) {
     if ide.state().ws.layout.bottom != Some(ToolWindow::Git) {
         ide.click("Git tool window");
     }
@@ -44,10 +45,10 @@ fn open_mr_of(ide: &mut Ide, branch: &str) {
     let top = ide.rect("Hide Git").min.y - 8.0;
     ide.drag(Pos2::new(700.0, top), Pos2::new(700.0, 160.0));
     ide.settle();
-    ide.right_click(&format!("Tree branch {branch}"));
+    ide.right_click(&format!("Tree branch {target}"));
     ide.wait_until("context menu", |ide| ide.has("Compare MR Diff (Beta)"));
     ide.click("Compare MR Diff (Beta)");
-    ide.wait_for("mr diff loaded", |s| s.ws.git_ui.window.mr_tab().is_some_and(|t| t.files().is_some()));
+    ide.wait_for("mr diff loaded", |s| s.ws.git_ui.window.mr_tab().is_some_and(|t| t.files().is_some() || t.error().is_some()));
     ide.settle();
 }
 
@@ -56,18 +57,18 @@ fn tab(ide: &Ide) -> &harwex_ide::git::mr_diff::MrTab {
 }
 
 #[test]
-fn mr_diff_lists_the_changes_against_the_current_branch() {
+fn mr_diff_lists_the_current_branch_changes_since_the_fork() {
     let fx = Fixture::new(SUITE, "tab");
     let repo = mr_repo(&fx);
     let mut ide = Ide::open(SUITE, &repo.dir);
     open_mr(&mut ide);
     assert_eq!(ide.state().ws.git_ui.window.active_title(), "MR: mr → main");
     let files: Vec<String> = tab(&ide).files().unwrap().iter().map(|f| f.change.path.display().to_string()).collect();
-    assert_eq!(files, ["assets/logo.bin", "pkg/part0.ts", "pkg/part1.ts", "pkg/part2.ts", "pkg/part3.ts", "pkg/part4.ts", "pkg/part5.ts", "src/after.ts", "src/side.ts", "src/util.ts", "src/values.ts"]);
+    // main's own change after the fork (src/after.ts) is not in the list.
+    assert_eq!(files, ["assets/logo.bin", "pkg/part0.ts", "pkg/part1.ts", "pkg/part2.ts", "pkg/part3.ts", "pkg/part4.ts", "pkg/part5.ts", "src/side.ts", "src/util.ts", "src/values.ts"]);
     let counts = |ide: &Ide, rel: &str| tab(ide).files().unwrap().iter().find(|f| f.change.path == Path::new(rel)).map(|f| (f.adds, f.dels)).unwrap();
     assert_eq!(counts(&ide, "src/util.ts"), (2, 0));
-    // Two-dot: main's own change after the fork shows from main's side (left) to the branch's.
-    assert_eq!(counts(&ide, "src/after.ts"), (1, 1));
+    assert_eq!(counts(&ide, "src/side.ts"), (0, 1));
     // The first file shows at once; a binary file shows a note.
     assert_eq!(tab(&ide).shown_file(), Some(Path::new("assets/logo.bin")));
     assert!(ide.has("MR file assets/logo.bin"));
@@ -107,9 +108,9 @@ fn selecting_a_file_in_the_tree_shows_its_diff() {
     assert_eq!(tab(&ide).tree_selection(), [Path::new("src/side.ts")]);
 
     // So does the tree's speed search.
-    ide.type_text("after");
+    ide.type_text("logo");
     ide.settle();
-    assert_eq!(tab(&ide).shown_file(), Some(Path::new("src/after.ts")));
+    assert_eq!(tab(&ide).shown_file(), Some(Path::new("assets/logo.bin")));
 
     // A folder row shows no diff.
     ide.click("Changes folder pkg");
@@ -129,9 +130,8 @@ fn big_mr_stays_fast_and_huge_diffs_wait_behind_a_button() {
     let huge: String = (0..6000).map(|i| format!("export const line{i} = {i};\n")).collect();
     r.write("gen/huge.ts", &huge);
     r.commit_all("Generated");
-    r.git(&["checkout", "-q", "main"]);
     let mut ide = Ide::open(SUITE, &r.dir);
-    open_mr_of(&mut ide, "big");
+    open_mr_of(&mut ide, "main");
     assert_eq!(tab(&ide).files().unwrap().len(), 301);
     assert!(tab(&ide).is_collapsed(Path::new("gen/huge.ts")));
     // The folders fold away; the huge file's row comes into view.
@@ -149,4 +149,18 @@ fn big_mr_stays_fast_and_huge_diffs_wait_behind_a_button() {
     let per_frame = started.elapsed() / 10;
     assert!(per_frame < std::time::Duration::from_millis(250), "{per_frame:?} per frame");
     assert!(ide.state().frame_clock.last_slow.is_none(), "{:?}", ide.state().frame_clock.last_slow);
+}
+
+#[test]
+fn unrelated_histories_show_an_error_in_the_tab() {
+    let fx = Fixture::new(SUITE, "unrelated");
+    let r = history_repo(fx.path("repo"));
+    r.git(&["checkout", "-q", "--orphan", "lone"]);
+    r.write("lone.txt", "lone\n");
+    r.commit_all("Lone root");
+    let mut ide = Ide::open(SUITE, &r.dir);
+    open_mr_of(&mut ide, "main");
+    assert_eq!(ide.state().ws.git_ui.window.active_title(), "MR: lone → main");
+    assert!(tab(&ide).files().is_none());
+    ide.assert_text("The current branch and main have no common commit (unrelated histories).");
 }

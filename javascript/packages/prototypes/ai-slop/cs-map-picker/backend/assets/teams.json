@@ -1,0 +1,42 @@
+[
+  {
+    "id": "born-to-fall",
+    "name": "Рождённые попадать",
+    "players": ["Ales Jhol", "Ryhor Ratkevich", "Mick Nuke", "Pavel Zhuk", "Matsvei Tkachenka"]
+  },
+  {
+    "id": "ak47",
+    "name": "АК-47",
+    "players": ["Иванус Mole Swipe Girls", "Artyom Karpuk", "Uladzislau Yermalinski", "Ilya Sidaruk", "Aleh Kaportsau"]
+  },
+  {
+    "id": "cashout",
+    "name": "КэшАут",
+    "players": ["Artsiom Voitas", "Ihar Shchatsinin", "Pavel Kalinouski SB", "Vitali Kachanovich", "Mikhail Kharevich"]
+  },
+  {
+    "id": "mirage-kids",
+    "name": "Дети Миража",
+    "players": ["Mikhail Rudych", "Aliaksandr Yushkevich", "Danil Stakhavets", "Ilya Mankouski", "Mihdalionak Uladzimir"]
+  },
+  {
+    "id": "lowtab-guard",
+    "name": "Охрана лоутаба",
+    "players": ["Raman Hrytsak", "Anton Lukyanov", "Aleh Borykau", "Ruslan Kypryianau", "Tsimur Dasanau"]
+  },
+  {
+    "id": "virtus-plokho",
+    "name": "Virtus.плохо",
+    "players": ["Uladzislau Lukiyanets", "Daniil Plakkhin", "Nikita Syradoyeu", "Aliaksandr Chapelnikau", "Hleb Skarakhod"]
+  },
+  {
+    "id": "low-expectations",
+    "name": "Низкие ожидания",
+    "players": ["Uladzislau Heraskevich", "Aliaksey Yaroshyk", "Aleh Yanusik", "Andrey Gomonov", "Daniil Sauchyk"]
+  },
+  {
+    "id": "all-in",
+    "name": "ALL IN",
+    "players": ["Aliaksey Tsyvaniuk", "Zhenya Goroh", "Aliaksei Zuyeuski", "Mikalai Serhel SB", "Nikita Stankevich"]
+  }
+]

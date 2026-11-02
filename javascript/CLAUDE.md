@@ -52,3 +52,15 @@ yarn workspace @hw/deploy scan     # list the sites and their routes
 yarn workspace @hw/deploy bundle   # build them into out/html/
 DEPLOY_HOST=user@host yarn workspace @hw/deploy deploy
 ```
+
+#### Deploying an API
+
+A backend package goes to the VPS when its `package.json` has `"hwApi": { "name": "some-app" }`. It then runs as container `api-some-app` and answers at `/some-app/api/` on the same domain as the sites, so its frontend (`hwDeploy` route `/some-app`) calls it by the relative path `api/...`. nginx routes every `/<name>/api/` by that naming rule: a new API needs no nginx change.
+
+The package must have a `start` script, listen on `HOST`/`PORT`, answer `GET /api/health`, and keep durable state in `DATA_DIR` (a volume). Its runtime `dependencies` cannot be `workspace:` packages. Secrets go to `/opt/hw-apis/<name>/.env` on the droplet.
+
+```bash
+DEPLOY_HOST=user@host yarn workspace @hw/deploy deploy-api some-app
+```
+
+With Docker on the Mac down, add `DOCKER_HOST=ssh://$DEPLOY_HOST` to either deploy command: the image is then built on the droplet itself.

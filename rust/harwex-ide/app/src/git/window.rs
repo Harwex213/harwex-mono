@@ -450,7 +450,7 @@ fn apply(state: &mut AppState, a: TreeAction) {
         }
         TreeAction::Compare(other) => open_compare(state, other),
         TreeAction::DiffWithWorkingTree(rev) => open_worktree_diff(state, rev),
-        TreeAction::CompareMr(source) => open_mr_diff(state, source),
+        TreeAction::CompareMr(target) => open_mr_diff(state, target),
     }
 }
 
@@ -495,10 +495,10 @@ fn open_worktree_diff(state: &mut AppState, rev: String) {
     );
 }
 
-/// Opens (or activates and reloads) the Compare MR Diff tab of `source` against the current
-/// branch.
-fn open_mr_diff(state: &mut AppState, source: String) {
-    let target = state.ws.git.branch.clone().unwrap_or_else(|| "HEAD".into());
+/// Opens (or activates and reloads) the Compare MR Diff tab of the current branch (the source)
+/// into `target`.
+fn open_mr_diff(state: &mut AppState, target: String) {
+    let source = state.ws.git.branch.clone().unwrap_or_else(|| "HEAD".into());
     let w = &mut state.ws.git_ui.window;
     match w.tabs.iter().position(|t| matches!(&t.kind, TabKind::MrDiff(m) if m.source == source && m.target == target)) {
         Some(i) => w.active = i,

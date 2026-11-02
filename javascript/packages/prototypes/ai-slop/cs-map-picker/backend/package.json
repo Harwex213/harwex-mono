@@ -1,0 +1,25 @@
+{
+  "name": "@hw/cs-map-picker-backend",
+  "description": "CS2 map veto API",
+  "hwApi": {
+    "name": "cs-map-picker"
+  },
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch src/main.ts",
+    "start": "node src/main.ts",
+    "test": "node --test src/**/*.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@napi-rs/canvas": "1.0.10",
+    "fastify": "5.12.7"
+  },
+  "devDependencies": {
+    "@hw/typescript-config": "workspace:*",
+    "@types/node": "24.13.3",
+    "typescript": "5.9.3"
+  }
+}

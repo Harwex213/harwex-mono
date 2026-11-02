@@ -77,7 +77,7 @@ impl CommandEvent {
 }
 
 /// Git subcommands that never write. They are still logged, with `read_only` set.
-const READ_ONLY: &[&str] = &["status", "blame", "diff", "diff-tree", "diff-index", "show", "log", "rev-parse", "ls-files", "cat-file"];
+const READ_ONLY: &[&str] = &["status", "blame", "diff", "diff-tree", "diff-index", "show", "log", "rev-parse", "ls-files", "cat-file", "merge-base"];
 
 /// Read-only commands: blame of a 76k-line file takes about 11 s on a healthy machine.
 const READ_TIMEOUT: Duration = Duration::from_secs(30);
@@ -282,7 +282,7 @@ impl Repo {
 /// limit: only the user knows whether a slow push is stuck, and Cancel is always there.
 fn timeout_for(args: &[&str]) -> Option<Duration> {
     let sub = args.first().copied().unwrap_or_default();
-    if READ_ONLY.contains(&sub) || matches!(sub, "for-each-ref" | "merge-base" | "rev-list" | "ls-tree") {
+    if READ_ONLY.contains(&sub) || matches!(sub, "for-each-ref" | "rev-list" | "ls-tree") {
         return Some(READ_TIMEOUT);
     }
     match sub {

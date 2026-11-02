@@ -3448,6 +3448,36 @@ __metadata:
   languageName: unknown
   linkType: soft
 
+"@hw/cs-map-picker-backend@workspace:packages/prototypes/ai-slop/cs-map-picker/backend":
+  version: 0.0.0-use.local
+  resolution: "@hw/cs-map-picker-backend@workspace:packages/prototypes/ai-slop/cs-map-picker/backend"
+  dependencies:
+    "@hw/typescript-config": "workspace:*"
+    "@napi-rs/canvas": "npm:1.0.10"
+    "@types/node": "npm:24.13.3"
+    fastify: "npm:5.12.7"
+    typescript: "npm:5.9.3"
+  languageName: unknown
+  linkType: soft
+
+"@hw/cs-map-picker-frontend@workspace:packages/prototypes/ai-slop/cs-map-picker/frontend":
+  version: 0.0.0-use.local
+  resolution: "@hw/cs-map-picker-frontend@workspace:packages/prototypes/ai-slop/cs-map-picker/frontend"
+  dependencies:
+    "@hw/typescript-config": "workspace:*"
+    "@preact/signals-react": "npm:3.9.0"
+    "@rspack/cli": "npm:2.1.4"
+    "@rspack/core": "npm:2.1.4"
+    "@rspack/dev-server": "npm:2.1.0"
+    "@types/node": "npm:24.1.0"
+    "@types/react": "npm:19.2.0"
+    "@types/react-dom": "npm:19.2.0"
+    react: "npm:19.2.0"
+    react-dom: "npm:19.2.0"
+    typescript: "npm:5.9.3"
+  languageName: unknown
+  linkType: soft
+
 "@hw/deploy@workspace:packages/infrastructure/deploy":
   version: 0.0.0-use.local
   resolution: "@hw/deploy@workspace:packages/infrastructure/deploy"
@@ -5073,6 +5103,129 @@ __metadata:
     zod:
       optional: false
   checksum: 10/369723a62ce230e55d4fc98549fb080a51916a2004f3907bfca899f5602de8791d9b252038abc6cf120a9d1c75845d2459a471b678c9b9cfc7bae5febf112b63
+  languageName: node
+  linkType: hard
+
+"@napi-rs/canvas-android-arm64@npm:1.0.10":
+  version: 1.0.10
+  resolution: "@napi-rs/canvas-android-arm64@npm:1.0.10"
+  conditions: os=android & cpu=arm64
+  languageName: node
+  linkType: hard
+
+"@napi-rs/canvas-darwin-arm64@npm:1.0.10":
+  version: 1.0.10
+  resolution: "@napi-rs/canvas-darwin-arm64@npm:1.0.10"
+  conditions: os=darwin & cpu=arm64
+  languageName: node
+  linkType: hard
+
+"@napi-rs/canvas-darwin-x64@npm:1.0.10":
+  version: 1.0.10
+  resolution: "@napi-rs/canvas-darwin-x64@npm:1.0.10"
+  conditions: os=darwin & cpu=x64
+  languageName: node
+  linkType: hard
+
+"@napi-rs/canvas-linux-arm-gnueabihf@npm:1.0.10":
+  version: 1.0.10
+  resolution: "@napi-rs/canvas-linux-arm-gnueabihf@npm:1.0.10"
+  conditions: os=linux & cpu=arm
+  languageName: node
+  linkType: hard
+
+"@napi-rs/canvas-linux-arm64-gnu@npm:1.0.10":
+  version: 1.0.10
+  resolution: "@napi-rs/canvas-linux-arm64-gnu@npm:1.0.10"
+  conditions: os=linux & cpu=arm64 & libc=glibc
+  languageName: node
+  linkType: hard
+
+"@napi-rs/canvas-linux-arm64-musl@npm:1.0.10":
+  version: 1.0.10
+  resolution: "@napi-rs/canvas-linux-arm64-musl@npm:1.0.10"
+  conditions: os=linux & cpu=arm64 & libc=musl
+  languageName: node
+  linkType: hard
+
+"@napi-rs/canvas-linux-riscv64-gnu@npm:1.0.10":
+  version: 1.0.10
+  resolution: "@napi-rs/canvas-linux-riscv64-gnu@npm:1.0.10"
+  conditions: os=linux & cpu=riscv64 & libc=glibc
+  languageName: node
+  linkType: hard
+
+"@napi-rs/canvas-linux-x64-gnu@npm:1.0.10":
+  version: 1.0.10
+  resolution: "@napi-rs/canvas-linux-x64-gnu@npm:1.0.10"
+  conditions: os=linux & cpu=x64 & libc=glibc
+  languageName: node
+  linkType: hard
+
+"@napi-rs/canvas-linux-x64-musl@npm:1.0.10":
+  version: 1.0.10
+  resolution: "@napi-rs/canvas-linux-x64-musl@npm:1.0.10"
+  conditions: os=linux & cpu=x64 & libc=musl
+  languageName: node
+  linkType: hard
+
+"@napi-rs/canvas-win32-arm64-msvc@npm:1.0.10":
+  version: 1.0.10
+  resolution: "@napi-rs/canvas-win32-arm64-msvc@npm:1.0.10"
+  conditions: os=win32 & cpu=arm64
+  languageName: node
+  linkType: hard
+
+"@napi-rs/canvas-win32-x64-msvc@npm:1.0.10":
+  version: 1.0.10
+  resolution: "@napi-rs/canvas-win32-x64-msvc@npm:1.0.10"
+  conditions: os=win32 & cpu=x64
+  languageName: node
+  linkType: hard
+
+"@napi-rs/canvas@npm:1.0.10":
+  version: 1.0.10
+  resolution: "@napi-rs/canvas@npm:1.0.10"
+  dependencies:
+    "@napi-rs/canvas-android-arm64": "npm:1.0.10"
+    "@napi-rs/canvas-darwin-arm64": "npm:1.0.10"
+    "@napi-rs/canvas-darwin-x64": "npm:1.0.10"
+    "@napi-rs/canvas-linux-arm-gnueabihf": "npm:1.0.10"
+    "@napi-rs/canvas-linux-arm64-gnu": "npm:1.0.10"
+    "@napi-rs/canvas-linux-arm64-musl": "npm:1.0.10"
+    "@napi-rs/canvas-linux-riscv64-gnu": "npm:1.0.10"
+    "@napi-rs/canvas-linux-x64-gnu": "npm:1.0.10"
+    "@napi-rs/canvas-linux-x64-musl": "npm:1.0.10"
+    "@napi-rs/canvas-win32-arm64-msvc": "npm:1.0.10"
+    "@napi-rs/canvas-win32-x64-msvc": "npm:1.0.10"
+  dependenciesMeta:
+    "@napi-rs/canvas-android-arm64":
+      optional: true
+    "@napi-rs/canvas-darwin-arm64":
+      optional: true
+    "@napi-rs/canvas-darwin-x64":
+      optional: true
+    "@napi-rs/canvas-linux-arm-gnueabihf":
+      optional: true
+    "@napi-rs/canvas-linux-arm64-gnu":
+      optional: true
+    "@napi-rs/canvas-linux-arm64-musl":
+      optional: true
+    "@napi-rs/canvas-linux-riscv64-gnu":
+      optional: true
+    "@napi-rs/canvas-linux-x64-gnu":
+      optional: true
+    "@napi-rs/canvas-linux-x64-musl":
+      optional: true
+    "@napi-rs/canvas-win32-arm64-msvc":
+      optional: true
+    "@napi-rs/canvas-win32-x64-msvc":
+      optional: true
+    canvas:
+      built: true
+    skia-canvas:
+      built: true
+  checksum: 10/780d879028014783ffd76e6da3b45b3ed15bd80479239cf58e2a73568078b5def66ac7e6c29afd1dd44297beda2c379113f3ef81409e1c7f6a64ffa3c5fe0e05
   languageName: node
   linkType: hard
 
@@ -12285,7 +12438,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"fastify@npm:^5.12.3":
+"fastify@npm:5.12.7, fastify@npm:^5.12.3":
   version: 5.12.7
   resolution: "fastify@npm:5.12.7"
   dependencies:

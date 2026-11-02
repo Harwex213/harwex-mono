@@ -238,7 +238,7 @@ pub enum TreeAction {
     Checkout(String),
     NewBranchFrom(String),
     Compare(String),
-    /// Compare MR Diff (Beta): the branch's changes since it forked from the current one.
+    /// Compare MR Diff (Beta): the current branch's changes since it forked from this branch.
     CompareMr(String),
     DiffWithWorkingTree(String),
     Merge(String),
