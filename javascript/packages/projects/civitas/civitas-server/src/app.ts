@@ -6,6 +6,7 @@ import {mapModule} from "./modules/map/map.module";
 import {countryModule} from "./modules/country/country.module";
 import {provinceModule} from "./modules/province/province.module";
 import {staticModule} from "./modules/static/static.module";
+import {layoutModule} from "./modules/layout/layout.module";
 
 const app = fastify({logger});
 
@@ -16,6 +17,7 @@ app.register(staticModule);
 app.register(mapModule, {prefix: "/API"});
 app.register(countryModule, {prefix: "/API"});
 app.register(provinceModule, {prefix: "/API"});
+app.register(layoutModule, {prefix: "/API"});
 
 app.listen({ port: SERVICE_PORT }, (err) => {
     if (err) {

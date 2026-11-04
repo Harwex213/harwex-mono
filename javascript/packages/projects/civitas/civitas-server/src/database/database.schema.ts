@@ -8,6 +8,7 @@ const mapTable = pgTable("maps", {
 const countryTable = pgTable("countries", {
     id: uuid("id").defaultRandom().primaryKey(),
     name: varchar("name", { length: 255 }).unique().notNull(),
+    hex: varchar("hex", { length: 255 }).unique().notNull(),
     mapId: uuid("map_id").references(() => mapTable.id),
 })
 

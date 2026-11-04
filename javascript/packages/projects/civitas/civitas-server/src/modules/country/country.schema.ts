@@ -2,6 +2,7 @@ import { z } from "zod";
 
 const addCountryBodySchema = z.object({
     name: z.string().trim().min(1).max(255),
+    hex: z.string().regex(/^#[0-9a-fA-F]{6}$/).transform((hex) => hex.toLowerCase()),
     mapId: z.uuid(),
 });
 
@@ -16,6 +17,7 @@ const mapCountriesParamsSchema = z.object({
 const countryResponseSchema = z.object({
     id: z.uuid(),
     name: z.string(),
+    hex: z.string(),
     mapId: z.uuid().nullable(),
 });
 

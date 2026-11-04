@@ -3,7 +3,7 @@ import type { FastifyInstance } from "fastify";
 import { database } from "../../database/database";
 import { staticService } from "../static/static.module";
 import { MapController } from "./map.controller";
-import { mapListResponseSchema, mapParamsSchema, mapResponseSchema } from "./map.schema";
+import { mapLayerParamsSchema, mapListResponseSchema, mapParamsSchema, mapResponseSchema } from "./map.schema";
 import { MapService } from "./map.service";
 
 const MAX_FILE_SIZE_BYTES = 200 * 1024 * 1024;
@@ -37,6 +37,13 @@ const mapModule = async (app: FastifyInstance) => {
             response: { 200: mapResponseSchema },
         },
     }, mapController.getMap);
+
+    app.put("/maps/:id/layers/:layer", {
+        schema: {
+            params: mapLayerParamsSchema,
+            response: { 200: mapResponseSchema },
+        },
+    }, mapController.saveLayer);
 };
 
 export { mapModule };

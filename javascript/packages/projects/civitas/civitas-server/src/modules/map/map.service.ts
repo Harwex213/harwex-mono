@@ -4,9 +4,13 @@ import { asc, eq } from "drizzle-orm";
 import type { DB } from "../../database/database";
 import { mapTable, type MapDB } from "../../database/database.schema";
 import type { StaticService } from "../static/static.service";
-import type { MapResponse } from "./map.schema";
+import type { MapLayer, MapResponse } from "./map.schema";
 
 const IMAGE_FILE_NAME = "map.png";
+
+function layerFileName(layer: MapLayer): string {
+    return `${layer}.png`;
+}
 
 class MapService {
     constructor(
@@ -28,22 +32,44 @@ class MapService {
 
     getMaps = async (): Promise<MapResponse[]> => {
         const maps = await this.db.select().from(mapTable).orderBy(asc(mapTable.name));
-        return maps.map(this.toResponse);
+        return Promise.all(maps.map(this.toResponse));
     };
 
     getMap = async (id: string): Promise<MapResponse | null> => {
-        const [map] = await this.db.select().from(mapTable).where(eq(mapTable.id, id));
+        const map = await this.findMap(id);
         if (!map) {
             return null;
         }
         return this.toResponse(map);
     };
 
-    private toResponse = (map: MapDB): MapResponse => {
+    // Replaces a layer image of the map. Returns null when the map does not exist.
+    saveLayer = async (id: string, layer: MapLayer, image: Readable): Promise<MapResponse | null> => {
+        const map = await this.findMap(id);
+        if (!map) {
+            image.resume();
+            return null;
+        }
+        await this.staticService.saveFile(id, layerFileName(layer), image);
+        return this.toResponse(map);
+    };
+
+    private findMap = async (id: string): Promise<MapDB | null> => {
+        const [map] = await this.db.select().from(mapTable).where(eq(mapTable.id, id));
+        return map ?? null;
+    };
+
+    private toResponse = async (map: MapDB): Promise<MapResponse> => {
+        const [provincesImage, countriesImage] = await Promise.all([
+            this.staticService.getVersionedUrl(map.id, layerFileName("provinces")),
+            this.staticService.getVersionedUrl(map.id, layerFileName("countries")),
+        ]);
         return {
             id: map.id,
             name: map.name,
             image: this.staticService.getUrl(map.id, IMAGE_FILE_NAME),
+            provincesImage,
+            countriesImage,
         };
     };
 }

@@ -3324,9 +3324,9 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@hw/civitas-map@workspace:packages/prototypes/civitas/civitas-map":
+"@hw/civitas-map@workspace:packages/projects/civitas/civitas-map":
   version: 0.0.0-use.local
-  resolution: "@hw/civitas-map@workspace:packages/prototypes/civitas/civitas-map"
+  resolution: "@hw/civitas-map@workspace:packages/projects/civitas/civitas-map"
   dependencies:
     "@playwright/test": "npm:1.61.1"
     "@preact/signals-react": "npm:3.9.0"

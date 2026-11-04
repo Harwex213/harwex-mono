@@ -1,6 +1,6 @@
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { MapService } from "./map.service";
-import { addMapFieldsSchema, type MapParams } from "./map.schema";
+import { addMapFieldsSchema, type MapLayerParams, type MapParams } from "./map.schema";
 
 class MapController {
     constructor(private readonly mapService: MapService) {}
@@ -22,6 +22,21 @@ class MapController {
 
         const map = await this.mapService.addMap(fields.data.name, image.file);
         return reply.code(201).send(map);
+    };
+
+    // `PUT /maps/:id/layers/:layer`, multipart with one png field `image`.
+    saveLayer = async (request: FastifyRequest<{ Params: MapLayerParams }>, reply: FastifyReply) => {
+        const image = await request.file();
+        if (!image || image.fieldname !== "image" || image.mimetype !== "image/png") {
+            image?.file.resume();
+            return reply.code(400).send({ message: "\"image\" must be a png file" });
+        }
+
+        const map = await this.mapService.saveLayer(request.params.id, request.params.layer, image.file);
+        if (!map) {
+            return reply.code(404).send({ message: "Map not found" });
+        }
+        return reply.send(map);
     };
 
     getMaps = async (_request: FastifyRequest, reply: FastifyReply) => {
