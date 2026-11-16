@@ -8,8 +8,10 @@
 //!   else the first by name (`pick_uproject`).
 //! - The engine comes from `[unreal] engine` (or `[unreal.projects."<folder>"] engine`)
 //!   in `.harwex/ide.toml`, else from the `.uproject`'s `EngineAssociation`: the Epic
-//!   launcher's install list (`LauncherInstalled.dat`, macOS), the source-build list
-//!   (`Install.ini`), or an engine tree around the project. These files are only read.
+//!   launcher's install list (`LauncherInstalled.dat`), the source-build list
+//!   (`Install.ini`), the launcher's default folder (`UE_<version>` under
+//!   `%ProgramFiles%\Epic Games` or `/Users/Shared/Epic Games`), or an engine tree around the
+//!   project. These files are only read.
 //! - The compile database: Unreal has none until UnrealBuildTool writes one. The user starts
 //!   `Build.sh -mode=GenerateClangDatabase` from the editor banner (never automatically). UBT
 //!   writes the full database into `<project>/.harwex/unreal/ubt` (`-OutputDir`), so nothing
@@ -254,6 +256,14 @@ pub fn find_engine(project: &Path, association: &str, cfg: &UnrealConfig) -> Res
                 tried.push(format!("{} (from Install.ini)", dir.display()));
             }
         }
+        // The launcher's list can be empty while the engine sits in its default folder (the
+        // list was reset, or the folder was copied in). The editor finds it there too.
+        if let Some(dir) = launcher_default_dir().and_then(|base| default_install_location(&base, association)) {
+            if let Some(root) = engine_root(&dir) {
+                return Ok(engine_at(root));
+            }
+            tried.push(format!("{} (the launcher's default folder)", dir.display()));
+        }
     }
     // A project inside an engine source tree (an empty association, or a sample).
     if let Some(root) = project.ancestors().skip(1).find_map(engine_root) {
@@ -295,6 +305,21 @@ fn launcher_dat_path() -> Option<PathBuf> {
         return None;
     }
     crate::os::home_dir().map(|h| h.join("Library/Application Support/Epic/UnrealEngineLauncher/LauncherInstalled.dat"))
+}
+
+/// The folder the Epic launcher installs engines into by default (macOS and Windows).
+fn launcher_default_dir() -> Option<PathBuf> {
+    if cfg!(windows) {
+        return std::env::var_os("ProgramFiles").map(|d| PathBuf::from(d).join("Epic Games"));
+    }
+    cfg!(target_os = "macos").then(|| PathBuf::from("/Users/Shared/Epic Games"))
+}
+
+/// `<base>/UE_<association>` for a launcher association ("5.4"); `None` for a source build's
+/// GUID or name, which the launcher never installs.
+pub fn default_install_location(base: &Path, association: &str) -> Option<PathBuf> {
+    let version = !association.is_empty() && association.chars().all(|c| c.is_ascii_digit() || c == '.') && association.chars().next().is_some_and(|c| c.is_ascii_digit());
+    version.then(|| base.join(format!("UE_{association}")))
 }
 
 /// The list of registered source builds. Windows keeps it in the registry
@@ -784,6 +809,10 @@ mod tests {
         assert_eq!(launcher_location(dat, "5.3"), Some(PathBuf::from("/E/UE_5.3")));
         assert_eq!(launcher_location(dat, "5.5"), None);
         assert_eq!(launcher_location("not json", "5.4"), None);
+        assert_eq!(default_install_location(Path::new("/E"), "5.8"), Some(PathBuf::from("/E/UE_5.8")));
+        for not_a_version in ["", "{5D3E1A4B-0000-0000-0000-000000000001}", "MyBuild", ".5", "../x"] {
+            assert_eq!(default_install_location(Path::new("/E"), not_a_version), None, "{not_a_version}");
+        }
         let ini = "[Installations]\n{5D3E1A4B-0000-0000-0000-000000000001}=/src/UnrealEngine\nMyBuild=/src/Other\n[Other]\nX=/y\n";
         assert_eq!(install_ini_location(ini, "{5D3E1A4B-0000-0000-0000-000000000001}"), Some(PathBuf::from("/src/UnrealEngine")));
         assert_eq!(install_ini_location(ini, "mybuild"), Some(PathBuf::from("/src/Other")));
