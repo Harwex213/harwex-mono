@@ -155,6 +155,25 @@ fn path_link_opens_the_file() {
 }
 
 #[test]
+fn enter_over_a_path_link_does_not_open_it() {
+    let (_fx, mut ide) = open_terminal("link_enter");
+    ide.type_text("echo src/util.ts:2:5\n");
+    wait_screen(&mut ide, "src/util.ts:2:5", 2);
+    let s = screen(&ide, 0);
+    let row = s.lines().position(|l| l == "src/util.ts:2:5").expect("output row");
+    ide.move_to(cell_pos(&ide, row, 3));
+    ide.steps(2);
+    assert_eq!(ide.cursor_icon(), egui::CursorIcon::PointingHand, "the pointer rests on a link");
+    // egui reports Enter on the focused terminal as a click; only a real press opens the link.
+    ide.type_text("echo after-enter\n");
+    wait_screen(&mut ide, "after-enter", 1);
+    ide.key(Key::Space);
+    ide.settle();
+    assert_eq!(ide.tab_titles(), ["app.ts"], "Enter or Space opened the link");
+    assert!(terminal_focused(&ide));
+}
+
+#[test]
 fn exited_shell_shows_a_bar() {
     let (_fx, mut ide) = open_terminal("exited");
     ide.type_text("exit\n");

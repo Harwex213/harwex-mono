@@ -493,7 +493,9 @@ impl<'a> TerminalView<'a> {
         let mut open_url = None;
         if link.is_some() || url.is_some() {
             ctx.set_cursor_icon(CursorIcon::PointingHand);
-            if response.clicked() {
+            // Only a real press: egui also reports Enter and Space on the focused widget as
+            // `clicked()`, and Enter is typed with the pointer resting on a link.
+            if response.clicked_by(egui::PointerButton::Primary) {
                 open_path = link.take();
                 open_url = url.take();
             }
